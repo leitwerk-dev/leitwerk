@@ -1,0 +1,41 @@
+# Generic leitwerk worker image shared by Docker Compose and Kubernetes.
+#
+# This is the demo/easy-setup generic runtime profile. Production should use
+# specialized, digest-pinned images closer to each repository's CI toolchain.
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json LICENSE ./
+COPY packages ./packages
+COPY extensions ./extensions
+COPY turbo.json tsconfig.json biome.json ./
+RUN npm ci
+# npm can omit Rollup's platform-native optional package inside Linux image
+# builds. Install the package matching the Debian/gnu image architecture before
+# running tsup/Vite builds.
+RUN node -e "const {execFileSync}=require('node:child_process'); const arch=process.arch; const pkg=arch==='arm64'?'@rollup/rollup-linux-arm64-gnu':arch==='x64'?'@rollup/rollup-linux-x64-gnu':undefined; if (pkg) { try { require.resolve(pkg); } catch { execFileSync('npm', ['install', '--no-save', pkg], {stdio:'inherit'}); } }"
+RUN npm run build
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production \
+	PI_CODING_AGENT_DIR=/state/pi-agent
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends \
+		git openssh-client bash ca-certificates curl python3 make g++ jq \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/extensions ./extensions
+
+LABEL org.opencontainers.image.title="leitwerk-worker-generic" \
+	org.opencontainers.image.description="generic leitwerk worker" \
+	leitwerk.dev/worker-api-version="2026-06-23"
+
+VOLUME ["/state"]
+WORKDIR /app/packages/worker
+CMD ["node", "dist/worker-entry.js"]

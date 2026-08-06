@@ -1,0 +1,268 @@
+import {
+	asWsEventPayloadRecord,
+	createDurableWsFrame,
+	createEphemeralWsFrame,
+	isStreamableEvent,
+	mapWorkerEventToWsType,
+	readWsEventNonEmptyString,
+	readWsEventPiTurnId,
+	readWsEventStreamText,
+	readWsEventTimestamp,
+	readWsEventToolArguments,
+	readWsEventToolName,
+	WS_PRIMARY_PATH_TYPES,
+} from "@leitwerk-dev/protocol";
+import type { WorkerEventPayload } from "@leitwerk-dev/worker-protocol";
+import type { RepositoryBundle } from "../db/repositories.js";
+import {
+	applyPiEventToLiveTurnProjection,
+	buildLiveTurnProjectionFromEvents,
+	createMutableLiveTurnProjection,
+	type MutableLiveTurnProjection,
+	snapshotLiveTurnProjection,
+} from "../live-turn-projection.js";
+import type { Broadcaster } from "../ws/broadcast.js";
+
+const LIVE_TURN_EVENT_LOOKBACK_LIMIT = 1000;
+
+export interface WorkerEventLogEntry {
+	instanceId: string;
+	workerId: string;
+	eventType: string;
+	selectedTurnId: string | null;
+	timestamp: string;
+	serverObservedAt: string;
+	serverObservedLatencyMs: number | null;
+	turnRecordId: string | null;
+	data: Record<string, unknown>;
+}
+
+export interface WorkerEventIngestorDeps
+	extends Pick<RepositoryBundle, "processes" | "events" | "turnRecords"> {
+	broadcaster: Broadcaster;
+	workerEventLogger?: (entry: WorkerEventLogEntry) => void;
+}
+
+function eventTimestamp(data: Record<string, unknown>): string {
+	return readWsEventTimestamp(data, new Date().toISOString());
+}
+
+function eventObservationLatencyMs(eventTimestamp: string, observedAt: string): number | null {
+	const eventMs = Date.parse(eventTimestamp);
+	const observedMs = Date.parse(observedAt);
+	if (!Number.isFinite(eventMs) || !Number.isFinite(observedMs)) {
+		return null;
+	}
+	return Math.max(0, observedMs - eventMs);
+}
+
+function hydrateLiveTurnProjection(
+	deps: Pick<WorkerEventIngestorDeps, "events" | "turnRecords">,
+	instanceId: string,
+	turnRecordId: string | null,
+): MutableLiveTurnProjection {
+	if (!turnRecordId) {
+		return createMutableLiveTurnProjection();
+	}
+	const turnRecord = deps.turnRecords.getById(turnRecordId);
+	if (!turnRecord) {
+		return createMutableLiveTurnProjection();
+	}
+	return buildLiveTurnProjectionFromEvents(
+		deps.events
+			.listByInstanceSince(instanceId, turnRecord.startedAt, {
+				limit: LIVE_TURN_EVENT_LOOKBACK_LIMIT,
+				eventTypePrefix: "pi.",
+			})
+			.slice()
+			.reverse(),
+	);
+}
+
+export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
+	const liveTurnRecordIds = new Map<string, string>();
+	const liveTurnProjections = new Map<
+		string,
+		{ turnRecordId: string | null; projection: MutableLiveTurnProjection }
+	>();
+
+	function getLiveTurnProjection(
+		instanceId: string,
+		turnRecordId: string | null,
+	): MutableLiveTurnProjection {
+		const existing = liveTurnProjections.get(instanceId);
+		if (existing && existing.turnRecordId === turnRecordId) {
+			return existing.projection;
+		}
+		const projection = hydrateLiveTurnProjection(deps, instanceId, turnRecordId);
+		liveTurnProjections.set(instanceId, { turnRecordId, projection });
+		return projection;
+	}
+
+	function setLiveTurnProjection(instanceId: string, turnRecordId: string | null) {
+		liveTurnProjections.set(instanceId, {
+			turnRecordId,
+			projection: createMutableLiveTurnProjection(),
+		});
+	}
+
+	return {
+		getLiveTurnRecordId(instanceId: string): string | null {
+			return liveTurnRecordIds.get(instanceId) ?? null;
+		},
+		noteTurnStarted(instanceId: string, turnRecordId: string): void {
+			liveTurnRecordIds.set(instanceId, turnRecordId);
+			setLiveTurnProjection(instanceId, turnRecordId);
+		},
+		clearLiveTurnState(instanceId: string): void {
+			liveTurnRecordIds.delete(instanceId);
+			liveTurnProjections.delete(instanceId);
+		},
+		ingestWorkerEvent(input: {
+			instanceId: string;
+			workerId: string;
+			payload: WorkerEventPayload;
+		}): void {
+			const { instanceId, workerId, payload } = input;
+			const process = deps.processes.getById(instanceId);
+			if (!process) {
+				return;
+			}
+			const currentTurnRecordId =
+				(process.currentExecution?.kind === "server_turn" ? process.currentExecution.id : null) ??
+				liveTurnRecordIds.get(instanceId) ??
+				null;
+			const data = asWsEventPayloadRecord(payload.data);
+			const projection = getLiveTurnProjection(instanceId, currentTurnRecordId);
+			const appliedProjectionEvent = applyPiEventToLiveTurnProjection(projection, {
+				eventType: payload.eventType,
+				data,
+				fallbackTimestamp: new Date().toISOString(),
+			});
+			const projectionData = appliedProjectionEvent.canonicalData;
+			const enrichedData: Record<string, unknown> =
+				currentTurnRecordId && !readWsEventNonEmptyString(projectionData.turnRecordId)
+					? { ...projectionData, turnRecordId: currentTurnRecordId }
+					: projectionData;
+			const currentSelectedTurnId = payload.selectedTurnId ?? process.selectedTurnId ?? null;
+			const normalizedTimestamp = eventTimestamp(enrichedData);
+			const serverObservedAt = new Date().toISOString();
+			const serverObservedLatencyMs = eventObservationLatencyMs(
+				normalizedTimestamp,
+				serverObservedAt,
+			);
+			const eventTurnRecordId = readWsEventNonEmptyString(enrichedData.turnRecordId);
+			deps.events.create({
+				instanceId,
+				eventType: payload.eventType,
+				data: enrichedData,
+			});
+			try {
+				deps.workerEventLogger?.({
+					instanceId,
+					workerId,
+					eventType: payload.eventType,
+					selectedTurnId: currentSelectedTurnId,
+					timestamp: normalizedTimestamp,
+					serverObservedAt,
+					serverObservedLatencyMs,
+					turnRecordId: eventTurnRecordId,
+					data: enrichedData,
+				});
+			} catch {
+				// Debug mirroring must never interfere with the durable worker-event path.
+			}
+			if (isStreamableEvent(payload.eventType)) {
+				const wsType = mapWorkerEventToWsType(payload.eventType);
+				if (wsType) {
+					deps.broadcaster.broadcast(
+						createEphemeralWsFrame({
+							type: wsType,
+							payload: enrichedData,
+							instanceId,
+						}),
+					);
+				}
+			}
+			if (payload.eventType === "pi.stream.delta") {
+				const text = readWsEventStreamText(enrichedData);
+				if (text) {
+					deps.broadcaster.broadcast(
+						createEphemeralWsFrame({
+							type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
+							payload: {
+								turnRecordId: currentTurnRecordId,
+								piTurnId: readWsEventPiTurnId(enrichedData),
+								text,
+								streamType: readWsEventNonEmptyString(enrichedData.streamType) ?? "text",
+								timestamp: normalizedTimestamp,
+							},
+							instanceId,
+						}),
+					);
+				}
+			} else if (payload.eventType === "pi.usage") {
+				const usage = snapshotLiveTurnProjection(projection).usage;
+				if (usage) {
+					deps.broadcaster.broadcast(
+						createEphemeralWsFrame({
+							type: WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
+							payload: {
+								turnRecordId: currentTurnRecordId,
+								piTurnId: readWsEventPiTurnId(enrichedData),
+								usage,
+								timestamp: normalizedTimestamp,
+							},
+							instanceId,
+						}),
+					);
+				}
+			} else if (payload.eventType === "pi.tool.call") {
+				deps.broadcaster.broadcast(
+					createEphemeralWsFrame({
+						type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
+						payload: {
+							turnRecordId: currentTurnRecordId,
+							piTurnId: readWsEventPiTurnId(enrichedData),
+							toolCallId: appliedProjectionEvent.toolCallId ?? "tool",
+							toolName: appliedProjectionEvent.toolName ?? readWsEventToolName(enrichedData),
+							arguments: readWsEventToolArguments(enrichedData),
+							timestamp: normalizedTimestamp,
+						},
+						instanceId,
+					}),
+				);
+			} else if (payload.eventType === "pi.tool.result") {
+				deps.broadcaster.broadcast(
+					createEphemeralWsFrame({
+						type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
+						payload: {
+							turnRecordId: currentTurnRecordId,
+							piTurnId: readWsEventPiTurnId(enrichedData),
+							toolCallId: appliedProjectionEvent.toolCallId ?? "tool",
+							toolName: appliedProjectionEvent.toolName ?? readWsEventToolName(enrichedData),
+							result: enrichedData.result ?? null,
+							isError: enrichedData.isError === true,
+							timestamp: normalizedTimestamp,
+						},
+						instanceId,
+					}),
+				);
+			} else if (payload.eventType === "pi.label.changed") {
+				deps.broadcaster.broadcast(
+					createDurableWsFrame({
+						type: WS_PRIMARY_PATH_TYPES.LABEL_CHANGED,
+						payload: {
+							turnRecordId: currentTurnRecordId,
+							piTurnId: readWsEventPiTurnId(enrichedData),
+							targetId: readWsEventNonEmptyString(enrichedData.targetId),
+							label: typeof enrichedData.label === "string" ? enrichedData.label : null,
+							timestamp: normalizedTimestamp,
+						},
+						instanceId,
+					}),
+				);
+			}
+		},
+	};
+}

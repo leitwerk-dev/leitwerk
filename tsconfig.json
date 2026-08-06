@@ -1,0 +1,41 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "Node16",
+		"moduleResolution": "Node16",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"declaration": true,
+		"declarationMap": true,
+		"sourceMap": true,
+		"composite": true,
+		"ignoreDeprecations": "6.0"
+	},
+	"references": [
+		{ "path": "packages/domain" },
+		{ "path": "packages/external-writes" },
+		{ "path": "packages/protocol" },
+		{ "path": "packages/process-sdk" },
+		{ "path": "packages/extension-runtime" },
+		{ "path": "packages/watcher-utils" },
+		{ "path": "packages/worker-runners" },
+		{ "path": "packages/server" },
+		{ "path": "packages/worker" },
+		{ "path": "packages/worker-protocol" },
+		{ "path": "packages/test-support" },
+		{ "path": "extensions/showcase-processes" },
+		{ "path": "extensions/coding" },
+		{ "path": "extensions/git-ssh" },
+		{ "path": "extensions/local-repo-change" },
+		{ "path": "extensions/remote-repo-change" },
+		{ "path": "extensions/process-analysis" },
+		{ "path": "extensions/local-shell" },
+		{ "path": "extensions/models" },
+		{ "path": "extensions/pi-shell" },
+		{ "path": "extensions/telegram" }
+	],
+	"files": []
+}

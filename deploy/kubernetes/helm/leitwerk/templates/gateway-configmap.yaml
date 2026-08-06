@@ -1,0 +1,36 @@
+{{- if .Values.gateway.enabled }}
+{{- if .Values.internalTls.enabled }}
+{{- fail "gateway.enabled does not yet support internalTls.enabled" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "leitwerk.gatewayFullname" . }}-config
+  namespace: {{ include "leitwerk.namespace" . }}
+  labels:
+    {{- include "leitwerk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+data:
+  Caddyfile: |
+    :8080 {
+      encode zstd gzip
+
+      handle /api/* {
+        reverse_proxy {{ include "leitwerk.serverFullname" . }}:{{ .Values.server.service.port }}
+      }
+      handle /auth/* {
+        reverse_proxy {{ include "leitwerk.serverFullname" . }}:{{ .Values.server.service.port }}
+      }
+      handle /ws {
+        reverse_proxy {{ include "leitwerk.serverFullname" . }}:{{ .Values.server.service.port }}
+      }
+      handle /ext-ui/* {
+        reverse_proxy {{ include "leitwerk.serverFullname" . }}:{{ .Values.server.service.port }}
+      }
+      handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+      }
+    }
+{{- end }}

@@ -1,0 +1,63 @@
+# Server-in-container topology for the Docker run mode.
+#
+# Shape (mirrors the Kubernetes model so the secure choice and the k8s-ready
+# choice coincide):
+#   - `leitwerk` is a private user-defined bridge shared by the server and
+#     every worker container. Workers reach the server by the stable internal
+#     name `leitwerk-server`, never a host IP or host.docker.internal.
+#   - The reverse proxy is the public UI/API entrypoint; it terminates HTTPS
+#     (Let's Encrypt) and forwards to the server.
+#   - The server mounts the Docker Engine socket so its Docker runner can start,
+#     stop, list, and adopt worker containers on the same private network.
+#   - Per-process bind volumes live under docker.process_volume.host_root on the
+#     host; the server container does NOT mount that path. It only ever sees
+#     process state through the session-snapshot exchange.
+
+networks:
+  leitwerk:
+    name: leitwerk
+    driver: bridge
+
+volumes:
+  caddy_data:
+  caddy_config:
+  leitwerk_state:
+
+services:
+  leitwerk-server:
+    build:
+      context: ../..
+      dockerfile: deploy/images/Dockerfile.server
+    # The internal name workers and the proxy use to reach the server.
+    container_name: leitwerk-server
+    networks:
+      - leitwerk
+    expose:
+      - "8080"
+    environment:
+      LEITWERK_CONFIG_PATH: /etc/leitwerk/leitwerk.yaml
+    volumes:
+      # Engine API socket for the Docker runner (start/stop/list/adopt workers).
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Server config. Keep secrets out of the image; mount them at runtime.
+      - ./config/leitwerk.yaml:/etc/leitwerk/leitwerk.yaml:ro
+      # Optional internal TLS material (referenced by internal_tls.*).
+      - ./tls:/etc/leitwerk/tls:ro
+      # Server-owned durable storage (sqlite, latest session snapshots).
+      - leitwerk_state:/app/.leitwerk
+    restart: unless-stopped
+
+  reverse-proxy:
+    image: caddy:2
+    depends_on:
+      - leitwerk-server
+    networks:
+      - leitwerk
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped

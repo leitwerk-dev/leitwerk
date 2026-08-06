@@ -1,0 +1,17 @@
+node_modules
+**/node_modules
+**/dist
+.leitwerk
+.worktrees
+test-results
+playwright-report
+*.log
+.git
+.github
+docs
+ideas
+tests/browser
+**/*.test.ts
+
+# Legacy pre-alpha local state.
+.orchestrator

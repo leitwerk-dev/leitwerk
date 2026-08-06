@@ -1,0 +1,16 @@
+# Specialized smoke-test worker image.
+#
+# This image intentionally extends the generic worker image with one deterministic
+# tool so Kind smoke tests can prove that a second runtime-profile image was
+# built, loaded, and scheduled separately from the generic image.
+
+ARG WORKER_GENERIC_IMAGE=leitwerk-worker-generic:dev
+FROM ${WORKER_GENERIC_IMAGE}
+
+RUN printf '%s\n' '#!/usr/bin/env sh' 'echo specialized-smoke-tool-ok' > /usr/local/bin/leitwerk-specialized-tool \
+	&& chmod +x /usr/local/bin/leitwerk-specialized-tool
+
+LABEL org.opencontainers.image.title="leitwerk-worker-specialized-smoke" \
+	org.opencontainers.image.description="specialized leitwerk Kubernetes smoke-test worker" \
+	leitwerk.dev/worker-api-version="2026-06-23" \
+	leitwerk.dev/runtime-profile="specialized-smoke"

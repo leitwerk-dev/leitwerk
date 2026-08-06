@@ -1,0 +1,66 @@
+{
+	"name": "@leitwerk-dev/process-sdk",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./git-binary": {
+			"source": "./src/git-binary.ts",
+			"import": "./dist/git-binary.js",
+			"types": "./dist/git-binary.d.ts"
+		},
+		"./leaf-outcome-renderer": {
+			"source": "./src/leaf-outcome-renderer.ts",
+			"import": "./dist/leaf-outcome-renderer.js",
+			"types": "./dist/leaf-outcome-renderer.d.ts"
+		},
+		"./pi-config": {
+			"source": "./src/pi-config.ts",
+			"import": "./dist/pi-config.js",
+			"types": "./dist/pi-config.d.ts"
+		},
+		"./review-flow": {
+			"source": "./src/review-flow.ts",
+			"import": "./dist/review-flow.js",
+			"types": "./dist/review-flow.d.ts"
+		},
+		"./runtime-internals": {
+			"source": "./src/runtime-internals.ts",
+			"import": "./dist/runtime-internals.js",
+			"types": "./dist/runtime-internals.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"@leitwerk-dev/protocol": "0.1.0",
+		"@leitwerk-dev/worker-protocol": "0.1.0",
+		"escape-html": "^1.0.3",
+		"mustache": "^4.2.0",
+		"valibot": "^1.3.1"
+	},
+	"devDependencies": {
+		"@types/escape-html": "^1.0.4",
+		"@types/mustache": "^4.2.6",
+		"@types/node": "^22.15.30",
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

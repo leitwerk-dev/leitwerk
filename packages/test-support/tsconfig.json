@@ -1,0 +1,16 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src"
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts"],
+	"references": [
+		{ "path": "../domain" },
+		{ "path": "../extension-runtime" },
+		{ "path": "../protocol" },
+		{ "path": "../server" },
+		{ "path": "../worker-protocol" }
+	]
+}

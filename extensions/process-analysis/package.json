@@ -1,0 +1,42 @@
+{
+	"name": "@leitwerk-dev/process-analysis",
+	"version": "0.1.0",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		}
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"@leitwerk-dev/process-sdk": "0.1.0",
+		"@leitwerk-dev/local-repo-change": "0.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.30",
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

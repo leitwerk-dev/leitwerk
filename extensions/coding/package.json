@@ -1,0 +1,59 @@
+{
+	"name": "@leitwerk-dev/coding",
+	"version": "0.1.0",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"discover": false
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./auto-work-branch": {
+			"source": "./src/auto-work-branch.ts",
+			"import": "./dist/auto-work-branch.js",
+			"types": "./dist/auto-work-branch.d.ts"
+		},
+		"./finalization-git": {
+			"source": "./src/finalization-git.ts",
+			"import": "./dist/finalization-git.js",
+			"types": "./dist/finalization-git.d.ts"
+		},
+		"./repository-change-state": {
+			"source": "./src/repository-change-state.ts",
+			"import": "./dist/repository-change-state.js",
+			"types": "./dist/repository-change-state.d.ts"
+		},
+		"./repository-change-launch": {
+			"source": "./src/repository-change-launch.ts",
+			"import": "./dist/repository-change-launch.js",
+			"types": "./dist/repository-change-launch.d.ts"
+		},
+		"./turns/*": {
+			"source": "./src/turns/*.ts",
+			"import": "./dist/turns/*.js",
+			"types": "./dist/turns/*.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"@leitwerk-dev/process-sdk": "0.1.0"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"files": [
+		"dist/**",
+		"src/**"
+	]
+}

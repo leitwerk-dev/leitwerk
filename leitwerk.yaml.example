@@ -1,0 +1,304 @@
+# Copy this file to leitwerk.yaml for local development.
+server:
+  host: 127.0.0.1
+  port: 8080
+  base_url: http://127.0.0.1:8080
+  websocket:
+    heartbeat_interval: 10s
+    client_timeout: 30s
+    toast_ttl: 6s
+
+storage:
+  sqlite_path: ./.leitwerk/leitwerk.sqlite
+  process_workspaces_dir: ./.leitwerk/workspaces
+  tree_files_dir: ./.leitwerk/trees
+
+# Optional Forgejo SSO for the web UI, HTTP API, and /ws.
+# When enabled, server.base_url and OIDC URLs must use HTTPS, except for loopback localhost development URLs.
+# Only enabled: true turns SSO on. Omit this block, omit enabled, or set
+# enabled: false to keep local unauthenticated behavior with web actions
+# attributed to the built-in admin actor.
+# auth:
+#   enabled: true
+#   session:
+#     cookie_name: leitwerk_session
+#     ttl: 7d
+#   providers:
+#     - id: forgejo
+#       kind: oidc
+#       issuer: https://git.example.com
+#       client_id: "..."
+#       client_secret: "..."
+#       redirect_uri: https://leitwerk.example.com/auth/callback
+#       scopes: [openid, profile, email]
+#       identity_claim: preferred_username
+#   allowlist: [alice, bob]
+
+components: {}
+
+# Optional server-owned formatting rules for plan-derived Git commit messages.
+# Repository mappings take precedence over default_template. Matching trims
+# whitespace and trailing slashes; the selected id and rules are pinned at launch.
+commit_messages:
+  templates:
+    conventional:
+      rules: |
+        Use Conventional Commits: type(scope): imperative summary.
+        Wrap body lines at 72 characters and explain why, not how.
+    concise:
+      rules: "Use one imperative subject of at most 60 characters."
+  default_template: concise
+  repositories:
+    "https://git.example.com/platform/api.git": conventional
+    "/srv/git/internal-tool": concise
+
+workers:
+  # Worker run mode: docker | kubernetes | local.
+  # `local` is best-effort developer/test mode only; Docker/Kubernetes define production behavior.
+  runner: docker
+  max_parallel_processes: 4
+  startup_timeout: 30s
+  shutdown_grace_period: 15s
+  heartbeat_interval: 5s
+  resume_on_boot: true
+  idle_worker_ttl: 0s
+  # Fallback worker runtime profile when neither the process nor any component
+  # selects one. Must reference a worker_runtime_profiles entry.
+  default_runtime_profile: generic
+  # Maximum accepted worker session snapshot upload size in bytes.
+  session_snapshot_max_size_bytes: 134217728
+  # Mirrors worker.trace, worker.error, and raw pi.* worker.event payloads into server stdout.
+  # Useful for troubleshooting in `npm run dev` or production logs; may be very noisy.
+  log_worker_events_to_stdout: true
+  cleanup:
+    transient_ttl: 1h
+    completed_process_retention: 168h
+    error_process_retention: 720h
+  turn_max_duration: 6h
+  turn_inactivity_timeout: 10m
+  turn_abort_grace_period: 10s
+  stale_heartbeat_timeout: 30s
+
+# Local run-mode wiring (used when workers.runner is local).
+# Best-effort dev/test runner only; it is not an isolation boundary. Image and
+# resource-profile settings are ignored.
+local_worker:
+  command: node
+  args:
+    - "@leitwerk-dev/worker/worker-entry"
+
+# Docker run-mode wiring (used when workers.runner is docker).
+# The worker never receives this block; it dials back over WebSocket using
+# launcher-injected connect env. Server and workers share a private network and
+# the worker reaches the server by its stable internal name, never a host IP.
+docker:
+  socket: unix:///var/run/docker.sock
+  network: leitwerk
+  server_url: http://leitwerk-server:8080
+  # For internal TLS, change server_url to https://..., enable internal_tls, and set
+  # this to a Docker-daemon host-visible CA path (not merely a path inside the server container).
+  # server_ca_file: /etc/leitwerk/internal-ca.pem
+  process_volume:
+    mode: bind            # bind | named_volume
+    host_root: /var/lib/leitwerk/processes
+    mount_path: /state
+  # Nested-container (Docker-in-Docker) capability the host runtime exposes to
+  # workers. A runtime profile's `dind` opt-in is rejected unless the matching
+  # capability is enabled here. Default workers run unprivileged with no nested
+  # daemon.
+  # dind:
+  #   privileged: true        # allow profiles with dind: privileged
+  #   sysbox: false           # allow profiles with dind: sysbox (needs sysbox_runtime)
+  #   sysbox_runtime: sysbox-runc
+
+# Kubernetes run-mode wiring (used when workers.runner is kubernetes).
+# The server runs in a dedicated namespace and creates one namespace + retained
+# process PVC + worker pod per active process instance. Workers use
+# kubernetes.server_url as the HTTP(S) base for authenticated WebSocket IPC and snapshots.
+# kubernetes:
+#   server_namespace: leitwerk-system
+#   process_namespace_prefix: leitwerk-process-
+#   server_url: http://leitwerk-server.leitwerk-system.svc.cluster.local:8080
+#   # When internal_tls.enabled is true, use https://... and set server_ca_file
+#   # to a server-local CA file; the Kubernetes runner copies it into each
+#   # process namespace and mounts it into worker Pods as NODE_EXTRA_CA_CERTS.
+#   # server_ca_file: /etc/leitwerk/internal-ca.pem
+#   # Optional Kubernetes API URL override; defaults to the in-cluster service.
+#   # api_server_url: https://kubernetes.default.svc
+#   default_worker_runtime_profile: generic
+#   worker_service_account: leitwerk-worker
+#   process_volume:
+#     storage_class_name: standard
+#     size: 20Gi
+#     access_modes: [ReadWriteOnce]
+#     mount_path: /state
+#   pod:
+#     node_selector: {}
+#     tolerations: []
+#     annotations: {}
+#   image_pull_secrets: []
+
+# Reusable worker image selections authored only here; repository branch content
+# must never select an image. Selection precedence is process override ->
+# component -> runner default (kubernetes.default_worker_runtime_profile in
+# Kubernetes mode, otherwise workers.default_runtime_profile).
+worker_runtime_profiles:
+  generic:
+    image: ghcr.io/example/leitwerk-worker-generic:0.1.0
+    image_pull_policy: IfNotPresent
+    # resources:
+    #   limits:
+    #     cpu: "4"
+    #     memory: 8Gi
+  # A nested-container profile for processes that launch their own containers
+  # and networks (for example deploying leitwerk-on-itself). Requires the
+  # matching docker.dind capability above.
+  # nested:
+  #   image: ghcr.io/example/leitwerk-worker-nested:0.1.0
+  #   dind: privileged        # privileged | sysbox
+
+# Internal worker -> server TLS (disabled by default). Public UI/API HTTPS is
+# terminated by a reverse proxy in front of the server; this only secures the
+# internal IPC listener. When enabled, docker.server_url or kubernetes.server_url
+# must use https:// and the active production runner must have server_ca_file set.
+# Worker client certificates are not wired yet, so internal_tls.client_ca_file is
+# rejected.
+# internal_tls:
+#   enabled: true
+#   cert_file: /etc/leitwerk/internal-server.crt
+#   key_file: /etc/leitwerk/internal-server.key
+#   # client_ca_file: unsupported until workers receive client cert/key material
+
+pi:
+  # Managed secret-bearing root, never the operator's ambient ~/.pi/agent.
+  # Leitwerk creates per-instance materializations below this directory.
+  agent_dir: ~/.pi/leitwerk
+  retry:
+    enabled: true
+    max_retries: 3
+    base_delay: 2s
+    provider:
+      timeout: null
+      max_retries: null
+      max_retry_delay: 60s
+  # Example custom model profiles — replace with your own provider/model pairs:
+  # The owning provider extension must be loaded under extensions before a
+  # profile can name it. The stock catalog is empty.
+  # model_profiles:
+  #   - id: deepseek-v4-flash
+  #     provider: deepseek
+  #     model_id: deepseek-v4-flash
+  #     thinking_level: low
+  #     provider_options:
+  #       preferred_account: team-default
+  #   - id: deepseek-v4-pro
+  #     provider: deepseek
+  #     model_id: deepseek-v4-pro
+  #     thinking_level: medium
+
+process_configs:
+  poem_creator_process:
+    watchers:
+      create_poem:
+        type: filesystem
+        enabled: true
+        poll_interval: 1s
+        file_path: /tmp/create-poem
+        # launch:
+        #   default_model_profile: deepseek-v4-flash
+
+notifications:
+  all:
+    enabled: false
+    type: teams_webhook
+    url: ""
+  debug:
+    enabled: false
+    type: teams_webhook
+    url: ""
+  squad:
+    enabled: false
+    type: teams_webhook
+    routing_field: ""
+    routes: {}
+
+sandbox:
+  enabled: false
+  profile: ""
+
+# Git repositories shown in the Skills catalog. Every descendant directory below
+# `path` containing SKILL.md can be registered, updated, or removed through the UI.
+skill_repositories:
+  # - id: shared
+  #   label: Shared skills
+  #   url: https://github.com/example/skills.git
+  #   ref: main
+  #   path: skills
+
+# Optional directly managed Pi skills. These remain restart-scoped and are
+# imported and activated from configuration at startup.
+skills:
+  - id: local-example
+    label: Local example
+    description: Example opt-in skill.
+    source:
+      kind: local
+      path: ../shared-skills/example
+  # - id: remote-example
+  #   label: Remote example
+  #   source:
+  #     kind: git
+  #     url: https://github.com/example/skills.git
+  #     ref: v1.0.0
+  #     path: skills/example
+
+extension_loading:
+  # Relative extension sources resolve from this config file's directory.
+  sources:
+    - ./extensions/models
+    - ./extensions/showcase-processes
+
+extensions:
+  # models:
+  #   openai:
+  #     api_key: env:OPENAI_API_KEY # or literal string "sk-..."
+  #   anthropic:
+  #     api_key: env:ANTHROPIC_API_KEY
+  #   custom_gateways:
+  #     internal-gateway:
+  #       base_url: https://llm-gateway.example.com/v1
+  #       api_key: false # set to false for unauthenticated endpoints, or use env:VAR
+  #       api: openai-completions
+  #       models:
+  #         - id: gemma-4-31b-it
+  #           name: Gemma 4 31B IT
+  # git-ssh:
+  #   credentials:
+  #     default:
+  #       private_key: | # Secret-bearing; keep the config server-only and mode 0600.
+  #         -----BEGIN OPENSSH PRIVATE KEY-----
+  #         ...
+  #         -----END OPENSSH PRIVATE KEY-----
+  #       known_hosts: | # Pinned entries; host verification is never disabled.
+  #         git.example.com ssh-ed25519 AAAA...
+  showcase-processes:
+    file_triggers:
+      poll_interval: 1s
+      poem_review_path: /tmp/poem-review-{instanceId}
+      complete_prompt_path: /tmp/complete-prompt
+  telegram:
+    enabled: false
+    bot_token_env: TELEGRAM_BOT_TOKEN
+    # bot_token: "123456:bot-token" # Optional inline YAML fallback when bot_token_env is unset.
+    allow_user_ids: []
+    delivery:
+      forum_chat_id: ""
+    markdown:
+      max_chars: 3900
+    topic_title_template: "{title} · {shortId}"
+    # Optional: restrict which model profiles appear in Telegram model selection prompts.
+    # Use ids from pi.model_profiles.
+    allowed_model_profile_ids:
+      - deepseek-v4-flash
+      - deepseek-v4-pro
+      - gpt-5.5-xhigh-auto

@@ -1,0 +1,209 @@
+# Default values for leitwerk Kubernetes deployments.
+# Worker Pods and process PVCs are created dynamically by the server; this chart
+# owns only the singleton server, its Service/PVC/RBAC, and its ConfigMap.
+
+namespace:
+  create: false
+  # Defaults to the Helm release namespace when empty.
+  name: ""
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+server:
+  replicaCount: 1
+  # Mount an operator-managed Secret containing a `leitwerk.yaml` key instead
+  # of the chart-generated ConfigMap when set.
+  existingConfigSecret: ""
+  credentialEncryption:
+    # Secret containing the stable server credential-encryption key.
+    existingSecret: ""
+    key: LEITWERK_CREDENTIAL_ENCRYPTION_KEY
+  image:
+    repository: ghcr.io/example/leitwerk-server
+    tag: "0.1.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts: []
+    tls: []
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  podAnnotations: {}
+  podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  storage:
+    size: 10Gi
+    storageClassName: ""
+    accessModes:
+      - ReadWriteOnce
+    mountPath: /var/lib/leitwerk
+    # Preserve the server PVC across Helm uninstall when true.
+    retain: false
+  config:
+    baseUrl: http://leitwerk.example.local
+    websocket:
+      heartbeatInterval: 10s
+      clientTimeout: 30s
+      toastTtl: 6s
+    piAgentDir: /var/lib/leitwerk/pi
+    piRetry:
+      enabled: true
+      maxRetries: 3
+      baseDelay: 2s
+      provider:
+        timeout: null
+        maxRetries: null
+        maxRetryDelay: 60s
+    logWorkerEventsToStdout: false
+    extensionLoading:
+      # Explicit extension packages to load. Use absolute image paths for bundled
+      # extensions, for example: /app/extensions/showcase-processes.
+      sources: []
+    auth:
+      enabled: false
+
+gateway:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: caddy
+    tag: 2.10.2-alpine
+    digest: ""
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+    annotations: {}
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 250m
+      memory: 128Mi
+  podAnnotations: {}
+  podLabels: {}
+
+internalTls:
+  enabled: false
+  # Secret mounted into the server Pod when enabled. It must contain the server
+  # cert/key plus a CA bundle workers should trust for the in-cluster Service DNS name.
+  secretName: ""
+  certKey: tls.crt
+  keyKey: tls.key
+  caKey: ca.crt
+
+workers:
+  maxParallelProcesses: 4
+  startupTimeout: 30s
+  shutdownGracePeriod: 15s
+  heartbeatInterval: 5s
+  resumeOnBoot: true
+  idleWorkerTtl: 0s
+  turnMaxDuration: 6h
+  turnInactivityTimeout: 10m
+  turnAbortGracePeriod: 10s
+  staleHeartbeatTimeout: 30s
+  cleanup:
+    transientTtl: 1h
+    completedProcessRetention: 168h
+    errorProcessRetention: 720h
+  defaultRuntimeProfile: ""
+
+kubernetes:
+  # Rendered from the Helm release namespace when empty; must be dedicated to the server.
+  serverNamespace: ""
+  # Each process instance gets a namespace named <prefix><instance-id>.
+  processNamespacePrefix: leitwerk-process-
+  # Defaults to http://<release>-server.<namespace>.svc.cluster.local:<service.port> when empty.
+  serverUrl: ""
+  # Optional Kubernetes API URL override; defaults to the in-cluster service.
+  apiServerUrl: ""
+  defaultWorkerRuntimeProfile: generic
+  workerServiceAccount: leitwerk-worker
+  processVolume:
+    storageClassName: ""
+    size: 20Gi
+    accessModes:
+      - ReadWriteOnce
+    mountPath: /state
+  pod:
+    nodeSelector: {}
+    tolerations: []
+    annotations: {}
+  imagePullSecrets: []
+
+workerRuntimeProfiles:
+  generic:
+    image: ghcr.io/example/leitwerk-worker-generic:0.1.0
+    image_pull_policy: IfNotPresent
+    resources:
+      limits:
+        cpu: "4"
+        memory: 8Gi
+  node22:
+    image: ghcr.io/example/leitwerk-worker-node22:0.1.0
+    image_pull_policy: IfNotPresent
+    resources:
+      limits:
+        cpu: "4"
+        memory: 8Gi
+  java21:
+    image: ghcr.io/example/leitwerk-worker-java21:0.1.0
+    image_pull_policy: IfNotPresent
+    resources:
+      limits:
+        cpu: "4"
+        memory: 8Gi
+
+components: {}
+processConfigs: {}
+notifications:
+  all:
+    enabled: false
+    type: teams_webhook
+    url: ""
+  debug:
+    enabled: false
+    type: teams_webhook
+    url: ""
+  squad:
+    enabled: false
+    type: teams_webhook
+    routing_field: ""
+    routes: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+rbac:
+  create: true
+
+workerServiceAccount:
+  create: true
+  annotations: {}
+
+exampleSecrets:
+  enabled: false
+  stringData:
+    pi-auth.json: "{}"
+    pi-models.json: "{}"

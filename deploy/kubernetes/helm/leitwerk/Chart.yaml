@@ -1,0 +1,7 @@
+apiVersion: v2
+name: leitwerk
+version: 0.1.0
+appVersion: "0.1.0"
+description: Helm chart for the leitwerk singleton server and Kubernetes worker runner
+home: https://github.com/earendil-works/leitwerk
+type: application

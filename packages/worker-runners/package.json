@@ -1,0 +1,65 @@
+{
+	"name": "@leitwerk-dev/worker-runners",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./types": {
+			"source": "./src/types.ts",
+			"import": "./dist/types.js",
+			"types": "./dist/types.d.ts"
+		},
+		"./local": {
+			"source": "./src/local-worker-runner.ts",
+			"import": "./dist/local-worker-runner.js",
+			"types": "./dist/local-worker-runner.d.ts"
+		},
+		"./docker": {
+			"source": "./src/docker-worker-runner.ts",
+			"import": "./dist/docker-worker-runner.js",
+			"types": "./dist/docker-worker-runner.d.ts"
+		},
+		"./docker-client": {
+			"source": "./src/docker-engine-http-client.ts",
+			"import": "./dist/docker-engine-http-client.js",
+			"types": "./dist/docker-engine-http-client.d.ts"
+		},
+		"./kubernetes": {
+			"source": "./src/kubernetes-worker-runner.ts",
+			"import": "./dist/kubernetes-worker-runner.js",
+			"types": "./dist/kubernetes-worker-runner.d.ts"
+		},
+		"./kubernetes-client": {
+			"source": "./src/kubernetes-http-client.ts",
+			"import": "./dist/kubernetes-http-client.js",
+			"types": "./dist/kubernetes-http-client.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"@leitwerk-dev/watcher-utils": "0.1.0"
+	},
+	"devDependencies": {
+		"@types/node": "^22.15.30",
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

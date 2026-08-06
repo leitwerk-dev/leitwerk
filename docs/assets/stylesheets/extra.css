@@ -1,0 +1,27 @@
+:root {
+	--leitwerk-card-radius: 0.75rem;
+}
+
+.md-typeset h1,
+.md-typeset h2 {
+	font-weight: 750;
+	letter-spacing: -0.02em;
+}
+
+.md-typeset blockquote {
+	border-left: 0.2rem solid var(--md-accent-fg-color);
+	color: var(--md-default-fg-color--light);
+}
+
+.md-typeset table:not([class]) {
+	border-radius: var(--leitwerk-card-radius);
+	overflow: hidden;
+}
+
+.md-typeset code {
+	border-radius: 0.25rem;
+}
+
+.md-typeset .mermaid {
+	text-align: center;
+}

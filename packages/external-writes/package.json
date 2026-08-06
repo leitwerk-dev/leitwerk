@@ -1,0 +1,33 @@
+{
+	"name": "@leitwerk-dev/external-writes",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

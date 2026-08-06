@@ -1,0 +1,62 @@
+# Local Kind overlay. Use with:
+# helm upgrade --install leitwerk deploy/kubernetes/helm/leitwerk \
+#   -f deploy/kubernetes/helm/leitwerk/values-kind.yaml \
+#   --namespace leitwerk-k8s-test --create-namespace
+
+namespace:
+  create: false
+  name: leitwerk-k8s-test
+
+server:
+  image:
+    repository: leitwerk-server
+    tag: dev
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 8080
+  storage:
+    size: 1Gi
+    storageClassName: standard
+  config:
+    baseUrl: http://localhost:8080
+    logWorkerEventsToStdout: true
+    extensionLoading:
+      sources:
+        - /app/extensions/showcase-processes
+
+workers:
+  maxParallelProcesses: 2
+  idleWorkerTtl: 5s
+  startupTimeout: 45s
+
+kubernetes:
+  serverNamespace: leitwerk-k8s-test
+  processNamespacePrefix: leitwerk-k8s-test-process-
+  defaultWorkerRuntimeProfile: generic
+  processVolume:
+    storageClassName: standard
+    size: 1Gi
+    accessModes:
+      - ReadWriteOnce
+    mountPath: /state
+
+processConfigs:
+  k8s_smoke_specialized_process:
+    worker_runtime_profile: specialized-smoke
+
+workerRuntimeProfiles:
+  generic:
+    image: leitwerk-worker-generic:dev
+    image_pull_policy: IfNotPresent
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi
+  specialized-smoke:
+    image: leitwerk-worker-specialized-smoke:dev
+    image_pull_policy: IfNotPresent
+    resources:
+      limits:
+        cpu: "1"
+        memory: 1Gi

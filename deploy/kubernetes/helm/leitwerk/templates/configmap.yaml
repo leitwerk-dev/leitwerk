@@ -1,0 +1,118 @@
+{{- if not .Values.server.existingConfigSecret }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "leitwerk.serverFullname" . }}-config
+  namespace: {{ include "leitwerk.namespace" . }}
+  labels:
+    {{- include "leitwerk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+data:
+  leitwerk.yaml: |
+    server:
+      host: 0.0.0.0
+      port: {{ .Values.server.service.port }}
+      base_url: {{ .Values.server.config.baseUrl | quote }}
+      websocket:
+        heartbeat_interval: {{ .Values.server.config.websocket.heartbeatInterval | quote }}
+        client_timeout: {{ .Values.server.config.websocket.clientTimeout | quote }}
+        toast_ttl: {{ .Values.server.config.websocket.toastTtl | quote }}
+
+    storage:
+      sqlite_path: {{ printf "%s/leitwerk.sqlite" .Values.server.storage.mountPath | quote }}
+      process_workspaces_dir: {{ printf "%s/workspaces" .Values.server.storage.mountPath | quote }}
+      tree_files_dir: {{ printf "%s/trees" .Values.server.storage.mountPath | quote }}
+      artifacts_dir: {{ printf "%s/artifacts" .Values.server.storage.mountPath | quote }}
+
+    components:
+      {{- toYaml .Values.components | nindent 6 }}
+
+    workers:
+      runner: kubernetes
+      max_parallel_processes: {{ .Values.workers.maxParallelProcesses }}
+      startup_timeout: {{ .Values.workers.startupTimeout | quote }}
+      shutdown_grace_period: {{ .Values.workers.shutdownGracePeriod | quote }}
+      heartbeat_interval: {{ .Values.workers.heartbeatInterval | quote }}
+      resume_on_boot: {{ .Values.workers.resumeOnBoot }}
+      idle_worker_ttl: {{ .Values.workers.idleWorkerTtl | quote }}
+      {{- if .Values.workers.defaultRuntimeProfile }}
+      default_runtime_profile: {{ .Values.workers.defaultRuntimeProfile | quote }}
+      {{- end }}
+      log_worker_events_to_stdout: {{ .Values.server.config.logWorkerEventsToStdout }}
+      cleanup:
+        transient_ttl: {{ .Values.workers.cleanup.transientTtl | quote }}
+        completed_process_retention: {{ .Values.workers.cleanup.completedProcessRetention | quote }}
+        error_process_retention: {{ .Values.workers.cleanup.errorProcessRetention | quote }}
+      turn_max_duration: {{ .Values.workers.turnMaxDuration | quote }}
+      turn_inactivity_timeout: {{ .Values.workers.turnInactivityTimeout | quote }}
+      turn_abort_grace_period: {{ .Values.workers.turnAbortGracePeriod | quote }}
+      stale_heartbeat_timeout: {{ .Values.workers.staleHeartbeatTimeout | quote }}
+
+    kubernetes:
+      server_namespace: {{ include "leitwerk.namespace" . | quote }}
+      process_namespace_prefix: {{ .Values.kubernetes.processNamespacePrefix | quote }}
+      server_url: {{ include "leitwerk.kubernetesServerUrl" . | quote }}
+      {{- if .Values.internalTls.enabled }}
+      server_ca_file: {{ printf "/etc/leitwerk/internal-tls/%s" .Values.internalTls.caKey | quote }}
+      {{- end }}
+      {{- if .Values.kubernetes.apiServerUrl }}
+      api_server_url: {{ .Values.kubernetes.apiServerUrl | quote }}
+      {{- end }}
+      default_worker_runtime_profile: {{ .Values.kubernetes.defaultWorkerRuntimeProfile | quote }}
+      worker_service_account: {{ include "leitwerk.workerServiceAccountName" . | quote }}
+      process_volume:
+        {{- if .Values.kubernetes.processVolume.storageClassName }}
+        storage_class_name: {{ .Values.kubernetes.processVolume.storageClassName | quote }}
+        {{- end }}
+        size: {{ .Values.kubernetes.processVolume.size | quote }}
+        access_modes:
+          {{- toYaml .Values.kubernetes.processVolume.accessModes | nindent 10 }}
+        mount_path: {{ .Values.kubernetes.processVolume.mountPath | quote }}
+      pod:
+        node_selector:
+          {{- toYaml .Values.kubernetes.pod.nodeSelector | nindent 10 }}
+        tolerations:
+          {{- toYaml .Values.kubernetes.pod.tolerations | nindent 10 }}
+        annotations:
+          {{- toYaml .Values.kubernetes.pod.annotations | nindent 10 }}
+      image_pull_secrets:
+        {{- toYaml .Values.kubernetes.imagePullSecrets | nindent 8 }}
+
+    worker_runtime_profiles:
+      {{- toYaml .Values.workerRuntimeProfiles | nindent 6 }}
+
+    pi:
+      agent_dir: {{ .Values.server.config.piAgentDir | quote }}
+      retry:
+        enabled: {{ .Values.server.config.piRetry.enabled }}
+        max_retries: {{ .Values.server.config.piRetry.maxRetries }}
+        base_delay: {{ .Values.server.config.piRetry.baseDelay | quote }}
+        provider:
+          timeout: {{ .Values.server.config.piRetry.provider.timeout | toJson }}
+          max_retries: {{ .Values.server.config.piRetry.provider.maxRetries | toJson }}
+          max_retry_delay: {{ .Values.server.config.piRetry.provider.maxRetryDelay | quote }}
+
+    process_configs:
+      {{- toYaml .Values.processConfigs | nindent 6 }}
+
+    notifications:
+      {{- toYaml .Values.notifications | nindent 6 }}
+
+    sandbox:
+      enabled: false
+      profile: ""
+
+    extension_loading:
+      sources:
+        {{- toYaml .Values.server.config.extensionLoading.sources | nindent 8 }}
+
+    internal_tls:
+      enabled: {{ .Values.internalTls.enabled }}
+      {{- if .Values.internalTls.enabled }}
+      cert_file: {{ printf "/etc/leitwerk/internal-tls/%s" .Values.internalTls.certKey | quote }}
+      key_file: {{ printf "/etc/leitwerk/internal-tls/%s" .Values.internalTls.keyKey | quote }}
+      {{- end }}
+
+    auth:
+      {{- toYaml .Values.server.config.auth | nindent 6 }}
+{{- end }}

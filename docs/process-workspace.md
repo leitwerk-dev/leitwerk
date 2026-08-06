@@ -1,0 +1,85 @@
+# Process Workspace & Storage Layout
+
+Every Leitwerk process instance owns a dedicated workspace directory and a durable JSONL instance tree. While coding workflows populate this directory with full project repository clones, non-repository or tool-based workflows may operate without local clones or direct filesystem access. This document details how workspace storage, aggregated instructions, skills, and agent execution trees are laid out and managed across worker restarts.
+
+---
+
+## 1. Workspace Layouts
+
+The physical layout of process storage depends on the configured worker runner environment.
+
+### Local & Development Runner Layout
+
+When running locally or during automated testing, workspaces and tree files live under server-configured paths on the host filesystem:
+
+```text
+<storage.process_workspaces_dir>/<instanceId>/
+├── AGENTS.md                 # Aggregated instructions across project components
+├── <project-key>/            # Full Git clone for a specific project component (optional)
+└── .leitwerk/
+    ├── components.json       # Component locator and branch mapping metadata
+    └── skills/               # Aggregated workspace skills
+
+<storage.tree_files_dir>/<instanceId>.jsonl  # Execution tree containing all turn interactions
+```
+
+### Isolated Container Layout (Docker & Kubernetes)
+
+Isolated worker runners (Docker containers or Kubernetes pods) mount persistent process storage at `/state/`:
+
+```text
+/state/
+├── workspace/               # Monorepo / multi-component workspace root
+├── tree/primary.jsonl       # Active JSONL execution tree
+├── pi-agent/                # Materialized non-secret Pi resource snapshot & credentials (mode 0600)
+└── tmp/                     # Temporary execution artifacts
+```
+
+> [!NOTE]
+> Physical workers upload JSONL session snapshots to the server via `PUT /session-snapshot` so the server can compute browser read models without inspecting Docker volumes or Kubernetes PVCs directly.
+
+---
+
+## 2. Repository Management
+
+A Leitwerk process can target zero, one, or multiple repositories. When repositories are declared, Leitwerk creates a full Git clone for each repository checked out to its assigned work branch; processes that do not target repositories run without local clones or filesystem dependencies.
+
+---
+
+## 3. Resource Aggregation
+
+During worker bootstrap, Leitwerk aggregates instructions and agent capabilities into the workspace:
+
+- **`AGENTS.md` Concatenation:** Combines `AGENTS.md` files across target repositories into a unified root `AGENTS.md` with source provenance comments (`<!-- leitwerk: source=repo/AGENTS.md -->`).
+- **Managed Agent Environment:** The server packages a snapshot of extensions, skills, and settings into a dedicated agent directory (`pi-agent/`) alongside temporary credentials.
+
+---
+
+## 4. Pi Session Tree (`.jsonl`)
+
+The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<storage.tree_files_dir>/<instanceId>.jsonl`). Workers stream session snapshots to the server via `PUT /session-snapshot` after key turn events so the server can render UI read models.
+
+```text
+               [Root Entry (parentId: null)]
+                             |
+                     [Turn 1: Plan]
+                             |
+               +-------------+-------------+
+               |                           |
+       [Turn 2: Implement]         [Turn 2b: Code Review]
+               |                           |
+        [Active Leaf]               [Review Leaf]
+```
+
+- **File Content:** Stores user prompts, assistant reasoning, tool calls, tool results, and outcome data.
+- **Session Root:** Top-level turns begin at a root entry (`parentId: null`) without prior prompt context.
+- **Branching:** Review or analysis turns run on side branches within the same session file and can restore context upon completion.
+
+---
+
+## 5. Storage Retention & Cleanup
+
+Process storage is retained across worker restarts and cleaned up based on process outcome:
+
+- **Retention Thresholds:** Storage is retained after process completion or failure according to `storage.completed_process_retention` and `storage.error_process_retention` settings before worker volumes are released.
+- **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.

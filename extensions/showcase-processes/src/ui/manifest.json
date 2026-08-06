@@ -1,0 +1,24 @@
+{
+	"apiVersion": 1,
+	"extensionManifestId": "showcase-processes",
+	"renderers": {
+		"@leitwerk-dev/showcase-processes:single_prompt_process.leaf_outcome": {
+			"kind": "custom_element",
+			"tagName": "o2-showcase-processes-leaf-outcome",
+			"module": "./leaf-outcome-element.ts",
+			"rendererApiVersion": 1
+		},
+		"@leitwerk-dev/showcase-processes:single_prompt_with_tool_process.leaf_outcome": {
+			"kind": "custom_element",
+			"tagName": "o2-showcase-processes-leaf-outcome",
+			"module": "./leaf-outcome-element.ts",
+			"rendererApiVersion": 1
+		},
+		"@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome": {
+			"kind": "custom_element",
+			"tagName": "o2-showcase-processes-poem-outcome",
+			"module": "./poem-leaf-outcome-element.ts",
+			"rendererApiVersion": 1
+		}
+	}
+}

@@ -1,0 +1,114 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "leitwerk.serverFullname" . }}
+  namespace: {{ include "leitwerk.namespace" . }}
+  labels:
+    {{- include "leitwerk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.server.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "leitwerk.serverSelectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "leitwerk.serverSelectorLabels" . | nindent 8 }}
+        {{- with .Values.server.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- if not .Values.server.existingConfigSecret }}
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with .Values.server.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "leitwerk.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: server
+          image: {{ include "leitwerk.serverImage" . | quote }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          env:
+            - name: LEITWERK_CONFIG_PATH
+              value: /etc/leitwerk/leitwerk.yaml
+            {{- if .Values.server.credentialEncryption.existingSecret }}
+            - name: LEITWERK_CREDENTIAL_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.credentialEncryption.existingSecret | quote }}
+                  key: {{ .Values.server.credentialEncryption.key | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.server.service.port }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              scheme: {{ ternary "HTTPS" "HTTP" .Values.internalTls.enabled }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              scheme: {{ ternary "HTTPS" "HTTP" .Values.internalTls.enabled }}
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: config
+              mountPath: /etc/leitwerk
+              readOnly: true
+            {{- if .Values.internalTls.enabled }}
+            - name: internal-tls
+              mountPath: /etc/leitwerk/internal-tls
+              readOnly: true
+            {{- end }}
+            - name: data
+              mountPath: {{ .Values.server.storage.mountPath | quote }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+      volumes:
+        - name: config
+          {{- if .Values.server.existingConfigSecret }}
+          secret:
+            secretName: {{ .Values.server.existingConfigSecret | quote }}
+            items:
+              - key: leitwerk.yaml
+                path: leitwerk.yaml
+          {{- else }}
+          configMap:
+            name: {{ include "leitwerk.serverFullname" . }}-config
+          {{- end }}
+        {{- if .Values.internalTls.enabled }}
+        - name: internal-tls
+          secret:
+            secretName: {{ include "leitwerk.internalTlsSecretName" . }}
+        {{- end }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "leitwerk.serverFullname" . }}
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

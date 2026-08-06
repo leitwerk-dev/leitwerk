@@ -1,0 +1,43 @@
+# Leitwerk server image shared by Docker Compose and Kubernetes.
+#
+# Topology details differ by runner, but the container contract is the same: the
+# server listens on port 8080, owns durable state, and uses the configured runner
+# to create or connect workers.
+
+FROM node:22-bookworm-slim AS build
+WORKDIR /app
+
+COPY package.json package-lock.json LICENSE ./
+COPY packages ./packages
+COPY extensions ./extensions
+COPY scripts ./scripts
+COPY turbo.json tsconfig.json biome.json ./
+RUN npm ci
+# npm can omit Rollup's platform-native optional package inside Linux image
+# builds. Install the package matching the Debian/gnu image architecture before
+# running tsup/Vite builds.
+RUN node -e "const {execFileSync}=require('node:child_process'); const arch=process.arch; const pkg=arch==='arm64'?'@rollup/rollup-linux-arm64-gnu':arch==='x64'?'@rollup/rollup-linux-x64-gnu':undefined; if (pkg) { try { require.resolve(pkg); } catch { execFileSync('npm', ['install', '--no-save', pkg], {stdio:'inherit'}); } }"
+RUN npm run build
+RUN npm run build:ext-ui
+
+FROM node:22-bookworm-slim AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends git ca-certificates \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./package.json
+COPY --from=build /app/packages ./packages
+COPY --from=build /app/extensions ./extensions
+
+LABEL org.opencontainers.image.title="leitwerk-server" \
+	org.opencontainers.image.description="leitwerk server" \
+	leitwerk.dev/server-api-version="2026-06-23"
+
+EXPOSE 8080
+ENV LEITWERK_CONFIG_PATH=/etc/leitwerk/leitwerk.yaml
+WORKDIR /app/packages/server
+CMD ["node", "dist/main.js"]

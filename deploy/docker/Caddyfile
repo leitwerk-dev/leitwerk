@@ -1,0 +1,13 @@
+# Public HTTPS termination for the leitwerk UI/API.
+#
+# Caddy obtains and renews Let's Encrypt certificates automatically and reverse
+# proxies to the server on the shared private `leitwerk` network. The server
+# HTTP API is not published directly.
+#
+# Replace leitwerk.example.com with your public hostname. For local testing,
+# use `localhost` (Caddy issues an internal cert) and reach it over https.
+
+leitwerk.example.com {
+	encode zstd gzip
+	reverse_proxy leitwerk-server:8080
+}

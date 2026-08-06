@@ -1,0 +1,68 @@
+{
+	"name": "leitwerk",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"packageManager": "npm@10.9.2",
+	"workspaces": [
+		"packages/*",
+		"extensions/*"
+	],
+	"overrides": {
+		"@mistralai/mistralai": "2.2.1",
+		"tsup": {
+			"esbuild": "0.28.1"
+		}
+	},
+	"scripts": {
+		"dev": "node --conditions=source --import tsx scripts/dev-supervisor.ts",
+		"dev:server:source": "node --conditions=source --import tsx scripts/dev-server-source.ts",
+		"dev:server:dist": "node --import tsx scripts/dev-server-dist.ts",
+		"dev:parity": "npm run parity:build && LEITWERK_RUNTIME_LANE=dist concurrently --kill-others-on-fail --names runtime,server,ext-ui,ui \"npm:dev:runtime\" \"npm:dev:server:dist\" \"npm:dev:ext-ui\" \"npm:dev:ui\"",
+		"dev:runtime": "node --import tsx scripts/dev-runtime.ts",
+		"dev:ext-ui": "node --import tsx scripts/dev-ext-ui.ts",
+		"dev:ui": "node --import tsx scripts/dev-ui.ts",
+		"build": "TURBO_DISABLE_UPDATE_CHECK=1 node scripts/run-quiet.mjs npx turbo run build --output-logs=errors-only && npm run --silent stage:licenses",
+		"build:ext-ui": "TURBO_DISABLE_UPDATE_CHECK=1 node scripts/run-quiet.mjs npx turbo run build:ext-ui --output-logs=errors-only",
+		"stage:licenses": "test -f LICENSE || { echo 'Root LICENSE is missing' >&2; exit 1; }; for d in packages/* extensions/*; do test -f \"$d/package.json\" || continue; test -d \"$d/dist\" || { echo \"Workspace dist directory is missing: $d/dist\" >&2; exit 1; }; cmp -s LICENSE \"$d/dist/LICENSE\" || cp LICENSE \"$d/dist/LICENSE\"; done",
+		"parity:build": "npm run --silent build && npm run --silent build:ext-ui",
+		"parity:start": "node --import tsx scripts/parity-start.ts",
+		"lint": "biome ci --reporter=github .",
+		"lint:fix": "biome check --write .",
+		"typecheck": "tsc -b --force",
+		"check:boundaries": "node --no-deprecation scripts/check-boundaries.mjs",
+		"docs:serve": "python3 -m mkdocs serve -a 127.0.0.1:8006",
+		"docs:build": "python3 -m mkdocs build --strict",
+		"test:unit": "vitest run --reporter agent --project unit --passWithNoTests",
+		"test:integration": "vitest run --reporter agent --project integration --passWithNoTests",
+		"test:e2e": "vitest run --reporter agent --project e2e --project ui-integration --passWithNoTests",
+		"test:browser": "NODE_OPTIONS=--no-deprecation playwright test",
+		"test:parity:built": "node --no-deprecation --import tsx scripts/test-parity.ts",
+		"test:parity": "npm run --silent parity:build && npm run --silent test:parity:built",
+		"test:full": "TURBO_DISABLE_UPDATE_CHECK=1 NODE_OPTIONS=--no-deprecation npm run --silent lint && npm run --silent parity:build && npm run --silent test:server-start && npm run --silent test:default-worker && npm run --silent check:boundaries && npm run --silent typecheck && npm run --silent test:parity:built && npm run --silent test:unit && npm run --silent test:integration && npm run --silent test:e2e && npm run --silent test:browser",
+		"test:server-start": "node --no-deprecation --import tsx scripts/test-parity.ts --server-start-only",
+		"test:default-worker": "node --no-deprecation --import tsx scripts/test-parity.ts --default-worker-only",
+		"k8s:kind:create": "bash scripts/k8s/kind-create.sh",
+		"k8s:kind:delete": "bash scripts/k8s/kind-delete.sh",
+		"k8s:images:build": "bash scripts/k8s/build-images.sh",
+		"k8s:images:load": "bash scripts/k8s/load-images-kind.sh",
+		"k8s:helm:deploy:kind": "bash scripts/k8s/helm-deploy-kind.sh",
+		"test:k8s:local": "bash scripts/k8s/run-smoke.sh",
+		"publish:check": "node scripts/publish-workspaces.mjs check",
+		"publish:dry-run": "node scripts/publish-workspaces.mjs dry-run",
+		"publish:workspaces": "node scripts/publish-workspaces.mjs publish"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.9",
+		"@playwright/test": "^1.59.1",
+		"chokidar": "4.0.3",
+		"concurrently": "^9.2.1",
+		"jsdom": "^29.0.1",
+		"tsx": "^4.21.0",
+		"turbo": "^2.10.8",
+		"typescript": "^6.0.2",
+		"vitest": "^4.1.2",
+		"ws": "^8.20.0"
+	},
+	"license": "Apache-2.0"
+}

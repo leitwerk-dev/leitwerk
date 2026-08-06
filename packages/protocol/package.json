@@ -1,0 +1,59 @@
+{
+	"name": "@leitwerk-dev/protocol",
+	"version": "0.1.0",
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./config-snapshot": {
+			"source": "./src/config-snapshot.ts",
+			"import": "./dist/config-snapshot.js",
+			"types": "./dist/config-snapshot.d.ts"
+		},
+		"./http-contracts": {
+			"source": "./src/http-contracts.ts",
+			"import": "./dist/http-contracts.js",
+			"types": "./dist/http-contracts.d.ts"
+		},
+		"./form-contract": {
+			"source": "./src/form-contract.ts",
+			"import": "./dist/form-contract.js",
+			"types": "./dist/form-contract.d.ts"
+		},
+		"./launcher-contract": {
+			"source": "./src/launcher-contract.ts",
+			"import": "./dist/launcher-contract.js",
+			"types": "./dist/launcher-contract.d.ts"
+		},
+		"./tool-renderer-contract": {
+			"source": "./src/tool-renderer-contract.ts",
+			"import": "./dist/tool-renderer-contract.js",
+			"types": "./dist/tool-renderer-contract.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"valibot": "^1.3.1"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

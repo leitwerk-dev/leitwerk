@@ -1,0 +1,19 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": "src"
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts"],
+	"references": [
+		{ "path": "../domain" },
+		{ "path": "../external-writes" },
+		{ "path": "../extension-runtime" },
+		{ "path": "../protocol" },
+		{ "path": "../process-sdk" },
+		{ "path": "../watcher-utils" },
+		{ "path": "../worker-protocol" },
+		{ "path": "../worker-runners" }
+	]
+}

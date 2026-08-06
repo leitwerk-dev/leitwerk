@@ -1,0 +1,68 @@
+# Server config for the docker-compose server-in-container topology.
+# Copy to deploy/docker/config/leitwerk.yaml and edit for your install.
+# This file is mounted read-only at /etc/leitwerk/leitwerk.yaml.
+
+server:
+  host: 0.0.0.0
+  port: 8080
+  # Public URL the reverse proxy serves. Used for generated links and the
+  # worker WebSocket connect URL fallback. Set to your public hostname.
+  base_url: https://leitwerk.example.com
+
+storage:
+  sqlite_path: /app/.leitwerk/leitwerk.sqlite
+  process_workspaces_dir: /app/.leitwerk/workspaces
+  tree_files_dir: /app/.leitwerk/trees
+
+components: {}
+
+workers:
+  runner: docker
+  max_parallel_processes: 4
+  resume_on_boot: true
+  idle_worker_ttl: 30m
+  default_runtime_profile: generic
+
+docker:
+  socket: unix:///var/run/docker.sock
+  # Shared private network the server and workers attach to. Workers reach the
+  # server by this internal name, never a host IP.
+  network: leitwerk
+  server_url: http://leitwerk-server:8080
+  # For internal TLS, change server_url to https://..., enable internal_tls, and set
+  # this to a Docker-daemon host-visible CA path (not merely a path inside the server container).
+  # server_ca_file: /absolute/host/path/to/deploy/docker/tls/internal-ca.pem
+  process_volume:
+    mode: bind
+    host_root: /var/lib/leitwerk/processes
+    mount_path: /state
+
+worker_runtime_profiles:
+  generic:
+    image: ghcr.io/example/leitwerk-worker-generic:0.1.0
+
+# Internal worker -> server TLS over the private network. Public HTTPS is
+# handled by the reverse proxy; this secures the internal IPC listener and the
+# session-snapshot endpoints. The cert must carry a SAN for leitwerk-server.
+# internal_tls:
+#   enabled: true
+#   cert_file: /etc/leitwerk/tls/internal-server.crt
+#   key_file: /etc/leitwerk/tls/internal-server.key
+#   # client_ca_file: unsupported until workers receive client cert/key material
+
+pi:
+  agent_dir: /app/.leitwerk/pi
+
+notifications:
+  all: { enabled: false, type: teams_webhook, url: "" }
+  debug: { enabled: false, type: teams_webhook, url: "" }
+  squad: { enabled: false, type: teams_webhook, routing_field: "", routes: {} }
+
+sandbox:
+  enabled: false
+  profile: ""
+
+extension_loading:
+  sources: []
+
+extensions: {}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--
+    Fonts are self-hosted (same-origin) so app boot never depends on a slow or
+    unreachable third-party host. Preload the primary latin body font to avoid
+    a flash of unstyled text; font-display: swap in fonts.css covers the rest.
+  -->
+  <link
+    rel="preload"
+    as="font"
+    type="font/woff2"
+    href="/fonts/public-sans-latin-cd00287f.woff2"
+    crossorigin
+  />
+  <link rel="stylesheet" href="/fonts/fonts.css" />
+  <title>Leitwerk</title>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

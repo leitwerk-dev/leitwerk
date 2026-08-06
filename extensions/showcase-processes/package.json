@@ -1,0 +1,48 @@
+{
+	"name": "@leitwerk-dev/showcase-processes",
+	"version": "0.1.0",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"discover": false,
+		"ui": {
+			"source": "./src/ui/manifest.json",
+			"import": "./dist/ui/manifest.json"
+		}
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent --config tsup.runtime.config.ts",
+		"build:ext-ui": "rm -rf dist/ui && tsup --silent --config tsup.ui.config.ts && node ./scripts/write-ui-manifest.mjs",
+		"dev:ext-ui": "node ./scripts/write-ui-manifest.mjs && tsup --silent --watch --config tsup.ui.config.ts"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.0",
+		"@leitwerk-dev/process-sdk": "0.1.0",
+		"@leitwerk-dev/watcher-utils": "0.1.0"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!src/**/*.test.ts"
+	]
+}

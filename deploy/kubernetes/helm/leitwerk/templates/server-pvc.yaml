@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "leitwerk.serverFullname" . }}
+  namespace: {{ include "leitwerk.namespace" . }}
+  {{- if .Values.server.storage.retain }}
+  annotations:
+    helm.sh/resource-policy: keep
+  {{- end }}
+  labels:
+    {{- include "leitwerk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  accessModes:
+    {{- toYaml .Values.server.storage.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.server.storage.size | quote }}
+  {{- include "leitwerk.storageClass" .Values.server.storage.storageClassName | nindent 2 }}

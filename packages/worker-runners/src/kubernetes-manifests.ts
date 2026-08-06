@@ -1,0 +1,547 @@
+import type { IsolatedStartWorkerInput, VolumeRef, WorkerExitInfo } from "./types.js";
+import {
+	buildProcessResourceLabels,
+	buildWorkerUnitLabels,
+	PROCESS_NAMESPACE_COMPONENT_VALUE,
+	PROCESS_SERVER_CA_COMPONENT_VALUE,
+	PROCESS_VOLUME_COMPONENT_VALUE,
+	WORKER_LABEL_COMPONENT,
+	WORKER_LABEL_COMPONENT_VALUE,
+	WORKER_LABEL_INSTANCE_ID,
+	WORKER_LABEL_MANAGED_BY,
+	WORKER_LABEL_MANAGED_BY_VALUE,
+	WORKER_LABEL_SERVER_EPOCH,
+	WORKER_LABEL_WORKER_ID,
+} from "./worker-labels.js";
+
+export interface KubernetesProcessVolumeSpec {
+	storageClassName?: string;
+	size: string;
+	accessModes: string[];
+	mountPath: string;
+	namePrefix?: string;
+}
+
+export interface KubernetesProcessNamespaceManifest {
+	apiVersion: "v1";
+	kind: "Namespace";
+	metadata: { name: string; labels: Record<string, string> };
+}
+
+export interface KubernetesWorkerServerCaConfigMapSpec {
+	name: string;
+	key: string;
+	mountPath: string;
+}
+
+export interface KubernetesPodSpecOptions {
+	namespace: string;
+	workerServiceAccount?: string;
+	imagePullSecrets?: string[];
+	imagePullPolicy?: string;
+	nodeSelector?: Record<string, string>;
+	annotations?: Record<string, string>;
+	tolerations?: unknown[];
+	serverCaConfigMap?: KubernetesWorkerServerCaConfigMapSpec;
+}
+
+export interface KubernetesPersistentVolumeClaimManifest {
+	apiVersion: "v1";
+	kind: "PersistentVolumeClaim";
+	metadata: { name: string; namespace: string; labels: Record<string, string> };
+	spec: {
+		accessModes: string[];
+		resources: { requests: { storage: string } };
+		storageClassName?: string;
+	};
+}
+
+export interface KubernetesConfigMapManifest {
+	apiVersion: "v1";
+	kind: "ConfigMap";
+	metadata: { name: string; namespace: string; labels: Record<string, string> };
+	data: Record<string, string>;
+}
+
+export interface KubernetesValidatingAdmissionPolicyManifest {
+	apiVersion: "admissionregistration.k8s.io/v1";
+	kind: "ValidatingAdmissionPolicy";
+	metadata: { name: string; labels?: Record<string, string> };
+	spec: {
+		matchConditions?: Array<{ name: string; expression: string }>;
+		matchConstraints: {
+			resourceRules: Array<{
+				apiGroups: string[];
+				apiVersions: string[];
+				operations: string[];
+				resources: string[];
+			}>;
+		};
+		validations: Array<{ expression: string; message: string }>;
+	};
+}
+
+export interface KubernetesValidatingAdmissionPolicyBindingManifest {
+	apiVersion: "admissionregistration.k8s.io/v1";
+	kind: "ValidatingAdmissionPolicyBinding";
+	metadata: { name: string; labels?: Record<string, string> };
+	spec: {
+		policyName: string;
+		validationActions: string[];
+	};
+}
+
+export interface KubernetesPodEventSummary {
+	type?: string;
+	reason?: string;
+	message?: string;
+	count?: number;
+	lastTimestamp?: string;
+}
+
+export interface KubernetesPodManifest {
+	apiVersion: "v1";
+	kind: "Pod";
+	metadata: {
+		name: string;
+		namespace: string;
+		labels: Record<string, string>;
+		annotations?: Record<string, string>;
+	};
+	spec: {
+		restartPolicy: "Never";
+		serviceAccountName?: string;
+		nodeSelector?: Record<string, string>;
+		tolerations?: unknown[];
+		imagePullSecrets?: Array<{ name: string }>;
+		containers: Array<{
+			name: "worker";
+			image: string;
+			imagePullPolicy?: string;
+			env: Array<{ name: string; value: string }>;
+			volumeMounts: Array<{ name: string; mountPath: string; readOnly?: boolean }>;
+			resources?: {
+				requests?: Record<string, string>;
+				limits?: Record<string, string>;
+			};
+		}>;
+		volumes: Array<
+			| { name: string; persistentVolumeClaim: { claimName: string } }
+			| { name: string; configMap: { name: string; items: Array<{ key: string; path: string }> } }
+		>;
+	};
+}
+
+const DNS_LABEL_MAX = 63;
+const WORKER_VOLUME_NAME = "process-state";
+const WORKER_SERVER_CA_VOLUME_NAME = "server-ca";
+export const KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME = "leitwerk-server-ca";
+export const KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY = "server-ca.pem";
+export const KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH = "/leitwerk/server-ca";
+export const KUBERNETES_WORKER_SERVER_CA_CERT_PATH = `${KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH}/${KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY}`;
+
+function safeKubernetesDnsName(value: string, maxLen = DNS_LABEL_MAX): string {
+	const cleaned =
+		value
+			.toLowerCase()
+			.replace(/[^a-z0-9-]/g, "-")
+			.replace(/^-+|-+$/g, "") || "x";
+	const trimmed = cleaned.slice(0, maxLen).replace(/-+$/g, "");
+	return trimmed.length > 0 ? trimmed : "x";
+}
+
+export function sanitizeKubernetesNameSegment(value: string): string {
+	const cleaned = value
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "-")
+		.replace(/^-+|-+$/g, "");
+	return cleaned.length > 0 ? cleaned : "x";
+}
+
+export function kubernetesWorkerPodName(instanceId: string, workerId: string): string {
+	return safeKubernetesDnsName(
+		`leitwerk-worker-${sanitizeKubernetesNameSegment(instanceId)}-${sanitizeKubernetesNameSegment(workerId)}`,
+	);
+}
+
+export function kubernetesProcessPvcName(
+	instanceId: string,
+	namePrefix = "leitwerk-process-",
+): string {
+	return safeKubernetesDnsName(`${namePrefix}${sanitizeKubernetesNameSegment(instanceId)}`);
+}
+
+export function kubernetesProcessNamespaceName(
+	instanceId: string,
+	processNamespacePrefix = "leitwerk-process-",
+): string {
+	return safeKubernetesDnsName(
+		`${processNamespacePrefix}${sanitizeKubernetesNameSegment(instanceId)}`,
+	);
+}
+
+export function buildKubernetesProcessNamespaceManifest(args: {
+	instanceId: string;
+	processNamespacePrefix?: string;
+	extraLabels?: Record<string, string>;
+}): KubernetesProcessNamespaceManifest {
+	return {
+		apiVersion: "v1",
+		kind: "Namespace",
+		metadata: {
+			name: kubernetesProcessNamespaceName(args.instanceId, args.processNamespacePrefix),
+			labels: buildProcessResourceLabels(
+				{ instanceId: args.instanceId, component: PROCESS_NAMESPACE_COMPONENT_VALUE },
+				args.extraLabels,
+			),
+		},
+	};
+}
+
+export function buildKubernetesProcessPvcManifest(args: {
+	instanceId: string;
+	namespace: string;
+	volume: KubernetesProcessVolumeSpec;
+	extraLabels?: Record<string, string>;
+}): KubernetesPersistentVolumeClaimManifest {
+	const labels = buildProcessResourceLabels(
+		{ instanceId: args.instanceId, component: PROCESS_VOLUME_COMPONENT_VALUE },
+		args.extraLabels,
+	);
+	const spec: KubernetesPersistentVolumeClaimManifest["spec"] = {
+		accessModes: [...args.volume.accessModes],
+		resources: { requests: { storage: args.volume.size } },
+	};
+	if (args.volume.storageClassName?.trim()) {
+		spec.storageClassName = args.volume.storageClassName;
+	}
+	return {
+		apiVersion: "v1",
+		kind: "PersistentVolumeClaim",
+		metadata: {
+			name: kubernetesProcessPvcName(args.instanceId, args.volume.namePrefix),
+			namespace: args.namespace,
+			labels,
+		},
+		spec,
+	};
+}
+
+export function buildKubernetesServerCaConfigMapManifest(args: {
+	instanceId: string;
+	namespace: string;
+	caPem: string;
+	name?: string;
+	key?: string;
+	extraLabels?: Record<string, string>;
+}): KubernetesConfigMapManifest {
+	const labels = buildProcessResourceLabels(
+		{ instanceId: args.instanceId, component: PROCESS_SERVER_CA_COMPONENT_VALUE },
+		args.extraLabels,
+	);
+	return {
+		apiVersion: "v1",
+		kind: "ConfigMap",
+		metadata: {
+			name: args.name ?? KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+			namespace: args.namespace,
+			labels,
+		},
+		data: { [args.key ?? KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY]: args.caPem },
+	};
+}
+
+function envList(env: Record<string, string>): Array<{ name: string; value: string }> {
+	return Object.entries(env)
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([name, value]) => ({ name, value }));
+}
+
+function resources(
+	input: IsolatedStartWorkerInput,
+): KubernetesPodManifest["spec"]["containers"][number]["resources"] {
+	const limits: Record<string, string> = {};
+	if (input.resources?.cpu) limits.cpu = input.resources.cpu;
+	if (input.resources?.memory) limits.memory = input.resources.memory;
+	return Object.keys(limits).length > 0 ? { limits } : undefined;
+}
+
+export function buildKubernetesWorkerPodManifest(
+	input: IsolatedStartWorkerInput,
+	options: KubernetesPodSpecOptions,
+): KubernetesPodManifest {
+	const volume = input.volume;
+	const labels = buildWorkerUnitLabels({
+		instanceId: input.instanceId,
+		workerId: input.workerId,
+		serverEpoch: input.serverEpoch,
+	});
+	const containerResources = resources(input);
+	const ca = options.serverCaConfigMap;
+	const caCertPath = ca ? `${ca.mountPath}/${ca.key}` : undefined;
+	const containerEnv = caCertPath ? { ...input.env, NODE_EXTRA_CA_CERTS: caCertPath } : input.env;
+	const volumeMounts: KubernetesPodManifest["spec"]["containers"][number]["volumeMounts"] = [
+		{ name: WORKER_VOLUME_NAME, mountPath: volume.mountPath },
+	];
+	if (ca) {
+		volumeMounts.push({
+			name: WORKER_SERVER_CA_VOLUME_NAME,
+			mountPath: ca.mountPath,
+			readOnly: true,
+		});
+	}
+	const container: KubernetesPodManifest["spec"]["containers"][number] = {
+		name: "worker",
+		image: input.image.reference,
+		env: envList(containerEnv),
+		volumeMounts,
+		...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
+		...(containerResources ? { resources: containerResources } : {}),
+	};
+	const hasNodeSelector = options.nodeSelector && Object.keys(options.nodeSelector).length > 0;
+	const hasTolerations = options.tolerations && options.tolerations.length > 0;
+	const hasPullSecrets = options.imagePullSecrets && options.imagePullSecrets.length > 0;
+	const hasAnnotations = options.annotations && Object.keys(options.annotations).length > 0;
+	return {
+		apiVersion: "v1",
+		kind: "Pod",
+		metadata: {
+			name: kubernetesWorkerPodName(input.instanceId, input.workerId),
+			namespace: volume.namespace ?? options.namespace,
+			labels,
+			...(hasAnnotations ? { annotations: { ...options.annotations } } : {}),
+		},
+		spec: {
+			restartPolicy: "Never",
+			containers: [container],
+			volumes: [
+				{ name: WORKER_VOLUME_NAME, persistentVolumeClaim: { claimName: volume.id } },
+				...(ca
+					? [
+							{
+								name: WORKER_SERVER_CA_VOLUME_NAME,
+								configMap: { name: ca.name, items: [{ key: ca.key, path: ca.key }] },
+							},
+						]
+					: []),
+			],
+			...(options.workerServiceAccount?.trim()
+				? { serviceAccountName: options.workerServiceAccount }
+				: {}),
+			...(hasPullSecrets
+				? { imagePullSecrets: options.imagePullSecrets?.map((n) => ({ name: n })) }
+				: {}),
+			...(hasNodeSelector ? { nodeSelector: { ...options.nodeSelector } } : {}),
+			...(hasTolerations ? { tolerations: [...(options.tolerations as unknown[])] } : {}),
+		},
+	};
+}
+
+function formatPodEvent(event: KubernetesPodEventSummary): string | null {
+	const pieces: string[] = [];
+	if (event.type?.trim()) pieces.push(event.type.trim());
+	if (event.reason?.trim()) pieces.push(event.reason.trim());
+	if (event.count !== undefined && event.count > 1) pieces.push(`x${event.count}`);
+	const prefix = pieces.join(" ");
+	const message = event.message?.trim();
+	if (!prefix && !message) return null;
+	return message ? `${prefix ? `${prefix}: ` : ""}${message}` : prefix;
+}
+
+export function formatKubernetesPodDiagnostics(
+	events: readonly KubernetesPodEventSummary[] | undefined,
+	limit = 3,
+): string | undefined {
+	const formatted = (events ?? [])
+		.map(formatPodEvent)
+		.filter((entry): entry is string => entry !== null)
+		.slice(0, limit);
+	return formatted.length > 0 ? `Kubernetes events: ${formatted.join(" | ")}` : undefined;
+}
+
+export function mapKubernetesPodExit(args: {
+	phase?: string;
+	reason?: string;
+	exitCode?: number | null;
+	signal?: string | null;
+	oomKilled?: boolean;
+	events?: readonly KubernetesPodEventSummary[];
+}): WorkerExitInfo {
+	const baseReason = args.reason ?? args.phase;
+	const diagnostics = formatKubernetesPodDiagnostics(args.events);
+	const reason = [baseReason, diagnostics].filter(Boolean).join("; ");
+	return {
+		exitCode: args.exitCode ?? null,
+		signal: args.signal ?? null,
+		...(args.oomKilled !== undefined ? { oomKilled: args.oomKilled } : {}),
+		...(reason ? { reason } : {}),
+	};
+}
+
+interface AdmissionRule {
+	/** "Namespace" = only-namespace, "!Namespace" = everything-but-namespace, or a specific kind */
+	scope: string;
+	condition: string;
+	message: string;
+}
+
+function admissionObjectExpression(): string {
+	return "(request.operation == 'DELETE' ? oldObject : object)";
+}
+
+function toAdmissionObjectCondition(condition: string): string {
+	return condition.replaceAll("object.", `${admissionObjectExpression()}.`);
+}
+
+function toCelExpression(rule: AdmissionRule): string {
+	const obj = admissionObjectExpression();
+	const condition = toAdmissionObjectCondition(rule.condition);
+	if (rule.scope === "Namespace") return `${obj}.kind != 'Namespace' || ${condition}`;
+	if (rule.scope === "!Namespace") return `${obj}.kind == 'Namespace' || ${condition}`;
+	return `${obj}.kind != '${rule.scope}' || ${condition}`;
+}
+
+export function buildKubernetesAdmissionPolicyManifests(args: {
+	name: string;
+	serverNamespace: string;
+	serverServiceAccountName: string;
+	processNamespacePrefix: string;
+	allowedWorkerServiceAccount?: string;
+	labels?: Record<string, string>;
+}): {
+	policy: KubernetesValidatingAdmissionPolicyManifest;
+	binding: KubernetesValidatingAdmissionPolicyBindingManifest;
+} {
+	const p = args.processNamespacePrefix;
+	const sa = args.allowedWorkerServiceAccount?.trim() || "leitwerk-worker";
+	const M = WORKER_LABEL_MANAGED_BY;
+	const MV = WORKER_LABEL_MANAGED_BY_VALUE;
+	const C = WORKER_LABEL_COMPONENT;
+	const NS = PROCESS_NAMESPACE_COMPONENT_VALUE;
+	const PV = PROCESS_VOLUME_COMPONENT_VALUE;
+	const CA = PROCESS_SERVER_CA_COMPONENT_VALUE;
+	const CV = WORKER_LABEL_COMPONENT_VALUE;
+
+	const rules: AdmissionRule[] = [
+		{
+			scope: "Namespace",
+			condition: `object.metadata.name.startsWith('${p}')`,
+			message: "leitwerk process namespaces must use the configured prefix",
+		},
+		{
+			scope: "Namespace",
+			condition: `object.metadata.labels['${M}'] == '${MV}'`,
+			message: "leitwerk process namespaces must carry managed-by label",
+		},
+		{
+			scope: "Namespace",
+			condition: `object.metadata.labels['${C}'] == '${NS}'`,
+			message: "leitwerk process namespaces must carry process-namespace component label",
+		},
+		{
+			scope: "!Namespace",
+			condition: `object.metadata.namespace.startsWith('${p}')`,
+			message: "leitwerk process resources must be created in process namespaces",
+		},
+		{
+			scope: "!Namespace",
+			condition: `object.metadata.labels['${M}'] == '${MV}'`,
+			message: "leitwerk process resources must carry managed-by label",
+		},
+		{
+			scope: "PersistentVolumeClaim",
+			condition: `object.metadata.labels['${C}'] == '${PV}'`,
+			message: "leitwerk PVCs must carry process-volume component label",
+		},
+		{
+			scope: "ConfigMap",
+			condition: `object.metadata.labels['${C}'] == '${CA}'`,
+			message: "leitwerk server CA ConfigMaps must carry server-ca component label",
+		},
+		{
+			scope: "Pod",
+			condition: `object.metadata.labels['${C}'] == '${CV}'`,
+			message: "leitwerk pods must carry worker component label",
+		},
+		{
+			scope: "ServiceAccount",
+			condition: `object.metadata.labels['${C}'] == 'worker-service-account'`,
+			message: "leitwerk worker ServiceAccounts must carry worker-service-account component label",
+		},
+		{
+			scope: "Pod",
+			condition: `object.spec.serviceAccountName == '${sa}'`,
+			message: "leitwerk worker pods must use the configured worker ServiceAccount",
+		},
+		{
+			scope: "Pod",
+			condition: `'${WORKER_LABEL_INSTANCE_ID}' in object.metadata.labels`,
+			message: "leitwerk worker pods must carry instance-id label",
+		},
+		{
+			scope: "Pod",
+			condition: `'${WORKER_LABEL_WORKER_ID}' in object.metadata.labels`,
+			message: "leitwerk worker pods must carry worker-id label",
+		},
+		{
+			scope: "Pod",
+			condition: `'${WORKER_LABEL_SERVER_EPOCH}' in object.metadata.labels`,
+			message: "leitwerk worker pods must carry server-epoch label",
+		},
+	];
+
+	const labels = args.labels;
+	const meta = { name: args.name, ...(labels ? { labels: { ...labels } } : {}) };
+	return {
+		policy: {
+			apiVersion: "admissionregistration.k8s.io/v1",
+			kind: "ValidatingAdmissionPolicy",
+			metadata: meta,
+			spec: {
+				matchConditions: [
+					{
+						name: "leitwerk-server-service-account",
+						expression: `request.userInfo.username == 'system:serviceaccount:${args.serverNamespace}:${args.serverServiceAccountName}'`,
+					},
+				],
+				matchConstraints: {
+					resourceRules: [
+						{
+							apiGroups: [""],
+							apiVersions: ["v1"],
+							operations: ["CREATE", "UPDATE", "DELETE"],
+							resources: [
+								"namespaces",
+								"pods",
+								"persistentvolumeclaims",
+								"serviceaccounts",
+								"configmaps",
+							],
+						},
+					],
+				},
+				validations: rules.map((r) => ({ expression: toCelExpression(r), message: r.message })),
+			},
+		},
+		binding: {
+			apiVersion: "admissionregistration.k8s.io/v1",
+			kind: "ValidatingAdmissionPolicyBinding",
+			metadata: meta,
+			spec: { policyName: args.name, validationActions: ["Deny"] },
+		},
+	};
+}
+
+export function volumeRefFromPvc(args: {
+	instanceId: string;
+	pvcName: string;
+	mountPath: string;
+	namespace?: string;
+}): VolumeRef {
+	return {
+		instanceId: args.instanceId,
+		id: args.pvcName,
+		mountPath: args.mountPath,
+		...(args.namespace ? { namespace: args.namespace } : {}),
+	};
+}

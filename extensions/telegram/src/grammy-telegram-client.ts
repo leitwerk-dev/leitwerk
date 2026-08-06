@@ -1,0 +1,292 @@
+import type { ServerExtensionLogger } from "@leitwerk-dev/process-sdk";
+import { Bot, InputFile } from "grammy";
+import {
+	BaseTelegramClientEventRegistrar,
+	type TelegramCallbackUpdate,
+	type TelegramClient,
+	type TelegramForumTopicClosedUpdate,
+	type TelegramForumTopicCreatedUpdate,
+	type TelegramReplyMarkup,
+	type TelegramSendFileInput,
+	type TelegramSendMessageInput,
+	type TelegramSentMessage,
+	type TelegramTextUpdate,
+	type TelegramUserRef,
+} from "./types.js";
+
+interface GrammyBotLike {
+	api: {
+		createForumTopic(chatId: string, name: string): Promise<{ message_thread_id: number }>;
+		editForumTopic(
+			chatId: string,
+			messageThreadId: number,
+			options: { name: string },
+		): Promise<unknown>;
+		closeForumTopic(chatId: string, messageThreadId: number): Promise<unknown>;
+		sendMessage(
+			chatId: string,
+			text: string,
+			options?: Record<string, unknown>,
+		): Promise<{ message_id: number }>;
+		sendPhoto(
+			chatId: string,
+			photo: InputFile,
+			options?: Record<string, unknown>,
+		): Promise<{ message_id: number }>;
+		sendDocument(
+			chatId: string,
+			document: InputFile,
+			options?: Record<string, unknown>,
+		): Promise<{ message_id: number }>;
+		answerCallbackQuery(id: string, options?: Record<string, unknown>): Promise<unknown>;
+	};
+	on(filter: "message:text", handler: (ctx: GrammyTextContext) => void | Promise<void>): void;
+	on(
+		filter: "message:forum_topic_created",
+		handler: (ctx: GrammyForumTopicCreatedContext) => void | Promise<void>,
+	): void;
+	on(
+		filter: "message:forum_topic_closed",
+		handler: (ctx: GrammyForumTopicClosedContext) => void | Promise<void>,
+	): void;
+	on(
+		filter: "callback_query:data",
+		handler: (ctx: GrammyCallbackContext) => void | Promise<void>,
+	): void;
+	start(options?: Record<string, unknown>): Promise<void>;
+	stop(): Promise<void>;
+}
+
+interface GrammyTextContext {
+	message: {
+		message_id: number;
+		message_thread_id?: number;
+		chat: { id: number | string };
+		from?: { id: number; username?: string };
+		text: string;
+	};
+}
+
+interface GrammyForumTopicCreatedContext {
+	message: {
+		message_id: number;
+		message_thread_id?: number;
+		chat: { id: number | string };
+		from?: { id: number; username?: string };
+		forum_topic_created: unknown;
+	};
+}
+
+interface GrammyForumTopicClosedContext {
+	message: {
+		message_id: number;
+		message_thread_id?: number;
+		chat: { id: number | string };
+		from?: { id: number; username?: string };
+		forum_topic_closed: unknown;
+	};
+}
+
+interface GrammyCallbackContext {
+	callbackQuery: {
+		id: string;
+		from?: { id: number; username?: string };
+		data: string;
+		message?: {
+			message_thread_id?: number;
+			chat: { id: number | string };
+		};
+	};
+}
+
+function toTelegramReplyMarkup(markup: TelegramReplyMarkup | undefined) {
+	if (!markup) return undefined;
+	if (markup.inlineKeyboard) {
+		return {
+			inline_keyboard: markup.inlineKeyboard.map((row) =>
+				row.map((button) => ({ text: button.text, callback_data: button.callbackData })),
+			),
+		};
+	}
+	if (markup.forceReply) {
+		return {
+			force_reply: true,
+			...(markup.inputFieldPlaceholder
+				? { input_field_placeholder: markup.inputFieldPlaceholder }
+				: {}),
+			...(markup.selective !== undefined ? { selective: markup.selective } : {}),
+		};
+	}
+	return undefined;
+}
+
+function toUserRef(value: { id: number; username?: string } | undefined): TelegramUserRef | null {
+	return value ? { id: value.id, ...(value.username ? { username: value.username } : {}) } : null;
+}
+
+export class GrammyTelegramClient
+	extends BaseTelegramClientEventRegistrar
+	implements TelegramClient
+{
+	private readonly bot: GrammyBotLike;
+	private startPromise: Promise<void> | null = null;
+
+	constructor(
+		private readonly input: {
+			botToken: string;
+			botFactory?: (token: string) => GrammyBotLike;
+			logger?: ServerExtensionLogger;
+		},
+	) {
+		super();
+		this.bot =
+			input.botFactory?.(input.botToken) ?? (new Bot(input.botToken) as unknown as GrammyBotLike);
+		this.bot.on("message:text", (ctx) => this.dispatchText(ctx));
+		this.bot.on("message:forum_topic_created", (ctx) => this.dispatchForumTopicCreated(ctx));
+		this.bot.on("message:forum_topic_closed", (ctx) => this.dispatchForumTopicClosed(ctx));
+		this.bot.on("callback_query:data", (ctx) => this.dispatchCallback(ctx));
+	}
+
+	async start(): Promise<void> {
+		if (this.startPromise) return;
+		const started = this.bot.start({
+			allowed_updates: ["message", "callback_query"],
+			drop_pending_updates: true,
+		});
+		this.startPromise = started.catch((error) => this.logWarn(error, "Telegram polling failed"));
+	}
+
+	async stop(): Promise<void> {
+		const started = this.startPromise;
+		if (!started) return;
+		this.startPromise = null;
+		await this.bot.stop();
+		await started;
+	}
+
+	async createForumTopic(input: {
+		chatId: string;
+		name: string;
+	}): Promise<{ messageThreadId: number }> {
+		const result = await this.bot.api.createForumTopic(input.chatId, input.name);
+		return { messageThreadId: result.message_thread_id };
+	}
+
+	async editForumTopic(input: {
+		chatId: string;
+		messageThreadId: number;
+		name: string;
+	}): Promise<void> {
+		await this.bot.api.editForumTopic(input.chatId, input.messageThreadId, { name: input.name });
+	}
+
+	async closeForumTopic(input: { chatId: string; messageThreadId: number }): Promise<void> {
+		await this.bot.api.closeForumTopic(input.chatId, input.messageThreadId);
+	}
+
+	async sendMessage(input: TelegramSendMessageInput): Promise<TelegramSentMessage> {
+		const result = await this.bot.api.sendMessage(input.chatId, input.text, {
+			...(input.messageThreadId !== undefined ? { message_thread_id: input.messageThreadId } : {}),
+			...(input.parseMode ? { parse_mode: input.parseMode } : {}),
+			...(input.replyMarkup ? { reply_markup: toTelegramReplyMarkup(input.replyMarkup) } : {}),
+		});
+		return { messageId: result.message_id };
+	}
+
+	async sendPhoto(input: TelegramSendFileInput): Promise<TelegramSentMessage> {
+		const result = await this.bot.api.sendPhoto(
+			input.chatId,
+			new InputFile(input.bytes, input.filename),
+			this.fileOptions(input),
+		);
+		return { messageId: result.message_id };
+	}
+
+	async sendDocument(input: TelegramSendFileInput): Promise<TelegramSentMessage> {
+		const result = await this.bot.api.sendDocument(
+			input.chatId,
+			new InputFile(input.bytes, input.filename),
+			this.fileOptions(input),
+		);
+		return { messageId: result.message_id };
+	}
+
+	private fileOptions(input: TelegramSendFileInput): Record<string, unknown> {
+		return {
+			...(input.messageThreadId !== undefined ? { message_thread_id: input.messageThreadId } : {}),
+			...(input.caption ? { caption: input.caption } : {}),
+			...(input.parseMode ? { parse_mode: input.parseMode } : {}),
+		};
+	}
+
+	async answerCallbackQuery(input: {
+		callbackQueryId: string;
+		text?: string;
+		showAlert?: boolean;
+	}): Promise<void> {
+		await this.bot.api.answerCallbackQuery(input.callbackQueryId, {
+			...(input.text ? { text: input.text } : {}),
+			...(input.showAlert !== undefined ? { show_alert: input.showAlert } : {}),
+		});
+	}
+
+	private async dispatchText(ctx: GrammyTextContext): Promise<void> {
+		const message = ctx.message;
+		const update: TelegramTextUpdate = {
+			messageId: message.message_id,
+			chatId: String(message.chat.id),
+			...(message.message_thread_id !== undefined
+				? { messageThreadId: message.message_thread_id }
+				: {}),
+			from: toUserRef(message.from),
+			text: message.text,
+		};
+		await Promise.all([...this.textHandlers].map((handler) => handler(update)));
+	}
+
+	private async dispatchForumTopicCreated(ctx: GrammyForumTopicCreatedContext): Promise<void> {
+		const message = ctx.message;
+		if (message.message_thread_id === undefined) return;
+		const update: TelegramForumTopicCreatedUpdate = {
+			messageId: message.message_id,
+			chatId: String(message.chat.id),
+			messageThreadId: message.message_thread_id,
+			from: toUserRef(message.from),
+		};
+		await Promise.all([...this.forumTopicCreatedHandlers].map((handler) => handler(update)));
+	}
+
+	private async dispatchForumTopicClosed(ctx: GrammyForumTopicClosedContext): Promise<void> {
+		const message = ctx.message;
+		if (message.message_thread_id === undefined) return;
+		const update: TelegramForumTopicClosedUpdate = {
+			messageId: message.message_id,
+			chatId: String(message.chat.id),
+			messageThreadId: message.message_thread_id,
+			from: toUserRef(message.from),
+		};
+		await Promise.all([...this.forumTopicClosedHandlers].map((handler) => handler(update)));
+	}
+
+	private async dispatchCallback(ctx: GrammyCallbackContext): Promise<void> {
+		const callback = ctx.callbackQuery;
+		if (!callback.message) return;
+		const update: TelegramCallbackUpdate = {
+			id: callback.id,
+			chatId: String(callback.message.chat.id),
+			...(callback.message.message_thread_id !== undefined
+				? { messageThreadId: callback.message.message_thread_id }
+				: {}),
+			from: toUserRef(callback.from),
+			data: callback.data,
+		};
+		await Promise.all([...this.callbackHandlers].map((handler) => handler(update)));
+	}
+
+	private logWarn(error: unknown, message: string): void {
+		this.input.logger?.warn?.(
+			{ err: error instanceof Error ? error.message : String(error) },
+			message,
+		);
+	}
+}

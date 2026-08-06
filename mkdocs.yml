@@ -1,0 +1,103 @@
+site_name: Leitwerk
+site_description: The control unit for AI-driven software delivery
+site_author: Leitwerk contributors
+
+docs_dir: docs
+site_dir: site
+strict: true
+
+use_directory_urls: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - content.action.edit
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+plugins:
+  - search
+  - awesome-pages
+  - mermaid2
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: fade
+      slide_effect: slide
+      zoomable: true
+      draggable: true
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Introduction: introduction.md
+  - Overview:
+      - Architecture: arc42.md
+      - Terminology: ubiquitous_language.md
+  - Runtime:
+      - Server / worker lifecycle: server-worker-lifecycle.md
+      - LLM turn flow: llm-turn.md
+      - Process workspace: process-workspace.md
+      - WebSocket: websocket.md
+      - UI chronicle: ui.md
+  - Authoring:
+      - Process SDK: process-sdk.md
+      - Agent tools: agent-tools.md
+      - Watchers: watchers.md
+  - Operations:
+      - Configuration: configuration.md
+      - Models: models.md
+      - Local Docker deployment: docker-deployment-guide.md
+      - Kubernetes deployment: kubernetes-deployment-guide.md
+      - Testing: testing.md
+      - CI and publishing: ci.md
+      - Security: security.md
+      - Future: future.md
