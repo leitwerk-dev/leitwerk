@@ -2,9 +2,9 @@
 
 > The control unit for AI-driven software delivery.
 
-`Leitwerk` is a process-centric control plane around embedded [Pi](https://pi.dev) workers. The server owns durable state. Production workers execute selected turns in Docker containers or Kubernetes pods. The UI shows every process in one shared shell.
+![Leitwerk](images/leitwerk.png)
 
-Leitwerk is moving from pre-alpha to alpha. This means the contracts are still moving, but configured SQLite storage is durable. Schema changes need an explicit migration path instead of a default local-storage reset.
+`Leitwerk` is a process-centric control plane around embedded [Pi](https://pi.dev) workers. The server owns durable state. Production workers execute selected turns in Docker containers or Kubernetes pods. The UI shows every process in one shared shell.
 
 ## What it does
 
