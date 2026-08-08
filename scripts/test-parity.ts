@@ -6,6 +6,7 @@ import net from "node:net";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
+import { loadActiveDevelopmentComposition } from "./development-composition.ts";
 
 interface ExtensionEntryLike {
 	entryPath: string;
@@ -465,8 +466,29 @@ async function runDefaultWorkerSmoke(repoRoot: string): Promise<void> {
 	console.info("[test:default-worker] OK");
 }
 
+async function assertComposedBuiltExtensions(repoRoot: string): Promise<void> {
+	const composition = loadActiveDevelopmentComposition(repoRoot);
+	if (!composition || composition.extensionDirs.length === 0) return;
+	const extensionRuntimeDist = pathToFileURL(
+		path.join(repoRoot, "packages/extension-runtime/dist/index.js"),
+	).href;
+	const module = (await import(extensionRuntimeDist)) as {
+		resolveExtensionEntries(options: { startDir: string; sources: string[] }): Promise<unknown[]>;
+		importExtensionModules(entries: readonly unknown[]): Promise<unknown[]>;
+		buildExtensionCatalog(modules: readonly unknown[]): Promise<unknown>;
+	};
+	const entries = await module.resolveExtensionEntries({
+		startDir: composition.manifestDir,
+		sources: composition.extensionDirs,
+	});
+	const modules = await module.importExtensionModules(entries);
+	await module.buildExtensionCatalog(modules);
+	console.info(`[test:parity] Loaded ${entries.length} composed dist extension(s)`);
+}
+
 async function runParity(repoRoot: string): Promise<void> {
 	await assertBuiltDistLoaderUsesBuiltEntries(repoRoot);
+	await assertComposedBuiltExtensions(repoRoot);
 	await withBuiltServer(
 		repoRoot,
 		"leitwerk-parity-",

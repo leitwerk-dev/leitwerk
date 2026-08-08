@@ -39,6 +39,14 @@ Requirements:
 - only the primary branch should write or revise the poem directly`;
 }
 
+export function buildRevisePoemInstruction(revisionGuidance: string): string {
+	return `Continue from the current poem on this branch and revise it according to this request:
+
+${revisionGuidance}
+
+Preserve the parts of the current poem that the request does not ask you to change. Return the complete revised poem in the same Markdown format.`;
+}
+
 export function buildReviewPoemInstruction(promptText: string, poemDraftMarkdown: string): string {
 	return `Review the latest poem draft against the operator's prompt.
 

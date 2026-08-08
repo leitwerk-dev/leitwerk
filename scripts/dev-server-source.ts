@@ -12,6 +12,7 @@ import {
 	stopManagedForExit,
 	waitForSuccess,
 } from "./dev-process.ts";
+import { loadActiveDevelopmentComposition } from "./development-composition.ts";
 
 const repoRoot = process.cwd();
 const coreRuntimePackages = [
@@ -88,6 +89,10 @@ async function main(): Promise<void> {
 	for (const extension of context.extensions) {
 		const srcDir = path.join(extension.packageDir, "src");
 		watchPaths.add(existsSync(srcDir) ? srcDir : extension.entryPath);
+	}
+	for (const packageInfo of loadActiveDevelopmentComposition(repoRoot)?.externalPackages ?? []) {
+		const srcDir = path.join(packageInfo.dir, "src");
+		if (existsSync(srcDir)) watchPaths.add(srcDir);
 	}
 	let backend: ChildProcess | null = null;
 	let shuttingDown = false;

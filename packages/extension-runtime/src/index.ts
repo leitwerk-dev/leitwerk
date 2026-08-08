@@ -16,6 +16,7 @@ export {
 	type OwnedModelProviderSet,
 	parseResolvedExtensionEntries,
 	type ResolveExtensionEntriesOptions,
+	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
 	RUNTIME_EXTENSION_ENTRIES_ENV,
 	resolveExtensionEntries,
 	serializeResolvedExtensionEntries,

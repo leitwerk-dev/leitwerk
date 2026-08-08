@@ -18,6 +18,7 @@ Leitwerk documentation provides complete contracts, authoring guides, and operat
 ## 3. Deploy & Operate Leitwerk (Operations Track)
 
 - [Configuration Reference](configuration.md) — Complete `leitwerk.yaml` reference, model profiles, reload classes, and environment overrides.
+- [Development Compositions](development-composition.md) — Combine this checkout with external packages, extensions, reload, and the full test gate.
 - [Server & Worker Lifecycle](server-worker-lifecycle.md) — ProcessEngine supervision, worker adoption, IPC protocol, and crash recovery.
 - [Local & Docker Deployment](docker-deployment-guide.md) — Single-machine Docker installation and local dev setup.
 - [Kubernetes Deployment Guide](kubernetes-deployment-guide.md) — Production Kubernetes runner configurations.

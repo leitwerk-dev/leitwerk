@@ -12,6 +12,7 @@ import {
 	stopManaged,
 	waitForSuccess,
 } from "./dev-process.ts";
+import { COMPOSITION_ENV } from "./development-composition.ts";
 
 const repoRoot = process.cwd();
 
@@ -26,6 +27,7 @@ function spawnSession(): ChildProcess {
 function devInputPaths(context: DevContext): Set<string> {
 	const paths = new Set<string>();
 	if (context.configPath !== "<defaults>") paths.add(context.configPath);
+	if (process.env[COMPOSITION_ENV]) paths.add(process.env[COMPOSITION_ENV]);
 	for (const extension of context.extensions) {
 		paths.add(path.join(extension.packageDir, "package.json"));
 		if (extension.uiSource) paths.add(extension.uiSource.manifestPath);

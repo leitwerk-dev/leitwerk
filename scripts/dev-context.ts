@@ -5,6 +5,10 @@ import {
 	resolveExtensionEntries,
 } from "../packages/extension-runtime/src/extension-loader.ts";
 import { loadConfig } from "../packages/server/src/config/config-loader.ts";
+import {
+	activateDevelopmentComposition,
+	loadActiveDevelopmentComposition,
+} from "./development-composition.ts";
 
 interface ExtensionPackageJson {
 	name?: unknown;
@@ -85,13 +89,15 @@ export async function loadDevContext(
 	configPath = process.env.LEITWERK_CONFIG_PATH,
 ): Promise<DevContext> {
 	process.env.LEITWERK_RUNTIME_LANE = "source";
-	const loaded = loadConfig(configPath);
+	activateDevelopmentComposition(process.cwd());
+	const composition = loadActiveDevelopmentComposition(process.cwd());
+	const loaded = loadConfig(configPath ?? composition?.runtimeConfigPath);
 	if (!loaded.ok) throw new Error(loaded.error);
 	const configDirectory =
 		loaded.filePath === "<defaults>" ? process.cwd() : path.dirname(loaded.filePath);
 	const entries = await resolveExtensionEntries({
 		startDir: configDirectory,
-		sources: loaded.config.extension_loading.sources,
+		sources: [...loaded.config.extension_loading.sources, ...(composition?.extensionDirs ?? [])],
 	});
 	const extensions = await Promise.all(
 		entries.map(async (entry): Promise<DevExtension> => {

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 import { buildWorkspaceSourceAliases } from "./packages/test-support/src/workspace-source-aliases.js";
+import { loadActiveDevelopmentComposition } from "./scripts/development-composition.js";
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 // Keep Vitest from resolving bare Node stream built-ins against the worktree root.
@@ -29,7 +30,23 @@ const nodeBuiltinPlugin = {
 		return null;
 	},
 };
-const workspaceSourceAliases = buildWorkspaceSourceAliases(repoRoot);
+const composition = loadActiveDevelopmentComposition(repoRoot);
+const externalPackageDirs = composition?.externalPackages.map((entry) => entry.dir) ?? [];
+const workspaceSourceAliases = buildWorkspaceSourceAliases(repoRoot, externalPackageDirs);
+const externalUnitTests = externalPackageDirs.map((dir) => resolve(dir, "src/**/*.test.ts"));
+const externalIntegrationTests = externalPackageDirs.map((dir) =>
+	resolve(dir, "src/**/*.integration.test.ts"),
+);
+const externalUiIntegrationTests = externalPackageDirs.flatMap((dir) => [
+	resolve(dir, "src/**/*.ui.integration.test.ts"),
+	resolve(dir, "tests/**/*.ui.integration.test.ts"),
+]);
+const composedE2eTests =
+	composition?.testRoots.map((dir) => resolve(dir, "**/*.e2e.test.ts")) ?? [];
+const composedIntegrationTests =
+	composition?.testRoots.map((dir) => resolve(dir, "**/*.integration.test.ts")) ?? [];
+const composedUiIntegrationTests =
+	composition?.testRoots.map((dir) => resolve(dir, "**/*.ui.integration.test.ts")) ?? [];
 const sharedSetupFiles = [resolve(repoRoot, "tests/vitest.setup.ts")];
 // Node 26 emits an ExperimentalWarning for `localStorage` from every forked
 // worker during pre-execution (the jsdom projects polyfill it in setup).
@@ -65,6 +82,7 @@ export default defineConfig({
 						"packages/*/src/**/*.test.ts",
 						"extensions/*/src/**/*.test.ts",
 						"scripts/**/*.test.ts",
+						...externalUnitTests,
 					],
 					exclude: ["**/*.integration.test.ts", "**/*.e2e.test.ts", "**/*.ui.integration.test.ts"],
 				},
@@ -85,6 +103,8 @@ export default defineConfig({
 						"packages/*/src/**/*.integration.test.ts",
 						"extensions/*/src/**/*.integration.test.ts",
 						"tests/**/*.integration.test.ts",
+						...externalIntegrationTests,
+						...composedIntegrationTests,
 					],
 					exclude: ["**/*.ui.integration.test.ts"],
 				},
@@ -99,7 +119,7 @@ export default defineConfig({
 					execArgv: sharedExecArgv,
 					maxWorkers: 2,
 					setupFiles: sharedSetupFiles,
-					include: ["tests/**/*.e2e.test.ts"],
+					include: ["tests/**/*.e2e.test.ts", ...composedE2eTests],
 				},
 			},
 			{
@@ -139,6 +159,8 @@ export default defineConfig({
 						"tests/**/*.ui.integration.test.ts",
 						"extensions/*/src/**/*.ui.integration.test.ts",
 						"extensions/*/tests/**/*.ui.integration.test.ts",
+						...externalUiIntegrationTests,
+						...composedUiIntegrationTests,
 					],
 				},
 			},

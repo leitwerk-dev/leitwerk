@@ -94,6 +94,7 @@ nav:
       - Watchers: watchers.md
   - Operations:
       - Configuration: configuration.md
+      - Development compositions: development-composition.md
       - Models: models.md
       - Local Docker deployment: docker-deployment-guide.md
       - Kubernetes deployment: kubernetes-deployment-guide.md

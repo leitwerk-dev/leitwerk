@@ -97,6 +97,7 @@ export interface ResolveExtensionEntriesOptions {
 }
 
 export const RUNTIME_EXTENSION_ENTRIES_ENV = "LEITWERK_EXTENSION_ENTRIES_JSON";
+export const RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV = "LEITWERK_EXTENSION_ALLOWED_ROOTS_JSON";
 
 const jiti = createJiti(import.meta.url);
 

@@ -19,6 +19,14 @@ npm run test
 npm run build
 ```
 
+A development composition applies the same gate to its external packages, extensions, and test roots:
+
+```bash
+npm run test:full -- --composition=../private/leitwerk.composition.yaml
+```
+
+See [Development Compositions](development-composition.md).
+
 ### Core Principles
 
 - **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeJiraClient`, `FakeLlmProvider`) rather than broad mocks.

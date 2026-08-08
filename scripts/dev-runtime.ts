@@ -2,6 +2,7 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { loadActiveDevelopmentComposition } from "./development-composition.ts";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 
@@ -17,6 +18,7 @@ interface WorkspacePackageJson {
 interface RuntimeBuildTask {
 	workspaceName: string;
 	scriptName: string;
+	packageDir?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -111,6 +113,11 @@ function spawnNpm(args: string[], env: NodeJS.ProcessEnv): ChildProcess {
 
 async function main(): Promise<void> {
 	const tasks = await listRuntimeBuildTasks(process.cwd());
+	for (const entry of loadActiveDevelopmentComposition(process.cwd())?.externalPackages ?? []) {
+		const scriptName = selectRuntimeBuildScript(entry.packageJson);
+		if (scriptName) tasks.push({ workspaceName: entry.name, scriptName, packageDir: entry.dir });
+	}
+	tasks.sort((left, right) => left.workspaceName.localeCompare(right.workspaceName));
 	if (tasks.length === 0) {
 		console.info("[dev:runtime] No runtime build watch tasks found.");
 		return;
@@ -129,7 +136,9 @@ async function main(): Promise<void> {
 	// through this watch lane).
 	const children = tasks.map((task) =>
 		spawnNpm(
-			["run", task.scriptName, "-w", task.workspaceName, "--", "--watch", "--no-dts"],
+			task.packageDir
+				? ["run", task.scriptName, "--prefix", task.packageDir, "--", "--watch", "--no-dts"]
+				: ["run", task.scriptName, "-w", task.workspaceName, "--", "--watch", "--no-dts"],
 			process.env,
 		),
 	);

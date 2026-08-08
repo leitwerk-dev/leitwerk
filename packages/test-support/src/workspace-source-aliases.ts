@@ -19,10 +19,14 @@ export interface WorkspaceSourceAlias {
 	replacement: string;
 }
 
-export function buildWorkspaceSourceAliases(rootDir: string): WorkspaceSourceAlias[] {
-	const aliases = listWorkspacePackageDirs(rootDir).flatMap((packageDir) =>
-		buildAliasesForPackage(packageDir),
-	);
+export function buildWorkspaceSourceAliases(
+	rootDir: string,
+	additionalPackageDirs: readonly string[] = [],
+): WorkspaceSourceAlias[] {
+	const packageDirs = [
+		...new Set([...listWorkspacePackageDirs(rootDir), ...additionalPackageDirs]),
+	];
+	const aliases = packageDirs.flatMap((packageDir) => buildAliasesForPackage(packageDir));
 
 	return aliases.sort((left, right) => {
 		const lengthDelta = right.find.source.length - left.find.source.length;

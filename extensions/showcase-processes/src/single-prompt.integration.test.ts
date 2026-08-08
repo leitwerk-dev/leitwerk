@@ -1045,9 +1045,14 @@ describe("single prompt extension", () => {
 			const afterAcceptTurnRecords = issuesHarness.ctx.deps.turnRecords.listByInstance(
 				launchBody.process.id,
 			);
-			expect(
-				afterAcceptTurnRecords.filter((turnRecord) => turnRecord.turnId === "draft_poem"),
-			).toHaveLength(2);
+			const acceptedReviewDrafts = afterAcceptTurnRecords.filter(
+				(turnRecord) => turnRecord.turnId === "draft_poem",
+			);
+			expect(acceptedReviewDrafts).toHaveLength(2);
+			expect(acceptedReviewDrafts[1]).toMatchObject({
+				pathType: "primary",
+				forkPiEntryId: acceptedReviewDrafts[0]?.resultPiEntryId,
+			});
 			expect(afterAcceptTurnRecords).toEqual(
 				expect.arrayContaining([
 					expect.objectContaining({
@@ -1131,7 +1136,12 @@ describe("single prompt extension", () => {
 		});
 
 		const turnRecords = harness.ctx.deps.turnRecords.listByInstance(launchBody.process.id);
-		expect(turnRecords.filter((turnRecord) => turnRecord.turnId === "draft_poem")).toHaveLength(2);
+		const draftTurnRecords = turnRecords.filter((turnRecord) => turnRecord.turnId === "draft_poem");
+		expect(draftTurnRecords).toHaveLength(2);
+		expect(draftTurnRecords[1]).toMatchObject({
+			pathType: "primary",
+			forkPiEntryId: draftTurnRecords[0]?.resultPiEntryId,
+		});
 		expect(turnRecords).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -1194,11 +1204,19 @@ describe("single prompt extension", () => {
 				},
 			);
 
-			const firstReview = issuesHarness.ctx.deps.turnRecords
-				.listByInstance(launchBody.process.id)
+			const recordsAfterFirstReview = issuesHarness.ctx.deps.turnRecords.listByInstance(
+				launchBody.process.id,
+			);
+			const firstDraft = recordsAfterFirstReview.find(
+				(turnRecord) => turnRecord.turnId === "draft_poem",
+			);
+			const firstReview = recordsAfterFirstReview
 				.filter((turnRecord) => turnRecord.turnId === "review_poem_draft")
 				.at(-1);
-			expect(firstReview).toBeDefined();
+			expect(firstReview).toMatchObject({
+				pathType: "root_branch",
+				forkPiEntryId: firstDraft?.resultPiEntryId,
+			});
 
 			const requestChangesResponse = await fetch(
 				`${issuesHarness.address}/api/processes/${launchBody.process.id}/actions/request_poem_review_changes`,

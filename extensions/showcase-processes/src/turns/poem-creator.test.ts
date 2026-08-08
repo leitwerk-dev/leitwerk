@@ -1,9 +1,14 @@
-import { type HumanTurnDefinition, resolveHumanTurnView } from "@leitwerk-dev/process-sdk";
+import {
+	type HumanTurnDefinition,
+	type LlmTurnDefinition,
+	resolveHumanTurnView,
+} from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { poemCreatorProcess } from "../process-definition.js";
 import {
 	buildDraftPoemInstruction,
 	buildReviewPoemInstruction,
+	buildRevisePoemInstruction,
 	poemCreatorActionIds,
 } from "./poem-creator.js";
 
@@ -22,6 +27,40 @@ describe("poem creator turn prompts", () => {
 
 		expect(prompt).toContain("SENTINEL_POEM_REVIEW_REQUEST");
 		expect(prompt).toContain("SENTINEL_POEM_DRAFT");
+	});
+
+	it("builds a focused revision prompt for the inherited poem branch", () => {
+		const prompt = buildRevisePoemInstruction("SENTINEL_REVISION_GUIDANCE");
+
+		expect(prompt).toContain("SENTINEL_REVISION_GUIDANCE");
+		expect(prompt).toContain("current poem on this branch");
+		expect(prompt).toContain("Preserve the parts");
+	});
+
+	it("continues poem revisions on primary and reviews on their side branch", () => {
+		const draftTurn = poemCreatorProcess.turns.get("draft_poem")?.definition as LlmTurnDefinition;
+		const reviewTurn = poemCreatorProcess.turns.get("review_poem_draft")
+			?.definition as LlmTurnDefinition;
+
+		expect(draftTurn).toMatchObject({
+			branchType: "primary",
+			context: "full",
+			startFrom: {
+				kind: "semantic_ref",
+				ref: "currentPrimaryPathLeaf",
+				fallback: { kind: "current_leaf" },
+			},
+		});
+		expect(reviewTurn).toMatchObject({
+			branchType: "root_branch",
+			context: "full",
+			restorePrimaryLeafAfterTurn: true,
+			startFrom: {
+				kind: "semantic_ref",
+				ref: "review",
+				fallback: { kind: "current_leaf" },
+			},
+		});
 	});
 
 	it("makes only the non-terminal poem review-loop actions schedulable", () => {

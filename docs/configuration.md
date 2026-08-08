@@ -126,3 +126,5 @@ extensions:
 ```
 - `pi.model_profiles`: Catalog of LLM models made available to process definitions.
 - `extension_loading.sources`: Extension package paths loaded during server startup. Load `./extensions/models` for standard API-key providers and configuration-defined custom gateways.
+
+Development compositions may add extension sources from a separate npm workspace without changing production configuration. See [Development Compositions](development-composition.md).

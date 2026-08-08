@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { RUNTIME_EXTENSION_ENTRIES_ENV } from "@leitwerk-dev/extension-runtime";
+import {
+	parseResolvedExtensionEntries,
+	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
+	RUNTIME_EXTENSION_ENTRIES_ENV,
+} from "@leitwerk-dev/extension-runtime";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { PiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import {
@@ -669,6 +673,13 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		if (options.snapshotToken) env[WORKER_SNAPSHOT_TOKEN_ENV] = options.snapshotToken;
 		if (options.resolvedExtensionEntriesJson) {
 			env[RUNTIME_EXTENSION_ENTRIES_ENV] = options.resolvedExtensionEntriesJson;
+			if (deps.config.workers.runner === "local") {
+				env[RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV] = JSON.stringify(
+					parseResolvedExtensionEntries(options.resolvedExtensionEntriesJson).map(
+						(entry) => entry.packageDir,
+					),
+				);
+			}
 		}
 		const unit = await runnerRuntime.runner.start({
 			instanceId: options.instanceId,

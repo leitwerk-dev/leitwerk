@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { activateDevelopmentComposition } from "./development-composition.ts";
 
 const DEPENDENCY_FIELDS = [
 	"dependencies",
@@ -36,7 +37,11 @@ function main() {
 	const workspacePatterns = Array.isArray(rootPackageJson.workspaces)
 		? rootPackageJson.workspaces.filter((value) => typeof value === "string")
 		: [];
-	const workspaces = listWorkspaceInfos(rootDir, workspacePatterns);
+	const composition = activateDevelopmentComposition(rootDir);
+	const workspaces = dedupeWorkspaceInfos([
+		...listWorkspaceInfos(rootDir, workspacePatterns),
+		...listComposedWorkspaceInfos(composition),
+	]);
 	const extensionPackageNames = new Set(
 		workspaces
 			.filter((workspace) => workspace.kind === "extension")
@@ -100,6 +105,23 @@ function listWorkspaceInfos(rootDir, workspacePatterns) {
 		}
 	}
 	return infos.sort((left, right) => left.dir.localeCompare(right.dir));
+}
+
+function listComposedWorkspaceInfos(composition) {
+	if (!composition) return [];
+	const extensionDirs = new Set(composition.extensionDirs);
+	return composition.externalPackages.map((entry) => ({
+		name: entry.name,
+		dir: entry.dir,
+		packageJson: entry.packageJson,
+		kind: extensionDirs.has(entry.dir) ? "extension" : "package",
+	}));
+}
+
+function dedupeWorkspaceInfos(workspaces) {
+	return [...new Map(workspaces.map((workspace) => [workspace.dir, workspace])).values()].sort(
+		(left, right) => left.dir.localeCompare(right.dir),
+	);
 }
 
 function checkPackageDependencyBoundaries(workspaces, extensionPackageNames) {

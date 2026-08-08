@@ -25,6 +25,7 @@ import {
 	buildDefaultPoemPrompt,
 	buildDraftPoemInstruction,
 	buildReviewPoemInstruction,
+	buildRevisePoemInstruction,
 	poemCreatorActionIds,
 } from "./turns/poem-creator.js";
 import {
@@ -862,11 +863,13 @@ export const poemCreatorProcess = flow
 		flow
 			.llm<PromptProcessParams, PoemCreatorState>(poemTurnIds.draftPoem)
 			.description("Draft poem")
+			.fullPrimary()
+			.continueFromPrimaryLeaf()
 			.optionalConsume("message")
 			.buildPrompt(async (ctx) => {
 				const message = ctx.input.message?.trim();
 				return message
-					? `${buildDraftPoemInstruction(ctx.params.prompt)}\n\nRevision guidance:\n${message}`
+					? buildRevisePoemInstruction(message)
 					: buildDraftPoemInstruction(ctx.params.prompt);
 			})
 			.publish("poem-draft")
@@ -887,7 +890,7 @@ export const poemCreatorProcess = flow
 			.llm<PromptProcessParams, PoemCreatorState>(poemTurnIds.reviewPoemDraft)
 			.description("Review poem")
 			.rootBranchReview()
-			.startFromReviewBranch()
+			.continueFromReviewBranch()
 			.reviews(createReviewSubject("plan"))
 			.consume("poem-draft")
 			.optionalConsume("message")

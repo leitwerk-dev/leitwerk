@@ -47,9 +47,11 @@ Writing a non-empty prompt to the file creates a poem process. The watcher consu
 
 ## Poem review loop
 
+Poem drafts and human-requested revisions continue on one full-context primary branch, so each revision inherits the current poem instead of starting a replacement from fresh context. The automated reviewer forks from the latest primary poem. Later requests to change that review continue on the review branch while the primary poem leaf remains unchanged.
+
 When the automated reviewer leaves feedback, the operator can:
 
-- accept the review and send its feedback to the next poem draft;
+- accept the review, restore the primary poem branch, and send the feedback as its next revision request;
 - request review changes and continue on the review branch;
 - dismiss the review and return to the primary poem decision without applying the feedback.
 

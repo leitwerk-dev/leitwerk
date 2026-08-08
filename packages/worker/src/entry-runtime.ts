@@ -6,6 +6,7 @@ import {
 	type ExtensionCatalog,
 	importExtensionModules,
 	parseResolvedExtensionEntries,
+	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
 	RUNTIME_EXTENSION_ENTRIES_ENV,
 	setupWorkerExtensions,
 } from "@leitwerk-dev/extension-runtime";
@@ -23,6 +24,10 @@ import {
 	WORKER_IPC_SERVER_URL_ENV,
 	WORKER_SNAPSHOT_TOKEN_ENV,
 } from "@leitwerk-dev/worker-protocol";
+import {
+	entriesExistWithinAllowedRoots,
+	parseExtensionAllowedRoots,
+} from "./extension-entry-roots.js";
 import { createWorkerIpcFromEnvironment, type WorkerIpc } from "./ipc.js";
 import { type PiTreeHandleFactory, SdkPiTreeHandleFactory } from "./pi-adapter.js";
 import { createUploadResultImagesTool } from "./result-image-upload.js";
@@ -81,31 +86,22 @@ function findWorkspaceRoot(startDir: string): string | null {
 	}
 }
 
-function isWithinDirectory(parentDir: string, candidatePath: string): boolean {
-	const relative = path.relative(parentDir, candidatePath);
-	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function shouldUseResolvedExtensionEntriesEnv(
 	entries: ReturnType<typeof parseResolvedExtensionEntries>,
 ): boolean {
-	if (entries.length === 0) {
-		return true;
-	}
+	if (entries.length === 0) return true;
 	const workspaceRoot = findWorkspaceRoot(process.cwd());
-	if (!workspaceRoot) {
-		return false;
-	}
-	// Explicitly resolved extension entries from the server are authoritative,
-	// but only when they still exist inside this workspace clone. Ignore stale
-	// forwarded paths from another checkout and fall back to an empty catalog.
-	return entries.every(
-		(entry) =>
-			existsSync(entry.packageDir) &&
-			existsSync(entry.entryPath) &&
-			isWithinDirectory(workspaceRoot, entry.packageDir) &&
-			isWithinDirectory(workspaceRoot, entry.entryPath),
+	const explicitlyAllowedRoots = parseExtensionAllowedRoots(
+		process.env[RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV],
 	);
+	// Explicitly resolved extension entries from the server are authoritative,
+	// but only when they still exist inside the worker's checkout or an explicit
+	// local development composition root. Isolated workers do not receive the
+	// development-only roots and continue to reject host checkout paths.
+	return entriesExistWithinAllowedRoots({
+		entries,
+		allowedRoots: [...(workspaceRoot ? [workspaceRoot] : []), ...explicitlyAllowedRoots],
+	});
 }
 
 async function loadRuntimeCatalog(): Promise<ExtensionCatalog> {

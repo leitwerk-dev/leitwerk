@@ -1,5 +1,10 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
+import { loadActiveDevelopmentComposition } from "./scripts/development-composition.js";
 
+const repoRoot = fileURLToPath(new URL(".", import.meta.url));
+const composition = loadActiveDevelopmentComposition(repoRoot);
 const UI_PORT = 5199;
 const API_PORT = 8181;
 
@@ -17,8 +22,15 @@ export default defineConfig({
 	projects: [
 		{
 			name: "chromium",
+			testDir: path.join(repoRoot, "tests/browser"),
 			use: { ...devices["Desktop Chrome"] },
 		},
+		...(composition?.testRoots.map((testRoot, index) => ({
+			name: `chromium-composed-${index + 1}`,
+			testDir: testRoot,
+			testMatch: "**/*.browser.test.ts",
+			use: { ...devices["Desktop Chrome"] },
+		})) ?? []),
 	],
 	webServer: {
 		command: `npm run dev -w @leitwerk-dev/ui -- --port ${UI_PORT}`,
