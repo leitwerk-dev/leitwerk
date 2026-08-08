@@ -9,6 +9,7 @@
 	"bump-patch-for-minor-pre-major": true,
 	"always-link-local": true,
 	"always-update": true,
+	"signoff": "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
 	"separate-pull-requests": false,
 	"group-pull-request-title-pattern": "chore(release): release ${branch}",
 	"changelog-sections": [

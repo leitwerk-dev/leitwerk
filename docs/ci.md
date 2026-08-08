@@ -18,7 +18,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
 Scopes are optional. Use a `Release-As: 1.0.0` footer when maintainers deliberately select an exact version.
 
-Every human and bot commit must contain a `Signed-off-by` trailer matching its author. Humans normally use `git commit -s`. Release Please derives its trailer from the GitHub App ID and slug at runtime. Renovate uses its `:gitSignOff` preset.
+Every human and bot commit must contain a `Signed-off-by` trailer matching its author. Humans normally use `git commit -s`. Release Please uses the standard `github-actions[bot]` identity and a matching static trailer. Renovate uses its `:gitSignOff` preset.
 
 Enable compulsory web sign-off in GitHub so the squash commit created by GitHub is also signed off. Require these checks before merge:
 
@@ -35,18 +35,13 @@ The release group contains the root and every npm workspace. `node-workspace` up
 
 The initial history boundary is `0d650094f359c0c8686b5ec0928a607d44fcc866`. Existing non-Conventional history is excluded. The first proposed release is `v0.1.0`.
 
-Create a GitHub App dedicated to Release Please. Install it only on this repository and grant only:
+Release Please uses the repository's short-lived `GITHUB_TOKEN`; no Release Please credential is stored. Grant its job only contents, pull-request, and issue write access. Enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings.
 
-- Contents: read and write
-- Pull requests: read and write
-- Issues: read and write, for release labels
-- Metadata: read
-
-Store its numeric ID as `RELEASE_PLEASE_APP_ID` and its private key as `RELEASE_PLEASE_APP_PRIVATE_KEY`. The workflow requests an installation token limited to the `leitwerk` repository. Do not replace it with `GITHUB_TOKEN`: resources created with `GITHUB_TOKEN` do not trigger the pull request and release workflows needed by this design.
+GitHub places workflows caused by a `GITHUB_TOKEN`-created or updated pull request into an approval-required state. A maintainer approves the latest generated release-PR workflows before merging it. Other events caused by `GITHUB_TOKEN`, including the GitHub Release event, do not start workflows. The Release Please workflow therefore reads the action's `release_created` and `tag_name` outputs and explicitly dispatches `publish.yml`. GitHub permits `workflow_dispatch` events created with `GITHUB_TOKEN`.
 
 ## Publication
 
-`.github/workflows/publish.yml` runs when Release Please publishes a GitHub Release. It validates the tag and then runs:
+`.github/workflows/publish.yml` is dispatched with the new tag immediately after Release Please creates the GitHub Release. It validates the tag and then runs:
 
 ```bash
 npm run release:check
@@ -105,7 +100,7 @@ Minor, patch, pin, digest, and lockfile updates are eligible for platform auto-m
 Before merging the first `v0.1.0` release pull request:
 
 1. Enable squash-only merges, title-based squash messages, compulsory web DCO sign-off, platform auto-merge, and the required checks.
-2. Install the narrowly scoped Release Please App and add its two secrets.
+2. Allow GitHub Actions to create pull requests and confirm a maintainer can approve the generated release-PR workflow runs.
 3. Install Renovate and confirm a generated pull request passes the title and DCO check.
 4. Create or configure all npm packages with trusted publishers.
 5. Permit GHCR package creation and make the image and chart packages public.

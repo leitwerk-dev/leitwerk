@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
+const actionExpression = (value: string) => `\${{ ${value} }}`;
 
 function workflow(name: string) {
 	return parse(readFileSync(`${repoRoot}/.github/workflows/${name}`, "utf8")) as Record<
@@ -18,18 +19,46 @@ describe("Release Please workflow", () => {
 		const parsed = workflow("release-please.yml");
 		const jobs = parsed.jobs as Record<string, Record<string, unknown>>;
 		const steps = jobs["release-please"].steps as Array<Record<string, unknown>>;
+		const release = steps[0];
+		const dispatch = jobs["dispatch-publication"];
+		const dispatchSteps = dispatch.steps as Array<Record<string, unknown>>;
 
 		expect(parsed.on).toEqual({ push: { branches: ["main"] } });
-		expect(steps.map((step) => step.name)).toEqual([
-			"Create narrow GitHub App token",
-			"Checkout",
-			"Render matching App bot DCO sign-off",
-			"Update release PR or create release",
+		expect(steps.map((step) => step.name)).toEqual(["Update release PR or create release"]);
+		expect(release).toMatchObject({
+			id: "release",
+			with: {
+				token: actionExpression("github.token"),
+				"config-file": "release-please-config.json",
+			},
+		});
+		expect(jobs["release-please"].outputs).toMatchObject({
+			release_created: actionExpression("steps.release.outputs.release_created"),
+			tag_name: actionExpression("steps.release.outputs.tag_name"),
+		});
+		expect(dispatch).toMatchObject({
+			needs: "release-please",
+			permissions: { actions: "write" },
+		});
+		expect(dispatchSteps.map((step) => step.name)).toEqual([
+			"Dispatch the trusted publication workflow",
 		]);
-		expect(text).toContain("RELEASE_PLEASE_APP_ID");
-		expect(text).toContain("RELEASE_PLEASE_APP_PRIVATE_KEY");
+		expect(text).toContain("needs.release-please.outputs.release_created == 'true'");
+		expect(text).toContain("gh workflow run publish.yml");
+		expect(text).toContain('--raw-field release_tag="$RELEASE_TAG"');
+		expect(text).not.toContain("RELEASE_PLEASE_APP_ID");
+		expect(text).not.toContain("RELEASE_PLEASE_APP_PRIVATE_KEY");
 		expect(text).not.toContain("npm publish");
 		expect(text).not.toContain("docker/build-push-action");
+	});
+
+	it("uses the GitHub Actions bot's matching DCO sign-off", () => {
+		const config = JSON.parse(
+			readFileSync(`${repoRoot}/release-please-config.json`, "utf8"),
+		) as Record<string, unknown>;
+		expect(config.signoff).toBe(
+			"github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+		);
 	});
 });
 
@@ -78,6 +107,7 @@ describe("public release workflow", () => {
 			unknown
 		>;
 
+		expect(parsed.on).toEqual({ workflow_dispatch: expect.any(Object) });
 		expect(dispatch).toHaveProperty("inputs.release_tag.required", true);
 		expect(text).toContain("Release lock belongs to Git revision");
 		expect(npmPublisher).toContain("already exists for Git revision");
