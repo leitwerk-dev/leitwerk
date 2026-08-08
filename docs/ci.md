@@ -33,7 +33,7 @@ Allow platform auto-merge so Renovate can merge eligible updates after required 
 
 The release group contains the root and every npm workspace. `node-workspace` updates package manifests, exact internal dependency versions, and `package-lock.json`. `linked-versions` assigns the same version to every component. Only the root component writes `CHANGELOG.md` or creates a tag and GitHub Release.
 
-The initial history boundary is `0d650094f359c0c8686b5ec0928a607d44fcc866`. Existing non-Conventional history is excluded. The first proposed release is `v0.1.0`.
+The initial history boundary is `0d650094f359c0c8686b5ec0928a607d44fcc866`. Existing non-Conventional history is excluded. The manifest records the 22 npm packages already published as `0.1.0` from that revision. The first integrated GitHub, npm, image, and chart release is therefore `v0.1.1`.
 
 Release Please uses the repository's short-lived `GITHUB_TOKEN`; no Release Please credential is stored. Grant its job only contents, pull-request, and issue write access. Enable **Allow GitHub Actions to create and approve pull requests** in the repository's Actions settings.
 
@@ -76,7 +76,7 @@ The workflow uses a GitHub-hosted runner, npm 11, and `id-token: write`. It has 
 
 ## Retry and conflicts
 
-Cross-registry publication is not atomic. To resume a partial publication, manually dispatch `Publish release artifacts` with an existing tag such as `v0.1.0`.
+Cross-registry publication is not atomic. To resume a partial publication, manually dispatch `Publish release artifacts` with an existing tag such as `v0.1.1`.
 
 The retry checks every existing artifact before reusing it:
 
@@ -97,7 +97,7 @@ Minor, patch, pin, digest, and lockfile updates are eligible for platform auto-m
 
 ## Initial rollout
 
-Before merging the first `v0.1.0` release pull request:
+Before merging the first integrated `v0.1.1` release pull request:
 
 1. Enable squash-only merges, title-based squash messages, compulsory web DCO sign-off, platform auto-merge, and the required checks.
 2. Allow GitHub Actions to create pull requests and confirm a maintainer can approve the generated release-PR workflow runs.

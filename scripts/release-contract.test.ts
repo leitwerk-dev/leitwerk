@@ -69,6 +69,10 @@ describe("release contract", () => {
 });
 
 describe("pre-1.0 Conventional Commit versioning", () => {
+	it("advances the published 0.1.0 baseline to the first integrated patch release", () => {
+		expect(calculateConventionalVersion("0.1.0", ["feat: add release automation"])).toBe("0.1.1");
+	});
+
 	it.each([
 		[["fix: correct timeout"], "0.2.4"],
 		[["feat(api): add retries"], "0.2.4"],
