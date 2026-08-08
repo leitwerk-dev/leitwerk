@@ -137,6 +137,11 @@ docker:
 #     tolerations: []
 #     annotations: {}
 #   image_pull_secrets: []
+#   # Copy only the dockerconfigjson key from named Secrets in server_namespace
+#   # into every process namespace before the worker Pod is created.
+#   image_pull_secret_copies:
+#     - source_name: private-registry-pull
+#       target_name: private-registry-pull
 
 # Reusable worker image selections authored only here; repository branch content
 # must never select an image. Selection precedence is process override ->

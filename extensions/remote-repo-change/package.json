@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/remote-repo-change",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/remote-repo-change"
+	},
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -29,9 +34,16 @@
 		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=22"
+	},
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

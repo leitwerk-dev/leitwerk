@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildKubernetesAdmissionPolicyManifests,
+	buildKubernetesDockerConfigJsonSecretManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesServerCaConfigMapManifest,
@@ -110,6 +111,29 @@ describe("Kubernetes manifest builders", () => {
 		);
 	});
 
+	it("builds a managed dockerconfigjson Secret containing no extra keys", () => {
+		const manifest = buildKubernetesDockerConfigJsonSecretManifest({
+			instanceId: "PROC_1",
+			namespace: "leitwerk-process-proc-1",
+			name: "private-registry",
+			dockerConfigJson: "encoded-config",
+		});
+
+		expect(manifest).toMatchObject({
+			metadata: {
+				name: "private-registry",
+				labels: {
+					"leitwerk.dev/managed-by": "leitwerk",
+					"leitwerk.dev/component": "image-pull-secret",
+					"leitwerk.dev/instance-id": "PROC_1",
+				},
+			},
+			type: "kubernetes.io/dockerconfigjson",
+			data: { ".dockerconfigjson": "encoded-config" },
+		});
+		expect(Object.keys(manifest.data)).toEqual([".dockerconfigjson"]);
+	});
+
 	it("builds a worker pod with env, volume mount, resources, pull secrets, and service account", () => {
 		const manifest = buildKubernetesWorkerPodManifest(startInput(), {
 			namespace: "leitwerk",
@@ -193,6 +217,7 @@ describe("Kubernetes manifest builders", () => {
 			serverServiceAccountName: "leitwerk-server",
 			processNamespacePrefix: "leitwerk-process-",
 			allowedWorkerServiceAccount: "leitwerk-worker",
+			allowedImagePullSecretNames: ["private-registry"],
 		});
 		const expressions = policy.spec.validations.map((validation) => validation.expression);
 
@@ -205,6 +230,7 @@ describe("Kubernetes manifest builders", () => {
 			"persistentvolumeclaims",
 			"serviceaccounts",
 			"configmaps",
+			"secrets",
 		]);
 		expect(expressions).toEqual(
 			expect.arrayContaining([
@@ -212,6 +238,9 @@ describe("Kubernetes manifest builders", () => {
 				expect.stringContaining("process-namespace"),
 				expect.stringContaining("process-volume"),
 				expect.stringContaining("server-ca"),
+				expect.stringContaining("private-registry"),
+				expect.stringContaining("image-pull-secret"),
+				expect.stringContaining(".dockerconfigjson"),
 				expect.stringContaining("worker-service-account"),
 				expect.stringContaining("leitwerk-worker"),
 				expect.stringContaining("leitwerk.dev/worker-id"),

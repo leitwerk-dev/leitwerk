@@ -33,3 +33,5 @@ leitwerk.yaml
 .impeccable
 .agents/
 .codex/
+.DS_Store
+.release-please-runtime-config.json

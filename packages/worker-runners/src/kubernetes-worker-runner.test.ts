@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { FakeKubernetesApiClient } from "./kubernetes-api-client.js";
 import {
+	buildKubernetesDockerConfigJsonSecretManifest,
 	KUBERNETES_WORKER_SERVER_CA_CERT_PATH,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
 	kubernetesProcessNamespaceName,
@@ -39,6 +40,43 @@ function startInput(overrides: Partial<StartWorkerInput>, volume: VolumeRef): St
 }
 
 describe("Kubernetes ProcessVolume", () => {
+	it("copies only dockerconfigjson registry data before provisioning a worker volume", async () => {
+		const client = new FakeKubernetesApiClient();
+		await client.ensureDockerConfigJsonSecret(
+			buildKubernetesDockerConfigJsonSecretManifest({
+				instanceId: "source",
+				namespace: "leitwerk-system",
+				name: "registry-source",
+				dockerConfigJson: "base64-docker-config",
+			}),
+		);
+		const { volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			serverNamespace: "leitwerk-system",
+			imagePullSecretCopies: [{ sourceName: "registry-source", targetName: "registry-target" }],
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+		});
+
+		await volume.ensure("proc-1");
+
+		expect(client.secrets.get("leitwerk-test-process-proc-1/registry-target")).toEqual({
+			apiVersion: "v1",
+			kind: "Secret",
+			metadata: {
+				name: "registry-target",
+				namespace: "leitwerk-test-process-proc-1",
+				labels: {
+					"leitwerk.dev/managed-by": "leitwerk",
+					"leitwerk.dev/component": "image-pull-secret",
+					"leitwerk.dev/instance-id": "proc-1",
+				},
+			},
+			type: "kubernetes.io/dockerconfigjson",
+			data: { ".dockerconfigjson": "base64-docker-config" },
+		});
+	});
+
 	it("retention releases only the process PVC", async () => {
 		const { client, volume } = bindRunner();
 

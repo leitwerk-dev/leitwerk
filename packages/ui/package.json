@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/ui",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/ui"
+	},
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
@@ -36,6 +41,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

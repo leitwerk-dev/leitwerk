@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { KubernetesApiClient } from "./kubernetes-api-client.js";
 import {
+	buildKubernetesDockerConfigJsonSecretManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesServerCaConfigMapManifest,
@@ -41,6 +42,10 @@ export interface KubernetesWorkerRunnerOptions {
 	volume: KubernetesProcessVolumeSpec;
 	/** Server-local CA bundle copied into each process namespace for worker TLS trust. */
 	serverCaFile?: string;
+	/** Namespace containing operator-managed source image-pull Secrets. */
+	serverNamespace?: string;
+	/** Docker registry Secrets copied into every process namespace. */
+	imagePullSecretCopies?: Array<{ sourceName: string; targetName: string }>;
 	pod?: Omit<KubernetesPodSpecOptions, "namespace">;
 }
 
@@ -60,6 +65,20 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				processNamespacePrefix: options.processNamespacePrefix,
 			});
 			await client.ensureNamespace(namespaceManifest);
+			for (const copy of options.imagePullSecretCopies ?? []) {
+				const dockerConfigJson = await client.getDockerConfigJsonSecret(
+					copy.sourceName,
+					options.serverNamespace ?? "leitwerk-system",
+				);
+				await client.ensureDockerConfigJsonSecret(
+					buildKubernetesDockerConfigJsonSecretManifest({
+						instanceId,
+						namespace: namespaceManifest.metadata.name,
+						name: copy.targetName,
+						dockerConfigJson,
+					}),
+				);
+			}
 			if (serverCaFile) {
 				await client.ensureConfigMap(
 					buildKubernetesServerCaConfigMapManifest({

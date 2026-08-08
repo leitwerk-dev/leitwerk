@@ -15,7 +15,7 @@ spec:
       - apiGroups: [""]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
-        resources: ["namespaces", "pods", "persistentvolumeclaims", "serviceaccounts", "configmaps"]
+        resources: ["namespaces", "pods", "persistentvolumeclaims", "serviceaccounts", "configmaps"{{- if .Values.kubernetes.imagePullSecretCopies }}, "secrets"{{- end }}]
   validations:
     - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.name.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}')"
       message: "leitwerk process namespaces must use the configured prefix"
@@ -35,6 +35,16 @@ spec:
       message: "leitwerk pods must carry worker component label"
     - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'ServiceAccount' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'worker-service-account'"
       message: "leitwerk worker ServiceAccounts must carry worker-service-account component label"
+    {{- if .Values.kubernetes.imagePullSecretCopies }}
+    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).metadata.name in [{{- range $index, $copy := .Values.kubernetes.imagePullSecretCopies }}{{ if $index }}, {{ end }}'{{ $copy.targetName }}'{{- end }}]"
+      message: "leitwerk image-pull Secrets must use a configured target name"
+    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'image-pull-secret'"
+      message: "leitwerk image-pull Secrets must carry image-pull-secret component label"
+    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).type == 'kubernetes.io/dockerconfigjson'"
+      message: "leitwerk image-pull Secrets must use dockerconfigjson type"
+    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || ((request.operation == 'DELETE' ? oldObject : object).data.size() == 1 && '.dockerconfigjson' in (request.operation == 'DELETE' ? oldObject : object).data)"
+      message: "leitwerk image-pull Secrets may contain only .dockerconfigjson"
+    {{- end }}
     - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).spec.serviceAccountName == '{{ include "leitwerk.workerServiceAccountName" . }}'"
       message: "leitwerk worker pods must use the configured worker ServiceAccount"
     - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || 'leitwerk.dev/instance-id' in (request.operation == 'DELETE' ? oldObject : object).metadata.labels"

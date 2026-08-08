@@ -8,6 +8,8 @@ This directory contains the Kubernetes packaging:
 - `Dockerfile.worker-specialized-smoke` extends the generic image with a deterministic tool used by the optional Kind process-level suite to validate specialized runtime-profile images.
 - `helm/leitwerk` is the Helm chart for the server Deployment, Service, PVC, RBAC, optional internal TLS Secret mount, and rendered leitwerk config.
 
+Published charts are available at `oci://ghcr.io/leitwerk-dev/charts/leitwerk` and as GitHub Release assets. The release workflow replaces the source defaults with digest-pinned server and generic-worker images before packaging the chart.
+
 Worker Pods, per-process worker ServiceAccounts, process PVCs, and per-process server-CA ConfigMaps are not Helm-managed. They are created dynamically by the server's Kubernetes runner and reconciled by the server lifecycle. For production internal TLS, set `internalTls.enabled=true`, provide a Secret containing the server cert/key and CA bundle, and let the chart render `kubernetes.server_ca_file`; the runner copies that CA into each process namespace for worker Pods.
 
 The chart can mount an operator-managed configuration Secret by setting
@@ -16,6 +18,15 @@ Use `server.credentialEncryption.existingSecret` and `.key` to provide the
 stable `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` without putting it in Helm values.
 An external Secret change does not alter the Deployment template; restart the
 server Deployment after applying it.
+
+Set `server.storage.existingClaim` to mount an operator-managed server PVC. The
+chart does not create or own a PVC when this value is set.
+
+For private worker images, configure `kubernetes.imagePullSecrets` and
+`kubernetes.imagePullSecretCopies`. The chart grants the server `get` only on
+the named source Secrets in its namespace and `create`/`patch` on managed target
+Secrets. Admission restricts targets to the configured names and process
+namespace prefix. Secret values are never Helm values.
 
 Set `gateway.enabled=true` to serve the revision-matched SPA through Caddy. An
 init container copies the UI from the server image, and the gateway proxies API,

@@ -47,3 +47,16 @@ For multiple existing commits, use an interactive rebase and add the
 sign-off to each commit.
 
 Pull requests without the required DCO sign-off may not be merged.
+
+## Pull request titles and releases
+
+Pull request titles use Conventional Commits syntax because GitHub uses the title for the squash commit:
+
+    feat(process-sdk): add a builder
+    fix(worker): reject a stale result
+    feat(protocol)!: remove a frame
+    docs: explain worker leases
+
+`feat` and `fix` contribute release notes. Add `!` or a `BREAKING CHANGE:` footer for a breaking change. `docs`, `test`, `ci`, `build`, and `chore` do not request a release by themselves.
+
+Merging an ordinary pull request never publishes. It updates the reviewable Release Please pull request. Maintainers publish by merging that generated pull request. See [docs/ci.md](docs/ci.md) for version rules and artifact coordinates.

@@ -2,6 +2,10 @@
 	"name": "leitwerk",
 	"version": "0.1.0",
 	"private": true,
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git"
+	},
 	"type": "module",
 	"packageManager": "npm@10.9.2",
 	"workspaces": [
@@ -48,9 +52,13 @@
 		"k8s:images:load": "bash scripts/k8s/load-images-kind.sh",
 		"k8s:helm:deploy:kind": "bash scripts/k8s/helm-deploy-kind.sh",
 		"test:k8s:local": "bash scripts/k8s/run-smoke.sh",
+		"test:chart": "vitest run --reporter agent --project unit packages/server/src/kubernetes-helm-chart.test.ts && vitest run --reporter agent --project integration packages/server/src/kubernetes-helm-chart.integration.test.ts",
+		"release:check": "node --import tsx scripts/release-contract.ts",
 		"publish:check": "node scripts/publish-workspaces.mjs check",
 		"publish:dry-run": "node scripts/publish-workspaces.mjs dry-run",
-		"publish:workspaces": "node scripts/publish-workspaces.mjs publish"
+		"publish:preflight": "node scripts/publish-workspaces.mjs preflight",
+		"publish:workspaces": "node scripts/publish-workspaces.mjs publish",
+		"publish:verify": "node scripts/publish-workspaces.mjs verify"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",

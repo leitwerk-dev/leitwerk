@@ -190,6 +190,16 @@ function buildConfigFromValues(values: JsonObject): JsonObject {
 				annotations: requiredRecord(pod.annotations, "kubernetes.pod.annotations"),
 			},
 			image_pull_secrets: requiredArray(kubernetes.imagePullSecrets, "kubernetes.imagePullSecrets"),
+			image_pull_secret_copies: requiredArray(
+				kubernetes.imagePullSecretCopies,
+				"kubernetes.imagePullSecretCopies",
+			).map((entry) => {
+				const copy = requiredRecord(entry, "kubernetes.imagePullSecretCopies[]");
+				return {
+					source_name: requiredString(copy.sourceName, "sourceName"),
+					target_name: requiredString(copy.targetName, "targetName"),
+				};
+			}),
 		},
 		worker_runtime_profiles: requiredRecord(values.workerRuntimeProfiles, "workerRuntimeProfiles"),
 		pi: {
@@ -225,9 +235,9 @@ describe("Kubernetes Helm chart values", () => {
 
 		expect(validateConfig(config)).toEqual([]);
 		expect(config.workers).toMatchObject({ runner: "kubernetes" });
-		expect(Object.keys(requiredRecord(config.worker_runtime_profiles, "profiles"))).toEqual(
-			expect.arrayContaining(["generic", "node22", "java21"]),
-		);
+		expect(requiredRecord(config.worker_runtime_profiles, "profiles")).toMatchObject({
+			generic: { image: "ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.1.0" },
+		});
 	});
 
 	it("keeps the Kind overlay self-contained for local image loading and worker profile selection", () => {

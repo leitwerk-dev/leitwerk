@@ -7,6 +7,8 @@ const globalState = globalThis as typeof globalThis & {
 	[GLOBAL_HOME_DIR_KEY]?: string;
 };
 
+process.env.LEITWERK_TEST_HOST_HOME ??= process.env.HOME;
+
 if (!globalState[GLOBAL_HOME_DIR_KEY]) {
 	// Keep the test Pi home isolated so Leitwerk's managed ~/.pi/leitwerk
 	// location stays away from a developer's real Pi config and extensions.

@@ -99,7 +99,7 @@ spec:
         {{- end }}
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "leitwerk.serverFullname" . }}
+            claimName: {{ default (include "leitwerk.serverFullname" .) .Values.server.storage.existingClaim | quote }}
       {{- with .Values.server.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

@@ -1,0 +1,190 @@
+{
+	"$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+	"bootstrap-sha": "0d650094f359c0c8686b5ec0928a607d44fcc866",
+	"release-type": "node",
+	"initial-version": "0.1.0",
+	"include-v-in-tag": true,
+	"include-component-in-tag": false,
+	"bump-minor-pre-major": true,
+	"bump-patch-for-minor-pre-major": true,
+	"always-link-local": true,
+	"always-update": true,
+	"separate-pull-requests": false,
+	"group-pull-request-title-pattern": "chore(release): release ${branch}",
+	"changelog-sections": [
+		{ "type": "feat", "section": "Features" },
+		{ "type": "fix", "section": "Bug Fixes" },
+		{ "type": "perf", "section": "Performance", "hidden": true },
+		{ "type": "refactor", "section": "Refactoring", "hidden": true },
+		{ "type": "docs", "section": "Documentation", "hidden": true },
+		{ "type": "test", "section": "Tests", "hidden": true },
+		{ "type": "build", "section": "Build", "hidden": true },
+		{ "type": "ci", "section": "Continuous Integration", "hidden": true },
+		{ "type": "chore", "section": "Chores", "hidden": true },
+		{ "type": "revert", "section": "Reverts", "hidden": true }
+	],
+	"plugins": [
+		{
+			"type": "node-workspace",
+			"merge": false,
+			"updatePeerDependencies": true
+		},
+		{
+			"type": "linked-versions",
+			"groupName": "leitwerk",
+			"merge": true,
+			"components": [
+				"leitwerk",
+				"@leitwerk-dev/domain",
+				"@leitwerk-dev/extension-runtime",
+				"@leitwerk-dev/external-writes",
+				"@leitwerk-dev/process-sdk",
+				"@leitwerk-dev/protocol",
+				"@leitwerk-dev/server",
+				"@leitwerk-dev/test-support",
+				"@leitwerk-dev/ui",
+				"@leitwerk-dev/watcher-utils",
+				"@leitwerk-dev/worker-protocol",
+				"@leitwerk-dev/worker-runners",
+				"@leitwerk-dev/worker",
+				"@leitwerk-dev/coding",
+				"@leitwerk-dev/git-ssh",
+				"@leitwerk-dev/local-repo-change",
+				"@leitwerk-dev/local-shell",
+				"@leitwerk-dev/models",
+				"@leitwerk-dev/pi-shell",
+				"@leitwerk-dev/process-analysis",
+				"@leitwerk-dev/remote-repo-change",
+				"@leitwerk-dev/showcase-processes",
+				"@leitwerk-dev/telegram"
+			]
+		}
+	],
+	"packages": {
+		".": {
+			"component": "leitwerk",
+			"package-name": "leitwerk",
+			"changelog-path": "CHANGELOG.md",
+			"extra-files": [
+				{
+					"type": "generic",
+					"path": "deploy/kubernetes/helm/leitwerk/Chart.yaml"
+				},
+				{
+					"type": "generic",
+					"path": "deploy/kubernetes/helm/leitwerk/values.yaml"
+				}
+			]
+		},
+		"packages/domain": {
+			"component": "@leitwerk-dev/domain",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/extension-runtime": {
+			"component": "@leitwerk-dev/extension-runtime",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/external-writes": {
+			"component": "@leitwerk-dev/external-writes",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/process-sdk": {
+			"component": "@leitwerk-dev/process-sdk",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/protocol": {
+			"component": "@leitwerk-dev/protocol",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/server": {
+			"component": "@leitwerk-dev/server",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/test-support": {
+			"component": "@leitwerk-dev/test-support",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/ui": {
+			"component": "@leitwerk-dev/ui",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/watcher-utils": {
+			"component": "@leitwerk-dev/watcher-utils",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/worker-protocol": {
+			"component": "@leitwerk-dev/worker-protocol",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/worker-runners": {
+			"component": "@leitwerk-dev/worker-runners",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/worker": {
+			"component": "@leitwerk-dev/worker",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/coding": {
+			"component": "@leitwerk-dev/coding",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/git-ssh": {
+			"component": "@leitwerk-dev/git-ssh",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/local-repo-change": {
+			"component": "@leitwerk-dev/local-repo-change",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/local-shell": {
+			"component": "@leitwerk-dev/local-shell",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/models": {
+			"component": "@leitwerk-dev/models",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/pi-shell": {
+			"component": "@leitwerk-dev/pi-shell",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/process-analysis": {
+			"component": "@leitwerk-dev/process-analysis",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/remote-repo-change": {
+			"component": "@leitwerk-dev/remote-repo-change",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/showcase-processes": {
+			"component": "@leitwerk-dev/showcase-processes",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/telegram": {
+			"component": "@leitwerk-dev/telegram",
+			"skip-github-release": true,
+			"skip-changelog": true
+		}
+	}
+}

@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/process-sdk",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/process-sdk"
+	},
 	"type": "module",
 	"exports": {
 		".": {
@@ -61,6 +66,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

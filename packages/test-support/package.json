@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/test-support",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/test-support"
+	},
 	"type": "module",
 	"exports": {
 		".": {
@@ -55,6 +60,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

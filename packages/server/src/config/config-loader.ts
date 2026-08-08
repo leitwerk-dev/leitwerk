@@ -395,6 +395,14 @@ const configSchema = v.looseObject({
 				}),
 			),
 			image_pull_secrets: v.optional(stringArraySchema),
+			image_pull_secret_copies: v.optional(
+				v.array(
+					v.strictObject({
+						source_name: v.pipe(v.string(), v.nonEmpty()),
+						target_name: v.pipe(v.string(), v.nonEmpty()),
+					}),
+				),
+			),
 		}),
 	),
 	worker_runtime_profiles: v.optional(
@@ -1094,6 +1102,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 			},
 			pod: { node_selector: {}, tolerations: [], annotations: {} },
 			image_pull_secrets: [],
+			image_pull_secret_copies: [],
 		},
 		worker_runtime_profiles: {
 			generic: { image: "ghcr.io/example/leitwerk-worker-generic:0.1.0" },

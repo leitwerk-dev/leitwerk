@@ -9,6 +9,7 @@ import type {
 } from "./kubernetes-api-client.js";
 import {
 	type KubernetesConfigMapManifest,
+	type KubernetesDockerConfigJsonSecretManifest,
 	type KubernetesPersistentVolumeClaimManifest,
 	type KubernetesPodManifest,
 	type KubernetesProcessNamespaceManifest,
@@ -50,6 +51,8 @@ interface KubernetesObjectResponse {
 			};
 		}>;
 	};
+	type?: string;
+	data?: Record<string, string>;
 }
 
 export interface KubernetesHttpApiClientOptions {
@@ -258,6 +261,52 @@ export function createKubernetesHttpApiClient(options: {
 				patchPath: `/api/v1/namespaces/${namespace}/configmaps/${name}`,
 				patchBody: { metadata: { labels: manifest.metadata.labels }, data: manifest.data },
 			});
+		},
+		async getDockerConfigJsonSecret(name: string, namespace: string): Promise<string> {
+			const result = await request<KubernetesObjectResponse>({
+				method: "GET",
+				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets/${encodeURIComponent(name)}`,
+				ok: [200, 404],
+			});
+			if (result.status === 404) {
+				throw new Error(`Kubernetes image-pull Secret ${namespace}/${name} was not found`);
+			}
+			if (result.body?.type !== "kubernetes.io/dockerconfigjson") {
+				throw new Error(
+					`Kubernetes image-pull Secret ${namespace}/${name} must have type kubernetes.io/dockerconfigjson`,
+				);
+			}
+			const dockerConfigJson = result.body.data?.[".dockerconfigjson"];
+			if (!dockerConfigJson) {
+				throw new Error(
+					`Kubernetes image-pull Secret ${namespace}/${name} is missing .dockerconfigjson`,
+				);
+			}
+			return dockerConfigJson;
+		},
+		async ensureDockerConfigJsonSecret(
+			manifest: KubernetesDockerConfigJsonSecretManifest,
+		): Promise<void> {
+			const namespace = encodeURIComponent(manifest.metadata.namespace);
+			const name = encodeURIComponent(manifest.metadata.name);
+			const created = await request({
+				method: "POST",
+				path: `/api/v1/namespaces/${namespace}/secrets`,
+				body: manifest,
+				ok: [201, 409],
+			});
+			if (created.status === 409) {
+				await request({
+					method: "PATCH",
+					path: `/api/v1/namespaces/${namespace}/secrets/${name}`,
+					contentType: "application/merge-patch+json",
+					body: {
+						metadata: { labels: manifest.metadata.labels },
+						type: manifest.type,
+						data: manifest.data,
+					},
+				});
+			}
 		},
 		async ensurePersistentVolumeClaim(
 			manifest: KubernetesPersistentVolumeClaimManifest,
