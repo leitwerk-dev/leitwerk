@@ -75,8 +75,20 @@ export function validateReleaseRegistration(
 	if (nodeWorkspace?.updatePeerDependencies !== true) {
 		errors.push("node-workspace must update exact internal peer dependencies");
 	}
+	if (nodeWorkspace?.updateAllPackages !== true) {
+		errors.push("node-workspace must force every package into each lockstep release");
+	}
 	if (!linkedVersions || linkedVersions.merge !== true) {
 		errors.push("linked-versions must merge the lockstep release group");
+	}
+	if (releaseConfig["include-component-in-tag"] !== true) {
+		errors.push("component tags must remain enabled so linked-versions can discover the group");
+	}
+	if (releaseConfig["include-v-in-tag"] !== false || releaseConfig["tag-separator"] !== "") {
+		errors.push("release tag formatting must preserve the public vX.Y.Z coordinate");
+	}
+	if (asRecord(packages["."]).component !== "v") {
+		errors.push("root release component must format as the public vX.Y.Z tag");
 	}
 
 	const components = new Set(

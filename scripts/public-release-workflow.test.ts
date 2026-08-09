@@ -38,12 +38,14 @@ describe("Release Please workflow", () => {
 		});
 		expect(dispatch).toMatchObject({
 			needs: "release-please",
-			permissions: { actions: "write" },
+			permissions: { actions: "write", contents: "write" },
 		});
 		expect(dispatchSteps.map((step) => step.name)).toEqual([
+			"Normalize the GitHub Release title",
 			"Dispatch the trusted publication workflow",
 		]);
 		expect(text).toContain("needs.release-please.outputs.release_created == 'true'");
+		expect(text).toContain('gh release edit "$RELEASE_TAG"');
 		expect(text).toContain("gh workflow run publish.yml");
 		expect(text).toContain('--raw-field release_tag="$RELEASE_TAG"');
 		expect(text).not.toContain("RELEASE_PLEASE_APP_ID");
