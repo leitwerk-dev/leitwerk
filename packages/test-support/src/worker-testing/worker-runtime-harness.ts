@@ -93,6 +93,7 @@ export interface WorkerRuntimeHarnessOptions {
 				WorkerRuntimeAdapters,
 				| "sessionSnapshots"
 				| "resultImageTools"
+				| "sampleCredentials"
 				| "resolveWorkerProcess"
 				| "stderr"
 				| "extensionEvents"
@@ -195,6 +196,7 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			resultImageTools: options.adapters.resultImageTools ?? { create: () => null },
 			piFactory: options.adapters.piFactory,
 			gitOps: options.adapters.gitOps,
+			sampleCredentials: options.adapters.sampleCredentials,
 			resolveWorkerProcess: options.adapters.resolveWorkerProcess,
 			stderr: options.adapters.stderr,
 			extensionEvents,
