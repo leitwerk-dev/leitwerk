@@ -3,8 +3,9 @@
 	"bootstrap-sha": "0d650094f359c0c8686b5ec0928a607d44fcc866",
 	"release-type": "node",
 	"initial-version": "0.1.0",
-	"include-v-in-tag": true,
-	"include-component-in-tag": false,
+	"include-v-in-tag": false,
+	"include-component-in-tag": true,
+	"tag-separator": "",
 	"bump-minor-pre-major": true,
 	"bump-patch-for-minor-pre-major": true,
 	"always-link-local": true,
@@ -28,6 +29,7 @@
 		{
 			"type": "node-workspace",
 			"merge": false,
+			"updateAllPackages": true,
 			"updatePeerDependencies": true
 		},
 		{
@@ -35,7 +37,7 @@
 			"groupName": "leitwerk",
 			"merge": true,
 			"components": [
-				"leitwerk",
+				"v",
 				"@leitwerk-dev/domain",
 				"@leitwerk-dev/extension-runtime",
 				"@leitwerk-dev/external-writes",
@@ -63,7 +65,7 @@
 	],
 	"packages": {
 		".": {
-			"component": "leitwerk",
+			"component": "v",
 			"package-name": "leitwerk",
 			"changelog-path": "CHANGELOG.md",
 			"extra-files": [

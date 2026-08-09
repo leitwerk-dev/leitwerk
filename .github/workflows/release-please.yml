@@ -40,7 +40,16 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: write
+      contents: write
     steps:
+      - name: Normalize the GitHub Release title
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: >-
+          gh release edit "$RELEASE_TAG"
+          --repo "$GITHUB_REPOSITORY"
+          --title "$RELEASE_TAG"
       - name: Dispatch the trusted publication workflow
         env:
           GH_TOKEN: ${{ github.token }}
