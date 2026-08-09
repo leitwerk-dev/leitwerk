@@ -75,9 +75,10 @@ export default defineConfig({
 					name: "unit",
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
-					// Several unit suites bundle temporary Pi resources. Unbounded workers can
-					// starve their 5s budgets and fake-timer tests on high-core-count hosts.
-					maxWorkers: 4,
+					// Several unit suites bundle temporary Pi resources. More than two workers
+					// starve their 5s budgets on shared CI runners even when the same tests take
+					// only milliseconds in isolation.
+					maxWorkers: 2,
 					include: [
 						"packages/*/src/**/*.test.ts",
 						"extensions/*/src/**/*.test.ts",
