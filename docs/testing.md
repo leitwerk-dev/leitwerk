@@ -19,6 +19,10 @@ npm run test
 npm run build
 ```
 
+The full gate reports the duration of every validation phase. In GitHub Actions it also
+writes the timing table to the job summary. Use those measurements before parallelizing or
+removing a validation phase.
+
 A development composition applies the same gate to its external packages, extensions, and test roots:
 
 ```bash
