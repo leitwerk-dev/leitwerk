@@ -231,12 +231,16 @@ function buildConfigFromValues(values: JsonObject): JsonObject {
 describe("Kubernetes Helm chart values", () => {
 	it("render an leitwerk config shape that passes Kubernetes-mode validation", () => {
 		const values = readYaml(`${chartRoot}/values.yaml`);
+		const rootPackage = readYaml(`${repoRoot}/package.json`);
+		const releaseVersion = requiredString(rootPackage.version, "package.json version");
 		const config = buildConfigFromValues(values);
 
 		expect(validateConfig(config)).toEqual([]);
 		expect(config.workers).toMatchObject({ runner: "kubernetes" });
 		expect(requiredRecord(config.worker_runtime_profiles, "profiles")).toMatchObject({
-			generic: { image: "ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.1.0" },
+			generic: {
+				image: `ghcr.io/leitwerk-dev/leitwerk-worker-generic:${releaseVersion}`,
+			},
 		});
 	});
 
