@@ -477,10 +477,12 @@ describe("worker runtime harness", () => {
 
 	it("waits for accepted-start activation before cleanup", async () => {
 		const activation = deferred();
+		const activationStarted = deferred();
 		class BlockedActivationFactory extends StubPiTreeHandleFactory {
 			override async createPrimaryTreeHandle(
 				options: Parameters<StubPiTreeHandleFactory["createPrimaryTreeHandle"]>[0],
 			) {
+				activationStarted.resolve();
 				await activation.promise;
 				return super.createPrimaryTreeHandle(options);
 			}
@@ -491,6 +493,7 @@ describe("worker runtime harness", () => {
 		await harness.start();
 		await harness.waitForMessage("worker.ready");
 		await harness.acceptStart();
+		await activationStarted.promise;
 		const stop = harness.stop("stop_during_activation");
 		await harness.flush();
 		expect(types(harness)).not.toContain("worker.cleanup_started");
@@ -895,7 +898,9 @@ describe("worker runtime harness", () => {
 			accepted: true,
 			currentRevision: 2,
 		});
+		await harness.flush();
 		writeFileSync(authFile, '{"openai":{"key":"replacement-two"}}\n');
+		await harness.scheduler.advanceBy(500);
 		const second = await harness.waitForMessage("worker.credential_update", 2);
 		expect(second.payload.expectedRevision).toBe(2);
 		harness.deliver("worker.credential_update_accepted", {
