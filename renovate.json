@@ -1,0 +1,75 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:best-practices", ":gitSignOff"],
+	"timezone": "Europe/Berlin",
+	"dependencyDashboard": true,
+	"semanticCommits": "enabled",
+	"prCreation": "not-pending",
+	"internalChecksFilter": "strict",
+	"lockFileMaintenance": {
+		"enabled": true,
+		"schedule": ["before 5am on monday"],
+		"automerge": true,
+		"automergeType": "pr",
+		"platformAutomerge": true,
+		"minimumReleaseAge": "7 days",
+		"semanticCommitType": "chore",
+		"semanticCommitScope": "deps"
+	},
+	"vulnerabilityAlerts": {
+		"enabled": true,
+		"prCreation": "immediate",
+		"schedule": [],
+		"minimumReleaseAge": null,
+		"labels": ["security"]
+	},
+	"major": {
+		"dependencyDashboardApproval": true,
+		"automerge": false
+	},
+	"packageRules": [
+		{
+			"description": "Release Please owns internal workspace and published image versions",
+			"matchPackageNames": ["@leitwerk-dev/**", "ghcr.io/leitwerk-dev/leitwerk-**"],
+			"enabled": false
+		},
+		{
+			"description": "Group runtime npm dependencies as patch-producing changes",
+			"matchManagers": ["npm"],
+			"matchDepTypes": ["dependencies", "optionalDependencies", "peerDependencies"],
+			"groupName": "runtime npm dependencies",
+			"semanticCommitType": "fix",
+			"semanticCommitScope": "deps"
+		},
+		{
+			"description": "Group development tooling without producing a release",
+			"matchManagers": ["npm", "pip_requirements"],
+			"matchDepTypes": ["devDependencies"],
+			"groupName": "development tooling",
+			"semanticCommitType": "chore",
+			"semanticCommitScope": "deps"
+		},
+		{
+			"description": "Group GitHub Actions without producing a release",
+			"matchManagers": ["github-actions"],
+			"groupName": "CI actions",
+			"semanticCommitType": "ci",
+			"semanticCommitScope": "deps"
+		},
+		{
+			"description": "Group container and Helm dependencies as patch-producing changes",
+			"matchManagers": ["dockerfile", "docker-compose", "helm-values", "helmv3"],
+			"groupName": "container and Helm dependencies",
+			"semanticCommitType": "fix",
+			"semanticCommitScope": "deps"
+		},
+		{
+			"description": "Automerge stable non-major updates after seven days and required checks",
+			"matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
+			"minimumReleaseAge": "7 days",
+			"automerge": true,
+			"automergeType": "pr",
+			"platformAutomerge": true
+		}
+	]
+}

@@ -77,6 +77,11 @@ data:
           {{- toYaml .Values.kubernetes.pod.annotations | nindent 10 }}
       image_pull_secrets:
         {{- toYaml .Values.kubernetes.imagePullSecrets | nindent 8 }}
+      image_pull_secret_copies:{{ if not .Values.kubernetes.imagePullSecretCopies }} []{{ end }}
+        {{- range .Values.kubernetes.imagePullSecretCopies }}
+        - source_name: {{ .sourceName | quote }}
+          target_name: {{ .targetName | quote }}
+        {{- end }}
 
     worker_runtime_profiles:
       {{- toYaml .Values.workerRuntimeProfiles | nindent 6 }}

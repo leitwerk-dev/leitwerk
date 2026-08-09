@@ -212,6 +212,11 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 					: {}),
 			},
 			serverCaFile: input.config.kubernetes?.server_ca_file,
+			serverNamespace: input.config.kubernetes?.server_namespace ?? "leitwerk-system",
+			imagePullSecretCopies: input.config.kubernetes?.image_pull_secret_copies?.map((copy) => ({
+				sourceName: copy.source_name,
+				targetName: copy.target_name,
+			})),
 			pod: {
 				workerServiceAccount: input.config.kubernetes?.worker_service_account,
 				imagePullSecrets: input.config.kubernetes?.image_pull_secrets,

@@ -33,6 +33,7 @@ type Scheduled = {
 
 export interface ManualWorkerRuntimeScheduler extends WorkerRuntimeScheduler {
 	advanceBy(delayMs: number): Promise<void>;
+	pendingDelays(): number[];
 }
 
 export function createManualWorkerRuntimeScheduler(
@@ -59,6 +60,11 @@ export function createManualWorkerRuntimeScheduler(
 		sleep: (delayMs) => new Promise((resolve) => schedule(resolve, delayMs)),
 		now() {
 			return new Date(nowMs);
+		},
+		pendingDelays() {
+			return [...scheduled.values()]
+				.map((item) => item.dueAt - nowMs)
+				.sort((left, right) => left - right);
 		},
 		async advanceBy(delayMs) {
 			const target = nowMs + delayMs;
@@ -87,6 +93,7 @@ export interface WorkerRuntimeHarnessOptions {
 				WorkerRuntimeAdapters,
 				| "sessionSnapshots"
 				| "resultImageTools"
+				| "sampleCredentials"
 				| "resolveWorkerProcess"
 				| "stderr"
 				| "extensionEvents"
@@ -189,6 +196,7 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			resultImageTools: options.adapters.resultImageTools ?? { create: () => null },
 			piFactory: options.adapters.piFactory,
 			gitOps: options.adapters.gitOps,
+			sampleCredentials: options.adapters.sampleCredentials,
 			resolveWorkerProcess: options.adapters.resolveWorkerProcess,
 			stderr: options.adapters.stderr,
 			extensionEvents,

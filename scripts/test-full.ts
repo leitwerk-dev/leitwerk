@@ -10,6 +10,7 @@ const phases = [
 	"test:server-start",
 	"test:default-worker",
 	"check:boundaries",
+	"release:check",
 	"typecheck",
 	"test:parity:built",
 	"test:unit",

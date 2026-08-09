@@ -22,8 +22,8 @@ server:
     existingSecret: ""
     key: LEITWERK_CREDENTIAL_ENCRYPTION_KEY
   image:
-    repository: ghcr.io/example/leitwerk-server
-    tag: "0.1.0"
+    repository: ghcr.io/leitwerk-dev/leitwerk-server
+    tag: "0.1.0" # x-release-please-version
     digest: ""
     pullPolicy: IfNotPresent
   service:
@@ -49,6 +49,8 @@ server:
   tolerations: []
   affinity: {}
   storage:
+    # Mount an operator-managed PVC and skip chart PVC creation when set.
+    existingClaim: ""
     size: 10Gi
     storageClassName: ""
     accessModes:
@@ -85,7 +87,7 @@ gateway:
   image:
     repository: caddy
     tag: 2.10.2-alpine
-    digest: ""
+    digest: sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
     pullPolicy: IfNotPresent
   service:
     type: ClusterIP
@@ -149,24 +151,15 @@ kubernetes:
     tolerations: []
     annotations: {}
   imagePullSecrets: []
+  # Non-secret copy names used to render runtime config, source-namespace RBAC,
+  # and admission constraints. Source Secrets must be dockerconfigjson Secrets.
+  imagePullSecretCopies: []
+  # - sourceName: private-registry-pull
+  #   targetName: private-registry-pull
 
 workerRuntimeProfiles:
   generic:
-    image: ghcr.io/example/leitwerk-worker-generic:0.1.0
-    image_pull_policy: IfNotPresent
-    resources:
-      limits:
-        cpu: "4"
-        memory: 8Gi
-  node22:
-    image: ghcr.io/example/leitwerk-worker-node22:0.1.0
-    image_pull_policy: IfNotPresent
-    resources:
-      limits:
-        cpu: "4"
-        memory: 8Gi
-  java21:
-    image: ghcr.io/example/leitwerk-worker-java21:0.1.0
+    image: ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.1.0 # x-release-please-version
     image_pull_policy: IfNotPresent
     resources:
       limits:

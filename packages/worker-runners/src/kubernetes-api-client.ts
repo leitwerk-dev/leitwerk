@@ -1,5 +1,6 @@
 import {
 	type KubernetesConfigMapManifest,
+	type KubernetesDockerConfigJsonSecretManifest,
 	type KubernetesPersistentVolumeClaimManifest,
 	type KubernetesPodEventSummary,
 	type KubernetesPodManifest,
@@ -30,6 +31,8 @@ export interface KubernetesApiClient {
 		labels: Record<string, string>,
 	): Promise<void>;
 	ensureConfigMap(manifest: KubernetesConfigMapManifest): Promise<void>;
+	getDockerConfigJsonSecret(name: string, namespace: string): Promise<string>;
+	ensureDockerConfigJsonSecret(manifest: KubernetesDockerConfigJsonSecretManifest): Promise<void>;
 	ensurePersistentVolumeClaim(manifest: KubernetesPersistentVolumeClaimManifest): Promise<void>;
 	deletePersistentVolumeClaim(name: string, namespace: string): Promise<void>;
 	createPod(manifest: KubernetesPodManifest): Promise<void>;
@@ -50,6 +53,7 @@ function labelsMatch(actual: Record<string, string>, selector: Record<string, st
 export class FakeKubernetesApiClient implements KubernetesApiClient {
 	readonly namespaces = new Map<string, KubernetesProcessNamespaceManifest>();
 	readonly configMaps = new Map<string, KubernetesConfigMapManifest>();
+	readonly secrets = new Map<string, KubernetesDockerConfigJsonSecretManifest>();
 	readonly pvcs = new Map<string, KubernetesPersistentVolumeClaimManifest>();
 	readonly pods = new Map<string, KubernetesPodManifest & { phase?: string }>();
 	readonly deletedNamespaces: string[] = [];
@@ -65,7 +69,7 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 	async deleteNamespace(name: string): Promise<void> {
 		this.deletedNamespaces.push(name);
 		this.namespaces.delete(name);
-		for (const resources of [this.configMaps, this.pvcs, this.pods]) {
+		for (const resources of [this.configMaps, this.secrets, this.pvcs, this.pods]) {
 			for (const resourceKey of resources.keys()) {
 				if (resourceKey.startsWith(`${name}/`)) resources.delete(resourceKey);
 			}
@@ -94,6 +98,21 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 
 	async ensureConfigMap(manifest: KubernetesConfigMapManifest): Promise<void> {
 		this.configMaps.set(
+			key(manifest.metadata.namespace, manifest.metadata.name),
+			structuredClone(manifest),
+		);
+	}
+
+	async getDockerConfigJsonSecret(name: string, namespace: string): Promise<string> {
+		const secret = this.secrets.get(key(namespace, name));
+		if (!secret) throw new Error(`Kubernetes image-pull Secret ${namespace}/${name} was not found`);
+		return secret.data[".dockerconfigjson"];
+	}
+
+	async ensureDockerConfigJsonSecret(
+		manifest: KubernetesDockerConfigJsonSecretManifest,
+	): Promise<void> {
+		this.secrets.set(
 			key(manifest.metadata.namespace, manifest.metadata.name),
 			structuredClone(manifest),
 		);

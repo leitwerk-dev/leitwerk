@@ -19,6 +19,7 @@ export const WORKER_LABEL_COMPONENT_VALUE = "worker";
 export const PROCESS_NAMESPACE_COMPONENT_VALUE = "process-namespace";
 export const PROCESS_VOLUME_COMPONENT_VALUE = "process-volume";
 export const PROCESS_SERVER_CA_COMPONENT_VALUE = "server-ca";
+export const PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE = "image-pull-secret";
 
 export interface WorkerUnitIdentity {
 	instanceId: string;
@@ -55,7 +56,8 @@ export function buildProcessResourceLabels(
 		component:
 			| typeof PROCESS_NAMESPACE_COMPONENT_VALUE
 			| typeof PROCESS_VOLUME_COMPONENT_VALUE
-			| typeof PROCESS_SERVER_CA_COMPONENT_VALUE;
+			| typeof PROCESS_SERVER_CA_COMPONENT_VALUE
+			| typeof PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE;
 	},
 	extra: Record<string, string> = {},
 ): Record<string, string> {

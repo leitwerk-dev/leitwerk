@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/server",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/server"
+	},
 	"type": "module",
 	"exports": {
 		".": {
@@ -60,6 +65,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

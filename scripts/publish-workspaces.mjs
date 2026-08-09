@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -9,9 +9,10 @@ const DEPENDENCY_FIELDS = [
 	"peerDependencies",
 	"optionalDependencies",
 ];
-const REQUIRED_FILE_PATTERNS = ["dist/**", "src/**", "!src/**/*.test.ts"];
+const REQUIRED_FILE_PATTERNS = ["dist/**", "src/**", "!dist/**/*.test.*", "!src/**/*.test.ts"];
+const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
 const STAGED_LICENSE_PATH = "./dist/LICENSE";
-const VALID_MODES = new Set(["check", "dry-run", "publish"]);
+const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
 
 main();
 
@@ -33,7 +34,7 @@ function main() {
 	const workspaceNames = new Set(workspaces.map((workspace) => workspace.name));
 	const errors = validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames });
 
-	if (mode === "publish") {
+	if (mode === "preflight" || mode === "publish" || mode === "verify") {
 		errors.push(...validatePublishRef(rootVersion));
 	}
 	if (errors.length > 0) {
@@ -49,12 +50,30 @@ function main() {
 		console.info(`[publish:dry-run] OK (${workspaces.length} workspaces)`);
 		return;
 	}
-	if (process.env.CI && !process.env.NODE_AUTH_TOKEN) {
-		fail("[publish:workspaces] NODE_AUTH_TOKEN is required in CI for npm publish.");
+	const expectedGitSha = readExpectedGitSha(rootDir);
+	if (mode === "preflight") {
+		const alreadyPublished = findPublishedWorkspaces(workspaces, expectedGitSha);
+		console.info(
+			`[publish:preflight] OK (${workspaces.length - alreadyPublished.size} unpublished, ${alreadyPublished.size} already published)`,
+		);
+		return;
 	}
-	rejectAlreadyPublishedVersions(workspaces);
-	publishWorkspaces(rootDir, workspaces);
-	console.info(`[publish:workspaces] Published ${workspaces.length} workspaces`);
+	if (mode === "verify") {
+		const published = findPublishedWorkspaces(workspaces, expectedGitSha);
+		if (published.size !== workspaces.length) {
+			fail(
+				`[publish:verify] ${workspaces.length - published.size} workspace versions are not public`,
+			);
+		}
+		console.info(`[publish:verify] OK (${published.size} workspaces)`);
+		return;
+	}
+	const alreadyPublished = findPublishedWorkspaces(workspaces, expectedGitSha);
+	const unpublished = workspaces.filter((workspace) => !alreadyPublished.has(workspace.name));
+	publishWorkspaces(rootDir, unpublished);
+	console.info(
+		`[publish:workspaces] Complete (${unpublished.length} published, ${alreadyPublished.size} already published)`,
+	);
 }
 
 function fail(header, errors = [], exitCode = 1) {
@@ -117,7 +136,15 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 			],
 			[packageJson.license === "Apache-2.0", "license must be Apache-2.0"],
 			[packageJson.publishConfig?.access === "public", "publishConfig.access must be public"],
-			[packageJson.engines?.node === ">=22", "engines.node must be >=22"],
+			[packageJson.repository?.url === REPOSITORY_URL, `repository.url must be ${REPOSITORY_URL}`],
+			[
+				packageJson.repository?.directory === relative(rootDir, dir),
+				`repository.directory must be ${relative(rootDir, dir)}`,
+			],
+			[
+				isSupportedNodeRange(packageJson.engines?.node),
+				"engines.node must declare an explicit >=22 minimum",
+			],
 		]) {
 			if (!ok) {
 				errors.push(`${label}: ${message}`);
@@ -153,20 +180,22 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 			);
 		}
 
-		for (const targetPath of workspace.requiredFiles) {
-			const absoluteTargetPath = path.join(dir, targetPath);
-			if (!existsSync(absoluteTargetPath)) {
+		for (const targetPattern of workspace.requiredFiles) {
+			const targetPaths = expandPackagePattern(dir, targetPattern);
+			if (targetPaths.length === 0) {
 				errors.push(
-					`${label}: required package path ${targetPath} is missing; run npm run parity:build`,
+					`${label}: required package path ${targetPattern} is missing; run npm run parity:build`,
 				);
 				continue;
 			}
-			if (
-				targetPath === STAGED_LICENSE_PATH &&
-				rootLicenseText !== null &&
-				readFileSync(absoluteTargetPath, "utf8") !== rootLicenseText
-			) {
-				errors.push(`${label}: ${STAGED_LICENSE_PATH} must match the root LICENSE`);
+			for (const targetPath of targetPaths) {
+				if (
+					targetPath === STAGED_LICENSE_PATH &&
+					rootLicenseText !== null &&
+					readFileSync(path.join(dir, targetPath), "utf8") !== rootLicenseText
+				) {
+					errors.push(`${label}: ${STAGED_LICENSE_PATH} must match the root LICENSE`);
+				}
 			}
 		}
 
@@ -219,6 +248,20 @@ function requiredPackageFiles(packageJson) {
 		.sort((left, right) => left.localeCompare(right));
 }
 
+function expandPackagePattern(dir, filePattern) {
+	if (!/[?*[]/u.test(filePattern)) {
+		return existsSync(path.join(dir, filePattern)) ? [filePattern] : [];
+	}
+	return globSync(filePattern.slice(2), { cwd: dir })
+		.filter((filePath) => !/(^|\/)[^/]+\.test\./u.test(filePath))
+		.map((filePath) => `./${filePath}`)
+		.sort((left, right) => left.localeCompare(right));
+}
+
+function isSupportedNodeRange(range) {
+	return typeof range === "string" && /^>=\s*22(?:\.\d+(?:\.\d+)?)?(?:\s|$)/u.test(range);
+}
+
 function collectPackagePaths(value) {
 	if (typeof value === "string") {
 		return value.startsWith("./") ? [value] : [];
@@ -249,18 +292,20 @@ function runPackDryRun(rootDir, workspaces) {
 	for (const workspace of workspaces) {
 		const packument = packumentsByName.get(workspace.name);
 		const filePaths = new Set((packument?.files ?? []).map((file) => file.path));
-		const requiredFiles = ["package.json", STAGED_LICENSE_PATH.slice(2)];
+		const requiredFiles = [
+			"package.json",
+			STAGED_LICENSE_PATH.slice(2),
+			...workspace.requiredFiles.flatMap((filePattern) =>
+				expandPackagePattern(workspace.dir, filePattern).map((filePath) => filePath.slice(2)),
+			),
+		];
 		const errors = [
 			...(packument ? [] : [`${workspace.name}: npm pack did not return a workspace packument`]),
 			...requiredFiles
 				.filter((filePath) => !filePaths.has(filePath))
 				.map((filePath) => `${workspace.name}: npm pack did not include ${filePath}`),
-			...workspace.requiredFiles
-				.map((filePath) => filePath.slice(2))
-				.filter((filePath) => !filePaths.has(filePath))
-				.map((filePath) => `${workspace.name}: npm pack did not include required file ${filePath}`),
 			...[...filePaths]
-				.filter((filePath) => /(^|\/)(tests\/|src\/.*\.test\.ts$)/u.test(filePath))
+				.filter((filePath) => /(^|\/)(tests\/|[^/]+\.test\.)/u.test(filePath))
 				.sort((left, right) => left.localeCompare(right))
 				.map((filePath) => `${workspace.name}: npm pack unexpectedly included ${filePath}`),
 		];
@@ -271,12 +316,26 @@ function runPackDryRun(rootDir, workspaces) {
 	}
 }
 
-function rejectAlreadyPublishedVersions(workspaces) {
+function findPublishedWorkspaces(workspaces, expectedGitSha) {
+	const published = new Set();
 	for (const workspace of workspaces) {
 		const spec = `${workspace.name}@${workspace.packageJson.version}`;
-		const result = runNpm(["view", spec, "version", "--json"], { allowFailure: true });
+		const result = runNpm(["view", spec, "version", "gitHead", "--json"], {
+			allowFailure: true,
+		});
 		if (result.status === 0) {
-			fail(`${spec} already exists on npm; refusing to publish over an immutable version.`);
+			const metadata = JSON.parse(result.stdout);
+			if (metadata.version !== workspace.packageJson.version) {
+				fail(`${spec} returned an unexpected version from npm.`);
+			}
+			if (metadata.gitHead !== expectedGitSha) {
+				fail(
+					`${spec} already exists for Git revision ${metadata.gitHead ?? "<missing>"}; expected ${expectedGitSha}.`,
+				);
+			}
+			console.info(`[publish:preflight] ${spec} already exists; it will not be republished`);
+			published.add(workspace.name);
+			continue;
 		}
 		if (!String(result.stderr).includes("E404") && !String(result.stderr).includes("404")) {
 			writeOutput(result.stdout);
@@ -284,14 +343,29 @@ function rejectAlreadyPublishedVersions(workspaces) {
 			fail(`Could not verify whether ${spec} exists on npm.`, [], result.status ?? 1);
 		}
 	}
+	return published;
+}
+
+function readExpectedGitSha(rootDir) {
+	const configured = process.env.RELEASE_GIT_SHA;
+	if (configured) {
+		if (!/^[a-f0-9]{40}$/u.test(configured)) fail(`RELEASE_GIT_SHA is invalid: ${configured}`);
+		return configured;
+	}
+	const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd: rootDir, encoding: "utf8" });
+	if (result.status !== 0) fail("Could not resolve the release Git revision.");
+	return result.stdout.trim();
 }
 
 function publishWorkspaces(rootDir, workspaces) {
-	const args = ["publish", "--workspaces", "--access", "public"];
-	if (process.env.GITHUB_ACTIONS === "true" && process.env.NPM_PUBLISH_PROVENANCE !== "false") {
-		args.push("--provenance");
+	if (workspaces.length === 0) {
+		return;
 	}
-	console.info(`[publish:workspaces] npm ${args.join(" ")} (${workspaces.length} workspaces)`);
+	const workspaceArgs = workspaces.flatMap((workspace) => ["--workspace", workspace.name]);
+	const args = ["publish", ...workspaceArgs, "--access", "public"];
+	console.info(
+		`[publish:workspaces] publishing ${workspaces.length} workspaces in one npm session`,
+	);
 	runNpm(args, { cwd: rootDir, stdio: "inherit" });
 }
 

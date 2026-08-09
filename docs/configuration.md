@@ -91,11 +91,17 @@ workers:
 kubernetes:
   server_namespace: leitwerk-system
   default_worker_runtime_profile: standard
+  image_pull_secrets: [private-registry-pull]
+  image_pull_secret_copies:
+    - source_name: private-registry-pull
+      target_name: private-registry-pull
 ```
 
 - `workers.runner`: Selects container runner adapter (`docker`, `kubernetes`, or `local`).
 - `workers.max_parallel_processes`: Maximum concurrent worker processes running across the server.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
+- `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
+- `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
 
 ---
 

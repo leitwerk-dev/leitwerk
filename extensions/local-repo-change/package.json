@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/local-repo-change",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/local-repo-change"
+	},
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -43,6 +48,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

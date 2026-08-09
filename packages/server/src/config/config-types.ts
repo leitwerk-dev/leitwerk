@@ -135,6 +135,13 @@ export interface KubernetesPodConfig {
 	annotations?: Record<string, string>;
 }
 
+export interface KubernetesImagePullSecretCopyConfig {
+	/** Secret name in the server namespace. */
+	source_name: string;
+	/** Secret name created in each process namespace. */
+	target_name: string;
+}
+
 /** Server-only Kubernetes run-mode wiring. */
 export interface LocalWorkerRunnerConfig {
 	/** Command used by the best-effort local dev/test runner. */
@@ -159,6 +166,7 @@ export interface KubernetesRunnerConfig {
 	process_volume: KubernetesProcessVolumeConfig;
 	pod?: KubernetesPodConfig;
 	image_pull_secrets?: string[];
+	image_pull_secret_copies?: KubernetesImagePullSecretCopyConfig[];
 }
 
 /** Nested-container opt-in carried by a runtime profile or process override. */

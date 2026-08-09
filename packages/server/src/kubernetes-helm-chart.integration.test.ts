@@ -11,6 +11,10 @@ function helmAvailable(): boolean {
 	try {
 		execFileSync("bash", ["-lc", "command -v helm >/dev/null && helm version --short >/dev/null"], {
 			stdio: "ignore",
+			env: {
+				...process.env,
+				HOME: process.env.LEITWERK_TEST_HOST_HOME ?? process.env.HOME,
+			},
 		});
 		return true;
 	} catch {
@@ -26,7 +30,13 @@ function renderChart(extraArgs: string[]): unknown[] {
 			"-lc",
 			`helm template leitwerk '${chartRoot.replaceAll("'", "'\\''")}' --namespace leitwerk-k8s-test ${quotedArgs}`,
 		],
-		{ encoding: "utf8" },
+		{
+			encoding: "utf8",
+			env: {
+				...process.env,
+				HOME: process.env.LEITWERK_TEST_HOST_HOME ?? process.env.HOME,
+			},
+		},
 	);
 	return parseAllDocuments(rendered)
 		.map((document) => document.toJSON())
@@ -166,5 +176,55 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(rendered).toContain("helm.sh/resource-policy");
 		expect(rendered).toContain("copy-ui");
 		expect(rendered).not.toContain("broker_token");
+	});
+
+	it("mounts an external server PVC without rendering a chart-owned PVC", () => {
+		const documents = renderChart(["--set", "server.storage.existingClaim=leitwerk-server-data"]);
+		const pvcs = findDocumentsByKind(documents, "PersistentVolumeClaim");
+		const deployment = findDocumentsByKind(documents, "Deployment")[0];
+
+		expect(pvcs).toHaveLength(0);
+		expect(JSON.stringify(deployment)).toContain("leitwerk-server-data");
+	});
+
+	it("renders least-privilege pull-Secret copying RBAC and admission constraints", () => {
+		const documents = renderChart([
+			"--set",
+			"kubernetes.imagePullSecrets[0]=git-nifto-eu-pull",
+			"--set",
+			"kubernetes.imagePullSecretCopies[0].sourceName=git-nifto-eu-pull",
+			"--set",
+			"kubernetes.imagePullSecretCopies[0].targetName=git-nifto-eu-pull",
+		]);
+		const config = renderedLeitwerkConfig(documents);
+		const roles = findDocumentsByKind(documents, "Role");
+		const clusterRole = findDocumentsByKind(documents, "ClusterRole")[0];
+		const policy = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
+
+		expect(validateConfig(config)).toEqual([]);
+		expect(config.kubernetes).toMatchObject({
+			image_pull_secrets: ["git-nifto-eu-pull"],
+			image_pull_secret_copies: [
+				{ source_name: "git-nifto-eu-pull", target_name: "git-nifto-eu-pull" },
+			],
+		});
+		expect(roles).toHaveLength(1);
+		expect(roles[0]).toMatchObject({
+			rules: [{ resources: ["secrets"], resourceNames: ["git-nifto-eu-pull"], verbs: ["get"] }],
+		});
+		expect(clusterRole).toMatchObject({
+			rules: expect.arrayContaining([
+				expect.objectContaining({ resources: ["secrets"], verbs: ["create", "patch"] }),
+			]),
+		});
+		const clusterSecretRules = (clusterRole.rules as Array<Record<string, unknown>>).filter(
+			(rule) => Array.isArray(rule.resources) && rule.resources.includes("secrets"),
+		);
+		expect(clusterSecretRules).toEqual([
+			expect.objectContaining({ resources: ["secrets"], verbs: ["create", "patch"] }),
+		]);
+		expect(JSON.stringify(policy)).toContain("git-nifto-eu-pull");
+		expect(JSON.stringify(policy)).toContain("image-pull-secret");
+		expect(JSON.stringify(policy)).toContain(".dockerconfigjson");
 	});
 });

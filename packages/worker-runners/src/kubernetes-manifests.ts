@@ -2,6 +2,7 @@ import type { IsolatedStartWorkerInput, VolumeRef, WorkerExitInfo } from "./type
 import {
 	buildProcessResourceLabels,
 	buildWorkerUnitLabels,
+	PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE,
 	PROCESS_NAMESPACE_COMPONENT_VALUE,
 	PROCESS_SERVER_CA_COMPONENT_VALUE,
 	PROCESS_VOLUME_COMPONENT_VALUE,
@@ -61,6 +62,14 @@ export interface KubernetesConfigMapManifest {
 	kind: "ConfigMap";
 	metadata: { name: string; namespace: string; labels: Record<string, string> };
 	data: Record<string, string>;
+}
+
+export interface KubernetesDockerConfigJsonSecretManifest {
+	apiVersion: "v1";
+	kind: "Secret";
+	metadata: { name: string; namespace: string; labels: Record<string, string> };
+	type: "kubernetes.io/dockerconfigjson";
+	data: { ".dockerconfigjson": string };
 }
 
 export interface KubernetesValidatingAdmissionPolicyManifest {
@@ -251,6 +260,32 @@ export function buildKubernetesServerCaConfigMapManifest(args: {
 	};
 }
 
+export function buildKubernetesDockerConfigJsonSecretManifest(args: {
+	instanceId: string;
+	namespace: string;
+	name: string;
+	dockerConfigJson: string;
+	extraLabels?: Record<string, string>;
+}): KubernetesDockerConfigJsonSecretManifest {
+	return {
+		apiVersion: "v1",
+		kind: "Secret",
+		metadata: {
+			name: args.name,
+			namespace: args.namespace,
+			labels: buildProcessResourceLabels(
+				{
+					instanceId: args.instanceId,
+					component: PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE,
+				},
+				args.extraLabels,
+			),
+		},
+		type: "kubernetes.io/dockerconfigjson",
+		data: { ".dockerconfigjson": args.dockerConfigJson },
+	};
+}
+
 function envList(env: Record<string, string>): Array<{ name: string; value: string }> {
 	return Object.entries(env)
 		.sort(([a], [b]) => a.localeCompare(b))
@@ -407,6 +442,7 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 	serverServiceAccountName: string;
 	processNamespacePrefix: string;
 	allowedWorkerServiceAccount?: string;
+	allowedImagePullSecretNames?: string[];
 	labels?: Record<string, string>;
 }): {
 	policy: KubernetesValidatingAdmissionPolicyManifest;
@@ -420,7 +456,9 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 	const NS = PROCESS_NAMESPACE_COMPONENT_VALUE;
 	const PV = PROCESS_VOLUME_COMPONENT_VALUE;
 	const CA = PROCESS_SERVER_CA_COMPONENT_VALUE;
+	const IPS = PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE;
 	const CV = WORKER_LABEL_COMPONENT_VALUE;
+	const allowedSecretNames = (args.allowedImagePullSecretNames ?? []).map((name) => `'${name}'`);
 
 	const rules: AdmissionRule[] = [
 		{
@@ -467,6 +505,29 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 			scope: "ServiceAccount",
 			condition: `object.metadata.labels['${C}'] == 'worker-service-account'`,
 			message: "leitwerk worker ServiceAccounts must carry worker-service-account component label",
+		},
+		{
+			scope: "Secret",
+			condition:
+				allowedSecretNames.length > 0
+					? `object.metadata.name in [${allowedSecretNames.join(", ")}]`
+					: "false",
+			message: "leitwerk image-pull Secrets must use a configured target name",
+		},
+		{
+			scope: "Secret",
+			condition: `object.metadata.labels['${C}'] == '${IPS}'`,
+			message: "leitwerk image-pull Secrets must carry image-pull-secret component label",
+		},
+		{
+			scope: "Secret",
+			condition: "object.type == 'kubernetes.io/dockerconfigjson'",
+			message: "leitwerk image-pull Secrets must use dockerconfigjson type",
+		},
+		{
+			scope: "Secret",
+			condition: "object.data.size() == 1 && '.dockerconfigjson' in object.data",
+			message: "leitwerk image-pull Secrets may contain only .dockerconfigjson",
 		},
 		{
 			scope: "Pod",
@@ -516,6 +577,7 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 								"persistentvolumeclaims",
 								"serviceaccounts",
 								"configmaps",
+								"secrets",
 							],
 						},
 					],

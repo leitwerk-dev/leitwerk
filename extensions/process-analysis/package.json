@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/process-analysis",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/process-analysis"
+	},
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -37,6 +42,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

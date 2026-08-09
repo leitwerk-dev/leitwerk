@@ -36,6 +36,7 @@ export interface WorkerRuntime {
 /** One non-reentrant driver around the pure runtime reducer. */
 export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntime {
 	const { config, adapters } = options;
+	const sampleCredentials = adapters.sampleCredentials ?? sampleCredentialFiles;
 	const ipc: WorkerIpc = adapters.transport;
 	const queue: WorkerRuntimeEvent[] = [];
 	const timers = new Map<WorkerTimerName, WorkerRuntimeTimer>();
@@ -237,7 +238,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 					);
 				return;
 			case "sample_credentials":
-				void sampleCredentialFiles(command.descriptor)
+				void sampleCredentials(command.descriptor)
 					.then((sample) =>
 						complete({
 							kind: "credential_sampled",

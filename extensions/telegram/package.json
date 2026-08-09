@@ -1,6 +1,11 @@
 {
 	"name": "@leitwerk-dev/telegram",
 	"version": "0.1.0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/telegram"
+	},
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -46,6 +51,7 @@
 	"files": [
 		"dist/**",
 		"src/**",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

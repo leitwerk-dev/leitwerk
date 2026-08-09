@@ -11,6 +11,7 @@ Leitwerk deploys its components using dedicated Kubernetes namespaces:
 - **Server Namespace:** The Leitwerk server runs as a singleton Deployment in a primary management namespace (e.g. `leitwerk-system`).
 - **Process Namespaces:** Each active process runs inside a dedicated namespace (`leitwerk-proc-<instanceId>`) containing its worker pod and persistent volume claim (PVC).
 - **RBAC & Permissions:** The server uses cluster-level RBAC to dynamically provision and tear down process namespaces, PVCs, and worker pods.
+- **Private worker images:** The server can copy explicitly named registry pull Secrets from its namespace into each process namespace. It never lists Secrets or reads Secrets cluster-wide.
 
 See [Server and Worker Lifecycle](server-worker-lifecycle.md#2-worker-runners-isolation-contracts) and [Process Workspace](process-workspace.md#1-workspace-layouts) for worker IPC and storage layout details.
 
@@ -18,7 +19,7 @@ See [Server and Worker Lifecycle](server-worker-lifecycle.md#2-worker-runners-is
 
 ## 2. Deploying with Helm
 
-Leitwerk provides an official Helm chart under `deploy/kubernetes/helm/leitwerk` to deploy the server, RBAC roles, and ingress services.
+Leitwerk provides an official Helm chart under `deploy/kubernetes/helm/leitwerk` to deploy the server, RBAC roles, and ingress services. Release charts are available from GHCR and as GitHub Release assets. Their default server and generic-worker images are pinned by digest.
 
 ### 2.1. Create Required Secrets
 
@@ -40,14 +41,19 @@ kubectl create secret generic leitwerk-config \
 
 ### 2.2. Deploy Helm Chart
 
-Deploy the Leitwerk server referencing your pre-created secrets:
+Deploy the Leitwerk server referencing your pre-created secrets. Replace `VERSION` with a released version:
 
 ```bash
-helm upgrade --install leitwerk deploy/kubernetes/helm/leitwerk \
+helm upgrade --install leitwerk oci://ghcr.io/leitwerk-dev/charts/leitwerk \
+  --version VERSION \
   --namespace leitwerk-system \
   --set server.existingConfigSecret=leitwerk-config \
   --set server.credentialEncryption.existingSecret=leitwerk-encryption-key
 ```
+
+For a source checkout, replace the OCI reference and `--version` with `deploy/kubernetes/helm/leitwerk`.
+
+For a private worker registry, create a `kubernetes.io/dockerconfigjson` Secret in the server namespace. Configure the same source and target names under `kubernetes.image_pull_secret_copies`, reference the target under `kubernetes.image_pull_secrets`, and pass the non-secret copy names through `kubernetes.imagePullSecretCopies` Helm values so the chart can render least-privilege RBAC and admission rules.
 
 ---
 

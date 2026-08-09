@@ -5,6 +5,7 @@ import type { PiTreeHandleFactory } from "../pi-adapter.js";
 import type { PromptGuardScheduler, PromptGuardTimer } from "../prompt-guards.js";
 import type { WorkerSessionSnapshotExchange } from "../session-snapshot-exchange.js";
 import type { RunRootGitOps } from "../workspace/run-root.js";
+import type { CredentialRefreshDescriptor } from "./bootstrap-session.js";
 
 export type WorkerRuntimeTimer = PromptGuardTimer;
 
@@ -55,6 +56,9 @@ export interface WorkerRuntimeAdapters {
 	exit(code: number): void;
 	stderr?: NodeJS.WritableStream;
 	extensionEvents?: EventBus;
+	sampleCredentials?: (
+		descriptor: CredentialRefreshDescriptor,
+	) => Promise<{ values: Record<string, string>; fingerprint: string }>;
 	resolveWorkerProcess?: (
 		processId: string,
 		opts?: { paramsJson?: string | null; stateJson?: string | null },

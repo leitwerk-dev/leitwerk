@@ -67,7 +67,7 @@ Common entry points:
 | Server/worker runtime | [docs/server-worker-lifecycle.md](docs/server-worker-lifecycle.md) |
 | Configuration | [docs/configuration.md](docs/configuration.md) |
 | Local Docker deployment | [docs/docker-deployment-guide.md](docs/docker-deployment-guide.md) |
-| CI and npm publishing | [docs/ci.md](docs/ci.md) |
+| CI, releases, and dependency updates | [docs/ci.md](docs/ci.md) |
 | UI and streaming model | [docs/ui.md](docs/ui.md), [docs/websocket.md](docs/websocket.md) |
 | Testing | [docs/testing.md](docs/testing.md) |
 | Terminology | [docs/ubiquitous_language.md](docs/ubiquitous_language.md) |

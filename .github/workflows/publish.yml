@@ -1,41 +1,64 @@
-name: Publish npm packages
+name: Publish release artifacts
 
 on:
-  release:
-    types:
-      - published
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: Run the publish workflow without publishing packages
+      release_tag:
+        description: Existing Release Please tag to resume, for example v0.1.0
         required: true
-        type: boolean
-        default: true
+        type: string
 
-permissions:
-  contents: read
-  id-token: write
+concurrency:
+  group: publish-${{ inputs.release_tag }}
+  cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish workspaces
+  validate:
+    name: Validate release inputs
     runs-on: ubuntu-latest
-    environment: npm-publish
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      git_sha: ${{ steps.release.outputs.git_sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ inputs.release_tag }}
+          persist-credentials: false
+
+      - name: Resolve release coordinates
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Stable release version must be X.Y.Z: $version" >&2
+            exit 1
+          }
+          [[ "$RELEASE_TAG" == "v$version" ]] || {
+            echo "Release tag $RELEASE_TAG must exactly match v$version" >&2
+            exit 1
+          }
+          {
+            echo "version=$version"
+            echo "tag=$RELEASE_TAG"
+            echo "git_sha=$(git rev-parse HEAD)"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
-          registry-url: https://registry.npmjs.org
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.x'
 
@@ -48,6 +71,9 @@ jobs:
       - name: Install documentation dependencies
         run: python -m pip install -r requirements-docs.txt
 
+      - name: Validate lockstep release configuration
+        run: npm run release:check
+
       - name: Run full test gate
         run: npm run test:full
 
@@ -57,8 +83,350 @@ jobs:
       - name: Dry-run npm package contents
         run: npm run publish:dry-run
 
-      - name: Publish npm packages
-        if: ${{ github.event_name == 'release' || inputs.dry_run == false }}
-        run: npm run publish:workspaces
+  publish:
+    name: Publish or resume public artifacts
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: write
+      id-token: write
+      packages: write
+    env:
+      RELEASE_GIT_SHA: ${{ needs.validate.outputs.git_sha }}
+      RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+          persist-credentials: false
+
+      - name: Setup trusted-publishing Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.16.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@bf6a7d304bc2fdb57e0331155b7ebf2c504acf0a # v4
+
+      - name: Set up ORAS
+        uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6 # v1
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Reject a conflicting release lock
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts/existing-lock
+          if gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' \
+            | grep -Fxq 'leitwerk-base.lock.yaml'; then
+            gh release download "$RELEASE_TAG" \
+              --pattern leitwerk-base.lock.yaml \
+              --dir release-artifacts/existing-lock
+            locked_sha="$(awk '$1 == "public_git_sha:" { print $2 }' \
+              release-artifacts/existing-lock/leitwerk-base.lock.yaml)"
+            [[ "$locked_sha" == "$RELEASE_GIT_SHA" ]] || {
+              echo "Release lock belongs to Git revision $locked_sha, not $RELEASE_GIT_SHA" >&2
+              exit 1
+            }
+          fi
+
+      - name: Build publishable npm contents
+        run: npm run parity:build
+
+      - name: Preflight npm publication
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ needs.validate.outputs.tag }}
+        run: npm run publish:preflight
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Inspect existing image tags
+        id: inspect-images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          inspect_digest() {
+            local reference="$1"
+            local error_file="$RUNNER_TEMP/image-inspect-error"
+            local manifest
+            if manifest="$(docker buildx imagetools inspect "$reference" \
+              --format '{{json .Manifest}}' 2>"$error_file")"; then
+              jq -r '.digest' <<<"$manifest"
+              return
+            fi
+            if grep -Eqi 'not found|manifest unknown|name unknown|404' "$error_file"; then
+              return
+            fi
+            cat "$error_file" >&2
+            exit 1
+          }
+
+          validate_image() {
+            local reference="$1"
+            local manifest
+            manifest="$(docker buildx imagetools inspect "$reference" \
+              --format '{{json .Manifest}}')"
+            for architecture in amd64 arm64; do
+              jq -e --arg architecture "$architecture" \
+                'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $architecture)' \
+                <<<"$manifest" >/dev/null || {
+                  echo "$reference does not contain linux/$architecture" >&2
+                  exit 1
+                }
+              local image format
+              format="{{json (index .Image \"linux/$architecture\")}}"
+              image="$(docker buildx imagetools inspect "$reference" --format "$format")"
+              jq -e --arg revision "$RELEASE_GIT_SHA" --arg version "$RELEASE_VERSION" '
+                .config.Labels["org.opencontainers.image.revision"] == $revision and
+                .config.Labels["org.opencontainers.image.version"] == $version
+              ' <<<"$image" >/dev/null || {
+                echo "$reference linux/$architecture belongs to another release" >&2
+                exit 1
+              }
+            done
+          }
+
+          resolve_image() {
+            local key="$1" repository="$2"
+            local version_digest sha_digest selected_digest
+            version_digest="$(inspect_digest "$repository:$RELEASE_VERSION")"
+            sha_digest="$(inspect_digest "$repository:$RELEASE_GIT_SHA")"
+            if [[ -n "$version_digest" ]]; then validate_image "$repository:$RELEASE_VERSION"; fi
+            if [[ -n "$sha_digest" ]]; then validate_image "$repository:$RELEASE_GIT_SHA"; fi
+            if [[ -n "$version_digest" && -n "$sha_digest" && "$version_digest" != "$sha_digest" ]]; then
+              echo "$repository release and Git-SHA tags resolve to different digests" >&2
+              exit 1
+            fi
+            selected_digest="${version_digest:-$sha_digest}"
+            if [[ -n "$selected_digest" ]]; then
+              echo "${key}_build=false" >> "$GITHUB_OUTPUT"
+              echo "${key}_digest=$selected_digest" >> "$GITHUB_OUTPUT"
+            else
+              echo "${key}_build=true" >> "$GITHUB_OUTPUT"
+            fi
+            echo "${key}_version_exists=$([[ -n "$version_digest" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+            echo "${key}_sha_exists=$([[ -n "$sha_digest" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          }
+
+          resolve_image server ghcr.io/leitwerk-dev/leitwerk-server
+          resolve_image worker ghcr.io/leitwerk-dev/leitwerk-worker-generic
+
+      - name: Build and publish multi-architecture server image
+        if: ${{ steps.inspect-images.outputs.server_build == 'true' }}
+        id: build-server
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/images/Dockerfile.server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/leitwerk-dev/leitwerk-server:${{ needs.validate.outputs.version }}
+            ghcr.io/leitwerk-dev/leitwerk-server:${{ needs.validate.outputs.git_sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.validate.outputs.git_sha }}
+            org.opencontainers.image.source=https://github.com/leitwerk-dev/leitwerk
+            org.opencontainers.image.version=${{ needs.validate.outputs.version }}
+
+      - name: Build and publish multi-architecture generic worker image
+        if: ${{ steps.inspect-images.outputs.worker_build == 'true' }}
+        id: build-worker
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: deploy/images/Dockerfile.worker-generic
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/leitwerk-dev/leitwerk-worker-generic:${{ needs.validate.outputs.version }}
+            ghcr.io/leitwerk-dev/leitwerk-worker-generic:${{ needs.validate.outputs.git_sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.validate.outputs.git_sha }}
+            org.opencontainers.image.source=https://github.com/leitwerk-dev/leitwerk
+            org.opencontainers.image.version=${{ needs.validate.outputs.version }}
+
+      - name: Resolve and complete immutable image tags
+        id: images
+        env:
+          EXISTING_SERVER_DIGEST: ${{ steps.inspect-images.outputs.server_digest }}
+          BUILT_SERVER_DIGEST: ${{ steps.build-server.outputs.digest }}
+          EXISTING_WORKER_DIGEST: ${{ steps.inspect-images.outputs.worker_digest }}
+          BUILT_WORKER_DIGEST: ${{ steps.build-worker.outputs.digest }}
+          SERVER_VERSION_EXISTS: ${{ steps.inspect-images.outputs.server_version_exists }}
+          SERVER_SHA_EXISTS: ${{ steps.inspect-images.outputs.server_sha_exists }}
+          WORKER_VERSION_EXISTS: ${{ steps.inspect-images.outputs.worker_version_exists }}
+          WORKER_SHA_EXISTS: ${{ steps.inspect-images.outputs.worker_sha_exists }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          complete_tags() {
+            local key="$1" repository="$2" digest="$3" version_exists="$4" sha_exists="$5"
+            [[ "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || {
+              echo "$repository did not resolve to a valid digest" >&2
+              exit 1
+            }
+            if [[ "$version_exists" == false ]]; then
+              docker buildx imagetools create \
+                --tag "$repository:$RELEASE_VERSION" "$repository@$digest"
+            fi
+            if [[ "$sha_exists" == false ]]; then
+              docker buildx imagetools create \
+                --tag "$repository:$RELEASE_GIT_SHA" "$repository@$digest"
+            fi
+            echo "${key}_digest=$digest" >> "$GITHUB_OUTPUT"
+          }
+          complete_tags server ghcr.io/leitwerk-dev/leitwerk-server \
+            "${EXISTING_SERVER_DIGEST:-$BUILT_SERVER_DIGEST}" \
+            "$SERVER_VERSION_EXISTS" "$SERVER_SHA_EXISTS"
+          complete_tags worker ghcr.io/leitwerk-dev/leitwerk-worker-generic \
+            "${EXISTING_WORKER_DIGEST:-$BUILT_WORKER_DIGEST}" \
+            "$WORKER_VERSION_EXISTS" "$WORKER_SHA_EXISTS"
+
+      - name: Package, publish, or reuse digest-pinned Helm chart
+        id: chart
+        env:
+          SERVER_DIGEST: ${{ steps.images.outputs.server_digest }}
+          WORKER_DIGEST: ${{ steps.images.outputs.worker_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart_oci="oci://ghcr.io/leitwerk-dev/charts/leitwerk"
+          chart_registry="ghcr.io/leitwerk-dev/charts/leitwerk"
+          mkdir -p release-artifacts/staged release-artifacts/new release-artifacts/existing
+          node --import tsx scripts/prepare-release-chart.ts \
+            --source deploy/kubernetes/helm/leitwerk \
+            --destination release-artifacts/staged/leitwerk \
+            --version "$RELEASE_VERSION" \
+            --git-sha "$RELEASE_GIT_SHA" \
+            --server-image "ghcr.io/leitwerk-dev/leitwerk-server@$SERVER_DIGEST" \
+            --worker-image "ghcr.io/leitwerk-dev/leitwerk-worker-generic@$WORKER_DIGEST"
+          helm lint release-artifacts/staged/leitwerk
+          helm package release-artifacts/staged/leitwerk --destination release-artifacts/new
+
+          error_file="$RUNNER_TEMP/helm-pull-error"
+          if helm pull "$chart_oci" --version "$RELEASE_VERSION" \
+            --destination release-artifacts/existing 2>"$error_file"; then
+            mkdir -p release-artifacts/existing/unpacked
+            tar -xzf "release-artifacts/existing/leitwerk-$RELEASE_VERSION.tgz" \
+              -C release-artifacts/existing/unpacked
+            node --import tsx scripts/verify-release-chart.ts \
+              --chart-dir release-artifacts/existing/unpacked/leitwerk \
+              --version "$RELEASE_VERSION" \
+              --git-sha "$RELEASE_GIT_SHA" \
+              --server-digest "$SERVER_DIGEST" \
+              --worker-digest "$WORKER_DIGEST"
+            chart_digest="$(oras manifest fetch --descriptor \
+              "$chart_registry:$RELEASE_VERSION" | jq -r '.digest')"
+            chart_archive="release-artifacts/existing/leitwerk-$RELEASE_VERSION.tgz"
+          else
+            if ! grep -Eqi 'not found|manifest unknown|name unknown|404' "$error_file"; then
+              cat "$error_file" >&2
+              exit 1
+            fi
+            chart_archive="release-artifacts/new/leitwerk-$RELEASE_VERSION.tgz"
+            push_output="$(helm push "$chart_archive" oci://ghcr.io/leitwerk-dev/charts 2>&1)"
+            printf '%s\n' "$push_output"
+            chart_digest="$(sed -n 's/^Digest: //p' <<<"$push_output" | tail -n 1)"
+          fi
+          [[ "$chart_digest" =~ ^sha256:[a-f0-9]{64}$ ]] || {
+            echo "Chart did not resolve to a valid digest" >&2
+            exit 1
+          }
+          echo "archive=$chart_archive" >> "$GITHUB_OUTPUT"
+          echo "digest=$chart_digest" >> "$GITHUB_OUTPUT"
+
+      - name: Publish missing npm packages
+        env:
+          GITHUB_REF_TYPE: tag
+          GITHUB_REF_NAME: ${{ needs.validate.outputs.tag }}
+        run: npm run publish:workspaces
+
+      - name: Verify anonymous reads and multi-architecture manifests
+        env:
+          SERVER_DIGEST: ${{ steps.images.outputs.server_digest }}
+          WORKER_DIGEST: ${{ steps.images.outputs.worker_digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          helm registry logout ghcr.io || true
+          docker logout ghcr.io || true
+          for reference in \
+            "ghcr.io/leitwerk-dev/leitwerk-server@$SERVER_DIGEST" \
+            "ghcr.io/leitwerk-dev/leitwerk-worker-generic@$WORKER_DIGEST"; do
+            manifest="$(docker buildx imagetools inspect "$reference" \
+              --format '{{json .Manifest}}')"
+            for architecture in amd64 arm64; do
+              jq -e --arg architecture "$architecture" \
+                'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $architecture)' \
+                <<<"$manifest" >/dev/null
+            done
+          done
+          mkdir -p release-artifacts/anonymous-chart
+          helm pull oci://ghcr.io/leitwerk-dev/charts/leitwerk \
+            --version "$RELEASE_VERSION" \
+            --destination release-artifacts/anonymous-chart
+          npm_config_userconfig=/dev/null \
+            GITHUB_REF_TYPE=tag \
+            GITHUB_REF_NAME="$RELEASE_TAG" \
+            npm run publish:verify
+
+      - name: Record immutable release coordinates
+        env:
+          SERVER_DIGEST: ${{ steps.images.outputs.server_digest }}
+          WORKER_DIGEST: ${{ steps.images.outputs.worker_digest }}
+          CHART_DIGEST: ${{ steps.chart.outputs.digest }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-artifacts/final
+          {
+            echo "schema_version: 1"
+            echo "state: released"
+            echo "version: $RELEASE_VERSION"
+            echo "public_git_sha: $RELEASE_GIT_SHA"
+            echo "npm_scope: '@leitwerk-dev'"
+            echo "npm_version: $RELEASE_VERSION"
+            echo "server_image: ghcr.io/leitwerk-dev/leitwerk-server@$SERVER_DIGEST"
+            echo "worker_image: ghcr.io/leitwerk-dev/leitwerk-worker-generic@$WORKER_DIGEST"
+            echo "chart_reference: oci://ghcr.io/leitwerk-dev/charts/leitwerk"
+            echo "chart_version: $RELEASE_VERSION"
+            echo "chart_digest: $CHART_DIGEST"
+          } | tee release-artifacts/final/leitwerk-base.lock.yaml
+
+      - name: Attach public release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.chart.outputs.archive }}" \
+            release-artifacts/final/leitwerk-base.lock.yaml \
+            --clobber
+
+      - name: Upload release artifacts to workflow run
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: leitwerk-${{ needs.validate.outputs.version }}-release-artifacts
+          path: |
+            ${{ steps.chart.outputs.archive }}
+            release-artifacts/final/leitwerk-base.lock.yaml
