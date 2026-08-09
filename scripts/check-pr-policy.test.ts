@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { hasMatchingSignoff, isConventionalTitle } from "./check-pr-policy.mjs";
+import {
+	commitPolicyErrorsFromLog,
+	hasMatchingSignoff,
+	isConventionalTitle,
+} from "./check-pr-policy.mjs";
 
 describe("pull request policy", () => {
 	it.each([
@@ -36,5 +40,16 @@ describe("pull request policy", () => {
 				"dev@example.com",
 			),
 		).toBe(false);
+	});
+
+	it("accepts a signed commit whose message has no trailing newline", () => {
+		const log = [
+			"313b84847129ff50b5b548ec34077fe1b112a6e8",
+			"github-actions[bot]",
+			"41898282+github-actions[bot]@users.noreply.github.com",
+			"chore(release): release main\n\nSigned-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>",
+		].join("\x00");
+
+		expect(commitPolicyErrorsFromLog(`${log}\x1e`)).toEqual([]);
 	});
 });
