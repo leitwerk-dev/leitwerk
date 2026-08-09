@@ -898,7 +898,9 @@ describe("worker runtime harness", () => {
 			accepted: true,
 			currentRevision: 2,
 		});
-		await harness.flush();
+		await vi.waitFor(() => {
+			expect(harness.scheduler.pendingDelays()).toContain(500);
+		});
 		writeFileSync(authFile, '{"openai":{"key":"replacement-two"}}\n');
 		await harness.scheduler.advanceBy(500);
 		const second = await harness.waitForMessage("worker.credential_update", 2);

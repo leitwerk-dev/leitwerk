@@ -33,6 +33,7 @@ type Scheduled = {
 
 export interface ManualWorkerRuntimeScheduler extends WorkerRuntimeScheduler {
 	advanceBy(delayMs: number): Promise<void>;
+	pendingDelays(): number[];
 }
 
 export function createManualWorkerRuntimeScheduler(
@@ -59,6 +60,11 @@ export function createManualWorkerRuntimeScheduler(
 		sleep: (delayMs) => new Promise((resolve) => schedule(resolve, delayMs)),
 		now() {
 			return new Date(nowMs);
+		},
+		pendingDelays() {
+			return [...scheduled.values()]
+				.map((item) => item.dueAt - nowMs)
+				.sort((left, right) => left - right);
 		},
 		async advanceBy(delayMs) {
 			const target = nowMs + delayMs;
