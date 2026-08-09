@@ -16,16 +16,8 @@ export function hasMatchingSignoff(message, authorName, authorEmail) {
 		.some((line) => line.trim().toLocaleLowerCase() === expected.toLocaleLowerCase());
 }
 
-export function readCommitPolicyErrors(baseSha, headSha) {
-	const result = spawnSync(
-		"git",
-		["log", "--format=%H%x00%an%x00%ae%x00%B%x00%x1e", `${baseSha}..${headSha}`],
-		{ encoding: "utf8" },
-	);
-	if (result.status !== 0) {
-		throw new Error(result.stderr || `git log exited with ${String(result.status)}`);
-	}
-	return result.stdout
+export function commitPolicyErrorsFromLog(logOutput) {
+	return logOutput
 		.split("\x1e")
 		.map((record) => record.replace(/^\s+|\s+$/gu, ""))
 		.filter(Boolean)
@@ -36,6 +28,18 @@ export function readCommitPolicyErrors(baseSha, headSha) {
 				? []
 				: [`${sha}: missing Signed-off-by: ${authorName} <${authorEmail}>`];
 		});
+}
+
+export function readCommitPolicyErrors(baseSha, headSha) {
+	const result = spawnSync(
+		"git",
+		["log", "--format=%H%x00%an%x00%ae%x00%B%x1e", `${baseSha}..${headSha}`],
+		{ encoding: "utf8" },
+	);
+	if (result.status !== 0) {
+		throw new Error(result.stderr || `git log exited with ${String(result.status)}`);
+	}
+	return commitPolicyErrorsFromLog(result.stdout);
 }
 
 function run() {
