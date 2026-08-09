@@ -4,6 +4,12 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
 
+env:
+  DO_NOT_TRACK: '1'
+  SCARF_ANALYTICS: 'false'
+  TURBO_DISABLE_UPDATE_CHECK: '1'
+  TURBO_TELEMETRY_DISABLED: '1'
+
 permissions:
   contents: read
 

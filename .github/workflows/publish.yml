@@ -8,6 +8,12 @@ on:
         required: true
         type: string
 
+env:
+  DO_NOT_TRACK: '1'
+  SCARF_ANALYTICS: 'false'
+  TURBO_DISABLE_UPDATE_CHECK: '1'
+  TURBO_TELEMETRY_DISABLED: '1'
+
 concurrency:
   group: publish-${{ inputs.release_tag }}
   cancel-in-progress: false

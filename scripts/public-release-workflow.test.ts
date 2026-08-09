@@ -13,6 +13,37 @@ function workflow(name: string) {
 	>;
 }
 
+const privateToolingEnvironment = {
+	DO_NOT_TRACK: "1",
+	SCARF_ANALYTICS: "false",
+	TURBO_DISABLE_UPDATE_CHECK: "1",
+	TURBO_TELEMETRY_DISABLED: "1",
+};
+
+describe("developer tooling privacy", () => {
+	it("opts every hosted workflow out of anonymous usage reporting", () => {
+		for (const file of ["ci.yml", "policy.yml", "publish.yml", "release-please.yml"]) {
+			expect(workflow(file).env, file).toMatchObject(privateToolingEnvironment);
+		}
+	});
+
+	it("opts local Turborepo builds out even when the composition script is invoked directly", () => {
+		const packageJson = JSON.parse(readFileSync(`${repoRoot}/package.json`, "utf8")) as {
+			scripts: Record<string, string>;
+		};
+		const buildComposition = readFileSync(`${repoRoot}/scripts/build-composed.ts`, "utf8");
+
+		for (const script of ["build", "build:ext-ui"]) {
+			for (const [name, value] of Object.entries(privateToolingEnvironment)) {
+				expect(packageJson.scripts[script], `${script}: ${name}`).toContain(`${name}=${value}`);
+			}
+		}
+		for (const [name, value] of Object.entries(privateToolingEnvironment)) {
+			expect(buildComposition, name).toContain(`${name}: "${value}"`);
+		}
+	});
+});
+
 describe("Release Please workflow", () => {
 	it("ordinary main pushes only maintain the release PR or complete its release", () => {
 		const text = readFileSync(`${repoRoot}/.github/workflows/release-please.yml`, "utf8");
