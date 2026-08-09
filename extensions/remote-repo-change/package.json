@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/remote-repo-change",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -25,10 +25,10 @@
 		"build": "tsup --silent --config tsup.runtime.config.ts"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.1.1",
-		"@leitwerk-dev/process-sdk": "0.1.1",
-		"@leitwerk-dev/coding": "0.1.1",
-		"@leitwerk-dev/git-ssh": "0.1.1"
+		"@leitwerk-dev/domain": "0.1.2",
+		"@leitwerk-dev/process-sdk": "0.1.2",
+		"@leitwerk-dev/coding": "0.1.2",
+		"@leitwerk-dev/git-ssh": "0.1.2"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"
