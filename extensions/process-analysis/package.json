@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/process-analysis",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -24,9 +24,9 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.1.1",
-		"@leitwerk-dev/process-sdk": "0.1.1",
-		"@leitwerk-dev/local-repo-change": "0.1.1"
+		"@leitwerk-dev/domain": "0.1.2",
+		"@leitwerk-dev/process-sdk": "0.1.2",
+		"@leitwerk-dev/local-repo-change": "0.1.2"
 	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
