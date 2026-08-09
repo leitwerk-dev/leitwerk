@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Generic leitwerk worker image shared by Docker Compose and Kubernetes.
 #
 # This is the demo/easy-setup generic runtime profile. Production should use
@@ -11,7 +13,7 @@ COPY packages ./packages
 COPY extensions ./extensions
 COPY scripts ./scripts
 COPY turbo.json tsconfig.json biome.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 # npm can omit Rollup's platform-native optional package inside Linux image
 # builds. Install the package matching the Debian/gnu image architecture before
 # running tsup/Vite builds.

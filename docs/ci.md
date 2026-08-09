@@ -60,7 +60,15 @@ Publication produces these public coordinates:
 - Helm: `oci://ghcr.io/leitwerk-dev/charts/leitwerk:X.Y.Z`
 - Git: `vX.Y.Z`
 
-Both images are Linux multi-architecture indexes containing `amd64` and `arm64`. The workflow creates no mutable `latest`, major, or minor image aliases. The packaged chart replaces the source image tags with the image digests produced by the same run. It records the Git SHA and image digests in chart annotations.
+Both images are Linux multi-architecture indexes containing `amd64` and `arm64`. The
+workflow builds each platform concurrently on its matching native GitHub-hosted runner,
+pushes the results by digest, and creates the two public aliases only after both platform
+builds succeed. Per-image, per-platform BuildKit caches accelerate later releases without
+participating in artifact identity or correctness. The workflow creates no architecture,
+mutable `latest`, major, or minor image aliases.
+
+The packaged chart replaces the source image tags with the image digests produced by the
+same run. It records the Git SHA and image digests in chart annotations.
 
 The workflow anonymously reads all npm packages, both image manifests, and the chart before declaring success. It attaches `leitwerk-X.Y.Z.tgz` and `leitwerk-base.lock.yaml` to the GitHub Release. The lock records the Git SHA and immutable image and chart digests.
 
@@ -76,7 +84,12 @@ The workflow uses a GitHub-hosted runner, npm 11, and `id-token: write`. It has 
 
 ## Retry and conflicts
 
-Cross-registry publication is not atomic. To resume a partial publication, manually dispatch `Publish release artifacts` with an existing tag such as `v0.1.1`.
+Cross-registry publication is not atomic. If a publication attempt fails for an external
+or transient reason and its workflow definition is still correct, rerun its failed jobs.
+This preserves the successful validation job and resumes from the artifact checks. If the
+workflow implementation changed after the failure, manually dispatch `Publish release
+artifacts` with the existing tag, such as `v0.1.1`, so the repaired workflow definition is
+used.
 
 The retry checks every existing artifact before reusing it:
 
