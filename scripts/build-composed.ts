@@ -4,9 +4,16 @@ import process from "node:process";
 import { activateDevelopmentComposition, type ComposedPackage } from "./development-composition.ts";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const toolingEnvironment = {
+	...process.env,
+	DO_NOT_TRACK: "1",
+	SCARF_ANALYTICS: "false",
+	TURBO_DISABLE_UPDATE_CHECK: "1",
+	TURBO_TELEMETRY_DISABLED: "1",
+};
 
 function run(command: string, args: string[], cwd = process.cwd()): void {
-	const result = spawnSync(command, args, { cwd, env: process.env, stdio: "inherit" });
+	const result = spawnSync(command, args, { cwd, env: toolingEnvironment, stdio: "inherit" });
 	if (result.error) throw result.error;
 	if (result.status !== 0) process.exit(result.status ?? 1);
 }

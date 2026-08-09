@@ -27,6 +27,12 @@ npm run test:full -- --composition=../private/leitwerk.composition.yaml
 
 See [Development Compositions](development-composition.md).
 
+Leitwerk's build entry points and hosted workflows opt out of anonymous tooling usage
+reporting. Turborepo telemetry and update checks are disabled explicitly, while
+`DO_NOT_TRACK` and `SCARF_ANALYTICS=false` cover tools and dependency install hooks that
+honor those conventions. Keep these settings intact when adding a workflow or another
+Turborepo entry point.
+
 ### Core Principles
 
 - **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeJiraClient`, `FakeLlmProvider`) rather than broad mocks.
