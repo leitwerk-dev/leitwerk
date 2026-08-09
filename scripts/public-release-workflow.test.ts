@@ -127,6 +127,7 @@ describe("public release workflow", () => {
 		expect(text).toContain("npm run docs:build");
 		expect(text).toContain("npm run publish:dry-run");
 		expect(text).toContain("npm@11.16.0");
+		expect(text.match(/env GITHUB_REF_TYPE=tag GITHUB_REF_NAME="\$RELEASE_TAG"/gu)).toHaveLength(2);
 		expect(text).not.toContain("NPM_TOKEN");
 		expect(text).not.toMatch(/leitwerk-(?:server|worker-generic):(?:latest|v?\d+\.?\$)/u);
 	});

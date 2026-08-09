@@ -151,10 +151,9 @@ jobs:
         run: npm run parity:build
 
       - name: Preflight npm publication
-        env:
-          GITHUB_REF_TYPE: tag
-          GITHUB_REF_NAME: ${{ needs.validate.outputs.tag }}
-        run: npm run publish:preflight
+        run: >-
+          env GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG"
+          npm run publish:preflight
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -363,10 +362,9 @@ jobs:
           echo "digest=$chart_digest" >> "$GITHUB_OUTPUT"
 
       - name: Publish missing npm packages
-        env:
-          GITHUB_REF_TYPE: tag
-          GITHUB_REF_NAME: ${{ needs.validate.outputs.tag }}
-        run: npm run publish:workspaces
+        run: >-
+          env GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG"
+          npm run publish:workspaces
 
       - name: Verify anonymous reads and multi-architecture manifests
         env:
