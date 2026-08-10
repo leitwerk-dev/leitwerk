@@ -16,6 +16,11 @@ describe("release contract", () => {
 		expect(validateReleaseContract(repoRoot)).toEqual([]);
 	});
 
+	it("keeps the release workflow manually recoverable", () => {
+		const workflow = readFileSync(`${repoRoot}/.github/workflows/release-please.yml`, "utf8");
+		expect(workflow.split("\n")).toContain("  workflow_dispatch:");
+	});
+
 	it("fails when a newly added workspace has no release component", () => {
 		const config = JSON.parse(
 			readFileSync(`${repoRoot}/release-please-config.json`, "utf8"),
