@@ -63,6 +63,14 @@ Remove any temporary helper bots after setup and keep the bot token private.
 
 If startup fails with an invalid Telegram config error, verify that the token is configured, the token environment variable is visible to the leitwerk process when using `bot_token_env`, the allowlist is non-empty, and the forum chat id is set.
 
+Startup performs one exclusive `getUpdates` request before normal long polling.
+Telegram 401 responses fail startup when the token is invalid. Telegram 409
+responses fail startup when another poller still owns the bot. The server does
+not become ready until this check and the remaining extension start hooks
+succeed. On SIGTERM the server becomes unready first and calls `bot.stop()`
+within its shutdown grace period. Deploy the server as a singleton; rolling
+overlap is unsupported because Telegram permits only one poller per bot token.
+
 ## Configuration
 
 Load this extension explicitly through `extension_loading.sources`, then configure it under `extensions.telegram`:
@@ -143,3 +151,8 @@ Phase 1 delivery is best-effort:
 - pending form prompts are in memory and are lost on restart.
 
 The process-to-topic mapping is persisted as extension-owned process events so replies keep routing after restart.
+
+Kubernetes deployments should use the chart's `Recreate` strategy, readiness
+endpoint, and optional deployment preflight. Preflight loads this extension but
+never invokes its start hook, so it does not log in to Telegram or compete with
+the production poller.

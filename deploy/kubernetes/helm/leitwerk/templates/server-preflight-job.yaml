@@ -1,0 +1,108 @@
+{{- if .Values.server.preflight.enabled }}
+{{- if not .Values.server.existingConfigSecret }}
+{{- fail "server.preflight.enabled requires server.existingConfigSecret so the hook validates the candidate configuration" }}
+{{- end }}
+{{- if not .Values.server.storage.existingClaim }}
+{{- fail "server.preflight.enabled requires server.storage.existingClaim for the production SQLite PVC" }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "leitwerk.serverFullname" . }}-preflight
+  namespace: {{ include "leitwerk.namespace" . }}
+  labels:
+    {{- include "leitwerk.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server-preflight
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: {{ .Values.server.preflight.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "leitwerk.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: server-preflight
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "leitwerk.serviceAccountName" . }}
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  {{- include "leitwerk.serverSelectorLabels" . | nindent 18 }}
+              topologyKey: kubernetes.io/hostname
+      {{- with .Values.server.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range . }}
+        - name: {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: preflight
+          image: {{ include "leitwerk.serverImage" . | quote }}
+          imagePullPolicy: {{ .Values.server.image.pullPolicy }}
+          command: ["node", "dist/main.js", "--deployment-preflight"]
+          workingDir: /app/packages/server
+          env:
+            - name: LEITWERK_CONFIG_PATH
+              value: /etc/leitwerk/leitwerk.yaml
+            - name: LEITWERK_PREFLIGHT_SCRATCH_DIR
+              value: /var/lib/leitwerk-preflight
+            {{- if .Values.server.credentialEncryption.existingSecret }}
+            - name: LEITWERK_CREDENTIAL_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.server.credentialEncryption.existingSecret | quote }}
+                  key: {{ .Values.server.credentialEncryption.key | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/leitwerk
+              readOnly: true
+            - name: data
+              mountPath: {{ .Values.server.storage.mountPath | quote }}
+              readOnly: true
+            - name: scratch
+              mountPath: /var/lib/leitwerk-preflight
+            {{- if .Values.internalTls.enabled }}
+            - name: internal-tls
+              mountPath: /etc/leitwerk/internal-tls
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.server.resources | nindent 12 }}
+      volumes:
+        - name: config
+          {{- if .Values.server.existingConfigSecret }}
+          secret:
+            secretName: {{ .Values.server.existingConfigSecret | quote }}
+            items:
+              - key: leitwerk.yaml
+                path: leitwerk.yaml
+          {{- else }}
+          configMap:
+            name: {{ include "leitwerk.serverFullname" . }}-config
+          {{- end }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ default (include "leitwerk.serverFullname" .) .Values.server.storage.existingClaim | quote }}
+        - name: scratch
+          emptyDir: {}
+        {{- if .Values.internalTls.enabled }}
+        - name: internal-tls
+          secret:
+            secretName: {{ include "leitwerk.internalTlsSecretName" . }}
+        {{- end }}
+{{- end }}

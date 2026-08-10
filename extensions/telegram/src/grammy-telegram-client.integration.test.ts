@@ -6,8 +6,14 @@ class FakeGrammyBot {
 	readonly handlers = new Map<string, (ctx: unknown) => void | Promise<void>>();
 	startOptions: Record<string, unknown> | null = null;
 	stopped = false;
+	getUpdatesError: Error | null = null;
 
 	api = {
+		getUpdates: async (...args: [Record<string, unknown>]) => {
+			this.apiCalls.push({ method: "getUpdates", args });
+			if (this.getUpdatesError) throw this.getUpdatesError;
+			return [];
+		},
 		createForumTopic: async (...args: [string, string]) => {
 			this.apiCalls.push({ method: "createForumTopic", args });
 			return { message_thread_id: 42 };
@@ -51,6 +57,8 @@ class FakeGrammyBot {
 
 	async start(options?: Record<string, unknown>): Promise<void> {
 		this.startOptions = options ?? null;
+		const onStart = options?.onStart;
+		if (typeof onStart === "function") onStart();
 	}
 
 	async stop(): Promise<void> {
@@ -70,7 +78,32 @@ describe("GrammyTelegramClient", () => {
 			allowed_updates: ["message", "callback_query"],
 			drop_pending_updates: true,
 		});
+		expect(bot.apiCalls[0]).toMatchObject({
+			method: "getUpdates",
+			args: [expect.objectContaining({ timeout: 0, limit: 1, offset: -1 })],
+		});
 		expect(bot.stopped).toBe(true);
+	});
+
+	it.each([401, 409])("rejects Telegram %s during the exclusive startup poll", async (status) => {
+		const bot = new FakeGrammyBot();
+		bot.getUpdatesError = new Error(`${status} Telegram startup rejected`);
+		const client = new GrammyTelegramClient({ botToken: "token", botFactory: () => bot });
+
+		await expect(client.start()).rejects.toThrow(String(status));
+		expect(bot.startOptions).toBeNull();
+	});
+
+	it("can restart after the previous poller stops", async () => {
+		const bot = new FakeGrammyBot();
+		const client = new GrammyTelegramClient({ botToken: "token", botFactory: () => bot });
+
+		await client.start();
+		await client.stop();
+		await client.start();
+		await client.stop();
+
+		expect(bot.apiCalls.filter((call) => call.method === "getUpdates")).toHaveLength(2);
 	});
 
 	it("maps Telegram client calls to grammy API calls", async () => {

@@ -55,6 +55,36 @@ For a source checkout, replace the OCI reference and `--version` with `deploy/ku
 
 For a private worker registry, create a `kubernetes.io/dockerconfigjson` Secret in the server namespace. Configure the same source and target names under `kubernetes.image_pull_secret_copies`, reference the target under `kubernetes.image_pull_secrets`, and pass the non-secret copy names through `kubernetes.imagePullSecretCopies` Helm values so the chart can render least-privilege RBAC and admission rules.
 
+### 2.3. Safe singleton upgrades
+
+Production upgrades can opt into the candidate-image preflight:
+
+```bash
+helm upgrade leitwerk oci://ghcr.io/leitwerk-dev/charts/leitwerk \
+  --version VERSION \
+  --namespace leitwerk-system \
+  --atomic --cleanup-on-fail --wait \
+  --set server.existingConfigSecret=leitwerk-config \
+  --set server.storage.existingClaim=leitwerk-server-data \
+  --set server.preflight.enabled=true
+```
+
+Preflight requires an operator-managed configuration Secret and production
+PVC. Before cutover, a `pre-upgrade` Job runs the candidate image on the old
+server's node, mounts the PVC read-only, and creates a consistent online SQLite
+backup in scratch `emptyDir`. The candidate loads the real configuration and
+credential key, validates and migrates only the copy, loads extensions, starts
+a loopback HTTP listener, and checks `/api/health`. Background hooks, workers,
+and Telegram polling do not start. A failed Job is retained for logs and aborts
+the upgrade without changing the old Deployment.
+
+The server remains a singleton with `Recreate` strategy. A successful preflight
+is followed by a brief cutover: Kubernetes stops the old pod before starting
+the replacement. `/api/health` reports process liveness. `/api/ready` reports
+503 until startup reconciliation and all extension start hooks succeed, and
+reports 503 before shutdown begins. Atomic rollback stops a failed candidate
+before restoring the previous release, so two Telegram pollers do not overlap.
+
 ---
 
 ## 3. Worker Pod Lifecycle & Runtime Profiles

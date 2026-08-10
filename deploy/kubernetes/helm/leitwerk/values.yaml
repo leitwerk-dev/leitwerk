@@ -14,6 +14,12 @@ imagePullSecrets: []
 
 server:
   replicaCount: 1
+  terminationGracePeriodSeconds: 60
+  preflight:
+    # Run the candidate image against an online copy of the production database
+    # before an upgrade can stop the singleton server.
+    enabled: false
+    activeDeadlineSeconds: 300
   # Mount an operator-managed Secret containing a `leitwerk.yaml` key instead
   # of the chart-generated ConfigMap when set.
   existingConfigSecret: ""

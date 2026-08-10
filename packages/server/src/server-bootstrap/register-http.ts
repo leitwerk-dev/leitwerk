@@ -15,6 +15,7 @@ import { healthBody } from "./register-websocket.js";
 
 export function registerHttp(input: {
 	app: FastifyInstance;
+	isReady: () => boolean;
 	deps: RouteDeps;
 	processWatcherService: Parameters<typeof registerWatcherRoutes>[1]["processWatchers"];
 	extensionUiCatalog: ExtensionUiCatalog;
@@ -25,6 +26,10 @@ export function registerHttp(input: {
 	extensionUiAssetCacheControl?: string;
 }): void {
 	input.app.get("/api/health", async () => healthBody());
+	input.app.get("/api/ready", async (_request, reply) => {
+		const ready = input.isReady();
+		return reply.status(ready ? 200 : 503).send({ status: ready ? "ready" : "not_ready" });
+	});
 	registerInternalWorkerSessionSnapshotRoutes({
 		app: input.app,
 		leases: input.deps.leases,
@@ -38,7 +43,12 @@ export function registerHttp(input: {
 	registerAuthRoutes(input.app, input.authService);
 	input.app.addHook("preHandler", async (request, reply) => {
 		const url = request.url.split("?", 1)[0] ?? request.url;
-		if (!url.startsWith("/api/") || url === "/api/health" || url === "/api/auth/me") {
+		if (
+			!url.startsWith("/api/") ||
+			url === "/api/health" ||
+			url === "/api/ready" ||
+			url === "/api/auth/me"
+		) {
 			return;
 		}
 		requireApiActor(input.authService, request, reply);
