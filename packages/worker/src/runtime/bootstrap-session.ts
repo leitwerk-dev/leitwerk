@@ -35,6 +35,7 @@ interface PreparedSessionBase {
 	turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
 	turnResultMarkdownByProduct?: Record<string, string>;
 	settings: WorkerRuntimeSettings;
+	integrationTools: NonNullable<WorkerStartPayload["integrationTools"]>;
 }
 
 export interface PreparedAutomaticSession extends PreparedSessionBase {
@@ -106,6 +107,7 @@ function validatePreparedSession(input: {
 		turnResultMarkdownBySemanticRef: payload.turnResultMarkdownBySemanticRef,
 		turnResultMarkdownByProduct: payload.turnResultMarkdownByProduct,
 		settings,
+		integrationTools: payload.integrationTools ?? [],
 	};
 	if (binding.definition.kind === "automatic") {
 		return { ...base, kind: "automatic", piAvailable: false, activeModelProfileId: null };

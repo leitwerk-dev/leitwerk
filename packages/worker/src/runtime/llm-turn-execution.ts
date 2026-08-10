@@ -113,6 +113,7 @@ export interface LlmTurnExecutorCallbacks {
 		},
 	): void;
 	emit?: WorkerOperationEmitter;
+	integrationTools?: readonly import("@leitwerk-dev/process-sdk").PiCustomTool[];
 }
 
 /**
@@ -321,6 +322,7 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 		turnRecordId,
 		turnDef: input.turnDef,
 		requestQuestions: input.callbacks.requestQuestions,
+		integrationTools: input.callbacks.integrationTools,
 		resultImageTool: input.resultImageTools.create({
 			workspaceRoot: input.ctx.workspaceRoot,
 			instanceId: input.ctx.process.id,

@@ -30,7 +30,7 @@ The four built-in primitives control workspace access:
 Integration extensions define custom domain tools that allow AI agents to query or update external services (like Jira or GitLab) during execution:
 
 ```ts
-// Registered inside setup(api) in an integration extension
+// Registered inside setupServer(api) in an integration extension
 api.tool({
   name: "jira_update_issue",
   description: "Update status, labels, or post comments to a Jira issue",
@@ -43,12 +43,26 @@ api.tool({
     },
     required: ["issueKey"],
   },
-  execute: async (params, ctx) => {
+  execute: async (ctx, params) => {
     await jiraClient.updateIssue(params);
     return { success: true, message: `Updated ${params.issueKey}` };
   },
 });
+
+flow.llm("update_issue")
+  .description("Update the source issue")
+  .integrationTools("jira_update_issue");
 ```
+
+Integration tools are registered and executed in the server process. `worker.start`
+contains only their non-secret name, description, and JSON parameter schema. A worker
+invocation crosses authenticated IPC and is accepted only for the active running turn,
+an explicitly authorized tool name, and an optional project belonging to that process.
+Provider tokens and clients never enter worker configuration or snapshots.
+
+The server assigns a stable idempotency key from the process, turn record, Pi tool-call
+identity, and tool name. Reconnects replay the same request. External writes must also
+use `ensureWrite()` so replay remains safe across a server restart.
 
 ### Common Integration Tools
 

@@ -174,6 +174,18 @@ const filesystemWatcherSchema = v.looseObject({
 	launch: v.optional(watcherLaunchConfigSchema),
 });
 
+const forgejoIssueWatcherSchema = v.looseObject({
+	type: v.literal("forgejo_issue"),
+	enabled: v.boolean(),
+	profile: v.string(),
+	poll_interval: v.string(),
+	labels: v.looseObject({
+		trigger: v.string(),
+		done: v.string(),
+	}),
+	launch: v.optional(watcherLaunchConfigSchema),
+});
+
 const authNonEmptyString = v.pipe(v.string(), v.nonEmpty());
 
 const authOidcProviderSchema = v.looseObject({
@@ -203,6 +215,7 @@ const processWatcherConfigSchema = v.variant("type", [
 	jiraWatcherSchema,
 	gitlabMrWatcherSchema,
 	filesystemWatcherSchema,
+	forgejoIssueWatcherSchema,
 ]);
 
 const safeSkillIdSchema = v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN));

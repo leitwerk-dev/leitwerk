@@ -50,6 +50,7 @@ const implement = flow
   .llm<Params, State>("implement")
   .description("Implement requested change")
   .tools("read", "bash", "edit", "write")
+  .integrationTools("forgejo_get_pull_request", "woodpecker_get_step_logs")
   .freshPrimary()
   .buildPrompt((ctx) => `Implement this task:\n${ctx.params.prompt}`)
   .publish("summary")
@@ -65,6 +66,12 @@ export const myProcess = flow
   .use(flow.fragment<Params, State>("main").turn(implement))
   .define();
 ```
+
+`.tools(...)` enables worker-local workspace primitives. `.integrationTools(...)`
+authorizes extension-defined, server-executed tools for that turn. Extension setup
+registers those tools with `ServerExtensionAPI.tool(...)`; names must be lowercase
+snake case, globally unique, and available at server startup. Workers receive only
+public tool declarations and proxy calls over authenticated IPC.
 
 ## Registering the Extension (`src/index.ts`)
 

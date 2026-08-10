@@ -95,6 +95,12 @@ export interface AutomaticWorkerStartBootstrap {
 
 export type WorkerRuntimeSettingsSnapshot = ConfigSnapshot["workers"];
 
+export interface IntegrationToolDeclaration {
+	name: string;
+	description: string;
+	parameters: Record<string, unknown>;
+}
+
 interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	workerLeaseId: string;
 	turnStart: TurnStartRecord;
@@ -114,6 +120,8 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	repositoryCredentials?: WorkerGitSshCredential[];
 	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
+	/** Non-secret declarations authorized for the selected LLM turn. */
+	integrationTools?: IntegrationToolDeclaration[];
 }
 
 export type WorkerStartPayload =
@@ -152,6 +160,21 @@ export interface WorkerQuestionRequestedPayload {
 	questions: NormalizedQuestion[];
 }
 
+export interface WorkerIntegrationToolRequestPayload {
+	turnRecordId: string;
+	toolCallId: string;
+	toolName: string;
+	args: Record<string, unknown>;
+}
+
+export interface WorkerIntegrationToolResultPayload {
+	turnRecordId: string;
+	toolCallId: string;
+	ok: boolean;
+	result?: unknown;
+	error?: string;
+}
+
 export interface WorkerCredentialUpdateResultPayload {
 	providerId: string;
 	accepted: boolean;
@@ -175,6 +198,10 @@ export type ServerToWorkerMessage =
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.question_response";
 			payload: WorkerQuestionResponsePayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.integration_tool_result";
+			payload: WorkerIntegrationToolResultPayload;
 	  })
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "input.batch";
@@ -336,6 +363,10 @@ export type WorkerToServerMessage =
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.question_requested";
 			payload: WorkerQuestionRequestedPayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.integration_tool_request";
+			payload: WorkerIntegrationToolRequestPayload;
 	  })
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.turn_outcome";

@@ -175,10 +175,20 @@ export interface FilesystemProcessWatcherConfigSnapshot {
 	launch?: WatcherLaunchConfigSnapshot;
 }
 
+export interface ForgejoIssueProcessWatcherConfigSnapshot {
+	type: "forgejo_issue";
+	enabled: boolean;
+	profile: string;
+	poll_interval: string;
+	labels: { trigger: string; done: string };
+	launch?: WatcherLaunchConfigSnapshot;
+}
+
 export type ProcessWatcherConfigSnapshot =
 	| JiraProcessWatcherConfigSnapshot
 	| GitLabMrProcessWatcherConfigSnapshot
-	| FilesystemProcessWatcherConfigSnapshot;
+	| FilesystemProcessWatcherConfigSnapshot
+	| ForgejoIssueProcessWatcherConfigSnapshot;
 
 export type ProcessWatcherType = ProcessWatcherConfigSnapshot["type"];
 

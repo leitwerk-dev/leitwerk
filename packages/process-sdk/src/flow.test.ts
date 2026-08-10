@@ -2,6 +2,20 @@ import { describe, expect, it } from "vitest";
 import { flow } from "./flow.js";
 
 describe("flow", () => {
+	it("declares server-owned integration tools on an LLM turn", () => {
+		const turn = flow
+			.llm("repair")
+			.description("Repair a provider failure")
+			.integrationTools("forgejo_get_pull_request", "woodpecker_get_step_logs")
+			.prompt(() => "Diagnose the current failure")
+			.end("done").definition;
+
+		expect(turn).toMatchObject({
+			kind: "llm",
+			integrationTools: ["forgejo_get_pull_request", "woodpecker_get_step_logs"],
+		});
+	});
+
 	it("builds a discoverable plan-producing LLM turn", async () => {
 		const turn = flow
 			.llm<{ prompt: string }, { reviewSubject: null }>("generate_plan")

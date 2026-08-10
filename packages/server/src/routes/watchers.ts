@@ -41,20 +41,22 @@ function summarizeLaunchModelConfig(
 }
 
 function buildWatcherSummary(watcher: RegisteredProcessWatcherLike): WatcherSummary {
-	const launchModel = summarizeLaunchModelConfig(watcher.launchModelConfig);
+	const base = {
+		processId: watcher.processId,
+		processDisplayName: watcher.processDisplayName,
+		watcherId: watcher.watcherId,
+		label: watcher.watcherLabel,
+		description: watcher.watcherDescription,
+		enabled: watcher.enabled,
+		pollInterval: watcher.pollInterval,
+		configPath: watcher.configPath,
+		launchModel: summarizeLaunchModelConfig(watcher.launchModelConfig),
+	};
 	switch (watcher.config.type) {
 		case "jira":
 			return {
-				processId: watcher.processId,
-				processDisplayName: watcher.processDisplayName,
-				watcherId: watcher.watcherId,
-				label: watcher.watcherLabel,
-				description: watcher.watcherDescription,
+				...base,
 				type: "jira",
-				enabled: watcher.enabled,
-				pollInterval: watcher.pollInterval,
-				configPath: watcher.configPath,
-				launchModel,
 				targetSummary: `Jira project ${watcher.config.project} · trigger ${watcher.config.labels.trigger}`,
 				project: watcher.config.project,
 				labels: watcher.config.labels,
@@ -62,34 +64,26 @@ function buildWatcherSummary(watcher: RegisteredProcessWatcherLike): WatcherSumm
 			};
 		case "gitlab_mr":
 			return {
-				processId: watcher.processId,
-				processDisplayName: watcher.processDisplayName,
-				watcherId: watcher.watcherId,
-				label: watcher.watcherLabel,
-				description: watcher.watcherDescription,
+				...base,
 				type: "gitlab_mr",
-				enabled: watcher.enabled,
-				pollInterval: watcher.pollInterval,
-				configPath: watcher.configPath,
-				launchModel,
 				targetSummary: `GitLab group ${watcher.config.group} · trigger ${watcher.config.labels.trigger}`,
 				group: watcher.config.group,
 				labels: watcher.config.labels,
 			};
 		case "filesystem":
 			return {
-				processId: watcher.processId,
-				processDisplayName: watcher.processDisplayName,
-				watcherId: watcher.watcherId,
-				label: watcher.watcherLabel,
-				description: watcher.watcherDescription,
+				...base,
 				type: "filesystem",
-				enabled: watcher.enabled,
-				pollInterval: watcher.pollInterval,
-				configPath: watcher.configPath,
-				launchModel,
 				targetSummary: `File ${watcher.config.file_path}`,
 				filePath: watcher.config.file_path,
+			};
+		case "forgejo_issue":
+			return {
+				...base,
+				type: "forgejo_issue",
+				targetSummary: `Forgejo profile ${watcher.config.profile} · trigger ${watcher.config.labels.trigger}`,
+				profile: watcher.config.profile,
+				labels: watcher.config.labels,
 			};
 	}
 }

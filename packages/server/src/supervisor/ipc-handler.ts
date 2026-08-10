@@ -4,6 +4,7 @@ import {
 	decodeWorkerToServerMessage,
 	type IpcEnvelope,
 	type WorkerCredentialUpdateResultPayload,
+	type WorkerIntegrationToolResultPayload,
 	type WorkerTurnStartAcceptedPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -46,6 +47,10 @@ export interface IpcHandlerDeps
 		expectedRevision: number;
 		values: Record<string, string>;
 	}) => { accepted: boolean; currentRevision: number | null; safeReason?: string };
+	handleIntegrationToolRequest?: (
+		instanceId: string,
+		payload: import("@leitwerk-dev/worker-protocol").WorkerIntegrationToolRequestPayload,
+	) => Promise<WorkerIntegrationToolResultPayload>;
 }
 
 export interface IpcHandlerCallbacks {
@@ -68,6 +73,11 @@ export interface IpcHandlerCallbacks {
 		instanceId: string,
 		workerId: string,
 		payload: WorkerCredentialUpdateResultPayload,
+	) => void;
+	onIntegrationToolResult?: (
+		instanceId: string,
+		workerId: string,
+		payload: WorkerIntegrationToolResultPayload,
 	) => void;
 }
 
@@ -103,6 +113,21 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				);
 
 			switch (msg.type) {
+				case "worker.integration_tool_request": {
+					if (!deps.handleIntegrationToolRequest) break;
+					void deps
+						.handleIntegrationToolRequest(instanceId, msg.payload)
+						.then((payload) => callbacks.onIntegrationToolResult?.(instanceId, workerId, payload))
+						.catch(() =>
+							callbacks.onIntegrationToolResult?.(instanceId, workerId, {
+								turnRecordId: msg.payload.turnRecordId,
+								toolCallId: msg.payload.toolCallId,
+								ok: false,
+								error: "Integration tool execution failed",
+							}),
+						);
+					break;
+				}
 				case "worker.credential_update": {
 					const result = deps.updateCredential?.(msg.payload) ?? {
 						accepted: false,

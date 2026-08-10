@@ -267,6 +267,24 @@ export function validateLlmTurnDefinition<
 		);
 	}
 
+	if (turnDef.integrationTools !== undefined) {
+		if (!Array.isArray(turnDef.integrationTools)) {
+			errors.push(`LLM turn '${turnId}' integrationTools must be an array`);
+		} else {
+			const seen = new Set<string>();
+			for (const name of turnDef.integrationTools) {
+				if (typeof name !== "string" || name.trim() === "") {
+					errors.push(`LLM turn '${turnId}' integration tool names must be non-empty strings`);
+					continue;
+				}
+				if (seen.has(name)) {
+					errors.push(`LLM turn '${turnId}' declares duplicate integration tool '${name}'`);
+				}
+				seen.add(name);
+			}
+		}
+	}
+
 	if (turnDef.turnResultMarkdown?.mode === "tool_call") {
 		if (turnDef.turnResultMarkdown.toolName.trim() === "") {
 			errors.push(

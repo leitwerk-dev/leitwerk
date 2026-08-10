@@ -659,6 +659,26 @@ describe("validateConfig", () => {
 			),
 		).toBe(true);
 	});
+
+	it("accepts a Forgejo issue watcher", () => {
+		const config = getDefaultConfig();
+		config.process_configs = {
+			forgejo_repo_change_process: {
+				turn_configs: {},
+				watchers: {
+					use_leitwerk: {
+						type: "forgejo_issue",
+						enabled: true,
+						profile: "homeserver",
+						poll_interval: "30s",
+						labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
+					},
+				},
+			},
+		};
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
 });
 
 describe("auth config validation", () => {

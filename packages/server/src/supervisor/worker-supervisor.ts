@@ -20,6 +20,7 @@ import {
 	WORKER_SNAPSHOT_TOKEN_ENV,
 	type WorkerCredentialUpdateResultPayload,
 	type WorkerHelloPayload,
+	type WorkerIntegrationToolResultPayload,
 	type WorkerQuestionResponsePayload,
 } from "@leitwerk-dev/worker-protocol";
 import type {
@@ -79,6 +80,7 @@ export interface SupervisorDeps
 	serverEpoch?: string;
 	resolveResourceBundle?: (digest: string) => PiResourceBundle | null;
 	resolveRepositoryCredentials?: WorkerStartPayloadBuilderDeps["resolveRepositoryCredentials"];
+	integrationTools?: WorkerStartPayloadBuilderDeps["integrationTools"];
 	resolveCredential?: (
 		providerId: string,
 		options: Readonly<Record<string, string>>,
@@ -132,6 +134,11 @@ export interface WorkerSupervisor {
 		instanceId: string,
 		workerId: string,
 		payload: WorkerCredentialUpdateResultPayload,
+	): void;
+	integrationToolResult(
+		instanceId: string,
+		workerId: string,
+		payload: WorkerIntegrationToolResultPayload,
 	): void;
 	getWorker(instanceId: string): WorkerHandle | undefined;
 	isAdoptionPending(instanceId: string): boolean;
@@ -855,6 +862,12 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		},
 		questionResponse(instanceId, workerId, payload) {
 			sendToCurrentWorker(instanceId, workerId, { type: "worker.question_response", payload });
+		},
+		integrationToolResult(instanceId, workerId, payload) {
+			sendToCurrentWorker(instanceId, workerId, {
+				type: "worker.integration_tool_result",
+				payload,
+			});
 		},
 		credentialUpdateResult(instanceId, workerId, payload) {
 			sendToCurrentWorker(instanceId, workerId, {

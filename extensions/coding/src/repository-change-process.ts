@@ -3,6 +3,7 @@ import {
 	acceptedReviewHandoffAction,
 	type Codec,
 	createEmptyStructuralProcessState,
+	type FlowFragmentBuilder,
 	type FormDefinition,
 	flow,
 	type HumanTurnDefinition,
@@ -46,7 +47,7 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 	processId: string;
 	displayName: string;
 	paramsCodec: Codec<TParams>;
-	launcher: ProcessLauncherDefinition<TParams>;
+	launcher?: ProcessLauncherDefinition<TParams>;
 	finalizeLabel: string;
 	finalizeForm: FormDefinition;
 	finalizationDescription: string;
@@ -54,6 +55,11 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 		params: TParams;
 		projects: readonly RepositoryCredentialProject[];
 	}): readonly RepositoryCredentialRequirement[];
+	publication?: {
+		entryTurnId: string;
+		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
+		happyPath?: readonly string[];
+	};
 }
 
 export function createRepositoryChangeProcess<TParams extends RepositoryChangeParams>(
@@ -794,7 +800,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.consume(products.plan)
 		.buildPrompt(buildGenerateCommitMessagePrompt)
 		.publish(products.commitMessage)
-		.to(turnIds.commitAndMerge)
+		.to(config.publication?.entryTurnId ?? turnIds.commitAndMerge)
 		.state(({ ctx }) =>
 			patchRepositoryChangeState(ctx.state, {
 				finalization: {
@@ -888,9 +894,10 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const finalizationFlow = flow
 		.fragment<TParams, RepositoryChangeState>("finalization")
-		.turn(generateCommitMessageTurn)
-		.turn(commitAndMergeTurn)
-		.turn(resolveMergeConflictTurn);
+		.turn(generateCommitMessageTurn);
+	if (!config.publication) {
+		finalizationFlow.turn(commitAndMergeTurn).turn(resolveMergeConflictTurn);
+	}
 
 	const builder = flow
 		.process<TParams, RepositoryChangeState>(config.processId)
@@ -901,7 +908,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			turnIds.generatePlan,
 			turnIds.implement,
 			turnIds.generateCommitMessage,
-			turnIds.commitAndMerge,
+			...(config.publication?.happyPath ?? [turnIds.commitAndMerge]),
 		)
 		.piConfig({ sessionCwdTemplate: "{{{projectKey}}}" })
 		.codecs({
@@ -911,12 +918,15 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.initialState(() => ({
 			...createEmptyStructuralProcessState(),
 			finalization: createEmptyRepositoryChangeFinalizationState(),
+			extensionState: {},
 		}))
 		.use(planFlow)
 		.use(implementationFlow)
 		.use(finalizationFlow);
+	if (config.publication) builder.use(config.publication.fragment);
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
-	const process = builder.launcher(config.launcher).define();
+	if (config.launcher) builder.launcher(config.launcher);
+	const process = builder.define();
 	const decision = (id: string) =>
 		({
 			id,

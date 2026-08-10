@@ -25,7 +25,12 @@ function validateWatcherDefinition<TParams, TType extends ProcessWatcherType>(
 	if (!def.description.trim()) {
 		throw new Error(`Process watcher '${def.id}' must define a non-empty description`);
 	}
-	if (def.type !== "jira" && def.type !== "gitlab_mr" && def.type !== "filesystem") {
+	if (
+		def.type !== "jira" &&
+		def.type !== "gitlab_mr" &&
+		def.type !== "filesystem" &&
+		def.type !== "forgejo_issue"
+	) {
 		throw new Error(`Process watcher '${def.id}' has unsupported type '${String(def.type)}'`);
 	}
 }

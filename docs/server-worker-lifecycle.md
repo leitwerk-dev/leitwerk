@@ -79,7 +79,7 @@ Durable worker leases transition through distinct lifecycle states owned exclusi
 All worker communication occurs over WebSocket (`/internal/workers/connect`) using `@leitwerk-dev/worker-protocol`:
 
 ### Server -> Worker Messages
-- **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, and any LLM resource snapshot or provider credentials. Runtime settings apply to LLM and automatic workers.
+- **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
 - **`input.batch`:** Deliver pending FIFO steering inputs.
 - **`worker.stop`:** Request graceful worker cleanup and transport termination.
@@ -102,6 +102,13 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 2. **`worker.turn_started` Acceptance:** The worker bootstraps workspace repositories, verifies resource snapshots, and sends `worker.turn_started`. The worker MUST NOT execute LLM prompts or automatic handlers until receiving `worker.turn_start_accepted`.
 3. **Attempt Increment:** Server acceptance compare-and-set creates exactly one `ProcessTurnRecord` and increments its attempt count once. Replaying an accepted start identity returns acceptance without creating duplicate attempts.
 4. **Failure Recovery:** If a turn fails post-acceptance, the process moves to `lifecycleStatus = error` while preserving `selectedTurnId`. The operator can trigger **Retry** (restarts from pre-turn leaf) or **Continue** (resumes saved leaf with updated prompt).
+
+During an LLM turn, a declared integration tool uses
+`worker.integration_tool_request` / `worker.integration_tool_result`. The server checks
+the running turn record, selected turn, process project, and turn authorization before
+dispatching to the extension registry. A pending worker call is replayed after IPC
+reconnect with the same Pi tool-call identity; aborting the turn cancels it and restores
+normal prompt guards.
 
 ---
 

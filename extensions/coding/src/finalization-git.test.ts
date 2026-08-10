@@ -10,7 +10,7 @@ import type { FlowAutomaticRunContext } from "@leitwerk-dev/process-sdk";
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runDeterministicFinalization } from "./finalization-git.js";
+import { commitAndPushWorkBranch, runDeterministicFinalization } from "./finalization-git.js";
 import type { RepositoryChangeParamsBase } from "./repository-change-launch.js";
 import {
 	type RepositoryChangeState as LocalRepoChangeState,
@@ -22,6 +22,25 @@ import {
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 const tempDirs: string[] = [];
+
+describe("commitAndPushWorkBranch", () => {
+	it("commits dirty work and publishes only the checked-out feature branch", () => {
+		const { remoteDir, repoDir } = createSeededWorkspace();
+		const mainSha = headSha(remoteDir, "refs/heads/main");
+		writeFileSync(path.join(repoDir, "feature.txt"), "remote change\n", "utf8");
+
+		const result = commitAndPushWorkBranch({
+			repoPath: repoDir,
+			workBranch: "feature/test",
+			commitMessage: "feat: publish remote change",
+		});
+
+		expect(result.pushTarget).toBe("origin/feature/test");
+		expect(headSha(remoteDir, "refs/heads/main")).toBe(mainSha);
+		expect(headSha(remoteDir, "refs/heads/feature/test")).toBe(result.headSha);
+		expect(git(repoDir, "status", "--short")).toBe("");
+	});
+});
 
 function createTempDir(prefix: string): string {
 	const dir = path.join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`);

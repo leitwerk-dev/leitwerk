@@ -1,5 +1,6 @@
 import type { ServerToWorkerMessage } from "@leitwerk-dev/worker-protocol";
 import { deliverBatch } from "../input-consumer.js";
+import { WorkerIntegrationToolBridge } from "../integration-tool-bridge.js";
 import type { WorkerIpc } from "../ipc.js";
 import { createPiEventReporter } from "../pi-event-reporter.js";
 import { WorkerQuestionBridge } from "../question-bridge.js";
@@ -57,6 +58,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		emitExtensionEvent: (event, payload) => adapters.extensionEvents?.emit(event, payload),
 	});
 	const questionBridge = new WorkerQuestionBridge(reporter);
+	const integrationToolBridge = new WorkerIntegrationToolBridge(reporter);
 
 	let dispatch: (event: WorkerRuntimeEvent) => void;
 	const piEvents = createPiEventReporter({
@@ -193,6 +195,10 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 						executeSelectedTurn({
 							session: command.session,
 							requestQuestions: (request) => questionBridge.request(request),
+							integrationTools: integrationToolBridge.createTools(
+								command.session.integrationTools,
+								command.turnRecordId,
+							),
 							piHandle: resources.piHandle,
 							turnRecordId: command.turnRecordId,
 							targetedInputs: command.targetedInputs,
@@ -328,6 +334,10 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	};
 
 	const receive = (message: ServerToWorkerMessage): void => {
+		if (message.type === "worker.integration_tool_result") {
+			integrationToolBridge.handle(message);
+			return;
+		}
 		if (message.type === "worker.question_response") {
 			questionBridge.handle(message);
 			return;
@@ -349,6 +359,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 			ipc.onConnect?.(() => {
 				dispatch({ kind: "transport_connected" });
 				questionBridge.replay();
+				integrationToolBridge.replay();
 			});
 			ipc.start();
 			dispatch({ kind: "runtime_started" });
@@ -356,6 +367,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		async stop(reason: string) {
 			if (state.phase.kind === "exited") return;
 			questionBridge.cancelAll(`Question request cancelled: ${reason}`);
+			integrationToolBridge.cancelAll(`Integration tool request cancelled: ${reason}`);
 			dispatch({ kind: "stop_requested", reason, exitAfterCleanup: false });
 			await closed;
 		},

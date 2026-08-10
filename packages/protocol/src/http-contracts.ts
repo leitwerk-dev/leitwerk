@@ -532,7 +532,17 @@ export type FilesystemWatcherSummary = WatcherSummaryBase & {
 	filePath: string;
 };
 
-export type WatcherSummary = JiraWatcherSummary | GitLabMrWatcherSummary | FilesystemWatcherSummary;
+export type ForgejoIssueWatcherSummary = WatcherSummaryBase & {
+	type: "forgejo_issue";
+	profile: string;
+	labels: { trigger: string; done: string };
+};
+
+export type WatcherSummary =
+	| JiraWatcherSummary
+	| GitLabMrWatcherSummary
+	| FilesystemWatcherSummary
+	| ForgejoIssueWatcherSummary;
 
 export interface SkillUsageSummary {
 	attachedAllTime: number;

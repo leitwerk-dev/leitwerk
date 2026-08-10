@@ -133,6 +133,8 @@ export type {
 	FormDefinition,
 	FormFieldDefinition,
 	GitSshCredentialMaterial,
+	IntegrationToolDefinition,
+	IntegrationToolExecutionContext,
 	LauncherContext,
 	LauncherModelProfileSummary,
 	LauncherVisibility,

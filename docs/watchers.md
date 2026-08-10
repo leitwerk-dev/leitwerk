@@ -46,8 +46,31 @@ process_configs:
         project_keys: ["PROJ"]
 ```
 
-- **`type`:** Selects the provider watcher implementation (`jira`, `gitlab_mr`, or `filesystem`).
+- **`type`:** Selects the provider watcher implementation (`jira`, `gitlab_mr`, `forgejo_issue`, or `filesystem`).
 - **`enabled`:** Toggles background polling for that watcher instance.
+
+### Forgejo issues across all visible repositories
+
+`forgejo_issue` delegates polling of all repositories visible to a server-owned
+Forgejo profile:
+
+```yaml
+process_configs:
+  forgejo_repo_change_process:
+    watchers:
+      use_leitwerk:
+        type: forgejo_issue
+        enabled: true
+        profile: homeserver
+        poll_interval: 30s
+        labels:
+          trigger: use-leitwerk
+          done: leitwerk-done
+```
+
+The provider supplies repository and issue metadata to the watcher launch resolver.
+Use a stable handoff key such as `forgejo:<owner>/<repo>#<number>` so repeated polls
+cannot create duplicate active processes.
 
 ## Idempotency & Deduplication
 

@@ -280,6 +280,8 @@ export interface LlmTurnDefinition<
 	modelPurpose?: LlmModelPurpose;
 	/** Built-in Pi tools active while this turn runs. */
 	availableTools: readonly PiBuiltInToolName[];
+	/** Server-owned integration tools proxied over authenticated worker IPC. */
+	integrationTools?: readonly string[];
 	/** Opt in to the durable, operator-facing ask_questions custom tool. */
 	askQuestions?: boolean;
 	completionMode?: TurnCompletionMode;

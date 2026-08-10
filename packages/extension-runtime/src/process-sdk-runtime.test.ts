@@ -937,8 +937,10 @@ describe("extension host setup", () => {
 		const capabilities = createCapabilityAccessor();
 		await setupServerExtensions(catalog, {
 			events: createEventBus(),
+			provide: capabilities.provide,
 			get: capabilities.get,
 			require: capabilities.require,
+			tool() {},
 			onStart() {},
 			onStop() {},
 		});
