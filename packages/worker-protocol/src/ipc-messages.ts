@@ -93,6 +93,8 @@ export interface AutomaticWorkerStartBootstrap {
 	kind: "automatic";
 }
 
+export type WorkerRuntimeSettingsSnapshot = ConfigSnapshot["workers"];
+
 interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	workerLeaseId: string;
 	turnStart: TurnStartRecord;
@@ -110,6 +112,8 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	resumeLeafEntryId?: string | null;
 	/** Fresh secret material resolved for this physical worker start only. */
 	repositoryCredentials?: WorkerGitSshCredential[];
+	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
+	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
 }
 
 export type WorkerStartPayload =

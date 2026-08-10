@@ -57,6 +57,62 @@ describe("buildWorkerConfigSnapshot", () => {
 	});
 });
 
+describe("worker.start runtime settings", () => {
+	it("sends the configured settings to automatic workers", () => {
+		const deps = createTestDeps();
+		const config = getDefaultConfig();
+		config.workers.heartbeat_interval = "5s";
+		config.workers.turn_max_duration = "6h";
+		config.workers.turn_inactivity_timeout = "10m";
+		config.workers.turn_abort_grace_period = "10s";
+		const process = deps.processes.create({
+			processId: "jira_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		const start = deps.turnStarts.create({
+			id: "tsr_automatic_settings",
+			instanceId: process.id,
+			turnId: "generate_plan",
+			turnType: "automatic",
+			proposedTurnRecordId: "trn_automatic_settings",
+			startKind: "selected_turn",
+			recoveryTurnRecordId: null,
+			continuation: null,
+			state: { kind: "starting", start: { kind: "automatic" } },
+		});
+		deps.processes.update(process.id, {
+			currentExecution: { kind: "worker_start", id: start.id },
+		});
+		deps.leases.create({
+			instanceId: process.id,
+			workerId: "wkr_automatic_settings",
+			state: "bootstrapping",
+		});
+		const builder = createWorkerStartPayloadBuilder({
+			...deps,
+			config,
+			processGraphs: createDefaultTestProcessGraphRegistry(),
+			processActionRegistry: { getTurnDefinition: () => undefined },
+			storageLayout: () => ({
+				primaryTreeFile: "/tree/primary.jsonl",
+				workspaceRoot: "/workspace",
+				resume: false,
+			}),
+		});
+
+		const message = builder.buildStartMessage(process.id, "wkr_automatic_settings");
+
+		expect(message?.payload.bootstrap).toEqual({ kind: "automatic" });
+		expect(message?.payload.workerRuntimeSettings).toEqual({
+			heartbeat_interval: "5s",
+			turn_max_duration: "6h",
+			turn_inactivity_timeout: "10m",
+			turn_abort_grace_period: "10s",
+		});
+	});
+});
+
 describe("worker.start Pi resource-bundle delivery", () => {
 	function setup() {
 		const deps = createTestDeps();

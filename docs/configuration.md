@@ -99,6 +99,8 @@ kubernetes:
 
 - `workers.runner`: Selects container runner adapter (`docker`, `kubernetes`, or `local`).
 - `workers.max_parallel_processes`: Maximum concurrent worker processes running across the server.
+- `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
+- `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
 - `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
