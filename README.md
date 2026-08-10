@@ -127,7 +127,7 @@ npm run dev:server:dist # dist-parity server watcher only
 
 - The backend starts at `server.host` / `server.port`; `npm run dev` falls forward to the next free backend port and keeps the UI proxy aligned.
 - Set `LEITWERK_UI_PORT` when you need the Vite dev server to bind to a specific port.
-- The health check is available at `/api/health` on the backend URL printed by the dev script.
+- `/api/health` reports liveness. `/api/ready` reports readiness after startup reconciliation and extension start hooks.
 - Set `workers.log_worker_events_to_stdout: true` for deep worker/Pi troubleshooting.
 - Core packages under `packages/` must not import from `extensions/`.
 - External writes from integrations must be idempotent and use the shared watcher utilities.

@@ -187,6 +187,46 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(deployment)).toContain("leitwerk-server-data");
 	});
 
+	it("renders an opt-in pre-upgrade preflight and lifecycle-aware server probes", () => {
+		const documents = renderChart([
+			"--set",
+			"server.preflight.enabled=true",
+			"--set",
+			"server.storage.existingClaim=leitwerk-server-data",
+			"--set",
+			"server.existingConfigSecret=leitwerk-runtime-config",
+		]);
+		const job = findDocumentsByKind(documents, "Job")[0];
+		const deployment = findDocumentsByKind(documents, "Deployment")[0];
+		const renderedJob = JSON.stringify(job);
+
+		expect(job).toMatchObject({
+			metadata: {
+				annotations: {
+					"helm.sh/hook": "pre-upgrade",
+					"helm.sh/hook-delete-policy": "before-hook-creation,hook-succeeded",
+				},
+			},
+			spec: { backoffLimit: 0 },
+		});
+		expect(renderedJob).toContain("--deployment-preflight");
+		expect(renderedJob).toContain("leitwerk-server-data");
+		expect(renderedJob).toContain('"readOnly":true');
+		expect(renderedJob).toContain('"emptyDir":{}');
+		expect(renderedJob).toContain("requiredDuringSchedulingIgnoredDuringExecution");
+		const deploymentSpec = deployment.spec as Record<string, unknown>;
+		const podSpec = ((deploymentSpec.template as Record<string, unknown>).spec ?? {}) as Record<
+			string,
+			unknown
+		>;
+		const server = (podSpec.containers as Array<Record<string, unknown>>)[0];
+		expect(deploymentSpec.strategy).toEqual({ type: "Recreate" });
+		expect(podSpec.terminationGracePeriodSeconds).toBe(60);
+		expect(server.readinessProbe).toMatchObject({ httpGet: { path: "/api/ready" } });
+		expect(server.livenessProbe).toMatchObject({ httpGet: { path: "/api/health" } });
+		expect(server.startupProbe).toMatchObject({ httpGet: { path: "/api/health" } });
+	});
+
 	it("renders least-privilege pull-Secret copying RBAC and admission constraints", () => {
 		const documents = renderChart([
 			"--set",

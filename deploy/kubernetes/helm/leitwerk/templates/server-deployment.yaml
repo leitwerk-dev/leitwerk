@@ -29,6 +29,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "leitwerk.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -55,7 +56,7 @@ spec:
               protocol: TCP
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /api/ready
               port: http
               scheme: {{ ternary "HTTPS" "HTTP" .Values.internalTls.enabled }}
             initialDelaySeconds: 5
@@ -67,6 +68,13 @@ spec:
               scheme: {{ ternary "HTTPS" "HTTP" .Values.internalTls.enabled }}
             initialDelaySeconds: 15
             periodSeconds: 20
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+              scheme: {{ ternary "HTTPS" "HTTP" .Values.internalTls.enabled }}
+            periodSeconds: 5
+            failureThreshold: 60
           volumeMounts:
             - name: config
               mountPath: /etc/leitwerk

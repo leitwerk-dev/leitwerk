@@ -155,6 +155,7 @@ export interface AppContext {
 	supervisor: WorkerSupervisor;
 	startBackgroundServices(): Promise<void>;
 	stopBackgroundServices(): Promise<void>;
+	isReady(): boolean;
 }
 
 function createConfiguredDatabase(config: LeitwerkConfig): LeitwerkDb {
@@ -496,6 +497,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	});
 
 	let backgroundServicesStarted = false;
+	let backgroundServicesReady = false;
 	let startupReconciliationCompleted = false;
 	const startHooks: Array<() => void | Promise<void>> = [];
 	const stopHooks: Array<() => void | Promise<void>> = [];
@@ -600,7 +602,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			for (const hook of startHooks) {
 				await hook();
 			}
+			backgroundServicesReady = true;
 		} catch (error) {
+			backgroundServicesReady = false;
 			backgroundServicesStarted = false;
 			for (const hook of [...stopHooks].reverse()) {
 				await hook();
@@ -610,6 +614,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	}
 
 	async function stopBackgroundServices(): Promise<void> {
+		backgroundServicesReady = false;
 		if (!backgroundServicesStarted) {
 			return;
 		}
@@ -1036,6 +1041,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 
 	registerHttp({
 		app,
+		isReady: () => backgroundServicesReady,
 		deps,
 		authService,
 		processWatcherService,
@@ -1098,5 +1104,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		supervisor,
 		startBackgroundServices,
 		stopBackgroundServices,
+		isReady: () => backgroundServicesReady,
 	};
 }

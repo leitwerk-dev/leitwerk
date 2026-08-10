@@ -16,6 +16,7 @@ import {
 
 interface GrammyBotLike {
 	api: {
+		getUpdates(options: Record<string, unknown>): Promise<unknown[]>;
 		createForumTopic(chatId: string, name: string): Promise<{ message_thread_id: number }>;
 		editForumTopic(
 			chatId: string,
@@ -130,6 +131,7 @@ export class GrammyTelegramClient
 {
 	private readonly bot: GrammyBotLike;
 	private startPromise: Promise<void> | null = null;
+	private pollingPromise: Promise<void> | null = null;
 
 	constructor(
 		private readonly input: {
@@ -148,20 +150,62 @@ export class GrammyTelegramClient
 	}
 
 	async start(): Promise<void> {
-		if (this.startPromise) return;
-		const started = this.bot.start({
-			allowed_updates: ["message", "callback_query"],
-			drop_pending_updates: true,
+		if (this.startPromise) return this.startPromise;
+		const starting = this.startPolling();
+		this.startPromise = starting;
+		try {
+			await starting;
+		} catch (error) {
+			if (this.startPromise === starting) this.startPromise = null;
+			throw error;
+		}
+	}
+
+	private async startPolling(): Promise<void> {
+		const allowedUpdates = ["message", "callback_query"];
+		await this.bot.api.getUpdates({
+			allowed_updates: allowedUpdates,
+			limit: 1,
+			offset: -1,
+			timeout: 0,
 		});
-		this.startPromise = started.catch((error) => this.logWarn(error, "Telegram polling failed"));
+
+		let startupSettled = false;
+		let resolveStartup: (() => void) | undefined;
+		let rejectStartup: ((error: unknown) => void) | undefined;
+		const startup = new Promise<void>((resolve, reject) => {
+			resolveStartup = resolve;
+			rejectStartup = reject;
+		});
+		const polling = this.bot.start({
+			allowed_updates: allowedUpdates,
+			drop_pending_updates: true,
+			onStart: () => {
+				startupSettled = true;
+				resolveStartup?.();
+			},
+		});
+		this.pollingPromise = polling;
+		void polling.catch((error) => {
+			if (!startupSettled) {
+				rejectStartup?.(error);
+				return;
+			}
+			this.logWarn(error, "Telegram polling failed");
+		});
+		await startup;
 	}
 
 	async stop(): Promise<void> {
 		const started = this.startPromise;
 		if (!started) return;
 		this.startPromise = null;
+		await started.catch(() => undefined);
+		const polling = this.pollingPromise;
+		this.pollingPromise = null;
+		if (!polling) return;
 		await this.bot.stop();
-		await started;
+		await polling.catch(() => undefined);
 	}
 
 	async createForumTopic(input: {

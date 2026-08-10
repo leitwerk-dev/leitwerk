@@ -2,6 +2,7 @@ import path from "node:path";
 import { type AppContext, createAppContext } from "./app.js";
 import { loadConfig, sanitizeConfigForLogging } from "./config/config-loader.js";
 import { DatabaseSchemaMismatchError } from "./db/database.js";
+import { runDeploymentPreflight } from "./deployment-preflight.js";
 import { resolveRuntimeServerConfig } from "./runtime-server-config.js";
 
 const loadedConfig = loadConfig(process.env.LEITWERK_CONFIG_PATH);
@@ -26,12 +27,27 @@ console.info(
 	].join("\n"),
 );
 
+const extensionLoadingStartDir =
+	loadedConfig.filePath === "<defaults>" ? process.cwd() : path.dirname(loadedConfig.filePath);
+
+if (process.argv.includes("--deployment-preflight")) {
+	try {
+		await runDeploymentPreflight({
+			config: runtimeServer.config,
+			extensionLoadingStartDir,
+		});
+		process.exit(0);
+	} catch (error) {
+		console.error(error);
+		process.exit(1);
+	}
+}
+
 let ctx: AppContext;
 try {
 	ctx = await createAppContext({
 		config: runtimeServer.config,
-		extensionLoadingStartDir:
-			loadedConfig.filePath === "<defaults>" ? process.cwd() : path.dirname(loadedConfig.filePath),
+		extensionLoadingStartDir,
 	});
 } catch (error) {
 	if (error instanceof DatabaseSchemaMismatchError) {
@@ -53,6 +69,7 @@ async function shutdown(signal: keyof typeof SIGNAL_EXIT_CODES) {
 	}
 	shuttingDown = true;
 	try {
+		await ctx.stopBackgroundServices();
 		await ctx.app.close();
 		process.exit(SIGNAL_EXIT_CODES[signal]);
 	} catch (error) {

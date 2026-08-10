@@ -22,6 +22,24 @@ server Deployment after applying it.
 Set `server.storage.existingClaim` to mount an operator-managed server PVC. The
 chart does not create or own a PVC when this value is set.
 
+Set `server.preflight.enabled=true` only with an operator-managed
+`server.existingConfigSecret` and `server.storage.existingClaim`. On upgrade,
+Helm runs the candidate server image as a `pre-upgrade` Job on the current
+server's node. The Job mounts the production PVC read-only, uses SQLite's
+online backup API to create a consistent copy in `emptyDir`, redirects all
+server writes to that scratch volume, loads the candidate configuration and
+extensions, migrates the copy, and verifies `/api/health`. It never starts
+workers, extension start hooks, or Telegram polling. Helm retains a failed Job
+for log inspection; a failed hook aborts before the singleton Deployment is
+changed.
+
+The server Deployment uses `Recreate`: there is no old/new server overlap.
+`/api/health` is a process liveness endpoint. `/api/ready` remains 503 until
+startup reconciliation and every extension start hook have completed, and
+becomes 503 before shutdown hooks run. Startup and liveness probes use health;
+readiness uses ready. Keep a termination grace period long enough for polling
+integrations and worker detachment to finish.
+
 For private worker images, configure `kubernetes.imagePullSecrets` and
 `kubernetes.imagePullSecretCopies`. The chart grants the server `get` only on
 the named source Secrets in its namespace and `create`/`patch` on managed target
