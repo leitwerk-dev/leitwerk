@@ -79,7 +79,7 @@ Durable worker leases transition through distinct lifecycle states owned exclusi
 All worker communication occurs over WebSocket (`/internal/workers/connect`) using `@leitwerk-dev/worker-protocol`:
 
 ### Server -> Worker Messages
-- **`worker.start`:** Supply process state, prepared turn start, resource snapshot, and provider credentials.
+- **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, and any LLM resource snapshot or provider credentials. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
 - **`input.batch`:** Deliver pending FIFO steering inputs.
 - **`worker.stop`:** Request graceful worker cleanup and transport termination.

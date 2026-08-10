@@ -12,6 +12,7 @@ import {
 	type PiResourceBundle,
 	type ServerToWorkerMessage,
 	verifyCanonicalPiResourceBundle,
+	type WorkerRuntimeSettingsSnapshot,
 	type WorkerStartPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
@@ -48,6 +49,17 @@ export interface WorkerStartPayloadBuilderDeps
 	): { revision: number; values: Record<string, string> } | null;
 }
 
+export function buildWorkerRuntimeSettingsSnapshot(
+	config: LeitwerkConfig,
+): WorkerRuntimeSettingsSnapshot {
+	return {
+		heartbeat_interval: config.workers.heartbeat_interval,
+		turn_max_duration: config.workers.turn_max_duration,
+		turn_inactivity_timeout: config.workers.turn_inactivity_timeout,
+		turn_abort_grace_period: config.workers.turn_abort_grace_period,
+	};
+}
+
 const TRANSITION_SCOPED_PRODUCT_NAMES = new Set(["input", "message"]);
 
 export function buildWorkerConfigSnapshot(config: LeitwerkConfig): ConfigSnapshot {
@@ -58,12 +70,7 @@ export function buildWorkerConfigSnapshot(config: LeitwerkConfig): ConfigSnapsho
 		]),
 	);
 	return {
-		workers: {
-			heartbeat_interval: config.workers.heartbeat_interval,
-			turn_max_duration: config.workers.turn_max_duration,
-			turn_inactivity_timeout: config.workers.turn_inactivity_timeout,
-			turn_abort_grace_period: config.workers.turn_abort_grace_period,
-		},
+		workers: buildWorkerRuntimeSettingsSnapshot(config),
 		pi: config.pi,
 		...(Object.keys(processConfigs).length > 0 ? { process_configs: processConfigs } : {}),
 	};
@@ -300,6 +307,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					workspaceRoot: treePaths.workspaceRoot,
 				},
 				resume: treePaths.resume,
+				workerRuntimeSettings: buildWorkerRuntimeSettingsSnapshot(deps.config),
 				...(treePaths.resume ? { resumeLeafEntryId } : {}),
 				...(repositoryCredentials.length > 0 ? { repositoryCredentials } : {}),
 			};

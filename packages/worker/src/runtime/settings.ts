@@ -24,7 +24,9 @@ export function resolveWorkerRuntimeSettings(
 	config: WorkerRuntimeConfig,
 	payload: WorkerStartPayload,
 ): WorkerRuntimeSettings {
-	const workers = isLlmWorkerStartPayload(payload) ? payload.configSnapshot.workers : null;
+	const workers =
+		payload.workerRuntimeSettings ??
+		(isLlmWorkerStartPayload(payload) ? payload.configSnapshot.workers : null);
 	return {
 		heartbeatIntervalMs:
 			config.heartbeatIntervalMs ?? duration(workers?.heartbeat_interval, DEFAULT_HEARTBEAT_MS),
