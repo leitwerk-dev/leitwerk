@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.3...v0.1.4) (2026-08-10)
+
+
+### Bug Fixes
+
+* **release:** shorten publication critical path ([#10](https://github.com/leitwerk-dev/leitwerk/issues/10)) ([4d60fef](https://github.com/leitwerk-dev/leitwerk/commit/4d60fef3cfeb9fc199281f70d6eaca6a4db06b87))
+
 ## [0.1.3](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.2...v0.1.3) (2026-08-09)
 
 
