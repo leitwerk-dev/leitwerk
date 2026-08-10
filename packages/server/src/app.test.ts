@@ -83,6 +83,7 @@ describe("createAppContext", () => {
 		});
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
 		let ctx: Awaited<ReturnType<typeof createAppContext>>;
 		const extensionCatalog = await buildExtensionCatalogFromModules([
 			{
@@ -119,6 +120,7 @@ describe("createAppContext", () => {
 	it("stays unready when a start hook fails", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
 		const extensionCatalog = await buildExtensionCatalogFromModules([
 			{
 				manifest: { id: "failed-start", version: "1.0.0" },

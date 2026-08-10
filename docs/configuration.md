@@ -1,124 +1,139 @@
 # Configuration Reference
 
-**Leitwerk** is configured through `leitwerk.yaml` (or custom paths set by `LEITWERK_CONFIG_PATH`), environment variables, and extension options. This guide provides a complete reference for server network options, OIDC authentication, internal TLS, storage retention, LLM model profiles, worker runners, and extension loading.
+Leitwerk is configured through `leitwerk.yaml` (or a custom path via `LEITWERK_CONFIG_PATH`), a small set of environment overrides, and extension-owned options. The annotated file [`leitwerk.yaml.example`](../leitwerk.yaml.example) is the full reference; this page summarizes the live contract.
 
 ---
 
 ## 1. Loading & Environment Overrides
 
-Leitwerk loads built-in defaults overlaid with settings from `leitwerk.yaml`.
+Leitwerk loads built-in defaults, then overlays `leitwerk.yaml`. Search order when `LEITWERK_CONFIG_PATH` is unset: `./leitwerk.yaml`, then `~/.leitwerk/leitwerk.yaml`.
 
 ### Environment Variables
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `LEITWERK_CONFIG_PATH` | Path to your `leitwerk.yaml` file. | `./leitwerk.yaml` |
-| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | 32-byte hex key for SQLite secret encryption. | None (Required) |
-| `HOST` | Bind IP address for the server. | `127.0.0.1` |
-| `PORT` | HTTP port for the server. | `3000` |
-| `LEITWERK_BASE_URL` | Public base URL for HTTP and WebSocket auth. | `http://localhost:3000` |
+| `LEITWERK_CONFIG_PATH` | Path to the config file. | Search paths above |
+| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | 32-byte hex key for encrypted credential storage. | None (required when encrypted credentials exist) |
+| `HOST` | Bind address override. | Config `server.host` (`127.0.0.1`) |
+| `PORT` | HTTP port override. | Config `server.port` (**8080**) |
+| `LEITWERK_BASE_URL` | Public base URL override. | Config `server.base_url` (`http://127.0.0.1:8080`) |
 
-### Reload Classes
-- **Immediate:** Takes effect immediately when `leitwerk.yaml` is saved (e.g., worker pool limits).
-- **Future:** Applies to future process launches or LLM turns.
-- **Restart:** Requires a server restart (e.g., bind host/port, database paths, runner type).
+### Reload behavior
+
+Config changes require a **process restart**. There is no “immediate on save” reload of running server state.
+
+`npm run dev` is different: the development supervisor preflights the active configuration and then **restarts the development session** when that config changes, so the backend and browser source sets stay aligned. See the root [README](../README.md).
 
 ---
 
-## 2. Server, Authentication & Transport
-
-Configure network binding, OIDC authentication, and internal transport TLS:
+## 2. Server, Authentication & Internal TLS
 
 ```yaml
 server:
-  host: 0.0.0.0
-  port: 3000
-  base_url: https://leitwerk.example.com
+  host: 127.0.0.1
+  port: 8080
+  base_url: http://127.0.0.1:8080
 
+# Optional SSO. Only enabled: true turns auth on.
 auth:
   enabled: true
-  provider: oidc
-  issuer: https://auth.example.com
-  client_id: leitwerk-client
-  allowlist: ["operator@example.com"]
-
-internal_tls:
-  enabled: true
-  server_ca_file: /etc/leitwerk/ca.crt
+  session:
+    cookie_name: leitwerk_session
+    ttl: 7d
+  providers:
+    - id: forgejo
+      kind: oidc
+      issuer: https://git.example.com
+      client_id: "..."
+      client_secret: "..."
+      redirect_uri: https://leitwerk.example.com/auth/callback
+      scopes: [openid, profile, email]
+      identity_claim: preferred_username
+  allowlist: [alice, bob]
 ```
 
-- `auth.enabled`: When true, protects `/api/*` and `/ws` behind OIDC authentication.
-- `auth.allowlist`: Email addresses permitted to authenticate and operate processes.
-- `internal_tls.enabled`: Enforces encrypted HTTPS/WSS transport between server and worker pods.
+- `auth.providers[]`: Nested OIDC providers (`kind: oidc`). There is no flat `auth.provider: oidc` shape.
+- `auth.allowlist`: Values of the configured identity claim (for example `preferred_username`), **not** email addresses unless that claim is email.
+- When auth is enabled, `server.base_url` and OIDC URLs must use HTTPS, except for loopback localhost development URLs.
+
+Top-level `internal_tls` (when enabled) holds the **server** cert/key for the worker → server IPC listener:
+
+```yaml
+internal_tls:
+  enabled: true
+  cert_file: /etc/leitwerk/internal-server.crt
+  key_file: /etc/leitwerk/internal-server.key
+```
+
+The CA workers trust is **not** on `internal_tls`. Set `server_ca_file` on the active runner block (`docker` or `kubernetes`), and use `https://...` for that runner’s `server_url`. Worker client certificates are not wired yet; `internal_tls.client_ca_file` is rejected.
 
 ---
 
 ## 3. Storage & Retention
 
-Configure database paths and worker storage retention:
-
 ```yaml
 storage:
-  sqlite_path: ./data/leitwerk.sqlite
-  process_workspaces_dir: ./data/workspaces
-  tree_files_dir: ./data/trees
+  sqlite_path: ./.leitwerk/leitwerk.sqlite
+  process_workspaces_dir: ./.leitwerk/workspaces
+  tree_files_dir: ./.leitwerk/trees
 
 workers:
   cleanup:
-    completed_process_retention: 24h
-    error_process_retention: 168h
+    transient_ttl: 1h
+    completed_process_retention: 168h
+    error_process_retention: 720h
 ```
 
-- `storage.sqlite_path`: Path to SQLite database holding durable process state.
-- `workers.cleanup.completed_process_retention`: Duration to retain completed process storage before automatic volume cleanup.
-- `workers.cleanup.error_process_retention`: Duration to retain failed/aborted process storage for diagnostics.
+Use `sqlite_path` (not `database_path`). Retention durations live under `workers.cleanup`.
 
 ---
 
-## 4. Worker Runners & Supervision
-
-Configure worker execution runtimes and process concurrency limits:
+## 4. Worker Runners & Runtime Profiles
 
 ```yaml
 workers:
-  runner: docker # docker | kubernetes | local
-  max_parallel_processes: 5
-  startup_timeout: 45s
-  heartbeat_interval: 15s
-  docker:
-    image: leitwerk-worker-generic:latest
+  runner: docker   # docker | kubernetes | local
+  max_parallel_processes: 4
+  default_runtime_profile: generic
+  heartbeat_interval: 5s
+  stale_heartbeat_timeout: 30s
 
-kubernetes:
-  server_namespace: leitwerk-system
-  default_worker_runtime_profile: standard
-  image_pull_secrets: [private-registry-pull]
-  image_pull_secret_copies:
-    - source_name: private-registry-pull
-      target_name: private-registry-pull
+# Top-level runner wiring (not nested under workers):
+local_worker:
+  command: node
+  args: ["@leitwerk-dev/worker/worker-entry"]
+
+docker:
+  socket: unix:///var/run/docker.sock
+  network: leitwerk
+  server_url: http://leitwerk-server:8080
+  # server_ca_file: /etc/leitwerk/internal-ca.pem
+  process_volume:
+    mode: bind
+    host_root: /var/lib/leitwerk/processes
+    mount_path: /state
+
+worker_runtime_profiles:
+  generic:
+    image: ghcr.io/example/leitwerk-worker-generic:0.1.0
 ```
 
-- `workers.runner`: Selects container runner adapter (`docker`, `kubernetes`, or `local`).
-- `workers.max_parallel_processes`: Maximum concurrent worker processes running across the server.
-- `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
-- `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
-- `kubernetes.server_namespace`: Management namespace housing the server Deployment.
-- `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
-- `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
+- `workers.runner` selects the adapter. Image selection is via `worker_runtime_profiles` (and runner defaults), **not** `workers.docker.image`.
+- Kubernetes mode uses a top-level `kubernetes:` block (see the example file).
+- `local` is best-effort developer/test mode only; Docker/Kubernetes define production behavior.
 
 ---
 
-## 5. Model Profiles, Pi Runtime & Extensions
+## 5. Models, Pi Runtime & Extensions
 
-Configure LLM model catalogs, Pi agent settings, and extension loading:
+Model catalogs live under `pi.model_profiles`. Provider credentials and custom gateways are owned by loaded extensions (typically `./extensions/models` under `extension_loading.sources` and `extensions.models.*`).
+
+Do not duplicate the full models contract here — see [Models](models.md). Development compositions can add external extension sources without changing production config — see [Development Compositions](development-composition.md).
 
 ```yaml
 pi:
-  agent_dir: /var/lib/leitwerk/pi-agent
-  model_profiles:
-    - id: gpt_sol_high
-      provider: openai
-      model_id: gpt-5.6-sol
-      thinking_level: high
+  agent_dir: ~/.pi/leitwerk
+  # model_profiles: [...]
 
 extension_loading:
   sources:
@@ -126,13 +141,15 @@ extension_loading:
     - ./extensions/showcase-processes
 
 extensions:
-  models:
-    openai:
-      api_key: env:OPENAI_API_KEY
-    anthropic:
-      api_key: env:ANTHROPIC_API_KEY
+  # models:
+  #   openai:
+  #     api_key: env:OPENAI_API_KEY
 ```
-- `pi.model_profiles`: Catalog of LLM models made available to process definitions.
-- `extension_loading.sources`: Extension package paths loaded during server startup. Load `./extensions/models` for standard API-key providers and configuration-defined custom gateways.
 
-Development compositions may add extension sources from a separate npm workspace without changing production configuration. See [Development Compositions](development-composition.md).
+Process-scoped runtime defaults (for example watcher enablement and launch defaults) live under `process_configs.<processId>`, not as config-defined process types.
+
+---
+
+## 6. Present but not behavioral
+
+`notifications` and `sandbox` appear in the schema and example file. They are accepted and defaulted today but are **not** live product behavior yet. Prefer omitting them from operator-facing “how it works” setup unless you are mirroring the example file.

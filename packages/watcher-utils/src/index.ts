@@ -1,13 +1,3 @@
-/** @deprecated Import external-write idempotency from `@leitwerk-dev/external-writes`. */
-export {
-	createWriteIdentity,
-	type EnsureWriteResult,
-	type ExternalWriteLogRecordInput,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-	recordWriteIfMissing,
-	type WriteIdentity,
-} from "@leitwerk-dev/external-writes";
 export { parseDurationMs } from "./duration-parse.js";
 export {
 	createPollLoop,

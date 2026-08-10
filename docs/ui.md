@@ -24,32 +24,49 @@ When an AI agent is actively executing a turn, text tokens stream over the WebSo
 
 ---
 
-## 3. Custom Extension UI Slots
+## 3. Extension UI Renderers
 
-Process extensions can extend the Chronicle timeline by registering custom UI components to render domain-specific turn outputs (such as interactive implementation diffs, test result grids, or review widgets).
+Process extensions can ship browser UI as custom elements that render leaf outcomes (and related Chronicle slots) for domain-specific props.
 
-### 1. Registering a Custom Renderer in an Extension
+### 1. Point `package.json` at a UI manifest
 
-An extension registers a UI renderer component during setup:
+Declare a `leitwerk.ui` block next to the extension entry. Source lane and built lane each get a path:
 
-```ts
-// Inside an extension's setup(api) function
-api.registerLeafRenderer({
-  name: "plan_review_widget",
-  displayName: "Interactive Plan Review",
-});
+```json
+{
+  "name": "@leitwerk-dev/local-repo-change",
+  "leitwerk": {
+    "extension": {
+      "source": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "ui": {
+      "source": "./src/ui/manifest.json",
+      "import": "./dist/ui/manifest.json"
+    }
+  }
+}
 ```
 
-### 2. Linking a Renderer to a Process Turn
+### 2. Map renderer ids to custom elements
 
-In the process definition, the turn declares `.renderWith(...)` to host the custom component inside its Chronicle timeline slot:
+The manifest lists renderers by stable id. Each entry is a `custom_element` with a tag name and module path:
 
-```ts
-const planTurn = flow
-  .llm<Params, State>("plan")
-  .publish("plan")
-  .renderWith("plan_review_widget") // Bounded slot in the Chronicle
-  .to("human_review");
+```json
+{
+  "apiVersion": 1,
+  "extensionManifestId": "local-repo-change",
+  "renderers": {
+    "@leitwerk-dev/local-repo-change:local_repo_change_process.leaf_outcome": {
+      "kind": "custom_element",
+      "tagName": "o2-local-repo-change-legacy-leaf-outcome",
+      "module": "./leaf-outcome-element.ts",
+      "rendererApiVersion": 1
+    }
+  }
+}
 ```
 
-- **Bounded Insertion:** Custom renderers live within designated Chronicle slots, keeping layout and styling consistent across all processes without interfering with global shell navigation.
+Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. See [`extensions/local-repo-change`](../extensions/local-repo-change/README.md) for a shipped example (legacy leaf-outcome compatibility renderer).
+
+- **Bounded Insertion:** Custom renderers stay inside Chronicle leaf-outcome hosts; they do not own global shell navigation.

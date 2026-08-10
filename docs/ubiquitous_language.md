@@ -25,7 +25,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 |---|---|
 | **Agent Tool** | Any capability exposed to an AI agent during a turn (built-in primitives, integration tools, interactive tools, or outcome tools). |
 | **Built-in Primitives** | Core workspace tools (`read`, `bash`, `edit`, `write`) that control filesystem and shell interaction. |
-| **Integration Tools** | Extension-provided tools (such as `jira_update_issue` or GitLab MR tools) for interacting with external services. |
+| **Integration Tools** | Extension-provided tools for interacting with external services (owned by the extension that registers them). |
 | **Outcome Tool** | Terminal tool declared on an LLM turn that returns typed data, publishes markdown, and triggers process state transitions. |
 | **`ask_questions`** | Interactive tool enabling agents to pause execution and ask human operators structured multiple-choice questions mid-turn. |
 | **Question Request** | Durable pause inside an active LLM turn created by `ask_questions`, awaiting structured operator answers without resetting context. |
