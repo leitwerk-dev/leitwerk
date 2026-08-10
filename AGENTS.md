@@ -68,7 +68,12 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - `ProcessInput`: FIFO-sequenced input queue per process.
 - `WorkerLease`: Server-owned process lifecycle and heartbeat record.
 
-## 6. Testing & Operational Directives
+## 6. Contribution Policy
+- **PR Titles:** Use Conventional Commits syntax: `type(scope)!: description`. Allowed types are `feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, and `revert`.
+- **DCO Sign-off:** Every commit must contain a `Signed-off-by` trailer matching the commit author's name and email. Create commits with `git commit -s`. Repair an existing commit with `git commit --amend -s` (or sign off each commit during an interactive rebase).
+- **Required Checks:** Before merge, confirm both `Full validation` and `Conventional PR title and DCO` pass. See `CONTRIBUTING.md` and `docs/ci.md` for the complete policy.
+
+## 7. Testing & Operational Directives
 - **Change Completion:** A change is not complete until `npm run test:full` passes (lint, build, typecheck, tests). Do not substitute with partial workspace runs.
 - **Test Failure Triage:** If tests fail in `packages/*/dist` or `extensions/*/dist`, suspect stale build artifacts. **Never edit `dist/` by hand.** Run `npm run build` (or `npm run build -w <workspace>`) before debugging logic.
 - **Running vitest**: Always rebuild before running vitest to avoid stale artifacts.
@@ -76,7 +81,7 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - **Fakes:** Use `FakeLlmProvider` and extension-owned fakes for boundary testing. Avoid broad mocking.
 - **Test Levels:** Unit tests should be simple to setup, due to the functional core. Integration tests can use the test support utilities for leitwerk-managed Pi instances and fake external services. Those tests live within the package. Broad system tests are located under `tests/` and should import via package specifiers.
 
-## 7. MVP Boundaries
+## 8. MVP Boundaries
 These are not MVP features. Keep them in `docs/future.md` until explicitly promoted:
 - per-process/per-tenant authorization or tenant isolation (single-provider SSO + attribution is in scope)
 - process-to-process creation
