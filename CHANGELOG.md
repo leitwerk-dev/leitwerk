@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.6](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.5...v0.1.6) (2026-08-10)
+
+
+### Bug Fixes
+
+* **release:** add manual recovery trigger ([a1c1747](https://github.com/leitwerk-dev/leitwerk/commit/a1c1747a8cfff6aabb812f4c95c509a9a458719a))
+* **release:** preserve release metadata in PR notes ([bc2c4c3](https://github.com/leitwerk-dev/leitwerk/commit/bc2c4c3bf6755cabe20ba37e6b9ae3ab3f2967e2))
+* **ui:** avoid duplicate detail load on websocket connect ([#16](https://github.com/leitwerk-dev/leitwerk/issues/16)) ([075ed0b](https://github.com/leitwerk-dev/leitwerk/commit/075ed0b80136e9dbf096f5659196cd94a9283d2b))
+
 ## [0.1.5](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.4...v0.1.5) (2026-08-10)
 
 
