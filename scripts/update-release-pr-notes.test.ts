@@ -53,12 +53,13 @@ This PR was generated with [Release Please](https://github.com/googleapis/releas
 #### Bug Fixes`);
 	});
 
-	it("replaces all generated component sections with the overall notes", () => {
+	it("adds overall notes without removing generated component sections", () => {
 		const updated = replaceGeneratedReleaseNotes(generatedBody, changelog);
 		expect(updated).toContain("send runtime settings to automatic workers");
-		expect(updated).not.toContain("<details>");
-		expect(updated).not.toContain("package notes");
-		expect(updated).not.toContain("root notes");
+		expect(updated).toContain("<details><summary>@leitwerk-dev/server: 0.1.5</summary>");
+		expect(updated).toContain("package notes");
+		expect(updated).toContain("<details><summary>v: 0.1.5</summary>");
+		expect(updated).toContain("root notes");
 		expect(updated).toContain("This PR was generated with [Release Please]");
 	});
 
@@ -69,6 +70,18 @@ This PR was generated with [Release Please](https://github.com/googleapis/releas
 		expect(updated.match(/leitwerk-overall-release-notes:start/gu)).toHaveLength(1);
 		expect(updated).toContain("### [0.1.6]");
 		expect(updated).not.toContain("### [0.1.5]");
+		expect(updated).toContain("<details><summary>v: 0.1.5</summary>");
+		expect(updated).toContain("root notes");
+	});
+
+	it("rejects invalid overall notes markers", () => {
+		const body = generatedBody.replace(
+			"<details>",
+			"<!-- leitwerk-overall-release-notes:start -->\n<details>",
+		);
+		expect(() => replaceGeneratedReleaseNotes(body, changelog)).toThrow(
+			"release PR body has invalid overall release notes markers",
+		);
 	});
 
 	it("rejects an unexpected pull request body instead of deleting unknown content", () => {
