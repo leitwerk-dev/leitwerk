@@ -191,6 +191,30 @@ export function validateLockstepVersions(input: {
 	return errors;
 }
 
+export function validatePublicationWorkflow(workflow: JsonRecord): string[] {
+	const jobs = asRecord(workflow.jobs);
+	const expectedNeeds: Record<string, string[]> = {
+		validate: ["resolve"],
+		"inspect-images": ["resolve"],
+		"build-images": ["resolve", "inspect-images"],
+		"merge-images": ["resolve", "validate", "inspect-images", "build-images"],
+		publish: ["resolve", "validate", "merge-images"],
+	};
+	return Object.entries(expectedNeeds).flatMap(([jobName, expected]) => {
+		const configured = asRecord(jobs[jobName]).needs;
+		const actual = (Array.isArray(configured) ? configured : [configured])
+			.filter((entry): entry is string => typeof entry === "string")
+			.sort();
+		const sortedExpected = expected.toSorted();
+		return actual.length === sortedExpected.length &&
+			actual.every((entry, index) => entry === sortedExpected[index])
+			? []
+			: [
+					`.github/workflows/publish.yml: ${jobName}.needs must be [${sortedExpected.join(", ")}], got [${actual.join(", ")}]`,
+				];
+	});
+}
+
 export function validateReleaseContract(rootDir: string): string[] {
 	const rootManifest = readJson(path.join(rootDir, "package.json")) as PackageManifest;
 	const workspacePaths = discoverWorkspaces(rootDir, rootManifest);
@@ -212,6 +236,11 @@ export function validateReleaseContract(rootDir: string): string[] {
 				readFileSync(path.join(rootDir, "deploy/kubernetes/helm/leitwerk/values.yaml"), "utf8"),
 			) as JsonRecord,
 		}),
+		...validatePublicationWorkflow(
+			parseYaml(
+				readFileSync(path.join(rootDir, ".github/workflows/publish.yml"), "utf8"),
+			) as JsonRecord,
+		),
 	];
 
 	const manifest = readJson(path.join(rootDir, ".release-please-manifest.json"));

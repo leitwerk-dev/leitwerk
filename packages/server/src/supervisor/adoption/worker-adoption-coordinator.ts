@@ -202,11 +202,14 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 			for (const descriptor of descriptors) {
 				const lease = deps.safeGetLeaseByInstance(descriptor.instanceId);
 				const process = deps.safeGetProcessById(descriptor.instanceId);
+				const canAdoptCurrentWorker =
+					descriptor.observedState !== "terminal" &&
+					process?.currentExecution?.kind === "worker_start";
 				const classification = classifyWorkerDescriptor({
 					descriptor,
 					process,
 					lease,
-					expectedModelPolicyFingerprint: process
+					expectedModelPolicyFingerprint: canAdoptCurrentWorker
 						? deps.modelPolicyFingerprintForProcess(process)
 						: "",
 					alreadyAttached: deps.workers.has(descriptor.instanceId),

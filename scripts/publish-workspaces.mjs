@@ -14,9 +14,9 @@ const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
 const STAGED_LICENSE_PATH = "./dist/LICENSE";
 const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
 
-main();
+await main();
 
-function main() {
+async function main() {
 	const mode = process.argv[2] ?? "check";
 	if (!VALID_MODES.has(mode)) {
 		fail(
@@ -59,7 +59,7 @@ function main() {
 		return;
 	}
 	if (mode === "verify") {
-		const published = findPublishedWorkspaces(workspaces, expectedGitSha);
+		const published = await waitForPublishedWorkspaces(workspaces, expectedGitSha);
 		if (published.size !== workspaces.length) {
 			fail(
 				`[publish:verify] ${workspaces.length - published.size} workspace versions are not public`,
@@ -74,6 +74,25 @@ function main() {
 	console.info(
 		`[publish:workspaces] Complete (${unpublished.length} published, ${alreadyPublished.size} already published)`,
 	);
+}
+
+async function waitForPublishedWorkspaces(workspaces, expectedGitSha) {
+	const maxAttempts = 7;
+	const delayMs = 10_000;
+	const published = new Set();
+	let pending = workspaces;
+	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+		for (const name of findPublishedWorkspaces(pending, expectedGitSha)) published.add(name);
+		pending = workspaces.filter((workspace) => !published.has(workspace.name));
+		if (pending.length === 0) return published;
+		if (attempt < maxAttempts) {
+			console.info(
+				`[publish:verify] ${pending.length} workspace versions are not public yet; retrying in ${delayMs / 1000}s (${attempt}/${maxAttempts})`,
+			);
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+		}
+	}
+	return published;
 }
 
 function fail(header, errors = [], exitCode = 1) {

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
 	calculateConventionalVersion,
 	validateLockstepVersions,
+	validatePublicationWorkflow,
 	validateReleaseContract,
 	validateReleaseRegistration,
 } from "./release-contract.js";
@@ -21,6 +22,24 @@ describe("release contract", () => {
 		) as Record<string, unknown>;
 		expect(validateReleaseRegistration(["packages/new-workspace"], config)).toContain(
 			"packages/new-workspace: workspace is missing from release-please-config.json",
+		);
+	});
+
+	it("keeps image builds parallel with validation and gates publication on both", () => {
+		expect(
+			validatePublicationWorkflow({
+				jobs: {
+					validate: { needs: "resolve" },
+					"inspect-images": { needs: "resolve" },
+					"build-images": { needs: ["resolve", "inspect-images"] },
+					"merge-images": {
+						needs: ["resolve", "validate", "inspect-images", "build-images"],
+					},
+					publish: { needs: ["resolve", "merge-images"] },
+				},
+			}),
+		).toContain(
+			".github/workflows/publish.yml: publish.needs must be [merge-images, resolve, validate], got [merge-images, resolve]",
 		);
 	});
 

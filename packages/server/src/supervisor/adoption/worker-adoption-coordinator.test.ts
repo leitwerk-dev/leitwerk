@@ -1,4 +1,4 @@
-import type { ProcessInput } from "@leitwerk-dev/domain";
+import type { ProcessInput, ProcessInstance } from "@leitwerk-dev/domain";
 import type { IpcEnvelope } from "@leitwerk-dev/worker-protocol";
 import type { WorkerUnit, WorkerUnitDescriptor } from "@leitwerk-dev/worker-runners/types";
 import { describe, expect, it, vi } from "vitest";
@@ -55,7 +55,11 @@ function heartbeat(sequence = 0): IpcEnvelope {
 }
 
 function createHarness(
-	overrides: { descriptor?: WorkerUnitDescriptor; modelPolicyFingerprint?: string | null } = {},
+	overrides: {
+		descriptor?: WorkerUnitDescriptor;
+		modelPolicyFingerprint?: string | null;
+		currentExecution?: ProcessInstance["currentExecution"];
+	} = {},
 ) {
 	const descriptor = overrides.descriptor ?? {
 		instanceId: "proc-1",
@@ -85,7 +89,10 @@ function createHarness(
 		lifecycleStatus: "active" as const,
 		stateJson: {},
 		metadata: {},
-		currentExecution: null,
+		currentExecution:
+			overrides.currentExecution === undefined
+				? ({ kind: "worker_start", id: "start-1" } as const)
+				: overrides.currentExecution,
 		title: "test",
 		createdAt: new Date(0).toISOString(),
 		updatedAt: new Date(0).toISOString(),
@@ -109,6 +116,7 @@ function createHarness(
 	const routeEnvelope = vi.fn();
 	const emitServerObservedWorkerFailure = vi.fn();
 	const sendInputBatch = vi.fn(() => true);
+	const modelPolicyFingerprintForProcess = vi.fn(() => "current-model-policy");
 	const leases = {
 		update: vi.fn(),
 	} as unknown as RepositoryBundle["leases"];
@@ -126,7 +134,7 @@ function createHarness(
 		inputs,
 		safeGetLeaseByInstance: () => lease,
 		safeGetProcessById: () => process,
-		modelPolicyFingerprintForProcess: () => "current-model-policy",
+		modelPolicyFingerprintForProcess,
 		isLeaseStillBootstrapping: () => false,
 		routeEnvelope,
 		handleProcessError: vi.fn(),
@@ -149,6 +157,7 @@ function createHarness(
 		emitServerObservedWorkerFailure,
 		inputs,
 		sendInputBatch,
+		modelPolicyFingerprintForProcess,
 		get registered() {
 			return registered;
 		},
@@ -259,6 +268,17 @@ describe("createWorkerAdoptionCoordinator", () => {
 			expect.objectContaining({ observedState: "terminal" }),
 			{ graceMs: 0 },
 		);
+		expect(harness.modelPolicyFingerprintForProcess).not.toHaveBeenCalled();
+	});
+
+	it("stops live descriptors when the process no longer has a current worker start", async () => {
+		const harness = createHarness({ currentExecution: null });
+
+		await harness.coordinator.adoptRegisteredWorkers();
+
+		expect(harness.modelPolicyFingerprintForProcess).not.toHaveBeenCalled();
+		expect(harness.runner.adopt).not.toHaveBeenCalled();
+		expect(harness.runner.stop).toHaveBeenCalledWith(harness.descriptor, { graceMs: 0 });
 	});
 
 	it("retries transient runner adoption failures before giving up", async () => {
