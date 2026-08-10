@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.5](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.4...v0.1.5) (2026-08-10)
+
+
+### Features
+
+* add safe singleton deployment preflight ([#14](https://github.com/leitwerk-dev/leitwerk/issues/14)) ([7adf287](https://github.com/leitwerk-dev/leitwerk/commit/7adf2877abc182a780b23de6df3ad5df83268ed1))
+
+
+### Bug Fixes
+
+* send runtime settings to automatic workers ([#12](https://github.com/leitwerk-dev/leitwerk/issues/12)) ([c88d883](https://github.com/leitwerk-dev/leitwerk/commit/c88d8832aceaa0091a5563c8c848eddc2df7c20a))
+
 ## [0.1.4](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.3...v0.1.4) (2026-08-10)
 
 
