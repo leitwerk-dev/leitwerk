@@ -30,6 +30,8 @@ jobs:
       issues: write
       pull-requests: write
     steps:
+      - name: Check out release tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Update release PR or create release
         id: release
         uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4
@@ -38,6 +40,12 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           target-branch: main
+      - name: Promote overall release notes
+        if: ${{ steps.release.outputs.release_created != 'true' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          RELEASE_TARGET_BRANCH: main
+        run: node scripts/update-release-pr-notes.mjs
 
   dispatch-publication:
     name: Start artifact publication
