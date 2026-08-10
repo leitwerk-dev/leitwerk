@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/test-support",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -39,13 +39,13 @@
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "^0.81.1",
-		"@leitwerk-dev/domain": "0.1.4",
-		"@leitwerk-dev/extension-runtime": "0.1.4",
-		"@leitwerk-dev/process-sdk": "0.1.4",
-		"@leitwerk-dev/protocol": "0.1.4",
-		"@leitwerk-dev/server": "0.1.4",
-		"@leitwerk-dev/worker": "0.1.4",
-		"@leitwerk-dev/worker-protocol": "0.1.4"
+		"@leitwerk-dev/domain": "0.1.5",
+		"@leitwerk-dev/extension-runtime": "0.1.5",
+		"@leitwerk-dev/process-sdk": "0.1.5",
+		"@leitwerk-dev/protocol": "0.1.5",
+		"@leitwerk-dev/server": "0.1.5",
+		"@leitwerk-dev/worker": "0.1.5",
+		"@leitwerk-dev/worker-protocol": "0.1.5"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

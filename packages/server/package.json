@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/server",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -28,14 +28,14 @@
 		"@earendil-works/pi-coding-agent": "^0.81.1",
 		"@fastify/cookie": "11.0.2",
 		"@fastify/websocket": "^11.2.0",
-		"@leitwerk-dev/domain": "0.1.4",
-		"@leitwerk-dev/extension-runtime": "0.1.4",
-		"@leitwerk-dev/external-writes": "0.1.4",
-		"@leitwerk-dev/process-sdk": "0.1.4",
-		"@leitwerk-dev/protocol": "0.1.4",
-		"@leitwerk-dev/watcher-utils": "0.1.4",
-		"@leitwerk-dev/worker-protocol": "0.1.4",
-		"@leitwerk-dev/worker-runners": "0.1.4",
+		"@leitwerk-dev/domain": "0.1.5",
+		"@leitwerk-dev/extension-runtime": "0.1.5",
+		"@leitwerk-dev/external-writes": "0.1.5",
+		"@leitwerk-dev/process-sdk": "0.1.5",
+		"@leitwerk-dev/protocol": "0.1.5",
+		"@leitwerk-dev/watcher-utils": "0.1.5",
+		"@leitwerk-dev/worker-protocol": "0.1.5",
+		"@leitwerk-dev/worker-runners": "0.1.5",
 		"better-sqlite3": "^12.8.0",
 		"cron-parser": "^5.5.0",
 		"defu": "^6.1.7",
@@ -48,7 +48,7 @@
 		"yaml": "^2.8.3"
 	},
 	"optionalDependencies": {
-		"@leitwerk-dev/worker": "0.1.4"
+		"@leitwerk-dev/worker": "0.1.5"
 	},
 	"devDependencies": {
 		"@types/better-sqlite3": "^7.6.13",
