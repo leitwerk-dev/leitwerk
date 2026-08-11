@@ -35,7 +35,6 @@
 		"lint:fix": "node --import tsx scripts/lint-composed.ts --write",
 		"typecheck": "node --import tsx scripts/typecheck-composed.ts",
 		"check:boundaries": "node --no-deprecation --import tsx scripts/check-boundaries.mjs",
-		"check:core-integrations": "node --no-deprecation --import tsx scripts/check-core-integration-names.ts",
 		"docs:serve": "python3 -m mkdocs serve -a 127.0.0.1:8006",
 		"docs:build": "python3 -m mkdocs build --strict",
 		"test:unit": "vitest run --reporter agent --project unit --passWithNoTests",

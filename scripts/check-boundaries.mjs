@@ -28,6 +28,7 @@ const FORBIDDEN_PROCESS_SDK_INTERNAL_PATTERNS = [
 const EXTENSION_UI_ALLOWED_RUNTIME_BARE_SPECIFIERS = new Set([
 	"@leitwerk-dev/process-sdk/leaf-outcome-renderer",
 ]);
+const CORE_INTEGRATION_NAME_PATTERN = /forgejo|jira|gitlab|telegram|woodpecker/i;
 
 main();
 
@@ -51,6 +52,7 @@ function main() {
 	const violations = [
 		...checkPackageDependencyBoundaries(workspaces, extensionPackageNames),
 		...checkSourceImportBoundaries(rootDir, workspaces, extensionPackageNames),
+		...checkCoreIntegrationNames(rootDir),
 		...checkExtensionUiRuntimeImportBoundaries(workspaces),
 		...checkBuiltExtensionUiBundles(workspaces),
 		...checkServerWorkerProductionBoundary(rootDir),
@@ -170,6 +172,21 @@ function checkSourceImportBoundaries(rootDir, workspaces, extensionPackageNames)
 					);
 				}
 			}
+		}
+	}
+	return violations;
+}
+
+function checkCoreIntegrationNames(rootDir) {
+	const packagesDir = path.join(rootDir, "packages");
+	const extensions = new Set([...SOURCE_FILE_EXTENSIONS, ".sql", ".json", ".md"]);
+	const violations = [];
+	for (const filePath of walkFilesWithExtensions(packagesDir, extensions)) {
+		for (const [index, line] of readFileSync(filePath, "utf8").split("\n").entries()) {
+			if (!CORE_INTEGRATION_NAME_PATTERN.test(line)) continue;
+			violations.push(
+				`${relativeToRoot(filePath)}:${index + 1} names an application integration: ${line.trim()}`,
+			);
 		}
 	}
 	return violations;
@@ -474,7 +491,7 @@ function walkSourceFiles(dir) {
 function walkFilesWithExtensions(dir, extensions) {
 	const files = [];
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
-		if (entry.name === "node_modules") {
+		if (["dist", "node_modules", ".turbo"].includes(entry.name)) {
 			continue;
 		}
 		const absolutePath = path.join(dir, entry.name);

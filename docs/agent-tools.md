@@ -51,7 +51,7 @@ api.tool({
 
 flow.llm("update_issue")
   .description("Update the source issue")
-  .integrationTools("jira_update_issue");
+  .integrationTools("issue_update");
 ```
 
 Integration tools are registered and executed in the server process. `worker.start`

@@ -11,7 +11,6 @@ const phases = [
 	"test:server-start",
 	"test:default-worker",
 	"check:boundaries",
-	"check:core-integrations",
 	"release:check",
 	"typecheck",
 	"test:parity:built",
