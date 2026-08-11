@@ -84,8 +84,8 @@ The provider adapter obtains only registrations for its exact typed source:
 ```ts
 const watchers = deps.processWatchers?.listBySource(queueSource) ?? [];
 for (const watcher of watchers) {
-  const result = await watcher.resolveLaunch(event);
-  // Prepare and commit result.launchPlan through the server capabilities.
+  const launchPlan = await watcher.resolveLaunch(event);
+  // Prepare and commit launchPlan through the server capabilities.
 }
 ```
 

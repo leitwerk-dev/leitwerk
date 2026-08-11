@@ -11,6 +11,7 @@ import type {
 	ProcessTurnRecord,
 	TurnId,
 } from "@leitwerk-dev/domain";
+import type { WatcherPresentationField } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
 import type { FormDefinition } from "./form-contract.js";
 
@@ -138,15 +139,11 @@ export interface UiLauncherDefinition<TParams = unknown> {
 	): UiLauncherConfigResolution<TParams> | Promise<UiLauncherConfigResolution<TParams>>;
 }
 
-export interface ProcessWatcherPresentationField {
-	readonly label: string;
-	readonly value: string;
-	readonly format?: "text" | "code";
-}
+export type ProcessWatcherPresentationField = WatcherPresentationField;
 
 export interface ProcessWatcherPresentation {
 	readonly targetSummary: string;
-	readonly details?: readonly ProcessWatcherPresentationField[];
+	readonly details?: readonly WatcherPresentationField[];
 }
 
 export interface ParsedProcessWatcherConfig<TConfig = unknown> {
@@ -597,6 +594,8 @@ export interface IntegrationToolExecutionContext {
 	readonly project: ProcessProject | null;
 	/** Stable for a single Pi tool call, including reconnect/replay. */
 	readonly idempotencyKey: string;
+	/** Aborted when the worker stops waiting for this tool call. */
+	readonly signal: AbortSignal;
 }
 
 export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {

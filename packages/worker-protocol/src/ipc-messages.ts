@@ -167,6 +167,12 @@ export interface WorkerIntegrationToolRequestPayload {
 	args: Record<string, unknown>;
 }
 
+export interface WorkerIntegrationToolCancelPayload {
+	turnRecordId: string;
+	toolCallId: string;
+	toolName: string;
+}
+
 export interface WorkerIntegrationToolResultPayload {
 	turnRecordId: string;
 	toolCallId: string;
@@ -367,6 +373,10 @@ export type WorkerToServerMessage =
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.integration_tool_request";
 			payload: WorkerIntegrationToolRequestPayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.integration_tool_cancel";
+			payload: WorkerIntegrationToolCancelPayload;
 	  })
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.turn_outcome";

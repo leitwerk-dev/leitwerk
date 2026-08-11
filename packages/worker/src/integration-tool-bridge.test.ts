@@ -63,7 +63,8 @@ describe("WorkerIntegrationToolBridge", () => {
 	it("cancels pending calls and resumes prompt guards when a turn stops", async () => {
 		const resume = vi.fn();
 		const controller = new AbortController();
-		const bridge = new WorkerIntegrationToolBridge({ project: vi.fn() } as never);
+		const project = vi.fn();
+		const bridge = new WorkerIntegrationToolBridge({ project } as never);
 		const [tool] = bridge.createTools(
 			[{ name: "provider_echo", description: "Echo", parameters: {} }],
 			"turn-1",
@@ -79,6 +80,33 @@ describe("WorkerIntegrationToolBridge", () => {
 
 		await expect(pending).rejects.toThrow(/turn stopped/);
 		expect(resume).toHaveBeenCalledTimes(1);
+		expect(project).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				type: "worker.integration_tool_cancel",
+				payload: {
+					turnRecordId: "turn-1",
+					toolCallId: "call-1",
+					toolName: "provider_echo",
+				},
+			}),
+		);
 		expect(bridge.handle(result())).toBe(false);
+	});
+
+	it("does not send a server request after the turn has already stopped", async () => {
+		const project = vi.fn();
+		const controller = new AbortController();
+		controller.abort();
+		const bridge = new WorkerIntegrationToolBridge({ project } as never);
+		const [tool] = bridge.createTools(
+			[{ name: "provider_echo", description: "Echo", parameters: {} }],
+			"turn-1",
+		);
+		if (!tool) throw new Error("expected integration tool");
+
+		await expect(
+			tool.execute({}, { toolCallId: "call-1", signal: controller.signal } as never),
+		).rejects.toThrow(/turn stopped/);
+		expect(project).not.toHaveBeenCalled();
 	});
 });

@@ -11,18 +11,13 @@ import type {
 	ProcessWatcherServiceLike,
 	ProcessWatcherSource,
 	RegisteredProcessWatcherLike,
-	ResolvedProcessWatcherStartLike,
 } from "@leitwerk-dev/process-sdk";
 import { buildProcessWatchers } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "./config/config-types.js";
 import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
 
-export type {
-	ProcessWatcherServiceLike,
-	RegisteredProcessWatcherLike,
-	ResolvedProcessWatcherStartLike,
-};
+export type { ProcessWatcherServiceLike, RegisteredProcessWatcherLike };
 
 interface RegisteredProcessWatcher {
 	processId: string;
@@ -39,6 +34,7 @@ interface RegisteredProcessWatcher {
 interface ProcessWatcherRegistryOptions {
 	modelProfiles?: readonly LauncherModelProfileSummary[];
 	getModelProfilesForProcess?: (processId: string) => readonly LauncherModelProfileSummary[];
+	processModelPolicy?: ServerProcessModelPolicy;
 }
 
 function collectProcessWatchers(
@@ -103,10 +99,6 @@ function parseConfiguredWatcher(input: {
 	}
 }
 
-function watcherKey(processId: string, watcherId: string): string {
-	return `${processId}:${watcherId}`;
-}
-
 function validateWatcherLaunchModelConfig(
 	processId: string,
 	modelConfig: LaunchModelConfigInputLike,
@@ -123,53 +115,49 @@ function validateWatcherLaunchModelConfig(
 	return errors;
 }
 
-function configuredWatcherEntries(config: LeitwerkConfig, processId: string) {
-	return Object.entries(config.process_configs?.[processId]?.watchers ?? {});
-}
-
-export function validateConfiguredProcessWatchersAgainstCatalog(input: {
+function collectConfiguredProcessWatchers(input: {
 	config: LeitwerkConfig;
 	catalog: Pick<ExtensionCatalog, "processes">;
 	processModelPolicy?: ServerProcessModelPolicy;
-}): string[] {
+}): { watchers: RegisteredProcessWatcher[]; errors: string[] } {
+	const watchers: RegisteredProcessWatcher[] = [];
 	const errors: string[] = [];
 	for (const [processId, processConfig] of Object.entries(input.config.process_configs ?? {})) {
 		const processDef = input.catalog.processes.get(processId);
 		if (!processDef) continue;
-		const built = collectProcessWatchers(processDef);
+		const definitions = collectProcessWatchers(processDef);
 		for (const [watcherId, rawConfig] of Object.entries(processConfig.watchers ?? {})) {
 			const configPath = `process_configs.${processId}.watchers.${watcherId}`;
-			const watcherDef = built.get(watcherId);
-			if (!watcherDef) {
+			const definition = definitions.get(watcherId);
+			if (!definition) {
 				errors.push(`Unknown watcher '${watcherId}' at ${configPath}`);
 				continue;
 			}
-			let watcher: RegisteredProcessWatcher;
 			try {
-				watcher = parseConfiguredWatcher({
+				const watcher = parseConfiguredWatcher({
 					processId,
 					processDisplayName: processDef.displayName,
 					processDef,
-					definition: watcherDef,
+					definition,
 					rawConfig,
 					configPath,
 				});
+				watchers.push(watcher);
+				if (input.processModelPolicy) {
+					errors.push(
+						...validateWatcherLaunchModelConfig(
+							processId,
+							watcher.launchModelConfig,
+							input.processModelPolicy,
+						),
+					);
+				}
 			} catch (error) {
 				errors.push(error instanceof Error ? error.message : String(error));
-				continue;
-			}
-			if (input.processModelPolicy) {
-				errors.push(
-					...validateWatcherLaunchModelConfig(
-						processId,
-						watcher.launchModelConfig,
-						input.processModelPolicy,
-					),
-				);
 			}
 		}
 	}
-	return errors;
+	return { watchers, errors };
 }
 
 export function buildProcessWatcherRegistry(
@@ -177,24 +165,13 @@ export function buildProcessWatcherRegistry(
 	config: LeitwerkConfig,
 	options: ProcessWatcherRegistryOptions = {},
 ): ProcessWatcherServiceLike {
-	const watchers = new Map<string, RegisteredProcessWatcher>();
-	for (const [processId, processDef] of catalog.processes) {
-		const built = collectProcessWatchers(processDef);
-		for (const [watcherId, rawConfig] of configuredWatcherEntries(config, processId)) {
-			const watcherDef = built.get(watcherId);
-			if (!watcherDef) continue;
-			watchers.set(
-				watcherKey(processId, watcherId),
-				parseConfiguredWatcher({
-					processId,
-					processDisplayName: processDef.displayName,
-					processDef,
-					definition: watcherDef,
-					rawConfig,
-					configPath: `process_configs.${processId}.watchers.${watcherId}`,
-				}),
-			);
-		}
+	const { watchers, errors } = collectConfiguredProcessWatchers({
+		catalog,
+		config,
+		processModelPolicy: options.processModelPolicy,
+	});
+	if (errors.length > 0) {
+		throw new Error(`Invalid process watcher config:\n${errors.join("\n")}`);
 	}
 
 	const getDefaultModelProfilesForProcess = (
@@ -206,50 +183,47 @@ export function buildProcessWatcherRegistry(
 		modelProfiles: ctx.modelProfiles ?? getDefaultModelProfilesForProcess(processId),
 	});
 
-	const sortedWatchers = [...watchers.values()].sort((a, b) => {
-		const processCompare = a.processDisplayName.localeCompare(b.processDisplayName);
-		return processCompare !== 0
-			? processCompare
-			: a.definition.label.localeCompare(b.definition.label);
-	});
-
-	const buildRegistrationView = (
-		watcher: RegisteredProcessWatcher,
-	): RegisteredProcessWatcherLike => ({
-		processId: watcher.processId,
-		processDisplayName: watcher.processDisplayName,
-		watcherId: watcher.definition.id,
-		watcherLabel: watcher.definition.label,
-		watcherDescription: watcher.definition.description,
-		sourceId: watcher.definition.source.id,
-		sourceLabel: watcher.definition.source.label,
-		enabled: watcher.enabled,
-		configPath: watcher.configPath,
-		config: structuredClone(watcher.config),
-		presentation: structuredClone(watcher.presentation),
-		launchModelConfig: structuredClone(watcher.launchModelConfig),
-		async resolveLaunch(event: unknown, ctx: LauncherContext = {}) {
-			const watcherContext = createWatcherContext(watcher.processId, ctx);
-			if (watcher.definition.matches) {
-				const matches = await watcher.definition.matches(event, watcherContext);
-				if (!matches) return null;
-			}
-			const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
-			return {
-				watcher: buildRegistrationView(watcher),
-				launchPlan: buildLaunchPlan(watcher, launchConfig, config.commit_messages),
-			};
-		},
-	});
+	const registrations = watchers
+		.sort((a, b) => {
+			const processCompare = a.processDisplayName.localeCompare(b.processDisplayName);
+			return processCompare !== 0
+				? processCompare
+				: a.definition.label.localeCompare(b.definition.label);
+		})
+		.map((watcher) => ({
+			source: watcher.definition.source,
+			view: {
+				processId: watcher.processId,
+				processDisplayName: watcher.processDisplayName,
+				watcherId: watcher.definition.id,
+				watcherLabel: watcher.definition.label,
+				watcherDescription: watcher.definition.description,
+				sourceId: watcher.definition.source.id,
+				sourceLabel: watcher.definition.source.label,
+				enabled: watcher.enabled,
+				configPath: watcher.configPath,
+				config: structuredClone(watcher.config),
+				presentation: structuredClone(watcher.presentation),
+				launchModelConfig: structuredClone(watcher.launchModelConfig),
+				async resolveLaunch(event: unknown, ctx: LauncherContext = {}) {
+					const watcherContext = createWatcherContext(watcher.processId, ctx);
+					if (
+						watcher.definition.matches &&
+						!(await watcher.definition.matches(event, watcherContext))
+					) {
+						return null;
+					}
+					const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
+					return buildLaunchPlan(watcher, launchConfig, config.commit_messages);
+				},
+			} satisfies RegisteredProcessWatcherLike,
+		}));
 
 	return {
-		listAll() {
-			return sortedWatchers.map(buildRegistrationView);
-		},
-		listBySource<TConfig, TEvent>(source: ProcessWatcherSource<TConfig, TEvent>) {
-			return sortedWatchers
-				.filter((watcher) => watcher.definition.source === source)
-				.map(buildRegistrationView) as RegisteredProcessWatcherLike<TConfig, TEvent>[];
-		},
+		listAll: () => registrations.map(({ view }) => view),
+		listBySource: <TConfig, TEvent>(source: ProcessWatcherSource<TConfig, TEvent>) =>
+			registrations
+				.filter((watcher) => watcher.source === source)
+				.map(({ view }) => view) as RegisteredProcessWatcherLike<TConfig, TEvent>[],
 	};
 }

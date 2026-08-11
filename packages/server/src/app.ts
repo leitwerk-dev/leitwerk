@@ -87,10 +87,7 @@ import {
 	TITLE_SYSTEM_PROMPT,
 } from "./process-title-generator.js";
 import { buildProcessUiRegistry } from "./process-ui-registry.js";
-import {
-	buildProcessWatcherRegistry,
-	validateConfiguredProcessWatchersAgainstCatalog,
-} from "./process-watcher-registry.js";
+import { buildProcessWatcherRegistry } from "./process-watcher-registry.js";
 import {
 	createProjectMutationService,
 	type ProjectMutationService,
@@ -413,17 +410,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		commitMessages: config.commit_messages,
 		getModelProfilesForProcess,
 	});
-	const processWatcherConfigErrors = validateConfiguredProcessWatchersAgainstCatalog({
-		config,
-		catalog: extensionCatalog,
-		processModelPolicy,
-	});
-	if (processWatcherConfigErrors.length > 0) {
-		throw new Error(`Invalid process watcher config:\n${processWatcherConfigErrors.join("\n")}`);
-	}
 	const processWatcherService = buildProcessWatcherRegistry(extensionCatalog, config, {
 		modelProfiles: launcherModelProfiles,
 		getModelProfilesForProcess,
+		processModelPolicy,
 	});
 	const workerWebSocketIpc = createWorkerWebSocketIpcManager();
 	// This window must open before listen(): workers from the previous server
@@ -718,6 +708,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			turnRecords: baseDeps.turnRecords,
 			handleIntegrationToolRequest: (instanceId, payload) =>
 				integrationToolRequests.handle(instanceId, payload),
+			handleIntegrationToolCancel: (instanceId, payload) =>
+				void integrationToolRequests.cancel(instanceId, payload),
 			processQuestions,
 			broadcaster,
 			commands: processEngine,

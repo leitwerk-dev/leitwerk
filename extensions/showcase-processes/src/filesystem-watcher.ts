@@ -95,7 +95,7 @@ export function createFilesystemWatcherProvider(
 					result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
 					return result;
 				}
-				const prepared = await deps.launchPlans.prepare(resolved.launchPlan, {
+				const prepared = await deps.launchPlans.prepare(resolved, {
 					modelConfig: watcher.launchModelConfig,
 					invalidModelConfig: "omit",
 				});

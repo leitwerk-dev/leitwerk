@@ -27,6 +27,7 @@ const WORKER_TO_SERVER_TYPES = [
 	"worker.turn_started",
 	"worker.question_requested",
 	"worker.integration_tool_request",
+	"worker.integration_tool_cancel",
 	"worker.turn_outcome",
 	"worker.turn_failed",
 	"worker.lifecycle_parked",

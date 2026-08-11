@@ -118,6 +118,22 @@ describe("ipc-decode", () => {
 		expect(decodeWorkerToServerMessage(update).ok).toBe(true);
 	});
 
+	it("decodes integration-tool cancellation frames", () => {
+		const cancel = createIpcMessage({
+			type: "worker.integration_tool_cancel",
+			messageId: "m-tool-cancel",
+			instanceId: "agt_1",
+			workerId: "wkr_1",
+			payload: {
+				turnRecordId: "trn_1",
+				toolCallId: "call_1",
+				toolName: "provider_echo",
+			},
+		});
+
+		expect(decodeWorkerToServerMessage(cancel)).toEqual({ ok: true, message: cancel });
+	});
+
 	it("decodes worker-to-server messages after envelope parsing", () => {
 		const message = createIpcMessage({
 			type: "worker.turn_outcome",

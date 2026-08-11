@@ -4,6 +4,8 @@ import {
 	decodeWorkerToServerMessage,
 	type IpcEnvelope,
 	type WorkerCredentialUpdateResultPayload,
+	type WorkerIntegrationToolCancelPayload,
+	type WorkerIntegrationToolRequestPayload,
 	type WorkerIntegrationToolResultPayload,
 	type WorkerTurnStartAcceptedPayload,
 } from "@leitwerk-dev/worker-protocol";
@@ -49,8 +51,12 @@ export interface IpcHandlerDeps
 	}) => { accepted: boolean; currentRevision: number | null; safeReason?: string };
 	handleIntegrationToolRequest?: (
 		instanceId: string,
-		payload: import("@leitwerk-dev/worker-protocol").WorkerIntegrationToolRequestPayload,
+		payload: WorkerIntegrationToolRequestPayload,
 	) => Promise<WorkerIntegrationToolResultPayload>;
+	handleIntegrationToolCancel?: (
+		instanceId: string,
+		payload: WorkerIntegrationToolCancelPayload,
+	) => void;
 }
 
 export interface IpcHandlerCallbacks {
@@ -113,6 +119,10 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				);
 
 			switch (msg.type) {
+				case "worker.integration_tool_cancel": {
+					deps.handleIntegrationToolCancel?.(instanceId, msg.payload);
+					break;
+				}
 				case "worker.integration_tool_request": {
 					if (!deps.handleIntegrationToolRequest) break;
 					void deps

@@ -17,11 +17,12 @@ import type {
 import { llmTurn, resolveHumanTurnView } from "./define-process.js";
 import { validatePiBuiltInToolArray } from "./pi-config.js";
 import { REQUIRED_MARKDOWN_RESULT_TURN_RESULT } from "./tool-renderers.js";
-import type {
-	OutcomeToolParameterSpec,
-	ProcessActionPreviewDefinition,
-	ProcessActionSchedulingDefinition,
-	TurnBranchType,
+import {
+	type OutcomeToolParameterSpec,
+	type ProcessActionPreviewDefinition,
+	type ProcessActionSchedulingDefinition,
+	RESERVED_INTEGRATION_TOOL_NAMES,
+	type TurnBranchType,
 } from "./types.js";
 
 export function isLlmTurnDefinition<TParams = unknown, TState = unknown>(
@@ -272,6 +273,10 @@ export function validateLlmTurnDefinition<
 			errors.push(`LLM turn '${turnId}' integrationTools must be an array`);
 		} else {
 			const seen = new Set<string>();
+			const conflictingNames = new Set<string>([
+				...RESERVED_INTEGRATION_TOOL_NAMES,
+				...Object.keys(declaredOutcomes ?? {}),
+			]);
 			for (const name of turnDef.integrationTools) {
 				if (typeof name !== "string" || name.trim() === "") {
 					errors.push(`LLM turn '${turnId}' integration tool names must be non-empty strings`);
@@ -279,6 +284,11 @@ export function validateLlmTurnDefinition<
 				}
 				if (seen.has(name)) {
 					errors.push(`LLM turn '${turnId}' declares duplicate integration tool '${name}'`);
+				}
+				if (conflictingNames.has(name)) {
+					errors.push(
+						`LLM turn '${turnId}' integration tool '${name}' conflicts with a built-in, framework, or outcome tool`,
+					);
 				}
 				seen.add(name);
 			}

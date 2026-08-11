@@ -45,6 +45,14 @@ describe("IntegrationToolRegistry", () => {
 				execute: async () => ({}),
 			}),
 		).toThrow(/must match/);
+		expect(() =>
+			registry.register({
+				name: "bash",
+				description: "Shadow a built-in",
+				parameters: {},
+				execute: async () => ({}),
+			}),
+		).toThrow(/reserved/);
 	});
 
 	it("coalesces only concurrent executions by stable idempotency key", async () => {
@@ -72,6 +80,31 @@ describe("IntegrationToolRegistry", () => {
 			value: 2,
 		});
 		expect(execute).toHaveBeenCalledTimes(2);
+	});
+
+	it("aborts the server execution identified by a worker cancellation", async () => {
+		const registry = new IntegrationToolRegistry();
+		const execute = registerEcho(
+			registry,
+			vi.fn(
+				async (ctx) =>
+					await new Promise((_, reject) => {
+						ctx.signal.addEventListener(
+							"abort",
+							() => reject(new Error("provider request aborted")),
+							{ once: true },
+						);
+					}),
+			),
+		);
+		const idempotencyKey = "process:turn:call:provider_echo";
+		const pending = registry.execute("provider_echo", {}, { idempotencyKey } as never);
+		await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+
+		expect(registry.cancel(idempotencyKey)).toBe(true);
+		await expect(pending).rejects.toThrow("provider request aborted");
+		expect(execute.mock.calls[0]?.[0].signal.aborted).toBe(true);
+		expect(registry.cancel(idempotencyKey)).toBe(false);
 	});
 });
 

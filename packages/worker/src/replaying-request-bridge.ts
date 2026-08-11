@@ -20,15 +20,24 @@ export class ReplayingRequestBridge<
 	constructor(
 		private readonly emit: (payload: TRequest) => void,
 		private readonly resolveResponse: (payload: TResponse) => TResult,
+		private readonly cancel?: (payload: TRequest) => void,
 	) {}
 
 	request(payload: TRequest, signal: AbortSignal, cancellationError: string): Promise<TResult> {
+		if (signal.aborted) {
+			return Promise.reject(new Error(cancellationError));
+		}
 		if (this.pending.has(payload.toolCallId)) {
 			return Promise.reject(new Error(`Duplicate in-flight request '${payload.toolCallId}'`));
 		}
 		return new Promise<TResult>((resolve, reject) => {
 			const onAbort = () => {
 				this.pending.delete(payload.toolCallId);
+				try {
+					this.cancel?.(payload);
+				} catch {
+					// Cancellation reporting is best effort; local teardown must still complete.
+				}
 				reject(new Error(cancellationError));
 			};
 			signal.addEventListener("abort", onAbort, { once: true });
@@ -62,6 +71,11 @@ export class ReplayingRequestBridge<
 	cancelAll(reason: string): void {
 		for (const pending of this.pending.values()) {
 			pending.removeAbort();
+			try {
+				this.cancel?.(pending.payload);
+			} catch {
+				// Cancellation reporting is best effort; local teardown must still complete.
+			}
 			pending.reject(new Error(reason));
 		}
 		this.pending.clear();

@@ -409,27 +409,19 @@ export interface ComponentConfigLike {
 }
 
 export interface RegisteredProcessWatcherLike<TConfig = unknown, TEvent = unknown> {
-	processId: string;
-	processDisplayName: string;
-	watcherId: string;
-	watcherLabel: string;
-	watcherDescription: string;
-	sourceId: string;
-	sourceLabel: string;
-	enabled: boolean;
-	configPath: string;
-	config: TConfig;
-	presentation: ProcessWatcherPresentation;
-	launchModelConfig: LaunchModelConfigInputLike;
-	resolveLaunch(
-		event: TEvent,
-		ctx?: LauncherContext,
-	): Promise<ResolvedProcessWatcherStartLike | null>;
-}
-
-export interface ResolvedProcessWatcherStartLike {
-	watcher: RegisteredProcessWatcherLike;
-	launchPlan: ProcessLaunchPlan;
+	readonly processId: string;
+	readonly processDisplayName: string;
+	readonly watcherId: string;
+	readonly watcherLabel: string;
+	readonly watcherDescription: string;
+	readonly sourceId: string;
+	readonly sourceLabel: string;
+	readonly enabled: boolean;
+	readonly configPath: string;
+	readonly config: TConfig;
+	readonly presentation: ProcessWatcherPresentation;
+	readonly launchModelConfig: LaunchModelConfigInputLike;
+	resolveLaunch(event: TEvent, ctx?: LauncherContext): Promise<ProcessLaunchPlan | null>;
 }
 
 export interface ProcessWatcherServiceLike {

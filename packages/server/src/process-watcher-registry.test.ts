@@ -4,14 +4,12 @@ import {
 	type ExtensionProcessDefinition,
 	type LauncherModelProfileSummary,
 	llmTurn,
+	parseProcessWatcherLaunchModelConfig,
 } from "@leitwerk-dev/process-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
-import {
-	buildProcessWatcherRegistry,
-	validateConfiguredProcessWatchersAgainstCatalog,
-} from "./process-watcher-registry.js";
+import { buildProcessWatcherRegistry } from "./process-watcher-registry.js";
 
 interface TestParams {
 	issueKey: string;
@@ -44,35 +42,14 @@ const testWatcherSource = defineProcessWatcherSource<TestWatcherConfig, TestWatc
 	id: "test_ticket",
 	label: "Test ticket source",
 	parseConfig(raw) {
-		if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-			throw new Error("must be an object");
-		}
-		const config = raw as Record<string, unknown>;
+		const config = raw as { enabled?: boolean; project?: unknown; launch?: unknown };
 		if (typeof config.project !== "string" || config.project.trim() === "") {
 			throw new Error("project must be a non-empty string");
 		}
-		const launch = (config.launch ?? {}) as Record<string, unknown>;
-		const rawTurnConfigs = (launch.turn_configs ?? {}) as Record<string, unknown>;
 		return {
 			config: { project: config.project },
 			enabled: config.enabled !== false,
-			launchModelConfig: {
-				defaultModelProfileId:
-					typeof launch.default_model_profile === "string" ? launch.default_model_profile : null,
-				turnConfigs: Object.fromEntries(
-					Object.entries(rawTurnConfigs).map(([turnId, value]) => [
-						turnId,
-						{
-							modelProfileId:
-								typeof value === "object" &&
-								value !== null &&
-								typeof (value as Record<string, unknown>).model_profile === "string"
-									? ((value as Record<string, unknown>).model_profile as string)
-									: null,
-						},
-					]),
-				),
-			},
+			launchModelConfig: parseProcessWatcherLaunchModelConfig(config.launch),
 		};
 	},
 	presentConfig(config) {
@@ -218,13 +195,9 @@ describe("buildProcessWatcherRegistry", () => {
 		observedWatcherContexts.length = 0;
 	});
 
-	it("fails startup and config validation when a process declares duplicate watcher ids", () => {
+	it("fails startup when a process declares duplicate watcher ids", () => {
 		const catalog = { processes: new Map([["test_process", duplicateWatcherProcess]]) };
-
 		expect(() => buildProcessWatcherRegistry(catalog, createConfig())).toThrowError();
-		expect(() =>
-			validateConfiguredProcessWatchersAgainstCatalog({ config: createConfig(), catalog }),
-		).toThrowError();
 	});
 
 	it("accepts removed watcher model defaults while retaining structural validation", () => {
@@ -241,13 +214,11 @@ describe("buildProcessWatcherRegistry", () => {
 			fingerprint: () => "",
 		} as unknown as ServerProcessModelPolicy;
 
-		expect(
-			validateConfiguredProcessWatchersAgainstCatalog({
-				config,
-				catalog: { processes: new Map([["test_process", testProcess]]) },
+		expect(() =>
+			buildProcessWatcherRegistry({ processes: new Map([["test_process", testProcess]]) }, config, {
 				processModelPolicy,
 			}),
-		).toEqual([]);
+		).not.toThrow();
 	});
 
 	it("canonicalizes watcher-provided titles in launch plans", async () => {
@@ -257,8 +228,8 @@ describe("buildProcessWatcherRegistry", () => {
 			summary: "  Implement\n caching layer  ",
 		});
 
-		expect(resolved?.launchPlan.processInput.title).toBe("Implement caching layer");
-		expect(resolved?.launchPlan.processInput.externalId).toBe("CLD-101");
+		expect(resolved?.processInput.title).toBe("Implement caching layer");
+		expect(resolved?.processInput.externalId).toBe("CLD-101");
 	});
 
 	it("returns null when a watcher match rejects the payload", async () => {
@@ -281,12 +252,12 @@ describe("buildProcessWatcherRegistry", () => {
 			summary: "Watcher metadata",
 		});
 
-		expect(resolved?.watcher.launchModelConfig).toEqual({
+		expect(configuredWatcher(registry).launchModelConfig).toEqual({
 			defaultModelProfileId: "claude_fast",
 			turnConfigs: { triage: { modelProfileId: "local_qwen" } },
 		});
-		expect(resolved?.launchPlan.launcherId).toBe("test_process.ticket_default");
-		expect(resolved?.launchPlan.processInput.metadata).toEqual({
+		expect(resolved?.launcherId).toBe("test_process.ticket_default");
+		expect(resolved?.processInput.metadata).toEqual({
 			processWatcherId: "ticket_default",
 			processWatcherSourceId: "test_ticket",
 			processWatcherConfigPath: "process_configs.test_process.watchers.ticket_default",

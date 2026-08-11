@@ -149,6 +149,29 @@ describe("createIpcHandler", () => {
 		expect(lease?.state).toBe("bootstrapping");
 	});
 
+	it("routes integration-tool cancellation from the active worker", () => {
+		const process = t.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		const workerId = "wkr_tool_cancel";
+		t.leases.create({ instanceId: process.id, workerId, state: "busy" });
+		const handleIntegrationToolCancel = vi.fn();
+		const handler = createTestIpcHandler(t, {}, { handleIntegrationToolCancel });
+		const payload = {
+			turnRecordId: "trn_tool",
+			toolCallId: "call_tool",
+			toolName: "provider_echo",
+		};
+
+		handler.handleMessage(
+			baseEnvelope("worker.integration_tool_cancel", process.id, workerId, payload),
+		);
+
+		expect(handleIntegrationToolCancel).toHaveBeenCalledWith(process.id, payload);
+	});
+
 	it("persists a question before invalidating detail and notifying once", async () => {
 		const sendDurable = vi.spyOn(t.broadcaster, "sendDurable");
 		const sendEphemeral = vi.spyOn(t.broadcaster, "sendEphemeral");

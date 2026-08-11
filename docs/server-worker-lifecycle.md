@@ -81,6 +81,7 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 ### Server -> Worker Messages
 - **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
+- **`worker.integration_tool_result`:** Return a correlated server-owned tool result.
 - **`input.batch`:** Deliver pending FIFO steering inputs.
 - **`worker.stop`:** Request graceful worker cleanup and transport termination.
 - **`worker.abort_turn`:** Out-of-band message interrupting active LLM execution immediately.
@@ -90,6 +91,8 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 - **`worker.ready`:** Report workspace bootstrap completion, workspace facts, and loaded resource provenance.
 - **`worker.turn_started`:** Request server acceptance of reserved turn-record identity.
 - **`worker.event`:** Stream Pi diagnostic logs, tool calls, and text deltas.
+- **`worker.integration_tool_request`:** Invoke a server-owned tool authorized for the active turn.
+- **`worker.integration_tool_cancel`:** Abort a pending server-owned tool invocation.
 - **`worker.turn_outcome`:** Report successful turn completion and published products.
 - **`worker.turn_failed`:** Report turn execution failure or error details.
 - **`worker.cleanup_completed`:** Confirm graceful cleanup completion.
@@ -107,8 +110,10 @@ During an LLM turn, a declared integration tool uses
 `worker.integration_tool_request` / `worker.integration_tool_result`. The server checks
 the running turn record, selected turn, process project, and turn authorization before
 dispatching to the extension registry. A pending worker call is replayed after IPC
-reconnect with the same Pi tool-call identity; aborting the turn cancels it and restores
-normal prompt guards.
+reconnect with the same Pi tool-call identity. When the turn stops, the worker sends
+`worker.integration_tool_cancel`, the server aborts the execution context signal, and the
+worker restores normal prompt guards. Implementations must pass that signal to cancellable
+provider operations. An external write already committed by its provider cannot be rolled back.
 
 ---
 

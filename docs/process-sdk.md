@@ -70,8 +70,10 @@ export const myProcess = flow
 `.tools(...)` enables worker-local workspace primitives. `.integrationTools(...)`
 authorizes extension-defined, server-executed tools for that turn. Extension setup
 registers those tools with `ServerExtensionAPI.tool(...)`; names must be lowercase
-snake case, globally unique, and available at server startup. Workers receive only
-public tool declarations and proxy calls over authenticated IPC.
+snake case, globally unique, available at server startup, and distinct from Pi built-ins,
+framework tools, and the turn's outcome tools. Workers receive only public tool declarations
+and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
+to provider calls so stopping the turn cancels in-flight server work.
 
 ## Registering the Extension (`src/index.ts`)
 
@@ -204,23 +206,7 @@ api.launcher({
 
 ### 2. Watchers (`api.watcher`)
 
-A **Watcher** monitors an extension-owned event source and constructs launch configs automatically without human interaction. The extension defines the typed source, configuration parser, presentation, and provider adapter:
-
-```ts
-api.watcher({
-  id: "incoming_work",
-  label: "Incoming work",
-  description: "Launch from discovered work",
-  source: workQueueSource,
-  resolveLaunchConfig: async (event) => ({
-    processId: "my_custom_process",
-    params: { prompt: event.summary },
-    externalId: event.itemId,
-  }),
-});
-```
-
-Watchers are enabled in `leitwerk.yaml` under `process_configs.<processId>.watchers.<watcherId>`.
+A **Watcher** monitors an extension-owned event source and constructs launch configs without human interaction. The extension owns its typed source, configuration parser, presentation, polling, and provider adapter. See [Watchers](watchers.md) for the source, process binding, and configuration contracts.
 
 ### External Actions
 

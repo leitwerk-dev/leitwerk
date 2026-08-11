@@ -69,7 +69,6 @@ export {
 	type ProcessWatcherServiceLike,
 	type QueuedProcessInputLike,
 	type RegisteredProcessWatcherLike,
-	type ResolvedProcessWatcherStartLike,
 	type WorkerSupervisorLike,
 } from "./core-capabilities.js";
 export {
@@ -465,7 +464,13 @@ export type {
 	TurnResultMarkdownBehavior,
 	TurnSemanticEntryRefKey,
 } from "./types.js";
-export { PI_BUILT_IN_TOOL_NAMES, TURN_COMPLETION_MODES, TURN_CONTEXT_MODES } from "./types.js";
+export {
+	FRAMEWORK_LLM_TOOL_NAMES,
+	PI_BUILT_IN_TOOL_NAMES,
+	RESERVED_INTEGRATION_TOOL_NAMES,
+	TURN_COMPLETION_MODES,
+	TURN_CONTEXT_MODES,
+} from "./types.js";
 export {
 	type BuiltUiProcessDefinition,
 	buildUiProcessDefinition,

@@ -25,6 +25,16 @@ export class WorkerIntegrationToolBridge {
 				}
 				return payload.result;
 			},
+			(payload) =>
+				reporter.project({
+					kind: "protocol",
+					type: "worker.integration_tool_cancel",
+					payload: {
+						turnRecordId: payload.turnRecordId,
+						toolCallId: payload.toolCallId,
+						toolName: payload.toolName,
+					},
+				}),
 		);
 	}
 

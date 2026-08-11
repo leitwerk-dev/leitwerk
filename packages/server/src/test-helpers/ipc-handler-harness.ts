@@ -368,6 +368,9 @@ export function createTestIpcHandler(
 	opts: {
 		toastTtlMs?: number;
 		workerEventLogger?: Parameters<typeof createIpcHandler>[0]["workerEventLogger"];
+		handleIntegrationToolCancel?: Parameters<
+			typeof createIpcHandler
+		>[0]["handleIntegrationToolCancel"];
 	} = {},
 ) {
 	const processOperations = createProcessOperationCoordinator();
@@ -431,6 +434,7 @@ export function createTestIpcHandler(
 			events: deps.events,
 			leases: deps.leases,
 			turnRecords: deps.turnRecords,
+			handleIntegrationToolCancel: opts.handleIntegrationToolCancel,
 			processQuestions,
 			broadcaster: deps.broadcaster,
 			commands,

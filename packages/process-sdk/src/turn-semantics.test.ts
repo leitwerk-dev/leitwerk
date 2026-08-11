@@ -274,6 +274,28 @@ describe("turn semantics", () => {
 		);
 	});
 
+	it("rejects integration tools that clash with built-in, framework, or outcome tools", () => {
+		const errors = validateLlmTurnDefinition(
+			"implement",
+			makeLlmTurn({
+				integrationTools: ["bash", "ask_questions", "done", "provider_read"],
+			}),
+		);
+
+		expect(errors).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("integration tool 'bash' conflicts"),
+				expect.stringContaining("integration tool 'ask_questions' conflicts"),
+				expect.stringContaining("integration tool 'done' conflicts"),
+			]),
+		);
+		expect(errors).not.toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("integration tool 'provider_read' conflicts"),
+			]),
+		);
+	});
+
 	it("validates automatic turns with declared deterministic outcomes", () => {
 		const turn = makeAutomaticTurn();
 
