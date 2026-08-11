@@ -7,7 +7,11 @@ import {
 	type WorkerErrorClass,
 } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
-import type { LlmTurnDefinition, PiTreeNode, WorkerProcessContext } from "@leitwerk-dev/process-sdk";
+import type {
+	LlmTurnDefinition,
+	PiTreeNode,
+	WorkerProcessContext,
+} from "@leitwerk-dev/process-sdk";
 import { resolveLlmTurnRestorePrimaryLeafAfterTurn } from "@leitwerk-dev/process-sdk";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
 import type { WorkerDiagnosticPayload, WorkerOperationEmitter } from "../diagnostics.js";
@@ -118,7 +122,10 @@ export interface LlmTurnExecutorCallbacks {
 /** Pi writes these on new sessions before any conversational content exists. */
 const PI_SESSION_BOOTSTRAP_ENTRY_TYPES = new Set(["model_change", "thinking_level_change"]);
 
-function visitPiTreeEntries(nodes: readonly PiTreeNode[], visit: (entryType: string) => void): void {
+function visitPiTreeEntries(
+	nodes: readonly PiTreeNode[],
+	visit: (entryType: string) => void,
+): void {
 	for (const node of nodes) {
 		visit(node.entry.type);
 		visitPiTreeEntries(node.children, visit);
