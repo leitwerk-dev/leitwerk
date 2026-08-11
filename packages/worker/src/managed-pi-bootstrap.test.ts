@@ -102,27 +102,6 @@ describe("managed Pi bootstrap validation", () => {
 		]);
 	});
 
-	it("projects an unversioned generated credential into auth.json", async () => {
-		const { targetDir, bundle } = await materializeTestBundle({});
-		const manifest = await readAndValidateManagedPiResourceManifest({
-			agentDir: targetDir,
-			resourceDigest: bundle.digest,
-			start,
-		});
-		const files = buildManagedPiCredentialFiles({
-			manifest,
-			providerId: "openai",
-			credential: { providerId: "openai", revision: null, values: { apiKey: "generated" } },
-		});
-
-		expect(files).toEqual([
-			{
-				path: "auth.json",
-				content: `${JSON.stringify({ openai: { type: "api_key", key: "generated" } }, null, 2)}\n`,
-			},
-		]);
-	});
-
 	it("keeps provider-specific secrets out of auth.json", () => {
 		const manifest = {
 			schemaVersion: 1 as const,

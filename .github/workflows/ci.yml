@@ -51,6 +51,9 @@ jobs:
       - name: Install documentation dependencies
         run: python -m pip install -r requirements-docs.txt
 
+      - name: Verify deployment tooling
+        run: helm version --short
+
       - name: Build dependency image contracts
         run: |
           docker build --target dependencies -f deploy/images/Dockerfile.server .

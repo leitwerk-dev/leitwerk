@@ -17,6 +17,7 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
+import type { ResolvedProviderCredential } from "../model-providers/credentials.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import { toInputDelivery } from "../process-input-dispatch.js";
@@ -46,7 +47,7 @@ export interface WorkerStartPayloadBuilderDeps
 	resolveCredential?(
 		providerId: string,
 		options: Readonly<Record<string, string>>,
-	): { revision: number | null; values: Record<string, string> } | null;
+	): Pick<ResolvedProviderCredential, "revision" | "values"> | null;
 	integrationTools?: {
 		declarations(
 			names: readonly string[],

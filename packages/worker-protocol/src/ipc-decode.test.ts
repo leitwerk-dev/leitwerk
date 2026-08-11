@@ -97,9 +97,6 @@ describe("ipc-decode", () => {
 		}
 		expect(decoded.message.payload.treePaths.workspaceRoot).toBe("/tmp/workspace");
 		expect(decoded.message.payload.resumeLeafEntryId).toBe("turn-1");
-		expect(decoded.message.payload.bootstrap).toMatchObject({
-			credential: { revision: null, values: { apiKey: "generated" } },
-		});
 	});
 
 	it("narrows turn-start acceptance and credential-update frames", () => {

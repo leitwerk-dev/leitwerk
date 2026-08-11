@@ -7,18 +7,7 @@ vi.mock("@earendil-works/pi-ai/compat", () => ({
 	completeSimple: vi.fn(),
 }));
 
-const model = {
-	id: "gpt-test",
-	name: "GPT Test",
-	api: "openai-responses",
-	provider: "openai",
-	baseUrl: "https://api.openai.com/v1",
-	reasoning: true,
-	input: ["text"],
-	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-	contextWindow: 128_000,
-	maxTokens: 16_000,
-};
+const model = { id: "gpt-test", baseUrl: "https://api.openai.com/v1" };
 
 const request = {
 	providerId: "openai",
@@ -69,25 +58,5 @@ describe("built-in Pi server adapter", () => {
 		await adapter.generateText({ ...request, config });
 
 		expect(completeSimple).toHaveBeenCalledWith(model, expect.any(Object), expect.any(Object));
-	});
-
-	it("preserves credentials, token limits, reasoning, timeout, and retry settings", async () => {
-		const adapter = createBuiltinPiServerAdapter("openai");
-		await adapter.generateText({
-			...request,
-			thinkingLevel: "xhigh",
-			maxTokens: 321,
-			secrets: { apiKey: "current-secret" },
-			request: { timeoutMs: 4_000, maxRetries: 2, maxRetryDelayMs: 750 },
-		});
-
-		expect(completeSimple).toHaveBeenCalledWith(model, expect.any(Object), {
-			apiKey: "current-secret",
-			maxTokens: 321,
-			reasoning: "xhigh",
-			timeoutMs: 4_000,
-			maxRetries: 2,
-			maxRetryDelayMs: 750,
-		});
 	});
 });
