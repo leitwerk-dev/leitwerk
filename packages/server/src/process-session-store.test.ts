@@ -374,11 +374,18 @@ describe("createFilesystemSessionSource", () => {
 		const fixedTime = new Date("2026-01-01T00:00:00.000Z");
 		await utimes(treeFile, fixedTime, fixedTime);
 		const originalTimes = await stat(treeFile);
+		const originalCtimeNs = (await stat(treeFile, { bigint: true })).ctimeNs;
 		const reader = createFilesystemSessionReader(root);
 
 		const first = await reader.readInstanceTree("agt_1");
-		await writeInstanceTree(root, "agt_1", secondContent);
-		await utimes(treeFile, originalTimes.atime, originalTimes.mtime);
+		let replacementCtimeNs = originalCtimeNs;
+		for (let attempt = 0; attempt < 100 && replacementCtimeNs === originalCtimeNs; attempt += 1) {
+			if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 10));
+			await writeInstanceTree(root, "agt_1", secondContent);
+			await utimes(treeFile, originalTimes.atime, originalTimes.mtime);
+			replacementCtimeNs = (await stat(treeFile, { bigint: true })).ctimeNs;
+		}
+		expect(replacementCtimeNs).not.toBe(originalCtimeNs);
 		expect((await stat(treeFile)).mtimeMs).toBe(originalTimes.mtimeMs);
 		const second = await reader.readInstanceTree("agt_1");
 
