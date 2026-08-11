@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.7](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.6...v0.1.7) (2026-08-11)
+
+
+### Features
+
+* **auth:** add GitHub OAuth and gateway scheduling ([#21](https://github.com/leitwerk-dev/leitwerk/issues/21)) ([3f7df7d](https://github.com/leitwerk-dev/leitwerk/commit/3f7df7d6796fcfdb8dc381286a798a0678e1a65b))
+* make process watchers extension owned ([#19](https://github.com/leitwerk-dev/leitwerk/issues/19)) ([92a7352](https://github.com/leitwerk-dev/leitwerk/commit/92a7352eb1b847475b9d385542051265188c717b))
+* **process-sdk:** add remote integration tools ([#18](https://github.com/leitwerk-dev/leitwerk/issues/18)) ([ea6fbaa](https://github.com/leitwerk-dev/leitwerk/commit/ea6fbaa54d1e9cc25976dde4ff71fdb244dd4492))
+
 ## [0.1.6](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.5...v0.1.6) (2026-08-10)
 
 
