@@ -27,30 +27,41 @@ The four built-in primitives control workspace access:
 
 ## 2. Integration Tools
 
-Integration extensions define custom domain tools that allow AI agents to query or update external services during execution. The example below is an **extension-author pattern**, not a shipped in-tree Jira package:
+Integration extensions define server tools for external services. The example below is an
+extension-author pattern, not a fixed in-tree provider catalog:
 
 ```ts
-// Registered inside setup(api) in an integration extension
+// Registered inside setupServer(api) in an integration extension
 api.tool({
-  name: "tracker_update_issue",
-  description: "Update status, labels, or post comments on an external issue",
+  name: "tracker_get_issue",
+  description: "Read an external issue",
   parameters: {
     type: "object",
     properties: {
       issueKey: { type: "string", description: "External issue key" },
-      comment: { type: "string", description: "Comment text to post" },
-      status: { type: "string", description: "Target status transition" },
     },
     required: ["issueKey"],
   },
-  execute: async (params, ctx) => {
-    await trackerClient.updateIssue(params);
-    return { success: true, message: `Updated ${params.issueKey}` };
-  },
+  execute: async (ctx, params) =>
+    trackerClient.getIssue(params.issueKey, { signal: ctx.signal }),
 });
+
+flow.llm("inspect_issue")
+  .description("Inspect the source issue")
+  .integrationTools("tracker_get_issue");
 ```
 
-Authors register tools for whatever external systems their extension owns (issue trackers, VCS providers, internal APIs). There is no fixed monorepo catalog of Jira/GitLab tools.
+Integration tools run in the server process. Workers receive only each tool's name,
+description, and parameter schema. The server accepts a call only from the current turn
+record and only for a tool authorized by that turn. Provider credentials stay on the server.
+Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
+
+Reconnects replay a call with the same idempotency key. Mutating tools must use
+`ensureWrite()` so replay remains safe across server restarts. When a turn stops, the
+server aborts `ctx.signal`; tool implementations must pass it to cancellable provider calls.
+
+Authors register tools for the external systems their extension owns, such as issue trackers,
+VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.
 
 ## 3. Interactive Tools (`ask_questions`)
 

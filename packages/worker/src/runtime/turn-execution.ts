@@ -54,6 +54,7 @@ export interface SelectedTurnExecutionInput {
 	scheduler: WorkerRuntimeScheduler;
 	resultImageTools: ResultImageToolFactory;
 	requestQuestions?: (request: WorkerQuestionRequest) => Promise<string[]>;
+	integrationTools?: readonly import("@leitwerk-dev/process-sdk").PiCustomTool[];
 	signal: AbortSignal;
 	emit: WorkerOperationEmitter;
 }
@@ -147,6 +148,7 @@ export async function executeSelectedTurn(
 				operatorAbortSignal: input.signal,
 				callbacks: {
 					requestQuestions: input.requestQuestions,
+					integrationTools: input.integrationTools,
 					onPreTurnTargetedInputApplied(inputId, sequence, meta) {
 						appliedTargetedInputs.push({ inputId, sequence, ...(meta ? { meta } : {}) });
 					},

@@ -587,12 +587,32 @@ export interface ServerExtensionLogger {
 	error?(payload: Record<string, unknown>, message?: string): void;
 }
 
+export interface IntegrationToolExecutionContext {
+	readonly process: ProcessInstance;
+	readonly projects: readonly ProcessProject[];
+	readonly turn: ProcessTurnRecord;
+	readonly project: ProcessProject | null;
+	/** Stable for a single Pi tool call, including reconnect/replay. */
+	readonly idempotencyKey: string;
+	/** Aborted when the worker stops waiting for this tool call. */
+	readonly signal: AbortSignal;
+}
+
+export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {
+	readonly name: string;
+	readonly description: string;
+	readonly parameters: Record<string, unknown>;
+	parse?(value: unknown): TArgs;
+	execute(ctx: IntegrationToolExecutionContext, args: TArgs): Promise<unknown>;
+}
+
 export interface ServerExtensionAPI {
 	readonly events: EventBus<ServerExtensionEventMap>;
 	readonly logger?: ServerExtensionLogger;
 	provide<T>(token: CapabilityToken<T>, value: T): void;
 	get<T>(token: CapabilityToken<T>): T | T[] | undefined;
 	require<T>(token: CapabilityToken<T>): T | T[];
+	tool<TArgs>(definition: IntegrationToolDefinition<TArgs>): void;
 	onStart(handler: ExtensionLifecycleHook): void;
 	onStop(handler: ExtensionLifecycleHook): void;
 }

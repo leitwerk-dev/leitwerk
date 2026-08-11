@@ -40,6 +40,10 @@ import {
 	type FutureExecutionLifecycle,
 } from "./future-execution/index.js";
 import { startFutureExecutionScheduler } from "./future-execution-scheduler.js";
+import {
+	createIntegrationToolRequestService,
+	IntegrationToolRegistry,
+} from "./integration-tool-registry.js";
 import { createLauncherModelConfigService } from "./launcher-model-config-service.js";
 import { createLauncherRecentValuesService } from "./launcher-recent-values-service.js";
 import {
@@ -364,6 +368,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	const processOperations = createProcessOperationCoordinator();
 	const processGraphs = extensionCatalog.processes;
 	const processActionRegistry = buildProcessActionRegistry(extensionCatalog);
+	const integrationTools = new IntegrationToolRegistry();
 	const processUiRegistry = buildProcessUiRegistry(extensionCatalog);
 	const processModelPolicy = createServerProcessModelPolicy({
 		config,
@@ -688,6 +693,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				),
 	});
 
+	const integrationToolRequests = createIntegrationToolRequestService({
+		registry: integrationTools,
+		repos: baseDeps,
+		processActionRegistry,
+	});
 	const ipcHandler = createIpcHandler(
 		{
 			processes: baseDeps.processes,
@@ -696,6 +706,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			events: baseDeps.events,
 			leases: baseDeps.leases,
 			turnRecords: baseDeps.turnRecords,
+			handleIntegrationToolRequest: (instanceId, payload) =>
+				integrationToolRequests.handle(instanceId, payload),
+			handleIntegrationToolCancel: (instanceId, payload) =>
+				void integrationToolRequests.cancel(instanceId, payload),
 			processQuestions,
 			broadcaster,
 			commands: processEngine,
@@ -735,6 +749,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			onCredentialUpdateResult(instanceId, workerId, payload) {
 				supervisor?.credentialUpdateResult(instanceId, workerId, payload);
 			},
+			onIntegrationToolResult(instanceId, workerId, payload) {
+				supervisor?.integrationToolResult(instanceId, workerId, payload);
+			},
 		},
 	);
 
@@ -767,6 +784,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			return piResourceBundles.get(digest);
 		},
 		resolveRepositoryCredentials: (input) => repositoryCredentials.resolveWorkerCredentials(input),
+		integrationTools,
 		resolveCredential(providerId, options) {
 			const credential = modelProviderCredentials.resolve(providerId, options);
 			return credential && credential.revision !== null
@@ -969,6 +987,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			provide: hostCapabilities.provide.bind(hostCapabilities),
 			get: hostCapabilities.get.bind(hostCapabilities),
 			require: hostCapabilities.require.bind(hostCapabilities),
+			tool: (definition) => integrationTools.register(definition),
 			onStart(handler: () => void | Promise<void>) {
 				startHooks.push(handler);
 			},
@@ -978,6 +997,19 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		},
 		(id: string) => config.extensions?.[id],
 	);
+	for (const process of extensionCatalog.processes.values()) {
+		for (const [turnId, binding] of process.turns) {
+			const definition = binding.definition;
+			if (definition.kind !== "llm" || !definition.integrationTools?.length) continue;
+			try {
+				integrationTools.declarations(definition.integrationTools);
+			} catch (error) {
+				throw new Error(
+					`Invalid integration tools for process '${process.id}' turn '${turnId}': ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
+		}
+	}
 	markStartup("server_extensions");
 
 	const deps: RouteDeps = {

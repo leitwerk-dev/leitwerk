@@ -47,6 +47,11 @@ export interface WorkerStartPayloadBuilderDeps
 		providerId: string,
 		options: Readonly<Record<string, string>>,
 	): { revision: number; values: Record<string, string> } | null;
+	integrationTools?: {
+		declarations(
+			names: readonly string[],
+		): import("@leitwerk-dev/worker-protocol").IntegrationToolDeclaration[];
+	};
 }
 
 export function buildWorkerRuntimeSettingsSnapshot(
@@ -296,6 +301,19 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					projects: deps.projects.listByInstance(process.id),
 				}) ?? [];
 			const bootstrap = resolveBootstrap(start, deps);
+			const selectedTurn = deps.processActionRegistry.getTurnDefinition(
+				process.processId,
+				start.turnId,
+			);
+			const integrationToolNames =
+				selectedTurn?.kind === "llm" ? (selectedTurn.integrationTools ?? []) : [];
+			const integrationTools =
+				integrationToolNames.length > 0
+					? deps.integrationTools?.declarations(integrationToolNames)
+					: undefined;
+			if (integrationToolNames.length > 0 && !integrationTools) {
+				throw new Error(`Integration tools are unavailable for turn '${start.turnId}'`);
+			}
 			const payloadBase = {
 				...contextSnapshot,
 				workerLeaseId: lease.id,
@@ -310,6 +328,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 				workerRuntimeSettings: buildWorkerRuntimeSettingsSnapshot(deps.config),
 				...(treePaths.resume ? { resumeLeafEntryId } : {}),
 				...(repositoryCredentials.length > 0 ? { repositoryCredentials } : {}),
+				...(integrationTools && integrationTools.length > 0 ? { integrationTools } : {}),
 			};
 			const payload: WorkerStartPayload =
 				bootstrap.kind === "llm"

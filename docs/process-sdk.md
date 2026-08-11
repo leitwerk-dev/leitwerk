@@ -50,6 +50,7 @@ const implement = flow
   .llm<Params, State>("implement")
   .description("Implement requested change")
   .tools("read", "bash", "edit", "write")
+  .integrationTools("repository_get_change", "pipeline_get_step_logs")
   .freshPrimary()
   .buildPrompt((ctx) => `Implement this task:\n${ctx.params.prompt}`)
   .publish("summary")
@@ -65,6 +66,14 @@ export const myProcess = flow
   .use(flow.fragment<Params, State>("main").turn(implement))
   .define();
 ```
+
+`.tools(...)` enables worker-local workspace primitives. `.integrationTools(...)`
+authorizes extension-defined, server-executed tools for that turn. Extension setup
+registers those tools with `ServerExtensionAPI.tool(...)`; names must be lowercase
+snake case, globally unique, available at server startup, and distinct from Pi built-ins,
+framework tools, and the turn's outcome tools. Workers receive only public tool declarations
+and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
+to provider calls so stopping the turn cancels in-flight server work.
 
 ## Registering the Extension (`src/index.ts`)
 

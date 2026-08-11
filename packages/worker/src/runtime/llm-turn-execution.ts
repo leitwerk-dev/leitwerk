@@ -117,6 +117,7 @@ export interface LlmTurnExecutorCallbacks {
 		},
 	): void;
 	emit?: WorkerOperationEmitter;
+	integrationTools?: readonly import("@leitwerk-dev/process-sdk").PiCustomTool[];
 }
 
 /** Pi writes these on new sessions before any conversational content exists. */
@@ -352,6 +353,7 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 		turnRecordId,
 		turnDef: input.turnDef,
 		requestQuestions: input.callbacks.requestQuestions,
+		integrationTools: input.callbacks.integrationTools,
 		resultImageTool: input.resultImageTools.create({
 			workspaceRoot: input.ctx.workspaceRoot,
 			instanceId: input.ctx.process.id,

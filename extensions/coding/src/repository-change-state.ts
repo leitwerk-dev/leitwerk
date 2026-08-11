@@ -11,6 +11,8 @@ export interface RepositoryChangeFinalizationState {
 
 export interface RepositoryChangeState extends StructuralProcessState {
 	finalization: RepositoryChangeFinalizationState;
+	/** Namespaced state owned by a caller-supplied publication workflow. */
+	extensionState?: Record<string, unknown>;
 }
 
 export function createEmptyRepositoryChangeFinalizationState(): RepositoryChangeFinalizationState {
@@ -49,6 +51,7 @@ export const repositoryChangeStateCodec: Codec<RepositoryChangeState> = {
 		return {
 			...parseStructuralProcessState(record),
 			finalization: parseFinalizationState(record.finalization),
+			extensionState: toRecord(record.extensionState),
 		};
 	},
 	serialize(value) {

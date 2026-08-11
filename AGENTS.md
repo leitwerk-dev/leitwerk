@@ -31,7 +31,7 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 
 ## 2. Technology stack & Product model
 - **Server**: Fastify (HTTP + WebSocket via `@fastify/websocket`)
-- **UI**: Svelte 5 SPA built with Vite (Unified Processes view, no separate Jira/MR areas)
+- **UI**: Svelte 5 SPA built with Vite (Unified Processes view, no separate tracker/MR areas)
 - **Database**: Drizzle ORM + better-sqlite3 (synchronous)
 - **Testing**: Vitest
 - **Linting/formatting**: Biome

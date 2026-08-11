@@ -183,6 +183,7 @@ export async function setupServerExtensionTest(input: {
 		provide: capabilities.provide.bind(capabilities),
 		get: capabilities.get.bind(capabilities),
 		require: capabilities.require.bind(capabilities),
+		tool() {},
 		onStart(handler) {
 			startHooks.push(handler);
 			input.onStart?.(handler);

@@ -605,6 +605,50 @@ export interface RepositoryChangeFinalizationContextState extends StructuralProc
 	};
 }
 
+/** Commit the current workspace change and non-force push only the feature branch. */
+export function commitAndPushWorkBranch(input: {
+	repoPath: string;
+	workBranch: string;
+	commitMessage: string;
+}) {
+	const repoPath = path.resolve(input.repoPath);
+	if (!repoExists(repoPath)) {
+		throw new DeterministicGitError(
+			`Repository workspace '${repoPath}' does not exist or is not a git repository`,
+		);
+	}
+	assertExpectedCheckout(repoPath, input.workBranch);
+	if (!trimToNull(input.commitMessage)) {
+		throw new DeterministicGitError("A generated commit message is required before publication");
+	}
+	const conflicts = conflictedFiles(repoPath);
+	if (mergeInProgress(repoPath) || conflicts.length > 0) {
+		throw new DeterministicGitError(
+			`Cannot publish a work branch with unresolved conflicts: ${conflicts.join(", ") || "merge in progress"}`,
+		);
+	}
+	const dirty = workingTreeStatus(repoPath).dirtyFiles.length > 0;
+	const headSha = dirty
+		? commitDirtyWorktree(repoPath, input.commitMessage)
+		: currentHeadSha(repoPath);
+	const pushTarget = pushHeadToBranch(repoPath, input.workBranch);
+	const remoteHead = gitOrNull(
+		repoPath,
+		"ls-remote",
+		"--heads",
+		"origin",
+		branchRef(input.workBranch),
+	)
+		?.split(/\s+/)[0]
+		?.trim();
+	if (remoteHead !== headSha) {
+		throw new DeterministicGitError(
+			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${headSha}'`,
+		);
+	}
+	return { headSha, pushTarget };
+}
+
 export function runDeterministicFinalization<
 	TParams,
 	TState extends RepositoryChangeFinalizationContextState,

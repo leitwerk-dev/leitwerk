@@ -36,6 +36,19 @@ export const PI_BUILT_IN_TOOL_NAMES = [
 ] as const;
 export type PiBuiltInToolName = (typeof PI_BUILT_IN_TOOL_NAMES)[number];
 
+/** Tool names owned by the worker runtime rather than an integration extension. */
+export const FRAMEWORK_LLM_TOOL_NAMES = [
+	"ask_questions",
+	"markdown_result",
+	"upload_result_images",
+] as const;
+
+/** Names integration tools cannot use because Pi or the worker runtime owns them. */
+export const RESERVED_INTEGRATION_TOOL_NAMES = [
+	...PI_BUILT_IN_TOOL_NAMES,
+	...FRAMEWORK_LLM_TOOL_NAMES,
+] as const;
+
 export interface ProcessPiConfig {
 	/**
 	 * System prompt template. Rendered with Mustache against runtime context.

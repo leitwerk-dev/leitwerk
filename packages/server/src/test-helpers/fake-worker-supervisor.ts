@@ -55,6 +55,7 @@ export function createFakeWorkerSupervisor(
 		deliverInputs() {},
 		acceptTurnStart() {},
 		questionResponse() {},
+		integrationToolResult() {},
 		credentialUpdateResult() {},
 		getWorker(instanceId) {
 			return workers.get(instanceId);

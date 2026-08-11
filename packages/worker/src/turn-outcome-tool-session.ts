@@ -100,6 +100,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 	turnDef: LlmTurnDefinition<TOutcome, unknown, unknown>;
 	resultImageTool?: PiCustomTool | null;
 	requestQuestions?: (request: WorkerQuestionRequest) => Promise<string[]>;
+	integrationTools?: readonly PiCustomTool[];
 }): TurnOutcomeToolSession<TOutcome> {
 	let selectedOutcome: TurnOutcomeSelection<TOutcome> | null = null;
 	let terminalAcknowledgement: TerminalAcknowledgementState = { kind: "open" };
@@ -196,6 +197,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			: []),
 		...outcomeActions,
 		...(questionTool ? [questionTool] : []),
+		...(input.integrationTools ?? []),
 	];
 	const activeTools = resolveTurnActiveToolNames({
 		turnId: input.turnId,

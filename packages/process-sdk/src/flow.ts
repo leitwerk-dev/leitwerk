@@ -1002,6 +1002,7 @@ export class LlmFlowBuilder<
 	private turnDescription: string | null = null;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
+	private availableIntegrationTools: readonly string[] = [];
 	private promptBuilder:
 		| ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>)
 		| null = null;
@@ -1045,6 +1046,11 @@ export class LlmFlowBuilder<
 
 	tools(...tools: readonly PiBuiltInToolName[]): this {
 		this.availableTools = tools;
+		return this;
+	}
+
+	integrationTools(...tools: readonly string[]): this {
+		this.availableIntegrationTools = tools.map((tool) => tool.trim());
 		return this;
 	}
 
@@ -1249,6 +1255,9 @@ export class LlmFlowBuilder<
 			description: this.turnDescription,
 			...(this.modelPurposeValue ? { modelPurpose: this.modelPurposeValue } : {}),
 			availableTools: this.availableTools,
+			...(this.availableIntegrationTools.length > 0
+				? { integrationTools: this.availableIntegrationTools }
+				: {}),
 			...(this.questionsEnabled ? { askQuestions: true as const } : {}),
 			completionMode: this.completionMode,
 			branchType: this.branchType,
