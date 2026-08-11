@@ -22,6 +22,19 @@ function requireApiKey(secrets: Readonly<Record<string, string>>): string {
 	return value;
 }
 
+function configuredModel<TModel>(model: TModel, config: unknown): TModel {
+	if (
+		typeof config !== "object" ||
+		config === null ||
+		Array.isArray(config) ||
+		!("baseUrl" in config) ||
+		typeof config.baseUrl !== "string"
+	) {
+		return model;
+	}
+	return { ...model, baseUrl: config.baseUrl };
+}
+
 /**
  * Direct, server-only Pi AI adapter. It never reads PI_CODING_AGENT_DIR or an
  * ambient auth file; the current credential revision is supplied per call.
@@ -40,7 +53,7 @@ export function createBuiltinPiServerAdapter(builtinProviderId: string): PiServe
 			}
 			const reasoning = resolveThinkingLevel(input.thinkingLevel);
 			const message = await completeSimple(
-				model,
+				configuredModel(model, input.config),
 				{
 					systemPrompt: input.systemPrompt,
 					messages: [

@@ -17,7 +17,9 @@ The chart can mount an operator-managed configuration Secret by setting
 Use `server.credentialEncryption.existingSecret` and `.key` to provide the
 stable `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` without putting it in Helm values.
 An external Secret change does not alter the Deployment template; restart the
-server Deployment after applying it.
+server Deployment after applying it. When `server.existingConfigSecret` is set,
+worker host aliases and other runtime settings come from that external
+`leitwerk.yaml`; `kubernetes.pod.hostAliases` is not rendered into it by Helm.
 
 Set `server.storage.existingClaim` to mount an operator-managed server PVC. The
 chart does not create or own a PVC when this value is set.
@@ -55,6 +57,23 @@ Use `server.nodeSelector`/`server.tolerations` and the corresponding
 `gateway.nodeSelector`/`gateway.tolerations` values when both Deployments must
 run on an opt-in or tainted workload node. Dynamic workers use the separate
 `kubernetes.pod` scheduling configuration.
+
+Server and worker host aliases are deliberately separate. `server.hostAliases`
+renders `spec.hostAliases` on the server Deployment, while
+`kubernetes.pod.hostAliases` renders `kubernetes.pod.host_aliases` into the
+chart-generated Leitwerk configuration for dynamic worker Pods. Each entry must
+contain an IPv4 or IPv6 address and at least one lowercase DNS hostname.
+
+Set `server.podSecurityContext`, `server.containerSecurityContext`, and the
+corresponding gateway values to satisfy the cluster's Pod Security policy. The
+server settings also apply to its preflight Job. Gateway init-container settings
+are independent because the UI copy step and Caddy can require different
+permissions. The chart does not impose security-context defaults. When dropping
+all Caddy capabilities, verify the selected image can start; the official binary
+may require `NET_BIND_SERVICE` in its capability bounding set even on a high
+configured port. `server.extraEnv`, `server.extraEnvFrom`, and
+`gateway.extraEnv` provide deployment wiring without template patches; do not
+put literal secret values in Helm values.
 
 Docker Desktop deployment scripts are under `scripts/k8s/docker-desktop`. They
 always target the `docker-desktop` context, retain state outside the checkout,

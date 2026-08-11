@@ -883,6 +883,41 @@ describe("worker runtime harness", () => {
 		expect(types(harness)).toContain("worker.lifecycle_parked");
 	});
 
+	it("materializes null-revision credentials without sampling or synchronizing them", async () => {
+		const sampleCredentials = vi.fn(async () => ({
+			values: { apiKey: "changed" },
+			fingerprint: "changed",
+		}));
+		const { harness, root, startPayload } = createLlmHarness(
+			"worker-runtime-generated-credentials-",
+			{ sampleCredentials },
+		);
+		if (startPayload.bootstrap.kind !== "llm") throw new Error("Expected LLM bootstrap");
+		startPayload.bootstrap.credential = {
+			providerId: "openai",
+			revision: null,
+			values: { apiKey: "generated" },
+		};
+
+		await harness.start();
+		await harness.waitForMessage("worker.ready");
+		await harness.scheduler.advanceBy(1_000);
+		await harness.flush();
+
+		expect(
+			JSON.parse(
+				readFileSync(path.join(root, "agent", INSTANCE_ID, "lease_1", "auth.json"), "utf8"),
+			),
+		).toEqual({
+			openai: { type: "api_key", key: "generated" },
+		});
+		expect(sampleCredentials).not.toHaveBeenCalled();
+		expect(
+			harness.outgoing.filter((message) => message.type === "worker.credential_update"),
+		).toHaveLength(0);
+		await harness.stop("generated_credential_test_complete");
+	});
+
 	it("applies credential refresh CAS acceptance and stops after rejection", async () => {
 		const samples = [
 			{ values: { apiKey: "initial" }, fingerprint: "initial" },

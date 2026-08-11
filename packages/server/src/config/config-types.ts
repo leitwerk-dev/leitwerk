@@ -141,10 +141,16 @@ export interface KubernetesProcessVolumeConfig {
 	mount_path: string;
 }
 
+export interface KubernetesHostAliasConfig {
+	ip: string;
+	hostnames: string[];
+}
+
 export interface KubernetesPodConfig {
 	node_selector?: Record<string, string>;
 	tolerations?: unknown[];
 	annotations?: Record<string, string>;
+	host_aliases?: KubernetesHostAliasConfig[];
 }
 
 export interface KubernetesImagePullSecretCopyConfig {

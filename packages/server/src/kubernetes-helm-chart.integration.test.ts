@@ -223,6 +223,114 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(podSpec.affinity).toBeDefined();
 	});
 
+	it("renders host aliases, restricted security contexts, and additional environment wiring", () => {
+		const documents = renderChart([
+			"--set",
+			"gateway.enabled=true",
+			"--set",
+			"server.hostAliases[0].ip=192.0.2.10",
+			"--set",
+			"server.hostAliases[0].hostnames[0]=model-api.example.test",
+			"--set",
+			"kubernetes.pod.hostAliases[0].ip=2001:db8::10",
+			"--set",
+			"kubernetes.pod.hostAliases[0].hostnames[0]=model-api-v6.example.test",
+			"--set",
+			"server.podSecurityContext.runAsNonRoot=true",
+			"--set",
+			"server.podSecurityContext.fsGroup=1000",
+			"--set",
+			"server.podSecurityContext.seccompProfile.type=RuntimeDefault",
+			"--set",
+			"server.containerSecurityContext.allowPrivilegeEscalation=false",
+			"--set",
+			"server.containerSecurityContext.capabilities.drop[0]=ALL",
+			"--set",
+			"server.extraEnvFrom[0].secretRef.name=model-provider-env",
+			"--set",
+			"gateway.podSecurityContext.runAsNonRoot=true",
+			"--set",
+			"gateway.podSecurityContext.seccompProfile.type=RuntimeDefault",
+			"--set",
+			"gateway.initContainerSecurityContext.allowPrivilegeEscalation=false",
+			"--set",
+			"gateway.initContainerSecurityContext.capabilities.drop[0]=ALL",
+			"--set",
+			"gateway.containerSecurityContext.allowPrivilegeEscalation=false",
+			"--set",
+			"gateway.containerSecurityContext.capabilities.drop[0]=ALL",
+			"--set",
+			"gateway.containerSecurityContext.capabilities.add[0]=NET_BIND_SERVICE",
+			"--set",
+			"gateway.extraEnv[0].name=XDG_DATA_HOME",
+			"--set",
+			"gateway.extraEnv[0].value=/tmp/caddy/data",
+		]);
+		const config = renderedLeitwerkConfig(documents);
+		const deployments = findDocumentsByKind(documents, "Deployment");
+		const server = deployments.find(
+			(document) => (document.metadata as Record<string, unknown>)?.name === "leitwerk-server",
+		);
+		const gateway = deployments.find(
+			(document) => (document.metadata as Record<string, unknown>)?.name === "leitwerk-gateway",
+		);
+		const serverPod = (
+			(server?.spec as Record<string, unknown>).template as Record<string, unknown>
+		).spec as Record<string, unknown>;
+		const gatewayPod = (
+			(gateway?.spec as Record<string, unknown>).template as Record<string, unknown>
+		).spec as Record<string, unknown>;
+		const serverContainer = (serverPod.containers as Array<Record<string, unknown>>)[0];
+		const gatewayContainer = (gatewayPod.containers as Array<Record<string, unknown>>)[0];
+		const gatewayInit = (gatewayPod.initContainers as Array<Record<string, unknown>>)[0];
+
+		expect(validateConfig(config)).toEqual([]);
+		expect(config.kubernetes).toMatchObject({
+			pod: {
+				host_aliases: [{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] }],
+			},
+		});
+		expect(serverPod.hostAliases).toEqual([
+			{ ip: "192.0.2.10", hostnames: ["model-api.example.test"] },
+		]);
+		expect(serverPod.securityContext).toMatchObject({
+			runAsNonRoot: true,
+			fsGroup: 1000,
+			seccompProfile: { type: "RuntimeDefault" },
+		});
+		expect(serverContainer.securityContext).toEqual({
+			allowPrivilegeEscalation: false,
+			capabilities: { drop: ["ALL"] },
+		});
+		expect(serverContainer.envFrom).toEqual([{ secretRef: { name: "model-provider-env" } }]);
+		expect(gatewayPod.securityContext).toMatchObject({
+			runAsNonRoot: true,
+			seccompProfile: { type: "RuntimeDefault" },
+		});
+		expect(gatewayInit.securityContext).toEqual({
+			allowPrivilegeEscalation: false,
+			capabilities: { drop: ["ALL"] },
+		});
+		expect(gatewayContainer.securityContext).toEqual({
+			allowPrivilegeEscalation: false,
+			capabilities: { add: ["NET_BIND_SERVICE"], drop: ["ALL"] },
+		});
+		expect(gatewayContainer.env).toEqual([{ name: "XDG_DATA_HOME", value: "/tmp/caddy/data" }]);
+	});
+
+	it("omits optional Pod customizations from default chart output", () => {
+		const deployments = findDocumentsByKind(renderChart([]), "Deployment");
+		const server = deployments[0];
+		const pod = ((server.spec as Record<string, unknown>).template as Record<string, unknown>)
+			.spec as Record<string, unknown>;
+		const container = (pod.containers as Array<Record<string, unknown>>)[0];
+
+		expect(pod).not.toHaveProperty("hostAliases");
+		expect(pod).not.toHaveProperty("securityContext");
+		expect(container).not.toHaveProperty("securityContext");
+		expect(container).not.toHaveProperty("envFrom");
+	});
+
 	it("renders an opt-in pre-upgrade preflight and lifecycle-aware server probes", () => {
 		const documents = renderChart([
 			"--set",
@@ -231,6 +339,12 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 			"server.storage.existingClaim=leitwerk-server-data",
 			"--set",
 			"server.existingConfigSecret=leitwerk-runtime-config",
+			"--set",
+			"server.podSecurityContext.runAsNonRoot=true",
+			"--set",
+			"server.containerSecurityContext.allowPrivilegeEscalation=false",
+			"--set",
+			"server.extraEnvFrom[0].secretRef.name=model-provider-env",
 		]);
 		const job = findDocumentsByKind(documents, "Job")[0];
 		const deployment = findDocumentsByKind(documents, "Deployment")[0];
@@ -250,6 +364,12 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(renderedJob).toContain('"readOnly":true');
 		expect(renderedJob).toContain('"emptyDir":{}');
 		expect(renderedJob).toContain("requiredDuringSchedulingIgnoredDuringExecution");
+		const jobPod = ((job.spec as Record<string, unknown>).template as Record<string, unknown>)
+			.spec as Record<string, unknown>;
+		const preflight = (jobPod.containers as Array<Record<string, unknown>>)[0];
+		expect(jobPod.securityContext).toEqual({ runAsNonRoot: true });
+		expect(preflight.securityContext).toEqual({ allowPrivilegeEscalation: false });
+		expect(preflight.envFrom).toEqual([{ secretRef: { name: "model-provider-env" } }]);
 		const deploymentSpec = deployment.spec as Record<string, unknown>;
 		const podSpec = ((deploymentSpec.template as Record<string, unknown>).spec ?? {}) as Record<
 			string,

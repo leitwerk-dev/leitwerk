@@ -195,6 +195,34 @@ describe("worker.start Pi resource-bundle delivery", () => {
 		});
 	});
 
+	it("delivers an unversioned generated credential", () => {
+		const { bundle, config, deps, process } = setup();
+		const builder = createWorkerStartPayloadBuilder({
+			...deps,
+			config,
+			processGraphs: createDefaultTestProcessGraphRegistry(),
+			processActionRegistry: { getTurnDefinition: () => undefined },
+			storageLayout: () => ({
+				primaryTreeFile: "/tree/primary.jsonl",
+				workspaceRoot: "/workspace",
+				resume: false,
+			}),
+			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
+			resolveCredential: () => ({ revision: null, values: { apiKey: "generated" } }),
+		});
+
+		const message = builder.buildStartMessage(process.id, "wkr_bundle");
+
+		expect(message?.payload.bootstrap).toMatchObject({
+			kind: "llm",
+			credential: {
+				providerId: "openai",
+				revision: null,
+				values: { apiKey: "generated" },
+			},
+		});
+	});
+
 	it("rebuilds an accepted running LLM turn with its original prepared start", () => {
 		const { bundle, config, deps, process } = setup();
 		const originalLease = deps.leases.getByInstance(process.id);

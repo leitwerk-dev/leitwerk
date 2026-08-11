@@ -226,6 +226,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 							annotations: pod.annotations,
 							nodeSelector: pod.node_selector,
 							tolerations: pod.tolerations,
+							hostAliases: pod.host_aliases,
 						}
 					: {}),
 			},
@@ -787,7 +788,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		integrationTools,
 		resolveCredential(providerId, options) {
 			const credential = modelProviderCredentials.resolve(providerId, options);
-			return credential && credential.revision !== null
+			return credential
 				? {
 						revision: credential.revision,
 						values: credential.values,

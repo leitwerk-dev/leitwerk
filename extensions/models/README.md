@@ -15,6 +15,9 @@ extensions:
       api_key: env:OPENAI_API_KEY
     anthropic:
       api_key: env:ANTHROPIC_API_KEY
+    azure-openai-responses:
+      api_key: env:AZURE_OPENAI_API_KEY
+      base_url: https://my-resource.openai.azure.com
     custom_gateways:
       internal-gateway:
         base_url: https://llm-gateway.example.com/v1
@@ -34,7 +37,7 @@ pi:
       model_id: gemma-4-31b-it
 ```
 
-`api_key` accepts a literal value or `env:VARIABLE`. It only initializes an empty durable credential store; a stored revision wins on restart. Set it to `false` only for an endpoint that intentionally accepts unauthenticated requests.
+`api_key` accepts a literal value or `env:VARIABLE`. It only initializes an empty durable credential store; a stored revision wins on restart. Standard providers also accept an optional non-secret `base_url`, which is projected through managed `models.json` and used for server-side model calls. Set a custom gateway's `api_key` to `false` only for an endpoint that intentionally accepts unauthenticated requests.
 
 The extension uses a code-defined standard-provider list with explicit environment-variable mappings. Pi upgrades do not implicitly enable new providers. Providers with ambient or OAuth-only authentication, including Bedrock and OpenAI Codex, require dedicated extensions.
 

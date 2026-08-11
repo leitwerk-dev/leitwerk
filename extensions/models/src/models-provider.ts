@@ -16,7 +16,9 @@ import {
 	getSupportedStandardProviders,
 } from "./provider-auth.js";
 
-export type EmptyProviderConfig = Record<string, never>;
+export interface StandardProviderConfig {
+	readonly baseUrl?: string;
+}
 
 export interface ApiKeyCredential {
 	readonly apiKey: string;
@@ -28,6 +30,16 @@ const nonEmptyStringSchema = v.pipe(
 	v.minLength(1),
 );
 const positiveIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(1));
+const baseUrlSchema = v.pipe(
+	nonEmptyStringSchema,
+	v.url(),
+	v.check((value) => ["http:", "https:"].includes(new URL(value).protocol)),
+	v.transform((value) => {
+		const url = new URL(value);
+		url.pathname = url.pathname.replace(/\/+$/u, "");
+		return url.toString().replace(/\/$/u, "");
+	}),
+);
 const customModelSchema = v.pipe(
 	v.strictObject({
 		id: nonEmptyStringSchema,
@@ -43,12 +55,7 @@ const customModelSchema = v.pipe(
 	})),
 );
 const customGatewaySchema = v.strictObject({
-	base_url: v.pipe(
-		nonEmptyStringSchema,
-		v.url(),
-		v.check((value) => ["http:", "https:"].includes(new URL(value).protocol)),
-		v.transform((value) => new URL(value).toString().replace(/\/$/, "")),
-	),
+	base_url: baseUrlSchema,
 	api_key: v.optional(v.nullable(v.union([v.literal(false), nonEmptyStringSchema]))),
 	api: v.optional(
 		v.picklist([
@@ -115,17 +122,24 @@ function apiKeySecrets(credential: ApiKeyCredential | null): Readonly<Record<str
 export function parseStandardProviderConfig(
 	raw: unknown,
 	providerId: string,
-): { config: EmptyProviderConfig; credential?: ApiKeyCredential } {
+): { config: StandardProviderConfig; credential?: ApiKeyCredential } {
 	if (raw !== undefined && raw !== null && !isRecord(raw)) {
 		throw new Error("configuration must be an object");
 	}
-	const config = (raw ?? {}) as Record<string, unknown>;
-	assertKnownFields(config, ["api_key"]);
+	const rawConfig = (raw ?? {}) as Record<string, unknown>;
+	assertKnownFields(rawConfig, ["api_key", "base_url"]);
 	const apiKey =
-		config.api_key === undefined || config.api_key === null
+		rawConfig.api_key === undefined || rawConfig.api_key === null
 			? getStandardEnvApiKey(providerId)
-			: resolveSecret(config.api_key, "api_key");
-	return { config: {}, ...(apiKey ? { credential: { apiKey } } : {}) };
+			: resolveSecret(rawConfig.api_key, "api_key");
+	const baseUrl =
+		rawConfig.base_url === undefined || rawConfig.base_url === null
+			? undefined
+			: v.parse(baseUrlSchema, resolveSecret(rawConfig.base_url, "base_url"));
+	return {
+		config: { ...(baseUrl ? { baseUrl } : {}) },
+		...(apiKey ? { credential: { apiKey } } : {}),
+	};
 }
 
 function catalogModelStatuses(
@@ -159,12 +173,14 @@ export function evaluateStandardModelStatuses(
 
 export function createStandardModelProvider(
 	providerId: string,
-): ModelProviderDefinition<EmptyProviderConfig, ApiKeyCredential> {
+): ModelProviderDefinition<StandardProviderConfig, ApiKeyCredential> {
 	const reference = builtinPiProvider(providerId);
 	return defineModelProvider({
 		id: providerId,
 		parseConfig: (raw) => parseStandardProviderConfig(raw, providerId),
-		worker: reference,
+		worker: configuredPiProvider(providerId, ({ config }) => ({
+			providers: config.baseUrl ? { [providerId]: { baseUrl: config.baseUrl } } : {},
+		})),
 		server: reference,
 		models: (ctx) => evaluateStandardModelStatuses(providerId, ctx),
 		credential: { parse: (value) => parseApiKeyCredential(value, providerId) },

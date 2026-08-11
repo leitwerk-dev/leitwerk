@@ -46,13 +46,16 @@ extensions:
       api_key: env:OPENAI_API_KEY
     anthropic:
       api_key: env:ANTHROPIC_API_KEY
+    azure-openai-responses:
+      api_key: env:AZURE_OPENAI_API_KEY
+      base_url: https://my-resource.openai.azure.com
 ```
 
 ### Credential initialization
 
-`api_key` under `extensions.models.<provider_id>` accepts a literal value or `env:VAR_NAME`. When omitted for a standard provider, the models extension checks that provider's standard Pi environment variables. The resulting value only initializes an empty encrypted credential store; an existing durable revision wins on restart.
+`api_key` under `extensions.models.<provider_id>` accepts a literal value or `env:VAR_NAME`. When omitted for a standard provider, the models extension checks that provider's standard Pi environment variables. The resulting value only initializes an empty encrypted credential store; an existing durable revision wins on restart. Standard providers accept an optional non-secret `base_url`; it is projected to workers in managed `models.json` and used by the built-in server adapter, which keeps process-title generation on the same endpoint. This is useful for providers such as Azure OpenAI that require an endpoint in addition to an API key.
 
-Set a custom gateway's `api_key` to `false` only when its endpoint intentionally accepts unauthenticated requests.
+Set a custom gateway's `api_key` to `false` only when its endpoint intentionally accepts unauthenticated requests. Leitwerk then generates the placeholder material Pi requires and delivers it with a null revision. Null-revision material is worker-local bootstrap input: it is never persisted in the credential store, sampled for refresh, or sent in `worker.credential_update`.
 
 ### Custom gateways
 

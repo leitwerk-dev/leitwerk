@@ -155,6 +155,46 @@ describe("validateConfig", () => {
 		).toBe(true);
 	});
 
+	it("accepts IPv4 and IPv6 worker Pod host aliases", () => {
+		const config = getDefaultConfig();
+		config.workers.runner = "kubernetes";
+		config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
+		if (config.kubernetes) {
+			config.kubernetes.pod = {
+				...config.kubernetes.pod,
+				host_aliases: [
+					{ ip: "192.0.2.10", hostnames: ["model-api.example.test", "models.example.test"] },
+					{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] },
+				],
+			};
+		}
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it.each([
+		[[{ ip: "not-an-ip", hostnames: ["model-api.example.test"] }], "IPv4 or IPv6"],
+		[[{ ip: "192.0.2.10", hostnames: [] }], "hostnames"],
+		[[{ ip: "192.0.2.10", hostnames: ["Not a hostname"] }], "hostname"],
+	] as const)("rejects malformed worker Pod host aliases", (hostAliases, expected) => {
+		const config = getDefaultConfig();
+		config.workers.runner = "kubernetes";
+		config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
+		if (config.kubernetes) {
+			config.kubernetes.pod = {
+				...config.kubernetes.pod,
+				host_aliases: hostAliases.map((alias) => ({
+					ip: alias.ip,
+					hostnames: [...alias.hostnames],
+				})),
+			};
+		}
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([
+			expect.stringContaining(expected),
+		]);
+	});
+
 	it("rejects Kubernetes server namespaces that use the process namespace prefix", () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";

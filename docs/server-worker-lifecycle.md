@@ -79,7 +79,7 @@ Durable worker leases transition through distinct lifecycle states owned exclusi
 All worker communication occurs over WebSocket (`/internal/workers/connect`) using `@leitwerk-dev/worker-protocol`:
 
 ### Server -> Worker Messages
-- **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
+- **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. Durable credentials carry a numbered revision. Generated bootstrap-only material carries a null revision and is materialized for the worker without enabling credential refresh. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
 - **`worker.integration_tool_result`:** Return a correlated server-owned tool result.
 - **`input.batch`:** Deliver pending FIFO steering inputs.
@@ -93,6 +93,7 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 - **`worker.event`:** Stream Pi diagnostic logs, tool calls, and text deltas.
 - **`worker.integration_tool_request`:** Invoke a server-owned tool authorized for the active turn.
 - **`worker.integration_tool_cancel`:** Abort a pending server-owned tool invocation.
+- **`worker.credential_update`:** Compare-and-set a changed durable provider credential against its numbered revision. Null-revision generated material never emits this message.
 - **`worker.turn_outcome`:** Report successful turn completion and published products.
 - **`worker.turn_failed`:** Report turn execution failure or error details.
 - **`worker.cleanup_completed`:** Confirm graceful cleanup completion.

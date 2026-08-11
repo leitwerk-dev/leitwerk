@@ -51,6 +51,12 @@ server:
       memory: 2Gi
   podAnnotations: {}
   podLabels: {}
+  hostAliases: []
+  podSecurityContext: {}
+  containerSecurityContext: {}
+  # Additional environment entries for the server and preflight containers.
+  extraEnv: []
+  extraEnvFrom: []
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -108,6 +114,10 @@ gateway:
       memory: 128Mi
   podAnnotations: {}
   podLabels: {}
+  podSecurityContext: {}
+  initContainerSecurityContext: {}
+  containerSecurityContext: {}
+  extraEnv: []
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -159,6 +169,7 @@ kubernetes:
     nodeSelector: {}
     tolerations: []
     annotations: {}
+    hostAliases: []
   imagePullSecrets: []
   # Non-secret copy names used to render runtime config, source-namespace RBAC,
   # and admission constraints. Source Secrets must be dockerconfigjson Secrets.

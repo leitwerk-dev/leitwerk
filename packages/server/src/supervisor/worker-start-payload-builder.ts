@@ -46,7 +46,7 @@ export interface WorkerStartPayloadBuilderDeps
 	resolveCredential?(
 		providerId: string,
 		options: Readonly<Record<string, string>>,
-	): { revision: number; values: Record<string, string> } | null;
+	): { revision: number | null; values: Record<string, string> } | null;
 	integrationTools?: {
 		declarations(
 			names: readonly string[],

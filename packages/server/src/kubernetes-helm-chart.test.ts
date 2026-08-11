@@ -188,6 +188,7 @@ function buildConfigFromValues(values: JsonObject): JsonObject {
 				node_selector: requiredRecord(pod.nodeSelector, "kubernetes.pod.nodeSelector"),
 				tolerations: requiredArray(pod.tolerations, "kubernetes.pod.tolerations"),
 				annotations: requiredRecord(pod.annotations, "kubernetes.pod.annotations"),
+				host_aliases: requiredArray(pod.hostAliases, "kubernetes.pod.hostAliases"),
 			},
 			image_pull_secrets: requiredArray(kubernetes.imagePullSecrets, "kubernetes.imagePullSecrets"),
 			image_pull_secret_copies: requiredArray(

@@ -134,7 +134,11 @@ describe("Kubernetes manifest builders", () => {
 		expect(Object.keys(manifest.data)).toEqual([".dockerconfigjson"]);
 	});
 
-	it("builds a worker pod with env, volume mount, resources, pull secrets, and service account", () => {
+	it("builds a worker pod with env, volume mount, resources, pull secrets, aliases, and service account", () => {
+		const hostAliases = [
+			{ ip: "192.0.2.10", hostnames: ["model-api.example.test", "models.example.test"] },
+			{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] },
+		];
 		const manifest = buildKubernetesWorkerPodManifest(startInput(), {
 			namespace: "leitwerk",
 			workerServiceAccount: "leitwerk-worker",
@@ -143,6 +147,7 @@ describe("Kubernetes manifest builders", () => {
 			nodeSelector: { lane: "workers" },
 			annotations: { "example.com/trace": "enabled" },
 			tolerations: [{ key: "dedicated", operator: "Exists" }],
+			hostAliases,
 		});
 
 		expect(manifest.metadata.name).toBe("leitwerk-worker-proc-1-wkr-1");
@@ -159,6 +164,12 @@ describe("Kubernetes manifest builders", () => {
 		expect(manifest.spec.imagePullSecrets).toEqual([{ name: "ghcr" }]);
 		expect(manifest.spec.nodeSelector).toEqual({ lane: "workers" });
 		expect(manifest.spec.tolerations).toEqual([{ key: "dedicated", operator: "Exists" }]);
+		expect(manifest.spec.hostAliases).toEqual(hostAliases);
+		hostAliases[0]?.hostnames.push("mutated.example.test");
+		expect(manifest.spec.hostAliases?.[0]?.hostnames).toEqual([
+			"model-api.example.test",
+			"models.example.test",
+		]);
 		expect(manifest.spec.volumes).toEqual([
 			{
 				name: "process-state",
@@ -174,6 +185,12 @@ describe("Kubernetes manifest builders", () => {
 			name: "LEITWERK_WORKER_CONNECT_TOKEN",
 			value: "secret-token",
 		});
+	});
+
+	it("omits host aliases from worker Pods when none are configured", () => {
+		const manifest = buildKubernetesWorkerPodManifest(startInput(), { namespace: "leitwerk" });
+
+		expect(manifest.spec).not.toHaveProperty("hostAliases");
 	});
 
 	it("mounts a server CA ConfigMap into worker pods when configured", () => {

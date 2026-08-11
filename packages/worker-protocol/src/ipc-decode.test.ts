@@ -45,7 +45,7 @@ describe("ipc-decode", () => {
 				bootstrap: {
 					kind: "llm",
 					resourceBundle: { digest: "sha256:test", archiveBase64: "dGFy" },
-					credential: { providerId: "openai", revision: 1, values: { apiKey: "secret" } },
+					credential: { providerId: "openai", revision: null, values: { apiKey: "generated" } },
 				},
 				processSnapshot: {
 					id: "agt_1",
@@ -97,6 +97,9 @@ describe("ipc-decode", () => {
 		}
 		expect(decoded.message.payload.treePaths.workspaceRoot).toBe("/tmp/workspace");
 		expect(decoded.message.payload.resumeLeafEntryId).toBe("turn-1");
+		expect(decoded.message.payload.bootstrap).toMatchObject({
+			credential: { revision: null, values: { apiKey: "generated" } },
+		});
 	});
 
 	it("narrows turn-start acceptance and credential-update frames", () => {

@@ -43,6 +43,7 @@ export interface KubernetesPodSpecOptions {
 	nodeSelector?: Record<string, string>;
 	annotations?: Record<string, string>;
 	tolerations?: unknown[];
+	hostAliases?: Array<{ ip: string; hostnames: string[] }>;
 	serverCaConfigMap?: KubernetesWorkerServerCaConfigMapSpec;
 }
 
@@ -122,6 +123,7 @@ export interface KubernetesPodManifest {
 		serviceAccountName?: string;
 		nodeSelector?: Record<string, string>;
 		tolerations?: unknown[];
+		hostAliases?: Array<{ ip: string; hostnames: string[] }>;
 		imagePullSecrets?: Array<{ name: string }>;
 		containers: Array<{
 			name: "worker";
@@ -337,6 +339,7 @@ export function buildKubernetesWorkerPodManifest(
 	const hasTolerations = options.tolerations && options.tolerations.length > 0;
 	const hasPullSecrets = options.imagePullSecrets && options.imagePullSecrets.length > 0;
 	const hasAnnotations = options.annotations && Object.keys(options.annotations).length > 0;
+	const hasHostAliases = options.hostAliases && options.hostAliases.length > 0;
 	return {
 		apiVersion: "v1",
 		kind: "Pod",
@@ -368,6 +371,14 @@ export function buildKubernetesWorkerPodManifest(
 				: {}),
 			...(hasNodeSelector ? { nodeSelector: { ...options.nodeSelector } } : {}),
 			...(hasTolerations ? { tolerations: [...(options.tolerations as unknown[])] } : {}),
+			...(hasHostAliases
+				? {
+						hostAliases: options.hostAliases?.map(({ ip, hostnames }) => ({
+							ip,
+							hostnames: [...hostnames],
+						})),
+					}
+				: {}),
 		},
 	};
 }

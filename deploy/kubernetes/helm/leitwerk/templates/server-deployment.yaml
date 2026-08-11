@@ -30,6 +30,14 @@ spec:
     spec:
       serviceAccountName: {{ include "leitwerk.serviceAccountName" . }}
       terminationGracePeriodSeconds: {{ .Values.server.terminationGracePeriodSeconds }}
+      {{- with .Values.server.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.server.hostAliases }}
+      hostAliases:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -50,6 +58,17 @@ spec:
                   name: {{ .Values.server.credentialEncryption.existingSecret | quote }}
                   key: {{ .Values.server.credentialEncryption.key | quote }}
             {{- end }}
+            {{- with .Values.server.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.server.extraEnvFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.server.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}
