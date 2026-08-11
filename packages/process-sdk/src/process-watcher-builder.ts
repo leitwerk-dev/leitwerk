@@ -1,4 +1,3 @@
-import type { ProcessWatcherType } from "@leitwerk-dev/protocol";
 import type {
 	ExtensionProcessDefinition,
 	ProcessWatcherAPI,
@@ -6,15 +5,12 @@ import type {
 } from "./extension-api.js";
 import { cloneMap, registerUnique } from "./registry-utils.js";
 
-export interface BuiltProcessWatcherDefinition<
-	TParams = unknown,
-	TType extends ProcessWatcherType = ProcessWatcherType,
-> {
-	watchers: ReadonlyMap<string, ProcessWatcherDefinition<TParams, unknown, TType>>;
+export interface BuiltProcessWatcherDefinition<TParams = unknown> {
+	watchers: ReadonlyMap<string, ProcessWatcherDefinition<TParams, unknown, unknown>>;
 }
 
-function validateWatcherDefinition<TParams, TType extends ProcessWatcherType>(
-	def: ProcessWatcherDefinition<TParams, unknown, TType>,
+function validateWatcherDefinition<TParams>(
+	def: ProcessWatcherDefinition<TParams, unknown, unknown>,
 ): void {
 	if (!def.id.trim()) {
 		throw new Error("Process watcher id is required");
@@ -25,27 +21,24 @@ function validateWatcherDefinition<TParams, TType extends ProcessWatcherType>(
 	if (!def.description.trim()) {
 		throw new Error(`Process watcher '${def.id}' must define a non-empty description`);
 	}
-	if (def.type !== "jira" && def.type !== "gitlab_mr" && def.type !== "filesystem") {
-		throw new Error(`Process watcher '${def.id}' has unsupported type '${String(def.type)}'`);
+	if (!def.source || def.source.id.trim() === "") {
+		throw new Error(`Process watcher '${def.id}' must define a watcher source`);
 	}
 }
 
-export function createProcessWatcherBuilder<
-	TParams = unknown,
-	TType extends ProcessWatcherType = ProcessWatcherType,
->(): ProcessWatcherAPI<TParams> & {
-	getDefinition(): BuiltProcessWatcherDefinition<TParams, TType>;
+export function createProcessWatcherBuilder<TParams = unknown>(): ProcessWatcherAPI<TParams> & {
+	getDefinition(): BuiltProcessWatcherDefinition<TParams>;
 } {
-	const watchers = new Map<string, ProcessWatcherDefinition<TParams, unknown, TType>>();
+	const watchers = new Map<string, ProcessWatcherDefinition<TParams, unknown, unknown>>();
 
 	return {
-		watcher<TEvent = unknown, TWatcherType extends ProcessWatcherType = ProcessWatcherType>(
-			def: ProcessWatcherDefinition<TParams, TEvent, TWatcherType>,
+		watcher<TEvent = unknown, TConfig = unknown>(
+			def: ProcessWatcherDefinition<TParams, TEvent, TConfig>,
 		) {
 			registerUnique(
 				watchers,
 				def.id,
-				def as unknown as ProcessWatcherDefinition<TParams, unknown, TType>,
+				def as unknown as ProcessWatcherDefinition<TParams, unknown, unknown>,
 				{
 					duplicateMessage: `Process watcher '${def.id}' is already registered`,
 					validate: validateWatcherDefinition,

@@ -17,7 +17,6 @@ import type {
 	LauncherModelConfigPreview,
 	LauncherModelConfigSchema,
 	ProcessActionModelPreview,
-	ProcessWatcherType,
 	WsPayloadByType,
 } from "@leitwerk-dev/protocol";
 import { createCapabilityToken } from "./capabilities.js";
@@ -28,6 +27,8 @@ import type {
 	ProcessLaunchConfig,
 	ProcessLauncherService,
 	ProcessLaunchPlan,
+	ProcessWatcherPresentation,
+	ProcessWatcherSource,
 	RepositoryCredentialRegistrar,
 } from "./extension-api.js";
 
@@ -407,39 +408,27 @@ export interface ComponentConfigLike {
 	default_branch: string;
 }
 
-export interface ProcessWatcherConfigLike {
-	type: ProcessWatcherType;
-	[key: string]: unknown;
-}
-
-export interface RegisteredProcessWatcherLike {
-	processId: string;
-	processDisplayName: string;
-	watcherId: string;
-	watcherLabel: string;
-	watcherDescription: string;
-	type: ProcessWatcherType;
-	enabled: boolean;
-	pollInterval: string;
-	configPath: string;
-	config: ProcessWatcherConfigLike;
-	launchModelConfig: LaunchModelConfigInputLike;
-}
-
-export interface ResolvedProcessWatcherStartLike {
-	watcher: RegisteredProcessWatcherLike;
-	launchPlan: ProcessLaunchPlan;
+export interface RegisteredProcessWatcherLike<TConfig = unknown, TEvent = unknown> {
+	readonly processId: string;
+	readonly processDisplayName: string;
+	readonly watcherId: string;
+	readonly watcherLabel: string;
+	readonly watcherDescription: string;
+	readonly sourceId: string;
+	readonly sourceLabel: string;
+	readonly enabled: boolean;
+	readonly configPath: string;
+	readonly config: TConfig;
+	readonly presentation: ProcessWatcherPresentation;
+	readonly launchModelConfig: LaunchModelConfigInputLike;
+	resolveLaunch(event: TEvent, ctx?: LauncherContext): Promise<ProcessLaunchPlan | null>;
 }
 
 export interface ProcessWatcherServiceLike {
 	listAll(): readonly RegisteredProcessWatcherLike[];
-	listByType(type: ProcessWatcherType): readonly RegisteredProcessWatcherLike[];
-	resolveLaunch(
-		processId: string,
-		watcherId: string,
-		payload: unknown,
-		ctx?: LauncherContext,
-	): Promise<ResolvedProcessWatcherStartLike | null>;
+	listBySource<TConfig, TEvent>(
+		source: ProcessWatcherSource<TConfig, TEvent>,
+	): readonly RegisteredProcessWatcherLike<TConfig, TEvent>[];
 }
 
 export interface ProcessQuestionServiceLike {

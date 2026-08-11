@@ -22,7 +22,7 @@ function setup(overrides: Partial<ProcessEngineDeps> = {}, base = createTestDeps
 		...overrides,
 	};
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		lifecycleStatus: "discovered",
 		selectedTurnId: null,
 		title: "Fix login",
@@ -85,7 +85,7 @@ describe("ProcessEngine deferred process activation", () => {
 
 	it("activates an explicitly selected alternate entry through the real process graph", async () => {
 		const process = createFixtureProcess({
-			id: "jira_issue_process",
+			id: "ticket_issue_process",
 			entry: "generate_plan",
 			alternateEntries: ["import_plan"],
 		});
@@ -147,7 +147,7 @@ describe("ProcessEngine deferred process activation", () => {
 			}),
 		).toEqual({ outcome: "process_not_found" });
 		const projectless = s.deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 		expect(

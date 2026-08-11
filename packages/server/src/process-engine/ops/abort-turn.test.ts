@@ -9,7 +9,7 @@ import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { createProcessEngine } from "../engine.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
-getProcessGraph(processGraphs, "jira_issue_process");
+getProcessGraph(processGraphs, "ticket_issue_process");
 
 function createEngine(
 	deps: ReturnType<typeof createTestDeps>,
@@ -30,7 +30,7 @@ describe("AbortTurn failure precedence", () => {
 	it("reports supervisor unavailability before the lifecycle state check", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 		});
@@ -46,7 +46,7 @@ describe("AbortTurn failure precedence", () => {
 	it("rejects an inactive process with a supervisor present", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 		});

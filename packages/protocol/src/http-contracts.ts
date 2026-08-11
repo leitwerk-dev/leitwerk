@@ -24,7 +24,6 @@ import {
 	type WorkerLease,
 } from "@leitwerk-dev/domain";
 import * as v from "valibot";
-import type { ProcessWatcherType } from "./config-snapshot.js";
 import type {
 	ActionFormDefinition,
 	ActionFormFieldDefinition,
@@ -492,47 +491,26 @@ export type WatcherLaunchModelSummary = {
 	turnConfigs: Array<{ turnId: string; modelProfileId: string | null }>;
 };
 
-export interface WatcherSummaryBase {
+export interface WatcherPresentationField {
+	label: string;
+	value: string;
+	format?: "text" | "code";
+}
+
+export interface WatcherSummary {
 	processId: string;
 	processDisplayName: string;
 	watcherId: string;
 	label: string;
 	description: string;
-	type: ProcessWatcherType;
+	sourceId: string;
+	sourceLabel: string;
 	enabled: boolean;
-	pollInterval: string;
 	configPath: string;
 	targetSummary: string;
+	details: WatcherPresentationField[];
 	launchModel: WatcherLaunchModelSummary;
 }
-
-export interface JiraWatcherSummary extends WatcherSummaryBase {
-	type: "jira";
-	project: string;
-	labels: {
-		trigger: string;
-		done: string;
-		required?: string[];
-		forbidden?: string[];
-	};
-	targetBranchLabelPrefix: string;
-}
-
-export interface GitLabMrWatcherSummary extends WatcherSummaryBase {
-	type: "gitlab_mr";
-	group: string;
-	labels: {
-		trigger: string;
-		done: string;
-	};
-}
-
-export type FilesystemWatcherSummary = WatcherSummaryBase & {
-	type: "filesystem";
-	filePath: string;
-};
-
-export type WatcherSummary = JiraWatcherSummary | GitLabMrWatcherSummary | FilesystemWatcherSummary;
 
 export interface SkillUsageSummary {
 	attachedAllTime: number;

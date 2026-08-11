@@ -24,10 +24,13 @@ beforeEach(() => {
 describe("ProcessInstanceRepo", () => {
 	it("creates and retrieves an process instance", () => {
 		const repo = createProcessInstanceRepo(db);
-		const process = repo.create({ processId: "jira_issue_process", lifecycleStatus: "discovered" });
+		const process = repo.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "discovered",
+		});
 
 		expect(process.id).toMatch(/^agt_/);
-		expect(process.processId).toBe("jira_issue_process");
+		expect(process.processId).toBe("ticket_issue_process");
 		expect(process.lifecycleStatus).toBe("discovered");
 		expect(process.planRevision).toBe(0);
 
@@ -44,7 +47,7 @@ describe("ProcessInstanceRepo", () => {
 	it("persists a normalized explicit process title on create and update", () => {
 		const repo = createProcessInstanceRepo(db);
 		const process = repo.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 			title: "  Initial\n title  ",
 		});
@@ -63,7 +66,10 @@ describe("ProcessInstanceRepo", () => {
 
 	it("updates a generated title only while the process title is still blank", () => {
 		const repo = createProcessInstanceRepo(db);
-		const process = repo.create({ processId: "jira_issue_process", lifecycleStatus: "discovered" });
+		const process = repo.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "discovered",
+		});
 
 		expect(repo.setGeneratedTitleIfBlank(process.id, "Generated title")?.title).toBe(
 			"Generated title",
@@ -75,7 +81,10 @@ describe("ProcessInstanceRepo", () => {
 	it("updates an process instance", () => {
 		const repo = createProcessInstanceRepo(db);
 		const turnRecords = createProcessTurnRecordRepo(db);
-		const process = repo.create({ processId: "jira_issue_process", lifecycleStatus: "discovered" });
+		const process = repo.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "discovered",
+		});
 		const serverTurn = turnRecords.create({
 			id: "trn_current",
 			instanceId: process.id,
@@ -96,7 +105,7 @@ describe("ProcessInstanceRepo", () => {
 	it("sets closedAt once when a process becomes terminal", () => {
 		const repo = createProcessInstanceRepo(db);
 		const process = repo.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -114,7 +123,7 @@ describe("ProcessInstanceRepo", () => {
 
 	it("lists all processes ordered by updatedAt desc", () => {
 		const repo = createProcessInstanceRepo(db);
-		repo.create({ processId: "jira_issue_process", lifecycleStatus: "discovered" });
+		repo.create({ processId: "ticket_issue_process", lifecycleStatus: "discovered" });
 		repo.create({ processId: "mr_polish_process", lifecycleStatus: "active" });
 
 		const all = repo.listAll();
@@ -123,7 +132,10 @@ describe("ProcessInstanceRepo", () => {
 
 	it("deletes an process instance", () => {
 		const repo = createProcessInstanceRepo(db);
-		const process = repo.create({ processId: "jira_issue_process", lifecycleStatus: "discovered" });
+		const process = repo.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "discovered",
+		});
 
 		expect(repo.delete(process.id)).toBe(true);
 		expect(repo.getById(process.id)).toBeNull();
@@ -142,14 +154,14 @@ describe("ProcessInstanceRepo", () => {
 		const leases = createWorkerLeaseRepo(db);
 		const externalWrites = createExternalWriteLogRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
 		projects.create({
 			instanceId: process.id,
 			key: "service-a",
-			repoLocator: "git@gitlab.example.com:team/service-a.git",
+			repoLocator: "git@codehost.example.com:team/service-a.git",
 			baseBranch: "main",
 		});
 		const input = inputs.create({
@@ -201,7 +213,7 @@ describe("ProcessInstanceRepo", () => {
 		});
 		externalWrites.record({
 			instanceId: process.id,
-			writeType: "jira.remote_link.agent_detail",
+			writeType: "ticket.remote_link.agent_detail",
 			dedupKey: `dedup:${process.id}`,
 		});
 
@@ -228,13 +240,13 @@ describe("ProcessProjectRepo", () => {
 		const projects = createProcessProjectRepo(db);
 
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 		const proj = projects.create({
 			instanceId: process.id,
 			key: "service-a",
-			repoLocator: "git@gitlab.example.com:team/service-a.git",
+			repoLocator: "git@codehost.example.com:team/service-a.git",
 			baseBranch: "main",
 		});
 
@@ -250,14 +262,14 @@ describe("ProcessProjectRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const projects = createProcessProjectRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 
 		projects.create({
 			instanceId: process.id,
 			key: "service-a",
-			repoLocator: "git@gitlab.example.com:team/service-a.git",
+			repoLocator: "git@codehost.example.com:team/service-a.git",
 			baseBranch: "main",
 		});
 
@@ -272,19 +284,19 @@ describe("ProcessProjectRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const projects = createProcessProjectRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 		const proj = projects.create({
 			instanceId: process.id,
 			key: "service-a",
-			repoLocator: "git@gitlab.example.com:team/service-a.git",
+			repoLocator: "git@codehost.example.com:team/service-a.git",
 			baseBranch: "main",
 		});
 
 		const updated = projects.update(proj.id, {
 			externalId: "77",
-			externalUrl: "https://gitlab.example.com/team/service-a/-/merge_requests/77",
+			externalUrl: "https://codehost.example.com/team/service-a/-/merge_requests/77",
 			pipelineStatus: "running",
 		});
 
@@ -298,7 +310,7 @@ describe("ProcessInputRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -327,7 +339,7 @@ describe("ProcessInputRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -357,7 +369,7 @@ describe("ProcessInputRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -380,7 +392,7 @@ describe("ProcessEventRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const events = createProcessEventRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 
@@ -400,7 +412,7 @@ describe("ProcessEventRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const events = createProcessEventRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -421,7 +433,7 @@ describe("ProcessEventRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const events = createProcessEventRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -457,7 +469,7 @@ describe("ProcessEventRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const events = createProcessEventRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -501,7 +513,7 @@ describe("ProcessLeafOutcomeSnapshotRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const snapshots = createProcessLeafOutcomeSnapshotRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -544,7 +556,7 @@ describe("ProcessTurnRecordRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const turnRecords = createProcessTurnRecordRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -605,7 +617,7 @@ describe("ProcessTurnAnnotationRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const turnAnnotations = createProcessTurnAnnotationRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -680,7 +692,7 @@ describe("ProcessTitleJobRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const repo = createProcessTitleJobRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 
@@ -711,7 +723,7 @@ describe("ProcessTitleJobRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const repo = createProcessTitleJobRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
 		const job = repo.enqueueProcessJob({
@@ -740,7 +752,7 @@ describe("WorkerLeaseRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const leases = createWorkerLeaseRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -762,7 +774,7 @@ describe("WorkerLeaseRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const leases = createWorkerLeaseRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -777,8 +789,14 @@ describe("WorkerLeaseRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const leases = createWorkerLeaseRepo(db);
 
-		const agent1 = processes.create({ processId: "jira_issue_process", lifecycleStatus: "active" });
-		const agent2 = processes.create({ processId: "jira_issue_process", lifecycleStatus: "active" });
+		const agent1 = processes.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "active",
+		});
+		const agent2 = processes.create({
+			processId: "ticket_issue_process",
+			lifecycleStatus: "active",
+		});
 
 		const l1 = leases.create({ instanceId: agent1.id, workerId: "wrk_a", state: "busy" });
 		leases.create({ instanceId: agent2.id, workerId: "wrk_b", state: "busy" });
@@ -796,14 +814,14 @@ describe("ExternalWriteLogRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const ewl = createExternalWriteLogRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
 		const entry = ewl.record({
 			instanceId: process.id,
-			writeType: "jira.remote_link.agent_detail",
-			dedupKey: "CLD-123:jira.remote_link.agent_detail:http://localhost/processes/agt_1",
+			writeType: "ticket.remote_link.agent_detail",
+			dedupKey: "CLD-123:ticket.remote_link.agent_detail:http://localhost/processes/agt_1",
 		});
 
 		expect(entry.id).toMatch(/^ewl_/);
@@ -815,20 +833,20 @@ describe("ExternalWriteLogRepo", () => {
 		const processes = createProcessInstanceRepo(db);
 		const ewl = createExternalWriteLogRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
 		ewl.record({
 			instanceId: process.id,
-			writeType: "jira.remote_link.agent_detail",
+			writeType: "ticket.remote_link.agent_detail",
 			dedupKey: "dup",
 		});
 
 		expect(() => {
 			ewl.record({
 				instanceId: process.id,
-				writeType: "jira.remote_link.agent_detail",
+				writeType: "ticket.remote_link.agent_detail",
 				dedupKey: "dup",
 			});
 		}).toThrow();

@@ -17,7 +17,7 @@ function receipt(startRecordId: string, leaseId: string): WorkerBootstrapReceipt
 function setup() {
 	const deps = createTestDeps();
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 	});

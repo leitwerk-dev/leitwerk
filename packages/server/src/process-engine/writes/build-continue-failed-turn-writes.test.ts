@@ -27,7 +27,7 @@ function stateWithPrimaryLeaf(entryId: string, turnRecordId: string): string {
 function planContinue(input: ContinuePlanInput) {
 	const deps = createTestDeps();
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "implement",
 		lifecycleStatus: "error",
 		metadata: input.metadata ?? genericFailedTurnRecovery(input.turnRecordId),

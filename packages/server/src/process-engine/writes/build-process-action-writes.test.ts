@@ -13,7 +13,7 @@ describe("collectProcessActionPlan", () => {
 	it("collects queued inputs, deferred extension events, and explicit transition effects", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
@@ -78,7 +78,7 @@ describe("collectProcessActionPlan", () => {
 	it("accepts externally-resolved action visibility for reusable human-turn actions", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 		});
@@ -111,7 +111,7 @@ describe("collectProcessActionPlan", () => {
 		const deps = createTestDeps();
 		const reviewMarkdown = "## Review\n\nTighten the rollout steps.";
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review_feedback",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
@@ -174,7 +174,7 @@ describe("collectProcessActionPlan", () => {
 	it("fails when a semantic ref points at a missing turn record", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review_feedback",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
@@ -214,7 +214,7 @@ describe("collectProcessActionPlan", () => {
 	it("rejects actions that are not visible in the current state", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -246,7 +246,7 @@ describe("collectProcessActionPlan", () => {
 	it("uses the pure plan hook instead of an execute hook when available", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 		});
@@ -283,7 +283,7 @@ describe("collectProcessActionPlan", () => {
 	it("rejects pure planning when the action only declares execute", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 		});

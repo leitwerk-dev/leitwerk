@@ -172,7 +172,7 @@ Every process requires a way to be launched (constructing its initial parameters
 
 ### 1. Launchers (`api.launcher`)
 
-A **Launcher** defines the canonical field schema and resolution logic for starting a process. Client interfaces—including the Web UI dashboard, Telegram bot wizards (`/launch`), and CLI tools—read this schema to prompt operators for inputs:
+A **Launcher** defines the canonical field schema and resolution logic for starting a process. Client interfaces—including the Web UI dashboard, extension-provided chat adapters, and CLI tools—read this schema to prompt operators for inputs:
 
 ```ts
 // Registered inside setup(api) in src/index.ts
@@ -197,34 +197,19 @@ api.launcher({
 
 ### 2. Watchers (`api.watcher`)
 
-A **Watcher** monitors external event queues (such as Jira issues, GitLab pull requests, or filesystem directories) and constructs launch configs automatically without human interaction:
-
-```ts
-api.watcher({
-  id: "filesystem_watcher",
-  displayName: "Filesystem Prompt Watcher",
-  type: "filesystem",
-  resolveLaunchConfig: async (event) => ({
-    processId: "my_custom_process",
-    params: { prompt: event.content },
-    projects: [{ key: "repo", repoLocator: event.repoPath, baseBranch: "main" }],
-  }),
-});
-```
-
-Watchers are enabled in `leitwerk.yaml` under `process_configs.<processId>.watchers.<watcherId>`.
+A **Watcher** monitors an extension-owned event source and constructs launch configs without human interaction. The extension owns its typed source, configuration parser, presentation, polling, and provider adapter. See [Watchers](watchers.md) for the source, process binding, and configuration contracts.
 
 ### External Actions
 
-An **External Action** arms a provider trigger while a human turn remains selected (e.g. waiting for a GitLab merge request to be merged or a review feedback file to be written):
+An **External Action** arms a provider trigger while a human turn remains selected (for example, waiting for a change request to merge or a review feedback file to be written):
 
 ```ts
 const reviewTurn = flow
   .human<Params, State>("implementation_review")
   .description("Review implementation")
   .externalAction(
-    "gitlab_mr_merged",
-    gitlabExternal.mergeRequestMerged({ projectKey: "app" }),
+    "change_merged",
+    codeHostExternal.changeMerged({ projectKey: "app" }),
     (external) => external.label("Merge request merged").complete(),
   );
 ```

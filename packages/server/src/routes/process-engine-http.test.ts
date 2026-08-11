@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { EngineFailure } from "../process-engine/types.js";
 import { mapEngineFailure } from "./process-engine-http.js";
 
-function makeProcess(id: string, processId = "jira_issue_process"): ProcessInstance {
+function makeProcess(id: string, processId = "ticket_issue_process"): ProcessInstance {
 	return {
 		id,
 		processId,

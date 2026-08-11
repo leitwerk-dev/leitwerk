@@ -58,7 +58,7 @@ interface TestProcessState {
 }
 
 const testProcessGraphRegistry = createDefaultTestProcessGraphRegistry();
-const jiraTurnGraph = getProcessGraph(testProcessGraphRegistry, "jira_issue_process");
+const ticketTurnGraph = getProcessGraph(testProcessGraphRegistry, "ticket_issue_process");
 const mrPolishGraph = getProcessGraph(testProcessGraphRegistry, "mr_polish_process");
 
 function parseReviewSubject(value: unknown): ReviewSubject | null {
@@ -246,7 +246,7 @@ const testTurns = new Map<string, TurnDefinition<Record<string, never>, TestProc
 	],
 ]);
 
-const jiraTurnProcess = createTestProcess("jira_issue_process", jiraTurnGraph, (api) => {
+const ticketTurnProcess = createTestProcess("ticket_issue_process", ticketTurnGraph, (api) => {
 	api.onTurnOutcome("generate_plan", async (event, ctx) => {
 		if (event.outcome !== "plan_saved") {
 			return;
@@ -348,7 +348,7 @@ const mrPolishProcess = createTestProcess("mr_polish_process", mrPolishGraph, (a
 });
 
 const testProcessGraphs = new Map<string, ExtensionProcessDefinition>([
-	[jiraTurnProcess.id, jiraTurnProcess as ExtensionProcessDefinition],
+	[ticketTurnProcess.id, ticketTurnProcess as ExtensionProcessDefinition],
 	[mrPolishProcess.id, mrPolishProcess as ExtensionProcessDefinition],
 ]);
 

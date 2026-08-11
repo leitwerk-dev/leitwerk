@@ -17,39 +17,40 @@ const watcherSummaries: WatcherSummary[] = [
 		label: "Create Poem from File",
 		description:
 			"Launch Poem Creator whenever the configured filesystem watcher finds a prompt file",
-		type: "filesystem",
+		sourceId: "showcase.file",
+		sourceLabel: "File",
 		enabled: true,
-		pollInterval: "1s",
 		configPath: "process_configs.poem_creator_process.watchers.create_poem",
 		targetSummary: "File /tmp/create-poem",
+		details: [
+			{ label: "File path", value: "/tmp/create-poem", format: "code" },
+			{ label: "Poll interval", value: "1s" },
+		],
 		launchModel: {
 			defaultModelProfileId: "local_qwen",
 			turnConfigs: [],
 		},
-		filePath: "/tmp/create-poem",
 	},
 	{
-		processId: "jira_issue_process",
-		processDisplayName: "Implement Jira Issue",
-		watcherId: "jira_default",
-		label: "Jira Issue Watcher",
-		description: "Create Implement Jira Issue processes from configured Jira issue discovery",
-		type: "jira",
+		processId: "ticket_issue_process",
+		processDisplayName: "Implement Ticket Issue",
+		watcherId: "ticket_default",
+		label: "Ticket Issue Watcher",
+		description: "Create issue processes from configured work discovery",
+		sourceId: "example.work_queue",
+		sourceLabel: "Work queue",
 		enabled: true,
-		pollInterval: "60s",
-		configPath: "process_configs.jira_issue_process.watchers.jira_default",
-		targetSummary: "Jira project APP · trigger use-leitwerk",
+		configPath: "process_configs.ticket_issue_process.watchers.ticket_default",
+		targetSummary: "Project APP",
+		details: [
+			{ label: "Project", value: "APP" },
+			{ label: "Trigger", value: "ready" },
+			{ label: "Forbidden labels", value: "hotfix" },
+		],
 		launchModel: {
 			defaultModelProfileId: "claude_fast",
 			turnConfigs: [],
 		},
-		project: "APP",
-		labels: {
-			trigger: "use-leitwerk",
-			done: "did-use-leitwerk",
-			forbidden: ["hotfix"],
-		},
-		targetBranchLabelPrefix: "target-branch:",
 	},
 ];
 
@@ -76,7 +77,7 @@ describe("WatchersPage", () => {
 		expect(target.textContent).toContain("Watchers");
 		expect(target.textContent).toContain("Create Poem from File");
 		expect(target.textContent).toContain("/tmp/create-poem");
-		expect(target.textContent).toContain("Jira Issue Watcher");
+		expect(target.textContent).toContain("Ticket Issue Watcher");
 		expect(target.textContent).toContain("Forbidden labels");
 		unmount(app);
 	});

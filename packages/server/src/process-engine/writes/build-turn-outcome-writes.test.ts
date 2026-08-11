@@ -20,7 +20,7 @@ import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildTurnOutcomeWrites } from "./build-turn-outcome-writes.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
-const jiraProcessGraph = getProcessGraph(processGraphs, "jira_issue_process");
+const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
 
 const testTurns = new Map<string, TurnDefinition>([
 	["generate_plan", createTestLlmTurn("generate_plan", createPlanSavedOutcomeTools())],
@@ -91,12 +91,12 @@ const testTurns = new Map<string, TurnDefinition>([
 
 function makeProcess(
 	server: (api: ReturnType<typeof createServerProcessBuilder>) => void,
-	graph: ProcessGraphView = jiraProcessGraph,
-	processId = "jira_issue_process",
+	graph: ProcessGraphView = ticketProcessGraph,
+	processId = "ticket_issue_process",
 ) {
 	return defineGraphFixtureProcess({
 		id: processId,
-		displayName: "Implement Jira Issue",
+		displayName: "Implement Ticket Issue",
 		graph,
 		turnDefinitions: testTurns,
 		paramsCodec: { parse: () => ({}), serialize: (v: unknown) => v },
@@ -112,7 +112,7 @@ function createAgent(overrides: Partial<ProcessInstance> = {}): {
 } {
 	const deps = createTestDeps();
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 		...overrides,
@@ -126,7 +126,7 @@ describe("buildTurnOutcomeWrites", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					makeProcess((api) => {
 						api.onTurnOutcome("generate_plan", async (event, ctx) => {
 							if (event.outcome !== "plan_saved") {
@@ -223,7 +223,7 @@ describe("buildTurnOutcomeWrites", () => {
 			lifecycleStatus: "active",
 		});
 		const registry = buildProcessActionRegistry({
-			processes: new Map([["jira_issue_process", makeProcess(() => {})]]),
+			processes: new Map([["ticket_issue_process", makeProcess(() => {})]]),
 		});
 		const planned = await buildTurnOutcomeWrites({
 			process,
@@ -311,7 +311,7 @@ describe("buildTurnOutcomeWrites", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					makeProcess((api) => {
 						api.onTurnOutcome("implement", async (event, ctx) => {
 							if (event.outcome === "done") {
@@ -376,7 +376,7 @@ describe("buildTurnOutcomeWrites", () => {
 	it("applies outcome state before following the declared outcome transition", async () => {
 		const { deps } = createAgent({ selectedTurnId: "address_review", lifecycleStatus: "active" });
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "commit_and_complete",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({ readyForHumanReview: false }),
@@ -384,11 +384,11 @@ describe("buildTurnOutcomeWrites", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					defineGraphFixtureProcess({
-						id: "jira_issue_process",
-						displayName: "Implement Jira Issue",
-						graph: jiraProcessGraph,
+						id: "ticket_issue_process",
+						displayName: "Implement Ticket Issue",
+						graph: ticketProcessGraph,
 						turnDefinitions: testTurns,
 						paramsCodec: { parse: () => ({}), serialize: (v: unknown) => v },
 						stateCodec: {
@@ -456,11 +456,11 @@ describe("buildTurnOutcomeWrites", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					defineGraphFixtureProcess({
-						id: "jira_issue_process",
-						displayName: "Implement Jira Issue",
-						graph: jiraProcessGraph,
+						id: "ticket_issue_process",
+						displayName: "Implement Ticket Issue",
+						graph: ticketProcessGraph,
 						turnDefinitions: testTurns,
 						paramsCodec: { parse: () => ({}), serialize: (v: unknown) => v },
 						stateCodec: {

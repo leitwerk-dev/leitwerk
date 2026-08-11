@@ -11,9 +11,7 @@ const STATUS_LABELS: Record<ProcessLifecycleStatus, string> = {
 
 const IDENTIFIER_WORD_LABELS: Record<string, string> = {
 	api: "API",
-	gitlab: "GitLab",
 	id: "ID",
-	jira: "Jira",
 	llm: "LLM",
 	mr: "MR",
 	pi: "Pi",

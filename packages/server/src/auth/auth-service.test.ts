@@ -46,9 +46,9 @@ describe("OIDC actor derivation", () => {
 			claims: { preferred_username: "alice", name: "Alice A." },
 		});
 		expect(actor).toEqual({
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice A.",
 		});
 	});
@@ -69,7 +69,7 @@ describe("auth service login flow", () => {
 					provider,
 					state: observedState,
 					pkceVerifier: "verifier-1",
-					redirectUrl: "https://forgejo.example.test/oauth/authorize",
+					redirectUrl: "https://identity.example.test/oauth/authorize",
 				};
 			},
 			async exchangeCallback() {
@@ -87,9 +87,9 @@ describe("auth service login flow", () => {
 			),
 		});
 
-		expect(completed.actor.id).toBe("forgejo:alice");
+		expect(completed.actor.id).toBe("identity:alice");
 		expect(service.resolveSession(completed.sessionCookieValue)).toMatchObject({
-			id: "forgejo:alice",
+			id: "identity:alice",
 			displayName: "Alice",
 		});
 		expect(repos.authSessions.getValid(completed.sessionCookieValue)).toBeNull();
@@ -101,7 +101,7 @@ describe("auth service login flow", () => {
 		const rawSession = "provider-mismatch-session";
 		repos.authSessions.create({
 			idHash: hashOpaqueToken(rawSession),
-			actor: { id: "gitlab:alice", kind: "user", provider: "gitlab" },
+			actor: { id: "codehost:alice", kind: "user", provider: "codehost" },
 			expiresAt: new Date(Date.now() + 60_000).toISOString(),
 		});
 
@@ -114,12 +114,12 @@ describe("auth service login flow", () => {
 		const service = createAuthService({ config: testAuthConfig(), repos });
 		repos.authSessions.create({
 			idHash: hashOpaqueToken("expired-session"),
-			actor: { id: "forgejo:alice", kind: "user", provider: "forgejo" },
+			actor: { id: "identity:alice", kind: "user", provider: "identity" },
 			expiresAt: "2000-01-01T00:00:00.000Z",
 		});
 		repos.authLoginFlows.create({
 			idHash: hashOpaqueToken("expired-flow"),
-			providerId: "forgejo",
+			providerId: "identity",
 			state: "state",
 			pkceVerifier: "verifier",
 			expiresAt: "2000-01-01T00:00:00.000Z",

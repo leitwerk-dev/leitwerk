@@ -14,7 +14,7 @@ const actor: Actor = { id: "operator-1", kind: "user", provider: "oidc" };
 function createHarness() {
 	const deps = createTestDeps();
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 	});
@@ -109,7 +109,7 @@ describe("process question routes", () => {
 
 	it("does not expose a request through another process id", async () => {
 		const h = createHarness();
-		const other = h.deps.processes.create({ processId: "jira_issue_process" });
+		const other = h.deps.processes.create({ processId: "ticket_issue_process" });
 
 		const response = await h.app.inject({
 			method: "POST",

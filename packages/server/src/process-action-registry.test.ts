@@ -11,7 +11,7 @@ import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fi
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
-const jiraProcessGraph = getProcessGraph(processGraphs, "jira_issue_process");
+const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
 
 type ServerProcessHook = (api: ReturnType<typeof createServerProcessBuilder>) => void;
 
@@ -169,11 +169,11 @@ function makeProcess(
 		turnDefinitions: ReadonlyMap<string, TurnDefinition>;
 	}> = {},
 ) {
-	const graph = overrides.graph ?? jiraProcessGraph;
+	const graph = overrides.graph ?? ticketProcessGraph;
 	const turnDefinitions = overrides.turnDefinitions ?? createDefaultTurnDefinitions();
 	return defineGraphFixtureProcess({
-		id: overrides.id ?? "jira_issue_process",
-		displayName: overrides.displayName ?? "Implement Jira Issue",
+		id: overrides.id ?? "ticket_issue_process",
+		displayName: overrides.displayName ?? "Implement Ticket Issue",
 		graph,
 		turnDefinitions,
 		paramsCodec: { parse: () => ({}), serialize: (value: unknown) => value },
@@ -223,7 +223,7 @@ function makeFakeProject(instanceId: string): ProcessProject {
 		id: "prj_1",
 		instanceId,
 		key: "backend",
-		repoLocator: "https://gitlab.example.com/team/backend.git",
+		repoLocator: "https://codehost.example.com/team/backend.git",
 		baseBranch: "main",
 		workBranch: "feature/test",
 		externalId: null,
@@ -398,12 +398,12 @@ describe("ProcessActionRegistry", () => {
 			],
 		});
 
-		expect(registry.isTurnScopedAction("jira_issue_process", "approve_plan")).toBe(true);
-		expect(registry.isTurnScopedAction("jira_issue_process", "request_revision")).toBe(true);
-		expect(registry.isTurnScopedAction("jira_issue_process", "handoff_review")).toBe(false);
+		expect(registry.isTurnScopedAction("ticket_issue_process", "approve_plan")).toBe(true);
+		expect(registry.isTurnScopedAction("ticket_issue_process", "request_revision")).toBe(true);
+		expect(registry.isTurnScopedAction("ticket_issue_process", "handoff_review")).toBe(false);
 		expect(
 			registry.listVisibleActions(
-				"jira_issue_process",
+				"ticket_issue_process",
 				createVisibilityCtx(createPlanReviewProcess(), { reviewSubject: { kind: "plan" } }),
 			),
 		).toEqual([
@@ -450,13 +450,13 @@ describe("ProcessActionRegistry", () => {
 		});
 		const process = createPlanReviewProcess();
 
-		expect(registry.resolveActionScheduling("jira_issue_process", process, "approve_plan")).toEqual(
-			{
-				definition: { preview: { kind: "trigger", trigger: "plan_approved" } },
-				candidateSelectedTurnId: "implement",
-				lifecycleStatus: null,
-			},
-		);
+		expect(
+			registry.resolveActionScheduling("ticket_issue_process", process, "approve_plan"),
+		).toEqual({
+			definition: { preview: { kind: "trigger", trigger: "plan_approved" } },
+			candidateSelectedTurnId: "implement",
+			lifecycleStatus: null,
+		});
 	});
 
 	it("resolves action previews independently from scheduling support", () => {
@@ -488,14 +488,14 @@ describe("ProcessActionRegistry", () => {
 		});
 		const process = createPlanReviewProcess();
 
-		expect(registry.resolveActionPreview("jira_issue_process", process, "approve_plan")).toEqual({
+		expect(registry.resolveActionPreview("ticket_issue_process", process, "approve_plan")).toEqual({
 			definition: { kind: "trigger", trigger: "plan_approved" },
 			candidateSelectedTurnId: "implement",
 			lifecycleStatus: null,
 		});
 		expect(
 			registry.listVisibleActions(
-				"jira_issue_process",
+				"ticket_issue_process",
 				createVisibilityCtx(process, { reviewSubject: { kind: "plan" } }),
 			),
 		).toEqual([
@@ -522,7 +522,7 @@ describe("ProcessActionRegistry", () => {
 		const implementationProcess = createImplementationReviewProcess();
 
 		expect(
-			registry.resolveTurnScopedAction("jira_issue_process", planProcess, "approve_plan", "ui"),
+			registry.resolveTurnScopedAction("ticket_issue_process", planProcess, "approve_plan", "ui"),
 		).toMatchObject({
 			kind: "ui_human_action",
 			turnId: "plan_review",
@@ -532,7 +532,7 @@ describe("ProcessActionRegistry", () => {
 		});
 		expect(
 			registry.resolveTurnScopedAction(
-				"jira_issue_process",
+				"ticket_issue_process",
 				implementationProcess,
 				"apply_review",
 				"ui",
@@ -545,7 +545,7 @@ describe("ProcessActionRegistry", () => {
 			semanticEntryRefKey: "review",
 		});
 		expect(
-			registry.resolveTurnScopedAction("jira_issue_process", planProcess, "accept_change", "ui"),
+			registry.resolveTurnScopedAction("ticket_issue_process", planProcess, "accept_change", "ui"),
 		).toBeNull();
 	});
 

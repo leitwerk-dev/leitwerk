@@ -12,7 +12,7 @@ import {
 function makeProcess(overrides: Partial<ProcessInstance> = {}): ProcessInstance {
 	return {
 		id: "agt_1",
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: null,
 		lifecycleStatus: "discovered",
 		currentExecution: null,
@@ -125,8 +125,8 @@ function createStartupRequest(process: ProcessInstance) {
 	return {
 		process,
 		startTurnId: "generate_plan",
-		createdEventData: process.externalId ? { jiraIssueKey: process.externalId } : {},
-		createdBroadcastData: process.externalId ? { jiraIssueKey: process.externalId } : {},
+		createdEventData: process.externalId ? { ticketIssueKey: process.externalId } : {},
+		createdBroadcastData: process.externalId ? { ticketIssueKey: process.externalId } : {},
 	};
 }
 
@@ -134,14 +134,17 @@ describe("watcher-coordinator", () => {
 	it("requires a watcher launch start turn id", () => {
 		expect(
 			requireWatcherStartTurnId(
-				{ launcherId: "jira.launcher", startTurnId: "generate_plan" },
+				{ launcherId: "ticket.launcher", startTurnId: "generate_plan" },
 				"issue CLD-1",
 			),
 		).toBe("generate_plan");
 		expect(() =>
-			requireWatcherStartTurnId({ launcherId: "jira.launcher", startTurnId: null }, "issue CLD-1"),
+			requireWatcherStartTurnId(
+				{ launcherId: "ticket.launcher", startTurnId: null },
+				"issue CLD-1",
+			),
 		).toThrowError(
-			"Watcher launcher 'jira.launcher' did not declare a startTurnId for issue CLD-1",
+			"Watcher launcher 'ticket.launcher' did not declare a startTurnId for issue CLD-1",
 		);
 	});
 
@@ -296,7 +299,7 @@ describe("watcher-coordinator", () => {
 			shouldAbort: async () => true,
 			getResultLabel: (candidate: ProcessInstance) => candidate.externalId ?? candidate.id,
 			getErrorLabel: (candidate: ProcessInstance) => candidate.externalId ?? candidate.id,
-			getAbortedEventData: () => ({ jiraIssueKey: "CLD-2" }),
+			getAbortedEventData: () => ({ ticketIssueKey: "CLD-2" }),
 		};
 
 		await runWatcherAbortReconciliation(reconciliation);
@@ -336,10 +339,10 @@ describe("watcher-coordinator", () => {
 				return {
 					changed: true,
 					writeIdentity: {
-						writeType: "jira.label_exchange.complete",
+						writeType: "ticket.label_exchange.complete",
 						dedupKey: `${process.id}:complete`,
 					},
-					metadata: { jiraIssueKey: process.externalId },
+					metadata: { ticketIssueKey: process.externalId },
 				};
 			},
 			getResultLabel: (process) => process.externalId ?? process.id,

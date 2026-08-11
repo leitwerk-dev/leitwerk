@@ -11,7 +11,7 @@ import { hashOpaqueToken } from "./auth-tokens.js";
 import type { OidcClient } from "./oidc-client.js";
 import { registerAuthRoutes } from "./routes.js";
 
-const PROVIDER_REDIRECT_URL = "https://forgejo.example.test/oauth/authorize";
+const PROVIDER_REDIRECT_URL = "https://identity.example.test/oauth/authorize";
 
 function createOidcClient(options: {
 	state?: string;
@@ -200,9 +200,9 @@ describe("auth HTTP guard", () => {
 		ctx = await createAppContext({ logger: false, config });
 		const rawSession = "raw-session-token";
 		const actor: Actor = {
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice",
 		};
 		createAllRepos(ctx.db).authSessions.create({
@@ -233,9 +233,9 @@ describe("auth HTTP guard", () => {
 		const repos = createAllRepos(ctx.db);
 		const rawSession = "mutating-route-session";
 		const actor: Actor = {
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice",
 		};
 		repos.authSessions.create({
@@ -244,7 +244,7 @@ describe("auth HTTP guard", () => {
 			expiresAt: new Date(Date.now() + 60_000).toISOString(),
 		});
 		const process = repos.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "discovered",
 		});

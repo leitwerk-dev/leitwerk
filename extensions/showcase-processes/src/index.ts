@@ -1,6 +1,7 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createFileExternalSourceProvider } from "./file-external.js";
+import { createFilesystemWatcherProvider } from "./filesystem-watcher.js";
 import {
 	k8sSmokeLongProcess,
 	k8sSmokeProcess,
@@ -57,11 +58,14 @@ const singlePromptExtension: LeitwerkExtensionModule = {
 			"/tmp/complete-prompt": resolvedFileTriggerConfig.complete_prompt_path,
 			"/tmp/poem-review-{instanceId}": resolvedFileTriggerConfig.poem_review_path,
 		});
+		const filesystemWatcherProvider = createFilesystemWatcherProvider(deps, api.logger);
 		api.onStart(() => {
 			fileSourceProvider.start();
+			filesystemWatcherProvider.start();
 		});
 		api.onStop(() => {
 			fileSourceProvider.stop();
+			filesystemWatcherProvider.stop();
 		});
 	},
 };
@@ -69,6 +73,7 @@ const singlePromptExtension: LeitwerkExtensionModule = {
 export default singlePromptExtension;
 
 export * from "./file-external.js";
+export * from "./filesystem-watcher.js";
 export * from "./poem-leaf-outcome.js";
 export * from "./process-definition.js";
 export * from "./turns/external-complete.js";

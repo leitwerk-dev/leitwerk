@@ -93,8 +93,8 @@ import ProcessDetailPage from "./ProcessDetailPage.svelte";
 const mountedApps: Array<ReturnType<typeof mount>> = [];
 let scheduledFrameCallbacks = new Map<number, FrameRequestCallback>();
 
-const jiraProcessGraph = {
-	id: "jira_issue_process",
+const ticketProcessGraph = {
+	id: "ticket_issue_process",
 	entryTurnIds: ["generate_plan"],
 	reachableTurnIds: [
 		"generate_plan",
@@ -130,8 +130,8 @@ const jiraProcessGraph = {
 	},
 };
 
-const jiraProcessFlow = {
-	processId: "jira_issue_process",
+const ticketProcessFlow = {
+	processId: "ticket_issue_process",
 	entryTurnIds: ["generate_plan"],
 	spine: ["generate_plan", "plan_review", "implement", "implementation_review"],
 	nodes: [
@@ -469,7 +469,7 @@ type LegacyProcessDetailTestData = ProcessDetailData & {
 	turnRecords: ProcessTurnRecord[];
 	turnAnnotations: ProcessTurnAnnotation[];
 	workerLease: WorkerLease | null;
-	processGraph: typeof jiraProcessGraph;
+	processGraph: typeof ticketProcessGraph;
 	piSessionEntries: PiSessionEntry[];
 };
 
@@ -513,7 +513,7 @@ function createProcessDetail(): LegacyProcessDetailTestData {
 	return {
 		process: {
 			id: "agt_1",
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "completed",
 			currentExecution: null,
@@ -554,8 +554,8 @@ function createProcessDetail(): LegacyProcessDetailTestData {
 		turnAnnotations: [],
 		workerLease: null,
 		processDisplayName: "PROJ-1",
-		processGraph: jiraProcessGraph,
-		processFlow: jiraProcessFlow,
+		processGraph: ticketProcessGraph,
+		processFlow: ticketProcessFlow,
 		piSessionEntries: createBasePiSessionEntries(),
 		definesLeafOutcome: false,
 		actions: [],

@@ -5,11 +5,11 @@ import { buildProcessRowView, sortProcessRowViews } from "./process-row-view.js"
 function overview(overrides: Partial<ProcessOverviewItem> = {}): ProcessOverviewItem {
 	return {
 		instanceId: "agt_1",
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		processDisplayName: "Poem Creator",
 		processTitle: null,
 		title: "PROJ-1",
-		subtitle: "jira_issue_process · 0 components",
+		subtitle: "ticket_issue_process · 0 components",
 		initialPromptPreview: null,
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",

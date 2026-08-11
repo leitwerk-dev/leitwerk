@@ -26,7 +26,7 @@ describe("persistQueuedProcessInputs", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -74,7 +74,7 @@ describe("persistQueuedProcessInputs", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "review_turn",
 			lifecycleStatus: "active",
 		});
@@ -103,7 +103,7 @@ describe("persistQueuedProcessInputs", () => {
 		const processes = createProcessInstanceRepo(db);
 		const inputs = createProcessInputRepo(db);
 		const process = processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "simplification_decision",
 			lifecycleStatus: "active",
 		});

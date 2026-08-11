@@ -42,7 +42,7 @@ describe("record writes", () => {
 	it("cancels open questions when their turn becomes terminal", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -83,7 +83,7 @@ describe("record writes", () => {
 	it("applies patch, events, broadcasts, and queued inputs exactly once", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -244,7 +244,7 @@ describe("record writes", () => {
 	it("includes the committed process updatedAt in process.updated patches", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -282,7 +282,7 @@ describe("record writes", () => {
 	it("includes committed timestamps in terminal process.updated patches", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -319,7 +319,7 @@ describe("record writes", () => {
 	it("emits generic extension events for committed process updates, turn starts/failures, and leaf outcomes", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -406,7 +406,7 @@ describe("record writes", () => {
 	it("emits normalized primary-path turn started frames after the turn record is committed", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -461,7 +461,7 @@ describe("record writes", () => {
 	it("emits assistant commit and acceptance-state annotation frames without a redundant primary-path changed frame", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({
@@ -576,7 +576,7 @@ describe("record writes", () => {
 	it("emits primary-path changed frames when semantic entry refs move without an assistant commit", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify(createEmptyStructuralProcessState()),

@@ -6,7 +6,7 @@ function createProcess(
 	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
 ) {
 	return createTestDeps().processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "implement",
 		lifecycleStatus: "active",
 		...overrides,

@@ -47,7 +47,7 @@ describe("turn-outcomes", () => {
 					getTurnDefinition("generate_plan"),
 					"generate_plan",
 					"plan_saved",
-					"jira_issue_process",
+					"ticket_issue_process",
 					"generate_plan",
 				),
 			).toBeNull();
@@ -71,7 +71,7 @@ describe("turn-outcomes", () => {
 				getTurnDefinition("generate_plan"),
 				"generate_plan",
 				"plan_saved",
-				"jira_issue_process",
+				"ticket_issue_process",
 				"implement",
 			);
 			expect(err?.code).toBe("turn_unavailable_for_selected_turn");
@@ -83,7 +83,7 @@ describe("turn-outcomes", () => {
 				getTurnDefinition("implement"),
 				"implement",
 				"committed",
-				"jira_issue_process",
+				"ticket_issue_process",
 				"implement",
 			);
 			expect(err?.code).toBe("outcome_not_registered");

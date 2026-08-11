@@ -44,7 +44,7 @@ function ctx(deps: ProcessEngineDeps, instanceId: string): DecideContext {
 describe("ProcessEngine operation decisions", () => {
 	it("StartProcess decides a selected-turn write", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 
 		const decision = await StartProcess.decide(ctx(deps, process.id), {
 			instanceId: process.id,
@@ -71,7 +71,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("AbortProcess atomically plans scheduled-action cleanup", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -100,7 +100,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("RetryFailedTurn rejects when no failed turn record is available", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "error",
 		});
 
@@ -114,7 +114,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("ContinueFailedTurn rejects outside the error lifecycle", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			lifecycleStatus: "active",
 		});
 
@@ -129,7 +129,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("ContinueFailedTurn rejects failed turns without recovery metadata", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "error",
 		});
@@ -153,7 +153,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("ParkProcess decides an error lifecycle write", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -171,7 +171,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("WorkerFailure ignores duplicate parked failures without writes", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "error",
 		});
@@ -196,7 +196,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("TurnFailed rejects stale turn-record correlation", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -226,7 +226,7 @@ describe("ProcessEngine operation decisions", () => {
 
 	it("QueueInputs rejects invalid targeted inputs", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 
 		const decision = await QueueInputs.decide(ctx(deps, process.id), {
 			instanceId: process.id,
@@ -245,7 +245,7 @@ describe("ProcessEngine operation decisions", () => {
 
 	it("UpdateProductRefs decides a stateJson patch", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const decision = await UpdateProductRefs.decide(ctx(deps, process.id), {
 			instanceId: process.id,
 			patch: { "simplification-plan": { entryId: "turn-2", turnRecordId: null } },
@@ -262,7 +262,7 @@ describe("ProcessEngine operation decisions", () => {
 
 	it("UpdateSemanticRefs decides a stateJson patch", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 
 		const decision = await UpdateSemanticRefs.decide(ctx(deps, process.id), {
 			instanceId: process.id,
@@ -330,7 +330,7 @@ describe("ProcessEngine operation decisions", () => {
 	it("TurnOutcome rejects when the action registry is not available", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -363,7 +363,7 @@ describe("ProcessEngine operation decisions", () => {
 
 	it("ExecuteAction rejects when the action registry is not available", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 
 		const decision = await ExecuteAction.decide(ctx(deps, process.id), {
 			instanceId: process.id,

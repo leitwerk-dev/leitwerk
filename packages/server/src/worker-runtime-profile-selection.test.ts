@@ -54,7 +54,7 @@ describe("selectWorkerRuntimeProfile", () => {
 
 	it("rejects conflicting component profiles without an override", () => {
 		const result = selectWorkerRuntimeProfile({
-			processId: "implement_jira_issue_process",
+			processId: "implement_ticket_issue_process",
 			componentProfiles: [
 				{ component: "frontend", profile: "node22" },
 				{ component: "backend", profile: "java21" },
