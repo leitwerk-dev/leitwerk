@@ -75,14 +75,14 @@ function createServiceHarness(
 			return {
 				ok: true as const,
 				launcher: {
-					processId: "jira_issue_process",
+					processId: "ticket_issue_process",
 					launcherId: "demo.launcher",
 					launchPlan: createTestLaunchPlan({
 						launcherId: "demo.launcher",
-						processId: "jira_issue_process",
+						processId: "ticket_issue_process",
 						startTurnId: options.startTurnId ?? null,
 						processInput: {
-							processId: "jira_issue_process",
+							processId: "ticket_issue_process",
 							selectedTurnId: null,
 							paramsJson: "{}",
 							stateJson: "{}",
@@ -152,10 +152,10 @@ function createDueLaunch(
 ) {
 	const launchPlan = createTestLaunchPlan({
 		launcherId: "demo.launcher",
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		startTurnId: null,
 		processInput: {
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			paramsJson: "{}",
 			stateJson: "{}",
@@ -311,7 +311,7 @@ describe("FutureExecutionLifecycle", () => {
 		const execution = deps.futureExecutions.create({
 			kind: "launch",
 			scheduleKind: "once",
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			launcherId: "demo.launcher",
 			payloadJson: JSON.stringify({}),
 			nextRunAt: "2027-04-25T09:00:00.000Z",
@@ -347,7 +347,7 @@ describe("FutureExecutionLifecycle", () => {
 				},
 			} as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = deps.futureExecutions.create({
 			kind: "action",
@@ -389,7 +389,7 @@ describe("FutureExecutionLifecycle", () => {
 				},
 			} as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = deps.futureExecutions.create({
 			kind: "action",
@@ -430,7 +430,7 @@ describe("FutureExecutionLifecycle", () => {
 		const { deps, service } = createServiceHarness({
 			processActionRegistry: createSchedulableActionRegistry(),
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const execution = deps.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -483,7 +483,7 @@ describe("FutureExecutionLifecycle", () => {
 				},
 			} as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = deps.futureExecutions.create({
 			kind: "action",
@@ -536,7 +536,7 @@ describe("FutureExecutionLifecycle", () => {
 				},
 			} as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = deps.futureExecutions.create({
 			kind: "action",
@@ -577,7 +577,7 @@ describe("FutureExecutionLifecycle", () => {
 				},
 			} as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = deps.futureExecutions.create({
 			kind: "action",
@@ -618,10 +618,10 @@ describe("FutureExecutionLifecycle", () => {
 		});
 		const launchPlan = createTestLaunchPlan({
 			launcherId: "demo.launcher",
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			startTurnId: "run",
 			processInput: {
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: null,
 				paramsJson: "{}",
 				stateJson: "{}",
@@ -682,7 +682,7 @@ describe("FutureExecutionLifecycle", () => {
 			kind === "launch"
 				? createDueLaunch(deps)
 				: (() => {
-						const process = deps.processes.create({ processId: "jira_issue_process" });
+						const process = deps.processes.create({ processId: "ticket_issue_process" });
 						commandState.process = process;
 						const action = createDueAction(deps, process);
 						consumeScheduledAction = () => {
@@ -727,7 +727,7 @@ describe("FutureExecutionLifecycle", () => {
 		const { deps, service } = createServiceHarness({
 			commands: { executeProcessAction } as unknown as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		commandState.process = process;
 		const execution = createDueAction(deps, process, {
 			scheduleKind: "cron",
@@ -748,7 +748,7 @@ describe("FutureExecutionLifecycle", () => {
 		const { deps, service } = createServiceHarness({
 			commands: { executeProcessAction } as unknown as ProcessEngine,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const execution = createDueAction(deps, process, {
 			scheduleKind: "cron",
 			cronExpression: "0 9 * * *",
@@ -925,10 +925,10 @@ describe("FutureExecutionLifecycle", () => {
 		if (kind === "launch") {
 			const launchPlan = createTestLaunchPlan({
 				launcherId: "demo.launcher",
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				startTurnId: "run",
 				processInput: {
-					processId: "jira_issue_process",
+					processId: "ticket_issue_process",
 					selectedTurnId: null,
 					paramsJson: "{}",
 					stateJson: "{}",
@@ -943,7 +943,7 @@ describe("FutureExecutionLifecycle", () => {
 				}),
 			});
 		} else {
-			const process = deps.processes.create({ processId: "jira_issue_process" });
+			const process = deps.processes.create({ processId: "ticket_issue_process" });
 			commandState.process = process;
 			createDueAction(deps, process, {
 				payloadJson: serializeFutureActionPayload({

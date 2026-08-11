@@ -10,42 +10,42 @@ import { type Actor, SYSTEM_ACTOR } from "./domain-model.js";
 describe("actor normalization", () => {
 	it("keeps a well-formed user actor and drops unknown fields", () => {
 		const actor = normalizeActor({
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice",
 			extra: "ignored",
 		});
 		expect(actor).toEqual({
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice",
 		});
 	});
 
 	it("returns null when no stable id is present", () => {
-		expect(normalizeActor({ kind: "user", provider: "forgejo" })).toBeNull();
+		expect(normalizeActor({ kind: "user", provider: "identity" })).toBeNull();
 		expect(normalizeActor({ id: "   ", kind: "user", provider: null })).toBeNull();
 		expect(normalizeActor(null)).toBeNull();
-		expect(normalizeActor("forgejo:alice")).toBeNull();
+		expect(normalizeActor("identity:alice")).toBeNull();
 	});
 
-	it("falls back to a system kind and null provider for invalid values", () => {
+	it("falls back to a system kind while preserving extension-owned providers", () => {
 		expect(normalizeActor({ id: "x", kind: "robot", provider: "github" })).toEqual({
 			id: "x",
 			kind: "system",
-			provider: null,
+			provider: "github",
 		});
 	});
 
 	it("omits a blank display name", () => {
 		expect(
-			normalizeActor({ id: "telegram", kind: "channel", provider: "telegram", displayName: "  " }),
+			normalizeActor({ id: "chat", kind: "channel", provider: "chat", displayName: "  " }),
 		).toEqual({
-			id: "telegram",
+			id: "chat",
 			kind: "channel",
-			provider: "telegram",
+			provider: "chat",
 		});
 	});
 });
@@ -53,9 +53,9 @@ describe("actor normalization", () => {
 describe("actor serialization round-trips", () => {
 	it("serializes and parses an actor without losing fields", () => {
 		const actor: Actor = {
-			id: "gitlab:bob",
+			id: "codehost:bob",
 			kind: "user",
-			provider: "gitlab",
+			provider: "codehost",
 			displayName: "Bob",
 		};
 		expect(parseActorOrSystem(serializeActor(actor))).toEqual(actor);

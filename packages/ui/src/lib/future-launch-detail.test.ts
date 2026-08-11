@@ -90,7 +90,7 @@ describe("buildFutureLaunchDetailSections", () => {
 			createFutureLaunch({
 				scheduleKind: "cron",
 				cronExpression: "0 9 * * 1-5",
-				launcherInput: { customPayload: { issue: "JIRA-123" } },
+				launcherInput: { customPayload: { issue: "TICKET-123" } },
 			}),
 			null,
 		);
@@ -103,7 +103,7 @@ describe("buildFutureLaunchDetailSections", () => {
 			"Custom Payload",
 		);
 		expect(sections.find((section) => section.id === "details")?.items[0]?.value).toContain(
-			"JIRA-123",
+			"TICKET-123",
 		);
 	});
 });

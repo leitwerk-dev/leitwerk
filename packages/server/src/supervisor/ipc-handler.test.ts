@@ -132,7 +132,7 @@ beforeEach(() => {
 describe("createIpcHandler", () => {
 	it("handles worker.hello and updates lease", () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -153,7 +153,7 @@ describe("createIpcHandler", () => {
 		const sendDurable = vi.spyOn(t.broadcaster, "sendDurable");
 		const sendEphemeral = vi.spyOn(t.broadcaster, "sendEphemeral");
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -238,7 +238,7 @@ describe("createIpcHandler", () => {
 
 	it("reports question persistence failures instead of leaving a rejected promise unhandled", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -281,7 +281,7 @@ describe("createIpcHandler", () => {
 
 	it("handles worker.ready, updates lease, and persists rootEntry", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -321,7 +321,7 @@ describe("createIpcHandler", () => {
 
 	it("handles worker.heartbeat and updates timestamp", () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -349,7 +349,7 @@ describe("createIpcHandler", () => {
 			frames.push(frame);
 		});
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -386,7 +386,7 @@ describe("createIpcHandler", () => {
 
 	it("handles worker.input_consumed, marks input consumed, and persists primary-path leaf facts", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -425,7 +425,7 @@ describe("createIpcHandler", () => {
 
 	it("updates only the targeted semantic ref for review-branch targeted input acknowledgements", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "review_plan",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({
@@ -526,7 +526,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -592,7 +592,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -728,7 +728,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -831,7 +831,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -901,7 +901,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -972,7 +972,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1034,7 +1034,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1086,7 +1086,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1155,7 +1155,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1195,7 +1195,7 @@ describe("createIpcHandler", () => {
 	it("can mirror worker.event payloads to an injected logger", async () => {
 		const workerEventLogger = vi.fn();
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1246,7 +1246,7 @@ describe("createIpcHandler", () => {
 
 	it("records turn starts before outcomes and finalizes successful turn records", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1323,7 +1323,7 @@ describe("createIpcHandler", () => {
 
 	it("rejects stale acknowledged turn starts without replacing current execution", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1356,7 +1356,7 @@ describe("createIpcHandler", () => {
 
 	it("normalizes stale turn outcomes from the active worker into worker failure", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1396,7 +1396,7 @@ describe("createIpcHandler", () => {
 
 	it("records failed turn records and parks lifecycle in error before lifecycle parking", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -1446,7 +1446,7 @@ describe("createIpcHandler", () => {
 
 	it("keeps the process parked after compatibility parking", async () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -1522,7 +1522,7 @@ describe("createIpcHandler", () => {
 
 	it("handles worker.failed and updates lease + invokes callback", () => {
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1553,7 +1553,7 @@ describe("createIpcHandler", () => {
 		});
 
 		const process = t.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({

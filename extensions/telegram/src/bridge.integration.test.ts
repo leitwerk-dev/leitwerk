@@ -2,7 +2,6 @@ import {
 	buildFailedTurnRecoveryMetadata,
 	formatPathTypeLabel,
 	type QuestionAnswerDraft,
-	TELEGRAM_ACTOR,
 } from "@leitwerk-dev/domain";
 import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
 import {
@@ -22,6 +21,7 @@ import { createTestQuestion, createTestQuestionRequest } from "@leitwerk-dev/tes
 import { createTestServerSetupCapability } from "@leitwerk-dev/test-support/integration";
 import { flushAsyncWork } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it, vi } from "vitest";
+import { TELEGRAM_ACTOR } from "./actor.js";
 import { TelegramBridge } from "./bridge.js";
 import type { TelegramExtensionConfig } from "./config.js";
 import { FakeTelegramClient } from "./fake-telegram-client.js";

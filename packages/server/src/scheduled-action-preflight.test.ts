@@ -16,8 +16,8 @@ function buildRegistry(
 	options: { includeScheduling?: boolean } = {},
 ) {
 	const process = defineProcess<Record<string, never>, Record<string, unknown>>({
-		id: "jira_issue_process",
-		displayName: "Implement Jira Issue",
+		id: "ticket_issue_process",
+		displayName: "Implement Ticket Issue",
 		entry: "plan_review",
 		paramsCodec: { parse: () => ({}), serialize: (value) => value },
 		stateCodec: {
@@ -55,13 +55,13 @@ function buildRegistry(
 		api.action(action);
 	};
 	return buildProcessActionRegistry({
-		processes: new Map([["jira_issue_process", process]]),
+		processes: new Map([["ticket_issue_process", process]]),
 	});
 }
 
 function createPlanReviewProcess(deps = createTestDeps()) {
 	return deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
 		stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
@@ -203,7 +203,7 @@ describe("preflightScheduledActionRequest", () => {
 			},
 		});
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({

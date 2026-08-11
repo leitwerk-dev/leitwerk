@@ -4,7 +4,7 @@
 
 ## 1 Introduction & Goals
 
-Leitwerk orchestrates multi-turn AI workflows—from Jira issue implementation and GitLab merge-request polishing to local repository changes and cross-process handovers—with complete visibility, crash recovery, and human steering.
+Leitwerk orchestrates multi-turn AI workflows—from issue implementation and change-request polishing to local repository changes and cross-process handovers—with complete visibility, crash recovery, and human steering.
 
 ### 1.1 Requirements Overview
 
@@ -60,7 +60,7 @@ C4Context
     System(worker, "Worker Runtime", "Disposable Runner")
   }
 
-  System_Ext(externalSystems, "External Systems", "Jira / GitLab")
+  System_Ext(externalSystems, "External Systems", "Issue trackers / code hosts")
   System_Ext(llmProvider, "LLM Provider", "OpenAI / Anthropic")
 
   Rel(operator, browserUI, "Uses", "HTTP / WS")
@@ -77,7 +77,7 @@ C4Context
 | **Browser UI** | Renders HTTP snapshots and applies real-time WebSocket chronicles. |
 | **Server** | Owns durable state, ProcessEngine mutations, supervision, and safe external writes. |
 | **Worker** | Executes worker-owned turns inside isolated workspace clones and uploads tree snapshots. |
-| **External Systems** | Issue trackers and VCS providers (e.g., Jira, GitLab) monitored by automated watchers and actions. |
+| **External Systems** | Issue trackers and VCS providers monitored by extension-owned automated watchers and actions. |
 | **LLM Provider** | Executes Pi model requests (e.g., OpenAI, Anthropic, Ollama). |
 
 ## 4 Solution Strategy
@@ -182,7 +182,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 
 ## 11 Risks and Technical Debt
 
-- **Single-Provider SSO:** Current authentication supports Forgejo OIDC attribution; tenant isolation and per-process multi-tenant authorization remain future work.
+- **Single-Provider SSO:** Current authentication supports one configured OIDC provider; tenant isolation and per-process multi-tenant authorization remain future work.
 - **Process-to-Process Creation:** Processes communicate via imported plan handovers; direct process-to-process dynamic instantiation is out of scope.
 
 ## 12 Glossary

@@ -134,50 +134,10 @@ const modelTurnConfigSchema = v.looseObject({
 	model_profile: v.optional(v.string()),
 });
 
-const watcherLaunchConfigSchema = v.looseObject({
-	default_model_profile: v.optional(v.string()),
-	turn_configs: v.optional(v.record(v.string(), modelTurnConfigSchema)),
-});
-
-const jiraWatcherSchema = v.looseObject({
-	type: v.literal("jira"),
-	enabled: v.boolean(),
-	project: v.string(),
-	poll_interval: v.string(),
-	labels: v.looseObject({
-		trigger: v.string(),
-		done: v.string(),
-		required: v.optional(stringArraySchema),
-		forbidden: v.optional(stringArraySchema),
-	}),
-	target_branch_label_prefix: v.string(),
-	launch: v.optional(watcherLaunchConfigSchema),
-});
-
-const gitlabMrWatcherSchema = v.looseObject({
-	type: v.literal("gitlab_mr"),
-	enabled: v.boolean(),
-	group: v.string(),
-	poll_interval: v.string(),
-	labels: v.looseObject({
-		trigger: v.string(),
-		done: v.string(),
-	}),
-	launch: v.optional(watcherLaunchConfigSchema),
-});
-
-const filesystemWatcherSchema = v.looseObject({
-	type: v.literal("filesystem"),
-	enabled: v.boolean(),
-	poll_interval: v.string(),
-	file_path: v.string(),
-	launch: v.optional(watcherLaunchConfigSchema),
-});
-
 const authNonEmptyString = v.pipe(v.string(), v.nonEmpty());
 
 const authOidcProviderSchema = v.looseObject({
-	id: v.picklist(["forgejo", "gitlab"]),
+	id: authNonEmptyString,
 	kind: v.literal("oidc"),
 	issuer: authNonEmptyString,
 	client_id: authNonEmptyString,
@@ -198,12 +158,6 @@ const authConfigSchema = v.looseObject({
 	providers: v.optional(v.array(authOidcProviderSchema)),
 	allowlist: v.optional(stringArraySchema),
 });
-
-const processWatcherConfigSchema = v.variant("type", [
-	jiraWatcherSchema,
-	gitlabMrWatcherSchema,
-	filesystemWatcherSchema,
-]);
 
 const safeSkillIdSchema = v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN));
 const skillSchema = v.strictObject({
@@ -333,7 +287,7 @@ const configSchema = v.looseObject({
 					}),
 				),
 				turn_configs: v.optional(v.record(v.string(), modelTurnConfigSchema)),
-				watchers: v.optional(v.record(v.string(), processWatcherConfigSchema)),
+				watchers: v.optional(v.record(v.string(), v.unknown())),
 			}),
 		),
 	),
@@ -470,27 +424,6 @@ function collectConfigSchemaErrors(config: unknown): string[] {
 	return parsed.issues.map((issue) => formatConfigSchemaIssue(issue).message);
 }
 
-function validateModelProfileReference(args: {
-	value: unknown;
-	path: string;
-	errors: string[];
-	configuredModelProfileIds: Set<string>;
-	allowedModelProfileIds: Set<string> | null;
-}) {
-	if (typeof args.value !== "string" || args.value.trim() === "") {
-		return;
-	}
-	if (!args.configuredModelProfileIds.has(args.value)) {
-		args.errors.push(`Unknown model profile '${args.value}' at ${args.path}`);
-		return;
-	}
-	if (args.allowedModelProfileIds !== null && !args.allowedModelProfileIds.has(args.value)) {
-		args.errors.push(
-			`Model profile '${args.value}' at ${args.path} is not in allowed_model_profiles`,
-		);
-	}
-}
-
 function collectModelProfileReferenceErrors(config: LeitwerkConfig): string[] {
 	const errors: string[] = [];
 	const configuredModelProfileIds = new Set(
@@ -512,9 +445,7 @@ function collectModelProfileReferenceErrors(config: LeitwerkConfig): string[] {
 	}
 	for (const [processId, processConfig] of Object.entries(config.process_configs ?? {})) {
 		const processConfigPath = `process_configs.${processId}`;
-		let processAllowedProfiles: Set<string> | null = null;
 		if (processConfig.allowed_model_profiles !== undefined) {
-			processAllowedProfiles = new Set<string>();
 			for (const [index, profileId] of processConfig.allowed_model_profiles.entries()) {
 				const allowedProfilePath = `${processConfigPath}.allowed_model_profiles[${index}]`;
 				if (typeof profileId !== "string" || profileId.trim() === "") {
@@ -522,32 +453,7 @@ function collectModelProfileReferenceErrors(config: LeitwerkConfig): string[] {
 				}
 				if (!configuredModelProfileIds.has(profileId)) {
 					errors.push(`Unknown model profile '${profileId}' at ${allowedProfilePath}`);
-					continue;
 				}
-				processAllowedProfiles.add(profileId);
-			}
-		}
-		for (const [watcherId, watcherConfig] of Object.entries(processConfig.watchers ?? {})) {
-			const launch = watcherConfig.launch;
-			if (!launch) {
-				continue;
-			}
-			const watcherPath = `${processConfigPath}.watchers.${watcherId}`;
-			validateModelProfileReference({
-				value: launch.default_model_profile,
-				path: `${watcherPath}.launch.default_model_profile`,
-				errors,
-				configuredModelProfileIds,
-				allowedModelProfileIds: processAllowedProfiles,
-			});
-			for (const [turnId, turnConfig] of Object.entries(launch.turn_configs ?? {})) {
-				validateModelProfileReference({
-					value: turnConfig.model_profile,
-					path: `${watcherPath}.launch.turn_configs.${turnId}.model_profile`,
-					errors,
-					configuredModelProfileIds,
-					allowedModelProfileIds: processAllowedProfiles,
-				});
 			}
 		}
 	}
@@ -838,9 +744,6 @@ function collectAuthConfigErrors(config: LeitwerkConfig): string[] {
 		errors.push("server.base_url must use https when auth is enabled, except for localhost");
 	}
 	for (const [index, provider] of providers.entries()) {
-		if (provider.id !== "forgejo") {
-			errors.push(`auth.providers[${index}].id must be forgejo in Phase 1`);
-		}
 		if (!isHttpsOrLoopbackHttpUrl(provider.issuer)) {
 			errors.push(
 				`auth.providers[${index}].issuer must be an absolute https URL, except for localhost`,

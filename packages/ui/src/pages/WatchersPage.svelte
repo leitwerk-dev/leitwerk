@@ -7,10 +7,6 @@ let loading = $state(false);
 let error = $state<string | null>(null);
 let loadToken = 0;
 
-function labelList(values: readonly string[] | undefined): string {
-	return values && values.length > 0 ? values.join(", ") : "—";
-}
-
 function formatLaunchModel(watcher: WatcherSummary): string {
 	const parts: string[] = [];
 	if (watcher.launchModel.defaultModelProfileId) {
@@ -86,10 +82,10 @@ $effect(() => {
 			{/if}
 			<div class="watcher-list">
 				{#each watchers as watcher (`${watcher.processId}:${watcher.watcherId}`)}
-					<article class="watcher-card" data-watcher-type={watcher.type}>
+					<article class="watcher-card" data-watcher-source={watcher.sourceId}>
 						<header class="watcher-card-header">
 							<div>
-								<p class="watcher-type">{watcher.type}</p>
+								<p class="watcher-type">{watcher.sourceLabel}</p>
 								<h2>{watcher.label}</h2>
 								<p class="watcher-description">{watcher.description}</p>
 							</div>
@@ -108,10 +104,6 @@ $effect(() => {
 								<dd>{watcher.watcherId}</dd>
 							</div>
 							<div>
-								<dt>Poll interval</dt>
-								<dd>{watcher.pollInterval}</dd>
-							</div>
-							<div>
 								<dt>Target</dt>
 								<dd>{watcher.targetSummary}</dd>
 							</div>
@@ -124,42 +116,14 @@ $effect(() => {
 								<dd>{formatLaunchModel(watcher)}</dd>
 							</div>
 
-							{#if watcher.type === "filesystem"}
-								<div class="full-width">
-									<dt>File path</dt>
-									<dd><code>{watcher.filePath}</code></dd>
-								</div>
-							{:else if watcher.type === "jira"}
+							{#each watcher.details as detail}
 								<div>
-									<dt>Project</dt>
-									<dd>{watcher.project}</dd>
+									<dt>{detail.label}</dt>
+									<dd>
+										{#if detail.format === "code"}<code>{detail.value}</code>{:else}{detail.value}{/if}
+									</dd>
 								</div>
-								<div>
-									<dt>Trigger / done</dt>
-									<dd>{watcher.labels.trigger} → {watcher.labels.done}</dd>
-								</div>
-								<div>
-									<dt>Required labels</dt>
-									<dd>{labelList(watcher.labels.required)}</dd>
-								</div>
-								<div>
-									<dt>Forbidden labels</dt>
-									<dd>{labelList(watcher.labels.forbidden)}</dd>
-								</div>
-								<div class="full-width">
-									<dt>Branch label prefix</dt>
-									<dd><code>{watcher.targetBranchLabelPrefix}</code></dd>
-								</div>
-							{:else if watcher.type === "gitlab_mr"}
-								<div>
-									<dt>Group</dt>
-									<dd>{watcher.group}</dd>
-								</div>
-								<div>
-									<dt>Trigger / done</dt>
-									<dd>{watcher.labels.trigger} → {watcher.labels.done}</dd>
-								</div>
-							{/if}
+							{/each}
 						</dl>
 					</article>
 				{/each}

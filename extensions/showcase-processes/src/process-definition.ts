@@ -12,6 +12,7 @@ import {
 	type StructuralProcessState,
 } from "@leitwerk-dev/process-sdk";
 import { fileExternal } from "./file-external.js";
+import { filesystemWatcherSource } from "./filesystem-watcher.js";
 import {
 	buildPoemLeafOutcomeFallbackMarkdown,
 	buildPoemLeafOutcomePayload,
@@ -1009,15 +1010,9 @@ export const poemCreatorProcess = flow
 		label: "Create Poem from File",
 		description:
 			"Launch Poem Creator whenever the configured filesystem watcher finds a prompt file",
-		type: "filesystem",
-		matches(event: unknown) {
-			return typeof (event as { content?: unknown }).content === "string";
-		},
-		resolveLaunchConfig(event: unknown) {
-			const prompt =
-				typeof (event as { content?: unknown }).content === "string"
-					? (event as { content: string }).content.trim()
-					: "";
+		source: filesystemWatcherSource,
+		resolveLaunchConfig(event) {
+			const prompt = event.content.trim();
 			return {
 				processId: "poem_creator_process",
 				params: { prompt },

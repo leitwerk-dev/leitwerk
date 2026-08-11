@@ -116,10 +116,7 @@ export {
 	type ProcessTitleGenerator,
 	type ProcessTitleLogger,
 } from "./process-title-generator.js";
-export {
-	buildProcessWatcherRegistry,
-	validateConfiguredProcessWatchersAgainstCatalog,
-} from "./process-watcher-registry.js";
+export { buildProcessWatcherRegistry } from "./process-watcher-registry.js";
 export {
 	buildProjectUpdatedEffect,
 	buildProjectUpdatedFrame,

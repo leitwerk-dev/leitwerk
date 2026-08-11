@@ -49,7 +49,7 @@ describe("ipc-decode", () => {
 				},
 				processSnapshot: {
 					id: "agt_1",
-					processId: "jira_issue_process",
+					processId: "ticket_issue_process",
 					selectedTurnId: "generate_plan",
 					lifecycleStatus: "active",
 				},

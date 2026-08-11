@@ -66,11 +66,9 @@ export {
 	type ProcessProjectRepoLike,
 	type ProcessQuestionServiceLike,
 	type ProcessRepoLike,
-	type ProcessWatcherConfigLike,
 	type ProcessWatcherServiceLike,
 	type QueuedProcessInputLike,
 	type RegisteredProcessWatcherLike,
-	type ResolvedProcessWatcherStartLike,
 	type WorkerSupervisorLike,
 } from "./core-capabilities.js";
 export {
@@ -140,6 +138,7 @@ export type {
 	LeafOutcomeCaptureResult,
 	LeitwerkExtensionManifest,
 	LeitwerkExtensionModule,
+	ParsedProcessWatcherConfig,
 	ProcessActionDefinition,
 	ProcessLaunchConfig,
 	ProcessLauncherAPI,
@@ -155,6 +154,9 @@ export type {
 	ProcessTurnOutcomeEvent,
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
+	ProcessWatcherPresentation,
+	ProcessWatcherPresentationField,
+	ProcessWatcherSource,
 	RepositoryCredentialKind,
 	RepositoryCredentialProject,
 	RepositoryCredentialProvider,
@@ -332,6 +334,10 @@ export {
 	buildProcessWatchers,
 	createProcessWatcherBuilder,
 } from "./process-watcher-builder.js";
+export {
+	defineProcessWatcherSource,
+	parseProcessWatcherLaunchModelConfig,
+} from "./process-watcher-source.js";
 export {
 	clearRepositoryGitSshWrappers,
 	repositoryGitArgs,

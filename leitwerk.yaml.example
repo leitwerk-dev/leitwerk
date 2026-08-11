@@ -205,7 +205,6 @@ process_configs:
   poem_creator_process:
     watchers:
       create_poem:
-        type: filesystem
         enabled: true
         poll_interval: 1s
         file_path: /tmp/create-poem

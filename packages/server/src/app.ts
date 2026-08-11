@@ -35,7 +35,6 @@ import { createAllRepos, createCredentialCipherFromEnvironment } from "./db/repo
 import { buildExtensionUiCatalog, type ExtensionUiCatalog } from "./extension-ui/catalog.js";
 import { createExtensionHost, type ExtensionHost } from "./extensions/extension-host.js";
 import { createExternalSourceService } from "./external-source-service.js";
-import { createFilesystemProcessWatchersService } from "./filesystem-process-watchers.js";
 import {
 	createFutureExecutionLifecycle,
 	type FutureExecutionLifecycle,
@@ -84,10 +83,7 @@ import {
 	TITLE_SYSTEM_PROMPT,
 } from "./process-title-generator.js";
 import { buildProcessUiRegistry } from "./process-ui-registry.js";
-import {
-	buildProcessWatcherRegistry,
-	validateConfiguredProcessWatchersAgainstCatalog,
-} from "./process-watcher-registry.js";
+import { buildProcessWatcherRegistry } from "./process-watcher-registry.js";
 import {
 	createProjectMutationService,
 	type ProjectMutationService,
@@ -409,17 +405,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		commitMessages: config.commit_messages,
 		getModelProfilesForProcess,
 	});
-	const processWatcherConfigErrors = validateConfiguredProcessWatchersAgainstCatalog({
-		config,
-		catalog: extensionCatalog,
-		processModelPolicy,
-	});
-	if (processWatcherConfigErrors.length > 0) {
-		throw new Error(`Invalid process watcher config:\n${processWatcherConfigErrors.join("\n")}`);
-	}
 	const processWatcherService = buildProcessWatcherRegistry(extensionCatalog, config, {
 		modelProfiles: launcherModelProfiles,
 		getModelProfilesForProcess,
+		processModelPolicy,
 	});
 	const workerWebSocketIpc = createWorkerWebSocketIpcManager();
 	// This window must open before listen(): workers from the previous server
@@ -924,28 +913,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		broadcaster,
 		logger: app.log,
 	});
-
-	const filesystemProcessWatchers = createFilesystemProcessWatchersService({
-		processWatchers: processWatcherService,
-		launchPlans,
-		launchExecutorDeps: {
-			commitMessages: config.commit_messages,
-			processes: baseDeps.processes,
-			projects: baseDeps.projects,
-			processSkills: baseDeps.processSkills,
-			handoffDedupKeys: baseDeps.handoffDedupKeys,
-			futureExecutions: baseDeps.futureExecutions,
-			transaction: baseDeps.transaction,
-			broadcaster,
-			commands: processEngine,
-			processTitles,
-			extensionHost,
-			logger: app.log,
-		},
-		logger: app.log,
-	});
-	startHooks.push(() => filesystemProcessWatchers.start());
-	stopHooks.push(() => filesystemProcessWatchers.stop());
 
 	const processActionListDeps = {
 		projects: baseDeps.projects,

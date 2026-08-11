@@ -78,7 +78,7 @@ describe("auth WebSocket guard", () => {
 		await expectRejectedWebsocket(wsUrl);
 
 		const rawSession = "ws-session-token";
-		const actor: Actor = { id: "forgejo:alice", kind: "user", provider: "forgejo" };
+		const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
 		repos.authSessions.create({
 			idHash: hashOpaqueToken(rawSession),
 			actor,
