@@ -4,7 +4,6 @@ import {
 } from "@leitwerk-dev/coding/auto-work-branch";
 import {
 	createRepositoryChangeLaunchPlanner,
-	formatRepositoryChangeLaunchErrors,
 	type RepositoryChangeLaunchPlannerInput,
 	type RepositoryChangeLaunchResolution,
 } from "@leitwerk-dev/coding/repository-change-launch";
@@ -22,8 +21,6 @@ export type RemoteRepoChangeLaunchResolution =
 export interface RemoteRepoChangeLaunchPlanner {
 	plan(input: RemoteRepoChangeLaunchPlannerInput): RemoteRepoChangeLaunchResolution;
 }
-
-export const formatRemoteRepoChangeLaunchErrors = formatRepositoryChangeLaunchErrors;
 
 export const remoteRepoChangeCapabilities = {
 	launchPlanner: createCapabilityToken<RemoteRepoChangeLaunchPlanner>(

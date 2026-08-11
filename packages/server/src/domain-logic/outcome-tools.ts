@@ -1,13 +1,13 @@
-import type { TurnOutcomePayload } from "@leitwerk-dev/domain";
-import type { OutcomeToolParameterSpec, TurnDefinition } from "@leitwerk-dev/process-sdk";
+import { normalizeStringArray, type TurnOutcomePayload, trimString } from "@leitwerk-dev/domain";
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
 	isServerAutomaticTurnDefinition,
+	type OutcomeToolParameterSpec,
+	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 import * as v from "valibot";
 import { isTurnAvailableForProcessGraph, type ProcessGraphRegistry } from "../process-graph.js";
-import { normalizeStringArray, trimString } from "./string-normalize.js";
 
 interface OutcomeToolValidationContract {
 	kind: "outcome_tool";

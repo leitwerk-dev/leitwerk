@@ -7,7 +7,11 @@ import {
 	type WorkerErrorClass,
 } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
-import type { LlmTurnDefinition, WorkerProcessContext } from "@leitwerk-dev/process-sdk";
+import type {
+	LlmTurnDefinition,
+	PiTreeNode,
+	WorkerProcessContext,
+} from "@leitwerk-dev/process-sdk";
 import { resolveLlmTurnRestorePrimaryLeafAfterTurn } from "@leitwerk-dev/process-sdk";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
 import type { WorkerDiagnosticPayload, WorkerOperationEmitter } from "../diagnostics.js";
@@ -115,6 +119,36 @@ export interface LlmTurnExecutorCallbacks {
 	emit?: WorkerOperationEmitter;
 }
 
+/** Pi writes these on new sessions before any conversational content exists. */
+const PI_SESSION_BOOTSTRAP_ENTRY_TYPES = new Set(["model_change", "thinking_level_change"]);
+
+function visitPiTreeEntries(
+	nodes: readonly PiTreeNode[],
+	visit: (entryType: string) => void,
+): void {
+	for (const node of nodes) {
+		visit(node.entry.type);
+		visitPiTreeEntries(node.children, visit);
+	}
+}
+
+/**
+ * Empty-tree prepared starts mean "no conversational fork yet". Pi still appends
+ * model/thinking bootstrap entries when activating a new session, so those alone
+ * must not invalidate the receipt.
+ */
+export function isPiTreeEmptyForPreparedEmptyPlan(
+	piHandle: Pick<PiTreeHandle, "getTree">,
+): boolean {
+	let hasNonBootstrap = false;
+	visitPiTreeEntries(piHandle.getTree(), (entryType) => {
+		if (!PI_SESSION_BOOTSTRAP_ENTRY_TYPES.has(entryType)) {
+			hasNonBootstrap = true;
+		}
+	});
+	return !hasNonBootstrap;
+}
+
 /**
  * Convert the bootstrap receipt into the executor plan without consulting the
  * current process state. The receipt is the pre-acceptance decision; runtime
@@ -137,10 +171,7 @@ function treePlanFromPreparedStart(input: {
 	switch (preparedStart.startTarget.kind) {
 		case "current_leaf":
 			if (preparedStart.forkPiEntryId === null) {
-				if (
-					!input.allowRetainedExecution &&
-					(piHandle.getLeafId() !== null || piHandle.getTree().length !== 0)
-				) {
+				if (!input.allowRetainedExecution && !isPiTreeEmptyForPreparedEmptyPlan(piHandle)) {
 					throw new Error("Accepted empty-tree plan no longer has an empty Pi tree");
 				}
 			} else if (

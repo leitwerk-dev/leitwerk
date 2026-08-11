@@ -15,6 +15,12 @@ When changing the design or implementation, keep these aligned:
 - `docs/ubiquitous_language.md`
 - `docs/process-workspace.md`
 - `docs/websocket.md`
+- `docs/ui.md`
+- `docs/llm-turn.md`
+- `docs/models.md`
+- `docs/development-composition.md`
+- `docs/security.md`
+- `docs/ci.md`
 - `docs/future.md`
 
 Treat `docs/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract.
@@ -35,8 +41,8 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 
 ## 3. Package layout & Boundaries
 Monorepo using npm workspaces. 
-- **Core (`packages/`)**: `domain` (pure types), `protocol` (IPC/WS), `process-sdk` (runtime builders), `watcher-utils`, `server`, `worker`, `ui`, `test-support`.
-- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `local-repo-change`, `telegram`, etc.
+- **Core (`packages/`)**: `domain`, `protocol`, `worker-protocol`, `process-sdk`, `extension-runtime`, `watcher-utils`, `external-writes`, `worker-runners`, `server`, `worker`, `ui`, `test-support`.
+- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `local-repo-change`, `remote-repo-change`, `git-ssh`, `local-shell`, `pi-shell`, `process-analysis`, `telegram`, etc.
 
 **Hard Rule:** Core packages under `packages/` must **never** import from `extensions/` (applies to runtime, tests, and types). Top-level `tests/` should import via package specifiers (e.g., `@leitwerk-dev/domain`).
 

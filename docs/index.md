@@ -11,13 +11,15 @@ Leitwerk documentation provides complete contracts, authoring guides, and operat
 ## 2. Build Processes & Extensions (Authoring Track)
 
 - [Process SDK](process-sdk.md) — Build custom TypeScript processes, turn graphs, launchers, and external actions.
-- [Agent Tools & Outcomes](agent-tools.md) — Built-in primitives (`read`/`edit`), integration tools (Jira/GitLab), `ask_questions`, and outcome tools.
-- [Automated Watchers](watchers.md) — Event-driven watchers for Jira issues, GitLab MRs, and filesystem events.
+- [Agent Tools & Outcomes](agent-tools.md) — Built-in primitives (`read`/`edit`), extension-authored integration tools, `ask_questions`, and outcome tools.
+- [Automated Watchers](watchers.md) — Event-driven watchers (filesystem shipped; other providers via extensions).
 - [Process Workspace](process-workspace.md) — Repository cloning, workspace layout, and skill aggregation.
+- [LLM Turns](llm-turn.md) — LLM turn execution, model selection, and turn runtime settings.
+- [Models & Providers](models.md) — Model profiles, provider extensions, and credentials.
 
 ## 3. Deploy & Operate Leitwerk (Operations Track)
 
-- [Configuration Reference](configuration.md) — Complete `leitwerk.yaml` reference, model profiles, reload classes, and environment overrides.
+- [Configuration Reference](configuration.md) — `leitwerk.yaml` contract, model profiles, and environment overrides.
 - [Development Compositions](development-composition.md) — Combine this checkout with external packages, extensions, reload, and the full test gate.
 - [Server & Worker Lifecycle](server-worker-lifecycle.md) — ProcessEngine supervision, worker adoption, IPC protocol, and crash recovery.
 - [Local & Docker Deployment](docker-deployment-guide.md) — Single-machine Docker installation and local dev setup.
@@ -27,6 +29,7 @@ Leitwerk documentation provides complete contracts, authoring guides, and operat
 
 - [Browser WebSocket Protocol](websocket.md) — Frame schemas, ordering, and reconnect behavior.
 - [UI Chronicle & Read Models](ui.md) — Browser state and read-model ownership.
-- [Testing Directives](testing.md) — Monorepo test layers, Vitest harnesses, and fake clients.
+- [Testing Directives](testing.md) — Monorepo test layers, Vitest harnesses, and fakes.
+- [CI](ci.md) — Continuous integration and release checks.
 - [Security & Authentication](security.md) — OIDC authentication, attribution, and security boundaries.
 - [Future Work & Exclusions](future.md) — Roadmap boundaries and non-MVP features.

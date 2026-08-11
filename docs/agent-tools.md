@@ -3,7 +3,7 @@
 In Leitwerk, AI agents interact with workspace repositories, process state, and external services through **Agent Tools**. Tools fall into four distinct categories:
 
 1. **Built-in Primitives:** Core workspace tools (`read`, `bash`, `edit`, `write`) for inspecting files, running shell commands, and editing code.
-2. **Integration Tools:** Extension-provided tools (such as Jira issue tools `jira_update_issue` or GitLab MR tools) for interacting directly with external services during execution.
+2. **Integration Tools:** Extension-provided tools for interacting with external services during execution (authored by an extension; not a fixed in-tree catalog).
 3. **Interactive Tools:** The `ask_questions` tool, used by agents to pause execution and ask human operators structured questions during a turn.
 4. **Outcome Tools:** Terminal tools that return typed data, publish markdown products, and transition process state to the next step.
 
@@ -27,34 +27,30 @@ The four built-in primitives control workspace access:
 
 ## 2. Integration Tools
 
-Integration extensions define custom domain tools that allow AI agents to query or update external services (like Jira or GitLab) during execution:
+Integration extensions define custom domain tools that allow AI agents to query or update external services during execution. The example below is an **extension-author pattern**, not a shipped in-tree Jira package:
 
 ```ts
 // Registered inside setup(api) in an integration extension
 api.tool({
-  name: "jira_update_issue",
-  description: "Update status, labels, or post comments to a Jira issue",
+  name: "tracker_update_issue",
+  description: "Update status, labels, or post comments on an external issue",
   parameters: {
     type: "object",
     properties: {
-      issueKey: { type: "string", description: "Jira Issue Key (e.g. PROJ-123)" },
+      issueKey: { type: "string", description: "External issue key" },
       comment: { type: "string", description: "Comment text to post" },
-      status: { type: "string", description: "Target Jira status transition" },
+      status: { type: "string", description: "Target status transition" },
     },
     required: ["issueKey"],
   },
   execute: async (params, ctx) => {
-    await jiraClient.updateIssue(params);
+    await trackerClient.updateIssue(params);
     return { success: true, message: `Updated ${params.issueKey}` };
   },
 });
 ```
 
-### Common Integration Tools
-
-- **Jira Integration:** Fetching issue metadata (`jira_get_issue`), updating status (`jira_update_issue`), or posting comments.
-- **GitLab Integration:** Reading merge request metadata, posting inline code review comments, or triggering pipeline re-runs.
-- **Custom Service Integration:** Authors can register custom tools for internal APIs, database queries, or third-party webhooks.
+Authors register tools for whatever external systems their extension owns (issue trackers, VCS providers, internal APIs). There is no fixed monorepo catalog of Jira/GitLab tools.
 
 ## 3. Interactive Tools (`ask_questions`)
 

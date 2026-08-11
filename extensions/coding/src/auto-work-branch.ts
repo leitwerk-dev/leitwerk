@@ -43,11 +43,6 @@ export function slugifyBranchSourceForBranch(sourceText: string): string {
 	return slug || "change";
 }
 
-/** @deprecated Use slugifyBranchSourceForBranch. */
-export const slugifyPromptForBranch = slugifyBranchSourceForBranch;
-/** @deprecated Use slugifyBranchSourceForBranch. */
-export const slugifyTitleForBranch = slugifyBranchSourceForBranch;
-
 function normalizeSha(value: string): string {
 	const sha = value.trim().toLowerCase();
 	if (!/^[0-9a-f]{7,64}$/.test(sha)) {

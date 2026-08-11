@@ -100,8 +100,6 @@ describe("startStaleHeartbeatWatchdog", () => {
 		await flushAsyncWork();
 
 		expect(deps.leases.getByInstance(process.id)?.state).toBe("failed");
-		// TODO: stale heartbeat parking needs investigation
-		// expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("error");
 		expect(kill).toHaveBeenCalled();
 		expect(
 			frames.some(

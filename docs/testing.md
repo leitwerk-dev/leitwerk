@@ -12,8 +12,10 @@ This guide explains how to test code across the Leitwerk monorepo. Read this doc
 # Run full monorepo build, lint, typecheck, and test suite (mandatory gate)
 npm run test:full
 
-# Run tests in watch mode during development
-npm run test
+# Layered Vitest projects (rebuild first if dist/ may be stale)
+npm run test:unit
+npm run test:integration
+npm run test:e2e
 
 # Rebuild packages if tests fail in dist/ due to stale build artifacts
 npm run build
@@ -39,7 +41,7 @@ Turborepo entry point.
 
 ### Core Principles
 
-- **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic provider and model fakes rather than broad mocks.
+- **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeLlmProvider` and extension-owned fakes) rather than broad mocks.
 - **Avoid Change Detector Tests:** Tests verify business behavior, not implementation details. For example, prompt tests assert runtime variable interpolation and sentinel values—never literal prompt prose—so harmless text edits don't break tests.
 
 ---
