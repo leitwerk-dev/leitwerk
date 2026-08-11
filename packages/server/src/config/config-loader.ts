@@ -147,6 +147,15 @@ const authOidcProviderSchema = v.looseObject({
 	identity_claim: v.optional(authNonEmptyString),
 });
 
+const authGithubProviderSchema = v.looseObject({
+	id: v.literal("github"),
+	kind: v.literal("oauth2"),
+	client_id: authNonEmptyString,
+	client_secret: authNonEmptyString,
+	organization: authNonEmptyString,
+	redirect_uri: v.optional(authNonEmptyString),
+});
+
 const authConfigSchema = v.looseObject({
 	enabled: v.optional(v.boolean()),
 	session: v.optional(
@@ -155,7 +164,9 @@ const authConfigSchema = v.looseObject({
 			ttl: v.optional(authNonEmptyString),
 		}),
 	),
-	providers: v.optional(v.array(authOidcProviderSchema)),
+	providers: v.optional(
+		v.array(v.variant("kind", [authOidcProviderSchema, authGithubProviderSchema])),
+	),
 	allowlist: v.optional(stringArraySchema),
 });
 
@@ -735,7 +746,9 @@ function collectAuthConfigErrors(config: LeitwerkConfig): string[] {
 	}
 	const providers = auth.providers ?? [];
 	if (providers.length === 0) {
-		errors.push("auth.providers must include one OIDC provider when auth.enabled is true");
+		errors.push(
+			"auth.providers must include one authentication provider when auth.enabled is true",
+		);
 	}
 	if (providers.length > 1) {
 		errors.push("auth.providers currently supports exactly one provider");
@@ -744,7 +757,7 @@ function collectAuthConfigErrors(config: LeitwerkConfig): string[] {
 		errors.push("server.base_url must use https when auth is enabled, except for localhost");
 	}
 	for (const [index, provider] of providers.entries()) {
-		if (!isHttpsOrLoopbackHttpUrl(provider.issuer)) {
+		if (provider.kind === "oidc" && !isHttpsOrLoopbackHttpUrl(provider.issuer)) {
 			errors.push(
 				`auth.providers[${index}].issuer must be an absolute https URL, except for localhost`,
 			);

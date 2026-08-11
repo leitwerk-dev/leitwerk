@@ -37,18 +37,21 @@ server:
 
 auth:
   enabled: true
-  provider: oidc
-  issuer: https://auth.example.com
-  client_id: leitwerk-client
-  allowlist: ["operator@example.com"]
+  providers:
+    - id: github
+      kind: oauth2
+      client_id: leitwerk-client
+      client_secret: replace-me
+      organization: example-org
 
 internal_tls:
   enabled: true
   server_ca_file: /etc/leitwerk/ca.crt
 ```
 
-- `auth.enabled`: When true, protects `/api/*` and `/ws` behind OIDC authentication.
-- `auth.allowlist`: Email addresses permitted to authenticate and operate processes.
+- `auth.enabled`: When true, protects `/api/*` and `/ws` behind configured authentication.
+- OIDC providers authorize identities through `auth.allowlist`. The native GitHub OAuth provider instead requires active membership in its configured organization and requests `read:org` so private membership works.
+- GitHub OAuth Apps must register `<server.base_url>/auth/callback` as their callback URL.
 - `internal_tls.enabled`: Enforces encrypted HTTPS/WSS transport between server and worker pods.
 
 ---

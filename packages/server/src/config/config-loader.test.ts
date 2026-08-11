@@ -659,6 +659,25 @@ describe("auth config validation", () => {
 		expect(errorsFor(testAuthConfig({ auth: { allowlist: [] } }))).toEqual([]);
 	});
 
+	it("accepts GitHub OAuth with organization membership authorization", () => {
+		const config = getDefaultConfig();
+		config.server.base_url = "https://leitwerk.example.test";
+		config.auth = {
+			enabled: true,
+			providers: [
+				{
+					id: "github",
+					kind: "oauth2",
+					client_id: "client",
+					client_secret: "secret",
+					organization: "leitwerk-dev",
+				},
+			],
+		};
+
+		expect(errorsFor(config)).toEqual([]);
+	});
+
 	it("does not enable or validate provider wiring unless auth.enabled is true", () => {
 		const config = testAuthConfig({
 			baseUrl: "http://leitwerk.example.test",
@@ -675,7 +694,7 @@ describe("auth config validation", () => {
 	it("fails closed for enabled auth without a configured provider", () => {
 		const errors = errorsFor(testAuthConfig({ auth: { providers: [] } }));
 
-		expectErrorContaining(errors, "auth.providers", "one OIDC provider");
+		expectErrorContaining(errors, "auth.providers", "one authentication provider");
 	});
 
 	it("rejects invalid auth provider URLs", () => {

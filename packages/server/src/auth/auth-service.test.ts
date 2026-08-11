@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
+import type { AuthClient } from "./auth-client.js";
 import { resolveAuthConfig } from "./auth-config.js";
 import { actorFromOidcClaims, createAuthService } from "./auth-service.js";
 import { testAuthConfig } from "./auth-test-helpers.js";
@@ -60,6 +61,51 @@ describe("OIDC actor derivation", () => {
 });
 
 describe("auth service login flow", () => {
+	it("creates a session for a GitHub organization member authenticated by its adapter", async () => {
+		const config = getDefaultConfig();
+		config.server.base_url = "https://leitwerk.example.test";
+		config.auth = {
+			enabled: true,
+			providers: [
+				{
+					id: "github",
+					kind: "oauth2",
+					client_id: "client",
+					client_secret: "secret",
+					organization: "leitwerk-dev",
+				},
+			],
+		};
+		const authClient: AuthClient = {
+			async createAuthorizationRequest(provider) {
+				return {
+					provider,
+					state: "github-state",
+					pkceVerifier: "unused",
+					redirectUrl: "https://github.com/login/oauth/authorize",
+				};
+			},
+			async exchangeCallback() {
+				return { claims: { login: "alice", name: "Alice" } };
+			},
+		};
+		const repos = createAllRepos(createInMemoryDatabase());
+		const service = createAuthService({ config, repos, authClient });
+		const flow = await service.startLogin();
+
+		const completed = await service.completeLogin({
+			loginCookieValue: flow.cookieValue,
+			callbackUrl: new URL("https://leitwerk.example.test/auth/callback?code=c&state=github-state"),
+		});
+
+		expect(completed.actor).toMatchObject({
+			id: "github:alice",
+			provider: "github",
+			displayName: "Alice",
+		});
+		expect(service.resolveSession(completed.sessionCookieValue)).toEqual(completed.actor);
+	});
+
 	it("creates a session for an allowlisted OIDC identity and resolves it from the opaque cookie", async () => {
 		let observedState = "";
 		const oidcClient: OidcClient = {
