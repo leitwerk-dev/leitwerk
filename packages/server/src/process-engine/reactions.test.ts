@@ -78,7 +78,7 @@ describe("ProcessEngine reactions", () => {
 					},
 				}) as never,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const input = deps.inputs.create({
 			instanceId: process.id,
 			sequence: 1,
@@ -104,7 +104,7 @@ describe("ProcessEngine reactions", () => {
 
 	it("logs and continues when extension event handlers fail", async () => {
 		const loggedErrors: Record<string, unknown>[] = [];
-		const process = createTestDeps().processes.create({ processId: "jira_issue_process" });
+		const process = createTestDeps().processes.create({ processId: "ticket_issue_process" });
 		const deps = createDeps({
 			extensionHost: {
 				emit: async () => {
@@ -157,7 +157,7 @@ describe("ProcessEngine reactions", () => {
 				},
 			} as never,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const input = deps.inputs.create({
 			instanceId: process.id,
 			sequence: 1,
@@ -199,7 +199,7 @@ describe("ProcessEngine reactions", () => {
 					},
 				}) as never,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const input = deps.inputs.create({
 			instanceId: process.id,
 			sequence: 1,

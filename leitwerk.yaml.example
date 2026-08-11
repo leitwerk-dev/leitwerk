@@ -205,23 +205,11 @@ process_configs:
   poem_creator_process:
     watchers:
       create_poem:
-        type: filesystem
         enabled: true
         poll_interval: 1s
         file_path: /tmp/create-poem
         # launch:
         #   default_model_profile: deepseek-v4-flash
-  # forgejo_repo_change_process:
-  #   watchers:
-  #     use_leitwerk:
-  #       type: forgejo_issue
-  #       enabled: true
-  #       profile: homeserver
-  #       poll_interval: 30s
-  #       labels:
-  #         trigger: use-leitwerk
-  #         done: leitwerk-done
-
 notifications:
   all:
     enabled: false

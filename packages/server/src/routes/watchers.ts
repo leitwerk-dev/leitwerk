@@ -41,51 +41,21 @@ function summarizeLaunchModelConfig(
 }
 
 function buildWatcherSummary(watcher: RegisteredProcessWatcherLike): WatcherSummary {
-	const base = {
+	const launchModel = summarizeLaunchModelConfig(watcher.launchModelConfig);
+	return {
 		processId: watcher.processId,
 		processDisplayName: watcher.processDisplayName,
 		watcherId: watcher.watcherId,
 		label: watcher.watcherLabel,
 		description: watcher.watcherDescription,
+		sourceId: watcher.sourceId,
+		sourceLabel: watcher.sourceLabel,
 		enabled: watcher.enabled,
-		pollInterval: watcher.pollInterval,
 		configPath: watcher.configPath,
-		launchModel: summarizeLaunchModelConfig(watcher.launchModelConfig),
+		launchModel,
+		targetSummary: watcher.presentation.targetSummary,
+		details: [...(watcher.presentation.details ?? [])],
 	};
-	switch (watcher.config.type) {
-		case "jira":
-			return {
-				...base,
-				type: "jira",
-				targetSummary: `Jira project ${watcher.config.project} · trigger ${watcher.config.labels.trigger}`,
-				project: watcher.config.project,
-				labels: watcher.config.labels,
-				targetBranchLabelPrefix: watcher.config.target_branch_label_prefix,
-			};
-		case "gitlab_mr":
-			return {
-				...base,
-				type: "gitlab_mr",
-				targetSummary: `GitLab group ${watcher.config.group} · trigger ${watcher.config.labels.trigger}`,
-				group: watcher.config.group,
-				labels: watcher.config.labels,
-			};
-		case "filesystem":
-			return {
-				...base,
-				type: "filesystem",
-				targetSummary: `File ${watcher.config.file_path}`,
-				filePath: watcher.config.file_path,
-			};
-		case "forgejo_issue":
-			return {
-				...base,
-				type: "forgejo_issue",
-				targetSummary: `Forgejo profile ${watcher.config.profile} · trigger ${watcher.config.labels.trigger}`,
-				profile: watcher.config.profile,
-				labels: watcher.config.labels,
-			};
-	}
 }
 
 export function registerWatcherRoutes(app: FastifyInstance, deps: WatcherRouteDeps): void {

@@ -88,7 +88,7 @@ function setup(options: { defaultAccount?: () => string | undefined } = {}) {
 async function executeDueApproval(harness: ReturnType<typeof setup>) {
 	await harness.modelStatusCache.refresh();
 	const process = harness.deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		defaultModelProfileId: "scheduled-model",
 		lifecycleStatus: "waiting",

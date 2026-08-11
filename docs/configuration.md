@@ -138,5 +138,5 @@ extensions:
 Development compositions may add extension sources from a separate npm workspace without changing production configuration. See [Development Compositions](development-composition.md).
 
 Provider-backed watchers live under the target process configuration. See
-[Process Watchers](watchers.md) for a Forgejo example. Profile secrets remain
+[Process Watchers](watchers.md) for an extension-owned source example. Profile secrets remain
 server-only; LLM turns access providers through declared integration tools.

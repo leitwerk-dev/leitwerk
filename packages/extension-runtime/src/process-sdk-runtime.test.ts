@@ -11,6 +11,7 @@ import {
 	createUiProcessBuilder,
 	createWorkerProcessBuilder,
 	defineProcess,
+	defineProcessWatcherSource,
 	getProcessGraph,
 	humanTurn,
 	llmTurn,
@@ -66,6 +67,13 @@ describe("createEventBus", () => {
 		expect(() => bus.emit("e", null)).not.toThrow();
 		expect(good).toHaveBeenCalledWith(null);
 	});
+});
+
+const testWatcherSource = defineProcessWatcherSource<Record<string, never>>({
+	id: "test_source",
+	label: "Test source",
+	parseConfig: () => ({ config: {}, enabled: true }),
+	presentConfig: () => ({ targetSummary: "Test target" }),
 });
 
 describe("createWorkerProcessBuilder", () => {
@@ -565,7 +573,7 @@ describe("process builders", () => {
 			id: "fs_repo",
 			label: "Filesystem Repo",
 			description: "Launch from filesystem events",
-			type: "filesystem",
+			source: testWatcherSource,
 			resolveLaunchConfig: () => ({
 				processId: "test_process",
 				params: { repoPath: "/tmp/repo" },
@@ -581,7 +589,7 @@ describe("process builders", () => {
 			id: "duplicate",
 			label: "First",
 			description: "First watcher",
-			type: "filesystem",
+			source: testWatcherSource,
 			resolveLaunchConfig: () => ({ processId: "test_process", params: {} }),
 		});
 
@@ -590,7 +598,7 @@ describe("process builders", () => {
 				id: "duplicate",
 				label: "Second",
 				description: "Second watcher",
-				type: "filesystem",
+				source: testWatcherSource,
 				resolveLaunchConfig: () => ({ processId: "test_process", params: {} }),
 			}),
 		).toThrow(/already registered/);
@@ -921,13 +929,13 @@ describe("extension host setup", () => {
 	it("runs server setup hooks in catalog dependency order", async () => {
 		const calls: string[] = [];
 		const dependency: LeitwerkExtensionModule = {
-			manifest: { id: "jira", version: "0.1.0" },
+			manifest: { id: "ticket", version: "0.1.0" },
 			async setupServer() {
-				calls.push("jira");
+				calls.push("ticket");
 			},
 		};
 		const extension: LeitwerkExtensionModule = {
-			manifest: { id: "implement", version: "0.1.0", requires: ["jira"] },
+			manifest: { id: "implement", version: "0.1.0", requires: ["ticket"] },
 			async setupServer() {
 				calls.push("implement");
 			},
@@ -944,7 +952,7 @@ describe("extension host setup", () => {
 			onStart() {},
 			onStop() {},
 		});
-		expect(calls).toEqual(["jira", "implement"]);
+		expect(calls).toEqual(["ticket", "implement"]);
 	});
 
 	it("runs worker setup hooks with a shared event bus", async () => {

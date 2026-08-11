@@ -1,23 +1,12 @@
 import { type Actor, type ActorKind, SYSTEM_ACTOR } from "./domain-model.js";
 
 const ACTOR_KINDS: readonly ActorKind[] = ["user", "channel", "system"];
-const ACTOR_PROVIDERS: ReadonlyArray<NonNullable<Actor["provider"]>> = [
-	"forgejo",
-	"gitlab",
-	"telegram",
-];
-
 function isActorKind(value: unknown): value is ActorKind {
 	return typeof value === "string" && (ACTOR_KINDS as readonly string[]).includes(value);
 }
 
 function normalizeProvider(value: unknown): Actor["provider"] {
-	if (typeof value !== "string") {
-		return null;
-	}
-	return (ACTOR_PROVIDERS as readonly string[]).includes(value)
-		? (value as NonNullable<Actor["provider"]>)
-		: null;
+	return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
 /**

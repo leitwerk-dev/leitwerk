@@ -50,7 +50,7 @@ const implement = flow
   .llm<Params, State>("implement")
   .description("Implement requested change")
   .tools("read", "bash", "edit", "write")
-  .integrationTools("forgejo_get_pull_request", "woodpecker_get_step_logs")
+  .integrationTools("repository_get_change", "pipeline_get_step_logs")
   .freshPrimary()
   .buildPrompt((ctx) => `Implement this task:\n${ctx.params.prompt}`)
   .publish("summary")
@@ -179,7 +179,7 @@ Every process requires a way to be launched (constructing its initial parameters
 
 ### 1. Launchers (`api.launcher`)
 
-A **Launcher** defines the canonical field schema and resolution logic for starting a process. Client interfaces—including the Web UI dashboard, Telegram bot wizards (`/launch`), and CLI tools—read this schema to prompt operators for inputs:
+A **Launcher** defines the canonical field schema and resolution logic for starting a process. Client interfaces—including the Web UI dashboard, extension-provided chat adapters, and CLI tools—read this schema to prompt operators for inputs:
 
 ```ts
 // Registered inside setup(api) in src/index.ts
@@ -204,17 +204,18 @@ api.launcher({
 
 ### 2. Watchers (`api.watcher`)
 
-A **Watcher** monitors external event queues (such as Jira issues, GitLab pull requests, or filesystem directories) and constructs launch configs automatically without human interaction:
+A **Watcher** monitors an extension-owned event source and constructs launch configs automatically without human interaction. The extension defines the typed source, configuration parser, presentation, and provider adapter:
 
 ```ts
 api.watcher({
-  id: "filesystem_watcher",
-  displayName: "Filesystem Prompt Watcher",
-  type: "filesystem",
+  id: "incoming_work",
+  label: "Incoming work",
+  description: "Launch from discovered work",
+  source: workQueueSource,
   resolveLaunchConfig: async (event) => ({
     processId: "my_custom_process",
-    params: { prompt: event.content },
-    projects: [{ key: "repo", repoLocator: event.repoPath, baseBranch: "main" }],
+    params: { prompt: event.summary },
+    externalId: event.itemId,
   }),
 });
 ```
@@ -223,15 +224,15 @@ Watchers are enabled in `leitwerk.yaml` under `process_configs.<processId>.watch
 
 ### External Actions
 
-An **External Action** arms a provider trigger while a human turn remains selected (e.g. waiting for a GitLab merge request to be merged or a review feedback file to be written):
+An **External Action** arms a provider trigger while a human turn remains selected (for example, waiting for a change request to merge or a review feedback file to be written):
 
 ```ts
 const reviewTurn = flow
   .human<Params, State>("implementation_review")
   .description("Review implementation")
   .externalAction(
-    "gitlab_mr_merged",
-    gitlabExternal.mergeRequestMerged({ projectKey: "app" }),
+    "change_merged",
+    codeHostExternal.changeMerged({ projectKey: "app" }),
     (external) => external.label("Merge request merged").complete(),
   );
 ```

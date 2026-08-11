@@ -196,7 +196,7 @@ describe("ProcessesPage", () => {
 		setBrowseState({
 			facets: {
 				statusCounts: { ...EMPTY_COUNTS, all: 4, needs_attention: 1 },
-				processTypes: [{ value: "jira_issue_process", label: "Jira issue", count: 1 }],
+				processTypes: [{ value: "ticket_issue_process", label: "Ticket issue", count: 1 }],
 			},
 		});
 		const target = mountSubject();
@@ -206,7 +206,7 @@ describe("ProcessesPage", () => {
 		await flush();
 		const select = target.querySelector<HTMLSelectElement>('[data-filter="process-type"]');
 		if (!select) throw new Error("Process type filter missing");
-		select.value = "jira_issue_process";
+		select.value = "ticket_issue_process";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
 		await new Promise((resolve) => setTimeout(resolve, 5));
@@ -215,13 +215,13 @@ describe("ProcessesPage", () => {
 			limit: 100,
 			query: "",
 			status: "needs_attention",
-			processType: "jira_issue_process",
+			processType: "ticket_issue_process",
 			sortKey: "timeline",
 			sortDirection: "desc",
 		});
 		expect(readProcessBrowserView(window.localStorage)).toEqual({
 			status: "needs_attention",
-			processType: "jira_issue_process",
+			processType: "ticket_issue_process",
 			sort: { key: "timeline", direction: "desc" },
 		});
 	});

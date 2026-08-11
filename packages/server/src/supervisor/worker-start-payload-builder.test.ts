@@ -16,9 +16,9 @@ describe("buildWorkerConfigSnapshot", () => {
 			session: { cookie_name: "orch", ttl: "1h" },
 			providers: [
 				{
-					id: "forgejo",
+					id: "identity",
 					kind: "oidc",
-					issuer: "https://forgejo.example.test",
+					issuer: "https://identity.example.test",
 					client_id: "client",
 					client_secret: "secret",
 				},
@@ -66,7 +66,7 @@ describe("worker.start runtime settings", () => {
 		config.workers.turn_inactivity_timeout = "10m";
 		config.workers.turn_abort_grace_period = "10s";
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -121,7 +121,7 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			{ id: "openai", provider: "openai", model_id: "gpt-test", thinking_level: "off" },
 		];
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			selectedTurnModelProfileId: "openai",
 			lifecycleStatus: "active",

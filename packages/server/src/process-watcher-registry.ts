@@ -7,53 +7,31 @@ import type {
 	ProcessLaunchConfig,
 	ProcessLaunchPlan,
 	ProcessWatcherDefinition,
+	ProcessWatcherPresentation,
+	ProcessWatcherServiceLike,
+	ProcessWatcherSource,
+	RegisteredProcessWatcherLike,
+	ResolvedProcessWatcherStartLike,
 } from "@leitwerk-dev/process-sdk";
 import { buildProcessWatchers } from "@leitwerk-dev/process-sdk";
-import type { ProcessWatcherType } from "@leitwerk-dev/protocol";
-import type {
-	ProcessWatcherConfigSnapshot,
-	WatcherLaunchConfigSnapshot,
-} from "@leitwerk-dev/protocol/config-snapshot";
 import type { LeitwerkConfig } from "./config/config-types.js";
 import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
 
-export interface RegisteredProcessWatcherLike {
-	processId: string;
-	processDisplayName: string;
-	watcherId: string;
-	watcherLabel: string;
-	watcherDescription: string;
-	type: ProcessWatcherType;
-	enabled: boolean;
-	pollInterval: string;
-	configPath: string;
-	config: ProcessWatcherConfigSnapshot;
-	launchModelConfig: LaunchModelConfigInputLike;
-}
-
-export interface ResolvedProcessWatcherStartLike {
-	watcher: RegisteredProcessWatcherLike;
-	launchPlan: ProcessLaunchPlan;
-}
-
-export interface ProcessWatcherServiceLike {
-	listAll(): readonly RegisteredProcessWatcherLike[];
-	listByType(type: ProcessWatcherType): readonly RegisteredProcessWatcherLike[];
-	resolveLaunch(
-		processId: string,
-		watcherId: string,
-		payload: unknown,
-		ctx?: LauncherContext,
-	): Promise<ResolvedProcessWatcherStartLike | null>;
-}
+export type {
+	ProcessWatcherServiceLike,
+	RegisteredProcessWatcherLike,
+	ResolvedProcessWatcherStartLike,
+};
 
 interface RegisteredProcessWatcher {
 	processId: string;
 	processDisplayName: string;
 	processDef: ExtensionProcessDefinition;
 	definition: ProcessWatcherDefinition;
-	config: ProcessWatcherConfigSnapshot;
+	config: unknown;
+	enabled: boolean;
+	presentation: ProcessWatcherPresentation;
 	configPath: string;
 	launchModelConfig: LaunchModelConfigInputLike;
 }
@@ -80,7 +58,7 @@ function buildLaunchPlan(
 		launcherId: `${watcher.processId}.${watcher.definition.id}`,
 		metadataAdditions: {
 			processWatcherId: watcher.definition.id,
-			processWatcherType: watcher.definition.type,
+			processWatcherSourceId: watcher.definition.source.id,
 			processWatcherConfigPath: watcher.configPath,
 		},
 		errorSubject: `Process watcher '${watcher.definition.id}'`,
@@ -88,35 +66,41 @@ function buildLaunchPlan(
 	});
 }
 
-function buildWatcherLaunchModelConfig(
-	launch: WatcherLaunchConfigSnapshot | undefined,
-): LaunchModelConfigInputLike {
-	const turnConfigs = Object.fromEntries(
-		Object.entries(launch?.turn_configs ?? {}).map(([turnId, turnConfig]) => [
-			turnId,
-			{ modelProfileId: turnConfig.model_profile ?? null },
-		]),
-	);
-	return {
-		defaultModelProfileId: launch?.default_model_profile ?? null,
-		turnConfigs,
-	};
-}
-
-function buildRegistrationView(watcher: RegisteredProcessWatcher): RegisteredProcessWatcherLike {
-	return {
-		processId: watcher.processId,
-		processDisplayName: watcher.processDisplayName,
-		watcherId: watcher.definition.id,
-		watcherLabel: watcher.definition.label,
-		watcherDescription: watcher.definition.description,
-		type: watcher.definition.type,
-		enabled: watcher.config.enabled,
-		pollInterval: watcher.config.poll_interval,
-		configPath: watcher.configPath,
-		config: structuredClone(watcher.config),
-		launchModelConfig: structuredClone(watcher.launchModelConfig),
-	};
+function parseConfiguredWatcher(input: {
+	processId: string;
+	processDisplayName: string;
+	processDef: ExtensionProcessDefinition;
+	definition: ProcessWatcherDefinition;
+	rawConfig: unknown;
+	configPath: string;
+}): RegisteredProcessWatcher {
+	try {
+		const parsed = input.definition.source.parseConfig(input.rawConfig);
+		if (typeof parsed.enabled !== "boolean") {
+			throw new Error("parseConfig() must return a boolean enabled value");
+		}
+		const presentation = input.definition.source.presentConfig(parsed.config);
+		if (presentation.targetSummary.trim() === "") {
+			throw new Error("presentConfig() must return a non-empty targetSummary");
+		}
+		return {
+			processId: input.processId,
+			processDisplayName: input.processDisplayName,
+			processDef: input.processDef,
+			definition: input.definition,
+			config: parsed.config,
+			enabled: parsed.enabled,
+			presentation,
+			configPath: input.configPath,
+			launchModelConfig: parsed.launchModelConfig ?? {
+				defaultModelProfileId: null,
+				turnConfigs: {},
+			},
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		throw new Error(`${input.configPath}: ${message}`, { cause: error });
+	}
 }
 
 function watcherKey(processId: string, watcherId: string): string {
@@ -131,15 +115,16 @@ function validateWatcherLaunchModelConfig(
 	const errors: string[] = [];
 	const schema = policy.project({ kind: "launcher_schema", processId });
 	const llmTurnIds = new Set(schema.turns.map((turn) => turn.turnId));
-	// Watcher launch profiles are inherited server defaults. Unknown or newly
-	// disallowed profiles are skipped when the launch plan is prepared; only
-	// structural turn mistakes make watcher configuration invalid at startup.
 	for (const turnId of Object.keys(modelConfig.turnConfigs ?? {})) {
 		if (!llmTurnIds.has(turnId)) {
 			errors.push(`turn '${turnId}': is not a known LLM turn for process '${processId}'`);
 		}
 	}
 	return errors;
+}
+
+function configuredWatcherEntries(config: LeitwerkConfig, processId: string) {
+	return Object.entries(config.process_configs?.[processId]?.watchers ?? {});
 }
 
 export function validateConfiguredProcessWatchersAgainstCatalog(input: {
@@ -149,34 +134,35 @@ export function validateConfiguredProcessWatchersAgainstCatalog(input: {
 }): string[] {
 	const errors: string[] = [];
 	for (const [processId, processConfig] of Object.entries(input.config.process_configs ?? {})) {
-		if (!input.catalog.processes.has(processId)) {
-			continue;
-		}
 		const processDef = input.catalog.processes.get(processId);
-		if (!processDef) {
-			continue;
-		}
+		if (!processDef) continue;
 		const built = collectProcessWatchers(processDef);
-		const configuredWatchers =
-			(processConfig as { watchers?: Record<string, ProcessWatcherConfigSnapshot> }).watchers ?? {};
-		for (const [watcherId, watcherConfig] of Object.entries(configuredWatchers)) {
+		for (const [watcherId, rawConfig] of Object.entries(processConfig.watchers ?? {})) {
+			const configPath = `process_configs.${processId}.watchers.${watcherId}`;
 			const watcherDef = built.get(watcherId);
 			if (!watcherDef) {
-				errors.push(
-					`Unknown watcher '${watcherId}' at process_configs.${processId}.watchers.${watcherId}`,
-				);
+				errors.push(`Unknown watcher '${watcherId}' at ${configPath}`);
 				continue;
 			}
-			if (watcherDef.type !== watcherConfig.type) {
-				errors.push(
-					`Watcher '${watcherId}' at process_configs.${processId}.watchers.${watcherId} configured type '${watcherConfig.type}' does not match declared watcher type '${watcherDef.type}'`,
-				);
+			let watcher: RegisteredProcessWatcher;
+			try {
+				watcher = parseConfiguredWatcher({
+					processId,
+					processDisplayName: processDef.displayName,
+					processDef,
+					definition: watcherDef,
+					rawConfig,
+					configPath,
+				});
+			} catch (error) {
+				errors.push(error instanceof Error ? error.message : String(error));
+				continue;
 			}
 			if (input.processModelPolicy) {
 				errors.push(
 					...validateWatcherLaunchModelConfig(
 						processId,
-						buildWatcherLaunchModelConfig(watcherConfig.launch),
+						watcher.launchModelConfig,
 						input.processModelPolicy,
 					),
 				);
@@ -192,29 +178,22 @@ export function buildProcessWatcherRegistry(
 	options: ProcessWatcherRegistryOptions = {},
 ): ProcessWatcherServiceLike {
 	const watchers = new Map<string, RegisteredProcessWatcher>();
-
 	for (const [processId, processDef] of catalog.processes) {
 		const built = collectProcessWatchers(processDef);
-		const processWatchers =
-			(
-				config.process_configs?.[processId] as
-					| { watchers?: Record<string, ProcessWatcherConfigSnapshot> }
-					| undefined
-			)?.watchers ?? {};
-		for (const [watcherId, watcherConfig] of Object.entries(processWatchers)) {
+		for (const [watcherId, rawConfig] of configuredWatcherEntries(config, processId)) {
 			const watcherDef = built.get(watcherId);
-			if (!watcherDef || watcherDef.type !== watcherConfig.type) {
-				continue;
-			}
-			watchers.set(watcherKey(processId, watcherId), {
-				processId,
-				processDisplayName: processDef.displayName,
-				processDef,
-				definition: watcherDef,
-				config: watcherConfig,
-				configPath: `process_configs.${processId}.watchers.${watcherId}`,
-				launchModelConfig: buildWatcherLaunchModelConfig(watcherConfig.launch),
-			});
+			if (!watcherDef) continue;
+			watchers.set(
+				watcherKey(processId, watcherId),
+				parseConfiguredWatcher({
+					processId,
+					processDisplayName: processDef.displayName,
+					processDef,
+					definition: watcherDef,
+					rawConfig,
+					configPath: `process_configs.${processId}.watchers.${watcherId}`,
+				}),
+			);
 		}
 	}
 
@@ -222,7 +201,6 @@ export function buildProcessWatcherRegistry(
 		processId: string,
 	): readonly LauncherModelProfileSummary[] =>
 		options.getModelProfilesForProcess?.(processId) ?? options.modelProfiles ?? [];
-
 	const createWatcherContext = (processId: string, ctx: LauncherContext = {}): LauncherContext => ({
 		...ctx,
 		modelProfiles: ctx.modelProfiles ?? getDefaultModelProfilesForProcess(processId),
@@ -230,43 +208,48 @@ export function buildProcessWatcherRegistry(
 
 	const sortedWatchers = [...watchers.values()].sort((a, b) => {
 		const processCompare = a.processDisplayName.localeCompare(b.processDisplayName);
-		if (processCompare !== 0) {
-			return processCompare;
-		}
-		return a.definition.label.localeCompare(b.definition.label);
+		return processCompare !== 0
+			? processCompare
+			: a.definition.label.localeCompare(b.definition.label);
+	});
+
+	const buildRegistrationView = (
+		watcher: RegisteredProcessWatcher,
+	): RegisteredProcessWatcherLike => ({
+		processId: watcher.processId,
+		processDisplayName: watcher.processDisplayName,
+		watcherId: watcher.definition.id,
+		watcherLabel: watcher.definition.label,
+		watcherDescription: watcher.definition.description,
+		sourceId: watcher.definition.source.id,
+		sourceLabel: watcher.definition.source.label,
+		enabled: watcher.enabled,
+		configPath: watcher.configPath,
+		config: structuredClone(watcher.config),
+		presentation: structuredClone(watcher.presentation),
+		launchModelConfig: structuredClone(watcher.launchModelConfig),
+		async resolveLaunch(event: unknown, ctx: LauncherContext = {}) {
+			const watcherContext = createWatcherContext(watcher.processId, ctx);
+			if (watcher.definition.matches) {
+				const matches = await watcher.definition.matches(event, watcherContext);
+				if (!matches) return null;
+			}
+			const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
+			return {
+				watcher: buildRegistrationView(watcher),
+				launchPlan: buildLaunchPlan(watcher, launchConfig, config.commit_messages),
+			};
+		},
 	});
 
 	return {
 		listAll() {
 			return sortedWatchers.map(buildRegistrationView);
 		},
-		listByType(type: ProcessWatcherType) {
+		listBySource<TConfig, TEvent>(source: ProcessWatcherSource<TConfig, TEvent>) {
 			return sortedWatchers
-				.filter((watcher) => watcher.definition.type === type)
-				.map(buildRegistrationView);
-		},
-		async resolveLaunch(
-			processId: string,
-			watcherId: string,
-			payload: unknown,
-			ctx: LauncherContext = {},
-		) {
-			const watcher = watchers.get(watcherKey(processId, watcherId));
-			if (!watcher) {
-				return null;
-			}
-			const watcherContext = createWatcherContext(processId, ctx);
-			if (watcher.definition.matches) {
-				const matches = await watcher.definition.matches(payload, watcherContext);
-				if (!matches) {
-					return null;
-				}
-			}
-			const launchConfig = await watcher.definition.resolveLaunchConfig(payload, watcherContext);
-			return {
-				watcher: buildRegistrationView(watcher),
-				launchPlan: buildLaunchPlan(watcher, launchConfig, config.commit_messages),
-			};
+				.filter((watcher) => watcher.definition.source === source)
+				.map(buildRegistrationView) as RegisteredProcessWatcherLike<TConfig, TEvent>[];
 		},
 	};
 }

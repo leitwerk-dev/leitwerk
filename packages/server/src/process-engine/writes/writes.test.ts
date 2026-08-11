@@ -1,6 +1,12 @@
-import { ADMIN_ACTOR, SYSTEM_ACTOR, TELEGRAM_ACTOR } from "@leitwerk-dev/domain";
+import { type Actor, ADMIN_ACTOR, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import { createWrites, stampActorOnEvents, stampActorOnQueuedInputs } from "./writes.js";
+
+const CHANNEL_ACTOR: Actor = {
+	id: "channel",
+	kind: "channel",
+	provider: "test_channel",
+};
 
 describe("stampActorOnEvents", () => {
 	it("stamps the actor onto every matching event and reports the count", () => {
@@ -53,8 +59,8 @@ describe("stampActorOnQueuedInputs", () => {
 				{
 					source: "external_comment",
 					kind: "instruction",
-					bodyMarkdown: "from telegram",
-					actor: TELEGRAM_ACTOR,
+					bodyMarkdown: "from chat",
+					actor: CHANNEL_ACTOR,
 				},
 			],
 		});
@@ -63,7 +69,7 @@ describe("stampActorOnQueuedInputs", () => {
 
 		expect(writes.queuedInputs[0]?.actor).toEqual(ADMIN_ACTOR);
 		// A pre-existing per-input actor is preserved over the command-level default.
-		expect(writes.queuedInputs[1]?.actor).toEqual(TELEGRAM_ACTOR);
+		expect(writes.queuedInputs[1]?.actor).toEqual(CHANNEL_ACTOR);
 	});
 
 	it("is a no-op when no actor is supplied", () => {

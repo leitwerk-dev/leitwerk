@@ -35,7 +35,6 @@ import { createAllRepos, createCredentialCipherFromEnvironment } from "./db/repo
 import { buildExtensionUiCatalog, type ExtensionUiCatalog } from "./extension-ui/catalog.js";
 import { createExtensionHost, type ExtensionHost } from "./extensions/extension-host.js";
 import { createExternalSourceService } from "./external-source-service.js";
-import { createFilesystemProcessWatchersService } from "./filesystem-process-watchers.js";
 import {
 	createFutureExecutionLifecycle,
 	type FutureExecutionLifecycle,
@@ -940,28 +939,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		broadcaster,
 		logger: app.log,
 	});
-
-	const filesystemProcessWatchers = createFilesystemProcessWatchersService({
-		processWatchers: processWatcherService,
-		launchPlans,
-		launchExecutorDeps: {
-			commitMessages: config.commit_messages,
-			processes: baseDeps.processes,
-			projects: baseDeps.projects,
-			processSkills: baseDeps.processSkills,
-			handoffDedupKeys: baseDeps.handoffDedupKeys,
-			futureExecutions: baseDeps.futureExecutions,
-			transaction: baseDeps.transaction,
-			broadcaster,
-			commands: processEngine,
-			processTitles,
-			extensionHost,
-			logger: app.log,
-		},
-		logger: app.log,
-	});
-	startHooks.push(() => filesystemProcessWatchers.start());
-	stopHooks.push(() => filesystemProcessWatchers.stop());
 
 	const processActionListDeps = {
 		projects: baseDeps.projects,

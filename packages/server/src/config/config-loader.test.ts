@@ -629,50 +629,15 @@ describe("validateConfig", () => {
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
-	it("rejects filesystem watchers that omit required runtime fields", () => {
+	it("keeps watcher configuration opaque until its extension source validates it", () => {
 		const config = getDefaultConfig();
 		config.process_configs = {
 			poem_creator_process: {
 				turn_configs: {},
 				watchers: {
 					create_poem: {
-						type: "filesystem",
+						custom_source_field: "extension-owned",
 					} as never,
-				},
-			},
-		};
-
-		const errors = validateConfig(config as unknown as Record<string, unknown>);
-		expect(
-			errors.some((error) =>
-				error.includes("process_configs.poem_creator_process.watchers.create_poem.enabled"),
-			),
-		).toBe(true);
-		expect(
-			errors.some((error) =>
-				error.includes("process_configs.poem_creator_process.watchers.create_poem.poll_interval"),
-			),
-		).toBe(true);
-		expect(
-			errors.some((error) =>
-				error.includes("process_configs.poem_creator_process.watchers.create_poem.file_path"),
-			),
-		).toBe(true);
-	});
-
-	it("accepts a Forgejo issue watcher", () => {
-		const config = getDefaultConfig();
-		config.process_configs = {
-			forgejo_repo_change_process: {
-				turn_configs: {},
-				watchers: {
-					use_leitwerk: {
-						type: "forgejo_issue",
-						enabled: true,
-						profile: "homeserver",
-						poll_interval: "30s",
-						labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
-					},
 				},
 			},
 		};
@@ -690,7 +655,7 @@ describe("auth config validation", () => {
 		expect(errors.some((error) => parts.every((part) => error.includes(part)))).toBe(true);
 	}
 
-	it("accepts a single Forgejo OIDC provider", () => {
+	it("accepts a single Identity OIDC provider", () => {
 		expect(errorsFor(testAuthConfig({ auth: { allowlist: [] } }))).toEqual([]);
 	});
 
@@ -698,7 +663,7 @@ describe("auth config validation", () => {
 		const config = testAuthConfig({
 			baseUrl: "http://leitwerk.example.test",
 			provider: {
-				issuer: "http://forgejo.example.test",
+				issuer: "http://identity.example.test",
 				redirect_uri: "http://leitwerk.example.test/auth/callback",
 			},
 		});
@@ -736,7 +701,7 @@ describe("auth config validation", () => {
 			testAuthConfig({
 				baseUrl: "http://leitwerk.example.test",
 				provider: {
-					issuer: "http://forgejo.example.test",
+					issuer: "http://identity.example.test",
 					redirect_uri: "http://leitwerk.example.test/auth/callback",
 				},
 			}),
@@ -780,9 +745,9 @@ describe("sanitizeConfigForLogging", () => {
 			enabled: true,
 			providers: [
 				{
-					id: "forgejo",
+					id: "identity",
 					kind: "oidc",
-					issuer: "https://forgejo.example.test",
+					issuer: "https://identity.example.test",
 					client_id: "client",
 					client_secret: "secret-token",
 				},
@@ -790,8 +755,8 @@ describe("sanitizeConfigForLogging", () => {
 			allowlist: ["alice"],
 		};
 		config.extensions = {
-			jira: {
-				url: "https://jira.example.test",
+			ticket: {
+				url: "https://ticket.example.test",
 				api_token: "secret-token",
 			},
 			chatops: {
@@ -809,16 +774,16 @@ describe("sanitizeConfigForLogging", () => {
 		const allChannel = notifications.all as Record<string, unknown>;
 		const squad = notifications.squad as Record<string, unknown>;
 		const squadRoutes = squad.routes as Record<string, unknown>;
-		const jira = extensions.jira as Record<string, unknown>;
+		const ticket = extensions.ticket as Record<string, unknown>;
 		const chatops = extensions.chatops as Record<string, unknown>;
 
 		expect((sanitized.server as Record<string, unknown>).base_url).toBe("http://127.0.0.1:8080");
-		expect(authProviders[0]?.issuer).toBe("https://forgejo.example.test");
+		expect(authProviders[0]?.issuer).toBe("https://identity.example.test");
 		expect(authProviders[0]?.client_secret).toBe("<redacted>");
 		expect(allChannel.url).toBe("<redacted>");
 		expect((squadRoutes.backend as Record<string, unknown>).url).toBe("<redacted>");
-		expect(jira.url).toBe("https://jira.example.test");
-		expect(jira.api_token).toBe("<redacted>");
+		expect(ticket.url).toBe("https://ticket.example.test");
+		expect(ticket.api_token).toBe("<redacted>");
 		expect(chatops.webhook).toBe("<redacted>");
 	});
 });

@@ -2000,8 +2000,10 @@ export abstract class FlowComponentBuilder<TParams = unknown, TState = unknown> 
 		return this;
 	}
 
-	watcher<TEvent = unknown>(
-		definitionOrHook: ProcessWatcherDefinition<TParams, TEvent> | Hook<ProcessWatcherAPI<TParams>>,
+	watcher<TEvent = unknown, TConfig = unknown>(
+		definitionOrHook:
+			| ProcessWatcherDefinition<TParams, TEvent, TConfig>
+			| Hook<ProcessWatcherAPI<TParams>>,
 	): this {
 		if (typeof definitionOrHook === "function") {
 			this.watcherHooks.push(definitionOrHook);

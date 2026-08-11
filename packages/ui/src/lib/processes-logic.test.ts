@@ -18,7 +18,7 @@ function ephemeralFrame(input: Parameters<typeof createEphemeralWsFrame>[0]) {
 function makeProcess(overrides: Partial<ProcessInstance> = {}): ProcessInstance {
 	return {
 		id: "agt_1",
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 		planRevision: 0,

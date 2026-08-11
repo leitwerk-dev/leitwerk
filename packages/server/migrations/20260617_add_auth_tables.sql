@@ -1,6 +1,6 @@
 -- Adds server-side SSO session and login-flow storage.
 -- Apply to configured storage.sqlite_path before starting code that expects
--- Forgejo/OIDC authentication tables. Existing auth-disabled installations do
+-- OIDC authentication tables. Existing auth-disabled installations do
 -- not need row backfills because these tables are new.
 
 CREATE TABLE IF NOT EXISTS auth_sessions (

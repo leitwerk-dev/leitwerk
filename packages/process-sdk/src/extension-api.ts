@@ -1,6 +1,7 @@
 import type {
 	InputKind,
 	InputSource,
+	LaunchModelConfigInput,
 	ProcessCustomizableFields,
 	ProcessInputTarget,
 	ProcessInstance,
@@ -10,7 +11,6 @@ import type {
 	ProcessTurnRecord,
 	TurnId,
 } from "@leitwerk-dev/domain";
-import type { ProcessWatcherType } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
 import type { FormDefinition } from "./form-contract.js";
 
@@ -138,15 +138,38 @@ export interface UiLauncherDefinition<TParams = unknown> {
 	): UiLauncherConfigResolution<TParams> | Promise<UiLauncherConfigResolution<TParams>>;
 }
 
-export interface ProcessWatcherDefinition<
-	TParams = unknown,
-	TEvent = unknown,
-	TType extends ProcessWatcherType = ProcessWatcherType,
-> {
+export interface ProcessWatcherPresentationField {
+	readonly label: string;
+	readonly value: string;
+	readonly format?: "text" | "code";
+}
+
+export interface ProcessWatcherPresentation {
+	readonly targetSummary: string;
+	readonly details?: readonly ProcessWatcherPresentationField[];
+}
+
+export interface ParsedProcessWatcherConfig<TConfig = unknown> {
+	readonly config: TConfig;
+	readonly enabled: boolean;
+	readonly launchModelConfig?: LaunchModelConfigInput;
+}
+
+/** A watcher source is defined and owned by the extension that implements it. */
+export interface ProcessWatcherSource<TConfig = unknown, TEvent = unknown> {
+	readonly id: string;
+	readonly label: string;
+	/** Type-only marker used to carry the provider event type across the source seam. */
+	readonly eventType?: TEvent;
+	parseConfig(raw: unknown): ParsedProcessWatcherConfig<TConfig>;
+	presentConfig(config: TConfig): ProcessWatcherPresentation;
+}
+
+export interface ProcessWatcherDefinition<TParams = unknown, TEvent = unknown, TConfig = unknown> {
 	id: string;
 	label: string;
 	description: string;
-	type: TType;
+	source: ProcessWatcherSource<TConfig, TEvent>;
 	matches?(event: TEvent, ctx: LauncherContext): boolean | Promise<boolean>;
 	resolveLaunchConfig(
 		event: TEvent,
@@ -476,8 +499,8 @@ export interface ProcessLauncherAPI<TParams = unknown> {
 }
 
 export interface ProcessWatcherAPI<TParams = unknown> {
-	watcher<TEvent = unknown, TType extends ProcessWatcherType = ProcessWatcherType>(
-		def: ProcessWatcherDefinition<TParams, TEvent, TType>,
+	watcher<TEvent = unknown, TConfig = unknown>(
+		def: ProcessWatcherDefinition<TParams, TEvent, TConfig>,
 	): void;
 }
 

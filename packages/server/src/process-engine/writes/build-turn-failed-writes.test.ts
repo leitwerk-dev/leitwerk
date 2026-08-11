@@ -14,7 +14,7 @@ describe("buildTurnFailedWrites", () => {
 	it("updates an existing turn record and parks the process in lifecycle error", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -92,7 +92,7 @@ describe("buildTurnFailedWrites", () => {
 	] as const)("records branch drift as non-continuable %s", (_name, recoveryContext) => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});

@@ -114,7 +114,7 @@ function recordAccepted(
 describe("ProcessEngine recorder", () => {
 	it("commits process writes, turn records, annotations, events, inputs, and future executions", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const future = deps.futureExecutions.create({
 			id: "fut_delete_me",
 			kind: "action",
@@ -193,7 +193,7 @@ describe("ProcessEngine recorder", () => {
 
 	it("rolls process writes back when a future-execution transition is stale", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const future = deps.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -227,7 +227,7 @@ describe("ProcessEngine recorder", () => {
 	it("derives a complete reaction list including worker reconcile when selected turn changes", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "discovered",
 		});
@@ -249,7 +249,7 @@ describe("ProcessEngine recorder", () => {
 
 	it("derives operation data from the durable record commit", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 
 		const result = await recordAccepted(
 			deps,
@@ -280,7 +280,7 @@ describe("ProcessEngine recorder", () => {
 			})),
 		});
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -330,7 +330,7 @@ describe("ProcessEngine recorder", () => {
 			getModelAvailabilitySnapshot: () =>
 				snapshots[Math.min(snapshotIndex++, snapshots.length - 1)] as (typeof snapshots)[number],
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const writes = createWrites({
 			processPatch: { lifecycleStatus: "active" },
 			changedFields: ["lifecycleStatus"],
@@ -357,7 +357,7 @@ describe("ProcessEngine recorder", () => {
 		}));
 		const deps = createDeps({ processModelPolicy: createModelPolicyStub(resolveProcessTurn) });
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnModelProfileId: "explicit-profile",
 			selectedTurnModelKind: "explicit",
 			selectedTurnModelSource: "launch_override",
@@ -411,7 +411,7 @@ describe("ProcessEngine recorder", () => {
 			}),
 		});
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			selectedTurnModelProfileId: "explicit-profile",
 			selectedTurnModelKind: "explicit",
@@ -459,7 +459,7 @@ describe("ProcessEngine recorder", () => {
 	it("reports post-commit failure when finalizing a committed record fails", async () => {
 		const logger = createTestLogger();
 		const deps = createDeps({ logger });
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const finalizationError = new Error(
 			"could not shape committed data at /repo/internal/shape.ts",
 		);

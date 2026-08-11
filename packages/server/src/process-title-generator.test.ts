@@ -262,7 +262,7 @@ describe("createProcessTitleGenerator", () => {
 			createLaunchPlan({
 				processInput: {
 					...createLaunchPlan().processInput,
-					title: "Jira issue summary",
+					title: "Ticket issue summary",
 				},
 			}).processInput,
 		);
@@ -272,14 +272,14 @@ describe("createProcessTitleGenerator", () => {
 			launchPlan: createLaunchPlan({
 				processInput: {
 					...createLaunchPlan().processInput,
-					title: "Jira issue summary",
+					title: "Ticket issue summary",
 				},
 			}),
 		});
 
 		await harness.generator.close?.();
 		expect(harness.getCompletionCallCount()).toBe(0);
-		expect(harness.deps.processes.getById(process.id)?.title).toBe("Jira issue summary");
+		expect(harness.deps.processes.getById(process.id)?.title).toBe("Ticket issue summary");
 	});
 
 	it("caps title output", async () => {

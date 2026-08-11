@@ -15,7 +15,7 @@ describe("startStaleHeartbeatWatchdog", () => {
 	it("skips stale heartbeat failure while worker adoption is pending", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -60,7 +60,7 @@ describe("startStaleHeartbeatWatchdog", () => {
 	it("marks stale workers failed, parks the process, emits a toast, and kills the child", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});

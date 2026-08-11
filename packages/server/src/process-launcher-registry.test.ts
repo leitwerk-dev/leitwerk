@@ -4,7 +4,7 @@ import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 
 interface TestParams {
 	repoPath: string;
-	jiraIssueKey?: string;
+	ticketIssueKey?: string;
 }
 
 interface TestState {
@@ -26,9 +26,9 @@ function makeProcess(
 						typeof (candidate as { repoPath?: unknown }).repoPath === "string"
 							? (candidate as { repoPath: string }).repoPath
 							: "",
-					jiraIssueKey:
-						typeof (candidate as { jiraIssueKey?: unknown }).jiraIssueKey === "string"
-							? (candidate as { jiraIssueKey: string }).jiraIssueKey
+					ticketIssueKey:
+						typeof (candidate as { ticketIssueKey?: unknown }).ticketIssueKey === "string"
+							? (candidate as { ticketIssueKey: string }).ticketIssueKey
 							: undefined,
 				};
 			},

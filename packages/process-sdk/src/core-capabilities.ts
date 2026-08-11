@@ -17,7 +17,6 @@ import type {
 	LauncherModelConfigPreview,
 	LauncherModelConfigSchema,
 	ProcessActionModelPreview,
-	ProcessWatcherType,
 	WsPayloadByType,
 } from "@leitwerk-dev/protocol";
 import { createCapabilityToken } from "./capabilities.js";
@@ -28,6 +27,8 @@ import type {
 	ProcessLaunchConfig,
 	ProcessLauncherService,
 	ProcessLaunchPlan,
+	ProcessWatcherPresentation,
+	ProcessWatcherSource,
 	RepositoryCredentialRegistrar,
 } from "./extension-api.js";
 
@@ -407,23 +408,23 @@ export interface ComponentConfigLike {
 	default_branch: string;
 }
 
-export interface ProcessWatcherConfigLike {
-	type: ProcessWatcherType;
-	[key: string]: unknown;
-}
-
-export interface RegisteredProcessWatcherLike {
+export interface RegisteredProcessWatcherLike<TConfig = unknown, TEvent = unknown> {
 	processId: string;
 	processDisplayName: string;
 	watcherId: string;
 	watcherLabel: string;
 	watcherDescription: string;
-	type: ProcessWatcherType;
+	sourceId: string;
+	sourceLabel: string;
 	enabled: boolean;
-	pollInterval: string;
 	configPath: string;
-	config: ProcessWatcherConfigLike;
+	config: TConfig;
+	presentation: ProcessWatcherPresentation;
 	launchModelConfig: LaunchModelConfigInputLike;
+	resolveLaunch(
+		event: TEvent,
+		ctx?: LauncherContext,
+	): Promise<ResolvedProcessWatcherStartLike | null>;
 }
 
 export interface ResolvedProcessWatcherStartLike {
@@ -433,13 +434,9 @@ export interface ResolvedProcessWatcherStartLike {
 
 export interface ProcessWatcherServiceLike {
 	listAll(): readonly RegisteredProcessWatcherLike[];
-	listByType(type: ProcessWatcherType): readonly RegisteredProcessWatcherLike[];
-	resolveLaunch(
-		processId: string,
-		watcherId: string,
-		payload: unknown,
-		ctx?: LauncherContext,
-	): Promise<ResolvedProcessWatcherStartLike | null>;
+	listBySource<TConfig, TEvent>(
+		source: ProcessWatcherSource<TConfig, TEvent>,
+	): readonly RegisteredProcessWatcherLike<TConfig, TEvent>[];
 }
 
 export interface ProcessQuestionServiceLike {

@@ -131,67 +131,6 @@ export interface ProcessTurnConfigSnapshot {
 	model_profile?: string;
 }
 
-export interface WatcherLaunchConfigSnapshot {
-	default_model_profile?: string;
-	turn_configs?: Record<string, ProcessTurnConfigSnapshot>;
-}
-
-export interface JiraWatcherLabelsConfigSnapshot {
-	trigger: string;
-	done: string;
-	required?: string[];
-	forbidden?: string[];
-}
-
-export interface JiraProcessWatcherConfigSnapshot {
-	type: "jira";
-	enabled: boolean;
-	project: string;
-	poll_interval: string;
-	labels: JiraWatcherLabelsConfigSnapshot;
-	target_branch_label_prefix: string;
-	launch?: WatcherLaunchConfigSnapshot;
-}
-
-export interface GitLabMrWatcherLabelsConfigSnapshot {
-	trigger: string;
-	done: string;
-}
-
-export interface GitLabMrProcessWatcherConfigSnapshot {
-	type: "gitlab_mr";
-	enabled: boolean;
-	group: string;
-	poll_interval: string;
-	labels: GitLabMrWatcherLabelsConfigSnapshot;
-	launch?: WatcherLaunchConfigSnapshot;
-}
-
-export interface FilesystemProcessWatcherConfigSnapshot {
-	type: "filesystem";
-	enabled: boolean;
-	poll_interval: string;
-	file_path: string;
-	launch?: WatcherLaunchConfigSnapshot;
-}
-
-export interface ForgejoIssueProcessWatcherConfigSnapshot {
-	type: "forgejo_issue";
-	enabled: boolean;
-	profile: string;
-	poll_interval: string;
-	labels: { trigger: string; done: string };
-	launch?: WatcherLaunchConfigSnapshot;
-}
-
-export type ProcessWatcherConfigSnapshot =
-	| JiraProcessWatcherConfigSnapshot
-	| GitLabMrProcessWatcherConfigSnapshot
-	| FilesystemProcessWatcherConfigSnapshot
-	| ForgejoIssueProcessWatcherConfigSnapshot;
-
-export type ProcessWatcherType = ProcessWatcherConfigSnapshot["type"];
-
 export interface ProcessConfigSnapshot {
 	default_model_profile?: string;
 	/**
@@ -207,7 +146,8 @@ export interface ProcessConfigSnapshot {
 	worker_runtime_profile?: string;
 	pi?: ProcessPiConfigSnapshot;
 	turn_configs: Record<string, ProcessTurnConfigSnapshot>;
-	watchers?: Record<string, ProcessWatcherConfigSnapshot>;
+	/** Extension-owned watcher configuration, keyed by code-defined watcher id. */
+	watchers?: Record<string, unknown>;
 }
 
 export interface WorkerProcessConfigSnapshot {

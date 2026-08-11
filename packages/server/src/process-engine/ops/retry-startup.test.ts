@@ -14,7 +14,7 @@ function setup(kind: "bootstrap_failed" | "preparation_failed") {
 		processGraphs: createDefaultTestProcessGraphRegistry(),
 	};
 	const process = deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "error",
 	});

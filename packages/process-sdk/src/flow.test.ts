@@ -6,13 +6,13 @@ describe("flow", () => {
 		const turn = flow
 			.llm("repair")
 			.description("Repair a provider failure")
-			.integrationTools("forgejo_get_pull_request", "woodpecker_get_step_logs")
+			.integrationTools("repository_get_change", "pipeline_get_step_logs")
 			.prompt(() => "Diagnose the current failure")
 			.end("done").definition;
 
 		expect(turn).toMatchObject({
 			kind: "llm",
-			integrationTools: ["forgejo_get_pull_request", "woodpecker_get_step_logs"],
+			integrationTools: ["repository_get_change", "pipeline_get_step_logs"],
 		});
 	});
 

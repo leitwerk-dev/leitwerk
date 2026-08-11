@@ -78,14 +78,11 @@ export type {
 	FormFieldOptionDefinition,
 } from "@leitwerk-dev/protocol/form-contract";
 export type {
-	FilesystemWatcherSummary,
 	FutureExecutionOverviewItem,
 	FutureLaunchSummary,
-	GitLabMrWatcherSummary,
 	InstalledSkillCatalogDetail,
 	InstalledSkillCatalogItem,
 	InstanceTreeNodeSummary,
-	JiraWatcherSummary,
 	LauncherDefaultModelPreview,
 	LauncherModelConfigDefaults,
 	LauncherModelConfigPreview,
