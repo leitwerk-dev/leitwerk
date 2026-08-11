@@ -22,17 +22,10 @@ function requireApiKey(secrets: Readonly<Record<string, string>>): string {
 	return value;
 }
 
-function configuredModel<TModel>(model: TModel, config: unknown): TModel {
-	if (
-		typeof config !== "object" ||
-		config === null ||
-		Array.isArray(config) ||
-		!("baseUrl" in config) ||
-		typeof config.baseUrl !== "string"
-	) {
-		return model;
-	}
-	return { ...model, baseUrl: config.baseUrl };
+function configuredBaseUrl(config: unknown): string | undefined {
+	if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+	const value = (config as { baseUrl?: unknown }).baseUrl;
+	return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }
 
 /**
@@ -47,13 +40,15 @@ export function createBuiltinPiServerAdapter(builtinProviderId: string): PiServe
 					`Built-in adapter '${builtinProviderId}' cannot serve provider '${input.providerId}'`,
 				);
 			}
-			const model = getModel(builtinProviderId as never, input.modelId as never);
-			if (!model) {
+			const canonicalModel = getModel(builtinProviderId as never, input.modelId as never);
+			if (!canonicalModel) {
 				throw new Error(`Built-in Pi model '${builtinProviderId}/${input.modelId}' is unavailable`);
 			}
+			const baseUrl = configuredBaseUrl(input.config);
+			const model = baseUrl ? { ...canonicalModel, baseUrl } : canonicalModel;
 			const reasoning = resolveThinkingLevel(input.thinkingLevel);
 			const message = await completeSimple(
-				configuredModel(model, input.config),
+				model,
 				{
 					systemPrompt: input.systemPrompt,
 					messages: [

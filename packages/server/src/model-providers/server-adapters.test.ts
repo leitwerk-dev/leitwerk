@@ -27,7 +27,7 @@ describe("model provider server adapters", () => {
 	it("loads built-in adapters and resolves the current credential for every attempt", async () => {
 		const definition = defineModelProvider({
 			id: "provider",
-			parseConfig: () => ({ config: { endpoint: "test" } }),
+			parseConfig: () => ({ config: { baseUrl: "https://configured.example" } }),
 			worker: builtinPiProvider("provider"),
 			server: builtinPiProvider("provider"),
 			models: () => [],
@@ -64,7 +64,7 @@ describe("model provider server adapters", () => {
 				providerId: "provider",
 				modelId: "model",
 				secrets: { token: "second" },
-				config: { endpoint: "test" },
+				config: { baseUrl: "https://configured.example" },
 			}),
 		);
 	});
