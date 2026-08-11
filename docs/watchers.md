@@ -9,11 +9,6 @@ It is important to distinguish between discovering new work and advancing existi
 - **Watchers (Process Creation):** Discover external events and trigger a launcher to create a **new process instance**. Watchers do not advance active, running processes.
 - **External Actions (In-Flight Execution):** Armed during a human review turn to advance an **existing process instance** when an external condition is met (e.g., waiting for a GitLab merge request to be merged). See [Process SDK](process-sdk.md#external-actions).
 
-## Shipped poller vs. schema hooks
-
-- **In-tree poller:** The server ships a **filesystem** process-watcher poller (`createFilesystemProcessWatchersService`). The example config and `showcase-processes` poem watcher use `type: filesystem`.
-- **Schema / extension hooks:** Config also accepts `jira` and `gitlab_mr` watcher shapes (and the registry can list them), but there are **no in-tree provider packages** that poll Jira or GitLab MRs. Those types are for extension-owned providers, not built-in behavior.
-
 ## Declaring & Configuring Watchers
 
 Watchers are declared in code by an extension and enabled via configuration.
