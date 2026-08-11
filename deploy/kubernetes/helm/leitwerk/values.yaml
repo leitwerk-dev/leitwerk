@@ -108,6 +108,9 @@ gateway:
       memory: 128Mi
   podAnnotations: {}
   podLabels: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
 
 internalTls:
   enabled: false

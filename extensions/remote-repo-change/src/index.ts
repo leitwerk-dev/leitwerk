@@ -19,7 +19,6 @@ const remoteRepoChangeExtension: LeitwerkExtensionModule = {
 export default remoteRepoChangeExtension;
 
 export {
-	formatRemoteRepoChangeLaunchErrors,
 	type RemoteRepoChangeLaunchPlanner,
 	type RemoteRepoChangeLaunchPlannerInput,
 	type RemoteRepoChangeLaunchResolution,

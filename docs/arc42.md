@@ -182,7 +182,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 
 ## 11 Risks and Technical Debt
 
-- **Single-Provider SSO:** Current authentication supports one configured OIDC provider; tenant isolation and per-process multi-tenant authorization remain future work.
+- **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
 - **Process-to-Process Creation:** Processes communicate via imported plan handovers; direct process-to-process dynamic instantiation is out of scope.
 
 ## 12 Glossary

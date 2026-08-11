@@ -1,13 +1,13 @@
 # Introduction
 
-Leitwerk manages step-by-step AI workflows—from code implementation and pull requests to Jira issue triage and review—for software engineering teams.
+Leitwerk manages step-by-step AI workflows—from code implementation and pull requests to issue triage and review—for software engineering teams.
 
-A central server saves task progress and streams live updates to a web dashboard. Workers run AI agents in isolated environments to execute code changes, manage Jira tickets, run tests, and update merge requests. Humans can watch progress, guide the agent, or retry failed steps.
+A central server saves task progress and streams live updates to a web dashboard. Workers run AI agents in isolated environments to execute code changes, manage tracker items, run tests, and update merge requests. Humans can watch progress, guide the agent, or retry failed steps.
 
 ## Key Features
 
 - **Code-Defined Processes:** Build custom AI workflows using TypeScript, controlling exact step-by-step turns and transitions.
-- **Pluggable Integrations:** Connect external tools (like Jira and GitLab) via extensions for automated issue tracking and code review.
+- **Pluggable Integrations:** Connect issue trackers, VCS providers, and internal APIs through extensions.
 - **Custom Outcome Tools:** Give AI agents turn-specific tools to report results, request human feedback, or trigger next steps.
 - **Automated Watchers:** Trigger new AI workflows automatically when external queues or pull requests change.
 - **Flexible Execution:** Run workers locally, in Docker containers, or on Kubernetes pods.
@@ -17,7 +17,7 @@ A central server saves task progress and streams live updates to a web dashboard
 - **Server:** Owns durable state in SQLite, manages task coordination, and executes safe external API writes.
 - **Worker:** Runs AI agents inside isolated workspace clones to write code and execute tests.
 - **Browser UI:** Streams real-time WebSocket updates, task chronicles, and steering controls to operators.
-- **Extensions:** TypeScript modules that define custom processes, issue tracker integrations (like Jira or GitLab), and turn outcome tools.
+- **Extensions:** TypeScript modules that define custom processes, external-system integrations, and turn outcome tools.
 
 ## Built-in Examples
 

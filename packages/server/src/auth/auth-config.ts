@@ -1,12 +1,24 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
-import type { AuthOidcProviderConfig, LeitwerkConfig } from "../config/config-types.js";
+import type {
+	AuthGithubProviderConfig,
+	AuthOidcProviderConfig,
+	LeitwerkConfig,
+} from "../config/config-types.js";
 
-export interface ResolvedAuthProvider extends AuthOidcProviderConfig {
+export interface ResolvedOidcProvider extends AuthOidcProviderConfig {
 	redirect_uri: string;
 	scopes: string[];
 	identity_claim: string;
 }
+
+export interface ResolvedGithubProvider extends AuthGithubProviderConfig {
+	redirect_uri: string;
+	scopes: ["read:org"];
+	identity_claim: "login";
+}
+
+export type ResolvedAuthProvider = ResolvedOidcProvider | ResolvedGithubProvider;
 
 export interface ResolvedAuthConfig {
 	enabled: boolean;
@@ -27,12 +39,23 @@ const DEFAULT_LOGIN_FLOW_TTL_MS = 10 * 60 * 1000;
 export function resolveAuthConfig(config: LeitwerkConfig): ResolvedAuthConfig {
 	const auth = config.auth;
 	const serverBaseUrl = new URL(config.server.base_url);
-	const providers = (auth?.providers ?? []).map((provider) => ({
-		...provider,
-		redirect_uri: provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString(),
-		scopes: provider.scopes ?? ["openid", "profile", "email"],
-		identity_claim: provider.identity_claim ?? "preferred_username",
-	}));
+	const providers: ResolvedAuthProvider[] = (auth?.providers ?? []).map((provider) =>
+		provider.kind === "oidc"
+			? {
+					...provider,
+					redirect_uri:
+						provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString(),
+					scopes: provider.scopes ?? ["openid", "profile", "email"],
+					identity_claim: provider.identity_claim ?? "preferred_username",
+				}
+			: {
+					...provider,
+					redirect_uri:
+						provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString(),
+					scopes: ["read:org"],
+					identity_claim: "login",
+				},
+	);
 	const sessionCookieName = auth?.session?.cookie_name ?? DEFAULT_SESSION_COOKIE_NAME;
 	return {
 		enabled: auth?.enabled === true && providers.length > 0,
@@ -64,5 +87,7 @@ export function isActorAllowedByConfig(actor: Actor, auth: ResolvedAuthConfig): 
 		return false;
 	}
 	const prefix = `${actor.provider}:`;
-	return actor.id.startsWith(prefix) && auth.allowlist.has(actor.id.slice(prefix.length));
+	if (!actor.id.startsWith(prefix)) return false;
+	const provider = auth.providers.find((candidate) => candidate.id === actor.provider);
+	return provider?.kind === "oauth2" || auth.allowlist.has(actor.id.slice(prefix.length));
 }

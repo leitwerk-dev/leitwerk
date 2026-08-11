@@ -3,7 +3,7 @@
 In Leitwerk, AI agents interact with workspace repositories, process state, and external services through **Agent Tools**. Tools fall into four distinct categories:
 
 1. **Built-in Primitives:** Core workspace tools (`read`, `bash`, `edit`, `write`) for inspecting files, running shell commands, and editing code.
-2. **Integration Tools:** Extension-provided tools (such as Jira issue tools `jira_update_issue` or GitLab MR tools) for interacting directly with external services during execution.
+2. **Integration Tools:** Extension-provided tools for interacting with external services during execution (authored by an extension; not a fixed in-tree catalog).
 3. **Interactive Tools:** The `ask_questions` tool, used by agents to pause execution and ask human operators structured questions during a turn.
 4. **Outcome Tools:** Terminal tools that return typed data, publish markdown products, and transition process state to the next step.
 
@@ -27,40 +27,41 @@ The four built-in primitives control workspace access:
 
 ## 2. Integration Tools
 
-Integration extensions define server tools for external services:
+Integration extensions define server tools for external services. The example below is an
+extension-author pattern, not a fixed in-tree provider catalog:
 
 ```ts
 // Registered inside setupServer(api) in an integration extension
 api.tool({
-  name: "jira_get_issue",
-  description: "Read a Jira issue",
+  name: "tracker_get_issue",
+  description: "Read an external issue",
   parameters: {
     type: "object",
     properties: {
-      issueKey: { type: "string", description: "Jira Issue Key (e.g. PROJ-123)" },
+      issueKey: { type: "string", description: "External issue key" },
     },
     required: ["issueKey"],
   },
-  execute: async (_ctx, params) => jiraClient.getIssue(params.issueKey),
+  execute: async (ctx, params) =>
+    trackerClient.getIssue(params.issueKey, { signal: ctx.signal }),
 });
 
 flow.llm("inspect_issue")
   .description("Inspect the source issue")
-  .integrationTools("jira_get_issue");
+  .integrationTools("tracker_get_issue");
 ```
 
 Integration tools run in the server process. Workers receive only each tool's name,
 description, and parameter schema. The server accepts a call only from the current turn
 record and only for a tool authorized by that turn. Provider credentials stay on the server.
+Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
 
 Reconnects replay a call with the same idempotency key. Mutating tools must use
-`ensureWrite()` so replay remains safe across server restarts.
+`ensureWrite()` so replay remains safe across server restarts. When a turn stops, the
+server aborts `ctx.signal`; tool implementations must pass it to cancellable provider calls.
 
-### Common Integration Tools
-
-- **Jira Integration:** Fetching issue metadata (`jira_get_issue`), updating status (`jira_update_issue`), or posting comments.
-- **GitLab Integration:** Reading merge request metadata, posting inline code review comments, or triggering pipeline re-runs.
-- **Custom Service Integration:** Authors can register custom tools for internal APIs, database queries, or third-party webhooks.
+Authors register tools for the external systems their extension owns, such as issue trackers,
+VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.
 
 ## 3. Interactive Tools (`ask_questions`)
 

@@ -6,7 +6,7 @@ This document defines security boundaries, authentication models, and credential
 
 ## 1. Authentication Models
 
-- **Web Authentication:** Disabled by default (`auth.enabled: false`). When enabled (`auth.enabled: true`), OIDC authenticates allowlisted users via PKCE, storing hashed session tokens in SQLite. Authentication applies to all allowlisted users globally (no per-process authorization or multi-tenant isolation).
+- **Web Authentication:** Disabled by default (`auth.enabled: false`). When enabled (`auth.enabled: true`), OIDC authenticates allowlisted identities via PKCE or native GitHub OAuth authenticates active members of one configured organization. Leitwerk stores only hashed session tokens in SQLite. Authentication applies globally (no per-process authorization or multi-tenant isolation).
 - **Worker Authentication:** Workers authenticate via lease-scoped WebSocket connect tokens and bearer snapshot tokens (`PUT /session-snapshot`). Tokens are bound to the active process lease and hashed server-side.
 
 ---

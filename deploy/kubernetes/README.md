@@ -51,6 +51,11 @@ init container copies the UI from the server image, and the gateway proxies API,
 authentication, WebSocket, and extension-UI routes to Fastify. The gateway
 currently requires `internalTls.enabled=false`.
 
+Use `server.nodeSelector`/`server.tolerations` and the corresponding
+`gateway.nodeSelector`/`gateway.tolerations` values when both Deployments must
+run on an opt-in or tainted workload node. Dynamic workers use the separate
+`kubernetes.pod` scheduling configuration.
+
 Docker Desktop deployment scripts are under `scripts/k8s/docker-desktop`. They
 always target the `docker-desktop` context, retain state outside the checkout,
 and expose the gateway through a loopback-only port-forward on port `18081`.

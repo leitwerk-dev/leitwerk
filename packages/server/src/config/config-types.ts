@@ -70,12 +70,24 @@ export interface AuthOidcProviderConfig {
 	identity_claim?: string;
 }
 
+export interface AuthGithubProviderConfig {
+	id: "github";
+	kind: "oauth2";
+	client_id: string;
+	client_secret: string;
+	/** GitHub organization whose active members may sign in. */
+	organization: string;
+	redirect_uri?: string;
+}
+
+export type AuthProviderConfig = AuthOidcProviderConfig | AuthGithubProviderConfig;
+
 export interface AuthConfig {
 	/** Only true enables authentication; omit or set false to keep the leitwerk unauthenticated. */
 	enabled?: boolean;
 	session?: AuthSessionConfig;
-	providers?: AuthOidcProviderConfig[];
-	/** Raw identity claim values that may sign in. Empty/omitted denies all when enabled. */
+	providers?: AuthProviderConfig[];
+	/** Raw OIDC identity claim values that may sign in. GitHub uses organization membership. */
 	allowlist?: string[];
 }
 
