@@ -5,7 +5,6 @@ import type {
 	ProcessTurnRecord,
 	ProcessTurnRecordPathType,
 } from "@leitwerk-dev/domain";
-import { TELEGRAM_ACTOR } from "@leitwerk-dev/domain";
 import type {
 	CoreServerSetupDeps,
 	FormDefinition,
@@ -21,6 +20,7 @@ import type {
 	UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
 import { buildActionKeyboard, continuableFailedTurnRecordId } from "./actions.js";
+import { TELEGRAM_ACTOR } from "./actor.js";
 import type { TelegramExtensionConfig } from "./config.js";
 import {
 	type ActionPreviewLike,

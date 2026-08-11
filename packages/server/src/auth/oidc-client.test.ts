@@ -49,7 +49,7 @@ async function startLocalOidcMetadataServer(): Promise<{
 
 function providerWithIssuer(issuer: string): ResolvedAuthProvider {
 	return {
-		id: "forgejo",
+		id: "identity",
 		kind: "oidc",
 		issuer,
 		client_id: "client",

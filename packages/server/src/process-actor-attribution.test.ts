@@ -1,4 +1,4 @@
-import { ADMIN_ACTOR, SYSTEM_ACTOR, TELEGRAM_ACTOR } from "@leitwerk-dev/domain";
+import { type Actor, ADMIN_ACTOR, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
@@ -8,9 +8,15 @@ import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpe
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
+const CHANNEL_ACTOR: Actor = {
+	id: "channel",
+	kind: "channel",
+	provider: "test_channel",
+};
+
 const processGraphs = createDefaultTestProcessGraphRegistry();
-// Ensure the jira fixture graph is registered for the engine under test.
-getProcessGraph(processGraphs, "jira_issue_process");
+// Ensure the ticket fixture graph is registered for the engine under test.
+getProcessGraph(processGraphs, "ticket_issue_process");
 
 function createEngine(
 	deps: ReturnType<typeof createTestDeps>,
@@ -55,7 +61,7 @@ describe("actor attribution on queued inputs", () => {
 	it("stamps the resolved actor onto queued inputs that lack one", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -76,7 +82,7 @@ describe("actor attribution on queued inputs", () => {
 	it("preserves a per-input actor over the command-level default", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -88,8 +94,8 @@ describe("actor attribution on queued inputs", () => {
 				{
 					source: "external_comment",
 					kind: "instruction",
-					bodyMarkdown: "From telegram",
-					actor: TELEGRAM_ACTOR,
+					bodyMarkdown: "From chat",
+					actor: CHANNEL_ACTOR,
 				},
 			],
 			{ actor: ADMIN_ACTOR },
@@ -97,13 +103,13 @@ describe("actor attribution on queued inputs", () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.data[0]?.actor).toEqual(TELEGRAM_ACTOR);
+		expect(result.data[0]?.actor).toEqual(CHANNEL_ACTOR);
 	});
 
 	it("defaults to the system actor when no actor is supplied", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -122,7 +128,7 @@ describe("actor attribution on queued inputs", () => {
 describe("actor attribution on lifecycle events", () => {
 	function createFailedImplementProcess(deps: ReturnType<typeof createTestDeps>) {
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 		});
@@ -141,7 +147,7 @@ describe("actor attribution on lifecycle events", () => {
 	it("attributes start turn selection events to system for internal callers", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "discovered",
 		});
@@ -187,18 +193,18 @@ describe("actor attribution on lifecycle events", () => {
 	it("stamps the actor into the abort turn_selected event and emits no duplicate process_aborted", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
 		const commands = createEngine(deps);
 
-		const result = await commands.abortProcess(process.id, { actor: TELEGRAM_ACTOR });
+		const result = await commands.abortProcess(process.id, { actor: CHANNEL_ACTOR });
 
 		expect(result.ok).toBe(true);
 		const events = deps.events.listByInstance(process.id, 10);
 		const selectionEvent = events.find((event) => event.eventType === "turn_selected");
-		expect(selectionEvent?.data.actor).toEqual(TELEGRAM_ACTOR);
+		expect(selectionEvent?.data.actor).toEqual(CHANNEL_ACTOR);
 		// The selection event already records the abort, so no duplicate process_aborted
 		// event (or its broadcast) is emitted on the common path.
 		expect(events.some((event) => event.eventType === "process_aborted")).toBe(false);
@@ -207,7 +213,7 @@ describe("actor attribution on lifecycle events", () => {
 	it("records an attributed abort event when no turn selection changes", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "discovered",
 		});
@@ -229,7 +235,7 @@ describe("actor attribution on lifecycle events", () => {
 	it("stamps the actor into process action event data", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -255,7 +261,7 @@ describe("actor attribution on lifecycle events", () => {
 	it("does not persist submitted action field values in process action events", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});

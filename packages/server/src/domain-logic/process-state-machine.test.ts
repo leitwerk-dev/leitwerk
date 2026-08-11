@@ -12,7 +12,7 @@ describe("process-state-machine", () => {
 	it("selects the only entry turn for a discovered process", () => {
 		const result = tryTransition(
 			registry,
-			"jira_issue_process",
+			"ticket_issue_process",
 			null,
 			"start",
 			undefined,
@@ -48,7 +48,7 @@ describe("process-state-machine", () => {
 	it("validates direct turn-to-turn transitions on the graph", () => {
 		const result = tryTransition(
 			registry,
-			"jira_issue_process",
+			"ticket_issue_process",
 			"implement",
 			undefined,
 			"handoff_review",
@@ -61,7 +61,7 @@ describe("process-state-machine", () => {
 	});
 
 	it("requires an explicit target when multiple next turns exist", () => {
-		const result = tryTransition(registry, "jira_issue_process", "plan_review");
+		const result = tryTransition(registry, "ticket_issue_process", "plan_review");
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.code).toBe("invalid_transition");
@@ -71,7 +71,7 @@ describe("process-state-machine", () => {
 	it("rejects non-graph transitions", () => {
 		const result = tryTransition(
 			registry,
-			"jira_issue_process",
+			"ticket_issue_process",
 			"generate_plan",
 			undefined,
 			"run_llm_review",

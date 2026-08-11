@@ -5,7 +5,7 @@ import { ensureWorkerForActiveAgent, processNeedsWorker } from "./process-helper
 function makeProcess(overrides: Partial<ProcessInstance> = {}): ProcessInstance {
 	return {
 		id: "agt_1",
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: null,
 		lifecycleStatus: "discovered",
 		currentExecution: null,

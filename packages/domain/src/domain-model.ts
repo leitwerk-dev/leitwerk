@@ -32,12 +32,12 @@ export type ActorKind = "user" | "channel" | "system";
 export interface Actor {
 	/**
 	 * Stable principal id, namespaced by provider where applicable.
-	 * e.g. "forgejo:alice", "telegram", "system", "admin".
+	 * e.g. "identity-provider:alice", "operator-channel", "system", "admin".
 	 */
 	id: string;
 	kind: ActorKind;
 	/** Origin that vouched for this actor. `null` for system/admin/local. */
-	provider: "forgejo" | "gitlab" | "telegram" | null;
+	provider: string | null;
 	/** Optional human-readable name for UI display. */
 	displayName?: string;
 }
@@ -51,9 +51,6 @@ export const SYSTEM_ACTOR: Actor = { id: "system", kind: "system", provider: nul
  * as it does today while still attributing actions to a stable principal.
  */
 export const ADMIN_ACTOR: Actor = { id: "admin", kind: "user", provider: null };
-
-/** Single collapsed principal for all Telegram-originated actions. */
-export const TELEGRAM_ACTOR: Actor = { id: "telegram", kind: "channel", provider: "telegram" };
 
 export type QuestionSelectionMode = "single" | "multiple";
 
@@ -516,7 +513,7 @@ export interface ProcessInstance {
 	planRevision: number;
 	/** Short operator-facing process title used in process lists and related UI. */
 	title: string | null;
-	/** Provider-agnostic external reference (e.g. Jira issue key, GitLab MR path). */
+	/** Provider-agnostic external reference, such as a work item key or change path. */
 	externalId: string | null;
 	/** URL to the external resource, if applicable. */
 	externalUrl: string | null;
@@ -706,7 +703,7 @@ export type WorkerState =
 
 /**
  * External write type identifier. Extensions define their own write types
- * as plain strings (e.g. "jira.approved_plan_comment", "gitlab.create_mr").
+ * as plain strings (e.g. "tracker.approved_plan_comment", "code_host.create_change").
  */
 export type ExternalWriteType = string;
 

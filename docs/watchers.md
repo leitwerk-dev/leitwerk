@@ -1,73 +1,96 @@
 # Watchers
 
-**Watchers** enable event-driven automation in Leitwerk. While manual launchers require a human operator to fill out a form, a **Watcher** monitors an external signal—most commonly a local filesystem path in the shipped tree—and triggers a launcher to resolve configuration and start a new process instance whenever matching work appears.
+**Watchers** enable event-driven process creation. Core stores watcher configuration and connects a configured watcher to a process definition; the extension that supplies the watcher source owns its schema, validation, presentation, polling, event type, and provider behavior.
 
 ## Watchers vs. External Actions
 
-It is important to distinguish between discovering new work and advancing existing work:
+- **Watchers (process creation):** discover external events and create new process instances.
+- **External actions (in-flight execution):** advance an existing process when an external condition is met. See [Process SDK](process-sdk.md#external-actions).
 
-- **Watchers (Process Creation):** Discover external events and trigger a launcher to create a **new process instance**. Watchers do not advance active, running processes.
-- **External Actions (In-Flight Execution):** Armed during a human review turn to advance an **existing process instance** when an external condition is met (e.g., waiting for a GitLab merge request to be merged). See [Process SDK](process-sdk.md#external-actions).
+## Defining a watcher source
 
-## Declaring & Configuring Watchers
-
-Watchers are declared in code by an extension and enabled via configuration.
-
-### 1. Code Declaration (`api.watcher`)
-
-An extension registers a watcher definition and its launch resolver:
+An extension defines a typed source once and shares that object between process definitions and its provider adapter:
 
 ```ts
-// Registered inside a process / extension definition
-.watcher({
-  id: "create_poem",
-  label: "Create Poem from File",
-  type: "filesystem",
-  matches(event) {
-    return typeof event.content === "string";
-  },
-  resolveLaunchConfig(event) {
+interface QueueConfig {
+  enabled: boolean;
+  queue: string;
+}
+
+interface QueueEvent {
+  itemId: string;
+  summary: string;
+}
+
+export const queueSource = defineProcessWatcherSource<QueueConfig, QueueEvent>({
+  id: "acme.work_queue",
+  label: "Work queue",
+  parseConfig(raw) {
+    // The extension validates its raw configuration here.
+    const { config, launch } = parseQueueConfig(raw);
     return {
-      processId: "poem_creator_process",
-      params: { prompt: String(event.content).trim() },
-      startTurnId: "draft_poem",
+      config,
+      enabled: config.enabled,
+      launchModelConfig: parseProcessWatcherLaunchModelConfig(launch),
     };
   },
-})
+  presentConfig(config) {
+    return {
+      targetSummary: `Queue ${config.queue}`,
+      details: [{ label: "Queue", value: config.queue }],
+    };
+  },
+});
 ```
 
-### 2. Configuration (`leitwerk.yaml`)
+Core treats the YAML block as opaque data and calls the source parser after the extension catalog is loaded. Parser errors retain the full `process_configs.<processId>.watchers.<watcherId>` path.
 
-Watchers are enabled per process in `leitwerk.yaml`. Filesystem watchers require `enabled`, `poll_interval`, and `file_path`:
+## Declaring a process watcher
+
+The process definition binds a watcher ID and launch resolver to the extension-owned source:
+
+```ts
+watchers(api) {
+  api.watcher({
+    id: "incoming_work",
+    label: "Incoming work",
+    description: "Launches a process for discovered work",
+    source: queueSource,
+    resolveLaunchConfig: async (item) => ({
+      processId: "work_process",
+      params: { itemId: item.itemId, summary: item.summary },
+      externalId: item.itemId,
+    }),
+  });
+}
+```
+
+## Configuration
+
+Watcher configuration remains colocated with its process configuration. Every field inside the watcher block is defined by the source extension; there is no core watcher type discriminator.
 
 ```yaml
 process_configs:
-  poem_creator_process:
+  work_process:
     watchers:
-      create_poem:
-        type: filesystem
+      incoming_work:
         enabled: true
-        poll_interval: 1s
-        file_path: /tmp/create-poem
+        queue: READY
+        poll_interval: 30s
 ```
 
-For reference, the config schema for other types (when an extension provides the poller) uses fields such as:
+The provider adapter obtains only registrations for its exact typed source:
 
-- **jira:** `project`, `poll_interval`, `labels.trigger` / `labels.done`, `target_branch_label_prefix` (not `project_keys`)
-- **gitlab_mr:** `group`, `poll_interval`, `labels.trigger` / `labels.done`
+```ts
+const watchers = deps.processWatchers?.listBySource(queueSource) ?? [];
+for (const watcher of watchers) {
+  const launchPlan = await watcher.resolveLaunch(event);
+  // Prepare and commit launchPlan through the server capabilities.
+}
+```
 
-- **`type`:** Selects the watcher implementation (`filesystem` shipped; `jira` / `gitlab_mr` require an extension provider).
-- **`enabled`:** Toggles background polling for that watcher instance.
+## Idempotency and deduplication
 
-## Idempotency & Deduplication
+Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
 
-Because background watchers poll periodically, they must handle retries and duplicate events safely:
-
-### 1. Deduplication
-Provider watchers should use stable external identifiers so a single external item creates only one active process instance (skip creation when an open process already exists for that id). The shipped **filesystem** poller instead consumes/unlinks the trigger file after a successful launch (`consumeTriggerFile`); it does not implement open-instance skip by path. Extension-owned providers (for example issue/MR watchers) are responsible for their own open-process dedup.
-
-### 2. Idempotent External Writes (`ensureWrite`)
-External operations (for example attaching process links or updating remote labels from an extension provider) use `ensureWrite()` from `@leitwerk-dev/external-writes`. This guarantees that repeated poll cycles or server restarts converge on the same remote links, labels, and status without posting duplicate side effects.
-
-### 3. Trigger Removal
-If an external trigger item is removed or closed outside of Leitwerk, an extension provider watcher can reconcile by completing or aborting the related process. Filesystem triggers are removed when consumed after launch.
+If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.

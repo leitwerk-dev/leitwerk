@@ -7,6 +7,7 @@ export default defineConfig((options) => ({
 		"src/http-contracts.ts",
 		"src/form-contract.ts",
 		"src/launcher-contract.ts",
+		"src/protocol.ts",
 		"src/tool-renderer-contract.ts",
 	],
 	format: ["esm"],

@@ -26,6 +26,7 @@ const {
 	mockFetchProcessActionModelPreview,
 	mockFetchProcessDetail,
 	mockFetchTurnReasoningDetail,
+	mockWs,
 	mockPostProcessAction,
 	mockPostProcessRetry,
 	mockPostProcessTurnContinue,
@@ -35,6 +36,27 @@ const {
 	mockFetchProcessActionModelPreview: vi.fn(),
 	mockFetchProcessDetail: vi.fn(),
 	mockFetchTurnReasoningDetail: vi.fn(),
+	mockWs: (() => {
+		let state = {
+			status: "disconnected" as "connecting" | "connected" | "disconnected",
+			serverVersion: null as string | null,
+			reconnectCount: 0,
+		};
+		const subscribers = new Set<(value: typeof state) => void>();
+		return {
+			set(next: typeof state) {
+				state = next;
+				for (const subscriber of subscribers) {
+					subscriber(state);
+				}
+			},
+			subscribe(subscriber: (value: typeof state) => void) {
+				subscribers.add(subscriber);
+				subscriber(state);
+				return () => subscribers.delete(subscriber);
+			},
+		};
+	})(),
 	mockPostProcessAction: vi.fn(),
 	mockPostProcessRetry: vi.fn(),
 	mockPostProcessTurnContinue: vi.fn(),
@@ -54,6 +76,10 @@ vi.mock("../lib/api", () => ({
 	deleteFutureExecution: mockDeleteFutureExecution,
 }));
 
+vi.mock("../lib/ws.svelte", () => ({
+	wsStore: { subscribe: mockWs.subscribe },
+}));
+
 import { scrollTopForAnchor } from "../chronicle/lib/scroll-sync.js";
 import { formatUsdEstimate } from "../lib/cost-estimates.js";
 import {
@@ -67,8 +93,8 @@ import ProcessDetailPage from "./ProcessDetailPage.svelte";
 const mountedApps: Array<ReturnType<typeof mount>> = [];
 let scheduledFrameCallbacks = new Map<number, FrameRequestCallback>();
 
-const jiraProcessGraph = {
-	id: "jira_issue_process",
+const ticketProcessGraph = {
+	id: "ticket_issue_process",
 	entryTurnIds: ["generate_plan"],
 	reachableTurnIds: [
 		"generate_plan",
@@ -104,8 +130,8 @@ const jiraProcessGraph = {
 	},
 };
 
-const jiraProcessFlow = {
-	processId: "jira_issue_process",
+const ticketProcessFlow = {
+	processId: "ticket_issue_process",
 	entryTurnIds: ["generate_plan"],
 	spine: ["generate_plan", "plan_review", "implement", "implementation_review"],
 	nodes: [
@@ -443,7 +469,7 @@ type LegacyProcessDetailTestData = ProcessDetailData & {
 	turnRecords: ProcessTurnRecord[];
 	turnAnnotations: ProcessTurnAnnotation[];
 	workerLease: WorkerLease | null;
-	processGraph: typeof jiraProcessGraph;
+	processGraph: typeof ticketProcessGraph;
 	piSessionEntries: PiSessionEntry[];
 };
 
@@ -487,7 +513,7 @@ function createProcessDetail(): LegacyProcessDetailTestData {
 	return {
 		process: {
 			id: "agt_1",
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: null,
 			lifecycleStatus: "completed",
 			currentExecution: null,
@@ -528,8 +554,8 @@ function createProcessDetail(): LegacyProcessDetailTestData {
 		turnAnnotations: [],
 		workerLease: null,
 		processDisplayName: "PROJ-1",
-		processGraph: jiraProcessGraph,
-		processFlow: jiraProcessFlow,
+		processGraph: ticketProcessGraph,
+		processFlow: ticketProcessFlow,
 		piSessionEntries: createBasePiSessionEntries(),
 		definesLeafOutcome: false,
 		actions: [],
@@ -1801,6 +1827,7 @@ async function clickRecoveryAction(
 
 beforeEach(() => {
 	vi.useFakeTimers();
+	mockWs.set({ status: "disconnected", serverVersion: null, reconnectCount: 0 });
 	window.history.replaceState(null, "", "/processes/agt_1");
 	window.dispatchEvent(new PopStateEvent("popstate"));
 	clearPendingProcessToastFocus();
@@ -2476,6 +2503,25 @@ describe("ProcessDetailPage", () => {
 		expect(target.textContent).toContain("Nothing should disappear after commit.");
 		expect(target.querySelector('[data-section="live-tail"]')).toBeNull();
 		expect(target.querySelector('[data-section="chronicle-turn"]')).toBeTruthy();
+	});
+
+	it("reloads only when the websocket reconnect count changes", async () => {
+		await mountSubject(createProcessDetail());
+		await flushUi();
+
+		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(1);
+
+		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 0 });
+		await flushUi();
+		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(1);
+
+		mockWs.set({ status: "disconnected", serverVersion: null, reconnectCount: 0 });
+		await flushUi();
+		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(1);
+
+		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 1 });
+		await flushUi();
+		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(2);
 	});
 
 	it("retries the detail load when live-turn metadata arrives before the first detail response resolves", async () => {

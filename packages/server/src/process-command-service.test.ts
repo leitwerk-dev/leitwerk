@@ -25,7 +25,7 @@ import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from 
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
-const jiraProcessGraph = getProcessGraph(processGraphs, "jira_issue_process");
+const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
 
 function createLlmTestConfig() {
 	const config = getDefaultConfig();
@@ -172,15 +172,15 @@ function createProcess(
 	options: Partial<{
 		id: string;
 		displayName: string;
-		graph: typeof jiraProcessGraph;
+		graph: typeof ticketProcessGraph;
 		turnDefinitions: ReadonlyMap<string, TurnDefinition>;
 	}> = {},
 ) {
-	const graph = options.graph ?? jiraProcessGraph;
+	const graph = options.graph ?? ticketProcessGraph;
 	const turnDefinitions = options.turnDefinitions ?? defaultTurnDefinitions;
 	return defineGraphFixtureProcess({
-		id: options.id ?? "jira_issue_process",
-		displayName: options.displayName ?? "Implement Jira Issue",
+		id: options.id ?? "ticket_issue_process",
+		displayName: options.displayName ?? "Implement Ticket Issue",
 		graph,
 		turnDefinitions,
 		paramsCodec: { parse: () => ({}), serialize: (value: unknown) => value },
@@ -258,11 +258,11 @@ function createPlanReviewActionRegistry() {
 	return buildProcessActionRegistry({
 		processes: new Map([
 			[
-				"jira_issue_process",
+				"ticket_issue_process",
 				defineGraphFixtureProcess({
-					id: "jira_issue_process",
-					displayName: "Implement Jira Issue",
-					graph: jiraProcessGraph,
+					id: "ticket_issue_process",
+					displayName: "Implement Ticket Issue",
+					graph: ticketProcessGraph,
 					turnDefinitions,
 					paramsCodec: { parse: () => ({}), serialize: (value: unknown) => value },
 					stateCodec: {
@@ -357,7 +357,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 	it("reactivates a failed turn lineage through the lifecycle plan and starts a worker", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: { externalRef: "JRA-123" },
@@ -400,7 +400,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 	it("restarts a lingering worker when retry reactivates a failed turn", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 		});
@@ -438,7 +438,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: { externalRef: "JRA-789", ...genericFailedTurnRecovery("trn_impl_timeout_2") },
@@ -502,7 +502,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: {
@@ -564,7 +564,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: genericFailedTurnRecovery("trn_impl_timeout_derived"),
@@ -612,7 +612,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: genericFailedTurnRecovery("trn_impl_continue_4"),
@@ -662,7 +662,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: genericFailedTurnRecovery("trn_impl_continue_custom_5"),
@@ -721,7 +721,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: genericFailedTurnRecovery("trn_impl_timeout_stale_primary"),
@@ -769,7 +769,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: { externalRef: "JRA-999", ...genericFailedTurnRecovery("trn_impl_timeout_3") },
@@ -823,7 +823,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		const deps = createTestDeps();
 		const treeFilesDir = await createTempRoot();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: genericFailedTurnRecovery("trn_impl_failed_no_leaf"),
@@ -863,7 +863,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 	it("parks the process and stops the failed worker when a running turn crashes", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -909,7 +909,7 @@ describe("createProcessEngine retry lifecycle effects", () => {
 	it("ignores duplicate worker failures once the process is already parked", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 		});
@@ -988,7 +988,7 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 	it("queues inputs through the lifecycle applier and returns the persisted inputs", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
@@ -1018,7 +1018,7 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 	it("persists queued input targets when provided", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
@@ -1049,7 +1049,7 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 	it("rejects targeted queued inputs whose kind is not instruction", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
@@ -1078,7 +1078,7 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 	it("rejects targeted queued inputs with blank bodyMarkdown", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
@@ -1107,7 +1107,7 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 	it("rejects queued inputs while a scheduled action is pending", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "review_plan",
 			lifecycleStatus: "waiting",
 		});
@@ -1142,13 +1142,13 @@ describe("createProcessEngine external action dispatch", () => {
 	it("ignores external actions that are not exposed by the current turn", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "commit_and_complete",
 			lifecycleStatus: "active",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
 		const registry = buildProcessActionRegistry({
-			processes: new Map([["jira_issue_process", createProcess(() => {})]]),
+			processes: new Map([["ticket_issue_process", createProcess(() => {})]]),
 		});
 		const commands = createProcessEngine({
 			...deps,
@@ -1176,7 +1176,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("records human-turn lineage and acceptance annotations for review actions", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
@@ -1195,7 +1195,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess(
 						(api) => {
 							api.action({
@@ -1291,7 +1291,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("persists submitted human-review form fields in acceptance annotations", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
@@ -1300,7 +1300,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess(
 						(api) => {
 							api.action({
@@ -1421,7 +1421,7 @@ describe("createProcessEngine process transition effects", () => {
 					id: "poem_creator_process",
 					entryTurnIds: new Set(["draft_poem"]),
 					turns: poemCreatorTurns,
-				} as typeof jiraProcessGraph,
+				} as typeof ticketProcessGraph,
 				turnDefinitions: new Map([
 					[
 						"draft_poem",
@@ -1522,7 +1522,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("restarts the worker when an active selected turn changes", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
@@ -1530,7 +1530,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess((api) => {
 						api.action({
 							id: "handoff_review",
@@ -1569,7 +1569,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("reports post-commit stage when action worker reconciliation fails after commit", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
@@ -1581,7 +1581,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess((api) => {
 						api.action({
 							id: "handoff_review",
@@ -1622,7 +1622,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("spawns a worker when an active selected turn changes and no worker is running", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
@@ -1630,7 +1630,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess((api) => {
 						api.action({
 							id: "handoff_review",
@@ -1666,7 +1666,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("rejects next-turn model overrides for execute-only actions", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
@@ -1674,7 +1674,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess((api) => {
 						api.action({
 							id: "approve_plan",
@@ -1721,7 +1721,7 @@ describe("createProcessEngine process transition effects", () => {
 	it("restarts the worker when the transition requires a fresh session", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
@@ -1729,7 +1729,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess((api) => {
 						api.action({
 							id: "restart_review",
@@ -1769,7 +1769,7 @@ describe("createProcessEngine future action cleanup", () => {
 	it("cancels scheduled actions when a process is aborted", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "review_plan",
 			lifecycleStatus: "waiting",
 		});
@@ -1798,7 +1798,7 @@ describe("createProcessEngine future action cleanup", () => {
 	it("still cancels scheduled actions when abort commits but worker shutdown fails", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "review_plan",
 			lifecycleStatus: "waiting",
 		});
@@ -1836,7 +1836,7 @@ describe("createProcessEngine future action cleanup", () => {
 	it("supersedes the active running turn when a process is aborted", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -1876,7 +1876,7 @@ describe("createProcessEngine future action cleanup", () => {
 	it("allows and consumes the current scheduled action inside the action command", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
@@ -1894,7 +1894,7 @@ describe("createProcessEngine future action cleanup", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
-					"jira_issue_process",
+					"ticket_issue_process",
 					createProcess(
 						(api) => {
 							api.action({
@@ -1953,7 +1953,7 @@ describe("createProcessEngine future action cleanup", () => {
 			const deps = createTestDeps();
 			const frames: WsFrame[] = [];
 			const process = deps.processes.create({
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: "plan_review",
 				lifecycleStatus: "waiting",
 				title: "PROJ-125",
@@ -2026,7 +2026,7 @@ describe("createProcessEngine future action cleanup", () => {
 					]),
 				},
 			);
-			const localProcessGraphs = new Map([["jira_issue_process", scheduledProcessDefinition]]);
+			const localProcessGraphs = new Map([["ticket_issue_process", scheduledProcessDefinition]]);
 			const registry = buildProcessActionRegistry({ processes: localProcessGraphs });
 			const commands = createProcessEngine({
 				...deps,
@@ -2084,7 +2084,7 @@ describe("createProcessEngine future action cleanup", () => {
 			const deps = createTestDeps();
 			const frames: WsFrame[] = [];
 			const process = deps.processes.create({
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: "generate_plan",
 				lifecycleStatus: "active",
 				title: "PROJ-123",
@@ -2151,7 +2151,7 @@ describe("createProcessEngine future action cleanup", () => {
 			const deps = createTestDeps();
 			const frames: WsFrame[] = [];
 			const process = deps.processes.create({
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: "generate_plan",
 				lifecycleStatus: "active",
 				title: "PROJ-124",
@@ -2228,7 +2228,7 @@ describe("createProcessEngine future action cleanup", () => {
 			const deps = createTestDeps();
 			const frames: WsFrame[] = [];
 			const process = deps.processes.create({
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: "implement",
 				lifecycleStatus: "active",
 				title: "PROJ-456",
@@ -2292,7 +2292,7 @@ describe("createProcessEngine future action cleanup", () => {
 			const deps = createTestDeps();
 			const frames: WsFrame[] = [];
 			const process = deps.processes.create({
-				processId: "jira_issue_process",
+				processId: "ticket_issue_process",
 				selectedTurnId: "generate_plan",
 				lifecycleStatus: "active",
 				title: "PROJ-457",

@@ -3,7 +3,7 @@ import type { ProcessInstance, ProcessProject } from "./domain-model.js";
 import { buildProcessRowSlot, sortProcessRows } from "./process-row-slots.js";
 
 function process(overrides: Partial<ProcessInstance> = {}): ProcessInstance {
-	const processId = overrides.processId ?? "jira_issue_process";
+	const processId = overrides.processId ?? "ticket_issue_process";
 	return {
 		id: "agent-uuid",
 		processId,
@@ -29,12 +29,12 @@ function proj(overrides: Partial<ProcessProject> = {}): ProcessProject {
 		id: "p1",
 		instanceId: "agent-uuid",
 		key: "my-service",
-		repoLocator: "https://gitlab.example/group/my-service.git",
+		repoLocator: "https://codehost.example/group/my-service.git",
 		repoLocatorKind: "remote_url",
 		baseBranch: "main",
 		workBranch: "feat-1",
 		externalId: "55",
-		externalUrl: "https://gitlab.example/group/my-service/-/merge_requests/55",
+		externalUrl: "https://codehost.example/group/my-service/-/merge_requests/55",
 		metadata: null,
 		pipelineStatus: "success",
 		createdAt: "2026-01-01T00:00:00Z",

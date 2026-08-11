@@ -28,7 +28,7 @@ describe("buildRetryWrites", () => {
 	it("reactivates the failed turn and preserves retry lineage metadata", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "error",
 			metadata: { externalRef: "JRA-123" },
@@ -160,7 +160,7 @@ describe("buildRetryWrites", () => {
 	it("clears stale retry metadata when there is no fork node to reuse", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: {
@@ -191,7 +191,7 @@ describe("buildRetryWrites", () => {
 	it("clears stale continuation metadata before scheduling retry", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "error",
 			metadata: {

@@ -1,7 +1,31 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { describe, expect, it } from "vitest";
-import { createAppContext } from "./app.js";
+import { describe, expect, it, vi } from "vitest";
+import { type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
+
+function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"]> {
+	return {
+		runner: {
+			start: vi.fn(async () => {
+				throw new Error("unexpected worker start");
+			}),
+			stop: vi.fn(async () => {}),
+			list: vi.fn(async () => []),
+			adopt: vi.fn(async () => {
+				throw new Error("unexpected worker adoption");
+			}),
+		},
+		volume: {
+			ensure: vi.fn(async (instanceId: string) => ({
+				instanceId,
+				id: `vol-${instanceId}`,
+				mountPath: "/workspace",
+			})),
+			release: vi.fn(async () => {}),
+			deleteProcessResources: vi.fn(async () => {}),
+		},
+	};
+}
 
 describe("createAppContext", () => {
 	it("keeps raw project repos silent and emits project updates through the mutation service", async () => {
@@ -50,29 +74,24 @@ describe("createAppContext", () => {
 		}
 	});
 
-	it("fails fast when process watcher config omits required fields", async () => {
+	it("leaves watcher validation to registered extension sources", async () => {
 		const config = getDefaultConfig();
 		config.process_configs = {
 			poem_creator_process: {
 				turn_configs: {},
 				watchers: {
 					create_poem: {
-						type: "filesystem",
-						enabled: true,
-						file_path: "/tmp/create-poem",
+						custom_source_field: "extension-owned",
 					} as never,
 				},
 			},
 		};
 
-		await expect(
-			createAppContext({
-				config,
-				extensionCatalog: buildExtensionCatalogFromModules([]),
-			}),
-		).rejects.toThrow(
-			/process_configs\.poem_creator_process\.watchers\.create_poem\.poll_interval/,
-		);
+		const ctx = await createAppContext({
+			config,
+			extensionCatalog: buildExtensionCatalogFromModules([]),
+		});
+		await ctx.app.close();
 	});
 
 	it("reports readiness only after every start hook succeeds and clears it before stop hooks", async () => {
@@ -96,7 +115,12 @@ describe("createAppContext", () => {
 				},
 			},
 		]);
-		ctx = await createAppContext({ config, logger: false, extensionCatalog });
+		ctx = await createAppContext({
+			config,
+			logger: false,
+			extensionCatalog,
+			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
+		});
 		try {
 			expect((await ctx.app.inject({ url: "/api/health" })).statusCode).toBe(200);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
@@ -131,7 +155,12 @@ describe("createAppContext", () => {
 				},
 			},
 		]);
-		const ctx = await createAppContext({ config, logger: false, extensionCatalog });
+		const ctx = await createAppContext({
+			config,
+			logger: false,
+			extensionCatalog,
+			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
+		});
 		try {
 			await expect(ctx.startBackgroundServices()).rejects.toThrow("start rejected");
 			expect(ctx.isReady()).toBe(false);

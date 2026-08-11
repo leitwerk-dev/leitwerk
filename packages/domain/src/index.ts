@@ -74,7 +74,6 @@ export {
 	PROCESS_TURN_RECORD_PATH_TYPES,
 	PROCESS_TURN_TYPES,
 	SYSTEM_ACTOR,
-	TELEGRAM_ACTOR,
 	WORKER_ERROR_CLASSES,
 } from "./domain-model.js";
 export {

@@ -29,7 +29,7 @@ function setup(
 		metadata?: ProcessInstance["metadata"];
 	} = {},
 ) {
-	const processId = input.processId ?? "jira_issue_process";
+	const processId = input.processId ?? "ticket_issue_process";
 	const turnId = input.turnId ?? "generate_plan";
 	const base = createTestDeps();
 	const deps: ProcessEngineDeps = {

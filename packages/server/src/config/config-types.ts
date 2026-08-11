@@ -60,7 +60,7 @@ export interface AuthSessionConfig {
 }
 
 export interface AuthOidcProviderConfig {
-	id: "forgejo" | "gitlab";
+	id: string;
 	kind: "oidc";
 	issuer: string;
 	client_id: string;

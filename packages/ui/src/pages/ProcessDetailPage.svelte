@@ -51,6 +51,8 @@ let { instanceId }: Props = $props();
 
 let launchWarning = $state<string | null>(null);
 let observedInstanceId: string | null = null;
+let loadedInstanceId = $state<string | null>(null);
+let observedReconnectCount = $state<number | null>(null);
 let processInfoFocusRestoreElement: HTMLElement | null = null;
 let reasoningTraceCache = $state.raw<Record<string, TurnTraceSnapshot>>({});
 let activeReasoningRequest = $state.raw<{
@@ -97,7 +99,12 @@ $effect(() => {
 });
 
 $effect(() => {
-	$wsStore.reconnectCount;
+	const reconnectCount = $wsStore.reconnectCount;
+	if (loadedInstanceId === instanceId && observedReconnectCount === reconnectCount) {
+		return;
+	}
+	loadedInstanceId = instanceId;
+	observedReconnectCount = reconnectCount;
 	void loadProcessDetail(instanceId);
 });
 

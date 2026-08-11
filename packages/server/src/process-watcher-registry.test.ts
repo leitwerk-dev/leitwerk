@@ -1,16 +1,15 @@
 import {
 	defineProcess,
+	defineProcessWatcherSource,
 	type ExtensionProcessDefinition,
 	type LauncherModelProfileSummary,
 	llmTurn,
+	parseProcessWatcherLaunchModelConfig,
 } from "@leitwerk-dev/process-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
-import {
-	buildProcessWatcherRegistry,
-	validateConfiguredProcessWatchersAgainstCatalog,
-} from "./process-watcher-registry.js";
+import { buildProcessWatcherRegistry } from "./process-watcher-registry.js";
 
 interface TestParams {
 	issueKey: string;
@@ -28,6 +27,38 @@ const defaultModelProfiles: readonly LauncherModelProfileSummary[] = [
 const filteredModelProfiles: readonly LauncherModelProfileSummary[] = [defaultModelProfiles[1]];
 
 const observedWatcherContexts: LauncherModelProfileSummary[][] = [];
+
+interface TestWatcherConfig {
+	project: string;
+}
+
+interface TestWatcherEvent {
+	issueKey: string;
+	summary?: string;
+	reject?: boolean;
+}
+
+const testWatcherSource = defineProcessWatcherSource<TestWatcherConfig, TestWatcherEvent>({
+	id: "test_ticket",
+	label: "Test ticket source",
+	parseConfig(raw) {
+		const config = raw as { enabled?: boolean; project?: unknown; launch?: unknown };
+		if (typeof config.project !== "string" || config.project.trim() === "") {
+			throw new Error("project must be a non-empty string");
+		}
+		return {
+			config: { project: config.project },
+			enabled: config.enabled !== false,
+			launchModelConfig: parseProcessWatcherLaunchModelConfig(config.launch),
+		};
+	},
+	presentConfig(config) {
+		return {
+			targetSummary: config.project,
+			details: [{ label: "Project", value: config.project }],
+		};
+	},
+});
 
 const testProcess = defineProcess<TestParams, TestState>({
 	id: "test_process",
@@ -76,22 +107,21 @@ const testProcess = defineProcess<TestParams, TestState>({
 	},
 	watchers(api) {
 		api.watcher({
-			id: "jira_default",
-			label: "Jira Default",
-			description: "Watch Jira",
-			type: "jira",
+			id: "ticket_default",
+			label: "Ticket Default",
+			description: "Watch Ticket",
+			source: testWatcherSource,
 			matches(event, ctx) {
 				observedWatcherContexts.push([...(ctx.modelProfiles ?? [])]);
-				return (event as { reject?: boolean }).reject !== true;
+				return event.reject !== true;
 			},
 			resolveLaunchConfig(event, ctx) {
 				observedWatcherContexts.push([...(ctx.modelProfiles ?? [])]);
-				const candidate = event as { issueKey: string; summary?: string };
 				return {
 					processId: "test_process",
-					params: { issueKey: candidate.issueKey },
-					title: candidate.summary ?? null,
-					externalId: candidate.issueKey,
+					params: { issueKey: event.issueKey },
+					title: event.summary ?? null,
+					externalId: event.issueKey,
 					startTurnId: "triage",
 				};
 			},
@@ -103,17 +133,17 @@ const duplicateWatcherProcess: ExtensionProcessDefinition = {
 	...testProcess,
 	watchers(api) {
 		api.watcher({
-			id: "jira_default",
-			label: "Jira Default",
-			description: "Watch Jira",
-			type: "jira",
+			id: "ticket_default",
+			label: "Ticket Default",
+			description: "Watch Ticket",
+			source: testWatcherSource,
 			resolveLaunchConfig: () => ({ processId: "test_process", params: {} }),
 		});
 		api.watcher({
-			id: "jira_default",
-			label: "Jira Duplicate",
-			description: "Watch Jira duplicate",
-			type: "jira",
+			id: "ticket_default",
+			label: "Ticket Duplicate",
+			description: "Watch Ticket duplicate",
+			source: testWatcherSource,
 			resolveLaunchConfig: () => ({ processId: "test_process", params: {} }),
 		});
 	},
@@ -125,8 +155,7 @@ function createConfig() {
 		test_process: {
 			turn_configs: {},
 			watchers: {
-				jira_default: {
-					type: "jira",
+				ticket_default: {
 					enabled: true,
 					project: "CLD",
 					poll_interval: "60s",
@@ -155,23 +184,25 @@ function createRegistry() {
 	);
 }
 
+function configuredWatcher(registry: ReturnType<typeof createRegistry>) {
+	const watcher = registry.listBySource(testWatcherSource)[0];
+	if (!watcher) throw new Error("Expected configured test watcher");
+	return watcher;
+}
+
 describe("buildProcessWatcherRegistry", () => {
 	beforeEach(() => {
 		observedWatcherContexts.length = 0;
 	});
 
-	it("fails startup and config validation when a process declares duplicate watcher ids", () => {
+	it("fails startup when a process declares duplicate watcher ids", () => {
 		const catalog = { processes: new Map([["test_process", duplicateWatcherProcess]]) };
-
 		expect(() => buildProcessWatcherRegistry(catalog, createConfig())).toThrowError();
-		expect(() =>
-			validateConfiguredProcessWatchersAgainstCatalog({ config: createConfig(), catalog }),
-		).toThrowError();
 	});
 
 	it("accepts removed watcher model defaults while retaining structural validation", () => {
 		const config = createConfig();
-		config.process_configs.test_process.watchers.jira_default.launch = {
+		config.process_configs.test_process.watchers.ticket_default.launch = {
 			default_model_profile: "removed_default",
 			turn_configs: { triage: { model_profile: "removed_turn_default" } },
 		};
@@ -183,31 +214,29 @@ describe("buildProcessWatcherRegistry", () => {
 			fingerprint: () => "",
 		} as unknown as ServerProcessModelPolicy;
 
-		expect(
-			validateConfiguredProcessWatchersAgainstCatalog({
-				config,
-				catalog: { processes: new Map([["test_process", testProcess]]) },
+		expect(() =>
+			buildProcessWatcherRegistry({ processes: new Map([["test_process", testProcess]]) }, config, {
 				processModelPolicy,
 			}),
-		).toEqual([]);
+		).not.toThrow();
 	});
 
 	it("canonicalizes watcher-provided titles in launch plans", async () => {
 		const registry = createRegistry();
-		const resolved = await registry.resolveLaunch("test_process", "jira_default", {
+		const resolved = await configuredWatcher(registry).resolveLaunch({
 			issueKey: "CLD-101",
 			summary: "  Implement\n caching layer  ",
 		});
 
-		expect(resolved?.launchPlan.processInput.title).toBe("Implement caching layer");
-		expect(resolved?.launchPlan.processInput.externalId).toBe("CLD-101");
+		expect(resolved?.processInput.title).toBe("Implement caching layer");
+		expect(resolved?.processInput.externalId).toBe("CLD-101");
 	});
 
 	it("returns null when a watcher match rejects the payload", async () => {
 		const registry = createRegistry();
 
 		await expect(
-			registry.resolveLaunch("test_process", "jira_default", {
+			configuredWatcher(registry).resolveLaunch({
 				issueKey: "CLD-102",
 				reject: true,
 			}),
@@ -218,27 +247,27 @@ describe("buildProcessWatcherRegistry", () => {
 	it("adds watcher metadata and configured launch model config", async () => {
 		const registry = createRegistry();
 
-		const resolved = await registry.resolveLaunch("test_process", "jira_default", {
+		const resolved = await configuredWatcher(registry).resolveLaunch({
 			issueKey: "CLD-103",
 			summary: "Watcher metadata",
 		});
 
-		expect(resolved?.watcher.launchModelConfig).toEqual({
+		expect(configuredWatcher(registry).launchModelConfig).toEqual({
 			defaultModelProfileId: "claude_fast",
 			turnConfigs: { triage: { modelProfileId: "local_qwen" } },
 		});
-		expect(resolved?.launchPlan.launcherId).toBe("test_process.jira_default");
-		expect(resolved?.launchPlan.processInput.metadata).toEqual({
-			processWatcherId: "jira_default",
-			processWatcherType: "jira",
-			processWatcherConfigPath: "process_configs.test_process.watchers.jira_default",
+		expect(resolved?.launcherId).toBe("test_process.ticket_default");
+		expect(resolved?.processInput.metadata).toEqual({
+			processWatcherId: "ticket_default",
+			processWatcherSourceId: "test_ticket",
+			processWatcherConfigPath: "process_configs.test_process.watchers.ticket_default",
 		});
 	});
 
 	it("passes process-filtered model profiles to watcher matches and resolution", async () => {
 		const registry = createRegistry();
 
-		await registry.resolveLaunch("test_process", "jira_default", { issueKey: "CLD-104" });
+		await configuredWatcher(registry).resolveLaunch({ issueKey: "CLD-104" });
 
 		expect(observedWatcherContexts).toEqual([filteredModelProfiles, filteredModelProfiles]);
 	});
@@ -247,9 +276,7 @@ describe("buildProcessWatcherRegistry", () => {
 		const registry = createRegistry();
 		const explicitProfiles = [defaultModelProfiles[0]];
 
-		await registry.resolveLaunch(
-			"test_process",
-			"jira_default",
+		await configuredWatcher(registry).resolveLaunch(
 			{ issueKey: "CLD-105" },
 			{
 				modelProfiles: explicitProfiles,

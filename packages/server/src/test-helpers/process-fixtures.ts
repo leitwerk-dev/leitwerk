@@ -166,8 +166,8 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 	string,
 	ExtensionProcessDefinition<unknown, unknown>
 > {
-	const jira = createFixtureProcess({
-		id: "jira_issue_process",
+	const ticket = createFixtureProcess({
+		id: "ticket_issue_process",
 		entry: "generate_plan",
 		turns: {
 			generate_plan: createFixtureLlmTurn("generate_plan", {
@@ -263,7 +263,7 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 		},
 	});
 	return createProcessGraphRegistry([
-		jira as ExtensionProcessDefinition<unknown, unknown>,
+		ticket as ExtensionProcessDefinition<unknown, unknown>,
 		mrPolish as ExtensionProcessDefinition<unknown, unknown>,
 	]);
 }

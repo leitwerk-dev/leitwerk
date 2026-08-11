@@ -81,7 +81,6 @@ async function createFilesystemWatcherHarness(args: {
 					turn_configs: {},
 					watchers: {
 						create_poem: {
-							type: "filesystem",
 							enabled: true,
 							poll_interval: "50ms",
 							file_path: args.filePath,

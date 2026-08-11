@@ -57,6 +57,7 @@ const telegramExtension: LeitwerkExtensionModule = {
 };
 
 export default telegramExtension;
+export { TELEGRAM_ACTOR } from "./actor.js";
 export * from "./bridge.js";
 export * from "./config.js";
 export * from "./fake-telegram-client.js";

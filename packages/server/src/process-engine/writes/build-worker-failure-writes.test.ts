@@ -9,7 +9,7 @@ describe("buildWorkerFailureWrites", () => {
 	it("fails the active running turn, parks the process, and requests worker shutdown", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "implement",
 			lifecycleStatus: "active",
 		});
@@ -82,7 +82,7 @@ describe("buildWorkerFailureWrites", () => {
 	it("parks the process even when no running turn record exists", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});

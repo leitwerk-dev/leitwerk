@@ -27,7 +27,23 @@ export function replaceGeneratedReleaseNotes(body, changelog) {
 	if (!header || !footer) {
 		throw new Error("release PR body does not match the expected Release Please format");
 	}
-	return `${header}\n\n${block}\n\n${footer}`;
+
+	const start = body.indexOf(blockStart);
+	const end = body.indexOf(blockEnd);
+	if (
+		(start === -1) !== (end === -1) ||
+		(start !== -1 &&
+			(end < start ||
+				body.indexOf(blockStart, start + blockStart.length) !== -1 ||
+				body.indexOf(blockEnd, end + blockEnd.length) !== -1))
+	) {
+		throw new Error("release PR body has invalid overall release notes markers");
+	}
+	if (start !== -1) {
+		return `${body.slice(0, start)}${block}${body.slice(end + blockEnd.length)}`;
+	}
+
+	return `${header}\n\n${block}${body.slice(header.length)}`;
 }
 
 async function githubRequest(apiUrl, token, requestPath, init = {}) {

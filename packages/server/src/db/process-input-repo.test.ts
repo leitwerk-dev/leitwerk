@@ -17,7 +17,7 @@ describe("process input actor attribution", () => {
 
 	function createProcess(): string {
 		const processes = createProcessInstanceRepo(db);
-		return processes.create({ processId: "jira_issue_process", lifecycleStatus: "active" }).id;
+		return processes.create({ processId: "ticket_issue_process", lifecycleStatus: "active" }).id;
 	}
 
 	it("defaults to the system actor when none is provided", () => {
@@ -40,9 +40,9 @@ describe("process input actor attribution", () => {
 		const inputs = createProcessInputRepo(db);
 		const instanceId = createProcess();
 		const actor: Actor = {
-			id: "forgejo:alice",
+			id: "identity:alice",
 			kind: "user",
-			provider: "forgejo",
+			provider: "identity",
 			displayName: "Alice",
 		};
 

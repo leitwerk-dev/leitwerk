@@ -20,7 +20,7 @@ function createProcessPatch(partial: Partial<ProcessInstance>): Partial<ProcessI
 function createProcessInstance(id: string): ProcessInstance {
 	return {
 		id,
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 		currentExecution: null,
@@ -109,7 +109,7 @@ describe("createBroadcaster", () => {
 
 		broadcaster.sendDurable("process.created", {
 			process: createProcessInstance("agt_1"),
-			processId: "jira_issue_process",
+			processId: "ticket_issue_process",
 		});
 
 		expect(ws1.sent).toHaveLength(1);

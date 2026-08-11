@@ -10,10 +10,10 @@ function buildRegistry(action: ProcessActionDefinition) {
 	return buildProcessActionRegistry({
 		processes: new Map([
 			[
-				"jira_issue_process",
+				"ticket_issue_process",
 				defineProcess({
-					id: "jira_issue_process",
-					displayName: "Implement Jira Issue",
+					id: "ticket_issue_process",
+					displayName: "Implement Ticket Issue",
 					entry: "plan_review",
 					turns: {
 						plan_review: {
@@ -59,7 +59,7 @@ function buildRegistry(action: ProcessActionDefinition) {
 function createPlanReviewProcess() {
 	const deps = createTestDeps();
 	return deps.processes.create({
-		processId: "jira_issue_process",
+		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
 		stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),

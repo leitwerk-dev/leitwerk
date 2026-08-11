@@ -46,7 +46,7 @@ describe("ProcessEngine runner", () => {
 
 	it("does not record rejected decisions", async () => {
 		const base = createTestDeps();
-		const process = base.processes.create({ processId: "jira_issue_process" });
+		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let transactionCalls = 0;
 		const deps = createDeps({
 			...base,
@@ -71,7 +71,7 @@ describe("ProcessEngine runner", () => {
 
 	it("sanitizes unexpected decision errors and does not record them", async () => {
 		const base = createTestDeps();
-		const process = base.processes.create({ processId: "jira_issue_process" });
+		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let transactionCalls = 0;
 		const logger = createTestLogger();
 		const thrown = new Error("secret provider token");
@@ -111,7 +111,7 @@ describe("ProcessEngine runner", () => {
 
 	it("does not dispatch reactions when recording fails", async () => {
 		const base = createTestDeps();
-		const process = base.processes.create({ processId: "jira_issue_process" });
+		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let spawnCalls = 0;
 		const logger = createTestLogger();
 		const databaseError = new Error(
@@ -166,7 +166,7 @@ describe("ProcessEngine runner", () => {
 	it("returns a post-record failure with the committed process when record finalization fails", async () => {
 		const logger = createTestLogger();
 		const deps = createDeps({ logger });
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const finalizationError = new Error(
 			"could not derive result data from /repo/internal/finalizer.ts stack",
 		);
@@ -228,7 +228,7 @@ describe("ProcessEngine runner", () => {
 					},
 				}) as never,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const StartsWorker = defineOperation<"starts_worker", { instanceId: string }, void>({
 			kind: "starts_worker",
 			decide() {
@@ -279,7 +279,7 @@ describe("ProcessEngine runner", () => {
 				},
 			} as never,
 		});
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const EmitsExtensionEvent = defineOperation<
 			"emits_extension_event",
 			{ instanceId: string },
@@ -319,7 +319,7 @@ describe("ProcessEngine runner", () => {
 
 	it("dispatches reactions after the process lock has been released", async () => {
 		const base = createTestDeps();
-		const process = base.processes.create({ processId: "jira_issue_process" });
+		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let locked = false;
 		let observedLockedDuringSpawn: boolean | null = null;
 		const deps = createDeps({
@@ -363,7 +363,7 @@ describe("ProcessEngine runner", () => {
 	it("returns a post-commit failure when afterSuccess fails after a commit", async () => {
 		const logger = createTestLogger();
 		const deps = createDeps({ logger });
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		const afterSuccessError = new Error("resolver exploded with secret details");
 		const run = createEngineRunner(deps, {
 			afterSuccess: async () => {
@@ -396,7 +396,7 @@ describe("ProcessEngine runner", () => {
 
 	it("runs afterSuccess only after successful reactions", async () => {
 		const deps = createDeps();
-		const process = deps.processes.create({ processId: "jira_issue_process" });
+		const process = deps.processes.create({ processId: "ticket_issue_process" });
 		let afterSuccessCalls = 0;
 		const run = createEngineRunner(deps, {
 			afterSuccess: async () => {
@@ -417,7 +417,7 @@ describe("ProcessEngine runner", () => {
 					},
 				}) as never,
 		});
-		const failingProcess = failingDeps.processes.create({ processId: "jira_issue_process" });
+		const failingProcess = failingDeps.processes.create({ processId: "ticket_issue_process" });
 		let failingAfterSuccessCalls = 0;
 		const failingRun = createEngineRunner(failingDeps, {
 			afterSuccess: async () => {

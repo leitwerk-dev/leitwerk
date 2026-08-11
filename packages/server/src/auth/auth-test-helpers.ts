@@ -23,9 +23,9 @@ export function testAuthConfig(overrides?: {
 		},
 		providers: [
 			{
-				id: "forgejo",
+				id: "identity",
 				kind: "oidc",
-				issuer: "https://forgejo.example.test",
+				issuer: "https://identity.example.test",
 				client_id: "client",
 				client_secret: "secret",
 				...overrides?.provider,

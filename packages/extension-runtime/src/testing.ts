@@ -108,11 +108,11 @@ export async function buildExtensionCatalogFromModules(
 export function createTestProcessInstance(
 	overrides: Partial<ProcessInstance> = {},
 ): ProcessInstance {
-	const processId = overrides.processId ?? "jira_issue_process";
+	const processId = overrides.processId ?? "ticket_issue_process";
 	const selectedTurnId =
 		overrides.selectedTurnId !== undefined
 			? overrides.selectedTurnId
-			: processId === "jira_issue_process"
+			: processId === "ticket_issue_process"
 				? "generate_plan"
 				: null;
 	const lifecycleStatus =

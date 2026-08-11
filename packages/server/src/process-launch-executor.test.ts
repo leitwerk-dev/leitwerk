@@ -212,7 +212,7 @@ describe("process launch durable boundary", () => {
 		launchPlan.projectInputs[0] = {
 			...launchPlan.projectInputs[0],
 			externalId: "mr-123",
-			externalUrl: "https://gitlab.example.com/team/app/-/merge_requests/123",
+			externalUrl: "https://codehost.example.com/team/app/-/merge_requests/123",
 			metadata: { source: "watcher" },
 		};
 
@@ -220,12 +220,12 @@ describe("process launch durable boundary", () => {
 
 		expect(commit.projects[0]).toMatchObject({
 			externalId: "mr-123",
-			externalUrl: "https://gitlab.example.com/team/app/-/merge_requests/123",
+			externalUrl: "https://codehost.example.com/team/app/-/merge_requests/123",
 			metadata: { source: "watcher" },
 		});
 		expect(deps.projects.listByInstance(commit.process.id)[0]).toMatchObject({
 			externalId: "mr-123",
-			externalUrl: "https://gitlab.example.com/team/app/-/merge_requests/123",
+			externalUrl: "https://codehost.example.com/team/app/-/merge_requests/123",
 			metadata: { source: "watcher" },
 		});
 	});
