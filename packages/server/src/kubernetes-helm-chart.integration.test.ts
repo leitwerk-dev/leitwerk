@@ -187,6 +187,42 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(deployment)).toContain("leitwerk-server-data");
 	});
 
+	it("schedules the gateway with its configured selector, affinity, and tolerations", () => {
+		const documents = renderChart([
+			"--set",
+			"gateway.enabled=true",
+			"--set",
+			"gateway.nodeSelector.example\\.com/node-role=workload",
+			"--set",
+			"gateway.tolerations[0].key=example.com/dedicated",
+			"--set",
+			"gateway.tolerations[0].operator=Equal",
+			"--set",
+			"gateway.tolerations[0].value=true",
+			"--set",
+			"gateway.tolerations[0].effect=NoSchedule",
+			"--set",
+			"gateway.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight=1",
+		]);
+		const gateway = findDocumentsByKind(documents, "Deployment").find(
+			(document) => (document.metadata as Record<string, unknown>)?.name === "leitwerk-gateway",
+		);
+		const podSpec = ((
+			(gateway?.spec as Record<string, unknown>).template as Record<string, unknown>
+		).spec ?? {}) as Record<string, unknown>;
+
+		expect(podSpec.nodeSelector).toEqual({ "example.com/node-role": "workload" });
+		expect(podSpec.tolerations).toEqual([
+			{
+				key: "example.com/dedicated",
+				operator: "Equal",
+				value: true,
+				effect: "NoSchedule",
+			},
+		]);
+		expect(podSpec.affinity).toBeDefined();
+	});
+
 	it("renders an opt-in pre-upgrade preflight and lifecycle-aware server probes", () => {
 		const documents = renderChart([
 			"--set",

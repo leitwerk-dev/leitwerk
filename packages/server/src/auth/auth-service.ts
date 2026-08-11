@@ -1,6 +1,7 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { AuthLoginFlowRecord, RepositoryBundle } from "../db/repositories.js";
+import { type AuthClient, createAuthClient } from "./auth-client.js";
 import {
 	isActorAllowedByConfig,
 	type ResolvedAuthConfig,
@@ -82,9 +83,14 @@ export function createAuthService(input: {
 	config: LeitwerkConfig;
 	repos: Pick<RepositoryBundle, "authSessions" | "authLoginFlows">;
 	oidcClient?: OidcClient;
+	authClient?: AuthClient;
 }): AuthService {
 	const auth = resolveAuthConfig(input.config);
-	const oidcClient = input.oidcClient ?? createOpenIdClient();
+	const authClient =
+		input.authClient ??
+		createAuthClient({
+			oidc: input.oidcClient ?? createOpenIdClient(),
+		});
 	const sweepExpiredAuthState = (): AuthSweepResult => ({
 		sessions: input.repos.authSessions.deleteExpired(),
 		loginFlows: input.repos.authLoginFlows.deleteExpired(),
@@ -99,7 +105,7 @@ export function createAuthService(input: {
 				throw new Error("Authentication is not enabled");
 			}
 			const provider = auth.providers[0];
-			const login = await oidcClient.createAuthorizationRequest(provider);
+			const login = await authClient.createAuthorizationRequest(provider);
 			const cookieValue = generateOpaqueToken();
 			const expiresAt = isoFromNow(auth.loginFlowTtlMs);
 			input.repos.authLoginFlows.create({
@@ -126,9 +132,9 @@ export function createAuthService(input: {
 				throw new Error("Login provider is no longer configured");
 			}
 			if (callbackUrl.searchParams.get("state") !== flow.state) {
-				throw new Error("Invalid OIDC state");
+				throw new Error("Invalid authentication state");
 			}
-			const exchanged = await oidcClient.exchangeCallback({
+			const exchanged = await authClient.exchangeCallback({
 				provider,
 				callbackUrl,
 				state: flow.state,
@@ -136,7 +142,7 @@ export function createAuthService(input: {
 			});
 			const actor = actorFromOidcClaims({ provider, claims: exchanged.claims });
 			if (!actor) {
-				throw new Error(`OIDC identity claim ${provider.identity_claim} was not present`);
+				throw new Error(`Authentication identity claim ${provider.identity_claim} was not present`);
 			}
 			if (!isActorAllowedByConfig(actor, auth)) {
 				throw new Error("Authenticated user is not allowlisted");

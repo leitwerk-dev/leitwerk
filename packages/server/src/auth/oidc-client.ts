@@ -12,10 +12,10 @@ import {
 	skipSubjectCheck,
 } from "openid-client";
 import { isLoopbackHttpUrl } from "../config/url-policy.js";
-import type { ResolvedAuthProvider } from "./auth-config.js";
+import type { ResolvedOidcProvider } from "./auth-config.js";
 
 export interface OidcAuthorizationRequest {
-	provider: ResolvedAuthProvider;
+	provider: ResolvedOidcProvider;
 	state: string;
 	pkceVerifier: string;
 	redirectUrl: string;
@@ -26,9 +26,9 @@ export interface OidcTokensAndClaims {
 }
 
 export interface OidcClient {
-	createAuthorizationRequest(provider: ResolvedAuthProvider): Promise<OidcAuthorizationRequest>;
+	createAuthorizationRequest(provider: ResolvedOidcProvider): Promise<OidcAuthorizationRequest>;
 	exchangeCallback(input: {
-		provider: ResolvedAuthProvider;
+		provider: ResolvedOidcProvider;
 		callbackUrl: URL;
 		state: string;
 		pkceVerifier: string;
@@ -38,7 +38,7 @@ export interface OidcClient {
 export function createOpenIdClient(): OidcClient {
 	const configs = new Map<string, Promise<Configuration>>();
 
-	async function getConfiguration(provider: ResolvedAuthProvider): Promise<Configuration> {
+	async function getConfiguration(provider: ResolvedOidcProvider): Promise<Configuration> {
 		const key = `${provider.id}:${provider.issuer}:${provider.client_id}`;
 		let configPromise = configs.get(key);
 		if (!configPromise) {
