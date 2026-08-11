@@ -1011,9 +1011,6 @@ export const poemCreatorProcess = flow
 		description:
 			"Launch Poem Creator whenever the configured filesystem watcher finds a prompt file",
 		source: filesystemWatcherSource,
-		matches(event) {
-			return typeof event.content === "string";
-		},
 		resolveLaunchConfig(event) {
 			const prompt = event.content.trim();
 			return {

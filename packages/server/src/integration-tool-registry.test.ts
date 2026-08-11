@@ -37,6 +37,14 @@ describe("IntegrationToolRegistry", () => {
 				execute: async () => ({}),
 			}),
 		).toThrow(/must match/);
+		expect(() =>
+			registry.register({
+				name: " provider_echo ",
+				description: "bad",
+				parameters: {},
+				execute: async () => ({}),
+			}),
+		).toThrow(/must match/);
 	});
 
 	it("coalesces only concurrent executions by stable idempotency key", async () => {
@@ -71,7 +79,12 @@ describe("integration tool request service", () => {
 	it("authorizes the active LLM turn and resolves an optional project", async () => {
 		const registry = new IntegrationToolRegistry();
 		const execute = registerEcho(registry);
-		const process = { id: "instance-1", processId: "process-type", selectedTurnId: "repair" };
+		const process = {
+			id: "instance-1",
+			processId: "process-type",
+			selectedTurnId: "repair",
+			currentExecution: { kind: "worker_start", id: "turn-start-1" },
+		};
 		const turn = {
 			id: "turn-record-1",
 			instanceId: "instance-1",
@@ -84,6 +97,9 @@ describe("integration tool request service", () => {
 			repos: {
 				processes: { getById: () => process },
 				turnRecords: { getById: () => turn },
+				turnStarts: {
+					getById: () => ({ state: { kind: "accepted", turnRecordId: "turn-record-1" } }),
+				},
 				projects: { listByInstance: () => [project] },
 			} as never,
 			processActionRegistry: {
@@ -114,7 +130,15 @@ describe("integration tool request service", () => {
 			registry,
 			repos: {
 				processes: {
-					getById: () => ({ id: "instance-1", processId: "process-type", selectedTurnId: "other" }),
+					getById: () => ({
+						id: "instance-1",
+						processId: "process-type",
+						selectedTurnId: "other",
+						currentExecution: { kind: "worker_start", id: "turn-start-1" },
+					}),
+				},
+				turnStarts: {
+					getById: () => ({ state: { kind: "accepted", turnRecordId: "turn-record-1" } }),
 				},
 				turnRecords: {
 					getById: () => ({
@@ -138,6 +162,49 @@ describe("integration tool request service", () => {
 		await expect(
 			createIntegrationToolRequestService(base).handle("instance-1", payload),
 		).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/stale/) });
+		expect(execute).not.toHaveBeenCalled();
+	});
+
+	it("rejects a running record from an older attempt of the selected turn", async () => {
+		const registry = new IntegrationToolRegistry();
+		const execute = registerEcho(registry);
+		const service = createIntegrationToolRequestService({
+			registry,
+			repos: {
+				processes: {
+					getById: () => ({
+						id: "instance-1",
+						processId: "process-type",
+						selectedTurnId: "repair",
+						currentExecution: { kind: "worker_start", id: "turn-start-current" },
+					}),
+				},
+				turnRecords: {
+					getById: () => ({
+						id: "turn-record-stale",
+						instanceId: "instance-1",
+						turnId: "repair",
+						status: "running",
+					}),
+				},
+				turnStarts: {
+					getById: () => ({ state: { kind: "accepted", turnRecordId: "turn-record-current" } }),
+				},
+				projects: { listByInstance: () => [] },
+			} as never,
+			processActionRegistry: {
+				getTurnDefinition: () => ({ kind: "llm", integrationTools: ["provider_echo"] }),
+			},
+		});
+
+		await expect(
+			service.handle("instance-1", {
+				turnRecordId: "turn-record-stale",
+				toolCallId: "call",
+				toolName: "provider_echo",
+				args: {},
+			}),
+		).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/stale turn record/) });
 		expect(execute).not.toHaveBeenCalled();
 	});
 });

@@ -27,42 +27,34 @@ The four built-in primitives control workspace access:
 
 ## 2. Integration Tools
 
-Integration extensions define custom domain tools that allow AI agents to query or update external services (like Jira or GitLab) during execution:
+Integration extensions define server tools for external services:
 
 ```ts
 // Registered inside setupServer(api) in an integration extension
 api.tool({
-  name: "jira_update_issue",
-  description: "Update status, labels, or post comments to a Jira issue",
+  name: "jira_get_issue",
+  description: "Read a Jira issue",
   parameters: {
     type: "object",
     properties: {
       issueKey: { type: "string", description: "Jira Issue Key (e.g. PROJ-123)" },
-      comment: { type: "string", description: "Comment text to post" },
-      status: { type: "string", description: "Target Jira status transition" },
     },
     required: ["issueKey"],
   },
-  execute: async (ctx, params) => {
-    await jiraClient.updateIssue(params);
-    return { success: true, message: `Updated ${params.issueKey}` };
-  },
+  execute: async (_ctx, params) => jiraClient.getIssue(params.issueKey),
 });
 
-flow.llm("update_issue")
-  .description("Update the source issue")
-  .integrationTools("issue_update");
+flow.llm("inspect_issue")
+  .description("Inspect the source issue")
+  .integrationTools("jira_get_issue");
 ```
 
-Integration tools are registered and executed in the server process. `worker.start`
-contains only their non-secret name, description, and JSON parameter schema. A worker
-invocation crosses authenticated IPC and is accepted only for the active running turn,
-an explicitly authorized tool name, and an optional project belonging to that process.
-Provider tokens and clients never enter worker configuration or snapshots.
+Integration tools run in the server process. Workers receive only each tool's name,
+description, and parameter schema. The server accepts a call only from the current turn
+record and only for a tool authorized by that turn. Provider credentials stay on the server.
 
-The server assigns a stable idempotency key from the process, turn record, Pi tool-call
-identity, and tool name. Reconnects replay the same request. External writes must also
-use `ensureWrite()` so replay remains safe across a server restart.
+Reconnects replay a call with the same idempotency key. Mutating tools must use
+`ensureWrite()` so replay remains safe across server restarts.
 
 ### Common Integration Tools
 

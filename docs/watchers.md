@@ -27,11 +27,11 @@ export const queueSource = defineProcessWatcherSource<QueueConfig, QueueEvent>({
   label: "Work queue",
   parseConfig(raw) {
     // The extension validates its raw configuration here.
-    const config = parseQueueConfig(raw);
+    const { config, launch } = parseQueueConfig(raw);
     return {
       config,
       enabled: config.enabled,
-      launchModelConfig: parseLaunchModelConfig(raw),
+      launchModelConfig: parseProcessWatcherLaunchModelConfig(launch),
     };
   },
   presentConfig(config) {

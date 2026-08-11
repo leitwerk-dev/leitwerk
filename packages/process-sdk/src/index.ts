@@ -337,7 +337,10 @@ export {
 	buildProcessWatchers,
 	createProcessWatcherBuilder,
 } from "./process-watcher-builder.js";
-export { defineProcessWatcherSource } from "./process-watcher-source.js";
+export {
+	defineProcessWatcherSource,
+	parseProcessWatcherLaunchModelConfig,
+} from "./process-watcher-source.js";
 export {
 	clearRepositoryGitSshWrappers,
 	repositoryGitArgs,

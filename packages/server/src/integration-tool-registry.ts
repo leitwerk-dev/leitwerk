@@ -26,7 +26,7 @@ export class IntegrationToolRegistry {
 	private readonly executions = new Map<string, Promise<unknown>>();
 
 	register<TArgs>(definition: IntegrationToolDefinition<TArgs>): void {
-		const name = definition.name.trim();
+		const name = definition.name;
 		if (!TOOL_NAME.test(name)) {
 			throw new Error(`Integration tool '${definition.name}' must match ${TOOL_NAME}`);
 		}
@@ -64,7 +64,7 @@ export class IntegrationToolRegistry {
 
 export function createIntegrationToolRequestService(input: {
 	registry: IntegrationToolRegistry;
-	repos: Pick<RepositoryBundle, "processes" | "projects" | "turnRecords">;
+	repos: Pick<RepositoryBundle, "processes" | "projects" | "turnRecords" | "turnStarts">;
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition">;
 }) {
 	return {
@@ -82,6 +82,15 @@ export function createIntegrationToolRequestService(input: {
 			const turn = input.repos.turnRecords.getById(payload.turnRecordId);
 			if (!process || !turn || turn.instanceId !== instanceId || turn.status !== "running") {
 				return fail("Integration tool call does not belong to the active running turn");
+			}
+			const currentStart =
+				process.currentExecution?.kind === "worker_start"
+					? input.repos.turnStarts.getById(process.currentExecution.id)
+					: null;
+			const expectedTurnRecordId =
+				currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
+			if (expectedTurnRecordId !== payload.turnRecordId) {
+				return fail("Integration tool call targets a stale turn record");
 			}
 			if (process.selectedTurnId !== turn.turnId) {
 				return fail("Integration tool call targets a stale turn");

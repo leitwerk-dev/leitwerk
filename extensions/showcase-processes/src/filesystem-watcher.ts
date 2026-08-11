@@ -1,9 +1,8 @@
-import type {
-	CoreServerSetupDeps,
-	LaunchModelConfigInputLike,
-	ServerExtensionLogger,
+import type { CoreServerSetupDeps, ServerExtensionLogger } from "@leitwerk-dev/process-sdk";
+import {
+	defineProcessWatcherSource,
+	parseProcessWatcherLaunchModelConfig,
 } from "@leitwerk-dev/process-sdk";
-import { defineProcessWatcherSource } from "@leitwerk-dev/process-sdk";
 import {
 	consumeTriggerFile,
 	createPollLoop,
@@ -18,7 +17,6 @@ export interface FilesystemWatcherEvent {
 }
 
 export interface FilesystemWatcherConfig {
-	enabled: boolean;
 	pollInterval: string;
 	filePath: string;
 }
@@ -35,34 +33,6 @@ function nonEmptyString(value: unknown, path: string): string {
 		throw new Error(`${path} must be a non-empty string`);
 	}
 	return value;
-}
-
-function parseLaunchModelConfig(value: unknown): LaunchModelConfigInputLike {
-	if (value === undefined) return { defaultModelProfileId: null, turnConfigs: {} };
-	const launch = record(value, "launch");
-	const rawTurnConfigs =
-		launch.turn_configs === undefined ? {} : record(launch.turn_configs, "launch.turn_configs");
-	const turnConfigs = Object.fromEntries(
-		Object.entries(rawTurnConfigs).map(([turnId, raw]) => {
-			const turn = record(raw, `launch.turn_configs.${turnId}`);
-			return [
-				turnId,
-				{
-					modelProfileId:
-						turn.model_profile === undefined
-							? null
-							: nonEmptyString(turn.model_profile, `launch.turn_configs.${turnId}.model_profile`),
-				},
-			];
-		}),
-	);
-	return {
-		defaultModelProfileId:
-			launch.default_model_profile === undefined
-				? null
-				: nonEmptyString(launch.default_model_profile, "launch.default_model_profile"),
-		turnConfigs,
-	};
 }
 
 export const filesystemWatcherSource = defineProcessWatcherSource<
@@ -85,12 +55,11 @@ export const filesystemWatcherSource = defineProcessWatcherSource<
 		}
 		return {
 			config: {
-				enabled: config.enabled,
 				pollInterval,
 				filePath: nonEmptyString(config.file_path, "file_path"),
 			},
 			enabled: config.enabled,
-			launchModelConfig: parseLaunchModelConfig(config.launch),
+			launchModelConfig: parseProcessWatcherLaunchModelConfig(config.launch),
 		};
 	},
 	presentConfig(config) {
