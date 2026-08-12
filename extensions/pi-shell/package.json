@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/pi-shell",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -25,10 +25,10 @@
 		"build": "tsup --silent --config tsup.config.ts"
 	},
 	"dependencies": {
-		"@leitwerk-dev/process-sdk": "0.1.7"
+		"@leitwerk-dev/process-sdk": "0.1.8"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/server": "0.1.7",
+		"@leitwerk-dev/server": "0.1.8",
 		"@types/node": "^22.15.30",
 		"tsup": "^8.5.1"
 	},
