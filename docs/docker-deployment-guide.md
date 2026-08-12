@@ -42,11 +42,11 @@ storage:
 ```
 
 ### 2.3. Secrets & Image Building
-Generate the 32-byte credential encryption key and build revision-tagged images from the repository root:
+Generate a credential encryption key as the Base64 encoding of exactly 32 random bytes, then build revision-tagged images from the repository root:
 
 ```bash
 # Generate encryption secret
-printf 'LEITWERK_CREDENTIAL_ENCRYPTION_KEY=%s\n' "$(openssl rand -hex 32)" > "$DEPLOY_ROOT/secrets/credentials.env"
+printf 'LEITWERK_CREDENTIAL_ENCRYPTION_KEY=%s\n' "$(openssl rand -base64 32)" > "$DEPLOY_ROOT/secrets/credentials.env"
 chmod 600 "$DEPLOY_ROOT/secrets/credentials.env"
 
 # Build revision-pinned container images

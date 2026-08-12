@@ -69,7 +69,8 @@ export interface WorkerRuntimeContextSnapshot {
 
 export interface WorkerCredentialMaterial {
 	providerId: string;
-	revision: number;
+	/** Null for generated credentials that are materialized but never synchronized. */
+	revision: number | null;
 	/** Secret payload. This type is valid only in worker.start and credential-update frames. */
 	values: Record<string, string>;
 }

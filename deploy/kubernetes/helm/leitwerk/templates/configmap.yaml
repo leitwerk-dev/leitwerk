@@ -75,6 +75,8 @@ data:
           {{- toYaml .Values.kubernetes.pod.tolerations | nindent 10 }}
         annotations:
           {{- toYaml .Values.kubernetes.pod.annotations | nindent 10 }}
+        host_aliases:
+          {{- toYaml .Values.kubernetes.pod.hostAliases | nindent 10 }}
       image_pull_secrets:
         {{- toYaml .Values.kubernetes.imagePullSecrets | nindent 8 }}
       image_pull_secret_copies:{{ if not .Values.kubernetes.imagePullSecretCopies }} []{{ end }}

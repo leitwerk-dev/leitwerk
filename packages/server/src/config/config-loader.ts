@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
+import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { createDefu } from "defu";
@@ -171,6 +172,20 @@ const authConfigSchema = v.looseObject({
 });
 
 const safeSkillIdSchema = v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN));
+const kubernetesHostAliasIpSchema = v.pipe(
+	v.string(),
+	v.nonEmpty(),
+	v.check((value) => isIP(value) !== 0, "Expected an IPv4 or IPv6 address"),
+);
+const kubernetesHostnameSchema = v.pipe(
+	v.string(),
+	v.nonEmpty(),
+	v.maxLength(253),
+	v.regex(
+		/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/u,
+		"Expected a lowercase DNS hostname",
+	),
+);
 const skillSchema = v.strictObject({
 	id: safeSkillIdSchema,
 	label: v.optional(v.pipe(v.string(), v.nonEmpty())),
@@ -357,6 +372,14 @@ const configSchema = v.looseObject({
 					node_selector: v.optional(v.record(v.string(), v.string())),
 					tolerations: v.optional(v.array(v.unknown())),
 					annotations: v.optional(v.record(v.string(), v.string())),
+					host_aliases: v.optional(
+						v.array(
+							v.strictObject({
+								ip: kubernetesHostAliasIpSchema,
+								hostnames: v.pipe(v.array(kubernetesHostnameSchema), v.nonEmpty()),
+							}),
+						),
+					),
 				}),
 			),
 			image_pull_secrets: v.optional(stringArraySchema),
@@ -1016,7 +1039,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 				access_modes: ["ReadWriteOnce"],
 				mount_path: "/state",
 			},
-			pod: { node_selector: {}, tolerations: [], annotations: {} },
+			pod: { node_selector: {}, tolerations: [], annotations: {}, host_aliases: [] },
 			image_pull_secrets: [],
 			image_pull_secret_copies: [],
 		},

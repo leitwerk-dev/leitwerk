@@ -13,7 +13,7 @@ Leitwerk loads built-in defaults overlaid with settings from `leitwerk.yaml`.
 | Variable | Purpose | Default |
 |---|---|---|
 | `LEITWERK_CONFIG_PATH` | Path to your `leitwerk.yaml` file. | `./leitwerk.yaml` |
-| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | 32-byte hex key for SQLite secret encryption. | None (Required) |
+| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | Base64 encoding of exactly 32 bytes for SQLite credential encryption (generate with `openssl rand -base64 32`). | None (Required) |
 | `HOST` | Bind IP address for the server. | `127.0.0.1` |
 | `PORT` | HTTP port for the server. | `3000` |
 | `LEITWERK_BASE_URL` | Public base URL for HTTP and WebSocket auth. | `http://localhost:3000` |
@@ -94,6 +94,10 @@ workers:
 kubernetes:
   server_namespace: leitwerk-system
   default_worker_runtime_profile: standard
+  pod:
+    host_aliases:
+      - ip: 192.0.2.10
+        hostnames: [model-api.example.test]
   image_pull_secrets: [private-registry-pull]
   image_pull_secret_copies:
     - source_name: private-registry-pull
@@ -105,6 +109,7 @@ kubernetes:
 - `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
 - `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
+- `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
 - `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
 
@@ -134,9 +139,13 @@ extensions:
       api_key: env:OPENAI_API_KEY
     anthropic:
       api_key: env:ANTHROPIC_API_KEY
+    azure-openai-responses:
+      api_key: env:AZURE_OPENAI_API_KEY
+      base_url: env:AZURE_OPENAI_ENDPOINT
 ```
 - `pi.model_profiles`: Catalog of LLM models made available to process definitions.
 - `extension_loading.sources`: Extension package paths loaded during server startup. Load `./extensions/models` for standard API-key providers and configuration-defined custom gateways.
+- `extensions.models.<provider>.base_url`: Optional non-secret HTTP(S) endpoint for a standard provider. Literal URLs and `env:VARIABLE` references are accepted. The normalized endpoint is used by workers and server-side model calls such as process-title generation.
 
 Development compositions may add extension sources from a separate npm workspace without changing production configuration. See [Development Compositions](development-composition.md).
 

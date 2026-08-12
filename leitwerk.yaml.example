@@ -136,6 +136,10 @@ docker:
 #     node_selector: {}
 #     tolerations: []
 #     annotations: {}
+#     host_aliases:
+#       - ip: 192.0.2.10
+#         hostnames:
+#           - model-api.example.test
 #   image_pull_secrets: []
 #   # Copy only the dockerconfigjson key from named Secrets in server_namespace
 #   # into every process namespace before the worker Pod is created.
@@ -268,6 +272,9 @@ extensions:
   #     api_key: env:OPENAI_API_KEY # or literal string "sk-..."
   #   anthropic:
   #     api_key: env:ANTHROPIC_API_KEY
+  #   azure-openai-responses:
+  #     api_key: env:AZURE_OPENAI_API_KEY
+  #     base_url: env:AZURE_OPENAI_ENDPOINT # optional non-secret HTTP(S) endpoint
   #   custom_gateways:
   #     internal-gateway:
   #       base_url: https://llm-gateway.example.com/v1

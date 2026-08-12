@@ -60,6 +60,48 @@ describe("models extension", () => {
 		});
 	});
 
+	it.each([
+		["https://resource.openai.azure.com/", undefined, "https://resource.openai.azure.com"],
+		[
+			"env:AZURE_OPENAI_ENDPOINT",
+			"https://resource.openai.azure.com/openai///",
+			"https://resource.openai.azure.com/openai",
+		],
+	] as const)("normalizes standard-provider base URL %j", (baseUrl, environmentUrl, expected) => {
+		if (environmentUrl) vi.stubEnv("AZURE_OPENAI_ENDPOINT", environmentUrl);
+		expect(
+			parseStandardProviderConfig(
+				{ api_key: "sk-azure", base_url: baseUrl },
+				"azure-openai-responses",
+			),
+		).toEqual({ config: { baseUrl: expected }, credential: { apiKey: "sk-azure" } });
+	});
+
+	it.each([
+		["ftp://resource.example.com", undefined],
+		["not a URL", undefined],
+		["", undefined],
+		["env:UNSET_PROVIDER_BASE_URL", ""],
+	] as const)("rejects invalid standard-provider base URL %j", (baseUrl, environmentUrl) => {
+		if (environmentUrl !== undefined) vi.stubEnv("UNSET_PROVIDER_BASE_URL", environmentUrl);
+		expect(() =>
+			parseStandardProviderConfig({ api_key: "sk-provider", base_url: baseUrl }, "openai"),
+		).toThrow();
+	});
+
+	it("projects a configured standard-provider base URL into Pi models", () => {
+		const provider = createStandardModelProvider("azure-openai-responses");
+		expect(provider.worker.kind).toBe("configured_pi_provider");
+		if (provider.worker.kind !== "configured_pi_provider") throw new Error("unexpected worker");
+		expect(
+			provider.worker.resolveModels({ config: { baseUrl: "https://resource.openai.azure.com" } }),
+		).toEqual({
+			providers: {
+				"azure-openai-responses": { baseUrl: "https://resource.openai.azure.com" },
+			},
+		});
+	});
+
 	it("uses Pi's standard environment key when provider config is omitted", () => {
 		vi.stubEnv("OPENAI_API_KEY", "sk-openai-environment");
 		expect(parseStandardProviderConfig(undefined, "openai")).toEqual({
@@ -138,9 +180,11 @@ describe("models extension", () => {
 		]);
 	});
 
-	it("creates built-in worker and server references for standard providers", () => {
+	it("creates configured worker and built-in server references for standard providers", () => {
 		const provider = createStandardModelProvider("openai");
-		expect(provider.worker).toEqual({ kind: "builtin_pi_provider", providerId: "openai" });
+		expect(provider.worker.kind).toBe("configured_pi_provider");
+		if (provider.worker.kind !== "configured_pi_provider") throw new Error("unexpected worker");
+		expect(provider.worker.resolveModels({ config: {} })).toEqual({ providers: {} });
 		expect(provider.server).toEqual({ kind: "builtin_pi_provider", providerId: "openai" });
 	});
 });

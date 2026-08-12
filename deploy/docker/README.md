@@ -56,6 +56,8 @@ coincide.
 - `Caddyfile` — public HTTPS termination and reverse proxy to the server.
 - `config/leitwerk.example.yaml` — sample server config for this topology.
 
+Image builds require BuildKit and the `docker/dockerfile:1` frontend. `COPY --parents` keeps workspace manifests in the dependency layer, so source changes reuse installed dependencies.
+
 ## Quick start
 
 1. Copy the sample config and edit it for your install:

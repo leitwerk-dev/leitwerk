@@ -25,6 +25,10 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      {{- with .Values.gateway.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- range . }}
@@ -36,6 +40,10 @@ spec:
           image: {{ include "leitwerk.serverImage" . | quote }}
           imagePullPolicy: {{ .Values.server.image.pullPolicy }}
           command: ["sh", "-c", "cp -R /app/packages/ui/dist/. /srv/"]
+          {{- with .Values.gateway.initContainerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: ui
               mountPath: /srv
@@ -43,6 +51,14 @@ spec:
         - name: gateway
           image: {{ include "leitwerk.gatewayImage" . | quote }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          {{- with .Values.gateway.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.gateway.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - name: http
               containerPort: 8080

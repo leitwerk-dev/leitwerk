@@ -9,6 +9,13 @@ function addTestModelProfiles(config: ReturnType<typeof getDefaultConfig>): void
 	];
 }
 
+function kubernetesConfig(): ReturnType<typeof getDefaultConfig> {
+	const config = getDefaultConfig();
+	config.workers.runner = "kubernetes";
+	config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
+	return config;
+}
+
 describe("validateConfig", () => {
 	it("accepts a valid full config", () => {
 		const config = getDefaultConfig();
@@ -155,10 +162,33 @@ describe("validateConfig", () => {
 		).toBe(true);
 	});
 
+	it("accepts IPv4 and IPv6 worker Pod host aliases", () => {
+		const config = kubernetesConfig();
+		if (config.kubernetes) {
+			config.kubernetes.pod.host_aliases = [
+				{ ip: "192.0.2.10", hostnames: ["model-api.example.test", "models.example.test"] },
+				{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] },
+			];
+		}
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it.each([
+		[[{ ip: "not-an-ip", hostnames: ["model-api.example.test"] }], "IPv4 or IPv6"],
+		[[{ ip: "192.0.2.10", hostnames: [] }], "hostnames"],
+		[[{ ip: "192.0.2.10", hostnames: ["Not a hostname"] }], "hostname"],
+	] as const)("rejects malformed worker Pod host aliases", (hostAliases, expected) => {
+		const config = kubernetesConfig();
+		if (config.kubernetes) config.kubernetes.pod.host_aliases = hostAliases;
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([
+			expect.stringContaining(expected),
+		]);
+	});
+
 	it("rejects Kubernetes server namespaces that use the process namespace prefix", () => {
-		const config = getDefaultConfig();
-		config.workers.runner = "kubernetes";
-		config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
+		const config = kubernetesConfig();
 		if (config.kubernetes) {
 			config.kubernetes.server_namespace = "leitwerk-process-system";
 			config.kubernetes.process_namespace_prefix = "leitwerk-process-";
@@ -169,10 +199,10 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects Docker-in-Docker runtime profiles for Kubernetes runner", () => {
-		const config = getDefaultConfig();
-		config.workers.runner = "kubernetes";
-		config.worker_runtime_profiles = {
-			generic: { image: "ghcr.io/example/generic:1", dind: "privileged" },
+		const config = kubernetesConfig();
+		config.worker_runtime_profiles.generic = {
+			image: "ghcr.io/example/generic:1",
+			dind: "privileged",
 		};
 
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
@@ -355,14 +385,12 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts Kubernetes internal TLS when the in-cluster URL is https and a CA file is configured", () => {
-		const config = getDefaultConfig();
-		config.workers.runner = "kubernetes";
+		const config = kubernetesConfig();
 		config.internal_tls = {
 			enabled: true,
 			cert_file: "/etc/tls/server.crt",
 			key_file: "/etc/tls/server.key",
 		};
-		config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
 		if (config.kubernetes) {
 			config.kubernetes.server_url =
 				"https://leitwerk-server.leitwerk-system.svc.cluster.local:8080";

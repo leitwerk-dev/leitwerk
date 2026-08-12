@@ -226,6 +226,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 							annotations: pod.annotations,
 							nodeSelector: pod.node_selector,
 							tolerations: pod.tolerations,
+							hostAliases: pod.host_aliases,
 						}
 					: {}),
 			},
@@ -785,15 +786,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		},
 		resolveRepositoryCredentials: (input) => repositoryCredentials.resolveWorkerCredentials(input),
 		integrationTools,
-		resolveCredential(providerId, options) {
-			const credential = modelProviderCredentials.resolve(providerId, options);
-			return credential && credential.revision !== null
-				? {
-						revision: credential.revision,
-						values: credential.values,
-					}
-				: null;
-		},
+		resolveCredential: (providerId, options) =>
+			modelProviderCredentials.resolve(providerId, options),
 	});
 
 	let staleHeartbeatWatchdog: ReturnType<typeof startStaleHeartbeatWatchdog> | null = null;

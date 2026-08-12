@@ -45,7 +45,7 @@ describe("ipc-decode", () => {
 				bootstrap: {
 					kind: "llm",
 					resourceBundle: { digest: "sha256:test", archiveBase64: "dGFy" },
-					credential: { providerId: "openai", revision: 1, values: { apiKey: "secret" } },
+					credential: { providerId: "openai", revision: null, values: { apiKey: "generated" } },
 				},
 				processSnapshot: {
 					id: "agt_1",

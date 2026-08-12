@@ -81,10 +81,7 @@ export interface SupervisorDeps
 	resolveResourceBundle?: (digest: string) => PiResourceBundle | null;
 	resolveRepositoryCredentials?: WorkerStartPayloadBuilderDeps["resolveRepositoryCredentials"];
 	integrationTools?: WorkerStartPayloadBuilderDeps["integrationTools"];
-	resolveCredential?: (
-		providerId: string,
-		options: Readonly<Record<string, string>>,
-	) => { revision: number; values: Record<string, string> } | null;
+	resolveCredential?: WorkerStartPayloadBuilderDeps["resolveCredential"];
 }
 
 export interface WorkerHandle {

@@ -28,10 +28,10 @@ Before installing the chart, create the management namespace and store your conf
 ```bash
 kubectl create namespace leitwerk-system
 
-# 1. Create credential encryption key secret (32 random bytes)
+# 1. Create credential encryption key Secret (Base64 encoding of exactly 32 random bytes)
 kubectl create secret generic leitwerk-encryption-key \
   --namespace leitwerk-system \
-  --from-literal=LEITWERK_CREDENTIAL_ENCRYPTION_KEY="$(openssl rand -hex 32)"
+  --from-literal=LEITWERK_CREDENTIAL_ENCRYPTION_KEY="$(openssl rand -base64 32)"
 
 # 2. Create configuration secret from your local leitwerk.yaml
 kubectl create secret generic leitwerk-config \

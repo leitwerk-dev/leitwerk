@@ -12,12 +12,12 @@ Published charts are available at `oci://ghcr.io/leitwerk-dev/charts/leitwerk` a
 
 Worker Pods, per-process worker ServiceAccounts, process PVCs, and per-process server-CA ConfigMaps are not Helm-managed. They are created dynamically by the server's Kubernetes runner and reconciled by the server lifecycle. For production internal TLS, set `internalTls.enabled=true`, provide a Secret containing the server cert/key and CA bundle, and let the chart render `kubernetes.server_ca_file`; the runner copies that CA into each process namespace for worker Pods.
 
-The chart can mount an operator-managed configuration Secret by setting
-`server.existingConfigSecret`. The Secret must contain a `leitwerk.yaml` key.
-Use `server.credentialEncryption.existingSecret` and `.key` to provide the
-stable `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` without putting it in Helm values.
-An external Secret change does not alter the Deployment template; restart the
-server Deployment after applying it.
+Set `server.existingConfigSecret` to mount an operator-managed Secret whose
+`leitwerk.yaml` key contains the complete server configuration. Helm values do
+not modify that file; put worker host aliases and other runtime settings in the
+external configuration. Restart the server Deployment after changing the
+Secret. Set `server.credentialEncryption.existingSecret` and `.key` to supply
+`LEITWERK_CREDENTIAL_ENCRYPTION_KEY` without storing it in Helm values.
 
 Set `server.storage.existingClaim` to mount an operator-managed server PVC. The
 chart does not create or own a PVC when this value is set.
@@ -55,6 +55,19 @@ Use `server.nodeSelector`/`server.tolerations` and the corresponding
 `gateway.nodeSelector`/`gateway.tolerations` values when both Deployments must
 run on an opt-in or tainted workload node. Dynamic workers use the separate
 `kubernetes.pod` scheduling configuration.
+
+`server.hostAliases` configures the server Pod. With chart-generated
+configuration, `kubernetes.pod.hostAliases` configures dynamic worker Pods.
+Each alias requires an IPv4 or IPv6 address and at least one lowercase DNS
+hostname. With `server.existingConfigSecret`, configure worker aliases as
+`kubernetes.pod.host_aliases` in that Secret instead.
+
+Use the server and gateway security-context values to satisfy Pod Security
+policy. Server settings also apply to the preflight Job; the gateway init
+container has separate settings. The chart supplies no defaults. Caddy may need
+`NET_BIND_SERVICE` when all other capabilities are dropped. Use
+`server.extraEnv`, `server.extraEnvFrom`, and `gateway.extraEnv` for non-secret
+deployment wiring; inject secrets through Secret references.
 
 Docker Desktop deployment scripts are under `scripts/k8s/docker-desktop`. They
 always target the `docker-desktop` context, retain state outside the checkout,
