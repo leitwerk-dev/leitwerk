@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.7...v0.1.8) (2026-08-12)
+
+
+### Features
+
+* **deployment:** support portable private-runtime configuration ([#22](https://github.com/leitwerk-dev/leitwerk/issues/22)) ([8742b14](https://github.com/leitwerk-dev/leitwerk/commit/8742b148f92659ba0ac427c7568c4038602c1a9b))
+
 ## [0.1.7](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.6...v0.1.7) (2026-08-11)
 
 

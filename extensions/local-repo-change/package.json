@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/local-repo-change",
-	"version": "0.1.7",
+	"version": "0.1.8",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -31,9 +31,9 @@
 		"dev:ext-ui": "node ./scripts/write-ui-manifest.mjs && tsup --silent --watch --config tsup.ui.config.ts"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.1.7",
-		"@leitwerk-dev/coding": "0.1.7",
-		"@leitwerk-dev/process-sdk": "0.1.7"
+		"@leitwerk-dev/domain": "0.1.8",
+		"@leitwerk-dev/coding": "0.1.8",
+		"@leitwerk-dev/process-sdk": "0.1.8"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"
