@@ -232,7 +232,7 @@ Navigation is a persistent operational shell, not a marketing frame.
 - **Collapsed Rail:** Icon controls are standard, compact, and labeled with accessible names. Popovers must remain content-scoped and not clip inside overflow containers.
 - **Process Rows:** Expanded sidebar rows are text-first: title, readable state metadata, and optional secondary line. Color only the state word inside the normal metadata flow when scan emphasis is useful; avoid dominant leading status icons, dots, or symbolic badges in front of Current/Future rows.
 - **Identity Footer:** When authentication is enabled, pin the authenticated user's icon and name below the scrolling navigation. Its compact popover exposes keyboard help and Leitwerk-session logout. Fall back to the actor id when no display name is available. When authentication is disabled, show a direct help control instead of the synthetic local admin identity. Preserve accessible names and the same behavior in the collapsed rail.
-- **Mobile:** Under the narrow breakpoint, keep the sidebar expanded as documented; collapse is a desktop density feature. Keep the identity/help footer in normal sidebar flow.
+- **Mobile:** Under the narrow breakpoint, replace the persistent sidebar with a closed-by-default drawer. Keep its menu trigger visible in a sticky shell bar, preserve the full navigation hierarchy and identity/help footer, and close the drawer after navigation.
 
 ### Process Chronicle
 

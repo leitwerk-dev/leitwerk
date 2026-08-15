@@ -1477,23 +1477,27 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 			width: 100%;
 			max-width: none;
 			min-width: 0;
-			height: auto;
-			padding: 16px 14px;
+			height: 100%;
+			padding: max(16px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
 			border-right: 0;
-			border-bottom: 1px solid var(--chronicle-border);
-			overflow: visible;
+			border-bottom: 0;
+			overflow: hidden;
 			align-items: stretch;
 		}
 
 		.sidebar-header {
 			margin-bottom: 16px;
+			padding-right: 48px;
 		}
 
 		.sidebar-scroll {
-			display: grid;
-			grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+			display: flex;
+			flex: 1 1 auto;
+			flex-direction: column;
 			gap: 16px;
-			overflow: visible;
+			min-height: 0;
+			overflow-y: auto;
+			overscroll-behavior: contain;
 			padding-bottom: 0;
 		}
 
@@ -1508,7 +1512,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		.process-group.is-empty,
 		.process-group:not(.is-empty) {
 			min-height: 0;
-			flex: initial;
+			flex: none;
 		}
 
 		.sidebar-scroll > .process-group > .process-list {
@@ -1518,12 +1522,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		.connection-overlay {
 			position: static;
 			margin-top: 16px;
-		}
-	}
-
-	@media (max-width: 640px) {
-		.sidebar-scroll {
-			grid-template-columns: 1fr;
 		}
 	}
 </style>
