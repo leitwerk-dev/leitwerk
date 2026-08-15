@@ -315,6 +315,7 @@ $effect(() => {
 			<RouteLoadBoundary
 				load={import("../pages/ProcessDetailPage.svelte")}
 				props={{ instanceId: route.params.instanceId }}
+				viewportMode="workspace"
 			/>
 		{/if}
 	</main>

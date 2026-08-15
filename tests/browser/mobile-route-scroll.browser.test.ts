@@ -7,12 +7,31 @@ test.use({
 	...devices["Pixel 5"],
 	viewport: { width: 390, height: 500 },
 	browserServerOptions: {
-		tempPrefix: "leitwerk-mobile-home-scroll-browser-",
+		tempPrefix: "leitwerk-mobile-route-scroll-browser-",
+		configure: (config, tempRoot) => {
+			config.process_configs = {
+				poem_creator_process: {
+					turn_configs: {},
+					watchers: {
+						create_poem: {
+							enabled: true,
+							poll_interval: "60s",
+							file_path: `${tempRoot}/poem-trigger.txt`,
+						},
+					},
+				},
+			};
+		},
 		createExtensionCatalog: () => buildExtensionCatalogFromModules([showcaseProcessesExtension]),
 	},
 });
 
-async function expectTouchSwipeToScroll(page: Page, surface: Locator) {
+async function expectTouchSwipeToScrollPage(page: Page, surface: Locator) {
+	const routeViewport = page.locator('[data-role="route-viewport"]');
+	await expect(routeViewport).toHaveAttribute("data-mode", "page");
+	await expect
+		.poll(() => routeViewport.evaluate((element) => getComputedStyle(element).overflowY))
+		.toBe("visible");
 	await expect(surface).toBeVisible();
 	await surface.scrollIntoViewIfNeeded();
 	const box = await surface.boundingBox();
@@ -45,7 +64,7 @@ test("scrolls the process type selection on a mobile viewport", async ({ page, l
 	const launcherList = page.locator('[data-section="launcher-list"]');
 	await expect.poll(() => launcherList.locator("li").count()).toBeGreaterThan(1);
 
-	await expectTouchSwipeToScroll(page, launcherList);
+	await expectTouchSwipeToScrollPage(page, launcherList);
 });
 
 test("scrolls launcher setup on a mobile viewport", async ({ page, leitwerk }) => {
@@ -54,5 +73,14 @@ test("scrolls launcher setup on a mobile viewport", async ({ page, leitwerk }) =
 	const launcherForm = page.locator('[data-section="launcher-form"]');
 	await expect(launcherForm).toBeVisible();
 
-	await expectTouchSwipeToScroll(page, launcherForm);
+	await expectTouchSwipeToScrollPage(page, launcherForm);
+});
+
+test("scrolls the watcher registry on a mobile viewport", async ({ page, leitwerk }) => {
+	void leitwerk;
+	await page.goto("/watchers");
+	const watcherList = page.locator(".watcher-list");
+	await expect(watcherList.locator("article")).toHaveCount(1);
+
+	await expectTouchSwipeToScrollPage(page, watcherList);
 });

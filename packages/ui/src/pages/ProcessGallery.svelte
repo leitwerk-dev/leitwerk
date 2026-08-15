@@ -168,8 +168,6 @@ function handleGalleryKeydown(event: KeyboardEvent) {
 		flex-direction: column;
 		gap: clamp(var(--space-lg), 2.8vw, var(--space-2xl));
 		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
 		padding: var(--space-2xs) 2px var(--space-xl);
 	}
 
@@ -248,12 +246,5 @@ function handleGalleryKeydown(event: KeyboardEvent) {
 	.secondary-button:hover {
 		transform: translateY(-1px);
 		border-color: color-mix(in srgb, var(--chronicle-accent) 24%, var(--chronicle-border-strong) 76%);
-	}
-
-	@media (max-width: 960px) {
-		.process-gallery {
-			overflow-y: visible;
-			overscroll-behavior: auto;
-		}
 	}
 </style>

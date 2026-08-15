@@ -1,25 +1,29 @@
 <script lang="ts" generics="P extends object">
 import type { Component } from "svelte";
+import RouteViewport from "./RouteViewport.svelte";
 
 interface Props {
 	load: Promise<{ default: Component<P> }>;
 	props: P;
+	viewportMode?: "page" | "workspace";
 }
 
-let { load, props }: Props = $props();
+let { load, props, viewportMode = "page" }: Props = $props();
 </script>
 
-{#await load}
-	<div class="route-status" role="status">Loading view…</div>
-{:then loaded}
-	{@const RouteComponent = loaded.default}
-	<RouteComponent {...props} />
-{:catch}
-	<div class="route-status route-error" role="alert">
-		<p>This view couldn’t be loaded.</p>
-		<button type="button" onclick={() => window.location.reload()}>Reload application</button>
-	</div>
-{/await}
+<RouteViewport mode={viewportMode}>
+	{#await load}
+		<div class="route-status" role="status">Loading view…</div>
+	{:then loaded}
+		{@const RouteComponent = loaded.default}
+		<RouteComponent {...props} />
+	{:catch}
+		<div class="route-status route-error" role="alert">
+			<p>This view couldn’t be loaded.</p>
+			<button type="button" onclick={() => window.location.reload()}>Reload application</button>
+		</div>
+	{/await}
+</RouteViewport>
 
 <style>
 	.route-status {
