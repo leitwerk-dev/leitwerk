@@ -231,7 +231,7 @@ Navigation is a persistent operational shell, not a marketing frame.
 - **Sidebar:** Soft gray surface, grouped rows for Current, Future, and Browse. Active rows use subtle Operational Blue tint or stronger border, not loud fills.
 - **Collapsed Rail:** Icon controls are standard, compact, and labeled with accessible names. Popovers must remain content-scoped and not clip inside overflow containers.
 - **Process Rows:** Expanded sidebar rows are text-first: title, readable state metadata, and optional secondary line. Color only the state word inside the normal metadata flow when scan emphasis is useful; avoid dominant leading status icons, dots, or symbolic badges in front of Current/Future rows.
-- **Mobile:** Under the narrow breakpoint, keep the sidebar expanded as documented; collapse is a desktop density feature.
+- **Mobile:** Under the narrow breakpoint, replace the persistent sidebar with a closed-by-default drawer. Keep its menu trigger visible in a sticky shell bar, preserve the full navigation hierarchy, and close the drawer after navigation.
 
 ### Process Chronicle
 
