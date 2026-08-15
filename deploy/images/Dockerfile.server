@@ -31,6 +31,7 @@ COPY scripts ./scripts
 COPY turbo.json tsconfig.json biome.json ./
 RUN npm run build
 RUN npm run build:ext-ui
+RUN node scripts/prepare-runtime-layout.mjs /runtime-layout
 
 FROM node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 AS runtime
 WORKDIR /app
@@ -40,10 +41,11 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends git ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Jib-style runtime layering: dependencies and manifests remain reusable when
+# application code changes. Compiled code and migrations are copied last.
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/extensions ./extensions
+COPY --from=build /runtime-layout/stable ./
+COPY --from=build /runtime-layout/app ./
 
 LABEL org.opencontainers.image.title="leitwerk-server" \
 	org.opencontainers.image.description="leitwerk server" \
