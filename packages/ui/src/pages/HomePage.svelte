@@ -303,4 +303,15 @@ function handleScheduled(futureExecution: FutureLaunchSummary) {
 		min-width: 0;
 		max-width: 980px;
 	}
+
+	@media (max-width: 960px) {
+		.home-experience {
+			height: auto;
+		}
+
+		.configure-phase {
+			overflow-y: visible;
+			overscroll-behavior: auto;
+		}
+	}
 </style>
