@@ -191,6 +191,7 @@ export interface ProcessHumanTurnExternalActionSpec<
 	label?: string;
 	description?: string;
 	publishInput?: ExternalActionInputPublication;
+	effect?: ExternalSourceEffect<TParams, TState, TEvent, TInput>;
 }
 
 export interface ProcessActionBranchSpec extends StaticRouteTarget {

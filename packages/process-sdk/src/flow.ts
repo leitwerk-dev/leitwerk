@@ -1728,6 +1728,11 @@ export class ExternalActionBuilder<
 		return this;
 	}
 
+	effect(effect: ExternalSourceEffect<TParams, TState, TEvent, TInput>): this {
+		this.spec.effect = effect;
+		return this;
+	}
+
 	build(): ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput> {
 		return this.spec as ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput>;
 	}
