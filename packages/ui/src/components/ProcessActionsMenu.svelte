@@ -17,6 +17,8 @@ interface Props {
 	hasSessionFile?: boolean;
 	processLabel: string;
 	onDeleted?: () => void;
+	presentation?: "default" | "sheet";
+	idSuffix?: string;
 }
 
 let {
@@ -26,6 +28,8 @@ let {
 	hasSessionFile = false,
 	processLabel,
 	onDeleted,
+	presentation = "default",
+	idSuffix = "",
 }: Props = $props();
 
 let menuOpen = $state(false);
@@ -39,8 +43,9 @@ let dropdownRef = $state<HTMLDivElement | null>(null);
 
 const isFinished = $derived(lifecycleStatus === "completed" || lifecycleStatus === "aborted");
 const actionTarget = $derived(processLabel.trim() || `process ${instanceId}`);
-const triggerId = $derived(`process-actions-trigger-${instanceId}`);
-const menuId = $derived(`process-actions-menu-${instanceId}`);
+const idDisambiguator = $derived(idSuffix ? `-${idSuffix}` : "");
+const triggerId = $derived(`process-actions-trigger-${instanceId}${idDisambiguator}`);
+const menuId = $derived(`process-actions-menu-${instanceId}${idDisambiguator}`);
 const confirmationView = $derived({
 	message:
 		confirmation === "abort"
@@ -213,7 +218,7 @@ function handleDownloadSession() {
 }
 </script>
 
-<div class="process-actions-menu" bind:this={menuRef}>
+<div class="process-actions-menu" data-presentation={presentation} bind:this={menuRef}>
 	<button
 		bind:this={triggerRef}
 		id={triggerId}
@@ -232,7 +237,7 @@ function handleDownloadSession() {
 			<circle cx="12" cy="12" r="3"></circle>
 			<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
 		</svg>
-		<span class="menu-trigger-label">More actions</span>
+		<span class:sr-only={presentation === "sheet"} class="menu-trigger-label">More actions</span>
 	</button>
 
 	{#if menuOpen}
@@ -343,6 +348,26 @@ function handleDownloadSession() {
 		position: relative;
 	}
 
+	.process-actions-menu[data-presentation="sheet"] .menu-trigger {
+		width: 40px;
+		min-height: 40px;
+		padding: 0;
+		border-radius: 10px;
+	}
+
+	.process-actions-menu[data-presentation="sheet"] .menu-trigger svg {
+		display: none;
+	}
+
+	.process-actions-menu[data-presentation="sheet"] .menu-trigger::before {
+		content: "";
+		width: 3px;
+		height: 3px;
+		border-radius: 999px;
+		background: currentColor;
+		box-shadow: -6px 0 currentColor, 6px 0 currentColor;
+	}
+
 	.menu-trigger {
 		display: inline-flex;
 		align-items: center;
@@ -389,6 +414,13 @@ function handleDownloadSession() {
 		border-radius: 12px;
 		background: var(--chronicle-card-surface);
 		box-shadow: var(--chronicle-shadow);
+	}
+
+	.process-actions-menu[data-presentation="sheet"] .menu-dropdown {
+		top: auto;
+		bottom: calc(100% + 8px);
+		right: 0;
+		max-width: min(320px, calc(100vw - 32px));
 	}
 
 	.menu-context {
@@ -506,8 +538,8 @@ function handleDownloadSession() {
 	}
 
 	@media (max-width: 720px) {
-		.process-actions-menu,
-		.menu-trigger {
+		.process-actions-menu:not([data-presentation="sheet"]),
+		.process-actions-menu:not([data-presentation="sheet"]) .menu-trigger {
 			width: 100%;
 		}
 	}

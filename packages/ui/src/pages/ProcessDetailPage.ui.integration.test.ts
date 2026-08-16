@@ -1958,6 +1958,38 @@ describe("ProcessDetailPage", () => {
 		);
 	});
 
+	it("moves mobile process navigation and utilities into a dismissible quick-nav sheet", async () => {
+		const { target } = await mountSubject(createProcessDetail());
+		await flushUi();
+
+		const trigger = target.querySelector<HTMLButtonElement>(
+			'[data-action="open-mobile-quick-nav"]',
+		);
+		expect(trigger?.textContent).toContain("Quick nav");
+		expect(target.querySelector('[data-section="mobile-process-quick-nav"]')).toBeNull();
+
+		trigger?.click();
+		await flushUi();
+
+		const sheet = target.querySelector<HTMLElement>('[data-section="mobile-process-quick-nav"]');
+		expect(sheet?.getAttribute("role")).toBe("dialog");
+		expect(sheet?.querySelector('[data-section="turn-rail-list"]')).toBeTruthy();
+		expect(sheet?.textContent).toContain("Process info");
+		expect(
+			sheet?.querySelector<HTMLButtonElement>('[aria-label^="Open actions for"]'),
+		).toBeTruthy();
+
+		const promptButton = sheet?.querySelector<HTMLButtonElement>(
+			'[data-rail-anchor-id="chronicle-prompt"]',
+		);
+		expect(promptButton).toBeTruthy();
+		promptButton?.click();
+		await flushUi();
+
+		expect(target.querySelector('[data-section="mobile-process-quick-nav"]')).toBeNull();
+		expect(document.activeElement).toBe(trigger);
+	});
+
 	it("does not render a leaf-outcome placeholder for processes without a registered leaf outcome", async () => {
 		const { target } = await mountSubject(createProcessDetail());
 

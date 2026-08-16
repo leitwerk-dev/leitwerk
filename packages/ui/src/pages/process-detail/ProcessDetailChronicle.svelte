@@ -15,6 +15,7 @@ import {
 	moveChronicleAnchorByOffset,
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
+import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
 	ProcessDetailData,
 	ProcessExternalTriggerSummary,
@@ -56,6 +57,9 @@ interface Props {
 	onDismissLaunchWarning: () => void;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onCloseBlockingDetailOverlays: () => void;
+	isProcessInfoOpen: boolean;
+	onToggleProcessInfo: () => void;
+	onDeleted: () => void;
 }
 
 let {
@@ -84,9 +88,21 @@ let {
 	onDismissLaunchWarning,
 	onOpenReasoningDetails,
 	onCloseBlockingDetailOverlays,
+	isProcessInfoOpen,
+	onToggleProcessInfo,
+	onDeleted,
 }: Props = $props();
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
+let mobileQuickNavOpen = $state(false);
+let mobileQuickNavSheet: HTMLElement | null = $state(null);
+
+const processLabel = $derived(
+	detail?.process.title ??
+		detail?.process.externalId ??
+		detail?.process.id ??
+		`Process ${instanceId}`,
+);
 
 const chronicleScroll = createProcessDetailChronicleScroll({
 	get instanceId() {
@@ -109,6 +125,12 @@ const chronicleScroll = createProcessDetailChronicleScroll({
 	},
 	onCloseBlockingDetailOverlays: () => onCloseBlockingDetailOverlays(),
 });
+
+const activeQuickNavItem = $derived(
+	railItems.find((item) => item.anchorId === chronicleScroll.activeAnchorId) ??
+		railItems.at(-1) ??
+		null,
+);
 
 const showCompactActionComposer = $derived(
 	chronicleScroll.showJumpToLatest &&
@@ -144,6 +166,68 @@ function moveActiveAnchorByOffset(offset: number) {
 	}
 }
 
+function openMobileQuickNav() {
+	mobileQuickNavOpen = true;
+}
+
+function closeMobileQuickNav(options: { restoreFocus?: boolean } = {}) {
+	mobileQuickNavOpen = false;
+	if (options.restoreFocus) {
+		void tick().then(() => {
+			document.querySelector<HTMLButtonElement>("[data-action='open-mobile-quick-nav']")?.focus();
+		});
+	}
+}
+
+function selectMobileQuickNavAnchor(anchorId: string) {
+	chronicleScroll.jumpToAnchor(anchorId);
+	closeMobileQuickNav({ restoreFocus: true });
+}
+
+function openProcessInfoFromQuickNav() {
+	closeMobileQuickNav();
+	onToggleProcessInfo();
+}
+
+$effect(() => {
+	if (!mobileQuickNavOpen) {
+		return;
+	}
+	const previousOverflow = document.body.style.overflow;
+	document.body.style.overflow = "hidden";
+	void tick().then(() => {
+		const activeItem =
+			mobileQuickNavSheet?.querySelector<HTMLButtonElement>("[aria-current='step']");
+		(activeItem ?? mobileQuickNavSheet?.querySelector<HTMLButtonElement>("button"))?.focus();
+	});
+	return () => {
+		document.body.style.overflow = previousOverflow;
+	};
+});
+
+function handleMobileQuickNavKeydown(event: KeyboardEvent) {
+	if (event.key !== "Tab" || !mobileQuickNavSheet) {
+		return;
+	}
+	const controls = [
+		...mobileQuickNavSheet.querySelectorAll<HTMLElement>(
+			'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+		),
+	];
+	if (controls.length === 0) {
+		return;
+	}
+	const first = controls[0];
+	const last = controls.at(-1);
+	if (event.shiftKey && document.activeElement === first) {
+		event.preventDefault();
+		last?.focus();
+	} else if (!event.shiftKey && document.activeElement === last) {
+		event.preventDefault();
+		first?.focus();
+	}
+}
+
 function openDetailedActionForm(actionId: string) {
 	if (actionsController.openActionFormId !== actionId) {
 		actionsController.expandActionForm(actionId);
@@ -152,6 +236,13 @@ function openDetailedActionForm(actionId: string) {
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
+	if (mobileQuickNavOpen) {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeMobileQuickNav({ restoreFocus: true });
+		}
+		return;
+	}
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
@@ -179,15 +270,43 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
+<button
+	type="button"
+	class="mobile-quick-nav-trigger"
+	data-action="open-mobile-quick-nav"
+	data-pressable="true"
+	aria-haspopup="dialog"
+	aria-controls="mobile-process-quick-nav"
+	aria-expanded={mobileQuickNavOpen}
+	disabled={!detail || railItems.length === 0}
+	onclick={openMobileQuickNav}
+>
+	<span class="mobile-quick-nav-label">
+		<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+			<path d="M5 5h14M5 12h14M5 19h14"></path>
+			<circle cx="8" cy="5" r="2" fill="var(--chronicle-card-surface)"></circle>
+			<circle cx="15" cy="12" r="2" fill="var(--chronicle-card-surface)"></circle>
+			<circle cx="10" cy="19" r="2" fill="var(--chronicle-card-surface)"></circle>
+		</svg>
+		Quick nav
+	</span>
+	<span class="mobile-quick-nav-current">{activeQuickNavItem?.title ?? "No steps yet"}</span>
+	<svg class="mobile-quick-nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="m6 9 6 6 6-6"></path>
+	</svg>
+</button>
+
 <div class="experience-grid">
-	<ChronicleTurnRail
-		{detail}
-		{loading}
-		{error}
-		railItems={railItems}
-		activeAnchorId={chronicleScroll.activeAnchorId}
-		onSelectAnchor={chronicleScroll.jumpToAnchor}
-	/>
+	<div class="desktop-turn-rail">
+		<ChronicleTurnRail
+			{detail}
+			{loading}
+			{error}
+			railItems={railItems}
+			activeAnchorId={chronicleScroll.activeAnchorId}
+			onSelectAnchor={chronicleScroll.jumpToAnchor}
+		/>
+	</div>
 
 	<section
 		class="chronicle"
@@ -297,13 +416,106 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</section>
 </div>
 
+{#if mobileQuickNavOpen}
+	<div
+		class="mobile-quick-nav-backdrop"
+		data-section="mobile-process-quick-nav-backdrop"
+	>
+		<button
+			type="button"
+			class="mobile-quick-nav-dismiss-layer"
+			aria-label="Close quick navigation"
+			onclick={() => closeMobileQuickNav({ restoreFocus: true })}
+		></button>
+		<div
+			id="mobile-process-quick-nav"
+			class="mobile-quick-nav-sheet"
+			data-section="mobile-process-quick-nav"
+			role="dialog"
+			tabindex="-1"
+			aria-modal="true"
+			aria-labelledby="mobile-process-quick-nav-title"
+			bind:this={mobileQuickNavSheet}
+			onkeydown={handleMobileQuickNavKeydown}
+		>
+			<div class="mobile-quick-nav-handle" aria-hidden="true"></div>
+			<header class="mobile-quick-nav-header">
+				<div>
+					<h2 id="mobile-process-quick-nav-title">Process steps</h2>
+					<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+				</div>
+				<button
+					type="button"
+					class="mobile-quick-nav-close"
+					data-pressable="true"
+					aria-label="Close quick navigation"
+					onclick={() => closeMobileQuickNav({ restoreFocus: true })}
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+						<path d="M6 6l12 12M18 6 6 18"></path>
+					</svg>
+				</button>
+			</header>
+
+			<div class="mobile-quick-nav-rail">
+				<ChronicleTurnRail
+					{detail}
+					{loading}
+					{error}
+					railItems={railItems}
+					activeAnchorId={chronicleScroll.activeAnchorId}
+					onSelectAnchor={selectMobileQuickNavAnchor}
+					headingId="mobile-process-navigation-heading"
+				/>
+			</div>
+
+			<footer class="mobile-quick-nav-utilities">
+				<button
+					type="button"
+					class="mobile-process-info-button"
+					data-pressable="true"
+					onclick={openProcessInfoFromQuickNav}
+					aria-expanded={isProcessInfoOpen}
+					aria-controls="process-info-overlay"
+				>
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+						<circle cx="12" cy="12" r="9"></circle>
+						<path d="M12 11v6M12 7.5h.01"></path>
+					</svg>
+					Process info
+				</button>
+				<ProcessActionsMenu
+					{instanceId}
+					lifecycleStatus={detail?.process.lifecycleStatus ?? null}
+					disabled={!detail}
+					hasSessionFile={detail?.session.signature !== null}
+					{processLabel}
+					{onDeleted}
+					presentation="sheet"
+					idSuffix="mobile"
+				/>
+			</footer>
+		</div>
+	</div>
+{/if}
+
 <style>
+	.mobile-quick-nav-trigger,
+	.mobile-quick-nav-backdrop {
+		display: none;
+	}
+
 	.experience-grid {
 		display: grid;
 		grid-template-columns: minmax(196px, 220px) minmax(0, 1fr);
 		gap: var(--space-md);
 		width: 100%;
 		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.desktop-turn-rail {
+		min-width: 0;
 		min-height: 0;
 	}
 
@@ -440,6 +652,208 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	@media (max-width: 720px) {
+		.mobile-quick-nav-trigger {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr) auto;
+			align-items: center;
+			gap: var(--space-xs);
+			width: 100%;
+			min-height: 42px;
+			padding: 0 var(--space-sm);
+			border: 1px solid color-mix(in srgb, var(--chronicle-accent) 22%, var(--chronicle-border) 78%);
+			border-radius: var(--radius-md);
+			background: color-mix(in srgb, var(--chronicle-card-surface) 92%, var(--chronicle-accent) 8%);
+			color: var(--chronicle-text);
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.mobile-quick-nav-trigger:hover:not(:disabled) {
+			border-color: color-mix(in srgb, var(--chronicle-accent) 45%, var(--chronicle-border) 55%);
+			background: color-mix(in srgb, var(--chronicle-card-surface) 86%, var(--chronicle-accent) 14%);
+		}
+
+		.mobile-quick-nav-trigger:focus-visible {
+			outline: 2px solid var(--chronicle-accent);
+			outline-offset: 2px;
+		}
+
+		.mobile-quick-nav-trigger:disabled {
+			opacity: 0.56;
+			cursor: default;
+		}
+
+		.mobile-quick-nav-label {
+			display: inline-flex;
+			align-items: center;
+			gap: 7px;
+			font-size: var(--type-body-sm);
+			font-weight: 720;
+			white-space: nowrap;
+		}
+
+		.mobile-quick-nav-current {
+			overflow: hidden;
+			color: var(--chronicle-text-muted);
+			font-size: var(--type-caption);
+			font-weight: 560;
+			text-align: right;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.mobile-quick-nav-chevron {
+			color: var(--chronicle-text-faint);
+		}
+
+		.desktop-turn-rail {
+			display: none;
+		}
+
+		.mobile-quick-nav-backdrop {
+			position: fixed;
+			inset: 0;
+			z-index: 110;
+			display: flex;
+			align-items: flex-end;
+			justify-content: center;
+			padding-top: max(48px, env(safe-area-inset-top));
+			background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%);
+		}
+
+		.mobile-quick-nav-dismiss-layer {
+			position: absolute;
+			inset: 0;
+			padding: 0;
+			border: 0;
+			background: transparent;
+			cursor: default;
+		}
+
+		.mobile-quick-nav-sheet {
+			position: relative;
+			z-index: 1;
+			display: flex;
+			flex-direction: column;
+			width: min(100%, 560px);
+			max-height: min(82svh, 720px);
+			padding: 8px 16px max(14px, env(safe-area-inset-bottom));
+			border: 1px solid var(--chronicle-border-strong);
+			border-bottom: 0;
+			border-radius: 22px 22px 0 0;
+			background: var(--chronicle-card-surface);
+			box-shadow: var(--chronicle-shadow);
+			animation: mobile-quick-nav-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.mobile-quick-nav-handle {
+			width: 38px;
+			height: 4px;
+			margin: 0 auto 8px;
+			border-radius: 999px;
+			background: var(--chronicle-border-strong);
+		}
+
+		.mobile-quick-nav-header {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--space-md);
+			padding: 4px 2px 12px;
+			border-bottom: 1px solid var(--chronicle-border);
+		}
+
+		.mobile-quick-nav-header h2,
+		.mobile-quick-nav-header p {
+			margin: 0;
+		}
+
+		.mobile-quick-nav-header h2 {
+			font-size: var(--type-title-sm);
+			line-height: 1.2;
+			color: var(--chronicle-text);
+		}
+
+		.mobile-quick-nav-header p {
+			margin-top: 3px;
+			max-width: 32ch;
+			overflow: hidden;
+			color: var(--chronicle-text-muted);
+			font-size: var(--type-caption);
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.mobile-quick-nav-close {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			flex: 0 0 auto;
+			width: 40px;
+			height: 40px;
+			padding: 0;
+			border: 1px solid var(--chronicle-border);
+			border-radius: 10px;
+			background: var(--chronicle-panel-muted);
+			color: var(--chronicle-text-muted);
+			cursor: pointer;
+		}
+
+		.mobile-quick-nav-close:hover,
+		.mobile-quick-nav-close:focus-visible {
+			color: var(--chronicle-text);
+			border-color: var(--chronicle-border-strong);
+		}
+
+		.mobile-quick-nav-close:focus-visible,
+		.mobile-process-info-button:focus-visible {
+			outline: 2px solid var(--chronicle-accent);
+			outline-offset: 2px;
+		}
+
+		.mobile-quick-nav-rail {
+			flex: 1 1 auto;
+			min-height: 0;
+			overflow: hidden;
+			padding: 10px 0 8px;
+		}
+
+		.mobile-quick-nav-rail :global(.turn-rail) {
+			height: 100%;
+			padding-right: 0;
+			border-right: 0;
+		}
+
+		.mobile-quick-nav-utilities {
+			display: flex;
+			align-items: center;
+			gap: var(--space-xs);
+			padding-top: 10px;
+			border-top: 1px solid var(--chronicle-border);
+		}
+
+		.mobile-process-info-button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 7px;
+			flex: 1 1 auto;
+			min-height: 40px;
+			padding: 0 var(--space-sm);
+			border: 1px solid var(--chronicle-border);
+			border-radius: 10px;
+			background: var(--chronicle-card-surface);
+			color: var(--chronicle-text);
+			font: inherit;
+			font-size: var(--type-body-sm);
+			font-weight: 650;
+			cursor: pointer;
+		}
+
+		.mobile-process-info-button:hover {
+			background: var(--chronicle-panel-muted);
+		}
+
 		.warning-banner {
 			flex-direction: column;
 		}
@@ -455,6 +869,23 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			bottom: var(--space-sm);
 			z-index: var(--z-sticky-control);
 			max-width: calc(100% - (2 * var(--space-sm)));
+		}
+	}
+
+	@keyframes mobile-quick-nav-in {
+		from {
+			transform: translateY(18px);
+			opacity: 0.88;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.mobile-quick-nav-sheet {
+			animation: none;
 		}
 	}
 </style>

@@ -9,9 +9,18 @@ interface Props {
 	railItems: readonly ChronicleSelectableItem[];
 	activeAnchorId: string | null;
 	onSelectAnchor: (anchorId: string) => void;
+	headingId?: string;
 }
 
-let { detail, loading, error, railItems, activeAnchorId, onSelectAnchor }: Props = $props();
+let {
+	detail,
+	loading,
+	error,
+	railItems,
+	activeAnchorId,
+	onSelectAnchor,
+	headingId = "process-navigation-heading",
+}: Props = $props();
 let railListElement = $state<HTMLDivElement | null>(null);
 
 $effect(() => {
@@ -128,8 +137,8 @@ function itemAriaLabel(item: ChronicleSelectableItem): string | undefined {
 }
 </script>
 
-<section class="turn-rail" data-column="turn-rail" aria-labelledby="process-navigation-heading">
-	<h2 id="process-navigation-heading" class="sr-only">Process navigation</h2>
+<section class="turn-rail" data-column="turn-rail" aria-labelledby={headingId}>
+	<h2 id={headingId} class="sr-only">Process navigation</h2>
 	{#if loading && !detail}
 		<div class="rail-state">Loading this process timeline…</div>
 	{:else if error && !detail}
