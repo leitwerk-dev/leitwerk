@@ -421,7 +421,7 @@ $effect(() => {
 		{:else if error && installedSkills.length === 0 && availableSkills.length === 0}
 			<div class="catalog-state error" role="alert"><strong>We couldn't load the skill catalog.</strong><span>{error}</span></div>
 		{:else if activeView === "installed" && installedSkills.length === 0}
-			<div class="catalog-state"><strong>No skills are installed.</strong><span>Open Available remotely to pull a skill, or configure a direct skill in <code>leitwerk.yaml</code>.</span></div>
+			<div class="catalog-state"><strong>No skills are installed.</strong><span>Open Available remotely to install a skill from a configured repository.</span></div>
 		{:else if activeView === "available" && repositories.length === 0}
 			<div class="catalog-state"><strong>No skill repositories are configured.</strong><span>Add <code>skill_repositories</code> to <code>leitwerk.yaml</code>, then restart Leitwerk.</span></div>
 		{:else if activeView === "available" && availableSkills.length === 0}

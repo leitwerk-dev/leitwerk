@@ -7,11 +7,7 @@ import {
 	createCanonicalPiResourceBundle,
 	type PiResourceBundle,
 } from "@leitwerk-dev/worker-protocol";
-import type {
-	SkillConfig,
-	SkillRepositoryConfig,
-	SkillSourceConfig,
-} from "../config/config-types.js";
+import type { SkillRepositoryConfig } from "../config/config-types.js";
 import { ResourceCollector, SKILL_RESOURCE_OWNER } from "../pi-resources/resource-collector.js";
 import { SAFE_SKILL_ID_PATTERN } from "./skill-id.js";
 
@@ -38,8 +34,8 @@ function isWithin(root: string, candidate: string): boolean {
 
 async function importSkillDirectory(
 	root: string,
-	skill: SkillConfig,
-	sourceRevision: string | null,
+	skill: { id: string; label?: string; description?: string },
+	sourceRevision: string,
 ): Promise<ImportedSkill> {
 	const collector = new ResourceCollector();
 	await collector.addDirectory(path.resolve(root), `skills/${skill.id}`, SKILL_RESOURCE_OWNER, {
@@ -59,7 +55,7 @@ async function importSkillDirectory(
 }
 
 async function checkoutGitSource(
-	source: Extract<SkillSourceConfig, { kind: "git" }>,
+	source: { url: string; ref: string },
 	root: string,
 ): Promise<{ root: string; commit: string }> {
 	await execFileAsync(
@@ -100,7 +96,6 @@ async function discoverSkillRoots(catalogRoot: string): Promise<string[]> {
 		);
 		const skillId = path.basename(directory);
 		if (
-			directory !== catalogRoot &&
 			SAFE_SKILL_ID_PATTERN.test(skillId) &&
 			entries.some((entry) => entry.name === "SKILL.md" && entry.isFile())
 		) {
@@ -126,10 +121,7 @@ export async function importSkillRepository(
 ): Promise<{ commit: string; skills: ImportedRepositorySkill[] }> {
 	const tempRoot = await mkdtemp(path.join(tmpdir(), "leitwerk-skill-repository-"));
 	try {
-		const checkout = await checkoutGitSource(
-			{ kind: "git", url: repository.url, ref: repository.ref, path: repository.path ?? "skills" },
-			path.join(tempRoot, "checkout"),
-		);
+		const checkout = await checkoutGitSource(repository, path.join(tempRoot, "checkout"));
 		const catalogRoot = path.resolve(checkout.root, repository.path ?? "skills");
 		if (!isWithin(checkout.root, catalogRoot)) {
 			throw new Error(`Skill repository '${repository.id}' path escapes its checkout`);
@@ -156,7 +148,6 @@ export async function importSkillRepository(
 					id: skillId,
 					label: metadataValue(markdown, "name") ?? fallbackLabel(skillId),
 					description: metadataValue(markdown, "description") ?? undefined,
-					source: { kind: "local", path: skillRoot },
 				},
 				checkout.commit,
 			);
@@ -168,42 +159,5 @@ export async function importSkillRepository(
 		return { commit: checkout.commit, skills };
 	} finally {
 		await rm(tempRoot, { recursive: true, force: true });
-	}
-}
-
-export async function importConfiguredSkills(
-	skills: readonly SkillConfig[],
-	configRoot: string,
-): Promise<ImportedSkill[]> {
-	let tempRoot: string | null = null;
-	const checkouts = new Map<string, { root: string; commit: string }>();
-	try {
-		const result: ImportedSkill[] = [];
-		for (const skill of skills) {
-			if (skill.source.kind === "local") {
-				result.push(
-					await importSkillDirectory(path.resolve(configRoot, skill.source.path), skill, null),
-				);
-				continue;
-			}
-			const key = `${skill.source.url}\0${skill.source.ref}`;
-			let checkout = checkouts.get(key);
-			if (!checkout) {
-				tempRoot ??= await mkdtemp(path.join(tmpdir(), "leitwerk-skills-"));
-				checkout = await checkoutGitSource(
-					skill.source,
-					path.join(tempRoot, String(checkouts.size)),
-				);
-				checkouts.set(key, checkout);
-			}
-			const selected = path.resolve(checkout.root, skill.source.path);
-			if (!isWithin(checkout.root, selected)) {
-				throw new Error(`Skill '${skill.id}' Git path escapes its checkout`);
-			}
-			result.push(await importSkillDirectory(selected, skill, checkout.commit));
-		}
-		return result;
-	} finally {
-		if (tempRoot) await rm(tempRoot, { recursive: true, force: true });
 	}
 }

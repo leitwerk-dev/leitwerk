@@ -186,20 +186,6 @@ const kubernetesHostnameSchema = v.pipe(
 		"Expected a lowercase DNS hostname",
 	),
 );
-const skillSchema = v.strictObject({
-	id: safeSkillIdSchema,
-	label: v.optional(v.pipe(v.string(), v.nonEmpty())),
-	description: v.optional(v.pipe(v.string(), v.nonEmpty())),
-	source: v.variant("kind", [
-		v.strictObject({ kind: v.literal("local"), path: v.pipe(v.string(), v.nonEmpty()) }),
-		v.strictObject({
-			kind: v.literal("git"),
-			url: v.pipe(v.string(), v.nonEmpty()),
-			ref: v.pipe(v.string(), v.nonEmpty()),
-			path: v.pipe(v.string(), v.nonEmpty()),
-		}),
-	]),
-});
 const skillRepositorySchema = v.strictObject({
 	id: safeSkillIdSchema,
 	label: v.optional(v.pipe(v.string(), v.nonEmpty())),
@@ -209,7 +195,6 @@ const skillRepositorySchema = v.strictObject({
 });
 
 const configSchema = v.looseObject({
-	skills: v.optional(v.array(skillSchema)),
 	skill_repositories: v.optional(v.array(skillRepositorySchema)),
 	commit_messages: v.optional(
 		v.strictObject({
@@ -807,6 +792,9 @@ function hasOwnKey(value: unknown, key: string): boolean {
 }
 
 function collectLegacyConfigKeyErrors(config: Record<string, unknown>): string[] {
+	const errors = Object.hasOwn(config, "skills")
+		? ["skills was removed; configure Git sources through skill_repositories"]
+		: [];
 	const legacyKeys = [
 		{
 			section: "pi",
@@ -820,9 +808,12 @@ function collectLegacyConfigKeyErrors(config: Record<string, unknown>): string[]
 				"local_worker.process_volume_root was removed; remove the key because local workers use storage.process_workspaces_dir and storage.tree_files_dir directly",
 		},
 	] as const;
-	return legacyKeys
-		.filter(({ section, key }) => hasOwnKey(config[section], key))
-		.map(({ message }) => message);
+	errors.push(
+		...legacyKeys
+			.filter(({ section, key }) => hasOwnKey(config[section], key))
+			.map(({ message }) => message),
+	);
+	return errors;
 }
 
 function collectCommitMessageConfigErrors(config: LeitwerkConfig): string[] {
@@ -867,12 +858,7 @@ function validateResolvedConfig(config: Record<string, unknown>): string[] {
 		return shapeErrors;
 	}
 	const resolvedConfig = config as unknown as LeitwerkConfig;
-	const skillIds = new Set<string>();
 	const skillErrors: string[] = [];
-	for (const skill of resolvedConfig.skills ?? []) {
-		if (skillIds.has(skill.id)) skillErrors.push(`Duplicate skill id '${skill.id}' at skills`);
-		skillIds.add(skill.id);
-	}
 	const repositoryIds = new Set<string>();
 	for (const repository of resolvedConfig.skill_repositories ?? []) {
 		if (repositoryIds.has(repository.id)) {
@@ -942,7 +928,6 @@ export function sanitizeConfigForLogging(value: unknown, path: readonly string[]
 
 export function getDefaultConfig(): LeitwerkConfig {
 	return {
-		skills: [],
 		skill_repositories: [],
 		commit_messages: {
 			templates: {},

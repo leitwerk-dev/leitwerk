@@ -101,7 +101,6 @@ import { registerHttp } from "./server-bootstrap/register-http.js";
 import { registerWebsocket } from "./server-bootstrap/register-websocket.js";
 import { resolveServerTlsOptions } from "./server-topology.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
-import { syncConfiguredSkillCatalog } from "./skills/catalog-sync.js";
 import { createIpcHandler, type IpcHandler } from "./supervisor/ipc-handler.js";
 import { startStaleHeartbeatWatchdog } from "./supervisor/stale-heartbeat-watchdog.js";
 import { createWorkerSupervisor, type WorkerSupervisor } from "./supervisor/worker-supervisor.js";
@@ -319,12 +318,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	const repos = createAllRepos(db, {
 		...(credentialCipher ? { credentialCipher } : {}),
 	});
-	await syncConfiguredSkillCatalog({
-		skills: config.skills ?? [],
-		configRoot: opts.extensionLoadingStartDir ?? process.cwd(),
-		repos,
+	repos.transaction((transactionRepos) => {
+		// Directly configured skills are no longer supported. Deactivate any left by an older release.
+		transactionRepos.skills.reconcile([]);
+		transactionRepos.skills.backfillDependencies();
 	});
-	repos.transaction((transactionRepos) => transactionRepos.skills.backfillDependencies());
 	const skillCatalog = createSkillCatalogService({
 		repositories: config.skill_repositories ?? [],
 		repos,

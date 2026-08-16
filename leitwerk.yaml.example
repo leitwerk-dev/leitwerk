@@ -243,23 +243,6 @@ skill_repositories:
   #   ref: main
   #   path: skills
 
-# Optional directly managed Pi skills. These remain restart-scoped and are
-# imported and activated from configuration at startup.
-skills:
-  - id: local-example
-    label: Local example
-    description: Example opt-in skill.
-    source:
-      kind: local
-      path: ../shared-skills/example
-  # - id: remote-example
-  #   label: Remote example
-  #   source:
-  #     kind: git
-  #     url: https://github.com/example/skills.git
-  #     ref: v1.0.0
-  #     path: skills/example
-
 extension_loading:
   # Relative extension sources resolve from this config file's directory.
   sources:
