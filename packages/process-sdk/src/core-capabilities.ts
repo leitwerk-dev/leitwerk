@@ -51,6 +51,15 @@ export interface ProcessRepoLike {
 	create(input: ProcessCreateInputLike): ProcessInstance;
 	getById(id: string): ProcessInstance | null;
 	listAll(): ProcessInstance[];
+	/** Startup-only compatibility migrations may rewrite persisted process position and state. */
+	update(
+		id: string,
+		input: {
+			selectedTurnId?: TurnId | null;
+			currentExecution?: ProcessInstance["currentExecution"];
+			stateJson?: string | null;
+		},
+	): ProcessInstance | null;
 }
 
 export interface ProcessProjectRepoLike {
