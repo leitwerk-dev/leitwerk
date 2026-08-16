@@ -46,7 +46,14 @@ describe("flow automatic turns", () => {
 		});
 		if (deliver?.kind !== "automatic") throw new Error("expected automatic turn");
 		const waitEffect = deliver.outcomes?.awaiting?.effect;
-		expect(await waitEffect?.({ ctx: {} as never, event: {} as never, turnId: "deliver", outcome: "awaiting" })).toEqual({
+		expect(
+			await waitEffect?.({
+				ctx: {} as never,
+				event: {} as never,
+				turnId: "deliver",
+				outcome: "awaiting",
+			}),
+		).toEqual({
 			processPatch: { lifecycleStatus: "waiting" },
 		});
 	});

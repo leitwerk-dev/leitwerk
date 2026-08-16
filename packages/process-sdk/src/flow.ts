@@ -844,9 +844,13 @@ export class AutomaticOutcomeBuilder<
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
-		const configuredEffect = this.flowEffect ? wrapAutomaticOutcomeEffect(this.flowEffect) : undefined;
+		const configuredEffect = this.flowEffect
+			? wrapAutomaticOutcomeEffect(this.flowEffect)
+			: undefined;
 		const effect = this.waits
-			? async (execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0]) => {
+			? async (
+					execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0],
+				) => {
 					const result = configuredEffect ? await configuredEffect(execution) : undefined;
 					return {
 						...result,
@@ -1414,7 +1418,10 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
-	private externalActionBuilders = new Map<string, ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>>();
+	private externalActionBuilders = new Map<
+		string,
+		ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
+	>();
 
 	constructor(turnId: TurnId) {
 		this.turnId = turnId;
@@ -1447,15 +1454,31 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return this;
 	}
 
-	externalAction<TEvent = unknown, TInput extends Record<string, unknown> = Record<string, unknown>>(
+	externalAction<
+		TEvent = unknown,
+		TInput extends Record<string, unknown> = Record<string, unknown>,
+	>(
 		externalActionId: string,
 		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (external: ExternalActionBuilder<TParams, TState, TEvent, TInput>) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+		configure: (
+			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		if (this.externalActionBuilders.has(externalActionId)) throw new Error(`Automatic turn '${this.turnId}' declares duplicate external action '${externalActionId}'`);
+		if (this.externalActionBuilders.has(externalActionId))
+			throw new Error(
+				`Automatic turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
+			);
 		const builder = new ExternalActionBuilder(externalActionId, source);
 		configure(builder);
-		this.externalActionBuilders.set(externalActionId, builder as unknown as ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>);
+		this.externalActionBuilders.set(
+			externalActionId,
+			builder as unknown as ExternalActionBuilder<
+				TParams,
+				TState,
+				unknown,
+				Record<string, unknown>
+			>,
+		);
 		return this;
 	}
 
@@ -1498,7 +1521,16 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),
-			...(this.externalActionBuilders.size > 0 ? { externalActions: Object.fromEntries([...this.externalActionBuilders.entries()].map(([id, builder]) => [id, builder.build()])) } : {}),
+			...(this.externalActionBuilders.size > 0
+				? {
+						externalActions: Object.fromEntries(
+							[...this.externalActionBuilders.entries()].map(([id, builder]) => [
+								id,
+								builder.build(),
+							]),
+						),
+					}
+				: {}),
 			outcomes,
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),
 		};

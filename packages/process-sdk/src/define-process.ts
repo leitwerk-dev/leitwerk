@@ -1610,7 +1610,12 @@ function buildDefinedProcess<TParams, TState>(
 				turnSpec.kind === "automatic" && turnSpec.externalActions
 					? deriveHumanTurnActions({
 							turnId,
-							spec: { kind: "human", description: turnSpec.description, actions: {}, externalActions: turnSpec.externalActions },
+							spec: {
+								kind: "human",
+								description: turnSpec.description,
+								actions: {},
+								externalActions: turnSpec.externalActions,
+							},
 							knownTurnIds,
 							turnDefinitionsById,
 							requireHumanActions: false,
@@ -1618,7 +1623,10 @@ function buildDefinedProcess<TParams, TState>(
 					: [];
 			turns.set(
 				turnId,
-				createProcessTurnBinding(turnSpec, [...compiledOutcomes.transitions, ...externalTransitions]),
+				createProcessTurnBinding(turnSpec, [
+					...compiledOutcomes.transitions,
+					...externalTransitions,
+				]),
 			);
 			outcomeEffects.set(turnId, compiledOutcomes.effects);
 			if (turnSpec.kind === "automatic") {
