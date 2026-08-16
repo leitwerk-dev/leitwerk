@@ -16,9 +16,15 @@ function nonEmptyString(value: unknown, path: string): string {
 }
 
 /** Parse the shared launch-model fragment nested inside extension-owned watcher config. */
-export function parseProcessWatcherLaunchModelConfig(value: unknown): LaunchModelConfigInput {
-	if (value === undefined) return { defaultModelProfileId: null, turnConfigs: {} };
+export function parseProcessWatcherLaunchModelConfig(
+	value: unknown,
+): LaunchModelConfigInput & { skillIds: string[] } {
+	if (value === undefined) return { defaultModelProfileId: null, turnConfigs: {}, skillIds: [] };
 	const launch = record(value, "launch");
+	const rawSkills = launch.skills === undefined ? [] : launch.skills;
+	if (!Array.isArray(rawSkills)) throw new Error("launch.skills must be an array");
+	const skillIds = rawSkills.map((skill, index) => nonEmptyString(skill, `launch.skills.${index}`));
+	if (new Set(skillIds).size !== skillIds.length) throw new Error("launch.skills contains duplicates");
 	const rawTurns =
 		launch.turn_configs === undefined ? {} : record(launch.turn_configs, "launch.turn_configs");
 	return {
@@ -40,6 +46,7 @@ export function parseProcessWatcherLaunchModelConfig(value: unknown): LaunchMode
 				];
 			}),
 		),
+		skillIds,
 	};
 }
 

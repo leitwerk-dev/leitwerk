@@ -41,6 +41,7 @@ export interface FutureExecutionExecutorDeps
 		| "processes"
 		| "projects"
 		| "processSkills"
+		| "skills"
 		| "handoffDedupKeys"
 		| "transaction"
 	> {
@@ -133,6 +134,7 @@ async function executeScheduledLaunch(
 				processes: deps.processes,
 				projects: deps.projects,
 				processSkills: deps.processSkills,
+				skills: deps.skills,
 				handoffDedupKeys: deps.handoffDedupKeys,
 				futureExecutions: deps.futureExecutions,
 				broadcaster: deps.broadcaster,

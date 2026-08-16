@@ -29,6 +29,7 @@ interface RegisteredProcessWatcher {
 	presentation: ProcessWatcherPresentation;
 	configPath: string;
 	launchModelConfig: LaunchModelConfigInputLike;
+	launchSkillIds: readonly string[];
 }
 
 interface ProcessWatcherRegistryOptions {
@@ -50,7 +51,7 @@ function buildLaunchPlan(
 ): ProcessLaunchPlan {
 	return buildProcessLaunchPlan({
 		processDef: watcher.processDef,
-		launchConfig,
+		launchConfig: { ...launchConfig, skillIds: watcher.launchSkillIds },
 		launcherId: `${watcher.processId}.${watcher.definition.id}`,
 		metadataAdditions: {
 			processWatcherId: watcher.definition.id,
@@ -79,6 +80,14 @@ function parseConfiguredWatcher(input: {
 		if (presentation.targetSummary.trim() === "") {
 			throw new Error("presentConfig() must return a non-empty targetSummary");
 		}
+		const parsedLaunch = parsed.launchModelConfig ?? {
+			defaultModelProfileId: null,
+			turnConfigs: {},
+		};
+		const launchModelConfig = {
+			defaultModelProfileId: parsedLaunch.defaultModelProfileId ?? null,
+			turnConfigs: parsedLaunch.turnConfigs ?? {},
+		};
 		return {
 			processId: input.processId,
 			processDisplayName: input.processDisplayName,
@@ -88,10 +97,11 @@ function parseConfiguredWatcher(input: {
 			enabled: parsed.enabled,
 			presentation,
 			configPath: input.configPath,
-			launchModelConfig: parsed.launchModelConfig ?? {
-				defaultModelProfileId: null,
-				turnConfigs: {},
-			},
+			launchModelConfig,
+			launchSkillIds:
+				"skillIds" in parsedLaunch && Array.isArray(parsedLaunch.skillIds)
+					? parsedLaunch.skillIds
+					: [],
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);

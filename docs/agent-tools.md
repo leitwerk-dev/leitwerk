@@ -51,7 +51,8 @@ flow.llm("inspect_issue")
   .integrationTools("tracker_get_issue");
 ```
 
-Integration tools run in the server process. Workers receive only each tool's name,
+Integration tools run in the server process. LLM and worker automatic turns declare
+authorized names with `.integrationTools(...)`. Workers receive only each tool's name,
 description, and parameter schema. The server accepts a call only from the current turn
 record and only for a tool authorized by that turn. Provider credentials stay on the server.
 Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
@@ -62,6 +63,9 @@ server aborts `ctx.signal`; tool implementations must pass it to cancellable pro
 
 Authors register tools for the external systems their extension owns, such as issue trackers,
 VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.
+Automatic turns invoke a declared tool with `ctx.callIntegrationTool(name, args)`. Calls use
+the same turn-record authorization, replay identity, cancellation, and credential isolation
+as LLM integration-tool calls.
 
 ## 3. Interactive Tools (`ask_questions`)
 

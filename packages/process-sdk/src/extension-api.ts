@@ -100,6 +100,8 @@ export interface ProcessLaunchConfig<TParams = unknown> {
 	metadata?: Record<string, unknown> | null;
 	defaultModelProfileId?: string | null;
 	turnConfigs?: Record<string, { modelProfileId?: string | null }>;
+	/** Skill ids resolved to active immutable revisions before process creation. */
+	skillIds?: readonly string[];
 	projects?: readonly ProcessLaunchProjectConfig[];
 }
 
@@ -200,6 +202,7 @@ export interface ProcessLaunchPlan {
 	titleSourceFields?: readonly ProcessTitleSourceField[];
 	projectInputs: readonly ProcessLaunchProjectConfig[];
 	startTurnId: TurnId | null;
+	skillIds?: readonly string[];
 }
 
 export interface ResolvedProcessLauncher<TParams = unknown> {
@@ -448,6 +451,8 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	readonly turnResultMarkdownByProduct?: Readonly<Record<string, string>>;
 	/** Absolute workspace root for the current process instance, when available. */
 	readonly workspaceRoot?: string;
+	/** Invoke a server-owned integration tool authorized for this automatic turn. */
+	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface WorkerCompleteInput<TOutcome extends string = string> {

@@ -86,5 +86,6 @@ export function buildProcessLaunchPlan(input: BuildProcessLaunchPlanInput): Proc
 		titleSourceFields: input.launchConfig.titleSourceFields?.map((field) => ({ ...field })),
 		projectInputs: normalizeProjectInputs(input.launchConfig, input.commitMessages),
 		startTurnId: input.launchConfig.startTurnId ?? null,
+		...(input.launchConfig.skillIds ? { skillIds: [...input.launchConfig.skillIds] } : {}),
 	};
 }

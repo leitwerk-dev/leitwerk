@@ -210,7 +210,7 @@ A **Watcher** monitors an extension-owned event source and constructs launch con
 
 ### External Actions
 
-An **External Action** arms a provider trigger while a human turn remains selected (for example, waiting for a change request to merge or a review feedback file to be written):
+An **External Action** arms a provider trigger while a human or worker automatic turn remains selected and waiting (for example, waiting for a change request to merge or review feedback):
 
 ```ts
 const reviewTurn = flow
@@ -222,3 +222,7 @@ const reviewTurn = flow
     (external) => external.label("Merge request merged").complete(),
   );
 ```
+
+An automatic outcome can call `.wait()` to keep the automatic turn selected with
+`lifecycleStatus = "waiting"`. Its external actions can restart that turn, route to another
+business turn, complete, or abort without adding a synthetic wait turn.

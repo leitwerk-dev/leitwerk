@@ -311,6 +311,8 @@ export interface AutomaticTurnDefinition<
 > {
 	kind: "automatic";
 	description: string;
+	/** Server-owned integration tools callable by this deterministic worker turn. */
+	integrationTools?: readonly string[];
 	/** External events armed while this automatic turn is selected and waiting. */
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;

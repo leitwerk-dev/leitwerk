@@ -30,6 +30,7 @@ export interface ProcessLaunchExecutorDeps
 		RepositoryBundle,
 		| "processes"
 		| "projects"
+		| "skills"
 		| "processSkills"
 		| "handoffDedupKeys"
 		| "futureExecutions"
@@ -354,6 +355,19 @@ async function createProcessFromLaunchPlanWithDisposition(
 	opts?: ProcessLaunchOptions,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): Promise<ProcessLaunchExecutionResult> {
+	let resourceSelections = opts?.resourceSelections;
+	if (!resourceSelections && launchPlan.skillIds) {
+		try {
+			resourceSelections = deps.skills.resolveActive(launchPlan.skillIds);
+		} catch (error) {
+			return {
+				ok: false,
+				stage: "pre_commit",
+				status: 400,
+				body: { error: error instanceof Error ? error.message : String(error) },
+			};
+		}
+	}
 	if (deps.repositoryCredentials) {
 		try {
 			deps.repositoryCredentials.validateLaunch({
@@ -376,7 +390,7 @@ async function createProcessFromLaunchPlanWithDisposition(
 			deps,
 			launchPlan,
 			futureExecutionPlan,
-			opts?.resourceSelections,
+			resourceSelections,
 			opts?.launchIntent,
 		);
 	} catch (error) {

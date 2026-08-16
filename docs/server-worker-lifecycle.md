@@ -116,6 +116,10 @@ reconnect with the same Pi tool-call identity. When the turn stops, the worker s
 worker restores normal prompt guards. Implementations must pass that signal to cancellable
 provider operations. An external write already committed by its provider cannot be rolled back.
 
+Worker automatic turns use the same integration-tool protocol. Their call identities derive
+from the accepted turn record and deterministic call order, preserving reconnect replay and
+stale-turn rejection.
+
 ---
 
 ## 6. Session Snapshot Uploads

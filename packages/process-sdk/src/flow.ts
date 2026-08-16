@@ -154,6 +154,7 @@ export interface FlowPromptContext<
 	};
 	input: Readonly<Partial<Record<TConsumedProducts, string>>>;
 	repo: FlowRepoLookup;
+	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
@@ -446,6 +447,12 @@ export function createFlowPromptContext<TParams, TState, TConsumedProducts exten
 			projects: ctx.projects,
 			workspaceRoot: ctx.workspaceRoot,
 		}),
+		callIntegrationTool(name, args) {
+			if (!ctx.callIntegrationTool) {
+				throw new Error(`Automatic integration tool '${name}' is unavailable`);
+			}
+			return ctx.callIntegrationTool(name, args);
+		},
 	};
 }
 
@@ -1406,6 +1413,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
+	private availableIntegrationTools: readonly string[] = [];
 	private externalActionBuilders = new Map<string, ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>>();
 
 	constructor(turnId: TurnId) {
@@ -1431,6 +1439,11 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		) => MaybePromise<WorkerCompleteInput<string>>,
 	): this {
 		this.runFn = fn;
+		return this;
+	}
+
+	integrationTools(...tools: readonly string[]): this {
+		this.availableIntegrationTools = tools.map((tool) => tool.trim());
 		return this;
 	}
 
@@ -1482,6 +1495,9 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
+			...(this.availableIntegrationTools.length > 0
+				? { integrationTools: this.availableIntegrationTools }
+				: {}),
 			...(this.externalActionBuilders.size > 0 ? { externalActions: Object.fromEntries([...this.externalActionBuilders.entries()].map(([id, builder]) => [id, builder.build()])) } : {}),
 			outcomes,
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),

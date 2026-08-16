@@ -67,7 +67,10 @@ const scheduler = {
 	now: () => new Date(),
 };
 
-function execute(process: ResolvedWorkerProcess) {
+function execute(
+	process: ResolvedWorkerProcess,
+	integrationTools: Parameters<typeof executeSelectedTurn>[0]["integrationTools"] = [],
+) {
 	const session = {
 		resolvedWorkerProcess: process,
 		processSnapshot: processSnapshot(),
@@ -95,12 +98,37 @@ function execute(process: ResolvedWorkerProcess) {
 		targetedInputs: [],
 		scheduler,
 		resultImageTools: { create: () => null },
+		integrationTools,
 		signal: new AbortController().signal,
 		emit() {},
 	});
 }
 
 describe("executeSelectedTurn", () => {
+	it("allows automatic turns to invoke authorized integration tools", async () => {
+		const calls: Array<{ args: Record<string, unknown>; toolCallId: string | undefined }> = [];
+		const result = await execute(
+			automaticProcess(async (run) => {
+				const value = await run.ctx.callIntegrationTool?.("provider_echo", { value: 2 });
+				await run.complete({ outcome: "done", params: { value } });
+			}),
+			[
+				{
+					name: "provider_echo",
+					description: "Echo",
+					parameters: {},
+					async execute(args, context) {
+						calls.push({ args, toolCallId: context?.toolCallId });
+						return 2;
+					},
+				},
+			],
+		);
+
+		expect(calls).toEqual([{ args: { value: 2 }, toolCallId: "turn_1:1:provider_echo" }]);
+		expect(result).toMatchObject({ kind: "outcome", params: { value: 2 } });
+	});
+
 	it("returns an automatic turn outcome directly", async () => {
 		const result = await execute(
 			automaticProcess(async (run) => {

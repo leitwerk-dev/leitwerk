@@ -49,6 +49,22 @@ function createLaunchPlan(): ProcessLaunchPlan {
 }
 
 describe("process launch durable boundary", () => {
+	it("rejects watcher-selected skills that are unknown or inactive before creation", async () => {
+		const deps = createTestDeps();
+		const result = await createProcessFromLaunchPlan(deps, {
+			...createLaunchPlan(),
+			skillIds: ["missing-skill"],
+		});
+
+		expect(result).toMatchObject({
+			ok: false,
+			stage: "pre_commit",
+			status: 400,
+			body: { error: "Unknown or unavailable skill 'missing-skill'" },
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+	});
+
 	it("builds and executes a canonical config through the target codecs", async () => {
 		const deps = createTestDeps();
 		const processDef = defineProcess({
