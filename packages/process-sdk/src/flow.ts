@@ -154,7 +154,6 @@ export interface FlowPromptContext<
 	};
 	input: Readonly<Partial<Record<TConsumedProducts, string>>>;
 	repo: FlowRepoLookup;
-	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
@@ -164,6 +163,7 @@ export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	state: TState;
 	workspaceRoot?: string;
 	repo: FlowRepoLookup;
+	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 }
 
 export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown> {
@@ -447,12 +447,6 @@ export function createFlowPromptContext<TParams, TState, TConsumedProducts exten
 			projects: ctx.projects,
 			workspaceRoot: ctx.workspaceRoot,
 		}),
-		callIntegrationTool(name, args) {
-			if (!ctx.callIntegrationTool) {
-				throw new Error(`Automatic integration tool '${name}' is unavailable`);
-			}
-			return ctx.callIntegrationTool(name, args);
-		},
 	};
 }
 
@@ -469,6 +463,12 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 			projects: ctx.projects,
 			workspaceRoot: ctx.workspaceRoot,
 		}),
+		callIntegrationTool(name, args) {
+			if (!ctx.callIntegrationTool) {
+				throw new Error(`Automatic integration tool '${name}' is unavailable`);
+			}
+			return ctx.callIntegrationTool(name, args);
+		},
 	};
 }
 
