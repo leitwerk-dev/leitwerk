@@ -736,7 +736,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			display: flex;
 			flex-direction: column;
 			width: min(100%, 560px);
-			max-height: min(82svh, 720px);
+			height: min(82svh, 720px);
+			max-height: calc(100svh - max(48px, env(safe-area-inset-top)));
 			padding: 8px 16px max(14px, env(safe-area-inset-bottom));
 			border: 1px solid var(--chronicle-border-strong);
 			border-bottom: 0;
@@ -822,6 +823,11 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			height: 100%;
 			padding-right: 0;
 			border-right: 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-list) {
+			overflow-x: hidden;
+			scrollbar-gutter: auto;
 		}
 
 		.mobile-quick-nav-utilities {
