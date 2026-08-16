@@ -827,7 +827,27 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 		.mobile-quick-nav-rail :global(.rail-list) {
 			overflow-x: hidden;
+			overflow-y: auto;
+			scroll-snap-type: none;
 			scrollbar-gutter: auto;
+			padding: var(--space-2xs) var(--space-2xs) var(--space-xs) 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-track) {
+			flex-direction: column;
+			gap: 2px;
+			width: 100%;
+			min-width: 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-track::before) {
+			display: block;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-item) {
+			min-width: 0;
+			scroll-snap-align: none;
+			padding: 6px var(--space-xs);
 		}
 
 		.mobile-quick-nav-utilities {
