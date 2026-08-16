@@ -805,10 +805,43 @@ export class OutcomeToolBuilder<
 	TState,
 	FlowLlmOutcomeEffectContext<TParams, TState>
 > {
+	private stateRouting:
+		| {
+				branches: Record<string, TurnId>;
+				choose: (
+					input: FlowOutcomeEffectInput<
+						TParams,
+						TState,
+						FlowLlmOutcomeEffectContext<TParams, TState>
+					>,
+				) => MaybePromise<string>;
+		  }
+		| undefined;
+
+	routeByState(
+		branches: Record<string, TurnId>,
+		choose: (
+			input: FlowOutcomeEffectInput<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>,
+		) => MaybePromise<string>,
+	): this {
+		if (this.hasRoute() || this.stateRouting) {
+			throw new Error("State-routed outcome cannot declare another route");
+		}
+		if (Object.keys(branches).length === 0) {
+			throw new Error("State-routed outcome must declare at least one branch");
+		}
+		this.stateRouting = { branches, choose };
+		return this;
+	}
+
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.outcomeDescription) {
 			throw new Error("LLM outcome tool must declare .description(...)");
 		}
+		if (this.stateRouting && this.hasRoute()) {
+			throw new Error("State-routed outcome cannot declare another route");
+		}
+		const stateRouting = this.stateRouting;
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
@@ -818,7 +851,26 @@ export class OutcomeToolBuilder<
 						turnResultMarkdownParameter: this.publishedMarkdownParameter,
 					}
 				: {}),
-			...this.buildRouteTarget(),
+			...(stateRouting
+				? {
+						branches: Object.fromEntries(
+							Object.entries(stateRouting.branches).map(([branchId, turnId]) => [
+								branchId,
+								{ to: turnId },
+							]),
+						),
+						choose: (execution: ProcessOutcomeExecution<TParams, TState>) =>
+							stateRouting.choose({
+								ctx: createFlowLlmOutcomeEffectContext({
+									ctx: execution.ctx,
+									event: execution.event,
+								}),
+								event: execution.event,
+								turnId: execution.turnId,
+								outcome: execution.outcome,
+							}),
+					}
+				: this.buildRouteTarget()),
 			...(this.flowEffect ? { effect: wrapLlmOutcomeEffect(this.flowEffect) } : {}),
 		};
 	}

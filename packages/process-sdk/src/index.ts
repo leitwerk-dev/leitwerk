@@ -101,6 +101,8 @@ export {
 	type ProcessHumanTurnActionSpec,
 	type ProcessHumanTurnExternalActionSpec,
 	type ProcessLifecycleEffects,
+	type ProcessOutcomeBranchSelector,
+	type ProcessOutcomeBranchSpec,
 	type ProcessOutcomeEffect,
 	type ProcessOutcomeExecution,
 	type ProcessPatchEffect,

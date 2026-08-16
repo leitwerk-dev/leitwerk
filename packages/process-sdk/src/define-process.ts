@@ -169,6 +169,14 @@ export type ProcessOutcomeEffect<TParams = unknown, TState = unknown> = (
 	input: ProcessOutcomeExecution<TParams, TState>,
 ) => MaybePromise<ProcessEffectPlan<TState> | undefined>;
 
+export type ProcessOutcomeBranchSelector<TParams = unknown, TState = unknown> = (
+	input: ProcessOutcomeExecution<TParams, TState>,
+) => MaybePromise<string>;
+
+export interface ProcessOutcomeBranchSpec extends StaticRouteTarget {
+	trigger?: string;
+}
+
 export interface ProcessActionExternalTrigger {
 	id: string;
 	label: string;
@@ -224,8 +232,7 @@ export type ProcessHumanTurnActionSpec<TParams = unknown, TState = unknown> = Ba
 	externalTriggers?: readonly ProcessActionExternalTrigger[];
 } & (StaticActionRouting | BranchingActionRouting<TParams, TState>);
 
-export interface ProcessToolOutcomeSpec<TParams = unknown, TState = unknown>
-	extends StaticRouteTarget {
+interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
 	description: string;
 	parameters: Record<string, OutcomeToolParameterSpec>;
 	/** Product published from this outcome's turn-result markdown, when this outcome is selected. */
@@ -235,6 +242,18 @@ export interface ProcessToolOutcomeSpec<TParams = unknown, TState = unknown>
 	effect?: ProcessOutcomeEffect<TParams, TState>;
 	lifecycleIntent?: ProcessOutcomeLifecycleIntent<TParams, TState>;
 }
+
+export type ProcessToolOutcomeSpec<
+	TParams = unknown,
+	TState = unknown,
+> = ProcessToolOutcomeBaseSpec<TParams, TState> &
+	(
+		| StaticRouteTarget
+		| {
+				branches: Record<string, ProcessOutcomeBranchSpec>;
+				choose: ProcessOutcomeBranchSelector<TParams, TState>;
+		  }
+	);
 export type HumanTurnOperatorAttention = "required" | "passive";
 
 export interface HumanTurnDefinition<TParams = unknown, TState = unknown> {
@@ -494,10 +513,60 @@ function buildOutcomeTransition<TParams, TState>(
 	target: ProcessToolOutcomeSpec<TParams, TState> | ProcessTurnEndSpec<TParams, TState>,
 	knownTurnIds?: ReadonlySet<TurnId>,
 ): NormalizedRouteTarget {
+	if ("branches" in target) {
+		throw new Error(
+			`Turn '${turnId}' outcome '${outcome}' must compile state routing before a static transition`,
+		);
+	}
 	if (!hasDeclaredStaticRouteTarget(target)) {
 		return { nextTurnId: turnId };
 	}
 	return normalizeStaticRouteTarget(`Turn '${turnId}' outcome '${outcome}'`, target, knownTurnIds);
+}
+
+type CompiledOutcomeRouting<TParams, TState> = {
+	routes: Readonly<Record<string, NormalizedActionRoute>>;
+	choose: ProcessOutcomeBranchSelector<TParams, TState>;
+};
+
+function resolveOutcomeRouting<TParams, TState>(input: {
+	turnId: TurnId;
+	outcome: string;
+	spec: ProcessToolOutcomeSpec<TParams, TState>;
+	knownTurnIds: ReadonlySet<TurnId>;
+}): CompiledOutcomeRouting<TParams, TState> | null {
+	if (!("branches" in input.spec)) {
+		return null;
+	}
+	const entries = Object.entries(input.spec.branches);
+	if (entries.length === 0) {
+		throw new Error(
+			`Turn '${input.turnId}' outcome '${input.outcome}' must declare at least one branch`,
+		);
+	}
+	const routes: Record<string, NormalizedActionRoute> = {};
+	const usedTriggers = new Set<string>();
+	for (const [branchId, branchSpec] of entries) {
+		if (branchId.trim() === "") {
+			throw new Error(
+				`Turn '${input.turnId}' outcome '${input.outcome}' contains an empty branch id`,
+			);
+		}
+		const target = normalizeStaticRouteTarget(
+			`Turn '${input.turnId}' outcome '${input.outcome}' branch '${branchId}'`,
+			branchSpec,
+			input.knownTurnIds,
+		);
+		const trigger = branchSpec.trigger ?? branchId;
+		if (usedTriggers.has(trigger)) {
+			throw new Error(
+				`Turn '${input.turnId}' outcome '${input.outcome}' contains duplicate branch trigger '${trigger}'`,
+			);
+		}
+		usedTriggers.add(trigger);
+		routes[branchId] = { ...target, trigger };
+	}
+	return { routes, choose: input.spec.choose };
 }
 
 function resolveActionRouting<TParams, TState>(input: {
@@ -1003,6 +1072,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 }): {
 	transitions: readonly ProcessTurnTransition[];
 	effects: ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>;
+	routings: ReadonlyMap<string, CompiledOutcomeRouting<TParams, TState>>;
 } {
 	const outcomeEntries = Object.entries(input.outcomes ?? {}) as Array<
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
@@ -1020,21 +1090,42 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 
 	const transitions: ProcessTurnTransition[] = [];
 	const effects = new Map<string, ProcessOutcomeEffect<TParams, TState> | undefined>();
+	const routings = new Map<string, CompiledOutcomeRouting<TParams, TState>>();
 	for (const [outcome, spec] of outcomeEntries) {
 		if (outcome.trim() === "") {
 			throw new Error(`Turn '${input.turnId}' declares an empty outcome id`);
 		}
-		const target = buildOutcomeTransition(input.turnId, outcome, spec, input.knownTurnIds);
-		transitions.push({
-			...(target.nextTurnId ? { nextTurnId: target.nextTurnId } : {}),
-			...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
+		const routing = resolveOutcomeRouting({
+			turnId: input.turnId,
 			outcome,
+			spec,
+			knownTurnIds: input.knownTurnIds,
 		});
+		const target = routing
+			? null
+			: buildOutcomeTransition(input.turnId, outcome, spec, input.knownTurnIds);
+		if (routing) {
+			routings.set(outcome, routing);
+			for (const route of Object.values(routing.routes)) {
+				transitions.push({
+					...(route.nextTurnId ? { nextTurnId: route.nextTurnId } : {}),
+					...(route.lifecycleStatus ? { lifecycleStatus: route.lifecycleStatus } : {}),
+					trigger: route.trigger,
+					outcome,
+				});
+			}
+		} else if (target) {
+			transitions.push({
+				...(target.nextTurnId ? { nextTurnId: target.nextTurnId } : {}),
+				...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
+				outcome,
+			});
+		}
 		effects.set(
 			outcome,
 			resolveOutcomeEffect({
 				spec,
-				targetTurn: target.nextTurnId
+				targetTurn: target?.nextTurnId
 					? input.turnDefinitionsById.get(target.nextTurnId)
 					: undefined,
 			}),
@@ -1070,6 +1161,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 	return {
 		transitions,
 		effects,
+		routings,
 	};
 }
 
@@ -1577,6 +1669,10 @@ function buildDefinedProcess<TParams, TState>(
 		TurnId,
 		ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>
 	>();
+	const outcomeRoutings = new Map<
+		TurnId,
+		ReadonlyMap<string, CompiledOutcomeRouting<TParams, TState>>
+	>();
 	const executableTurns = new Map<TurnId, CompiledExecutableTurn<TParams, TState>>();
 
 	for (const [turnId, turnSpec] of turnEntries) {
@@ -1590,6 +1686,7 @@ function buildDefinedProcess<TParams, TState>(
 			});
 			turns.set(turnId, createProcessTurnBinding(turnSpec, compiledOutcomes.transitions));
 			outcomeEffects.set(turnId, compiledOutcomes.effects);
+			outcomeRoutings.set(turnId, compiledOutcomes.routings);
 			executableTurns.set(turnId, {
 				kind: "llm",
 				id: turnId,
@@ -1629,6 +1726,7 @@ function buildDefinedProcess<TParams, TState>(
 				]),
 			);
 			outcomeEffects.set(turnId, compiledOutcomes.effects);
+			outcomeRoutings.set(turnId, compiledOutcomes.routings);
 			if (turnSpec.kind === "automatic") {
 				executableTurns.set(turnId, {
 					kind: "automatic",
@@ -1754,16 +1852,29 @@ function buildDefinedProcess<TParams, TState>(
 		for (const [turnId, effects] of outcomeEffects) {
 			api.onTurnOutcome(turnId, async (event, ctx) => {
 				const effect = effects.get(event.outcome);
-				if (!effect) {
+				const routing = outcomeRoutings.get(turnId)?.get(event.outcome);
+				if (!effect && !routing) {
 					return;
 				}
-				const result = await effect({
+				const execution = {
 					ctx: makeProcessServerRuntimeContext(ctx),
 					event,
 					turnId,
 					outcome: event.outcome,
-				});
-				await applyProcessEffectPlan({ ctx, result });
+				};
+				const result = effect ? await effect(execution) : undefined;
+				let transition: Omit<ServerTransitionRequest<TState>, "state"> | undefined;
+				if (routing) {
+					const branchId = await routing.choose(execution);
+					const route = routing.routes[branchId];
+					if (!route) {
+						throw new Error(
+							`Turn '${turnId}' outcome '${event.outcome}' selected unknown branch '${branchId}'`,
+						);
+					}
+					transition = buildActionTransitionRequest(route);
+				}
+				await applyProcessEffectPlan({ ctx, result, transition });
 			});
 		}
 

@@ -373,6 +373,66 @@ describe("defineProcess", () => {
 		expect(transitionsFor(process, "draft")).toEqual([{ nextTurnId: "draft", outcome: "ready" }]);
 	});
 
+	it("routes one LLM outcome deterministically from process state", async () => {
+		const process = defineProcess({
+			id: "state_routed_outcome_process",
+			displayName: "State Routed Outcome",
+			entry: "draft",
+			paramsCodec: emptyParamsCodec,
+			stateCodec,
+			initialState: () => ({ branch: "manual" }),
+			turns: {
+				draft: llmTurn({
+					availableTools: [],
+					description: "Draft",
+					branchType: "primary",
+					context: "fresh",
+					prompt: async () => "draft",
+					outcomes: {
+						ready: {
+							description: "ready",
+							parameters: {},
+							branches: {
+								manual: { to: "decision" },
+								automatic: { to: "deliver" },
+							},
+							choose: ({ ctx }) => ctx.state.branch,
+						},
+					},
+				}),
+				decision: humanTurn({
+					description: "Decision",
+					actions: {
+						abort: { label: "Abort", acceptanceState: "neutral", lifecycleStatus: "aborted" },
+					},
+				}),
+				deliver: automaticTurn({
+					description: "Deliver",
+					run: () => ({ outcome: "done", params: {} }),
+					outcomes: { done: { description: "done", parameters: {}, complete: true } },
+				}),
+			},
+		});
+
+		expect(transitionsFor(process, "draft")).toEqual([
+			{ nextTurnId: "decision", outcome: "ready", trigger: "manual" },
+			{ nextTurnId: "deliver", outcome: "ready", trigger: "automatic" },
+		]);
+
+		const handler = buildServerProcessForTest(process)?.turnOutcomeHandlers.get("draft")?.[0];
+		expect(handler).toBeDefined();
+		const transitions: Array<Record<string, unknown>> = [];
+		await handler?.(
+			{ turnRecordId: "trn_1", turnId: "draft", outcome: "ready", params: {} },
+			createTestServerProcessContext({
+				process: createTestProcessInstance({ processId: process.id, selectedTurnId: "draft" }),
+				state: { branch: "automatic" },
+				transition: async (next) => transitions.push(next as Record<string, unknown>),
+			}),
+		);
+		expect(transitions).toEqual([{ turnId: "deliver", trigger: "automatic" }]);
+	});
+
 	it("allows custom worker overrides for compiled turns", () => {
 		const process = defineProcess({
 			id: "worker_override_process",

@@ -219,6 +219,29 @@ describe("flow", () => {
 		});
 	});
 
+	it("builds state-routed LLM outcomes with one model-facing tool", () => {
+		const turn = flow
+			.llm<unknown, { automatic: boolean }>("implement")
+			.description("Implement")
+			.prompt(() => "Implement")
+			.outcomeTool("ready", (tool) =>
+				tool
+					.description("Implementation is ready")
+					.markdown("summary", { publish: true })
+					.routeByState({ manual: "decision", automatic: "deliver" }, ({ ctx }) =>
+						ctx.state.automatic ? "automatic" : "manual",
+					),
+			).definition;
+
+		expect(Object.keys(turn.outcomes ?? {})).toEqual(["ready"]);
+		expect(turn.outcomes?.ready).toMatchObject({
+			branches: {
+				manual: { to: "decision" },
+				automatic: { to: "deliver" },
+			},
+		});
+	});
+
 	it("builds concise human, server-automatic, and external flow turns", () => {
 		const human = flow
 			.human("review")
