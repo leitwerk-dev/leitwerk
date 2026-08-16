@@ -541,6 +541,7 @@ export interface SkillCatalogItem {
 	updateAvailable: boolean;
 	conflict: boolean;
 	stale: boolean;
+	modelInvocable: boolean;
 	usage: SkillUsageSummary;
 }
 
@@ -555,6 +556,7 @@ export interface InstalledSkillCatalogItem {
 	registrationKind: SkillRegistrationKind;
 	sourceRepositoryId: string | null;
 	updateAvailable: boolean;
+	modelInvocable: boolean;
 	usage: SkillUsageSummary;
 }
 

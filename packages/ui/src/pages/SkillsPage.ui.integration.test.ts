@@ -28,6 +28,7 @@ const installed = {
 	registrationKind: "configuration" as const,
 	sourceRepositoryId: null,
 	updateAvailable: false,
+	modelInvocable: false,
 	usage,
 };
 
@@ -42,6 +43,7 @@ const remote = {
 	updateAvailable: false,
 	conflict: false,
 	stale: false,
+	modelInvocable: true,
 	usage: { ...usage, attachedAllTime: 0, attachedLast30Days: 0 },
 };
 
@@ -121,6 +123,7 @@ describe("SkillsPage", () => {
 		await flush();
 
 		expect(target.textContent).toContain("Configured skill");
+		expect(target.textContent).toContain("Not callable by model");
 		expect(target.textContent).not.toContain("Review changes");
 		expect(target.querySelector('[data-section="repository-modal"]')).toBeNull();
 
@@ -147,6 +150,7 @@ describe("SkillsPage", () => {
 		click(target.querySelector('[data-catalog-view="available"]'));
 		await flush();
 		expect(target.textContent).toContain("Review changes");
+		expect(target.textContent).toContain("Callable by model");
 	});
 
 	it("does not duplicate already installed skills in Available remotely by default", async () => {

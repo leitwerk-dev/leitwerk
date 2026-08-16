@@ -341,6 +341,9 @@ $effect(() => {
 			<a {href} onclick={(event) => followLink(event, href)}>
 				<strong>{skill.label}</strong>
 				<span>{skill.description ?? skill.id}</span>
+				<span class="model-invocation" data-model-invocable={skill.modelInvocable}>
+					{skill.modelInvocable ? "Callable by model" : "Not callable by model"}
+				</span>
 			</a>
 		</td>
 		<td>
@@ -593,6 +596,7 @@ $effect(() => {
 	.skill-table a:hover strong { color: var(--chronicle-accent); }
 	.skill-table td strong { color: var(--chronicle-text); font-size: var(--type-body); font-weight: 650; }
 	.skill-table td span, .skill-table td code { display: block; }
+	.skill-table .model-invocation { margin-top: 3px; color: var(--chronicle-text-faint); font-size: var(--type-caption); font-weight: 600; }
 	.skill-table code, .detail-meta code, .revision-list code { font-family: var(--font-mono); font-size: var(--type-caption); overflow-wrap: anywhere; }
 	.status-chip { display: inline-flex !important; width: fit-content; padding: 5px 9px; border-radius: 999px; background: var(--chronicle-panel-muted); color: var(--chronicle-text-muted); font-size: var(--type-caption); font-weight: 650; white-space: nowrap; }
 	.status-chip.registered { background: var(--chronicle-success-surface); color: var(--chronicle-success); }

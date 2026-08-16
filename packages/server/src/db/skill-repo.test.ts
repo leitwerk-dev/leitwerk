@@ -150,7 +150,10 @@ describe("skill repository", () => {
 	it("lists configuration skills and keeps discovered candidates after upstream removal", () => {
 		const repos = createAllRepos(createInMemoryDatabase());
 		const configuredBundle = createCanonicalPiResourceBundle([
-			{ path: "skills/configured/SKILL.md", content: Buffer.from("# Configured") },
+			{
+				path: "skills/configured/SKILL.md",
+				content: Buffer.from("---\ndisable-model-invocation: true\n---\n# Configured"),
+			},
 		]);
 		repos.skills.reconcile([
 			{
@@ -162,9 +165,13 @@ describe("skill repository", () => {
 			},
 		]);
 		expect(repos.skills.catalog().installedSkills).toEqual([
-			expect.objectContaining({ id: "configured", registrationKind: "configuration" }),
+			expect.objectContaining({
+				id: "configured",
+				registrationKind: "configuration",
+				modelInvocable: false,
+			}),
 		]);
-		expect(repos.skills.getInstalledDetail("configured")?.skillMarkdown).toBe("# Configured");
+		expect(repos.skills.getInstalledDetail("configured")?.skillMarkdown).toContain("# Configured");
 
 		const remoteBundle = createCanonicalPiResourceBundle([
 			{ path: "skills/remote/SKILL.md", content: Buffer.from("# Remote") },
@@ -187,6 +194,7 @@ describe("skill repository", () => {
 				id: "remote",
 				registered: true,
 				stale: true,
+				modelInvocable: true,
 			}),
 		]);
 		expect(repos.skills.catalog().installedSkills).toEqual(

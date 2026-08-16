@@ -11,6 +11,7 @@ import type {
 import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { and, asc, count, desc, eq, isNotNull, max, sql } from "drizzle-orm";
 import { explicitSkillReferenceIds, referencedSkillIds } from "../skills/skill-dependencies.js";
+import { isSkillModelInvocable } from "../skills/skill-frontmatter.js";
 import type { ImportedRepositorySkill, ImportedSkill } from "../skills/source-importer.js";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
@@ -107,6 +108,7 @@ function candidateSummaries(db: LeitwerkDb) {
 			sourcePath: skillCatalogEntries.sourcePath,
 			sourceRevision: skillCatalogEntries.sourceRevision,
 			bundleDigest: skillCatalogEntries.bundleDigest,
+			bundleBytes: skillCatalogEntries.bundleBytes,
 			available: skillCatalogEntries.available,
 		})
 		.from(skillCatalogEntries)
@@ -237,6 +239,7 @@ function catalogView(db: LeitwerkDb): {
 			activeRevisionId: skillRevisions.id,
 			activeSourceRevision: skillRevisions.sourceRevision,
 			activeDigest: skillRevisions.bundleDigest,
+			activeBundleBytes: skillRevisions.bundleBytes,
 			registrationKind: skills.registrationKind,
 		})
 		.from(skills)
@@ -262,6 +265,9 @@ function catalogView(db: LeitwerkDb): {
 			),
 			conflict: candidate.available && active?.registrationKind === "configuration",
 			stale: !candidate.available,
+			modelInvocable: isSkillModelInvocable(
+				skillMarkdown(candidate.skillId, candidate.bundleBytes, candidate.bundleDigest),
+			),
 			usage: usage.get(candidate.skillId) ?? emptyUsage(),
 		};
 	});
@@ -288,6 +294,9 @@ function catalogView(db: LeitwerkDb): {
 				skill.registrationKind === "catalog" &&
 				available.length === 1 &&
 				available[0]?.bundleDigest !== skill.activeDigest,
+			modelInvocable: isSkillModelInvocable(
+				skillMarkdown(skill.id, skill.activeBundleBytes, skill.activeDigest),
+			),
 			usage: usage.get(skill.id) ?? emptyUsage(),
 		};
 	});
