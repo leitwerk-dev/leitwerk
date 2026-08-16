@@ -105,6 +105,7 @@ export interface ProcessBroadcastEffect {
 export type ProcessPatchEffect = Partial<
 	Pick<
 		ProcessInstance,
+		| "lifecycleStatus"
 		| "planRevision"
 		| "title"
 		| "externalId"
@@ -310,6 +311,8 @@ export interface AutomaticTurnDefinition<
 > {
 	kind: "automatic";
 	description: string;
+	/** External events armed while this automatic turn is selected and waiting. */
+	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
 	reviewSubject?: ReviewSubject;
@@ -1199,6 +1202,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	spec: HumanTurnDefinition<TParams, TState>;
 	knownTurnIds?: ReadonlySet<TurnId>;
 	turnDefinitionsById?: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
+	requireHumanActions?: boolean;
 }): {
 	actions: readonly DerivedHumanTurnAction<TParams, TState>[];
 	externalActions: readonly DerivedHumanTurnExternalAction<TParams, TState>[];
@@ -1207,7 +1211,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	const actionEntries = Object.entries(input.spec.actions) as Array<
 		[string, ProcessHumanTurnActionSpec<TParams, TState>]
 	>;
-	if (actionEntries.length === 0 && input.knownTurnIds) {
+	if (actionEntries.length === 0 && input.knownTurnIds && input.requireHumanActions !== false) {
 		throw new Error(`Human turn '${input.turnId}' must declare at least one action`);
 	}
 
@@ -1599,7 +1603,20 @@ function buildDefinedProcess<TParams, TState>(
 				knownTurnIds,
 				turnDefinitionsById,
 			});
-			turns.set(turnId, createProcessTurnBinding(turnSpec, compiledOutcomes.transitions));
+			const externalTransitions =
+				turnSpec.kind === "automatic" && turnSpec.externalActions
+					? deriveHumanTurnActions({
+							turnId,
+							spec: { kind: "human", description: turnSpec.description, actions: {}, externalActions: turnSpec.externalActions },
+							knownTurnIds,
+							turnDefinitionsById,
+							requireHumanActions: false,
+						}).transitions
+					: [];
+			turns.set(
+				turnId,
+				createProcessTurnBinding(turnSpec, [...compiledOutcomes.transitions, ...externalTransitions]),
+			);
 			outcomeEffects.set(turnId, compiledOutcomes.effects);
 			if (turnSpec.kind === "automatic") {
 				executableTurns.set(turnId, {

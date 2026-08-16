@@ -453,7 +453,7 @@ export function createExternalSourceService(
 			return armed;
 		}
 
-		if (!isHumanTurnDefinition(turnDef)) {
+		if (!isHumanTurnDefinition(turnDef) && turnDef.kind !== "automatic") {
 			return [];
 		}
 		for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
@@ -531,7 +531,7 @@ export function createExternalSourceService(
 		}
 		for (const [turnId, binding] of processDef.turns) {
 			const turnDef = binding.definition;
-			if (isHumanTurnDefinition(turnDef)) {
+			if (isHumanTurnDefinition(turnDef) || turnDef.kind === "automatic") {
 				for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
 					if (getExternalActionArmingId({ turnId, externalActionId }) === armingId) {
 						return { turnId, externalActionId, sourceKind: action.source.kind };

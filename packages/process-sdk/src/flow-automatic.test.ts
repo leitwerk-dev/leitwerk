@@ -7,6 +7,48 @@ import { describe, expect, it } from "vitest";
 import { flow } from "./flow.js";
 
 describe("flow automatic turns", () => {
+	it("can wait on itself and expose external actions as graph edges", async () => {
+		const source = {
+			kind: "test.event",
+			config: {},
+			resolve: () => ({ key: "value" }),
+		};
+		const process = flow
+			.process("awaitable_automatic")
+			.displayName("Awaitable automatic")
+			.entry("deliver")
+			.codecs({
+				params: { parse: () => ({}), serialize: (value) => value },
+				state: { parse: () => ({}), serialize: (value) => value },
+			})
+			.initialState(() => ({}))
+			.turn(
+				flow
+					.automatic("deliver")
+					.description("Deliver")
+					.run(() => ({ outcome: "awaiting" }))
+					.outcome("awaiting", (outcome) => outcome.description("Await events").wait())
+					.outcome("done", (outcome) => outcome.description("Done").complete())
+					.externalAction("resume", source, (external) => external.to("deliver"))
+					.externalAction("cancel", source, (external) => external.lifecycleStatus("aborted")),
+			)
+			.define();
+
+		const deliver = process.turns.get("deliver")?.definition;
+		expect(deliver).toMatchObject({
+			kind: "automatic",
+			externalActions: {
+				resume: { to: "deliver" },
+				cancel: { lifecycleStatus: "aborted" },
+			},
+		});
+		if (deliver?.kind !== "automatic") throw new Error("expected automatic turn");
+		const waitEffect = deliver.outcomes?.awaiting?.effect;
+		expect(await waitEffect?.({ ctx: {} as never, event: {} as never, turnId: "deliver", outcome: "awaiting" })).toEqual({
+			processPatch: { lifecycleStatus: "waiting" },
+		});
+	});
+
 	it("passes FlowAutomaticRunContext directly to run functions", async () => {
 		let receivedFsPath = "";
 		const turn = flow
