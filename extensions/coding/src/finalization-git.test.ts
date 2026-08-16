@@ -204,6 +204,9 @@ function createFinalizationContext(input: {
 				generatedCommitMessage: input.commitMessage ?? "Summarize the accepted plan",
 			}),
 		},
+		callIntegrationTool: async () => {
+			throw new Error("not used");
+		},
 		repo: {
 			get: (requestedKey) => {
 				if (requestedKey !== key) {
