@@ -765,6 +765,7 @@ export interface CurrentTurnRecoverySummary extends CurrentErrorSummary {
 	turnRecordId: string;
 	defaultContinuePrompt: string;
 	canContinue: boolean;
+	supportsModelOverride: boolean;
 	defaultModelProfileId: string | null;
 	providerOptions: Record<string, string>;
 }

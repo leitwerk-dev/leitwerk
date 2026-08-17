@@ -154,6 +154,34 @@ describe("process UI snapshot presenter", () => {
 		});
 	});
 
+	it("projects failed server automatic turns as retryable without a model override", () => {
+		const failed = turnRecord({
+			id: "trn_deliver",
+			turnId: "deliver_change",
+			turnType: "server_automatic",
+			status: "failed",
+			errorSummary: "Delivery failed",
+		});
+		expect(
+			buildCurrentTurnRecovery({
+				process: processInstance({
+					selectedTurnId: failed.turnId,
+					lifecycleStatus: "error",
+					currentExecution: { kind: "server_turn", id: failed.id },
+				}),
+				turnStarts: { getById: () => null },
+				turnRecords: [failed],
+				selectedTurnDescription: "Deliver change",
+				piEntries: [],
+			}),
+		).toMatchObject({
+			turnRecordId: failed.id,
+			canContinue: false,
+			supportsModelOverride: false,
+			summary: "Delivery failed",
+		});
+	});
+
 	it("projects actionable startup failures from the current worker start", () => {
 		for (const [kind, action] of [
 			["preparation_failed", "choose_model"],

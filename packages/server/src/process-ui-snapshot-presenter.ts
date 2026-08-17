@@ -3,7 +3,6 @@ import {
 	DEFAULT_CONTINUE_PROMPT,
 	inferTerminalRecordingFailedTurnRecoveryContext,
 	isProcessTurnType,
-	isWorkerOwnedTurnType,
 	normalizeContinuePrompt,
 	type ProcessEvent,
 	type ProcessInput,
@@ -845,7 +844,6 @@ export function buildCurrentTurnRecovery(input: {
 	if (
 		!failedTurnRecord ||
 		failedTurnRecord.status !== "failed" ||
-		!isWorkerOwnedTurnType(failedTurnRecord.turnType) ||
 		failedTurnRecord.turnId !== input.process.selectedTurnId
 	) {
 		return null;
@@ -880,6 +878,7 @@ export function buildCurrentTurnRecovery(input: {
 			recoveryContext?.suggestedContinuePrompt ??
 			DEFAULT_CONTINUE_PROMPT,
 		canContinue,
+		supportsModelOverride: failedTurnRecord.turnType === "llm",
 		defaultModelProfileId: acceptedLlmStart?.model.profileId ?? failedTurnRecord.modelProfileId,
 		providerOptions: acceptedLlmStart ? { ...acceptedLlmStart.providerOptions } : {},
 	};

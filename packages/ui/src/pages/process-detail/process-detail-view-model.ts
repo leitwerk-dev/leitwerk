@@ -13,6 +13,7 @@ export interface CurrentTurnRecoveryViewModel {
 	technicalDetail?: string | null;
 	defaultContinuePrompt: string;
 	canContinue: boolean;
+	supportsModelOverride: boolean;
 	defaultModelProfileId: string | null;
 	providerOptions: Record<string, string>;
 }

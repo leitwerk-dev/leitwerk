@@ -54,6 +54,7 @@ interface Props {
 		technicalDetail?: string | null;
 		defaultContinuePrompt: string;
 		canContinue: boolean;
+		supportsModelOverride: boolean;
 		defaultModelProfileId: string | null;
 		providerOptions: Record<string, string>;
 	} | null;
@@ -172,6 +173,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				technicalDetail={recovery.technicalDetail}
 				turnRecordId={recovery.turnRecordId}
 				canContinue={recovery.canContinue}
+				supportsModelOverride={recovery.supportsModelOverride}
 				continueBusy={recoveryController.continueBusyTurnRecordId === recovery.turnRecordId}
 				continueError={
 					recoveryController.continueError?.turnRecordId === recovery.turnRecordId
