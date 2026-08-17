@@ -33,7 +33,7 @@ export type WorkerRuntimeStateName =
 /** Compatibility type used by pure failure normalization. */
 export type WorkerRuntimeState = WorkerRuntimeStateName;
 export type ReportedWorkerState = "idle" | "busy" | "draining";
-export type WorkerTimerName = "heartbeat" | "acceptance_retry" | "credential_poll";
+export type WorkerTimerName = "heartbeat" | "acceptance_retry" | "credential_poll" | "terminal_ack";
 
 type ActiveTurnStatus = "pending" | "executing" | "completed";
 type DrainingOperation =
@@ -106,6 +106,10 @@ type PublicationState =
 				turnRecordId: string;
 				required: true;
 			};
+			terminal: PendingTerminal;
+	  }
+	| {
+			kind: "terminal_pending_ack";
 			terminal: PendingTerminal;
 	  }
 	| {
@@ -282,7 +286,12 @@ export function createInitialWorkerRuntimeState(): WorkerRuntimeStateMachine {
 			publication: { kind: "none" },
 		},
 		credential: null,
-		timers: { heartbeat: null, acceptance_retry: null, credential_poll: null },
+		timers: {
+			heartbeat: null,
+			acceptance_retry: null,
+			credential_poll: null,
+			terminal_ack: null,
+		},
 	};
 }
 
@@ -291,7 +300,8 @@ export function deriveReportedWorkerState(state: WorkerRuntimeStateMachine): Rep
 	if (
 		(state.phase.kind === "active" &&
 			(state.phase.turnStatus === "executing" ||
-				state.work.publication.kind === "terminal_snapshot")) ||
+				state.work.publication.kind === "terminal_snapshot" ||
+				state.work.publication.kind === "terminal_pending_ack")) ||
 		state.work.deliveryHeadSequence !== null
 	)
 		return "busy";
@@ -445,6 +455,30 @@ function beginTerminalSnapshot(
 			publication: { kind: "terminal_snapshot", snapshot, terminal },
 		},
 	};
+}
+
+const TERMINAL_ACK_RETRY_MS = 5_000;
+
+function publishTerminalAndAwaitAcknowledgement(
+	state: WorkerRuntimeStateMachine,
+	terminal: PendingTerminal,
+	outputs: WorkerRuntimeOutput[],
+): WorkerRuntimeStateMachine {
+	outputs.push(terminal.fact);
+	if (terminal.park) outputs.push(protocol("worker.lifecycle_parked", terminal.park));
+	return armTimer(
+		{
+			...state,
+			work: {
+				...state.work,
+				publication: { kind: "terminal_pending_ack", terminal },
+			},
+		},
+		outputs,
+		"terminal_ack",
+		TERMINAL_ACK_RETRY_MS,
+		terminal.correlation.turnRecordId,
+	);
 }
 
 function beginCleanupSnapshot(
@@ -826,6 +860,13 @@ export function reduceWorkerRuntime(
 					}),
 				);
 			}
+			if (state.work.publication.kind === "terminal_pending_ack") {
+				next = publishTerminalAndAwaitAcknowledgement(
+					state,
+					state.work.publication.terminal,
+					outputs,
+				);
+			}
 			break;
 		case "transport_failed": {
 			const failed = failureOutputs(state, { kind: "transport", error: event.error });
@@ -866,7 +907,12 @@ export function reduceWorkerRuntime(
 				outputs.push({ kind: "cancel_timer", name });
 			next = {
 				...next,
-				timers: { heartbeat: null, acceptance_retry: null, credential_poll: null },
+				timers: {
+					heartbeat: null,
+					acceptance_retry: null,
+					credential_poll: null,
+					terminal_ack: null,
+				},
 				credential: null,
 			};
 			break;
@@ -940,6 +986,21 @@ export function reduceWorkerRuntime(
 					message.payload.turnRecordId,
 					outputs,
 				);
+				break;
+			}
+			if (message.type === "worker.turn_terminal_recorded") {
+				const publication = state.work.publication;
+				if (
+					publication.kind !== "terminal_pending_ack" ||
+					publication.terminal.correlation.turnRecordId !== message.payload.turnRecordId
+				)
+					break;
+				outputs.push({ kind: "cancel_timer", name: "terminal_ack" });
+				next = {
+					...state,
+					work: { ...state.work, publication: { kind: "none" } },
+					timers: { ...state.timers, terminal_ack: null },
+				};
 				break;
 			}
 			if (message.type === "worker.credential_update_accepted") {
@@ -1225,8 +1286,7 @@ export function reduceWorkerRuntime(
 					state.phase.kind === "active" ? { ...state.phase, turnStatus: "completed" } : next.phase,
 			};
 			if (state.session?.kind === "automatic") {
-				outputs.push(pending.fact);
-				if (pending.park) outputs.push(protocol("worker.lifecycle_parked", pending.park));
+				next = publishTerminalAndAwaitAcknowledgement(next, pending, outputs);
 			} else if (state.session) {
 				const point =
 					event.result.kind === "outcome" ? "before_turn_outcome" : "before_turn_failed";
@@ -1267,6 +1327,7 @@ export function reduceWorkerRuntime(
 			const publication = state.work.publication;
 			switch (publication.kind) {
 				case "none":
+				case "terminal_pending_ack":
 				case "fatal_pending_cleanup":
 					break;
 				case "ready_snapshot":
@@ -1275,10 +1336,7 @@ export function reduceWorkerRuntime(
 					break;
 				case "terminal_snapshot":
 					if (!snapshotMatches(publication.snapshot, event)) break;
-					outputs.push(publication.terminal.fact);
-					if (publication.terminal.park)
-						outputs.push(protocol("worker.lifecycle_parked", publication.terminal.park));
-					next = { ...state, work: { ...state.work, publication: { kind: "none" } } };
+					next = publishTerminalAndAwaitAcknowledgement(state, publication.terminal, outputs);
 					break;
 				case "cleanup_snapshot":
 					if (!snapshotMatches(publication.snapshot, event)) break;
@@ -1321,6 +1379,7 @@ export function reduceWorkerRuntime(
 			const publication = state.work.publication;
 			switch (publication.kind) {
 				case "none":
+				case "terminal_pending_ack":
 				case "fatal_pending_cleanup":
 					break;
 				case "ready_snapshot":
@@ -1416,6 +1475,16 @@ export function reduceWorkerRuntime(
 					}),
 				);
 				next = armTimer(next, outputs, "acceptance_retry", 1_000, event.correlation);
+			} else if (
+				event.name === "terminal_ack" &&
+				state.work.publication.kind === "terminal_pending_ack" &&
+				state.work.publication.terminal.correlation.turnRecordId === event.correlation
+			) {
+				next = publishTerminalAndAwaitAcknowledgement(
+					next,
+					state.work.publication.terminal,
+					outputs,
+				);
 			} else if (
 				event.name === "credential_poll" &&
 				state.credential?.enabled &&

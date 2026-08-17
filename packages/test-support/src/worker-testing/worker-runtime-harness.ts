@@ -87,6 +87,8 @@ export interface WorkerRuntimeHarnessOptions {
 	config?: Partial<WorkerRuntimeConfig>;
 	/** Optional default used by start() and startLlmTo(). */
 	startPayload?: WorkerStartPayload;
+	/** Model the server's durable terminal acknowledgement. Defaults to true. */
+	autoAcknowledgeTerminals?: boolean;
 	adapters: Pick<WorkerRuntimeAdapters, "piFactory" | "gitOps"> &
 		Partial<
 			Pick<
@@ -151,6 +153,16 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			outgoing.push(message);
 			observations.push({ kind: "ipc", type: message.type });
 			notifyWaiters();
+			if (
+				options.autoAcknowledgeTerminals !== false &&
+				(message.type === "worker.turn_outcome" || message.type === "worker.turn_failed")
+			) {
+				queueMicrotask(() =>
+					deliver("worker.turn_terminal_recorded", {
+						turnRecordId: message.payload.turnRecordId,
+					}),
+				);
+			}
 		},
 		onMessage(handler) {
 			messageHandler = handler;
@@ -235,6 +247,18 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			await this.flush();
 		},
 		async stop(reason: string) {
+			const terminal = [...outgoing]
+				.reverse()
+				.find(
+					(message) =>
+						message.type === "worker.turn_outcome" || message.type === "worker.turn_failed",
+				);
+			if (terminal) {
+				deliver("worker.turn_terminal_recorded", {
+					turnRecordId: terminal.payload.turnRecordId,
+				});
+				await this.flush();
+			}
 			await runtime.stop(reason);
 		},
 		async acceptStart(acceptance: { startRecordId?: string; turnRecordId?: string } = {}) {

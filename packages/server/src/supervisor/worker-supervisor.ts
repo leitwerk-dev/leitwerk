@@ -22,6 +22,7 @@ import {
 	type WorkerHelloPayload,
 	type WorkerIntegrationToolResultPayload,
 	type WorkerQuestionResponsePayload,
+	type WorkerTurnTerminalRecordedPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type {
 	ProcessVolume,
@@ -121,6 +122,11 @@ export interface WorkerSupervisor {
 		workerId: string,
 		startRecordId: string,
 		turnRecordId: string,
+	): void;
+	acknowledgeTurnTerminal(
+		instanceId: string,
+		workerId: string,
+		payload: WorkerTurnTerminalRecordedPayload,
 	): void;
 	questionResponse(
 		instanceId: string,
@@ -856,6 +862,19 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				type: "worker.turn_start_accepted",
 				payload: { startRecordId, turnRecordId },
 			});
+		},
+		acknowledgeTurnTerminal(instanceId, workerId, payload) {
+			runnerRuntime.webSocketIpc.send(
+				instanceId,
+				workerId,
+				createIpcMessage<ServerToWorkerMessage>({
+					type: "worker.turn_terminal_recorded",
+					payload,
+					messageId: randomUUID(),
+					instanceId,
+					workerId,
+				}),
+			);
 		},
 		questionResponse(instanceId, workerId, payload) {
 			sendToCurrentWorker(instanceId, workerId, { type: "worker.question_response", payload });

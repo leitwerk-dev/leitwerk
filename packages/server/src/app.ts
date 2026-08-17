@@ -739,6 +739,23 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				: undefined,
 		},
 		{
+			onTurnTerminalRecorded(instanceId, workerId, turnRecordId) {
+				supervisor?.acknowledgeTurnTerminal(instanceId, workerId, { turnRecordId });
+			},
+			onTurnTerminalRecordingFailed(input) {
+				app.log.error(input, "Worker turn terminal recording failed");
+				baseDeps.events.create({
+					instanceId: input.instanceId,
+					eventType: "worker_terminal_recording_failed",
+					data: {
+						workerId: input.workerId,
+						turnRecordId: input.turnRecordId,
+						terminalType: input.terminalType,
+						code: input.code,
+						message: input.message,
+					},
+				});
+			},
 			onWorkerTurnStartAccepted(instanceId, workerId, payload) {
 				supervisor?.acceptTurnStart(
 					instanceId,
@@ -847,6 +864,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		staleHeartbeatWatchdog = startStaleHeartbeatWatchdog({
 			leases: baseDeps.leases,
 			processes: baseDeps.processes,
+			turnRecords: baseDeps.turnRecords,
+			turnStarts: baseDeps.turnStarts,
 			ipcHandler,
 			supervisor,
 			staleHeartbeatTimeout: config.workers.stale_heartbeat_timeout,

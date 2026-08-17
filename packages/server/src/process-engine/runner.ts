@@ -217,6 +217,17 @@ export function createEngineRunner(
 
 		const { recorded } = lockedOutcome;
 		try {
+			operation.afterRecord?.(input, recorded.data);
+		} catch (error) {
+			logProcessEngineError(deps.logger, {
+				err: error,
+				operationKind: operation.kind,
+				instanceId: input.instanceId,
+				stage: "post_commit",
+				code: "after_record_callback_failed",
+			});
+		}
+		try {
 			await deps.afterRecord?.(recorded.process);
 		} catch (error) {
 			logProcessEngineError(deps.logger, {

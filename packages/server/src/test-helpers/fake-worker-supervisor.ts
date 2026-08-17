@@ -54,6 +54,7 @@ export function createFakeWorkerSupervisor(
 		abortTurn() {},
 		deliverInputs() {},
 		acceptTurnStart() {},
+		acknowledgeTurnTerminal() {},
 		questionResponse() {},
 		integrationToolResult() {},
 		credentialUpdateResult() {},

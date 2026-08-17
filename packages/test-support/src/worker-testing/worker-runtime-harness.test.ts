@@ -759,6 +759,9 @@ describe("worker runtime harness", () => {
 		const harness = createAutomaticHarness();
 		await startHarness(harness);
 		await harness.acceptStart();
+		await harness.waitForMessage("worker.turn_outcome");
+		harness.deliver("worker.turn_terminal_recorded", { turnRecordId: "trn_1" });
+		await harness.flush();
 		const lifecycle = harness.outgoing.filter(
 			(message) => message.type === "worker.state" || message.type === "worker.turn_outcome",
 		);
@@ -816,7 +819,9 @@ describe("worker runtime harness", () => {
 		await harness.start(automaticStart({ state: "accepted", pendingInputs: [input(2), input(1)] }));
 		await harness.waitForMessage("worker.turn_outcome");
 		harness.reconnect();
-		const heartbeat = harness.outgoing.at(-1);
+		const heartbeat = [...harness.outgoing]
+			.reverse()
+			.find((message) => message.type === "worker.heartbeat");
 		expect(heartbeat?.type === "worker.heartbeat" && heartbeat.payload.lastSequenceConsumed).toBe(
 			2,
 		);

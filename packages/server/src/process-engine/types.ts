@@ -247,8 +247,16 @@ export interface ProcessEngine {
 		instanceId: string,
 		input: { startRecordId: string; proposedTurnRecordId: string; workerLeaseId: string },
 	): Promise<EngineResult<{ turnRecordId: string }>>;
-	recordTurnOutcome(instanceId: string, payload: TurnOutcomePayload): Promise<EngineResult<void>>;
-	recordTurnFailed(instanceId: string, payload: TurnFailedPayload): Promise<EngineResult<void>>;
+	recordTurnOutcome(
+		instanceId: string,
+		payload: TurnOutcomePayload,
+		options?: { onRecorded?: () => void },
+	): Promise<EngineResult<void>>;
+	recordTurnFailed(
+		instanceId: string,
+		payload: TurnFailedPayload,
+		options?: { onRecorded?: () => void },
+	): Promise<EngineResult<void>>;
 	updateSemanticEntryRefs(
 		instanceId: string,
 		patch: ProcessSemanticEntryRefPatch,

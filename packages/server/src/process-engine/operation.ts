@@ -24,6 +24,10 @@ type BestEffortFailureReportingResolver<TInput extends OperationInputBase> = {
 	bivarianceHack(input: TInput): boolean;
 }["bivarianceHack"];
 
+type AfterRecordFunction<TInput extends OperationInputBase, TData> = {
+	bivarianceHack(input: TInput, data: TData): void;
+}["bivarianceHack"];
+
 export interface OperationSpec<TKind extends string, TInput extends OperationInputBase, TData> {
 	kind: TKind;
 	label?: string;
@@ -36,6 +40,8 @@ export interface OperationSpec<TKind extends string, TInput extends OperationInp
 	 */
 	decide: DecideFunction<TInput, TData>;
 
+	/** Runs after the transaction and process lock complete, before reactions are dispatched. */
+	afterRecord?: AfterRecordFunction<TInput, TData>;
 	messages?: OperationMessages | MessageResolver<TInput>;
 	reportBestEffortFailures?: boolean | BestEffortFailureReportingResolver<TInput>;
 }

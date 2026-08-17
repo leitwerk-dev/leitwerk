@@ -149,6 +149,10 @@ export interface WorkerTurnStartAcceptedPayload {
 	turnRecordId: string;
 }
 
+export interface WorkerTurnTerminalRecordedPayload {
+	turnRecordId: string;
+}
+
 export interface WorkerQuestionResponsePayload {
 	turnRecordId: string;
 	toolCallId: string;
@@ -197,6 +201,10 @@ export type ServerToWorkerMessage =
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.turn_start_accepted";
 			payload: WorkerTurnStartAcceptedPayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.turn_terminal_recorded";
+			payload: WorkerTurnTerminalRecordedPayload;
 	  })
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.credential_update_accepted";
