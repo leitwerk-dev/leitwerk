@@ -334,7 +334,10 @@ describe("createIpcHandler", () => {
 		);
 		await flushAsyncWork();
 
-		expect(t.leases.getByInstance(process.id)?.state).toBe("idle");
+		expect(t.leases.getByInstance(process.id)).toMatchObject({
+			state: "idle",
+			lastHeartbeatAt: expect.any(String),
+		});
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
 			semanticEntryRefs: {
 				rootEntry: { entryId: "user-1", turnRecordId: null },

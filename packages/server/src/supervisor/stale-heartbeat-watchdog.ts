@@ -36,8 +36,10 @@ export function startStaleHeartbeatWatchdog(
 			if (lease.state !== "idle" && lease.state !== "busy" && lease.state !== "draining") {
 				continue;
 			}
-			const heartbeatAt = lease.lastHeartbeatAt ?? lease.startedAt;
-			const lastSeenMs = Date.parse(heartbeatAt);
+			if (!lease.lastHeartbeatAt) {
+				continue;
+			}
+			const lastSeenMs = Date.parse(lease.lastHeartbeatAt);
 			if (!Number.isFinite(lastSeenMs) || now() - lastSeenMs < timeoutMs) {
 				continue;
 			}

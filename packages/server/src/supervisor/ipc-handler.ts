@@ -181,6 +181,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					}
 					const result = observeWorkerLease("bootstrap_completed", "worker.ready");
 					if (result.kind === "applied") {
+						deps.leases.updateHeartbeat(activeLease.workerId);
 						void deps.commands
 							.updateSemanticEntryRefs(instanceId, {
 								rootEntry:

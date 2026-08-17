@@ -57,6 +57,47 @@ describe("startStaleHeartbeatWatchdog", () => {
 		watchdog.stop();
 	});
 
+	it("skips active leases without a readiness heartbeat baseline", async () => {
+		const deps = createTestDeps();
+		const process = deps.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		deps.leases.create({
+			instanceId: process.id,
+			workerId: "wkr_ready_without_heartbeat",
+			state: "idle",
+		});
+		const kill = vi.fn();
+		const supervisor = {
+			getWorker(instanceId: string) {
+				return instanceId === process.id ? { kill } : undefined;
+			},
+		} as const;
+		const ipcHandler = createTestIpcHandler(deps);
+
+		const timer = {} as ReturnType<typeof setInterval>;
+		const watchdog = startStaleHeartbeatWatchdog({
+			leases: deps.leases,
+			processes: deps.processes,
+			ipcHandler,
+			supervisor: supervisor as never,
+			staleHeartbeatTimeout: "30s",
+			checkIntervalMs: 1_000,
+			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
+			setIntervalImpl: () => timer,
+			clearIntervalImpl: () => {},
+		});
+
+		watchdog.tick();
+		await flushAsyncWork();
+
+		expect(deps.leases.getByInstance(process.id)?.state).toBe("idle");
+		expect(kill).not.toHaveBeenCalled();
+		watchdog.stop();
+	});
+
 	it("marks stale workers failed, parks the process, emits a toast, and kills the child", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({

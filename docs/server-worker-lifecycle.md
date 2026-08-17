@@ -72,6 +72,10 @@ Durable worker leases transition through distinct lifecycle states owned exclusi
 - **`draining` / `cleanup`:** Graceful turn completion, uploading final snapshots, and releasing worker resources.
 - **`failed` / `exited`:** Worker termination states.
 
+The stale-heartbeat watchdog does not use lease creation time. `worker.ready` establishes the
+first heartbeat baseline after bootstrap, and periodic `worker.heartbeat` messages advance it.
+This keeps image pulls and workspace preparation outside the heartbeat timeout.
+
 ---
 
 ## 4. IPC Protocol & Message Reference
