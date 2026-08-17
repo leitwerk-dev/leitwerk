@@ -74,6 +74,15 @@ export function createWorkerTurnIpcRecorder(
 	const acknowledge = (instanceId: string, workerId: string, turnRecordId: string): void => {
 		callbacks.onTurnTerminalRecorded?.(instanceId, workerId, turnRecordId);
 	};
+	const reportRecordingFailure = (
+		input: Parameters<NonNullable<typeof callbacks.onTurnTerminalRecordingFailed>>[0],
+	): void => {
+		try {
+			callbacks.onTurnTerminalRecordingFailed?.(input);
+		} catch {
+			// Observability must not prevent durable failure recovery or terminal replay.
+		}
+	};
 
 	const recoverRecordingFailure = async (input: {
 		instanceId: string;
@@ -87,7 +96,7 @@ export function createWorkerTurnIpcRecorder(
 			return;
 		}
 		const details = failureDetails(input.failure);
-		callbacks.onTurnTerminalRecordingFailed?.({
+		reportRecordingFailure({
 			instanceId: input.instanceId,
 			workerId: input.workerId,
 			turnRecordId: input.turnRecordId,
@@ -103,7 +112,7 @@ export function createWorkerTurnIpcRecorder(
 			if (fallback.ok || terminalWasAlreadyRecorded(deps, input.turnRecordId, "failure")) {
 				acknowledge(input.instanceId, input.workerId, input.turnRecordId);
 			} else {
-				callbacks.onTurnTerminalRecordingFailed?.({
+				reportRecordingFailure({
 					instanceId: input.instanceId,
 					workerId: input.workerId,
 					turnRecordId: input.turnRecordId,
@@ -114,7 +123,7 @@ export function createWorkerTurnIpcRecorder(
 			}
 		} catch (fallbackError: unknown) {
 			const fallbackDetails = failureDetails(fallbackError);
-			callbacks.onTurnTerminalRecordingFailed?.({
+			reportRecordingFailure({
 				instanceId: input.instanceId,
 				workerId: input.workerId,
 				turnRecordId: input.turnRecordId,
