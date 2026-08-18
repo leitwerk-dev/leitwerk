@@ -29,8 +29,13 @@ export function startStaleHeartbeatWatchdog(
 	const now = deps.now ?? (() => Date.now());
 	const setIntervalImpl = deps.setIntervalImpl ?? setInterval;
 	const clearIntervalImpl = deps.clearIntervalImpl ?? clearInterval;
+	const acceptedStartReconciliations = new Map<
+		string,
+		{ turnRecordId: string; startedAtMs: number }
+	>();
 
 	const tick = () => {
+		const observedReconciliations = new Set<string>();
 		for (const lease of deps.leases.listActive()) {
 			if (deps.supervisor.isAdoptionPending?.(lease.instanceId)) {
 				continue;
@@ -58,6 +63,20 @@ export function startStaleHeartbeatWatchdog(
 					Number.isFinite(startedAtMs) &&
 					now() - startedAtMs >= timeoutMs
 				) {
+					observedReconciliations.add(lease.instanceId);
+					const reconciliation = acceptedStartReconciliations.get(lease.instanceId);
+					if (!reconciliation || reconciliation.turnRecordId !== turnRecord.id) {
+						if (deps.supervisor.reconcileAcceptedTurnStart?.(lease.instanceId, lease.workerId)) {
+							acceptedStartReconciliations.set(lease.instanceId, {
+								turnRecordId: turnRecord.id,
+								startedAtMs: now(),
+							});
+							continue;
+						}
+					} else if (now() - reconciliation.startedAtMs < timeoutMs) {
+						continue;
+					}
+					acceptedStartReconciliations.delete(lease.instanceId);
 					deps.ipcHandler.handleMessage(
 						createServerObservedWorkerFailedMessage({
 							instanceId: lease.instanceId,
@@ -94,6 +113,11 @@ export function startStaleHeartbeatWatchdog(
 				}),
 			);
 			deps.supervisor.getWorker(lease.instanceId)?.kill();
+		}
+		for (const instanceId of acceptedStartReconciliations.keys()) {
+			if (!observedReconciliations.has(instanceId)) {
+				acceptedStartReconciliations.delete(instanceId);
+			}
 		}
 	};
 

@@ -98,7 +98,7 @@ describe("startStaleHeartbeatWatchdog", () => {
 		watchdog.stop();
 	});
 
-	it("fails an old running turn when its worker reports idle", async () => {
+	it("replays an accepted start before failing a worker that remains idle", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
 			processId: "ticket_issue_process",
@@ -151,13 +151,16 @@ describe("startStaleHeartbeatWatchdog", () => {
 			currentExecution: { kind: "worker_start", id: "tsr_impossible_idle" },
 		});
 		const kill = vi.fn();
+		const reconcileAcceptedTurnStart = vi.fn(() => true);
 		const supervisor = {
+			reconcileAcceptedTurnStart,
 			getWorker(instanceId: string) {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
 		const ipcHandler = createTestIpcHandler(deps);
 		const timer = {} as ReturnType<typeof setInterval>;
+		let nowMs = Date.parse("2026-04-14T10:01:00.000Z");
 		const watchdog = startStaleHeartbeatWatchdog({
 			leases: deps.leases,
 			processes: deps.processes,
@@ -166,14 +169,20 @@ describe("startStaleHeartbeatWatchdog", () => {
 			ipcHandler,
 			supervisor: supervisor as never,
 			staleHeartbeatTimeout: "30s",
-			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
+			now: () => nowMs,
 			setIntervalImpl: () => timer,
 			clearIntervalImpl: () => {},
 		});
 
 		watchdog.tick();
 		await flushAsyncWork();
+		expect(reconcileAcceptedTurnStart).toHaveBeenCalledWith(process.id, "wkr_impossible_idle");
+		expect(deps.turnRecords.getById("trn_impossible_idle")?.status).toBe("running");
+		expect(kill).not.toHaveBeenCalled();
 
+		nowMs += 30_000;
+		watchdog.tick();
+		await flushAsyncWork();
 		expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("error");
 		expect(deps.turnRecords.getById("trn_impossible_idle")?.status).toBe("failed");
 		expect(kill).toHaveBeenCalledOnce();

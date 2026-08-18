@@ -121,6 +121,25 @@ export function createWorkerWebSocketIpcManager(
 		}
 	}
 
+	function queueOutbound(entry: PendingWorkerConnection, data: string): void {
+		if (entry.outbound.length >= maxBufferedMessages) {
+			entry.outbound = [];
+			reportRuntimeError(
+				entry,
+				new WorkerOutboundBufferOverflowError(
+					entry.instanceId,
+					entry.workerId,
+					maxBufferedMessages,
+				),
+			);
+			if (entry.socket) {
+				closeSocket(entry, entry.socket, 1011, "worker websocket outbound buffer overflow");
+			}
+			return;
+		}
+		entry.outbound.push(data);
+	}
+
 	function flushOutbound(entry: PendingWorkerConnection, socket: WorkerWebSocketLike): void {
 		while (entry.outbound.length > 0) {
 			const data = entry.outbound[0];
@@ -269,21 +288,17 @@ export function createWorkerWebSocketIpcManager(
 			}
 			const data = serializeMessage(message);
 			if (!entry.socket || !entry.socketAuthenticated) {
-				if (entry.outbound.length >= maxBufferedMessages) {
-					entry.outbound = [];
-					reportRuntimeError(
-						entry,
-						new WorkerOutboundBufferOverflowError(instanceId, workerId, maxBufferedMessages),
-					);
-					if (entry.socket) {
-						closeSocket(entry, entry.socket, 1011, "worker websocket outbound buffer overflow");
-					}
-					return;
-				}
-				entry.outbound.push(data);
+				queueOutbound(entry, data);
 				return;
 			}
-			sendNow(entry, entry.socket, data);
+			const socket = entry.socket;
+			if (sendNow(entry, socket, data)) {
+				return;
+			}
+			if (entry.socket === socket) {
+				closeSocket(entry, socket, 1011, "worker websocket unavailable during send");
+			}
+			queueOutbound(entry, data);
 		},
 		unregister(instanceId: string, workerId: string, reason: string) {
 			const key = connectionKey(instanceId, workerId);

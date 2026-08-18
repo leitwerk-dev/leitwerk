@@ -40,6 +40,7 @@ import {
 	selectWorkerRuntimeProfile,
 } from "../worker-runtime-profile-selection.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+import { resolveAcceptedTurnStartReplay } from "./accepted-turn-start-replay.js";
 import { createWorkerAdoptionCoordinator } from "./adoption/worker-adoption-coordinator.js";
 import { decideIdleWorkerStop } from "./idle-worker-ttl.js";
 import type { createIpcHandler } from "./ipc-handler.js";
@@ -123,6 +124,7 @@ export interface WorkerSupervisor {
 		startRecordId: string,
 		turnRecordId: string,
 	): void;
+	reconcileAcceptedTurnStart(instanceId: string, workerId: string): boolean;
 	acknowledgeTurnTerminal(
 		instanceId: string,
 		workerId: string,
@@ -380,6 +382,17 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		);
 	}
 
+	function reconcileAcceptedTurnStart(instanceId: string, workerId: string): boolean {
+		if (workers.get(instanceId)?.workerId !== workerId) return false;
+		const replay = resolveAcceptedTurnStartReplay(deps, instanceId, workerId);
+		if (!replay) return false;
+		sendToCurrentWorker(instanceId, workerId, {
+			type: "worker.turn_start_accepted",
+			payload: replay,
+		});
+		return true;
+	}
+
 	function routeEnvelope(envelope: IpcEnvelope, instanceId: string): void {
 		const currentHandle = workers.get(instanceId);
 		if (
@@ -437,6 +450,15 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		}
 		if (envelope.type === "worker.heartbeat") {
 			adoptionCoordinator.onHeartbeat(instanceId, envelope.workerId, envelope.payload);
+			const reportedState =
+				typeof envelope.payload === "object" &&
+				envelope.payload !== null &&
+				"state" in envelope.payload
+					? envelope.payload.state
+					: null;
+			if (reportedState === "idle") {
+				reconcileAcceptedTurnStart(instanceId, envelope.workerId);
+			}
 		}
 		if (envelope.type === "worker.ready") {
 			adoptionCoordinator.onWorkerReady(instanceId);
@@ -863,6 +885,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				payload: { startRecordId, turnRecordId },
 			});
 		},
+		reconcileAcceptedTurnStart,
 		acknowledgeTurnTerminal(instanceId, workerId, payload) {
 			runnerRuntime.webSocketIpc.send(
 				instanceId,
