@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	buildServerProcessForTest,
 	createTestProcessInstance,
@@ -9,7 +8,6 @@ import { defineProcess, humanTurn } from "./define-process.js";
 import { flow } from "./flow.js";
 
 interface TestState {
-	reviewSubject: { kind: "plan" } | null;
 	cleared: boolean;
 }
 
@@ -32,12 +30,11 @@ describe("flow lifecycle intents", () => {
 			entry: generatePlan.id,
 			paramsCodec: { parse: () => undefined, serialize: (value) => value },
 			stateCodec: { parse: (value) => value as TestState, serialize: (value) => value },
-			initialState: () => ({ reviewSubject: null, cleared: false }),
+			initialState: () => ({ cleared: false }),
 			turns: {
 				[generatePlan.id]: generatePlan.definition,
 				plan_decision: humanTurn({
 					description: "Plan decision",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						approve: { label: "Approve", acceptanceState: "accepted", complete: true },
 					},
@@ -66,7 +63,7 @@ describe("flow lifecycle intents", () => {
 					selectedTurnId: "generate_plan",
 					planRevision: 4,
 				}),
-				state: { reviewSubject: null, cleared: false },
+				state: { cleared: false },
 				transition: async (next) => {
 					transitions.push(next);
 				},
@@ -79,11 +76,7 @@ describe("flow lifecycle intents", () => {
 			}),
 		);
 
-		expect(transitions).toEqual([
-			{
-				state: { reviewSubject: { kind: "plan" }, cleared: true },
-			},
-		]);
+		expect(transitions).toEqual([{ state: { cleared: true } }]);
 		expect(lifecycleEffects).toEqual([
 			expect.objectContaining({
 				processPatch: { planRevision: 5 },

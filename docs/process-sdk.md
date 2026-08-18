@@ -146,7 +146,7 @@ const implement = flow
 
 ## Human Review Turns & Actions
 
-A `flow.human` turn pauses execution until an operator acts in the web UI:
+A `flow.human` turn pauses execution until an operator acts in the web UI. Review turns identify their artifact directly through `reviewProduct`; there is no separate review classification in process state.
 
 ```ts
 const planDecision = flow

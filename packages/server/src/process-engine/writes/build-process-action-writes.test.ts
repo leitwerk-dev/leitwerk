@@ -31,7 +31,7 @@ describe("collectProcessActionPlan", () => {
 				});
 				await ctx.transition({
 					turnId: "run_llm_review",
-					state: { reviewSubject: { kind: "implementation" } },
+					state: {},
 					effect: { runtime: "restart_worker" },
 				});
 			},
@@ -70,7 +70,7 @@ describe("collectProcessActionPlan", () => {
 		]);
 		expect(planned.processPatch).toMatchObject({
 			selectedTurnId: "run_llm_review",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "implementation" } }),
+			stateJson: JSON.stringify({}),
 		});
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
 	});
@@ -94,7 +94,7 @@ describe("collectProcessActionPlan", () => {
 			process,
 			projects: [],
 			params: {},
-			state: { reviewSubject: { kind: "plan" } },
+			state: {},
 			turnRecords: deps.turnRecords,
 			processGraphs,
 			action,
@@ -266,7 +266,7 @@ describe("collectProcessActionPlan", () => {
 			process,
 			projects: [],
 			params: {},
-			state: { reviewSubject: { kind: "plan" } },
+			state: {},
 			turnRecords: deps.turnRecords,
 			processGraphs,
 			action,
@@ -300,7 +300,7 @@ describe("collectProcessActionPlan", () => {
 			process,
 			projects: [],
 			params: {},
-			state: { reviewSubject: { kind: "plan" } },
+			state: {},
 			turnRecords: deps.turnRecords,
 			processGraphs,
 			action,

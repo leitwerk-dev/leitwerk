@@ -59,7 +59,6 @@ describe("localShellProcess", () => {
 
 		expect(graph.turns.get(localShellTurnIds.open)?.turnType).toBe("server_automatic");
 		expect(graph.turns.get(localShellTurnIds.console)?.turnType).toBe("human");
-		expect(graph.turns.get(localShellTurnIds.console)?.reviewSubject).toBeUndefined();
 		expect(graph.turns.get(localShellTurnIds.execute)?.turnType).toBe("server_automatic");
 		expect(localShellProcess.turns.get(localShellTurnIds.console)?.definition).toMatchObject({
 			operatorAttention: "passive",

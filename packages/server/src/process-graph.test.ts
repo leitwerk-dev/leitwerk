@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import { defineProcess, humanTurn, llmTurn } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import {
@@ -38,7 +37,6 @@ function createProcess() {
 			}),
 			review: humanTurn({
 				description: "Review",
-				reviewSubject: createReviewSubject("plan"),
 				actions: {
 					approve: {
 						label: "Approve",

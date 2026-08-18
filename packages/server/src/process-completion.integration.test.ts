@@ -36,7 +36,6 @@ const testProcess = defineProcess<Record<string, never>, StructuralProcessState>
 	turns: {
 		await_project_update: humanTurn({
 			description: "Wait for project metadata",
-			reviewSubject: { kind: "plan" },
 			actions: {
 				project_metadata_synced: {
 					label: "Project metadata synced",
@@ -65,7 +64,7 @@ const testProcess = defineProcess<Record<string, never>, StructuralProcessState>
 				return {
 					outcome: "ready",
 					params: {},
-					state: { ...ctx.state, reviewSubject: { kind: "implementation" } },
+					state: { ...ctx.state },
 				};
 			},
 			outcomes: {
@@ -75,7 +74,6 @@ const testProcess = defineProcess<Record<string, never>, StructuralProcessState>
 		}),
 		implementation_review: humanTurn({
 			description: "Implementation review",
-			reviewSubject: { kind: "implementation" },
 			actions: {
 				ack_review: { label: "Acknowledge", acceptanceState: "accepted", complete: true },
 			},
@@ -92,7 +90,6 @@ describe("explicit readiness turn integration", () => {
 			selectedTurnId: "await_project_update",
 			stateJson: JSON.stringify({
 				...createStructuralProcessState(),
-				reviewSubject: { kind: "plan" },
 			}),
 		});
 		const project = deps.projects.create({

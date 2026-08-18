@@ -1318,7 +1318,6 @@ describe("createIpcHandler", () => {
 		expect(t.turnRecords.getById("trn_plan_1")?.turnResultMarkdown).toBe("## Plan");
 		expect(t.processes.getById(process.id)?.currentExecution).toBeNull();
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: { kind: "plan" },
 			semanticEntryRefs: {
 				plan: { entryId: "turn-1", turnRecordId: "trn_plan_1" },
 				currentPrimaryPathLeaf: { entryId: "turn-1", turnRecordId: "trn_plan_1" },
@@ -1580,7 +1579,6 @@ describe("createIpcHandler", () => {
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({
-				reviewSubject: { kind: "implementation" },
 				semanticEntryRefs: {
 					currentPrimaryPathLeaf: { entryId: "turn-1", turnRecordId: "trn_impl_1" },
 				},
@@ -1623,8 +1621,6 @@ describe("createIpcHandler", () => {
 			kind: "worker_start",
 		});
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
-			readyForHumanReview: false,
-			reviewSubject: null,
 			semanticEntryRefs: {
 				review: { entryId: "turn-2", turnRecordId: "trn_review_1" },
 				currentPrimaryPathLeaf: { entryId: "turn-1", turnRecordId: "trn_impl_1" },

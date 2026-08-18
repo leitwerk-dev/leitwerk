@@ -8,7 +8,6 @@ import {
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
 	type ProcessTurnTransition,
-	type ReviewSubject,
 	type TurnId,
 } from "@leitwerk-dev/domain";
 import type {
@@ -259,8 +258,7 @@ export type HumanTurnOperatorAttention = "required" | "passive";
 export interface HumanTurnDefinition<TParams = unknown, TState = unknown> {
 	kind: "human";
 	description: string;
-	/** Optional for generic operator-waiting turns; review turns should set it. */
-	reviewSubject?: ReviewSubject;
+	/** Named product rendered as the subject of this human review turn. */
 	reviewProduct?: string;
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 	/** Controls whether entering this turn should raise an action-required toast. */
@@ -314,7 +312,6 @@ export interface LlmTurnDefinition<
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
 	turnResultMarkdown?: TurnResultMarkdownBehavior;
-	reviewSubject?: ReviewSubject;
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 	resultSemanticRef?: ProcessSemanticEntryRefKey;
 	publishedProduct?: string;
@@ -337,7 +334,6 @@ export interface AutomaticTurnDefinition<
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
-	reviewSubject?: ReviewSubject;
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 	run(
 		ctx: ProcessRuntimeTurnContext<TParams, TState>,
@@ -360,7 +356,6 @@ export interface ServerAutomaticTurnDefinition<
 	description: string;
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
-	reviewSubject?: ReviewSubject;
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 	/**
 	 * Controls startup/drainer behavior when a durable running turn record already exists.
@@ -389,7 +384,6 @@ export interface ExternalTurnDefinition<TParams = unknown, TState = unknown> {
 	kind: "external";
 	description: string;
 	transitions: readonly ExternalSourceTransition<TParams, TState>[];
-	reviewSubject?: ReviewSubject;
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 }
 
@@ -843,34 +837,11 @@ function normalizeEffectStringArray(value: unknown): string[] {
 		: [];
 }
 
-function getTurnReviewSubject(turnDef: TurnDefinition<unknown, unknown> | undefined) {
-	if (!turnDef || !("reviewSubject" in turnDef)) {
-		return null;
-	}
-	return turnDef.reviewSubject ?? null;
-}
-
-function patchReviewSubjectIntoState<TState>(
-	state: TState,
-	reviewSubject: ReviewSubject | null,
-): TState {
-	if (typeof state !== "object" || state === null || Array.isArray(state)) {
-		return state;
-	}
-	return {
-		...(state as Record<string, unknown>),
-		reviewSubject,
-	} as TState;
-}
-
 async function buildSavePlanResultEffect<TParams, TState>(input: {
 	intent: SavePlanResultLifecycleIntent<TParams, TState>;
 	execution: ProcessOutcomeExecution<TParams, TState>;
-	targetTurn: TurnDefinition<unknown, unknown> | undefined;
 }): Promise<ProcessEffectPlan<TState>> {
 	const statePlan = input.intent.state ? await input.intent.state(input.execution) : undefined;
-	const targetReviewSubject = getTurnReviewSubject(input.targetTurn);
-	const baseState = statePlan?.state ?? input.execution.ctx.state;
 	const planRevision = input.execution.ctx.process.planRevision + 1;
 	const summary = normalizeEffectString(input.execution.event.params[input.intent.summaryParam]);
 	const acceptanceCriteria = normalizeEffectStringArray(
@@ -882,7 +853,6 @@ async function buildSavePlanResultEffect<TParams, TState>(input: {
 			: normalizeEffectString(input.execution.event.params[input.intent.planMarkdownParam]);
 
 	return mergeProcessEffectPlans(statePlan, {
-		state: patchReviewSubjectIntoState(baseState, targetReviewSubject),
 		processPatch: { planRevision },
 		broadcasts: [
 			{
@@ -911,7 +881,6 @@ async function buildSavePlanResultEffect<TParams, TState>(input: {
 
 function resolveOutcomeEffect<TParams, TState>(input: {
 	spec: ProcessToolOutcomeSpec<TParams, TState> | ProcessTurnEndSpec<TParams, TState, string>;
-	targetTurn: TurnDefinition<unknown, unknown> | undefined;
 }): ProcessOutcomeEffect<TParams, TState> | undefined {
 	const lifecycleIntent = "lifecycleIntent" in input.spec ? input.spec.lifecycleIntent : undefined;
 	if (!lifecycleIntent) {
@@ -925,7 +894,6 @@ function resolveOutcomeEffect<TParams, TState>(input: {
 				lifecyclePlan = await buildSavePlanResultEffect({
 					intent: lifecycleIntent,
 					execution,
-					targetTurn: input.targetTurn,
 				});
 				break;
 		}
@@ -1068,7 +1036,6 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 	outcomes?: Partial<Record<string, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, string>;
 	knownTurnIds: ReadonlySet<TurnId>;
-	turnDefinitionsById: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
 }): {
 	transitions: readonly ProcessTurnTransition[];
 	effects: ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>;
@@ -1121,15 +1088,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 				outcome,
 			});
 		}
-		effects.set(
-			outcome,
-			resolveOutcomeEffect({
-				spec,
-				targetTurn: target?.nextTurnId
-					? input.turnDefinitionsById.get(target.nextTurnId)
-					: undefined,
-			}),
-		);
+		effects.set(outcome, resolveOutcomeEffect({ spec }));
 	}
 
 	if (input.turnEnd) {
@@ -1147,15 +1106,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 			...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
 			outcome: input.turnEnd.outcome,
 		});
-		effects.set(
-			input.turnEnd.outcome,
-			resolveOutcomeEffect({
-				spec: input.turnEnd,
-				targetTurn: target.nextTurnId
-					? input.turnDefinitionsById.get(target.nextTurnId)
-					: undefined,
-			}),
-		);
+		effects.set(input.turnEnd.outcome, resolveOutcomeEffect({ spec: input.turnEnd }));
 	}
 
 	return {
@@ -1682,7 +1633,6 @@ function buildDefinedProcess<TParams, TState>(
 				outcomes: turnSpec.outcomes,
 				turnEnd: turnSpec.turnEnd,
 				knownTurnIds,
-				turnDefinitionsById,
 			});
 			turns.set(turnId, createProcessTurnBinding(turnSpec, compiledOutcomes.transitions));
 			outcomeEffects.set(turnId, compiledOutcomes.effects);
@@ -1701,7 +1651,6 @@ function buildDefinedProcess<TParams, TState>(
 				outcomes: turnSpec.outcomes,
 				turnEnd: turnSpec.turnEnd,
 				knownTurnIds,
-				turnDefinitionsById,
 			});
 			const externalTransitions =
 				turnSpec.kind === "automatic" && turnSpec.externalActions

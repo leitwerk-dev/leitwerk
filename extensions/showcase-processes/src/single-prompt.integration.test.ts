@@ -633,8 +633,7 @@ describe("single prompt extension", () => {
 				if (!value || value.lifecycleStatus !== "waiting") {
 					return false;
 				}
-				const state = JSON.parse(value.stateJson ?? "null");
-				return state?.reviewSubject?.kind === "plan";
+				return value.selectedTurnId === "poem_review";
 			},
 		);
 		expect(firstHumanReview).toMatchObject({
@@ -720,14 +719,16 @@ describe("single prompt extension", () => {
 					return false;
 				}
 				const state = JSON.parse(value.process.stateJson ?? "null");
-				return state?.reviewSubject?.kind === "plan" && state?.latestReviewOutcome === "no_issues";
+				return (
+					value.process.selectedTurnId === "poem_review" &&
+					state?.latestReviewOutcome === "no_issues"
+				);
 			},
 		);
 		expect(afterAutoAcceptedReview.process).toMatchObject({
 			lifecycleStatus: "waiting",
 		});
 		expect(JSON.parse(afterAutoAcceptedReview.process?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: { kind: "plan" },
 			latestReviewOutcome: "no_issues",
 			latestReviewMarkdown: null,
 			latestReviewSummary: expect.any(String),
@@ -917,8 +918,7 @@ describe("single prompt extension", () => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
 					}
-					const state = JSON.parse(value.stateJson ?? "null");
-					return state?.reviewSubject?.kind === "plan";
+					return value.selectedTurnId === "poem_review";
 				},
 			);
 
@@ -934,12 +934,10 @@ describe("single prompt extension", () => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
 					}
-					const state = JSON.parse(value.stateJson ?? "null");
-					return state?.reviewSubject?.kind === "implementation";
+					return value.selectedTurnId === "poem_review_feedback";
 				},
 			);
 			expect(JSON.parse(humanReviewOfReview?.stateJson ?? "null")).toMatchObject({
-				reviewSubject: { kind: "implementation" },
 				latestReviewOutcome: "leave_feedback",
 				latestReviewMarkdown: expect.any(String),
 			});
@@ -1034,8 +1032,7 @@ describe("single prompt extension", () => {
 					) {
 						return false;
 					}
-					const state = JSON.parse(value.process.stateJson ?? "null");
-					return state?.reviewSubject?.kind === "plan";
+					return value.process?.selectedTurnId === "poem_review";
 				},
 			);
 			expect(afterAcceptedReview.process).toMatchObject({
@@ -1123,17 +1120,14 @@ describe("single prompt extension", () => {
 				) {
 					return false;
 				}
-				const state = JSON.parse(value.process.stateJson ?? "null");
-				return state?.reviewSubject?.kind === "plan";
+				return value.process?.selectedTurnId === "poem_review";
 			},
 		);
 		expect(rerun.process).toMatchObject({
 			lifecycleStatus: "waiting",
 			defaultModelProfileId: "local_qwen",
 		});
-		expect(JSON.parse(rerun.process?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: { kind: "plan" },
-		});
+		expect(JSON.parse(rerun.process?.stateJson ?? "null")).toMatchObject({});
 
 		const turnRecords = harness.ctx.deps.turnRecords.listByInstance(launchBody.process.id);
 		const draftTurnRecords = turnRecords.filter((turnRecord) => turnRecord.turnId === "draft_poem");
@@ -1182,8 +1176,7 @@ describe("single prompt extension", () => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
 					}
-					const state = JSON.parse(value.stateJson ?? "null");
-					return state?.reviewSubject?.kind === "plan";
+					return value.selectedTurnId === "poem_review";
 				},
 			);
 
@@ -1199,8 +1192,7 @@ describe("single prompt extension", () => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
 					}
-					const state = JSON.parse(value.stateJson ?? "null");
-					return state?.reviewSubject?.kind === "implementation";
+					return value.selectedTurnId === "poem_review_feedback";
 				},
 			);
 
@@ -1247,10 +1239,9 @@ describe("single prompt extension", () => {
 					if (!value.process || value.reviewTurns.length !== 2 || value.draftTurns.length !== 1) {
 						return false;
 					}
-					const state = JSON.parse(value.process.stateJson ?? "null");
 					return (
 						value.process.lifecycleStatus === "waiting" &&
-						state?.reviewSubject?.kind === "implementation"
+						value.process?.selectedTurnId === "poem_review_feedback"
 					);
 				},
 			);
@@ -1262,9 +1253,7 @@ describe("single prompt extension", () => {
 				pathType: "root_branch",
 				forkPiEntryId: firstReview?.resultPiEntryId,
 			});
-			expect(JSON.parse(afterRerun.process?.stateJson ?? "null")).toMatchObject({
-				reviewSubject: { kind: "implementation" },
-			});
+			expect(JSON.parse(afterRerun.process?.stateJson ?? "null")).toMatchObject({});
 		} finally {
 			if (issuesHarness) {
 				await issuesHarness.ctx.supervisor.shutdownAll("test_cleanup");

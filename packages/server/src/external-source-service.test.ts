@@ -57,13 +57,11 @@ function createHarness(options: { fileDoneSource?: ExternalActionSource } = {}) 
 		})
 		.initialState(() => ({
 			...createEmptyStructuralProcessState(),
-			reviewSubject: { kind: "plan" },
 		}))
 		.turn(
 			flow
 				.human<Record<string, never>, Record<string, unknown>>("review")
 				.description("Review")
-				.review("plan")
 				.action("accept", (action) => action.label("Accept").acceptanceState("accepted").complete())
 				.externalAction("file_done", options.fileDoneSource ?? source(), (external) =>
 					external.label("File done").description("Complete from file").complete(),
@@ -122,7 +120,6 @@ function createWaitingProcess(deps: ReturnType<typeof createTestDeps>) {
 		paramsJson: "{}",
 		stateJson: JSON.stringify({
 			...createEmptyStructuralProcessState(),
-			reviewSubject: { kind: "plan" },
 		}),
 	});
 }
@@ -441,7 +438,6 @@ describe("ExternalSourceService", () => {
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: { kind: "plan" },
 			}),
 		});
 		await service.drainQueued(process.id);
@@ -482,7 +478,6 @@ describe("ExternalSourceService", () => {
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: { kind: "plan" },
 			}),
 		});
 		await service.drainQueued(process.id);

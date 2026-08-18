@@ -1,46 +1,36 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyStructuralProcessState, parseStructuralProcessState } from "./state-helpers.js";
 
-describe("state helpers", () => {
-	it("creates the empty structural state with null reviewSubject", () => {
-		expect(createEmptyStructuralProcessState()).toMatchObject({
-			reviewSubject: null,
-			productRefs: {},
+describe("structural process state", () => {
+	it("creates empty semantic and product refs", () => {
+		expect(createEmptyStructuralProcessState()).toEqual({
 			semanticEntryRefs: {
 				plan: null,
 				review: null,
 				currentPrimaryPathLeaf: null,
 				rootEntry: null,
 			},
+			productRefs: {},
 		});
 	});
 
-	it("parses reviewSubject from structural process state", () => {
+	it("parses semantic and product refs", () => {
 		expect(
 			parseStructuralProcessState({
-				reviewSubject: { kind: "implementation" },
 				semanticEntryRefs: {
-					plan: { entryId: "ent_plan", turnRecordId: "trn_plan" },
+					plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
+				},
+				productRefs: {
+					plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
 				},
 			}),
-		).toEqual({
+		).toMatchObject({
 			semanticEntryRefs: {
-				plan: { entryId: "ent_plan", turnRecordId: "trn_plan" },
-				review: null,
-				currentPrimaryPathLeaf: null,
-				rootEntry: null,
+				plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
 			},
-			productRefs: {},
-			reviewSubject: { kind: "implementation" },
+			productRefs: {
+				plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
+			},
 		});
-	});
-
-	it("falls back to null reviewSubject for missing or invalid values", () => {
-		expect(parseStructuralProcessState({})).toMatchObject({ reviewSubject: null });
-		expect(
-			parseStructuralProcessState({
-				reviewSubject: { kind: "review_result" },
-			}),
-		).toMatchObject({ reviewSubject: null });
 	});
 });

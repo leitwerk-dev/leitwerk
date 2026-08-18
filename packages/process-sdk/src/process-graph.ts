@@ -2,7 +2,6 @@ import type {
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTransition,
 	ProcessTurnType,
-	ReviewSubject,
 	SerializedProcessGraph,
 	TurnId,
 } from "@leitwerk-dev/domain";
@@ -18,7 +17,6 @@ export interface ProcessGraphTurnView {
 	turnType: ProcessTurnType;
 	description: string;
 	transitions: readonly ProcessTurnTransition[];
-	reviewSubject?: ReviewSubject;
 	reviewProduct?: string;
 	resultSemanticRef?: ProcessSemanticEntryRefKey;
 	publishedProduct?: string;
@@ -102,7 +100,6 @@ function toTurnView(
 		turnType: toTurnType(definition),
 		description: definition.description,
 		transitions: getProcessTurnTransitions(binding),
-		...(definition.reviewSubject ? { reviewSubject: { ...definition.reviewSubject } } : {}),
 		...(definition.kind === "human" && definition.reviewProduct
 			? { reviewProduct: definition.reviewProduct }
 			: {}),

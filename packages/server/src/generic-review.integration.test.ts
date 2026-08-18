@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	builtinPiProvider,
@@ -17,8 +16,6 @@ import {
 import { createTestApp, type TestApp } from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
-const planReviewSubject = createReviewSubject("plan");
 
 const emptyCodec: Codec<Record<string, never>> = {
 	parse() {
@@ -58,7 +55,6 @@ const generatePlanTurn: LlmTurnDefinition<"plan_saved"> = {
 		plan_saved: {
 			description: "plan saved",
 			to: "run_llm_review",
-			effect: ({ ctx }) => ({ state: { ...ctx.state, reviewSubject: planReviewSubject } }),
 			parameters: {
 				summary: {
 					type: "string",
@@ -93,12 +89,10 @@ const runLlmReviewTurn: LlmTurnDefinition<"no_issues" | "issues_found"> = {
 			description: "no issues",
 			parameters: {},
 			to: "plan_review",
-			effect: ({ ctx }) => ({ state: { ...ctx.state, reviewSubject: planReviewSubject } }),
 		},
 		issues_found: {
 			description: "issues found",
 			to: "plan_review",
-			effect: ({ ctx }) => ({ state: { ...ctx.state, reviewSubject: planReviewSubject } }),
 			parameters: {
 				reviewMarkdown: {
 					type: "string",
@@ -116,20 +110,18 @@ const runLlmReviewTurn: LlmTurnDefinition<"no_issues" | "issues_found"> = {
 			},
 		},
 	}),
-	reviewSubject: planReviewSubject,
 	resultSemanticRef: "review",
 };
 
 const planReviewTurn = humanTurn({
 	description: "Review the generated plan",
-	reviewSubject: planReviewSubject,
 	actions: {
 		approve_plan: {
 			label: "Approve plan",
 			acceptanceState: "accepted",
 			trigger: "plan_approved",
 			to: "implement",
-			effect: ({ ctx }) => ({ state: { ...ctx.state, reviewSubject: null } }),
+			effect: ({ ctx }) => ({ state: { ...ctx.state } }),
 			preview: { kind: "trigger", trigger: "plan_approved" },
 			schedulable: true,
 		},
@@ -156,7 +148,7 @@ const planReviewTurn = humanTurn({
 				if (!message) {
 					throw new Error("message is required");
 				}
-				return { state: { ...ctx.state, reviewSubject: null } };
+				return { state: { ...ctx.state } };
 			},
 			preview: { kind: "trigger", trigger: "revision_requested" },
 			schedulable: true,
@@ -180,7 +172,6 @@ const implementTurn = createLlmTurn("implement", {
 
 const sideEffectPlanReviewTurn = humanTurn({
 	description: "Review the generated plan with a side-effect side-effect execute-only action",
-	reviewSubject: planReviewSubject,
 	actions: {
 		approve_legacy: {
 			label: "Approve plan",
@@ -247,7 +238,7 @@ sideEffectExecuteReviewProcess.server = (api) => {
 			await ctx.transition({
 				turnId: "legacy_implement",
 				trigger: "legacy_approved",
-				state: { ...ctx.state, reviewSubject: null },
+				state: { ...ctx.state },
 			});
 		},
 	});
@@ -410,7 +401,7 @@ afterAll(async () => {
 beforeEach(() => {});
 
 describe("generic review integration", () => {
-	it("runs planning -> llm_review -> human_review -> implementing with reviewSubject preserved", async () => {
+	it("runs planning -> llm_review -> human_review -> implementing without parallel review state", async () => {
 		const workerHandles = new Map<
 			string,
 			{
@@ -507,9 +498,7 @@ describe("generic review integration", () => {
 				current?.selectedTurnId === "run_llm_review" &&
 				current.currentExecution?.kind === "worker_start",
 		);
-		expect(JSON.parse(llmReviewProcess?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: { kind: "plan" },
-		});
+		expect(JSON.parse(llmReviewProcess?.stateJson ?? "null")).toMatchObject({});
 		const reviewExecution = llmReviewProcess?.currentExecution;
 		expect(reviewExecution).toMatchObject({ kind: "worker_start" });
 		if (reviewExecution?.kind !== "worker_start") {
@@ -576,9 +565,7 @@ describe("generic review integration", () => {
 			() => app.ctx.deps.processes.getById(process.id),
 			(current) => current?.lifecycleStatus === "waiting",
 		);
-		expect(JSON.parse(humanReviewProcess?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: { kind: "plan" },
-		});
+		expect(JSON.parse(humanReviewProcess?.stateJson ?? "null")).toMatchObject({});
 		expect(workerHandles.has(process.id)).toBe(false);
 
 		const response = await fetch(
@@ -591,9 +578,7 @@ describe("generic review integration", () => {
 			() => app.ctx.deps.processes.getById(process.id),
 			(current) => current?.selectedTurnId === "implement",
 		);
-		expect(JSON.parse(implementingProcess?.stateJson ?? "null")).toMatchObject({
-			reviewSubject: null,
-		});
+		expect(JSON.parse(implementingProcess?.stateJson ?? "null")).toMatchObject({});
 		expect(workerHandles.has(process.id)).toBe(true);
 	});
 
@@ -604,7 +589,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -683,7 +667,6 @@ describe("generic review integration", () => {
 				selectedTurnId: "plan_review",
 				stateJson: JSON.stringify({
 					...createEmptyStructuralProcessState(),
-					reviewSubject: planReviewSubject,
 				}),
 			});
 
@@ -759,7 +742,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -790,7 +772,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "legacy_plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -821,7 +802,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "legacy_plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -852,7 +832,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "legacy_plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -880,7 +859,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "legacy_plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -906,7 +884,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -938,7 +915,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const firstRunAt = futureIso();
@@ -994,7 +970,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 
@@ -1023,7 +998,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const runAt = futureIso();
@@ -1079,7 +1053,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const runAt = futureIso();
@@ -1126,7 +1099,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const scheduled = app.ctx.deps.futureExecutions.create({
@@ -1157,7 +1129,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const scheduled = app.ctx.deps.futureExecutions.create({
@@ -1190,7 +1161,6 @@ describe("generic review integration", () => {
 			selectedTurnId: "plan_review",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: planReviewSubject,
 			}),
 		});
 		const scheduled = app.ctx.deps.futureExecutions.create({
@@ -1211,7 +1181,6 @@ describe("generic review integration", () => {
 			lifecycleStatus: "active",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: null,
 			}),
 		});
 

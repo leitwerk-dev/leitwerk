@@ -1,10 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-	createReviewSubject,
-	buildFailedTurnRecoveryMetadata as genericFailedTurnRecovery,
-} from "@leitwerk-dev/domain";
+import { buildFailedTurnRecoveryMetadata as genericFailedTurnRecovery } from "@leitwerk-dev/domain";
 import type { createServerProcessBuilder, TurnDefinition } from "@leitwerk-dev/process-sdk";
 import type { WsFrame } from "@leitwerk-dev/protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -57,7 +54,6 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 			id: "plan_review",
 			description: "Review the generated plan",
 			kind: "human",
-			reviewSubject: { kind: "plan" },
 			actions: {},
 		},
 	],
@@ -161,7 +157,6 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 			id: "implementation_review",
 			description: "Review the implementation",
 			kind: "human",
-			reviewSubject: { kind: "implementation" },
 			actions: {},
 		},
 	],
@@ -250,7 +245,6 @@ function createPlanReviewActionRegistry() {
 				id: "plan_review",
 				description: "Review the generated plan",
 				kind: "human" as const,
-				reviewSubject: { kind: "plan" as const },
 				actions: { approve_plan: { label: "Approve plan", acceptanceState: "accepted" } },
 			},
 		],
@@ -269,7 +263,7 @@ function createPlanReviewActionRegistry() {
 						parse: (value: unknown) => (value ?? {}) as Record<string, unknown>,
 						serialize: (value: unknown) => value,
 					},
-					initialState: () => ({ reviewSubject: null }),
+					initialState: () => ({}),
 					server(api) {
 						api.onTurnOutcome("generate_plan", async (event, ctx) => {
 							if (event.outcome !== "plan_saved") {
@@ -278,7 +272,7 @@ function createPlanReviewActionRegistry() {
 							await ctx.transition({
 								turnId: "plan_review",
 								lifecycleStatus: "waiting",
-								state: { ...ctx.state, reviewSubject: createReviewSubject("plan") },
+								state: { ...ctx.state },
 							});
 						});
 						api.action({
@@ -1179,7 +1173,7 @@ describe("createProcessEngine process transition effects", () => {
 			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		deps.turnRecords.create({
 			id: "trn_plan_source",
@@ -1214,7 +1208,6 @@ describe("createProcessEngine process transition effects", () => {
 										id: "plan_review",
 										description: "Review the generated plan",
 										kind: "human",
-										reviewSubject: { kind: "plan" },
 										reviewSemanticRef: "plan",
 										actions: {
 											approve_plan: { label: "Approve plan", acceptanceState: "accepted" },
@@ -1269,7 +1262,6 @@ describe("createProcessEngine process transition effects", () => {
 				actionId: "approve_plan",
 				actionLabel: "Approve plan",
 				acceptanceState: "accepted",
-				reviewSubject: "plan",
 				selectedTurnIdBefore: "plan_review",
 				selectedTurnIdAfter: "implement",
 				causedSelectedTurnId: "implement",
@@ -1294,7 +1286,7 @@ describe("createProcessEngine process transition effects", () => {
 			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		const supervisor = createFakeSupervisor();
 		const registry = buildProcessActionRegistry({
@@ -1335,7 +1327,6 @@ describe("createProcessEngine process transition effects", () => {
 										id: "plan_review",
 										description: "Review the generated plan",
 										kind: "human",
-										reviewSubject: { kind: "plan" },
 										reviewSemanticRef: "plan",
 										actions: {
 											request_revision: {
@@ -1372,7 +1363,6 @@ describe("createProcessEngine process transition effects", () => {
 				actionId: "request_revision",
 				actionLabel: "Request revision",
 				acceptanceState: "requires_changes",
-				reviewSubject: "plan",
 				submittedFields: [
 					{
 						fieldId: "message",
@@ -1390,12 +1380,12 @@ describe("createProcessEngine process transition effects", () => {
 			processId: "poem_creator_process",
 			selectedTurnId: "poem_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		const supervisor = createFakeSupervisor();
 		const poemCreatorTurns = new Map([
 			["draft_poem", { turnType: "llm" as const }],
-			["poem_review", { turnType: "human" as const, reviewSubject: { kind: "plan" as const } }],
+			["poem_review", { turnType: "human" as const }],
 		]);
 		const poemCreatorProcess = createProcess(
 			(api) => {
@@ -1442,7 +1432,6 @@ describe("createProcessEngine process transition effects", () => {
 							id: "poem_review",
 							description: "Review the poem",
 							kind: "human",
-							reviewSubject: { kind: "plan" },
 							actions: {
 								request_poem_revision: {
 									label: "Request revision",
@@ -1538,7 +1527,7 @@ describe("createProcessEngine process transition effects", () => {
 							async plan(_input, ctx) {
 								await ctx.transition({
 									turnId: "run_llm_review",
-									state: { reviewSubject: { kind: "implementation" } },
+									state: {},
 								});
 							},
 						});
@@ -1589,7 +1578,7 @@ describe("createProcessEngine process transition effects", () => {
 							async plan(_input, ctx) {
 								await ctx.transition({
 									turnId: "run_llm_review",
-									state: { reviewSubject: { kind: "implementation" } },
+									state: {},
 								});
 							},
 						});
@@ -1638,7 +1627,7 @@ describe("createProcessEngine process transition effects", () => {
 							async plan(_input, ctx) {
 								await ctx.transition({
 									turnId: "run_llm_review",
-									state: { reviewSubject: { kind: "implementation" } },
+									state: {},
 								});
 							},
 						});
@@ -1669,7 +1658,7 @@ describe("createProcessEngine process transition effects", () => {
 			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
@@ -1684,7 +1673,7 @@ describe("createProcessEngine process transition effects", () => {
 								await ctx.transition({
 									turnId: "implement",
 									trigger: "plan_approved",
-									state: { reviewSubject: null },
+									state: {},
 								});
 							},
 						});
@@ -1737,7 +1726,7 @@ describe("createProcessEngine process transition effects", () => {
 							async plan(_input, ctx) {
 								await ctx.transition({
 									turnId: "run_llm_review",
-									state: { reviewSubject: { kind: "implementation" } },
+									state: {},
 									effect: { runtime: "restart_worker" },
 								});
 							},
@@ -1879,7 +1868,7 @@ describe("createProcessEngine future action cleanup", () => {
 			processId: "ticket_issue_process",
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		const scheduledAction = deps.futureExecutions.create({
 			kind: "action",
@@ -1913,7 +1902,6 @@ describe("createProcessEngine future action cleanup", () => {
 										id: "plan_review",
 										description: "Review the generated plan",
 										kind: "human",
-										reviewSubject: { kind: "plan" },
 										reviewSemanticRef: "plan",
 										actions: {
 											approve_plan: { label: "Approve plan", acceptanceState: "accepted" },
@@ -1957,7 +1945,7 @@ describe("createProcessEngine future action cleanup", () => {
 				selectedTurnId: "plan_review",
 				lifecycleStatus: "waiting",
 				title: "PROJ-125",
-				stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+				stateJson: JSON.stringify({}),
 			});
 			const scheduledAction = deps.futureExecutions.create({
 				kind: "action",
@@ -1977,7 +1965,7 @@ describe("createProcessEngine future action cleanup", () => {
 							await ctx.transition({
 								turnId: "implementation_review",
 								trigger: "scheduled_review",
-								state: { ...ctx.state, reviewSubject: createReviewSubject("implementation") },
+								state: { ...ctx.state },
 							});
 						},
 					});
@@ -1997,7 +1985,6 @@ describe("createProcessEngine future action cleanup", () => {
 								id: "plan_review",
 								description: "Review the generated plan",
 								kind: "human",
-								reviewSubject: { kind: "plan" },
 								actions: {
 									send_to_implementation_review: {
 										label: "Send to implementation review",
@@ -2014,7 +2001,6 @@ describe("createProcessEngine future action cleanup", () => {
 								id: "implementation_review",
 								description: "Review the implementation",
 								kind: "human",
-								reviewSubject: { kind: "implementation" },
 								actions: {
 									accept_implementation: {
 										label: "Accept implementation",

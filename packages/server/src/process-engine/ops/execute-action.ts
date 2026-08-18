@@ -305,9 +305,6 @@ export const ExecuteAction = defineOperation<
 						actionId: input.actionId,
 						actionLabel,
 						...(sourceTurnRecordId ? { sourceTurnRecordId } : {}),
-						...(resolvedTurnAction.reviewSubject
-							? { reviewSubject: resolvedTurnAction.reviewSubject.kind }
-							: {}),
 						selectedTurnId: ctx.process.selectedTurnId,
 						selectedTurnIdBefore: ctx.process.selectedTurnId,
 						...(causedSelectedTurnId

@@ -11,8 +11,6 @@ import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildTurnSelectionWrites } from "./build-turn-selection-writes.js";
 
 const registry = createDefaultTestProcessGraphRegistry();
-const planReviewStateJson = JSON.stringify({ reviewSubject: { kind: "plan" } });
-const implementationReviewStateJson = JSON.stringify({ reviewSubject: { kind: "implementation" } });
 
 function createProcess(
 	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
@@ -30,7 +28,6 @@ describe("buildTurnSelectionWrites", () => {
 		const process = createProcess({
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
-			stateJson: planReviewStateJson,
 		});
 		const planned = buildTurnSelectionWrites(registry, process, {
 			fromTurnId: "generate_plan",
@@ -51,7 +48,6 @@ describe("buildTurnSelectionWrites", () => {
 		const process = createProcess({
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
-			stateJson: planReviewStateJson,
 		});
 		const planned = buildTurnSelectionWrites(registry, process, {
 			fromTurnId: "implement",
@@ -70,7 +66,6 @@ describe("buildTurnSelectionWrites", () => {
 				entry: "implementation_decision",
 				turns: {
 					implementation_decision: createFixtureHumanTurn({
-						reviewSubject: { kind: "implementation" },
 						actions: {
 							finalize_change: {
 								label: "Finalize change",
@@ -87,7 +82,6 @@ describe("buildTurnSelectionWrites", () => {
 			processId: "automatic_process",
 			selectedTurnId: "implementation_decision",
 			lifecycleStatus: "waiting",
-			stateJson: implementationReviewStateJson,
 		});
 
 		const planned = buildTurnSelectionWrites(automaticRegistry, process, {
@@ -107,14 +101,12 @@ describe("buildTurnSelectionWrites", () => {
 		const process = createProcess({
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
-			stateJson: implementationReviewStateJson,
 		});
 		const planned = buildTurnSelectionWrites(registry, process, {
 			fromTurnId: "handoff_review",
 			toTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 			workerIntent: { kind: "restart_worker" },
-			state: { reviewSubject: { kind: "implementation" } },
 		});
 		expect("ok" in planned).toBe(false);
 		if ("ok" in planned) return;
@@ -128,7 +120,6 @@ describe("buildTurnSelectionWrites", () => {
 		const process = createProcess({
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			stateJson: planReviewStateJson,
 		});
 		const planned = buildTurnSelectionWrites(registry, process, {
 			fromTurnId: "plan_review",
@@ -160,21 +151,5 @@ describe("buildTurnSelectionWrites", () => {
 		expect("ok" in planned).toBe(true);
 		if (!("ok" in planned)) return;
 		expect(planned.code).toBe("invalid_transition");
-	});
-
-	it("rejects direct review transitions when no reviewSubject is available", () => {
-		const process = createProcess({
-			selectedTurnId: "generate_plan",
-			lifecycleStatus: "active",
-		});
-		const planned = buildTurnSelectionWrites(registry, process, {
-			fromTurnId: "generate_plan",
-			toTurnId: "plan_review",
-			lifecycleStatus: "waiting",
-		});
-		expect("ok" in planned).toBe(true);
-		if (!("ok" in planned)) return;
-		expect(planned.code).toBe("invalid_transition");
-		expect(planned.message).toContain("requires reviewSubject.kind 'plan'");
 	});
 });

@@ -136,14 +136,6 @@ export {
 	type RepoLocatorKind,
 } from "./repo-locator.js";
 export {
-	createReviewSubject,
-	isReviewSubjectKind,
-	parseReviewSubject,
-	REVIEW_SUBJECT_KINDS,
-	type ReviewSubject,
-	type ReviewSubjectKind,
-} from "./review-subject.js";
-export {
 	assertValidProcessProductName,
 	createEmptyProcessProductRefs,
 	createEmptyProcessSemanticEntryRefs,

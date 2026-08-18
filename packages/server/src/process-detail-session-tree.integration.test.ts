@@ -29,7 +29,6 @@ const detailProcess = defineProcess<Record<string, never>, StructuralProcessStat
 	turns: {
 		detail: humanTurn({
 			description: "Detail",
-			reviewSubject: { kind: "plan" },
 			actions: { noop: { label: "No-op", acceptanceState: "accepted", complete: true } },
 		}),
 		implement: llmTurn({

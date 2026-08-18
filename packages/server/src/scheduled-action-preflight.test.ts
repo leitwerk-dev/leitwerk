@@ -24,11 +24,10 @@ function buildRegistry(
 			parse: (value) => (value ?? {}) as Record<string, unknown>,
 			serialize: (value) => value,
 		},
-		initialState: () => ({ reviewSubject: null }),
+		initialState: () => ({}),
 		turns: {
 			plan_review: humanTurn({
 				description: "Review the plan",
-				reviewSubject: { kind: "plan" },
 				actions: {
 					[action.id]: {
 						label: action.label,
@@ -64,7 +63,7 @@ function createPlanReviewProcess(deps = createTestDeps()) {
 		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
-		stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+		stateJson: JSON.stringify({}),
 	});
 }
 
@@ -207,7 +206,6 @@ describe("preflightScheduledActionRequest", () => {
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
-				reviewSubject: { kind: "plan" },
 				semanticEntryRefs: {
 					rootEntry: null,
 					currentPrimaryPathLeaf: null,

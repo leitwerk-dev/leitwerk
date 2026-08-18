@@ -1,7 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	automaticTurn,
 	createEmptyStructuralProcessState,
@@ -622,7 +621,6 @@ describe("product refs", () => {
 			turns: {
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						request_revision: {
 							label: "Request revision",
@@ -861,7 +859,6 @@ describe("product refs", () => {
 					}),
 					human_review: humanTurn({
 						description: "Review message",
-						reviewSubject: createReviewSubject("implementation"),
 						reviewProduct: "message",
 						actions: {
 							accept: { label: "Accept", acceptanceState: "accepted", to: "consumer" },

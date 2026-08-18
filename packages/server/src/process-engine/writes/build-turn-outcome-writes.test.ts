@@ -30,7 +30,6 @@ const testTurns = new Map<string, TurnDefinition>([
 			id: "plan_review",
 			description: "Plan review",
 			kind: "human",
-			reviewSubject: { kind: "plan" },
 			actions: {},
 		},
 	],
@@ -73,7 +72,6 @@ const testTurns = new Map<string, TurnDefinition>([
 			id: "implementation_review",
 			description: "Implementation review",
 			kind: "human",
-			reviewSubject: { kind: "implementation" },
 			actions: {},
 		},
 	],
@@ -83,7 +81,6 @@ const testTurns = new Map<string, TurnDefinition>([
 			id: "mr_polish_review",
 			description: "MR polish review",
 			kind: "human",
-			reviewSubject: { kind: "implementation" },
 			actions: {},
 		},
 	],
@@ -135,7 +132,7 @@ describe("buildTurnOutcomeWrites", () => {
 							await ctx.transition({
 								turnId: "plan_review",
 								lifecycleStatus: "waiting",
-								state: { reviewSubject: { kind: "plan" } },
+								state: {},
 							});
 							const summary = typeof event.params.summary === "string" ? event.params.summary : "";
 							const planMarkdown =
@@ -184,7 +181,7 @@ describe("buildTurnOutcomeWrites", () => {
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
 			planRevision: 1,
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 		expect(planned.extensionEvents).toEqual(
 			expect.arrayContaining([
@@ -399,19 +396,17 @@ describe("buildTurnOutcomeWrites", () => {
 										: {};
 								return {
 									readyForHumanReview: record.readyForHumanReview === true,
-									reviewSubject: record.reviewSubject ?? null,
 								};
 							},
 							serialize: (v: unknown) => v,
 						},
-						initialState: () => ({ readyForHumanReview: false, reviewSubject: null }),
+						initialState: () => ({ readyForHumanReview: false }),
 						server(api) {
 							api.onTurnOutcome("commit_and_complete", async (_event, ctx) => {
 								await ctx.transition({
 									state: {
 										...ctx.state,
 										readyForHumanReview: true,
-										reviewSubject: { kind: "implementation" },
 									},
 								});
 							});
@@ -442,7 +437,6 @@ describe("buildTurnOutcomeWrites", () => {
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
 				readyForHumanReview: true,
-				reviewSubject: { kind: "implementation" },
 			}),
 		});
 		expect(planned.changedFields).toEqual(expect.arrayContaining(["stateJson", "selectedTurnId"]));
@@ -497,7 +491,7 @@ describe("buildTurnOutcomeWrites", () => {
 				turnType: "server_automatic",
 				outcome: "created",
 				params: {},
-				state: { fromRun: true, reviewSubject: { kind: "implementation" } },
+				state: { fromRun: true },
 			},
 			processActionRegistry: registry,
 		});
@@ -505,7 +499,6 @@ describe("buildTurnOutcomeWrites", () => {
 		if ("ok" in planned) return;
 		expect(JSON.parse(planned.processPatch.stateJson ?? "{}")).toEqual({
 			fromRun: true,
-			reviewSubject: { kind: "implementation" },
 			effectApplied: true,
 		});
 	});

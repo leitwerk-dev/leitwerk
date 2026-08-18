@@ -1,7 +1,4 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import type { FlowPromptContext, StructuralProcessState } from "@leitwerk-dev/process-sdk";
-
-export const implementationReviewSubject = createReviewSubject("implementation");
 
 export function buildReviewImplementationPrompt(
 	ctx: FlowPromptContext<unknown, StructuralProcessState>,

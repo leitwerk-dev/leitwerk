@@ -18,7 +18,7 @@ describe("flow", () => {
 
 	it("builds a discoverable plan-producing LLM turn", async () => {
 		const turn = flow
-			.llm<{ prompt: string }, { reviewSubject: null }>("generate_plan")
+			.llm<{ prompt: string }, Record<string, never>>("generate_plan")
 			.description("Draft plan")
 			.tools("read", "grep")
 			.freshPrimary()
@@ -168,7 +168,7 @@ describe("flow", () => {
 		const turn = flow
 			.human("review_feedback")
 			.description("Review feedback")
-			.reviewProduct("message", { subject: "implementation" })
+			.reviewProduct("message")
 			.action("accept", (action) =>
 				action.label("Accept").acceptanceState("accepted").to("next"),
 			).definition;
@@ -176,7 +176,6 @@ describe("flow", () => {
 		expect(turn).toMatchObject({
 			kind: "human",
 			reviewProduct: "message",
-			reviewSubject: { kind: "implementation" },
 		});
 		expect(turn.reviewSemanticRef).toBeUndefined();
 	});
@@ -195,7 +194,6 @@ describe("flow", () => {
 			operatorAttention: "passive",
 			actions: { run_command: { to: "command_console" } },
 		});
-		expect(turn.reviewSubject).toBeUndefined();
 		expect(turn.reviewProduct).toBeUndefined();
 	});
 
@@ -246,7 +244,6 @@ describe("flow", () => {
 		const human = flow
 			.human("review")
 			.description("Review")
-			.review("plan")
 			.operatorAttention("passive")
 			.action("approve", (action) =>
 				action.label("Approve").acceptanceState("accepted").complete(),

@@ -139,7 +139,6 @@ function createDefaultTurnDefinitions(): ReadonlyMap<string, TurnDefinition> {
 				id: "implementation_review",
 				description: "Review the implementation",
 				kind: "human",
-				reviewSubject: { kind: "implementation" },
 				reviewSemanticRef: "review",
 				actions: {
 					accept_change: { label: "accept_change", acceptanceState: "accepted" },
@@ -181,7 +180,7 @@ function makeProcess(
 			parse: (value: unknown) => (value ?? {}) as Record<string, unknown>,
 			serialize: (value: unknown) => value,
 		},
-		initialState: () => ({ reviewSubject: null }),
+		initialState: () => ({}),
 		...(overrides.server ? { server: overrides.server } : {}),
 	});
 }
@@ -202,19 +201,15 @@ function makeFakeAgent(overrides: Partial<ProcessInstance> = {}): ProcessInstanc
 	});
 }
 
-function createPlanReviewProcess(reviewSubject: { kind: "plan" } | null = { kind: "plan" }) {
-	return makeFakeAgent({
-		selectedTurnId: "plan_review",
-		lifecycleStatus: "waiting",
-		stateJson: JSON.stringify({ reviewSubject }),
-	});
+function createPlanReviewProcess() {
+	return makeFakeAgent({ selectedTurnId: "plan_review", lifecycleStatus: "waiting" });
 }
 
 function createImplementationReviewProcess() {
 	return makeFakeAgent({
 		selectedTurnId: "implementation_review",
 		lifecycleStatus: "waiting",
-		stateJson: JSON.stringify({ reviewSubject: { kind: "implementation" } }),
+		stateJson: JSON.stringify({}),
 	});
 }
 
@@ -275,7 +270,6 @@ function createPlanReviewTurn(overrides: Partial<Record<string, unknown>> = {}) 
 		id: "plan_review",
 		description: "Review the plan",
 		kind: "human" as const,
-		reviewSubject: { kind: "plan" as const },
 		reviewSemanticRef: "plan",
 		actions: {},
 		...overrides,
@@ -299,7 +293,6 @@ function createHumanReviewTurns() {
 				id: "implementation_review",
 				description: "Review the implementation",
 				kind: "human" as const,
-				reviewSubject: { kind: "implementation" as const },
 				reviewSemanticRef: "review",
 				actions: {
 					accept_change: { label: "accept_change", acceptanceState: "accepted" },
@@ -404,7 +397,7 @@ describe("ProcessActionRegistry", () => {
 		expect(
 			registry.listVisibleActions(
 				"ticket_issue_process",
-				createVisibilityCtx(createPlanReviewProcess(), { reviewSubject: { kind: "plan" } }),
+				createVisibilityCtx(createPlanReviewProcess(), {}),
 			),
 		).toEqual([
 			expect.objectContaining({
@@ -494,10 +487,7 @@ describe("ProcessActionRegistry", () => {
 			lifecycleStatus: null,
 		});
 		expect(
-			registry.listVisibleActions(
-				"ticket_issue_process",
-				createVisibilityCtx(process, { reviewSubject: { kind: "plan" } }),
-			),
+			registry.listVisibleActions("ticket_issue_process", createVisibilityCtx(process, {})),
 		).toEqual([
 			expect.objectContaining({
 				id: "approve_plan",
@@ -512,7 +502,7 @@ describe("ProcessActionRegistry", () => {
 		]);
 	});
 
-	it("resolves UI human-turn actions from the current review subject", () => {
+	it("resolves UI human-turn actions from the selected turn", () => {
 		const registry = buildRegistry({
 			processes: [
 				makeProcess({ turnDefinitions: withTurnDefinitionOverrides(createHumanReviewTurns()) }),
@@ -555,7 +545,7 @@ describe("ProcessActionRegistry", () => {
 			entryTurnIds: new Set(["draft_poem"]),
 			turns: new Map([
 				["draft_poem", { turnType: "llm" as const }],
-				["poem_review", { turnType: "human" as const, reviewSubject: { kind: "plan" as const } }],
+				["poem_review", { turnType: "human" as const }],
 			]),
 		};
 		const registry = buildRegistry({
@@ -584,7 +574,6 @@ describe("ProcessActionRegistry", () => {
 								id: "poem_review",
 								description: "Review the poem",
 								kind: "human",
-								reviewSubject: { kind: "plan" },
 								actions: {
 									request_poem_revision: {
 										label: "Request poem revision",
@@ -609,7 +598,7 @@ describe("ProcessActionRegistry", () => {
 			processId: "poem_creator_process",
 			selectedTurnId: "poem_review",
 			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+			stateJson: JSON.stringify({}),
 		});
 
 		expect(registry.getSelectedTurnSummary("poem_creator_process", process)).toEqual({
@@ -637,7 +626,6 @@ describe("ProcessActionRegistry", () => {
 			kind: "external_human_trigger",
 			turnId: "poem_review",
 			turnType: "external",
-			reviewSubject: { kind: "plan" },
 			acceptanceState: "requires_changes",
 			externalTrigger: { id: "poem_review_file", actionId: "request_poem_revision" },
 		});
@@ -648,10 +636,7 @@ describe("ProcessActionRegistry", () => {
 			id: "automatic_process",
 			entryTurnIds: new Set(["implementation_review"]),
 			turns: new Map([
-				[
-					"implementation_review",
-					{ turnType: "human" as const, reviewSubject: { kind: "implementation" as const } },
-				],
+				["implementation_review", { turnType: "human" as const }],
 				["commit_and_merge", { turnType: "automatic" as const }],
 			]),
 		};
@@ -668,7 +653,6 @@ describe("ProcessActionRegistry", () => {
 								id: "implementation_review",
 								description: "Review the implementation",
 								kind: "human",
-								reviewSubject: { kind: "implementation" },
 								actions: {},
 							},
 						],
@@ -884,7 +868,7 @@ describe("collectProcessActionPlan", () => {
 							async plan(_input, ctx) {
 								await ctx.transition({
 									turnId: "run_llm_review",
-									state: { reviewSubject: { kind: "implementation" } },
+									state: {},
 									effect: { runtime: "restart_worker" },
 								});
 							},

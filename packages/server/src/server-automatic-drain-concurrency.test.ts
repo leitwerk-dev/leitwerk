@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	defineProcess,
 	emptyParamsCodec,
@@ -67,13 +66,12 @@ function createHarness(options: {
 				done: {
 					to: "review",
 					effect: ({ ctx }) => ({
-						state: { ...ctx.state, reviewSubject: createReviewSubject("plan") },
+						state: { ...ctx.state },
 					}),
 				},
 			}),
 			review: humanTurn({
 				description: "Review",
-				reviewSubject: createReviewSubject("plan"),
 				actions: {
 					finish: { label: "Finish", acceptanceState: "accepted", complete: true },
 					run_auto: { label: "Run auto", acceptanceState: "neutral", to: "auto" },
@@ -81,7 +79,6 @@ function createHarness(options: {
 			}),
 			other: humanTurn({
 				description: "Other",
-				reviewSubject: createReviewSubject("plan"),
 				actions: { finish: { label: "Finish", acceptanceState: "accepted", complete: true } },
 			}),
 		},
@@ -205,7 +202,7 @@ describe("server-automatic drain concurrency", () => {
 					processId: "server_auto_test",
 					selectedTurnId: "review",
 					lifecycleStatus: "waiting",
-					stateJson: JSON.stringify({ reviewSubject: createReviewSubject("plan") }),
+					stateJson: JSON.stringify({}),
 				}).id,
 			execute: (harness, instanceId) =>
 				harness.commands.executeProcessAction(instanceId, "run_auto", {}),

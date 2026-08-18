@@ -1,14 +1,12 @@
 import path from "node:path";
 import {
 	assertValidProcessProductName,
-	createReviewSubject,
 	humanizeProcessLabel,
 	type ProcessInstance,
 	type ProcessProject,
 	type ProcessSemanticEntryRefKey,
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
-	type ReviewSubject,
 	type TurnId,
 } from "@leitwerk-dev/domain";
 import type {
@@ -1093,7 +1091,6 @@ export class LlmFlowBuilder<
 	private questionsEnabled = false;
 	private startFrom: LlmTurnDefinition<string, TParams, TState>["startFrom"] | undefined;
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
-	private reviewSubject: ReviewSubject | undefined;
 	private consumedProductNames: string[] = [];
 	private optionalConsumedProductNames: string[] = [];
 	private publishedResult: {
@@ -1227,11 +1224,6 @@ export class LlmFlowBuilder<
 
 	startFromRoot(): this {
 		this.startFrom = { kind: "session_root" };
-		return this;
-	}
-
-	reviews(subject: ReviewSubject): this {
-		this.reviewSubject = subject;
 		return this;
 	}
 
@@ -1380,13 +1372,18 @@ export class LlmFlowBuilder<
 		for (const [outcomeId, builder] of this.outcomeToolBuilders) {
 			outcomes[outcomeId] = builder.build();
 		}
-		const hasOutcomePublishedProduct = Object.values(outcomes).some(
-			(outcome) => outcome.publishedProduct,
+		const outcomePublishedProducts = new Set(
+			Object.values(outcomes)
+				.map((outcome) => outcome.publishedProduct)
+				.filter((productName): productName is string => typeof productName === "string"),
 		);
+		const hasOutcomePublishedProduct = outcomePublishedProducts.size > 0;
 		let turnEnd: ProcessTurnEndSpec<TParams, TState, string> | undefined;
-		let resultSemanticRef: "plan" | "review" | undefined = this.reviewSubject
+		let resultSemanticRef: "plan" | "review" | undefined = outcomePublishedProducts.has("review")
 			? "review"
-			: undefined;
+			: outcomePublishedProducts.has("plan")
+				? "plan"
+				: undefined;
 		let turnResultMarkdown: LlmTurnDefinition<string, TParams, TState>["turnResultMarkdown"];
 		let publishedProduct: string | undefined;
 
@@ -1444,7 +1441,6 @@ export class LlmFlowBuilder<
 
 		return {
 			...definition,
-			...(this.reviewSubject ? { reviewSubject: this.reviewSubject } : {}),
 			...(Object.keys(outcomes).length > 0 ? { outcomes } : {}),
 			...(turnEnd ? { turnEnd } : {}),
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
@@ -1826,7 +1822,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	implements FlowHumanTurn<TParams, TState>
 {
 	private turnDescription: string | null = null;
-	private reviewSubject: ReviewSubject | null = null;
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
 	private operatorAttentionValue: HumanTurnOperatorAttention | undefined;
@@ -1851,7 +1846,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "human",
 			description: this.turnDescription,
-			...(this.reviewSubject ? { reviewSubject: this.reviewSubject } : {}),
 			...(this.reviewProductName ? { reviewProduct: this.reviewProductName } : {}),
 			...(this.reviewSemanticRef ? { reviewSemanticRef: this.reviewSemanticRef } : {}),
 			...(this.operatorAttentionValue ? { operatorAttention: this.operatorAttentionValue } : {}),
@@ -1878,21 +1872,9 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		return this;
 	}
 
-	review(subject: ReviewSubject | "plan" | "implementation"): this {
-		this.reviewSubject = typeof subject === "string" ? createReviewSubject(subject) : subject;
-		this.reviewProductName = undefined;
-		this.reviewSemanticRef = typeof subject === "string" && subject === "plan" ? "plan" : undefined;
-		return this;
-	}
-
-	reviewProduct(
-		productName: string,
-		options: { subject: ReviewSubject | "plan" | "implementation" },
-	): this {
+	reviewProduct(productName: string): this {
 		const normalized = normalizeProductName(productName);
 		this.reviewProductName = normalized;
-		this.reviewSubject =
-			typeof options.subject === "string" ? createReviewSubject(options.subject) : options.subject;
 		this.reviewSemanticRef =
 			normalized === "plan" ? "plan" : normalized === "review" ? "review" : undefined;
 		return this;
