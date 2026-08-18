@@ -70,7 +70,15 @@ describe("worker turn IPC recording", () => {
 		);
 		expect(harness.recordWorkerFailure).toHaveBeenCalledWith(
 			"agt_1",
-			expect.objectContaining({ errorClass: "infrastructure" }),
+			expect.objectContaining({
+				errorClass: "infrastructure",
+				resultPiEntryId: "assistant_1",
+				recoveryContext: {
+					strategy: "continue",
+					suggestedContinuePrompt: "continue",
+					failureCode: "generic_continue",
+				},
+			}),
 		);
 		expect(harness.onTurnTerminalRecorded).toHaveBeenCalledWith("agt_1", "wkr_1", "trn_1");
 	});

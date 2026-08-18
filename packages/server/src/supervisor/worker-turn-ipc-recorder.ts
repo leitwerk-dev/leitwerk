@@ -1,4 +1,8 @@
-import { isTurnFailureCode, isWorkerErrorClass } from "@leitwerk-dev/domain";
+import {
+	createGenericFailedTurnRecoveryContext,
+	isTurnFailureCode,
+	isWorkerErrorClass,
+} from "@leitwerk-dev/domain";
 import type {
 	WorkerTurnFailedPayload,
 	WorkerTurnOutcomePayload,
@@ -90,6 +94,8 @@ export function createWorkerTurnIpcRecorder(
 		turnRecordId: string;
 		terminalType: TerminalType;
 		failure: unknown;
+		resultPiEntryId?: string | null;
+		recoveryContext?: import("@leitwerk-dev/domain").FailedTurnRecoveryContext | null;
 	}): Promise<void> => {
 		if (terminalWasAlreadyRecorded(deps, input.turnRecordId, input.terminalType)) {
 			acknowledge(input.instanceId, input.workerId, input.turnRecordId);
@@ -108,6 +114,8 @@ export function createWorkerTurnIpcRecorder(
 				errorCode: details.code,
 				message: `Server could not durably record worker turn ${input.terminalType}: ${details.message}`,
 				errorClass: "infrastructure",
+				resultPiEntryId: input.resultPiEntryId,
+				recoveryContext: input.recoveryContext,
 			});
 			if (fallback.ok || terminalWasAlreadyRecorded(deps, input.turnRecordId, "failure")) {
 				acknowledge(input.instanceId, input.workerId, input.turnRecordId);
@@ -166,6 +174,8 @@ export function createWorkerTurnIpcRecorder(
 							turnRecordId: rest.turnRecordId,
 							terminalType: "outcome",
 							failure: result,
+							resultPiEntryId: rest.resultPiEntryId,
+							recoveryContext: createGenericFailedTurnRecoveryContext(),
 						});
 						return;
 					}
@@ -178,6 +188,8 @@ export function createWorkerTurnIpcRecorder(
 						turnRecordId: rest.turnRecordId,
 						terminalType: "outcome",
 						failure: error,
+						resultPiEntryId: rest.resultPiEntryId,
+						recoveryContext: createGenericFailedTurnRecoveryContext(),
 					}),
 				);
 		},
@@ -223,6 +235,8 @@ export function createWorkerTurnIpcRecorder(
 						turnRecordId: rest.turnRecordId,
 						terminalType: "failure",
 						failure: result,
+						resultPiEntryId: rest.resultPiEntryId,
+						recoveryContext: rest.recoveryContext,
 					});
 				})
 				.catch((error: unknown) =>
@@ -232,6 +246,8 @@ export function createWorkerTurnIpcRecorder(
 						turnRecordId: rest.turnRecordId,
 						terminalType: "failure",
 						failure: error,
+						resultPiEntryId: rest.resultPiEntryId,
+						recoveryContext: rest.recoveryContext,
 					}),
 				);
 		},

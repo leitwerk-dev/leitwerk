@@ -33,6 +33,12 @@ describe("buildWorkerFailureWrites", () => {
 			errorCode: "process_exited",
 			errorClass: "infrastructure",
 			activeTurnRecord,
+			resultPiEntryId: "pi_completed_impl",
+			recoveryContext: {
+				strategy: "continue",
+				suggestedContinuePrompt: "continue",
+				failureCode: "generic_continue",
+			},
 			endedAt: "2026-04-17T12:00:00.000Z",
 		});
 
@@ -47,6 +53,7 @@ describe("buildWorkerFailureWrites", () => {
 					id: "trn_impl_1",
 					input: expect.objectContaining({
 						status: "failed",
+						resultPiEntryId: "pi_completed_impl",
 						errorSummary: "Worker exited unexpectedly",
 						errorClass: "infrastructure",
 					}),
@@ -55,6 +62,14 @@ describe("buildWorkerFailureWrites", () => {
 		);
 		expect(planned.processPatch).toMatchObject({
 			lifecycleStatus: "error",
+			metadata: {
+				failedTurnRecovery: {
+					turnRecordId: "trn_impl_1",
+					strategy: "continue",
+					suggestedContinuePrompt: "continue",
+					failureCode: "generic_continue",
+				},
+			},
 		});
 		expect(planned.processPatch.currentExecution).toBeUndefined();
 		expect(planned.events).toEqual(

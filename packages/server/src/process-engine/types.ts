@@ -241,6 +241,8 @@ export interface ProcessEngine {
 			message: string;
 			errorClass?: WorkerErrorClass;
 			workerLeaseId?: string | null;
+			resultPiEntryId?: string | null;
+			recoveryContext?: TurnFailedPayload["recoveryContext"];
 		},
 	): Promise<EngineResult<void>>;
 	acceptWorkerTurnStart(
