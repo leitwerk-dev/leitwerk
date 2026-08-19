@@ -5,11 +5,12 @@ import { describe, expect, it } from "vitest";
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 describe("release image definitions", () => {
-	it("uses Node 26 for generic repository validation workers", () => {
+	it("uses Node 26 for the generic worker runtime", () => {
 		const dockerfile = readFileSync(`${repoRoot}/deploy/images/Dockerfile.worker-generic`, "utf8");
-		const fromLines = dockerfile.split("\n").filter((line) => line.startsWith("FROM node:"));
-		expect(fromLines).not.toHaveLength(0);
-		expect(fromLines.every((line) => line.startsWith("FROM node:26-bookworm-slim@"))).toBe(true);
+		const runtimeBase = dockerfile
+			.split("\n")
+			.find((line) => line.startsWith("FROM node:") && line.endsWith(" AS runtime"));
+		expect(runtimeBase).toMatch(/^FROM node:26-bookworm-slim@sha256:[a-f0-9]{64} AS runtime$/u);
 	});
 
 	for (const image of ["server", "worker-generic"]) {
