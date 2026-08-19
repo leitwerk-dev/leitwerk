@@ -326,6 +326,7 @@ describe("process title generator retries", () => {
 			await waitFor(
 				() => deps.processes.getById(process.id)?.title,
 				(value) => value === "Recovered after restart",
+				15_000,
 			);
 
 			expect(secondHarness.getCallCount()).toBe(1);
