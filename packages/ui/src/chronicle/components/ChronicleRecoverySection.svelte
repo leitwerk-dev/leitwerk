@@ -39,7 +39,7 @@ let {
 	isFocused,
 	title,
 	summary,
-	guidance = "Review the latest attempt, then continue from the saved work or retry the step from the beginning.",
+	guidance = "Review the latest attempt, then continue from saved work or retry only the failed turn as a new attempt.",
 	technicalDetail = null,
 	turnRecordId,
 	canContinue,
@@ -160,7 +160,7 @@ const selectedModelUsable = $derived(
 			disabled={controlsBusy || !selectedModelUsable}
 			onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}
 		>
-			{retryBusy ? "Retrying…" : "Retry from beginning"}
+			{retryBusy ? "Retrying failed turn…" : "Retry failed turn"}
 		</button>
 	</div>
 

@@ -2728,7 +2728,9 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
+		expect(queryRecoveryAction(target, "retry-failed-turn")?.textContent?.trim()).toBe(
+			"Retry failed turn",
+		);
 		expect(target.querySelector('[data-field="recovery-model"]')).toBeNull();
 
 		await clickRecoveryAction(target, "retry-failed-turn");
