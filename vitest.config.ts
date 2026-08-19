@@ -76,8 +76,10 @@ export default defineConfig({
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					// Several unit suites bundle temporary Pi resources. More than two workers
-					// starve their 5s budgets on shared CI runners even when the same tests take
-					// only milliseconds in isolation.
+					// starve their budgets on shared CI runners even when the same tests take
+					// only milliseconds in isolation. The full gate also runs inside 1-CPU
+					// delivery workers, where setup can exceed Vitest's 5s default.
+					testTimeout: 15_000,
 					maxWorkers: 2,
 					include: [
 						"packages/*/src/**/*.test.ts",
