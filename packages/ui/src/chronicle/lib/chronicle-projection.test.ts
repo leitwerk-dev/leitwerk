@@ -42,6 +42,7 @@ function makeTurnRecord(overrides: Partial<TurnRecordView> = {}): TurnRecordView
 		startedAt: overrides.startedAt ?? "2026-04-18T10:00:00.000Z",
 		endedAt: overrides.endedAt ?? "2026-04-18T10:01:00.000Z",
 		actionSource: overrides.actionSource ?? null,
+		progress: overrides.progress ?? null,
 	};
 }
 
@@ -217,6 +218,31 @@ function buildProjection(overrides: ProjectionOverrides = {}) {
 }
 
 describe("buildChronicleProjection", () => {
+	it("projects automatic-turn progress before its result", () => {
+		const projection = buildProjection({
+			turnRecords: [
+				makeTurnRecord({
+					turnType: "automatic",
+					progress: {
+						title: "Delivery progress",
+						steps: [
+							{ id: "validate", label: "Validate", status: "completed" },
+							{ id: "publish", label: "Publish", status: "in_progress" },
+						],
+						links: [{ id: "pr", label: "PR #1", url: "https://example.test/pr/1" }],
+					},
+				}),
+			],
+		});
+		const cluster = projection.timelineItems.find((item) => item.kind === "turn_cluster");
+		expect(cluster?.kind).toBe("turn_cluster");
+		if (!cluster || cluster.kind !== "turn_cluster") throw new Error("Expected turn cluster");
+		expect(cluster.sections[0]).toMatchObject({
+			kind: "turn_progress",
+			report: { title: "Delivery progress" },
+		});
+	});
+
 	it("projects completed turns, operator inputs, and the live tail in chronicle order", () => {
 		const completed = makeTurnRecord({
 			id: "trn_done",

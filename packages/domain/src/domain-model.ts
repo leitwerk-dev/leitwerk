@@ -628,6 +628,29 @@ export interface ProcessLeafOutcomeSnapshot {
 
 export type ProcessTurnRecordStatus = "running" | "succeeded" | "failed" | "superseded";
 
+export type TurnProgressStepStatus = "incomplete" | "in_progress" | "completed" | "failed";
+
+export interface TurnProgressStep {
+	id: string;
+	label: string;
+	status: TurnProgressStepStatus;
+	detail?: string | null;
+}
+
+export interface TurnProgressLink {
+	id: string;
+	label: string;
+	url: string;
+	kind?: "pull_request" | "merge_request" | "commit" | "pipeline" | "other";
+}
+
+/** A complete operator-facing snapshot. Reporters replace, rather than patch, this value. */
+export interface TurnProgressReport {
+	title: string;
+	steps: TurnProgressStep[];
+	links?: TurnProgressLink[];
+}
+
 /**
  * Structural tree position for a turn record.
  * - `primary`: continue the primary path from the current leaf

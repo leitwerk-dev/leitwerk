@@ -9,6 +9,7 @@ import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
 import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
+import ChronicleTurnProgress from "./ChronicleTurnProgress.svelte";
 import ChronicleUsageStats from "./ChronicleUsageStats.svelte";
 
 interface Props {
@@ -103,6 +104,8 @@ function expandHistoryResult() {
 							</dl>
 						</section>
 					{/if}
+				{:else if section.kind === "turn_progress"}
+					<ChronicleTurnProgress report={section.report} />
 				{:else if section.kind === "turn_result"}
 					<section
 						class="content-section result-section"

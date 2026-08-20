@@ -1,8 +1,9 @@
-import type { ProcessInstance, ProcessTurnRecord } from "@leitwerk-dev/domain";
+import type { ProcessInstance, ProcessTurnRecord, TurnProgressReport } from "@leitwerk-dev/domain";
 import { isServerAutomaticTurnDefinition } from "@leitwerk-dev/process-sdk";
 import type { EngineResult, ProcessEngine, ProcessEngineDeps } from "./process-engine/types.js";
 import { resolveProductTurnResultMarkdown } from "./product-turn-result-markdown.js";
 import { resolveSemanticTurnResultMarkdown } from "./semantic-turn-result-markdown.js";
+import { recordTurnProgress } from "./turn-progress.js";
 
 export interface ServerAutomaticTurnDrainer {
 	requestDrain(instanceId: string, options?: { freshTurnRecordId?: string | null }): Promise<void>;
@@ -209,6 +210,7 @@ export function createServerAutomaticTurnDrainer(
 			const { params, state } = deps
 				.getProcessActionRegistry?.()
 				?.resolveContextData(current.processId, current) ?? { params: {}, state: {} };
+			let latestProgressReport: TurnProgressReport | null = null;
 			try {
 				const result = await turnDef.run({
 					process: current,
@@ -220,6 +222,10 @@ export function createServerAutomaticTurnDrainer(
 					},
 					readProductTurnResultMarkdown(productName) {
 						return resolveProductMarkdownForServerAutomatic(deps, current, productName);
+					},
+					reportProgress(report) {
+						latestProgressReport = report;
+						recordTurnProgress(deps, { instanceId, turnRecordId, report });
 					},
 				});
 				const recorded = await service.recordTurnOutcome(instanceId, {
@@ -248,6 +254,19 @@ export function createServerAutomaticTurnDrainer(
 					return;
 				}
 			} catch (error) {
+				const failedProgressReport = latestProgressReport as TurnProgressReport | null;
+				if (failedProgressReport) {
+					const message = toErrorMessage(error);
+					const report: TurnProgressReport = {
+						...failedProgressReport,
+						steps: failedProgressReport.steps.map((step) =>
+							step.status === "in_progress"
+								? { ...step, status: "failed" as const, detail: message }
+								: step,
+						),
+					};
+					recordTurnProgress(deps, { instanceId, turnRecordId, report });
+				}
 				await service.recordTurnFailed(instanceId, {
 					instanceId,
 					turnRecordId,

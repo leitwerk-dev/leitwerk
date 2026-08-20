@@ -10,6 +10,7 @@ import type {
 	ProcessSemanticEntryRefKey,
 	ProcessTurnRecord,
 	TurnId,
+	TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type { WatcherPresentationField } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
@@ -453,6 +454,8 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	readonly workspaceRoot?: string;
 	/** Invoke a server-owned integration tool authorized for this automatic turn. */
 	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
+	/** Replace the durable operator-facing progress report for this automatic turn attempt. */
+	reportProgress?(report: TurnProgressReport): void;
 }
 
 export interface WorkerCompleteInput<TOutcome extends string = string> {

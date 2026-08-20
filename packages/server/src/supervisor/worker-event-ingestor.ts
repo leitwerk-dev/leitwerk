@@ -21,6 +21,7 @@ import {
 	type MutableLiveTurnProjection,
 	snapshotLiveTurnProjection,
 } from "../live-turn-projection.js";
+import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 
 const LIVE_TURN_EVENT_LOOKBACK_LIMIT = 1000;
@@ -131,8 +132,22 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 			const currentTurnRecordId =
 				(process.currentExecution?.kind === "server_turn" ? process.currentExecution.id : null) ??
 				liveTurnRecordIds.get(instanceId) ??
+				deps.turnRecords
+					.listByInstance(instanceId)
+					.find((record) => record.status === "running" && record.turnId === process.selectedTurnId)
+					?.id ??
 				null;
 			const data = asWsEventPayloadRecord(payload.data);
+			if (payload.eventType === "turn.progress") {
+				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
+				if (!reportedTurnRecordId || reportedTurnRecordId !== currentTurnRecordId) return;
+				recordTurnProgress(deps, {
+					instanceId,
+					turnRecordId: reportedTurnRecordId,
+					report: data.report,
+				});
+				return;
+			}
 			const projection = getLiveTurnProjection(instanceId, currentTurnRecordId);
 			const appliedProjectionEvent = applyPiEventToLiveTurnProjection(projection, {
 				eventType: payload.eventType,

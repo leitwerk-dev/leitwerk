@@ -9,7 +9,9 @@ export function timelinePresentationForTurnType(
 ): ProcessTimelineTurnPresentation {
 	if (turnType === "external") return "external_trigger";
 	if (turnType === "human") return "operator_decision";
-	return turnType === "automatic" ? "automatic_turn" : "llm_turn";
+	return turnType === "automatic" || turnType === "server_automatic"
+		? "automatic_turn"
+		: "llm_turn";
 }
 
 export function buildActiveTimelineTurnSummary(
@@ -39,5 +41,6 @@ export function buildActiveTimelineTurnSummary(
 		startedAt: activeTurn.startedAt,
 		endedAt: null,
 		actionSource: input.actionSource ?? null,
+		progress: null,
 	};
 }

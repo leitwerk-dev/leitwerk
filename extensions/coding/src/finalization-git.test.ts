@@ -207,6 +207,7 @@ function createFinalizationContext(input: {
 		callIntegrationTool: async () => {
 			throw new Error("not used");
 		},
+		reportProgress: () => {},
 		repo: {
 			get: (requestedKey) => {
 				if (requestedKey !== key) {

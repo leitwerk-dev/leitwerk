@@ -3,6 +3,7 @@ import {
 	type ProcessInput,
 	type ProcessLeafOutcomeSnapshot,
 	type ProcessTurnRecord,
+	type TurnProgressReport,
 	trimToNull,
 } from "@leitwerk-dev/domain";
 import {
@@ -121,9 +122,15 @@ export interface ChronicleTurnResultSection {
 	markdown: string;
 }
 
+export interface ChronicleTurnProgressSection {
+	kind: "turn_progress";
+	report: TurnProgressReport;
+}
+
 export type ChronicleTurnClusterSection =
 	| ChronicleThinkingSection
 	| ChronicleOperatorDecisionSection
+	| ChronicleTurnProgressSection
 	| ChronicleTurnResultSection;
 
 export interface ChronicleTurnClusterItem {
@@ -645,6 +652,10 @@ function buildTurnClusterItem(input: {
 		!hasDisplayableText(turnRecord.turnResultMarkdown) && hasDisplayableText(turnRecord.output)
 			? turnRecord.output.trim()
 			: "";
+
+	if (turnRecord.progress) {
+		sections.push({ kind: "turn_progress", report: turnRecord.progress });
+	}
 
 	if (assistantText.length === 0 && fallbackText.length > 0) {
 		sections.push({

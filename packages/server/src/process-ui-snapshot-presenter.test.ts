@@ -145,6 +145,27 @@ describe("process UI snapshot presenter", () => {
 			turnAnnotations: [] as ProcessTurnAnnotation[],
 			events: [
 				{
+					id: "evt_progress",
+					instanceId: "agt_presenter",
+					eventType: "turn.progress",
+					data: {
+						turnRecordId: record.id,
+						report: {
+							title: "Delivery progress",
+							steps: [{ id: "validate", label: "Validate", status: "completed" }],
+							links: [
+								{
+									id: "pr-12",
+									label: "PR #12",
+									url: "https://example.test/pr/12",
+									kind: "pull_request",
+								},
+							],
+						},
+					},
+					createdAt: "2026-01-01T00:01:00.000Z",
+				},
+				{
 					id: "evt_outcome",
 					instanceId: "agt_presenter",
 					eventType: "turn_outcome_recorded",
@@ -171,6 +192,10 @@ describe("process UI snapshot presenter", () => {
 				attemptNumber: 1,
 				startedAt: record.startedAt,
 				endedAt: record.endedAt,
+				progress: expect.objectContaining({
+					title: "Delivery progress",
+					links: [expect.objectContaining({ url: "https://example.test/pr/12" })],
+				}),
 			}),
 		]);
 	});

@@ -70,3 +70,13 @@ The manifest lists renderers by stable id. Each entry is a `custom_element` with
 Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. See `extensions/local-repo-change` for a shipped example (legacy leaf-outcome compatibility renderer).
 
 - **Bounded Insertion:** Custom renderers stay inside Chronicle leaf-outcome hosts; they do not own global shell navigation.
+
+---
+
+## 4. Automatic-turn progress
+
+Automatic turns may expose a durable ordered progress report in their Chronicle cluster. The
+UI names every step state, highlights the current step, preserves failed steps beside generic
+recovery controls, and lists created pull requests, merge requests, commits, or pipelines under
+**Created changes**. Historical reports remain part of their owning turn attempt. Status text
+and symbols carry the meaning without relying on color.

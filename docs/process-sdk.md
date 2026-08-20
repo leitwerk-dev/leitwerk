@@ -228,3 +228,16 @@ An automatic outcome can call `.wait()` to keep the automatic turn selected with
 runs. They arm after the waiting outcome is durable and then appear as active external triggers
 in the process UI. They can restart that turn, route to another business turn, complete, or
 abort without adding a synthetic wait turn.
+
+### Automatic-turn progress
+
+Worker and server automatic handlers can replace their operator-facing progress snapshot with
+`ctx.reportProgress(...)`. A report contains an ordered list of stable step ids, labels, and
+`incomplete`, `in_progress`, `completed`, or `failed` statuses. It may also contain HTTPS links
+to pull requests, merge requests, commits, or pipelines. Reports are execution visibility, not
+process turns, products, or business state.
+
+The server persists each correlated snapshot as a turn event and broadcasts a durable refresh
+signal. It rejects malformed reports, unsafe links, stale turn-record ids, and updates for turns
+that are no longer running. If an automatic handler throws, Leitwerk changes its current
+`in_progress` step to `failed` with the safe error summary before recording the turn failure.

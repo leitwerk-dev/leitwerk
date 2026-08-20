@@ -1,4 +1,4 @@
-import type { ProcessSemanticEntryRefKey } from "@leitwerk-dev/domain";
+import type { ProcessSemanticEntryRefKey, TurnProgressReport } from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	TurnOptions,
@@ -84,6 +84,7 @@ export async function executeSelectedTurn(
 	const handler = resolvedWorkerProcess.definition.turns.get(currentTurnId);
 	if (!handler) throw new Error(`Validated turn handler '${currentTurnId}' is unavailable`);
 	let automaticIntegrationCallIndex = 0;
+	let latestProgressReport: TurnProgressReport | null = null;
 
 	const ctx = {
 		process: processSnapshot,
@@ -95,6 +96,10 @@ export async function executeSelectedTurn(
 		workspaceRoot: input.session.workspaceRoot,
 		...(selectedTurnType === "automatic"
 			? {
+					reportProgress(report: TurnProgressReport) {
+						latestProgressReport = report;
+						input.emit({ kind: "progress", turnRecordId: input.turnRecordId, report });
+					},
 					async callIntegrationTool(name: string, args: Record<string, unknown>) {
 						const tool = input.integrationTools?.find((candidate) => candidate.name === name);
 						if (!tool) {
@@ -215,6 +220,22 @@ export async function executeSelectedTurn(
 		}
 		return terminal;
 	} catch (error) {
+		const failedProgressReport = latestProgressReport as TurnProgressReport | null;
+		if (failedProgressReport) {
+			const message = error instanceof Error ? error.message : String(error);
+			const steps = failedProgressReport.steps.map((step) =>
+				step.status === "in_progress"
+					? { ...step, status: "failed" as const, detail: message }
+					: step,
+			);
+			const report: TurnProgressReport = { ...failedProgressReport, steps };
+			latestProgressReport = report;
+			input.emit({
+				kind: "progress",
+				turnRecordId: input.turnRecordId,
+				report,
+			});
+		}
 		if (error instanceof TurnExecutionFailure) return failedResult(error, appliedTargetedInputs);
 		if (automaticExecutor)
 			return failedResult(automaticExecutor.failure(error), appliedTargetedInputs);

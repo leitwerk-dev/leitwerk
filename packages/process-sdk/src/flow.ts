@@ -8,6 +8,7 @@ import {
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
 	type TurnId,
+	type TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type {
 	AutomaticTurnDefinition,
@@ -162,6 +163,7 @@ export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	workspaceRoot?: string;
 	repo: FlowRepoLookup;
 	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+	reportProgress(report: TurnProgressReport): void;
 }
 
 export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown> {
@@ -466,6 +468,9 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 				throw new Error(`Automatic integration tool '${name}' is unavailable`);
 			}
 			return ctx.callIntegrationTool(name, args);
+		},
+		reportProgress(report) {
+			ctx.reportProgress?.(report);
 		},
 	};
 }

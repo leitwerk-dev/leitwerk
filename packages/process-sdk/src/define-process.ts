@@ -9,6 +9,7 @@ import {
 	type ProcessTurnTerminalLifecycleStatus,
 	type ProcessTurnTransition,
 	type TurnId,
+	type TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type {
 	Codec,
@@ -94,6 +95,7 @@ export interface ProcessServerRuntimeContext<TParams = unknown, TState = unknown
 	readonly state: TState;
 	readSemanticTurnResultMarkdown(ref: ProcessSemanticEntryRefKey): string | null;
 	readProductTurnResultMarkdown(productName: string): string | null;
+	reportProgress?(report: TurnProgressReport): void;
 }
 
 export interface ProcessBroadcastEffect {
