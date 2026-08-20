@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { AuthMeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import { onMount } from "svelte";
 import ToastContainer from "./components/ToastContainer.svelte";
 import { fetchAuthMeWithRetry } from "./lib/api.js";
@@ -20,6 +21,7 @@ let authState = $state<"loading" | "reconnecting" | "authenticated" | "unauthent
 	"loading",
 );
 let authError = $state<string | null>(null);
+let authMe = $state<AuthMeResponseBody | null>(null);
 let realtimeStarted = false;
 
 onMount(() => {
@@ -33,6 +35,7 @@ onMount(() => {
 		},
 	})
 		.then((me) => {
+			authMe = me;
 			authState = me.actor ? "authenticated" : "unauthenticated";
 		})
 		.catch((error: unknown) => {
@@ -80,8 +83,8 @@ $effect(() => {
 	</div>
 {:else if authState === "error"}
 	<div class="auth-gate" role="alert">{authError ?? "Could not load authentication status."}</div>
-{:else}
-	<AppShell route={$routeStore} />
+{:else if authMe?.actor}
+	<AppShell route={$routeStore} authEnabled={authMe.authEnabled} actor={authMe.actor} />
 {/if}
 
 <style>
