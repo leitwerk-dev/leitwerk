@@ -107,7 +107,7 @@ export function buildServerTransitionWrites<TState = unknown>(
 		return resolvedWorkerIntent;
 	}
 
-	if (targetTurnId !== undefined && turnChanged) {
+	if (targetTurnId !== undefined) {
 		const selectionWrites = buildTurnSelectionWrites(processGraphs, process, {
 			fromTurnId: process.selectedTurnId,
 			toTurnId: targetTurnId,

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	createDefaultTestProcessGraphRegistry,
+	createFixtureAutomaticTurn,
+	createFixtureProcess,
 	createFixtureServerAutomaticProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
@@ -39,6 +41,39 @@ describe("buildServerTransitionWrites", () => {
 			stateJson: JSON.stringify(implementationState),
 		});
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+	});
+
+	it("re-enters a waiting worker automatic turn when it is selected again", () => {
+		const automaticRegistry = createProcessGraphRegistry([
+			createFixtureProcess({
+				id: "automatic_reentry_process",
+				entry: "automatic_turn",
+				turns: { automatic_turn: createFixtureAutomaticTurn() },
+			}),
+		]);
+		const process = createTestDeps().processes.create({
+			processId: "automatic_reentry_process",
+			selectedTurnId: "automatic_turn",
+			lifecycleStatus: "waiting",
+		});
+
+		const planned = buildServerTransitionWrites(automaticRegistry, process, {
+			turnId: "automatic_turn",
+			state: implementationState,
+			trigger: "external_event_received",
+		});
+
+		expect("ok" in planned).toBe(false);
+		if ("ok" in planned) return;
+		expect(planned.processPatch).toMatchObject({
+			lifecycleStatus: "active",
+			stateJson: JSON.stringify(implementationState),
+			currentExecution: {
+				kind: "worker_start",
+			},
+		});
+		expect(planned.turnStartWrites).toHaveLength(1);
+		expect(planned.workerIntent).toEqual({ kind: "reconcile" });
 	});
 
 	it("supports runtime effects without a turn change", () => {
