@@ -1790,6 +1790,11 @@ export class ExternalActionBuilder<
 		return this;
 	}
 
+	when(condition: NonNullable<ProcessHumanTurnExternalActionSpec<TParams, TState>["when"]>): this {
+		this.spec.when = condition;
+		return this;
+	}
+
 	to(turnId: TurnId): this {
 		this.spec.to = turnId;
 		return this;

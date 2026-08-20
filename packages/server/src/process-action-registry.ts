@@ -1,5 +1,6 @@
 import type {
 	ProcessInstance,
+	ProcessProject,
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnTransition,
@@ -83,10 +84,8 @@ export interface ProcessActionRegistry {
 	listVisibleActions(processId: string, ctx: ServerProcessContext): VisibleProcessActionSummary[];
 	getSelectedTurnSummary(
 		processId: string,
-		process: Pick<
-			ProcessInstance,
-			"selectedTurnId" | "lifecycleStatus" | "paramsJson" | "stateJson"
-		>,
+		process: ProcessInstance,
+		projects?: readonly ProcessProject[],
 	): ProcessSelectedTurnSummary | null;
 	getServerDefinition(processId: string): BuiltServerProcessDefinition | undefined;
 	getTurnDefinition(
@@ -163,7 +162,12 @@ function resolveCurrentTurnForProcess(
 function listExternalTriggers(
 	turnId: string,
 	turnDef: TurnDefinition<unknown, unknown>,
-	lifecycleStatus: ProcessInstance["lifecycleStatus"],
+	ctx: {
+		process: ProcessInstance;
+		projects: readonly ProcessProject[];
+		params: unknown;
+		state: unknown;
+	},
 ): ProcessExternalSourceSummary[] {
 	if (isHumanTurnDefinition(turnDef)) {
 		const view = resolveHumanTurnView({ turnId, turn: turnDef });
@@ -174,14 +178,19 @@ function listExternalTriggers(
 				label: trigger.label,
 				description: trigger.description,
 			})),
-			...view.externalActions.map((action) => ({
-				id: action.id,
-				externalActionId: action.externalActionId,
-				kind: action.sourceKind,
-				sourceKind: action.sourceKind,
-				label: action.label,
-				description: action.description,
-			})),
+			...view.externalActions
+				.filter((action) => {
+					const definition = turnDef.externalActions?.[action.externalActionId];
+					return !definition?.when || definition.when(ctx);
+				})
+				.map((action) => ({
+					id: action.id,
+					externalActionId: action.externalActionId,
+					kind: action.sourceKind,
+					sourceKind: action.sourceKind,
+					label: action.label,
+					description: action.description,
+				})),
 		];
 	}
 	if (isExternalTurnDefinition(turnDef)) {
@@ -192,15 +201,17 @@ function listExternalTriggers(
 			description: transition.source.description ?? null,
 		}));
 	}
-	if (isAutomaticTurnDefinition(turnDef) && lifecycleStatus === "waiting") {
-		return Object.entries(turnDef.externalActions ?? {}).map(([externalActionId, action]) => ({
-			id: getExternalActionArmingId({ turnId, externalActionId }),
-			externalActionId,
-			kind: action.source.kind,
-			sourceKind: action.source.kind,
-			label: action.label ?? action.source.label ?? null,
-			description: action.description ?? action.source.description ?? null,
-		}));
+	if (isAutomaticTurnDefinition(turnDef) && ctx.process.lifecycleStatus === "waiting") {
+		return Object.entries(turnDef.externalActions ?? {})
+			.filter(([, action]) => !action.when || action.when(ctx))
+			.map(([externalActionId, action]) => ({
+				id: getExternalActionArmingId({ turnId, externalActionId }),
+				externalActionId,
+				kind: action.source.kind,
+				sourceKind: action.source.kind,
+				label: action.label ?? action.source.label ?? null,
+				description: action.description ?? action.source.description ?? null,
+			}));
 	}
 	return [];
 }
@@ -241,12 +252,14 @@ function isTurnScopedActionForProcess(
 
 function buildSelectedTurnSummaryForProcess(
 	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "lifecycleStatus" | "paramsJson" | "stateJson">,
+	process: ProcessInstance,
+	projects: readonly ProcessProject[] = [],
 ): ProcessSelectedTurnSummary | null {
 	const currentTurn = resolveCurrentTurnForProcess(processDef, process);
 	if (!currentTurn) {
 		return null;
 	}
+	const { params, state } = resolveProcessContextData(processDef, process);
 	return {
 		turnId: currentTurn.turnId,
 		kind: currentTurn.turnDef.kind,
@@ -254,11 +267,12 @@ function buildSelectedTurnSummaryForProcess(
 		commentary: isHumanTurnDefinition(currentTurn.turnDef)
 			? (currentTurn.turnDef.commentary ?? null)
 			: null,
-		externalTriggers: listExternalTriggers(
-			currentTurn.turnId,
-			currentTurn.turnDef,
-			process.lifecycleStatus,
-		),
+		externalTriggers: listExternalTriggers(currentTurn.turnId, currentTurn.turnDef, {
+			process,
+			projects,
+			params,
+			state,
+		}),
 	};
 }
 
@@ -506,8 +520,8 @@ export function buildProcessActionRegistry(
 			return visible;
 		},
 
-		getSelectedTurnSummary(processId, process) {
-			return buildSelectedTurnSummaryForProcess(processDefs.get(processId), process);
+		getSelectedTurnSummary(processId, process, projects) {
+			return buildSelectedTurnSummaryForProcess(processDefs.get(processId), process, projects);
 		},
 
 		getServerDefinition(processId) {

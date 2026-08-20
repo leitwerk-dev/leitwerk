@@ -83,17 +83,21 @@ export function listVisibleActionsForProcess(
 }
 
 export function getSelectedTurnSummaryForProcess(
-	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
+	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry" | "projects">,
 	process: ProcessInstance,
 ): ProcessSelectedTurnSummary | null {
 	if (!deps.processActionRegistry) {
 		return null;
 	}
-	return deps.processActionRegistry.getSelectedTurnSummary(process.processId, process);
+	return deps.processActionRegistry.getSelectedTurnSummary(
+		process.processId,
+		process,
+		deps.projects.listByInstance(process.id),
+	);
 }
 
 function getSelectedTurnDescription(
-	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
+	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry" | "projects">,
 	process: ProcessInstance,
 ): string {
 	const selectedTurnSummary = getSelectedTurnSummaryForProcess(deps, process);

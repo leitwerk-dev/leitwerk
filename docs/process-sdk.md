@@ -229,6 +229,11 @@ runs. They arm after the waiting outcome is durable and then appear as active ex
 in the process UI. They can restart that turn, route to another business turn, complete, or
 abort without adding a synthetic wait turn.
 
+Use `.when(({ params, state, process, projects }) => boolean)` for an external action that is
+valid only in part of the process state. A false condition excludes the action from provider
+armings and from the selected-turn UI snapshot. Keep provider-specific matching in the source
+resolver; use `when` for process-owned routing scope.
+
 ### Automatic-turn progress
 
 Worker and server automatic handlers can replace their operator-facing progress snapshot with

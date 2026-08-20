@@ -457,6 +457,9 @@ export function createExternalSourceService(
 			return [];
 		}
 		for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
+			if (action.when && !action.when({ process, projects, params, state })) {
+				continue;
+			}
 			const id = getExternalActionArmingId({ turnId, externalActionId });
 			armed.push({
 				id,

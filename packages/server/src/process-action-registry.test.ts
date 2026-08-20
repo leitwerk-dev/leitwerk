@@ -676,6 +676,17 @@ describe("ProcessActionRegistry", () => {
 										},
 										to: "commit_and_merge",
 									},
+									private_pipeline_failed: {
+										id: "private_pipeline_failed",
+										source: {
+											kind: "example.pipeline.failed",
+											label: "Private pipeline failed",
+											description: "Repair the private pipeline.",
+											config: {},
+										},
+										when: ({ state }) => (state as { scope?: string }).scope !== "public-only",
+										to: "commit_and_merge",
+									},
 								},
 							},
 						],
@@ -701,6 +712,7 @@ describe("ProcessActionRegistry", () => {
 			processId: "automatic_process",
 			selectedTurnId: "commit_and_merge",
 			lifecycleStatus: "waiting",
+			stateJson: JSON.stringify({ scope: "public-only" }),
 		});
 		expect(registry.getSelectedTurnSummary("automatic_process", waitingProcess)).toEqual({
 			turnId: "commit_and_merge",

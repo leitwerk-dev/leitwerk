@@ -16,6 +16,7 @@ import type {
 	ExtensionProcessDefinition,
 	ExternalActionSource,
 	ExternalSourceEffect,
+	ExternalSourceResolveContext,
 	FormDefinition,
 	ProcessLauncherAPI,
 	ProcessTurnBinding,
@@ -197,6 +198,8 @@ export interface ProcessHumanTurnExternalActionSpec<
 > extends StaticRouteTarget {
 	id: string;
 	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
+	/** Arms and exposes this action only when the current process snapshot matches. */
+	when?: (ctx: ExternalSourceResolveContext<TParams, TState>) => boolean;
 	label?: string;
 	description?: string;
 	publishInput?: ExternalActionInputPublication;

@@ -30,7 +30,10 @@ describe("flow automatic turns", () => {
 					.outcome("awaiting", (outcome) => outcome.description("Await events").wait())
 					.outcome("done", (outcome) => outcome.description("Done").complete())
 					.externalAction("resume", source, (external) =>
-						external.to("deliver").effect(({ state }) => ({ state })),
+						external
+							.when(({ state }) => (state as { ready?: boolean }).ready === true)
+							.to("deliver")
+							.effect(({ state }) => ({ state })),
 					)
 					.externalAction("cancel", source, (external) => external.lifecycleStatus("aborted")),
 			)
@@ -40,7 +43,7 @@ describe("flow automatic turns", () => {
 		expect(deliver).toMatchObject({
 			kind: "automatic",
 			externalActions: {
-				resume: { to: "deliver", effect: expect.any(Function) },
+				resume: { when: expect.any(Function), to: "deliver", effect: expect.any(Function) },
 				cancel: { lifecycleStatus: "aborted" },
 			},
 		});
