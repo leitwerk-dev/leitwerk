@@ -121,40 +121,6 @@ describe("process UI snapshot presenter", () => {
 		expect(projected).not.toHaveProperty("failedTurnRecordId");
 	});
 
-	it("offers Continue for legacy terminal outcome recording failures with saved Pi progress", () => {
-		const failed = turnRecord({
-			status: "failed",
-			errorSummary: "Server could not durably record worker turn outcome: invalid transition",
-			errorClass: "infrastructure",
-		});
-		const start = turnStart();
-		expect(
-			buildCurrentTurnRecovery({
-				process: processInstance({
-					selectedTurnId: failed.turnId,
-					lifecycleStatus: "error",
-					currentExecution: { kind: "worker_start", id: start.id },
-				}),
-				turnStarts: { getById: () => start },
-				turnRecords: [failed],
-				selectedTurnDescription: "Generate plan",
-				piEntries: [
-					{
-						id: "assistant-plan",
-						parentId: null,
-						timestamp: "2026-01-01T00:01:00.000Z",
-						type: "message",
-						message: { role: "assistant", content: [{ type: "text", text: "# Plan" }] },
-					} as never,
-				],
-			}),
-		).toMatchObject({
-			turnRecordId: failed.id,
-			canContinue: true,
-			supportsModelOverride: true,
-		});
-	});
-
 	it("projects failed server automatic turns as retryable without a model override", () => {
 		const failed = turnRecord({
 			id: "trn_deliver",

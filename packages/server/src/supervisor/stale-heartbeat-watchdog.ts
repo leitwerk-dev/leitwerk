@@ -1,12 +1,12 @@
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { RepositoryBundle } from "../db/repositories.js";
+import { resolveAcceptedTurnStartReplay } from "./accepted-turn-start-replay.js";
 import type { IpcHandler } from "./ipc-handler.js";
 import { createServerObservedWorkerFailedMessage } from "./synthetic-worker-failure.js";
 import type { WorkerSupervisor } from "./worker-supervisor.js";
 
 export interface StaleHeartbeatWatchdogDeps
-	extends Pick<RepositoryBundle, "leases" | "processes">,
-		Partial<Pick<RepositoryBundle, "turnRecords" | "turnStarts">> {
+	extends Pick<RepositoryBundle, "leases" | "processes" | "turnRecords" | "turnStarts"> {
 	ipcHandler: IpcHandler;
 	supervisor: WorkerSupervisor;
 	staleHeartbeatTimeout: string;
@@ -48,49 +48,39 @@ export function startStaleHeartbeatWatchdog(
 				continue;
 			}
 
-			if (
-				lease.state === "idle" &&
-				process.currentExecution?.kind === "worker_start" &&
-				deps.turnStarts &&
-				deps.turnRecords
-			) {
-				const start = deps.turnStarts.getById(process.currentExecution.id);
-				const turnRecordId = start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-				const turnRecord = turnRecordId ? deps.turnRecords.getById(turnRecordId) : null;
-				const startedAtMs = turnRecord ? Date.parse(turnRecord.startedAt) : Number.NaN;
-				if (
-					turnRecord?.status === "running" &&
-					Number.isFinite(startedAtMs) &&
-					now() - startedAtMs >= timeoutMs
-				) {
-					observedReconciliations.add(lease.instanceId);
-					const reconciliation = acceptedStartReconciliations.get(lease.instanceId);
-					if (!reconciliation || reconciliation.turnRecordId !== turnRecord.id) {
-						if (deps.supervisor.reconcileAcceptedTurnStart?.(lease.instanceId, lease.workerId)) {
-							acceptedStartReconciliations.set(lease.instanceId, {
-								turnRecordId: turnRecord.id,
-								startedAtMs: now(),
-							});
-							continue;
-						}
-					} else if (now() - reconciliation.startedAtMs < timeoutMs) {
+			const acceptedStart =
+				lease.state === "idle"
+					? resolveAcceptedTurnStartReplay(deps, lease.instanceId, lease.workerId)
+					: null;
+			const acceptedAtMs = acceptedStart ? Date.parse(acceptedStart.startedAt) : Number.NaN;
+			if (acceptedStart && Number.isFinite(acceptedAtMs) && now() - acceptedAtMs >= timeoutMs) {
+				observedReconciliations.add(lease.instanceId);
+				const reconciliation = acceptedStartReconciliations.get(lease.instanceId);
+				if (!reconciliation || reconciliation.turnRecordId !== acceptedStart.turnRecordId) {
+					if (deps.supervisor.reconcileAcceptedTurnStart(lease.instanceId, lease.workerId)) {
+						acceptedStartReconciliations.set(lease.instanceId, {
+							turnRecordId: acceptedStart.turnRecordId,
+							startedAtMs: now(),
+						});
 						continue;
 					}
-					acceptedStartReconciliations.delete(lease.instanceId);
-					deps.ipcHandler.handleMessage(
-						createServerObservedWorkerFailedMessage({
-							instanceId: lease.instanceId,
-							workerId: lease.workerId,
-							state: lease.state,
-							errorCode: "idle_worker_running_turn",
-							message: `Worker ${lease.workerId} reported idle while turn ${turnRecord.id} remained running`,
-							errorClass: "infrastructure",
-							selectedTurnId: process.selectedTurnId,
-						}),
-					);
-					deps.supervisor.getWorker(lease.instanceId)?.kill();
+				} else if (now() - reconciliation.startedAtMs < timeoutMs) {
 					continue;
 				}
+				acceptedStartReconciliations.delete(lease.instanceId);
+				deps.ipcHandler.handleMessage(
+					createServerObservedWorkerFailedMessage({
+						instanceId: lease.instanceId,
+						workerId: lease.workerId,
+						state: lease.state,
+						errorCode: "idle_worker_running_turn",
+						message: `Worker ${lease.workerId} reported idle while turn ${acceptedStart.turnRecordId} remained running`,
+						errorClass: "infrastructure",
+						selectedTurnId: process.selectedTurnId,
+					}),
+				);
+				deps.supervisor.getWorker(lease.instanceId)?.kill();
+				continue;
 			}
 
 			if (!lease.lastHeartbeatAt) {

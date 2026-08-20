@@ -7,15 +7,11 @@ import { defineOperation } from "../operation.js";
 export interface TurnFailedInput {
 	instanceId: string;
 	payload: TurnFailedPayload;
-	onRecorded?: () => void;
 }
 
 export const TurnFailed = defineOperation<"turn_failed", TurnFailedInput, void>({
 	kind: "turn_failed",
 	label: "Turn failed",
-	afterRecord(input) {
-		input.onRecorded?.();
-	},
 	decide(ctx, input) {
 		const expected =
 			ctx.process.currentExecution?.kind === "worker_start"

@@ -23,7 +23,6 @@ function createHarness(recordTurnOutcome: ProcessEngine["recordTurnOutcome"]) {
 	});
 	const recorder = createWorkerTurnIpcRecorder(
 		{
-			processes: {} as never,
 			turnRecords: {
 				getById: () => ({ status }),
 			} as never,

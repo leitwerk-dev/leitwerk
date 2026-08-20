@@ -63,6 +63,7 @@ describe("resolveAcceptedTurnStartReplay", () => {
 		expect(resolveAcceptedTurnStartReplay(deps, process.id, "wkr_1")).toEqual({
 			startRecordId: "tsr_1",
 			turnRecordId: "trn_1",
+			startedAt: "2026-04-14T10:00:00.000Z",
 		});
 	});
 

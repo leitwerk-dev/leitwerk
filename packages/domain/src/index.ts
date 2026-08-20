@@ -187,7 +187,6 @@ export {
 	FAILED_TURN_RECOVERY_METADATA_KEY,
 	type FailedTurnRecoveryCode,
 	type FailedTurnRecoveryContext,
-	inferTerminalRecordingFailedTurnRecoveryContext,
 	isFailedTurnRecoveryCode,
 	normalizeContinuePrompt,
 	readFailedTurnRecoveryContext,

@@ -37,7 +37,6 @@ import { defineOperation } from "../operation.js";
 export interface TurnOutcomeInput {
 	instanceId: string;
 	payload: TurnOutcomePayload;
-	onRecorded?: () => void;
 }
 
 function applySemanticEntryRefPatch(
@@ -173,9 +172,6 @@ type TurnOutcomeContextProcessGraphs = Parameters<typeof getProcessTurnGraph>[0]
 export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, void>({
 	kind: "turn_outcome",
 	label: "Turn outcome",
-	afterRecord(input) {
-		input.onRecorded?.();
-	},
 	async decide(ctx, input) {
 		const initialPayload = input.payload;
 		const turnGraph = getProcessTurnGraph(

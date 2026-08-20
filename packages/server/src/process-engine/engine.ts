@@ -193,12 +193,12 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 		async recordTurnOutcome(instanceId, payload, options) {
 			return maybeBroadcastActionRequiredToast(
-				await run(TurnOutcome, { instanceId, payload, onRecorded: options?.onRecorded }),
+				await run(TurnOutcome, { instanceId, payload }, { afterRecord: options?.onRecorded }),
 			);
 		},
 
 		recordTurnFailed(instanceId, payload, options) {
-			return run(TurnFailed, { instanceId, payload, onRecorded: options?.onRecorded });
+			return run(TurnFailed, { instanceId, payload }, { afterRecord: options?.onRecorded });
 		},
 
 		updateSemanticEntryRefs(instanceId, patch) {

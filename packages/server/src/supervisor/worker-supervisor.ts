@@ -388,7 +388,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		if (!replay) return false;
 		sendToCurrentWorker(instanceId, workerId, {
 			type: "worker.turn_start_accepted",
-			payload: replay,
+			payload: { startRecordId: replay.startRecordId, turnRecordId: replay.turnRecordId },
 		});
 		return true;
 	}

@@ -1,7 +1,6 @@
 import {
 	CONTINUE_PROMPT_METADATA_KEY,
 	DEFAULT_CONTINUE_PROMPT,
-	inferTerminalRecordingFailedTurnRecoveryContext,
 	isProcessTurnType,
 	normalizeContinuePrompt,
 	type ProcessEvent,
@@ -848,9 +847,10 @@ export function buildCurrentTurnRecovery(input: {
 	) {
 		return null;
 	}
-	const recoveryContext =
-		readFailedTurnRecoveryContext(input.process.metadata, failedTurnRecord.id) ??
-		inferTerminalRecordingFailedTurnRecoveryContext(failedTurnRecord);
+	const recoveryContext = readFailedTurnRecoveryContext(
+		input.process.metadata,
+		failedTurnRecord.id,
+	);
 	const continuationBounds = { endedAt: failedTurnRecord.endedAt };
 	const canContinue =
 		failedTurnRecord.turnType === "llm" &&

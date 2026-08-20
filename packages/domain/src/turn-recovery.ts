@@ -22,8 +22,6 @@ export type FailedTurnRecoveryOverrides = Partial<Omit<FailedTurnRecoveryContext
 
 export const FAILED_TURN_RECOVERY_METADATA_KEY = "failedTurnRecovery";
 export const CONTINUE_PROMPT_METADATA_KEY = "continuePrompt";
-const TERMINAL_OUTCOME_RECORDING_FAILURE_PREFIX =
-	"Server could not durably record worker turn outcome:";
 
 export function isFailedTurnRecoveryCode(value: string): value is FailedTurnRecoveryCode {
 	return (FAILED_TURN_RECOVERY_CODES as readonly string[]).includes(value);
@@ -51,19 +49,6 @@ export function createGenericFailedTurnRecoveryContext(
 		failureCode: "generic_continue",
 		...overrides,
 	};
-}
-
-export function inferTerminalRecordingFailedTurnRecoveryContext(input: {
-	errorSummary?: string | null;
-	errorClass?: string | null;
-}): FailedTurnRecoveryContext | null {
-	if (
-		input.errorClass !== "infrastructure" ||
-		!input.errorSummary?.startsWith(TERMINAL_OUTCOME_RECORDING_FAILURE_PREFIX)
-	) {
-		return null;
-	}
-	return createGenericFailedTurnRecoveryContext();
 }
 
 export function buildFailedTurnRecoveryMetadata(

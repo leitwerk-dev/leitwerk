@@ -1,7 +1,6 @@
 import type { ProcessInstance, ProcessTurnRecord, TurnStartRecord } from "@leitwerk-dev/domain";
 import {
 	CONTINUE_PROMPT_METADATA_KEY,
-	inferTerminalRecordingFailedTurnRecoveryContext,
 	normalizeContinuePrompt,
 	readFailedTurnRecoveryContext,
 } from "@leitwerk-dev/domain";
@@ -32,9 +31,7 @@ export function buildContinueFailedTurnWrites(input: ContinueFailedTurnWritesInp
 			`Could not derive a continuable selected turn for '${failedRun.turnId}' on process '${process.processId}'`,
 		);
 	}
-	const failedTurnRecovery =
-		readFailedTurnRecoveryContext(process.metadata, failedRun.id) ??
-		inferTerminalRecordingFailedTurnRecoveryContext(failedRun);
+	const failedTurnRecovery = readFailedTurnRecoveryContext(process.metadata, failedRun.id);
 	if (!failedTurnRecovery) {
 		throw new Error(`Failed turn '${failedRun.id}' is missing recovery context`);
 	}

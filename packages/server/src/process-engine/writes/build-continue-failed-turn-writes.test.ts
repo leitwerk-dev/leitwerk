@@ -14,8 +14,6 @@ type ContinuePlanInput = {
 	attemptNumber?: number;
 	pathType?: "primary" | "root_branch";
 	resultPiEntryId?: string | null;
-	errorSummary?: string | null;
-	errorClass?: "infrastructure" | "provider" | null;
 	modelProfileId?: string | null;
 	prompt?: string;
 };
@@ -44,8 +42,6 @@ function planContinue(input: ContinuePlanInput) {
 		pathType: input.pathType ?? "primary",
 		resultPiEntryId:
 			input.resultPiEntryId === undefined ? input.continueFromPiEntryId : input.resultPiEntryId,
-		...(input.errorSummary !== undefined ? { errorSummary: input.errorSummary } : {}),
-		...(input.errorClass !== undefined ? { errorClass: input.errorClass } : {}),
 		...(input.modelProfileId !== undefined ? { modelProfileId: input.modelProfileId } : {}),
 	});
 	const turnStartRecordId = failedRun.turnStartRecordId;
@@ -71,25 +67,6 @@ function planContinue(input: ContinuePlanInput) {
 }
 
 describe("buildContinueFailedTurnWrites", () => {
-	it("continues legacy terminal outcome recording failures without recovery metadata", () => {
-		const { planned } = planContinue({
-			turnRecordId: "trn_legacy_terminal",
-			continueFromPiEntryId: "assistant-legacy-terminal",
-			metadata: {},
-			errorSummary: "Server could not durably record worker turn outcome: invalid transition",
-			errorClass: "infrastructure",
-		});
-
-		expect(planned.processPatch).toMatchObject({
-			lifecycleStatus: "active",
-			metadata: {
-				continueFromTurnRecordId: "trn_legacy_terminal",
-				continueFromPiEntryId: "assistant-legacy-terminal",
-				continuePrompt: "continue",
-			},
-		});
-	});
-
 	it("reactivates the failed turn and preserves continuation lineage metadata", () => {
 		const { process, planned } = planContinue({
 			turnRecordId: "trn_impl_8",

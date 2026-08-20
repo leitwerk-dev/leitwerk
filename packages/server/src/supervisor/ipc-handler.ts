@@ -101,7 +101,6 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 	const inputAckHandler = createWorkerInputAckHandler(deps);
 	const turnRecorder = createWorkerTurnIpcRecorder(
 		{
-			processes: deps.processes,
 			turnRecords: deps.turnRecords,
 			commands: deps.commands,
 			eventIngestor,
