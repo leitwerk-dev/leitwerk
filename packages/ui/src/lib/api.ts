@@ -197,6 +197,13 @@ export async function fetchAuthMe(): Promise<AuthMeResponseBody> {
 	return readJsonObject<AuthMeResponseBody>(res, "Malformed auth status response");
 }
 
+export async function logout(): Promise<void> {
+	const res = await getFetchImpl()(resolveApiUrl("/auth/logout"), { method: "POST" });
+	if (!res.ok) {
+		throw new ApiResponseError(`Couldn't log out: ${res.status}`, res.status);
+	}
+}
+
 export interface AuthMeRetryOptions {
 	maxAttempts?: number;
 	baseDelayMs?: number;

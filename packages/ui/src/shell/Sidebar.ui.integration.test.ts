@@ -39,14 +39,20 @@ const mocks = vi.hoisted(() => {
 		}),
 		keyboardShortcutHelpOpenStore: createStore(false),
 		loadProcessesList: vi.fn().mockResolvedValue(undefined),
+		logout: vi.fn().mockResolvedValue(undefined),
 		navigate: vi.fn(),
-		toggleKeyboardShortcutHelp: vi.fn(),
+		onLoggedOut: vi.fn(),
+		openKeyboardShortcutHelp: vi.fn(),
 	};
 });
 
+vi.mock("../lib/api.js", () => ({
+	logout: mocks.logout,
+}));
+
 vi.mock("../lib/keyboard-shortcuts-help.js", () => ({
 	keyboardShortcutHelpOpen: mocks.keyboardShortcutHelpOpenStore,
-	toggleKeyboardShortcutHelp: mocks.toggleKeyboardShortcutHelp,
+	openKeyboardShortcutHelp: mocks.openKeyboardShortcutHelp,
 }));
 
 vi.mock("../lib/processes.svelte", () => ({
@@ -121,9 +127,16 @@ function resetMocks() {
 	mocks.keyboardShortcutHelpOpenStore.set(false);
 	vi.clearAllMocks();
 	mocks.loadProcessesList.mockResolvedValue(undefined);
+	mocks.logout.mockResolvedValue(undefined);
 }
 
-function mountSubject(currentRoute = HOME_ROUTE) {
+function mountSubject(
+	currentRoute = HOME_ROUTE,
+	auth: {
+		authEnabled?: boolean;
+		actor?: { id: string; kind: "user"; provider: string | null; displayName?: string } | null;
+	} = {},
+) {
 	const target = document.createElement("div");
 	document.body.appendChild(target);
 
@@ -132,6 +145,9 @@ function mountSubject(currentRoute = HOME_ROUTE) {
 			target,
 			props: {
 				currentRoute,
+				authEnabled: auth.authEnabled ?? false,
+				actor: auth.actor ?? null,
+				onLoggedOut: mocks.onLoggedOut,
 			},
 		}),
 	);
@@ -182,6 +198,135 @@ describe("Sidebar", () => {
 		expect(target.querySelector('[data-action="view-all-processes"]')).toBeTruthy();
 		expect(target.textContent).toContain("RUN-101");
 		expect(target.textContent).not.toContain("DONE-101");
+	});
+
+	it("shows help without the synthetic admin identity when auth is disabled", async () => {
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: false,
+			actor: { id: "admin", kind: "user", provider: null },
+		});
+		await flush();
+
+		expect(target.querySelector('[data-action="show-help"]')?.textContent).toContain("Show help");
+		expect(target.querySelector('[data-action="show-help"]')?.getAttribute("aria-label")).toBe(
+			"Show help",
+		);
+		expect(target.querySelector('[data-action="user-menu"]')).toBeNull();
+		expect(target.textContent).not.toContain("admin");
+
+		click(target.querySelector('[data-action="show-help"]'));
+		expect(mocks.openKeyboardShortcutHelp).toHaveBeenCalledOnce();
+	});
+
+	it("shows the authenticated user and opens help from the user popover", async () => {
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: true,
+			actor: {
+				id: "identity:alice",
+				kind: "user",
+				provider: "identity",
+				displayName: "Alice",
+			},
+		});
+		await flush();
+
+		const trigger = target.querySelector('[data-action="user-menu"]');
+		expect(trigger?.textContent).toContain("Alice");
+		click(trigger);
+		await flush();
+
+		const popover = target.querySelector('[data-section="user-menu-popover"]');
+		expect(popover?.textContent).toContain("Show help");
+		expect(popover?.textContent).toContain("Log out");
+
+		click(
+			Array.from(popover?.querySelectorAll("button") ?? []).find(
+				(button) => button.textContent === "Show help",
+			) ?? null,
+		);
+		await flush();
+
+		expect(mocks.openKeyboardShortcutHelp).toHaveBeenCalledOnce();
+		expect(target.querySelector('[data-section="user-menu-popover"]')).toBeNull();
+	});
+
+	it("falls back to the actor id and logs out once", async () => {
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: true,
+			actor: { id: "identity:alice", kind: "user", provider: "identity" },
+		});
+		await flush();
+
+		const trigger = target.querySelector('[data-action="user-menu"]');
+		expect(trigger?.textContent).toContain("identity:alice");
+		click(trigger);
+		await flush();
+		const logoutButton = Array.from(
+			target.querySelectorAll<HTMLButtonElement>('[data-section="user-menu-popover"] button'),
+		).find((button) => button.textContent === "Log out");
+		click(logoutButton ?? null);
+		await flush();
+
+		expect(mocks.logout).toHaveBeenCalledOnce();
+		expect(mocks.onLoggedOut).toHaveBeenCalledOnce();
+	});
+
+	it("keeps the user popover open and reports a logout failure", async () => {
+		mocks.logout.mockRejectedValueOnce(new Error("offline"));
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: true,
+			actor: { id: "identity:alice", kind: "user", provider: "identity" },
+		});
+		await flush();
+
+		click(target.querySelector('[data-action="user-menu"]'));
+		await flush();
+		const logoutButton = Array.from(
+			target.querySelectorAll<HTMLButtonElement>('[data-section="user-menu-popover"] button'),
+		).find((button) => button.textContent === "Log out");
+		click(logoutButton ?? null);
+		await flush();
+
+		expect(target.querySelector('[data-section="user-menu-popover"]')).toBeTruthy();
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain("Couldn't log out");
+		expect(mocks.onLoggedOut).not.toHaveBeenCalled();
+	});
+
+	it("keeps only one popover open in the collapsed sidebar", async () => {
+		mocks.processRowsStore.set([makeRow("agt_1", "RUN-101", "active", "active")]);
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: true,
+			actor: { id: "identity:alice", kind: "user", provider: "identity" },
+		});
+		await flush();
+
+		click(target.querySelector('[data-action="toggle-sidebar"]'));
+		await flush();
+		click(target.querySelector('[data-action="current-processes"]'));
+		await flush();
+		expect(target.querySelector('[data-section="current-processes-popover"]')).toBeTruthy();
+
+		click(target.querySelector('[data-action="user-menu"]'));
+		await flush();
+		expect(target.querySelector('[data-section="current-processes-popover"]')).toBeNull();
+		expect(target.querySelector('[data-section="user-menu-popover"]')).toBeTruthy();
+	});
+
+	it("closes the user popover on Escape and restores focus", async () => {
+		const { target } = mountSubject(HOME_ROUTE, {
+			authEnabled: true,
+			actor: { id: "identity:alice", kind: "user", provider: "identity" },
+		});
+		await flush();
+
+		const trigger = target.querySelector<HTMLButtonElement>('[data-action="user-menu"]');
+		click(trigger);
+		await flush();
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+		await flush();
+
+		expect(target.querySelector('[data-section="user-menu-popover"]')).toBeNull();
+		expect(document.activeElement).toBe(trigger);
 	});
 
 	it("shows scheduled-action Future rows with 24-hour time", async () => {

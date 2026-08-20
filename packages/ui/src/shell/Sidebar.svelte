@@ -1,10 +1,11 @@
 <script lang="ts">
-import type { FutureActionSummary, FutureExecutionSummary } from "../lib/api.js";
+import type { Actor } from "@leitwerk-dev/domain";
+import { type FutureActionSummary, type FutureExecutionSummary, logout } from "../lib/api.js";
 
 import { formatLocalDateTime, formatLocalDateTime24Hour } from "../lib/format.js";
 import {
 	keyboardShortcutHelpOpen,
-	toggleKeyboardShortcutHelp,
+	openKeyboardShortcutHelp,
 } from "../lib/keyboard-shortcuts-help.js";
 import type { ProcessRowView } from "../lib/process-row-view.js";
 import {
@@ -28,11 +29,19 @@ import { wsStore } from "../lib/ws.svelte";
 
 interface Props {
 	currentRoute: Route;
+	authEnabled?: boolean;
+	actor?: Actor | null;
+	onLoggedOut?: () => void;
 }
 
 const collapseBreakpointPx = 960;
 
-let { currentRoute }: Props = $props();
+let {
+	currentRoute,
+	authEnabled = false,
+	actor = null,
+	onLoggedOut = () => window.location.assign("/"),
+}: Props = $props();
 
 const homePath = buildHomePath();
 const processesPath = buildProcessesPath();
@@ -61,6 +70,9 @@ let observedReconnectCount = $state<number | null>(null);
 let sidebarCollapsed = $state(false);
 let currentProcessesPopoverOpen = $state(false);
 let futureExecutionsPopoverOpen = $state(false);
+let userPopoverOpen = $state(false);
+let logoutPending = $state(false);
+let logoutError = $state<string | null>(null);
 let collapseSupported = $state(
 	typeof window === "undefined" ? true : window.innerWidth > collapseBreakpointPx,
 );
@@ -69,6 +81,8 @@ let currentProcessesTriggerRef = $state<HTMLButtonElement | null>(null);
 let currentProcessesPopoverRef = $state<HTMLDivElement | null>(null);
 let futureExecutionsTriggerRef = $state<HTMLButtonElement | null>(null);
 let futureExecutionsPopoverRef = $state<HTMLDivElement | null>(null);
+let userTriggerRef = $state<HTMLButtonElement | null>(null);
+let userPopoverRef = $state<HTMLDivElement | null>(null);
 
 const connectionIssue = $derived.by(() => {
 	if ($listState.error) {
@@ -94,6 +108,7 @@ const futureExecutionsControlActive = $derived(
 	effectiveSidebarCollapsed &&
 		(futureExecutionsPopoverOpen || currentRoute.page === "future-launch-detail"),
 );
+const userName = $derived(actor?.displayName ?? actor?.id ?? "User");
 
 $effect(() => {
 	const reconnectCount = $wsStore.reconnectCount;
@@ -127,6 +142,7 @@ $effect(() => {
 	sidebarCollapsed = false;
 	currentProcessesPopoverOpen = false;
 	futureExecutionsPopoverOpen = false;
+	userPopoverOpen = false;
 });
 
 $effect(() => {
@@ -135,6 +151,7 @@ $effect(() => {
 	}
 	currentProcessesPopoverOpen = false;
 	futureExecutionsPopoverOpen = false;
+	userPopoverOpen = false;
 });
 
 $effect(() => {
@@ -145,10 +162,11 @@ $effect(() => {
 	observedRouteKey = routeKey;
 	currentProcessesPopoverOpen = false;
 	futureExecutionsPopoverOpen = false;
+	userPopoverOpen = false;
 });
 
 $effect(() => {
-	if (!currentProcessesPopoverOpen && !futureExecutionsPopoverOpen) {
+	if (!currentProcessesPopoverOpen && !futureExecutionsPopoverOpen && !userPopoverOpen) {
 		return;
 	}
 
@@ -157,22 +175,26 @@ $effect(() => {
 		if (!target) {
 			currentProcessesPopoverOpen = false;
 			futureExecutionsPopoverOpen = false;
+			userPopoverOpen = false;
 			return;
 		}
 		if (
 			currentProcessesPopoverRef?.contains(target) ||
-			futureExecutionsPopoverRef?.contains(target)
+			futureExecutionsPopoverRef?.contains(target) ||
+			userPopoverRef?.contains(target)
 		) {
 			return;
 		}
 		if (
 			currentProcessesTriggerRef?.contains(target) ||
-			futureExecutionsTriggerRef?.contains(target)
+			futureExecutionsTriggerRef?.contains(target) ||
+			userTriggerRef?.contains(target)
 		) {
 			return;
 		}
 		currentProcessesPopoverOpen = false;
 		futureExecutionsPopoverOpen = false;
+		userPopoverOpen = false;
 	};
 
 	const handleDocumentKeydown = (event: KeyboardEvent) => {
@@ -181,9 +203,12 @@ $effect(() => {
 		}
 		const focusTarget = currentProcessesPopoverOpen
 			? currentProcessesTriggerRef
-			: futureExecutionsTriggerRef;
+			: futureExecutionsPopoverOpen
+				? futureExecutionsTriggerRef
+				: userTriggerRef;
 		currentProcessesPopoverOpen = false;
 		futureExecutionsPopoverOpen = false;
+		userPopoverOpen = false;
 		focusTarget?.focus();
 	};
 
@@ -289,19 +314,23 @@ function openFutureItem(item: FutureExecutionSummary, event: MouseEvent) {
 	navigate(futurePath(item));
 }
 
+function closePopovers() {
+	currentProcessesPopoverOpen = false;
+	futureExecutionsPopoverOpen = false;
+	userPopoverOpen = false;
+}
+
 function toggleSidebar() {
 	if (!collapseSupported) {
 		return;
 	}
 	sidebarCollapsed = !sidebarCollapsed;
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
+	closePopovers();
 }
 
 function openSidebar() {
 	sidebarCollapsed = false;
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
+	closePopovers();
 }
 
 function toggleCurrentProcessesPopover() {
@@ -310,6 +339,7 @@ function toggleCurrentProcessesPopover() {
 	}
 	currentProcessesPopoverOpen = !currentProcessesPopoverOpen;
 	futureExecutionsPopoverOpen = false;
+	userPopoverOpen = false;
 }
 
 function toggleFutureExecutionsPopover() {
@@ -318,6 +348,33 @@ function toggleFutureExecutionsPopover() {
 	}
 	futureExecutionsPopoverOpen = !futureExecutionsPopoverOpen;
 	currentProcessesPopoverOpen = false;
+	userPopoverOpen = false;
+}
+
+function toggleUserPopover() {
+	userPopoverOpen = !userPopoverOpen;
+	currentProcessesPopoverOpen = false;
+	futureExecutionsPopoverOpen = false;
+	logoutError = null;
+}
+
+function showHelp() {
+	userPopoverOpen = false;
+	openKeyboardShortcutHelp();
+}
+
+async function logOut() {
+	if (logoutPending) return;
+	logoutPending = true;
+	logoutError = null;
+	try {
+		await logout();
+		onLoggedOut();
+	} catch {
+		logoutError = "Couldn't log out. Try again.";
+	} finally {
+		logoutPending = false;
+	}
 }
 
 function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
@@ -743,20 +800,79 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		</div>
 	{/if}
 
-	<button
-		type="button"
-		class="shortcut-help-trigger"
-		class:is-collapsed={effectiveSidebarCollapsed}
-		data-pressable="true"
-		aria-haspopup="dialog"
-		aria-controls="keyboard-shortcuts-modal"
-		aria-expanded={$keyboardShortcutHelpOpen}
-		aria-label="Keyboard shortcuts"
-		title="Keyboard shortcuts (?)"
-		onclick={toggleKeyboardShortcutHelp}
-	>
-		<span class="shortcut-help-trigger-inner">?</span>
-	</button>
+	<div class="sidebar-footer" class:is-collapsed={effectiveSidebarCollapsed}>
+		{#if authEnabled && actor}
+			<button
+				type="button"
+				class="user-trigger"
+				class:is-collapsed={effectiveSidebarCollapsed}
+				data-action="user-menu"
+				data-pressable="true"
+				aria-haspopup="dialog"
+				aria-controls="user-menu-popover"
+				aria-expanded={userPopoverOpen}
+				aria-label={`User menu for ${userName}`}
+				title={userName}
+				bind:this={userTriggerRef}
+				onclick={toggleUserPopover}
+			>
+				<span class="footer-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="8" r="3.25"></circle>
+						<path d="M5.5 19c.7-3.4 3-5.25 6.5-5.25s5.8 1.85 6.5 5.25"></path>
+					</svg>
+				</span>
+				{#if !effectiveSidebarCollapsed}<span class="user-name">{userName}</span>{/if}
+			</button>
+
+			{#if userPopoverOpen}
+				<div
+					id="user-menu-popover"
+					class="user-popover"
+					class:is-collapsed={effectiveSidebarCollapsed}
+					data-section="user-menu-popover"
+					role="dialog"
+					aria-modal="false"
+					aria-label={`User options for ${userName}`}
+					bind:this={userPopoverRef}
+				>
+					<button type="button" class="user-popover-action" onclick={showHelp}>Show help</button>
+					<button
+						type="button"
+						class="user-popover-action"
+						disabled={logoutPending}
+						onclick={logOut}
+					>
+						{logoutPending ? "Logging out…" : "Log out"}
+					</button>
+					{#if logoutError}<p class="logout-error" role="alert">{logoutError}</p>{/if}
+				</div>
+			{/if}
+		{:else}
+			<button
+				type="button"
+				class="help-trigger"
+				class:is-collapsed={effectiveSidebarCollapsed}
+				data-action="show-help"
+				data-pressable="true"
+				aria-haspopup="dialog"
+				aria-controls="keyboard-shortcuts-modal"
+				aria-expanded={$keyboardShortcutHelpOpen}
+				aria-label="Show help"
+				title="Show help (?)"
+				onclick={showHelp}
+			>
+				<span class="footer-icon" aria-hidden="true">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="8.25"></circle>
+						<path d="M9.8 9.4a2.45 2.45 0 0 1 4.65 1.1c0 1.85-2.45 2.05-2.45 3.65"></path>
+						<path d="M12 17.4h.01"></path>
+					</svg>
+				</span>
+				{#if !effectiveSidebarCollapsed}<span>Show help</span>{/if}
+			</button>
+		{/if}
+	</div>
 </aside>
 
 <style>
@@ -947,18 +1063,16 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
-		padding-bottom: 54px;
 	}
 
 	.collapsed-rail {
 		display: flex;
 		flex: 1;
 		width: 100%;
+		min-height: 0;
 		flex-direction: column;
 		align-items: center;
 		gap: 6px;
-		padding-top: 0;
-		padding-bottom: 42px;
 	}
 
 	.current-processes-anchor {
@@ -1023,68 +1137,125 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
 	}
 
-	.shortcut-help-trigger {
-		position: absolute;
-		bottom: 16px;
-		left: 12px;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 40px;
-		height: 40px;
-		border-radius: 999px;
-		cursor: pointer;
+	.sidebar-footer {
+		position: relative;
+		flex: 0 0 auto;
+		margin-top: 12px;
+		padding-top: 12px;
+		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
 		z-index: 3;
 	}
 
-	.shortcut-help-trigger.is-collapsed {
-		left: 50%;
-		bottom: 12px;
-		width: 28px;
-		height: 28px;
-		transform: translateX(-50%);
+	.sidebar-footer.is-collapsed {
+		width: 48px;
+		padding-top: 8px;
 	}
 
-	.shortcut-help-trigger.is-collapsed .shortcut-help-trigger-inner {
+	.user-trigger,
+	.help-trigger {
+		display: grid;
+		grid-template-columns: 30px minmax(0, 1fr);
+		align-items: center;
+		gap: 9px;
+		width: 100%;
+		min-height: 42px;
+		padding: 5px 8px;
+		border: 1px solid transparent;
+		border-radius: var(--radius-sm);
+		background: transparent;
+		color: var(--chronicle-text-muted);
+		font-weight: 620;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.user-trigger:hover,
+	.user-trigger[aria-expanded="true"],
+	.help-trigger:hover {
+		border-color: color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
+		background: color-mix(in srgb, var(--chronicle-card-surface) 78%, transparent 22%);
+		color: var(--chronicle-text);
+	}
+
+	.user-trigger.is-collapsed,
+	.help-trigger.is-collapsed {
+		display: grid;
+		grid-template-columns: 1fr;
+		place-items: center;
+		width: 48px;
+		height: 48px;
+		padding: 0;
+	}
+
+	.footer-icon,
+	.footer-icon svg {
+		display: block;
 		width: 20px;
 		height: 20px;
-		font-size: 12px;
 	}
 
-	.shortcut-help-trigger-inner {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 32px;
-		height: 32px;
-		border-radius: 999px;
-		color: var(--chronicle-text);
-		font-family: var(--font-mono);
-		font-size: 16px;
-		font-weight: 700;
+	.footer-icon {
+		justify-self: center;
 	}
 
-	.shortcut-help-trigger:hover .shortcut-help-trigger-inner,
-	.shortcut-help-trigger[aria-expanded="true"] .shortcut-help-trigger-inner {
-		color: var(--chronicle-text);
+	.user-name {
+		min-width: 0;
+		overflow: hidden;
+		font-size: 0.875rem;
+		line-height: 1.35;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
-	.shortcut-help-trigger::before {
-		content: "";
+	.user-popover {
 		position: absolute;
-		inset: -8px;
-		border-radius: 999px;
+		left: 0;
+		bottom: calc(100% + 8px);
+		display: grid;
+		gap: 4px;
+		width: 100%;
+		padding: 6px;
+		border: 1px solid var(--chronicle-border);
+		border-radius: 14px;
+		background: var(--chronicle-card-surface);
+		box-shadow: var(--chronicle-shadow-soft);
+		z-index: 5;
+	}
+
+	.user-popover.is-collapsed {
+		left: calc(100% + 12px);
+		bottom: 0;
+		width: 180px;
+	}
+
+	.user-popover-action {
+		width: 100%;
+		min-height: 38px;
+		padding: 8px 10px;
+		border: 0;
+		border-radius: 10px;
 		background: transparent;
-		border: 1.5px solid color-mix(in srgb, var(--chronicle-border) 30%, transparent);
-		pointer-events: none;
+		color: var(--chronicle-text);
+		font-size: 0.875rem;
+		font-weight: 620;
+		text-align: left;
+		cursor: pointer;
 	}
 
-	.shortcut-help-trigger.is-collapsed::before {
-		inset: -4px;
+	.user-popover-action:hover:not(:disabled) {
+		background: var(--chronicle-panel-muted);
 	}
 
-	.shortcut-help-trigger:hover::before {
-		border-color: color-mix(in srgb, var(--chronicle-border) 50%, transparent);
+	.user-popover-action:disabled {
+		cursor: wait;
+		opacity: 0.58;
+	}
+
+	.logout-error {
+		margin: 4px 8px 6px;
+		color: var(--chronicle-danger-text);
+		font-size: var(--type-caption);
+		line-height: 1.4;
 	}
 
 	.process-group {
@@ -1276,7 +1447,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		position: absolute;
 		left: 18px;
 		right: 18px;
-		bottom: 64px;
+		bottom: 76px;
 		padding: 14px;
 		border-radius: 16px;
 		border: 1px solid color-mix(in srgb, var(--chronicle-danger) 46%, var(--chronicle-border) 54%);

@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { Actor } from "@leitwerk-dev/domain";
 import BrowserUiExtensionIndicatorHost from "../components/BrowserUiExtensionIndicatorHost.svelte";
 import KeyboardShortcutsModal from "../components/KeyboardShortcutsModal.svelte";
 import { isPlainShortcut, isTextEntryTarget } from "../lib/keyboard.js";
@@ -19,6 +20,8 @@ import Sidebar from "./Sidebar.svelte";
 
 interface Props {
 	route: Route;
+	authEnabled: boolean;
+	actor: Actor;
 }
 
 const homeShortcutItems: readonly KeyboardShortcutItem[] = [
@@ -45,7 +48,7 @@ const processShortcutItems: readonly KeyboardShortcutItem[] = [
 	{ keys: ["?"], label: "Toggle shortcuts" },
 ];
 
-let { route }: Props = $props();
+let { route, authEnabled, actor }: Props = $props();
 
 const shortcutHelpTitle = $derived.by(() => {
 	if (route.page === "home") {
@@ -140,7 +143,7 @@ $effect(() => {
 </script>
 
 <div class="app-shell" data-shell="app">
-	<Sidebar currentRoute={route} />
+	<Sidebar currentRoute={route} {authEnabled} {actor} />
 	{#if $browserUiExtensionShellIndicators.length > 0}
 		<div class="browser-ui-extension-indicators" data-section="browser-ui-extension-indicators">
 			{#each $browserUiExtensionShellIndicators as indicator (`${indicator.extensionManifestId}:${indicator.id}`)}

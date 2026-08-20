@@ -3,6 +3,7 @@ import {
 	ApiResponseError,
 	fetchAuthMeWithRetry,
 	fetchFutureExecution,
+	logout,
 	registerSkill,
 	submitQuestionAnswers,
 } from "./api.js";
@@ -59,6 +60,30 @@ describe("fetchAuthMeWithRetry", () => {
 			fetchAuthMeWithRetry({ maxAttempts: 3, sleep: async () => {} }),
 		).rejects.toMatchObject({ status: 500 });
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("logout", () => {
+	it("posts to the logout endpoint", async () => {
+		const fetchImpl = vi.fn(
+			async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+		);
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+		};
+
+		await logout();
+
+		expect(fetchImpl).toHaveBeenCalledWith("/auth/logout", { method: "POST" });
+	});
+
+	it("preserves logout failures", async () => {
+		const fetchImpl = vi.fn(async () => new Response(null, { status: 503 }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: fetchImpl as unknown as typeof fetch,
+		};
+
+		await expect(logout()).rejects.toMatchObject({ status: 503 });
 	});
 });
 

@@ -8,7 +8,7 @@ The Leitwerk user interface provides real-time visibility and steering control o
 
 The process detail view is organized into three distinct visual regions:
 
-- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching.
+- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. Its footer shows the authenticated user's name and a menu for keyboard help and Leitwerk-session logout. When authentication is disabled, the footer shows keyboard help only.
 - **Turn Rail:** Right-hand outline listing completed turns, active execution leaves, and declared future turns for jumping directly to specific steps.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
 
