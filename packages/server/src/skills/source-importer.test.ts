@@ -22,6 +22,23 @@ async function temporaryDirectory(): Promise<string> {
 	return root;
 }
 
+async function commitFixture(root: string): Promise<void> {
+	await execFileAsync("git", ["init", "--quiet", root]);
+	await execFileAsync("git", ["-C", root, "add", "."]);
+	await execFileAsync("git", [
+		"-C",
+		root,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.test",
+		"commit",
+		"--quiet",
+		"-m",
+		"fixture",
+	]);
+}
+
 describe("skill repository import", () => {
 	it("discovers arbitrarily nested skill directories from a Git repository", async () => {
 		const root = await temporaryDirectory();
@@ -42,20 +59,7 @@ describe("skill repository import", () => {
 			path.join(root, "skills", "productivity", "planning", "SKILL.md"),
 			"# Planning\n",
 		);
-		await execFileAsync("git", ["init", "--quiet", root]);
-		await execFileAsync("git", ["-C", root, "add", "."]);
-		await execFileAsync("git", [
-			"-C",
-			root,
-			"-c",
-			"user.name=Test",
-			"-c",
-			"user.email=test@example.test",
-			"commit",
-			"--quiet",
-			"-m",
-			"fixture",
-		]);
+		await commitFixture(root);
 
 		const imported = await importSkillRepository({
 			id: "shared",
@@ -88,20 +92,7 @@ describe("skill repository import", () => {
 			path.join(root, ".pi", "skills", "impeccable", "SKILL.md"),
 			"---\nname: Impeccable\ndescription: Refine interfaces\n---\n# Impeccable\n",
 		);
-		await execFileAsync("git", ["init", "--quiet", root]);
-		await execFileAsync("git", ["-C", root, "add", "."]);
-		await execFileAsync("git", [
-			"-C",
-			root,
-			"-c",
-			"user.name=Test",
-			"-c",
-			"user.email=test@example.test",
-			"commit",
-			"--quiet",
-			"-m",
-			"fixture",
-		]);
+		await commitFixture(root);
 
 		const imported = await importSkillRepository({
 			id: "impeccable",

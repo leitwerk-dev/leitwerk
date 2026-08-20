@@ -319,8 +319,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		...(credentialCipher ? { credentialCipher } : {}),
 	});
 	repos.transaction((transactionRepos) => {
-		// Directly configured skills are no longer supported. Deactivate any left by an older release.
-		transactionRepos.skills.reconcile([]);
+		transactionRepos.skills.deactivateConfiguredSkills();
 		transactionRepos.skills.backfillDependencies();
 	});
 	const skillCatalog = createSkillCatalogService({

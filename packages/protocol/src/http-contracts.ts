@@ -539,13 +539,10 @@ export interface SkillCatalogItem {
 	sourceRevision: string;
 	registered: boolean;
 	updateAvailable: boolean;
-	conflict: boolean;
 	stale: boolean;
 	modelInvocable: boolean;
 	usage: SkillUsageSummary;
 }
-
-export type SkillRegistrationKind = "configuration" | "catalog";
 
 export interface InstalledSkillCatalogItem {
 	id: string;
@@ -553,7 +550,6 @@ export interface InstalledSkillCatalogItem {
 	description: string | null;
 	activeRevisionId: string;
 	activeSourceRevision: string | null;
-	registrationKind: SkillRegistrationKind;
 	sourceRepositoryId: string | null;
 	updateAvailable: boolean;
 	modelInvocable: boolean;

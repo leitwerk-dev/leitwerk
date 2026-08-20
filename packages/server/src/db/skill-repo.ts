@@ -194,7 +194,6 @@ function recordRevisionDependencies(db: LeitwerkDb, revisionId: string, markdown
 function activateSkill(
 	db: LeitwerkDb,
 	item: ImportedSkill,
-	registrationKind: "configuration" | "catalog",
 	timestamp: string,
 	markdown = skillMarkdown(item.skillId, item.bundle.bytes, item.bundle.digest),
 ): string {
@@ -204,7 +203,7 @@ function activateSkill(
 			label: item.label,
 			description: item.description,
 			activeRevisionId: null,
-			registrationKind,
+			registrationKind: "catalog",
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		})
@@ -217,7 +216,7 @@ function activateSkill(
 			label: item.label,
 			description: item.description,
 			activeRevisionId: revisionId,
-			registrationKind,
+			registrationKind: "catalog",
 			updatedAt: timestamp,
 		})
 		.where(eq(skills.id, item.skillId))
@@ -240,18 +239,16 @@ function catalogView(db: LeitwerkDb): {
 			activeSourceRevision: skillRevisions.sourceRevision,
 			activeDigest: skillRevisions.bundleDigest,
 			activeBundleBytes: skillRevisions.bundleBytes,
-			registrationKind: skills.registrationKind,
 		})
 		.from(skills)
 		.innerJoin(skillRevisions, eq(skills.activeRevisionId, skillRevisions.id))
+		.where(eq(skills.registrationKind, "catalog"))
 		.orderBy(asc(skills.label), asc(skills.id))
 		.all();
 	const installedById = new Map(installedRows.map((row) => [row.id, row]));
 	const availableSkills = candidates.map((candidate) => {
 		const active = installedById.get(candidate.skillId);
-		const registered = Boolean(
-			active?.registrationKind === "catalog" && active.activeDigest === candidate.bundleDigest,
-		);
+		const registered = active?.activeDigest === candidate.bundleDigest;
 		return {
 			repositoryId: candidate.repositoryId,
 			id: candidate.skillId,
@@ -260,10 +257,7 @@ function catalogView(db: LeitwerkDb): {
 			sourcePath: candidate.sourcePath,
 			sourceRevision: candidate.sourceRevision,
 			registered,
-			updateAvailable: Boolean(
-				candidate.available && active?.registrationKind === "catalog" && !registered,
-			),
-			conflict: candidate.available && active?.registrationKind === "configuration",
+			updateAvailable: Boolean(candidate.available && active && !registered),
 			stale: !candidate.available,
 			modelInvocable: isSkillModelInvocable(
 				skillMarkdown(candidate.skillId, candidate.bundleBytes, candidate.bundleDigest),
@@ -283,17 +277,13 @@ function catalogView(db: LeitwerkDb): {
 			description: skill.description,
 			activeRevisionId: skill.activeRevisionId,
 			activeSourceRevision: skill.activeSourceRevision,
-			registrationKind: skill.registrationKind,
 			sourceRepositoryId:
 				matching.length === 1
 					? (matching[0]?.repositoryId ?? null)
 					: activeSource.length === 1
 						? (activeSource[0]?.repositoryId ?? null)
 						: null,
-			updateAvailable:
-				skill.registrationKind === "catalog" &&
-				available.length === 1 &&
-				available[0]?.bundleDigest !== skill.activeDigest,
+			updateAvailable: available.length === 1 && available[0]?.bundleDigest !== skill.activeDigest,
 			modelInvocable: isSkillModelInvocable(
 				skillMarkdown(skill.id, skill.activeBundleBytes, skill.activeDigest),
 			),
@@ -342,18 +332,13 @@ export function createSkillRepo(db: LeitwerkDb) {
 			for (const id of ids) add(id);
 			return [...resolved.values()];
 		},
-		reconcile(imported: readonly ImportedSkill[]): void {
-			const timestamp = now();
-			const configured = new Set(imported.map((item) => item.skillId));
-			for (const old of db.select().from(skills).all()) {
-				if (old.registrationKind === "configuration" && !configured.has(old.id)) {
-					db.update(skills)
-						.set({ activeRevisionId: null, updatedAt: timestamp })
-						.where(eq(skills.id, old.id))
-						.run();
-				}
-			}
-			for (const item of imported) activateSkill(db, item, "configuration", timestamp);
+		deactivateConfiguredSkills(): void {
+			db.update(skills)
+				.set({ activeRevisionId: null, updatedAt: now() })
+				.where(
+					and(eq(skills.registrationKind, "configuration"), isNotNull(skills.activeRevisionId)),
+				)
+				.run();
 		},
 		backfillDependencies(): void {
 			for (const revision of db.select().from(skillRevisions).all()) {
@@ -393,7 +378,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 					label: item.label,
 					description: item.description,
 					sourcePath: item.sourcePath,
-					sourceRevision: item.sourceRevision ?? "",
+					sourceRevision: item.sourceRevision,
 					bundleDigest: item.bundle.digest,
 					bundleBytes: Buffer.from(item.bundle.bytes),
 					discoveredAt: timestamp,
@@ -444,10 +429,6 @@ export function createSkillRepo(db: LeitwerkDb) {
 						`Remote skill '${requestedRepositoryId ? `${requestedRepositoryId}/` : ""}${id}' is no longer available`,
 					);
 				}
-				const current = db.select().from(skills).where(eq(skills.id, id)).get();
-				if (current?.activeRevisionId && current.registrationKind === "configuration") {
-					throw new Error(`Skill '${id}' is managed by configuration`);
-				}
 				visiting.add(id);
 				const markdown = skillMarkdown(id, candidate.bundleBytes, candidate.bundleDigest);
 				for (const dependencyId of referencedSkillIds(markdown, availableIds)) {
@@ -464,7 +445,6 @@ export function createSkillRepo(db: LeitwerkDb) {
 						bundle: { digest: candidate.bundleDigest, bytes: candidate.bundleBytes },
 						sourceRevision: candidate.sourceRevision,
 					},
-					"catalog",
 					timestamp,
 					markdown,
 				);
@@ -479,7 +459,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 		},
 		remove(skillId: string): boolean {
 			const current = db.select().from(skills).where(eq(skills.id, skillId)).get();
-			if (!current?.activeRevisionId || current.registrationKind !== "catalog") return false;
+			if (!current?.activeRevisionId) return false;
 			db.update(skills)
 				.set({ activeRevisionId: null, updatedAt: now() })
 				.where(eq(skills.id, skillId))

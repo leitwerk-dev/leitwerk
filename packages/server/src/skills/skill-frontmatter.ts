@@ -1,17 +1,13 @@
-import { parse as parseYaml } from "yaml";
+import { parseFrontmatter, type SkillFrontmatter } from "@earendil-works/pi-coding-agent";
 
-function frontmatter(markdown: string): Record<string, unknown> | null {
-	if (!markdown.startsWith("---")) return null;
-	const end = markdown.indexOf("\n---", 3);
-	if (end < 0) return null;
+export function skillFrontmatter(markdown: string): SkillFrontmatter {
 	try {
-		const parsed = parseYaml(markdown.slice(3, end));
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+		return parseFrontmatter<SkillFrontmatter>(markdown).frontmatter;
 	} catch {
-		return null;
+		return {};
 	}
 }
 
 export function isSkillModelInvocable(markdown: string): boolean {
-	return frontmatter(markdown)?.["disable-model-invocation"] !== true;
+	return skillFrontmatter(markdown)["disable-model-invocation"] !== true;
 }
