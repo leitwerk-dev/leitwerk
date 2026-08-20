@@ -49,7 +49,7 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 }
 </script>
 
-<PageHeader title={header.title} {titleId}>
+<PageHeader title={header.title} {titleId} compactOnMobile={true}>
 	{#snippet titleSuffix()}
 		{#if header.processDisplayName}
 			<span class="page-header-process-name"> · {header.processDisplayName}</span>
@@ -74,25 +74,27 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 				{status.label}
 			</span>
 		{/if}
-		<button
-			type="button"
-			class="page-header-button process-info-trigger"
-			data-pressable="true"
-			onclick={onToggleProcessInfo}
-			aria-expanded={isProcessInfoOpen}
-			aria-controls="process-info-overlay"
-			disabled={!detail}
-		>
-			Process info
-		</button>
-		<ProcessActionsMenu
-			{instanceId}
-			lifecycleStatus={detail?.process.lifecycleStatus ?? null}
-			disabled={!detail}
-			hasSessionFile={detail?.session.signature !== null}
-			processLabel={header.title}
-			{onDeleted}
-		/>
+		<div class="desktop-process-controls">
+			<button
+				type="button"
+				class="page-header-button process-info-trigger"
+				data-pressable="true"
+				onclick={onToggleProcessInfo}
+				aria-expanded={isProcessInfoOpen}
+				aria-controls="process-info-overlay"
+				disabled={!detail}
+			>
+				Process info
+			</button>
+			<ProcessActionsMenu
+				{instanceId}
+				lifecycleStatus={detail?.process.lifecycleStatus ?? null}
+				disabled={!detail}
+				hasSessionFile={detail?.session.signature !== null}
+				processLabel={header.title}
+				{onDeleted}
+			/>
+		</div>
 	{/snippet}
 </PageHeader>
 
@@ -157,11 +159,28 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 		font-weight: 520;
 	}
 
+	.desktop-process-controls {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+	}
+
 	@media (max-width: 720px) {
-		.process-header-status,
-		.process-info-trigger {
-			width: 100%;
-			justify-content: center;
+		.desktop-process-controls,
+		.page-header-process-name {
+			display: none;
+		}
+
+		.process-header-status {
+			gap: 5px;
+			padding: 0;
+			font-size: var(--type-caption);
+		}
+
+		.process-header-status-mark {
+			width: 16px;
+			height: 16px;
+			font-size: var(--type-label);
 		}
 	}
 </style>

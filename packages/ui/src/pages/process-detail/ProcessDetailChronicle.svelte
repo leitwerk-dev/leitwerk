@@ -15,6 +15,8 @@ import {
 	moveChronicleAnchorByOffset,
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
+import ModalShell from "../../components/ModalShell.svelte";
+import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
 	ProcessDetailData,
 	ProcessExternalTriggerSummary,
@@ -56,6 +58,9 @@ interface Props {
 	onDismissLaunchWarning: () => void;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onCloseBlockingDetailOverlays: () => void;
+	isProcessInfoOpen: boolean;
+	onToggleProcessInfo: () => void;
+	onDeleted: () => void;
 }
 
 let {
@@ -84,9 +89,21 @@ let {
 	onDismissLaunchWarning,
 	onOpenReasoningDetails,
 	onCloseBlockingDetailOverlays,
+	isProcessInfoOpen,
+	onToggleProcessInfo,
+	onDeleted,
 }: Props = $props();
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
+let mobileQuickNavOpen = $state(false);
+let restoreMobileQuickNavFocus = $state(true);
+
+const processLabel = $derived(
+	detail?.process.title ??
+		detail?.process.externalId ??
+		detail?.process.id ??
+		`Process ${instanceId}`,
+);
 
 const chronicleScroll = createProcessDetailChronicleScroll({
 	get instanceId() {
@@ -109,6 +126,12 @@ const chronicleScroll = createProcessDetailChronicleScroll({
 	},
 	onCloseBlockingDetailOverlays: () => onCloseBlockingDetailOverlays(),
 });
+
+const activeQuickNavItem = $derived(
+	railItems.find((item) => item.anchorId === chronicleScroll.activeAnchorId) ??
+		railItems.at(-1) ??
+		null,
+);
 
 const showCompactActionComposer = $derived(
 	chronicleScroll.showJumpToLatest &&
@@ -144,6 +167,26 @@ function moveActiveAnchorByOffset(offset: number) {
 	}
 }
 
+function openMobileQuickNav() {
+	restoreMobileQuickNavFocus = true;
+	mobileQuickNavOpen = true;
+}
+
+function closeMobileQuickNav(restoreFocus = true) {
+	restoreMobileQuickNavFocus = restoreFocus;
+	mobileQuickNavOpen = false;
+}
+
+function selectMobileQuickNavAnchor(anchorId: string) {
+	chronicleScroll.jumpToAnchor(anchorId);
+	closeMobileQuickNav();
+}
+
+function openProcessInfoFromQuickNav() {
+	closeMobileQuickNav(false);
+	onToggleProcessInfo();
+}
+
 function openDetailedActionForm(actionId: string) {
 	if (actionsController.openActionFormId !== actionId) {
 		actionsController.expandActionForm(actionId);
@@ -152,6 +195,7 @@ function openDetailedActionForm(actionId: string) {
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
+	if (mobileQuickNavOpen) return;
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
@@ -179,15 +223,43 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 <svelte:window onkeydown={handleWindowKeydown} />
 
+<button
+	type="button"
+	class="mobile-quick-nav-trigger"
+	data-action="open-mobile-quick-nav"
+	data-pressable="true"
+	aria-haspopup="dialog"
+	aria-controls="mobile-process-quick-nav"
+	aria-expanded={mobileQuickNavOpen}
+	disabled={!detail || railItems.length === 0}
+	onclick={openMobileQuickNav}
+>
+	<span class="mobile-quick-nav-label">
+		<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+			<path d="M5 5h14M5 12h14M5 19h14"></path>
+			<circle cx="8" cy="5" r="2" fill="var(--chronicle-card-surface)"></circle>
+			<circle cx="15" cy="12" r="2" fill="var(--chronicle-card-surface)"></circle>
+			<circle cx="10" cy="19" r="2" fill="var(--chronicle-card-surface)"></circle>
+		</svg>
+		Quick nav
+	</span>
+	<span class="mobile-quick-nav-current">{activeQuickNavItem?.title ?? "No steps yet"}</span>
+	<svg class="mobile-quick-nav-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="m6 9 6 6 6-6"></path>
+	</svg>
+</button>
+
 <div class="experience-grid">
-	<ChronicleTurnRail
-		{detail}
-		{loading}
-		{error}
-		railItems={railItems}
-		activeAnchorId={chronicleScroll.activeAnchorId}
-		onSelectAnchor={chronicleScroll.jumpToAnchor}
-	/>
+	<div class="desktop-turn-rail">
+		<ChronicleTurnRail
+			{detail}
+			{loading}
+			{error}
+			railItems={railItems}
+			activeAnchorId={chronicleScroll.activeAnchorId}
+			onSelectAnchor={chronicleScroll.jumpToAnchor}
+		/>
+	</div>
 
 	<section
 		class="chronicle"
@@ -297,13 +369,80 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</section>
 </div>
 
+<ModalShell
+	open={mobileQuickNavOpen}
+	titleId="mobile-process-quick-nav-title"
+	closeLabel="Close quick navigation"
+	onClose={closeMobileQuickNav}
+	dataSection="mobile-process-quick-nav"
+	panelId="mobile-process-quick-nav"
+	presentation="bottom-sheet"
+	initialFocus="[aria-current='step']"
+	returnFocus={restoreMobileQuickNavFocus
+		? "[data-action='open-mobile-quick-nav']"
+		: undefined}
+>
+	<header class="mobile-quick-nav-header">
+		<h2 id="mobile-process-quick-nav-title">Process steps</h2>
+		<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+	</header>
+
+	<div class="mobile-quick-nav-rail">
+		<ChronicleTurnRail
+			{detail}
+			{loading}
+			{error}
+			railItems={railItems}
+			activeAnchorId={chronicleScroll.activeAnchorId}
+			onSelectAnchor={selectMobileQuickNavAnchor}
+			headingId="mobile-process-navigation-heading"
+		/>
+	</div>
+
+	<footer class="mobile-quick-nav-utilities">
+		<button
+			type="button"
+			class="mobile-process-info-button"
+			data-pressable="true"
+			onclick={openProcessInfoFromQuickNav}
+			aria-expanded={isProcessInfoOpen}
+			aria-controls="process-info-overlay"
+		>
+			<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+				<circle cx="12" cy="12" r="9"></circle>
+				<path d="M12 11v6M12 7.5h.01"></path>
+			</svg>
+			Process info
+		</button>
+		<ProcessActionsMenu
+			{instanceId}
+			lifecycleStatus={detail?.process.lifecycleStatus ?? null}
+			disabled={!detail}
+			hasSessionFile={detail?.session.signature !== null}
+			{processLabel}
+			{onDeleted}
+			presentation="sheet"
+			idSuffix="mobile"
+		/>
+	</footer>
+</ModalShell>
+
 <style>
+	.mobile-quick-nav-trigger {
+		display: none;
+	}
+
 	.experience-grid {
 		display: grid;
 		grid-template-columns: minmax(196px, 220px) minmax(0, 1fr);
 		gap: var(--space-md);
 		width: 100%;
 		flex: 1 1 auto;
+		min-height: 0;
+	}
+
+	.desktop-turn-rail {
+		min-width: 0;
 		min-height: 0;
 	}
 
@@ -440,6 +579,165 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	@media (max-width: 720px) {
+		.mobile-quick-nav-trigger {
+			display: grid;
+			grid-template-columns: auto minmax(0, 1fr) auto;
+			align-items: center;
+			gap: var(--space-xs);
+			width: 100%;
+			min-height: 42px;
+			padding: 0 var(--space-sm);
+			border: 1px solid color-mix(in srgb, var(--chronicle-accent) 22%, var(--chronicle-border) 78%);
+			border-radius: var(--radius-md);
+			background: color-mix(in srgb, var(--chronicle-card-surface) 92%, var(--chronicle-accent) 8%);
+			color: var(--chronicle-text);
+			font: inherit;
+			cursor: pointer;
+		}
+
+		.mobile-quick-nav-trigger:hover:not(:disabled) {
+			border-color: color-mix(in srgb, var(--chronicle-accent) 45%, var(--chronicle-border) 55%);
+			background: color-mix(in srgb, var(--chronicle-card-surface) 86%, var(--chronicle-accent) 14%);
+		}
+
+		.mobile-quick-nav-trigger:focus-visible {
+			outline: 2px solid var(--chronicle-accent);
+			outline-offset: 2px;
+		}
+
+		.mobile-quick-nav-trigger:disabled {
+			opacity: 0.56;
+			cursor: default;
+		}
+
+		.mobile-quick-nav-label {
+			display: inline-flex;
+			align-items: center;
+			gap: 7px;
+			font-size: var(--type-body-sm);
+			font-weight: 720;
+			white-space: nowrap;
+		}
+
+		.mobile-quick-nav-current {
+			overflow: hidden;
+			color: var(--chronicle-text-muted);
+			font-size: var(--type-caption);
+			font-weight: 560;
+			text-align: right;
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.mobile-quick-nav-chevron {
+			color: var(--chronicle-text-faint);
+		}
+
+		.desktop-turn-rail {
+			display: none;
+		}
+
+		.mobile-quick-nav-header {
+			display: grid;
+			gap: 3px;
+			padding: 0 52px 12px 2px;
+			border-bottom: 1px solid var(--chronicle-border);
+		}
+
+		.mobile-quick-nav-header h2,
+		.mobile-quick-nav-header p {
+			margin: 0;
+		}
+
+		.mobile-quick-nav-header h2 {
+			font-size: var(--type-title-sm);
+			line-height: 1.2;
+			color: var(--chronicle-text);
+		}
+
+		.mobile-quick-nav-header p {
+			margin-top: 3px;
+			max-width: 32ch;
+			overflow: hidden;
+			color: var(--chronicle-text-muted);
+			font-size: var(--type-caption);
+			text-overflow: ellipsis;
+			white-space: nowrap;
+		}
+
+		.mobile-process-info-button:focus-visible {
+			outline: 2px solid var(--chronicle-accent);
+			outline-offset: 2px;
+		}
+
+		.mobile-quick-nav-rail {
+			flex: 1 1 auto;
+			min-height: 0;
+			overflow: hidden;
+			padding: 10px 0 8px;
+		}
+
+		.mobile-quick-nav-rail :global(.turn-rail) {
+			height: 100%;
+			padding-right: 0;
+			border-right: 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-list) {
+			overflow-x: hidden;
+			overflow-y: auto;
+			scroll-snap-type: none;
+			scrollbar-gutter: auto;
+			padding: var(--space-2xs) var(--space-2xs) var(--space-xs) 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-track) {
+			flex-direction: column;
+			gap: 2px;
+			width: 100%;
+			min-width: 0;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-track::before) {
+			display: block;
+		}
+
+		.mobile-quick-nav-rail :global(.rail-item) {
+			min-width: 0;
+			scroll-snap-align: none;
+			padding: 6px var(--space-xs);
+		}
+
+		.mobile-quick-nav-utilities {
+			display: flex;
+			align-items: center;
+			gap: var(--space-xs);
+			padding-top: 10px;
+			border-top: 1px solid var(--chronicle-border);
+		}
+
+		.mobile-process-info-button {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 7px;
+			flex: 1 1 auto;
+			min-height: 40px;
+			padding: 0 var(--space-sm);
+			border: 1px solid var(--chronicle-border);
+			border-radius: 10px;
+			background: var(--chronicle-card-surface);
+			color: var(--chronicle-text);
+			font: inherit;
+			font-size: var(--type-body-sm);
+			font-weight: 650;
+			cursor: pointer;
+		}
+
+		.mobile-process-info-button:hover {
+			background: var(--chronicle-panel-muted);
+		}
+
 		.warning-banner {
 			flex-direction: column;
 		}
@@ -457,4 +755,5 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			max-width: calc(100% - (2 * var(--space-sm)));
 		}
 	}
+
 </style>

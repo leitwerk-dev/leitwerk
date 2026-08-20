@@ -512,6 +512,9 @@ function openNextReasoningDetails() {
 			onDismissLaunchWarning={dismissLaunchWarning}
 			onOpenReasoningDetails={openReasoningDetails}
 			onCloseBlockingDetailOverlays={closeBlockingDetailOverlays}
+			isProcessInfoOpen={isProcessInfoOverlayOpen}
+			onToggleProcessInfo={toggleProcessInfoOverlay}
+			onDeleted={handleProcessDeleted}
 		/>
 	</div>
 

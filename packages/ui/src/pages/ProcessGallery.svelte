@@ -168,8 +168,6 @@ function handleGalleryKeydown(event: KeyboardEvent) {
 		flex-direction: column;
 		gap: clamp(var(--space-lg), 2.8vw, var(--space-2xl));
 		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
 		padding: var(--space-2xs) 2px var(--space-xl);
 	}
 

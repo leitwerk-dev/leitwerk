@@ -7,12 +7,24 @@ interface Props {
 	subtitle?: string | null;
 	actions?: Snippet;
 	titleSuffix?: Snippet;
+	compactOnMobile?: boolean;
 }
 
-let { title, titleId = undefined, subtitle = null, actions, titleSuffix }: Props = $props();
+let {
+	title,
+	titleId = undefined,
+	subtitle = null,
+	actions,
+	titleSuffix,
+	compactOnMobile = false,
+}: Props = $props();
 </script>
 
-<header class="page-header" data-section="page-header">
+<header
+	class="page-header"
+	data-section="page-header"
+	data-mobile-layout={compactOnMobile ? "compact" : undefined}
+>
 	<div class="page-header-row">
 		<div class="page-header-copy">
 			<h1 id={titleId}>
@@ -141,6 +153,21 @@ let { title, titleId = undefined, subtitle = null, actions, titleSuffix }: Props
 			font-size: 1.02rem;
 			line-height: 1.16;
 			white-space: normal;
+		}
+
+		.page-header[data-mobile-layout="compact"] .page-header-row,
+		.page-header[data-mobile-layout="compact"] .page-header-actions {
+			flex-direction: row;
+			align-items: center;
+		}
+
+		.page-header[data-mobile-layout="compact"] .page-header-actions {
+			width: auto;
+			flex: 0 0 auto;
+		}
+
+		.page-header[data-mobile-layout="compact"] h1 {
+			white-space: nowrap;
 		}
 	}
 </style>

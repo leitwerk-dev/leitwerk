@@ -276,8 +276,7 @@ function handleScheduled(futureExecution: FutureLaunchSummary) {
 		display: flex;
 		flex-direction: column;
 		width: 100%;
-		height: 100%;
-		min-height: 0;
+		min-height: 100%;
 	}
 
 	.configure-phase {
@@ -285,8 +284,6 @@ function handleScheduled(futureExecution: FutureLaunchSummary) {
 		flex-direction: column;
 		gap: var(--space-lg);
 		min-height: 0;
-		overflow-y: auto;
-		overscroll-behavior: contain;
 		padding: var(--space-2xs) 2px var(--space-xl);
 		outline: none;
 	}

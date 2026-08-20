@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Primary users are platform and developer-tools operators supervising multiple AI-assisted software delivery processes. They launch processes, monitor active work, inspect history, understand the current turn, intervene with guidance or actions, and recover when something goes wrong. The highest-pressure surface is the process detail view, where users need situational awareness and confident control without being forced to reconstruct state from scattered signals.
+Primary users are platform and developer-tools operators supervising multiple AI-assisted software delivery processes. They launch processes, monitor active work, inspect history, understand the current turn, intervene with guidance or actions, and recover when something goes wrong. The highest-pressure surface is the process detail view, where users need situational awareness and confident control without being forced to reconstruct state from scattered signals. On mobile, process detail is primarily a review surface: the chronicle should retain the viewport while navigation and infrequent controls stay quickly available on demand.
 
 ## Product Purpose
 

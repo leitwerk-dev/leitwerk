@@ -146,8 +146,6 @@ $effect(() => {
 		flex-direction: column;
 		gap: 16px;
 		padding: var(--space-2xs) 2px var(--space-xl);
-		overflow-y: auto;
-		overscroll-behavior: contain;
 	}
 
 	.state-card,

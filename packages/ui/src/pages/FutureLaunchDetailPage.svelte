@@ -307,9 +307,7 @@ async function confirmCancel() {
 <style>
 	.future-launch-page {
 		width: 100%;
-		height: 100%;
-		min-height: 0;
-		overflow-y: auto;
+		min-height: 100%;
 		padding: var(--space-2xs) 0 var(--space-xl);
 	}
 

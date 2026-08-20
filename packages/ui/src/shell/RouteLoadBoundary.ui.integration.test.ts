@@ -31,6 +31,27 @@ describe("RouteLoadBoundary", () => {
 		resolveLoad(loadedRoute);
 		await tick();
 		expect(document.body.textContent).toContain("Loaded route");
+		expect(document.querySelector('[data-role="route-viewport"]')?.getAttribute("data-mode")).toBe(
+			"page",
+		);
+	});
+
+	it("keeps workspace routes in a contained viewport", async () => {
+		mounted.push(
+			mount(RouteLoadBoundary, {
+				target: document.body,
+				props: {
+					load: Promise.resolve(loadedRoute),
+					props: { text: "Workspace route" },
+					viewportMode: "workspace",
+				},
+			}),
+		);
+		await tick();
+
+		expect(document.querySelector('[data-role="route-viewport"]')?.getAttribute("data-mode")).toBe(
+			"workspace",
+		);
 	});
 
 	it("offers recovery when a route chunk rejects", async () => {
