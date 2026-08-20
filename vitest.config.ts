@@ -76,8 +76,10 @@ export default defineConfig({
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					// Several unit suites bundle temporary Pi resources. More than two workers
-					// starve their 5s budgets on shared CI runners even when the same tests take
-					// only milliseconds in isolation.
+					// starve their budgets on shared CI runners even when the same tests take
+					// only milliseconds in isolation. The full gate also runs inside 1-CPU
+					// delivery workers, where setup can exceed Vitest's 5s default.
+					testTimeout: 15_000,
 					maxWorkers: 2,
 					include: [
 						"packages/*/src/**/*.test.ts",
@@ -97,8 +99,9 @@ export default defineConfig({
 					name: "integration",
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
-					// Integration files start servers, workers, and resource bundlers; keep
-					// concurrency bounded so their default timeout remains meaningful.
+					// Integration files start servers, workers, and resource bundlers. Keep
+					// concurrency and timeouts bounded for shared CI and 1-CPU delivery workers.
+					testTimeout: 15_000,
 					maxWorkers: 2,
 					include: [
 						"packages/*/src/**/*.integration.test.ts",
@@ -118,6 +121,7 @@ export default defineConfig({
 				test: {
 					name: "e2e",
 					execArgv: sharedExecArgv,
+					testTimeout: 15_000,
 					maxWorkers: 2,
 					setupFiles: sharedSetupFiles,
 					include: ["tests/**/*.e2e.test.ts", ...composedE2eTests],
