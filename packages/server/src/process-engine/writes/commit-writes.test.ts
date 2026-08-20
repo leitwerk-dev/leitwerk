@@ -526,7 +526,6 @@ describe("record writes", () => {
 							payload: {
 								turnId: "implementation_review",
 								acceptanceState: "accepted",
-								reviewSubject: "implementation",
 							},
 						},
 					},

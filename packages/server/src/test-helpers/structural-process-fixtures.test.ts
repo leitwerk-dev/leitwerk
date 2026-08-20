@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import {
 	createStructuralProcessState,
@@ -9,14 +8,12 @@ import {
 describe("structural-process-fixtures", () => {
 	it("merges semantic entry ref overrides onto the empty structural state", () => {
 		const state = createStructuralProcessState({
-			reviewSubject: createReviewSubject("plan"),
 			semanticEntryRefs: {
 				rootEntry: { entryId: "root-user", turnRecordId: null },
 				plan: { entryId: "assistant-plan", turnRecordId: "trn_plan_1" },
 			},
 		});
 
-		expect(state.reviewSubject).toEqual({ kind: "plan" });
 		expect(state.semanticEntryRefs.rootEntry).toEqual({
 			entryId: "root-user",
 			turnRecordId: null,
@@ -37,7 +34,6 @@ describe("structural-process-fixtures", () => {
 		});
 
 		expect(JSON.parse(stateJson)).toEqual({
-			reviewSubject: null,
 			productRefs: {},
 			semanticEntryRefs: {
 				rootEntry: null,
@@ -50,13 +46,11 @@ describe("structural-process-fixtures", () => {
 
 	it("parses structural process state through the shared codec", () => {
 		const state = structuralProcessStateCodec.parse({
-			reviewSubject: { kind: "implementation" },
 			semanticEntryRefs: {
 				review: { entryId: "review-entry", turnRecordId: "trn_review_1" },
 			},
 		});
 
-		expect(state.reviewSubject).toEqual({ kind: "implementation" });
 		expect(state.semanticEntryRefs.review).toEqual({
 			entryId: "review-entry",
 			turnRecordId: "trn_review_1",

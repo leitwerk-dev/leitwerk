@@ -1,6 +1,7 @@
 import {
 	createEmptyStructuralProcessState,
 	type ExternalActionSource,
+	type ExternalSourceResolveContext,
 	flow,
 } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it, vi } from "vitest";
@@ -46,7 +47,12 @@ function createLlmTestConfig() {
 
 const prepareSuccessfulLlmTurnStarts = createSuccessfulLlmTurnStarts();
 
-function createHarness(options: { fileDoneSource?: ExternalActionSource } = {}) {
+function createHarness(
+	options: {
+		fileDoneSource?: ExternalActionSource;
+		fileDoneWhen?: (ctx: ExternalSourceResolveContext) => boolean;
+	} = {},
+) {
 	const processDef = flow
 		.process<Record<string, never>, Record<string, unknown>>("external_source_process")
 		.displayName("External Source Process")
@@ -57,17 +63,17 @@ function createHarness(options: { fileDoneSource?: ExternalActionSource } = {}) 
 		})
 		.initialState(() => ({
 			...createEmptyStructuralProcessState(),
-			reviewSubject: { kind: "plan" },
 		}))
 		.turn(
 			flow
 				.human<Record<string, never>, Record<string, unknown>>("review")
 				.description("Review")
-				.review("plan")
 				.action("accept", (action) => action.label("Accept").acceptanceState("accepted").complete())
-				.externalAction("file_done", options.fileDoneSource ?? source(), (external) =>
-					external.label("File done").description("Complete from file").complete(),
-				)
+				.externalAction("file_done", options.fileDoneSource ?? source(), (external) => {
+					external.label("File done").description("Complete from file");
+					if (options.fileDoneWhen) external.when(options.fileDoneWhen);
+					return external.complete();
+				})
 				.externalAction(
 					"file_instruction",
 					source({ kind: "example.file.instruction", inputMode: "instruction" }),
@@ -122,12 +128,25 @@ function createWaitingProcess(deps: ReturnType<typeof createTestDeps>) {
 		paramsJson: "{}",
 		stateJson: JSON.stringify({
 			...createEmptyStructuralProcessState(),
-			reviewSubject: { kind: "plan" },
 		}),
 	});
 }
 
 describe("ExternalSourceService", () => {
+	it("does not arm an external action whose process condition is false", async () => {
+		const { deps, service } = createHarness({ fileDoneWhen: () => false });
+		const process = createWaitingProcess(deps);
+
+		await service.reconcileAllArmings();
+
+		expect(service.listArmed("example.file.presence")).toEqual([]);
+		expect(
+			deps.events
+				.listByInstance(process.id, 10)
+				.some((event) => event.data.armingId === "review:file_done"),
+		).toBe(false);
+	});
+
 	it("lists selected-turn external action armings and completes them", async () => {
 		const { deps, service } = createHarness();
 		const process = createWaitingProcess(deps);
@@ -441,7 +460,6 @@ describe("ExternalSourceService", () => {
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: { kind: "plan" },
 			}),
 		});
 		await service.drainQueued(process.id);
@@ -482,7 +500,6 @@ describe("ExternalSourceService", () => {
 			lifecycleStatus: "waiting",
 			stateJson: JSON.stringify({
 				...createEmptyStructuralProcessState(),
-				reviewSubject: { kind: "plan" },
 			}),
 		});
 		await service.drainQueued(process.id);

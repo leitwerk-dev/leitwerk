@@ -47,6 +47,7 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 			},
 			getById: () => null,
 			listAll: () => [],
+			update: () => null,
 		},
 		projects: {
 			create: () => {

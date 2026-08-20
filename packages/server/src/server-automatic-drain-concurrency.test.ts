@@ -1,8 +1,8 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	defineProcess,
 	emptyParamsCodec,
 	humanTurn,
+	type ProcessServerRuntimeContext,
 	routeTurnOutcomes,
 	serverAutomaticTurn,
 } from "@leitwerk-dev/process-sdk";
@@ -41,7 +41,7 @@ async function nextMacrotask(): Promise<void> {
 }
 
 function createHarness(options: {
-	run: () => Promise<{
+	run: (ctx: ProcessServerRuntimeContext<Record<string, never>, Record<string, never>>) => Promise<{
 		outcome: "done";
 		params?: Record<string, unknown>;
 		markdown?: string | null;
@@ -67,13 +67,12 @@ function createHarness(options: {
 				done: {
 					to: "review",
 					effect: ({ ctx }) => ({
-						state: { ...ctx.state, reviewSubject: createReviewSubject("plan") },
+						state: { ...ctx.state },
 					}),
 				},
 			}),
 			review: humanTurn({
 				description: "Review",
-				reviewSubject: createReviewSubject("plan"),
 				actions: {
 					finish: { label: "Finish", acceptanceState: "accepted", complete: true },
 					run_auto: { label: "Run auto", acceptanceState: "neutral", to: "auto" },
@@ -81,7 +80,6 @@ function createHarness(options: {
 			}),
 			other: humanTurn({
 				description: "Other",
-				reviewSubject: createReviewSubject("plan"),
 				actions: { finish: { label: "Finish", acceptanceState: "accepted", complete: true } },
 			}),
 		},
@@ -205,7 +203,7 @@ describe("server-automatic drain concurrency", () => {
 					processId: "server_auto_test",
 					selectedTurnId: "review",
 					lifecycleStatus: "waiting",
-					stateJson: JSON.stringify({ reviewSubject: createReviewSubject("plan") }),
+					stateJson: JSON.stringify({}),
 				}).id,
 			execute: (harness, instanceId) =>
 				harness.commands.executeProcessAction(instanceId, "run_auto", {}),
@@ -380,6 +378,43 @@ describe("server-automatic drain concurrency", () => {
 			errorSummary: "resume failed",
 			errorClass: "infrastructure",
 		});
+	});
+
+	it("records a safe progress detail when a server-automatic handler fails", async () => {
+		const harness = createHarness({
+			run: async (ctx) => {
+				ctx.reportProgress?.({
+					title: "Delivery",
+					steps: [{ id: "publish", label: "Publish", status: "in_progress" }],
+				});
+				throw new Error("provider token secret-value");
+			},
+		});
+		const { process } = createRunningServerAutomaticTurn(harness, {
+			turnRecordId: "trn_server_auto_safe_progress",
+		});
+
+		await harness.commands.drainServerAutomaticTurns(process.id);
+
+		const progressEvents = harness.deps.events
+			.listByInstanceTurnRecordEventTypes(process.id, "trn_server_auto_safe_progress", [
+				"turn.progress",
+			])
+			.map((event) => event.data);
+		expect(progressEvents).toHaveLength(2);
+		const failedProgress = progressEvents.at(-1);
+		expect(failedProgress).toMatchObject({
+			report: {
+				steps: [
+					{
+						id: "publish",
+						status: "failed",
+						detail: "Automatic turn failed. See the turn error for details.",
+					},
+				],
+			},
+		});
+		expect(JSON.stringify(failedProgress)).not.toContain("secret-value");
 	});
 
 	it("parks active server-automatic turns when the current turn record cannot be resumed", async () => {

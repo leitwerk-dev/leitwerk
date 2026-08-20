@@ -36,7 +36,6 @@ const snapshotProcess = defineProcess<
 	turns: {
 		snapshot: humanTurn({
 			description: "Snapshot",
-			reviewSubject: { kind: "plan" },
 			actions: { noop: { label: "No-op", acceptanceState: "accepted", complete: true } },
 		}),
 	},

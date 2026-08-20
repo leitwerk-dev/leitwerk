@@ -53,6 +53,7 @@ export function buildHostCapabilities(input: {
 		commitMessages: input.config.commit_messages,
 		processes: input.baseDeps.processes,
 		projects: input.baseDeps.projects,
+		skills: input.baseDeps.skills,
 		processSkills: input.baseDeps.processSkills,
 		handoffDedupKeys: input.baseDeps.handoffDedupKeys,
 		futureExecutions: input.baseDeps.futureExecutions,

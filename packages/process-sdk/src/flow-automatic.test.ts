@@ -7,6 +7,60 @@ import { describe, expect, it } from "vitest";
 import { flow } from "./flow.js";
 
 describe("flow automatic turns", () => {
+	it("can wait on itself and expose external actions as graph edges", async () => {
+		const source = {
+			kind: "test.event",
+			config: {},
+			resolve: () => ({ key: "value" }),
+		};
+		const process = flow
+			.process("awaitable_automatic")
+			.displayName("Awaitable automatic")
+			.entry("deliver")
+			.codecs({
+				params: { parse: () => ({}), serialize: (value) => value },
+				state: { parse: () => ({}), serialize: (value) => value },
+			})
+			.initialState(() => ({}))
+			.turn(
+				flow
+					.automatic("deliver")
+					.description("Deliver")
+					.run(() => ({ outcome: "awaiting" }))
+					.outcome("awaiting", (outcome) => outcome.description("Await events").wait())
+					.outcome("done", (outcome) => outcome.description("Done").complete())
+					.externalAction("resume", source, (external) =>
+						external
+							.when(({ state }) => (state as { ready?: boolean }).ready === true)
+							.to("deliver")
+							.effect(({ state }) => ({ state })),
+					)
+					.externalAction("cancel", source, (external) => external.lifecycleStatus("aborted")),
+			)
+			.define();
+
+		const deliver = process.turns.get("deliver")?.definition;
+		expect(deliver).toMatchObject({
+			kind: "automatic",
+			externalActions: {
+				resume: { when: expect.any(Function), to: "deliver", effect: expect.any(Function) },
+				cancel: { lifecycleStatus: "aborted" },
+			},
+		});
+		if (deliver?.kind !== "automatic") throw new Error("expected automatic turn");
+		expect(deliver.outcomes?.awaiting).toMatchObject({ wait: true });
+	});
+
+	it("rejects a route declared after a waiting outcome", () => {
+		const turn = flow
+			.automatic("deliver")
+			.description("Deliver")
+			.run(() => ({ outcome: "awaiting" }))
+			.outcome("awaiting", (outcome) => outcome.description("Await events").wait().to("deliver"));
+
+		expect(() => turn.definition).toThrow("Waiting outcome cannot declare another route");
+	});
+
 	it("passes FlowAutomaticRunContext directly to run functions", async () => {
 		let receivedFsPath = "";
 		const turn = flow

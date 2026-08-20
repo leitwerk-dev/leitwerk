@@ -90,7 +90,7 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 - **`worker.hello`:** Report worker identity and API version compatibility.
 - **`worker.ready`:** Report workspace bootstrap completion, workspace facts, and loaded resource provenance.
 - **`worker.turn_started`:** Request server acceptance of reserved turn-record identity.
-- **`worker.event`:** Stream Pi diagnostic logs, tool calls, and text deltas.
+- **`worker.event`:** Stream Pi diagnostic logs, tool calls, text deltas, and correlated automatic-turn progress snapshots.
 - **`worker.integration_tool_request`:** Invoke a server-owned tool authorized for the active turn.
 - **`worker.integration_tool_cancel`:** Abort a pending server-owned tool invocation.
 - **`worker.credential_update`:** Compare-and-set a changed durable provider credential against its numbered revision. Null-revision generated material never emits this message.
@@ -115,6 +115,12 @@ reconnect with the same Pi tool-call identity. When the turn stops, the worker s
 `worker.integration_tool_cancel`, the server aborts the execution context signal, and the
 worker restores normal prompt guards. Implementations must pass that signal to cancellable
 provider operations. An external write already committed by its provider cannot be rolled back.
+
+Worker automatic turns use the same integration-tool protocol. Their call identities derive
+from the accepted turn record and deterministic call order, preserving reconnect replay and
+stale-turn rejection. Automatic progress snapshots use `turn.progress` worker events. The
+server accepts them only for the current running turn record, stores them as durable process
+events, and asks connected browsers to rebuild their compact snapshot.
 
 ---
 

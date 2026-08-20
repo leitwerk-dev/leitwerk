@@ -694,7 +694,6 @@ describe("extension catalog test helpers", () => {
 							}),
 							plan_review: humanTurn({
 								description: "Review the generated plan",
-								reviewSubject: { kind: "plan" },
 								actions: {
 									approve_plan: {
 										label: "Approve plan",

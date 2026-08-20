@@ -47,6 +47,10 @@ export type {
 	TurnFailureCode,
 	TurnId,
 	TurnOutcomePayload,
+	TurnProgressLink,
+	TurnProgressReport,
+	TurnProgressStep,
+	TurnProgressStepStatus,
 	TurnStartContinuation,
 	TurnStartKind,
 	TurnStartPreparationFailureCode,
@@ -136,14 +140,6 @@ export {
 	type RepoLocatorKind,
 } from "./repo-locator.js";
 export {
-	createReviewSubject,
-	isReviewSubjectKind,
-	parseReviewSubject,
-	REVIEW_SUBJECT_KINDS,
-	type ReviewSubject,
-	type ReviewSubjectKind,
-} from "./review-subject.js";
-export {
 	assertValidProcessProductName,
 	createEmptyProcessProductRefs,
 	createEmptyProcessSemanticEntryRefs,
@@ -178,6 +174,10 @@ export {
 	type TurnAnnotationReferenceRole,
 	type TurnRecordAnnotationReference,
 } from "./turn-annotations.js";
+export {
+	AUTOMATIC_TURN_FAILED_PROGRESS_DETAIL,
+	failActiveTurnProgress,
+} from "./turn-progress.js";
 export {
 	buildFailedTurnRecoveryMetadata,
 	CONTINUE_PROMPT_METADATA_KEY,

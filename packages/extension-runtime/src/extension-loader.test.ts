@@ -604,7 +604,6 @@ describe("buildExtensionCatalog", () => {
 				}),
 				decision: humanTurn({
 					description: "Decision",
-					reviewSubject: { kind: "plan" },
 					actions: {
 						approve: {
 							label: "Approve",

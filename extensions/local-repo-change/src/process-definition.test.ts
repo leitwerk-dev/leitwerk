@@ -311,7 +311,6 @@ describe("localRepoChangeProcess", () => {
 			{
 				actionId: localRepoChangeActionIds.requestRevision,
 				selectedTurnId: implementationDecision.id,
-				reviewSubject: implementationDecision.reviewSubject,
 				message: "Please tighten the implementation.",
 				expectedTurnId: "implement",
 				expectedTrigger: "request_revision",
@@ -320,7 +319,6 @@ describe("localRepoChangeProcess", () => {
 			{
 				actionId: localRepoChangeActionIds.requestReviewChanges,
 				selectedTurnId: implementationReviewFeedback.id,
-				reviewSubject: implementationReviewFeedback.reviewSubject,
 				message: "Focus on the rollout risk.",
 				expectedTurnId: "review_implementation",
 				expectedTrigger: "request_review_changes",
@@ -338,7 +336,6 @@ describe("localRepoChangeProcess", () => {
 				{ message: spec.message },
 				testContext({
 					selectedTurnId: spec.selectedTurnId,
-					state: createState({ reviewSubject: spec.reviewSubject }),
 					transition: (next) => transitions.push(next as Record<string, unknown>),
 					queueInput: (input) => queued.push(input as Record<string, unknown>),
 				}),
@@ -369,9 +366,7 @@ describe("localRepoChangeProcess", () => {
 		for (const spec of [
 			{
 				selectedTurnId: planReviewFeedback.id,
-				reviewSubject: planReviewFeedback.reviewSubject,
 				state: createState({
-					reviewSubject: planReviewFeedback.reviewSubject,
 					semanticEntryRefs: { ...createEmptyStructuralProcessState().semanticEntryRefs, review },
 				}),
 				readSemanticTurnResultMarkdown: (ref: string) =>
@@ -383,9 +378,7 @@ describe("localRepoChangeProcess", () => {
 			},
 			{
 				selectedTurnId: implementationReviewFeedback.id,
-				reviewSubject: implementationReviewFeedback.reviewSubject,
 				state: createState({
-					reviewSubject: implementationReviewFeedback.reviewSubject,
 					semanticEntryRefs: { ...createEmptyStructuralProcessState().semanticEntryRefs, review },
 				}),
 				readSemanticTurnResultMarkdown: (ref: string) =>
@@ -397,9 +390,7 @@ describe("localRepoChangeProcess", () => {
 			},
 			{
 				selectedTurnId: simplificationDecision.id,
-				reviewSubject: simplificationDecision.reviewSubject,
 				state: createState({
-					reviewSubject: simplificationDecision.reviewSubject,
 					productRefs: { "simplification-plan": simplificationPlan },
 				}),
 				readProductTurnResultMarkdown: (productName: string) =>
@@ -430,7 +421,6 @@ describe("localRepoChangeProcess", () => {
 			expect(transitions[0]).toMatchObject({
 				turnId: spec.expectedTurnId,
 				trigger: "accept_review",
-				state: { reviewSubject: null },
 			});
 			expect(queued[0]).toMatchObject({
 				source: "action_prompt",
@@ -476,7 +466,6 @@ describe("localRepoChangeProcess", () => {
 		expect(planTransitions).toEqual([
 			expect.objectContaining({
 				state: expect.objectContaining({
-					reviewSubject: planDecision.reviewSubject,
 					semanticEntryRefs: expect.objectContaining({ review: null }),
 				}),
 			}),
@@ -488,13 +477,11 @@ describe("localRepoChangeProcess", () => {
 				turnId: "review_plan",
 				outcome: "request_changes",
 				markdown: "## Review\n\nTighten the rollout steps.",
-				expectedState: { reviewSubject: planReviewFeedback.reviewSubject },
 			},
 			{
 				turnId: "implement",
 				outcome: "implementation-summary",
 				markdown: "## Implementation\n\nChanged the sidebar.",
-				expectedState: { reviewSubject: implementationDecision.reviewSubject },
 			},
 			{
 				turnId: "commit_and_merge",
@@ -502,7 +489,6 @@ describe("localRepoChangeProcess", () => {
 				params: { headSha: "def456", usedConflictResolution: true },
 				markdown: "## Finalized\n\nPushed the merged HEAD.",
 				expectedState: {
-					reviewSubject: null,
 					finalization: resetLocalRepoChangeFinalizationState({
 						usedConflictResolution: true,
 						finalizationSummaryMarkdown: "## Finalized\n\nPushed the merged HEAD.",
@@ -527,9 +513,11 @@ describe("localRepoChangeProcess", () => {
 					transition: (next) => transitions.push(next as Record<string, unknown>),
 				}),
 			);
-			expect(transitions).toEqual([
-				expect.objectContaining({ state: expect.objectContaining(spec.expectedState) }),
-			]);
+			if ("expectedState" in spec) {
+				expect(transitions).toEqual([
+					expect.objectContaining({ state: expect.objectContaining(spec.expectedState) }),
+				]);
+			}
 		}
 	});
 });

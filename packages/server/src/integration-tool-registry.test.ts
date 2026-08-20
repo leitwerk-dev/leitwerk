@@ -109,7 +109,10 @@ describe("IntegrationToolRegistry", () => {
 });
 
 describe("integration tool request service", () => {
-	it("authorizes the active LLM turn and resolves an optional project", async () => {
+	it.each([
+		"llm",
+		"automatic",
+	] as const)("authorizes the active %s turn and resolves an optional project", async (turnKind) => {
 		const registry = new IntegrationToolRegistry();
 		const execute = registerEcho(registry);
 		const process = {
@@ -136,7 +139,7 @@ describe("integration tool request service", () => {
 				projects: { listByInstance: () => [project] },
 			} as never,
 			processActionRegistry: {
-				getTurnDefinition: () => ({ kind: "llm", integrationTools: ["provider_echo"] }),
+				getTurnDefinition: () => ({ kind: turnKind, integrationTools: ["provider_echo"] }),
 			},
 		});
 

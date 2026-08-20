@@ -67,7 +67,11 @@ const scheduler = {
 	now: () => new Date(),
 };
 
-function execute(process: ResolvedWorkerProcess) {
+function execute(
+	process: ResolvedWorkerProcess,
+	integrationTools: Parameters<typeof executeSelectedTurn>[0]["integrationTools"] = [],
+	emit: Parameters<typeof executeSelectedTurn>[0]["emit"] = () => {},
+) {
 	const session = {
 		resolvedWorkerProcess: process,
 		processSnapshot: processSnapshot(),
@@ -95,12 +99,37 @@ function execute(process: ResolvedWorkerProcess) {
 		targetedInputs: [],
 		scheduler,
 		resultImageTools: { create: () => null },
+		integrationTools,
 		signal: new AbortController().signal,
-		emit() {},
+		emit,
 	});
 }
 
 describe("executeSelectedTurn", () => {
+	it("allows automatic turns to invoke authorized integration tools", async () => {
+		const calls: Array<{ args: Record<string, unknown>; toolCallId: string | undefined }> = [];
+		const result = await execute(
+			automaticProcess(async (run) => {
+				const value = await run.ctx.callIntegrationTool?.("provider_echo", { value: 2 });
+				await run.complete({ outcome: "done", params: { value } });
+			}),
+			[
+				{
+					name: "provider_echo",
+					description: "Echo",
+					parameters: {},
+					async execute(args, context) {
+						calls.push({ args, toolCallId: context?.toolCallId });
+						return 2;
+					},
+				},
+			],
+		);
+
+		expect(calls).toEqual([{ args: { value: 2 }, toolCallId: "turn_1:1:provider_echo" }]);
+		expect(result).toMatchObject({ kind: "outcome", params: { value: 2 } });
+	});
+
 	it("returns an automatic turn outcome directly", async () => {
 		const result = await execute(
 			automaticProcess(async (run) => {
@@ -115,6 +144,37 @@ describe("executeSelectedTurn", () => {
 			params: { value: 1 },
 			meta: { turnRecordId: "turn_1", turnType: "automatic", pathType: "primary" },
 		});
+	});
+
+	it("replaces failure progress with a safe detail", async () => {
+		const emissions: Parameters<Parameters<typeof executeSelectedTurn>[0]["emit"]>[0][] = [];
+		const result = await execute(
+			automaticProcess(async (run) => {
+				run.ctx.reportProgress?.({
+					title: "Delivery",
+					steps: [{ id: "publish", label: "Publish", status: "in_progress" }],
+				});
+				throw new Error("provider token secret-value");
+			}),
+			[],
+			(emission) => emissions.push(emission),
+		);
+
+		expect(result.kind).toBe("failed");
+		expect(emissions).toHaveLength(2);
+		expect(emissions[1]).toMatchObject({
+			kind: "progress",
+			report: {
+				steps: [
+					{
+						id: "publish",
+						status: "failed",
+						detail: "Automatic turn failed. See the turn error for details.",
+					},
+				],
+			},
+		});
+		expect(JSON.stringify(emissions[1])).not.toContain("secret-value");
 	});
 
 	it("returns a failed terminal fact when an automatic handler does not complete", async () => {

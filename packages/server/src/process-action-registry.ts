@@ -1,9 +1,9 @@
 import type {
 	ProcessInstance,
+	ProcessProject,
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnTransition,
-	ReviewSubject,
 } from "@leitwerk-dev/domain";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type {
@@ -19,7 +19,9 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import {
 	createServerProcessBuilder,
+	getExternalActionArmingId,
 	getExternalSourceTransitionId,
+	isAutomaticTurnDefinition,
 	isExternalTurnDefinition,
 	isHumanTurnDefinition,
 	resolveHumanTurnView,
@@ -39,7 +41,6 @@ export interface ResolvedUiHumanTurnAction {
 	kind: "ui_human_action";
 	turnId: string;
 	turnType: "human";
-	reviewSubject: ReviewSubject | null;
 	semanticEntryRefKey: ProcessSemanticEntryRefKey | null;
 	acceptanceState: TurnAcceptanceState;
 }
@@ -48,7 +49,6 @@ export interface ResolvedExternalHumanTriggerAction {
 	kind: "external_human_trigger";
 	turnId: string;
 	turnType: "external";
-	reviewSubject: ReviewSubject | null;
 	semanticEntryRefKey: ProcessSemanticEntryRefKey | null;
 	acceptanceState: TurnAcceptanceState;
 	externalTrigger: { id: string; actionId: string; label: string; description: string };
@@ -84,7 +84,8 @@ export interface ProcessActionRegistry {
 	listVisibleActions(processId: string, ctx: ServerProcessContext): VisibleProcessActionSummary[];
 	getSelectedTurnSummary(
 		processId: string,
-		process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
+		process: ProcessInstance,
+		projects?: readonly ProcessProject[],
 	): ProcessSelectedTurnSummary | null;
 	getServerDefinition(processId: string): BuiltServerProcessDefinition | undefined;
 	getTurnDefinition(
@@ -138,16 +139,6 @@ function getTurnReviewSemanticRef(
 	return "reviewSemanticRef" in turnDef ? (turnDef.reviewSemanticRef ?? null) : null;
 }
 
-function getTurnReviewSubject(turnDef: TurnDefinition<unknown, unknown>): ReviewSubject | null {
-	if (isHumanTurnDefinition(turnDef)) {
-		return turnDef.reviewSubject ?? null;
-	}
-	if (isExternalTurnDefinition(turnDef)) {
-		return turnDef.reviewSubject ?? null;
-	}
-	return turnDef.reviewSubject ?? null;
-}
-
 function getProcessTurnBinding(processDef: ExtensionProcessDefinition | undefined, turnId: string) {
 	return processDef?.turns.get(turnId);
 }
@@ -165,23 +156,18 @@ function resolveCurrentTurnForProcess(
 		return null;
 	}
 
-	const selectedTurnReviewSubject = getTurnReviewSubject(selectedTurn);
-	if (!selectedTurnReviewSubject) {
-		return { turnId: process.selectedTurnId, turnDef: selectedTurn };
-	}
-
-	const { state } = resolveProcessContextData(processDef, process);
-	const currentReviewSubject =
-		(state as { reviewSubject?: ReviewSubject | null }).reviewSubject ?? null;
-	if (!currentReviewSubject || currentReviewSubject.kind === selectedTurnReviewSubject.kind) {
-		return { turnId: process.selectedTurnId, turnDef: selectedTurn };
-	}
-	return null;
+	return { turnId: process.selectedTurnId, turnDef: selectedTurn };
 }
 
 function listExternalTriggers(
 	turnId: string,
 	turnDef: TurnDefinition<unknown, unknown>,
+	ctx: {
+		process: ProcessInstance;
+		projects: readonly ProcessProject[];
+		params: unknown;
+		state: unknown;
+	},
 ): ProcessExternalSourceSummary[] {
 	if (isHumanTurnDefinition(turnDef)) {
 		const view = resolveHumanTurnView({ turnId, turn: turnDef });
@@ -192,14 +178,19 @@ function listExternalTriggers(
 				label: trigger.label,
 				description: trigger.description,
 			})),
-			...view.externalActions.map((action) => ({
-				id: action.id,
-				externalActionId: action.externalActionId,
-				kind: action.sourceKind,
-				sourceKind: action.sourceKind,
-				label: action.label,
-				description: action.description,
-			})),
+			...view.externalActions
+				.filter((action) => {
+					const definition = turnDef.externalActions?.[action.externalActionId];
+					return !definition?.when || definition.when(ctx);
+				})
+				.map((action) => ({
+					id: action.id,
+					externalActionId: action.externalActionId,
+					kind: action.sourceKind,
+					sourceKind: action.sourceKind,
+					label: action.label,
+					description: action.description,
+				})),
 		];
 	}
 	if (isExternalTurnDefinition(turnDef)) {
@@ -209,6 +200,18 @@ function listExternalTriggers(
 			label: transition.source.label ?? null,
 			description: transition.source.description ?? null,
 		}));
+	}
+	if (isAutomaticTurnDefinition(turnDef) && ctx.process.lifecycleStatus === "waiting") {
+		return Object.entries(turnDef.externalActions ?? {})
+			.filter(([, action]) => !action.when || action.when(ctx))
+			.map(([externalActionId, action]) => ({
+				id: getExternalActionArmingId({ turnId, externalActionId }),
+				externalActionId,
+				kind: action.source.kind,
+				sourceKind: action.source.kind,
+				label: action.label ?? action.source.label ?? null,
+				description: action.description ?? action.source.description ?? null,
+			}));
 	}
 	return [];
 }
@@ -249,12 +252,14 @@ function isTurnScopedActionForProcess(
 
 function buildSelectedTurnSummaryForProcess(
 	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
+	process: ProcessInstance,
+	projects: readonly ProcessProject[] = [],
 ): ProcessSelectedTurnSummary | null {
 	const currentTurn = resolveCurrentTurnForProcess(processDef, process);
 	if (!currentTurn) {
 		return null;
 	}
+	const { params, state } = resolveProcessContextData(processDef, process);
 	return {
 		turnId: currentTurn.turnId,
 		kind: currentTurn.turnDef.kind,
@@ -262,7 +267,12 @@ function buildSelectedTurnSummaryForProcess(
 		commentary: isHumanTurnDefinition(currentTurn.turnDef)
 			? (currentTurn.turnDef.commentary ?? null)
 			: null,
-		externalTriggers: listExternalTriggers(currentTurn.turnId, currentTurn.turnDef),
+		externalTriggers: listExternalTriggers(currentTurn.turnId, currentTurn.turnDef, {
+			process,
+			projects,
+			params,
+			state,
+		}),
 	};
 }
 
@@ -423,7 +433,6 @@ function resolveTurnScopedActionForProcess(
 				kind: "ui_human_action",
 				turnId: currentTurn.turnId,
 				turnType: "human",
-				reviewSubject: currentTurn.turnDef.reviewSubject ?? null,
 				semanticEntryRefKey: getTurnReviewSemanticRef(currentTurn.turnDef),
 				acceptanceState: turnAction.acceptanceState,
 			};
@@ -441,7 +450,6 @@ function resolveTurnScopedActionForProcess(
 			kind: "external_human_trigger",
 			turnId: currentTurn.turnId,
 			turnType: "external",
-			reviewSubject: currentTurn.turnDef.reviewSubject ?? null,
 			semanticEntryRefKey: getTurnReviewSemanticRef(currentTurn.turnDef),
 			acceptanceState: matchingVisibleAction.acceptanceState,
 			externalTrigger: {
@@ -512,8 +520,8 @@ export function buildProcessActionRegistry(
 			return visible;
 		},
 
-		getSelectedTurnSummary(processId, process) {
-			return buildSelectedTurnSummaryForProcess(processDefs.get(processId), process);
+		getSelectedTurnSummary(processId, process, projects) {
+			return buildSelectedTurnSummaryForProcess(processDefs.get(processId), process, projects);
 		},
 
 		getServerDefinition(processId) {

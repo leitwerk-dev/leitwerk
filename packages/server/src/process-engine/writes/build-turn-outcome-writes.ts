@@ -237,8 +237,7 @@ export async function buildTurnOutcomeWrites(
 
 	if (
 		candidateProcess.selectedTurnId === input.payload.turnId &&
-		candidateProcess.lifecycleStatus !== "completed" &&
-		candidateProcess.lifecycleStatus !== "aborted" &&
+		candidateProcess.lifecycleStatus === "active" &&
 		!hasExplicitTurnSelectionChange(input.process, effectWrites)
 	) {
 		const outcomeTransition = findOutcomeTransition(

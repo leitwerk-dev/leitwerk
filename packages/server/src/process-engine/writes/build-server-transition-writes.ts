@@ -5,7 +5,6 @@ import { selectedTurnRequiresWorker } from "../turn-worker-requirement.js";
 import {
 	buildTurnSelectionWrites,
 	deriveLifecycleStatusForSelectedTurn,
-	validateReviewSubjectTurnInvariant,
 } from "./build-turn-selection-writes.js";
 import {
 	applyProcessPatchField,
@@ -96,18 +95,6 @@ export function buildServerTransitionWrites<TState = unknown>(
 			? (request.lifecycleStatus ?? process.lifecycleStatus)
 			: targetLifecycleStatus;
 
-	if (effectiveTargetTurnId !== undefined) {
-		const reviewSubjectValidation = validateReviewSubjectTurnInvariant(
-			processGraphs,
-			process,
-			effectiveTargetTurnId,
-			request.state,
-		);
-		if (reviewSubjectValidation) {
-			return reviewSubjectValidation;
-		}
-	}
-
 	const resolvedWorkerIntent = resolveRuntimeWorkerIntent(
 		processGraphs,
 		process,
@@ -120,7 +107,7 @@ export function buildServerTransitionWrites<TState = unknown>(
 		return resolvedWorkerIntent;
 	}
 
-	if (targetTurnId !== undefined && turnChanged) {
+	if (targetTurnId !== undefined) {
 		const selectionWrites = buildTurnSelectionWrites(processGraphs, process, {
 			fromTurnId: process.selectedTurnId,
 			toTurnId: targetTurnId,

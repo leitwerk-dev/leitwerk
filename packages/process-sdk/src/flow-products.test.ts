@@ -97,6 +97,19 @@ describe("flow product publication and consumption", () => {
 		});
 	});
 
+	it("derives the review semantic ref from an outcome-published review product", () => {
+		const turn = flow
+			.llm("review")
+			.description("Review")
+			.buildPrompt(() => "Review")
+			.outcomeTool("request_changes", (tool) =>
+				tool.description("Request changes").markdown("review", { publish: true }).complete(),
+			);
+
+		expect(turn.definition.resultSemanticRef).toBe("review");
+		expect(turn.definition.outcomes?.request_changes?.publishedProduct).toBe("review");
+	});
+
 	it("compiles plan publication as a generic product publication", () => {
 		const turn = flow
 			.llm("generate_plan")
@@ -257,7 +270,6 @@ describe("flow product publication and consumption", () => {
 		const review = flow
 			.human("review")
 			.description("Review")
-			.review("plan")
 			.action("complete", (action) =>
 				action.label("Complete").acceptanceState("accepted").complete(),
 			)
@@ -314,7 +326,6 @@ describe("flow product publication and consumption", () => {
 					flow
 						.human("review")
 						.description("Review")
-						.review("plan")
 						.action("complete", (action) =>
 							action.label("Complete").acceptanceState("accepted").complete(),
 						)
@@ -331,7 +342,6 @@ describe("flow product publication and consumption", () => {
 					flow
 						.human("review")
 						.description("Review")
-						.review("plan")
 						.action("complete", (action) =>
 							action.label("Complete").acceptanceState("accepted").complete(),
 						)
@@ -343,7 +353,6 @@ describe("flow product publication and consumption", () => {
 					flow
 						.human("next_human")
 						.description("Next")
-						.review("plan")
 						.action("complete", (action) =>
 							action.label("Complete").acceptanceState("accepted").complete(),
 						),

@@ -653,6 +653,34 @@ export function runDeterministicFinalization<
 	TParams,
 	TState extends RepositoryChangeFinalizationContextState,
 >(ctx: FlowAutomaticRunContext<TParams, TState>): DeterministicFinalizationResult {
+	const progressSteps = [
+		["validate_checkout", "Validate the repository checkout"],
+		["fetch_base", "Fetch and verify the latest base branch"],
+		["commit_merge", "Commit changes and integrate the base branch"],
+		["publish", "Push the finalized branch"],
+	] as const;
+	const reportProgress = (
+		activeIndex: number | null,
+		completedCount: number,
+		failure?: { index: number; detail: string },
+	) =>
+		ctx.reportProgress({
+			title: "Finalization progress",
+			steps: progressSteps.map(([id, label], index) => ({
+				id,
+				label,
+				status:
+					index === failure?.index
+						? "failed"
+						: index < completedCount
+							? "completed"
+							: index === activeIndex
+								? "in_progress"
+								: "incomplete",
+				...(index === failure?.index ? { detail: failure.detail } : {}),
+			})),
+		});
+	reportProgress(0, 0);
 	const repo = ctx.repo.get("repo");
 	const input: DeterministicFinalizationInput = {
 		repoPath: repo.fsPath,
@@ -676,10 +704,15 @@ export function runDeterministicFinalization<
 		);
 	}
 	assertPostConflictCheckpoint(input, repoPath);
+	reportProgress(1, 1);
 
 	let headSha = currentHeadSha(repoPath);
 	const conflicts = conflictedFiles(repoPath);
 	if (mergeInProgress(repoPath) || conflicts.length > 0) {
+		reportProgress(null, 1, {
+			index: 2,
+			detail: "The checkout already contains merge conflicts",
+		});
 		return {
 			outcome: "merge_conflict",
 			params: {
@@ -697,6 +730,7 @@ export function runDeterministicFinalization<
 	} else if (localSourceRepo?.kind === "bare") {
 		assertLocalBareSourceRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
 	}
+	reportProgress(2, 2);
 
 	const status = workingTreeStatus(repoPath);
 	if (status.dirtyFiles.length > 0) {
@@ -709,6 +743,10 @@ export function runDeterministicFinalization<
 		baseSha,
 	});
 	if (!mergeResult.ok) {
+		reportProgress(null, 2, {
+			index: 2,
+			detail: "Base integration produced merge conflicts",
+		});
 		return {
 			outcome: "merge_conflict",
 			params: {
@@ -719,6 +757,7 @@ export function runDeterministicFinalization<
 		};
 	}
 
+	reportProgress(3, 3);
 	let pushTarget: string;
 	let workspacePushTarget: string | null = null;
 	let sourceOriginPushTarget: string | null = null;
@@ -752,6 +791,7 @@ export function runDeterministicFinalization<
 	}
 	updateLocalBaseRef(repoPath, input.baseBranch);
 	const finalHeadSha = currentHeadSha(repoPath);
+	reportProgress(null, 4);
 	return {
 		outcome: "finalized",
 		params: {

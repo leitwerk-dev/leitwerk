@@ -162,6 +162,7 @@ function createConfig() {
 					labels: { trigger: "use-leitwerk", done: "did-use-leitwerk" },
 					target_branch_label_prefix: "target-branch:",
 					launch: {
+						skills: ["grilling", "code-review"],
 						default_model_profile: "claude_fast",
 						turn_configs: { triage: { model_profile: "local_qwen" } },
 					},
@@ -257,6 +258,7 @@ describe("buildProcessWatcherRegistry", () => {
 			turnConfigs: { triage: { modelProfileId: "local_qwen" } },
 		});
 		expect(resolved?.launcherId).toBe("test_process.ticket_default");
+		expect(resolved?.skillIds).toEqual(["grilling", "code-review"]);
 		expect(resolved?.processInput.metadata).toEqual({
 			processWatcherId: "ticket_default",
 			processWatcherSourceId: "test_ticket",

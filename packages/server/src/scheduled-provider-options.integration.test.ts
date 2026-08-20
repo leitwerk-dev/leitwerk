@@ -92,7 +92,7 @@ async function executeDueApproval(harness: ReturnType<typeof setup>) {
 		selectedTurnId: "plan_review",
 		defaultModelProfileId: "scheduled-model",
 		lifecycleStatus: "waiting",
-		stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+		stateJson: JSON.stringify({}),
 	});
 	const scheduled = harness.deps.futureExecutions.create({
 		kind: "action",

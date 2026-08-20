@@ -10,7 +10,6 @@ describe("semantic-entry-ref-state", () => {
 		const nextStateJson = mergeSemanticEntryRefPatchIntoStateJson(
 			JSON.stringify({
 				readyForHumanReview: true,
-				reviewSubject: { kind: "plan" },
 			}),
 			{
 				plan: { entryId: "turn-1", turnRecordId: "trn_plan_1" },
@@ -21,7 +20,6 @@ describe("semantic-entry-ref-state", () => {
 		expect(nextStateJson).not.toBeNull();
 		expect(JSON.parse(nextStateJson ?? "null")).toEqual({
 			readyForHumanReview: true,
-			reviewSubject: { kind: "plan" },
 			semanticEntryRefs: {
 				plan: { entryId: "turn-1", turnRecordId: "trn_plan_1" },
 				review: null,
@@ -33,7 +31,7 @@ describe("semantic-entry-ref-state", () => {
 
 	it("preserves existing semantic entry refs when the next stateJson omits them", () => {
 		const nextStateJson = mergeSemanticEntryRefPatchIntoStateJson(
-			JSON.stringify({ readyForHumanReview: false, reviewSubject: null }),
+			JSON.stringify({ readyForHumanReview: false }),
 			{
 				review: { entryId: "turn-2", turnRecordId: "trn_review_1" },
 			},
@@ -47,7 +45,6 @@ describe("semantic-entry-ref-state", () => {
 		);
 		expect(JSON.parse(nextStateJson ?? "null")).toMatchObject({
 			readyForHumanReview: false,
-			reviewSubject: null,
 			semanticEntryRefs: {
 				review: { entryId: "turn-2", turnRecordId: "trn_review_1" },
 				currentPrimaryPathLeaf: { entryId: "turn-1", turnRecordId: "trn_impl_1" },

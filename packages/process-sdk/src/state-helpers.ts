@@ -5,21 +5,17 @@ import {
 	type ProcessSemanticEntryRefs,
 	parseProcessProductRefs,
 	parseProcessSemanticEntryRefs,
-	parseReviewSubject,
-	type ReviewSubject,
 } from "@leitwerk-dev/domain";
 
 export interface StructuralProcessState {
 	semanticEntryRefs: ProcessSemanticEntryRefs;
 	productRefs: ProcessProductRefs;
-	reviewSubject: ReviewSubject | null;
 }
 
 export function createEmptyStructuralProcessState(): StructuralProcessState {
 	return {
 		semanticEntryRefs: createEmptyProcessSemanticEntryRefs(),
 		productRefs: createEmptyProcessProductRefs(),
-		reviewSubject: null,
 	};
 }
 
@@ -31,6 +27,5 @@ export function parseStructuralProcessState(value: unknown): StructuralProcessSt
 	return {
 		semanticEntryRefs: parseProcessSemanticEntryRefs(record.semanticEntryRefs),
 		productRefs: parseProcessProductRefs(record.productRefs),
-		reviewSubject: parseReviewSubject(record.reviewSubject),
 	};
 }

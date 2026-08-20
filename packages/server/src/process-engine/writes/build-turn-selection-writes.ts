@@ -1,5 +1,4 @@
 import {
-	isWaitingTurnType,
 	lifecycleStatusForSelectedTurnType,
 	type ProcessInstance,
 	type ProcessLifecycleStatus,
@@ -55,70 +54,6 @@ function validateTurnSelectionWorkerIntent(
 	}
 
 	return null;
-}
-
-function parseReviewSubjectFromState(value: unknown) {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return null;
-	}
-	const reviewSubject = (value as Record<string, unknown>).reviewSubject;
-	if (typeof reviewSubject !== "object" || reviewSubject === null || Array.isArray(reviewSubject)) {
-		return null;
-	}
-	const kind = (reviewSubject as Record<string, unknown>).kind;
-	return typeof kind === "string" ? { kind } : null;
-}
-
-function parseReviewSubjectFromStateJson(stateJson: string | null | undefined) {
-	if (!stateJson) {
-		return null;
-	}
-	try {
-		return parseReviewSubjectFromState(JSON.parse(stateJson));
-	} catch {
-		return null;
-	}
-}
-
-export function validateReviewSubjectTurnInvariant(
-	processGraphs: ProcessGraphRegistry,
-	process: Pick<ProcessInstance, "processId" | "selectedTurnId" | "lifecycleStatus" | "stateJson">,
-	targetTurnId: TurnId | null,
-	nextState: unknown = undefined,
-): WriteBuildFailure | null {
-	if (!targetTurnId) {
-		return null;
-	}
-
-	const targetTurn = getProcessTurnGraph(processGraphs, process.processId, targetTurnId);
-	if (!targetTurn?.reviewSubject) {
-		return null;
-	}
-
-	const reviewSubject =
-		nextState === undefined
-			? parseReviewSubjectFromStateJson(process.stateJson)
-			: parseReviewSubjectFromState(nextState);
-	if (isWaitingTurnType(targetTurn.turnType)) {
-		if (reviewSubject?.kind === targetTurn.reviewSubject.kind) {
-			return null;
-		}
-
-		return {
-			ok: false,
-			code: "invalid_transition",
-			message: `Transition into '${targetTurnId}' requires reviewSubject.kind '${targetTurn.reviewSubject.kind}'`,
-		};
-	}
-	if (reviewSubject) {
-		return null;
-	}
-
-	return {
-		ok: false,
-		code: "invalid_transition",
-		message: `Transition into '${targetTurnId}' requires a non-null reviewSubject`,
-	};
 }
 
 export function deriveLifecycleStatusForSelectedTurn(
@@ -189,16 +124,6 @@ export function buildTurnSelectionWrites(
 				message: transition.message,
 			};
 		}
-	}
-
-	const reviewSubjectValidation = validateReviewSubjectTurnInvariant(
-		processGraphs,
-		process,
-		input.toTurnId,
-		input.state,
-	);
-	if (reviewSubjectValidation) {
-		return reviewSubjectValidation;
 	}
 
 	const writes = createWrites({ workerIntent: input.workerIntent ?? { kind: "reconcile" } });

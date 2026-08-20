@@ -60,6 +60,7 @@ import {
 	processDefinesLeafOutcome,
 	type RouteDeps,
 } from "./routes/process-route-helpers.js";
+import { normalizeTurnProgressReport } from "./turn-progress.js";
 
 const COMPACT_DETAIL_EVENT_TYPES = [
 	"turn_outcome_recorded",
@@ -83,9 +84,10 @@ function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
 }
 
 function compactDetailEvents(deps: RouteDeps, instanceId: string): ProcessEvent[] {
-	return sortEventsAscending(
-		deps.events.listByInstanceEventTypes(instanceId, COMPACT_DETAIL_EVENT_TYPES, 1_000),
-	);
+	return sortEventsAscending([
+		...deps.events.listByInstanceEventTypes(instanceId, COMPACT_DETAIL_EVENT_TYPES, 1_000),
+		...deps.events.listByInstanceEventTypes(instanceId, ["turn.progress"], 10_000),
+	]);
 }
 
 function compactPrimaryPathSnapshot(snapshot: PrimaryPathSnapshot): PrimaryPathUiSnapshot {
@@ -331,6 +333,17 @@ function annotationOutput(annotation: ProcessTurnAnnotation): string {
 
 type TimelineActionSource = ProcessTimelineTurnSummary["actionSource"];
 
+function buildTurnProgressIndex(events: readonly ProcessEvent[]) {
+	const index = new Map<string, NonNullable<ProcessTimelineTurnSummary["progress"]>>();
+	for (const event of events) {
+		if (event.eventType !== "turn.progress") continue;
+		const turnRecordId = stringValue(event.data.turnRecordId);
+		const report = normalizeTurnProgressReport(event.data.report);
+		if (turnRecordId && report) index.set(turnRecordId, report);
+	}
+	return index;
+}
+
 function actionSourceFromAnnotation(annotation: ProcessTurnAnnotation): TimelineActionSource {
 	const source = annotation.payload.actionSource;
 	return source === "ui" || source === "external" || source === "scheduled" ? source : null;
@@ -416,6 +429,7 @@ function createCompletedTurnRecord(args: {
 	turnResultMarkdown: string;
 	createdAt: string;
 	actionSource: TimelineActionSource;
+	progress: ProcessTimelineTurnSummary["progress"];
 }): ProcessTimelineTurnSummary {
 	return {
 		id: args.turnRecord.id,
@@ -432,6 +446,7 @@ function createCompletedTurnRecord(args: {
 		status: "completed",
 		modelProfileId: args.turnRecord.modelProfileId ?? null,
 		actionSource: args.actionSource,
+		progress: args.progress,
 		...durableTurnLineage(args.turnRecord),
 	};
 }
@@ -447,6 +462,7 @@ export function presentProcessTimelineTurns(input: {
 	activeModelProfileId?: string | null;
 }): ProcessTimelineTurnSummary[] {
 	const outcomeEventsByTurnRecordId = createTurnOutcomeEventMap(input.events);
+	const progressByTurnRecordId = buildTurnProgressIndex(input.events);
 	const milestoneAnnotationsByTurnRecordId = createTurnAnnotationMap(
 		input.turnAnnotations,
 		"turn_milestone",
@@ -505,6 +521,7 @@ export function presentProcessTimelineTurns(input: {
 				status: "in_progress",
 				modelProfileId: turnRecord.modelProfileId ?? null,
 				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
+				progress: progressByTurnRecordId.get(turnRecord.id) ?? null,
 				...durableTurnLineage(turnRecord),
 			});
 			continue;
@@ -518,7 +535,7 @@ export function presentProcessTimelineTurns(input: {
 			externalTriggerAnnotationsByTurnRecordId.get(turnRecord.id);
 		let presentation: Omit<
 			Parameters<typeof createCompletedTurnRecord>[0],
-			"turnRecord" | "turnResultMarkdown" | "actionSource"
+			"turnRecord" | "turnResultMarkdown" | "actionSource" | "progress"
 		>;
 
 		if (outcomeEvent) {
@@ -573,6 +590,7 @@ export function presentProcessTimelineTurns(input: {
 				turnRecord,
 				turnResultMarkdown,
 				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
+				progress: progressByTurnRecordId.get(turnRecord.id) ?? null,
 			}),
 		);
 	}
@@ -616,6 +634,7 @@ export function presentProcessTimelineTurns(input: {
 			startedAt: input.process.updatedAt,
 			endedAt: null,
 			actionSource: null,
+			progress: null,
 		});
 	}
 

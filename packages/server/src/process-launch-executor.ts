@@ -30,6 +30,7 @@ export interface ProcessLaunchExecutorDeps
 		RepositoryBundle,
 		| "processes"
 		| "projects"
+		| "skills"
 		| "processSkills"
 		| "handoffDedupKeys"
 		| "futureExecutions"
@@ -41,8 +42,8 @@ export interface ProcessLaunchExecutorDeps
 	extensionHost?: ExtensionHost;
 	logger?: ProcessEngineLogger;
 	getSupervisor?: () => undefined;
-	processDefinitions?: ReadonlyMap<string, ExtensionProcessDefinition>;
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
+	processDefinitions?: ReadonlyMap<string, ExtensionProcessDefinition>;
 	commitMessages?: CommitMessageConfig;
 }
 
@@ -100,7 +101,7 @@ function mapLaunchStartFailure<T>(result: EngineFailure<T>): {
 }
 
 function createLaunchProjects(
-	deps: Pick<ProcessLaunchExecutorDeps, "projects">,
+	deps: Pick<RepositoryBundle, "projects">,
 	process: ProcessInstance,
 	launchPlan: ProcessLaunchPlan,
 ): ProcessProject[] {
@@ -152,7 +153,7 @@ function toLaunchFailureBody(
 export type ProcessLaunchExecutionResult = ProcessLaunchExecutionResultLike;
 
 export function commitProcessLaunch(
-	deps: ProcessLaunchExecutorDeps,
+	deps: Pick<RepositoryBundle, "transaction">,
 	launchPlan: ProcessLaunchPlan,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 	resourceSelections: readonly SkillSelection[] = [],
@@ -181,10 +182,7 @@ export function commitProcessLaunch(
 }
 
 function reuseDeduplicatedCommit(
-	repos: Pick<
-		ProcessLaunchExecutorDeps,
-		"processes" | "projects" | "handoffDedupKeys" | "futureExecutions"
-	>,
+	repos: Pick<RepositoryBundle, "processes" | "projects" | "handoffDedupKeys" | "futureExecutions">,
 	dedupKey: string,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): ProcessLaunchCommit | null {
@@ -202,10 +200,7 @@ function reuseDeduplicatedCommit(
 }
 
 function createProcessLaunchCommit(
-	repos: Pick<
-		ProcessLaunchExecutorDeps,
-		"processes" | "projects" | "processSkills" | "handoffDedupKeys"
-	>,
+	repos: Pick<RepositoryBundle, "processes" | "projects" | "processSkills" | "handoffDedupKeys">,
 	launchPlan: ProcessLaunchPlan,
 	dedupKey: string | null,
 	resourceSelections: readonly SkillSelection[],
@@ -315,13 +310,13 @@ export async function createScheduledProcessFromLaunchPlan(
 	deps: ProcessLaunchExecutorDeps,
 	launchPlan: ProcessLaunchPlan,
 	futureExecutionPlan: FutureExecutionTransitionPlan,
-	opts?: ProcessLaunchOptions,
+	opts: ProcessLaunchOptions & { resourceSelections: readonly SkillSelection[] },
 ): Promise<ProcessLaunchExecutionResult> {
 	return createProcessFromLaunchPlanWithDisposition(deps, launchPlan, opts, futureExecutionPlan);
 }
 
 function recoverDeduplicatedCommit(
-	deps: ProcessLaunchExecutorDeps,
+	deps: Pick<RepositoryBundle, "transaction">,
 	dedupKey: string,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): ProcessLaunchCommit | null {
@@ -354,6 +349,20 @@ async function createProcessFromLaunchPlanWithDisposition(
 	opts?: ProcessLaunchOptions,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): Promise<ProcessLaunchExecutionResult> {
+	let resourceSelections = opts?.resourceSelections;
+	if (!resourceSelections && launchPlan.skillIds) {
+		try {
+			resourceSelections = deps.skills.resolveActive(launchPlan.skillIds);
+		} catch (error) {
+			return {
+				ok: false,
+				stage: "pre_commit",
+				status: 400,
+				body: { error: error instanceof Error ? error.message : String(error) },
+			};
+		}
+	}
+	opts = { ...opts, resourceSelections: resourceSelections ?? [] };
 	if (deps.repositoryCredentials) {
 		try {
 			deps.repositoryCredentials.validateLaunch({
@@ -376,8 +385,8 @@ async function createProcessFromLaunchPlanWithDisposition(
 			deps,
 			launchPlan,
 			futureExecutionPlan,
-			opts?.resourceSelections,
-			opts?.launchIntent,
+			opts.resourceSelections,
+			opts.launchIntent,
 		);
 	} catch (error) {
 		const dedupKey =

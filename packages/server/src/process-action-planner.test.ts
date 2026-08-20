@@ -19,7 +19,6 @@ function buildRegistry(action: ProcessActionDefinition) {
 						plan_review: {
 							description: "Review the plan",
 							kind: "human" as const,
-							reviewSubject: { kind: "plan" as const },
 							actions: {
 								approve_plan_turn_route: {
 									label: "Approve plan",
@@ -46,7 +45,7 @@ function buildRegistry(action: ProcessActionDefinition) {
 						parse: (value: unknown) => (value ?? {}) as Record<string, unknown>,
 						serialize: (value: unknown) => value,
 					},
-					initialState: () => ({ reviewSubject: null }),
+					initialState: () => ({}),
 					server(api) {
 						api.action(action);
 					},
@@ -62,7 +61,7 @@ function createPlanReviewProcess() {
 		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
-		stateJson: JSON.stringify({ reviewSubject: { kind: "plan" } }),
+		stateJson: JSON.stringify({}),
 	});
 }
 

@@ -79,6 +79,17 @@ process_configs:
         poll_interval: 30s
 ```
 
+Sources using `parseProcessWatcherLaunchModelConfig` also accept launch-time skills:
+
+```yaml
+launch:
+  skills:
+    - code-review
+```
+
+Before process creation, the server resolves each id to its active revision and pins the
+immutable selections to the process. An unknown or inactive skill rejects the launch.
+
 The provider adapter obtains only registrations for its exact typed source:
 
 ```ts

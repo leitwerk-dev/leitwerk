@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	type AutomaticOutcomeBuilder,
 	type Codec,
@@ -125,7 +124,6 @@ function clearReviewRefs(state: PoemCreatorState["semanticEntryRefs"]) {
 function patchPoemCreatorState(
 	state: PoemCreatorState,
 	input: {
-		reviewSubject?: PoemCreatorState["reviewSubject"];
 		latestReviewMarkdown?: PoemCreatorState["latestReviewMarkdown"];
 		latestReviewSummary?: PoemCreatorState["latestReviewSummary"];
 		latestReviewOutcome?: PoemCreatorState["latestReviewOutcome"];
@@ -135,7 +133,6 @@ function patchPoemCreatorState(
 ): PoemCreatorState {
 	const nextState: PoemCreatorState = {
 		...state,
-		...("reviewSubject" in input ? { reviewSubject: input.reviewSubject ?? null } : {}),
 		...("latestReviewMarkdown" in input
 			? { latestReviewMarkdown: input.latestReviewMarkdown ?? null }
 			: {}),
@@ -249,9 +246,6 @@ const poemTurnIds = {
 	reviewPoemDraft: "review_poem_draft",
 	poemReviewFeedback: "poem_review_feedback",
 } as const;
-
-const poemDraftReviewSubject = { kind: "plan" } as const;
-const poemFeedbackReviewSubject = { kind: "implementation" } as const;
 
 const poemRevisionForm: FormDefinition = {
 	id: poemCreatorActionIds.requestRevision,
@@ -730,7 +724,7 @@ export const singlePromptExternalCompleteProcess = flow
 const poemDraftReviewSpec = flow
 	.human<PromptProcessParams, PoemCreatorState>(poemTurnIds.poemReview)
 	.description("Human review of the drafted poem on the primary branch")
-	.reviewProduct("poem-draft", { subject: "plan" })
+	.reviewProduct("poem-draft")
 	.notesFields([
 		{
 			id: "message",
@@ -746,12 +740,7 @@ const poemDraftReviewSpec = flow
 			.label("Complete poem")
 			.description("Accept the current poem and finish the process.")
 			.acceptanceState("accepted")
-			.complete()
-			.effect(({ ctx }) => ({
-				state: patchPoemCreatorState(ctx.state, {
-					reviewSubject: null,
-				}),
-			})),
+			.complete(),
 	)
 	.action(poemCreatorActionIds.requestRevision, (action) =>
 		action
@@ -773,7 +762,6 @@ const poemDraftReviewSpec = flow
 			.to(poemTurnIds.reviewPoemDraft)
 			.effect(({ ctx }) => ({
 				state: patchPoemCreatorState(ctx.state, {
-					reviewSubject: createReviewSubject(poemFeedbackReviewSubject.kind),
 					latestReviewMarkdown: null,
 					latestReviewSummary: null,
 					latestReviewOutcome: null,
@@ -799,7 +787,7 @@ const poemDraftReviewSpec = flow
 const poemReviewFeedbackSpec = flow
 	.human<PromptProcessParams, PoemCreatorState>(poemTurnIds.poemReviewFeedback)
 	.description("Human review of the LLM review output")
-	.reviewProduct("message", { subject: "implementation" })
+	.reviewProduct("message")
 	.notesFields([
 		{
 			id: "message",
@@ -837,7 +825,6 @@ const poemReviewFeedbackSpec = flow
 			.to(poemTurnIds.poemReview)
 			.effect(({ ctx }) => ({
 				state: patchPoemCreatorState(ctx.state, {
-					reviewSubject: createReviewSubject(poemDraftReviewSubject.kind),
 					latestReviewMarkdown: null,
 					latestReviewSummary: null,
 					latestReviewOutcome: null,
@@ -877,7 +864,6 @@ export const poemCreatorProcess = flow
 			.to(poemTurnIds.poemReview)
 			.state(({ ctx }) =>
 				patchPoemCreatorState(ctx.state, {
-					reviewSubject: createReviewSubject(poemDraftReviewSubject.kind),
 					latestReviewMarkdown: null,
 					latestReviewSummary: null,
 					latestReviewOutcome: null,
@@ -892,7 +878,6 @@ export const poemCreatorProcess = flow
 			.description("Review poem")
 			.rootBranchReview()
 			.continueFromReviewBranch()
-			.reviews(createReviewSubject("plan"))
 			.consume("poem-draft")
 			.optionalConsume("message")
 			.buildPrompt(async (ctx) => {
@@ -917,7 +902,6 @@ export const poemCreatorProcess = flow
 					.to(poemTurnIds.poemReview)
 					.state(({ ctx, event }) =>
 						patchPoemCreatorState(ctx.state, {
-							reviewSubject: createReviewSubject(poemDraftReviewSubject.kind),
 							latestReviewMarkdown: null,
 							latestReviewSummary:
 								typeof event.params.summary === "string" ? event.params.summary : null,
@@ -936,7 +920,6 @@ export const poemCreatorProcess = flow
 					.to(poemTurnIds.poemReviewFeedback)
 					.state(({ ctx, event }) =>
 						patchPoemCreatorState(ctx.state, {
-							reviewSubject: createReviewSubject(poemFeedbackReviewSubject.kind),
 							latestReviewMarkdown:
 								typeof event.params.message === "string"
 									? event.params.message

@@ -307,7 +307,9 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 				start.turnId,
 			);
 			const integrationToolNames =
-				selectedTurn?.kind === "llm" ? (selectedTurn.integrationTools ?? []) : [];
+				selectedTurn?.kind === "llm" || selectedTurn?.kind === "automatic"
+					? (selectedTurn.integrationTools ?? [])
+					: [];
 			const integrationTools =
 				integrationToolNames.length > 0
 					? deps.integrationTools?.declarations(integrationToolNames)

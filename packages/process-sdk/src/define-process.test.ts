@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import {
 	buildExtensionCatalogFromModules,
 	buildServerProcessForTest,
@@ -60,7 +59,6 @@ function basicTurns() {
 		}),
 		review: humanTurn({
 			description: "Review",
-			reviewSubject: createReviewSubject("plan"),
 			actions: {
 				approve: {
 					label: "Approve",
@@ -111,7 +109,6 @@ describe("defineProcess", () => {
 				...basicTurns(),
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						revise: {
 							label: "Revise",
@@ -231,7 +228,6 @@ describe("defineProcess", () => {
 					...basicTurns(),
 					review: humanTurn({
 						description: "Review",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							revise: {
 								label: "Revise",
@@ -373,6 +369,66 @@ describe("defineProcess", () => {
 		expect(transitionsFor(process, "draft")).toEqual([{ nextTurnId: "draft", outcome: "ready" }]);
 	});
 
+	it("routes one LLM outcome deterministically from process state", async () => {
+		const process = defineProcess({
+			id: "state_routed_outcome_process",
+			displayName: "State Routed Outcome",
+			entry: "draft",
+			paramsCodec: emptyParamsCodec,
+			stateCodec,
+			initialState: () => ({ branch: "manual" }),
+			turns: {
+				draft: llmTurn({
+					availableTools: [],
+					description: "Draft",
+					branchType: "primary",
+					context: "fresh",
+					prompt: async () => "draft",
+					outcomes: {
+						ready: {
+							description: "ready",
+							parameters: {},
+							branches: {
+								manual: { to: "decision" },
+								automatic: { to: "deliver" },
+							},
+							choose: ({ ctx }) => ctx.state.branch,
+						},
+					},
+				}),
+				decision: humanTurn({
+					description: "Decision",
+					actions: {
+						abort: { label: "Abort", acceptanceState: "neutral", lifecycleStatus: "aborted" },
+					},
+				}),
+				deliver: automaticTurn({
+					description: "Deliver",
+					run: () => ({ outcome: "done", params: {} }),
+					outcomes: { done: { description: "done", parameters: {}, complete: true } },
+				}),
+			},
+		});
+
+		expect(transitionsFor(process, "draft")).toEqual([
+			{ nextTurnId: "decision", outcome: "ready", trigger: "manual" },
+			{ nextTurnId: "deliver", outcome: "ready", trigger: "automatic" },
+		]);
+
+		const handler = buildServerProcessForTest(process)?.turnOutcomeHandlers.get("draft")?.[0];
+		expect(handler).toBeDefined();
+		const transitions: Array<Record<string, unknown>> = [];
+		await handler?.(
+			{ turnRecordId: "trn_1", turnId: "draft", outcome: "ready", params: {} },
+			createTestServerProcessContext({
+				process: createTestProcessInstance({ processId: process.id, selectedTurnId: "draft" }),
+				state: { branch: "automatic" },
+				transition: async (next) => transitions.push(next as Record<string, unknown>),
+			}),
+		);
+		expect(transitions).toEqual([{ turnId: "deliver", trigger: "automatic" }]);
+	});
+
 	it("allows custom worker overrides for compiled turns", () => {
 		const process = defineProcess({
 			id: "worker_override_process",
@@ -445,7 +501,6 @@ describe("defineProcess", () => {
 				}),
 				start: humanTurn({
 					description: "Start",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						retry: {
 							label: "Retry",
@@ -457,7 +512,6 @@ describe("defineProcess", () => {
 				}),
 				alternate: humanTurn({
 					description: "Alternate",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						retry: {
 							label: "Retry",
@@ -536,7 +590,6 @@ describe("defineProcess", () => {
 				}),
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						revise: revisionAction({
 							label: "Revise",
@@ -601,7 +654,6 @@ describe("defineProcess", () => {
 			turns: {
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						revise: revisionAction({
 							label: "Revise",
@@ -670,7 +722,6 @@ describe("defineProcess", () => {
 			turns: {
 				decision: humanTurn({
 					description: "Decision",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						continue: {
 							label: "Continue",
@@ -726,7 +777,6 @@ describe("defineProcess", () => {
 				}),
 				decision: humanTurn({
 					description: "Decision",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						accept_review: acceptedReviewHandoffAction({
 							label: "Accept review",
@@ -889,7 +939,6 @@ describe("defineProcess", () => {
 					}),
 					source: humanTurn({
 						description: "Source",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							branch: {
 								label: "Branch",
@@ -905,7 +954,6 @@ describe("defineProcess", () => {
 					}),
 					first: humanTurn({
 						description: "First",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							ack: {
 								label: "Ack",
@@ -916,7 +964,6 @@ describe("defineProcess", () => {
 					}),
 					second: humanTurn({
 						description: "Second",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							ack: {
 								label: "Ack second",
@@ -950,7 +997,6 @@ describe("defineProcess", () => {
 					}),
 					review: humanTurn({
 						description: "Review",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							approve: {
 								label: "Approve",
@@ -992,7 +1038,6 @@ describe("defineProcess", () => {
 					}),
 					review: humanTurn({
 						description: "Review",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							branch: {
 								label: "Branch",
@@ -1008,14 +1053,12 @@ describe("defineProcess", () => {
 					}),
 					first: humanTurn({
 						description: "First",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							ack: { label: "Ack", acceptanceState: "accepted", complete: true },
 						},
 					}),
 					second: humanTurn({
 						description: "Second",
-						reviewSubject: createReviewSubject("plan"),
 						actions: {
 							ack: { label: "Ack", acceptanceState: "accepted", complete: true },
 						},
@@ -1036,7 +1079,6 @@ describe("defineProcess", () => {
 			turns: {
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						approve: {
 							label: "Approve",
@@ -1108,7 +1150,6 @@ describe("defineProcess", () => {
 				}),
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						abort_process: {
 							label: "Abort",
@@ -1178,7 +1219,6 @@ describe("defineProcess", () => {
 				}),
 				start: humanTurn({
 					description: "Start",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						retry: {
 							label: "Retry",
@@ -1190,7 +1230,6 @@ describe("defineProcess", () => {
 				}),
 				alternate: humanTurn({
 					description: "Alternate",
-					reviewSubject: createReviewSubject("plan"),
 					actions: {
 						retry: {
 							label: "Retry",
@@ -1235,7 +1274,6 @@ describe("defineProcess", () => {
 				}),
 				review: humanTurn({
 					description: "Review",
-					reviewSubject: createReviewSubject("implementation"),
 					actions: {
 						approve: { label: "Approve", acceptanceState: "accepted", complete: true },
 					},

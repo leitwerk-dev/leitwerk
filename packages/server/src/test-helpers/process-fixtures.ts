@@ -1,4 +1,4 @@
-import { createReviewSubject, type TurnId } from "@leitwerk-dev/domain";
+import type { TurnId } from "@leitwerk-dev/domain";
 import {
 	type AutomaticTurnDefinition,
 	automaticTurn,
@@ -38,7 +38,6 @@ export function createFixtureHumanTurn(
 ): HumanTurnDefinition<Record<string, never>, Record<string, never>> {
 	return humanTurn({
 		description: "Review",
-		reviewSubject: createReviewSubject("plan"),
 		reviewSemanticRef: "plan",
 		actions: {
 			mark_done: {
@@ -176,7 +175,6 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 				outcomes: { plan_saved: { description: "plan_saved", parameters: {}, to: "plan_review" } },
 			}),
 			plan_review: createFixtureHumanTurn({
-				reviewSubject: createReviewSubject("plan"),
 				reviewSemanticRef: "plan",
 				actions: {
 					revision_requested: {
@@ -198,7 +196,6 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 				turnEnd: { outcome: "created", params: {}, to: "run_llm_review" },
 			}),
 			run_llm_review: createFixtureLlmTurn("run_llm_review", {
-				reviewSubject: createReviewSubject("implementation"),
 				resultSemanticRef: "review",
 				turnEnd: undefined,
 				outcomes: {
@@ -227,7 +224,6 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 				turnEnd: { outcome: "committed", params: {}, to: "implementation_review" },
 			}),
 			implementation_review: createFixtureHumanTurn({
-				reviewSubject: createReviewSubject("implementation"),
 				reviewSemanticRef: "review",
 			}),
 		},
@@ -257,7 +253,6 @@ export function createDefaultTestProcessGraphRegistry(): ReadonlyMap<
 				turnEnd: { outcome: "committed", params: {}, to: "mr_polish_review" },
 			}),
 			mr_polish_review: createFixtureHumanTurn({
-				reviewSubject: createReviewSubject("implementation"),
 				reviewSemanticRef: "review",
 			}),
 		},

@@ -1,15 +1,14 @@
 import path from "node:path";
 import {
 	assertValidProcessProductName,
-	createReviewSubject,
 	humanizeProcessLabel,
 	type ProcessInstance,
 	type ProcessProject,
 	type ProcessSemanticEntryRefKey,
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
-	type ReviewSubject,
 	type TurnId,
+	type TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type {
 	AutomaticTurnDefinition,
@@ -163,6 +162,8 @@ export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	state: TState;
 	workspaceRoot?: string;
 	repo: FlowRepoLookup;
+	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+	reportProgress(report: TurnProgressReport): void;
 }
 
 export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown> {
@@ -462,6 +463,15 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 			projects: ctx.projects,
 			workspaceRoot: ctx.workspaceRoot,
 		}),
+		callIntegrationTool(name, args) {
+			if (!ctx.callIntegrationTool) {
+				throw new Error(`Automatic integration tool '${name}' is unavailable`);
+			}
+			return ctx.callIntegrationTool(name, args);
+		},
+		reportProgress(report) {
+			ctx.reportProgress?.(report);
+		},
 	};
 }
 
@@ -798,10 +808,43 @@ export class OutcomeToolBuilder<
 	TState,
 	FlowLlmOutcomeEffectContext<TParams, TState>
 > {
+	private stateRouting:
+		| {
+				branches: Record<string, TurnId>;
+				choose: (
+					input: FlowOutcomeEffectInput<
+						TParams,
+						TState,
+						FlowLlmOutcomeEffectContext<TParams, TState>
+					>,
+				) => MaybePromise<string>;
+		  }
+		| undefined;
+
+	routeByState(
+		branches: Record<string, TurnId>,
+		choose: (
+			input: FlowOutcomeEffectInput<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>,
+		) => MaybePromise<string>,
+	): this {
+		if (this.hasRoute() || this.stateRouting) {
+			throw new Error("State-routed outcome cannot declare another route");
+		}
+		if (Object.keys(branches).length === 0) {
+			throw new Error("State-routed outcome must declare at least one branch");
+		}
+		this.stateRouting = { branches, choose };
+		return this;
+	}
+
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.outcomeDescription) {
 			throw new Error("LLM outcome tool must declare .description(...)");
 		}
+		if (this.stateRouting && this.hasRoute()) {
+			throw new Error("State-routed outcome cannot declare another route");
+		}
+		const stateRouting = this.stateRouting;
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
@@ -811,7 +854,26 @@ export class OutcomeToolBuilder<
 						turnResultMarkdownParameter: this.publishedMarkdownParameter,
 					}
 				: {}),
-			...this.buildRouteTarget(),
+			...(stateRouting
+				? {
+						branches: Object.fromEntries(
+							Object.entries(stateRouting.branches).map(([branchId, turnId]) => [
+								branchId,
+								{ to: turnId },
+							]),
+						),
+						choose: (execution: ProcessOutcomeExecution<TParams, TState>) =>
+							stateRouting.choose({
+								ctx: createFlowLlmOutcomeEffectContext({
+									ctx: execution.ctx,
+									event: execution.event,
+								}),
+								event: execution.event,
+								turnId: execution.turnId,
+								outcome: execution.outcome,
+							}),
+					}
+				: this.buildRouteTarget()),
 			...(this.flowEffect ? { effect: wrapLlmOutcomeEffect(this.flowEffect) } : {}),
 		};
 	}
@@ -825,10 +887,22 @@ export class AutomaticOutcomeBuilder<
 	TState,
 	FlowAutomaticOutcomeEffectContext<TParams, TState>
 > {
+	private waits = false;
+
+	wait(): this {
+		if (this.hasRoute()) throw new Error("Waiting outcome cannot declare another route");
+		this.waits = true;
+		return this;
+	}
+
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
+		if (this.waits && this.hasRoute()) {
+			throw new Error("Waiting outcome cannot declare another route");
+		}
+		const effect = this.flowEffect ? wrapAutomaticOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
@@ -839,7 +913,8 @@ export class AutomaticOutcomeBuilder<
 					}
 				: {}),
 			...this.buildRouteTarget(),
-			...(this.flowEffect ? { effect: wrapAutomaticOutcomeEffect(this.flowEffect) } : {}),
+			...(this.waits ? { wait: true as const } : {}),
+			...(effect ? { effect } : {}),
 		};
 	}
 }
@@ -1012,7 +1087,6 @@ export class LlmFlowBuilder<
 	private questionsEnabled = false;
 	private startFrom: LlmTurnDefinition<string, TParams, TState>["startFrom"] | undefined;
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
-	private reviewSubject: ReviewSubject | undefined;
 	private consumedProductNames: string[] = [];
 	private optionalConsumedProductNames: string[] = [];
 	private publishedResult: {
@@ -1146,11 +1220,6 @@ export class LlmFlowBuilder<
 
 	startFromRoot(): this {
 		this.startFrom = { kind: "session_root" };
-		return this;
-	}
-
-	reviews(subject: ReviewSubject): this {
-		this.reviewSubject = subject;
 		return this;
 	}
 
@@ -1299,13 +1368,18 @@ export class LlmFlowBuilder<
 		for (const [outcomeId, builder] of this.outcomeToolBuilders) {
 			outcomes[outcomeId] = builder.build();
 		}
-		const hasOutcomePublishedProduct = Object.values(outcomes).some(
-			(outcome) => outcome.publishedProduct,
+		const outcomePublishedProducts = new Set(
+			Object.values(outcomes)
+				.map((outcome) => outcome.publishedProduct)
+				.filter((productName): productName is string => typeof productName === "string"),
 		);
+		const hasOutcomePublishedProduct = outcomePublishedProducts.size > 0;
 		let turnEnd: ProcessTurnEndSpec<TParams, TState, string> | undefined;
-		let resultSemanticRef: "plan" | "review" | undefined = this.reviewSubject
+		let resultSemanticRef: "plan" | "review" | undefined = outcomePublishedProducts.has("review")
 			? "review"
-			: undefined;
+			: outcomePublishedProducts.has("plan")
+				? "plan"
+				: undefined;
 		let turnResultMarkdown: LlmTurnDefinition<string, TParams, TState>["turnResultMarkdown"];
 		let publishedProduct: string | undefined;
 
@@ -1363,7 +1437,6 @@ export class LlmFlowBuilder<
 
 		return {
 			...definition,
-			...(this.reviewSubject ? { reviewSubject: this.reviewSubject } : {}),
 			...(Object.keys(outcomes).length > 0 ? { outcomes } : {}),
 			...(turnEnd ? { turnEnd } : {}),
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
@@ -1379,6 +1452,37 @@ export class LlmFlowBuilder<
 	}
 }
 
+type ExternalActionBuilderMap<TParams, TState> = Map<
+	string,
+	ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
+>;
+
+function addExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(input: {
+	builders: ExternalActionBuilderMap<TParams, TState>;
+	turnId: TurnId;
+	turnKind: "Automatic" | "Human";
+	externalActionId: string;
+	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
+	configure: (
+		external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined;
+}): void {
+	if (input.builders.has(input.externalActionId)) {
+		throw new Error(
+			`${input.turnKind} turn '${input.turnId}' declares duplicate external action '${input.externalActionId}'`,
+		);
+	}
+	const builder = new ExternalActionBuilder(input.externalActionId, input.source);
+	input.configure(builder);
+	input.builders.set(input.externalActionId, builder as ExternalActionBuilder<TParams, TState>);
+}
+
+function buildExternalActions<TParams, TState>(
+	builders: ExternalActionBuilderMap<TParams, TState>,
+) {
+	return Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]));
+}
+
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
@@ -1388,6 +1492,8 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
+	private availableIntegrationTools: readonly string[] = [];
+	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
 
 	constructor(turnId: TurnId) {
 		this.turnId = turnId;
@@ -1412,6 +1518,32 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		) => MaybePromise<WorkerCompleteInput<string>>,
 	): this {
 		this.runFn = fn;
+		return this;
+	}
+
+	integrationTools(...tools: readonly string[]): this {
+		this.availableIntegrationTools = tools.map((tool) => tool.trim());
+		return this;
+	}
+
+	externalAction<
+		TEvent = unknown,
+		TInput extends Record<string, unknown> = Record<string, unknown>,
+	>(
+		externalActionId: string,
+		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
+		configure: (
+			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+	): this {
+		addExternalAction({
+			builders: this.externalActionBuilders,
+			turnId: this.turnId,
+			turnKind: "Automatic",
+			externalActionId,
+			source,
+			configure,
+		});
 		return this;
 	}
 
@@ -1451,6 +1583,12 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
+			...(this.availableIntegrationTools.length > 0
+				? { integrationTools: this.availableIntegrationTools }
+				: {}),
+			...(this.externalActionBuilders.size > 0
+				? { externalActions: buildExternalActions(this.externalActionBuilders) }
+				: {}),
 			outcomes,
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),
 		};
@@ -1657,6 +1795,11 @@ export class ExternalActionBuilder<
 		return this;
 	}
 
+	when(condition: NonNullable<ProcessHumanTurnExternalActionSpec<TParams, TState>["when"]>): this {
+		this.spec.when = condition;
+		return this;
+	}
+
 	to(turnId: TurnId): this {
 		this.spec.to = turnId;
 		return this;
@@ -1680,6 +1823,11 @@ export class ExternalActionBuilder<
 		return this;
 	}
 
+	effect(effect: ExternalSourceEffect<TParams, TState, TEvent, TInput>): this {
+		this.spec.effect = effect;
+		return this;
+	}
+
 	build(): ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput> {
 		return this.spec as ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput>;
 	}
@@ -1689,17 +1837,13 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	implements FlowHumanTurn<TParams, TState>
 {
 	private turnDescription: string | null = null;
-	private reviewSubject: ReviewSubject | null = null;
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
 	private operatorAttentionValue: HumanTurnOperatorAttention | undefined;
 	private turnCommentary: string | undefined;
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
-	private externalActionBuilders = new Map<
-		string,
-		ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
-	>();
+	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
 
 	constructor(private readonly turnId: TurnId) {}
 
@@ -1714,7 +1858,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "human",
 			description: this.turnDescription,
-			...(this.reviewSubject ? { reviewSubject: this.reviewSubject } : {}),
 			...(this.reviewProductName ? { reviewProduct: this.reviewProductName } : {}),
 			...(this.reviewSemanticRef ? { reviewSemanticRef: this.reviewSemanticRef } : {}),
 			...(this.operatorAttentionValue ? { operatorAttention: this.operatorAttentionValue } : {}),
@@ -1724,14 +1867,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 				[...this.actions.entries()].map(([actionId, builder]) => [actionId, builder.build()]),
 			),
 			...(this.externalActionBuilders.size > 0
-				? {
-						externalActions: Object.fromEntries(
-							[...this.externalActionBuilders.entries()].map(([actionId, builder]) => [
-								actionId,
-								builder.build(),
-							]),
-						),
-					}
+				? { externalActions: buildExternalActions(this.externalActionBuilders) }
 				: {}),
 		};
 	}
@@ -1741,21 +1877,9 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		return this;
 	}
 
-	review(subject: ReviewSubject | "plan" | "implementation"): this {
-		this.reviewSubject = typeof subject === "string" ? createReviewSubject(subject) : subject;
-		this.reviewProductName = undefined;
-		this.reviewSemanticRef = typeof subject === "string" && subject === "plan" ? "plan" : undefined;
-		return this;
-	}
-
-	reviewProduct(
-		productName: string,
-		options: { subject: ReviewSubject | "plan" | "implementation" },
-	): this {
+	reviewProduct(productName: string): this {
 		const normalized = normalizeProductName(productName);
 		this.reviewProductName = normalized;
-		this.reviewSubject =
-			typeof options.subject === "string" ? createReviewSubject(options.subject) : options.subject;
 		this.reviewSemanticRef =
 			normalized === "plan" ? "plan" : normalized === "review" ? "review" : undefined;
 		return this;
@@ -1801,25 +1925,14 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
 		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		if (this.externalActionBuilders.has(externalActionId)) {
-			throw new Error(
-				`Human turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
-			);
-		}
-		const builder = new ExternalActionBuilder<TParams, TState, TEvent, TInput>(
+		addExternalAction({
+			builders: this.externalActionBuilders,
+			turnId: this.turnId,
+			turnKind: "Human",
 			externalActionId,
 			source,
-		);
-		configure(builder);
-		this.externalActionBuilders.set(
-			externalActionId,
-			builder as unknown as ExternalActionBuilder<
-				TParams,
-				TState,
-				unknown,
-				Record<string, unknown>
-			>,
-		);
+			configure,
+		});
 		return this;
 	}
 }

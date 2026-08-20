@@ -146,7 +146,7 @@ const implement = flow
 
 ## Human Review Turns & Actions
 
-A `flow.human` turn pauses execution until an operator acts in the web UI:
+A `flow.human` turn pauses execution until an operator acts in the web UI. Review turns identify their artifact directly through `reviewProduct`; there is no separate review classification in process state.
 
 ```ts
 const planDecision = flow
@@ -210,7 +210,7 @@ A **Watcher** monitors an extension-owned event source and constructs launch con
 
 ### External Actions
 
-An **External Action** arms a provider trigger while a human turn remains selected (for example, waiting for a change request to merge or a review feedback file to be written):
+An **External Action** arms a provider trigger while a human or worker automatic turn remains selected and waiting (for example, waiting for a change request to merge or review feedback):
 
 ```ts
 const reviewTurn = flow
@@ -222,3 +222,27 @@ const reviewTurn = flow
     (external) => external.label("Merge request merged").complete(),
   );
 ```
+
+An automatic outcome can call `.wait()` to keep the automatic turn selected with
+`lifecycleStatus = "waiting"`. External actions remain dormant while the automatic handler
+runs. They arm after the waiting outcome is durable and then appear as active external triggers
+in the process UI. They can restart that turn, route to another business turn, complete, or
+abort without adding a synthetic wait turn.
+
+Use `.when(({ params, state, process, projects }) => boolean)` for an external action that is
+valid only in part of the process state. A false condition excludes the action from provider
+armings and from the selected-turn UI snapshot. Keep provider-specific matching in the source
+resolver; use `when` for process-owned routing scope.
+
+### Automatic-turn progress
+
+Worker and server automatic handlers can replace their operator-facing progress snapshot with
+`ctx.reportProgress(...)`. A report contains an ordered list of stable step ids, labels, and
+`incomplete`, `in_progress`, `completed`, or `failed` statuses. It may also contain HTTPS links
+to pull requests, merge requests, commits, or pipelines. Reports are execution visibility, not
+process turns, products, or business state.
+
+The server persists each correlated snapshot as a turn event and broadcasts a durable refresh
+signal. It rejects malformed reports, unsafe links, stale turn-record ids, and updates for turns
+that are no longer running. If an automatic handler throws, Leitwerk changes its current
+`in_progress` step to `failed` with the safe error summary before recording the turn failure.

@@ -210,6 +210,12 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 									complete({ kind: "session_tainted", reason: emission.reason });
 								} else if (emission.kind === "trace") {
 									reporter.workerTrace(emission.payload, command.session.selectedTurnId);
+								} else if (emission.kind === "progress") {
+									reporter.workerEvent(
+										"turn.progress",
+										{ turnRecordId: emission.turnRecordId, report: emission.report },
+										command.session.selectedTurnId,
+									);
 								} else reporter.workerError(emission.payload, command.session.selectedTurnId);
 							},
 						}),

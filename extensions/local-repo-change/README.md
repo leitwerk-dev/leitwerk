@@ -141,21 +141,21 @@ Plan and review outcome tools explicitly allow useful Mermaid diagrams and uploa
 
 ## Turn graph
 
-| Turn ID | Turn type | `reviewSubject` | Branch type | Context mode | Start selection | Active built-in tools | Active process tools | Transition(s) |
-|---|---|---|---|---|---|---|---|---|
-| `import_plan` | server automatic | — | — | — | alternate process entry | — | publishes supplied `importedPlanMarkdown` as `plan` | `imported` → `implement` |
-| `generate_plan` | LLM | — | `primary` | `fresh` | primary process entry; session root for ordinary prompts; targeted current-primary branch for `action_prompt` revisions | `read`, `bash` | publishes `plan` (`markdown_result`, compatibility `plan_saved`) | `plan_saved` → `plan_decision` (`waiting`); accepted plan-review guidance arrives as a targeted `action_prompt` on the primary branch when applicable |
-| `plan_decision` | human | `plan` | — | — | — | — | Visible actions: `approve_plan`, `request_revision`, `run_review` | action-driven |
-| `review_plan` | LLM | `plan` | `root_branch` | `full` | `semantic_ref(review)` with `session_root` fallback | `read`, `bash` | `markdown_result`, `no_issues`, `request_changes` | `no_issues` → `plan_decision` (`waiting`); `request_changes` → `plan_review_feedback` (`waiting`) |
-| `plan_review_feedback` | human | `plan` | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` | action-driven |
-| `implement` | LLM | — | `primary` | `fresh_seeded` | `product_ref(simplification-plan)` → `semantic_ref(review)` → session root; prompt consumes `plan` product markdown | `read`, `bash`, `edit`, `write` | publishes `implementation-summary` (`markdown_result`, deterministic `turnEnd`) | `implementation-summary` → `implementation_decision` (`waiting`); normal plan approval starts with fresh context plus durable plan markdown, accepted implementation-review guidance arrives on the review branch, and accepted simplification guidance arrives on the `simplification-plan` product branch |
-| `implementation_decision` | human | `implementation` | — | — | — | — | Visible actions: `finalize_change`, `request_revision`, `simplify`, `run_review` | action-driven |
-| `simplify_implementation` | LLM | — | `root_branch` | `full` | `product_ref(simplification-plan)` with `session_root` fallback; prompt asks the worker to inspect the current workspace diff read-only | `read`, `bash` | publishes `simplification-plan` (`markdown_result`, deterministic `turnEnd`) | `simplification-plan` → `simplification_decision` (`waiting`) |
-| `simplification_decision` | human | `implementation` | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` with simplification-specific labels | action-driven |
-| `review_implementation` | LLM | `implementation` | `root_branch` | `full` | `semantic_ref(review)` with `session_root` fallback; prompt supplies the original requested change and asks the worker to inspect the current workspace diff read-only without consuming the plan | `read`, `bash` | `markdown_result`, `no_issues`, `request_changes` | `no_issues` → `implementation_decision` (`waiting`); `request_changes` → `implementation_review_feedback` (`waiting`) |
-| `implementation_review_feedback` | human | `implementation` | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` | action-driven |
-| `commit_and_merge` | automatic | — | `primary` | — | — | — | `merge_conflict`, `finalized` | Dirty changes are committed directly; `merge_conflict` → `resolve_merge_conflict`; `finalized` → `completed` |
-| `resolve_merge_conflict` | LLM | — | `primary` | `full` | session root | `read`, `bash`, `edit`, `write` | publishes `merge-resolution-summary` plus `clean` | `clean` → `commit_and_merge` |
+| Turn ID | Turn type | Branch type | Context mode | Start selection | Active built-in tools | Active process tools | Transition(s) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `import_plan` | server automatic | — | — | alternate process entry | — | publishes supplied `importedPlanMarkdown` as `plan` | `imported` → `implement` |
+| `generate_plan` | LLM | `primary` | `fresh` | primary process entry; session root for ordinary prompts; targeted current-primary branch for `action_prompt` revisions | `read`, `bash` | publishes `plan` (`markdown_result`, compatibility `plan_saved`) | `plan_saved` → `plan_decision` (`waiting`); accepted plan-review guidance arrives as a targeted `action_prompt` on the primary branch when applicable |
+| `plan_decision` | human | — | — | — | — | Visible actions: `approve_plan`, `request_revision`, `run_review` | action-driven |
+| `review_plan` | LLM | `root_branch` | `full` | `semantic_ref(review)` with `session_root` fallback | `read`, `bash` | `markdown_result`, `no_issues`, `request_changes` | `no_issues` → `plan_decision` (`waiting`); `request_changes` → `plan_review_feedback` (`waiting`) |
+| `plan_review_feedback` | human | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` | action-driven |
+| `implement` | LLM | `primary` | `fresh_seeded` | `product_ref(simplification-plan)` → `semantic_ref(review)` → session root; prompt consumes `plan` product markdown | `read`, `bash`, `edit`, `write` | publishes `implementation-summary` (`markdown_result`, deterministic `turnEnd`) | `implementation-summary` → `implementation_decision` (`waiting`); normal plan approval starts with fresh context plus durable plan markdown, accepted implementation-review guidance arrives on the review branch, and accepted simplification guidance arrives on the `simplification-plan` product branch |
+| `implementation_decision` | human | — | — | — | — | Visible actions: `finalize_change`, `request_revision`, `simplify`, `run_review` | action-driven |
+| `simplify_implementation` | LLM | `root_branch` | `full` | `product_ref(simplification-plan)` with `session_root` fallback; prompt asks the worker to inspect the current workspace diff read-only | `read`, `bash` | publishes `simplification-plan` (`markdown_result`, deterministic `turnEnd`) | `simplification-plan` → `simplification_decision` (`waiting`) |
+| `simplification_decision` | human | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` with simplification-specific labels | action-driven |
+| `review_implementation` | LLM | `root_branch` | `full` | `semantic_ref(review)` with `session_root` fallback; prompt supplies the original requested change and asks the worker to inspect the current workspace diff read-only without consuming the plan | `read`, `bash` | `markdown_result`, `no_issues`, `request_changes` | `no_issues` → `implementation_decision` (`waiting`); `request_changes` → `implementation_review_feedback` (`waiting`) |
+| `implementation_review_feedback` | human | — | — | — | — | Visible actions: `accept_review`, `request_review_changes`, `dismiss_review` | action-driven |
+| `commit_and_merge` | automatic | `primary` | — | — | — | `merge_conflict`, `finalized` | Dirty changes are committed directly; `merge_conflict` → `resolve_merge_conflict`; `finalized` → `completed` |
+| `resolve_merge_conflict` | LLM | `primary` | `full` | session root | `read`, `bash`, `edit`, `write` | publishes `merge-resolution-summary` plus `clean` | `clean` → `commit_and_merge` |
 
 ## Human-turn visible actions
 
@@ -184,10 +184,10 @@ Plan and review outcome tools explicitly allow useful Mermaid diagrams and uploa
 
 | Turn ID | Outcome | Server behavior |
 |---|---|---|
-| `generate_plan` | `plan_saved` | Publish product `plan`, emit `plan_saved` server event using `turnResultMarkdown`, update `state.productRefs.plan` / `semanticEntryRefs.plan`, and increment `process.planRevision`; clear review/simplification branch refs; transition → `plan_decision` with `lifecycleStatus = waiting` and `reviewSubject = plan` |
+| `generate_plan` | `plan_saved` | Publish product `plan`, emit `plan_saved` server event using `turnResultMarkdown`, update `state.productRefs.plan` / `semanticEntryRefs.plan`, and increment `process.planRevision`; clear review/simplification branch refs; transition → `plan_decision` with `lifecycleStatus = waiting` |
 | `review_plan` | `no_issues` | Transition → `plan_decision` (`waiting`) |
 | `review_plan` | `request_changes` | Keep the review turn result on semantic ref `review`; transition → `plan_review_feedback` (`waiting`) |
-| `implement` | `implementation-summary` | Publish product `implementation-summary`; clear review/simplification branch refs; transition → `implementation_decision` with `lifecycleStatus = waiting` and `reviewSubject = implementation` |
+| `implement` | `implementation-summary` | Publish product `implementation-summary`; clear review/simplification branch refs; transition → `implementation_decision` with `lifecycleStatus = waiting` |
 | `review_implementation` | `no_issues` | Transition → `implementation_decision` (`waiting`) |
 | `review_implementation` | `request_changes` | Keep the review turn result on semantic ref `review`; transition → `implementation_review_feedback` (`waiting`) |
 | `simplify_implementation` | `simplification-plan` | Publish the simplification plan as product ref `simplification-plan`; transition → `simplification_decision` (`waiting`) |

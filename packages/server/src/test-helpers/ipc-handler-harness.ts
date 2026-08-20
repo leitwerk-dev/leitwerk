@@ -1,4 +1,3 @@
-import { createReviewSubject, type ReviewSubject } from "@leitwerk-dev/domain";
 import {
 	type ExtensionProcessDefinition,
 	humanTurn,
@@ -54,22 +53,11 @@ export interface TestIpcHandlerDeps
 
 interface TestProcessState {
 	readyForHumanReview: boolean;
-	reviewSubject: ReviewSubject | null;
 }
 
 const testProcessGraphRegistry = createDefaultTestProcessGraphRegistry();
 const ticketTurnGraph = getProcessGraph(testProcessGraphRegistry, "ticket_issue_process");
 const mrPolishGraph = getProcessGraph(testProcessGraphRegistry, "mr_polish_process");
-
-function parseReviewSubject(value: unknown): ReviewSubject | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return null;
-	}
-	const kind = (value as { kind?: unknown }).kind;
-	return typeof kind === "string" && ["plan", "implementation"].includes(kind)
-		? { kind: kind as ReviewSubject["kind"] }
-		: null;
-}
 
 function buildTestProcessTurnDefinitions(
 	graph: ProcessGraphView,
@@ -127,7 +115,6 @@ function createTestProcess(
 					typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 				return {
 					readyForHumanReview: record.readyForHumanReview === true,
-					reviewSubject: parseReviewSubject(record.reviewSubject),
 				};
 			},
 			serialize(value: TestProcessState) {
@@ -135,7 +122,7 @@ function createTestProcess(
 			},
 		},
 		initialState() {
-			return { readyForHumanReview: false, reviewSubject: null };
+			return { readyForHumanReview: false };
 		},
 		server,
 	});
@@ -146,7 +133,6 @@ const testTurns = new Map<string, TurnDefinition<Record<string, never>, TestProc
 		"plan_review",
 		humanTurn({
 			description: "Plan review",
-			reviewSubject: createReviewSubject("plan"),
 			reviewSemanticRef: "plan",
 			actions: {
 				request_revision: {
@@ -161,7 +147,6 @@ const testTurns = new Map<string, TurnDefinition<Record<string, never>, TestProc
 		"implementation_review",
 		humanTurn({
 			description: "Implementation review",
-			reviewSubject: createReviewSubject("implementation"),
 			reviewSemanticRef: "review",
 			actions: {
 				request_changes: {
@@ -176,7 +161,6 @@ const testTurns = new Map<string, TurnDefinition<Record<string, never>, TestProc
 		"mr_polish_review",
 		humanTurn({
 			description: "MR polish review",
-			reviewSubject: createReviewSubject("implementation"),
 			reviewSemanticRef: "review",
 			actions: {
 				request_changes: {
@@ -259,7 +243,6 @@ const ticketTurnProcess = createTestProcess("ticket_issue_process", ticketTurnGr
 		await ctx.transition({
 			turnId: "plan_review",
 			lifecycleStatus: "waiting",
-			state: { ...ctx.state, reviewSubject: createReviewSubject("plan") },
 		});
 		ctx.applyLifecycleEffects?.({
 			processPatch: { planRevision },
@@ -291,7 +274,6 @@ const ticketTurnProcess = createTestProcess("ticket_issue_process", ticketTurnGr
 			await ctx.transition({
 				turnId: "address_review",
 				lifecycleStatus: "active",
-				state: { ...ctx.state, readyForHumanReview: false, reviewSubject: null },
 			});
 			ctx.applyLifecycleEffects?.({
 				broadcasts: [
@@ -310,7 +292,6 @@ const ticketTurnProcess = createTestProcess("ticket_issue_process", ticketTurnGr
 			await ctx.transition({
 				turnId: "implementation_review",
 				lifecycleStatus: "waiting",
-				state: { ...ctx.state, reviewSubject: createReviewSubject("implementation") },
 			});
 			ctx.applyLifecycleEffects?.({
 				broadcasts: [
@@ -329,7 +310,6 @@ const ticketTurnProcess = createTestProcess("ticket_issue_process", ticketTurnGr
 			state: {
 				...ctx.state,
 				readyForHumanReview: true,
-				reviewSubject: createReviewSubject("implementation"),
 			},
 		});
 	});
@@ -341,7 +321,6 @@ const mrPolishProcess = createTestProcess("mr_polish_process", mrPolishGraph, (a
 			state: {
 				...ctx.state,
 				readyForHumanReview: true,
-				reviewSubject: createReviewSubject("implementation"),
 			},
 		});
 	});

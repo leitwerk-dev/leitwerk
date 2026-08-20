@@ -1,4 +1,3 @@
-import { createReviewSubject } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import {
 	type AutomaticTurnDefinition,
@@ -62,7 +61,6 @@ function makeAutomaticTurn(
 function makeHumanTurn(overrides: Partial<HumanTurnDefinition> = {}): HumanTurnDefinition {
 	return humanTurn({
 		description: "Review the plan",
-		reviewSubject: createReviewSubject("plan"),
 		actions: {
 			approve_plan: { acceptanceState: "accepted" },
 			request_revision: { acceptanceState: "requires_changes" },

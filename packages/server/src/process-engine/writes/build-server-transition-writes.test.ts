@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
 	createDefaultTestProcessGraphRegistry,
+	createFixtureAutomaticTurn,
+	createFixtureProcess,
 	createFixtureServerAutomaticProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
@@ -8,8 +10,7 @@ import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildServerTransitionWrites } from "./build-server-transition-writes.js";
 
 const registry = createDefaultTestProcessGraphRegistry();
-const planReviewState = { reviewSubject: { kind: "plan" } };
-const implementationReviewState = { reviewSubject: { kind: "implementation" } };
+const implementationState = { readyForHumanReview: true };
 
 function createProcess(
 	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
@@ -30,16 +31,49 @@ describe("buildServerTransitionWrites", () => {
 		});
 		const planned = buildServerTransitionWrites(registry, process, {
 			turnId: "run_llm_review",
-			state: implementationReviewState,
+			state: implementationState,
 			effect: { runtime: "restart_worker" },
 		});
 		expect("ok" in planned).toBe(false);
 		if ("ok" in planned) return;
 		expect(planned.processPatch).toMatchObject({
 			selectedTurnId: "run_llm_review",
-			stateJson: JSON.stringify(implementationReviewState),
+			stateJson: JSON.stringify(implementationState),
 		});
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+	});
+
+	it("re-enters a waiting worker automatic turn when it is selected again", () => {
+		const automaticRegistry = createProcessGraphRegistry([
+			createFixtureProcess({
+				id: "automatic_reentry_process",
+				entry: "automatic_turn",
+				turns: { automatic_turn: createFixtureAutomaticTurn() },
+			}),
+		]);
+		const process = createTestDeps().processes.create({
+			processId: "automatic_reentry_process",
+			selectedTurnId: "automatic_turn",
+			lifecycleStatus: "waiting",
+		});
+
+		const planned = buildServerTransitionWrites(automaticRegistry, process, {
+			turnId: "automatic_turn",
+			state: implementationState,
+			trigger: "external_event_received",
+		});
+
+		expect("ok" in planned).toBe(false);
+		if ("ok" in planned) return;
+		expect(planned.processPatch).toMatchObject({
+			lifecycleStatus: "active",
+			stateJson: JSON.stringify(implementationState),
+			currentExecution: {
+				kind: "worker_start",
+			},
+		});
+		expect(planned.turnStartWrites).toHaveLength(1);
+		expect(planned.workerIntent).toEqual({ kind: "reconcile" });
 	});
 
 	it("supports runtime effects without a turn change", () => {
@@ -74,34 +108,5 @@ describe("buildServerTransitionWrites", () => {
 		expect("ok" in planned).toBe(true);
 		if (!("ok" in planned)) return;
 		expect(planned.code).toBe("invalid_transition");
-	});
-
-	it("rejects transitions into review turns when no reviewSubject is supplied", () => {
-		const process = createProcess({
-			selectedTurnId: "generate_plan",
-			lifecycleStatus: "active",
-		});
-		const planned = buildServerTransitionWrites(registry, process, {
-			turnId: "plan_review",
-		});
-		expect("ok" in planned).toBe(true);
-		if (!("ok" in planned)) return;
-		expect(planned.code).toBe("invalid_transition");
-		expect(planned.message).toContain("requires reviewSubject.kind 'plan'");
-	});
-
-	it("rejects clearing reviewSubject while remaining on a review turn", () => {
-		const process = createProcess({
-			selectedTurnId: "plan_review",
-			lifecycleStatus: "waiting",
-			stateJson: JSON.stringify(planReviewState),
-		});
-		const planned = buildServerTransitionWrites(registry, process, {
-			state: { reviewSubject: null },
-		});
-		expect("ok" in planned).toBe(true);
-		if (!("ok" in planned)) return;
-		expect(planned.code).toBe("invalid_transition");
-		expect(planned.message).toContain("requires reviewSubject.kind 'plan'");
 	});
 });

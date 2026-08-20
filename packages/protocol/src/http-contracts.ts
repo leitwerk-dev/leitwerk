@@ -20,6 +20,7 @@ import {
 	type ProcessTurnType,
 	type QuestionAnswerDraft,
 	type SerializedProcessGraph,
+	type TurnProgressReport,
 	trimToNull,
 	type WorkerLease,
 } from "@leitwerk-dev/domain";
@@ -730,6 +731,7 @@ export interface ProcessTimelineTurnSummary {
 	startedAt: string;
 	endedAt: string | null;
 	actionSource: "ui" | "external" | "scheduled" | null;
+	progress?: TurnProgressReport | null;
 }
 
 export type ProcessTimelineInputSummary = Pick<

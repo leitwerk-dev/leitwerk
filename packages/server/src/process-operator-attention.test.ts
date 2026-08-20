@@ -31,7 +31,6 @@ function createProcess(server: (api: ReturnType<typeof createServerProcessBuilde
 			}),
 			plan_review: humanTurn({
 				description: "Review the generated plan",
-				reviewSubject: { kind: "plan" },
 				actions: {
 					approve_plan: {
 						label: "Approve plan",

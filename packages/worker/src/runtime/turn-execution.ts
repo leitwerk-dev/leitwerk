@@ -1,4 +1,8 @@
-import type { ProcessSemanticEntryRefKey } from "@leitwerk-dev/domain";
+import {
+	failActiveTurnProgress,
+	type ProcessSemanticEntryRefKey,
+	type TurnProgressReport,
+} from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	TurnOptions,
@@ -83,6 +87,8 @@ export async function executeSelectedTurn(
 	}
 	const handler = resolvedWorkerProcess.definition.turns.get(currentTurnId);
 	if (!handler) throw new Error(`Validated turn handler '${currentTurnId}' is unavailable`);
+	let automaticIntegrationCallIndex = 0;
+	let latestProgressReport: TurnProgressReport | null = null;
 
 	const ctx = {
 		process: processSnapshot,
@@ -92,6 +98,27 @@ export async function executeSelectedTurn(
 		turnResultMarkdownBySemanticRef: input.session.turnResultMarkdownBySemanticRef,
 		turnResultMarkdownByProduct: input.session.turnResultMarkdownByProduct,
 		workspaceRoot: input.session.workspaceRoot,
+		...(selectedTurnType === "automatic"
+			? {
+					reportProgress(report: TurnProgressReport) {
+						latestProgressReport = report;
+						input.emit({ kind: "progress", turnRecordId: input.turnRecordId, report });
+					},
+					async callIntegrationTool(name: string, args: Record<string, unknown>) {
+						const tool = input.integrationTools?.find((candidate) => candidate.name === name);
+						if (!tool) {
+							throw new Error(
+								`Integration tool '${name}' is not authorized for turn '${currentTurnId}'`,
+							);
+						}
+						automaticIntegrationCallIndex += 1;
+						return tool.execute(args, {
+							toolCallId: `${input.turnRecordId}:${automaticIntegrationCallIndex}:${name}`,
+							signal: input.signal,
+						});
+					},
+				}
+			: {}),
 	} as WorkerProcessContext;
 	let terminal: SelectedTurnExecutionResult | null = null;
 	const appliedTargetedInputs: AppliedTargetedInput[] = [];
@@ -197,6 +224,14 @@ export async function executeSelectedTurn(
 		}
 		return terminal;
 	} catch (error) {
+		const failedProgressReport = latestProgressReport as TurnProgressReport | null;
+		if (failedProgressReport) {
+			input.emit({
+				kind: "progress",
+				turnRecordId: input.turnRecordId,
+				report: failActiveTurnProgress(failedProgressReport),
+			});
+		}
 		if (error instanceof TurnExecutionFailure) return failedResult(error, appliedTargetedInputs);
 		if (automaticExecutor)
 			return failedResult(automaticExecutor.failure(error), appliedTargetedInputs);

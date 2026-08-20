@@ -1,4 +1,4 @@
-import { createReviewSubject, normalizeOptionalMarkdown } from "@leitwerk-dev/domain";
+import { normalizeOptionalMarkdown } from "@leitwerk-dev/domain";
 import {
 	acceptedReviewHandoffAction,
 	type Codec,
@@ -65,9 +65,6 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 export function createRepositoryChangeProcess<TParams extends RepositoryChangeParams>(
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
-	const planReviewSubject = createReviewSubject("plan");
-	const implementationReviewSubject = createReviewSubject("implementation");
-
 	const turnIds = {
 		importPlan: "import_plan",
 		generatePlan: "generate_plan",
@@ -129,19 +126,18 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		state: RepositoryChangeState;
 	}): RepositoryChangeState {
 		return patchRepositoryChangeState(ctx.state, {
-			reviewSubject: implementationReviewSubject,
 			clearReviewRefs: true,
 			clearProductRefs: [products.simplificationPlan],
 		});
 	}
 
 	function buildAcceptedReviewFollowUpMessage(input: {
-		reviewSubject: { kind: "plan" | "implementation" };
+		reviewedProduct: typeof products.plan | typeof products.implementationSummary;
 		reviewMarkdown: string;
 		adjustment?: string | null;
 	}): string {
 		const adjustment = normalizeMessage(input.adjustment);
-		if (input.reviewSubject.kind === "plan") {
+		if (input.reviewedProduct === products.plan) {
 			return [
 				"Revise the plan according to this review:",
 				input.reviewMarkdown,
@@ -203,7 +199,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	function patchRepositoryChangeState(
 		state: RepositoryChangeState,
 		input: {
-			reviewSubject?: RepositoryChangeState["reviewSubject"];
 			finalization?: RepositoryChangeState["finalization"];
 			semanticEntryRefs?: RepositoryChangeState["semanticEntryRefs"];
 			clearReviewRefs?: boolean;
@@ -212,7 +207,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	): RepositoryChangeState {
 		const nextState: RepositoryChangeState = {
 			...state,
-			...("reviewSubject" in input ? { reviewSubject: input.reviewSubject ?? null } : {}),
 			...("finalization" in input ? { finalization: input.finalization } : {}),
 			...("semanticEntryRefs" in input ? { semanticEntryRefs: input.semanticEntryRefs } : {}),
 		};
@@ -238,7 +232,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const planDecisionSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review plan",
-		reviewSubject: planReviewSubject,
 		reviewSemanticRef: "plan",
 		notesFields: [
 			{
@@ -262,7 +255,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					}
 					return {
 						state: patchRepositoryChangeState(ctx.state, {
-							reviewSubject: null,
 							clearReviewRefs: true,
 							clearProductRefs: [products.simplificationPlan],
 						}),
@@ -290,7 +282,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					const message = normalizeMessage(input.message);
 					return {
 						state: patchRepositoryChangeState(ctx.state, {
-							reviewSubject: null,
 							clearReviewRefs: true,
 							clearProductRefs: [products.simplificationPlan],
 						}),
@@ -311,7 +302,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					}
 					return {
 						state: patchRepositoryChangeState(ctx.state, {
-							reviewSubject: planReviewSubject,
 							clearReviewRefs: true,
 							clearProductRefs: [products.simplificationPlan],
 						}),
@@ -323,7 +313,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const planReviewFeedbackSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review plan feedback",
-		reviewSubject: planReviewSubject,
 		reviewSemanticRef: "review",
 		notesFields: [
 			{
@@ -350,16 +339,11 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 						throw new Error("No review output markdown is available to accept");
 					}
 					return buildAcceptedReviewFollowUpMessage({
-						reviewSubject: planReviewSubject,
+						reviewedProduct: products.plan,
 						reviewMarkdown,
 						adjustment: normalizeMessage(input.message),
 					});
 				},
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
-					}),
-				}),
 			}),
 			[codingActionIds.requestReviewChanges]: revisionAction({
 				label: "Request review changes",
@@ -368,29 +352,18 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				form: requestReviewChangesForm,
 				to: turnIds.reviewPlan,
 				queueTarget: { semanticRef: "review" },
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: planReviewSubject,
-					}),
-				}),
 			}),
 			[codingActionIds.dismissReview]: {
 				label: "Dismiss review",
 				description: "Return to the plan decision without applying the review.",
 				acceptanceState: "neutral",
 				to: turnIds.planDecision,
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: planReviewSubject,
-					}),
-				}),
 			},
 		},
 	});
 
 	const implementationDecisionSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review implementation",
-		reviewSubject: implementationReviewSubject,
 		reviewSemanticRef: "currentPrimaryPathLeaf",
 		notesFields: [
 			{
@@ -411,7 +384,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				to: turnIds.generateCommitMessage,
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
 						finalization: createEmptyRepositoryChangeFinalizationState(),
 						clearReviewRefs: true,
 						clearProductRefs: [products.simplificationPlan],
@@ -427,7 +399,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				queueTarget: { semanticRef: "currentPrimaryPathLeaf" },
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
 						clearReviewRefs: true,
 						clearProductRefs: [products.simplificationPlan],
 					}),
@@ -459,7 +430,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const implementationReviewFeedbackSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review implementation feedback",
-		reviewSubject: implementationReviewSubject,
 		reviewSemanticRef: "review",
 		notesFields: [
 			{
@@ -487,14 +457,13 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 						throw new Error("No review output markdown is available to accept");
 					}
 					return buildAcceptedReviewFollowUpMessage({
-						reviewSubject: implementationReviewSubject,
+						reviewedProduct: products.implementationSummary,
 						reviewMarkdown,
 						adjustment: normalizeMessage(input.message),
 					});
 				},
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
 						clearProductRefs: [products.simplificationPlan],
 					}),
 				}),
@@ -506,28 +475,17 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				schedulable: true,
 				to: turnIds.reviewImplementation,
 				queueTarget: { semanticRef: "review" },
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
-					}),
-				}),
 			}),
 			[codingActionIds.dismissReview]: {
 				label: "Dismiss review",
 				acceptanceState: "neutral",
 				to: turnIds.implementationDecision,
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
-					}),
-				}),
 			},
 		},
 	});
 
 	const simplificationDecisionSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review simplification plan",
-		reviewSubject: implementationReviewSubject,
 		reviewProduct: products.simplificationPlan,
 		notesFields: [
 			{
@@ -560,7 +518,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				},
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
 						clearReviewRefs: true,
 					}),
 				}),
@@ -571,11 +528,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				form: requestReviewChangesForm,
 				to: turnIds.simplifyImplementation,
 				queueTarget: { productName: products.simplificationPlan },
-				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
-					}),
-				}),
 			}),
 			[codingActionIds.dismissReview]: {
 				label: "Reject simplification plan",
@@ -585,7 +537,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				to: turnIds.implementationDecision,
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
 						clearReviewRefs: true,
 						clearProductRefs: [products.simplificationPlan],
 					}),
@@ -610,7 +561,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				params: { plan: planMarkdown },
 				markdown: planMarkdown,
 				state: patchRepositoryChangeState(ctx.state, {
-					reviewSubject: null,
 					clearReviewRefs: true,
 					clearProductRefs: [products.simplificationPlan],
 				}),
@@ -653,7 +603,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					const planMarkdown = ctx.output?.content ?? "";
 					return {
 						state: patchRepositoryChangeState(ctx.state, {
-							reviewSubject: planReviewSubject,
 							clearReviewRefs: true,
 							clearProductRefs: [products.simplificationPlan],
 						}),
@@ -691,7 +640,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
-		.reviews(planReviewSubject)
 		.consume(products.plan)
 		.buildPrompt(buildReviewPlanPrompt)
 		.outcomeTool("no_issues", (tool) =>
@@ -699,24 +647,14 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				.description(
 					"Approve the plan and publish the review. Its Markdown may include Mermaid diagrams or uploaded images.",
 				)
-				.to(turnIds.planDecision)
-				.state(({ ctx }) =>
-					patchRepositoryChangeState(ctx.state, {
-						reviewSubject: planReviewSubject,
-					}),
-				),
+				.to(turnIds.planDecision),
 		)
 		.outcomeTool("request_changes", (tool) =>
 			tool
 				.description(
 					"Request plan changes and publish actionable feedback. Its Markdown may include Mermaid diagrams or uploaded images.",
 				)
-				.to(turnIds.planReviewFeedback)
-				.state(({ ctx }) =>
-					patchRepositoryChangeState(ctx.state, {
-						reviewSubject: planReviewSubject,
-					}),
-				),
+				.to(turnIds.planReviewFeedback),
 		)
 		.publish(products.review);
 
@@ -736,7 +674,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.to(turnIds.implementationDecision)
 		.state(({ ctx }) =>
 			patchRepositoryChangeState(ctx.state, {
-				reviewSubject: implementationReviewSubject,
 				clearReviewRefs: true,
 				clearProductRefs: [products.simplificationPlan],
 			}),
@@ -748,31 +685,20 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
-		.reviews(implementationReviewSubject)
 		.buildPrompt(buildReviewImplementationPrompt)
 		.outcomeTool("no_issues", (tool) =>
 			tool
 				.description(
 					"Approve the implementation and publish the review. Its Markdown may include Mermaid diagrams or uploaded images.",
 				)
-				.to(turnIds.implementationDecision)
-				.state(({ ctx }) =>
-					patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
-					}),
-				),
+				.to(turnIds.implementationDecision),
 		)
 		.outcomeTool("request_changes", (tool) =>
 			tool
 				.description(
 					"Request implementation changes and publish actionable feedback. Its Markdown may include Mermaid diagrams or uploaded images.",
 				)
-				.to(turnIds.implementationReviewFeedback)
-				.state(({ ctx }) =>
-					patchRepositoryChangeState(ctx.state, {
-						reviewSubject: implementationReviewSubject,
-					}),
-				),
+				.to(turnIds.implementationReviewFeedback),
 		)
 		.publish(products.review);
 
@@ -784,12 +710,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.startFromProductBranch(products.simplificationPlan)
 		.buildPrompt(buildSimplifyImplementationPrompt)
 		.publish(products.simplificationPlan)
-		.to(turnIds.simplificationDecision)
-		.state(({ ctx }) =>
-			patchRepositoryChangeState(ctx.state, {
-				reviewSubject: implementationReviewSubject,
-			}),
-		);
+		.to(turnIds.simplificationDecision);
 
 	const generateCommitMessageTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generateCommitMessage)
@@ -837,7 +758,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				.complete()
 				.state(({ ctx, event }) =>
 					patchRepositoryChangeState(ctx.state, {
-						reviewSubject: null,
 						finalization: resetFinalizationAfterMessage(ctx.state, {
 							usedConflictResolution:
 								event.params.usedConflictResolution === true ||

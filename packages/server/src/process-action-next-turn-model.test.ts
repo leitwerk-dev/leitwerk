@@ -108,11 +108,7 @@ function createProcess(overrides: Partial<ProcessInstance> = {}): ProcessInstanc
 		turnConfigsJson: null,
 		selectedTurnModelProfileId: null,
 		paramsJson: "{}",
-		stateJson: JSON.stringify(
-			createPreviewState({
-				reviewSubject: { kind: "plan" },
-			}),
-		),
+		stateJson: JSON.stringify(createPreviewState({})),
 		createdAt: "2026-01-01T00:00:00.000Z",
 		updatedAt: "2026-01-01T00:00:00.000Z",
 		...overrides,
@@ -145,7 +141,6 @@ describe("buildProcessActionNextTurnModelSummary", () => {
 			process: createProcess({
 				stateJson: JSON.stringify(
 					createPreviewState({
-						reviewSubject: { kind: "plan" },
 						semanticEntryRefs: {
 							rootEntry: { entryId: "missing-root", turnRecordId: null },
 							currentPrimaryPathLeaf: { entryId: "root-user", turnRecordId: null },

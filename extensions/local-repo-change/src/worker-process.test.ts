@@ -118,7 +118,6 @@ describe("localRepoChangeProcess worker turns", () => {
 				plan: "## Candidate plan\n\nShip it.",
 			},
 			state: createState({
-				reviewSubject: { kind: "plan" },
 				semanticEntryRefs: {
 					...createEmptyStructuralProcessState().semanticEntryRefs,
 					rootEntry: { entryId: "ent_root", turnRecordId: null },
@@ -159,7 +158,6 @@ describe("localRepoChangeProcess worker turns", () => {
 				plan: "## Candidate plan\n\nShip it.",
 			},
 			state: createState({
-				reviewSubject: { kind: "plan" },
 				semanticEntryRefs: {
 					...createEmptyStructuralProcessState().semanticEntryRefs,
 					plan: { entryId: "ent_plan", turnRecordId: "trn_plan" },
@@ -258,7 +256,6 @@ describe("localRepoChangeProcess worker turns", () => {
 			params,
 			turnResultMarkdownByProduct: { plan: "SENTINEL_PLAN_MUST_NOT_BE_INCLUDED" },
 			state: createState({
-				reviewSubject: { kind: "implementation" },
 				semanticEntryRefs: {
 					...createEmptyStructuralProcessState().semanticEntryRefs,
 					rootEntry: { entryId: "ent_root", turnRecordId: null },
@@ -276,7 +273,6 @@ describe("localRepoChangeProcess worker turns", () => {
 				plan: "SENTINEL_PLAN_MUST_NOT_BE_INCLUDED",
 			},
 			state: createState({
-				reviewSubject: { kind: "implementation" },
 				semanticEntryRefs: {
 					...createEmptyStructuralProcessState().semanticEntryRefs,
 					rootEntry: { entryId: "ent_root", turnRecordId: null },
