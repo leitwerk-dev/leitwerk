@@ -53,3 +53,8 @@ export type OperationInput<TOp> =
 
 export type OperationData<TOp> =
 	TOp extends OperationSpec<string, OperationInputBase, infer TData> ? TData : never;
+
+export interface OperationRunOptions<TData> {
+	/** Runs after the transaction and process lock complete, before reactions are dispatched. */
+	afterRecord?: (data: TData) => void;
+}

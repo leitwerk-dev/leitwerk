@@ -227,16 +227,34 @@ describe("worker runtime reducer", () => {
 			point: "before_turn_outcome",
 			turnRecordId: "record_1",
 		});
-		expect(published.state.work.publication).toEqual({ kind: "none" });
+		expect(published.state.work.publication).toMatchObject({ kind: "terminal_pending_ack" });
+		expect(deriveReportedWorkerState(published.state)).toBe("busy");
 		expect(protocolTypes(published.outputs)).toContain("worker.turn_outcome");
+		expect(outputsOfKind(published.outputs, "arm_timer")).toContainEqual(
+			expect.objectContaining({ name: "terminal_ack", correlation: "record_1" }),
+		);
 		expect(outputsOfKind(published.outputs, "upload_snapshot")).toHaveLength(0);
 
-		const replay = reduceWorkerRuntime(published.state, {
-			kind: "snapshot_succeeded",
-			point: "before_turn_outcome",
-			turnRecordId: "record_1",
+		const retried = reduceWorkerRuntime(published.state, {
+			kind: "timer_fired",
+			name: "terminal_ack",
+			correlation: "record_1",
 		});
-		expect(protocolTypes(replay.outputs)).not.toContain("worker.turn_outcome");
+		expect(protocolTypes(retried.outputs)).toContain("worker.turn_outcome");
+
+		const reconnected = reduceWorkerRuntime(retried.state, { kind: "transport_connected" });
+		expect(protocolTypes(reconnected.outputs)).toContain("worker.turn_outcome");
+
+		const acknowledged = reduceWorkerRuntime(reconnected.state, {
+			kind: "server_message",
+			message: {
+				type: "worker.turn_terminal_recorded",
+				payload: { turnRecordId: "record_1" },
+			} as ServerToWorkerMessage,
+		});
+		expect(acknowledged.state.work.publication).toEqual({ kind: "none" });
+		expect(deriveReportedWorkerState(acknowledged.state)).toBe("idle");
+		expect(protocolTypes(acknowledged.outputs)).toContain("worker.state");
 	});
 
 	it("replaces a terminal fact when its mandatory snapshot fails", () => {
@@ -277,11 +295,21 @@ describe("worker runtime reducer", () => {
 			point: "before_turn_outcome",
 			turnRecordId: "record_1",
 		});
-		expect(published.state.phase).toMatchObject({ kind: "cleaning", stage: "publication" });
-		expect(published.state.work.publication.kind).toBe("cleanup_snapshot");
-		expect(protocolTypes(published.outputs)).toEqual(
-			expect.arrayContaining(["worker.turn_outcome", "worker.cleanup_started"]),
-		);
+		expect(published.state.phase.kind).toBe("draining");
+		expect(published.state.work.publication.kind).toBe("terminal_pending_ack");
+		expect(protocolTypes(published.outputs)).toContain("worker.turn_outcome");
+		expect(protocolTypes(published.outputs)).not.toContain("worker.cleanup_started");
+
+		const acknowledged = reduceWorkerRuntime(published.state, {
+			kind: "server_message",
+			message: {
+				type: "worker.turn_terminal_recorded",
+				payload: { turnRecordId: "record_1" },
+			} as ServerToWorkerMessage,
+		});
+		expect(acknowledged.state.phase).toMatchObject({ kind: "cleaning", stage: "publication" });
+		expect(acknowledged.state.work.publication.kind).toBe("cleanup_snapshot");
+		expect(protocolTypes(acknowledged.outputs)).toContain("worker.cleanup_started");
 	});
 
 	it("continues cleanup after cleanup and fatal snapshot failures", () => {

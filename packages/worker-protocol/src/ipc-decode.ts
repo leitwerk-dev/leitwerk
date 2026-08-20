@@ -8,6 +8,7 @@ export type IpcDecodeResult<TMessage> =
 const SERVER_TO_WORKER_TYPES = [
 	"worker.start",
 	"worker.turn_start_accepted",
+	"worker.turn_terminal_recorded",
 	"worker.credential_update_accepted",
 	"worker.question_response",
 	"worker.integration_tool_result",

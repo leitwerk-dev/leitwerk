@@ -10,6 +10,8 @@ export interface WorkerFailureInput {
 		message: string;
 		errorClass?: import("@leitwerk-dev/domain").WorkerErrorClass;
 		workerLeaseId?: string | null;
+		resultPiEntryId?: string | null;
+		recoveryContext?: import("@leitwerk-dev/domain").TurnFailedPayload["recoveryContext"];
 	};
 }
 
@@ -86,6 +88,8 @@ export const WorkerFailure = defineOperation<"worker_failure", WorkerFailureInpu
 				errorCode: input.payload.errorCode,
 				errorClass: input.payload.errorClass,
 				activeTurnRecord: runningTurnRecord,
+				resultPiEntryId: input.payload.resultPiEntryId,
+				recoveryContext: input.payload.recoveryContext,
 			}),
 		});
 	},

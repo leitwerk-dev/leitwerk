@@ -68,9 +68,10 @@ sequenceDiagram
     I->>E: TurnOutcome or TurnFailed
     E->>DB: record completion
     E->>WS: durable frames
+    I->>W: worker.turn_terminal_recorded
 ```
 
-The tree snapshot must upload before outcome or failure. An upload failure becomes an infrastructure failure.
+The tree snapshot must upload before outcome or failure. An upload failure becomes an infrastructure failure. After upload, the worker retains the terminal fact, remains busy, and replays it after timeout or reconnect until `worker.turn_terminal_recorded` confirms the durable write. Duplicate terminal facts are idempotent. A server rejection or exception is recorded as an infrastructure turn failure instead of leaving the process active indefinitely. When the worker already produced a result entry, the failure preserves that entry and continuation metadata so the UI exposes Continue alongside Retry.
 
 Before acceptance, LLM bootstrap only inspects the retained tree to produce `preparedStart`; it must not prompt Pi or mutate the tree. Acceptance validates that preparation and records its path and fork provenance. Post-acceptance execution uses that recorded preparation rather than selecting a different path.
 

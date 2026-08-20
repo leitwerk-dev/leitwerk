@@ -99,13 +99,20 @@ describe("ipc-decode", () => {
 		expect(decoded.message.payload.resumeLeafEntryId).toBe("turn-1");
 	});
 
-	it("narrows turn-start acceptance and credential-update frames", () => {
+	it("narrows turn acceptance, terminal acknowledgement, and credential frames", () => {
 		const accepted = createIpcMessage({
 			type: "worker.turn_start_accepted",
 			messageId: "m-accepted",
 			instanceId: "agt_1",
 			workerId: "wkr_1",
 			payload: { startRecordId: "tsr_1", turnRecordId: "trn_1" },
+		});
+		const terminal = createIpcMessage({
+			type: "worker.turn_terminal_recorded",
+			messageId: "m-terminal",
+			instanceId: "agt_1",
+			workerId: "wkr_1",
+			payload: { turnRecordId: "trn_1" },
 		});
 		const update = createIpcMessage({
 			type: "worker.credential_update",
@@ -115,6 +122,7 @@ describe("ipc-decode", () => {
 			payload: { providerId: "openai", expectedRevision: 1, values: { apiKey: "secret" } },
 		});
 		expect(decodeServerToWorkerMessage(accepted).ok).toBe(true);
+		expect(decodeServerToWorkerMessage(terminal).ok).toBe(true);
 		expect(decodeWorkerToServerMessage(update).ok).toBe(true);
 	});
 

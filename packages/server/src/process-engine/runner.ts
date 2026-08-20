@@ -10,6 +10,7 @@ import type {
 	OperationInput,
 	OperationInputBase,
 	OperationMessages,
+	OperationRunOptions,
 	OperationSpec,
 } from "./operation.js";
 import { dispatchReactions } from "./reactions.js";
@@ -89,6 +90,7 @@ export function createEngineRunner(
 	return async function run<TOp extends OperationSpec<string, OperationInputBase, unknown>>(
 		operation: TOp,
 		input: OperationInput<TOp>,
+		runOptions: OperationRunOptions<OperationData<TOp>> = {},
 	): Promise<EngineResult<OperationData<TOp>>> {
 		/**
 		 * Engine invariant: one operation for a process instance is serialized from
@@ -216,6 +218,17 @@ export function createEngineRunner(
 		}
 
 		const { recorded } = lockedOutcome;
+		try {
+			runOptions.afterRecord?.(recorded.data);
+		} catch (error) {
+			logProcessEngineError(deps.logger, {
+				err: error,
+				operationKind: operation.kind,
+				instanceId: input.instanceId,
+				stage: "post_commit",
+				code: "after_record_callback_failed",
+			});
+		}
 		try {
 			await deps.afterRecord?.(recorded.process);
 		} catch (error) {

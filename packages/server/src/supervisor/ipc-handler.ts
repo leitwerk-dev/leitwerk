@@ -69,6 +69,15 @@ export interface IpcHandlerCallbacks {
 		outcome: string,
 		params: Record<string, unknown>,
 	) => void;
+	onTurnTerminalRecorded?: (instanceId: string, workerId: string, turnRecordId: string) => void;
+	onTurnTerminalRecordingFailed?: (input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		terminalType: "outcome" | "failure";
+		code: string;
+		message: string;
+	}) => void;
 	onCleanupCompleted?: (instanceId: string, workerId: string) => void;
 	onWorkerTurnStartAccepted?: (
 		instanceId: string,
@@ -92,11 +101,15 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 	const inputAckHandler = createWorkerInputAckHandler(deps);
 	const turnRecorder = createWorkerTurnIpcRecorder(
 		{
-			processes: deps.processes,
+			turnRecords: deps.turnRecords,
 			commands: deps.commands,
 			eventIngestor,
 		},
-		{ onTurnOutcomeRecorded: callbacks.onTurnOutcomeRecorded },
+		{
+			onTurnOutcomeRecorded: callbacks.onTurnOutcomeRecorded,
+			onTurnTerminalRecorded: callbacks.onTurnTerminalRecorded,
+			onTurnTerminalRecordingFailed: callbacks.onTurnTerminalRecordingFailed,
+		},
 	);
 
 	return {
@@ -181,6 +194,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					}
 					const result = observeWorkerLease("bootstrap_completed", "worker.ready");
 					if (result.kind === "applied") {
+						deps.leases.updateHeartbeat(activeLease.workerId);
 						void deps.commands
 							.updateSemanticEntryRefs(instanceId, {
 								rootEntry:
@@ -250,11 +264,11 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					break;
 				}
 				case "worker.turn_outcome": {
-					turnRecorder.recordTurnOutcome(instanceId, msg.payload);
+					turnRecorder.recordTurnOutcome(instanceId, workerId, msg.payload);
 					break;
 				}
 				case "worker.turn_failed": {
-					turnRecorder.recordTurnFailed(instanceId, msg.payload);
+					turnRecorder.recordTurnFailed(instanceId, workerId, msg.payload);
 					break;
 				}
 				case "worker.lifecycle_parked": {

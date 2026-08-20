@@ -285,7 +285,7 @@ describe("createWorkerWebSocketIpcManager", () => {
 		expect(socket.closeCalls.at(-1)).toMatchObject({ code: 1011 });
 	});
 
-	it("reports send failures as runtime errors", () => {
+	it("reports send failures and replays the unsent message after reconnect", () => {
 		const registration = createRegistration();
 		const socket = bindAndAuthenticate(registration.manager, registration.token);
 		socket.throwOnSend = true;
@@ -296,6 +296,24 @@ describe("createWorkerWebSocketIpcManager", () => {
 			expect.objectContaining({ message: "send failed" }),
 		]);
 		expect(socket.closeCalls.at(-1)).toMatchObject({ code: 1011 });
+		const replacement = bindAndAuthenticate(registration.manager, registration.token);
+		expect(replacement.sent).toHaveLength(1);
+	});
+
+	it("queues a message when an authenticated socket stops being writable", () => {
+		const registration = createRegistration();
+		const socket = bindAndAuthenticate(registration.manager, registration.token);
+		socket.readyState = 2;
+
+		registration.manager.send("proc_1", "wkr_1", stop());
+
+		expect(socket.sent).toEqual([]);
+		expect(socket.closeCalls.at(-1)).toMatchObject({
+			code: 1011,
+			reason: "worker websocket unavailable during send",
+		});
+		const replacement = bindAndAuthenticate(registration.manager, registration.token);
+		expect(replacement.sent).toHaveLength(1);
 	});
 
 	it("allows workers to rebind with a hashed token and buffers while disconnected", () => {

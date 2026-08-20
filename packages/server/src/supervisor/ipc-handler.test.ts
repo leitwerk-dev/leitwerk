@@ -334,7 +334,10 @@ describe("createIpcHandler", () => {
 		);
 		await flushAsyncWork();
 
-		expect(t.leases.getByInstance(process.id)?.state).toBe("idle");
+		expect(t.leases.getByInstance(process.id)).toMatchObject({
+			state: "idle",
+			lastHeartbeatAt: expect.any(String),
+		});
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
 			semanticEntryRefs: {
 				rootEntry: { entryId: "user-1", turnRecordId: null },
@@ -1281,7 +1284,8 @@ describe("createIpcHandler", () => {
 			turnId: "generate_plan",
 		});
 
-		const handler = createTestIpcHandler(t);
+		const onTurnTerminalRecorded = vi.fn();
+		const handler = createTestIpcHandler(t, { onTurnTerminalRecorded });
 		await acknowledgeAcceptedTurn(handler, {
 			instanceId: process.id,
 			workerId,
@@ -1317,6 +1321,7 @@ describe("createIpcHandler", () => {
 		expect(t.turnRecords.getById("trn_plan_1")?.status).toBe("succeeded");
 		expect(t.turnRecords.getById("trn_plan_1")?.turnResultMarkdown).toBe("## Plan");
 		expect(t.processes.getById(process.id)?.currentExecution).toBeNull();
+		expect(onTurnTerminalRecorded).toHaveBeenCalledWith(process.id, workerId, "trn_plan_1");
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
 			semanticEntryRefs: {
 				plan: { entryId: "turn-1", turnRecordId: "trn_plan_1" },
@@ -1341,6 +1346,25 @@ describe("createIpcHandler", () => {
 				expect.objectContaining({ kind: "turn_record", turnRecordId: "trn_plan_1" }),
 			]),
 		);
+
+		handler.handleMessage(
+			baseEnvelope("worker.turn_outcome", process.id, workerId, {
+				turnRecordId: "trn_plan_1",
+				turnId: "generate_plan",
+				outcome: "plan_saved",
+				pathType: "primary",
+				resultPiEntryId: "turn-1",
+				turnResultMarkdown: "## Plan",
+				params: {
+					summary: "Initial plan",
+					acceptanceCriteria: ["A"],
+					planMarkdown: "## Plan",
+				},
+			}),
+		);
+		await flushAsyncWork();
+		expect(onTurnTerminalRecorded).toHaveBeenCalledTimes(2);
+		expect(t.turnRecords.getById("trn_plan_1")?.status).toBe("succeeded");
 	});
 
 	it("rejects stale acknowledged turn starts without replacing current execution", async () => {
@@ -1390,7 +1414,12 @@ describe("createIpcHandler", () => {
 			turnId: "generate_plan",
 		});
 
-		const handler = createTestIpcHandler(t);
+		const onTurnTerminalRecorded = vi.fn();
+		const onTurnTerminalRecordingFailed = vi.fn();
+		const handler = createTestIpcHandler(t, {
+			onTurnTerminalRecorded,
+			onTurnTerminalRecordingFailed,
+		});
 		handler.handleMessage(
 			baseEnvelope("worker.turn_outcome", process.id, workerId, {
 				turnRecordId: "trn_stale",
@@ -1414,6 +1443,16 @@ describe("createIpcHandler", () => {
 		});
 		expect(t.processes.getById(process.id)?.planRevision).toBe(0);
 		expect(t.turnRecords.getById("trn_current")?.status).toBe("failed");
+		expect(onTurnTerminalRecordingFailed).toHaveBeenCalledWith(
+			expect.objectContaining({
+				instanceId: process.id,
+				workerId,
+				turnRecordId: "trn_stale",
+				terminalType: "outcome",
+				code: "stale_turn_record",
+			}),
+		);
+		expect(onTurnTerminalRecorded).toHaveBeenCalledWith(process.id, workerId, "trn_stale");
 	});
 
 	it("records failed turn records and parks lifecycle in error before lifecycle parking", async () => {

@@ -72,6 +72,10 @@ Durable worker leases transition through distinct lifecycle states owned exclusi
 - **`draining` / `cleanup`:** Graceful turn completion, uploading final snapshots, and releasing worker resources.
 - **`failed` / `exited`:** Worker termination states.
 
+The stale-heartbeat watchdog does not use lease creation time. `worker.ready` establishes the
+first heartbeat baseline after bootstrap, and periodic `worker.heartbeat` messages advance it.
+This keeps image pulls and workspace preparation outside the heartbeat timeout.
+
 ---
 
 ## 4. IPC Protocol & Message Reference
@@ -81,6 +85,7 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 ### Server -> Worker Messages
 - **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. Durable credentials carry a numbered revision. Generated bootstrap-only material carries a null revision and is materialized for the worker without enabling credential refresh. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
+- **`worker.turn_terminal_recorded`:** Confirm that a correlated turn outcome or failure is durable. The worker retains and replays the terminal fact until this acknowledgement arrives.
 - **`worker.integration_tool_result`:** Return a correlated server-owned tool result.
 - **`input.batch`:** Deliver pending FIFO steering inputs.
 - **`worker.stop`:** Request graceful worker cleanup and transport termination.
@@ -105,7 +110,11 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 1. **`TurnStartRecord` Reservation:** A worker start prepares a `TurnStartRecord` in SQLite before worker execution begins. This reserves the turn-record ID but is **not** an attempt.
 2. **`worker.turn_started` Acceptance:** The worker bootstraps workspace repositories, verifies resource snapshots, and sends `worker.turn_started`. The worker MUST NOT execute LLM prompts or automatic handlers until receiving `worker.turn_start_accepted`.
 3. **Attempt Increment:** Server acceptance compare-and-set creates exactly one `ProcessTurnRecord` and increments its attempt count once. Replaying an accepted start identity returns acceptance without creating duplicate attempts.
-4. **Failure Recovery:** If a turn fails post-acceptance, the process moves to `lifecycleStatus = error` while preserving `selectedTurnId`. The operator can trigger **Retry** (restarts from pre-turn leaf) or **Continue** (resumes saved leaf with updated prompt).
+4. **Accepted-start reconciliation:** Durable acceptance remains desired server state until the owning worker reports `busy`. Server-to-worker messages that encounter a closing connection remain queued for reconnect. An idle reconnect heartbeat and the idle-running watchdog replay the matching `worker.turn_start_accepted` message idempotently.
+5. **Terminal acknowledgement:** After the mandatory snapshot, the worker sends `worker.turn_outcome` or `worker.turn_failed`, remains busy, and retries the same correlated fact after timeout or reconnect. The server records terminal facts idempotently and returns `worker.turn_terminal_recorded` only after the durable mutation succeeds. A recording rejection or exception becomes an infrastructure turn failure instead of being discarded.
+6. **Failure Recovery:** If an executable turn fails, the process moves to `lifecycleStatus = error` while preserving `selectedTurnId`. The operator can retry worker-owned and server-automatic turns. Failed LLM turns with saved progress can also continue from the saved leaf with an updated prompt. Model overrides apply only to LLM retries.
+
+A watchdog reconciles an accepted turn that remains `running` beyond the heartbeat timeout while its worker reports `idle`. If the worker remains idle for another timeout after replay, the watchdog records an infrastructure failure and stops the worker so generic retry is available.
 
 During an LLM turn, a declared integration tool uses
 `worker.integration_tool_request` / `worker.integration_tool_result`. The server checks
@@ -139,4 +148,4 @@ Uploads are mandatory at four key execution points:
 3. Prior to emitting `worker.turn_failed`.
 4. Prior to emitting `worker.cleanup_completed`.
 
-Snapshot upload failures are treated as infrastructure failures, preserving server read-model integrity.
+Snapshot upload failures are treated as infrastructure failures, preserving server read-model integrity. A successful upload does not complete the worker lifecycle: the worker keeps the terminal fact pending until the server acknowledges its durable recording.

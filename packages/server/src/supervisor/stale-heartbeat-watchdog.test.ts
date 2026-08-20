@@ -7,6 +7,26 @@ function flushAsyncWork() {
 	return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
+function createWatchdog(
+	deps: ReturnType<typeof createTestDeps>,
+	supervisor: object,
+	now: () => number,
+) {
+	return startStaleHeartbeatWatchdog({
+		leases: deps.leases,
+		processes: deps.processes,
+		turnRecords: deps.turnRecords,
+		turnStarts: deps.turnStarts,
+		ipcHandler: createTestIpcHandler(deps),
+		supervisor: supervisor as never,
+		staleHeartbeatTimeout: "30s",
+		checkIntervalMs: 1_000,
+		now,
+		setIntervalImpl: () => ({}) as ReturnType<typeof setInterval>,
+		clearIntervalImpl: () => {},
+	});
+}
+
 describe("startStaleHeartbeatWatchdog", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -34,26 +54,119 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
-		const ipcHandler = createTestIpcHandler(deps);
-
-		const timer = {} as ReturnType<typeof setInterval>;
-		const watchdog = startStaleHeartbeatWatchdog({
-			leases: deps.leases,
-			processes: deps.processes,
-			ipcHandler,
-			supervisor: supervisor as never,
-			staleHeartbeatTimeout: "30s",
-			checkIntervalMs: 1_000,
-			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
-			setIntervalImpl: () => timer,
-			clearIntervalImpl: () => {},
-		});
+		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
 
 		watchdog.tick();
 		await flushAsyncWork();
 
 		expect(deps.leases.getByInstance(process.id)?.state).toBe("idle");
 		expect(kill).not.toHaveBeenCalled();
+		watchdog.stop();
+	});
+
+	it("skips active leases without a readiness heartbeat baseline", async () => {
+		const deps = createTestDeps();
+		const process = deps.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		deps.leases.create({
+			instanceId: process.id,
+			workerId: "wkr_ready_without_heartbeat",
+			state: "idle",
+		});
+		const kill = vi.fn();
+		const supervisor = {
+			getWorker(instanceId: string) {
+				return instanceId === process.id ? { kill } : undefined;
+			},
+		} as const;
+		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
+
+		watchdog.tick();
+		await flushAsyncWork();
+
+		expect(deps.leases.getByInstance(process.id)?.state).toBe("idle");
+		expect(kill).not.toHaveBeenCalled();
+		watchdog.stop();
+	});
+
+	it("replays an accepted start before failing a worker that remains idle", async () => {
+		const deps = createTestDeps();
+		const process = deps.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		const lease = deps.leases.create({
+			instanceId: process.id,
+			workerId: "wkr_impossible_idle",
+			state: "idle",
+		});
+		deps.leases.update(lease.id, { lastHeartbeatAt: "2026-04-14T10:00:55.000Z" });
+		deps.turnStarts.create({
+			id: "tsr_impossible_idle",
+			instanceId: process.id,
+			turnId: "generate_plan",
+			turnType: "automatic",
+			proposedTurnRecordId: "trn_impossible_idle",
+			startKind: "selected_turn",
+			recoveryTurnRecordId: null,
+			continuation: null,
+			state: {
+				kind: "accepted",
+				start: { kind: "automatic" },
+				turnRecordId: "trn_impossible_idle",
+				acceptedWorkerLeaseId: lease.id,
+			},
+		});
+		deps.turnRecords.create({
+			id: "trn_impossible_idle",
+			instanceId: process.id,
+			turnId: "generate_plan",
+			turnType: "automatic",
+			status: "running",
+			attemptNumber: 1,
+			parentTurnRecordId: null,
+			turnStartRecordId: "tsr_impossible_idle",
+			acceptedWorkerLeaseId: lease.id,
+			pathType: "primary",
+			forkPiEntryId: null,
+			resultPiEntryId: null,
+			modelProfileId: null,
+			turnResultMarkdown: null,
+			errorSummary: null,
+			errorClass: null,
+			startedAt: "2026-04-14T10:00:00.000Z",
+			endedAt: null,
+		});
+		deps.processes.update(process.id, {
+			currentExecution: { kind: "worker_start", id: "tsr_impossible_idle" },
+		});
+		const kill = vi.fn();
+		const reconcileAcceptedTurnStart = vi.fn(() => true);
+		const supervisor = {
+			reconcileAcceptedTurnStart,
+			getWorker(instanceId: string) {
+				return instanceId === process.id ? { kill } : undefined;
+			},
+		} as const;
+		let nowMs = Date.parse("2026-04-14T10:01:00.000Z");
+		const watchdog = createWatchdog(deps, supervisor, () => nowMs);
+
+		watchdog.tick();
+		await flushAsyncWork();
+		expect(reconcileAcceptedTurnStart).toHaveBeenCalledWith(process.id, "wkr_impossible_idle");
+		expect(deps.turnRecords.getById("trn_impossible_idle")?.status).toBe("running");
+		expect(kill).not.toHaveBeenCalled();
+
+		nowMs += 30_000;
+		watchdog.tick();
+		await flushAsyncWork();
+		expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("error");
+		expect(deps.turnRecords.getById("trn_impossible_idle")?.status).toBe("failed");
+		expect(kill).toHaveBeenCalledOnce();
 		watchdog.stop();
 	});
 
@@ -81,20 +194,7 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
-		const ipcHandler = createTestIpcHandler(deps);
-
-		const timer = {} as ReturnType<typeof setInterval>;
-		const watchdog = startStaleHeartbeatWatchdog({
-			leases: deps.leases,
-			processes: deps.processes,
-			ipcHandler,
-			supervisor: supervisor as never,
-			staleHeartbeatTimeout: "30s",
-			checkIntervalMs: 1_000,
-			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
-			setIntervalImpl: () => timer,
-			clearIntervalImpl: () => {},
-		});
+		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
 
 		watchdog.tick();
 		await flushAsyncWork();

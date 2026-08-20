@@ -14,6 +14,8 @@ export interface WorkerFailureWritesInput {
 	errorCode: string;
 	errorClass?: WorkerErrorClass;
 	activeTurnRecord?: ProcessTurnRecord | null;
+	resultPiEntryId?: string | null;
+	recoveryContext?: TurnFailedPayload["recoveryContext"];
 	endedAt?: string;
 }
 
@@ -46,9 +48,10 @@ function toTurnFailedPayload(input: WorkerFailureWritesInput): TurnFailedPayload
 		turnType: input.activeTurnRecord.turnType,
 		pathType: input.activeTurnRecord.pathType,
 		forkPiEntryId: input.activeTurnRecord.forkPiEntryId,
-		resultPiEntryId: input.activeTurnRecord.resultPiEntryId,
+		resultPiEntryId: input.resultPiEntryId ?? input.activeTurnRecord.resultPiEntryId,
 		errorSummary: input.message,
 		errorClass: input.errorClass,
+		recoveryContext: input.recoveryContext,
 	};
 }
 

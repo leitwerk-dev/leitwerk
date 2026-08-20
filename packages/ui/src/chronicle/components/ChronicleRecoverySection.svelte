@@ -13,6 +13,7 @@ interface Props {
 	technicalDetail?: string | null;
 	turnRecordId: string;
 	canContinue: boolean;
+	supportsModelOverride: boolean;
 	continueBusy?: boolean;
 	continueError?: string | null;
 	continuePrompt?: string;
@@ -38,10 +39,11 @@ let {
 	isFocused,
 	title,
 	summary,
-	guidance = "Review the latest attempt, then continue from the saved work or retry the step from the beginning.",
+	guidance = "Review the latest attempt, then continue from saved work or retry only the failed turn as a new attempt.",
 	technicalDetail = null,
 	turnRecordId,
 	canContinue,
+	supportsModelOverride,
 	continueBusy = false,
 	continueError = null,
 	continuePrompt = "",
@@ -95,20 +97,23 @@ const selectedModelUsable = $derived(
 	{/if}
 
 	<div class="recovery-actions" role="group" aria-label="Recovery actions">
-		<RecoveryModelControl
-			{instanceId}
-			{modelProfiles}
-			defaultModelProfileId={defaultModelProfileId ?? null}
-			initialProviderOptions={defaultProviderOptions}
-			disabled={controlsBusy}
-			selectId={`recovery-model-${turnRecordId}`}
-			selectLabel="Model for the new attempt"
-			selectDataField="recovery-model"
-			onModelChange={(profileId, _usable) => {
-				modelProfileDraft = profileId ?? "";
-			}}
-			onProviderOptionsChange={(values) => (providerOptionsDraft = values ? { ...values } : undefined)}
-		/>
+		{#if supportsModelOverride}
+			<RecoveryModelControl
+				{instanceId}
+				{modelProfiles}
+				defaultModelProfileId={defaultModelProfileId ?? null}
+				initialProviderOptions={defaultProviderOptions}
+				disabled={controlsBusy}
+				selectId={`recovery-model-${turnRecordId}`}
+				selectLabel="Model for the new attempt"
+				selectDataField="recovery-model"
+				onModelChange={(profileId, _usable) => {
+					modelProfileDraft = profileId ?? "";
+				}}
+				onProviderOptionsChange={(values) =>
+					(providerOptionsDraft = values ? { ...values } : undefined)}
+			/>
+		{/if}
 		{#if canContinue}
 			<div class="continue-editor">
 				<label class="continue-label" for={`continue-prompt-${turnRecordId}`}>Message before continuing</label>
@@ -155,7 +160,7 @@ const selectedModelUsable = $derived(
 			disabled={controlsBusy || !selectedModelUsable}
 			onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}
 		>
-			{retryBusy ? "Retrying…" : "Retry from beginning"}
+			{retryBusy ? "Retrying failed turn…" : "Retry failed turn"}
 		</button>
 	</div>
 

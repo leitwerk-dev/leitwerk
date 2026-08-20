@@ -6,6 +6,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import {
+	buildCurrentTurnRecovery,
 	buildStartupRecovery,
 	presentProcessTimelineTurns,
 	projectProcessForUiSnapshot,
@@ -118,6 +119,34 @@ describe("process UI snapshot presenter", () => {
 		expect(projected.currentExecution).toEqual({ kind: "server_turn", id: "trn_server" });
 		expect(projected).not.toHaveProperty("currentTurnRecordId");
 		expect(projected).not.toHaveProperty("failedTurnRecordId");
+	});
+
+	it("projects failed server automatic turns as retryable without a model override", () => {
+		const failed = turnRecord({
+			id: "trn_deliver",
+			turnId: "deliver_change",
+			turnType: "server_automatic",
+			status: "failed",
+			errorSummary: "Delivery failed",
+		});
+		expect(
+			buildCurrentTurnRecovery({
+				process: processInstance({
+					selectedTurnId: failed.turnId,
+					lifecycleStatus: "error",
+					currentExecution: { kind: "server_turn", id: failed.id },
+				}),
+				turnStarts: { getById: () => null },
+				turnRecords: [failed],
+				selectedTurnDescription: "Deliver change",
+				piEntries: [],
+			}),
+		).toMatchObject({
+			turnRecordId: failed.id,
+			canContinue: false,
+			supportsModelOverride: false,
+			summary: "Delivery failed",
+		});
 	});
 
 	it("projects actionable startup failures from the current worker start", () => {

@@ -317,11 +317,13 @@ describe("ProcessEngine runner", () => {
 		);
 	});
 
-	it("dispatches reactions after the process lock has been released", async () => {
+	it("runs after-record callbacks outside the lock and before reactions", async () => {
 		const base = createTestDeps();
 		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let locked = false;
+		let observedLockedAfterRecord: boolean | null = null;
 		let observedLockedDuringSpawn: boolean | null = null;
+		const order: string[] = [];
 		const deps = createDeps({
 			...base,
 			processOperations: {
@@ -339,6 +341,7 @@ describe("ProcessEngine runner", () => {
 					getWorker: () => undefined,
 					spawnWorker: async () => {
 						observedLockedDuringSpawn = locked;
+						order.push("reaction");
 						return {} as never;
 					},
 				}) as never,
@@ -354,10 +357,21 @@ describe("ProcessEngine runner", () => {
 		});
 		const run = createEngineRunner(deps);
 
-		const result = await run(StartsWorker, { instanceId: process.id });
+		const result = await run(
+			StartsWorker,
+			{ instanceId: process.id },
+			{
+				afterRecord() {
+					observedLockedAfterRecord = locked;
+					order.push("after_record");
+				},
+			},
+		);
 
 		expect(result.ok).toBe(true);
+		expect(observedLockedAfterRecord).toBe(false);
 		expect(observedLockedDuringSpawn).toBe(false);
+		expect(order).toEqual(["after_record", "reaction"]);
 	});
 
 	it("returns a post-commit failure when afterSuccess fails after a commit", async () => {

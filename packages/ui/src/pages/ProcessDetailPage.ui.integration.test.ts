@@ -499,6 +499,7 @@ function createFailedTurnRecovery(
 		summary: "The turn failed and can be retried or continued.",
 		defaultContinuePrompt: DEFAULT_CONTINUE_PROMPT,
 		canContinue: true,
+		supportsModelOverride: true,
 		defaultModelProfileId: null,
 		providerOptions: {},
 		...overrides,
@@ -2715,6 +2716,25 @@ describe("ProcessDetailPage", () => {
 			undefined,
 			undefined,
 		);
+	});
+
+	it("renders Retry without model controls for a failed server automatic turn", async () => {
+		mockPostProcessRetry.mockResolvedValue(undefined);
+		const detail = createContinuableFailedDetail();
+		detail.recovery = createFailedTurnRecovery("trn_2", {
+			canContinue: false,
+			supportsModelOverride: false,
+		});
+		const { target } = await mountSubject(detail);
+		await flushUi();
+
+		expect(queryRecoveryAction(target, "retry-failed-turn")?.textContent?.trim()).toBe(
+			"Retry failed turn",
+		);
+		expect(target.querySelector('[data-field="recovery-model"]')).toBeNull();
+
+		await clickRecoveryAction(target, "retry-failed-turn");
+		expect(mockPostProcessRetry).toHaveBeenCalledWith("agt_1", undefined, undefined);
 	});
 
 	it("renders Retry for the current failed llm turn and reloads after retrying", async () => {

@@ -39,6 +39,7 @@ import type {
 	OperationData,
 	OperationInput,
 	OperationInputBase,
+	OperationRunOptions,
 	OperationSpec,
 } from "./operation.js";
 import type { Writes } from "./writes/writes.js";
@@ -192,6 +193,7 @@ export interface ProcessEngine {
 	run<TOp extends OperationSpec<string, OperationInputBase, unknown>>(
 		operation: TOp,
 		input: OperationInput<TOp>,
+		options?: OperationRunOptions<OperationData<TOp>>,
 	): Promise<EngineResult<OperationData<TOp>>>;
 
 	startProcess(
@@ -241,14 +243,24 @@ export interface ProcessEngine {
 			message: string;
 			errorClass?: WorkerErrorClass;
 			workerLeaseId?: string | null;
+			resultPiEntryId?: string | null;
+			recoveryContext?: TurnFailedPayload["recoveryContext"];
 		},
 	): Promise<EngineResult<void>>;
 	acceptWorkerTurnStart(
 		instanceId: string,
 		input: { startRecordId: string; proposedTurnRecordId: string; workerLeaseId: string },
 	): Promise<EngineResult<{ turnRecordId: string }>>;
-	recordTurnOutcome(instanceId: string, payload: TurnOutcomePayload): Promise<EngineResult<void>>;
-	recordTurnFailed(instanceId: string, payload: TurnFailedPayload): Promise<EngineResult<void>>;
+	recordTurnOutcome(
+		instanceId: string,
+		payload: TurnOutcomePayload,
+		options?: { onRecorded?: () => void },
+	): Promise<EngineResult<void>>;
+	recordTurnFailed(
+		instanceId: string,
+		payload: TurnFailedPayload,
+		options?: { onRecorded?: () => void },
+	): Promise<EngineResult<void>>;
 	updateSemanticEntryRefs(
 		instanceId: string,
 		patch: ProcessSemanticEntryRefPatch,
