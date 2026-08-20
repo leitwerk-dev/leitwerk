@@ -224,5 +224,7 @@ const reviewTurn = flow
 ```
 
 An automatic outcome can call `.wait()` to keep the automatic turn selected with
-`lifecycleStatus = "waiting"`. Its external actions can restart that turn, route to another
-business turn, complete, or abort without adding a synthetic wait turn.
+`lifecycleStatus = "waiting"`. External actions remain dormant while the automatic handler
+runs. They arm after the waiting outcome is durable and then appear as active external triggers
+in the process UI. They can restart that turn, route to another business turn, complete, or
+abort without adding a synthetic wait turn.

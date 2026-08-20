@@ -18,7 +18,9 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import {
 	createServerProcessBuilder,
+	getExternalActionArmingId,
 	getExternalSourceTransitionId,
+	isAutomaticTurnDefinition,
 	isExternalTurnDefinition,
 	isHumanTurnDefinition,
 	resolveHumanTurnView,
@@ -81,7 +83,10 @@ export interface ProcessActionRegistry {
 	listVisibleActions(processId: string, ctx: ServerProcessContext): VisibleProcessActionSummary[];
 	getSelectedTurnSummary(
 		processId: string,
-		process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
+		process: Pick<
+			ProcessInstance,
+			"selectedTurnId" | "lifecycleStatus" | "paramsJson" | "stateJson"
+		>,
 	): ProcessSelectedTurnSummary | null;
 	getServerDefinition(processId: string): BuiltServerProcessDefinition | undefined;
 	getTurnDefinition(
@@ -158,6 +163,7 @@ function resolveCurrentTurnForProcess(
 function listExternalTriggers(
 	turnId: string,
 	turnDef: TurnDefinition<unknown, unknown>,
+	lifecycleStatus: ProcessInstance["lifecycleStatus"],
 ): ProcessExternalSourceSummary[] {
 	if (isHumanTurnDefinition(turnDef)) {
 		const view = resolveHumanTurnView({ turnId, turn: turnDef });
@@ -184,6 +190,16 @@ function listExternalTriggers(
 			kind: transition.source.kind,
 			label: transition.source.label ?? null,
 			description: transition.source.description ?? null,
+		}));
+	}
+	if (isAutomaticTurnDefinition(turnDef) && lifecycleStatus === "waiting") {
+		return Object.entries(turnDef.externalActions ?? {}).map(([externalActionId, action]) => ({
+			id: getExternalActionArmingId({ turnId, externalActionId }),
+			externalActionId,
+			kind: action.source.kind,
+			sourceKind: action.source.kind,
+			label: action.label ?? action.source.label ?? null,
+			description: action.description ?? action.source.description ?? null,
 		}));
 	}
 	return [];
@@ -225,7 +241,7 @@ function isTurnScopedActionForProcess(
 
 function buildSelectedTurnSummaryForProcess(
 	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
+	process: Pick<ProcessInstance, "selectedTurnId" | "lifecycleStatus" | "paramsJson" | "stateJson">,
 ): ProcessSelectedTurnSummary | null {
 	const currentTurn = resolveCurrentTurnForProcess(processDef, process);
 	if (!currentTurn) {
@@ -238,7 +254,11 @@ function buildSelectedTurnSummaryForProcess(
 		commentary: isHumanTurnDefinition(currentTurn.turnDef)
 			? (currentTurn.turnDef.commentary ?? null)
 			: null,
-		externalTriggers: listExternalTriggers(currentTurn.turnId, currentTurn.turnDef),
+		externalTriggers: listExternalTriggers(
+			currentTurn.turnId,
+			currentTurn.turnDef,
+			process.lifecycleStatus,
+		),
 	};
 }
 

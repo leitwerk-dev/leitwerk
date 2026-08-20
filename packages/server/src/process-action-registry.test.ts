@@ -665,6 +665,18 @@ describe("ProcessActionRegistry", () => {
 								outcomes: {
 									finalized: { description: "done", parameters: {} },
 								},
+								externalActions: {
+									change_merged: {
+										id: "change_merged",
+										source: {
+											kind: "example.change.merged",
+											label: "Change merged",
+											description: "Continue after the external change merges.",
+											config: {},
+										},
+										to: "commit_and_merge",
+									},
+								},
 							},
 						],
 					]),
@@ -683,6 +695,28 @@ describe("ProcessActionRegistry", () => {
 			description: "Commit and merge",
 			commentary: null,
 			externalTriggers: [],
+		});
+
+		const waitingProcess = makeFakeAgent({
+			processId: "automatic_process",
+			selectedTurnId: "commit_and_merge",
+			lifecycleStatus: "waiting",
+		});
+		expect(registry.getSelectedTurnSummary("automatic_process", waitingProcess)).toEqual({
+			turnId: "commit_and_merge",
+			kind: "automatic",
+			description: "Commit and merge",
+			commentary: null,
+			externalTriggers: [
+				{
+					id: "commit_and_merge:change_merged",
+					externalActionId: "change_merged",
+					kind: "example.change.merged",
+					sourceKind: "example.change.merged",
+					label: "Change merged",
+					description: "Continue after the external change merges.",
+				},
+			],
 		});
 	});
 
