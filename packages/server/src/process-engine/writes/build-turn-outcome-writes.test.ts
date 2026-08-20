@@ -1,8 +1,9 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import type {
-	createServerProcessBuilder,
-	ProcessGraphView,
-	TurnDefinition,
+import {
+	type createServerProcessBuilder,
+	flow,
+	type ProcessGraphView,
+	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { buildProcessActionRegistry } from "../../process-action-registry.js";
@@ -212,6 +213,64 @@ describe("buildTurnOutcomeWrites", () => {
 				},
 			]),
 		);
+	});
+
+	it("preserves a waiting lifecycle effect instead of restarting a same-turn outcome", async () => {
+		const processId = "awaitable_delivery_process";
+		const turnId = "deliver";
+		const definition = flow
+			.process(processId)
+			.displayName("Awaitable delivery")
+			.entry(turnId)
+			.codecs({
+				params: { parse: () => ({}), serialize: (value) => value },
+				state: { parse: () => ({}), serialize: (value) => value },
+			})
+			.initialState(() => ({}))
+			.turn(
+				flow
+					.automatic(turnId)
+					.description("Deliver")
+					.run(() => ({ outcome: "created" }))
+					.outcome("created", (outcome) =>
+						outcome.description("Wait for an external event").wait(),
+					),
+			)
+			.define();
+		const processGraphs = new Map([[processId, definition]]);
+		const registry = buildProcessActionRegistry({
+			processes: new Map([[processId, definition]]),
+		});
+		const deps = createTestDeps();
+		const process = deps.processes.create({
+			processId,
+			selectedTurnId: turnId,
+			lifecycleStatus: "active",
+		});
+
+		const planned = await buildTurnOutcomeWrites({
+			process,
+			projects: [],
+			turnRecords: deps.turnRecords,
+			processGraphs,
+			payload: {
+				instanceId: process.id,
+				turnRecordId: "trn_awaiting_delivery",
+				turnId,
+				turnType: "automatic",
+				outcome: "created",
+				params: {},
+			},
+			processActionRegistry: registry,
+		});
+
+		expect("ok" in planned).toBe(false);
+		if ("ok" in planned) return;
+		expect(planned.processPatch).toMatchObject({ lifecycleStatus: "waiting" });
+		expect(planned.processPatch.selectedTurnId).toBeUndefined();
+		expect(planned.processPatch.currentExecution).toBeUndefined();
+		expect(planned.turnStartWrites).toEqual([]);
+		expect(planned.workerIntent).toBeUndefined();
 	});
 
 	it("records outcomes without applying fallback effects when no turn outcome handler is registered", async () => {
