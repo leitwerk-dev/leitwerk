@@ -6,6 +6,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import {
+	buildCurrentTurnRecovery,
 	buildStartupRecovery,
 	presentProcessTimelineTurns,
 	projectProcessForUiSnapshot,
