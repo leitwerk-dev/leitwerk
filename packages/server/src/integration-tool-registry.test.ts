@@ -109,52 +109,55 @@ describe("IntegrationToolRegistry", () => {
 });
 
 describe("integration tool request service", () => {
-	it("authorizes the active LLM turn and resolves an optional project", async () => {
-		const registry = new IntegrationToolRegistry();
-		const execute = registerEcho(registry);
-		const process = {
-			id: "instance-1",
-			processId: "process-type",
-			selectedTurnId: "repair",
-			currentExecution: { kind: "worker_start", id: "turn-start-1" },
-		};
-		const turn = {
-			id: "turn-record-1",
-			instanceId: "instance-1",
-			turnId: "repair",
-			status: "running",
-		};
-		const project = { key: "repo" };
-		const service = createIntegrationToolRequestService({
-			registry,
-			repos: {
-				processes: { getById: () => process },
-				turnRecords: { getById: () => turn },
-				turnStarts: {
-					getById: () => ({ state: { kind: "accepted", turnRecordId: "turn-record-1" } }),
+	it.each(["llm", "automatic"] as const)(
+		"authorizes the active %s turn and resolves an optional project",
+		async (turnKind) => {
+			const registry = new IntegrationToolRegistry();
+			const execute = registerEcho(registry);
+			const process = {
+				id: "instance-1",
+				processId: "process-type",
+				selectedTurnId: "repair",
+				currentExecution: { kind: "worker_start", id: "turn-start-1" },
+			};
+			const turn = {
+				id: "turn-record-1",
+				instanceId: "instance-1",
+				turnId: "repair",
+				status: "running",
+			};
+			const project = { key: "repo" };
+			const service = createIntegrationToolRequestService({
+				registry,
+				repos: {
+					processes: { getById: () => process },
+					turnRecords: { getById: () => turn },
+					turnStarts: {
+						getById: () => ({ state: { kind: "accepted", turnRecordId: "turn-record-1" } }),
+					},
+					projects: { listByInstance: () => [project] },
+				} as never,
+				processActionRegistry: {
+					getTurnDefinition: () => ({ kind: turnKind, integrationTools: ["provider_echo"] }),
 				},
-				projects: { listByInstance: () => [project] },
-			} as never,
-			processActionRegistry: {
-				getTurnDefinition: () => ({ kind: "llm", integrationTools: ["provider_echo"] }),
-			},
-		});
+			});
 
-		const result = await service.handle("instance-1", {
-			turnRecordId: "turn-record-1",
-			toolCallId: "tool-call-1",
-			toolName: "provider_echo",
-			args: { projectKey: "repo", value: 2 },
-		});
+			const result = await service.handle("instance-1", {
+				turnRecordId: "turn-record-1",
+				toolCallId: "tool-call-1",
+				toolName: "provider_echo",
+				args: { projectKey: "repo", value: 2 },
+			});
 
-		expect(result).toMatchObject({ ok: true, result: { projectKey: "repo", value: 2 } });
-		expect(execute.mock.calls[0]?.[0]).toMatchObject({
-			process,
-			turn,
-			project,
-			idempotencyKey: "instance-1:turn-record-1:tool-call-1:provider_echo",
-		});
-	});
+			expect(result).toMatchObject({ ok: true, result: { projectKey: "repo", value: 2 } });
+			expect(execute.mock.calls[0]?.[0]).toMatchObject({
+				process,
+				turn,
+				project,
+				idempotencyKey: "instance-1:turn-record-1:tool-call-1:provider_echo",
+			});
+		},
+	);
 
 	it("rejects stale, unauthorized, and unknown-project calls before execution", async () => {
 		const registry = new IntegrationToolRegistry();

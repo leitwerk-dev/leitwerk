@@ -147,7 +147,7 @@ export function createIntegrationToolRequestService(input: {
 				turn.turnId,
 			);
 			if (
-				turnDefinition?.kind !== "llm" ||
+				(turnDefinition?.kind !== "llm" && turnDefinition?.kind !== "automatic") ||
 				!turnDefinition.integrationTools?.includes(payload.toolName)
 			) {
 				return fail(`Integration tool '${payload.toolName}' is not authorized for this turn`);
