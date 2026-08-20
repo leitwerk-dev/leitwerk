@@ -1,4 +1,9 @@
-import type { ProcessInstance, ProcessTurnRecord, TurnProgressReport } from "@leitwerk-dev/domain";
+import {
+	failActiveTurnProgress,
+	type ProcessInstance,
+	type ProcessTurnRecord,
+	type TurnProgressReport,
+} from "@leitwerk-dev/domain";
 import { isServerAutomaticTurnDefinition } from "@leitwerk-dev/process-sdk";
 import type { EngineResult, ProcessEngine, ProcessEngineDeps } from "./process-engine/types.js";
 import { resolveProductTurnResultMarkdown } from "./product-turn-result-markdown.js";
@@ -256,16 +261,11 @@ export function createServerAutomaticTurnDrainer(
 			} catch (error) {
 				const failedProgressReport = latestProgressReport as TurnProgressReport | null;
 				if (failedProgressReport) {
-					const message = toErrorMessage(error);
-					const report: TurnProgressReport = {
-						...failedProgressReport,
-						steps: failedProgressReport.steps.map((step) =>
-							step.status === "in_progress"
-								? { ...step, status: "failed" as const, detail: message }
-								: step,
-						),
-					};
-					recordTurnProgress(deps, { instanceId, turnRecordId, report });
+					recordTurnProgress(deps, {
+						instanceId,
+						turnRecordId,
+						report: failActiveTurnProgress(failedProgressReport),
+					});
 				}
 				await service.recordTurnFailed(instanceId, {
 					instanceId,

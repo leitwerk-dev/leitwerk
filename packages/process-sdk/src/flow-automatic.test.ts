@@ -48,17 +48,17 @@ describe("flow automatic turns", () => {
 			},
 		});
 		if (deliver?.kind !== "automatic") throw new Error("expected automatic turn");
-		const waitEffect = deliver.outcomes?.awaiting?.effect;
-		expect(
-			await waitEffect?.({
-				ctx: {} as never,
-				event: {} as never,
-				turnId: "deliver",
-				outcome: "awaiting",
-			}),
-		).toEqual({
-			processPatch: { lifecycleStatus: "waiting" },
-		});
+		expect(deliver.outcomes?.awaiting).toMatchObject({ wait: true });
+	});
+
+	it("rejects a route declared after a waiting outcome", () => {
+		const turn = flow
+			.automatic("deliver")
+			.description("Deliver")
+			.run(() => ({ outcome: "awaiting" }))
+			.outcome("awaiting", (outcome) => outcome.description("Await events").wait().to("deliver"));
+
+		expect(() => turn.definition).toThrow("Waiting outcome cannot declare another route");
 	});
 
 	it("passes FlowAutomaticRunContext directly to run functions", async () => {

@@ -70,6 +70,7 @@ const scheduler = {
 function execute(
 	process: ResolvedWorkerProcess,
 	integrationTools: Parameters<typeof executeSelectedTurn>[0]["integrationTools"] = [],
+	emit: Parameters<typeof executeSelectedTurn>[0]["emit"] = () => {},
 ) {
 	const session = {
 		resolvedWorkerProcess: process,
@@ -100,7 +101,7 @@ function execute(
 		resultImageTools: { create: () => null },
 		integrationTools,
 		signal: new AbortController().signal,
-		emit() {},
+		emit,
 	});
 }
 
@@ -143,6 +144,37 @@ describe("executeSelectedTurn", () => {
 			params: { value: 1 },
 			meta: { turnRecordId: "turn_1", turnType: "automatic", pathType: "primary" },
 		});
+	});
+
+	it("replaces failure progress with a safe detail", async () => {
+		const emissions: Parameters<Parameters<typeof executeSelectedTurn>[0]["emit"]>[0][] = [];
+		const result = await execute(
+			automaticProcess(async (run) => {
+				run.ctx.reportProgress?.({
+					title: "Delivery",
+					steps: [{ id: "publish", label: "Publish", status: "in_progress" }],
+				});
+				throw new Error("provider token secret-value");
+			}),
+			[],
+			(emission) => emissions.push(emission),
+		);
+
+		expect(result.kind).toBe("failed");
+		expect(emissions).toHaveLength(2);
+		expect(emissions[1]).toMatchObject({
+			kind: "progress",
+			report: {
+				steps: [
+					{
+						id: "publish",
+						status: "failed",
+						detail: "Automatic turn failed. See the turn error for details.",
+					},
+				],
+			},
+		});
+		expect(JSON.stringify(emissions[1])).not.toContain("secret-value");
 	});
 
 	it("returns a failed terminal fact when an automatic handler does not complete", async () => {

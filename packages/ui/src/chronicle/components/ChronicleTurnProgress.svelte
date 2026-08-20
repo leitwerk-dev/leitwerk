@@ -5,6 +5,8 @@ interface Props {
 	report: TurnProgressReport;
 }
 let { report }: Props = $props();
+const componentId = $props.id();
+const titleId = `${componentId}-title`;
 
 const statusLabels: Record<TurnProgressStepStatus, string> = {
 	incomplete: "Incomplete",
@@ -20,8 +22,8 @@ const statusMarks: Record<TurnProgressStepStatus, string> = {
 };
 </script>
 
-<section class="progress-report" data-section="turn-progress" aria-labelledby="turn-progress-title">
-	<h4 id="turn-progress-title">{report.title}</h4>
+<section class="progress-report" data-section="turn-progress" aria-labelledby={titleId}>
+	<h4 id={titleId}>{report.title}</h4>
 	<ol aria-live="polite">
 		{#each report.steps as step (step.id)}
 			<li data-progress-step={step.id} data-progress-status={step.status}>

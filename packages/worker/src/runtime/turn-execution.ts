@@ -1,4 +1,8 @@
-import type { ProcessSemanticEntryRefKey, TurnProgressReport } from "@leitwerk-dev/domain";
+import {
+	failActiveTurnProgress,
+	type ProcessSemanticEntryRefKey,
+	type TurnProgressReport,
+} from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	TurnOptions,
@@ -222,18 +226,10 @@ export async function executeSelectedTurn(
 	} catch (error) {
 		const failedProgressReport = latestProgressReport as TurnProgressReport | null;
 		if (failedProgressReport) {
-			const message = error instanceof Error ? error.message : String(error);
-			const steps = failedProgressReport.steps.map((step) =>
-				step.status === "in_progress"
-					? { ...step, status: "failed" as const, detail: message }
-					: step,
-			);
-			const report: TurnProgressReport = { ...failedProgressReport, steps };
-			latestProgressReport = report;
 			input.emit({
 				kind: "progress",
 				turnRecordId: input.turnRecordId,
-				report,
+				report: failActiveTurnProgress(failedProgressReport),
 			});
 		}
 		if (error instanceof TurnExecutionFailure) return failedResult(error, appliedTargetedInputs);

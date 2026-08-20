@@ -899,20 +899,10 @@ export class AutomaticOutcomeBuilder<
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
-		const configuredEffect = this.flowEffect
-			? wrapAutomaticOutcomeEffect(this.flowEffect)
-			: undefined;
-		const effect = this.waits
-			? async (
-					execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0],
-				) => {
-					const result = configuredEffect ? await configuredEffect(execution) : undefined;
-					return {
-						...result,
-						processPatch: { ...(result?.processPatch ?? {}), lifecycleStatus: "waiting" as const },
-					};
-				}
-			: configuredEffect;
+		if (this.waits && this.hasRoute()) {
+			throw new Error("Waiting outcome cannot declare another route");
+		}
+		const effect = this.flowEffect ? wrapAutomaticOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
@@ -923,6 +913,7 @@ export class AutomaticOutcomeBuilder<
 					}
 				: {}),
 			...this.buildRouteTarget(),
+			...(this.waits ? { wait: true as const } : {}),
 			...(effect ? { effect } : {}),
 		};
 	}
@@ -1461,6 +1452,37 @@ export class LlmFlowBuilder<
 	}
 }
 
+type ExternalActionBuilderMap<TParams, TState> = Map<
+	string,
+	ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
+>;
+
+function addExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(input: {
+	builders: ExternalActionBuilderMap<TParams, TState>;
+	turnId: TurnId;
+	turnKind: "Automatic" | "Human";
+	externalActionId: string;
+	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
+	configure: (
+		external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined;
+}): void {
+	if (input.builders.has(input.externalActionId)) {
+		throw new Error(
+			`${input.turnKind} turn '${input.turnId}' declares duplicate external action '${input.externalActionId}'`,
+		);
+	}
+	const builder = new ExternalActionBuilder(input.externalActionId, input.source);
+	input.configure(builder);
+	input.builders.set(input.externalActionId, builder as ExternalActionBuilder<TParams, TState>);
+}
+
+function buildExternalActions<TParams, TState>(
+	builders: ExternalActionBuilderMap<TParams, TState>,
+) {
+	return Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]));
+}
+
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
@@ -1471,10 +1493,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
-	private externalActionBuilders = new Map<
-		string,
-		ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
-	>();
+	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
 
 	constructor(turnId: TurnId) {
 		this.turnId = turnId;
@@ -1517,21 +1536,14 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
 		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		if (this.externalActionBuilders.has(externalActionId))
-			throw new Error(
-				`Automatic turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
-			);
-		const builder = new ExternalActionBuilder(externalActionId, source);
-		configure(builder);
-		this.externalActionBuilders.set(
+		addExternalAction({
+			builders: this.externalActionBuilders,
+			turnId: this.turnId,
+			turnKind: "Automatic",
 			externalActionId,
-			builder as unknown as ExternalActionBuilder<
-				TParams,
-				TState,
-				unknown,
-				Record<string, unknown>
-			>,
-		);
+			source,
+			configure,
+		});
 		return this;
 	}
 
@@ -1575,14 +1587,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),
 			...(this.externalActionBuilders.size > 0
-				? {
-						externalActions: Object.fromEntries(
-							[...this.externalActionBuilders.entries()].map(([id, builder]) => [
-								id,
-								builder.build(),
-							]),
-						),
-					}
+				? { externalActions: buildExternalActions(this.externalActionBuilders) }
 				: {}),
 			outcomes,
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),
@@ -1838,10 +1843,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	private turnCommentary: string | undefined;
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
-	private externalActionBuilders = new Map<
-		string,
-		ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
-	>();
+	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
 
 	constructor(private readonly turnId: TurnId) {}
 
@@ -1865,14 +1867,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 				[...this.actions.entries()].map(([actionId, builder]) => [actionId, builder.build()]),
 			),
 			...(this.externalActionBuilders.size > 0
-				? {
-						externalActions: Object.fromEntries(
-							[...this.externalActionBuilders.entries()].map(([actionId, builder]) => [
-								actionId,
-								builder.build(),
-							]),
-						),
-					}
+				? { externalActions: buildExternalActions(this.externalActionBuilders) }
 				: {}),
 		};
 	}
@@ -1930,25 +1925,14 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
 		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		if (this.externalActionBuilders.has(externalActionId)) {
-			throw new Error(
-				`Human turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
-			);
-		}
-		const builder = new ExternalActionBuilder<TParams, TState, TEvent, TInput>(
+		addExternalAction({
+			builders: this.externalActionBuilders,
+			turnId: this.turnId,
+			turnKind: "Human",
 			externalActionId,
 			source,
-		);
-		configure(builder);
-		this.externalActionBuilders.set(
-			externalActionId,
-			builder as unknown as ExternalActionBuilder<
-				TParams,
-				TState,
-				unknown,
-				Record<string, unknown>
-			>,
-		);
+			configure,
+		});
 		return this;
 	}
 }

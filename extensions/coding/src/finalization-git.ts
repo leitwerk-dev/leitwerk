@@ -659,18 +659,25 @@ export function runDeterministicFinalization<
 		["commit_merge", "Commit changes and integrate the base branch"],
 		["publish", "Push the finalized branch"],
 	] as const;
-	const reportProgress = (activeIndex: number | null, completedCount: number) =>
-		ctx.reportProgress?.({
+	const reportProgress = (
+		activeIndex: number | null,
+		completedCount: number,
+		failure?: { index: number; detail: string },
+	) =>
+		ctx.reportProgress({
 			title: "Finalization progress",
 			steps: progressSteps.map(([id, label], index) => ({
 				id,
 				label,
 				status:
-					index < completedCount
-						? "completed"
-						: index === activeIndex
-							? "in_progress"
-							: "incomplete",
+					index === failure?.index
+						? "failed"
+						: index < completedCount
+							? "completed"
+							: index === activeIndex
+								? "in_progress"
+								: "incomplete",
+				...(index === failure?.index ? { detail: failure.detail } : {}),
 			})),
 		});
 	reportProgress(0, 0);
@@ -702,14 +709,9 @@ export function runDeterministicFinalization<
 	let headSha = currentHeadSha(repoPath);
 	const conflicts = conflictedFiles(repoPath);
 	if (mergeInProgress(repoPath) || conflicts.length > 0) {
-		ctx.reportProgress?.({
-			title: "Finalization progress",
-			steps: progressSteps.map(([id, label], index) => ({
-				id,
-				label,
-				status: index === 0 ? "completed" : index === 2 ? "failed" : "incomplete",
-				...(index === 2 ? { detail: "The checkout already contains merge conflicts" } : {}),
-			})),
+		reportProgress(null, 1, {
+			index: 2,
+			detail: "The checkout already contains merge conflicts",
 		});
 		return {
 			outcome: "merge_conflict",
@@ -741,14 +743,9 @@ export function runDeterministicFinalization<
 		baseSha,
 	});
 	if (!mergeResult.ok) {
-		ctx.reportProgress?.({
-			title: "Finalization progress",
-			steps: progressSteps.map(([id, label], index) => ({
-				id,
-				label,
-				status: index < 2 ? "completed" : index === 2 ? "failed" : "incomplete",
-				...(index === 2 ? { detail: "Base integration produced merge conflicts" } : {}),
-			})),
+		reportProgress(null, 2, {
+			index: 2,
+			detail: "Base integration produced merge conflicts",
 		});
 		return {
 			outcome: "merge_conflict",

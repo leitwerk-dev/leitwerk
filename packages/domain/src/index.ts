@@ -175,6 +175,10 @@ export {
 	type TurnRecordAnnotationReference,
 } from "./turn-annotations.js";
 export {
+	AUTOMATIC_TURN_FAILED_PROGRESS_DETAIL,
+	failActiveTurnProgress,
+} from "./turn-progress.js";
+export {
 	buildFailedTurnRecoveryMetadata,
 	CONTINUE_PROMPT_METADATA_KEY,
 	createGenericFailedTurnRecoveryContext,

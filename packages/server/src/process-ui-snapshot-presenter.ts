@@ -335,21 +335,11 @@ type TimelineActionSource = ProcessTimelineTurnSummary["actionSource"];
 
 function buildTurnProgressIndex(events: readonly ProcessEvent[]) {
 	const index = new Map<string, NonNullable<ProcessTimelineTurnSummary["progress"]>>();
-	const revisions = new Map<string, number>();
 	for (const event of events) {
 		if (event.eventType !== "turn.progress") continue;
 		const turnRecordId = stringValue(event.data.turnRecordId);
 		const report = normalizeTurnProgressReport(event.data.report);
-		const revision = Number(event.data.revision ?? 0);
-		if (
-			turnRecordId &&
-			report &&
-			Number.isSafeInteger(revision) &&
-			revision >= (revisions.get(turnRecordId) ?? -1)
-		) {
-			revisions.set(turnRecordId, revision);
-			index.set(turnRecordId, report);
-		}
+		if (turnRecordId && report) index.set(turnRecordId, report);
 	}
 	return index;
 }
