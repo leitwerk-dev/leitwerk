@@ -530,30 +530,27 @@ export interface SkillRepositorySummary {
 	error: string | null;
 }
 
-export interface SkillCatalogItem {
-	repositoryId: string;
+export interface SkillCatalogSummary {
 	id: string;
 	label: string;
 	description: string | null;
-	sourcePath: string;
-	sourceRevision: string;
-	registered: boolean;
 	updateAvailable: boolean;
-	stale: boolean;
 	modelInvocable: boolean;
 	usage: SkillUsageSummary;
 }
 
-export interface InstalledSkillCatalogItem {
-	id: string;
-	label: string;
-	description: string | null;
+export interface SkillCatalogItem extends SkillCatalogSummary {
+	repositoryId: string;
+	sourcePath: string;
+	sourceRevision: string;
+	registered: boolean;
+	stale: boolean;
+}
+
+export interface InstalledSkillCatalogItem extends SkillCatalogSummary {
 	activeRevisionId: string;
 	activeSourceRevision: string | null;
 	sourceRepositoryId: string | null;
-	updateAvailable: boolean;
-	modelInvocable: boolean;
-	usage: SkillUsageSummary;
 }
 
 export interface SkillRevisionSummary {

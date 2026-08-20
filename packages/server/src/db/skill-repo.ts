@@ -112,7 +112,13 @@ function candidateSummaries(db: LeitwerkDb) {
 			available: skillCatalogEntries.available,
 		})
 		.from(skillCatalogEntries)
-		.all();
+		.all()
+		.map((candidate) => ({
+			...candidate,
+			modelInvocable: isSkillModelInvocable(
+				skillMarkdown(candidate.skillId, candidate.bundleBytes, candidate.bundleDigest),
+			),
+		}));
 }
 
 function processUsage(db: LeitwerkDb, skillId: string): SkillUsageProcessSummary[] {
@@ -238,7 +244,6 @@ function catalogView(db: LeitwerkDb): {
 			activeRevisionId: skillRevisions.id,
 			activeSourceRevision: skillRevisions.sourceRevision,
 			activeDigest: skillRevisions.bundleDigest,
-			activeBundleBytes: skillRevisions.bundleBytes,
 		})
 		.from(skills)
 		.innerJoin(skillRevisions, eq(skills.activeRevisionId, skillRevisions.id))
@@ -259,9 +264,7 @@ function catalogView(db: LeitwerkDb): {
 			registered,
 			updateAvailable: Boolean(candidate.available && active && !registered),
 			stale: !candidate.available,
-			modelInvocable: isSkillModelInvocable(
-				skillMarkdown(candidate.skillId, candidate.bundleBytes, candidate.bundleDigest),
-			),
+			modelInvocable: candidate.modelInvocable,
 			usage: usage.get(candidate.skillId) ?? emptyUsage(),
 		};
 	});
@@ -284,9 +287,7 @@ function catalogView(db: LeitwerkDb): {
 						? (activeSource[0]?.repositoryId ?? null)
 						: null,
 			updateAvailable: available.length === 1 && available[0]?.bundleDigest !== skill.activeDigest,
-			modelInvocable: isSkillModelInvocable(
-				skillMarkdown(skill.id, skill.activeBundleBytes, skill.activeDigest),
-			),
+			modelInvocable: activeSource[0]?.modelInvocable ?? true,
 			usage: usage.get(skill.id) ?? emptyUsage(),
 		};
 	});
