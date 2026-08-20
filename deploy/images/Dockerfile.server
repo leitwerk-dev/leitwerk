@@ -40,10 +40,20 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends git ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
+# Copy stable dependencies and manifests before frequently changing application code.
 COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/packages ./packages
-COPY --from=build /app/extensions ./extensions
+COPY --from=build --parents \
+	/app/./package.json \
+	/app/./LICENSE \
+	/app/./packages/*/package.json \
+	/app/./extensions/*/package.json \
+	/app/./extensions/*/README.md \
+	./
+COPY --from=build --parents \
+	/app/./packages/*/dist \
+	/app/./extensions/*/dist \
+	/app/./packages/server/migrations \
+	./
 
 LABEL org.opencontainers.image.title="leitwerk-server" \
 	org.opencontainers.image.description="leitwerk server" \

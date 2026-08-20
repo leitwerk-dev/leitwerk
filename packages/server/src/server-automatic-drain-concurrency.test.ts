@@ -402,19 +402,22 @@ describe("server-automatic drain concurrency", () => {
 			])
 			.map((event) => event.data);
 		expect(progressEvents).toHaveLength(2);
-		const failedProgress = progressEvents.at(-1);
-		expect(failedProgress).toMatchObject({
-			report: {
-				steps: [
-					{
-						id: "publish",
-						status: "failed",
-						detail: "Automatic turn failed. See the turn error for details.",
-					},
-				],
-			},
-		});
-		expect(JSON.stringify(failedProgress)).not.toContain("secret-value");
+		expect(progressEvents).toContainEqual(
+			expect.objectContaining({
+				report: {
+					steps: [
+						{
+							id: "publish",
+							label: "Publish",
+							status: "failed",
+							detail: "Automatic turn failed. See the turn error for details.",
+						},
+					],
+					title: "Delivery",
+				},
+			}),
+		);
+		expect(JSON.stringify(progressEvents)).not.toContain("secret-value");
 	});
 
 	it("parks active server-automatic turns when the current turn record cannot be resumed", async () => {

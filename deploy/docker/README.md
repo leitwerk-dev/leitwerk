@@ -50,7 +50,7 @@ coincide.
 ## Files
 
 - `../images/Dockerfile.server` — builds and runs the leitwerk server.
-- `../images/Dockerfile.worker-generic` — the MVP `generic` worker runtime profile image.
+- `../images/Dockerfile.worker-generic` — the MVP `generic` worker runtime profile image. It includes Chromium and Playwright system dependencies so repository `test:full` gates can run browser tests.
 - `Dockerfile.server` and `Dockerfile.worker-generic` are compatibility symlinks to the shared image definitions.
 - `docker-compose.yaml` — server + reverse proxy on the shared private network.
 - `Caddyfile` — public HTTPS termination and reverse proxy to the server.
