@@ -1,6 +1,5 @@
 <script lang="ts" generics="P extends object">
 import type { Component } from "svelte";
-import RouteViewport from "./RouteViewport.svelte";
 
 interface Props {
 	load: Promise<{ default: Component<P> }>;
@@ -11,7 +10,7 @@ interface Props {
 let { load, props, viewportMode = "page" }: Props = $props();
 </script>
 
-<RouteViewport mode={viewportMode}>
+<div class="route-viewport" data-role="route-viewport" data-mode={viewportMode}>
 	{#await load}
 		<div class="route-status" role="status">Loading view…</div>
 	{:then loaded}
@@ -23,9 +22,34 @@ let { load, props, viewportMode = "page" }: Props = $props();
 			<button type="button" onclick={() => window.location.reload()}>Reload application</button>
 		</div>
 	{/await}
-</RouteViewport>
+</div>
 
 <style>
+	.route-viewport {
+		flex: 1 1 auto;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		height: 100%;
+		min-width: 0;
+		min-height: 0;
+	}
+
+	.route-viewport[data-mode="page"] {
+		overflow-y: auto;
+		overscroll-behavior-y: contain;
+	}
+
+	.route-viewport[data-mode="workspace"] {
+		overflow: hidden;
+	}
+
+	.route-viewport > :global(*) {
+		flex: 1 1 auto;
+		min-width: 0;
+		min-height: 0;
+	}
+
 	.route-status {
 		display: grid;
 		place-content: center;
@@ -43,5 +67,13 @@ let { load, props, viewportMode = "page" }: Props = $props();
 		background: var(--surface-raised);
 		color: var(--text-primary);
 		cursor: pointer;
+	}
+
+	@media (max-width: 960px) {
+		.route-viewport[data-mode="page"] {
+			height: auto;
+			overflow-y: visible;
+			overscroll-behavior-y: auto;
+		}
 	}
 </style>
