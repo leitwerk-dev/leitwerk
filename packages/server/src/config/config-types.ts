@@ -34,17 +34,6 @@ export type {
 	WorkersConfigSnapshot as WorkersConfig,
 } from "@leitwerk-dev/protocol";
 
-export type SkillSourceConfig =
-	| { kind: "local"; path: string }
-	| { kind: "git"; url: string; ref: string; path: string };
-
-export interface SkillConfig {
-	id: string;
-	label?: string;
-	description?: string;
-	source: SkillSourceConfig;
-}
-
 export interface SkillRepositoryConfig {
 	id: string;
 	label?: string;
@@ -276,8 +265,6 @@ export interface LeitwerkConfig extends ConfigSnapshot {
 	worker_runtime_profiles?: Record<string, WorkerRuntimeProfileConfig>;
 	/** Server-only internal TLS for worker IPC; stripped from the worker snapshot. */
 	internal_tls?: InternalTlsConfig;
-	/** Legacy/direct server-imported, opt-in Pi skill directories. */
-	skills?: SkillConfig[];
 	/** Git repositories scanned for operator-managed skills. */
 	skill_repositories?: SkillRepositoryConfig[];
 	/** Server-owned repository-aware commit-message generation rules. */

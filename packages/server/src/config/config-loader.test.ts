@@ -440,6 +440,15 @@ describe("validateConfig", () => {
 		expect(validateConfig(config)).toContain(message);
 	});
 
+	it("rejects directly configured skills with repository migration guidance", () => {
+		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		config.skills = [{ id: "review", source: { kind: "local", path: "../shared-skills/review" } }];
+
+		expect(validateConfig(config)).toContain(
+			"skills was removed; configure Git sources through skill_repositories",
+		);
+	});
+
 	it("accepts a configured process title generation model profile and retry policy", () => {
 		const config = getDefaultConfig();
 		addTestModelProfiles(config);

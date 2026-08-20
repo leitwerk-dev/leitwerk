@@ -211,15 +211,17 @@ describe("internal worker session snapshot routes", () => {
 		const bundle = createCanonicalPiResourceBundle([
 			{ path: "skills/review/SKILL.md", content: Buffer.from("# Review") },
 		]);
-		repos.skills.reconcile([
+		repos.skills.mergeCatalog("test", [
 			{
+				sourcePath: "skills/review",
 				skillId: "review",
 				label: "Review",
 				description: null,
 				bundle,
-				sourceRevision: null,
+				sourceRevision: "test",
 			},
 		]);
+		repos.skills.registerCatalogEntry("test", "review");
 		repos.processSkills.attach(process.id, repos.skills.resolveActive(["review"]));
 		repos.turnRecords.create({
 			id: "trn_current",

@@ -3,9 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import { importConfiguredSkills, importSkillRepository } from "./source-importer.js";
+import { importSkillRepository } from "./source-importer.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,32 +22,24 @@ async function temporaryDirectory(): Promise<string> {
 	return root;
 }
 
-describe("configured skill import", () => {
-	it("imports a complete skill as a canonical Pi resource fragment", async () => {
-		const root = await temporaryDirectory();
-		await mkdir(path.join(root, "review", "references"), { recursive: true });
-		await writeFile(path.join(root, "review", "SKILL.md"), "# Review\n");
-		await writeFile(path.join(root, "review", "references", "rules.md"), "Rules\n");
+async function commitFixture(root: string): Promise<void> {
+	await execFileAsync("git", ["init", "--quiet", root]);
+	await execFileAsync("git", ["-C", root, "add", "."]);
+	await execFileAsync("git", [
+		"-C",
+		root,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.test",
+		"commit",
+		"--quiet",
+		"-m",
+		"fixture",
+	]);
+}
 
-		const [imported] = await importConfiguredSkills(
-			[
-				{
-					id: "review",
-					label: "Review",
-					source: { kind: "local", path: "review" },
-				},
-			],
-			root,
-		);
-		expect(imported?.sourceRevision).toBeNull();
-		expect(
-			verifyCanonicalPiResourceBundle(
-				imported?.bundle.bytes ?? new Uint8Array(),
-				imported?.bundle.digest,
-			).map((file) => file.path),
-		).toEqual(["skills/review/SKILL.md", "skills/review/references/rules.md"]);
-	});
-
+describe("skill repository import", () => {
 	it("discovers arbitrarily nested skill directories from a Git repository", async () => {
 		const root = await temporaryDirectory();
 		await mkdir(path.join(root, "skills", "engineering", "review", "references"), {
@@ -68,20 +59,7 @@ describe("configured skill import", () => {
 			path.join(root, "skills", "productivity", "planning", "SKILL.md"),
 			"# Planning\n",
 		);
-		await execFileAsync("git", ["init", "--quiet", root]);
-		await execFileAsync("git", ["-C", root, "add", "."]);
-		await execFileAsync("git", [
-			"-C",
-			root,
-			"-c",
-			"user.name=Test",
-			"-c",
-			"user.email=test@example.test",
-			"commit",
-			"--quiet",
-			"-m",
-			"fixture",
-		]);
+		await commitFixture(root);
 
 		const imported = await importSkillRepository({
 			id: "shared",
@@ -107,12 +85,29 @@ describe("configured skill import", () => {
 		]);
 	});
 
-	it("requires a root SKILL.md", async () => {
+	it("imports a repository path that points directly to one skill", async () => {
 		const root = await temporaryDirectory();
-		await mkdir(path.join(root, "invalid"));
-		await writeFile(path.join(root, "invalid", "notes.md"), "Notes\n");
-		await expect(
-			importConfiguredSkills([{ id: "invalid", source: { kind: "local", path: "invalid" } }], root),
-		).rejects.toThrow(/root SKILL\.md/);
+		await mkdir(path.join(root, ".pi", "skills", "impeccable"), { recursive: true });
+		await writeFile(
+			path.join(root, ".pi", "skills", "impeccable", "SKILL.md"),
+			"---\nname: Impeccable\ndescription: Refine interfaces\n---\n# Impeccable\n",
+		);
+		await commitFixture(root);
+
+		const imported = await importSkillRepository({
+			id: "impeccable",
+			url: root,
+			ref: "HEAD",
+			path: ".pi/skills/impeccable",
+		});
+
+		expect(imported.skills).toEqual([
+			expect.objectContaining({
+				skillId: "impeccable",
+				label: "Impeccable",
+				description: "Refine interfaces",
+				sourcePath: ".pi/skills/impeccable",
+			}),
+		]);
 	});
 });
