@@ -30,6 +30,7 @@ export * from "./process-turn-record-repo.js";
 export * from "./provider-credential-repo.js";
 export * from "./session-transfer-repo.js";
 export * from "./skill-repo.js";
+export * from "./ticket-destination-recent-repo.js";
 export * from "./turn-start-record-repo.js";
 export * from "./worker-lease-repo.js";
 
@@ -53,6 +54,7 @@ import { createProcessTurnRecordRepo } from "./process-turn-record-repo.js";
 import { createProviderCredentialRepo } from "./provider-credential-repo.js";
 import { createSessionTransferRepo } from "./session-transfer-repo.js";
 import { createSkillRepo } from "./skill-repo.js";
+import { createTicketDestinationRecentRepo } from "./ticket-destination-recent-repo.js";
 import { createTurnStartRecordRepo } from "./turn-start-record-repo.js";
 import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 
@@ -69,6 +71,7 @@ export interface RepositoryBundle {
 	handoffDedupKeys: ReturnType<typeof createProcessHandoffDedupKeyRepo>;
 	futureExecutions: ReturnType<typeof createFutureExecutionRepo>;
 	launcherRecentValues: ReturnType<typeof createLauncherRecentValueRepo>;
+	ticketDestinationRecents: ReturnType<typeof createTicketDestinationRecentRepo>;
 	launchRuns: ReturnType<typeof createLaunchRunRepo>;
 	titleJobs: ReturnType<typeof createProcessTitleJobRepo>;
 	pendingExternalSourceFires: ReturnType<typeof createPendingExternalSourceFireRepo>;
@@ -104,6 +107,7 @@ export function createAllRepos(
 		handoffDedupKeys: createProcessHandoffDedupKeyRepo(db),
 		futureExecutions: createFutureExecutionRepo(db),
 		launcherRecentValues: createLauncherRecentValueRepo(db),
+		ticketDestinationRecents: createTicketDestinationRecentRepo(db),
 		launchRuns: createLaunchRunRepo(db),
 		titleJobs: createProcessTitleJobRepo(db),
 		pendingExternalSourceFires: createPendingExternalSourceFireRepo(db),
