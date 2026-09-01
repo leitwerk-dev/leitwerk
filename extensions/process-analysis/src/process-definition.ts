@@ -1,44 +1,36 @@
 import { rm } from "node:fs/promises";
-import { trimString } from "@leitwerk-dev/domain";
-import {
-	formatLocalRepoChangeLaunchErrors,
-	type LocalRepoChangeLaunchPlanner,
-	localRepoChangeImportedPlanLauncherId,
-} from "@leitwerk-dev/local-repo-change";
 import {
 	createEmptyStructuralProcessState,
 	flow,
 	humanTurn,
 	revisionAction,
 } from "@leitwerk-dev/process-sdk";
-import { followupForm, handoffForm, processAnalysisActionIds } from "./actions.js";
+import { followupForm, processAnalysisActionIds } from "./actions.js";
 import {
 	type ProcessAnalysisParams,
 	processAnalysisParamsCodec,
 	validateProcessAnalysisLaunchInput,
 } from "./params.js";
+import { getProcessAnalysisRuntime } from "./server-runtime.js";
+import { resolveProcessSnapshotDirectory } from "./snapshot-downloader.js";
 import {
-	getProcessAnalysisRuntime,
-	isProcessAnalysisRuntimeGitRepo,
-	resolveProcessAnalysisRuntimeRepoConfig,
-} from "./server-runtime.js";
-import { downloadProcessSnapshot } from "./snapshot-downloader.js";
-import { type ProcessAnalysisState, processAnalysisStateCodec } from "./state.js";
+	type ProcessAnalysisState,
+	parseProcessAnalysisSnapshotState,
+	processAnalysisStateCodec,
+} from "./state.js";
+import { processAnalysisDownloadSnapshotTool } from "./tools.js";
 
 const turnIds = {
-	downloadProcess: "download_process",
 	analyzeProcess: "analyze_process",
 	analysisDecision: "analysis_decision",
-	handoff: "handoff_local_repo_change",
 } as const;
 const products = { analysis: "analysis" } as const;
 
 function analysisPrompt(ctx: {
 	params: ProcessAnalysisParams;
-	state: ProcessAnalysisState;
+	prepared: NonNullable<ProcessAnalysisState["snapshot"]>;
 }): string {
-	const snapshot = ctx.state.snapshot;
-	if (!snapshot) throw new Error("No process snapshot is available for analysis");
+	const snapshot = ctx.prepared;
 	return [
 		"Analyze the referenced leitwerk process for the operator.",
 		"You are in read-only analysis mode. Use only read and bash inspection commands. Do not modify files.",
@@ -49,207 +41,90 @@ function analysisPrompt(ctx: {
 	].join("\n\n");
 }
 
-async function runHandoff(
-	launchPlanner: LocalRepoChangeLaunchPlanner,
-	ctx: {
-		process: { id: string };
-		params: ProcessAnalysisParams;
-		state: ProcessAnalysisState;
-	},
-	input: Record<string, unknown> = {},
-) {
-	const runtime = getProcessAnalysisRuntime();
-	if (!runtime.processLaunches) throw new Error("process launch service is not configured");
-	const snapshot = ctx.state.snapshot;
-	if (!snapshot) throw new Error("No process snapshot is available for handoff");
-	if (!(await isProcessAnalysisRuntimeGitRepo())) {
-		throw new Error(
-			`Cannot start Local Repo Change handoff: server launch directory is not a git repository (${runtime.analysisCwd})`,
-		);
-	}
-	const runtimeRepo = await resolveProcessAnalysisRuntimeRepoConfig();
-	const note = trimString(input.note);
-	const analysis = trimString(input.analysisMarkdown);
-	const prompt = [
-		"Implement the fix identified by a process analysis handoff.",
-		note ? `Operator handoff note:\n${note}` : null,
-		`Original analysis instruction:\n${ctx.params.instruction}`,
-	]
-		.filter(Boolean)
-		.join("\n\n");
-	const importedPlanMarkdown = [
-		"# Imported process-analysis plan",
-		`- Source process: ${snapshot.sourceProcessId}`,
-		`- Source URL: ${snapshot.apiUrl}`,
-		`- Analysis process: ${ctx.process.id}`,
-		`- Snapshot directory: ${snapshot.snapshotDir}`,
-		"",
-		"## Operator instruction",
-		ctx.params.instruction,
-		note ? `\n## Handoff note\n${note}` : "",
-		"\n## Analysis",
-		analysis || "No analysis markdown was available.",
-	].join("\n");
-	const metadata = {
-		processAnalysisHandoff: {
-			sourceAnalysisProcessId: ctx.process.id,
-			sourceProcessId: snapshot.sourceProcessId,
-			sourceProcessUrl: snapshot.apiUrl,
-		},
-	};
-	const planned = launchPlanner.plan({
-		input: {
-			launchKind: "imported_plan",
-			repoLocator: runtimeRepo.repoLocator,
-			baseBranch: runtimeRepo.baseBranch,
-			workBranch: "",
-			prompt,
-			importedPlanMarkdown,
-		},
-		metadata,
-	});
-	if (!planned.ok) {
-		throw new Error(
-			`Invalid local repo change handoff input: ${formatLocalRepoChangeLaunchErrors(planned.errors)}`,
-		);
-	}
-	const handoffDedupKey = `process-analysis:${ctx.process.id}:local-repo-change`;
-	const result = await runtime.processLaunches.createProcessFromLaunchConfig({
-		launcherId: localRepoChangeImportedPlanLauncherId,
-		launchConfig: planned.launchConfig,
-		handoffDedupKey,
-	});
-	if (!result.ok) {
-		throw new Error(`Failed to launch local repo change: ${JSON.stringify(result.body)}`);
-	}
-	return { linkedId: result.process.id, reused: result.reused };
-}
-
-const downloadTurn = flow
-	.serverAutomatic<ProcessAnalysisParams, ProcessAnalysisState>(turnIds.downloadProcess)
-	.description("Download process snapshot")
-	.run(async (ctx) => {
-		const snapshot = await downloadProcessSnapshot({
-			analysisProcessId: ctx.process.id,
-			processRef: ctx.params.processRef,
-		});
-		return {
-			outcome: "downloaded",
-			params: {},
-			markdown: `Downloaded process snapshot to ${snapshot.snapshotDir}.`,
-			state: { ...ctx.state, snapshot },
-		};
-	})
-	.outcome("downloaded", (outcome) =>
-		outcome.description("Snapshot downloaded").to(turnIds.analyzeProcess),
-	);
-
 const analyzeTurn = flow
 	.llm<ProcessAnalysisParams, ProcessAnalysisState>(turnIds.analyzeProcess)
 	.description("Analyze process")
+	.integrationTools(processAnalysisDownloadSnapshotTool)
+	.prepare(async (ctx) => {
+		ctx.reportProgress({
+			title: "Analysis preparation",
+			steps: [
+				{ id: "download_snapshot", label: "Download process snapshot", status: "in_progress" },
+			],
+		});
+		const result = await ctx.callIntegrationTool(processAnalysisDownloadSnapshotTool, {
+			processRef: ctx.params.processRef,
+		});
+		const snapshot = parseProcessAnalysisSnapshotState(result);
+		if (!snapshot) throw new Error("Snapshot tool returned an invalid process snapshot");
+		ctx.reportProgress({
+			title: "Analysis preparation",
+			steps: [{ id: "download_snapshot", label: "Download process snapshot", status: "completed" }],
+		});
+		return snapshot;
+	})
 	.tools("read", "bash")
 	.freshPrimary()
 	.buildPrompt(analysisPrompt)
 	.publish(products.analysis)
 	.to(turnIds.analysisDecision);
 
-function buildDecisionTurn(handoffAvailable: boolean) {
-	const reviseAnalysis = (label: string) =>
-		revisionAction<ProcessAnalysisParams, ProcessAnalysisState>({
-			label,
-			acceptanceState: "neutral",
-			form: followupForm,
-			to: turnIds.analyzeProcess,
-			queueTarget: { productName: products.analysis },
-			schedulable: true,
-		});
-	return humanTurn<ProcessAnalysisParams, ProcessAnalysisState>({
-		description: "Review process analysis",
-		reviewProduct: products.analysis,
-		commentary: handoffAvailable
-			? "Ask follow-up questions, refresh the snapshot, or hand the analysis to a Local Repo Change process."
-			: "Ask follow-up questions, refine the analysis, or refresh the snapshot.",
-		actions: {
-			[processAnalysisActionIds.completeAnalysis]: {
-				label: "Complete analysis",
-				acceptanceState: "accepted",
-				complete: true,
-			},
-			[processAnalysisActionIds.askFollowup]: reviseAnalysis("Ask follow-up"),
-			[processAnalysisActionIds.refineAnalysis]: reviseAnalysis("Refine analysis"),
-			[processAnalysisActionIds.refreshSnapshot]: {
-				label: "Refresh snapshot",
-				acceptanceState: "neutral",
-				to: turnIds.downloadProcess,
-			},
-			...(handoffAvailable
-				? {
-						[processAnalysisActionIds.startLocalRepoChange]: {
-							label: "Start Local Repo Change",
-							acceptanceState: "accepted" as const,
-							form: handoffForm,
-							to: turnIds.handoff,
-							effect: ({ ctx, input }) => ({
-								state: {
-									...ctx.state,
-									pendingHandoffInput: {
-										...input,
-										analysisMarkdown: ctx.readProductTurnResultMarkdown(products.analysis) ?? "",
-									},
-								},
-							}),
-						},
-					}
-				: {}),
-		},
+const reviseAnalysis = (label: string) =>
+	revisionAction<ProcessAnalysisParams, ProcessAnalysisState>({
+		label,
+		acceptanceState: "neutral",
+		form: followupForm,
+		to: turnIds.analyzeProcess,
+		queueTarget: { productName: products.analysis },
+		schedulable: true,
 	});
-}
 
-function buildHandoffTurn(launchPlanner: LocalRepoChangeLaunchPlanner) {
+const decisionTurn = humanTurn<ProcessAnalysisParams, ProcessAnalysisState>({
+	description: "Review process analysis",
+	reviewProduct: products.analysis,
+	commentary: "Ask follow-up questions, refine the analysis, or refresh the snapshot.",
+	actions: {
+		[processAnalysisActionIds.completeAnalysis]: {
+			label: "Complete analysis",
+			acceptanceState: "accepted",
+			complete: true,
+		},
+		[processAnalysisActionIds.askFollowup]: reviseAnalysis("Ask follow-up"),
+		[processAnalysisActionIds.refineAnalysis]: reviseAnalysis("Refine analysis"),
+		[processAnalysisActionIds.refreshSnapshot]: {
+			label: "Refresh snapshot",
+			acceptanceState: "neutral",
+			to: turnIds.analyzeProcess,
+		},
+	},
+});
+
+export function createProcessAnalysisProcess() {
 	return flow
-		.serverAutomatic<ProcessAnalysisParams, ProcessAnalysisState>(turnIds.handoff)
-		.description("Start Local Repo Change handoff")
-		.run(async (ctx) => {
-			const result = await runHandoff(launchPlanner, ctx, ctx.state.pendingHandoffInput ?? {});
-			return {
-				outcome: "launched",
-				params: { linkedProcessId: result.linkedId, reused: result.reused },
-				markdown: `${result.reused ? "Reused" : "Created"} Local Repo Change process ${result.linkedId}.`,
-				state: { ...ctx.state, pendingHandoffInput: null },
-			};
-		})
-		.outcome("launched", (outcome) =>
-			outcome
-				.description("Local Repo Change process linked")
-				.requiredString("linkedProcessId", "Linked process id")
-				.boolean("reused", "Whether an existing handoff was reused")
-				.complete(),
-		);
-}
-
-export function createProcessAnalysisProcess(launchPlanner?: LocalRepoChangeLaunchPlanner) {
-	let processBuilder = flow
 		.process<ProcessAnalysisParams, ProcessAnalysisState>("process_analysis_process")
 		.displayName("Process Analysis")
-		.entry(turnIds.downloadProcess)
+		.entry(turnIds.analyzeProcess)
 		.codecs({ params: processAnalysisParamsCodec, state: processAnalysisStateCodec })
 		.piConfig({ sessionCwdTemplate: "{{{analysisCwd}}}" })
 		.initialState(() => ({
 			...createEmptyStructuralProcessState(),
 			snapshot: null,
-			pendingHandoffInput: null,
 		}))
-		.turn(downloadTurn)
 		.turn(analyzeTurn)
-		.turn({ id: turnIds.analysisDecision, definition: buildDecisionTurn(Boolean(launchPlanner)) });
-	if (launchPlanner) {
-		processBuilder = processBuilder.turn(buildHandoffTurn(launchPlanner));
-	}
-	return processBuilder
+		.turn({ id: turnIds.analysisDecision, definition: decisionTurn })
 		.server((api) => {
 			api.onCleanup(async (ctx) => {
-				const snapshotDir = ctx.state.snapshot?.snapshotDir;
-				if (!snapshotDir) return {};
+				let snapshotDir = ctx.state.snapshot?.snapshotDir ?? null;
+				if (!snapshotDir) {
+					try {
+						snapshotDir = resolveProcessSnapshotDirectory({
+							analysisProcessId: ctx.process.id,
+							processRef: ctx.params.processRef,
+						}).baseDir;
+					} catch {
+						return { state: { ...ctx.state, snapshot: null } };
+					}
+				}
 				await rm(snapshotDir, { recursive: true, force: true });
 				return { state: { ...ctx.state, snapshot: null } };
 			});
@@ -289,7 +164,7 @@ export function createProcessAnalysisProcess(launchPlanner?: LocalRepoChangeLaun
 							launchConfig: {
 								processId: "process_analysis_process",
 								params: { ...validated.value, analysisCwd: runtime.analysisCwd },
-								startTurnId: turnIds.downloadProcess,
+								startTurnId: turnIds.analyzeProcess,
 								titleSourceFields: [
 									{ label: "Analysis instruction", value: validated.value.instruction },
 								],

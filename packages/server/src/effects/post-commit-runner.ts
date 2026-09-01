@@ -303,6 +303,7 @@ export async function runPostCommitEffectList(
 					deps.processTitles?.queueProcessTitleGeneration({
 						processId: effect.processId,
 						launchPlan: effect.launchPlan,
+						launchRunId: effect.launchRunId,
 					}),
 				);
 				break;

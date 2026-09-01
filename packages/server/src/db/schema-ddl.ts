@@ -1,9 +1,9 @@
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
-import { getTableConfig, SQLiteSyncDialect } from "drizzle-orm/sqlite-core";
+import { getTableConfig, SQLiteDialect } from "drizzle-orm/sqlite-core";
 
-const sqliteDialect = new SQLiteSyncDialect();
+const sqliteDialect = new SQLiteDialect();
 
-function renderSql(value: Parameters<SQLiteSyncDialect["sqlToQuery"]>[0]): string {
+function renderSql(value: Parameters<SQLiteDialect["sqlToQuery"]>[0]): string {
 	const query = sqliteDialect.sqlToQuery(value);
 	if (query.params.length > 0) throw new Error("DDL constraints must not contain bound parameters");
 	return query.sql;

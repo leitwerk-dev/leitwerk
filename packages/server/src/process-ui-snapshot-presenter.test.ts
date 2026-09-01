@@ -7,6 +7,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	buildCurrentTurnRecovery,
+	buildProcessStartupSummary,
 	buildStartupRecovery,
 	presentProcessTimelineTurns,
 	projectProcessForUiSnapshot,
@@ -94,12 +95,6 @@ describe("process UI snapshot presenter", () => {
 		const starts = { getById: (id: string) => (id === acceptedStart.id ? acceptedStart : null) };
 		expect(
 			resolveCurrentExecutionTurnRecordId(
-				processInstance({ currentExecution: { kind: "server_turn", id: "trn_server" } }),
-				starts,
-			),
-		).toBe("trn_server");
-		expect(
-			resolveCurrentExecutionTurnRecordId(
 				processInstance({ currentExecution: { kind: "worker_start", id: acceptedStart.id } }),
 				starts,
 			),
@@ -114,39 +109,138 @@ describe("process UI snapshot presenter", () => {
 
 	it("exposes current execution without deprecated turn pointers", () => {
 		const projected = projectProcessForUiSnapshot(
-			processInstance({ currentExecution: { kind: "server_turn", id: "trn_server" } }),
+			processInstance({ currentExecution: { kind: "worker_start", id: "tsr_worker" } }),
 		) as Record<string, unknown>;
-		expect(projected.currentExecution).toEqual({ kind: "server_turn", id: "trn_server" });
+		expect(projected.currentExecution).toEqual({ kind: "worker_start", id: "tsr_worker" });
 		expect(projected).not.toHaveProperty("currentTurnRecordId");
 		expect(projected).not.toHaveProperty("failedTurnRecordId");
 	});
 
-	it("projects failed server automatic turns as retryable without a model override", () => {
+	it("offers Continue for legacy terminal outcome recording failures with saved Pi progress", () => {
 		const failed = turnRecord({
-			id: "trn_deliver",
-			turnId: "deliver_change",
-			turnType: "server_automatic",
 			status: "failed",
-			errorSummary: "Delivery failed",
+			errorSummary: "Server could not durably record worker turn outcome: invalid transition",
+			errorClass: "infrastructure",
 		});
+		const start = turnStart();
 		expect(
 			buildCurrentTurnRecovery({
 				process: processInstance({
 					selectedTurnId: failed.turnId,
 					lifecycleStatus: "error",
-					currentExecution: { kind: "server_turn", id: failed.id },
+					currentExecution: { kind: "worker_start", id: start.id },
 				}),
-				turnStarts: { getById: () => null },
+				turnStarts: { getById: () => start },
 				turnRecords: [failed],
-				selectedTurnDescription: "Deliver change",
-				piEntries: [],
+				selectedTurnDescription: "Generate plan",
+				piEntries: [
+					{
+						id: "assistant-plan",
+						parentId: null,
+						timestamp: "2026-01-01T00:01:00.000Z",
+						type: "message",
+						message: { role: "assistant", content: [{ type: "text", text: "# Plan" }] },
+					} as never,
+				],
 			}),
 		).toMatchObject({
 			turnRecordId: failed.id,
-			canContinue: false,
-			supportsModelOverride: false,
-			summary: "Delivery failed",
+			canContinue: true,
+			supportsModelOverride: true,
 		});
+	});
+
+	it("projects authoritative startup timing from correlated lease readiness", () => {
+		const start = turnStart();
+		const record = turnRecord();
+		const startup = buildProcessStartupSummary({
+			process: processInstance({
+				lifecycleStatus: "active",
+				currentExecution: { kind: "worker_start", id: start.id },
+			}),
+			turnStarts: [start],
+			turnRecords: [record],
+			leases: [
+				{
+					id: "wkr_1",
+					instanceId: "agt_presenter",
+					workerId: "worker_1",
+					turnStartRecordId: start.id,
+					state: "busy",
+					bootstrapReceipt: null,
+					lastHeartbeatAt: null,
+					startedAt: "2026-01-01T00:00:00.000Z",
+					connectedAt: "2026-01-01T00:00:02.000Z",
+					workspacePreparationStartedAt: "2026-01-01T00:00:03.000Z",
+					readyAt: "2026-01-01T00:00:29.000Z",
+					exitedAt: null,
+				},
+			],
+		});
+		expect(startup.authoritativeAttemptId).toBe(start.id);
+		expect(startup.attempts[0]).toMatchObject({
+			status: "succeeded",
+			durationMs: 29_000,
+			steps: [
+				{ id: "start_worker", status: "completed" },
+				{ id: "connect_worker", status: "completed" },
+				{ id: "prepare_workspace", status: "completed" },
+				{ id: "start_first_turn", status: "completed" },
+			],
+		});
+	});
+
+	it("does not report success without matching readiness and turn acceptance", () => {
+		const start = turnStart();
+		const startup = buildProcessStartupSummary({
+			process: processInstance({
+				lifecycleStatus: "active",
+				currentExecution: { kind: "worker_start", id: start.id },
+			}),
+			turnStarts: [start],
+			turnRecords: [turnRecord({ acceptedWorkerLeaseId: "wkr_stale" })],
+			leases: [],
+		});
+		expect(startup.authoritativeAttemptId).toBeNull();
+		expect(startup.attempts[0]).toMatchObject({ status: "starting" });
+	});
+
+	it("retains a recovered startup failure beside the successful retry", () => {
+		const failed = turnStart({
+			id: "str_failed",
+			state: {
+				kind: "preparation_failed",
+				requestedModelProfileId: null,
+				providerOptions: {},
+				code: "model_required",
+				safeSummary: "Choose an available model",
+			},
+		});
+		const retry = turnStart({ id: "str_retry", startKind: "startup_retry" });
+		const startup = buildProcessStartupSummary({
+			process: processInstance({
+				lifecycleStatus: "active",
+				currentExecution: { kind: "worker_start", id: retry.id },
+			}),
+			turnStarts: [failed, retry],
+			turnRecords: [turnRecord({ turnStartRecordId: retry.id })],
+			leases: [
+				{
+					id: "wkr_1",
+					instanceId: "agt_presenter",
+					workerId: "worker_1",
+					turnStartRecordId: retry.id,
+					state: "busy",
+					bootstrapReceipt: null,
+					lastHeartbeatAt: null,
+					startedAt: "2026-01-01T00:00:00.000Z",
+					readyAt: "2026-01-01T00:00:29.000Z",
+					exitedAt: null,
+				},
+			],
+		});
+		expect(startup.attempts.map((attempt) => attempt.status)).toEqual(["recovered", "succeeded"]);
+		expect(startup.attempts[0]?.recoveredByStartRecordId).toBe(retry.id);
 	});
 
 	it("projects actionable startup failures from the current worker start", () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	createIntegrationToolRequestService,
 	IntegrationToolRegistry,
+	validateTicketCreationReceipt,
 } from "./integration-tool-registry.js";
 
 function registerEcho(
@@ -53,6 +54,120 @@ describe("IntegrationToolRegistry", () => {
 				execute: async () => ({}),
 			}),
 		).toThrow(/reserved/);
+	});
+
+	it("discovers only validated ticket capabilities", () => {
+		const registry = new IntegrationToolRegistry();
+		registerEcho(registry);
+		registry.register({
+			name: "tracker_create",
+			description: "Create tracker item",
+			parameters: { type: "object", properties: { fields: { type: "object" } } },
+			capability: {
+				kind: "ticket_creation",
+				displayName: "Tracker",
+				titlePath: "/fields/summary",
+			},
+			execute: async () => ({ externalId: "ABC-1", url: "https://tracker.test/ABC-1" }),
+		});
+
+		expect(registry.ticketCatalog()).toHaveLength(1);
+		expect(registry.resolveTicketTool("tracker_create").capability.displayName).toBe("Tracker");
+		expect(() =>
+			registry.register({
+				name: "broken_ticket",
+				description: "Broken",
+				parameters: {},
+				capability: { kind: "ticket_creation", displayName: "Broken", titlePath: "/bad~2path" },
+				execute: async () => ({}),
+			}),
+		).toThrow(/JSON Pointer/);
+	});
+
+	it("resolves and validates adapter-owned ticket destinations", async () => {
+		const registry = new IntegrationToolRegistry();
+		const validate = vi.fn(async () => undefined);
+		registry.register({
+			name: "tracker_create",
+			description: "Create tracker item",
+			parameters: { type: "object" },
+			capability: {
+				kind: "ticket_creation",
+				displayName: "Tracker",
+				destinations: {
+					list: async () => ({
+						destinations: [{ id: "repo-1", displayName: "team/repo" }],
+						warnings: ["one profile is unavailable"],
+					}),
+					resolve: async () => ({
+						summary: { id: "repo-1", displayName: "team/repo" },
+						data: { repositoryId: 1 },
+						agentContext: "Labels: bug",
+					}),
+					validate,
+				},
+			},
+			execute: async () => ({ externalId: "1", url: "https://tracker.test/1" }),
+		});
+		const actor = { id: "alice", kind: "user" as const, provider: "oidc" };
+		expect(await registry.listTicketDestinations("tracker_create", actor)).toEqual({
+			destinations: [{ id: "repo-1", displayName: "team/repo" }],
+			warnings: ["one profile is unavailable"],
+		});
+		const snapshot = await registry.resolveTicketDestination("tracker_create", "repo-1", actor);
+		await expect(registry.validateTicketDestination("tracker_create", snapshot)).resolves.toEqual(
+			snapshot,
+		);
+		expect(validate).toHaveBeenCalledWith(snapshot);
+	});
+
+	it("adds deferred destination choices to child-process tool declarations", () => {
+		const registry = new IntegrationToolRegistry();
+		registry.register({
+			name: "tracker_create",
+			description: "Create tracker item",
+			parameters: {
+				type: "object",
+				properties: { title: { type: "string" } },
+				required: ["title"],
+			},
+			capability: {
+				kind: "ticket_creation",
+				displayName: "Tracker",
+				destinations: {
+					list: async () => ({ destinations: [] }),
+					resolve: async () => ({ summary: { id: "", displayName: "" }, data: {} }),
+					validate: async () => undefined,
+				},
+			},
+			execute: async () => ({ externalId: "1", url: "https://tracker.test/1" }),
+		});
+
+		const [declaration] = registry.declarations(["tracker_create"], {
+			processId: "ticket_creation_process",
+			paramsJson: JSON.stringify({
+				ticketDestinations: [{ id: "repo-1", displayName: "team/repo", group: "Tracker" }],
+			}),
+		});
+		expect(declaration?.parameters).toMatchObject({
+			required: ["title", "destinationId"],
+			properties: {
+				destinationId: {
+					type: "string",
+					oneOf: [{ const: "repo-1", title: "team/repo — Tracker" }],
+				},
+			},
+		});
+	});
+
+	it("validates standard ticket receipts", () => {
+		expect(
+			validateTicketCreationReceipt({ externalId: " ABC-1 ", url: "https://tracker.test/ABC-1" }),
+		).toMatchObject({ externalId: "ABC-1", url: "https://tracker.test/ABC-1" });
+		expect(() => validateTicketCreationReceipt("created ABC-1")).toThrow(/receipt object/);
+		expect(() =>
+			validateTicketCreationReceipt({ externalId: "ABC-1", url: "javascript:x" }),
+		).toThrow(/http or https/);
 	});
 
 	it("coalesces only concurrent executions by stable idempotency key", async () => {
@@ -140,6 +255,7 @@ describe("integration tool request service", () => {
 			} as never,
 			processActionRegistry: {
 				getTurnDefinition: () => ({ kind: turnKind, integrationTools: ["provider_echo"] }),
+				resolveContextData: () => ({ params: {}, state: {} }),
 			},
 		});
 
@@ -186,7 +302,10 @@ describe("integration tool request service", () => {
 				},
 				projects: { listByInstance: () => [{ key: "repo" }] },
 			} as never,
-			processActionRegistry: { getTurnDefinition: () => ({ kind: "llm", integrationTools: [] }) },
+			processActionRegistry: {
+				getTurnDefinition: () => ({ kind: "llm", integrationTools: [] }),
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 		};
 		const payload = {
 			turnRecordId: "turn-record-1",

@@ -23,6 +23,13 @@ describe("local worker storage layout", () => {
 		expect(paths).toEqual({
 			workspaceRoot: path.join(root, "workspaces", "agt_1"),
 			primaryTreeFile: path.join(root, "trees", "agt_1.jsonl"),
+			piResourceBundlesDir: path.join(
+				root,
+				"workspaces",
+				"agt_1",
+				".leitwerk",
+				"pi-resource-bundles",
+			),
 			resume: false,
 		});
 		expect(existsSync(paths.workspaceRoot)).toBe(true);
@@ -49,6 +56,7 @@ describe("process-volume worker storage layout", () => {
 		expect(layout("agt_1")).toEqual({
 			workspaceRoot: "/state/workspace",
 			primaryTreeFile: "/state/tree/primary.jsonl",
+			piResourceBundlesDir: "/state/pi-resource-bundles",
 			resume: true,
 		});
 		expect(layout("agt_2")).toEqual(layout("agt_1"));
@@ -91,6 +99,7 @@ describe("createWorkerStorageLayout", () => {
 
 		expect(paths.primaryTreeFile).toBe("/pv/tree/primary.jsonl");
 		expect(paths.workspaceRoot).toBe("/pv/workspace");
+		expect(paths.piResourceBundlesDir).toBe("/pv/pi-resource-bundles");
 		expect(paths.resume).toBe(true);
 	});
 });

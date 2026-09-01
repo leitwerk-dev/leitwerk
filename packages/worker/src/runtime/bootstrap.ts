@@ -12,6 +12,11 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import { createTemplateContext, resolveProcessPiConfig } from "@leitwerk-dev/process-sdk/pi-config";
 import type { WorkerGitSshCredential, WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
+import {
+	type DevelopmentToolEnvironment,
+	MiseDevelopmentToolEnvironment,
+	type PreparedToolEnvironment,
+} from "../development-tool-environment.js";
 import type { InputItem } from "../input-consumer.js";
 import {
 	resolveManagedPiAgentDir,
@@ -23,7 +28,11 @@ import {
 	readAndValidateManagedPiResourceManifest,
 } from "../managed-pi-bootstrap.js";
 import type { PiTreeHandle, PiTreeHandleFactory, PiTreePlanningSnapshot } from "../pi-adapter.js";
-import { materializeCanonicalPiResourceBundle } from "../pi-resource-bundle.js";
+import {
+	materializeCanonicalPiResourceBundle,
+	persistPiResourceBundleForStart,
+	verifyCanonicalPiResourceBundle,
+} from "../pi-resource-bundle.js";
 import { resolvePreTurnTargetStartSelection } from "../pre-turn-targeted-inputs.js";
 import { planTurnTreeExecution } from "../turn-tree-strategy.js";
 import {
@@ -50,6 +59,10 @@ export interface BootstrapWorkerRuntimeDeps {
 	piFactory: PiTreeHandleFactory;
 	gitOps: RunRootGitOps;
 	scheduler: WorkerRuntimeScheduler;
+	developmentTools?: DevelopmentToolEnvironment;
+	toolPreparationSignal?: AbortSignal;
+	onToolPreparationProgress?(repositoryKey: string, phase: "installing" | "verifying"): void;
+	onToolDiagnosticTrace?(text: string): void;
 	resolveWorkerProcess?: (
 		processId: string,
 		opts?: { paramsJson?: string | null; stateJson?: string | null },
@@ -89,6 +102,14 @@ export interface BootstrapWorkerRuntimeResult {
 		loadedSkillFiles: Array<{ name: string; path: string }>;
 		rootEntryId: string | null;
 		receipt: WorkerBootstrapReceipt;
+		developmentTools?: {
+			miseVersion: string;
+			repositories: Array<{
+				repositoryKey: string;
+				tools: Array<{ name: string; version: string }>;
+			}>;
+			warnings: string[];
+		};
 	};
 	pendingInputs: InputItem[];
 	credentialRefresh?: {
@@ -425,17 +446,11 @@ export async function bootstrapWorkerRuntime(
 
 	let aggregatedAgentsMdSources: string[] = [];
 	let loadedSkills: string[] = [];
-
-	if (!deps.payload.resume) {
-		const materialized = await materializeRunRoot(plan, deps.gitOps);
-		aggregatedAgentsMdSources = materialized.aggregatedAgentsMdSources;
-		loadedSkills = materialized.loadedSkills;
-	} else {
-		const validation = await validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps);
-		const repaired = await repairRunRoot(workspaceRoot, validation, plan, deps.gitOps);
-		aggregatedAgentsMdSources = repaired.aggregatedAgentsMdSources;
-		loadedSkills = repaired.loadedSkills;
-	}
+	const runRootPreparation = deps.payload.resume
+		? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
+				repairRunRoot(workspaceRoot, validation, plan, deps.gitOps),
+			)
+		: materializeRunRoot(plan, deps.gitOps);
 
 	const resolvedPiConfig = llmPayload
 		? resolveProcessPiConfig({
@@ -462,6 +477,28 @@ export async function bootstrapWorkerRuntime(
 	let loadedAgentsFiles: Array<{ path: string; sizeBytes: number }> = [];
 	let loadedSkillFiles: Array<{ name: string; path: string }> = [];
 	let receipt: WorkerBootstrapReceipt;
+	const runRoot = await runRootPreparation;
+	aggregatedAgentsMdSources = runRoot.aggregatedAgentsMdSources;
+	loadedSkills = runRoot.loadedSkills;
+	let preparedTools: PreparedToolEnvironment | undefined;
+	if (resolvedWorkerProcess?.runtime?.developmentTools) {
+		if (!deps.payload.developmentTools) {
+			throw new Error("Development-tool settings are unavailable for an opted-in process");
+		}
+		preparedTools = await (deps.developmentTools ?? new MiseDevelopmentToolEnvironment()).prepare({
+			config: deps.payload.developmentTools,
+			repositories: projectSnapshots.map((project) => ({
+				repositoryKey: project.key,
+				workingDirectory: path.join(workspaceRoot, project.key),
+			})),
+			signal: deps.toolPreparationSignal,
+			onProgress: deps.onToolPreparationProgress,
+			onDiagnosticTrace: deps.onToolDiagnosticTrace,
+		});
+		for (const [key, value] of Object.entries(preparedTools.commandEnvironment)) {
+			if (key === "PATH" || key.startsWith("MISE_")) process.env[key] = value;
+		}
+	}
 	if (llmPayload) {
 		const start =
 			deps.payload.turnStart.state.kind === "starting" ||
@@ -497,11 +534,34 @@ export async function bootstrapWorkerRuntime(
 			instanceId: deps.instanceId,
 			startOrLeaseId: deps.payload.workerLeaseId,
 		});
-		await materializeCanonicalPiResourceBundle({
-			bundle: Buffer.from(llmPayload.bootstrap.resourceBundle.archiveBase64, "base64"),
+		const resourceBundleInput = {
+			bundlesDir: deps.payload.treePaths.piResourceBundlesDir,
+			startRecordId: deps.payload.turnStart.id,
 			digest: llmPayload.bootstrap.resourceBundle.digest,
-			targetDir: managedAgentDir,
-		});
+			archiveBase64: llmPayload.bootstrap.resourceBundle.archiveBase64,
+		};
+		if (llmPayload.bootstrap.resourceBundle.archiveBase64 !== undefined) {
+			const deliveredBundle = Buffer.from(
+				llmPayload.bootstrap.resourceBundle.archiveBase64,
+				"base64",
+			);
+			verifyCanonicalPiResourceBundle(deliveredBundle, llmPayload.bootstrap.resourceBundle.digest);
+			await Promise.all([
+				persistPiResourceBundleForStart({ ...resourceBundleInput, deliveredBundle }),
+				materializeCanonicalPiResourceBundle({
+					bundle: deliveredBundle,
+					digest: llmPayload.bootstrap.resourceBundle.digest,
+					targetDir: managedAgentDir,
+				}),
+			]);
+		} else {
+			const persistedResourceBundle = await persistPiResourceBundleForStart(resourceBundleInput);
+			await materializeCanonicalPiResourceBundle({
+				bundle: persistedResourceBundle.bundle,
+				digest: llmPayload.bootstrap.resourceBundle.digest,
+				targetDir: managedAgentDir,
+			});
+		}
 		const manifest = await readAndValidateManagedPiResourceManifest({
 			agentDir: managedAgentDir,
 			resourceDigest: llmPayload.bootstrap.resourceBundle.digest,
@@ -614,6 +674,18 @@ export async function bootstrapWorkerRuntime(
 			loadedSkillFiles,
 			rootEntryId: null,
 			receipt,
+			...(preparedTools
+				? {
+						developmentTools: {
+							miseVersion: preparedTools.miseVersion,
+							repositories: preparedTools.repositories.map((repository) => ({
+								repositoryKey: repository.repositoryKey,
+								tools: repository.tools,
+							})),
+							warnings: preparedTools.warnings,
+						},
+					}
+				: {}),
 		},
 		pendingInputs,
 		...(credentialRefresh ? { credentialRefresh } : {}),

@@ -20,6 +20,12 @@ import type { WorkerExitInfo } from "./types.js";
 const IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token";
 const IN_CLUSTER_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt";
 const DEFAULT_IN_CLUSTER_API = "https://kubernetes.default.svc";
+const TRANSIENT_PLAIN_BAD_REQUEST_MAX_ATTEMPTS = 3;
+const TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS = 25;
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 interface KubernetesListResponse<T> {
 	items?: T[];
@@ -101,31 +107,45 @@ export function createKubernetesHttpApiClient(options: {
 			...(options.bearerToken ? { Authorization: `Bearer ${options.bearerToken}` } : {}),
 		};
 		const transport = url.protocol === "http:" ? http : https;
-		const response = await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
-			const req = transport.request(
-				url,
-				{
-					method: input.method,
-					headers,
-					...(url.protocol === "https:" && options.ca ? { ca: options.ca } : {}),
-				},
-				(res) => {
-					const chunks: Buffer[] = [];
-					res.on("data", (chunk: Buffer | string) =>
-						chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
-					);
-					res.on("end", () => {
-						resolve({
-							statusCode: res.statusCode ?? 0,
-							text: Buffer.concat(chunks).toString("utf8"),
+		let response: { statusCode: number; text: string };
+		for (let attempt = 1; ; attempt += 1) {
+			response = await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
+				const req = transport.request(
+					url,
+					{
+						method: input.method,
+						headers,
+						...(url.protocol === "https:" && options.ca ? { ca: options.ca } : {}),
+					},
+					(res) => {
+						const chunks: Buffer[] = [];
+						res.on("data", (chunk: Buffer | string) =>
+							chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+						);
+						res.on("end", () => {
+							resolve({
+								statusCode: res.statusCode ?? 0,
+								text: Buffer.concat(chunks).toString("utf8"),
+							});
 						});
-					});
-				},
-			);
-			req.on("error", reject);
-			if (serialized !== undefined) req.write(serialized);
-			req.end();
-		});
+					},
+				);
+				req.on("error", reject);
+				if (serialized !== undefined) req.write(serialized);
+				req.end();
+			});
+			const retryableMethod = input.method === "GET" || input.method === "DELETE";
+			const transientPlainBadRequest =
+				response.statusCode === 400 && response.text.trim() === "400 Bad Request";
+			if (
+				!retryableMethod ||
+				!transientPlainBadRequest ||
+				attempt >= TRANSIENT_PLAIN_BAD_REQUEST_MAX_ATTEMPTS
+			) {
+				break;
+			}
+			await sleep(TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS * attempt);
+		}
 		const ok = input.ok ?? [200, 201, 202];
 		if (!ok.includes(response.statusCode)) {
 			throw new Error(
@@ -342,7 +362,11 @@ export function createKubernetesHttpApiClient(options: {
 			await request({
 				method: "DELETE",
 				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
-				body: { gracePeriodSeconds: options.gracePeriodSeconds },
+				body: {
+					apiVersion: "v1",
+					kind: "DeleteOptions",
+					gracePeriodSeconds: options.gracePeriodSeconds,
+				},
 				ok: [200, 202, 404],
 			});
 		},

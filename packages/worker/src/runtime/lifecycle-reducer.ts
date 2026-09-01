@@ -848,9 +848,11 @@ export function reduceWorkerRuntime(
 			if (state.phase.kind !== "init") break;
 			next = { ...state, phase: { kind: "waiting_for_start" } };
 			outputs.push(HELLO);
+			outputs.push(protocol("worker.bootstrap_progress", { phase: "worker_connected" }));
 			break;
 		case "transport_connected":
 			outputs.push(HELLO);
+			outputs.push(protocol("worker.bootstrap_progress", { phase: "worker_connected" }));
 			if (state.session) {
 				outputs.push(
 					protocol("worker.heartbeat", {
@@ -956,6 +958,7 @@ export function reduceWorkerRuntime(
 					},
 					sessionTainted: false,
 				};
+				outputs.push(protocol("worker.bootstrap_progress", { phase: "preparing_workspace" }));
 				outputs.push({ kind: "bootstrap", startRecordId, payload: message.payload });
 				break;
 			}
@@ -1090,6 +1093,8 @@ export function reduceWorkerRuntime(
 					kind: "diagnostic",
 					payload: { level: "warn", code: "bootstrap.diagnostic", message },
 				});
+			outputs.push(protocol("worker.bootstrap_progress", { phase: "loading_resources" }));
+			outputs.push(protocol("worker.bootstrap_progress", { phase: "preparing_turn" }));
 			outputs.push(protocol("worker.ready", completion.readyPayload));
 			if (wasDraining) break;
 			const readySnapshot = resolveWorkerSnapshotPolicy(

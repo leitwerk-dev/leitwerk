@@ -315,7 +315,10 @@ const selectedTurnExternalTriggerSignals = $derived(
 	$detailState.data?.timeline.externalTriggerSignals ?? [],
 );
 const currentTurnRecovery = $derived($detailState.data?.recovery ?? null);
-const startupRecovery = $derived($detailState.data?.startupRecovery ?? null);
+const startup = $derived(
+	$detailState.data?.startup ?? { authoritativeAttemptId: null, attempts: [], recovery: null },
+);
+const startupRecovery = $derived(startup.recovery);
 const currentProcessError = $derived($detailState.data?.processError ?? null);
 const pendingRailItem = $derived(
 	buildPendingRailItem({
@@ -501,6 +504,7 @@ function openNextReasoningDetails() {
 			externalTriggerSignals={selectedTurnExternalTriggerSignals}
 			selectedTurn={$detailState.data?.selectedTurn ?? null}
 			recovery={currentTurnRecovery}
+			{startup}
 			{startupRecovery}
 			processError={currentProcessError}
 			{scheduledActionDetail}

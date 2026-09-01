@@ -78,28 +78,20 @@ describe("ProcessInstanceRepo", () => {
 		expect(repo.getById(process.id)?.title).toBe("Generated title");
 	});
 
-	it("updates an process instance", () => {
+	it("updates a process instance", () => {
 		const repo = createProcessInstanceRepo(db);
-		const turnRecords = createProcessTurnRecordRepo(db);
 		const process = repo.create({
 			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
-		const serverTurn = turnRecords.create({
-			id: "trn_current",
-			instanceId: process.id,
-			turnId: "generate_plan",
-			turnType: "server_automatic",
-		});
 		const updated = repo.update(process.id, {
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
-			currentExecution: { kind: "server_turn", id: serverTurn.id },
 		});
 
 		expect(updated?.selectedTurnId).toBe("generate_plan");
 		expect(updated?.lifecycleStatus).toBe("active");
-		expect(updated?.currentExecution).toEqual({ kind: "server_turn", id: "trn_current" });
+		expect(updated?.currentExecution).toBeNull();
 	});
 
 	it("sets closedAt once when a process becomes terminal", () => {
@@ -189,7 +181,7 @@ describe("ProcessInstanceRepo", () => {
 			id: "trn_cascade_1",
 			instanceId: process.id,
 			turnId: "generate_plan",
-			turnType: "server_automatic",
+			turnType: "human",
 			status: "succeeded",
 			pathType: "primary",
 			endedAt: new Date().toISOString(),
@@ -563,7 +555,7 @@ describe("ProcessTurnRecordRepo", () => {
 		const run = turnRecords.create({
 			instanceId: process.id,
 			turnId: "generate_plan",
-			turnType: "server_automatic",
+			turnType: "human",
 			forkPiEntryId: "pi_node_before_plan",
 		});
 
@@ -585,7 +577,7 @@ describe("ProcessTurnRecordRepo", () => {
 		const primarySucceeded = turnRecords.create({
 			instanceId: process.id,
 			turnId: "generate_plan",
-			turnType: "server_automatic",
+			turnType: "human",
 			status: "succeeded",
 			pathType: "primary",
 			resultPiEntryId: "pi_turn_1",
@@ -594,7 +586,7 @@ describe("ProcessTurnRecordRepo", () => {
 		turnRecords.create({
 			instanceId: process.id,
 			turnId: "run_llm_review",
-			turnType: "server_automatic",
+			turnType: "human",
 			status: "succeeded",
 			pathType: "root_branch",
 			resultPiEntryId: "pi_review_1",

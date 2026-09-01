@@ -1,3 +1,14 @@
+export {
+	buildMiseSubprocessEnvironment,
+	type DevelopmentToolEnvironment,
+	DevelopmentToolPreparationError,
+	MiseDevelopmentToolEnvironment,
+	normalizeMiseEvidence,
+	PINNED_MISE_VERSION,
+	type PreparedToolEnvironment,
+	type ToolPreparationInput,
+	validateMiseVersion,
+} from "./development-tool-environment.js";
 export { createWorkerEntryRuntime } from "./entry-runtime.js";
 export {
 	type DeclaredCredentialFile,

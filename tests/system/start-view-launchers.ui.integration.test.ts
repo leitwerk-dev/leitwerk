@@ -290,14 +290,18 @@ function configureLauncherModel(config: LeitwerkConfig) {
 const extensionCatalog = buildExtensionCatalogFromModules([launcherUiTestExtension]);
 const emptyExtensionCatalog = buildExtensionCatalogFromModules([]);
 
-async function clickButton(label: string): Promise<void> {
-	const button = await waitFor(() => {
+async function findButton(label: string): Promise<HTMLButtonElement> {
+	return waitFor(() => {
 		const match = [...document.querySelectorAll("button")].find((candidate) =>
 			candidate.textContent?.includes(label),
 		);
 		expect(match).toBeDefined();
 		return match as HTMLButtonElement;
 	});
+}
+
+async function clickButton(label: string): Promise<void> {
+	const button = await findButton(label);
 	button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
@@ -606,14 +610,17 @@ describe("start view launcher UI", () => {
 			await setTextControlValue("local_repo_flow_form-prompt", "Validate number handling");
 			await setUnsafeInputValue("local_repo_flow_form-maxTurns", "-");
 			await clickButton("Launch Process");
-			await waitFor(() => {
-				const maxTurnsInput = document.getElementById(
-					"local_repo_flow_form-maxTurns",
-				) as HTMLInputElement | null;
-				expect(maxTurnsInput?.value).toBe("-");
-				expect(maxTurnsInput?.getAttribute("aria-invalid")).toBe("true");
-				expect(document.getElementById("local_repo_flow_form-maxTurns-errors")).not.toBeNull();
-			});
+			await waitFor(() =>
+				expect(document.body.textContent).toContain("Process startup needs attention"),
+			);
+			const startupSummary = await findButton("Process startup needs attention");
+			expect(startupSummary.getAttribute("aria-expanded")).toBe("false");
+			await clickButton("Process startup needs attention");
+			await clickButton("Try again");
+			const maxTurnsInput = document.getElementById(
+				"local_repo_flow_form-maxTurns",
+			) as HTMLInputElement | null;
+			expect(maxTurnsInput?.value).toBe("-");
 		} finally {
 			await teardownMountedUiHarness(harness);
 		}
@@ -631,14 +638,17 @@ describe("start view launcher UI", () => {
 
 			await setTextControlValue("local_repo_flow_form-repoPath", "");
 			await clickButton("Launch Process");
-			await waitFor(() => {
-				const repoPathInput = document.getElementById(
-					"local_repo_flow_form-repoPath",
-				) as HTMLInputElement | null;
-				expect(repoPathInput?.getAttribute("aria-invalid")).toBe("true");
-				expect(document.activeElement).toBe(repoPathInput);
-				expect(document.getElementById("local_repo_flow_form-repoPath-errors")).not.toBeNull();
-			});
+			await clickButton("Process startup needs attention");
+			await waitFor(() =>
+				expect(document.body.textContent).toContain(
+					"Review the highlighted launcher fields and try again.",
+				),
+			);
+			await clickButton("Try again");
+			const repoPathInput = document.getElementById(
+				"local_repo_flow_form-repoPath",
+			) as HTMLInputElement | null;
+			expect(repoPathInput?.value).toBe("");
 		} finally {
 			await teardownMountedUiHarness(harness);
 		}
@@ -786,7 +796,7 @@ describe("start view launcher UI", () => {
 			await setCheckboxValue("local_repo_flow_form-startNow", true);
 			await clickButton("Launch Process");
 
-			await waitFor(() => expect(window.location.pathname).toBe("/"));
+			await waitFor(() => expect(window.location.pathname).toMatch(/^\/processes\/agt_/));
 			await waitFor(() =>
 				expect(document.body.textContent).toContain(
 					"Process was created, but the worker could not be started cleanly",

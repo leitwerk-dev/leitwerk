@@ -59,14 +59,12 @@ export function registerResultImageRoutes(input: {
 				const process = input.deps.processes.getById(instanceId);
 				const turn = input.deps.turnRecords.getById(turnRecordId);
 				const expectedTurnRecordId =
-					process?.currentExecution?.kind === "server_turn"
-						? process.currentExecution.id
-						: process?.currentExecution?.kind === "worker_start"
-							? (() => {
-									const start = input.deps.turnStarts.getById(process.currentExecution.id);
-									return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-								})()
-							: null;
+					process?.currentExecution?.kind === "worker_start"
+						? (() => {
+								const start = input.deps.turnStarts.getById(process.currentExecution.id);
+								return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
+							})()
+						: null;
 				if (
 					!process ||
 					expectedTurnRecordId !== turnRecordId ||

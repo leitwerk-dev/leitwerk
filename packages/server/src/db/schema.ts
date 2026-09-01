@@ -18,7 +18,6 @@ export const processInstances = sqliteTable(
 		selectedTurnId: text("selected_turn_id"),
 		lifecycleStatus: text("lifecycle_status").notNull().default("discovered"),
 		currentWorkerStartId: text("current_worker_start_id"),
-		currentServerTurnRecordId: text("current_server_turn_record_id"),
 		planRevision: integer("plan_revision").notNull().default(0),
 		title: text("title"),
 		externalId: text("external_id"),
@@ -40,15 +39,41 @@ export const processInstances = sqliteTable(
 		launchIntentJson: text("launch_intent_json"),
 	},
 	(t) => [
-		check(
-			"process_instances_one_current_execution",
-			sql`not (${t.currentWorkerStartId} is not null and ${t.currentServerTurnRecordId} is not null)`,
-		),
 		index("idx_process_instances_selected_turn").on(t.selectedTurnId),
 		index("idx_process_instances_external_id").on(t.externalId),
 		index("idx_process_instances_process").on(t.processId),
 	],
 );
+
+export const launchRuns = sqliteTable(
+	"launch_runs",
+	{
+		id: text("id").primaryKey(),
+		idempotencyKey: text("idempotency_key").unique(),
+		launcherId: text("launcher_id"),
+		origin: text("origin").notNull(),
+		instanceId: text("instance_id").references(() => processInstances.id, {
+			onDelete: "cascade",
+		}),
+		status: text("status").notNull(),
+		stepsJson: text("steps_json").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+		completedAt: text("completed_at"),
+		revision: integer("revision").notNull().default(0),
+	},
+	(t) => [
+		index("idx_launch_runs_instance").on(t.instanceId),
+		index("idx_launch_runs_status").on(t.status),
+	],
+);
+
+export const launchRunReplays = sqliteTable("launch_run_replays", {
+	launchRunId: text("launch_run_id")
+		.primaryKey()
+		.references(() => launchRuns.id, { onDelete: "cascade" }),
+	payloadJson: text("payload_json").notNull(),
+});
 
 export const skills = sqliteTable("skills", {
 	id: text("id").primaryKey(),
@@ -275,6 +300,22 @@ export const launcherRecentValues = sqliteTable(
 	],
 );
 
+export const ticketDestinationRecents = sqliteTable(
+	"ticket_destination_recents",
+	{
+		id: text("id").primaryKey(),
+		actorKey: text("actor_key").notNull(),
+		toolName: text("tool_name").notNull(),
+		destinationId: text("destination_id").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+	},
+	(t) => [
+		index("idx_ticket_destination_recents_actor_tool").on(t.actorKey, t.toolName, t.updatedAt),
+		uniqueIndex("uq_ticket_destination_recent").on(t.actorKey, t.toolName, t.destinationId),
+	],
+);
+
 export const processTitleJobs = sqliteTable(
 	"process_title_jobs",
 	{
@@ -286,6 +327,9 @@ export const processTitleJobs = sqliteTable(
 		}),
 		futureExecutionId: text("future_execution_id").references(() => futureExecutions.id, {
 			onDelete: "cascade",
+		}),
+		launchRunId: text("launch_run_id").references(() => launchRuns.id, {
+			onDelete: "set null",
 		}),
 		modelProfileId: text("model_profile_id").notNull(),
 		prompt: text("prompt").notNull(),
@@ -302,6 +346,7 @@ export const processTitleJobs = sqliteTable(
 		index("idx_process_title_jobs_due").on(t.status, t.nextRunAt),
 		index("idx_process_title_jobs_process_instance").on(t.processInstanceId),
 		index("idx_process_title_jobs_future_execution").on(t.futureExecutionId),
+		index("idx_process_title_jobs_launch_run").on(t.launchRunId),
 	],
 );
 
@@ -383,10 +428,7 @@ export const turnRecords = sqliteTable(
 			"turn_records_worker_start_link",
 			sql`((${t.turnType} in ('llm', 'automatic')) and ${t.turnStartRecordId} is not null and ${t.acceptedWorkerLeaseId} is not null) or ((${t.turnType} not in ('llm', 'automatic')) and ${t.turnStartRecordId} is null and ${t.acceptedWorkerLeaseId} is null)`,
 		),
-		check(
-			"turn_records_type",
-			sql`${t.turnType} in ('llm', 'human', 'external', 'automatic', 'server_automatic')`,
-		),
+		check("turn_records_type", sql`${t.turnType} in ('llm', 'human', 'external', 'automatic')`),
 	],
 );
 
@@ -506,12 +548,73 @@ export const workerLeases = sqliteTable(
 		connectTokenHash: text("connect_token_hash"),
 		modelPolicyFingerprint: text("model_policy_fingerprint"),
 		bootstrapReceiptJson: text("bootstrap_receipt_json"),
+		turnStartRecordId: text("turn_start_record_id").references(() => turnStartRecords.id),
+		connectedAt: text("connected_at"),
+		workspacePreparationStartedAt: text("workspace_preparation_started_at"),
+		readyAt: text("ready_at"),
 	},
 	(t) => [
 		uniqueIndex("uq_worker_leases_instance_id").on(t.instanceId, t.id),
 		index("idx_worker_leases_instance").on(t.instanceId),
+		index("idx_worker_leases_turn_start").on(t.turnStartRecordId),
 		uniqueIndex("uq_worker_leases_worker").on(t.workerId),
 		index("idx_worker_leases_state").on(t.state),
+	],
+);
+
+export const processRelations = sqliteTable(
+	"process_relations",
+	{
+		parentInstanceId: text("parent_instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		childInstanceId: text("child_instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		kind: text("kind").notNull().default("derived"),
+		purpose: text("purpose").notNull(),
+		createdAt: text("created_at").notNull(),
+		createdByJson: text("created_by_json").notNull(),
+	},
+	(t) => [
+		uniqueIndex("uq_process_relations_child").on(t.childInstanceId),
+		index("idx_process_relations_parent").on(t.parentInstanceId),
+		check("process_relations_kind", sql`${t.kind} = 'derived'`),
+		check("process_relations_actor_json", sql`json_valid(${t.createdByJson})`),
+		check("process_relations_not_self", sql`${t.parentInstanceId} <> ${t.childInstanceId}`),
+	],
+);
+
+export const processToolApprovalRequests = sqliteTable(
+	"process_tool_approval_requests",
+	{
+		id: text("id").primaryKey(),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		turnRecordId: text("turn_record_id").notNull(),
+		toolCallId: text("tool_call_id").notNull(),
+		toolName: text("tool_name").notNull(),
+		argumentsJson: text("arguments_json").notNull(),
+		destinationJson: text("destination_json"),
+		status: text("status").notNull().default("open"),
+		requestedAt: text("requested_at").notNull(),
+		resolvedAt: text("resolved_at"),
+		resolvedByJson: text("resolved_by_json"),
+		feedback: text("feedback"),
+	},
+	(t) => [
+		uniqueIndex("uq_tool_approval_turn_call").on(t.instanceId, t.turnRecordId, t.toolCallId),
+		index("idx_tool_approval_instance_status").on(t.instanceId, t.status),
+		check("tool_approval_arguments_json", sql`json_valid(${t.argumentsJson})`),
+		check(
+			"tool_approval_actor_json",
+			sql`${t.resolvedByJson} is null or json_valid(${t.resolvedByJson})`,
+		),
+		check(
+			"tool_approval_status",
+			sql`${t.status} in ('open', 'accepted', 'feedback', 'declined', 'cancelled')`,
+		),
 	],
 );
 
@@ -614,7 +717,6 @@ export const BASELINE_TABLE_CONSTRAINTS: Readonly<Record<string, readonly string
 	],
 	process_instances: [
 		"CONSTRAINT fk_process_instances_worker_start FOREIGN KEY (id, current_worker_start_id) REFERENCES turn_start_records(instance_id, id)",
-		"CONSTRAINT fk_process_instances_server_turn FOREIGN KEY (id, current_server_turn_record_id) REFERENCES turn_records(instance_id, id)",
 	],
 	turn_records: [
 		"CONSTRAINT fk_turn_records_accepted_start FOREIGN KEY (turn_start_record_id, instance_id, id, turn_id) REFERENCES turn_start_records(id, instance_id, proposed_turn_record_id, turn_id)",
@@ -626,5 +728,8 @@ export const BASELINE_TABLE_CONSTRAINTS: Readonly<Record<string, readonly string
 	],
 	process_question_requests: [
 		"CONSTRAINT fk_question_requests_turn FOREIGN KEY (instance_id, turn_record_id) REFERENCES turn_records(instance_id, id)",
+	],
+	process_tool_approval_requests: [
+		"CONSTRAINT fk_tool_approval_turn FOREIGN KEY (instance_id, turn_record_id) REFERENCES turn_records(instance_id, id)",
 	],
 };

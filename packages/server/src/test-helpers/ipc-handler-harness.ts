@@ -35,6 +35,7 @@ export interface TestIpcHandlerDeps
 	extends Pick<
 		RepositoryBundle,
 		| "processes"
+		| "launchRuns"
 		| "projects"
 		| "questionRequests"
 		| "inputs"
@@ -347,6 +348,7 @@ export function createTestIpcHandler(
 	opts: {
 		toastTtlMs?: number;
 		workerEventLogger?: Parameters<typeof createIpcHandler>[0]["workerEventLogger"];
+		appendDiagnosticTrace?: Parameters<typeof createIpcHandler>[0]["appendDiagnosticTrace"];
 		handleIntegrationToolCancel?: Parameters<
 			typeof createIpcHandler
 		>[0]["handleIntegrationToolCancel"];
@@ -418,6 +420,7 @@ export function createTestIpcHandler(
 			broadcaster: deps.broadcaster,
 			commands,
 			workerEventLogger: opts.workerEventLogger,
+			appendDiagnosticTrace: opts.appendDiagnosticTrace,
 		},
 		callbacks,
 	);

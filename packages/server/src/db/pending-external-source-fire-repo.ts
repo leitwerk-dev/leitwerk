@@ -166,7 +166,7 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 					),
 				)
 				.run();
-			return result.changes;
+			return Number(result.changes);
 		},
 	};
 }

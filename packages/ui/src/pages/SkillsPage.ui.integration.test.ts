@@ -20,12 +20,13 @@ const usage = {
 };
 
 const installed = {
-	id: "installed",
-	label: "Installed skill",
-	description: "Managed from a repository",
+	id: "configured",
+	label: "Configured skill",
+	description: "Managed directly",
 	activeRevisionId: "skillrev_1",
-	activeSourceRevision: "abcdef123456",
-	sourceRepositoryId: "shared",
+	activeSourceRevision: null,
+	registrationKind: "configuration" as const,
+	sourceRepositoryId: null,
 	updateAvailable: false,
 	modelInvocable: false,
 	usage,
@@ -40,6 +41,7 @@ const remote = {
 	sourceRevision: "abcdef123456",
 	registered: false,
 	updateAvailable: false,
+	conflict: false,
 	stale: false,
 	modelInvocable: true,
 	usage: { ...usage, attachedAllTime: 0, attachedLast30Days: 0 },
@@ -120,7 +122,7 @@ describe("SkillsPage", () => {
 		const target = mountSubject();
 		await flush();
 
-		expect(target.textContent).toContain("Installed skill");
+		expect(target.textContent).toContain("Configured skill");
 		expect(target.textContent).toContain("Not callable by model");
 		expect(target.textContent).not.toContain("Review changes");
 		expect(target.querySelector('[data-section="repository-modal"]')).toBeNull();
@@ -176,11 +178,11 @@ describe("SkillsPage", () => {
 		expect(target.textContent).toContain("Already Installed Skill");
 	});
 
-	it("shows installed detail sections", async () => {
+	it("shows configuration-managed details without a removal action", async () => {
 		vi.mocked(fetchSkills).mockResolvedValue(catalog());
 		vi.mocked(fetchInstalledSkillDetail).mockResolvedValue({
 			...installed,
-			skillMarkdown: "# Installed skill",
+			skillMarkdown: "# Configured skill",
 			processes: [],
 			revisions: [
 				{
@@ -191,9 +193,10 @@ describe("SkillsPage", () => {
 				},
 			],
 		});
-		const target = mountSubject({ detailKind: "installed", skillId: "installed" });
+		const target = mountSubject({ detailKind: "installed", skillId: "configured" });
 		await flush();
 
+		expect(target.textContent).toContain("managed by leitwerk.yaml");
 		expect(target.textContent).toContain("Revision history");
 		const instructionsTab = target.querySelector(
 			'[role="tab"][aria-controls="skill-instructions"]',
@@ -207,6 +210,9 @@ describe("SkillsPage", () => {
 		await flush();
 		expect(target.querySelector("#skill-overview")).not.toBeNull();
 		expect(document.activeElement?.getAttribute("aria-controls")).toBe("skill-overview");
+		expect(
+			[...target.querySelectorAll("button")].some((button) => button.textContent === "Remove"),
+		).toBe(false);
 		expect(removeSkill).not.toHaveBeenCalled();
 		expect(navigate).not.toHaveBeenCalled();
 	});
@@ -277,6 +283,7 @@ describe("SkillsPage", () => {
 			...installed,
 			id: "review",
 			label: "Review",
+			registrationKind: "catalog" as const,
 			sourceRepositoryId: "shared",
 		};
 		vi.mocked(fetchSkills).mockResolvedValue({
@@ -335,6 +342,7 @@ describe("SkillsPage", () => {
 			...installed,
 			id: "review",
 			label: "Review",
+			registrationKind: "catalog" as const,
 			sourceRepositoryId: "shared",
 			updateAvailable: true,
 		};

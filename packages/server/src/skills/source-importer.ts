@@ -9,7 +9,6 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import type { SkillRepositoryConfig } from "../config/config-types.js";
 import { ResourceCollector, SKILL_RESOURCE_OWNER } from "../pi-resources/resource-collector.js";
-import { skillFrontmatter } from "./skill-frontmatter.js";
 import { SAFE_SKILL_ID_PATTERN } from "./skill-id.js";
 
 const execFileAsync = promisify(execFile);
@@ -21,7 +20,7 @@ export interface ImportedSkill {
 	label: string;
 	description: string | null;
 	bundle: PiResourceBundle;
-	sourceRevision: string;
+	sourceRevision: string | null;
 }
 
 export interface ImportedRepositorySkill extends ImportedSkill {
@@ -35,26 +34,23 @@ function isWithin(root: string, candidate: string): boolean {
 
 async function importSkillDirectory(
 	root: string,
-	checkoutRoot: string,
+	skill: { id: string; label?: string; description?: string },
 	sourceRevision: string,
-): Promise<ImportedRepositorySkill> {
-	const skillId = path.basename(root);
-	const metadata = skillFrontmatter(await readFile(path.join(root, "SKILL.md"), "utf8"));
+): Promise<ImportedSkill> {
 	const collector = new ResourceCollector();
-	await collector.addDirectory(path.resolve(root), `skills/${skillId}`, SKILL_RESOURCE_OWNER, {
+	await collector.addDirectory(path.resolve(root), `skills/${skill.id}`, SKILL_RESOURCE_OWNER, {
 		forbiddenNames: FORBIDDEN_SKILL_NAMES,
 	});
 	const files = collector.toResourceFiles();
-	if (!files.some((file) => file.path === `skills/${skillId}/SKILL.md`)) {
-		throw new Error(`Skill '${skillId}' must contain a regular root SKILL.md`);
+	if (!files.some((file) => file.path === `skills/${skill.id}/SKILL.md`)) {
+		throw new Error(`Skill '${skill.id}' must contain a regular root SKILL.md`);
 	}
 	return {
-		skillId,
-		label: metadataText(metadata.name) ?? fallbackLabel(skillId),
-		description: metadataText(metadata.description),
+		skillId: skill.id,
+		label: skill.label ?? skill.id,
+		description: skill.description ?? null,
 		bundle: createCanonicalPiResourceBundle(files),
 		sourceRevision,
-		sourcePath: repositorySourcePath(checkoutRoot, root),
 	};
 }
 
@@ -74,8 +70,14 @@ async function checkoutGitSource(
 	return { root, commit: stdout.trim() };
 }
 
-function metadataText(value: unknown): string | null {
-	return typeof value === "string" ? value.trim() || null : null;
+function metadataValue(markdown: string, key: string): string | null {
+	if (!markdown.startsWith("---")) return null;
+	const end = markdown.indexOf("\n---", 3);
+	if (end < 0) return null;
+	const match = markdown
+		.slice(3, end)
+		.match(new RegExp(`^${key}:\\s*["']?([^\\n"']+)["']?\\s*$`, "m"));
+	return match?.[1]?.trim() || null;
 }
 
 function fallbackLabel(id: string): string {
@@ -138,7 +140,21 @@ export async function importSkillRepository(
 		}
 		const skills: ImportedRepositorySkill[] = [];
 		for (const skillRoot of skillRoots) {
-			skills.push(await importSkillDirectory(skillRoot, checkout.root, checkout.commit));
+			const skillId = path.basename(skillRoot);
+			const markdown = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
+			const imported = await importSkillDirectory(
+				skillRoot,
+				{
+					id: skillId,
+					label: metadataValue(markdown, "name") ?? fallbackLabel(skillId),
+					description: metadataValue(markdown, "description") ?? undefined,
+				},
+				checkout.commit,
+			);
+			skills.push({
+				...imported,
+				sourcePath: repositorySourcePath(checkout.root, skillRoot),
+			});
 		}
 		return { commit: checkout.commit, skills };
 	} finally {

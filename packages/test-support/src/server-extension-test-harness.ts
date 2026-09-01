@@ -40,6 +40,11 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 		serverBaseUrl: "https://leitwerk.example",
 		components: {},
 		externalWrites: createInMemoryExternalWriteLog(),
+		polling: {
+			create(options) {
+				return { poll: options.pollOnce };
+			},
+		},
 		repositoryCredentials: { register: () => {} },
 		processes: {
 			create: () => {

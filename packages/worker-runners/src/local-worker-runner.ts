@@ -87,12 +87,14 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 	}
 
 	const runner: WorkerRunner<LocalStartWorkerInput> = {
-		async start(input: LocalStartWorkerInput): Promise<WorkerUnit> {
+		async start(input: LocalStartWorkerInput, observer): Promise<WorkerUnit> {
+			observer?.report("preparing_runtime");
 			if (input.isolation.dind !== false) {
 				throw new Error("Local worker runner does not support Docker-in-Docker profiles");
 			}
 			const unitId = nextUnitId(input.instanceId, input.workerId);
 			const ref: WorkerUnitRef = { instanceId: input.instanceId, workerId: input.workerId, unitId };
+			observer?.report("starting_runtime");
 			const child = localWorkerSpawnImpl(command, args, {
 				cwd,
 				stdio: ["ignore", "inherit", "inherit"],

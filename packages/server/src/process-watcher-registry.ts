@@ -200,34 +200,61 @@ export function buildProcessWatcherRegistry(
 				? processCompare
 				: a.definition.label.localeCompare(b.definition.label);
 		})
-		.map((watcher) => ({
-			source: watcher.definition.source,
-			view: {
-				processId: watcher.processId,
-				processDisplayName: watcher.processDisplayName,
-				watcherId: watcher.definition.id,
-				watcherLabel: watcher.definition.label,
-				watcherDescription: watcher.definition.description,
-				sourceId: watcher.definition.source.id,
-				sourceLabel: watcher.definition.source.label,
-				enabled: watcher.enabled,
-				configPath: watcher.configPath,
-				config: structuredClone(watcher.config),
-				presentation: structuredClone(watcher.presentation),
-				launchModelConfig: structuredClone(watcher.launchModelConfig),
-				async resolveLaunch(event: unknown, ctx: LauncherContext = {}) {
-					const watcherContext = createWatcherContext(watcher.processId, ctx);
-					if (
-						watcher.definition.matches &&
-						!(await watcher.definition.matches(event, watcherContext))
-					) {
-						return null;
+		.map((watcher) => {
+			const resolveLaunchAttempt = async (event: unknown, ctx: LauncherContext = {}) => {
+				const watcherContext = createWatcherContext(watcher.processId, ctx);
+				if (
+					watcher.definition.matches &&
+					!(await watcher.definition.matches(event, watcherContext))
+				) {
+					return null;
+				}
+				const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
+				const preparationChecks = [
+					...(watcher.definition.preparationChecks?.(event, launchConfig) ?? []),
+				];
+				const ids = new Set<string>();
+				for (const check of preparationChecks) {
+					if (!check.id.trim() || !check.label.trim()) {
+						throw new Error(
+							`Watcher '${watcher.definition.id}' preparation checks require ids and labels`,
+						);
 					}
-					const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
-					return buildLaunchPlan(watcher, launchConfig, config.commit_messages);
-				},
-			} satisfies RegisteredProcessWatcherLike,
-		}));
+					if (ids.has(check.id)) {
+						throw new Error(
+							`Watcher '${watcher.definition.id}' has duplicate preparation check '${check.id}'`,
+						);
+					}
+					ids.add(check.id);
+				}
+				return {
+					launchConfig,
+					launchPlan: buildLaunchPlan(watcher, launchConfig, config.commit_messages),
+					preparationChecks,
+				};
+			};
+			return {
+				source: watcher.definition.source,
+				view: {
+					processId: watcher.processId,
+					processDisplayName: watcher.processDisplayName,
+					watcherId: watcher.definition.id,
+					watcherLabel: watcher.definition.label,
+					watcherDescription: watcher.definition.description,
+					sourceId: watcher.definition.source.id,
+					sourceLabel: watcher.definition.source.label,
+					enabled: watcher.enabled,
+					configPath: watcher.configPath,
+					config: structuredClone(watcher.config),
+					presentation: structuredClone(watcher.presentation),
+					launchModelConfig: structuredClone(watcher.launchModelConfig),
+					async resolveLaunch(event: unknown, ctx: LauncherContext = {}) {
+						return (await resolveLaunchAttempt(event, ctx))?.launchPlan ?? null;
+					},
+					resolveLaunchAttempt,
+				} satisfies RegisteredProcessWatcherLike,
+			};
+		});
 
 	return {
 		listAll: () => registrations.map(({ view }) => view),

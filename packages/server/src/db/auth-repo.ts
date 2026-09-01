@@ -77,7 +77,7 @@ export function createAuthSessionRepo(db: LeitwerkDb) {
 
 		deleteExpired(atIso: string = now()): number {
 			const result = db.delete(s.authSessions).where(lt(s.authSessions.expiresAt, atIso)).run();
-			return result.changes;
+			return Number(result.changes);
 		},
 	};
 }
@@ -119,7 +119,7 @@ export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 
 		deleteExpired(atIso: string = now()): number {
 			const result = db.delete(s.authLoginFlows).where(lt(s.authLoginFlows.expiresAt, atIso)).run();
-			return result.changes;
+			return Number(result.changes);
 		},
 	};
 }

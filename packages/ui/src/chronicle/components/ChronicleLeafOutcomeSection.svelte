@@ -11,9 +11,10 @@ interface Props {
 	section: ChronicleLeafOutcomeItem;
 	isFocused: boolean;
 	compressHistory?: boolean;
+	onDraftTicket?: (artifact: { kind: "leaf_outcome"; leafEntryId: string; text: string }) => void;
 }
 
-let { section, isFocused, compressHistory = false }: Props = $props();
+let { section, isFocused, compressHistory = false, onDraftTicket }: Props = $props();
 let expandedHistoryOutcome = $state(false);
 
 const shouldCompressOutcome = $derived(compressHistory && !expandedHistoryOutcome);
@@ -46,6 +47,8 @@ function expandHistoryOutcome() {
 	data-anchor-id={section.anchorId}
 	data-focused={isFocused ? "true" : "false"}
 	data-section="leaf-outcome"
+	data-ticket-result-artifact={`leaf_outcome:${section.leafEntryId}`}
+	data-ticket-result-durable={section.status === "ready" ? "true" : "false"}
 	data-status={section.status}
 	data-snapshot-id={section.snapshotId}
 	data-renderer-mode={section.status === "ready" && section.rendererId ? "runtime" : "fallback"}
@@ -58,6 +61,14 @@ function expandHistoryOutcome() {
 				tone="accent"
 				headingLevel={3}
 			/>
+			{#if onDraftTicket && section.status === "ready"}
+				<button
+					type="button"
+					class="create-issue-button"
+					data-pressable="true"
+					onclick={() => onDraftTicket?.({ kind: "leaf_outcome", leafEntryId: section.leafEntryId, text: section.fallbackMarkdown ?? JSON.stringify(section.props, null, 2) })}
+				>Create issue</button>
+			{/if}
 			{#if shouldCompressOutcome}
 				<ChronicleExpandButton
 					expanded={false}
@@ -171,6 +182,31 @@ function expandHistoryOutcome() {
 		color: var(--chronicle-text-muted);
 	}
 
+	.create-issue-button {
+		flex: 0 0 auto;
+		min-height: 36px;
+		padding: 0 13px;
+		border: 1px solid var(--chronicle-border-strong);
+		border-radius: 999px;
+		background: var(--chronicle-card-surface);
+		color: var(--chronicle-text);
+		font: inherit;
+		font-size: var(--type-caption);
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.create-issue-button:hover {
+		border-color: var(--chronicle-accent);
+		background: color-mix(in srgb, var(--chronicle-card-surface) 94%, var(--chronicle-accent) 6%);
+		transform: translateY(-1px);
+	}
+
+	.create-issue-button:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
+	}
+
 	.leaf-outcome-content.is-compressed {
 		display: none;
 	}
@@ -246,6 +282,11 @@ function expandHistoryOutcome() {
 	}
 
 	@media (max-width: 720px) {
+		.leaf-outcome-header-row {
+			align-items: start;
+			flex-wrap: wrap;
+		}
+
 		.warning-header {
 			flex-direction: column;
 		}

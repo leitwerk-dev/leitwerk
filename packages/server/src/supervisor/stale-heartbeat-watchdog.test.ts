@@ -7,26 +7,6 @@ function flushAsyncWork() {
 	return new Promise<void>((resolve) => setImmediate(resolve));
 }
 
-function createWatchdog(
-	deps: ReturnType<typeof createTestDeps>,
-	supervisor: object,
-	now: () => number,
-) {
-	return startStaleHeartbeatWatchdog({
-		leases: deps.leases,
-		processes: deps.processes,
-		turnRecords: deps.turnRecords,
-		turnStarts: deps.turnStarts,
-		ipcHandler: createTestIpcHandler(deps),
-		supervisor: supervisor as never,
-		staleHeartbeatTimeout: "30s",
-		checkIntervalMs: 1_000,
-		now,
-		setIntervalImpl: () => ({}) as ReturnType<typeof setInterval>,
-		clearIntervalImpl: () => {},
-	});
-}
-
 describe("startStaleHeartbeatWatchdog", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
@@ -54,7 +34,20 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
-		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
+		const ipcHandler = createTestIpcHandler(deps);
+
+		const timer = {} as ReturnType<typeof setInterval>;
+		const watchdog = startStaleHeartbeatWatchdog({
+			leases: deps.leases,
+			processes: deps.processes,
+			ipcHandler,
+			supervisor: supervisor as never,
+			staleHeartbeatTimeout: "30s",
+			checkIntervalMs: 1_000,
+			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
+			setIntervalImpl: () => timer,
+			clearIntervalImpl: () => {},
+		});
 
 		watchdog.tick();
 		await flushAsyncWork();
@@ -82,7 +75,20 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
-		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
+		const ipcHandler = createTestIpcHandler(deps);
+
+		const timer = {} as ReturnType<typeof setInterval>;
+		const watchdog = startStaleHeartbeatWatchdog({
+			leases: deps.leases,
+			processes: deps.processes,
+			ipcHandler,
+			supervisor: supervisor as never,
+			staleHeartbeatTimeout: "30s",
+			checkIntervalMs: 1_000,
+			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
+			setIntervalImpl: () => timer,
+			clearIntervalImpl: () => {},
+		});
 
 		watchdog.tick();
 		await flushAsyncWork();
@@ -152,8 +158,21 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
+		const ipcHandler = createTestIpcHandler(deps);
+		const timer = {} as ReturnType<typeof setInterval>;
 		let nowMs = Date.parse("2026-04-14T10:01:00.000Z");
-		const watchdog = createWatchdog(deps, supervisor, () => nowMs);
+		const watchdog = startStaleHeartbeatWatchdog({
+			leases: deps.leases,
+			processes: deps.processes,
+			turnRecords: deps.turnRecords,
+			turnStarts: deps.turnStarts,
+			ipcHandler,
+			supervisor: supervisor as never,
+			staleHeartbeatTimeout: "30s",
+			now: () => nowMs,
+			setIntervalImpl: () => timer,
+			clearIntervalImpl: () => {},
+		});
 
 		watchdog.tick();
 		await flushAsyncWork();
@@ -194,7 +213,20 @@ describe("startStaleHeartbeatWatchdog", () => {
 				return instanceId === process.id ? { kill } : undefined;
 			},
 		} as const;
-		const watchdog = createWatchdog(deps, supervisor, () => Date.parse("2026-04-14T10:01:00.000Z"));
+		const ipcHandler = createTestIpcHandler(deps);
+
+		const timer = {} as ReturnType<typeof setInterval>;
+		const watchdog = startStaleHeartbeatWatchdog({
+			leases: deps.leases,
+			processes: deps.processes,
+			ipcHandler,
+			supervisor: supervisor as never,
+			staleHeartbeatTimeout: "30s",
+			checkIntervalMs: 1_000,
+			now: () => Date.parse("2026-04-14T10:01:00.000Z"),
+			setIntervalImpl: () => timer,
+			clearIntervalImpl: () => {},
+		});
 
 		watchdog.tick();
 		await flushAsyncWork();

@@ -5,6 +5,9 @@ import type {
 	LauncherOptionsResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
+	LaunchRunResponseBody,
+	ProcessLaunchRunsResponseBody,
+	StartLaunchRunResponseBody,
 	UiLauncherSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance } from "fastify";
@@ -166,6 +169,45 @@ export function registerLauncherRoutes(
 	);
 
 	app.post<{ Params: { launcherId: string }; Body: unknown }>(
+		"/api/launchers/:launcherId/launch-runs",
+		async (req, reply) => {
+			const normalized = normalizeLauncherRequest(req.body);
+			if (!normalized.ok) {
+				return sendLauncherRequestNormalizationError(reply, normalized.error);
+			}
+			const idempotencyKey = req.headers["idempotency-key"];
+			const started = await deps.launchCoordinator.start({
+				launcherId: req.params.launcherId,
+				idempotencyKey: typeof idempotencyKey === "string" ? idempotencyKey : null,
+				request: normalized.request,
+				actor: resolveActor(req),
+			});
+			const body = {
+				launchRunId: started.launchRunId,
+				instanceId: null,
+			} satisfies StartLaunchRunResponseBody;
+			return reply.code(202).send(body);
+		},
+	);
+
+	app.get<{ Params: { launchRunId: string } }>(
+		"/api/launch-runs/:launchRunId",
+		async (req, reply) => {
+			const launchRun = deps.launchRuns.getById(req.params.launchRunId);
+			if (!launchRun) return reply.code(404).send({ error: "Launch run not found" });
+			return { launchRun } satisfies LaunchRunResponseBody;
+		},
+	);
+
+	app.get<{ Params: { instanceId: string } }>(
+		"/api/processes/:instanceId/launch-runs",
+		async (req) =>
+			({
+				launchRuns: deps.launchRuns.listByInstance(req.params.instanceId),
+			}) satisfies ProcessLaunchRunsResponseBody,
+	);
+
+	app.post<{ Params: { launcherId: string }; Body: unknown }>(
 		"/api/launchers/:launcherId/launch",
 		async (req, reply) => {
 			const normalized = normalizeLauncherRequest(req.body);
@@ -174,11 +216,18 @@ export function registerLauncherRoutes(
 			}
 
 			try {
-				const result = await futureExecutionLifecycle.scheduleLaunch(
-					req.params.launcherId,
-					normalized.request,
-					{ actor: resolveActor(req) },
-				);
+				const result =
+					normalized.request.schedule.mode === "now"
+						? await deps.launchCoordinator.startBlocking({
+								launcherId: req.params.launcherId,
+								request: normalized.request,
+								actor: resolveActor(req),
+							})
+						: await futureExecutionLifecycle.scheduleLaunch(
+								req.params.launcherId,
+								normalized.request,
+								{ actor: resolveActor(req) },
+							);
 				return sendLauncherMutationResponse(reply, deps, result);
 			} catch (error) {
 				if (sendLauncherLookupFailure(reply, error)) {

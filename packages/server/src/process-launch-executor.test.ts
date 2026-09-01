@@ -6,7 +6,6 @@ import {
 	commitProcessLaunch,
 	createProcessFromLaunchConfig,
 	createProcessFromLaunchPlan,
-	createScheduledProcessFromLaunchPlan,
 } from "./process-launch-executor.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
@@ -137,28 +136,6 @@ describe("process launch durable boundary", () => {
 		expect(deps.processes.getById(commit.process.id)).toEqual(commit.process);
 		expect(deps.projects.listByInstance(commit.process.id)).toEqual(commit.projects);
 		expect(commit.projects).toHaveLength(1);
-	});
-
-	it("uses pinned resource selections for scheduled launches without a skill resolver", async () => {
-		const deps = createTestDeps();
-		const execution = deps.futureExecutions.create({
-			kind: "launch",
-			scheduleKind: "once",
-			processId: "demo_process",
-			launcherId: "demo.launcher",
-			payloadJson: "{}",
-			nextRunAt: "2026-04-25T10:00:00.000Z",
-		});
-		const result = await createScheduledProcessFromLaunchPlan(
-			deps,
-			{ ...createLaunchPlan(), skillIds: ["missing-skill"] },
-			planConsumeFutureExecution(execution),
-			{ resourceSelections: [] },
-		);
-
-		expect(result.ok).toBe(true);
-		expect(deps.processes.listAll()).toHaveLength(1);
-		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
 	});
 
 	it("commits scheduled process creation and occurrence consumption atomically", () => {

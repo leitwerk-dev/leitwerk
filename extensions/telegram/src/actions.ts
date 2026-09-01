@@ -1,4 +1,8 @@
-import { type ProcessInstance, readFailedTurnRecoveryContext } from "@leitwerk-dev/domain";
+import {
+	FAILED_TURN_RECOVERY_METADATA_KEY,
+	type ProcessInstance,
+	readFailedTurnRecoveryContext,
+} from "@leitwerk-dev/domain";
 import type { ProcessActionSummaryLike } from "@leitwerk-dev/process-sdk";
 import type { TelegramInlineKeyboard } from "./types.js";
 
@@ -14,11 +18,16 @@ function rows<T>(items: readonly T[], size: number): T[][] {
 }
 
 export function continuableFailedTurnRecordId(process: ProcessInstance): string | null {
+	if (process.lifecycleStatus !== "error" || process.currentExecution?.kind !== "worker_start") {
+		return null;
+	}
+	const recovery = process.metadata?.[FAILED_TURN_RECOVERY_METADATA_KEY];
 	const turnRecordId =
-		process.lifecycleStatus === "error" && process.currentExecution?.kind === "server_turn"
-			? process.currentExecution.id
+		recovery && typeof recovery === "object" && !Array.isArray(recovery)
+			? (recovery as Record<string, unknown>).turnRecordId
 			: null;
-	return turnRecordId && readFailedTurnRecoveryContext(process.metadata, turnRecordId)
+	return typeof turnRecordId === "string" &&
+		readFailedTurnRecoveryContext(process.metadata, turnRecordId)
 		? turnRecordId
 		: null;
 }

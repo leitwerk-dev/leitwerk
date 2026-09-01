@@ -86,7 +86,6 @@ describe("reconcileWorkerForProcessTurnSelection", () => {
 	});
 
 	it.each([
-		["server-owned turns", "server_automatic_turn"],
 		["human turns", "human_turn"],
 	] as const)("stops workers for active %s when a graph is available", async (_label, toTurnId) => {
 		const { supervisor, result } = reconcile(true, {

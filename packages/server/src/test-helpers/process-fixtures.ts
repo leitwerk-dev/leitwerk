@@ -8,8 +8,6 @@ import {
 	humanTurn,
 	type LlmTurnDefinition,
 	llmTurn,
-	type ServerAutomaticTurnDefinition,
-	serverAutomaticTurn,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 
@@ -60,16 +58,6 @@ export function createFixtureAutomaticTurn(
 	});
 }
 
-export function createFixtureServerAutomaticTurn(
-	description = "Server automatic turn",
-): ServerAutomaticTurnDefinition<"done", Record<string, never>, Record<string, never>> {
-	return serverAutomaticTurn<Record<string, never>, Record<string, never>, "done">({
-		description,
-		run: async () => ({ outcome: "done", params: {} }),
-		turnEnd: { outcome: "done", params: {}, complete: true },
-	});
-}
-
 function ensureFixtureTurnIsValid(
 	definition: TurnDefinition<Record<string, never>, Record<string, never>>,
 ): TurnDefinition<Record<string, never>, Record<string, never>> {
@@ -82,9 +70,7 @@ function ensureFixtureTurnIsValid(
 		};
 	}
 	if (
-		(definition.kind === "llm" ||
-			definition.kind === "automatic" ||
-			definition.kind === "server_automatic") &&
+		(definition.kind === "llm" || definition.kind === "automatic") &&
 		Object.keys(definition.outcomes ?? {}).length === 0 &&
 		!definition.turnEnd
 	) {
@@ -134,18 +120,6 @@ export function createProcessGraphRegistry(
 	);
 }
 
-export function createFixtureServerAutomaticProcess(input: {
-	id: string;
-	turnId?: TurnId;
-}): ExtensionProcessDefinition<Record<string, never>, Record<string, never>> {
-	const turnId = input.turnId ?? "server_auto";
-	return createFixtureProcess({
-		id: input.id,
-		entry: turnId,
-		turns: { [turnId]: createFixtureServerAutomaticTurn() },
-	});
-}
-
 export function createTurnOwnershipFixtureProcess(
 	id = "turn_ownership_process",
 ): ExtensionProcessDefinition<Record<string, never>, Record<string, never>> {
@@ -156,7 +130,6 @@ export function createTurnOwnershipFixtureProcess(
 			llm_turn: createFixtureLlmTurn("LLM turn"),
 			automatic_turn: createFixtureAutomaticTurn(),
 			human_turn: createFixtureHumanTurn(),
-			server_automatic_turn: createFixtureServerAutomaticTurn(),
 		},
 	});
 }

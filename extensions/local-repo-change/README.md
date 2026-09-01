@@ -143,7 +143,7 @@ Plan and review outcome tools explicitly allow useful Mermaid diagrams and uploa
 
 | Turn ID | Turn type | Branch type | Context mode | Start selection | Active built-in tools | Active process tools | Transition(s) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `import_plan` | server automatic | — | — | alternate process entry | — | publishes supplied `importedPlanMarkdown` as `plan` | `imported` → `implement` |
+| `import_plan` | worker automatic | — | — | alternate process entry | — | publishes supplied `importedPlanMarkdown` as `plan` | `imported` → `implement` |
 | `generate_plan` | LLM | `primary` | `fresh` | primary process entry; session root for ordinary prompts; targeted current-primary branch for `action_prompt` revisions | `read`, `bash` | publishes `plan` (`markdown_result`, compatibility `plan_saved`) | `plan_saved` → `plan_decision` (`waiting`); accepted plan-review guidance arrives as a targeted `action_prompt` on the primary branch when applicable |
 | `plan_decision` | human | — | — | — | — | Visible actions: `approve_plan`, `request_revision`, `run_review` | action-driven |
 | `review_plan` | LLM | `root_branch` | `full` | `semantic_ref(review)` with `session_root` fallback | `read`, `bash` | `markdown_result`, `no_issues`, `request_changes` | `no_issues` → `plan_decision` (`waiting`); `request_changes` → `plan_review_feedback` (`waiting`) |
@@ -273,19 +273,11 @@ This extension intentionally has no `LeitwerkFile` hooks or deploy/open-preview 
 }
 ```
 
-## Process-analysis handoff import path
+## Imported plan path
 
-Local Repo Change needs an extension-specific cross-process handoff so process-analysis can pass a
-reviewed analysis into implementation without regenerating its plan. This does not promote generic
-process-to-process creation into the shared product model.
-
-The extension provides its pure launch planner as an optional catalog capability. Process-analysis
-uses `launchKind: "imported_plan"`, supplies `importedPlanMarkdown`, keeps source provenance in
-opaque process metadata, and owns its stable deduplication key. Leitwerk converts the returned
-canonical launch config through the Local Repo Change codecs and initial state before persistence.
-Imported launches use launcher attribution `local_repo_change_process.imported_plan`.
-
-If a work branch is supplied, the planner selects `import_plan`. If it is blank, launch defers.
-Automatic work-branch assignment then replans through the same interface and atomically activates
-`import_plan`. The hidden turn publishes the supplied markdown as the `plan` product, increments
-the plan revision, clears stale review refs, and transitions directly to `implement`.
+Imported launches use `launchKind: "imported_plan"`, supply `importedPlanMarkdown`, and use launcher
+attribution `local_repo_change_process.imported_plan`. If a work branch is supplied, the planner
+selects `import_plan`. If it is blank, launch defers. Automatic work-branch assignment then replans
+through the same interface and atomically activates `import_plan`. The worker automatic turn
+publishes the supplied markdown as the `plan` product, increments the plan revision, clears stale
+review refs, and transitions directly to `implement`.

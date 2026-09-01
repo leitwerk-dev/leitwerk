@@ -76,14 +76,12 @@ export const AbortProcess = defineOperation<"abort_process", AbortProcessInput, 
 			);
 		}
 		const activeTurnRecordId =
-			ctx.process.currentExecution?.kind === "server_turn"
-				? ctx.process.currentExecution.id
-				: ctx.process.currentExecution?.kind === "worker_start"
-					? (() => {
-							const start = ctx.deps.turnStarts.getById(ctx.process.currentExecution.id);
-							return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-						})()
-					: null;
+			ctx.process.currentExecution?.kind === "worker_start"
+				? (() => {
+						const start = ctx.deps.turnStarts.getById(ctx.process.currentExecution.id);
+						return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
+					})()
+				: null;
 		const activeTurnRecord = activeTurnRecordId
 			? ctx.deps.turnRecords.getById(activeTurnRecordId)
 			: null;

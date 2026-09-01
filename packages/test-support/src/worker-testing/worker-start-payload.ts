@@ -129,6 +129,7 @@ export function createTestLlmWorkerStartPayload(
 		treePaths: {
 			primaryTreeFile: path.join(options.root, "tree", "primary.jsonl"),
 			workspaceRoot: path.join(options.root, "workspace"),
+			piResourceBundlesDir: path.join(options.root, "pi-resource-bundles"),
 		},
 		resume: options.resume ?? false,
 	};

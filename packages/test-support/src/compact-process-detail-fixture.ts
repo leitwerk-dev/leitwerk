@@ -83,6 +83,7 @@ export function createCompactProcessDetailFixtureFactory() {
 			instanceTree: legacy.instanceTree ?? { currentLeafId: null, nodes: [], edges: [] },
 			leafOutcomeSnapshots: legacy.leafOutcomeSnapshots,
 			questionRequests: [],
+			toolApprovalRequests: [],
 			processDisplayName: legacy.processDisplayName,
 			processFlow: legacy.processFlow,
 			definesLeafOutcome: legacy.definesLeafOutcome,

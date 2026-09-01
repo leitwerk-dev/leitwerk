@@ -1,12 +1,12 @@
 import { copyFileSync, existsSync, mkdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
+import { drizzle } from "drizzle-orm/node-sqlite";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.js";
 import { generateCreateIndexDDL, generateCreateTableDDL, getTableName } from "./schema-ddl.js";
 
-export type LeitwerkDb = ReturnType<typeof drizzle<typeof schema>>;
+export type LeitwerkDb = ReturnType<typeof drizzle>;
 
 export interface DatabaseOptions {
 	sqlitePath: string;
@@ -35,6 +35,8 @@ export class DatabaseSchemaMismatchError extends Error {
 
 const ALL_TABLES = [
 	schema.processInstances,
+	schema.launchRuns,
+	schema.launchRunReplays,
 	schema.skills,
 	schema.skillRevisions,
 	schema.skillRevisionDependencies,
@@ -47,6 +49,7 @@ const ALL_TABLES = [
 	schema.processHandoffDedupKeys,
 	schema.futureExecutions,
 	schema.launcherRecentValues,
+	schema.ticketDestinationRecents,
 	schema.processTitleJobs,
 	schema.pendingExternalSourceFires,
 	schema.processLeafOutcomeSnapshots,
@@ -57,6 +60,8 @@ const ALL_TABLES = [
 	schema.turnAnnotations,
 	schema.workerLeases,
 	schema.processQuestionRequests,
+	schema.processRelations,
+	schema.processToolApprovalRequests,
 	schema.providerCredentials,
 	schema.externalWriteLog,
 ] as const;
@@ -68,28 +73,25 @@ function createTableSql(table: SQLiteTable): string {
 	);
 }
 
-function createTableWithIndexes(sqlite: Database.Database, table: SQLiteTable): void {
+function createTableWithIndexes(sqlite: DatabaseSync, table: SQLiteTable): void {
 	sqlite.exec(createTableSql(table));
 	for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
 }
 
-function existingTableSql(sqlite: Database.Database, tableName: string): string | null {
+function existingTableSql(sqlite: DatabaseSync, tableName: string): string | null {
 	const row = sqlite
 		.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
 		.get(tableName) as { sql?: string | null } | undefined;
 	return typeof row?.sql === "string" ? row.sql : null;
 }
 
-function tableHasColumn(sqlite: Database.Database, tableName: string, columnName: string): boolean {
+function tableHasColumn(sqlite: DatabaseSync, tableName: string, columnName: string): boolean {
 	return (sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>).some(
 		(column) => column.name === columnName,
 	);
 }
 
-function existingSchemaObjects(
-	sqlite: Database.Database,
-	type: "table" | "index",
-): Map<string, string> {
+function existingSchemaObjects(sqlite: DatabaseSync, type: "table" | "index"): Map<string, string> {
 	const rows = sqlite
 		.prepare(
 			"SELECT name, sql FROM sqlite_master WHERE type = ? AND name NOT LIKE 'sqlite_%' ORDER BY name",
@@ -98,7 +100,7 @@ function existingSchemaObjects(
 	return new Map(rows.flatMap((row) => (row.sql ? [[row.name, row.sql] as const] : [])));
 }
 
-function hasExistingSchema(sqlite: Database.Database): boolean {
+function hasExistingSchema(sqlite: DatabaseSync): boolean {
 	const row = sqlite
 		.prepare(
 			"SELECT count(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
@@ -107,12 +109,50 @@ function hasExistingSchema(sqlite: Database.Database): boolean {
 	return row.count > 0;
 }
 
+function splitCreateTableDefinitions(body: string): string[] {
+	const definitions: string[] = [];
+	let start = 0;
+	let depth = 0;
+	let quote: "'" | '"' | "`" | "[" | null = null;
+	for (let index = 0; index < body.length; index++) {
+		const character = body[index];
+		if (quote !== null) {
+			if (quote === "[" ? character === "]" : character === quote) {
+				if (body[index + 1] === character && quote !== "[") {
+					index++;
+				} else {
+					quote = null;
+				}
+			}
+			continue;
+		}
+		if (character === "'" || character === '"' || character === "`" || character === "[") {
+			quote = character;
+		} else if (character === "(") {
+			depth++;
+		} else if (character === ")") {
+			depth--;
+		} else if (character === "," && depth === 0) {
+			definitions.push(body.slice(start, index));
+			start = index + 1;
+		}
+	}
+	definitions.push(body.slice(start));
+	return definitions;
+}
+
 function normalizeCreateTableSql(sql: string): string {
-	return sql
+	const compact = sql
 		.toLowerCase()
 		.replace(/create\s+table\s+if\s+not\s+exists/g, "create table")
 		.replace(/\s+/g, "")
 		.trim();
+	const openingParenthesis = compact.indexOf("(");
+	const closingParenthesis = compact.lastIndexOf(")");
+	if (openingParenthesis < 0 || closingParenthesis <= openingParenthesis) return compact;
+	const body = compact.slice(openingParenthesis + 1, closingParenthesis);
+	const definitions = splitCreateTableDefinitions(body).sort();
+	return `${compact.slice(0, openingParenthesis + 1)}${definitions.join(",")}${compact.slice(closingParenthesis)}`;
 }
 
 function normalizeSchemaSql(sql: string): string {
@@ -120,7 +160,7 @@ function normalizeSchemaSql(sql: string): string {
 }
 
 function assertCompatibleTableSchema(
-	sqlite: Database.Database,
+	sqlite: DatabaseSync,
 	table: SQLiteTable,
 	sqlitePath: string,
 ): void {
@@ -133,7 +173,7 @@ function assertCompatibleTableSchema(
 }
 
 function assertBaselineSchema(
-	sqlite: Database.Database,
+	sqlite: DatabaseSync,
 	sqlitePath: string,
 	migratingTables: ReadonlySet<string> = new Set(),
 	migratingLegacyIndexes: ReadonlySet<string> = new Set(),
@@ -178,40 +218,6 @@ function assertBaselineSchema(
 	}
 }
 
-const PROCESS_INSTANCES_BEFORE_MODEL_POLICY_SQL = `CREATE TABLE process_instances (
-	id text PRIMARY KEY NOT NULL, process_id text NOT NULL, selected_turn_id text,
-	lifecycle_status text NOT NULL DEFAULT 'discovered', current_worker_start_id text,
-	current_server_turn_record_id text, plan_revision integer NOT NULL DEFAULT 0, title text,
-	external_id text, external_url text, metadata text, default_model_profile_id text,
-	turn_configs_json text, selected_turn_model_profile_id text, params_json text, state_json text,
-	created_at text NOT NULL, updated_at text NOT NULL, closed_at text,
-	initial_default_model_profile_id text, selected_turn_model_source text,
-	CONSTRAINT process_instances_one_current_execution CHECK (not ("process_instances"."current_worker_start_id" is not null and "process_instances"."current_server_turn_record_id" is not null)),
-	CONSTRAINT fk_process_instances_worker_start FOREIGN KEY (id, current_worker_start_id) REFERENCES turn_start_records(instance_id, id),
-	CONSTRAINT fk_process_instances_server_turn FOREIGN KEY (id, current_server_turn_record_id) REFERENCES turn_records(instance_id, id)
-)`;
-
-const FUTURE_EXECUTIONS_BEFORE_MODEL_POLICY_SQL = `CREATE TABLE future_executions (
-	id text PRIMARY KEY NOT NULL, kind text NOT NULL, schedule_kind text NOT NULL,
-	process_id text NOT NULL, instance_id text REFERENCES process_instances(id) ON DELETE CASCADE,
-	launcher_id text, action_id text, payload_json text NOT NULL, cron_expression text,
-	next_run_at text NOT NULL, created_at text NOT NULL, updated_at text NOT NULL
-)`;
-
-const TURN_RECORDS_BEFORE_MODEL_POLICY_SQL = `CREATE TABLE turn_records (
-	id text PRIMARY KEY NOT NULL, instance_id text NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
-	turn_id text NOT NULL, turn_type text NOT NULL DEFAULT 'llm', status text NOT NULL,
-	attempt_number integer NOT NULL DEFAULT 1, parent_turn_record_id text, turn_start_record_id text,
-	accepted_worker_lease_id text, path_type text NOT NULL DEFAULT 'primary', fork_pi_entry_id text,
-	result_pi_entry_id text, model_profile_id text, turn_result_markdown text, error_summary text,
-	error_class text, started_at text NOT NULL, ended_at text,
-	CONSTRAINT turn_records_worker_start_link CHECK ((("turn_records"."turn_type" in ('llm', 'automatic')) and "turn_records"."turn_start_record_id" is not null and "turn_records"."accepted_worker_lease_id" is not null) or (("turn_records"."turn_type" not in ('llm', 'automatic')) and "turn_records"."turn_start_record_id" is null and "turn_records"."accepted_worker_lease_id" is null)),
-	CONSTRAINT turn_records_type CHECK ("turn_records"."turn_type" in ('llm', 'human', 'external', 'automatic', 'server_automatic')),
-	CONSTRAINT fk_turn_records_accepted_start FOREIGN KEY (turn_start_record_id, instance_id, id, turn_id) REFERENCES turn_start_records(id, instance_id, proposed_turn_record_id, turn_id),
-	CONSTRAINT fk_turn_records_accepted_lease FOREIGN KEY (instance_id, accepted_worker_lease_id) REFERENCES worker_leases(instance_id, id),
-	CONSTRAINT fk_turn_records_parent FOREIGN KEY (instance_id, parent_turn_record_id) REFERENCES turn_records(instance_id, id)
-)`;
-
 const PROCESS_QUESTION_REQUESTS_WITH_DRAFT_STATE_SQL = `CREATE TABLE process_question_requests (
 	id text PRIMARY KEY NOT NULL,
 	instance_id text NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
@@ -251,11 +257,187 @@ interface KnownMigration {
 	id: string;
 	tableNames: readonly string[];
 	legacyIndexNames?: readonly string[];
-	matches(sqlite: Database.Database): boolean;
-	apply(sqlite: Database.Database): void;
+	matches(sqlite: DatabaseSync): boolean;
+	apply(sqlite: DatabaseSync): void;
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260827_add_worker_startup_observations",
+		tableNames: ["worker_leases"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "worker_leases") !== null &&
+			(!tableHasColumn(sqlite, "worker_leases", "turn_start_record_id") ||
+				!tableHasColumn(sqlite, "worker_leases", "connected_at") ||
+				!tableHasColumn(sqlite, "worker_leases", "workspace_preparation_started_at") ||
+				!tableHasColumn(sqlite, "worker_leases", "ready_at")),
+		apply(sqlite) {
+			if (!tableHasColumn(sqlite, "worker_leases", "turn_start_record_id")) {
+				sqlite.exec(
+					"ALTER TABLE worker_leases ADD COLUMN turn_start_record_id text REFERENCES turn_start_records(id)",
+				);
+			}
+			if (!tableHasColumn(sqlite, "worker_leases", "connected_at")) {
+				sqlite.exec("ALTER TABLE worker_leases ADD COLUMN connected_at text");
+			}
+			if (!tableHasColumn(sqlite, "worker_leases", "workspace_preparation_started_at")) {
+				sqlite.exec("ALTER TABLE worker_leases ADD COLUMN workspace_preparation_started_at text");
+			}
+			if (!tableHasColumn(sqlite, "worker_leases", "ready_at")) {
+				sqlite.exec("ALTER TABLE worker_leases ADD COLUMN ready_at text");
+			}
+			sqlite.exec(
+				"CREATE INDEX IF NOT EXISTS idx_worker_leases_turn_start ON worker_leases(turn_start_record_id)",
+			);
+		},
+	},
+	{
+		id: "20260826_add_launch_runs",
+		tableNames: ["launch_runs", "launch_run_replays", "process_title_jobs"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) &&
+			(existingTableSql(sqlite, "launch_runs") === null ||
+				existingTableSql(sqlite, "launch_run_replays") === null ||
+				!tableHasColumn(sqlite, "process_title_jobs", "launch_run_id")),
+		apply(sqlite) {
+			if (existingTableSql(sqlite, "launch_runs") === null) {
+				createTableWithIndexes(sqlite, schema.launchRuns);
+			}
+			if (existingTableSql(sqlite, "launch_run_replays") === null) {
+				createTableWithIndexes(sqlite, schema.launchRunReplays);
+			}
+			if (!tableHasColumn(sqlite, "process_title_jobs", "launch_run_id")) {
+				sqlite.exec(
+					"ALTER TABLE process_title_jobs ADD COLUMN launch_run_id text REFERENCES launch_runs(id) ON DELETE SET NULL",
+				);
+			}
+			sqlite.exec(
+				"CREATE INDEX IF NOT EXISTS idx_process_title_jobs_launch_run ON process_title_jobs(launch_run_id)",
+			);
+		},
+	},
+	{
+		id: "20260823_add_ticket_approval_destination",
+		tableNames: ["process_tool_approval_requests"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "process_tool_approval_requests") !== null &&
+			!tableHasColumn(sqlite, "process_tool_approval_requests", "destination_json"),
+		apply(sqlite) {
+			sqlite.exec("ALTER TABLE process_tool_approval_requests ADD COLUMN destination_json text");
+		},
+	},
+	{
+		id: "20260823_add_ticket_destination_recents",
+		tableNames: ["ticket_destination_recents"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) && existingTableSql(sqlite, "ticket_destination_recents") === null,
+		apply(sqlite) {
+			createTableWithIndexes(sqlite, schema.ticketDestinationRecents);
+		},
+	},
+	{
+		id: "20260821_remove_server_automatic_execution",
+		tableNames: ["process_instances", "turn_records"],
+		matches: (sqlite) =>
+			tableHasColumn(sqlite, "process_instances", "current_server_turn_record_id") ||
+			(existingTableSql(sqlite, "turn_records") ?? "").includes("server_automatic"),
+		apply(sqlite) {
+			const endedAt = new Date().toISOString();
+			sqlite
+				.prepare(`UPDATE turn_records
+					SET status = 'failed',
+						error_summary = coalesce(error_summary, 'Server-automatic execution was removed'),
+						ended_at = coalesce(ended_at, ?)
+					WHERE turn_type = 'server_automatic' AND status = 'running'`)
+				.run(endedAt);
+			sqlite
+				.prepare(`UPDATE process_instances
+					SET lifecycle_status = 'aborted',
+						closed_at = coalesce(closed_at, ?),
+						updated_at = ?
+					WHERE current_server_turn_record_id IS NOT NULL`)
+				.run(endedAt, endedAt);
+			sqlite
+				.prepare(`INSERT INTO worker_leases
+					(id, instance_id, worker_id, state, started_at, exited_at)
+				SELECT 'wkr_migrated_20260821_' || id, instance_id,
+					'server-automatic-migration:' || id, 'exited', started_at, coalesce(ended_at, ?)
+				FROM turn_records WHERE turn_type = 'server_automatic'`)
+				.run(endedAt);
+			sqlite
+				.prepare(`INSERT INTO turn_start_records
+					(id, instance_id, turn_id, turn_type, proposed_turn_record_id, start_kind,
+					 state_json, created_at, updated_at)
+				SELECT 'tsr_migrated_20260821_' || id, instance_id, turn_id, 'automatic', id,
+					'selected_turn',
+					json_object(
+						'kind', 'accepted',
+						'start', json_object('kind', 'automatic'),
+						'turnRecordId', id,
+						'acceptedWorkerLeaseId', 'wkr_migrated_20260821_' || id,
+						'acceptedAt', coalesce(ended_at, ?)
+					),
+					started_at, coalesce(ended_at, ?)
+				FROM turn_records WHERE turn_type = 'server_automatic'`)
+				.run(endedAt, endedAt);
+			const stagedProcesses = "staged_process_instances_20260821";
+			const stagedTurns = "staged_turn_records_20260821";
+			sqlite.exec(`
+				CREATE TEMP TABLE ${stagedProcesses} AS
+				SELECT id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
+					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
+					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
+					created_at, updated_at, closed_at, initial_default_model_profile_id,
+					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
+				FROM process_instances;
+
+				CREATE TEMP TABLE ${stagedTurns} AS
+				SELECT id, instance_id, turn_id,
+					CASE turn_type WHEN 'server_automatic' THEN 'automatic' ELSE turn_type END AS turn_type,
+					status, attempt_number, parent_turn_record_id,
+					CASE turn_type
+						WHEN 'server_automatic' THEN 'tsr_migrated_20260821_' || id
+						ELSE turn_start_record_id
+					END AS turn_start_record_id,
+					CASE turn_type
+						WHEN 'server_automatic' THEN 'wkr_migrated_20260821_' || id
+						ELSE accepted_worker_lease_id
+					END AS accepted_worker_lease_id,
+					path_type, fork_pi_entry_id, result_pi_entry_id,
+					model_profile_id, turn_result_markdown, error_summary, error_class, started_at,
+					ended_at, model_selection_kind, model_selection_source
+				FROM turn_records;
+
+				DROP TABLE turn_records;
+				DROP TABLE process_instances;
+			`);
+			sqlite.exec(createTableSql(schema.processInstances));
+			sqlite.exec(createTableSql(schema.turnRecords));
+			sqlite.exec(`
+				INSERT INTO process_instances (
+					id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
+					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
+					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
+					created_at, updated_at, closed_at, initial_default_model_profile_id,
+					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
+				)
+				SELECT * FROM ${stagedProcesses};
+
+				INSERT INTO turn_records (
+					id, instance_id, turn_id, turn_type, status, attempt_number, parent_turn_record_id,
+					turn_start_record_id, accepted_worker_lease_id, path_type, fork_pi_entry_id,
+					result_pi_entry_id, model_profile_id, turn_result_markdown, error_summary,
+					error_class, started_at, ended_at, model_selection_kind, model_selection_source
+				)
+				SELECT * FROM ${stagedTurns};
+				DROP TABLE ${stagedProcesses};
+				DROP TABLE ${stagedTurns};
+			`);
+			for (const table of [schema.processInstances, schema.turnRecords]) {
+				for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
+			}
+		},
+	},
 	{
 		id: "20260727_remove_process_question_draft_state",
 		tableNames: ["process_question_requests"],
@@ -345,12 +527,9 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		id: "20260725_add_model_policy_provenance_and_future_blocks",
 		tableNames: ["process_instances", "future_executions", "turn_records"],
 		matches: (sqlite) =>
-			normalizeCreateTableSql(existingTableSql(sqlite, "process_instances") ?? "") ===
-				normalizeCreateTableSql(PROCESS_INSTANCES_BEFORE_MODEL_POLICY_SQL) &&
-			normalizeCreateTableSql(existingTableSql(sqlite, "future_executions") ?? "") ===
-				normalizeCreateTableSql(FUTURE_EXECUTIONS_BEFORE_MODEL_POLICY_SQL) &&
-			normalizeCreateTableSql(existingTableSql(sqlite, "turn_records") ?? "") ===
-				normalizeCreateTableSql(TURN_RECORDS_BEFORE_MODEL_POLICY_SQL),
+			!tableHasColumn(sqlite, "process_instances", "selected_turn_model_kind") &&
+			!tableHasColumn(sqlite, "future_executions", "model_profile_id") &&
+			!tableHasColumn(sqlite, "turn_records", "model_selection_kind"),
 		apply(sqlite) {
 			sqlite.exec(`
 				ALTER TABLE process_instances ADD COLUMN selected_turn_model_kind text;
@@ -403,6 +582,22 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		},
 	},
 	{
+		id: "20260725_add_process_relations_and_tool_approvals",
+		tableNames: ["process_relations", "process_tool_approval_requests"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) &&
+			(existingTableSql(sqlite, "process_relations") === null ||
+				existingTableSql(sqlite, "process_tool_approval_requests") === null),
+		apply(sqlite) {
+			if (existingTableSql(sqlite, "process_relations") === null) {
+				createTableWithIndexes(sqlite, schema.processRelations);
+			}
+			if (existingTableSql(sqlite, "process_tool_approval_requests") === null) {
+				createTableWithIndexes(sqlite, schema.processToolApprovalRequests);
+			}
+		},
+	},
+	{
 		id: "20260724_remove_provider_credential_schema_version",
 		tableNames: ["provider_credentials"],
 		matches: (sqlite) =>
@@ -422,14 +617,14 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 	},
 ];
 
-function backupSqliteFiles(sqlite: Database.Database, sqlitePath: string): string {
+function backupSqliteFiles(sqlite: DatabaseSync, sqlitePath: string): string {
 	const stamp = new Date().toISOString().replaceAll(/[:.]/g, "-");
 	const backupDir = join(dirname(sqlitePath), "backups");
 	mkdirSync(backupDir, { recursive: true });
 	const backupBasePath = join(backupDir, `${basename(sqlitePath)}.${stamp}.bak`);
 
 	// Fold committed WAL pages into the main file before taking the startup copy.
-	sqlite.pragma("wal_checkpoint(TRUNCATE)");
+	sqlite.prepare("PRAGMA wal_checkpoint(TRUNCATE)").all();
 	for (const suffix of ["", "-wal", "-shm"]) {
 		const source = `${sqlitePath}${suffix}`;
 		if (existsSync(source)) copyFileSync(source, `${backupBasePath}${suffix}`);
@@ -443,10 +638,14 @@ export interface AppliedMigrationSummary {
 }
 
 export function applyKnownMigrations(
-	sqlite: Database.Database,
+	sqlite: DatabaseSync,
 	sqlitePath: string,
 ): AppliedMigrationSummary | null {
-	const migrations = KNOWN_MIGRATIONS.filter((migration) => migration.matches(sqlite));
+	const migrations = KNOWN_MIGRATIONS.filter((migration) => migration.matches(sqlite)).sort(
+		(left, right) =>
+			Number(left.id === "20260821_remove_server_automatic_execution") -
+			Number(right.id === "20260821_remove_server_automatic_execution"),
+	);
 	if (migrations.length === 0) return null;
 
 	const migratingTables = new Set(migrations.flatMap((migration) => migration.tableNames));
@@ -455,14 +654,28 @@ export function applyKnownMigrations(
 	);
 	assertBaselineSchema(sqlite, sqlitePath, migratingTables, migratingLegacyIndexes);
 	const backupPath = backupSqliteFiles(sqlite, sqlitePath);
-	sqlite.transaction(() => {
-		for (const migration of migrations) migration.apply(sqlite);
-		assertBaselineSchema(sqlite, sqlitePath);
-	})();
+	sqlite.exec("PRAGMA foreign_keys = OFF");
+	try {
+		sqlite.exec("BEGIN");
+		try {
+			for (const migration of migrations) migration.apply(sqlite);
+			assertBaselineSchema(sqlite, sqlitePath);
+			sqlite.exec("COMMIT");
+		} catch (error) {
+			sqlite.exec("ROLLBACK");
+			throw error;
+		}
+		const violations = sqlite.prepare("PRAGMA foreign_key_check").all();
+		if (violations.length > 0) {
+			throw new Error(`SQLite migration produced ${violations.length} foreign-key violation(s)`);
+		}
+	} finally {
+		sqlite.exec("PRAGMA foreign_keys = ON");
+	}
 	return { backupPath, migrationIds: migrations.map((migration) => migration.id) };
 }
 
-export function initializeSchema(sqlite: Database.Database, opts: InitializeSchemaOptions = {}) {
+export function initializeSchema(sqlite: DatabaseSync, opts: InitializeSchemaOptions = {}) {
 	const sqlitePath = opts.sqlitePath ?? ":memory:";
 	for (const table of ALL_TABLES) {
 		createTableWithIndexes(sqlite, table);
@@ -477,13 +690,12 @@ export function createDatabase(opts: DatabaseOptions) {
 		mkdirSync(dirname(opts.sqlitePath), { recursive: true });
 	}
 
-	const sqlite = new Database(opts.sqlitePath);
+	const sqlite = new DatabaseSync(opts.sqlitePath, { timeout: 5_000 });
 	try {
 		if (opts.enableWAL !== false) {
-			sqlite.pragma("journal_mode = WAL");
+			sqlite.prepare("PRAGMA journal_mode = WAL").get();
 		}
-		sqlite.pragma("foreign_keys = ON");
-		sqlite.pragma("busy_timeout = 5000");
+		sqlite.exec("PRAGMA foreign_keys = ON");
 
 		if (existingFileBackedDatabase && hasExistingSchema(sqlite)) {
 			const applied = applyKnownMigrations(sqlite, opts.sqlitePath);
@@ -496,7 +708,7 @@ export function createDatabase(opts: DatabaseOptions) {
 		} else {
 			initializeSchema(sqlite, { sqlitePath: opts.sqlitePath });
 		}
-		return drizzle(sqlite, { schema });
+		return drizzle({ client: sqlite });
 	} catch (error) {
 		sqlite.close();
 		throw error;
@@ -508,6 +720,6 @@ export function createInMemoryDatabase() {
 }
 
 export function closeDatabase(db: LeitwerkDb): void {
-	const sqlite = (db as unknown as { $client?: Database.Database }).$client;
+	const sqlite = (db as unknown as { $client?: DatabaseSync }).$client;
 	sqlite?.close();
 }

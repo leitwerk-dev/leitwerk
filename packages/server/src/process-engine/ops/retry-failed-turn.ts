@@ -1,11 +1,6 @@
 import type { Actor } from "@leitwerk-dev/domain";
-import { generateId, now } from "../../db/repo-helpers.js";
 import { buildRetryWrites } from "../../process-engine/writes/build-retry-writes.js";
-import {
-	applyProcessPatchField,
-	createWrites,
-	stampActorOnEvents,
-} from "../../process-engine/writes/writes.js";
+import { stampActorOnEvents } from "../../process-engine/writes/writes.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 
@@ -23,29 +18,6 @@ export const RetryFailedTurn = defineOperation<"retry_failed_turn", RetryFailedT
 		reconcileErrorMessage: "Process was reactivated, but the worker could not be started cleanly",
 	},
 	decide(ctx, input) {
-		if (ctx.process.currentExecution?.kind === "server_turn") {
-			const failed = ctx.deps.turnRecords.getById(ctx.process.currentExecution.id);
-			if (!failed || failed.status !== "failed" || ctx.process.lifecycleStatus !== "error")
-				return reject("retry_target_missing", "No failed server turn is available for retry");
-			const id = generateId("trn");
-			const writes = createWrites();
-			writes.turnRecordWrites.push({
-				kind: "create",
-				input: {
-					id,
-					instanceId: failed.instanceId,
-					turnId: failed.turnId,
-					turnType: "server_automatic",
-					status: "running",
-					attemptNumber: failed.attemptNumber + 1,
-					parentTurnRecordId: failed.id,
-					startedAt: now(),
-				},
-			});
-			applyProcessPatchField(writes, ctx.process, "currentExecution", { kind: "server_turn", id });
-			applyProcessPatchField(writes, ctx.process, "lifecycleStatus", "active");
-			return accept({ writes });
-		}
 		const currentStartId =
 			ctx.process.currentExecution?.kind === "worker_start"
 				? ctx.process.currentExecution.id

@@ -4,7 +4,6 @@ import {
 	createFixtureAutomaticTurn,
 	createFixtureHumanTurn,
 	createFixtureProcess,
-	createFixtureServerAutomaticProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
 import { createTestDeps } from "../../test-helpers/unit-deps.js";
@@ -126,28 +125,6 @@ describe("buildTurnSelectionWrites", () => {
 			toTurnId: "plan_review",
 			workerIntent: { kind: "restart_worker" },
 		});
-		expect("ok" in planned).toBe(true);
-		if (!("ok" in planned)) return;
-		expect(planned.code).toBe("invalid_transition");
-	});
-
-	it("rejects restart_worker for active server-owned turns", () => {
-		const serverOwnedRegistry = createProcessGraphRegistry([
-			createFixtureServerAutomaticProcess({ id: "server_owned_turn_selection_process" }),
-		]);
-		const process = createTestDeps().processes.create({
-			processId: "server_owned_turn_selection_process",
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-		});
-
-		const planned = buildTurnSelectionWrites(serverOwnedRegistry, process, {
-			fromTurnId: "server_auto",
-			toTurnId: "server_auto",
-			lifecycleStatus: "active",
-			workerIntent: { kind: "restart_worker" },
-		});
-
 		expect("ok" in planned).toBe(true);
 		if (!("ok" in planned)) return;
 		expect(planned.code).toBe("invalid_transition");

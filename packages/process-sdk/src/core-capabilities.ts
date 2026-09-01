@@ -24,6 +24,7 @@ import type {
 	ExternalActionSource,
 	FormDefinition,
 	LauncherContext,
+	LaunchPreparationCheck,
 	ProcessLaunchConfig,
 	ProcessLauncherService,
 	ProcessLaunchPlan,
@@ -355,11 +356,11 @@ export interface ProcessLaunchConfigExecutionInput {
 export interface ProcessLaunchExecutorLike {
 	createProcessFromLaunchConfig(
 		input: ProcessLaunchConfigExecutionInput,
-		opts?: { actor?: Actor },
+		opts?: { actor?: Actor; launchRunId?: string },
 	): Promise<ProcessLaunchExecutionResultLike>;
 	createProcessFromLaunchPlan(
 		launchPlan: ProcessLaunchPlan,
-		opts?: { actor?: Actor },
+		opts?: { actor?: Actor; launchRunId?: string },
 	): Promise<ProcessLaunchExecutionResultLike>;
 }
 
@@ -431,6 +432,28 @@ export interface RegisteredProcessWatcherLike<TConfig = unknown, TEvent = unknow
 	readonly presentation: ProcessWatcherPresentation;
 	readonly launchModelConfig: LaunchModelConfigInputLike;
 	resolveLaunch(event: TEvent, ctx?: LauncherContext): Promise<ProcessLaunchPlan | null>;
+	resolveLaunchAttempt(
+		event: TEvent,
+		ctx?: LauncherContext,
+	): Promise<{
+		launchConfig: ProcessLaunchConfig;
+		launchPlan: ProcessLaunchPlan;
+		preparationChecks: readonly LaunchPreparationCheck[];
+	} | null>;
+}
+
+export interface WatcherLaunchResultLike {
+	launchRunId: string;
+	process: ProcessInstance | null;
+	error: string | null;
+}
+
+export interface LaunchRunServiceLike {
+	startWatcher<TConfig, TEvent>(
+		watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
+		event: TEvent,
+		opts: { idempotencyKey: string; actor?: Actor },
+	): Promise<WatcherLaunchResultLike>;
 }
 
 export interface ProcessWatcherServiceLike {
@@ -438,6 +461,24 @@ export interface ProcessWatcherServiceLike {
 	listBySource<TConfig, TEvent>(
 		source: ProcessWatcherSource<TConfig, TEvent>,
 	): readonly RegisteredProcessWatcherLike<TConfig, TEvent>[];
+}
+
+export interface PollResultLike {
+	readonly errors: readonly string[];
+}
+
+export interface PollingHandleLike<T extends PollResultLike = PollResultLike> {
+	poll(): Promise<T>;
+}
+
+export interface PollingServiceLike {
+	create<T extends PollResultLike>(options: {
+		id: string;
+		pollOnce(): Promise<T>;
+		isEnabled(): boolean;
+		pollInterval(): string;
+		defaultIntervalMs?: number;
+	}): PollingHandleLike<T>;
 }
 
 export interface ProcessQuestionServiceLike {
@@ -479,6 +520,8 @@ export interface CoreServerSetupDeps {
 	processLaunches: ProcessLaunchExecutorLike;
 	handoffDedupKeys?: HandoffDedupKeyServiceLike;
 	processWatchers?: ProcessWatcherServiceLike;
+	launchRuns?: LaunchRunServiceLike;
+	polling: PollingServiceLike;
 	processModelSelection?: ProcessModelSelectionServiceLike;
 	/** Durable active-turn questions for trusted operator-channel extensions. */
 	processQuestions?: ProcessQuestionServiceLike;

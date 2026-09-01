@@ -11,6 +11,9 @@ import {
 
 function createDeps(input: { armings: ExternalSourceArmingLike[]; fires: unknown[] }) {
 	return {
+		polling: {
+			create: <T>(options: { pollOnce(): Promise<T> }) => ({ poll: options.pollOnce }),
+		},
 		externalSources: {
 			listArmed(kind: string) {
 				return input.armings.filter((arming) => arming.source.kind === kind);

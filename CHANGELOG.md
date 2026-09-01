@@ -1,20 +1,5 @@
 # Changelog
 
-## [0.1.9](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.8...v0.1.9) (2026-08-20)
-
-
-### Features
-
-* **process-sdk:** expand automatic process runtime ([#27](https://github.com/leitwerk-dev/leitwerk/issues/27)) ([c8cfc32](https://github.com/leitwerk-dev/leitwerk/commit/c8cfc3260bf4b3f31eb133ca54cb8a3525fdd899))
-* show a user icon in the bottom of the sidebar ([#25](https://github.com/leitwerk-dev/leitwerk/issues/25)) ([5d6683d](https://github.com/leitwerk-dev/leitwerk/commit/5d6683ddc7042509808ed2540facf5e9a3d931db))
-* **skills:** clarify imports and model availability ([#31](https://github.com/leitwerk-dev/leitwerk/issues/31)) ([58f8181](https://github.com/leitwerk-dev/leitwerk/commit/58f818125d3037fac5ed7d6425d3d75ccbc2bfa7))
-* **ui:** improve mobile navigation and route scrolling ([#29](https://github.com/leitwerk-dev/leitwerk/issues/29)) ([6d3208c](https://github.com/leitwerk-dev/leitwerk/commit/6d3208cdd33029eed9961e1f05953824dfe94a9e))
-
-
-### Bug Fixes
-
-* **runtime:** harden worker lifecycle recovery ([#28](https://github.com/leitwerk-dev/leitwerk/issues/28)) ([0b06cc4](https://github.com/leitwerk-dev/leitwerk/commit/0b06cc4f131f6369ea5c764389b2be52d689f7b3))
-
 ## [0.1.8](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.7...v0.1.8) (2026-08-12)
 
 

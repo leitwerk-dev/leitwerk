@@ -1,6 +1,7 @@
 import {
 	CONTINUE_PROMPT_METADATA_KEY,
 	DEFAULT_CONTINUE_PROMPT,
+	inferTerminalRecordingFailedTurnRecoveryContext,
 	isProcessTurnType,
 	normalizeContinuePrompt,
 	type ProcessEvent,
@@ -9,6 +10,8 @@ import {
 	type ProcessTurnAnnotation,
 	type ProcessTurnRecord,
 	readFailedTurnRecoveryContext,
+	type TurnStartRecord,
+	type WorkerLease,
 } from "@leitwerk-dev/domain";
 import {
 	buildActiveTimelineTurnSummary,
@@ -27,6 +30,7 @@ import {
 	type ProcessExternalTriggerSignal,
 	type ProcessExternalTriggerSummary,
 	type ProcessSelectedTurnSummary,
+	type ProcessStartupSummary,
 	type ProcessTimelineInputSummary,
 	type ProcessTimelineSnapshot,
 	type ProcessTimelineTurnSummary,
@@ -34,6 +38,8 @@ import {
 	type ProcessUsageEstimateSnapshot,
 	type ReadonlyEntryTree,
 	resolveTurnContinuationUserPrompt,
+	type StartupAttemptStepSummary,
+	type StartupAttemptSummary,
 	type StartupRecoverySummary,
 	type TurnReasoningDetailResponseBody,
 	type TurnTracePreview,
@@ -121,7 +127,6 @@ export function resolveCurrentExecutionTurnRecordId(
 	process: ProcessInstance,
 	turnStarts: { getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null },
 ): string | null {
-	if (process.currentExecution?.kind === "server_turn") return process.currentExecution.id;
 	if (process.currentExecution?.kind !== "worker_start") return null;
 	const start = turnStarts.getById(process.currentExecution.id);
 	return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
@@ -129,7 +134,7 @@ export function resolveCurrentExecutionTurnRecordId(
 
 export function buildStartupRecovery(
 	process: ProcessInstance,
-	turnStarts: { getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null },
+	turnStarts: { getById(id: string): TurnStartRecord | null },
 ): StartupRecoverySummary | null {
 	if (process.lifecycleStatus !== "error" || process.currentExecution?.kind !== "worker_start")
 		return null;
@@ -161,6 +166,160 @@ export function buildStartupRecovery(
 				? "Worker startup failed"
 				: "Model preparation failed",
 		summary: start.state.safeSummary,
+	};
+}
+
+const STARTUP_STEP_LABELS = {
+	start_worker: "Start worker",
+	connect_worker: "Connect worker",
+	prepare_workspace: "Prepare workspace",
+	start_first_turn: "Start first turn",
+} as const;
+
+function validObservedAt(value: string | null | undefined, notBefore: string): string | null {
+	if (!value) return null;
+	const time = Date.parse(value);
+	return Number.isFinite(time) && time >= Date.parse(notBefore) ? value : null;
+}
+
+/**
+ * Builds startup history only from lease/start/turn correlation. Launch runs are deliberately
+ * absent: watcher retries and stale launch progress cannot become process lifecycle evidence.
+ */
+export function buildProcessStartupSummary(input: {
+	process: ProcessInstance;
+	turnStarts: readonly TurnStartRecord[];
+	leases: readonly WorkerLease[];
+	turnRecords: readonly ProcessTurnRecord[];
+}): ProcessStartupSummary {
+	const orderedStarts = [...input.turnStarts].sort(
+		(left, right) =>
+			left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+	);
+	const firstAcceptedIndex = orderedStarts.findIndex((start) => start.state.kind === "accepted");
+	const currentStartId =
+		input.process.currentExecution?.kind === "worker_start"
+			? input.process.currentExecution.id
+			: null;
+	const startupStarts = orderedStarts.filter(
+		(_start, index) => firstAcceptedIndex < 0 || index <= firstAcceptedIndex,
+	);
+	const attempts: StartupAttemptSummary[] = startupStarts.map((start, index) => {
+		const stateLeaseId =
+			start.state.kind === "accepted"
+				? start.state.acceptedWorkerLeaseId
+				: start.state.kind === "bootstrap_failed"
+					? start.state.failedWorkerLeaseId
+					: null;
+		const lease =
+			input.leases.find((candidate) => candidate.turnStartRecordId === start.id) ??
+			(stateLeaseId ? input.leases.find((candidate) => candidate.id === stateLeaseId) : null) ??
+			null;
+		const connectedAt = lease
+			? validObservedAt(lease.connectedAt ?? lease.bootstrapReceipt?.readyAt, lease.startedAt)
+			: null;
+		const workspaceAt = lease
+			? validObservedAt(
+					lease.workspacePreparationStartedAt ?? lease.bootstrapReceipt?.readyAt,
+					connectedAt ?? lease.startedAt,
+				)
+			: null;
+		const readyAt = lease
+			? validObservedAt(
+					lease.readyAt ?? lease.bootstrapReceipt?.readyAt,
+					workspaceAt ?? lease.startedAt,
+				)
+			: null;
+		const acceptedState = start.state.kind === "accepted" ? start.state : null;
+		const acceptedTurn = acceptedState
+			? input.turnRecords.find(
+					(record) =>
+						record.id === acceptedState.turnRecordId &&
+						record.turnStartRecordId === start.id &&
+						record.acceptedWorkerLeaseId === acceptedState.acceptedWorkerLeaseId,
+				)
+			: null;
+		const firstTurnAt =
+			acceptedTurn && readyAt ? validObservedAt(acceptedTurn.startedAt, readyAt) : null;
+		const succeeded = Boolean(lease && readyAt && firstTurnAt && start.state.kind === "accepted");
+		const failed =
+			start.state.kind === "preparation_failed" || start.state.kind === "bootstrap_failed";
+		const status: StartupAttemptSummary["status"] = succeeded
+			? "succeeded"
+			: failed
+				? "failed"
+				: start.id !== currentStartId && index < startupStarts.length - 1
+					? "superseded"
+					: "starting";
+		const failedStepId: StartupAttemptStepSummary["id"] = !lease
+			? "start_worker"
+			: !connectedAt
+				? "connect_worker"
+				: !readyAt
+					? "prepare_workspace"
+					: "start_first_turn";
+		const step = (
+			id: StartupAttemptStepSummary["id"],
+			completed: boolean,
+			occurredAt: string | null,
+		): StartupAttemptStepSummary => ({
+			id,
+			label: STARTUP_STEP_LABELS[id],
+			status: completed
+				? "completed"
+				: status === "superseded"
+					? "superseded"
+					: failed && id === failedStepId
+						? "failed"
+						: id === failedStepId && status === "starting"
+							? "in_progress"
+							: "pending",
+			occurredAt,
+		});
+		return {
+			startRecordId: start.id,
+			workerLeaseId: lease?.id ?? null,
+			status,
+			startedAt: lease?.startedAt ?? start.createdAt,
+			readyAt,
+			durationMs:
+				lease && readyAt ? Math.max(0, Date.parse(readyAt) - Date.parse(lease.startedAt)) : null,
+			summary:
+				start.state.kind === "preparation_failed" || start.state.kind === "bootstrap_failed"
+					? start.state.safeSummary
+					: null,
+			recoveredByStartRecordId: null,
+			steps: [
+				step("start_worker", Boolean(lease), lease?.startedAt ?? null),
+				step("connect_worker", Boolean(connectedAt), connectedAt),
+				step("prepare_workspace", Boolean(readyAt), readyAt),
+				step("start_first_turn", Boolean(firstTurnAt), firstTurnAt),
+			],
+		};
+	});
+	const recoveredAttempts = attempts.map((attempt, index) => {
+		if (attempt.status !== "failed") return attempt;
+		const recoveryAttempt = attempts
+			.slice(index + 1)
+			.find((candidate) => candidate.status === "succeeded");
+		return recoveryAttempt
+			? {
+					...attempt,
+					status: "recovered" as const,
+					recoveredByStartRecordId: recoveryAttempt.startRecordId,
+				}
+			: attempt;
+	});
+	const authoritative = [...recoveredAttempts]
+		.reverse()
+		.find((attempt) => attempt.status === "succeeded");
+	const recovery = buildStartupRecovery(input.process, {
+		getById: (id) => orderedStarts.find((start) => start.id === id) ?? null,
+	});
+	return {
+		authoritativeAttemptId: authoritative?.startRecordId ?? null,
+		attempts: recoveredAttempts,
+		recovery,
 	};
 }
 
@@ -334,11 +493,21 @@ type TimelineActionSource = ProcessTimelineTurnSummary["actionSource"];
 
 function buildTurnProgressIndex(events: readonly ProcessEvent[]) {
 	const index = new Map<string, NonNullable<ProcessTimelineTurnSummary["progress"]>>();
+	const revisions = new Map<string, number>();
 	for (const event of events) {
 		if (event.eventType !== "turn.progress") continue;
 		const turnRecordId = stringValue(event.data.turnRecordId);
 		const report = normalizeTurnProgressReport(event.data.report);
-		if (turnRecordId && report) index.set(turnRecordId, report);
+		const revision = Number(event.data.revision ?? 0);
+		if (
+			turnRecordId &&
+			report &&
+			Number.isSafeInteger(revision) &&
+			revision >= (revisions.get(turnRecordId) ?? -1)
+		) {
+			revisions.set(turnRecordId, revision);
+			index.set(turnRecordId, report);
+		}
 	}
 	return index;
 }
@@ -847,10 +1016,9 @@ export function buildCurrentTurnRecovery(input: {
 	) {
 		return null;
 	}
-	const recoveryContext = readFailedTurnRecoveryContext(
-		input.process.metadata,
-		failedTurnRecord.id,
-	);
+	const recoveryContext =
+		readFailedTurnRecoveryContext(input.process.metadata, failedTurnRecord.id) ??
+		inferTerminalRecordingFailedTurnRecoveryContext(failedTurnRecord);
 	const continuationBounds = { endedAt: failedTurnRecord.endedAt };
 	const canContinue =
 		failedTurnRecord.turnType === "llm" &&
@@ -974,7 +1142,9 @@ export function buildUsageEstimate(input: {
 
 export function buildProcessUiSnapshotProjections(input: {
 	process: ProcessInstance;
-	turnStarts?: { getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null };
+	turnStarts?: { getById(id: string): TurnStartRecord | null };
+	startupTurnStarts?: readonly TurnStartRecord[];
+	workerLeases?: readonly WorkerLease[];
 	turnRecords: readonly ProcessTurnRecord[];
 	turnAnnotations: readonly ProcessTurnAnnotation[];
 	events: readonly ProcessEvent[];
@@ -1010,6 +1180,12 @@ export function buildProcessUiSnapshotProjections(input: {
 		piEntries: input.sessionTree.entries as unknown as PiSessionEntry[],
 		turnStarts: input.turnStarts ?? { getById: () => null },
 	});
+	const startup = buildProcessStartupSummary({
+		process: input.process,
+		turnStarts: input.startupTurnStarts ?? [],
+		leases: input.workerLeases ?? [],
+		turnRecords: input.turnRecords,
+	});
 	return {
 		process: projectProcessForUiSnapshot(input.process),
 		primaryPath: compactPrimaryPathSnapshot(input.primaryPathSnapshot),
@@ -1036,10 +1212,8 @@ export function buildProcessUiSnapshotProjections(input: {
 			}),
 		} satisfies ProcessTimelineSnapshot,
 		recovery,
-		startupRecovery: buildStartupRecovery(
-			input.process,
-			input.turnStarts ?? { getById: () => null },
-		),
+		startup,
+		startupRecovery: startup.recovery,
 		processError: buildCurrentProcessError({
 			process: input.process,
 			events: input.events,
@@ -1077,7 +1251,10 @@ export class ProcessUiSnapshotAssembler {
 		const inputs = this.deps.inputs.listByInstance(instanceId);
 		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId);
 		const questionRequests = this.deps.questionRequests.listByInstance(instanceId);
-		const workerLease = this.deps.leases.getByInstance(instanceId);
+		const toolApprovalRequests = this.deps.toolApprovalRequests.listByInstance(instanceId);
+		const workerLeases = this.deps.leases.listByInstance(instanceId);
+		const workerLease = workerLeases.find((lease) => lease.exitedAt === null) ?? null;
+		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId);
 		const selectedTurn = getSelectedTurnSummaryForProcess(this.deps, process);
 		const primaryPathState = this.primaryPathAssembler.capture(instanceId, {
 			process,
@@ -1099,6 +1276,8 @@ export class ProcessUiSnapshotAssembler {
 		const projections = buildProcessUiSnapshotProjections({
 			process,
 			turnStarts: this.deps.turnStarts,
+			startupTurnStarts,
+			workerLeases,
 			turnRecords,
 			turnAnnotations,
 			events,
@@ -1121,6 +1300,7 @@ export class ProcessUiSnapshotAssembler {
 			}),
 			leafOutcomeSnapshots,
 			questionRequests,
+			toolApprovalRequests,
 			processDisplayName: getProcessDisplayName(this.deps, process.processId),
 			processFlow: buildProcessFlowViewForProcess(this.deps.processGraphs, process.processId),
 			definesLeafOutcome: processDefinesLeafOutcome(this.deps, process),

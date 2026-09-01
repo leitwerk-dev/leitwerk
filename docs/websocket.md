@@ -61,6 +61,8 @@ These frames notify clients that durable server state has changed, triggering in
 - `process.created` / `process.updated` / `process.deleted`
 - `process.input.queued` / `process.input.acknowledged`
 - `project.updated` / `worker.state` / `future.updated`
+- `launch.updated` — carries `launchRunId` and nullable `instanceId`; the browser refetches the
+  authoritative launch-run read model. Checklist details never appear in the frame.
 
 ### Streaming & Interactive Frames
 

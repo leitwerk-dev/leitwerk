@@ -609,7 +609,6 @@ async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutM
 		const currentExecution = ctx?.deps.processes.getById(instanceId)?.currentExecution ?? null;
 		const currentTurnRecordId = (() => {
 			if (!ctx || !currentExecution) return null;
-			if (currentExecution.kind === "server_turn") return currentExecution.id;
 			const start = ctx.deps.turnStarts.getById(currentExecution.id);
 			return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
 		})();

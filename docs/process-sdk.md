@@ -63,15 +63,23 @@ export const myProcess = flow
   .happyPath("implement")
   .codecs({ params: paramsCodec, state: stateCodec })
   .initialState(() => ({ summary: null }))
+  .runtime({ developmentTools: true })
   .use(flow.fragment<Params, State>("main").turn(implement))
   .define();
 ```
 
 `.tools(...)` enables worker-local workspace primitives. `.integrationTools(...)`
-authorizes extension-defined, server-executed tools for that turn. Extension setup
+authorizes extension-defined, server-executed tools for every invocation of that turn.
+`.resolveIntegrationTools((params, state) => ...)` constrains them from validated durable
+process data at worker start. Extension setup
 registers those tools with `ServerExtensionAPI.tool(...)`; names must be lowercase
 snake case, globally unique, available at server startup, and distinct from Pi built-ins,
-framework tools, and the turn's outcome tools. Workers receive only public tool declarations
+framework tools, and the turn's outcome tools. `.runtime({ developmentTools: true })` opts the
+process into mise preparation. Mise reads stock repository configuration at each declared
+repository root before worker readiness and turn acceptance. The capability defaults to false;
+process definitions do not declare tool names or versions.
+
+Workers receive only public tool declarations
 and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
 to provider calls so stopping the turn cancels in-flight server work.
 
@@ -115,10 +123,84 @@ Provider sets resolve before server setup. Each definition parses only its retur
 
 Every step in a process graph is a **Turn**:
 
-- **`flow.llm` (LLM Turn):** Prompts the AI agent in a worker workspace with active tools (`read`, `bash`, `edit`, `write`).
-- **`flow.automatic` (Worker Automatic Turn):** Runs deterministic TypeScript code inside worker workspace clones.
-- **`flow.serverAutomatic` (Server Automatic Turn):** Runs deterministic host code on the central server.
+- **`flow.llm` (LLM Turn):** Optionally prepares deterministic inputs, then prompts the AI agent in a worker workspace with active tools (`read`, `bash`, `edit`, `write`).
+- **`flow.automatic` (Worker Automatic Turn):** Runs deterministic TypeScript code inside worker workspace clones. Server-owned operations are available only through explicitly authorized integration tools.
 - **`flow.human` (Human Turn):** Pauses execution and waits for operator actions on the web dashboard.
+
+### LLM-turn preparation
+
+Use `.prepare(...)` when deterministic mechanics exist only to supply one LLM turn. Preparation
+runs after turn-start acceptance and before Pi receives a prompt. It shares the turn's authorized
+integration tools, may publish a progress report, and returns bounded JSON data through
+`ctx.prepared`:
+
+```ts
+const analyze = flow
+  .llm<Params, State>("analyze")
+  .description("Analyze process")
+  .integrationTools("download_snapshot")
+  .prepare(async (ctx) => {
+    ctx.reportProgress({
+      title: "Analysis preparation",
+      steps: [{ id: "download", label: "Download snapshot", status: "in_progress" }],
+    });
+    return ctx.callIntegrationTool("download_snapshot", { processRef: ctx.params.processRef });
+  })
+  .buildPrompt((ctx) => `Analyze ${ctx.prepared.snapshotDir}`)
+  .publish("analysis")
+  .to("analysis_decision");
+```
+
+Preparation has no outcome or route. A preparation failure fails the owning LLM turn before Pi
+starts. Retry runs preparation again. A replacement worker and Continue reuse the durable
+checkpoint when the server received it; preparation must remain deterministic and external
+writes must remain idempotent. The result must be JSON-serializable and at most 64 KiB. Do not
+use preparation for an independently reviewable artifact, decision, wait, or business operation.
+Those remain turns.
+
+### Ticket creation adapters
+
+A ticket adapter registers a normal integration tool with
+`capability.kind: "ticket_creation"`. The tool returns
+`{ externalId, url, result? }`, uses the execution context idempotency key for
+its external write, and reconciles ambiguous provider outcomes before retrying.
+
+Adapters that can target more than one destination attach a destination
+provider to the capability. `list()` returns browser-safe destination summaries
+for the derived process. The worker receives those summaries as a server-added
+required `destinationId` tool argument and asks the operator when the target is
+ambiguous. Immediately before approval, `resolve()` converts the opaque choice
+into an immutable, JSON-serializable snapshot. The server passes that snapshot
+to the tool as `ctx.ticketDestination`; workers never receive adapter credentials.
+`validate()` remains available for compatible launches that already carry a
+snapshot.
+
+```ts
+api.tool({
+  name: "tracker_create_ticket",
+  description: "Create a tracker ticket",
+  parameters: {
+    type: "object",
+    properties: { title: { type: "string" }, body: { type: "string" } },
+    required: ["title", "body"],
+  },
+  capability: {
+    kind: "ticket_creation",
+    displayName: "Tracker",
+    titlePath: "/title",
+    descriptionPath: "/body",
+    destinations: trackerDestinations,
+  },
+  async execute(ctx, args) {
+    // Validate ctx.ticketDestination, perform one durable external write,
+    // and return the standard receipt.
+  },
+});
+```
+
+Destination summaries may contain an opaque id, display name, group, and short
+description. Snapshot `data` is adapter-owned durable state. `agentContext` is
+untrusted text included in the ticket agent prompt and must not contain secrets.
 
 ## Passing Data Between Turns (Products)
 
@@ -234,9 +316,9 @@ valid only in part of the process state. A false condition excludes the action f
 armings and from the selected-turn UI snapshot. Keep provider-specific matching in the source
 resolver; use `when` for process-owned routing scope.
 
-### Automatic-turn progress
+### Turn progress
 
-Worker and server automatic handlers can replace their operator-facing progress snapshot with
+Worker automatic handlers and LLM preparation phases can replace their operator-facing progress snapshot with
 `ctx.reportProgress(...)`. A report contains an ordered list of stable step ids, labels, and
 `incomplete`, `in_progress`, `completed`, or `failed` statuses. It may also contain HTTPS links
 to pull requests, merge requests, commits, or pipelines. Reports are execution visibility, not
@@ -244,5 +326,20 @@ process turns, products, or business state.
 
 The server persists each correlated snapshot as a turn event and broadcasts a durable refresh
 signal. It rejects malformed reports, unsafe links, stale turn-record ids, and updates for turns
-that are no longer running. If an automatic handler throws, Leitwerk changes its current
-`in_progress` step to `failed` with the safe error summary before recording the turn failure.
+that are no longer running. If an automatic handler or LLM preparation throws, Leitwerk changes
+its current `in_progress` step to `failed` with the safe error summary before recording the turn
+failure.
+
+### Launch preparation checks
+
+A UI launcher may return ordered `preparationChecks`. Each check has a stable unique id, an
+operator label, and an asynchronous `run` function. The launch coordinator owns checklist state.
+A check returns on success or throws `SafeLaunchPreparationError` with bounded remediation.
+The context supplies cancellation, the resolved launch configuration, and a safe logger. It does
+not grant checklist mutation or ambient credentials. Launchers without checks receive the core
+launch checklist.
+
+Watcher definitions use the same preparation-check contract. Polling providers submit watcher
+events through the server-owned launch-run service. The launch coordinator creates the durable
+run before resolving the event, executes checks, prepares model selections, and commits the
+process with the watcher deduplication key.

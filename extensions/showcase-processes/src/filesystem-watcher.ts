@@ -1,11 +1,10 @@
-import type { CoreServerSetupDeps, ServerExtensionLogger } from "@leitwerk-dev/process-sdk";
+import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import {
 	defineProcessWatcherSource,
 	parseProcessWatcherLaunchModelConfig,
 } from "@leitwerk-dev/process-sdk";
 import {
 	consumeTriggerFile,
-	createPollLoop,
 	emptyPollResult,
 	parseDurationMs,
 	readTriggerFile,
@@ -73,13 +72,11 @@ export const filesystemWatcherSource = defineProcessWatcherSource<
 	},
 });
 
-export function createFilesystemWatcherProvider(
-	deps: CoreServerSetupDeps,
-	logger?: ServerExtensionLogger,
-) {
+export function createFilesystemWatcherProvider(deps: CoreServerSetupDeps) {
 	const watchers = deps.processWatchers?.listBySource(filesystemWatcherSource) ?? [];
-	const loops = watchers.map((watcher) =>
-		createPollLoop({
+	const pollers = watchers.map((watcher) =>
+		deps.polling.create({
+			id: `showcase-filesystem:${watcher.processId}:${watcher.watcherId}`,
 			pollInterval: () => watcher.config.pollInterval,
 			isEnabled: () => watcher.enabled,
 			defaultIntervalMs: 1_000,
@@ -121,26 +118,10 @@ export function createFilesystemWatcherProvider(
 					result.errors.push(
 						`${watcher.processId}:${watcher.watcherId}:${created.status}:${String(created.body.error ?? "launch_failed")}`,
 					);
-					logger?.warn?.(
-						{
-							processId: watcher.processId,
-							watcherId: watcher.watcherId,
-							filePath: watcher.config.filePath,
-							status: created.status,
-						},
-						"File watcher launch failed",
-					);
 				}
 				return result;
 			},
 		}),
 	);
-	return {
-		start() {
-			for (const loop of loops) loop.start();
-		},
-		stop() {
-			for (const loop of loops) loop.stop();
-		},
-	};
+	return { pollers };
 }

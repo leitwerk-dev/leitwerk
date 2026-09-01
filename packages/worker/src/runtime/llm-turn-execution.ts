@@ -210,6 +210,7 @@ function treePlanFromPreparedStart(input: {
 export async function executeLlmTurn<TOutcome extends string>(input: {
 	resolvedWorkerProcess: ResolvedWorkerProcess;
 	ctx: WorkerProcessContext;
+	prepared?: unknown;
 	piHandle: PiTreeHandle;
 	turnDef: LlmTurnDefinition<TOutcome, unknown, unknown>;
 	turnId: string;
@@ -467,7 +468,7 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 		initialPromptlessTurnResumeReason === "active_turn_resume"
 	) {
 		try {
-			promptText = await input.turnDef.prompt(input.ctx);
+			promptText = await input.turnDef.prompt({ ...input.ctx, prepared: input.prepared });
 		} catch (error: unknown) {
 			return failWithWorkerError(
 				"turn.prompt_preparation_failed",

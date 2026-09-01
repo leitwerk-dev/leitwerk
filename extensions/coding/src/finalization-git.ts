@@ -14,6 +14,11 @@ import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
 export type DeterministicFinalizationMergeMode = "noop" | "fast_forward" | "merge_commit";
 
+export interface GitIdentity {
+	name: string;
+	email: string;
+}
+
 interface DeterministicFinalizationInput {
 	repoPath: string;
 	workspaceClonePath: string;
@@ -22,6 +27,7 @@ interface DeterministicFinalizationInput {
 	expectedPostConflictHeadSha?: string | null;
 	usedConflictResolution?: boolean;
 	commitMessage: string;
+	gitIdentity?: GitIdentity;
 }
 
 export type DeterministicFinalizationResult =
@@ -106,9 +112,19 @@ function gitConfigIdentityEnv(): NodeJS.ProcessEnv {
 	return env;
 }
 
-function runGit(repoPath: string, args: readonly string[]): GitExecResult {
+function gitIdentityArgs(identity: GitIdentity): string[] {
+	const name = trimToNull(identity.name);
+	const email = trimToNull(identity.email);
+	if (!name || !email || /[\r\n\0]/.test(name) || /[\r\n\0]/.test(email)) {
+		throw new DeterministicGitError("Git identity requires a valid name and email");
+	}
+	return ["-c", `user.name=${name}`, "-c", `user.email=${email}`];
+}
+
+function runGit(repoPath: string, args: readonly string[], identity?: GitIdentity): GitExecResult {
+	const trustedArgs = identity ? [...gitIdentityArgs(identity), ...args] : args;
 	try {
-		const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(args), {
+		const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(trustedArgs), {
 			cwd: repoPath,
 			encoding: "utf8",
 			env: gitConfigIdentityEnv(),
@@ -265,9 +281,9 @@ function assertExpectedCheckout(repoPath: string, workBranch: string): void {
 	}
 }
 
-function assertGitIdentity(repoPath: string): void {
-	const author = runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"]);
-	const committer = runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"]);
+function assertGitIdentity(repoPath: string, identity?: GitIdentity): void {
+	const author = runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"], identity);
+	const committer = runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"], identity);
 	if (!author.ok || !committer.ok) {
 		throw new DeterministicGitError(
 			"Git author/committer identity is not configured. Configure user.name and user.email in this repository or the operator's global Git config, then retry finalization.",
@@ -275,22 +291,23 @@ function assertGitIdentity(repoPath: string): void {
 	}
 }
 
-function commitDirtyWorktree(repoPath: string, commitMessage: string): string {
-	assertGitIdentity(repoPath);
+function commitDirtyWorktree(
+	repoPath: string,
+	commitMessage: string,
+	identity?: GitIdentity,
+): string {
+	assertGitIdentity(repoPath, identity);
 	const addResult = runGit(repoPath, ["add", "--all"]);
 	if (!addResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to stage the completed change: ${trimToNull(addResult.stderr) ?? trimToNull(addResult.stdout) ?? "unknown git error"}`,
 		);
 	}
-	const commitResult = runGit(repoPath, [
-		"-c",
-		"core.hooksPath=/dev/null",
-		"commit",
-		"--no-gpg-sign",
-		"-m",
-		commitMessage,
-	]);
+	const commitResult = runGit(
+		repoPath,
+		["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", commitMessage],
+		identity,
+	);
 	if (!commitResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to commit the completed change: ${trimToNull(commitResult.stderr) ?? trimToNull(commitResult.stdout) ?? "unknown git error"}`,
@@ -349,6 +366,7 @@ function deterministicMerge(input: {
 	baseBranch: string;
 	headBefore: string;
 	baseSha: string;
+	gitIdentity?: GitIdentity;
 }):
 	| { ok: true; mergeMode: DeterministicFinalizationMergeMode; headSha: string }
 	| { ok: false; conflict: true; headSha: string; conflictedFiles: string[] } {
@@ -375,15 +393,12 @@ function deterministicMerge(input: {
 		};
 	}
 
-	assertGitIdentity(repoPath);
-	const mergeResult = runGit(repoPath, [
-		"-c",
-		"core.hooksPath=/dev/null",
-		"merge",
-		"--no-edit",
-		"--no-gpg-sign",
-		ref,
-	]);
+	assertGitIdentity(repoPath, input.gitIdentity);
+	const mergeResult = runGit(
+		repoPath,
+		["-c", "core.hooksPath=/dev/null", "merge", "--no-edit", "--no-gpg-sign", ref],
+		input.gitIdentity,
+	);
 	if (!mergeResult.ok) {
 		const conflicts = conflictedFiles(repoPath);
 		if (mergeInProgress(repoPath) || conflicts.length > 0) {
@@ -610,6 +625,7 @@ export function commitAndPushWorkBranch(input: {
 	repoPath: string;
 	workBranch: string;
 	commitMessage: string;
+	gitIdentity: GitIdentity;
 }) {
 	const repoPath = path.resolve(input.repoPath);
 	if (!repoExists(repoPath)) {
@@ -629,7 +645,7 @@ export function commitAndPushWorkBranch(input: {
 	}
 	const dirty = workingTreeStatus(repoPath).dirtyFiles.length > 0;
 	const headSha = dirty
-		? commitDirtyWorktree(repoPath, input.commitMessage)
+		? commitDirtyWorktree(repoPath, input.commitMessage, input.gitIdentity)
 		: currentHeadSha(repoPath);
 	const pushTarget = pushHeadToBranch(repoPath, input.workBranch);
 	const remoteHead = gitOrNull(
@@ -652,32 +668,28 @@ export function commitAndPushWorkBranch(input: {
 export function runDeterministicFinalization<
 	TParams,
 	TState extends RepositoryChangeFinalizationContextState,
->(ctx: FlowAutomaticRunContext<TParams, TState>): DeterministicFinalizationResult {
+>(
+	ctx: FlowAutomaticRunContext<TParams, TState>,
+	gitIdentity?: GitIdentity,
+): DeterministicFinalizationResult {
 	const progressSteps = [
 		["validate_checkout", "Validate the repository checkout"],
 		["fetch_base", "Fetch and verify the latest base branch"],
 		["commit_merge", "Commit changes and integrate the base branch"],
 		["publish", "Push the finalized branch"],
 	] as const;
-	const reportProgress = (
-		activeIndex: number | null,
-		completedCount: number,
-		failure?: { index: number; detail: string },
-	) =>
-		ctx.reportProgress({
+	const reportProgress = (activeIndex: number | null, completedCount: number) =>
+		ctx.reportProgress?.({
 			title: "Finalization progress",
 			steps: progressSteps.map(([id, label], index) => ({
 				id,
 				label,
 				status:
-					index === failure?.index
-						? "failed"
-						: index < completedCount
-							? "completed"
-							: index === activeIndex
-								? "in_progress"
-								: "incomplete",
-				...(index === failure?.index ? { detail: failure.detail } : {}),
+					index < completedCount
+						? "completed"
+						: index === activeIndex
+							? "in_progress"
+							: "incomplete",
 			})),
 		});
 	reportProgress(0, 0);
@@ -690,6 +702,7 @@ export function runDeterministicFinalization<
 		expectedPostConflictHeadSha: ctx.state.finalization.expectedPostConflictHeadSha,
 		usedConflictResolution: ctx.state.finalization.usedConflictResolution,
 		commitMessage: ctx.state.finalization.generatedCommitMessage ?? "",
+		gitIdentity,
 	};
 	const repoPath = path.resolve(input.repoPath);
 	if (!repoExists(repoPath)) {
@@ -709,9 +722,14 @@ export function runDeterministicFinalization<
 	let headSha = currentHeadSha(repoPath);
 	const conflicts = conflictedFiles(repoPath);
 	if (mergeInProgress(repoPath) || conflicts.length > 0) {
-		reportProgress(null, 1, {
-			index: 2,
-			detail: "The checkout already contains merge conflicts",
+		ctx.reportProgress?.({
+			title: "Finalization progress",
+			steps: progressSteps.map(([id, label], index) => ({
+				id,
+				label,
+				status: index === 0 ? "completed" : index === 2 ? "failed" : "incomplete",
+				...(index === 2 ? { detail: "The checkout already contains merge conflicts" } : {}),
+			})),
 		});
 		return {
 			outcome: "merge_conflict",
@@ -734,18 +752,24 @@ export function runDeterministicFinalization<
 
 	const status = workingTreeStatus(repoPath);
 	if (status.dirtyFiles.length > 0) {
-		headSha = commitDirtyWorktree(repoPath, input.commitMessage);
+		headSha = commitDirtyWorktree(repoPath, input.commitMessage, input.gitIdentity);
 	}
 	const mergeResult = deterministicMerge({
 		repoPath,
 		baseBranch: input.baseBranch,
 		headBefore: headSha,
 		baseSha,
+		gitIdentity: input.gitIdentity,
 	});
 	if (!mergeResult.ok) {
-		reportProgress(null, 2, {
-			index: 2,
-			detail: "Base integration produced merge conflicts",
+		ctx.reportProgress?.({
+			title: "Finalization progress",
+			steps: progressSteps.map(([id, label], index) => ({
+				id,
+				label,
+				status: index < 2 ? "completed" : index === 2 ? "failed" : "incomplete",
+				...(index === 2 ? { detail: "Base integration produced merge conflicts" } : {}),
+			})),
 		});
 		return {
 			outcome: "merge_conflict",

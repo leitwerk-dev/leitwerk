@@ -73,6 +73,39 @@ export interface QuestionAnswerDraft {
 	comment: string;
 }
 
+export interface ProcessRelation {
+	parentInstanceId: string;
+	childInstanceId: string;
+	kind: "derived";
+	purpose: string;
+	createdAt: string;
+	createdBy: Actor;
+}
+
+export type ToolApprovalStatus = "open" | "accepted" | "feedback" | "declined" | "cancelled";
+
+export interface ProcessToolApprovalDestination {
+	id: string;
+	displayName: string;
+	group?: string;
+	description?: string;
+}
+
+export interface ProcessToolApprovalRequest {
+	id: string;
+	instanceId: string;
+	turnRecordId: string;
+	toolCallId: string;
+	toolName: string;
+	arguments: Record<string, unknown>;
+	destination: ProcessToolApprovalDestination | null;
+	status: ToolApprovalStatus;
+	requestedAt: string;
+	resolvedAt: string | null;
+	resolvedBy: Actor | null;
+	feedback: string | null;
+}
+
 export interface ProcessQuestionRequest {
 	id: string;
 	instanceId: string;
@@ -240,13 +273,7 @@ export function isTurnFailureCode(value: string): value is TurnFailureCode {
 /** Extension-defined stable turn identifier. */
 export type TurnId = string;
 
-export const PROCESS_TURN_TYPES = [
-	"llm",
-	"human",
-	"external",
-	"automatic",
-	"server_automatic",
-] as const;
+export const PROCESS_TURN_TYPES = ["llm", "human", "external", "automatic"] as const;
 
 export type ProcessTurnType = (typeof PROCESS_TURN_TYPES)[number];
 
@@ -352,10 +379,7 @@ export interface FutureExecutionBlockReason {
 export type JsonObject = Record<string, unknown>;
 
 /** The one durable technical execution currently owned by a process. */
-export type CurrentExecutionRef =
-	| { kind: "worker_start"; id: string }
-	| { kind: "server_turn"; id: string }
-	| null;
+export type CurrentExecutionRef = { kind: "worker_start"; id: string } | null;
 
 /** Immutable non-secret inputs resolved for a worker-owned turn start. */
 export type ResolvedTurnStart =
@@ -575,6 +599,45 @@ export interface ProcessInput {
 	consumedAt: string | null;
 }
 
+export type LaunchOrigin = "ui" | "watcher" | "scheduled" | "startup_retry";
+export type LaunchRunStatus =
+	| "preparing"
+	| "process_created"
+	| "starting"
+	| "completed"
+	| "failed"
+	| "cancelled";
+export type LaunchChecklistStepStatus =
+	| "pending"
+	| "in_progress"
+	| "completed"
+	| "failed"
+	| "skipped";
+
+/** Presentation-safe durable progress for one process launch attempt. */
+export interface LaunchChecklistStep {
+	id: string;
+	label: string;
+	status: LaunchChecklistStepStatus;
+	safeSummary?: string;
+	startedAt?: string;
+	completedAt?: string;
+}
+
+/** Durable launch attempt. Secrets and runner identifiers never belong here. */
+export interface LaunchRun {
+	id: string;
+	launcherId: string | null;
+	origin: LaunchOrigin;
+	instanceId: string | null;
+	status: LaunchRunStatus;
+	steps: LaunchChecklistStep[];
+	createdAt: string;
+	updatedAt: string;
+	completedAt: string | null;
+	revision: number;
+}
+
 export type FutureExecutionKind = "launch" | "action";
 export type FutureExecutionScheduleKind = "once" | "cron";
 
@@ -689,6 +752,8 @@ export interface WorkerLease {
 	id: string;
 	instanceId: string;
 	workerId: string;
+	/** Worker start this physical lease was created to execute. */
+	turnStartRecordId?: string | null;
 	/** Durable server-owned supervision state for the current worker lease. */
 	state: WorkerState;
 	/** Server epoch this lease belongs to, used to reject stale snapshot writes. */
@@ -704,6 +769,12 @@ export interface WorkerLease {
 	/** Updated from heartbeats for liveness/recovery diagnostics. */
 	lastHeartbeatAt: string | null;
 	startedAt: string;
+	/** First valid server-observed worker handshake. */
+	connectedAt?: string | null;
+	/** First valid server-observed workspace preparation progress. */
+	workspacePreparationStartedAt?: string | null;
+	/** First accepted server-observed worker readiness. */
+	readyAt?: string | null;
 	/** Set once the lease is no longer active for supervision. */
 	exitedAt: string | null;
 }

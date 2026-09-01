@@ -10,6 +10,7 @@ import type {
 	ProcessLauncherService,
 	ProcessLaunchPlan,
 	ProcessLaunchPlanServiceLike,
+	ResolvedProcessLauncher,
 } from "@leitwerk-dev/process-sdk";
 import {
 	type FutureActionPayload,
@@ -26,6 +27,7 @@ import {
 import type { RepositoryBundle } from "../db/repositories.js";
 import { nextCronOccurrenceUtc } from "../domain-logic/cron.js";
 import type { ExtensionHost } from "../extensions/extension-host.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import {
 	applySubmittedProcessTitleToLaunchPlan,
 	normalizeProcessTitleInput,
@@ -91,6 +93,7 @@ export interface FutureExecutionLifecycleDeps
 	processActionRegistry?: ProcessActionRegistry;
 	processModelPolicy: ServerProcessModelPolicy;
 	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
+	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	logger?: ProcessEngineLogger;
 }
 
@@ -772,16 +775,19 @@ export function createFutureExecutionLifecycle(
 		async scheduleLaunch(
 			launcherId: string,
 			request: NormalizedScheduledLaunchInput,
-			opts?: { actor?: Actor },
+			opts?: {
+				actor?: Actor;
+				launchRunId?: string;
+				resolvedLauncher?: ResolvedProcessLauncher;
+			},
 		): Promise<LaunchMutationOutcome> {
 			const operationTime = nowFn();
 			if (!deps.launcherService) {
 				return { kind: "unavailable", reason: "Launcher service is not available" };
 			}
-			const resolved = await deps.launcherService.resolveUiLauncher(
-				launcherId,
-				request.launcherInput,
-			);
+			const resolved = opts?.resolvedLauncher
+				? { ok: true as const, launcher: opts.resolvedLauncher }
+				: await deps.launcherService.resolveUiLauncher(launcherId, request.launcherInput);
 			if (!resolved.ok) {
 				return launcherResolutionFailure(resolved);
 			}

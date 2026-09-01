@@ -34,7 +34,7 @@ function view(edges: ProcessFlowView["edges"]): ProcessFlowView {
 
 describe("turnTypeDescription", () => {
 	it("returns a distinct operator-facing explanation for each turn type", () => {
-		const types = ["llm", "human", "external", "automatic", "server_automatic"] as const;
+		const types = ["llm", "human", "external", "automatic"] as const;
 		const descriptions = types.map((type) => turnTypeDescription(type));
 		for (const description of descriptions) {
 			expect(description.length).toBeGreaterThan(0);

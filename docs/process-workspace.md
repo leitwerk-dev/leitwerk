@@ -32,6 +32,12 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 ├── workspace/               # Monorepo / multi-component workspace root
 ├── tree/primary.jsonl       # Active JSONL execution tree
 ├── pi-agent/                # Materialized non-secret Pi resource snapshot & credentials (mode 0600)
+├── pi-resource-bundles/     # Immutable snapshots retained for the process lifetime
+│   ├── <sha256>.tar
+│   └── starts/<turn-start-id>.json
+├── tooling/
+│   ├── mise/                # Process-local installs, cache, state, and shims
+│   └── mise-preparation/latest.json # Bounded current-tool evidence
 └── tmp/                     # Temporary execution artifacts
 ```
 
@@ -42,7 +48,14 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 
 ## 2. Repository Management
 
-A Leitwerk process can target zero, one, or multiple repositories. When repositories are declared, Leitwerk creates a full Git clone for each repository checked out to its assigned work branch; processes that do not target repositories run without local clones or filesystem dependencies.
+A Leitwerk process can target zero, one, or multiple repositories. When repositories are declared, Leitwerk creates a full Git clone for each repository checked out to its assigned work branch. Workspace preparation fails if any clone, checkout, branch creation, manifest write, or aggregate write fails. The worker must not report readiness or start a turn with a partial workspace. A later retry repairs missing or stale components before reporting readiness. Processes that do not target repositories run without local clones or filesystem dependencies.
+
+A process may opt into development-tool preparation. The worker then runs stock `mise install`
+and `mise ls --current --json` sequentially at each repository root in repository-key order. It
+does not scan nested directories, generate mise configuration, interpret ecosystem files, or
+install package dependencies. Docker and Kubernetes store mise state in the process volume.
+Local workers use the host mise installation and host mise storage. Mise shims lead `PATH` for
+agent commands; full mise shell activation and `[env]` propagation are not guaranteed.
 
 ---
 
@@ -51,7 +64,7 @@ A Leitwerk process can target zero, one, or multiple repositories. When reposito
 During worker bootstrap, Leitwerk aggregates instructions and agent capabilities into the workspace:
 
 - **`AGENTS.md` Concatenation:** Combines `AGENTS.md` files across target repositories into a unified root `AGENTS.md` with source provenance comments (`<!-- leitwerk: source=repo/AGENTS.md -->`).
-- **Managed Agent Environment:** The server packages a snapshot of extensions, skills, and settings into a dedicated agent directory (`pi-agent/`) alongside temporary credentials.
+- **Managed Agent Environment:** The server packages extensions, skills, and settings into an immutable snapshot. The worker verifies and persists each snapshot in `pi-resource-bundles/`, then materializes it in `pi-agent/` alongside temporary credentials. Credentials never enter the persisted bundle.
 
 ---
 
@@ -79,7 +92,7 @@ The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<stora
 
 ## 5. Storage Retention & Cleanup
 
-Process storage is retained across worker restarts and cleaned up based on process outcome:
+Process storage is retained across worker restarts and cleaned up based on process outcome. Pi resource bundles are content-addressed and are not overwritten or garbage-collected independently. A retry resolves the latest authorized resources. It reuses the digest when their content is unchanged and adds a new bundle when their content changed.
 
 - **Retention Thresholds:** Storage is retained after process completion or failure according to `storage.completed_process_retention` and `storage.error_process_retention` settings before worker volumes are released.
 - **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.

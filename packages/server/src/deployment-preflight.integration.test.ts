@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/index.js";
 import { backupProductionDatabase, deploymentPreflightConfig } from "./deployment-preflight.js";
@@ -11,19 +11,19 @@ describe("deployment preflight", () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "leitwerk-preflight-"));
 		const sourcePath = path.join(root, "production.sqlite");
 		const copyPath = path.join(root, "scratch", "copy.sqlite");
-		const source = new Database(sourcePath);
-		source.pragma("journal_mode = WAL");
+		const source = new DatabaseSync(sourcePath);
+		source.prepare("PRAGMA journal_mode = WAL").get();
 		source.exec(
 			"CREATE TABLE durable (value TEXT NOT NULL); INSERT INTO durable VALUES ('preserved')",
 		);
 		await backupProductionDatabase({ sourcePath, destinationPath: copyPath });
 
-		const copy = new Database(copyPath, { readonly: true });
-		expect(copy.prepare("SELECT value FROM durable").pluck().get()).toBe("preserved");
-		expect(copy.pragma("integrity_check", { simple: true })).toBe("ok");
+		const copy = new DatabaseSync(copyPath, { readOnly: true });
+		expect(copy.prepare("SELECT value FROM durable").get()).toEqual({ value: "preserved" });
+		expect(copy.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
 		copy.close();
-		expect(source.prepare("SELECT value FROM durable").pluck().all()).toEqual(["preserved"]);
-		expect(source.pragma("integrity_check", { simple: true })).toBe("ok");
+		expect(source.prepare("SELECT value FROM durable").all()).toEqual([{ value: "preserved" }]);
+		expect(source.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
 		source.close();
 	});
 

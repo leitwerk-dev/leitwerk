@@ -42,7 +42,6 @@ function toTurnType(definition: TurnDefinition<unknown, unknown>): ProcessTurnTy
 		case "human":
 		case "external":
 		case "automatic":
-		case "server_automatic":
 			return definition.kind;
 	}
 }
@@ -73,11 +72,7 @@ function humanPublishedProducts(definition: TurnDefinition<unknown, unknown>): s
 }
 
 function outcomePublishedProducts(definition: TurnDefinition<unknown, unknown>): string[] {
-	if (
-		definition.kind !== "llm" &&
-		definition.kind !== "automatic" &&
-		definition.kind !== "server_automatic"
-	) {
+	if (definition.kind !== "llm" && definition.kind !== "automatic") {
 		return [];
 	}
 	return [

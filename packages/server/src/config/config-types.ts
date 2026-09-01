@@ -242,12 +242,18 @@ export interface InternalTlsConfig {
 	client_ca_file?: string;
 }
 
+export interface DevelopmentToolsConfig {
+	install_timeout: string;
+	local: { mise_command: string };
+}
+
 /** Server-owned config. `auth` and runner wiring are intentionally server-only and are not part of the worker ConfigSnapshot. */
 export interface LeitwerkConfig extends ConfigSnapshot {
 	server: ServerConfigSnapshot;
 	storage: StorageConfigSnapshot;
 	components: Record<string, ComponentConfigSnapshot>;
 	workers: WorkersConfigSnapshot;
+	development_tools: DevelopmentToolsConfig;
 	process_configs?: Record<string, ProcessConfigSnapshot>;
 	notifications: NotificationsConfigSnapshot;
 	sandbox: SandboxConfigSnapshot;

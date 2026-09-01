@@ -1908,7 +1908,15 @@ describe("launcher HTTP routes", () => {
 			const persistedProjects = failingHarness.ctx.deps.projects.listByInstance(body.process.id);
 			expect(persistedProcess).toMatchObject({
 				selectedTurnId: "launcher_plan_turn",
-				lifecycleStatus: "active",
+				lifecycleStatus: "error",
+			});
+			const failedStart =
+				persistedProcess?.currentExecution?.kind === "worker_start"
+					? failingHarness.ctx.deps.turnStarts.getById(persistedProcess.currentExecution.id)
+					: null;
+			expect(failedStart?.state).toMatchObject({
+				kind: "bootstrap_failed",
+				code: "worker_spawn_failed",
 			});
 			expect(persistedProjects).toHaveLength(1);
 		} finally {

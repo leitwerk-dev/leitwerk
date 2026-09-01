@@ -12,6 +12,7 @@ export interface ProcessTitleJob {
 	processDefinitionId: string;
 	processInstanceId: string | null;
 	futureExecutionId: string | null;
+	launchRunId: string | null;
 	modelProfileId: string;
 	prompt: string;
 	expectedPayloadJson: string | null;
@@ -27,6 +28,7 @@ export interface ProcessTitleJob {
 export interface EnqueueProcessTitleJobInput {
 	processInstanceId: string;
 	processDefinitionId: string;
+	launchRunId?: string | null;
 	modelProfileId: string;
 	prompt: string;
 	maxAttempts: number;
@@ -50,6 +52,7 @@ function rowToProcessTitleJob(row: typeof s.processTitleJobs.$inferSelect): Proc
 		processDefinitionId: row.processDefinitionId,
 		processInstanceId: row.processInstanceId ?? null,
 		futureExecutionId: row.futureExecutionId ?? null,
+		launchRunId: row.launchRunId ?? null,
 		modelProfileId: row.modelProfileId,
 		prompt: row.prompt,
 		expectedPayloadJson: row.expectedPayloadJson ?? null,
@@ -74,6 +77,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				processDefinitionId: input.processDefinitionId,
 				processInstanceId: input.processInstanceId,
 				futureExecutionId: null,
+				launchRunId: input.launchRunId ?? null,
 				modelProfileId: input.modelProfileId,
 				prompt: input.prompt,
 				expectedPayloadJson: null,
@@ -98,6 +102,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				processDefinitionId: input.processDefinitionId,
 				processInstanceId: null,
 				futureExecutionId: input.futureExecutionId,
+				launchRunId: null,
 				modelProfileId: input.modelProfileId,
 				prompt: input.prompt,
 				expectedPayloadJson: input.expectedPayloadJson,
@@ -116,6 +121,16 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 		getById(id: string): ProcessTitleJob | null {
 			const row = db.select().from(s.processTitleJobs).where(eq(s.processTitleJobs.id, id)).get();
 			return row ? rowToProcessTitleJob(row) : null;
+		},
+
+		listByProcessInstance(processInstanceId: string): ProcessTitleJob[] {
+			return db
+				.select()
+				.from(s.processTitleJobs)
+				.where(eq(s.processTitleJobs.processInstanceId, processInstanceId))
+				.orderBy(asc(s.processTitleJobs.createdAt), asc(s.processTitleJobs.id))
+				.all()
+				.map(rowToProcessTitleJob);
 		},
 
 		listAll(): ProcessTitleJob[] {
@@ -216,7 +231,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 		},
 
 		supersedeActiveForProcessInstance(processInstanceId: string): number {
-			return db
+			const result = db
 				.update(s.processTitleJobs)
 				.set({ status: "superseded", updatedAt: now() })
 				.where(
@@ -225,11 +240,12 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 						inArray(s.processTitleJobs.status, ["pending", "running"]),
 					),
 				)
-				.run().changes;
+				.run();
+			return Number(result.changes);
 		},
 
 		supersedeActiveForFutureExecution(futureExecutionId: string): number {
-			return db
+			const result = db
 				.update(s.processTitleJobs)
 				.set({ status: "superseded", updatedAt: now() })
 				.where(
@@ -238,7 +254,8 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 						inArray(s.processTitleJobs.status, ["pending", "running"]),
 					),
 				)
-				.run().changes;
+				.run();
+			return Number(result.changes);
 		},
 	};
 }

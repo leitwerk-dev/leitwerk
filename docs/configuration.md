@@ -73,6 +73,7 @@ workers:
 ```
 
 - `storage.sqlite_path`: Path to SQLite database holding durable process state.
+- Worker diagnostic traces are appended verbatim to `<storage.tree_files_dir>/diagnostic-traces/<instance-id>.log`.
 - `workers.cleanup.completed_process_retention`: Duration to retain completed process storage before automatic volume cleanup.
 - `workers.cleanup.error_process_retention`: Duration to retain failed/aborted process storage for diagnostics.
 
@@ -83,6 +84,11 @@ workers:
 Configure worker execution runtimes and process concurrency limits:
 
 ```yaml
+development_tools:
+  install_timeout: 30m
+  local:
+    mise_command: mise
+
 workers:
   runner: docker # docker | kubernetes | local
   max_parallel_processes: 5
@@ -108,6 +114,8 @@ kubernetes:
 - `workers.max_parallel_processes`: Maximum concurrent worker processes running across the server.
 - `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
 - `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
+- `development_tools.install_timeout`: Hard deadline for each opted-in repository's mise preparation. Defaults to `30m`.
+- `development_tools.local.mise_command`: Host mise command used by local workers. It is validated only when an opted-in process starts.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
 - `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.

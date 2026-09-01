@@ -546,7 +546,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	});
 
 	const importPlanTurn = flow
-		.serverAutomatic<TParams, RepositoryChangeState>(turnIds.importPlan)
+		.automatic<TParams, RepositoryChangeState>(turnIds.importPlan)
 		.description("Import handoff plan")
 		.run((ctx) => {
 			const planMarkdown =
@@ -560,10 +560,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				outcome: "imported",
 				params: { plan: planMarkdown },
 				markdown: planMarkdown,
-				state: patchRepositoryChangeState(ctx.state, {
-					clearReviewRefs: true,
-					clearProductRefs: [products.simplificationPlan],
-				}),
 			};
 		})
 		.outcome("imported", (outcome) =>
@@ -571,7 +567,13 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				.description("Imported a handoff plan and skipped replanning")
 				.markdown("plan", { description: "Imported handoff plan", publish: true })
 				.to(turnIds.implement)
-				.effect(({ ctx }) => ({ processPatch: { planRevision: ctx.process.planRevision + 1 } })),
+				.effect(({ ctx }) => ({
+					processPatch: { planRevision: ctx.process.planRevision + 1 },
+					state: patchRepositoryChangeState(ctx.state, {
+						clearReviewRefs: true,
+						clearProductRefs: [products.simplificationPlan],
+					}),
+				})),
 		);
 
 	const generatePlanTurn = flow

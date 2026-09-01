@@ -44,7 +44,11 @@ export {
 	type LaunchPlanPreparationIssue,
 	type LaunchPlanPreparationIssueCode,
 	type LaunchPlanPreparationResultLike,
+	type LaunchRunServiceLike,
 	type ModelProfileOptionSummaryLike,
+	type PollingHandleLike,
+	type PollingServiceLike,
+	type PollResultLike,
 	type PreparedDeferredProcessActivation,
 	type ProcessActionExecutionOrigin,
 	type ProcessActionExecutionSource,
@@ -69,6 +73,7 @@ export {
 	type ProcessWatcherServiceLike,
 	type QueuedProcessInputLike,
 	type RegisteredProcessWatcherLike,
+	type WatcherLaunchResultLike,
 	type WorkerSupervisorLike,
 } from "./core-capabilities.js";
 export {
@@ -87,6 +92,7 @@ export {
 	humanTurn,
 	type LlmModelPurpose,
 	type LlmTurnDefinition,
+	type LlmTurnPreparationContext,
 	llmTurn,
 	type OutcomeRouteOptions,
 	type OutcomeRouteSpec,
@@ -112,10 +118,6 @@ export {
 	type ProcessTurnEndSpec,
 	resolveHumanTurnView,
 	routeTurnOutcomes,
-	type ServerAutomaticTurnDefinition,
-	type ServerAutomaticTurnRestartBehavior,
-	type ServerAutomaticTurnRunResult,
-	serverAutomaticTurn,
 	type TurnDefinition,
 	type TurnDefinitionRecord,
 } from "./define-process.js";
@@ -138,6 +140,8 @@ export type {
 	LauncherContext,
 	LauncherModelProfileSummary,
 	LauncherVisibility,
+	LaunchPreparationCheck,
+	LaunchPreparationContext,
 	LeafOutcomeCaptureContext,
 	LeafOutcomeCaptureResult,
 	LeitwerkExtensionManifest,
@@ -174,6 +178,13 @@ export type {
 	ServerTransitionEffect,
 	ServerTransitionRequest,
 	ServerTransitionRuntime,
+	TicketCreationCapability,
+	TicketCreationDestinationContext,
+	TicketCreationDestinationList,
+	TicketCreationDestinationProvider,
+	TicketCreationDestinationSnapshot,
+	TicketCreationDestinationSummary,
+	TicketCreationReceipt,
 	UiLauncherConfigResolution,
 	UiLauncherDefinition,
 	UiLauncherResolutionResult,
@@ -186,7 +197,7 @@ export type {
 	WorkerRunHandle,
 	WorkerTurnHandler,
 } from "./extension-api.js";
-export { findUiLauncherById } from "./extension-api.js";
+export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
 export {
 	AutomaticFlowBuilder,
 	AutomaticOutcomeBuilder,
@@ -204,12 +215,12 @@ export {
 	FlowFragmentBuilder,
 	type FlowHumanTurn,
 	type FlowLlmOutcomeEffectContext,
+	type FlowLlmPreparationContext,
 	type FlowLlmTurn,
 	FlowProcessBuilder,
 	type FlowPromptContext,
 	type FlowRepoContext,
 	type FlowRepoLookup,
-	type FlowServerAutomaticTurn,
 	type FlowTurn,
 	flow,
 	HumanActionBuilder,
@@ -221,7 +232,6 @@ export {
 	type PlanFieldOptions,
 	PlanResultBuilder,
 	PublishedResultBuilder,
-	ServerAutomaticFlowBuilder,
 } from "./flow.js";
 export { atomicWriteUtf8, isEnoent } from "./fs-utils.js";
 export {
@@ -409,7 +419,6 @@ export {
 	isExternalTurnDefinition,
 	isHumanTurnDefinition,
 	isLlmTurnDefinition,
-	isServerAutomaticTurnDefinition,
 	resolveLlmTurnRestorePrimaryLeafAfterTurn,
 	resolveLlmTurnStartSelection,
 	validateAutomaticTurnDefinition,

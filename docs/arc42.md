@@ -43,7 +43,7 @@ Maintain and extend the Leitwerk control plane, ProcessEngine, IPC protocol, and
 - **Technology Stack:**
   - **Server:** Fastify (HTTP + WebSocket via `@fastify/websocket`).
   - **Browser UI:** Svelte 5 SPA built with Vite.
-  - **Database:** SQLite with Drizzle ORM + `better-sqlite3` (synchronous).
+  - **Database:** SQLite with Drizzle ORM + `node:sqlite` (synchronous).
   - **Worker Runtime:** `@earendil-works/pi-coding-agent` SDK embedded in worker processes.
 
 ## 3 System Scope and Context
@@ -118,7 +118,7 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 
 1. **Turn Preparation (`TurnStartRecord`):** ProcessEngine prepares the selected turn, reserves a `turnRecordId`, and issues a worker lease.
 2. **Worker Acceptance:** The physical worker adopts the lease and acknowledges `worker.turn_started`. The server creates the `ProcessTurnRecord` and increments its attempt counter.
-3. **Turn Execution & Tool Calls:** The worker executes code or prompts Pi in the workspace clone. Active turn tools (outcome tools, `ask_questions`) run in-flight.
+3. **Turn Execution & Tool Calls:** The worker executes code or prompts Pi in the workspace clone. An authored LLM preparation phase completes and checkpoints its bounded JSON result before Pi is prompted. Active turn tools (outcome tools, `ask_questions`) run in-flight.
 4. **Snapshot Upload & Outcome Commit:** Before completing, the worker uploads the latest JSONL tree snapshot. The server commits the outcome (`worker.turn_outcome`), updates process state, and broadcasts WebSocket updates.
 
 ### 6.3 Process Lifecycle State Transitions
@@ -155,7 +155,7 @@ Leitwerk workers can be deployed using three distinct runner adapters:
 Error is orthogonal to business position. When a turn fails or times out, `selectedTurnId` remains unchanged while `lifecycleStatus` transitions to `error`. A failed turn record is logged. Recovery commands (`Retry` or `Continue`) operate directly on failed turn lineages without mutating process graphs.
 
 ### 8.2 Idempotent External Writes (`ensureWrite`)
-External writes to trackers and VCS providers must use `ensureWrite()` from `@leitwerk-dev/external-writes`. All external mutations are safe to retry across poll cycles and server restarts.
+External writes to trackers and VCS providers must use `ensureWrite()` from `@leitwerk-dev/external-writes`. All external mutations are safe to retry across poll cycles and server restarts. Ticket adapters return a standard external receipt and reconcile provider-side identity after ambiguous outcomes; a durable-write row alone is not a substitute for a recoverable remote identity.
 
 ### 8.3 Turn-Record Correlation
 Every worker outcome message carries `turnRecordId` and `turnId`. The server rejects outcomes that do not match the current expected turn record, preventing stale or abandoned worker branches from mutating state.
@@ -167,7 +167,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 
 - **Process-Centric Control Plane:** The server is the exclusive source of truth for durable state; workers are disposable execution units.
 - **Fastify & Svelte 5 Stack:** Fastify provides high-performance REST and WebSocket servers; Svelte 5 SPA provides real-time UI chronicles.
-- **SQLite & Drizzle ORM:** Synchronous `better-sqlite3` ensures atomic, crash-safe state transactions.
+- **SQLite & Drizzle ORM:** Synchronous `node:sqlite` ensures atomic, crash-safe state transactions.
 - **Pi Coding Agent SDK:** `@earendil-works/pi-coding-agent` is embedded in workers as the core LLM execution engine.
 
 ## 10 Quality Scenarios
@@ -183,7 +183,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 ## 11 Risks and Technical Debt
 
 - **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
-- **Process-to-Process Creation:** Processes communicate via imported plan handovers; direct process-to-process dynamic instantiation is out of scope.
+- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: it atomically launches a generic child from a durable result and records immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
 
 ## 12 Glossary
 
@@ -193,3 +193,12 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 - **Product:** Named markdown artifact published by one turn and consumed by another.
 - **Launcher:** Canonical field schema and resolution logic for starting a process instance.
 - **Watcher:** Event-driven background trigger that monitors external systems and triggers a launcher.
+- **LaunchRun:** Durable, presentation-safe progress record for one launch attempt.
+
+The server's Launch Coordinator is the single launch orchestration seam. UI, watcher, scheduled,
+and startup-retry origins create Launch Runs through it. It sequences launcher checks, model and
+skill preparation, process creation, title work, runner startup, worker readiness, and first-turn
+acceptance. The process-detail read model independently projects startup from the correlated turn
+start, worker lease, server-observed readiness, and accepted turn; Launch Run ordering cannot
+select process startup state. Callers observe the durable HTTP read model and `launch.updated`
+invalidations rather than runner mechanics.

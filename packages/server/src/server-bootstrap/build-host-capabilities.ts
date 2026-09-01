@@ -1,19 +1,23 @@
 import path from "node:path";
+import { type Actor, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import {
 	coreHostCapabilities,
 	createCapabilityAccessor,
 	type ExtensionProcessDefinition,
 	type ExternalSourceServiceLike,
+	type PollingServiceLike,
 	type ProcessActionSummaryLike,
 	type ProcessLaunchPlan,
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionServiceLike,
 	type ProcessQuestionServiceLike,
 	type ProvidedCapability,
+	type RegisteredProcessWatcherLike,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/index.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { ExtensionHost } from "../extensions/extension-host.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types.js";
 import {
 	createProcessFromLaunchConfig,
@@ -41,12 +45,14 @@ export function buildHostCapabilities(input: {
 	extensionHost?: ExtensionHost;
 	logger?: ProcessEngineLogger;
 	processWatcherService: unknown;
+	polling: PollingServiceLike;
 	externalSourceService: ExternalSourceServiceLike;
 	processModelSelection: ProcessModelSelectionServiceLike;
 	resultImages: ResultImageStore;
 	repositoryCredentials: import("../repository-credentials/service.js").RepositoryCredentialService;
 	processDefinitions: ReadonlyMap<string, ExtensionProcessDefinition>;
 	processQuestions: ProcessQuestionServiceLike;
+	launchCoordinator: LaunchCoordinator;
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 }) {
 	const launchExecutorDeps = {
@@ -110,19 +116,51 @@ export function buildHostCapabilities(input: {
 				processLaunches: {
 					createProcessFromLaunchConfig(
 						configInput: import("@leitwerk-dev/process-sdk").ProcessLaunchConfigExecutionInput,
-						opts?: { actor?: import("@leitwerk-dev/domain").Actor },
+						opts?: { actor?: import("@leitwerk-dev/domain").Actor; launchRunId?: string },
 					) {
 						return createProcessFromLaunchConfig(launchExecutorDeps, configInput, opts);
 					},
 					createProcessFromLaunchPlan(
 						launchPlan: ProcessLaunchPlan,
-						opts?: { actor?: import("@leitwerk-dev/domain").Actor },
+						opts?: { actor?: import("@leitwerk-dev/domain").Actor; launchRunId?: string },
 					) {
 						return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, opts);
 					},
 				},
 				handoffDedupKeys: input.baseDeps.handoffDedupKeys,
 				processWatchers: input.processWatcherService,
+				launchRuns: {
+					startWatcher<TConfig, TEvent>(
+						watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
+						event: TEvent,
+						opts: { idempotencyKey: string; actor?: Actor },
+					) {
+						return input.launchCoordinator.startWatcher(
+							watcher,
+							event,
+							{
+								idempotencyKey: opts.idempotencyKey,
+								actor: opts.actor ?? SYSTEM_ACTOR,
+							},
+							{
+								launchPlans: input.launchPlans,
+								processLaunches: {
+									createProcessFromLaunchConfig(configInput, launchOpts) {
+										return createProcessFromLaunchConfig(
+											launchExecutorDeps,
+											configInput,
+											launchOpts,
+										);
+									},
+									createProcessFromLaunchPlan(launchPlan, launchOpts) {
+										return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, launchOpts);
+									},
+								},
+							},
+						);
+					},
+				},
+				polling: input.polling,
 				processModelSelection: input.processModelSelection,
 				processQuestions: input.processQuestions,
 				repositoryCredentials: input.repositoryCredentials,

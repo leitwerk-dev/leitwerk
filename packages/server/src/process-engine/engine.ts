@@ -3,7 +3,6 @@ import {
 	maybeBroadcastErrorAttentionToast as maybeBroadcastErrorAttentionToastCore,
 } from "../process-attention-notifier.js";
 import { broadcastProcessAttentionToast } from "../process-operator-attention.js";
-import { createServerAutomaticTurnDrainer } from "../server-automatic-turn-drainer.js";
 import {
 	AbortProcess,
 	AbortTurn,
@@ -76,24 +75,8 @@ function maybeBroadcastCommittedActionRequiredToast(
 
 export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 	let engine: ProcessEngine;
-	const serverAutomaticTurnDrainer = createServerAutomaticTurnDrainer(deps, () => engine);
-	function requestServerAutomaticDrainInBackground(instanceId: string): void {
-		const process = deps.processes.getById(instanceId);
-		const freshTurnRecordId =
-			process?.currentExecution?.kind === "server_turn" ? process.currentExecution.id : null;
-		void serverAutomaticTurnDrainer
-			.requestDrain(instanceId, { freshTurnRecordId })
-			.catch((error: unknown) => {
-				deps.logger?.error(
-					{ err: error, instanceId },
-					"Background server-automatic turn drain failed",
-				);
-			});
-	}
-
 	const run = createEngineRunner(deps, {
 		async afterSuccess(instanceId) {
-			requestServerAutomaticDrainInBackground(instanceId);
 			for (const hook of deps.afterSuccessHooks ?? []) {
 				await hook(instanceId);
 			}
@@ -193,12 +176,12 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 		async recordTurnOutcome(instanceId, payload, options) {
 			return maybeBroadcastActionRequiredToast(
-				await run(TurnOutcome, { instanceId, payload }, { afterRecord: options?.onRecorded }),
+				await run(TurnOutcome, { instanceId, payload, onRecorded: options?.onRecorded }),
 			);
 		},
 
 		recordTurnFailed(instanceId, payload, options) {
-			return run(TurnFailed, { instanceId, payload }, { afterRecord: options?.onRecorded });
+			return run(TurnFailed, { instanceId, payload, onRecorded: options?.onRecorded });
 		},
 
 		updateSemanticEntryRefs(instanceId, patch) {
@@ -211,10 +194,6 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 		queueInputs(instanceId, queued, opts) {
 			return run(QueueInputs, { instanceId, queued, opts });
-		},
-
-		async drainServerAutomaticTurns(instanceId) {
-			await serverAutomaticTurnDrainer.requestDrain(instanceId);
 		},
 
 		async dispatchExternalTurnTrigger(instanceId, actionId, input) {

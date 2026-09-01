@@ -3,6 +3,7 @@ import type { AuthMeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import { onMount } from "svelte";
 import ToastContainer from "./components/ToastContainer.svelte";
 import { fetchAuthMeWithRetry } from "./lib/api.js";
+import { dispatchLaunchUpdated } from "./lib/launch-updates.js";
 import {
 	handleWsEvent,
 	setCurrentDetailInstanceId,
@@ -59,6 +60,9 @@ $effect(() => {
 	realtimeStarted = true;
 	void loadBrowserUiExtensions();
 	onWsEvent((frame) => {
+		if (dispatchLaunchUpdated(frame)) {
+			return;
+		}
 		if (dispatchBrowserUiExtensionWsFrame(frame)) {
 			return;
 		}

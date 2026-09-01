@@ -154,7 +154,7 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 				.delete(s.processProjects)
 				.where(eq(s.processProjects.instanceId, instanceId))
 				.run();
-			return result.changes;
+			return Number(result.changes);
 		},
 	};
 }

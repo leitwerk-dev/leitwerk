@@ -2,9 +2,17 @@ import type {
 	ProcessInstance,
 	ProcessProject,
 	ProcessQuestionRequest,
+	ProcessToolApprovalRequest,
 	QuestionAnswerDraft,
 } from "@leitwerk-dev/domain";
-import type { PrimaryPathSnapshot } from "@leitwerk-dev/protocol";
+import type {
+	LaunchTicketCreationRequestBody,
+	LaunchTicketCreationResponseBody,
+	PrimaryPathSnapshot,
+	ResolveToolApprovalRequestBody,
+	TicketCreationDestinationListResponse,
+	TicketCreationToolSummary,
+} from "@leitwerk-dev/protocol";
 import type {
 	AuthMeResponseBody,
 	CronPreviewResponseBody,
@@ -23,6 +31,7 @@ import type {
 	LauncherOptionsResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
+	LaunchRunResponseBody,
 	ModelProviderOptionsResponseBody,
 	PrimaryPathSnapshotResponseBody,
 	ProcessActionModelPreview,
@@ -32,6 +41,7 @@ import type {
 	ProcessDiagnosticsData,
 	ProcessDiagnosticsResponseBody,
 	ProcessesOverviewResponseBody,
+	ProcessLaunchRunsResponseBody,
 	ProcessOverviewItem,
 	ProcessRetryConfig,
 	ProcessRetryConfigResponseBody,
@@ -42,6 +52,7 @@ import type {
 	SkillCatalogDetail,
 	SkillCatalogDetailResponseBody,
 	SkillsCatalogResponseBody,
+	StartLaunchRunResponseBody,
 	TurnReasoningDetailResponseBody,
 	UiLauncherSummary,
 	WatcherSummary,
@@ -186,6 +197,88 @@ export async function submitQuestionAnswers(input: {
 	).request;
 }
 
+export async function fetchTicketCreationTools(): Promise<TicketCreationToolSummary[]> {
+	const response = await getFetchImpl()(resolveApiUrl("/api/ticket-creation/tools"));
+	if (!response.ok) throw new ApiResponseError("Couldn't load ticket systems", response.status);
+	return (
+		await readJsonObject<{ tools: TicketCreationToolSummary[] }>(
+			response,
+			"Malformed ticket tool response",
+		)
+	).tools;
+}
+
+export async function fetchTicketCreationDestinations(
+	toolName: string,
+): Promise<TicketCreationDestinationListResponse> {
+	const response = await getFetchImpl()(
+		resolveApiUrl(`/api/ticket-creation/tools/${encodeURIComponent(toolName)}/destinations`),
+	);
+	if (!response.ok) {
+		const body = await tryReadJson(response);
+		throw new Error(readErrorMessage(body) ?? `Couldn't load destinations: ${response.status}`);
+	}
+	return readJsonObject<TicketCreationDestinationListResponse>(
+		response,
+		"Malformed ticket destination response",
+	);
+}
+
+export async function launchTicketCreation(
+	instanceId: string,
+	body: LaunchTicketCreationRequestBody,
+): Promise<LaunchTicketCreationResponseBody> {
+	const response = await getFetchImpl()(
+		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`),
+		{
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		},
+	);
+	if (!response.ok) {
+		const value = await tryReadJson(response);
+		throw new ApiResponseError(
+			readErrorMessage(value) ?? "Couldn't start ticket creation",
+			response.status,
+		);
+	}
+	return readJsonObject<LaunchTicketCreationResponseBody>(
+		response,
+		"Malformed ticket launch response",
+	);
+}
+
+export async function resolveToolApproval(input: {
+	instanceId: string;
+	requestId: string;
+	body: ResolveToolApprovalRequestBody;
+}): Promise<ProcessToolApprovalRequest> {
+	const response = await getFetchImpl()(
+		resolveApiUrl(
+			`/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
+		),
+		{
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(input.body),
+		},
+	);
+	if (!response.ok) {
+		const value = await tryReadJson(response);
+		throw new ApiResponseError(
+			readErrorMessage(value) ?? "Couldn't resolve approval",
+			response.status,
+		);
+	}
+	return (
+		await readJsonObject<{ request: ProcessToolApprovalRequest }>(
+			response,
+			"Malformed approval response",
+		)
+	).request;
+}
+
 export async function fetchAuthMe(): Promise<AuthMeResponseBody> {
 	const res = await getFetchImpl()(resolveApiUrl("/api/auth/me"));
 	if (res.status === 401) {
@@ -265,6 +358,10 @@ export async function fetchAuthMeWithRetry(
 }
 
 export type LauncherSubmitResult =
+	| {
+			kind: "launch_started";
+			launchRunId: string;
+	  }
 	| {
 			kind: "success";
 			process: ProcessInstance;
@@ -547,6 +644,64 @@ async function parseLauncherErrorResponse(
 	};
 }
 
+export async function fetchLaunchRun(
+	launchRunId: string,
+): Promise<LaunchRunResponseBody["launchRun"]> {
+	const res = await getFetchImpl()(
+		resolveApiUrl(`/api/launch-runs/${encodeURIComponent(launchRunId)}`),
+	);
+	if (!res.ok) throw new Error(`Couldn't load launch progress: ${res.status}`);
+	return (await readJsonObject<LaunchRunResponseBody>(res, "Malformed launch run response"))
+		.launchRun;
+}
+
+export async function fetchProcessLaunchRuns(
+	instanceId: string,
+): Promise<ProcessLaunchRunsResponseBody["launchRuns"]> {
+	const res = await getFetchImpl()(
+		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/launch-runs`),
+	);
+	if (!res.ok) throw new Error(`Couldn't load launch progress: ${res.status}`);
+	return (
+		await readJsonObject<ProcessLaunchRunsResponseBody>(
+			res,
+			"Malformed process launch runs response",
+		)
+	).launchRuns;
+}
+
+export async function startLaunchRun(
+	launcherId: string,
+	title: string | null,
+	launcherInput: Record<string, unknown>,
+	modelConfig: LauncherModelConfigDefaults = {},
+	skillIds: readonly string[] = [],
+): Promise<LauncherSubmitResult> {
+	const res = await getFetchImpl()(
+		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/launch-runs`),
+		{
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": crypto.randomUUID(),
+			},
+			body: JSON.stringify({
+				title,
+				launcherInput,
+				modelConfig,
+				schedule: { mode: "now" },
+				skillIds,
+			}),
+		},
+	);
+	if (!res.ok) return parseLauncherErrorResponse(res, "Couldn't start this process");
+	const body = await readJsonObject<StartLaunchRunResponseBody>(
+		res,
+		"Malformed launch run response",
+	);
+	return { kind: "launch_started", launchRunId: body.launchRunId };
+}
+
 export async function launchLauncher(
 	launcherId: string,
 	title: string | null,
@@ -555,6 +710,9 @@ export async function launchLauncher(
 	schedule: ScheduleConfigInput = { mode: "now" },
 	skillIds: readonly string[] = [],
 ): Promise<LauncherSubmitResult> {
+	if (schedule.mode === "now") {
+		return startLaunchRun(launcherId, title, launcherInput, modelConfig, skillIds);
+	}
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/launch`),
 		{

@@ -134,7 +134,11 @@ function automaticStart(
 		},
 		pendingInputs: options.pendingInputs ?? [],
 		bootstrap: { kind: "automatic" },
-		treePaths: { primaryTreeFile: "/tmp/harness-tree.jsonl", workspaceRoot: "/tmp" },
+		treePaths: {
+			primaryTreeFile: "/tmp/harness-tree.jsonl",
+			workspaceRoot: "/tmp",
+			piResourceBundlesDir: "/tmp/pi-resource-bundles",
+		},
 		resume: false,
 	};
 }
@@ -207,7 +211,7 @@ describe("worker runtime harness", () => {
 	it("observes transport-ready startup through outgoing messages", async () => {
 		const harness = createAutomaticHarness();
 		await harness.connect();
-		expect(types(harness)).toEqual(["worker.hello"]);
+		expect(types(harness)).toEqual(["worker.hello", "worker.bootstrap_progress"]);
 		expect(harness.outgoing[0]?.sentAt).toBe("2025-01-01T00:00:00.000Z");
 		expect(harness.transportStartCount).toBe(1);
 	});
@@ -339,7 +343,7 @@ describe("worker runtime harness", () => {
 			inputs: [input(1)],
 		});
 		await harness.flush();
-		expect(types(harness)).toEqual(["worker.hello"]);
+		expect(types(harness)).toEqual(["worker.hello", "worker.bootstrap_progress"]);
 	});
 
 	it("ignores acceptance for a stale start record", async () => {
@@ -358,7 +362,11 @@ describe("worker runtime harness", () => {
 		const harness = createAutomaticHarness();
 		await startHarness(harness);
 		harness.reconnect();
-		expect(types(harness).slice(-2)).toEqual(["worker.hello", "worker.heartbeat"]);
+		expect(types(harness).slice(-3)).toEqual([
+			"worker.hello",
+			"worker.bootstrap_progress",
+			"worker.heartbeat",
+		]);
 		const heartbeat = harness.outgoing.at(-1);
 		expect(heartbeat?.type === "worker.heartbeat" && heartbeat.payload.lastSequenceConsumed).toBe(
 			0,

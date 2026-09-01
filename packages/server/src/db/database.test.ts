@@ -1,8 +1,8 @@
 import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import Database from "better-sqlite3";
 import { describe, expect, it } from "vitest";
 import {
 	closeDatabase,
@@ -11,13 +11,13 @@ import {
 	initializeSchema,
 } from "./database.js";
 
-function columnNames(sqlite: Database.Database, table: string): string[] {
+function columnNames(sqlite: DatabaseSync, table: string): string[] {
 	return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
 		(row) => row.name,
 	);
 }
 
-function tableNames(sqlite: Database.Database): string[] {
+function tableNames(sqlite: DatabaseSync): string[] {
 	return (
 		sqlite
 			.prepare(
@@ -27,9 +27,9 @@ function tableNames(sqlite: Database.Database): string[] {
 	).map((row) => row.name);
 }
 
-function openBaseline(): Database.Database {
-	const sqlite = new Database(":memory:");
-	sqlite.pragma("foreign_keys = ON");
+function openBaseline(): DatabaseSync {
+	const sqlite = new DatabaseSync(":memory:");
+	sqlite.exec("PRAGMA foreign_keys = ON");
 	initializeSchema(sqlite);
 	return sqlite;
 }
@@ -69,7 +69,7 @@ const PROVIDER_CREDENTIALS_WITH_SCHEMA_VERSION_SQL = `CREATE TABLE provider_cred
 	CONSTRAINT provider_credentials_positive_schema_version CHECK ("provider_credentials"."credential_schema_version" > 0)
 )`;
 
-function replaceProviderCredentialsWithPreviousSchema(sqlite: Database.Database): void {
+function replaceProviderCredentialsWithPreviousSchema(sqlite: DatabaseSync): void {
 	sqlite.exec("DROP TABLE provider_credentials");
 	sqlite.exec(PROVIDER_CREDENTIALS_WITH_SCHEMA_VERSION_SQL);
 	sqlite
@@ -81,7 +81,7 @@ function replaceProviderCredentialsWithPreviousSchema(sqlite: Database.Database)
 		.run();
 }
 
-function insertProcess(sqlite: Database.Database, id: string): void {
+function insertProcess(sqlite: DatabaseSync, id: string): void {
 	sqlite
 		.prepare(
 			"INSERT INTO process_instances (id, process_id, created_at, updated_at) VALUES (?, 'test_process', '2026-07-22', '2026-07-22')",
@@ -89,7 +89,7 @@ function insertProcess(sqlite: Database.Database, id: string): void {
 		.run(id);
 }
 
-function insertLease(sqlite: Database.Database, id: string, instanceId: string): void {
+function insertLease(sqlite: DatabaseSync, id: string, instanceId: string): void {
 	sqlite
 		.prepare(
 			"INSERT INTO worker_leases (id, instance_id, worker_id, state, started_at) VALUES (?, ?, ?, 'bootstrapping', '2026-07-22')",
@@ -98,7 +98,7 @@ function insertLease(sqlite: Database.Database, id: string, instanceId: string):
 }
 
 function insertStart(input: {
-	sqlite: Database.Database;
+	sqlite: DatabaseSync;
 	id: string;
 	instanceId: string;
 	proposedTurnRecordId: string;
@@ -120,7 +120,7 @@ function insertStart(input: {
 }
 
 function insertAcceptedWorkerTurn(input: {
-	sqlite: Database.Database;
+	sqlite: DatabaseSync;
 	id: string;
 	instanceId: string;
 	turnId?: string;
@@ -149,8 +149,9 @@ describe("fresh SQLite baseline", () => {
 			expect.arrayContaining(["process_instances", "turn_start_records", "provider_credentials"]),
 		);
 		expect(columnNames(sqlite, "process_instances")).toEqual(
-			expect.arrayContaining(["current_worker_start_id", "current_server_turn_record_id"]),
+			expect.arrayContaining(["current_worker_start_id"]),
 		);
+		expect(columnNames(sqlite, "process_instances")).not.toContain("current_server_turn_record_id");
 		expect(columnNames(sqlite, "process_instances")).not.toEqual(
 			expect.arrayContaining(["current_turn_record_id", "failed_turn_record_id"]),
 		);
@@ -190,8 +191,8 @@ describe("SQL-backed skill migration", () => {
 	it("backs up a file-backed database and preserves existing process data", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-skill-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = OFF");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
 			DROP TABLE process_skills;
@@ -204,7 +205,7 @@ describe("SQL-backed skill migration", () => {
 		seed.close();
 
 		const db = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (db as unknown as { $client: Database.Database }).$client;
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
 		expect(tableNames(sqlite)).toEqual(
 			expect.arrayContaining([
 				"skills",
@@ -223,8 +224,8 @@ describe("SQL-backed skill migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new Database(path.join(tempRoot, "backups", String(backupName)), {
-			readonly: true,
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+			readOnly: true,
 		});
 		expect(tableNames(backup)).not.toContain("skills");
 		expect(backup.prepare("SELECT id FROM process_instances WHERE id = 'preserved'").get()).toEqual(
@@ -237,8 +238,8 @@ describe("SQL-backed skill migration", () => {
 	it("normalizes an already-created development catalog without losing entries", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-catalog-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = OFF");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
 			ALTER TABLE skills DROP COLUMN registration_kind;
@@ -253,7 +254,7 @@ describe("SQL-backed skill migration", () => {
 		seed.close();
 
 		const db = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (db as unknown as { $client: Database.Database }).$client;
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
 		expect(columnNames(sqlite, "skills")).toContain("registration_kind");
 		expect(columnNames(sqlite, "skill_catalog_entries")).toContain("available");
 		expect(columnNames(sqlite, "skill_catalog_entries")).not.toContain("skill_markdown");
@@ -268,8 +269,8 @@ describe("process launch intent migration", () => {
 	it("backs up a file-backed database and preserves existing processes", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-launch-intent-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = OFF");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
 			ALTER TABLE process_instances DROP COLUMN launch_intent_json;
@@ -288,7 +289,7 @@ describe("process launch intent migration", () => {
 		seed.close();
 
 		const db = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (db as unknown as { $client: Database.Database }).$client;
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
 		expect(columnNames(sqlite, "process_instances")).toContain("launch_intent_json");
 		expect(
 			sqlite
@@ -306,8 +307,8 @@ describe("process launch intent migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new Database(path.join(tempRoot, "backups", String(backupName)), {
-			readonly: true,
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+			readOnly: true,
 		});
 		expect(columnNames(backup, "process_instances")).not.toContain("launch_intent_json");
 		expect(tableNames(backup)).toContain("process_launch_intents");
@@ -316,12 +317,53 @@ describe("process launch intent migration", () => {
 	});
 });
 
+describe("worker startup observation migration", () => {
+	it("backs up a file-backed database and preserves existing leases", () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-worker-startup-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
+		initializeSchema(seed, { sqlitePath });
+		seed.exec(`
+			INSERT INTO process_instances (id, process_id, created_at, updated_at)
+			VALUES ('preserved-worker', 'test_process', '2026-08-27', '2026-08-27');
+			INSERT INTO worker_leases (id, instance_id, worker_id, state, started_at)
+			VALUES ('wls-preserved', 'preserved-worker', 'worker-preserved', 'bootstrapping', '2026-08-27');
+			DROP INDEX idx_worker_leases_turn_start;
+			ALTER TABLE worker_leases DROP COLUMN ready_at;
+			ALTER TABLE worker_leases DROP COLUMN workspace_preparation_started_at;
+			ALTER TABLE worker_leases DROP COLUMN connected_at;
+			ALTER TABLE worker_leases DROP COLUMN turn_start_record_id;
+		`);
+		seed.close();
+
+		const db = createDatabase({ sqlitePath, enableWAL: false });
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
+		expect(columnNames(sqlite, "worker_leases")).toEqual(
+			expect.arrayContaining([
+				"turn_start_record_id",
+				"connected_at",
+				"workspace_preparation_started_at",
+				"ready_at",
+			]),
+		);
+		expect(
+			sqlite.prepare("SELECT id, worker_id FROM worker_leases WHERE id = 'wls-preserved'").get(),
+		).toEqual({ id: "wls-preserved", worker_id: "worker-preserved" });
+		const backupName = readdirSync(path.join(tempRoot, "backups")).find((name) =>
+			name.endsWith(".bak"),
+		);
+		expect(backupName).toBeDefined();
+		closeDatabase(db);
+	});
+});
+
 describe("process model policy migration", () => {
 	it("backs up and preserves file-backed provenance data", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-model-policy-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = OFF");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
 			ALTER TABLE process_instances DROP COLUMN launch_intent_json;
@@ -344,7 +386,7 @@ describe("process model policy migration", () => {
 		seed.close();
 
 		const db = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (db as unknown as { $client: Database.Database }).$client;
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
 		expect(
 			sqlite
 				.prepare(
@@ -362,8 +404,8 @@ describe("process model policy migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new Database(path.join(tempRoot, "backups", String(backupName)), {
-			readonly: true,
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+			readOnly: true,
 		});
 		expect(columnNames(backup, "process_instances")).not.toContain("selected_turn_model_kind");
 		expect(columnNames(backup, "process_instances")).not.toContain("launch_intent_json");
@@ -409,14 +451,14 @@ describe("provider credential migration", () => {
 	it("backs up and automatically migrates the known file-backed schema", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-provider-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = ON");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		replaceProviderCredentialsWithPreviousSchema(seed);
 		seed.close();
 
 		const db = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (db as unknown as { $client: Database.Database }).$client;
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
 		expect(columnNames(sqlite, "provider_credentials")).not.toContain("credential_schema_version");
 		expect(sqlite.prepare("SELECT encrypted_payload FROM provider_credentials").get()).toEqual({
 			encrypted_payload: "encrypted-value",
@@ -425,8 +467,8 @@ describe("provider credential migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new Database(path.join(tempRoot, "backups", String(backupName)), {
-			readonly: true,
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+			readOnly: true,
 		});
 		expect(columnNames(backup, "provider_credentials")).toContain("credential_schema_version");
 		backup.close();
@@ -434,19 +476,47 @@ describe("provider credential migration", () => {
 	});
 });
 
+describe("process tool approval request migration", () => {
+	it("accepts a migrated column appended by SQLite", () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-tool-approval-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		const seed = new DatabaseSync(sqlitePath);
+		initializeSchema(seed, { sqlitePath });
+		const currentSql = seed
+			.prepare(
+				"SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'process_tool_approval_requests'",
+			)
+			.get() as { sql: string };
+		seed.exec("DROP TABLE process_tool_approval_requests");
+		seed.exec(currentSql.sql.replace("\n\tdestination_json text,", ""));
+		seed.exec(
+			"CREATE UNIQUE INDEX uq_tool_approval_turn_call ON process_tool_approval_requests(instance_id, turn_record_id, tool_call_id)",
+		);
+		seed.exec(
+			"CREATE INDEX idx_tool_approval_instance_status ON process_tool_approval_requests(instance_id, status)",
+		);
+		seed.close();
+
+		const migrated = createDatabase({ sqlitePath, enableWAL: false });
+		const sqlite = (migrated as unknown as { $client: DatabaseSync }).$client;
+		expect(columnNames(sqlite, "process_tool_approval_requests")).toContain("destination_json");
+		closeDatabase(migrated);
+	});
+});
+
 describe("process question request migration", () => {
 	it("backs up existing data, adds the table, and preserves requests across reopen", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = ON");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		insertProcess(seed, "question-process");
 		seed.exec("DROP TABLE process_question_requests");
 		seed.close();
 
 		const migrated = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (migrated as unknown as { $client: Database.Database }).$client;
+		const sqlite = (migrated as unknown as { $client: DatabaseSync }).$client;
 		expect(tableNames(sqlite)).toContain("process_question_requests");
 		expect(
 			sqlite
@@ -486,7 +556,7 @@ describe("process question request migration", () => {
 		closeDatabase(migrated);
 
 		const reopened = createDatabase({ sqlitePath, enableWAL: false });
-		const reopenedSqlite = (reopened as unknown as { $client: Database.Database }).$client;
+		const reopenedSqlite = (reopened as unknown as { $client: DatabaseSync }).$client;
 		expect(
 			reopenedSqlite
 				.prepare(
@@ -503,8 +573,8 @@ describe("process question request migration", () => {
 	it("removes obsolete draft state and preserves durable requests", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-draft-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new Database(sqlitePath);
-		seed.pragma("foreign_keys = ON");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		insertProcess(seed, "question-process");
 		insertLease(seed, "question-lease", "question-process");
@@ -556,7 +626,7 @@ describe("process question request migration", () => {
 		seed.close();
 
 		const migrated = createDatabase({ sqlitePath, enableWAL: false });
-		const sqlite = (migrated as unknown as { $client: Database.Database }).$client;
+		const sqlite = (migrated as unknown as { $client: DatabaseSync }).$client;
 		expect(columnNames(sqlite, "process_question_requests")).not.toEqual(
 			expect.arrayContaining(["worker_lease_id", "draft_json", "draft_revision"]),
 		);
@@ -590,7 +660,7 @@ describe("unknown schema rejection", () => {
 	it("rejects an old schema without migrating, importing, backing up, or resetting it", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-old-epoch-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const old = new Database(sqlitePath);
+		const old = new DatabaseSync(sqlitePath);
 		old.exec("CREATE TABLE process_instances (id text PRIMARY KEY, durable_marker text)");
 		old.prepare("INSERT INTO process_instances VALUES ('old', 'preserve-me')").run();
 		old.close();
@@ -598,7 +668,7 @@ describe("unknown schema rejection", () => {
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
 			DatabaseSchemaMismatchError,
 		);
-		const unchanged = new Database(sqlitePath);
+		const unchanged = new DatabaseSync(sqlitePath);
 		expect(unchanged.prepare("SELECT * FROM process_instances").all()).toEqual([
 			{ id: "old", durable_marker: "preserve-me" },
 		]);
@@ -611,7 +681,7 @@ describe("unknown schema rejection", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-unknown-schema-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const changed = new Database(sqlitePath);
+		const changed = new DatabaseSync(sqlitePath);
 		changed.exec("CREATE TABLE operator_unknown (id text PRIMARY KEY)");
 		changed.close();
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
@@ -620,42 +690,78 @@ describe("unknown schema rejection", () => {
 	});
 });
 
-describe("execution lineage constraints", () => {
-	it("rejects simultaneous worker-start and server-turn pointers", () => {
-		const sqlite = openBaseline();
-		insertProcess(sqlite, "p1");
-		insertStart({ sqlite, id: "start1", instanceId: "p1", proposedTurnRecordId: "turn1" });
-		sqlite
-			.prepare(
-				"INSERT INTO turn_records (id, instance_id, turn_id, turn_type, status, started_at) VALUES ('server1', 'p1', 'server', 'server_automatic', 'running', '2026-07-22')",
-			)
-			.run();
-		expect(() =>
+describe("server-automatic removal migration", () => {
+	it("aborts in-flight execution, converts history, and preserves unrelated data", () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-server-automatic-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+
+		const legacy = new DatabaseSync(sqlitePath);
+		legacy.exec("ALTER TABLE process_instances ADD COLUMN current_server_turn_record_id text");
+		insertProcess(legacy, "active-server-process");
+		insertProcess(legacy, "unrelated-process");
+		legacy.exec("PRAGMA ignore_check_constraints = ON");
+		legacy.exec(`
+			INSERT INTO turn_records
+				(id, instance_id, turn_id, turn_type, status, started_at)
+			VALUES
+				('server-running', 'active-server-process', 'deliver', 'server_automatic', 'running', '2026-08-20'),
+				('server-history', 'unrelated-process', 'prepare', 'server_automatic', 'succeeded', '2026-08-19');
+			UPDATE process_instances
+			SET current_server_turn_record_id = 'server-running'
+			WHERE id = 'active-server-process';
+		`);
+		legacy.exec("PRAGMA ignore_check_constraints = OFF");
+		legacy.close();
+
+		const migrated = createDatabase({ sqlitePath, enableWAL: false });
+		closeDatabase(migrated);
+		const sqlite = new DatabaseSync(sqlitePath);
+		expect(columnNames(sqlite, "process_instances")).not.toContain("current_server_turn_record_id");
+		expect(
+			sqlite
+				.prepare("SELECT lifecycle_status, closed_at FROM process_instances WHERE id = ?")
+				.get("active-server-process"),
+		).toMatchObject({ lifecycle_status: "aborted", closed_at: expect.any(String) });
+		expect(
+			sqlite.prepare("SELECT id FROM process_instances WHERE id = ?").get("unrelated-process"),
+		).toEqual({ id: "unrelated-process" });
+		expect(
 			sqlite
 				.prepare(
-					"UPDATE process_instances SET current_worker_start_id = 'start1', current_server_turn_record_id = 'server1' WHERE id = 'p1'",
+					"SELECT turn_type, status, error_summary, turn_start_record_id, accepted_worker_lease_id FROM turn_records WHERE id = ?",
 				)
-				.run(),
-		).toThrow(/CHECK constraint/);
+				.get("server-running"),
+		).toEqual({
+			turn_type: "automatic",
+			status: "failed",
+			error_summary: "Server-automatic execution was removed",
+			turn_start_record_id: "tsr_migrated_20260821_server-running",
+			accepted_worker_lease_id: "wkr_migrated_20260821_server-running",
+		});
+		expect(
+			sqlite
+				.prepare("SELECT turn_type, status FROM turn_records WHERE id = ?")
+				.get("server-history"),
+		).toEqual({ turn_type: "automatic", status: "succeeded" });
+		expect(readdirSync(path.join(tempRoot, "backups")).some((name) => name.endsWith(".bak"))).toBe(
+			true,
+		);
 		sqlite.close();
 	});
+});
 
+describe("execution lineage constraints", () => {
 	it("rejects execution pointers to another process", () => {
 		const sqlite = openBaseline();
 		insertProcess(sqlite, "p1");
 		insertProcess(sqlite, "p2");
 		insertStart({ sqlite, id: "start2", instanceId: "p2", proposedTurnRecordId: "turn2" });
-		sqlite
-			.prepare(
-				"INSERT INTO turn_records (id, instance_id, turn_id, turn_type, status, started_at) VALUES ('server2', 'p2', 'server', 'server_automatic', 'running', '2026-07-22')",
-			)
-			.run();
-		for (const statement of [
-			"UPDATE process_instances SET current_worker_start_id = 'start2' WHERE id = 'p1'",
-			"UPDATE process_instances SET current_server_turn_record_id = 'server2' WHERE id = 'p1'",
-		]) {
-			expect(() => sqlite.prepare(statement).run()).toThrow(/FOREIGN KEY constraint/);
-		}
+		expect(() =>
+			sqlite
+				.prepare("UPDATE process_instances SET current_worker_start_id = 'start2' WHERE id = 'p1'")
+				.run(),
+		).toThrow(/FOREIGN KEY constraint/);
 		sqlite.close();
 	});
 
@@ -710,7 +816,7 @@ describe("execution lineage constraints", () => {
 		sqlite.close();
 	});
 
-	it("requires start and lease links exactly for worker-owned turns", () => {
+	it("requires start and lease links for worker-owned turns and rejects removed turn types", () => {
 		const sqlite = openBaseline();
 		insertProcess(sqlite, "p1");
 		expect(() =>
@@ -720,13 +826,18 @@ describe("execution lineage constraints", () => {
 				)
 				.run(),
 		).toThrow(/CHECK constraint/);
-		expect(() =>
-			sqlite
-				.prepare(
-					"INSERT INTO turn_records (id, instance_id, turn_id, turn_type, status, turn_start_record_id, accepted_worker_lease_id, started_at) VALUES ('server', 'p1', 'server', 'server_automatic', 'running', 'anything', 'anything', '2026-07-22')",
-				)
-				.run(),
-		).toThrow(/CHECK constraint/);
+		for (const [id, turnType] of [
+			["automatic", "automatic"],
+			["removed", "server_automatic"],
+		] as const) {
+			expect(() =>
+				sqlite
+					.prepare(
+						"INSERT INTO turn_records (id, instance_id, turn_id, turn_type, status, started_at) VALUES (?, 'p1', 'server', ?, 'running', '2026-07-22')",
+					)
+					.run(id, turnType),
+			).toThrow(/CHECK constraint/);
+		}
 		sqlite.close();
 	});
 

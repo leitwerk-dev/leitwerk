@@ -1,8 +1,4 @@
-import {
-	failActiveTurnProgress,
-	type ProcessSemanticEntryRefKey,
-	type TurnProgressReport,
-} from "@leitwerk-dev/domain";
+import type { ProcessSemanticEntryRefKey, TurnProgressReport } from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	TurnOptions,
@@ -70,6 +66,22 @@ function failedResult(
 	return { kind: "failed", failure, appliedTargetedInputs };
 }
 
+function normalizePreparedData(value: unknown): unknown {
+	if (value === undefined) {
+		throw new Error("LLM turn preparation must return JSON-serializable data");
+	}
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(value);
+	} catch {
+		throw new Error("LLM turn preparation must return JSON-serializable data");
+	}
+	if (Buffer.byteLength(serialized, "utf8") > 65_536) {
+		throw new Error("LLM turn preparation data exceeds 65536 bytes");
+	}
+	return JSON.parse(serialized) as unknown;
+}
+
 /** Execute one accepted selected turn and return its single terminal fact. */
 export async function executeSelectedTurn(
 	input: SelectedTurnExecutionInput,
@@ -89,6 +101,24 @@ export async function executeSelectedTurn(
 	if (!handler) throw new Error(`Validated turn handler '${currentTurnId}' is unavailable`);
 	let automaticIntegrationCallIndex = 0;
 	let latestProgressReport: TurnProgressReport | null = null;
+	const reportProgress = (report: TurnProgressReport) => {
+		latestProgressReport = report;
+		input.emit({ kind: "progress", turnRecordId: input.turnRecordId, report });
+	};
+	const callIntegrationTool = async (name: string, args: Record<string, unknown>) => {
+		const tool = input.integrationTools?.find((candidate) => candidate.name === name);
+		if (!tool) {
+			throw new Error(`Integration tool '${name}' is not authorized for turn '${currentTurnId}'`);
+		}
+		automaticIntegrationCallIndex += 1;
+		return tool.execute(args, {
+			toolCallId:
+				selectedTurnType === "automatic"
+					? `${input.turnRecordId}:${automaticIntegrationCallIndex}:${name}`
+					: `${input.turnRecordId}:prepare:${automaticIntegrationCallIndex}:${name}`,
+			signal: input.signal,
+		});
+	};
 
 	const ctx = {
 		process: processSnapshot,
@@ -100,23 +130,8 @@ export async function executeSelectedTurn(
 		workspaceRoot: input.session.workspaceRoot,
 		...(selectedTurnType === "automatic"
 			? {
-					reportProgress(report: TurnProgressReport) {
-						latestProgressReport = report;
-						input.emit({ kind: "progress", turnRecordId: input.turnRecordId, report });
-					},
-					async callIntegrationTool(name: string, args: Record<string, unknown>) {
-						const tool = input.integrationTools?.find((candidate) => candidate.name === name);
-						if (!tool) {
-							throw new Error(
-								`Integration tool '${name}' is not authorized for turn '${currentTurnId}'`,
-							);
-						}
-						automaticIntegrationCallIndex += 1;
-						return tool.execute(args, {
-							toolCallId: `${input.turnRecordId}:${automaticIntegrationCallIndex}:${name}`,
-							signal: input.signal,
-						});
-					},
+					reportProgress,
+					callIntegrationTool,
 				}
 			: {}),
 	} as WorkerProcessContext;
@@ -156,9 +171,36 @@ export async function executeSelectedTurn(
 					`Turn '${currentTurnId}' requires a Pi handle`,
 				);
 			}
+			let prepared = input.session.llmPreparation?.data;
+			if (turnDef.prepare && !input.session.llmPreparation) {
+				try {
+					prepared = normalizePreparedData(
+						await turnDef.prepare({
+							...ctx,
+							reportProgress,
+							callIntegrationTool,
+						}),
+					);
+					input.emit({ kind: "prepared", turnRecordId: input.turnRecordId, data: prepared });
+				} catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					throw new TurnExecutionFailure({
+						turnRecordId: input.turnRecordId,
+						turnId: currentTurnId,
+						turnType: "llm",
+						pathType: turnDef.branchType,
+						failure: new TurnExecutionError(
+							currentTurnId,
+							"infrastructure",
+							`Turn '${currentTurnId}' preparation failed: ${message}`,
+						),
+					});
+				}
+			}
 			const completed = await executeLlmTurn({
 				resolvedWorkerProcess,
 				ctx,
+				...(turnDef.prepare ? { prepared } : {}),
 				piHandle,
 				turnDef,
 				turnId: currentTurnId,
@@ -226,10 +268,18 @@ export async function executeSelectedTurn(
 	} catch (error) {
 		const failedProgressReport = latestProgressReport as TurnProgressReport | null;
 		if (failedProgressReport) {
+			const message = error instanceof Error ? error.message : String(error);
+			const steps = failedProgressReport.steps.map((step) =>
+				step.status === "in_progress"
+					? { ...step, status: "failed" as const, detail: message }
+					: step,
+			);
+			const report: TurnProgressReport = { ...failedProgressReport, steps };
+			latestProgressReport = report;
 			input.emit({
 				kind: "progress",
 				turnRecordId: input.turnRecordId,
-				report: failActiveTurnProgress(failedProgressReport),
+				report,
 			});
 		}
 		if (error instanceof TurnExecutionFailure) return failedResult(error, appliedTargetedInputs);

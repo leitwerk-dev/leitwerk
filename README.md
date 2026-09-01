@@ -8,7 +8,7 @@
 
 ## What it does
 
-- **Process runtime:** code-defined process definitions composed of LLM, automatic, server-automatic, human, and external turns.
+- **Process runtime:** code-defined process definitions composed of LLM, automatic, human, and external turns.
 - **Durable control plane:** Fastify + SQLite + WebSocket, with the server as the only writer of durable state.
 - **Disposable workers:** worker units embed `@earendil-works/pi-coding-agent` through the SDK and never access SQLite.
 - **Extension model:** Integrations and process definitions load through the same extension loader.
@@ -42,8 +42,6 @@
 | **[@leitwerk-dev/local-repo-change](extensions/local-repo-change)** | Local repository change process |
 | **[@leitwerk-dev/remote-repo-change](extensions/remote-repo-change)** | Remote SSH plan/implement/review/commit/push process |
 | **[@leitwerk-dev/process-analysis](extensions/process-analysis)** | Read-only analysis launcher for an existing process |
-| **[@leitwerk-dev/local-shell](extensions/local-shell)** | Trusted no-LLM shell on the server machine |
-| **[@leitwerk-dev/pi-shell](extensions/pi-shell)** | Minimal Pi session for trusted recovery in a directory |
 | **[@leitwerk-dev/telegram](extensions/telegram)** | Telegram bot bridge for process interaction |
 
 ## Documentation
@@ -74,7 +72,7 @@ Common entry points:
 
 ## Quick Start
 
-Prerequisites: Node.js 22.19.0+, npm, and Pi credentials/config for at least one model profile.
+Prerequisites: Node.js 26.x, npm, and Pi credentials/config for at least one model profile.
 
 ```bash
 npm install

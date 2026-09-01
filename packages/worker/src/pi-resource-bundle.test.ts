@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	createCanonicalPiResourceBundle,
 	materializeCanonicalPiResourceBundle,
+	persistPiResourceBundleForStart,
 	verifyCanonicalPiResourceBundle,
 } from "./pi-resource-bundle.js";
 
@@ -64,6 +65,44 @@ describe("Pi resource bundles", () => {
 		prefixed.write("hidden/", 345, "utf8");
 		rewriteChecksum(prefixed);
 		expect(() => verifyCanonicalPiResourceBundle(prefixed)).toThrow("path prefixes");
+	});
+
+	it("persists immutable bundles for starts and reuses them without delivered bytes", async () => {
+		const root = await temporaryRoot();
+		const bundlesDir = path.join(root, "pi-resource-bundles");
+		const bundle = createCanonicalPiResourceBundle([
+			{ path: "settings.json", content: Buffer.from("{}") },
+		]);
+		const first = await persistPiResourceBundleForStart({
+			bundlesDir,
+			startRecordId: "tsr_first",
+			digest: bundle.digest,
+			archiveBase64: Buffer.from(bundle.bytes).toString("base64"),
+		});
+		expect(first.reused).toBe(false);
+		expect(first.bundle).toEqual(bundle.bytes);
+		expect((await stat(path.join(bundlesDir, `${bundle.digest}.tar`))).mode & 0o777).toBe(0o600);
+
+		const retry = await persistPiResourceBundleForStart({
+			bundlesDir,
+			startRecordId: "tsr_retry",
+			digest: bundle.digest,
+		});
+		expect(retry).toEqual({ bundle: bundle.bytes, reused: true });
+		expect(
+			JSON.parse(await readFile(path.join(bundlesDir, "starts", "tsr_retry.json"), "utf8")),
+		).toMatchObject({ startRecordId: "tsr_retry", digest: bundle.digest });
+	});
+
+	it("fails when a referenced process-volume bundle is missing", async () => {
+		const root = await temporaryRoot();
+		await expect(
+			persistPiResourceBundleForStart({
+				bundlesDir: path.join(root, "pi-resource-bundles"),
+				startRecordId: "tsr_missing",
+				digest: "0".repeat(64),
+			}),
+		).rejects.toThrow("unavailable on the process volume");
 	});
 
 	it("rejects a digest mismatch and atomically materializes verified bytes", async () => {

@@ -44,7 +44,7 @@
 		"access": "public"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=26 <27"
 	},
 	"files": [
 		"dist/**",

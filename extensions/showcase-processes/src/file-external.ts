@@ -5,7 +5,6 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import {
 	consumeTriggerFile,
-	createPollLoop,
 	emptyPollResult,
 	type PollResult,
 	parseDurationMs,
@@ -242,7 +241,8 @@ export function createFileExternalSourceProvider(
 		return config;
 	}
 	const due = createDueTracker();
-	return createPollLoop({
+	return deps.polling.create({
+		id: "showcase-file-external",
 		pollInterval: () => "50ms",
 		isEnabled: () => true,
 		defaultIntervalMs: 50,

@@ -44,7 +44,6 @@ describe("domain-model", () => {
 			["human", false, true, "waiting"],
 			["external", false, true, "waiting"],
 			["automatic", true, false, "active"],
-			["server_automatic", false, false, "active"],
 		]);
 	});
 

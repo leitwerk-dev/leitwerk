@@ -58,7 +58,9 @@ describe("skill catalog service", () => {
 		remoteSkills = [];
 		await service.refresh();
 		expect(service.list().availableSkills).toEqual([]);
-		expect(service.list().installedSkills).toEqual([expect.objectContaining({ id: "review" })]);
+		expect(service.list().installedSkills).toEqual([
+			expect.objectContaining({ id: "review", registrationKind: "catalog" }),
+		]);
 	});
 
 	it("removes never-installed candidates after repository configuration is removed", () => {
@@ -70,7 +72,7 @@ describe("skill catalog service", () => {
 		expect(() => service.register("removed", "review")).toThrow("no longer available");
 	});
 
-	it("scopes duplicate remote ids by repository", async () => {
+	it("scopes duplicate remote ids by repository and rejects configuration-managed collisions", async () => {
 		const repos = createAllRepos(createInMemoryDatabase());
 		const candidateA = importedSkill("one");
 		const candidateB = importedSkill("two");
@@ -85,10 +87,25 @@ describe("skill catalog service", () => {
 		});
 		expect(service.list().availableSkills).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ repositoryId: "one", id: "review" }),
-				expect.objectContaining({ repositoryId: "two", id: "review" }),
+				expect.objectContaining({ repositoryId: "one", id: "review", conflict: false }),
+				expect.objectContaining({ repositoryId: "two", id: "review", conflict: false }),
 			]),
 		);
 		expect(() => service.register("one", "review")).not.toThrow();
+
+		const configuredRepos = createAllRepos(createInMemoryDatabase());
+		configuredRepos.skills.mergeCatalog("one", [candidateA]);
+		configuredRepos.skills.reconcile([
+			{
+				skillId: "review",
+				label: "Review",
+				description: null,
+				bundle: candidateA.bundle,
+				sourceRevision: null,
+			},
+		]);
+		expect(() => configuredRepos.skills.registerCatalogEntry("one", "review")).toThrow(
+			"managed by configuration",
+		);
 	});
 });

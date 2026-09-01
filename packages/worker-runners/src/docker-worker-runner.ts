@@ -183,7 +183,8 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 	}
 
 	const runner: WorkerRunner<IsolatedStartWorkerInput> = {
-		async start(input: IsolatedStartWorkerInput) {
+		async start(input: IsolatedStartWorkerInput, observer) {
+			observer?.report("preparing_runtime");
 			const volume = input.volume;
 			const labels = buildWorkerUnitLabels({
 				instanceId: input.instanceId,
@@ -213,6 +214,7 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 			// of the server-opaque process volume and is reclaimed when the worker
 			// container is removed.
 			const anonymousVolumes = dindMode === false ? undefined : [DIND_DAEMON_STORAGE_PATH];
+			observer?.report("allocating_runtime");
 			const { id } = await engine.createContainer({
 				name: containerName(input.instanceId, input.workerId),
 				image: input.image.reference,
@@ -226,6 +228,7 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				nanoCpus: parseCpuToNanoCpus(input.resources?.cpu),
 				memoryBytes: parseMemoryToBytes(input.resources?.memory),
 			});
+			observer?.report("starting_runtime");
 			await engine.startContainer(id);
 			const ref: WorkerUnitRef = {
 				instanceId: input.instanceId,

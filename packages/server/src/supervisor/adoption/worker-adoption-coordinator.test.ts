@@ -4,6 +4,7 @@ import type { WorkerUnit, WorkerUnitDescriptor } from "@leitwerk-dev/worker-runn
 import { describe, expect, it, vi } from "vitest";
 import type { RepositoryBundle } from "../../db/repositories.js";
 import type { WorkerHandle } from "../worker-supervisor.js";
+import { createWorkerUnitReclaimer } from "../worker-unit-reclaimer.js";
 import type { WorkerWebSocketIpcManager } from "../worker-websocket-ipc.js";
 import { createWorkerAdoptionCoordinator } from "./worker-adoption-coordinator.js";
 
@@ -111,6 +112,10 @@ function createHarness(
 		adopt: vi.fn(async (candidate: WorkerUnitDescriptor) => unit(candidate)),
 		stop: vi.fn(),
 	};
+	const unitReclaimer = createWorkerUnitReclaimer({
+		runner,
+		retry: { initialDelayMs: 1, maxDelayMs: 1 },
+	});
 	const workers = new Map<string, WorkerHandle>();
 	const createdHandles: WorkerHandle[] = [];
 	const routeEnvelope = vi.fn();
@@ -129,6 +134,7 @@ function createHarness(
 		serverEpoch: "epoch-new",
 		adoptionRetry: { maxAttempts: 2, delayMs: 1, sleep: vi.fn(async () => {}) },
 		runnerRuntime: { runner, webSocketIpc },
+		unitReclaimer,
 		workers,
 		leases,
 		inputs,
@@ -150,6 +156,7 @@ function createHarness(
 		coordinator,
 		descriptor,
 		runner,
+		unitReclaimer,
 		webSocketIpc,
 		workers,
 		createdHandles,
@@ -321,5 +328,25 @@ describe("createWorkerAdoptionCoordinator", () => {
 		expect(harness.runner.adopt).toHaveBeenCalledWith(harness.descriptor);
 		expect(harness.runner.stop).toHaveBeenCalledWith(duplicate, { graceMs: 0 });
 		expect(harness.workers.get("proc-1")?.workerId).toBe("wkr-1");
+	});
+
+	it("continues adoption when stale cleanup fails and retries cleanup in the background", async () => {
+		const harness = createHarness();
+		const stale = {
+			...harness.descriptor,
+			unitId: "unit-stale",
+			observedState: "terminal" as const,
+		};
+		harness.runner.list.mockResolvedValueOnce([stale, harness.descriptor]);
+		harness.runner.stop
+			.mockRejectedValueOnce(new Error("runtime cleanup unavailable"))
+			.mockResolvedValue(undefined);
+
+		await expect(harness.coordinator.adoptRegisteredWorkers()).resolves.toBeUndefined();
+
+		expect(harness.runner.adopt).toHaveBeenCalledWith(harness.descriptor);
+		expect(harness.workers.get("proc-1")?.workerId).toBe("wkr-1");
+		await vi.waitFor(() => expect(harness.runner.stop).toHaveBeenCalledTimes(2));
+		expect(harness.unitReclaimer.staleResourceBacklogCount()).toBe(0);
 	});
 });

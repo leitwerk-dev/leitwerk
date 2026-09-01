@@ -53,21 +53,21 @@ vi.mock("../lib/router.svelte", () => ({
 function makeRow(overrides: Record<string, unknown> = {}) {
 	return {
 		instanceId: "agt_1",
-		processId: "local_shell_process",
-		title: "Shell cleanup",
-		subtitle: "local_shell_process · 0 components",
-		selectedTurnId: "run_command",
+		processId: "review_process",
+		title: "Review navigation",
+		subtitle: "review_process · 0 components",
+		selectedTurnId: "review",
 		lifecycleStatus: "active",
 		statusCategory: "active",
 		projectCount: 0,
 		externalId: null,
 		externalLinkCount: 0,
-		processDisplayName: "Local Shell",
-		processTitle: "Shell cleanup",
+		processDisplayName: "Review",
+		processTitle: "Review navigation",
 		createdAt: "2026-01-01T10:00:00Z",
 		updatedAt: "2026-01-01T11:00:00Z",
 		closedAt: null,
-		initialPromptPreview: "echo hello",
+		initialPromptPreview: "Review the navigation",
 		...overrides,
 	};
 }

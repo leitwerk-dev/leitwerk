@@ -16,6 +16,22 @@ describe("flow", () => {
 		});
 	});
 
+	it("resolves integration tools from validated params and state", () => {
+		const turn = flow
+			.llm<{ profile: string }, { origin: string }>("repair")
+			.description("Repair a provider failure")
+			.resolveIntegrationTools((params, state) =>
+				params.profile === "private" && state.origin === "ci" ? ["pipeline_get_step_logs"] : [],
+			)
+			.prompt(() => "Diagnose the current failure")
+			.end("done").definition;
+
+		expect(turn.resolveIntegrationTools?.({ profile: "private" }, { origin: "ci" })).toEqual([
+			"pipeline_get_step_logs",
+		]);
+		expect(turn.resolveIntegrationTools?.({ profile: "public" }, { origin: "ci" })).toEqual([]);
+	});
+
 	it("builds a discoverable plan-producing LLM turn", async () => {
 		const turn = flow
 			.llm<{ prompt: string }, Record<string, never>>("generate_plan")
@@ -240,7 +256,7 @@ describe("flow", () => {
 		});
 	});
 
-	it("builds concise human, server-automatic, and external flow turns", () => {
+	it("builds concise human and external flow turns", () => {
 		const human = flow
 			.human("review")
 			.description("Review")
@@ -248,12 +264,6 @@ describe("flow", () => {
 			.action("approve", (action) =>
 				action.label("Approve").acceptanceState("accepted").complete(),
 			).definition;
-		const serverAutomatic = flow
-			.serverAutomatic("check_ready")
-			.description("Check readiness")
-			.restartBehavior("fail_running")
-			.outcome("ready", (outcome) => outcome.description("Ready").to("review"))
-			.run(() => ({ outcome: "ready", params: {} })).definition;
 		const external = flow
 			.external("await_file")
 			.description("Await file")
@@ -269,11 +279,6 @@ describe("flow", () => {
 					complete: true,
 				},
 			},
-		});
-		expect(serverAutomatic).toMatchObject({
-			kind: "server_automatic",
-			restartBehavior: "fail_running",
-			outcomes: { ready: { to: "review" } },
 		});
 		expect(external).toMatchObject({
 			kind: "external",

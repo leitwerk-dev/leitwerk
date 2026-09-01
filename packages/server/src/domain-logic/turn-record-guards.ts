@@ -15,11 +15,9 @@ function staleTurnRecordResult(message: string): TurnRecordValidationFailure {
 }
 
 export function validateTurnOutcomeCorrelation(
-	process: ProcessInstance,
+	_process: ProcessInstance,
 	payload: TurnOutcomePayload,
-	expectedTurnRecordId: string | null = process.currentExecution?.kind === "server_turn"
-		? process.currentExecution.id
-		: null,
+	expectedTurnRecordId: string | null = null,
 ): TurnRecordValidationFailure | null {
 	if (typeof payload.turnRecordId !== "string" || payload.turnRecordId.trim() === "") {
 		return validationFailure(
@@ -36,11 +34,9 @@ export function validateTurnOutcomeCorrelation(
 }
 
 export function validateTurnFailedCorrelation(
-	process: ProcessInstance,
+	_process: ProcessInstance,
 	payload: TurnFailedPayload,
-	expectedTurnRecordId: string | null = process.currentExecution?.kind === "server_turn"
-		? process.currentExecution.id
-		: null,
+	expectedTurnRecordId: string | null = null,
 ): TurnRecordValidationFailure | null {
 	if (expectedTurnRecordId !== payload.turnRecordId) {
 		return staleTurnRecordResult(

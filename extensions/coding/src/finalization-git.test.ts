@@ -29,16 +29,23 @@ describe("commitAndPushWorkBranch", () => {
 		const mainSha = headSha(remoteDir, "refs/heads/main");
 		writeFileSync(path.join(repoDir, "feature.txt"), "remote change\n", "utf8");
 
+		git(repoDir, "config", "--unset", "user.name");
+		git(repoDir, "config", "--unset", "user.email");
+		git(repoDir, "config", "user.useConfigOnly", "true");
 		const result = commitAndPushWorkBranch({
 			repoPath: repoDir,
 			workBranch: "feature/test",
 			commitMessage: "feat: publish remote change",
+			gitIdentity: { name: "Leitwerk Bot", email: "leitwerk-bot@noreply.example.test" },
 		});
 
 		expect(result.pushTarget).toBe("origin/feature/test");
 		expect(headSha(remoteDir, "refs/heads/main")).toBe(mainSha);
 		expect(headSha(remoteDir, "refs/heads/feature/test")).toBe(result.headSha);
 		expect(git(repoDir, "status", "--short")).toBe("");
+		expect(git(repoDir, "show", "-s", "--format=%an <%ae>", "HEAD")).toBe(
+			"Leitwerk Bot <leitwerk-bot@noreply.example.test>",
+		);
 	});
 });
 

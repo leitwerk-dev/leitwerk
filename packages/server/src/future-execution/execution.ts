@@ -5,6 +5,7 @@ import type { RepositoryBundle } from "../db/repositories.js";
 import { nextCronOccurrenceUtc } from "../domain-logic/cron.js";
 import type { PostCommitEffect } from "../effects/post-commit-effect.js";
 import type { ExtensionHost } from "../extensions/extension-host.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ModelStatusCache } from "../model-providers/model-status-cache.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types.js";
@@ -40,8 +41,8 @@ export interface FutureExecutionExecutorDeps
 		| "futureExecutions"
 		| "processes"
 		| "projects"
-		| "skills"
 		| "processSkills"
+		| "skills"
 		| "handoffDedupKeys"
 		| "transaction"
 	> {
@@ -57,6 +58,7 @@ export interface FutureExecutionExecutorDeps
 	processModelPolicy: ServerProcessModelPolicy;
 	launchPlans: ProcessLaunchPlanServiceLike;
 	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
+	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	logger?: ProcessEngineLogger;
 }
 
@@ -103,8 +105,15 @@ async function executeScheduledLaunch(
 	deps: FutureExecutionExecutorDeps,
 	execution: FutureExecution,
 ): Promise<FutureExecutionDisposition> {
+	const launchCoordinator = deps.getLaunchCoordinator?.();
+	const launchRunId = launchCoordinator?.beginScheduled(
+		execution.launcherId,
+		`scheduled:${execution.id}:${execution.nextRunAt}:${execution.updatedAt}`,
+	).launchRunId;
 	const parsedPayload = parseFutureLaunchPayloadJson(execution.payloadJson);
 	if (!parsedPayload.ok) {
+		if (launchRunId)
+			launchCoordinator?.failScheduled(launchRunId, "validate_request", parsedPayload.error);
 		return { kind: "remove", error: new Error(parsedPayload.error) };
 	}
 	const payload = parsedPayload.value;
@@ -113,6 +122,13 @@ async function executeScheduledLaunch(
 		invalidModelConfig: "reject",
 	});
 	if (!preparedLaunchPlan.ok) {
+		if (launchRunId) {
+			launchCoordinator?.failScheduled(
+				launchRunId,
+				"resolve_models_skills",
+				"The scheduled launch model configuration is unavailable.",
+			);
+		}
 		return {
 			kind: "retry_later",
 			error: new Error(
@@ -122,6 +138,7 @@ async function executeScheduledLaunch(
 		};
 	}
 	try {
+		if (launchRunId) launchCoordinator?.observeScheduledPrepared(launchRunId);
 		const transitionPlan =
 			execution.scheduleKind === "cron"
 				? planAdvanceFutureExecution(
@@ -130,13 +147,27 @@ async function executeScheduledLaunch(
 					)
 				: planConsumeFutureExecution(execution);
 		const result = await createScheduledProcessFromLaunchPlan(
-			deps,
+			{
+				processes: deps.processes,
+				projects: deps.projects,
+				processSkills: deps.processSkills,
+				skills: deps.skills,
+				handoffDedupKeys: deps.handoffDedupKeys,
+				futureExecutions: deps.futureExecutions,
+				broadcaster: deps.broadcaster,
+				commands: deps.commands,
+				processTitles: deps.processTitles,
+				extensionHost: deps.extensionHost,
+				logger: deps.logger,
+				transaction: deps.transaction,
+			},
 			preparedLaunchPlan.launchPlan,
 			transitionPlan,
 			{
 				...(payload.actor ? { actor: payload.actor } : {}),
 				resourceSelections: payload.resourceSelections,
 				launchIntent: { launcherInput: payload.launcherInput },
+				...(launchRunId ? { launchRunId } : {}),
 			},
 		);
 		if (!result.ok) {
@@ -145,12 +176,42 @@ async function executeScheduledLaunch(
 					? result.body.error
 					: `Failed to execute scheduled launch '${execution.id}'`,
 			);
+			if (launchRunId) {
+				if (result.stage === "post_commit") {
+					launchCoordinator?.observeScheduledCommitted(
+						launchRunId,
+						result.process,
+						preparedLaunchPlan.launchPlan.startTurnId,
+						"Process was created, but scheduled startup failed. Retry startup from the process page.",
+					);
+				} else {
+					launchCoordinator?.failScheduled(
+						launchRunId,
+						"create_process",
+						"The scheduled process could not be created. It will be retried.",
+					);
+				}
+			}
 			return result.stage === "post_commit"
 				? { kind: "committed", dispositionApplied: true, reactionError: error }
 				: { kind: "retry_later", error };
 		}
+		if (launchRunId) {
+			launchCoordinator?.observeScheduledCommitted(
+				launchRunId,
+				result.process,
+				preparedLaunchPlan.launchPlan.startTurnId,
+			);
+		}
 		return { kind: "committed", dispositionApplied: true };
 	} catch (error) {
+		if (launchRunId) {
+			launchCoordinator?.failScheduled(
+				launchRunId,
+				"create_process",
+				"The scheduled process could not be created. It will be retried.",
+			);
+		}
 		return {
 			kind: "retry_later",
 			error: toError(error, `Failed to execute scheduled launch '${execution.id}'`),

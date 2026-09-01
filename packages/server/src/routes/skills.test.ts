@@ -39,11 +39,11 @@ describe("skill routes", () => {
 		await app.close();
 	});
 
-	it("returns conflicts for ambiguous registration", async () => {
+	it("returns conflicts for ambiguous or configuration-managed registration", async () => {
 		const app = Fastify({ logger: false });
 		const catalog = service();
 		vi.mocked(catalog.register).mockImplementation(() => {
-			throw new Error("Skill 'review' has conflicting repository candidates");
+			throw new Error("Skill 'review' is managed by configuration");
 		});
 		registerSkillRoutes(app, { skillCatalog: catalog });
 

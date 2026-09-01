@@ -4,6 +4,7 @@ import {
 	type FutureExecutionBlockReason,
 	type InstanceTurnConfigMap,
 	type LaunchModelConfigInput,
+	type LaunchRun,
 	normalizeActor,
 	normalizeLaunchModelConfigInput,
 	type ProcessEvent,
@@ -15,6 +16,7 @@ import {
 	type ProcessQuestionRequest,
 	type ProcessRowSlot,
 	type ProcessSelectedTurnModelSource,
+	type ProcessToolApprovalRequest,
 	type ProcessTurnAnnotation,
 	type ProcessTurnRecord,
 	type ProcessTurnType,
@@ -49,6 +51,19 @@ import {
 	unknownRecordSchema,
 } from "./protocol.js";
 import type { ToolCallRendererDefinition } from "./tool-renderer-contract.js";
+
+export interface StartLaunchRunResponseBody {
+	launchRunId: string;
+	instanceId: string | null;
+}
+
+export interface LaunchRunResponseBody {
+	launchRun: LaunchRun;
+}
+
+export interface ProcessLaunchRunsResponseBody {
+	launchRuns: LaunchRun[];
+}
 
 export interface AuthMeResponseBody {
 	authEnabled: boolean;
@@ -530,27 +545,34 @@ export interface SkillRepositorySummary {
 	error: string | null;
 }
 
-export interface SkillCatalogSummary {
+export interface SkillCatalogItem {
+	repositoryId: string;
 	id: string;
 	label: string;
 	description: string | null;
+	sourcePath: string;
+	sourceRevision: string;
+	registered: boolean;
 	updateAvailable: boolean;
+	conflict: boolean;
+	stale: boolean;
 	modelInvocable: boolean;
 	usage: SkillUsageSummary;
 }
 
-export interface SkillCatalogItem extends SkillCatalogSummary {
-	repositoryId: string;
-	sourcePath: string;
-	sourceRevision: string;
-	registered: boolean;
-	stale: boolean;
-}
+export type SkillRegistrationKind = "configuration" | "catalog";
 
-export interface InstalledSkillCatalogItem extends SkillCatalogSummary {
+export interface InstalledSkillCatalogItem {
+	id: string;
+	label: string;
+	description: string | null;
 	activeRevisionId: string;
 	activeSourceRevision: string | null;
+	registrationKind: SkillRegistrationKind;
 	sourceRepositoryId: string | null;
+	updateAvailable: boolean;
+	modelInvocable: boolean;
+	usage: SkillUsageSummary;
 }
 
 export interface SkillRevisionSummary {
@@ -773,6 +795,34 @@ export interface StartupRecoverySummary extends CurrentErrorSummary {
 	providerOptions: Record<string, string>;
 }
 
+export type StartupAttemptStatus = "starting" | "failed" | "succeeded" | "recovered" | "superseded";
+
+export interface StartupAttemptStepSummary {
+	id: "start_worker" | "connect_worker" | "prepare_workspace" | "start_first_turn";
+	label: string;
+	status: "pending" | "in_progress" | "completed" | "failed" | "superseded";
+	occurredAt: string | null;
+}
+
+/** Worker-start history derived from correlated start, lease, readiness, and turn records. */
+export interface StartupAttemptSummary {
+	startRecordId: string;
+	workerLeaseId: string | null;
+	status: StartupAttemptStatus;
+	startedAt: string;
+	readyAt: string | null;
+	durationMs: number | null;
+	summary: string | null;
+	recoveredByStartRecordId: string | null;
+	steps: StartupAttemptStepSummary[];
+}
+
+export interface ProcessStartupSummary {
+	authoritativeAttemptId: string | null;
+	attempts: StartupAttemptSummary[];
+	recovery: StartupRecoverySummary | null;
+}
+
 export type CurrentProcessErrorSummary = CurrentErrorSummary;
 
 export interface ProcessUsageEstimateSnapshot {
@@ -816,6 +866,7 @@ export interface ProcessDetailUiSnapshotResponseBody {
 	process: ProcessUiSnapshotProcess;
 	/** Durable requests in Chronicle order; at most one is open for the current turn. */
 	questionRequests: ProcessQuestionRequest[];
+	toolApprovalRequests: ProcessToolApprovalRequest[];
 	leafOutcomeSnapshots: ProcessLeafOutcomeSnapshot[];
 	processDisplayName: string | null;
 	processFlow: ProcessFlowView;
@@ -831,6 +882,9 @@ export interface ProcessDetailUiSnapshotResponseBody {
 	timeline: ProcessTimelineSnapshot;
 	instanceTree: ProcessInstanceTreeResponseBody;
 	recovery: CurrentTurnRecoverySummary | null;
+	/** Authoritative startup history and current remediation. */
+	startup: ProcessStartupSummary;
+	/** Compatibility alias for startup.recovery. */
 	startupRecovery: StartupRecoverySummary | null;
 	processError: CurrentProcessErrorSummary | null;
 	usageEstimate: ProcessUsageEstimateSnapshot | null;

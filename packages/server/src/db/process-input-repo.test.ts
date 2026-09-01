@@ -61,7 +61,7 @@ describe("process input actor attribution", () => {
 	it("backfills legacy rows that predate the actor column to the system actor", () => {
 		const inputs = createProcessInputRepo(db);
 		const instanceId = createProcess();
-		const sqlite = (db as unknown as { $client: import("better-sqlite3").Database }).$client;
+		const sqlite = (db as unknown as { $client: import("node:sqlite").DatabaseSync }).$client;
 
 		// Simulate a row written before the migration default was reliably applied.
 		sqlite

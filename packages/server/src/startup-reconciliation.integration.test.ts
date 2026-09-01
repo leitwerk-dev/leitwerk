@@ -7,7 +7,6 @@ import {
 	defineProcess,
 	type LeitwerkExtensionModule,
 	llmTurn,
-	serverAutomaticTurn,
 } from "@leitwerk-dev/process-sdk";
 import {
 	createIntegrationHarness,
@@ -41,48 +40,6 @@ const startupPlanTurn = llmTurn<Record<string, never>, Record<string, never>>({
 	turnEnd: { outcome: "completed", params: {}, complete: true },
 });
 
-const startupServerAutomaticTurn = serverAutomaticTurn<
-	Record<string, never>,
-	Record<string, unknown>
->({
-	description: "Startup server automatic turn",
-	outcomes: {
-		completed: {
-			description: "completed",
-			parameters: {},
-			complete: true,
-			effect: ({ ctx }) => ({
-				state: { ...ctx.state, outcomeEffectApplied: true },
-			}),
-		},
-	},
-	run: async () => ({
-		outcome: "completed",
-		params: {},
-		state: { drainedOnServer: true },
-	}),
-});
-
-const startupNonReplayableServerAutomaticTurn = serverAutomaticTurn<
-	Record<string, never>,
-	Record<string, unknown>
->({
-	description: "Startup non-replayable server automatic turn",
-	restartBehavior: "fail_running",
-	outcomes: {
-		completed: {
-			description: "completed",
-			parameters: {},
-			complete: true,
-		},
-	},
-	run: async () => ({
-		outcome: "completed",
-		params: {},
-		state: { replayedUnexpectedly: true },
-	}),
-});
-
 const startupTestProcess = defineProcess<Record<string, never>, Record<string, never>>({
 	id: "startup_test_process",
 	displayName: "Startup Test Process",
@@ -101,54 +58,10 @@ const startupTestProcess = defineProcess<Record<string, never>, Record<string, n
 	},
 });
 
-const recordStateCodec: Codec<Record<string, unknown>> = {
-	parse(value) {
-		return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-	},
-	serialize(value) {
-		return value;
-	},
-};
-
-const startupServerAutomaticProcess = defineProcess<Record<string, never>, Record<string, unknown>>(
-	{
-		id: "startup_server_automatic_process",
-		displayName: "Startup Server Automatic Process",
-		entry: "startup_server_automatic_turn",
-		turns: { startup_server_automatic_turn: startupServerAutomaticTurn },
-		paramsCodec: emptyCodec,
-		stateCodec: recordStateCodec,
-		initialState() {
-			return {};
-		},
-		worker() {},
-	},
-);
-
-const startupNonReplayableServerAutomaticProcess = defineProcess<
-	Record<string, never>,
-	Record<string, unknown>
->({
-	id: "startup_non_replayable_server_automatic_process",
-	displayName: "Startup Non-Replayable Server Automatic Process",
-	entry: "startup_non_replayable_server_automatic_turn",
-	turns: {
-		startup_non_replayable_server_automatic_turn: startupNonReplayableServerAutomaticTurn,
-	},
-	paramsCodec: emptyCodec,
-	stateCodec: recordStateCodec,
-	initialState() {
-		return {};
-	},
-	worker() {},
-});
-
 const startupTestExtension: LeitwerkExtensionModule = {
 	manifest: { id: "startup-test", version: "0.1.0" },
 	setupCatalog(api) {
 		api.registerProcess(startupTestProcess);
-		api.registerProcess(startupServerAutomaticProcess);
-		api.registerProcess(startupNonReplayableServerAutomaticProcess);
 	},
 };
 
@@ -520,177 +433,6 @@ describe("startup reconciliation", () => {
 			"user-2",
 			"turn-2",
 		]);
-	});
-
-	it("drains selected server-automatic turns on startup without spawning a worker", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
-
-		const process = firstHarness.ctx.deps.processes.create({
-			processId: "startup_server_automatic_process",
-			selectedTurnId: "startup_server_automatic_turn",
-			lifecycleStatus: "active",
-		});
-		firstHarness.ctx.deps.turnRecords.create({
-			id: "trn_startup_server_auto_initial",
-			instanceId: process.id,
-			turnId: "startup_server_automatic_turn",
-			turnType: "server_automatic",
-			status: "running",
-			pathType: "primary",
-		});
-		firstHarness.ctx.deps.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_startup_server_auto_initial" },
-		});
-
-		await closeHarness(firstHarness);
-
-		const secondHarness = await createPersistentHarness(config);
-		await secondHarness.ctx.startBackgroundServices();
-
-		await waitFor(
-			() => secondHarness.ctx.deps.processes.getById(process.id),
-			(value) => value?.lifecycleStatus === "completed",
-		);
-		const reconciled = secondHarness.ctx.deps.processes.getById(process.id);
-		expect(reconciled).toMatchObject({
-			id: process.id,
-			selectedTurnId: null,
-			lifecycleStatus: "completed",
-			currentExecution: null,
-		});
-		expect(JSON.parse(reconciled?.stateJson ?? "{}")).toEqual({
-			drainedOnServer: true,
-			outcomeEffectApplied: true,
-		});
-		expect(secondHarness.ctx.deps.turnRecords.listByInstance(process.id)).toMatchObject([
-			{
-				instanceId: process.id,
-				turnId: "startup_server_automatic_turn",
-				turnType: "server_automatic",
-				status: "succeeded",
-			},
-		]);
-		expect(secondHarness.ctx.deps.leases.getByInstance(process.id)).toBeNull();
-	});
-
-	it("reuses an already-started server-automatic turn record on startup", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
-
-		const process = firstHarness.ctx.deps.processes.create({
-			processId: "startup_server_automatic_process",
-			selectedTurnId: "startup_server_automatic_turn",
-			lifecycleStatus: "active",
-		});
-		firstHarness.ctx.deps.turnRecords.create({
-			id: "trn_startup_server_auto_running",
-			instanceId: process.id,
-			turnId: "startup_server_automatic_turn",
-			turnType: "server_automatic",
-			status: "running",
-			pathType: "primary",
-		});
-		firstHarness.ctx.deps.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_startup_server_auto_running" },
-		});
-
-		await closeHarness(firstHarness);
-
-		const secondHarness = await createPersistentHarness(config);
-		await secondHarness.ctx.startBackgroundServices();
-
-		await waitFor(
-			() => secondHarness.ctx.deps.processes.getById(process.id),
-			(value) => value?.lifecycleStatus === "completed",
-		);
-		const reconciled = secondHarness.ctx.deps.processes.getById(process.id);
-		expect(reconciled).toMatchObject({
-			id: process.id,
-			selectedTurnId: null,
-			lifecycleStatus: "completed",
-			currentExecution: null,
-		});
-		expect(JSON.parse(reconciled?.stateJson ?? "{}")).toEqual({
-			drainedOnServer: true,
-			outcomeEffectApplied: true,
-		});
-		expect(
-			secondHarness.ctx.deps.turnRecords
-				.listByInstance(process.id)
-				.map((turnRecord) => turnRecord.id),
-		).toEqual(["trn_startup_server_auto_running"]);
-		expect(
-			secondHarness.ctx.deps.turnRecords.getById("trn_startup_server_auto_running"),
-		).toMatchObject({
-			id: "trn_startup_server_auto_running",
-			turnId: "startup_server_automatic_turn",
-			turnType: "server_automatic",
-			status: "succeeded",
-		});
-		expect(secondHarness.ctx.deps.leases.getByInstance(process.id)).toBeNull();
-	});
-
-	it("fails already-started non-replayable server-automatic turn records on startup", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
-
-		const process = firstHarness.ctx.deps.processes.create({
-			processId: "startup_non_replayable_server_automatic_process",
-			selectedTurnId: "startup_non_replayable_server_automatic_turn",
-			lifecycleStatus: "active",
-			stateJson: JSON.stringify({}),
-		});
-		firstHarness.ctx.deps.turnRecords.create({
-			id: "trn_startup_non_replayable_running",
-			instanceId: process.id,
-			turnId: "startup_non_replayable_server_automatic_turn",
-			turnType: "server_automatic",
-			status: "running",
-			pathType: "primary",
-		});
-		firstHarness.ctx.deps.processes.update(process.id, {
-			currentExecution: {
-				kind: "server_turn",
-				id: "trn_startup_non_replayable_running",
-			},
-		});
-
-		await closeHarness(firstHarness);
-
-		const secondHarness = await createPersistentHarness(config);
-		await secondHarness.ctx.startBackgroundServices();
-
-		await waitFor(
-			() => secondHarness.ctx.deps.processes.getById(process.id),
-			(value) => value?.lifecycleStatus === "error",
-		);
-		const reconciled = secondHarness.ctx.deps.processes.getById(process.id);
-		expect(reconciled).toMatchObject({
-			id: process.id,
-			selectedTurnId: "startup_non_replayable_server_automatic_turn",
-			lifecycleStatus: "error",
-			currentExecution: {
-				kind: "server_turn",
-				id: "trn_startup_non_replayable_running",
-			},
-		});
-		expect(JSON.parse(reconciled?.stateJson ?? "{}")).toEqual({});
-		expect(
-			secondHarness.ctx.deps.turnRecords.getById("trn_startup_non_replayable_running"),
-		).toMatchObject({
-			turnId: "startup_non_replayable_server_automatic_turn",
-			turnType: "server_automatic",
-			status: "failed",
-			errorClass: "infrastructure",
-		});
-		expect(secondHarness.ctx.deps.leases.getByInstance(process.id)).toBeNull();
 	});
 
 	it("uses the current default without rewriting historical process or turn models", async () => {

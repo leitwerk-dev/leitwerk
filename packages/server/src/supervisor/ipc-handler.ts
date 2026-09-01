@@ -7,10 +7,12 @@ import {
 	type WorkerIntegrationToolCancelPayload,
 	type WorkerIntegrationToolRequestPayload,
 	type WorkerIntegrationToolResultPayload,
+	type WorkerTurnFailedPayload,
 	type WorkerTurnStartAcceptedPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { WorkerLeaseObservation } from "../domain-logic/worker-lease-lifecycle.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessEngine } from "../process-engine/types.js";
 import type { ProcessQuestionService } from "../process-question-service.js";
 import type { Broadcaster } from "../ws/broadcast.js";
@@ -40,10 +42,12 @@ export interface IpcHandlerDeps
 		RepositoryBundle,
 		"processes" | "projects" | "inputs" | "events" | "leases" | "turnRecords"
 	> {
+	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	processQuestions?: ProcessQuestionService;
 	broadcaster: Broadcaster;
 	commands: ProcessEngine;
 	workerEventLogger?: (entry: WorkerEventLogEntry) => void;
+	appendDiagnosticTrace?: (instanceId: string, text: string) => void;
 	updateCredential?: (input: {
 		providerId: string;
 		expectedRevision: number;
@@ -70,6 +74,16 @@ export interface IpcHandlerCallbacks {
 		params: Record<string, unknown>,
 	) => void;
 	onTurnTerminalRecorded?: (instanceId: string, workerId: string, turnRecordId: string) => void;
+	onTurnFailedRecorded?: (input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		turnId: string;
+		turnType: WorkerTurnFailedPayload["turnType"];
+		errorSummary: string;
+		errorClass?: WorkerTurnFailedPayload["errorClass"];
+		failureCode?: WorkerTurnFailedPayload["failureCode"];
+	}) => void;
 	onTurnTerminalRecordingFailed?: (input: {
 		instanceId: string;
 		workerId: string;
@@ -101,6 +115,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 	const inputAckHandler = createWorkerInputAckHandler(deps);
 	const turnRecorder = createWorkerTurnIpcRecorder(
 		{
+			processes: deps.processes,
 			turnRecords: deps.turnRecords,
 			commands: deps.commands,
 			eventIngestor,
@@ -108,6 +123,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 		{
 			onTurnOutcomeRecorded: callbacks.onTurnOutcomeRecorded,
 			onTurnTerminalRecorded: callbacks.onTurnTerminalRecorded,
+			onTurnFailedRecorded: callbacks.onTurnFailedRecorded,
 			onTurnTerminalRecordingFailed: callbacks.onTurnTerminalRecordingFailed,
 		},
 	);
@@ -125,6 +141,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 			if (!activeLease) {
 				return;
 			}
+			const launchCoordinator = deps.getLaunchCoordinator?.();
 			const observeWorkerLease = (observation: WorkerLeaseObservation, reason?: string) =>
 				applyWorkerLeaseObservation(
 					{ leases: deps.leases, broadcaster: deps.broadcaster },
@@ -167,6 +184,21 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				}
 				case "worker.hello": {
 					observeWorkerLease("handshake_received", "worker.hello");
+					deps.leases.observeTimestamp(activeLease.id, "connectedAt");
+					break;
+				}
+				case "worker.diagnostic_trace": {
+					deps.appendDiagnosticTrace?.(instanceId, msg.payload.text);
+					break;
+				}
+				case "worker.bootstrap_progress": {
+					if (
+						msg.payload.phase === "preparing_workspace" ||
+						msg.payload.phase === "loading_resources"
+					) {
+						deps.leases.observeTimestamp(activeLease.id, "workspacePreparationStartedAt");
+					}
+					launchCoordinator?.observeBootstrapProgress(instanceId, workerId, msg.payload.phase);
 					break;
 				}
 				case "worker.ready": {
@@ -194,6 +226,8 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					}
 					const result = observeWorkerLease("bootstrap_completed", "worker.ready");
 					if (result.kind === "applied") {
+						deps.leases.observeTimestamp(activeLease.id, "readyAt");
+						launchCoordinator?.observeWorkerReady(instanceId, workerId);
 						deps.leases.updateHeartbeat(activeLease.workerId);
 						void deps.commands
 							.updateSemanticEntryRefs(instanceId, {
@@ -253,6 +287,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 								return;
 							}
 							eventIngestor.noteTurnStarted(instanceId, result.data.turnRecordId);
+							launchCoordinator?.observeFirstTurnStarted(instanceId, workerId);
 							callbacks.onWorkerTurnStartAccepted?.(instanceId, workerId, {
 								startRecordId: msg.payload.startRecordId,
 								turnRecordId: result.data.turnRecordId,
@@ -340,6 +375,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				}
 				case "worker.failed": {
 					eventIngestor.clearLiveTurnState(instanceId);
+					launchCoordinator?.observeWorkerFailure(instanceId, workerId, msg.payload.message);
 					const result = observeWorkerLease("failure_reported", msg.payload.errorCode);
 					if (result.kind !== "applied") {
 						break;

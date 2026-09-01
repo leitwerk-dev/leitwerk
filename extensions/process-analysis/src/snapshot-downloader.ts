@@ -32,25 +32,30 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 	await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-export async function downloadProcessSnapshot(input: {
+export function resolveProcessSnapshotDirectory(input: {
 	analysisProcessId: string;
 	processRef: string;
-}): Promise<ProcessAnalysisSnapshotState> {
+}): { baseDir: string; ref: ReturnType<typeof resolveProcessRef> } {
 	const runtime = getProcessAnalysisRuntime();
 	if (!runtime.processWorkspacesDir) throw new Error("processWorkspacesDir is not configured");
 	const ref = resolveProcessRef({
 		processRef: input.processRef,
 		serverBaseUrl: runtime.serverBaseUrl,
 	});
+	const sourceWorkspace = path.join(runtime.processWorkspacesDir, ref.id);
+	return {
+		ref,
+		baseDir: path.join(sourceWorkspace, ".leitwerk", "process-analysis", input.analysisProcessId),
+	};
+}
+
+export async function downloadProcessSnapshot(input: {
+	analysisProcessId: string;
+	processRef: string;
+}): Promise<ProcessAnalysisSnapshotState> {
+	const { baseDir, ref } = resolveProcessSnapshotDirectory(input);
 	const detail = await fetchJson(ref.apiUrl);
 	const primaryPath = await fetchJson(`${ref.apiUrl}/primary-path`);
-	const sourceWorkspace = path.join(runtime.processWorkspacesDir, ref.id);
-	const baseDir = path.join(
-		sourceWorkspace,
-		".leitwerk",
-		"process-analysis",
-		input.analysisProcessId,
-	);
 	await mkdir(baseDir, { recursive: true });
 	await writeJson(path.join(baseDir, "process-detail.json"), detail);
 	await writeJson(path.join(baseDir, "primary-path.json"), primaryPath);

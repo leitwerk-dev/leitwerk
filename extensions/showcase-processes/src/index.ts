@@ -54,19 +54,11 @@ const singlePromptExtension: LeitwerkExtensionModule = {
 			...fileTriggerDefaults,
 			...config.file_triggers,
 		};
-		const fileSourceProvider = createFileExternalSourceProvider(deps, {
+		createFileExternalSourceProvider(deps, {
 			"/tmp/complete-prompt": resolvedFileTriggerConfig.complete_prompt_path,
 			"/tmp/poem-review-{instanceId}": resolvedFileTriggerConfig.poem_review_path,
 		});
-		const filesystemWatcherProvider = createFilesystemWatcherProvider(deps, api.logger);
-		api.onStart(() => {
-			fileSourceProvider.start();
-			filesystemWatcherProvider.start();
-		});
-		api.onStop(() => {
-			fileSourceProvider.stop();
-			filesystemWatcherProvider.stop();
-		});
+		createFilesystemWatcherProvider(deps);
 	},
 };
 

@@ -35,7 +35,9 @@ export function registerSkillRoutes(app: FastifyInstance, deps: SkillRouteDeps):
 				return { revisionId };
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "Skill could not be registered";
-				return reply.code(message.includes("conflicting") ? 409 : 404).send({ error: message });
+				const conflict =
+					message.includes("conflicting") || message.includes("managed by configuration");
+				return reply.code(conflict ? 409 : 404).send({ error: message });
 			}
 		},
 	);

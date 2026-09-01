@@ -2,7 +2,6 @@ import { normalizeStringArray, type TurnOutcomePayload, trimString } from "@leit
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
-	isServerAutomaticTurnDefinition,
 	type OutcomeToolParameterSpec,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
@@ -204,9 +203,7 @@ function resolveOutcomeValidationContract(
 ): OutcomeValidationContract | null {
 	if (
 		!turnDefinition ||
-		(!isLlmTurnDefinition(turnDefinition) &&
-			!isAutomaticTurnDefinition(turnDefinition) &&
-			!isServerAutomaticTurnDefinition(turnDefinition))
+		(!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition))
 	) {
 		return null;
 	}
@@ -265,11 +262,7 @@ export function checkTurnOutcomeAvailability(
 		);
 	}
 
-	if (
-		!isLlmTurnDefinition(turnDefinition) &&
-		!isAutomaticTurnDefinition(turnDefinition) &&
-		!isServerAutomaticTurnDefinition(turnDefinition)
-	) {
+	if (!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition)) {
 		return validationFailure(
 			"turn_outcome_unsupported",
 			`'${turnId}' does not support turn outcomes`,
@@ -427,11 +420,7 @@ export function validateTurnOutcome(
 		);
 	}
 
-	if (
-		!isLlmTurnDefinition(turnDefinition) &&
-		!isAutomaticTurnDefinition(turnDefinition) &&
-		!isServerAutomaticTurnDefinition(turnDefinition)
-	) {
+	if (!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition)) {
 		return validationFailure(
 			"turn_outcome_unsupported",
 			`'${turnId}' does not support turn outcomes`,

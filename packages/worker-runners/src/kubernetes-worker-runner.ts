@@ -65,7 +65,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				processNamespacePrefix: options.processNamespacePrefix,
 			});
 			await client.ensureNamespace(namespaceManifest);
-			for (const copy of options.imagePullSecretCopies ?? []) {
+			const copySecrets = (options.imagePullSecretCopies ?? []).map(async (copy) => {
 				const dockerConfigJson = await client.getDockerConfigJsonSecret(
 					copy.sourceName,
 					options.serverNamespace ?? "leitwerk-system",
@@ -78,30 +78,37 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 						dockerConfigJson,
 					}),
 				);
-			}
-			if (serverCaFile) {
-				await client.ensureConfigMap(
-					buildKubernetesServerCaConfigMapManifest({
-						instanceId,
-						namespace: namespaceManifest.metadata.name,
-						caPem: readFileSync(serverCaFile, "utf8"),
-					}),
-				);
-			}
+			});
 			const workerServiceAccount = options.pod?.workerServiceAccount?.trim();
-			if (workerServiceAccount && workerServiceAccount !== "default") {
-				await client.ensureServiceAccount(workerServiceAccount, namespaceManifest.metadata.name, {
-					[WORKER_LABEL_MANAGED_BY]: WORKER_LABEL_MANAGED_BY_VALUE,
-					[WORKER_LABEL_COMPONENT]: "worker-service-account",
-					[WORKER_LABEL_INSTANCE_ID]: instanceId,
-				});
-			}
 			const manifest = buildKubernetesProcessPvcManifest({
 				instanceId,
 				namespace: namespaceManifest.metadata.name,
 				volume: options.volume,
 			});
-			await client.ensurePersistentVolumeClaim(manifest);
+			await Promise.all([
+				...copySecrets,
+				...(serverCaFile
+					? [
+							client.ensureConfigMap(
+								buildKubernetesServerCaConfigMapManifest({
+									instanceId,
+									namespace: namespaceManifest.metadata.name,
+									caPem: readFileSync(serverCaFile, "utf8"),
+								}),
+							),
+						]
+					: []),
+				...(workerServiceAccount && workerServiceAccount !== "default"
+					? [
+							client.ensureServiceAccount(workerServiceAccount, namespaceManifest.metadata.name, {
+								[WORKER_LABEL_MANAGED_BY]: WORKER_LABEL_MANAGED_BY_VALUE,
+								[WORKER_LABEL_COMPONENT]: "worker-service-account",
+								[WORKER_LABEL_INSTANCE_ID]: instanceId,
+							}),
+						]
+					: []),
+				client.ensurePersistentVolumeClaim(manifest),
+			]);
 			return volumeRefFromPvc({
 				instanceId,
 				pvcName: manifest.metadata.name,
@@ -139,7 +146,8 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	}
 
 	const runner: WorkerRunner<IsolatedStartWorkerInput> = {
-		async start(input: IsolatedStartWorkerInput): Promise<WorkerUnit> {
+		async start(input: IsolatedStartWorkerInput, observer): Promise<WorkerUnit> {
+			observer?.report("preparing_runtime");
 			if (input.isolation.dind !== false) {
 				throw new Error("Kubernetes worker runner does not support Docker-in-Docker profiles");
 			}
@@ -157,7 +165,9 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 						}
 					: {}),
 			});
+			observer?.report("allocating_runtime");
 			await client.createPod(manifest);
+			observer?.report("starting_runtime");
 			const ref: WorkerUnitRef = {
 				instanceId: input.instanceId,
 				workerId: input.workerId,

@@ -1,5 +1,5 @@
 import type { WorkerBootstrapReceipt, WorkerLease, WorkerState } from "@leitwerk-dev/domain";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -13,6 +13,7 @@ export interface CreateWorkerLeaseInput {
 	snapshotTokenHash?: string | null;
 	modelPolicyFingerprint?: string | null;
 	bootstrapReceipt?: WorkerBootstrapReceipt | null;
+	turnStartRecordId?: string | null;
 }
 
 export interface UpdateWorkerLeaseInput {
@@ -22,6 +23,9 @@ export interface UpdateWorkerLeaseInput {
 	snapshotTokenHash?: string | null;
 	modelPolicyFingerprint?: string | null;
 	lastHeartbeatAt?: string | null;
+	connectedAt?: string | null;
+	workspacePreparationStartedAt?: string | null;
+	readyAt?: string | null;
 	exitedAt?: string | null;
 }
 
@@ -30,6 +34,7 @@ function rowToWorkerLease(row: typeof s.workerLeases.$inferSelect): WorkerLease 
 		id: row.id,
 		instanceId: row.instanceId,
 		workerId: row.workerId,
+		turnStartRecordId: row.turnStartRecordId ?? null,
 		state: row.state as WorkerState,
 		serverEpoch: row.serverEpoch ?? null,
 		connectTokenHash: row.connectTokenHash ?? null,
@@ -40,6 +45,9 @@ function rowToWorkerLease(row: typeof s.workerLeases.$inferSelect): WorkerLease 
 			: null,
 		lastHeartbeatAt: row.lastHeartbeatAt,
 		startedAt: row.startedAt,
+		connectedAt: row.connectedAt ?? null,
+		workspacePreparationStartedAt: row.workspacePreparationStartedAt ?? null,
+		readyAt: row.readyAt ?? null,
 		exitedAt: row.exitedAt,
 	};
 }
@@ -59,8 +67,12 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 				snapshotTokenHash: input.snapshotTokenHash ?? null,
 				modelPolicyFingerprint: input.modelPolicyFingerprint ?? null,
 				bootstrapReceiptJson: null,
+				turnStartRecordId: input.turnStartRecordId ?? null,
 				lastHeartbeatAt: null as string | null,
 				startedAt: ts,
+				connectedAt: null as string | null,
+				workspacePreparationStartedAt: null as string | null,
+				readyAt: null as string | null,
 				exitedAt: null as string | null,
 			};
 			db.insert(s.workerLeases).values(values).run();
@@ -79,6 +91,16 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 		getById(id: string): WorkerLease | null {
 			const row = db.select().from(s.workerLeases).where(eq(s.workerLeases.id, id)).get();
 			return row ? rowToWorkerLease(row) : null;
+		},
+
+		listByInstance(instanceId: string): WorkerLease[] {
+			return db
+				.select()
+				.from(s.workerLeases)
+				.where(eq(s.workerLeases.instanceId, instanceId))
+				.orderBy(asc(s.workerLeases.startedAt), asc(s.workerLeases.id))
+				.all()
+				.map(rowToWorkerLease);
 		},
 
 		listActive(): WorkerLease[] {
@@ -100,11 +122,27 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			if (input.modelPolicyFingerprint !== undefined)
 				setValues.modelPolicyFingerprint = input.modelPolicyFingerprint;
 			if (input.lastHeartbeatAt !== undefined) setValues.lastHeartbeatAt = input.lastHeartbeatAt;
+			if (input.connectedAt !== undefined) setValues.connectedAt = input.connectedAt;
+			if (input.workspacePreparationStartedAt !== undefined)
+				setValues.workspacePreparationStartedAt = input.workspacePreparationStartedAt;
+			if (input.readyAt !== undefined) setValues.readyAt = input.readyAt;
 			if (input.exitedAt !== undefined) setValues.exitedAt = input.exitedAt;
 
 			db.update(s.workerLeases).set(setValues).where(eq(s.workerLeases.id, id)).run();
 			const row = db.select().from(s.workerLeases).where(eq(s.workerLeases.id, id)).get();
 			return row ? rowToWorkerLease(row) : null;
+		},
+
+		observeTimestamp(
+			id: string,
+			field: "connectedAt" | "workspacePreparationStartedAt" | "readyAt",
+		): WorkerLease | null {
+			const column = s.workerLeases[field];
+			db.update(s.workerLeases)
+				.set({ [field]: now() })
+				.where(and(eq(s.workerLeases.id, id), isNull(column)))
+				.run();
+			return this.getById(id);
 		},
 
 		updateHeartbeat(workerId: string): boolean {

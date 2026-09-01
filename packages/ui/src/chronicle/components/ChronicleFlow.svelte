@@ -1,6 +1,10 @@
 <script lang="ts">
-import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
-import type { ProcessExternalTriggerSignal, StartupRecoverySummary } from "@leitwerk-dev/protocol";
+import type { ProcessQuestionRequest, ProcessToolApprovalRequest } from "@leitwerk-dev/domain";
+import type {
+	ProcessExternalTriggerSignal,
+	ProcessStartupSummary,
+	StartupRecoverySummary,
+} from "@leitwerk-dev/protocol";
 import { SvelteMap } from "svelte/reactivity";
 import type {
 	ProcessExternalTriggerSummary,
@@ -29,13 +33,16 @@ import ChroniclePromptSection from "./ChroniclePromptSection.svelte";
 import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleRecoverySection from "./ChronicleRecoverySection.svelte";
 import ChronicleScheduledActionSection from "./ChronicleScheduledActionSection.svelte";
+import ChronicleStartupHistory from "./ChronicleStartupHistory.svelte";
 import ChronicleStartupRecoverySection from "./ChronicleStartupRecoverySection.svelte";
+import ChronicleToolApproval from "./ChronicleToolApproval.svelte";
 import ChronicleTurnCluster from "./ChronicleTurnCluster.svelte";
 
 interface Props {
 	instanceId: string;
 	projection: ChronicleProjection;
 	questionRequests?: readonly ProcessQuestionRequest[];
+	toolApprovalRequests?: readonly ProcessToolApprovalRequest[];
 	activeAnchorId: string | null;
 	definesLeafOutcome: boolean;
 	actionSectionController: ActionSectionController;
@@ -58,6 +65,7 @@ interface Props {
 		defaultModelProfileId: string | null;
 		providerOptions: Record<string, string>;
 	} | null;
+	startup: ProcessStartupSummary;
 	startupRecovery?: StartupRecoverySummary | null;
 	processError?: {
 		title: string;
@@ -67,6 +75,12 @@ interface Props {
 	} | null;
 	modelConfiguration: ProcessModelConfigurationView;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onDraftTicket?: (artifact: {
+		kind: "turn_result" | "leaf_outcome";
+		turnRecordId?: string;
+		leafEntryId?: string;
+		text: string;
+	}) => void;
 	hasTerminalSummary?: boolean;
 }
 
@@ -74,6 +88,7 @@ let {
 	instanceId,
 	projection,
 	questionRequests = [],
+	toolApprovalRequests = [],
 	activeAnchorId,
 	definesLeafOutcome,
 	actionSectionController: actionBindings,
@@ -85,10 +100,12 @@ let {
 	selectedTurn = null,
 	scheduledAction = null,
 	recovery = null,
+	startup,
 	startupRecovery = null,
 	processError = null,
 	modelConfiguration,
 	onOpenReasoningDetails,
+	onDraftTicket,
 	hasTerminalSummary = false,
 }: Props = $props();
 
@@ -229,6 +246,10 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 {/snippet}
 
 <div class="chronicle-flow" class:has-terminal-summary={hasTerminalSummary} data-section="chronicle-flow">
+	<ChronicleStartupHistory {startup} />
+	{#each toolApprovalRequests.filter((request) => request.status === "open") as request (request.id)}
+		<ChronicleToolApproval {request} />
+	{/each}
 	{#each projection.timelineItems as item, index (chronicleItemKey(item, index))}
 		{#if item.kind === "prompt"}
 			<ChroniclePromptSection prompt={item} isFocused={activeAnchorId === item.anchorId} />
@@ -238,6 +259,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
 				onOpenReasoningDetails={onOpenReasoningDetails}
+				onDraftTicket={onDraftTicket as never}
 			/>
 			{#each questionRequestsByTurn.get(item.turnRecordId)?.closed ?? [] as request (request.id)}
 				<ChronicleQuestionRequest {request} />
@@ -249,6 +271,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				section={item}
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
+				onDraftTicket={onDraftTicket as never}
 			/>
 		{:else if item.kind === "leaf_outcome_placeholder"}
 			<ChronicleLeafOutcomePlaceholder latestTurnTitle={item.latestTurnTitle} />

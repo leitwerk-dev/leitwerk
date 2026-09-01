@@ -52,6 +52,16 @@ export interface ValidationResult {
 	existingManifest: ComponentManifest | null;
 }
 
+export class RunRootPreparationError extends Error {
+	readonly errors: readonly string[];
+
+	constructor(errors: readonly string[]) {
+		super(`Workspace preparation failed: ${errors.join("; ")}`);
+		this.name = "RunRootPreparationError";
+		this.errors = [...errors];
+	}
+}
+
 const MANIFEST_REL = path.join(".leitwerk", "components.json");
 const AGGREGATED_AGENTS_REL = "AGENTS.md";
 const SKILLS_DIR_REL = path.join(".leitwerk", "skills");
@@ -266,6 +276,9 @@ export async function materializeRunRoot(
 	);
 
 	const ok = errors.length === 0 && plan.components.length === entries.length;
+	if (!ok) {
+		throw new RunRootPreparationError(errors);
+	}
 	return {
 		ok,
 		manifest,
@@ -350,6 +363,9 @@ export async function repairRunRoot(
 		errors.length === 0 &&
 		manifestEntries.length === plan.components.length &&
 		[...expectedKeys].every((k) => manifestEntries.some((e) => e.key === k));
+	if (!ok) {
+		throw new RunRootPreparationError(errors);
+	}
 
 	return {
 		ok,

@@ -178,9 +178,6 @@ function buildErrorAttentionToast(
 	const processLabel = getProcessAttentionLabel(deps, process);
 	const turnDescription = getSelectedTurnDescription(deps, process);
 	const currentTurnRecordId = (() => {
-		if (process.currentExecution?.kind === "server_turn") {
-			return process.currentExecution.id;
-		}
 		if (process.currentExecution?.kind !== "worker_start") {
 			return null;
 		}

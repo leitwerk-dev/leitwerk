@@ -18,7 +18,11 @@ export function emptyPollResult(): PollResult {
 	};
 }
 
-export interface PollLoop<T extends PollResult = PollResult> {
+export interface PollResultWithErrors {
+	readonly errors: readonly string[];
+}
+
+export interface PollLoop<T extends PollResultWithErrors = PollResult> {
 	poll(): Promise<T>;
 	start(): void;
 	stop(): void;
@@ -28,11 +32,13 @@ export interface PollLoop<T extends PollResult = PollResult> {
  * Create a non-overlapping polling loop. `pollOnce` is the actual work;
  * concurrent calls to `poll()` coalesce into the in-flight promise.
  */
-export function createPollLoop<T extends PollResult>(opts: {
+export function createPollLoop<T extends PollResultWithErrors>(opts: {
 	pollOnce: () => Promise<T>;
 	isEnabled: () => boolean;
 	pollInterval: () => string;
 	defaultIntervalMs?: number;
+	onScheduledResult: (result: T, durationMs: number) => void;
+	onScheduledError: (error: unknown, durationMs: number) => void;
 }): PollLoop<T> {
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let pollInFlight: Promise<T> | null = null;
@@ -53,8 +59,12 @@ export function createPollLoop<T extends PollResult>(opts: {
 		return running;
 	}
 
-	function pollAndIgnoreUnhandledRejection(): void {
-		void poll().catch(() => undefined);
+	function pollScheduled(): void {
+		const startedAt = Date.now();
+		void poll().then(
+			(result) => opts.onScheduledResult(result, Date.now() - startedAt),
+			(error: unknown) => opts.onScheduledError(error, Date.now() - startedAt),
+		);
 	}
 
 	return {
@@ -67,8 +77,8 @@ export function createPollLoop<T extends PollResult>(opts: {
 				return;
 			}
 			const ms = parseDurationMs(opts.pollInterval(), defaultMs);
-			timer = setInterval(pollAndIgnoreUnhandledRejection, ms);
-			pollAndIgnoreUnhandledRejection();
+			timer = setInterval(pollScheduled, ms);
+			pollScheduled();
 		},
 		stop() {
 			if (!timer) {

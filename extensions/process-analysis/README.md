@@ -9,9 +9,18 @@
 
 Unsupported protocols, credentials in URLs, missing ids, and empty instructions are rejected. Credential-bearing URLs are not remembered.
 
+## Process
+
+The process has two business turns:
+
+| Turn | Kind | Purpose |
+|---|---|---|
+| `analyze_process` | LLM | Prepare a current snapshot, then analyze it read-only. |
+| `analysis_decision` | Human | Complete, refine, ask a follow-up, or refresh and rerun the analysis. |
+
 ## Snapshot behavior
 
-The first server turn downloads `/api/processes/:id` and `/api/processes/:id/primary-path`, then writes:
+The preparation phase of `analyze_process` calls the authorized `process_analysis_download_snapshot` integration tool before Pi is prompted. It reports **Analysis preparation** progress in the same Chronicle cluster and does not create a separate Turn Rail entry. The server-owned tool downloads `/api/processes/:id` and `/api/processes/:id/primary-path`, then writes:
 
 - `process-detail.json`
 - `primary-path.json`
@@ -26,10 +35,6 @@ Snapshots are stored below the target process workspace at `.leitwerk/process-an
 
 The analysis LLM turn has only `read` and `bash`. It runs in the absolute directory where the Leitwerk server was launched. Its prompt requires read-only inspection, prohibits file modifications, and directs any code/repository inspection to that server launch directory only. Process Analysis does not require any configured `components` entry.
 
-## Follow-up and handoff
+## Follow-up
 
-From the decision turn, the operator can complete the analysis, ask follow-up questions, refine/rerun analysis, or refresh the snapshot. When Local Repo Change is also loaded, its launch-planner capability adds the action and turn for starting a Local Repo Change process. Without that optional capability, neither is present in the process graph.
-
-Handoff targets the same server launch directory as a local repository, derives its base branch from that repository when possible (falling back to `main`), leaves the work branch blank for automatic selection, and asks the Local Repo Change planner for an explicit `imported_plan` launch. The analysis is imported as a hidden plan, and implementation starts after Local Repo Change creates the automatic work branch and replans its entry turn. If the server launch directory is not a git repository, that error is reported only when starting the handoff.
-
-Process Analysis keeps its source provenance in opaque target-process metadata and owns the durable deduplication key (`process-analysis:<analysisProcessId>:local-repo-change`). Retrying or concurrently triggering the same handoff therefore reuses the same Local Repo Change process instead of creating duplicates. A successful create or reuse completes Process Analysis and runs its normal snapshot cleanup. An unsuccessful handoff leaves the failed turn available for retry.
+From the decision turn, the operator can complete the analysis, ask follow-up questions, refine the analysis, or refresh the snapshot. Refresh routes back to `analyze_process`; its preparation phase replaces the snapshot before the next prompt. Completion retains the latest analysis product. Process Analysis does not launch repository-change processes or create tracker tickets.

@@ -52,7 +52,10 @@ function createServiceHarness(
 	const processModelPolicy = createServerProcessModelPolicy({
 		config: getDefaultConfig(),
 		processGraphs,
-		processActionRegistry: { getTurnDefinition: () => undefined },
+		processActionRegistry: {
+			getTurnDefinition: () => undefined,
+			resolveContextData: () => ({ params: {}, state: {} }),
+		},
 	});
 	const modelStatusCache = {
 		snapshot: () => ({

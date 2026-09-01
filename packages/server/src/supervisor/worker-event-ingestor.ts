@@ -21,6 +21,7 @@ import {
 	type MutableLiveTurnProjection,
 	snapshotLiveTurnProjection,
 } from "../live-turn-projection.js";
+import { recordTurnPreparation } from "../turn-preparation.js";
 import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 
@@ -130,7 +131,6 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				return;
 			}
 			const currentTurnRecordId =
-				(process.currentExecution?.kind === "server_turn" ? process.currentExecution.id : null) ??
 				liveTurnRecordIds.get(instanceId) ??
 				deps.turnRecords
 					.listByInstance(instanceId)
@@ -145,6 +145,16 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					instanceId,
 					turnRecordId: reportedTurnRecordId,
 					report: data.report,
+				});
+				return;
+			}
+			if (payload.eventType === "turn.prepared") {
+				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
+				if (!reportedTurnRecordId || reportedTurnRecordId !== currentTurnRecordId) return;
+				recordTurnPreparation(deps, {
+					instanceId,
+					turnRecordId: reportedTurnRecordId,
+					data: data.data,
 				});
 				return;
 			}

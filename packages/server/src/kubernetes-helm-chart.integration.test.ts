@@ -357,6 +357,9 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(renderedJob).toContain("requiredDuringSchedulingIgnoredDuringExecution");
 		const jobPod = podSpec(job);
 		const preflight = (jobPod.containers as Array<Record<string, unknown>>)[0];
+		expect(preflight.volumeMounts).toEqual(
+			expect.arrayContaining([expect.objectContaining({ name: "data", readOnly: false })]),
+		);
 		expect(jobPod.securityContext).toEqual({ runAsNonRoot: true });
 		expect(preflight.securityContext).toEqual({ allowPrivilegeEscalation: false });
 		expect(preflight.envFrom).toEqual([{ secretRef: { name: "model-provider-env" } }]);

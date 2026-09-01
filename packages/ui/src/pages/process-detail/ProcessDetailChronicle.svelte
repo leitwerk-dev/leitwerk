@@ -1,5 +1,8 @@
 <script lang="ts">
-import type { ProcessExternalTriggerSignal } from "@leitwerk-dev/protocol";
+import type {
+	ProcessExternalTriggerSignal,
+	TicketCreationToolSummary,
+} from "@leitwerk-dev/protocol";
 import { tick } from "svelte";
 import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
@@ -15,6 +18,7 @@ import {
 	moveChronicleAnchorByOffset,
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
+import { readTicketResultSelection } from "../../chronicle/ticket-selection.js";
 import ModalShell from "../../components/ModalShell.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
@@ -23,8 +27,10 @@ import type {
 	ProcessSelectedTurnSummary,
 	ScheduledActionDetail,
 } from "../../lib/api.js";
+import { fetchTicketCreationTools, launchTicketCreation } from "../../lib/api.js";
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
+import { buildProcessPath, navigate } from "../../lib/router.svelte.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";
 import { createProcessDetailChronicleScroll } from "./process-detail-chronicle-scroll.svelte.js";
 import type {
@@ -47,6 +53,7 @@ interface Props {
 	externalTriggerSignals: readonly ProcessExternalTriggerSignal[];
 	selectedTurn?: ProcessSelectedTurnSummary | null;
 	recovery: CurrentTurnRecoveryViewModel | null;
+	startup: ProcessDetailData["startup"];
 	startupRecovery: ProcessDetailData["startupRecovery"];
 	processError: CurrentProcessErrorViewModel | null;
 	scheduledActionDetail: ScheduledActionDetail | null;
@@ -78,6 +85,7 @@ let {
 	externalTriggerSignals,
 	selectedTurn = null,
 	recovery,
+	startup,
 	startupRecovery,
 	processError,
 	scheduledActionDetail,
@@ -96,7 +104,72 @@ let {
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
+let mobileQuickNavSheet: HTMLElement | null = $state(null);
 let restoreMobileQuickNavFocus = $state(true);
+type TicketDraftArtifact = {
+	kind: "turn_result" | "leaf_outcome";
+	turnRecordId?: string;
+	leafEntryId?: string;
+	text: string;
+	excerpt?: string;
+};
+let ticketDraft = $state<TicketDraftArtifact | null>(null);
+let ticketSelectionDraft = $state<TicketDraftArtifact | null>(null);
+let ticketTools = $state<TicketCreationToolSummary[]>([]);
+let ticketToolsLoading = $state(false);
+let selectedTicketTool = $state("");
+let ticketInstructions = $state("");
+let ticketError = $state<string | null>(null);
+let ticketLaunching = $state(false);
+
+async function openTicketComposer(artifact: typeof ticketDraft) {
+	if (!artifact) return;
+	ticketDraft = artifact;
+	ticketError = null;
+	ticketToolsLoading = true;
+	try {
+		ticketTools = await fetchTicketCreationTools();
+		selectedTicketTool = ticketTools.length === 1 ? (ticketTools[0]?.name ?? "") : "";
+	} catch (reason) {
+		ticketError = reason instanceof Error ? reason.message : String(reason);
+	} finally {
+		ticketToolsLoading = false;
+	}
+}
+
+function handleTicketSelection() {
+	const selected = readTicketResultSelection(window.getSelection());
+	if (!selected) return;
+	const [kind, id] = selected.artifactId.split(":", 2);
+	if (kind === "turn_result" && id)
+		ticketSelectionDraft = { kind, turnRecordId: id, text: selected.text, excerpt: selected.text };
+	if (kind === "leaf_outcome" && id)
+		ticketSelectionDraft = { kind, leafEntryId: id, text: selected.text, excerpt: selected.text };
+}
+
+async function submitTicketDraft() {
+	if (!ticketDraft || !selectedTicketTool) return;
+	ticketLaunching = true;
+	ticketError = null;
+	try {
+		const result = await launchTicketCreation(instanceId, {
+			artifact:
+				ticketDraft.kind === "turn_result"
+					? { kind: "turn_result", turnRecordId: ticketDraft.turnRecordId }
+					: { kind: "leaf_outcome", leafEntryId: ticketDraft.leafEntryId },
+			focus: ticketDraft.excerpt
+				? { kind: "excerpt", excerpt: ticketDraft.excerpt }
+				: { kind: "whole_result" },
+			additionalInstructions: ticketInstructions.trim(),
+			toolName: selectedTicketTool,
+		});
+		navigate(buildProcessPath(result.childInstanceId));
+	} catch (reason) {
+		ticketError = reason instanceof Error ? reason.message : String(reason);
+	} finally {
+		ticketLaunching = false;
+	}
+}
 
 const processLabel = $derived(
 	detail?.process.title ??
@@ -168,23 +241,65 @@ function moveActiveAnchorByOffset(offset: number) {
 }
 
 function openMobileQuickNav() {
-	restoreMobileQuickNavFocus = true;
 	mobileQuickNavOpen = true;
 }
 
-function closeMobileQuickNav(restoreFocus = true) {
-	restoreMobileQuickNavFocus = restoreFocus;
+function closeMobileQuickNav(options: { restoreFocus?: boolean } = {}) {
 	mobileQuickNavOpen = false;
+	if (options.restoreFocus) {
+		void tick().then(() => {
+			document.querySelector<HTMLButtonElement>("[data-action='open-mobile-quick-nav']")?.focus();
+		});
+	}
 }
 
 function selectMobileQuickNavAnchor(anchorId: string) {
 	chronicleScroll.jumpToAnchor(anchorId);
-	closeMobileQuickNav();
+	closeMobileQuickNav({ restoreFocus: true });
 }
 
 function openProcessInfoFromQuickNav() {
-	closeMobileQuickNav(false);
+	closeMobileQuickNav();
 	onToggleProcessInfo();
+}
+
+$effect(() => {
+	if (!mobileQuickNavOpen) {
+		return;
+	}
+	const previousOverflow = document.body.style.overflow;
+	document.body.style.overflow = "hidden";
+	void tick().then(() => {
+		const activeItem =
+			mobileQuickNavSheet?.querySelector<HTMLButtonElement>("[aria-current='step']");
+		(activeItem ?? mobileQuickNavSheet?.querySelector<HTMLButtonElement>("button"))?.focus();
+	});
+	return () => {
+		document.body.style.overflow = previousOverflow;
+	};
+});
+
+function handleMobileQuickNavKeydown(event: KeyboardEvent) {
+	if (event.key !== "Tab" || !mobileQuickNavSheet) {
+		return;
+	}
+	const controls = [
+		...mobileQuickNavSheet.querySelectorAll<HTMLElement>(
+			'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+		),
+	];
+	if (controls.length === 0) {
+		return;
+	}
+	const first = controls[0];
+	const last = controls.at(-1);
+	if (event.shiftKey && document.activeElement === first) {
+		event.preventDefault();
+		last?.focus();
+	} else if (!event.shiftKey && document.activeElement === last) {
+		event.preventDefault();
+		first?.focus();
+	}
 }
 
 function openDetailedActionForm(actionId: string) {
@@ -195,7 +310,13 @@ function openDetailedActionForm(actionId: string) {
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
-	if (mobileQuickNavOpen) return;
+	if (mobileQuickNavOpen) {
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeMobileQuickNav({ restoreFocus: true });
+		}
+		return;
+	}
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
@@ -267,12 +388,16 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		aria-labelledby={headingId}
 	>
 		<h2 id={headingId} class="sr-only">Process timeline</h2>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- selection preserves native copy behavior -->
 		<div
 			class="chronicle-scroll"
 			bind:this={chronicleViewport}
 			data-role="chronicle-scroll"
+			role="region"
+			aria-label="Process results"
 			data-layout-observer-ready={chronicleScroll.isLayoutObserverReady ? "true" : undefined}
 			onscroll={chronicleScroll.handleScroll}
+			onmouseup={handleTicketSelection}
 		>
 			{#if launchWarning}
 				<div class="warning-banner" role="status">
@@ -308,7 +433,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					<div class="refresh-banner">{error} — showing the last process state we loaded.</div>
 				{/if}
 
-				{#if projection.timelineItems.length === 0 && !startupRecovery}
+				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery}
 					<div class="empty-state" data-section="chronicle-empty-state">
 						<p>
 							This process has not recorded activity yet. As the worker plans, acts, and saves results, the timeline will fill in here.
@@ -319,6 +444,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 						{instanceId}
 						{projection}
 						questionRequests={detail.questionRequests}
+						toolApprovalRequests={detail.toolApprovalRequests}
 						activeAnchorId={chronicleScroll.activeAnchorId}
 						{definesLeafOutcome}
 						hasTerminalSummary={terminalSummaryStatus !== null}
@@ -330,6 +456,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 						externalTriggerSignals={externalTriggerSignals}
 						selectedTurn={selectedTurn}
 						{recovery}
+						{startup}
 						{startupRecovery}
 						{processError}
 						scheduledAction={scheduledActionDetail && actionsController.editingScheduledActionId !== scheduledActionDetail.id
@@ -337,6 +464,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 							: null}
 						modelConfiguration={detail.modelConfiguration}
 						onOpenReasoningDetails={onOpenReasoningDetails}
+						onDraftTicket={openTicketComposer}
 					/>
 				{/if}
 
@@ -369,66 +497,315 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</section>
 </div>
 
+{#if ticketSelectionDraft}
+	<button
+		type="button"
+		class="ticket-selection-action"
+		data-pressable="true"
+		onclick={() => { void openTicketComposer(ticketSelectionDraft); ticketSelectionDraft = null; }}
+	>Create issue</button>
+{/if}
+
 <ModalShell
-	open={mobileQuickNavOpen}
-	titleId="mobile-process-quick-nav-title"
-	closeLabel="Close quick navigation"
-	onClose={closeMobileQuickNav}
-	dataSection="mobile-process-quick-nav"
-	panelId="mobile-process-quick-nav"
-	presentation="bottom-sheet"
-	initialFocus="[aria-current='step']"
-	returnFocus={restoreMobileQuickNavFocus
-		? "[data-action='open-mobile-quick-nav']"
-		: undefined}
+	open={ticketDraft !== null}
+	titleId="ticket-composer-title"
+	closeLabel="Close issue creator"
+	onClose={() => { ticketDraft = null; ticketInstructions = ""; }}
+	dataSection="ticket-composer"
+	panelId="ticket-composer"
+	width="min(100% - 32px, 520px)"
+	maxHeight="min(85dvh, 620px)"
+	initialFocusSelector="textarea"
 >
-	<header class="mobile-quick-nav-header">
-		<h2 id="mobile-process-quick-nav-title">Process steps</h2>
-		<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+	<header class="ticket-composer-header">
+		<h2 id="ticket-composer-title">Create issue</h2>
+		<p>Describe the issue to start a focused ticket-creation process.</p>
 	</header>
-
-	<div class="mobile-quick-nav-rail">
-		<ChronicleTurnRail
-			{detail}
-			{loading}
-			{error}
-			railItems={railItems}
-			activeAnchorId={chronicleScroll.activeAnchorId}
-			onSelectAnchor={selectMobileQuickNavAnchor}
-			headingId="mobile-process-navigation-heading"
-		/>
+	<div class="ticket-composer-body">
+		<label class="ticket-field">
+			<span>What issue should be created?</span>
+			<textarea
+				bind:value={ticketInstructions}
+				rows="6"
+				placeholder="Describe the problem, expected outcome, and any important constraints."
+			></textarea>
+		</label>
+		{#if ticketToolsLoading}
+			<p class="ticket-composer-state" role="status">Loading ticket systems…</p>
+		{:else if ticketTools.length > 1}
+			<label class="ticket-field">
+				<span>Ticket system</span>
+				<select bind:value={selectedTicketTool}>
+					<option value="">Choose a ticket system</option>
+					{#each ticketTools as tool}<option value={tool.name}>{tool.displayName}</option>{/each}
+				</select>
+			</label>
+		{:else if ticketTools.length === 0 && !ticketError}
+			<p class="ticket-composer-state">No ticket system is configured.</p>
+		{/if}
+		{#if ticketError}<p class="ticket-composer-error" role="alert">{ticketError}</p>{/if}
 	</div>
-
-	<footer class="mobile-quick-nav-utilities">
+	<footer class="ticket-composer-actions">
+		<button type="button" class="ticket-button-secondary" data-pressable="true" onclick={() => { ticketDraft = null; ticketInstructions = ""; }}>Cancel</button>
 		<button
 			type="button"
-			class="mobile-process-info-button"
+			class="ticket-button-primary"
 			data-pressable="true"
-			onclick={openProcessInfoFromQuickNav}
-			aria-expanded={isProcessInfoOpen}
-			aria-controls="process-info-overlay"
-		>
-			<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
-				<circle cx="12" cy="12" r="9"></circle>
-				<path d="M12 11v6M12 7.5h.01"></path>
-			</svg>
-			Process info
-		</button>
-		<ProcessActionsMenu
-			{instanceId}
-			lifecycleStatus={detail?.process.lifecycleStatus ?? null}
-			disabled={!detail}
-			hasSessionFile={detail?.session.signature !== null}
-			{processLabel}
-			{onDeleted}
-			presentation="sheet"
-			idSuffix="mobile"
-		/>
+			disabled={!ticketInstructions.trim() || !selectedTicketTool || ticketLaunching}
+			onclick={submitTicketDraft}
+		>{ticketLaunching ? "Creating…" : "Create"}</button>
 	</footer>
 </ModalShell>
 
+{#if mobileQuickNavOpen}
+	<div
+		class="mobile-quick-nav-backdrop"
+		data-section="mobile-process-quick-nav-backdrop"
+	>
+		<button
+			type="button"
+			class="mobile-quick-nav-dismiss-layer"
+			aria-label="Close quick navigation"
+			onclick={() => closeMobileQuickNav({ restoreFocus: true })}
+		></button>
+		<div
+			id="mobile-process-quick-nav"
+			class="mobile-quick-nav-sheet"
+			data-section="mobile-process-quick-nav"
+			role="dialog"
+			tabindex="-1"
+			aria-modal="true"
+			aria-labelledby="mobile-process-quick-nav-title"
+			bind:this={mobileQuickNavSheet}
+			onkeydown={handleMobileQuickNavKeydown}
+		>
+			<div class="mobile-quick-nav-handle" aria-hidden="true"></div>
+			<header class="mobile-quick-nav-header">
+				<div>
+					<h2 id="mobile-process-quick-nav-title">Process steps</h2>
+					<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+				</div>
+				<button
+					type="button"
+					class="mobile-quick-nav-close"
+					data-pressable="true"
+					aria-label="Close quick navigation"
+					onclick={() => closeMobileQuickNav({ restoreFocus: true })}
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+						<path d="M6 6l12 12M18 6 6 18"></path>
+					</svg>
+				</button>
+			</header>
+
+			<div class="mobile-quick-nav-rail">
+				<ChronicleTurnRail
+					{detail}
+					{loading}
+					{error}
+					railItems={railItems}
+					activeAnchorId={chronicleScroll.activeAnchorId}
+					onSelectAnchor={selectMobileQuickNavAnchor}
+					headingId="mobile-process-navigation-heading"
+				/>
+			</div>
+
+			<footer class="mobile-quick-nav-utilities">
+				<button
+					type="button"
+					class="mobile-process-info-button"
+					data-pressable="true"
+					onclick={openProcessInfoFromQuickNav}
+					aria-expanded={isProcessInfoOpen}
+					aria-controls="process-info-overlay"
+				>
+					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+						<circle cx="12" cy="12" r="9"></circle>
+						<path d="M12 11v6M12 7.5h.01"></path>
+					</svg>
+					Process info
+				</button>
+				<ProcessActionsMenu
+					{instanceId}
+					lifecycleStatus={detail?.process.lifecycleStatus ?? null}
+					disabled={!detail}
+					hasSessionFile={detail?.session.signature !== null}
+					{processLabel}
+					{onDeleted}
+					presentation="sheet"
+					idSuffix="mobile"
+				/>
+			</footer>
+		</div>
+	</div>
+{/if}
+
 <style>
-	.mobile-quick-nav-trigger {
+	.ticket-composer-header {
+		display: grid;
+		gap: 6px;
+		padding-right: var(--space-xl);
+	}
+
+	.ticket-composer-header h2,
+	.ticket-composer-header p,
+	.ticket-composer-state,
+	.ticket-composer-error {
+		margin: 0;
+	}
+
+	.ticket-composer-header h2 {
+		font-size: var(--type-title);
+		line-height: 1.2;
+	}
+
+	.ticket-composer-header p {
+		max-width: 44ch;
+		color: var(--chronicle-text-muted);
+		font-size: var(--type-body-sm);
+		line-height: 1.5;
+	}
+
+	.ticket-composer-body,
+	.ticket-field {
+		display: grid;
+		gap: var(--space-xs);
+		min-width: 0;
+	}
+
+	.ticket-composer-body {
+		gap: var(--space-md);
+		overflow-y: auto;
+		padding: 2px;
+		scrollbar-color: var(--chronicle-border-strong) transparent;
+	}
+
+	.ticket-field > span {
+		color: var(--chronicle-text);
+		font-size: var(--type-body-sm);
+		font-weight: 700;
+	}
+
+	.ticket-field select,
+	.ticket-field textarea {
+		width: 100%;
+		border: 1px solid var(--chronicle-border-strong);
+		border-radius: var(--radius-md);
+		background: var(--chronicle-card-surface);
+		color: var(--chronicle-text);
+		font: inherit;
+	}
+
+	.ticket-field select {
+		min-height: 46px;
+		padding: 0 var(--space-sm);
+	}
+
+	.ticket-field textarea {
+		min-height: 152px;
+		padding: 13px 14px;
+		line-height: 1.55;
+		resize: vertical;
+		caret-color: var(--chronicle-accent);
+	}
+
+	.ticket-field textarea::placeholder {
+		color: var(--chronicle-text-muted);
+		opacity: 1;
+	}
+
+	.ticket-field select:focus-visible,
+	.ticket-field textarea:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
+	}
+
+	.ticket-composer-state,
+	.ticket-composer-error {
+		padding: var(--space-sm);
+		border-radius: 10px;
+		background: var(--chronicle-panel-muted);
+		color: var(--chronicle-text-muted);
+		font-size: var(--type-body-sm);
+	}
+
+	.ticket-composer-error {
+		border: 1px solid var(--chronicle-danger-border);
+		background: var(--chronicle-danger-surface-soft);
+		color: var(--chronicle-danger-text-strong);
+	}
+
+	.ticket-composer-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: var(--space-xs);
+		padding-top: var(--space-xs);
+		border-top: 1px solid var(--chronicle-border);
+	}
+
+	.ticket-button-secondary,
+	.ticket-button-primary,
+	.ticket-selection-action {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		border-radius: 999px;
+		font: inherit;
+		font-size: var(--type-body-sm);
+		font-weight: 700;
+		cursor: pointer;
+	}
+
+	.ticket-button-secondary {
+		border: 1px solid var(--chronicle-border-strong);
+		background: var(--chronicle-card-surface);
+		color: var(--chronicle-text);
+	}
+
+	.ticket-button-primary {
+		border: 1px solid var(--chronicle-text);
+		background: var(--chronicle-text);
+		color: var(--chronicle-card-surface);
+	}
+
+	.ticket-button-secondary:hover:not(:disabled),
+	.ticket-button-primary:hover:not(:disabled),
+	.ticket-selection-action:hover:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
+	.ticket-button-secondary:hover:not(:disabled) {
+		border-color: var(--chronicle-accent);
+	}
+
+	.ticket-button-primary:hover:not(:disabled) {
+		background: color-mix(in srgb, var(--chronicle-text) 88%, var(--chronicle-accent) 12%);
+	}
+
+	.ticket-button-secondary:focus-visible,
+	.ticket-button-primary:focus-visible,
+	.ticket-selection-action:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
+	}
+
+	.ticket-button-primary:disabled {
+		opacity: 0.46;
+		cursor: not-allowed;
+	}
+
+	.ticket-selection-action {
+		position: fixed;
+		z-index: 42;
+		right: var(--space-md);
+		bottom: var(--space-md);
+		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 30%, var(--chronicle-border) 70%);
+		background: var(--chronicle-text);
+		color: var(--chronicle-card-surface);
+		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.12);
+	}
+
+	.mobile-quick-nav-trigger,
+	.mobile-quick-nav-backdrop {
 		display: none;
 	}
 
@@ -484,7 +861,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 	.warning-title {
 		margin: 0 0 6px;
-		font-size: 12px;
+		font-size: var(--type-caption);
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -503,7 +880,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		border-radius: 999px;
 		background: color-mix(in srgb, white 92%, var(--chronicle-card-surface) 8%);
 		color: var(--chronicle-danger-text);
-		font-size: 13px;
+		font-size: var(--type-body-sm);
 		font-weight: 620;
 		cursor: pointer;
 	}
@@ -554,7 +931,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: var(--chronicle-panel-surface);
 		color: var(--chronicle-text);
 		font: inherit;
-		font-size: 13px;
+		font-size: var(--type-body-sm);
 		font-weight: 620;
 		cursor: pointer;
 		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.08);
@@ -579,6 +956,42 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	@media (max-width: 720px) {
+		:global(dialog[data-section="ticket-composer"]) {
+			inset: auto 0 0;
+			width: 100%;
+			max-height: calc(100dvh - max(20px, env(safe-area-inset-top)));
+			margin: 0;
+			padding: var(--space-lg) var(--space-md) max(var(--space-md), env(safe-area-inset-bottom));
+			border-radius: 22px 22px 0 0;
+		}
+
+		.ticket-composer-body {
+			overscroll-behavior: contain;
+		}
+
+		.ticket-field textarea {
+			min-height: 132px;
+			resize: none;
+		}
+
+		.ticket-composer-actions {
+			position: sticky;
+			bottom: 0;
+			padding-top: var(--space-sm);
+			background: var(--chronicle-card-surface-strong);
+		}
+
+		.ticket-composer-actions button {
+			flex: 1 1 0;
+		}
+
+		.ticket-selection-action {
+			left: var(--space-sm);
+			right: var(--space-sm);
+			bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+			width: calc(100% - (2 * var(--space-sm)));
+		}
+
 		.mobile-quick-nav-trigger {
 			display: grid;
 			grid-template-columns: auto minmax(0, 1fr) auto;
@@ -637,10 +1050,57 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			display: none;
 		}
 
+		.mobile-quick-nav-backdrop {
+			position: fixed;
+			inset: 0;
+			z-index: 110;
+			display: flex;
+			align-items: flex-end;
+			justify-content: center;
+			padding-top: max(48px, env(safe-area-inset-top));
+			background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%);
+		}
+
+		.mobile-quick-nav-dismiss-layer {
+			position: absolute;
+			inset: 0;
+			padding: 0;
+			border: 0;
+			background: transparent;
+			cursor: default;
+		}
+
+		.mobile-quick-nav-sheet {
+			position: relative;
+			z-index: 1;
+			display: flex;
+			flex-direction: column;
+			width: min(100%, 560px);
+			height: min(82svh, 720px);
+			max-height: calc(100svh - max(48px, env(safe-area-inset-top)));
+			padding: 8px 16px max(14px, env(safe-area-inset-bottom));
+			border: 1px solid var(--chronicle-border-strong);
+			border-bottom: 0;
+			border-radius: 22px 22px 0 0;
+			background: var(--chronicle-card-surface);
+			box-shadow: var(--chronicle-shadow);
+			animation: mobile-quick-nav-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+		}
+
+		.mobile-quick-nav-handle {
+			width: 38px;
+			height: 4px;
+			margin: 0 auto 8px;
+			border-radius: 999px;
+			background: var(--chronicle-border-strong);
+		}
+
 		.mobile-quick-nav-header {
-			display: grid;
-			gap: 3px;
-			padding: 0 52px 12px 2px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--space-md);
+			padding: 4px 2px 12px;
 			border-bottom: 1px solid var(--chronicle-border);
 		}
 
@@ -665,6 +1125,28 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			white-space: nowrap;
 		}
 
+		.mobile-quick-nav-close {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			flex: 0 0 auto;
+			width: 40px;
+			height: 40px;
+			padding: 0;
+			border: 1px solid var(--chronicle-border);
+			border-radius: 10px;
+			background: var(--chronicle-panel-muted);
+			color: var(--chronicle-text-muted);
+			cursor: pointer;
+		}
+
+		.mobile-quick-nav-close:hover,
+		.mobile-quick-nav-close:focus-visible {
+			color: var(--chronicle-text);
+			border-color: var(--chronicle-border-strong);
+		}
+
+		.mobile-quick-nav-close:focus-visible,
 		.mobile-process-info-button:focus-visible {
 			outline: 2px solid var(--chronicle-accent);
 			outline-offset: 2px;
@@ -756,4 +1238,20 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		}
 	}
 
+	@keyframes mobile-quick-nav-in {
+		from {
+			transform: translateY(18px);
+			opacity: 0.88;
+		}
+		to {
+			transform: translateY(0);
+			opacity: 1;
+		}
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.mobile-quick-nav-sheet {
+			animation: none;
+		}
+	}
 </style>

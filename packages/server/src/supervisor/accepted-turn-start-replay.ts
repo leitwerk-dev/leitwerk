@@ -3,7 +3,6 @@ import type { RepositoryBundle } from "../db/repositories.js";
 export interface AcceptedTurnStartReplay {
 	startRecordId: string;
 	turnRecordId: string;
-	startedAt: string;
 }
 
 /** Resolve the durable accepted start that an idle owning worker must activate. */
@@ -36,5 +35,5 @@ export function resolveAcceptedTurnStartReplay(
 	)
 		return null;
 
-	return { startRecordId: start.id, turnRecordId: turnRecord.id, startedAt: turnRecord.startedAt };
+	return { startRecordId: start.id, turnRecordId: turnRecord.id };
 }

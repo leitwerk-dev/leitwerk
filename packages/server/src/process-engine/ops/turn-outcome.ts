@@ -7,7 +7,6 @@ import {
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
-	isServerAutomaticTurnDefinition,
 	parseStructuralProcessState,
 } from "@leitwerk-dev/process-sdk";
 import { validateTurnOutcomeCorrelation } from "../../domain-logic/turn-record-guards.js";
@@ -37,6 +36,7 @@ import { defineOperation } from "../operation.js";
 export interface TurnOutcomeInput {
 	instanceId: string;
 	payload: TurnOutcomePayload;
+	onRecorded?: () => void;
 }
 
 function applySemanticEntryRefPatch(
@@ -123,12 +123,7 @@ function resolveOutcomePublication(input: {
 	turnPublishedProduct: string | null;
 }): { productName: string | null; markdownParameterName: string | null } {
 	const definition = input.processGraphs.get(input.processId)?.turns.get(input.turnId)?.definition;
-	if (
-		!definition ||
-		(!isLlmTurnDefinition(definition) &&
-			!isAutomaticTurnDefinition(definition) &&
-			!isServerAutomaticTurnDefinition(definition))
-	) {
+	if (!definition || (!isLlmTurnDefinition(definition) && !isAutomaticTurnDefinition(definition))) {
 		return { productName: input.turnPublishedProduct, markdownParameterName: null };
 	}
 	const outcome = definition.outcomes?.[input.outcome];
@@ -156,7 +151,7 @@ function resolveEffectiveOutcomePayload(input: {
 	if (
 		input.publication.productName &&
 		(typeof resultPiEntryId !== "string" || resultPiEntryId.trim() === "") &&
-		(input.payload.turnType === "automatic" || input.payload.turnType === "server_automatic")
+		input.payload.turnType === "automatic"
 	) {
 		resultPiEntryId = `${input.payload.turnType}:${input.payload.turnRecordId}:${input.publication.productName}`;
 	}
@@ -172,6 +167,9 @@ type TurnOutcomeContextProcessGraphs = Parameters<typeof getProcessTurnGraph>[0]
 export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, void>({
 	kind: "turn_outcome",
 	label: "Turn outcome",
+	afterRecord(input) {
+		input.onRecorded?.();
+	},
 	async decide(ctx, input) {
 		const initialPayload = input.payload;
 		const turnGraph = getProcessTurnGraph(
@@ -195,12 +193,19 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 						const state = ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)?.state;
 						return state?.kind === "accepted" ? state.turnRecordId : null;
 					})()
-				: ctx.process.currentExecution?.kind === "server_turn"
-					? ctx.process.currentExecution.id
-					: null;
+				: null;
 		const correlationError = validateTurnOutcomeCorrelation(ctx.process, payload, expected);
 		if (correlationError) {
 			return reject(correlationError.code, correlationError.message);
+		}
+		if (
+			ctx.process.processId === "ticket_creation_process" &&
+			(!ctx.process.externalId || !ctx.process.externalUrl)
+		) {
+			return reject(
+				"ticket_receipt_missing",
+				"Ticket creation cannot complete until a valid ticket receipt has been recorded",
+			);
 		}
 		const requiredMarkdownError = validateRequiredTurnResultMarkdown({
 			payload,

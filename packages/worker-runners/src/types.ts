@@ -119,8 +119,14 @@ export interface StopWorkerOptions {
 	graceMs: number;
 }
 
+export type WorkerStartPhase = "preparing_runtime" | "allocating_runtime" | "starting_runtime";
+
+export interface WorkerStartObserver {
+	report(phase: WorkerStartPhase): void;
+}
+
 export interface WorkerRunner<TStartInput extends StartWorkerInput = StartWorkerInput> {
-	start(input: TStartInput): Promise<WorkerUnit>;
+	start(input: TStartInput, observer?: WorkerStartObserver): Promise<WorkerUnit>;
 	/** Stops the unit but keeps the process volume for resume. */
 	stop(ref: WorkerUnitRef, opts: StopWorkerOptions): Promise<void>;
 	/** Adoption scan: lists labelled worker units. */

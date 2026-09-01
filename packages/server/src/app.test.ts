@@ -1,4 +1,6 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
 import { type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
@@ -137,6 +139,50 @@ describe("createAppContext", () => {
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 		} finally {
 			releaseStart?.();
+			await ctx.app.close();
+		}
+	});
+
+	it("starts registered pollers after extension start hooks and stops them with the server", async () => {
+		const events: string[] = [];
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
+		const extensionCatalog = await buildExtensionCatalogFromModules([
+			{
+				manifest: { id: "polling-lifecycle-test", version: "1.0.0" },
+				setupServer(api) {
+					const deps = api.require(coreHostCapabilities.serverSetup);
+					if (Array.isArray(deps)) throw new Error("expected one server setup capability");
+					deps.polling.create({
+						id: "lifecycle-test",
+						isEnabled: () => true,
+						pollInterval: () => "10ms",
+						async pollOnce() {
+							events.push("poll");
+							return emptyPollResult();
+						},
+					});
+					api.onStart(() => events.push("extension-start"));
+				},
+			},
+		]);
+		const ctx = await createAppContext({
+			config,
+			logger: false,
+			extensionCatalog,
+			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
+		});
+		try {
+			await ctx.startBackgroundServices();
+			await vi.waitFor(() => expect(events).toContain("poll"));
+			expect(events.slice(0, 2)).toEqual(["extension-start", "poll"]);
+
+			await ctx.stopBackgroundServices();
+			const countAfterStop = events.length;
+			await new Promise((resolve) => setTimeout(resolve, 30));
+			expect(events).toHaveLength(countAfterStop);
+		} finally {
 			await ctx.app.close();
 		}
 	});

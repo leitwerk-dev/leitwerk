@@ -14,9 +14,9 @@ const installed = {
 	description: "Inspect a change before it ships",
 	activeRevisionId: "skillrev_review",
 	activeSourceRevision: "abcdef123456",
+	registrationKind: "catalog",
 	sourceRepositoryId: "shared",
 	updateAvailable: false,
-	modelInvocable: true,
 	usage,
 };
 const catalog = {

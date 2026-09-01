@@ -13,6 +13,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | **`lifecycleStatus`** | Coarse process state: `discovered`, `active`, `waiting`, `error`, `completed`, or `aborted`. |
 | **`selectedTurnId`** | Durable pointer to the active or awaited process turn. |
 | **`TurnStartRecord`** | Durable preparation for one worker-owned turn that reserves a turn-record id without creating an attempt until accepted. |
+| **LLM preparation phase** | Optional deterministic phase inside an accepted LLM turn. It produces bounded prompt input and progress without creating a separate business turn. |
 | **`WorkerLease`** | Server-owned durable lifecycle and heartbeat record assigned to a physical worker instance. |
 | **`Prepared turn start`** | Read-only tree position prepared by a worker lease before server acceptance. |
 | **`Terminal acknowledgement`** | The final bounded turn executed after an accepted outcome tool to return results and complete worker execution cleanly. |
@@ -80,3 +81,13 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | *Future step* | **Future turn** | Aligns with the turn-based paradigm. |
 | *Task* | **Turn** | Avoids confusion with background operational tasks or sub-tasks. |
 | *Task run* | **Turn record** | Accurately describes durable execution attempts. |
+
+## 7. Launch diagnostics
+
+- **Launch Run:** Durable, presentation-safe orchestration record for one launch or startup-retry attempt. It is not authoritative process-startup evidence.
+- **Startup Attempt:** Process-detail projection of one turn start and its correlated worker lease, server-observed readiness, and accepted first turn.
+- **Launch checklist step:** Ordered operator-facing phase owned by the launch coordinator.
+- **Preparation check:** Optional launcher-owned validation that returns or throws a safe failure.
+
+A Launch Run is not a process instance, worker lease, runner unit, or title job. It references those
+facts without storing credentials, provider responses, PIDs, pod names, or container ids.

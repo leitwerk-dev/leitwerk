@@ -32,6 +32,7 @@ import type {
 } from "@leitwerk-dev/worker-runners/types";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
@@ -58,6 +59,10 @@ import {
 } from "./worker-start-payload-builder.js";
 import { resolveWorkerPiAgentDir } from "./worker-storage-layout.js";
 import {
+	createWorkerUnitReclaimer,
+	type WorkerUnitCleanupLogger,
+} from "./worker-unit-reclaimer.js";
+import {
 	WorkerOutboundBufferOverflowError,
 	type WorkerWebSocketIpcManager,
 } from "./worker-websocket-ipc.js";
@@ -65,9 +70,10 @@ import {
 export interface SupervisorDeps
 	extends Pick<
 		RepositoryBundle,
-		"leases" | "processes" | "projects" | "inputs" | "turnRecords" | "turnStarts"
+		"leases" | "processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "events"
 	> {
 	config: LeitwerkConfig;
+	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	processGraphs: ProcessGraphRegistry;
 	processActionRegistry: ProcessActionRegistry;
 	processModelPolicy: ServerProcessModelPolicy;
@@ -80,6 +86,7 @@ export interface SupervisorDeps
 	};
 	resolvedExtensionEntriesJson?: string;
 	serverEpoch?: string;
+	logger?: WorkerUnitCleanupLogger;
 	resolveResourceBundle?: (digest: string) => PiResourceBundle | null;
 	resolveRepositoryCredentials?: WorkerStartPayloadBuilderDeps["resolveRepositoryCredentials"];
 	integrationTools?: WorkerStartPayloadBuilderDeps["integrationTools"];
@@ -147,6 +154,7 @@ export interface WorkerSupervisor {
 	): void;
 	getWorker(instanceId: string): WorkerHandle | undefined;
 	isAdoptionPending(instanceId: string): boolean;
+	staleResourceBacklogCount(): number;
 	adoptRegisteredWorkers(): Promise<void>;
 	detachAll(reason: string): Promise<void>;
 	shutdownAll(reason: string): Promise<void>;
@@ -164,6 +172,10 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	const idleStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const pendingCleanup = new Map<string, () => void>();
 	const runnerRuntime = deps.runnerRuntime;
+	const unitReclaimer = createWorkerUnitReclaimer({
+		runner: runnerRuntime.runner,
+		logger: deps.logger,
+	});
 
 	function sendToCurrentWorker(
 		instanceId: string,
@@ -197,9 +209,17 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		observation: Parameters<typeof applyWorkerLeaseObservation>[1]["observation"],
 		reason?: string,
 	): ApplyWorkerLeaseObservationResult {
+		const process = observation === "spawn_requested" ? deps.processes.getById(instanceId) : null;
 		return applyWorkerLeaseObservation(
 			{ leases: deps.leases, broadcaster: deps.broadcaster },
-			{ instanceId, workerId, observation, reason },
+			{
+				instanceId,
+				workerId,
+				observation,
+				reason,
+				turnStartRecordId:
+					process?.currentExecution?.kind === "worker_start" ? process.currentExecution.id : null,
+			},
 		);
 	}
 
@@ -388,7 +408,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		if (!replay) return false;
 		sendToCurrentWorker(instanceId, workerId, {
 			type: "worker.turn_start_accepted",
-			payload: { startRecordId: replay.startRecordId, turnRecordId: replay.turnRecordId },
+			payload: replay,
 		});
 		return true;
 	}
@@ -586,7 +606,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		onRuntimeExit?: () => void;
 	}): WorkerHandle {
 		const exitListeners: Array<() => void> = [];
-		input.unit.onExit((info) => {
+		unitReclaimer.observeExit(input.unit, (info) => {
 			input.unregister("runtime_exit");
 			handleProcessExit(input.unit.instanceId, input.unit.workerId, info);
 			input.onRuntimeExit?.();
@@ -713,16 +733,27 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				);
 			}
 		}
-		const unit = await runnerRuntime.runner.start({
-			instanceId: options.instanceId,
-			workerId: options.workerId,
-			serverEpoch,
-			image: selection.image,
-			env,
-			...(volume ? { runnerKind: "isolated" as const, volume } : { runnerKind: "local" as const }),
-			isolation: selection.isolation,
-			resources: resourceLimits,
-		});
+		const unit = await runnerRuntime.runner.start(
+			{
+				instanceId: options.instanceId,
+				workerId: options.workerId,
+				serverEpoch,
+				image: selection.image,
+				env,
+				...(volume
+					? { runnerKind: "isolated" as const, volume }
+					: { runnerKind: "local" as const }),
+				isolation: selection.isolation,
+				resources: resourceLimits,
+			},
+			{
+				report(phase) {
+					deps
+						.getLaunchCoordinator?.()
+						?.observeRunnerPhase(options.instanceId, options.workerId, phase);
+				},
+			},
+		);
 		return createRunnerHandle({
 			unit,
 			unregister: connect.unregister,
@@ -746,6 +777,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		startupTimeoutMs,
 		serverEpoch,
 		runnerRuntime,
+		unitReclaimer,
 		workers,
 		leases: deps.leases,
 		inputs: deps.inputs,
@@ -835,6 +867,12 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				unregisterStartRegistration = undefined;
 			} catch (error) {
 				unregisterStartRegistration?.();
+				emitServerObservedWorkerFailure(instanceId, workerId, {
+					errorCode: "worker_spawn_failed",
+					message:
+						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+					errorClass: "infrastructure",
+				});
 				observeWorkerLease(instanceId, workerId, "failure_reported", "spawn_failed");
 				observeWorkerLease(instanceId, workerId, "process_exited", "spawn_failed");
 				throw error;
@@ -921,6 +959,10 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 
 		isAdoptionPending(instanceId: string): boolean {
 			return adoptionCoordinator.isPending(instanceId);
+		},
+
+		staleResourceBacklogCount(): number {
+			return unitReclaimer.staleResourceBacklogCount();
 		},
 
 		async adoptRegisteredWorkers(): Promise<void> {

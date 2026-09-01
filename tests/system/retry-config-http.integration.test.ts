@@ -211,21 +211,20 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 			extensionCatalog: buildExtensionCatalogFromModules([retryConfigTestExtension]),
 		});
 		try {
-			const skill = {
-				sourcePath: "skills/review-draft",
-				skillId: "review-draft",
-				label: "Review draft",
-				description: null,
-				bundle: createCanonicalPiResourceBundle([
-					{
-						path: "skills/review-draft/SKILL.md",
-						content: Buffer.from("# Review draft"),
-					},
-				]),
-				sourceRevision: "test",
-			};
-			harness.ctx.deps.skills.mergeCatalog("test", [skill]);
-			harness.ctx.deps.skills.registerCatalogEntry("test", skill.skillId);
+			harness.ctx.deps.skills.reconcile([
+				{
+					skillId: "review-draft",
+					label: "Review draft",
+					description: null,
+					bundle: createCanonicalPiResourceBundle([
+						{
+							path: "skills/review-draft/SKILL.md",
+							content: Buffer.from("# Review draft"),
+						},
+					]),
+					sourceRevision: null,
+				},
+			]);
 			const launched = await fetch(
 				`${harness.address}/api/launchers/retry_config_test_process.primary_ui/launch`,
 				{

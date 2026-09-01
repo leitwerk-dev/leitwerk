@@ -179,13 +179,23 @@ export function registerProcessActionRoutes(
 				? { providerOptions: normalized.request.providerOptions ?? {} }
 				: {}),
 		};
+		const { launchRunId } = await deps.launchCoordinator.retryStartup(
+			req.params.instanceId,
+			resolveActor(req),
+		);
 		const result = await deps.processEngine.retryStartup(
 			req.params.instanceId,
 			req.params.startRecordId,
 			Object.keys(options).length > 0 ? options : undefined,
 		);
-		if (!result.ok) return sendEngineFailure(reply, result, "retry");
-		return { process: result.process, startRecordId: result.data.startRecordId };
+		if (!result.ok) {
+			deps.launchCoordinator.failStartupRetry(
+				req.params.instanceId,
+				"The worker could not be restarted. Review the process error and try again.",
+			);
+			return sendEngineFailure(reply, result, "retry");
+		}
+		return { process: result.process, startRecordId: result.data.startRecordId, launchRunId };
 	});
 
 	app.post<{ Params: { instanceId: string; turnRecordId: string } }>(

@@ -323,11 +323,12 @@ $effect(() => {
 	{@const skill = item.value}
 	{@const available = item.kind === "available"}
 	{@const repositoryId = available ? item.value.repositoryId : item.value.sourceRepositoryId}
+	{@const registrationKind = available ? null : item.value.registrationKind}
 	{@const revision = available ? item.value.sourceRevision : item.value.activeSourceRevision}
 	{@const href = available ? buildAvailableSkillPath(item.value.repositoryId, skill.id) : buildInstalledSkillPath(skill.id)}
 	{@const selected = selectedKey === `${item.kind}/${available ? `${item.value.repositoryId}/` : ""}${skill.id}`}
 	{@const status = skillStatus(skill)}
-	{@const repoLabel = repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
+	{@const repoLabel = registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
 	<tr
 		class:selected
 		onclick={(event) => {
@@ -353,7 +354,10 @@ $effect(() => {
 					: ""}{revision?.slice(0, 8) ?? "local"}
 			</code>
 		</td>
-		<td><span class={`status-chip ${status.className}`}>{status.label}</span></td>
+		<td>
+			<span class={`status-chip ${status.className}`}>{status.label}</span>
+			{#if available && item.value.conflict}<span class="conflict">ID conflict</span>{/if}
+		</td>
 		<td><strong>{skill.usage.attachedLast30Days}</strong><span>30d · {skill.usage.attachedAllTime} total</span></td>
 		<td><strong>{skill.usage.invokedLast30Days}</strong><span>30d · {skill.usage.invokedAllTime} total</span></td>
 	</tr>
@@ -469,13 +473,15 @@ $effect(() => {
 				<header class="detail-header"><div><h2>{detail.value.label}</h2><p>{detail.value.description ?? detail.value.id}</p></div><span class={`status-chip ${detailStatus.className}`}>{detailStatus.label}</span></header>
 				{#if actionSuccess}<div class="status-banner success detail-feedback" role="status">{actionSuccess}</div>{/if}
 				{#if detail.kind === "available"}
-					<div class="detail-actions"><button class="primary-action" type="button" disabled={actionPending || detail.value.stale || (detail.value.registered && !detail.value.updateAvailable)} onclick={() => void activateSkill()}>{actionPending ? "Working…" : detail.value.updateAvailable ? "Update skill" : detail.value.registered ? "Already installed" : "Install skill"}</button></div>
+					<div class="detail-actions"><button class="primary-action" type="button" disabled={actionPending || detail.value.stale || detail.value.conflict || (detail.value.registered && !detail.value.updateAvailable)} onclick={() => void activateSkill()}>{actionPending ? "Working…" : detail.value.updateAvailable ? "Update skill" : detail.value.registered ? "Already installed" : "Install skill"}</button></div>
 					{#if detail.value.stale}<p class="action-note warning">This revision was not found during the latest successful repository refresh. It remains visible for history but cannot be installed or updated.</p>{/if}
+					{#if detail.value.conflict}<p class="action-note warning">This skill ID conflicts with another repository or a configuration-managed skill. Resolve the conflict before installing it.</p>{/if}
 				{:else}
 					<div class="detail-actions">
 						{#if detail.value.updateAvailable && detail.value.sourceRepositoryId}<button class="primary-action" type="button" disabled={actionPending} onclick={() => void activateSkill(detail.value.sourceRepositoryId)}>{actionPending ? "Updating…" : "Update skill"}</button>{/if}
-						<button bind:this={removeButtonEl} class="secondary-action danger" type="button" disabled={actionPending} onclick={() => void requestRemove()}>Remove</button>
+						{#if detail.value.registrationKind === "catalog"}<button bind:this={removeButtonEl} class="secondary-action danger" type="button" disabled={actionPending} onclick={() => void requestRemove()}>Remove</button>{/if}
 					</div>
+					{#if detail.value.registrationKind === "configuration"}<p class="action-note">This skill is managed by <code>leitwerk.yaml</code>. Change configuration to remove or update it.</p>{/if}
 					{#if confirmRemove}<div class="remove-confirmation" role="group" aria-label={`Remove ${detail.value.label}`}><strong>Remove {detail.value.label} from future runs?</strong><p>Existing processes and schedules keep their pinned revision.</p><div><button bind:this={confirmRemoveButtonEl} class="danger-action" type="button" disabled={actionPending} onclick={() => void deactivateSkill()}>{actionPending ? "Removing…" : "Confirm removal"}</button><button class="secondary-action" type="button" disabled={actionPending} onclick={() => void cancelRemove()}>Cancel</button></div></div>{/if}
 				{/if}
 				{#if actionError}<p class="action-note error" role="alert">{actionError} Try again.</p>{/if}
@@ -489,7 +495,7 @@ $effect(() => {
 						{#if detail.kind === "available"}
 							{@render sourceMetadata(detail.value)}
 						{:else}
-							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>Active revision</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div><div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div></dl>
+							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{detail.value.registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>Active revision</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div><div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div></dl>
 							<section class="revision-section"><h3>Revision history</h3><div class="revision-list">{#each detail.value.revisions as revision (revision.id)}<div><span><code>{revision.sourceRevision ?? revision.id}</code><small>Imported {formatLocalDateTime(revision.importedAt)}</small></span>{#if revision.active}<span class="status-chip registered">Active</span>{/if}</div>{/each}</div></section>
 						{/if}
 						{@render processUsage(detail.value.processes)}
@@ -596,6 +602,7 @@ $effect(() => {
 	.status-chip.registered { background: var(--chronicle-success-surface); color: var(--chronicle-success); }
 	.status-chip.update { background: color-mix(in srgb, white 88%, var(--chronicle-attention) 12%); color: var(--chronicle-attention); }
 	.status-chip.stale { background: color-mix(in srgb, white 88%, var(--chronicle-danger) 12%); color: var(--chronicle-danger-text); }
+	.conflict { margin-top: 5px; color: var(--chronicle-danger-text); font-size: var(--type-caption); }
 	.detail-pane { position: relative; width: min(500px, 38vw); min-width: 400px; height: 100%; min-height: 0; padding: var(--space-xl); overflow-y: auto; border-radius: var(--radius-lg); background: var(--chronicle-card-surface-strong); box-shadow: var(--chronicle-shadow); }
 	.mobile-detail-nav { display: none; margin-bottom: var(--space-md); }
 	.mobile-back-button { display: inline-flex; align-items: center; gap: var(--space-2xs); padding: 6px 12px; border-radius: var(--radius-sm); background: var(--chronicle-panel-muted); color: var(--chronicle-text); font-size: var(--type-body-sm); font-weight: 620; text-decoration: none; }

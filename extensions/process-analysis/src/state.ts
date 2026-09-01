@@ -11,10 +11,11 @@ export interface ProcessAnalysisSnapshotState {
 
 export interface ProcessAnalysisState extends StructuralProcessState {
 	snapshot: ProcessAnalysisSnapshotState | null;
-	pendingHandoffInput: Record<string, unknown> | null;
 }
 
-function parseSnapshot(value: unknown): ProcessAnalysisSnapshotState | null {
+export function parseProcessAnalysisSnapshotState(
+	value: unknown,
+): ProcessAnalysisSnapshotState | null {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
 	const r = value as Record<string, unknown>;
 	if (typeof r.sourceProcessId !== "string" || typeof r.snapshotDir !== "string") return null;
@@ -32,11 +33,7 @@ export const processAnalysisStateCodec: Codec<ProcessAnalysisState> = {
 		const r = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
 		return {
 			...parseStructuralProcessState(r),
-			snapshot: parseSnapshot(r.snapshot),
-			pendingHandoffInput:
-				r.pendingHandoffInput && typeof r.pendingHandoffInput === "object"
-					? (r.pendingHandoffInput as Record<string, unknown>)
-					: null,
+			snapshot: parseProcessAnalysisSnapshotState(r.snapshot),
 		};
 	},
 	serialize(value) {

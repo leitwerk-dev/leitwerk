@@ -1,15 +1,7 @@
 import type { ProcessTurnRecord, TurnStartRecord } from "@leitwerk-dev/domain";
-import { serverAutomaticTurn } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
-import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
-import {
-	createDefaultTestProcessGraphRegistry,
-	createFixtureProcess,
-	createProcessGraphRegistry,
-} from "../../test-helpers/process-fixtures.js";
+import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
 import { createTestDeps } from "../../test-helpers/unit-deps.js";
-import { RetryFailedTurn } from "../ops/retry-failed-turn.js";
-import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import { buildRetryWrites } from "./build-retry-writes.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
@@ -87,73 +79,6 @@ describe("buildRetryWrites", () => {
 				},
 				instanceId: process.id,
 			},
-		]);
-	});
-
-	it("retries server-automatic failures directly without an accepted worker start", () => {
-		const serverAutomaticProcess = createFixtureProcess({
-			id: "server_automatic_retry_process",
-			entry: "server_cleanup",
-			turns: {
-				server_cleanup: serverAutomaticTurn({
-					description: "Server cleanup",
-					run: async () => ({ outcome: "done", params: {} }),
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
-			},
-		});
-		const deps = createTestDeps();
-		const process = deps.processes.create({
-			processId: serverAutomaticProcess.id,
-			selectedTurnId: "server_cleanup",
-			lifecycleStatus: "error",
-		});
-		const failedRun = deps.turnRecords.create({
-			id: "trn_cleanup_1",
-			instanceId: process.id,
-			turnId: "server_cleanup",
-			turnType: "server_automatic",
-			status: "failed",
-			attemptNumber: 1,
-			pathType: "primary",
-		});
-		deps.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: failedRun.id },
-		});
-		const engineDeps: ProcessEngineDeps = {
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => undefined,
-			processGraphs: createProcessGraphRegistry([serverAutomaticProcess]),
-		};
-		const currentProcess = deps.processes.getById(process.id);
-		if (!currentProcess) throw new Error("Fixture process was not persisted");
-		const context: DecideContext = {
-			deps: engineDeps,
-			instanceId: process.id,
-			process: currentProcess,
-		};
-
-		const decision = RetryFailedTurn.decide(context, {
-			instanceId: process.id,
-		});
-
-		expect(decision).toMatchObject({ ok: true });
-		if (!decision.ok) return;
-		expect(decision.writes.processPatch).toMatchObject({
-			lifecycleStatus: "active",
-			currentExecution: { kind: "server_turn" },
-		});
-		expect(decision.writes.turnStartWrites).toEqual([]);
-		expect(decision.writes.turnRecordWrites).toEqual([
-			expect.objectContaining({
-				kind: "create",
-				input: expect.objectContaining({
-					turnType: "server_automatic",
-					parentTurnRecordId: failedRun.id,
-					attemptNumber: 2,
-				}),
-			}),
 		]);
 	});
 

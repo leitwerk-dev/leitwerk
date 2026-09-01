@@ -6,6 +6,7 @@ import {
 	materializeRunRoot,
 	planRunRoot,
 	type RunRootGitOps,
+	RunRootPreparationError,
 	repairRunRoot,
 	validateRunRoot,
 } from "./run-root.js";
@@ -24,6 +25,23 @@ describe("materializeRunRoot", () => {
 		]);
 
 		await expect(materializeRunRoot(plan, git)).rejects.toThrow(/outside workspace root/);
+	});
+
+	it("fails preparation when a component cannot be cloned", async () => {
+		const ws = path.join("/", "work", "failed");
+		const git: RunRootGitOps = new FakeGitOps(new Map());
+		const plan = planRunRoot(ws, "ag-failed", [
+			{
+				key: "repo",
+				repoLocator: "https://example.com/missing.git",
+				baseBranch: "main",
+				workBranch: "feature",
+			},
+		]);
+
+		const preparation = materializeRunRoot(plan, git);
+		await expect(preparation).rejects.toBeInstanceOf(RunRootPreparationError);
+		await expect(preparation).rejects.toThrow(/repo: unknown repo/);
 	});
 
 	it("clones components, checks out feature branches, writes manifest and aggregated AGENTS.md", async () => {
@@ -149,6 +167,25 @@ describe("validateRunRoot", () => {
 });
 
 describe("repairRunRoot", () => {
+	it("fails preparation when an empty resumed workspace cannot be repaired", async () => {
+		const ws = path.join("/", "r", "failed");
+		const git: RunRootGitOps = new FakeGitOps(new Map());
+		const projects = [
+			{
+				key: "repo",
+				repoLocator: "https://example.com/missing.git",
+				baseBranch: "main",
+				workBranch: "feature",
+			},
+		];
+		const validation = await validateRunRoot(ws, projects, git);
+
+		expect(validation.diff.missing).toEqual(["repo"]);
+		await expect(
+			repairRunRoot(ws, validation, planRunRoot(ws, "ag-resumed", projects), git),
+		).rejects.toThrow(/Workspace preparation failed: repo: unknown repo/);
+	});
+
 	it("re-clones stale components and refreshes manifest", async () => {
 		const ws = path.join("/", "r", "ws");
 		const templates = new Map<string, RepoTemplate>([

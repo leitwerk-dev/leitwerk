@@ -90,15 +90,31 @@ launch:
 Before process creation, the server resolves each id to its active revision and pins the
 immutable selections to the process. An unknown or inactive skill rejects the launch.
 
-The provider adapter obtains only registrations for its exact typed source:
+The provider adapter obtains only registrations for its exact typed source and registers
+its polling work with the server:
 
 ```ts
 const watchers = deps.processWatchers?.listBySource(queueSource) ?? [];
-for (const watcher of watchers) {
-  const launchPlan = await watcher.resolveLaunch(event);
-  // Prepare and commit launchPlan through the server capabilities.
-}
+const poller = deps.polling.create({
+  id: "acme-work-queue",
+  pollInterval: () => "5s",
+  isEnabled: () => true,
+  async pollOnce() {
+    const result = emptyPollResult();
+    for (const watcher of watchers) {
+      const launchPlan = await watcher.resolveLaunch(event);
+      // Prepare and commit launchPlan through the server capabilities.
+    }
+    return result;
+  },
+});
 ```
+
+The server starts registered pollers after extension setup and stops them during
+shutdown. Poller IDs must be unique. Scheduled passes do not overlap. A rejected pass
+is logged with the full error. A completed pass with a non-empty `errors` array is logged
+with the complete result. Providers may call `poller.poll()` directly in tests or explicit
+fixtures, but do not own scheduled polling lifecycle.
 
 ## Idempotency and deduplication
 

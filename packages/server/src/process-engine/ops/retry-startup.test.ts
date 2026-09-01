@@ -65,7 +65,7 @@ function setup(kind: "bootstrap_failed" | "preparation_failed") {
 }
 
 describe("RetryStartup", () => {
-	it("replaces bootstrap failure with an active starting start without an attempt", () => {
+	it("replaces an LLM bootstrap failure with latest-resource preparation without an attempt", () => {
 		const s = setup("bootstrap_failed");
 		const d = RetryStartup.decide(s.context(), {
 			instanceId: s.process.id,
@@ -74,8 +74,23 @@ describe("RetryStartup", () => {
 		expect(d).toMatchObject({ ok: true });
 		if (!d.ok) return;
 		expect(d.writes.turnStartWrites).toHaveLength(1);
+		expect(d.writes.turnStartWrites[0]).toMatchObject({
+			kind: "create",
+			input: {
+				startKind: "startup_retry",
+				state: {
+					kind: "preparation_failed",
+					requestedModelProfileId: "p",
+					providerOptions: {},
+					code: "model_required",
+				},
+			},
+		});
+		expect(d.writes.turnStartWrites[0]).not.toHaveProperty(
+			"input.state.start.piResourceSnapshotDigest",
+		);
 		expect(d.writes.turnRecordWrites).toEqual([]);
-		expect(d.writes.processPatch.lifecycleStatus).toBe("active");
+		expect(d.writes.processPatch.lifecycleStatus ?? "error").toBe("error");
 	});
 	it("keeps preparation retry in error and rejects stale IDs", () => {
 		const s = setup("preparation_failed");
