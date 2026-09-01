@@ -7,7 +7,13 @@ import {
 import { untrack } from "svelte";
 import { submitQuestionAnswers } from "../../lib/api.js";
 
-let { request }: { request: ProcessQuestionRequest } = $props();
+interface Props {
+	request: ProcessQuestionRequest;
+	mode?: "interactive" | "trace";
+	onSubmitted?: (request: ProcessQuestionRequest) => void;
+}
+
+let { request, mode = "interactive", onSubmitted }: Props = $props();
 let draft = $state(untrack(() => emptyQuestionDrafts(request.questions)));
 let submitError = $state<string | null>(null);
 let submitting = $state(false);
@@ -47,6 +53,7 @@ async function submit() {
 			requestId: request.id,
 			draft,
 		});
+		onSubmitted?.(request);
 	} catch (error) {
 		submitError = error instanceof Error ? error.message : "Answers could not be sent. Try again.";
 	} finally {
@@ -61,7 +68,7 @@ async function submit() {
 		<p>{request.status === "open" ? "The active turn will continue here after you send the complete set." : "This durable record belongs to the turn’s reasoning history."}</p>
 	</div>
 
-	{#if request.status === "open"}
+	{#if request.status === "open" && mode === "interactive"}
 	<form onsubmit={(event) => { event.preventDefault(); void submit(); }} novalidate>
 		{#each request.questions as question, questionIndex (question.id)}
 			<fieldset data-question-index={questionIndex} aria-describedby={`question-help-${question.id}`}>
@@ -118,6 +125,18 @@ async function submit() {
 			{#if !canSubmit && !submitting}<p>Answer every question to continue.</p>{/if}
 		</div>
 	</form>
+	{:else if request.status === "open"}
+		<div class="trace-question-summary" role="status">
+			<p>Waiting for an answer in the chronicle.</p>
+			{#each request.questions as question (question.id)}
+				<div>
+					<strong>{question.question}</strong>
+					{#if question.options.length > 0}
+						<p>{question.options.map((option) => option.label).join(" · ")}</p>
+					{/if}
+				</div>
+			{/each}
+		</div>
 	{:else}
 		<div class="answer-summary" role="status">
 			<p>{request.status === "answered" ? "Answers sent. The turn is continuing." : "This request can no longer be answered."}</p>
@@ -154,9 +173,9 @@ async function submit() {
 	.text-field small { color: var(--chronicle-text-faint); font: inherit; font-weight: 450; }
 	textarea { width: 100%; box-sizing: border-box; resize: vertical; min-height: 52px; padding: 10px 12px; border: 1px solid var(--chronicle-border); border-radius: 14px; background: var(--chronicle-card-surface); color: var(--chronicle-text); font: inherit; line-height: 1.45; }
 	textarea:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; }
-	.answer-summary { display: grid; gap: 14px; color: var(--chronicle-text); }
-	.answer-summary > p, .answer-summary div p { margin: 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; color: var(--chronicle-text-muted); }
-	.answer-summary div { display: grid; gap: 4px; }
+	.answer-summary, .trace-question-summary { display: grid; gap: 14px; color: var(--chronicle-text); }
+	.answer-summary > p, .answer-summary div p, .trace-question-summary > p, .trace-question-summary div p { margin: 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; color: var(--chronicle-text-muted); }
+	.answer-summary div, .trace-question-summary div { display: grid; gap: 4px; }
 	.submit-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 	.submit-button { min-height: 44px; padding: 0 18px; border: 0; border-radius: 999px; background: var(--chronicle-text); color: white; font: inherit; font-weight: 700; cursor: pointer; }
 	.submit-button:disabled { cursor: default; opacity: .45; }

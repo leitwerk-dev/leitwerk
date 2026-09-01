@@ -41,7 +41,7 @@ function sanitizeRenderedHtml(renderedHtml: string): string {
 		throw new Error("renderMarkdownToHtml requires a DOM-capable environment for DOMPurify");
 	}
 
-	return htmlSanitizer.sanitize(renderedHtml, {
+	const sanitizedHtml = htmlSanitizer.sanitize(renderedHtml, {
 		FORBID_TAGS: [
 			"audio",
 			"embed",
@@ -55,6 +55,13 @@ function sanitizeRenderedHtml(renderedHtml: string): string {
 		],
 		FORBID_ATTR: ["poster", "srcset"],
 	});
+	const template = globalThis.document.createElement("template");
+	template.innerHTML = sanitizedHtml;
+	for (const link of template.content.querySelectorAll("a[href]")) {
+		link.setAttribute("target", "_blank");
+		link.setAttribute("rel", "noopener noreferrer");
+	}
+	return template.innerHTML;
 }
 
 export function renderMarkdownToHtml(markdown: string): string {

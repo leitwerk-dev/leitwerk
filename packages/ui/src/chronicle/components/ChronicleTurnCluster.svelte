@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatRelativeTime } from "../../lib/format";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type {
@@ -18,6 +19,7 @@ interface Props {
 	cluster: ChronicleTurnClusterItem;
 	isFocused: boolean;
 	compressHistory?: boolean;
+	questionRequests?: readonly ProcessQuestionRequest[];
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 }
@@ -26,6 +28,7 @@ let {
 	cluster,
 	isFocused,
 	compressHistory = false,
+	questionRequests = [],
 	onOpenReasoningDetails,
 	onDraftTicket,
 }: Props = $props();
@@ -41,6 +44,10 @@ const clusterMeta = $derived(
 function hasSections(sections: readonly ChronicleTurnClusterSection[]): boolean {
 	return sections.length > 0;
 }
+
+const hasThinkingSection = $derived(
+	cluster.sections.some((section) => section.kind === "thinking_preview"),
+);
 
 function summarizeTurnResult(markdown: string): string {
 	const plainText = markdownToPlainText(markdown);
@@ -81,7 +88,7 @@ function expandHistoryResult() {
 		</div>
 	</div>
 
-	{#if hasSections(cluster.sections)}
+	{#if hasSections(cluster.sections) || questionRequests.length > 0}
 		<div class="cluster-body">
 			{#each cluster.sections as section, index (`${cluster.turnRecordId}-${index}`)}
 				{#if section.kind === "thinking_preview"}
@@ -91,6 +98,7 @@ function expandHistoryResult() {
 						previewTruncated={section.previewTruncated}
 						toolCallCount={section.toolCallCount}
 						traceItemCount={section.traceItemCount}
+						{questionRequests}
 						onOpenDetails={() => onOpenReasoningDetails(cluster.turnRecordId)}
 					/>
 				{:else if section.kind === "operator_decision"}
@@ -150,6 +158,16 @@ function expandHistoryResult() {
 					</section>
 				{/if}
 			{/each}
+			{#if questionRequests.length > 0 && !hasThinkingSection}
+				<ChronicleThinkingSection
+					text=""
+					preview=""
+					toolCallCount={0}
+					traceItemCount={0}
+					{questionRequests}
+					onOpenDetails={() => onOpenReasoningDetails(cluster.turnRecordId)}
+				/>
+			{/if}
 		</div>
 	{/if}
 </section>

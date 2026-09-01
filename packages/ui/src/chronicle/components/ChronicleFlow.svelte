@@ -31,7 +31,6 @@ import ChronicleLiveTail from "./ChronicleLiveTail.svelte";
 import ChronicleOperatorInputSection from "./ChronicleOperatorInputSection.svelte";
 import ChronicleProcessErrorSection from "./ChronicleProcessErrorSection.svelte";
 import ChroniclePromptSection from "./ChroniclePromptSection.svelte";
-import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleRecoverySection from "./ChronicleRecoverySection.svelte";
 import ChronicleScheduledActionSection from "./ChronicleScheduledActionSection.svelte";
 import ChronicleStartupHistory from "./ChronicleStartupHistory.svelte";
@@ -77,6 +76,7 @@ interface Props {
 	modelConfiguration: ProcessModelConfigurationView;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
+	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 	hasTerminalSummary?: boolean;
 }
 
@@ -101,6 +101,7 @@ let {
 	processError = null,
 	modelConfiguration,
 	onOpenReasoningDetails,
+	onQuestionSubmitted,
 	onDraftTicket,
 	hasTerminalSummary = false,
 }: Props = $props();
@@ -119,6 +120,11 @@ const questionRequestsByTurn = $derived.by(() => {
 	}
 	return grouped;
 });
+
+function questionRequestsForTurn(turnRecordId: string): ProcessQuestionRequest[] {
+	const requests = questionRequestsByTurn.get(turnRecordId);
+	return requests ? [...requests.closed, ...(requests.open ? [requests.open] : [])] : [];
+}
 
 function chronicleItemKey(item: ChronicleTimelineItem, index: number): string {
 	switch (item.kind) {
@@ -254,12 +260,10 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				cluster={item}
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
+				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				onOpenReasoningDetails={onOpenReasoningDetails}
 				onDraftTicket={onDraftTicket}
 			/>
-			{#each questionRequestsByTurn.get(item.turnRecordId)?.closed ?? [] as request (request.id)}
-				<ChronicleQuestionRequest {request} />
-			{/each}
 		{:else if item.kind === "operator_input"}
 			<ChronicleOperatorInputSection section={item} />
 		{:else if item.kind === "leaf_outcome"}
@@ -277,6 +281,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				questionRequest={questionRequestsByTurn.get(item.turnRecordId)?.open ?? null}
 				isFocused={activeAnchorId === item.anchorId}
 				onOpenReasoningDetails={onOpenReasoningDetails}
+				{onQuestionSubmitted}
 				onAbortTurn={item.turnType === "llm" ? liveTailController.abortRunningTurn : null}
 				abortBusy={liveTailController.abortTurnBusy}
 				abortError={liveTailController.abortTurnError}

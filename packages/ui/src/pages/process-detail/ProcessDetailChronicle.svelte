@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import type { ProcessExternalTriggerSignal } from "@leitwerk-dev/protocol";
 import { tick } from "svelte";
 import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
@@ -106,6 +107,34 @@ let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
 let ticketDraft = $state<ChronicleTicketDraftArtifact | null>(null);
 let ticketSelectionDraft = $state<ChronicleTicketDraftArtifact | null>(null);
+let submittedQuestion = $state<{ id: string; turnRecordId: string } | null>(null);
+
+function handleQuestionSubmitted(request: ProcessQuestionRequest) {
+	submittedQuestion = { id: request.id, turnRecordId: request.turnRecordId };
+}
+
+$effect(() => {
+	const submitted = submittedQuestion;
+	const followUp = detail?.questionRequests?.find(
+		(request) =>
+			request.status === "open" &&
+			request.turnRecordId === submitted?.turnRecordId &&
+			request.id !== submitted.id,
+	);
+	if (!submitted || !followUp) return;
+
+	submittedQuestion = null;
+	void tick().then(() => {
+		const requestElement = chronicleViewport?.querySelector<HTMLElement>(
+			`[data-question-request-id="${CSS.escape(followUp.id)}"]`,
+		);
+		const firstControl = requestElement?.querySelector<HTMLElement>(
+			"input:not(:disabled), textarea:not(:disabled), button:not(:disabled)",
+		);
+		requestElement?.scrollIntoView({ block: "nearest" });
+		firstControl?.focus();
+	});
+});
 
 function openTicketComposer(artifact: ChronicleTicketArtifact) {
 	ticketDraft = { ...artifact };
@@ -364,6 +393,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 							: null}
 						modelConfiguration={detail.modelConfiguration}
 						onOpenReasoningDetails={onOpenReasoningDetails}
+						onQuestionSubmitted={handleQuestionSubmitted}
 						onDraftTicket={openTicketComposer}
 					/>
 				{/if}

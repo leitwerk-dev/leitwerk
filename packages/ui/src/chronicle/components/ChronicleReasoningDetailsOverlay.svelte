@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { onDestroy, onMount, tick } from "svelte";
 import type { ToolCallRendererDefinition } from "../../lib/api";
 import type {
@@ -9,6 +10,7 @@ import type {
 import { normalizeChronicleText } from "../lib/formatting.js";
 import { buildPromptHighlightSegments } from "../lib/prompt-highlighting.js";
 import ChronicleLiveChip from "./ChronicleLiveChip.svelte";
+import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleThinkingText from "./ChronicleThinkingText.svelte";
 import ChronicleToolCallItem from "./ChronicleToolCallItem.svelte";
 import ChronicleUsageStats from "./ChronicleUsageStats.svelte";
@@ -16,6 +18,7 @@ import ChronicleUsageStats from "./ChronicleUsageStats.svelte";
 interface Props {
 	entry: ChronicleReasoningDetailEntry;
 	toolRendererIndex: Record<string, ToolCallRendererDefinition>;
+	questionRequests?: readonly ProcessQuestionRequest[];
 	hasPrevious: boolean;
 	hasNext: boolean;
 	onClose: () => void;
@@ -23,8 +26,16 @@ interface Props {
 	onNext: () => void;
 }
 
-let { entry, toolRendererIndex, hasPrevious, hasNext, onClose, onPrevious, onNext }: Props =
-	$props();
+let {
+	entry,
+	toolRendererIndex,
+	questionRequests = [],
+	hasPrevious,
+	hasNext,
+	onClose,
+	onPrevious,
+	onNext,
+}: Props = $props();
 let closeButton: HTMLButtonElement | null = $state(null);
 let panelElement: HTMLDivElement | null = $state(null);
 let shouldFollowLiveTimeline = $state(true);
@@ -254,6 +265,18 @@ const runLabel = $derived(runModeLabel(entry.facts.runMode));
 const activeToolsLabel = $derived(
 	entry.facts.activeToolNames.length > 0 ? entry.facts.activeToolNames.join(", ") : "None",
 );
+const unmatchedQuestionRequests = $derived(
+	questionRequests.filter(
+		(request) =>
+			!entry.reasoningSection.items.some(
+				(item) => item.kind === "tool_call" && item.toolCall.toolCallId === request.toolCallId,
+			),
+	),
+);
+
+function questionsForTool(toolCallId: string): readonly ProcessQuestionRequest[] {
+	return questionRequests.filter((request) => request.toolCallId === toolCallId);
+}
 
 $effect(() => {
 	if (!entry.isLive) {
@@ -446,6 +469,11 @@ onDestroy(() => {
 								<ChronicleThinkingText text={item.text} trim={true} />
 							{:else if item.kind === "tool_call"}
 								<ChronicleToolCallItem toolCall={item.toolCall} {toolRendererIndex} />
+								{#each questionsForTool(item.toolCall.toolCallId) as request (request.id)}
+									<div class="trace-question" data-tool-call-id={request.toolCallId}>
+										<ChronicleQuestionRequest {request} mode="trace" />
+									</div>
+								{/each}
 							{:else}
 								<div
 									class="operational-event"
@@ -463,9 +491,14 @@ onDestroy(() => {
 						{/each}
 					{:else if normalizedReasoning}
 						<ChronicleThinkingText text={normalizedReasoning} />
-					{:else}
+					{:else if unmatchedQuestionRequests.length === 0}
 						<p class="empty-copy">No reasoning details were recorded for this turn.</p>
 					{/if}
+					{#each unmatchedQuestionRequests as request (request.id)}
+						<div class="trace-question" data-tool-call-id={request.toolCallId}>
+							<ChronicleQuestionRequest {request} mode="trace" />
+						</div>
+					{/each}
 				</div>
 			</section>
 		</div>
@@ -790,6 +823,13 @@ onDestroy(() => {
 	.reasoning-timeline > :global(*) {
 		flex: 0 0 auto;
 		min-width: 0;
+	}
+
+	.trace-question {
+		padding: 14px;
+		border-radius: 14px;
+		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 22%, var(--chronicle-border) 78%);
+		background: color-mix(in srgb, var(--chronicle-accent-soft) 18%, white 82%);
 	}
 
 	.operational-event {

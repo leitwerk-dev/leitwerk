@@ -1,8 +1,10 @@
 <script lang="ts">
+import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { THINKING_PREVIEW_LINE_COUNT } from "../lib/chronicle-projection.js";
 import { normalizeChronicleText, splitChronicleLines } from "../lib/formatting.js";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleLiveChip from "./ChronicleLiveChip.svelte";
+import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleThinkingText from "./ChronicleThinkingText.svelte";
 
 interface Props {
@@ -12,7 +14,9 @@ interface Props {
 	toolCallCount: number;
 	traceItemCount: number;
 	isLive?: boolean;
+	questionRequests?: readonly ProcessQuestionRequest[];
 	onOpenDetails?: (() => void) | null;
+	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 }
 
 let {
@@ -22,7 +26,9 @@ let {
 	toolCallCount,
 	traceItemCount,
 	isLive = false,
+	questionRequests = [],
 	onOpenDetails = null,
+	onQuestionSubmitted,
 }: Props = $props();
 
 const previewLines = $derived(splitChronicleLines(preview));
@@ -90,6 +96,14 @@ const overflowAffordanceCopy = $derived(
 			{previewTruncated ? overflowAffordanceCopy : "\u00a0"}
 		</div>
 	</div>
+
+	{#if questionRequests.length > 0}
+		<div class="reasoning-questions" data-section="reasoning-questions">
+			{#each questionRequests as request (request.id)}
+				<ChronicleQuestionRequest {request} onSubmitted={onQuestionSubmitted} />
+			{/each}
+		</div>
+	{/if}
 </section>
 
 <style>
@@ -128,6 +142,13 @@ const overflowAffordanceCopy = $derived(
 		line-height: 1.4;
 		text-transform: uppercase;
 		color: var(--chronicle-text-muted);
+	}
+
+	.reasoning-questions {
+		display: grid;
+		gap: var(--space-md);
+		padding-top: var(--space-sm);
+		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
 	}
 
 	.thinking-preview-copy {

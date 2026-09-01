@@ -29,7 +29,9 @@ describe("renderMarkdownToHtml", () => {
 		);
 
 		expect(html).toContain("<strong>done</strong>");
-		expect(html).toContain('<a href="https://example.com">link</a>');
+		expect(html).toContain(
+			'<a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a>',
+		);
 		expect(html).not.toContain("<script>");
 		expect(html).not.toContain("alert(1)");
 	});
@@ -56,17 +58,21 @@ describe("renderMarkdownToHtml", () => {
 		expect(html).toContain("<code>&lt;br&gt;</code>");
 	});
 
-	it("uses the renderer and DOMPurify defaults for link output", () => {
+	it("opens sanitized links in a new window", () => {
 		const html = normalizeHtml(
 			renderMarkdownToHtml(
 				"[safe](https://example.com) [unsafe](javascript:alert(1)) [ftp](ftp://example.com) [rel](./x)",
 			),
 		);
 
-		expect(html).toContain('<a href="https://example.com">safe</a>');
+		expect(html).toContain(
+			'<a href="https://example.com" target="_blank" rel="noopener noreferrer">safe</a>',
+		);
 		expect(html).toContain("[unsafe](javascript:alert(1))");
-		expect(html).toContain('<a href="ftp://example.com">ftp</a>');
-		expect(html).toContain('<a href="./x">rel</a>');
+		expect(html).toContain(
+			'<a href="ftp://example.com" target="_blank" rel="noopener noreferrer">ftp</a>',
+		);
+		expect(html).toContain('<a href="./x" target="_blank" rel="noopener noreferrer">rel</a>');
 		expect(html).not.toContain('href="javascript:alert(1)"');
 	});
 

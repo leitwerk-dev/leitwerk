@@ -2,7 +2,6 @@
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
-import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 
 interface Props {
@@ -13,6 +12,7 @@ interface Props {
 	onAbortTurn?: (() => Promise<void> | void) | null;
 	abortBusy?: boolean;
 	abortError?: string | null;
+	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 }
 
 let {
@@ -23,6 +23,7 @@ let {
 	onAbortTurn = null,
 	abortBusy = false,
 	abortError = null,
+	onQuestionSubmitted,
 }: Props = $props();
 
 let confirmingStop = $state(false);
@@ -86,24 +87,20 @@ const screenReaderStatus = $derived.by(() => {
 			</div>
 		</div>
 
-		{#if liveTail.reasoningSection}
+		{#if liveTail.reasoningSection || questionRequest}
 			<ChronicleThinkingSection
-				text={liveTail.reasoningSection.text}
-				preview={liveTail.reasoningSection.preview}
-				previewTruncated={liveTail.reasoningSection.previewTruncated}
-				toolCallCount={liveTail.reasoningSection.toolCallCount}
-				traceItemCount={liveTail.reasoningSection.traceItemCount}
+				text={liveTail.reasoningSection?.text ?? ""}
+				preview={liveTail.reasoningSection?.preview ?? ""}
+				previewTruncated={liveTail.reasoningSection?.previewTruncated ?? false}
+				toolCallCount={liveTail.reasoningSection?.toolCallCount ?? 0}
+				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
+				questionRequests={questionRequest ? [questionRequest] : []}
 				onOpenDetails={() => onOpenReasoningDetails(liveTail.turnRecordId)}
+				{onQuestionSubmitted}
 				isLive={true}
 			/>
 		{:else}
 			<p class="live-copy">{liveTail.copy}</p>
-		{/if}
-
-		{#if questionRequest}
-			{#key questionRequest.id}
-				<ChronicleQuestionRequest request={questionRequest} />
-			{/key}
 		{/if}
 
 		{#if liveTail.eventWindowTruncated}

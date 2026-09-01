@@ -552,6 +552,9 @@ function openNextReasoningDetails() {
 			<ChronicleReasoningDetailsOverlay
 				entry={activeReasoningDetail}
 				{toolRendererIndex}
+				questionRequests={$detailState.data?.questionRequests.filter(
+					(request) => request.turnRecordId === activeReasoningDetail.turnRecordId,
+				) ?? []}
 				hasPrevious={hasPreviousReasoningDetail}
 				hasNext={hasNextReasoningDetail}
 				onClose={() => closeReasoningDetails()}

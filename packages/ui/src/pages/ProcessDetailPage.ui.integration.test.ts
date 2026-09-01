@@ -32,6 +32,7 @@ const {
 	mockPostProcessRetry,
 	mockPostProcessTurnContinue,
 	mockLaunchTicketCreation,
+	mockSubmitQuestionAnswers,
 	mockUpdateScheduledAction,
 } = vi.hoisted(() => ({
 	mockDeleteFutureExecution: vi.fn(),
@@ -64,6 +65,7 @@ const {
 	mockPostProcessRetry: vi.fn(),
 	mockPostProcessTurnContinue: vi.fn(),
 	mockLaunchTicketCreation: vi.fn(),
+	mockSubmitQuestionAnswers: vi.fn(),
 	mockUpdateScheduledAction: vi.fn(),
 }));
 
@@ -78,6 +80,7 @@ vi.mock("../lib/api", () => ({
 	postProcessRetry: mockPostProcessRetry,
 	postProcessTurnContinue: mockPostProcessTurnContinue,
 	launchTicketCreation: mockLaunchTicketCreation,
+	submitQuestionAnswers: mockSubmitQuestionAnswers,
 	updateScheduledAction: mockUpdateScheduledAction,
 	deleteFutureExecution: mockDeleteFutureExecution,
 }));
@@ -1483,6 +1486,27 @@ function createQuestionRequestDetail(): ProcessDetailData {
 	return detail;
 }
 
+function createReplacementQuestionRequestDetail(): ProcessDetailData {
+	const detail = createLiveReasoningTransitionDetail();
+	detail.questionRequests = [
+		createTestQuestionRequest({
+			id: "qst_1",
+			turnRecordId: "trn_live",
+			status: "answered",
+			answers: ["Use the existing tracker"],
+			askedAt: "2026-01-01T00:01:15Z",
+			answeredAt: "2026-01-01T00:01:30Z",
+		}),
+		createTestQuestionRequest({
+			id: "qst_2",
+			toolCallId: "tool-question-2",
+			turnRecordId: "trn_live",
+			askedAt: "2026-01-01T00:01:45Z",
+		}),
+	];
+	return detail;
+}
+
 function createCommittedReasoningTransitionDetail(): ProcessDetailData {
 	const detail = createProcessDetail();
 	detail.turnRecords = [
@@ -1757,6 +1781,7 @@ async function mountSubjectWithCurrentMocks() {
 		},
 	]);
 	mockLaunchTicketCreation.mockReset();
+	mockSubmitQuestionAnswers.mockReset();
 	mockFetchTurnReasoningDetail.mockReset();
 	mockFetchTurnReasoningDetail.mockImplementation(
 		async (requestInstanceId: string, turnRecordId: string) =>
@@ -3007,7 +3032,61 @@ describe("ProcessDetailPage", () => {
 
 		const request = target.querySelector<HTMLElement>("[data-question-request-id='qst_1']");
 		expect(request).toBeTruthy();
+		expect(request?.closest('[data-section="thinking-preview"]')).toBeTruthy();
 		expect(request?.contains(document.activeElement)).toBe(false);
+	});
+
+	it("keeps the tool question visible when the reasoning trace is opened", async () => {
+		const { target } = await mountSubject(createQuestionRequestDetail());
+		await flushUi();
+
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		await flushUi();
+
+		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
+		expect(overlay).toBeTruthy();
+		expect(overlay?.querySelector("[data-question-request-id='qst_1']")).toBeTruthy();
+	});
+
+	it("reveals a follow-up question after submit without relying on a browser reload", async () => {
+		const initialDetail = createQuestionRequestDetail();
+		const answeredRequest = {
+			...initialDetail.questionRequests[0],
+			status: "answered" as const,
+			answers: ["Safe"],
+			answeredAt: "2026-01-01T00:01:30Z",
+		};
+		const { target } = await mountSubject(initialDetail);
+		mockSubmitQuestionAnswers.mockResolvedValue(answeredRequest);
+		await flushUi();
+
+		const firstRequest = target.querySelector<HTMLElement>("[data-question-request-id='qst_1']");
+		const firstOption = firstRequest?.querySelector<HTMLInputElement>("input[type='radio']");
+		expect(firstOption).toBeTruthy();
+		firstOption?.click();
+		await flushUi();
+		firstRequest?.querySelector<HTMLButtonElement>("button[type='submit']")?.click();
+		await flushUi();
+		expect(mockSubmitQuestionAnswers).toHaveBeenCalledOnce();
+
+		mockFetchProcessDetail.mockResolvedValue(createReplacementQuestionRequestDetail());
+		handleWsEvent(
+			createDurableWsFrame({
+				type: "process.event",
+				instanceId: "agt_1",
+				payload: {
+					eventType: "question_requested",
+					level: "info",
+					message: "Operator answers requested",
+				},
+			}),
+		);
+		await vi.advanceTimersByTimeAsync(120);
+		await flushUi();
+
+		const followUp = target.querySelector<HTMLElement>("[data-question-request-id='qst_2']");
+		expect(followUp).toBeTruthy();
+		expect(followUp?.contains(document.activeElement)).toBe(true);
 	});
 
 	it("focuses a question only after the operator opens its toast", async () => {
