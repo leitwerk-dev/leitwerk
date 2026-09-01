@@ -63,7 +63,7 @@ export const myProcess = flow
   .happyPath("implement")
   .codecs({ params: paramsCodec, state: stateCodec })
   .initialState(() => ({ summary: null }))
-  .runtime({ developmentTools: true })
+  .runtime({ developmentTools: true, docker: true })
   .use(flow.fragment<Params, State>("main").turn(implement))
   .define();
 ```
@@ -78,6 +78,12 @@ framework tools, and the turn's outcome tools. `.runtime({ developmentTools: tru
 process into mise preparation. Mise reads stock repository configuration at each declared
 repository root before worker readiness and turn acceptance. The capability defaults to false;
 process definitions do not declare tool names or versions.
+
+`.runtime({ docker: true })` requires a Docker realization from the selected runner. The local
+runner requires `local_worker.allow_host_docker: true` and a successful `docker info` preflight.
+The Docker runner requires `docker.private_daemon.isolation`. Kubernetes requires a complete
+`kubernetes.docker` block and operator-installed runtime infrastructure. Launch rejects an
+unavailable requirement before creating durable process state.
 
 Workers receive only public tool declarations
 and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it

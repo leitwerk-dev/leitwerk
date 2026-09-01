@@ -2069,6 +2069,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		| undefined;
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
+	private docker = false;
 
 	constructor(processId: string) {
 		super();
@@ -2130,9 +2131,10 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Opt this process into repository-local development tool preparation with mise. */
-	runtime(capabilities: { developmentTools?: boolean }): this {
+	/** Declare runner-provided process runtime capabilities. */
+	runtime(capabilities: { developmentTools?: boolean; docker?: boolean }): this {
 		this.developmentTools = capabilities.developmentTools === true;
+		this.docker = capabilities.docker === true;
 		return this;
 	}
 
@@ -2225,7 +2227,14 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			paramsCodec: this.paramsCodec,
 			stateCodec: this.stateCodec,
 			initialState: this.initialStateFn,
-			...(this.developmentTools ? { runtime: { developmentTools: true } } : {}),
+			...(this.developmentTools || this.docker
+				? {
+						runtime: {
+							...(this.developmentTools ? { developmentTools: true } : {}),
+							...(this.docker ? { docker: true } : {}),
+						},
+					}
+				: {}),
 			...(this.repositoryCredentialsFn
 				? { repositoryCredentials: this.repositoryCredentialsFn }
 				: {}),

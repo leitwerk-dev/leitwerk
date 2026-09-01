@@ -77,6 +77,7 @@ export interface FutureExecutionLifecycleDeps
 	processModelPolicy: ServerProcessModelPolicy;
 	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
 	launchPipeline: import("../launch-pipeline.js").LaunchPipeline;
+	assertRuntimeAvailable?: (processId: string) => Promise<void>;
 	logger?: ProcessEngineLogger;
 }
 

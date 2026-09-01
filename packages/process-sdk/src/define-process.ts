@@ -399,7 +399,7 @@ export interface DefinedProcessInput<TParams = unknown, TState = unknown> {
 	paramsCodec: Codec<TParams>;
 	stateCodec: Codec<TState>;
 	initialState(params: TParams): TState;
-	runtime?: { readonly developmentTools?: boolean };
+	runtime?: { readonly developmentTools?: boolean; readonly docker?: boolean };
 	repositoryCredentials?(input: {
 		params: TParams;
 		projects: readonly RepositoryCredentialProject[];

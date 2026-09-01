@@ -50,6 +50,7 @@ function logBindings(
 /** Reclaims terminal worker units without making cleanup a server availability dependency. */
 export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 	const backlog = new Map<string, WorkerUnitRef>();
+	const notifyAfterReclaim = new Map<string, () => void>();
 	const sleep = deps.retry?.sleep ?? defaultSleep;
 	const initialDelayMs = Math.max(1, deps.retry?.initialDelayMs ?? 250);
 	const maxDelayMs = Math.max(initialDelayMs, deps.retry?.maxDelayMs ?? 30_000);
@@ -63,6 +64,11 @@ export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 			await deps.runner.stop(ref, options);
 			backlog.delete(key);
 			deps.logger?.info?.(logBindings(ref, source, backlog.size), "Reclaimed terminal worker unit");
+			const notify = notifyAfterReclaim.get(key);
+			if (notify) {
+				notifyAfterReclaim.delete(key);
+				notify();
+			}
 			return true;
 		} catch (error) {
 			backlog.set(key, ref);
@@ -95,10 +101,24 @@ export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 		if (!(await attempt(ref, source))) ensureRetryLoop();
 	}
 
+	async function reclaimBeforeNotify(
+		unit: WorkerUnit,
+		info: WorkerExitInfo,
+		listener: (info: WorkerExitInfo) => void,
+	): Promise<void> {
+		const key = descriptorKey(unit);
+		notifyAfterReclaim.set(key, () => listener(info));
+		if (!(await attempt(unit, "natural_exit_handoff"))) ensureRetryLoop();
+	}
+
 	return {
 		reclaim,
 		observeExit(unit: WorkerUnit, listener: (info: WorkerExitInfo) => void): void {
 			unit.onExit((info) => {
+				if (unit.replacementHandoff === "stop-before-replacement") {
+					void reclaimBeforeNotify(unit, info, listener);
+					return;
+				}
 				listener(info);
 				void reclaim(unit, "natural_exit");
 			});

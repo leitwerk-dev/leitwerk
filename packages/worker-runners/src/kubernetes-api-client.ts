@@ -21,6 +21,10 @@ export interface KubernetesNamespaceSummary {
 	labels: Record<string, string>;
 }
 
+export interface KubernetesPodDiagnosticOptions {
+	sensitiveValues?: readonly string[];
+}
+
 export interface KubernetesApiClient {
 	ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void>;
 	deleteNamespace(name: string): Promise<void>;
@@ -42,8 +46,14 @@ export interface KubernetesApiClient {
 		options: { gracePeriodSeconds: number },
 	): Promise<void>;
 	getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null>;
+	listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]>;
 	listPods(namespace: string, labels: Record<string, string>): Promise<KubernetesPodSummary[]>;
-	onPodExit(name: string, namespace: string, listener: (info: WorkerExitInfo) => void): () => void;
+	onPodExit(
+		name: string,
+		namespace: string,
+		listener: (info: WorkerExitInfo) => void,
+		options?: KubernetesPodDiagnosticOptions,
+	): () => void;
 }
 
 function labelsMatch(actual: Record<string, string>, selector: Record<string, string>): boolean {
@@ -161,6 +171,10 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 			: null;
 	}
 
+	async listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]> {
+		return (this.podEvents.get(key(namespace, name)) ?? []).map((event) => ({ ...event }));
+	}
+
 	async listPods(
 		namespace: string,
 		labels: Record<string, string>,
@@ -179,7 +193,12 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 		return summaries;
 	}
 
-	onPodExit(name: string, namespace: string, listener: (info: WorkerExitInfo) => void): () => void {
+	onPodExit(
+		name: string,
+		namespace: string,
+		listener: (info: WorkerExitInfo) => void,
+		_options?: KubernetesPodDiagnosticOptions,
+	): () => void {
 		const k = key(namespace, name);
 		const listeners = this.listeners.get(k) ?? [];
 		listeners.push(listener);

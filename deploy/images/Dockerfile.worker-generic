@@ -35,6 +35,7 @@ RUN npm run build
 FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS runtime
 ARG TARGETARCH
 ARG MISE_VERSION=2026.8.14
+ARG DOCKER_IO_VERSION=20.10.24+dfsg1-1+deb12u1+b3
 WORKDIR /app
 ENV NODE_ENV=production \
 	PI_CODING_AGENT_DIR=/state/pi-agent \
@@ -43,7 +44,9 @@ ENV NODE_ENV=production \
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		git openssh-client bash ca-certificates chromium curl python3 make g++ jq \
-		tar gzip xz-utils unzip zstd \
+		tar gzip xz-utils unzip zstd "docker.io=${DOCKER_IO_VERSION}" \
+	&& docker --version \
+	&& dockerd --version \
 	&& case "$TARGETARCH" in \
 		amd64) mise_arch=x64; mise_sha=80b49fa2dff282d3346524aec4466bbab536296ed5ba4d8c3b1b451022e94f56 ;; \
 		arm64) mise_arch=arm64; mise_sha=81e1c5fa79c3d46cf93aac0ef9a5540bce9856634901a0db8301a656c370eb58 ;; \
@@ -86,4 +89,4 @@ LABEL org.opencontainers.image.title="leitwerk-worker-generic" \
 
 VOLUME ["/state"]
 WORKDIR /app/packages/worker
-CMD ["/usr/local/bin/node", "dist/worker-entry.js"]
+CMD ["/usr/local/bin/node", "dist/container-entry-main.js"]

@@ -28,7 +28,7 @@ function startInput(
 		image: { reference: "ghcr.io/example/worker:0.1.0" },
 		env: { LEITWERK_SERVER_URL: "https://leitwerk-server:8080" },
 		volume,
-		isolation: { dind: false },
+		docker: false,
 		...overrides,
 	};
 }
@@ -39,6 +39,7 @@ function bindRunner(hostRoot: string) {
 		engine,
 		volume: { mode: "bind", hostRoot, mountPath: "/state" },
 		defaultNetwork: "leitwerk",
+		privateDaemonIsolation: "privileged",
 	});
 	return { engine, runner, volume };
 }
@@ -159,34 +160,30 @@ describe("DockerWorkerRunner.start", () => {
 			expect(record?.spec.labels["leitwerk.dev/instance-id"]).toBe("proc-1");
 			expect(record?.spec.labels["leitwerk.dev/server-epoch"]).toBe("epoch-1");
 			expect(record?.spec.privileged).toBe(false);
+			expect(unit.replacementHandoff).toBe("stop-before-replacement");
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
 	});
 
-	it("marks privileged and backs inner daemon storage when DinD isolation is requested", async () => {
+	it("marks the container privileged and enables private Docker mode", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
 			const { engine, runner, volume } = bindRunner(hostRoot);
 			const vol = await volume.ensure("proc-1");
 			const unit = await runner.start(
-				startInput(
-					{ instanceId: "proc-1", workerId: "wkr-1", isolation: { dind: "privileged" } },
-					vol,
-				),
+				startInput({ instanceId: "proc-1", workerId: "wkr-1", docker: true }, vol),
 			);
 			const record = engine.containers.get(unit.unitId);
 			expect(record?.spec.privileged).toBe(true);
-			// Inner dockerd storage is an anonymous Docker-managed volume, never the
-			// process volume, so inner image/layer state stays out of /state.
-			expect(record?.spec.anonymousVolumes).toEqual(["/var/lib/docker"]);
+			expect(record?.spec.env).toContain("LEITWERK_PRIVATE_DOCKER=1");
 			expect(record?.spec.runtime).toBeUndefined();
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
 	});
 
-	it("applies the configured sysbox runtime without privileged for sysbox DinD", async () => {
+	it("applies sysbox-runc without privileged for private Docker", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
 			const engine = createFakeDockerEngineClient();
@@ -194,40 +191,39 @@ describe("DockerWorkerRunner.start", () => {
 				engine,
 				volume: { mode: "bind", hostRoot, mountPath: "/state" },
 				defaultNetwork: "leitwerk",
-				sysboxRuntime: "sysbox-runc",
+				privateDaemonIsolation: "sysbox-runc",
 			});
 			const vol = await volume.ensure("proc-1");
 			const unit = await runner.start(
-				startInput({ instanceId: "proc-1", workerId: "wkr-1", isolation: { dind: "sysbox" } }, vol),
+				startInput({ instanceId: "proc-1", workerId: "wkr-1", docker: true }, vol),
 			);
 			const record = engine.containers.get(unit.unitId);
 			expect(record?.spec.privileged).toBe(false);
 			expect(record?.spec.runtime).toBe("sysbox-runc");
-			expect(record?.spec.anonymousVolumes).toEqual(["/var/lib/docker"]);
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
 	});
 
-	it("rejects sysbox DinD when no host sysbox runtime is configured", async () => {
+	it("rejects Docker processes when private daemon isolation is not configured", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
-			const { runner, volume } = bindRunner(hostRoot);
+			const engine = createFakeDockerEngineClient();
+			const { runner, volume } = createDockerWorkerRunner({
+				engine,
+				volume: { mode: "bind", hostRoot, mountPath: "/state" },
+				defaultNetwork: "leitwerk",
+			});
 			const vol = await volume.ensure("proc-1");
 			await expect(
-				runner.start(
-					startInput(
-						{ instanceId: "proc-1", workerId: "wkr-1", isolation: { dind: "sysbox" } },
-						vol,
-					),
-				),
-			).rejects.toThrow(/sysbox DinD requested but no host sysbox runtime/);
+				runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1", docker: true }, vol)),
+			).rejects.toThrow(/docker.private_daemon is not configured/);
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
 	});
 
-	it("leaves a default worker without DinD storage or runtime overrides", async () => {
+	it("leaves an ordinary worker without daemon mode or runtime overrides", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
 			const { engine, runner, volume } = bindRunner(hostRoot);
@@ -235,7 +231,6 @@ describe("DockerWorkerRunner.start", () => {
 			const unit = await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
 			const record = engine.containers.get(unit.unitId);
 			expect(record?.spec.privileged).toBe(false);
-			expect(record?.spec.anonymousVolumes).toBeUndefined();
 			expect(record?.spec.runtime).toBeUndefined();
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
@@ -300,6 +295,26 @@ describe("DockerWorkerRunner.stop", () => {
 			expect(engine.removeCalls).toEqual([{ id: unit.unitId, force: true }]);
 			expect(engine.containers.has(unit.unitId)).toBe(false);
 			expect(engine.volumesRemoved).toEqual([]);
+		} finally {
+			rmSync(hostRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("shares concurrent stop operations at the container-removal handoff", async () => {
+		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
+		try {
+			const { engine, runner, volume } = bindRunner(hostRoot);
+			const unit = await runner.start(
+				startInput({ instanceId: "proc-1", workerId: "wkr-1" }, await volume.ensure("proc-1")),
+			);
+
+			await Promise.all([
+				runner.stop(unit, { graceMs: 1_000 }),
+				runner.stop(unit, { graceMs: 1_000 }),
+			]);
+
+			expect(engine.stopCalls).toHaveLength(1);
+			expect(engine.removeCalls).toHaveLength(1);
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}

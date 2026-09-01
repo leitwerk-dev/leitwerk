@@ -590,6 +590,8 @@ export interface RepositoryCredentialRegistrar {
 export interface ProcessRuntimeCapabilities {
 	/** Install repository-declared development tools with mise before accepting work. */
 	readonly developmentTools?: boolean;
+	/** Require a Docker CLI connected to a private or explicitly acknowledged daemon. */
+	readonly docker?: boolean;
 }
 
 export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown> {

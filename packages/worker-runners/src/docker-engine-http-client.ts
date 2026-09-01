@@ -78,14 +78,11 @@ function toMounts(spec: DockerContainerSpec): Array<Record<string, unknown>> {
 }
 
 function toContainerCreateBody(spec: DockerContainerSpec): Record<string, unknown> {
-	const volumes: Record<string, Record<string, never>> = {};
-	for (const target of spec.anonymousVolumes ?? []) volumes[target] = {};
 	return {
 		Image: spec.image,
 		Env: spec.env,
 		Labels: spec.labels,
 		...(spec.command ? { Cmd: spec.command } : {}),
-		Volumes: volumes,
 		HostConfig: {
 			Mounts: toMounts(spec),
 			NetworkMode: spec.networkMode,

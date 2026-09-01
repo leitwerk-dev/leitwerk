@@ -80,6 +80,81 @@ describe("Kubernetes HTTP API client", () => {
 		expect(requests).toBe(2);
 	});
 
+	it("bounds structured admission diagnostics without echoing response objects", async () => {
+		const apiServerUrl = await listen((_request, response) => {
+			response.writeHead(422, { "Content-Type": "application/json" });
+			response.end(
+				JSON.stringify({
+					kind: "Status",
+					reason: "Invalid",
+					message: "x".repeat(10_000),
+					object: { env: [{ name: "TOKEN", value: "secret" }] },
+				}),
+			);
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl });
+
+		const error = await client
+			.createPod({ metadata: { namespace: "process-namespace" } } as never)
+			.then(() => "")
+			.catch((cause: Error) => cause.message);
+
+		expect(error.length).toBeLessThan(2_200);
+		expect(error).toContain("Invalid");
+		expect(error).not.toContain("secret");
+	});
+
+	it("surfaces bounded redacted Pod exit diagnostics", async () => {
+		const workerToken = "worker-connect-token-value";
+		const apiServerUrl = await listen((request, response) => {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			if (request.url?.includes("/events?")) {
+				response.end(
+					JSON.stringify({
+						items: [
+							{
+								type: "Warning",
+								reason: "FailedScheduling",
+								message: `rejected manifest containing ${workerToken}`,
+							},
+						],
+					}),
+				);
+				return;
+			}
+			response.end(
+				JSON.stringify({
+					status: {
+						phase: "Failed",
+						containerStatuses: [
+							{
+								state: {
+									terminated: {
+										exitCode: 1,
+										reason: "Error",
+										message: `dockerd failed for ${workerToken}: ${"x".repeat(100)}`,
+									},
+								},
+							},
+						],
+					},
+				}),
+			);
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl, pollIntervalMs: 1 });
+		const exit = new Promise((resolve) =>
+			client.onPodExit("worker", "process", resolve, { sensitiveValues: [workerToken] }),
+		);
+
+		const info = (await exit) as { exitCode: number; reason: string };
+		expect(info.exitCode).toBe(1);
+		expect(info.reason).toContain("Runtime startup: dockerd failed");
+		expect(info.reason).toContain("Kubernetes events: Warning FailedScheduling");
+		expect(info.reason).toContain("<redacted>");
+		expect(info.reason).not.toContain(workerToken);
+		expect(info.reason.length).toBeLessThanOrEqual(2_048);
+	});
+
 	it("does not retry structured Kubernetes bad requests when deleting a pod", async () => {
 		let requests = 0;
 		const apiServerUrl = await listen((_request, response) => {

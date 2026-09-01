@@ -9,6 +9,17 @@ function sleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function stopPhysicalRuntime(
+	handle: WorkerHandle,
+	signal: NodeJS.Signals | number,
+): Promise<void> {
+	if (handle.killAndWait) {
+		await handle.killAndWait(signal);
+		return;
+	}
+	handle.kill(signal);
+}
+
 export function createWorkerShutdownController(input: {
 	config: LeitwerkConfig;
 	workers: Map<string, WorkerHandle>;
@@ -33,7 +44,7 @@ export function createWorkerShutdownController(input: {
 				handle.onceExit(() => resolve("exit"));
 			});
 			if (leaseBeforeStop?.workerId === handle.workerId && leaseBeforeStop.state === "spawning") {
-				handle.kill("SIGKILL");
+				await stopPhysicalRuntime(handle, "SIGKILL");
 				await exitPromise;
 				return;
 			}
@@ -67,13 +78,13 @@ export function createWorkerShutdownController(input: {
 				if (firstResult === "cleanup") {
 					const exitResult = await waitForExit();
 					if (exitResult === "timeout" && input.workers.has(instanceId)) {
-						handle.kill("SIGKILL");
+						await stopPhysicalRuntime(handle, "SIGKILL");
 						await exitPromise;
 					}
 					return;
 				}
 				if (firstResult === "timeout" && input.workers.has(instanceId)) {
-					handle.kill("SIGKILL");
+					await stopPhysicalRuntime(handle, "SIGKILL");
 					await exitPromise;
 				}
 			} finally {

@@ -13,7 +13,7 @@ import {
 } from "./kubernetes-manifests.js";
 import { createKubernetesWorkerRunner } from "./kubernetes-worker-runner.js";
 import { createExportTestFixture } from "./session-transfer.test-helper.js";
-import type { StartWorkerInput, VolumeRef } from "./types.js";
+import { type StartWorkerInput, type VolumeRef, WorkerStartDiagnosticError } from "./types.js";
 
 const unusedExporterOptions = {
 	serverUrl: "http://leitwerk-server:8080",
@@ -46,7 +46,7 @@ function startInput(overrides: Partial<StartWorkerInput>, volume: VolumeRef): St
 		image: { reference: "ghcr.io/example/worker:1" },
 		env: { LEITWERK_SERVER_URL: "http://server:8080" },
 		volume,
-		isolation: { dind: false },
+		docker: false,
 		...overrides,
 	};
 }
@@ -88,6 +88,36 @@ describe("Kubernetes ProcessVolume", () => {
 			type: "kubernetes.io/dockerconfigjson",
 			data: { ".dockerconfigjson": "base64-docker-config" },
 		});
+	});
+
+	it("selects the configured StorageClass only for Docker process PVCs", async () => {
+		const client = new FakeKubernetesApiClient();
+		const { volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: {
+				storageClassName: "ordinary-storage",
+				size: "5Gi",
+				accessModes: ["ReadWriteOnce"],
+				mountPath: "/state",
+			},
+			...unusedExporterOptions,
+			docker: {
+				runtimeClassName: "leitwerk-sysbox",
+				hostUsers: false,
+				processStorageClassName: "docker-storage",
+			},
+		});
+
+		await volume.ensure("ordinary", { docker: false });
+		await volume.ensure("docker", { docker: true });
+
+		expect(
+			client.pvcs.get("leitwerk-test-process-ordinary/leitwerk-process-ordinary")?.spec,
+		).toHaveProperty("storageClassName", "ordinary-storage");
+		expect(
+			client.pvcs.get("leitwerk-test-process-docker/leitwerk-process-docker")?.spec,
+		).toHaveProperty("storageClassName", "docker-storage");
 	});
 
 	it("retention releases only the process PVC", async () => {
@@ -197,6 +227,7 @@ describe("KubernetesWorkerRunner", () => {
 			instanceId: "proc-1",
 			workerId: "wkr-1",
 			unitId: "leitwerk-worker-proc-1-wkr-1",
+			replacementHandoff: "stop-before-replacement",
 		});
 		const pod = client.pods.get("leitwerk-test-process-proc-1/leitwerk-worker-proc-1-wkr-1");
 		expect(pod?.spec.serviceAccountName).toBe("leitwerk-worker");
@@ -257,6 +288,63 @@ describe("KubernetesWorkerRunner", () => {
 			},
 		]);
 		expect(client.pvcs.has("leitwerk-test-process-proc-1/leitwerk-process-proc-1")).toBe(true);
+	});
+
+	it("polls until the deleted Pod has disappeared", async () => {
+		class DelayedDeletionClient extends FakeKubernetesApiClient {
+			getCalls = 0;
+			override async deletePod(
+				name: string,
+				namespace: string,
+				options: { gracePeriodSeconds: number },
+			): Promise<void> {
+				this.deletedPods.push({ name, namespace, gracePeriodSeconds: options.gracePeriodSeconds });
+			}
+			override async getPod(name: string, namespace: string) {
+				this.getCalls += 1;
+				if (this.getCalls === 3) this.pods.delete(`${namespace}/${name}`);
+				return super.getPod(name, namespace);
+			}
+		}
+		const client = new DelayedDeletionClient();
+		const { runner, volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
+			delay: async () => undefined,
+		});
+		const unit = await runner.start(startInput({}, await volume.ensure("proc-1")));
+
+		await runner.stop(unit, { graceMs: 1000 });
+
+		expect(client.getCalls).toBe(3);
+	});
+
+	it("rejects replacement when Pod disappearance times out", async () => {
+		class StuckDeletionClient extends FakeKubernetesApiClient {
+			override async deletePod(
+				name: string,
+				namespace: string,
+				options: { gracePeriodSeconds: number },
+			): Promise<void> {
+				this.deletedPods.push({ name, namespace, gracePeriodSeconds: options.gracePeriodSeconds });
+			}
+		}
+		const client = new StuckDeletionClient();
+		const { runner, volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
+			podDisappearanceTimeoutMs: 0,
+		});
+		const unit = await runner.start(startInput({}, await volume.ensure("proc-1")));
+
+		await expect(runner.stop(unit, { graceMs: 1000 })).rejects.toThrow(
+			"replacement was not started",
+		);
+		expect(client.pods.size).toBe(1);
 	});
 
 	it("lists labelled pods for adoption scans", async () => {
@@ -347,14 +435,73 @@ describe("KubernetesWorkerRunner", () => {
 		});
 	});
 
-	it("rejects DinD profiles before pod creation", async () => {
-		const { client, runner, volume } = bindRunner();
+	it("wraps Pod admission failures as bounded redacted public diagnostics", async () => {
+		const workerToken = "worker-connect-token-value";
+		class AdmissionFailureClient extends FakeKubernetesApiClient {
+			override async createPod(): Promise<void> {
+				throw new Error(`admission denied for ${workerToken}: ${"x".repeat(4_096)}`);
+			}
+		}
+		const client = new AdmissionFailureClient();
+		const { runner, volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
+		});
 		const vol = await volume.ensure("proc-1");
 
-		await expect(
-			runner.start(startInput({ isolation: { dind: "privileged" } }, vol)),
-		).rejects.toThrow(/Docker-in-Docker/);
+		const failure = await runner
+			.start(startInput({ env: { LEITWERK_WORKER_TOKEN: workerToken } }, vol))
+			.catch((error: unknown) => error);
+		expect(failure).toBeInstanceOf(WorkerStartDiagnosticError);
+		expect((failure as WorkerStartDiagnosticError).publicDiagnostic).toContain("admission denied");
+		expect((failure as WorkerStartDiagnosticError).publicDiagnostic).not.toContain(workerToken);
+		expect((failure as WorkerStartDiagnosticError).publicDiagnostic.length).toBeLessThanOrEqual(
+			2_048,
+		);
+	});
+
+	it("rejects Docker-requiring processes before pod creation when wiring is absent", async () => {
+		const { client, runner, volume } = bindRunner();
+		const vol = await volume.ensure("proc-1", { docker: true });
+
+		await expect(runner.start(startInput({ docker: true }, vol))).rejects.toThrow(
+			/kubernetes\.docker/i,
+		);
 		expect(client.pods.size).toBe(0);
+	});
+
+	it("creates an unprivileged private-Docker Pod from trusted wiring", async () => {
+		const client = new FakeKubernetesApiClient();
+		const { runner, volume } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
+			docker: {
+				runtimeClassName: "leitwerk-sysbox",
+				hostUsers: false,
+				processStorageClassName: "leitwerk-docker-process",
+			},
+		});
+		const vol = await volume.ensure("proc-1", { docker: true });
+
+		await runner.start(startInput({ docker: true }, vol));
+
+		const pod = client.pods.get("leitwerk-test-process-proc-1/leitwerk-worker-proc-1-wkr-1");
+		expect(pod?.spec.runtimeClassName).toBe("leitwerk-sysbox");
+		expect(pod?.spec.hostUsers).toBe(false);
+		expect(pod?.spec.containers[0]?.env).toEqual(
+			expect.arrayContaining([
+				{ name: "DOCKER_HOST", value: "unix:///var/run/docker.sock" },
+				{ name: "LEITWERK_PRIVATE_DOCKER", value: "1" },
+			]),
+		);
+		const serialized = JSON.stringify(pod);
+		expect(serialized).not.toContain("privileged");
+		expect(serialized).not.toContain("hostPath");
+		expect(serialized).not.toContain("capabilities");
 	});
 
 	it("uses deterministic Kubernetes names", () => {

@@ -31,7 +31,15 @@ export class UnitExitNotifier {
 		for (const listener of list.splice(0)) listener(info);
 	}
 
-	wrapUnit<T extends WorkerUnitRef>(ref: T, key: string): WorkerUnit {
-		return { ...ref, onExit: (listener) => this.onExit(key, listener) };
+	wrapUnit<T extends WorkerUnitRef>(
+		ref: T,
+		key: string,
+		options?: { replacementHandoff?: WorkerUnit["replacementHandoff"] },
+	): WorkerUnit {
+		return {
+			...ref,
+			...(options?.replacementHandoff ? { replacementHandoff: options.replacementHandoff } : {}),
+			onExit: (listener) => this.onExit(key, listener),
+		};
 	}
 }

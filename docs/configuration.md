@@ -83,7 +83,9 @@ workers:
 - `session_transfer.max_compressed_bytes`: Maximum compressed bytes, enforced by the server relay and local importer.
 - Worker diagnostic traces are appended verbatim to `<storage.tree_files_dir>/diagnostic-traces/<instance-id>.log`.
 - `workers.cleanup.completed_process_retention`: Duration to retain completed process storage before automatic volume cleanup.
-- `workers.cleanup.error_process_retention`: Duration to retain failed/aborted process storage for diagnostics.
+- `workers.cleanup.error_process_retention`: Duration to retain errored or aborted process storage for diagnostics.
+
+Retention controls when process volumes are removed. Leitwerk does not back them up or restore them. Its managed disaster-recovery workflow covers server-owned durable state. Operators may independently protect process volumes and are responsible for retention and restore testing; without that protection, volume loss can discard unpushed workspace changes and process-local tooling state.
 
 Transfer links use `server.base_url` as their fixed origin. Non-loopback deployments must configure an HTTPS URL; request `Host` and forwarding headers cannot change the generated link origin.
 
@@ -104,8 +106,18 @@ workers:
   max_parallel_processes: 5
   startup_timeout: 45s
   heartbeat_interval: 15s
-  docker:
-    image: leitwerk-worker-generic:latest
+
+local_worker:
+  command: node
+  args: ["@leitwerk-dev/worker/worker-entry"]
+  allow_host_docker: false
+
+docker:
+  socket: unix:///var/run/docker.sock
+  network: leitwerk
+  server_url: http://leitwerk-server:8080
+  private_daemon:
+    isolation: privileged # privileged | sysbox-runc
 
 kubernetes:
   server_namespace: leitwerk-system
@@ -126,11 +138,16 @@ kubernetes:
 - `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
 - `development_tools.install_timeout`: Hard deadline for each opted-in repository's mise preparation. Defaults to `30m`.
 - `development_tools.local.mise_command`: Host mise command used by local workers. It is validated only when an opted-in process starts.
+- `local_worker.allow_host_docker`: Acknowledges that Docker processes inherit the host Docker context and credentials. Their launch runs `docker info` first.
+- `docker.private_daemon.isolation`: Selects exactly one private-daemon isolation. `privileged` grants broad host-kernel authority. `sysbox-runc` requires that runtime on the Docker host. Neither mode mounts the host runtime socket.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
+- `kubernetes.docker`: Trusted RuntimeClass, `hostUsers`, and process StorageClass wiring for process definitions that declare `runtime.docker`. All three fields are required for those definitions to be available. Ordinary processes ignore this block.
 - `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
 - `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
 - `workers.default_runtime_profile` (or `kubernetes.default_worker_runtime_profile`): Selects the trusted image used by isolated session-export helpers as well as the default worker image. The image must contain Leitwerk's bundled helper entrypoint; production references should be digest-pinned.
+
+Worker launch configuration is immutable for a physical worker. Changes affect only newly created workers. Recycle existing workers explicitly when a change must apply immediately. Docker process state lives at `/state/tooling/docker` in the process volume and survives worker replacement. Kubernetes Docker processes use the configured RuntimeClass and Docker process StorageClass; the runner does not preflight cluster runtime infrastructure.
 
 ---
 

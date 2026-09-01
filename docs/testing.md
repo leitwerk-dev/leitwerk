@@ -33,6 +33,13 @@ npm run test:full -- --composition=../private/leitwerk.composition.yaml
 
 See [Development Compositions](development-composition.md).
 
+Live Docker-runtime checks are opt-in because they require mutable local or cluster
+infrastructure. See `scripts/docker-runtime/README.md` for the disposable local-context,
+Docker-host, Sysbox, and Kubernetes commands. The isolated image and infrastructure canaries
+build and run a nested image, replace the outer container or Pod, and verify retained reuse with
+`--pull=never`. Blocking tests cover the trusted entrypoint and runner contracts; the live
+canaries do not replace `test:full`.
+
 Leitwerk's build entry points and hosted workflows opt out of anonymous tooling usage
 reporting. Turborepo telemetry and update checks are disabled explicitly, while
 `DO_NOT_TRACK` and `SCARF_ANALYTICS=false` cover tools and dependency install hooks that

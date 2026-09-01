@@ -97,9 +97,11 @@ When a worker pod is launched, Leitwerk selects container images, pull policies,
 3. `kubernetes.default_worker_runtime_profile` configured in `leitwerk.yaml`
 
 ### 3.2. Pod Lifecycle & PVC Retention
-- **Pod Provisioning:** `ProcessVolume.ensure(instanceId)` creates the process namespace and PVC mounted at `/state`. The server then spawns the worker pod.
-- **Idle Pod Cleanup:** When a process becomes idle, the server may terminate the worker pod while keeping the PVC intact. Future turns spawn a replacement pod on the existing PVC.
+- **Pod Provisioning:** `ProcessVolume.ensure(instanceId, requirements)` creates the process namespace and one PVC mounted at `/state`. Docker processes select `kubernetes.docker.process_storage_class_name`; ordinary processes retain `kubernetes.process_volume.storage_class_name`.
+- **Private Docker:** A Docker process Pod receives the configured `runtimeClassName` and `hostUsers`, plus private-daemon entrypoint mode. The runner does not install or preflight the RuntimeClass, StorageClass, or node handler. Admission errors, Pod events, and the bounded startup termination message report infrastructure failures.
+- **Idle Pod Cleanup:** When a process becomes idle, the server requests worker Pod deletion and polls until GET returns 404. Only then may a replacement use the retained PVC. A bounded timeout rejects replacement.
 - **Process Deletion:** Explicit process deletion (`DELETE /api/processes/:id`) removes the complete process namespace, including its PVC and ServiceAccount.
+- **Backup Boundary:** Leitwerk does not manage process-PVC backup or restoration. Server-owned durable state is its managed disaster-recovery boundary. Operators may independently snapshot or back up process PVCs and are responsible for retention and restore testing; without that protection, PVC loss can discard unpushed workspace changes and process-local tooling state.
 
 ---
 

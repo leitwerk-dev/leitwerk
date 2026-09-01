@@ -30,6 +30,7 @@ import type {
 	WorkerRunner,
 	WorkerUnit,
 } from "@leitwerk-dev/worker-runners/types";
+import { WorkerStartDiagnosticError } from "@leitwerk-dev/worker-runners/types";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { LaunchCoordinator } from "../launch-coordinator.js";
@@ -101,6 +102,8 @@ export interface WorkerHandle {
 	namespace?: string;
 	send(message: ServerToWorkerMessage): void;
 	kill(signal?: NodeJS.Signals | number): void;
+	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. */
+	killAndWait?(signal?: NodeJS.Signals | number): Promise<void>;
 	detach(reason: string): void;
 	onceExit(listener: () => void): void;
 }
@@ -108,6 +111,7 @@ export interface WorkerHandle {
 interface RunnerWorkerStartOptions {
 	instanceId: string;
 	workerId: string;
+	startupDeadlineMs: number;
 	resolvedExtensionEntriesJson?: string;
 	snapshotToken?: string;
 	onEnvelope(envelope: IpcEnvelope): void;
@@ -168,6 +172,7 @@ function generateWorkerId(): string {
 export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	const workers = new Map<string, WorkerHandle>();
 	const startupTimers = new Map<string, ReturnType<typeof setTimeout>>();
+	const startupTimedOutWorkers = new Set<string>();
 	const idleStopTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	const pendingCleanup = new Map<string, () => void>();
 	const runnerRuntime = deps.runnerRuntime;
@@ -197,6 +202,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	const startupTimeoutMs = parseDurationMs(deps.config.workers.startup_timeout, 30_000, {
 		allowHours: true,
 	});
+	const startupDiagnosticMarginMs = Math.min(5_000, Math.max(1, Math.floor(startupTimeoutMs / 2)));
 	const idleWorkerTtlMs = parseDurationMs(deps.config.workers.idle_worker_ttl, 0, {
 		allowHours: true,
 	});
@@ -319,16 +325,25 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		idleStopTimers.set(instanceId, timer);
 	}
 
-	function startWorkerStartupTimer(instanceId: string, handle: WorkerHandle): void {
-		const timer = setTimeout(() => {
-			clearStartupTimer(instanceId);
-			emitServerObservedWorkerFailure(instanceId, handle.workerId, {
-				errorCode: "startup_timeout",
-				message: `Worker startup timed out after ${startupTimeoutMs}ms`,
-				errorClass: "infrastructure",
-			});
-			handle.kill("SIGKILL");
-		}, startupTimeoutMs);
+	function timedOutWorkerKey(instanceId: string, workerId: string): string {
+		return `${instanceId}/${workerId}`;
+	}
+
+	function startWorkerStartupTimer(
+		instanceId: string,
+		handle: WorkerHandle,
+		startupDeadlineMs: number,
+	): void {
+		const timer = setTimeout(
+			() => {
+				clearStartupTimer(instanceId);
+				// Let the runtime exit observation carry bounded Pod events into the
+				// durable failure instead of recording a generic timeout first.
+				startupTimedOutWorkers.add(timedOutWorkerKey(instanceId, handle.workerId));
+				handle.kill("SIGKILL");
+			},
+			Math.max(0, startupDeadlineMs - Date.now()),
+		);
 		startupTimers.set(instanceId, timer);
 	}
 
@@ -543,17 +558,22 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			return;
 		}
 		const errorMessage = error instanceof Error ? error.message : String(error);
+		const startupTimedOut = startupTimedOutWorkers.delete(timedOutWorkerKey(instanceId, workerId));
 		const failedBeforeBootstrap =
 			leaseBeforeError.state === "spawning" || leaseBeforeError.state === "bootstrapping";
 		emitServerObservedWorkerFailure(instanceId, workerId, {
 			errorCode: shouldStopWorker
 				? "worker_websocket_outbound_buffer_overflow"
+				: startupTimedOut
+					? "startup_timeout"
+					: failedBeforeBootstrap
+						? "spawn_error"
+						: "process_error",
+			message: startupTimedOut
+				? `Worker startup timed out after ${startupTimeoutMs}ms: ${errorMessage}`
 				: failedBeforeBootstrap
-					? "spawn_error"
-					: "process_error",
-			message: failedBeforeBootstrap
-				? `Worker process error before bootstrap completed: ${errorMessage}`
-				: `Worker process error: ${errorMessage}`,
+					? `Worker process error before bootstrap completed: ${errorMessage}`
+					: `Worker process error: ${errorMessage}`,
 			errorClass: "infrastructure",
 		});
 		if (shouldStopWorker) {
@@ -580,6 +600,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		adoptionCoordinator.clear(instanceId);
 		pendingCleanup.delete(instanceId);
 		const leaseBeforeExit = safeGetLeaseByInstance(instanceId);
+		const startupTimedOut = startupTimedOutWorkers.delete(timedOutWorkerKey(instanceId, workerId));
 		const shouldNormalizeUnexpectedExit =
 			leaseBeforeExit?.workerId === workerId &&
 			leaseBeforeExit.state !== "draining" &&
@@ -589,9 +610,14 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		if (shouldNormalizeUnexpectedExit) {
 			const diagnostics = formatWorkerExitDiagnostics(info);
 			emitServerObservedWorkerFailure(instanceId, workerId, {
-				errorCode: info?.oomKilled ? "process_oom_killed" : "process_exited",
-				message:
-					leaseBeforeExit?.state === "spawning" || leaseBeforeExit?.state === "bootstrapping"
+				errorCode: startupTimedOut
+					? "startup_timeout"
+					: info?.oomKilled
+						? "process_oom_killed"
+						: "process_exited",
+				message: startupTimedOut
+					? `Worker startup timed out after ${startupTimeoutMs}ms${diagnostics}`
+					: leaseBeforeExit?.state === "spawning" || leaseBeforeExit?.state === "bootstrapping"
 						? `Worker exited before bootstrap completed${diagnostics}`
 						: `Worker exited unexpectedly${diagnostics}`,
 				errorClass: "infrastructure",
@@ -623,7 +649,15 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			},
 			kill(signal?: NodeJS.Signals | number) {
 				input.unregister("process_killed");
-				void runnerRuntime.runner.stop(input.unit, { graceMs: signal === "SIGTERM" ? 1000 : 0 });
+				void runnerRuntime.runner
+					.stop(input.unit, { graceMs: signal === "SIGTERM" ? 1000 : 0 })
+					.catch((error) => handleProcessError(input.unit.instanceId, input.unit.workerId, error));
+			},
+			async killAndWait(signal?: NodeJS.Signals | number) {
+				input.unregister("process_killed");
+				await runnerRuntime.runner.stop(input.unit, {
+					graceMs: signal === "SIGTERM" ? 1000 : 0,
+				});
 			},
 			detach(reason: string) {
 				input.unregister(reason);
@@ -673,7 +707,6 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 					ok: true as const,
 					runtimeProfile: "local",
 					image: { reference: "local" },
-					isolation: { dind: false as const },
 				},
 				profile: undefined,
 			};
@@ -707,12 +740,15 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		connect: { token: string; unregister(reason: string): void },
 	): Promise<WorkerHandle> {
 		const { selection, profile } = resolveRunnerStartSelection(options.instanceId);
+		const process = deps.processes.getById(options.instanceId);
+		if (!process) throw new Error(`Cannot start worker for missing process ${options.instanceId}`);
+		const docker = deps.processGraphs.get(process.processId)?.runtime?.docker === true;
 		const resourceLimits =
 			profile?.resources?.limits ??
 			(profile?.resources
 				? { cpu: profile.resources.cpu, memory: profile.resources.memory }
 				: undefined);
-		const volume = await runnerRuntime.volume?.ensure(options.instanceId);
+		const volume = await runnerRuntime.volume?.ensure(options.instanceId, { docker });
 		const serverUrl = runnerServerUrl();
 		const env: Record<string, string> = {
 			[WORKER_INSTANCE_ID_ENV]: options.instanceId,
@@ -722,6 +758,10 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			[WORKER_IPC_RECONNECT_ENV]: "1",
 			[WORKER_SERVER_EPOCH_ENV]: serverEpoch,
 			PI_CODING_AGENT_DIR: resolveWorkerPiAgentDir(deps.config, volume?.mountPath),
+			LEITWERK_WORKER_STARTUP_TIMEOUT_MS: String(startupTimeoutMs),
+			LEITWERK_WORKER_STARTUP_DEADLINE_MS: String(
+				options.startupDeadlineMs - startupDiagnosticMarginMs,
+			),
 		};
 		if (options.snapshotToken) env[WORKER_SNAPSHOT_TOKEN_ENV] = options.snapshotToken;
 		if (options.resolvedExtensionEntriesJson) {
@@ -744,7 +784,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				...(volume
 					? { runnerKind: "isolated" as const, volume }
 					: { runnerKind: "local" as const }),
-				isolation: selection.isolation,
+				docker,
 				resources: resourceLimits,
 			},
 			{ report() {} },
@@ -818,6 +858,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			}
 
 			let handle: WorkerHandle;
+			const startupDeadlineMs = Date.now() + startupTimeoutMs;
 			let processExitedBeforeRegistration = false;
 			let unregisterStartRegistration: (() => void) | undefined;
 			const earlyEnvelopes: IpcEnvelope[] = [];
@@ -825,6 +866,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				const startOptions: RunnerWorkerStartOptions = {
 					instanceId,
 					workerId,
+					startupDeadlineMs,
 					resolvedExtensionEntriesJson: deps.resolvedExtensionEntriesJson,
 					onEnvelope: (envelope) => {
 						if (workers.has(instanceId)) {
@@ -862,10 +904,11 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				unregisterStartRegistration = undefined;
 			} catch (error) {
 				unregisterStartRegistration?.();
+				const diagnostic =
+					error instanceof WorkerStartDiagnosticError ? ` ${error.publicDiagnostic}` : "";
 				emitServerObservedWorkerFailure(instanceId, workerId, {
 					errorCode: "worker_spawn_failed",
-					message:
-						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+					message: `Process was created, but the worker could not be started cleanly. Review the process error and retry startup.${diagnostic}`,
 					errorClass: "infrastructure",
 				});
 				observeWorkerLease(instanceId, workerId, "failure_reported", "spawn_failed");
@@ -874,7 +917,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			}
 
 			if (!processExitedBeforeRegistration) {
-				startWorkerStartupTimer(instanceId, handle);
+				startWorkerStartupTimer(instanceId, handle, startupDeadlineMs);
 				workers.set(instanceId, handle);
 				for (const envelope of earlyEnvelopes) {
 					routeEnvelope(envelope, instanceId);

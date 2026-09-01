@@ -14,11 +14,13 @@ import {
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
 	KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
+	type KubernetesDockerPodSpecOptions,
 	type KubernetesPodSpecOptions,
 	type KubernetesProcessVolumeSpec,
 	kubernetesExportHelperPodName,
 	kubernetesProcessNamespaceName,
 	kubernetesProcessPvcName,
+	redactKubernetesDiagnostic,
 	volumeRefFromPvc,
 } from "./kubernetes-manifests.js";
 import { UnitExitNotifier } from "./runner-utils.js";
@@ -37,6 +39,7 @@ import type {
 	WorkerUnitDescriptor,
 	WorkerUnitRef,
 } from "./types.js";
+import { WorkerStartDiagnosticError } from "./types.js";
 import {
 	managedExportHelperLabelSelector,
 	managedProcessNamespaceLabelSelector,
@@ -48,11 +51,31 @@ import {
 	WORKER_LABEL_MANAGED_BY_VALUE,
 } from "./worker-labels.js";
 
+const KUBERNETES_START_DIAGNOSTIC_MAX_LENGTH = 2_048;
+
+function boundedKubernetesStartDiagnostic(
+	error: unknown,
+	sensitiveValues: readonly string[],
+): string {
+	const detail = error instanceof Error ? error.message : "Kubernetes Pod admission failed";
+	return redactKubernetesDiagnostic(detail, sensitiveValues).slice(
+		0,
+		KUBERNETES_START_DIAGNOSTIC_MAX_LENGTH,
+	);
+}
+
 export interface KubernetesWorkerRunnerOptions {
 	client: KubernetesApiClient;
 	/** Prefix used to derive one Kubernetes namespace per process instance. */
 	processNamespacePrefix: string;
 	volume: KubernetesProcessVolumeSpec;
+	/** Storage and Pod wiring for process definitions that require private Docker. */
+	docker?: KubernetesDockerPodSpecOptions & { processStorageClassName: string };
+	/** Maximum wait after deletion before replacement is rejected. */
+	podDisappearanceTimeoutMs?: number;
+	podDisappearancePollIntervalMs?: number;
+	/** Test seam for bounded disappearance polling. */
+	delay?: (ms: number) => Promise<void>;
 	/** Server-local CA bundle copied into each process namespace for worker TLS trust. */
 	serverCaFile?: string;
 	/** Namespace containing operator-managed source image-pull Secrets. */
@@ -85,9 +108,13 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	const serverCaFile = options.serverCaFile?.trim();
 	const namespaceForProcess = (instanceId: string) =>
 		kubernetesProcessNamespaceName(instanceId, options.processNamespacePrefix);
+	const delay =
+		options.delay ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms)));
+	const podDisappearanceTimeoutMs = options.podDisappearanceTimeoutMs ?? 30_000;
+	const podDisappearancePollIntervalMs = options.podDisappearancePollIntervalMs ?? 250;
 
 	const volume: ProcessVolume = {
-		async ensure(instanceId) {
+		async ensure(instanceId, requirements) {
 			const namespaceManifest = buildKubernetesProcessNamespaceManifest({
 				instanceId,
 				processNamespacePrefix: options.processNamespacePrefix,
@@ -111,7 +138,10 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			const manifest = buildKubernetesProcessPvcManifest({
 				instanceId,
 				namespace: namespaceManifest.metadata.name,
-				volume: options.volume,
+				volume:
+					requirements?.docker && options.docker
+						? { ...options.volume, storageClassName: options.docker.processStorageClassName }
+						: options.volume,
 			});
 			await Promise.all([
 				...copySecrets,
@@ -157,32 +187,71 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 
 	const exitNotifier = new UnitExitNotifier();
 	const unsubscribers = new Map<string, () => void>();
+	const disappearancePromises = new Map<string, Promise<void>>();
 
 	function unitKey(namespace: string, unitId: string): string {
 		return `${namespace}/${unitId}`;
 	}
 
-	function watchPod(unitId: string, namespace: string): void {
+	function deletePodAndWait(
+		name: string,
+		namespace: string,
+		gracePeriodSeconds: number,
+	): Promise<void> {
+		const key = unitKey(namespace, name);
+		const existing = disappearancePromises.get(key);
+		if (existing) return existing;
+		const operation = Promise.resolve()
+			.then(async () => {
+				await client.deletePod(name, namespace, { gracePeriodSeconds });
+				const deadline = Date.now() + podDisappearanceTimeoutMs;
+				while (await client.getPod(name, namespace)) {
+					if (Date.now() >= deadline) {
+						throw new Error(
+							`Kubernetes worker Pod ${namespace}/${name} did not disappear within ${podDisappearanceTimeoutMs}ms; replacement was not started`,
+						);
+					}
+					await delay(Math.min(podDisappearancePollIntervalMs, Math.max(0, deadline - Date.now())));
+				}
+			})
+			.finally(() => disappearancePromises.delete(key));
+		disappearancePromises.set(key, operation);
+		return operation;
+	}
+
+	function watchPod(
+		unitId: string,
+		namespace: string,
+		sensitiveValues: readonly string[] = [],
+	): void {
 		const key = unitKey(namespace, unitId);
 		if (unsubscribers.has(key)) return;
-		const unsubscribe = client.onPodExit(unitId, namespace, (info) => {
-			exitNotifier.fireExit(key, info);
-			unsubscribers.get(key)?.();
-			unsubscribers.delete(key);
-		});
+		const unsubscribe = client.onPodExit(
+			unitId,
+			namespace,
+			(info) => {
+				exitNotifier.fireExit(key, info);
+				unsubscribers.get(key)?.();
+				unsubscribers.delete(key);
+			},
+			{ sensitiveValues },
+		);
 		unsubscribers.set(key, unsubscribe);
 	}
 
 	const runner: WorkerRunner<IsolatedStartWorkerInput> = {
 		async start(input: IsolatedStartWorkerInput, observer): Promise<WorkerUnit> {
 			observer?.report("preparing_runtime");
-			if (input.isolation.dind !== false) {
-				throw new Error("Kubernetes worker runner does not support Docker-in-Docker profiles");
+			if (input.docker && !options.docker) {
+				throw new Error(
+					"Kubernetes Docker runtime is unavailable; configure kubernetes.docker completely",
+				);
 			}
 			const processNamespace = input.volume.namespace ?? namespaceForProcess(input.instanceId);
 			const manifest = buildKubernetesWorkerPodManifest(input, {
 				namespace: processNamespace,
 				...(options.pod ?? {}),
+				...(input.docker && options.docker ? { docker: options.docker } : {}),
 				...(serverCaFile
 					? {
 							serverCaConfigMap: {
@@ -194,7 +263,14 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 					: {}),
 			});
 			observer?.report("allocating_runtime");
-			await client.createPod(manifest);
+			try {
+				await client.createPod(manifest);
+			} catch (error) {
+				throw new WorkerStartDiagnosticError(
+					boundedKubernetesStartDiagnostic(error, Object.values(input.env)),
+					error,
+				);
+			}
 			observer?.report("starting_runtime");
 			const ref: WorkerUnitRef = {
 				instanceId: input.instanceId,
@@ -202,13 +278,17 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				unitId: manifest.metadata.name,
 				namespace: manifest.metadata.namespace,
 			};
-			watchPod(ref.unitId, ref.namespace ?? processNamespace);
-			return exitNotifier.wrapUnit(ref, unitKey(ref.namespace ?? processNamespace, ref.unitId));
+			watchPod(ref.unitId, ref.namespace ?? processNamespace, Object.values(input.env));
+			return exitNotifier.wrapUnit(ref, unitKey(ref.namespace ?? processNamespace, ref.unitId), {
+				replacementHandoff: "stop-before-replacement",
+			});
 		},
 		async stop(ref: WorkerUnitRef, opts: StopWorkerOptions): Promise<void> {
-			await client.deletePod(ref.unitId, ref.namespace ?? namespaceForProcess(ref.instanceId), {
-				gracePeriodSeconds: Math.max(0, Math.ceil(opts.graceMs / 1000)),
-			});
+			await deletePodAndWait(
+				ref.unitId,
+				ref.namespace ?? namespaceForProcess(ref.instanceId),
+				Math.max(0, Math.ceil(opts.graceMs / 1000)),
+			);
 		},
 		async list(): Promise<WorkerUnitDescriptor[]> {
 			const namespaces = await client.listNamespaces(managedProcessNamespaceLabelSelector());
@@ -258,7 +338,9 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				namespace: podNamespace,
 			};
 			watchPod(ref.unitId, podNamespace);
-			return exitNotifier.wrapUnit(ref, unitKey(podNamespace, ref.unitId));
+			return exitNotifier.wrapUnit(ref, unitKey(podNamespace, ref.unitId), {
+				replacementHandoff: "stop-before-replacement",
+			});
 		},
 	};
 

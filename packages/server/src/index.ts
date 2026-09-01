@@ -49,7 +49,6 @@ export {
 	WORKER_LABEL_SERVER_EPOCH,
 	WORKER_LABEL_WORKER_ID,
 	type WorkerExitInfo,
-	type WorkerIsolation,
 	type WorkerResourceLimits,
 	type WorkerRunner,
 	type WorkerUnit,

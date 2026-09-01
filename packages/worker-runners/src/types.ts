@@ -34,6 +34,11 @@ export interface VolumeRef {
 	namespace?: string;
 }
 
+export interface ProcessVolumeRequirements {
+	/** Select storage compatible with a private Docker daemon. */
+	docker?: boolean;
+}
+
 export type ProcessStateExportPreflight = SessionTransferPreflight;
 export type ProcessStateExportHelperReport = SessionTransferPreflightReport;
 
@@ -73,7 +78,7 @@ export interface ProcessStateExportHelperRelayProvider {
 
 export interface ProcessVolume {
 	/** Idempotently provisions durable storage for a process instance. */
-	ensure(instanceId: string): Promise<VolumeRef>;
+	ensure(instanceId: string, requirements?: ProcessVolumeRequirements): Promise<VolumeRef>;
 	/** Retention cleanup only. Stopping a worker never calls this. */
 	release(instanceId: string): Promise<void>;
 	/** Permanently deletes every runner-managed resource owned by a deleted process. */
@@ -94,16 +99,6 @@ export interface WorkerResourceLimits {
 	memory?: string;
 }
 
-/**
- * Nested-container capability for the worker.
- *
- * - `{ dind: false }` — default unprivileged worker.
- * - `{ dind: "privileged" }` — inner `dockerd` started inside the worker.
- * - `{ dind: "sysbox" }` — nested daemon without `--privileged` (host must
- *   provide the sysbox runtime).
- */
-export type WorkerIsolation = { dind: false } | { dind: "privileged" | "sysbox" };
-
 export interface WorkerUnitRef {
 	instanceId: string;
 	workerId: string;
@@ -111,6 +106,16 @@ export interface WorkerUnitRef {
 	unitId: string;
 	/** Runtime-specific namespace/project for the unit (Kubernetes process namespace). */
 	namespace?: string;
+}
+
+export class WorkerStartDiagnosticError extends Error {
+	readonly publicDiagnostic: string;
+
+	constructor(publicDiagnostic: string, cause?: unknown) {
+		super("Worker runtime start failed", { cause });
+		this.name = "WorkerStartDiagnosticError";
+		this.publicDiagnostic = publicDiagnostic;
+	}
 }
 
 export interface WorkerExitInfo {
@@ -125,6 +130,8 @@ export interface WorkerExitInfo {
 }
 
 export interface WorkerUnit extends WorkerUnitRef {
+	/** Require successful runtime removal before the supervisor permits replacement. */
+	replacementHandoff?: "stop-before-replacement";
 	/** Maps physical worker exit into the supervisor's existing failure paths. */
 	onExit(listener: (info: WorkerExitInfo) => void): void;
 }
@@ -141,7 +148,8 @@ interface StartWorkerInputBase {
 	image: ResolvedWorkerImage;
 	/** Server URL, ids, connect token, `PI_CODING_AGENT_DIR`, etc. */
 	env: Record<string, string>;
-	isolation: WorkerIsolation;
+	/** Start the image's private Docker daemon before the worker. */
+	docker: boolean;
 	resources?: WorkerResourceLimits;
 }
 

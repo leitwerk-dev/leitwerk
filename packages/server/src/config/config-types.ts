@@ -89,20 +89,9 @@ export interface DockerProcessVolumeConfig {
 	mount_path: string;
 }
 
-/**
- * Declares which nested-container (Docker-in-Docker) modes the host runtime
- * supports. DinD opt-in on a runtime profile or process is rejected unless the
- * requested mode is enabled here. Defaults: `privileged` is generally available
- * on Docker; `sysbox` requires the host to provide the sysbox runtime, so it
- * stays opt-in.
- */
-export interface DockerDindCapabilityConfig {
-	/** Allow `dind: "privileged"` workers (inner `dockerd` under `--privileged`). */
-	privileged: boolean;
-	/** Allow `dind: "sysbox"` workers (nested daemon without `--privileged`). */
-	sysbox: boolean;
-	/** Container runtime name the host registers for sysbox (e.g. `sysbox-runc`). */
-	sysbox_runtime?: string;
+export interface DockerPrivateDaemonConfig {
+	/** Exact isolation used for every Docker-requiring process. */
+	isolation: "privileged" | "sysbox-runc";
 }
 
 /**
@@ -119,8 +108,8 @@ export interface DockerRunnerConfig {
 	/** CA the worker trusts for internal TLS (self-signed ok on a private net). */
 	server_ca_file?: string;
 	process_volume: DockerProcessVolumeConfig;
-	/** Nested-container capability the host runtime exposes to workers. */
-	dind?: DockerDindCapabilityConfig;
+	/** Private daemon realization for Docker-requiring processes. */
+	private_daemon?: DockerPrivateDaemonConfig;
 }
 
 export interface KubernetesProcessVolumeConfig {
@@ -128,6 +117,15 @@ export interface KubernetesProcessVolumeConfig {
 	size: string;
 	access_modes: string[];
 	mount_path: string;
+}
+
+export interface KubernetesDockerConfig {
+	/** Pod RuntimeClass selected for every Docker-requiring process. */
+	runtime_class_name?: string;
+	/** Pod user-namespace policy passed directly to spec.hostUsers. */
+	host_users?: boolean;
+	/** StorageClass selected for the process's single retained PVC. */
+	process_storage_class_name?: string;
 }
 
 export interface KubernetesHostAliasConfig {
@@ -155,6 +153,8 @@ export interface LocalWorkerRunnerConfig {
 	command: string;
 	/** Arguments passed to the local worker command. */
 	args: string[];
+	/** Explicit acknowledgement that Docker processes inherit host Docker authority. */
+	allow_host_docker?: boolean;
 }
 
 export interface KubernetesRunnerConfig {
@@ -171,13 +171,12 @@ export interface KubernetesRunnerConfig {
 	default_worker_runtime_profile?: string;
 	worker_service_account?: string;
 	process_volume: KubernetesProcessVolumeConfig;
+	/** Trusted private-Docker realization. Incomplete blocks leave Docker processes unavailable. */
+	docker?: KubernetesDockerConfig;
 	pod?: KubernetesPodConfig;
 	image_pull_secrets?: string[];
 	image_pull_secret_copies?: KubernetesImagePullSecretCopyConfig[];
 }
-
-/** Nested-container opt-in carried by a runtime profile or process override. */
-export type WorkerDindMode = "privileged" | "sysbox";
 
 export interface WorkerRuntimeProfileCpuMemoryConfig {
 	cpu?: string;
@@ -200,11 +199,6 @@ export interface WorkerRuntimeProfileConfig {
 	image: string;
 	image_pull_policy?: string;
 	resources?: WorkerRuntimeProfileResourcesConfig;
-	/**
-	 * Nested-container capability this image is built for. Repository branch
-	 * content never selects this; it is authored only in leitwerk config.
-	 */
-	dind?: WorkerDindMode;
 }
 
 /**

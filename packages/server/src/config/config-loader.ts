@@ -274,6 +274,7 @@ const configSchema = v.looseObject({
 		v.looseObject({
 			command: v.string(),
 			args: stringArraySchema,
+			allow_host_docker: v.optional(v.boolean()),
 		}),
 	),
 	pi: v.looseObject({
@@ -351,12 +352,8 @@ const configSchema = v.looseObject({
 				host_root: v.string(),
 				mount_path: v.string(),
 			}),
-			dind: v.optional(
-				v.looseObject({
-					privileged: v.boolean(),
-					sysbox: v.boolean(),
-					sysbox_runtime: v.optional(v.string()),
-				}),
+			private_daemon: v.optional(
+				v.strictObject({ isolation: v.picklist(["privileged", "sysbox-runc"]) }),
 			),
 		}),
 	),
@@ -375,6 +372,13 @@ const configSchema = v.looseObject({
 				access_modes: stringArraySchema,
 				mount_path: v.string(),
 			}),
+			docker: v.optional(
+				v.strictObject({
+					runtime_class_name: v.optional(v.string()),
+					host_users: v.optional(v.boolean()),
+					process_storage_class_name: v.optional(v.string()),
+				}),
+			),
 			pod: v.optional(
 				v.looseObject({
 					node_selector: v.optional(v.record(v.string(), v.string())),
@@ -416,7 +420,6 @@ const configSchema = v.looseObject({
 						),
 					}),
 				),
-				dind: v.optional(v.picklist(["privileged", "sysbox"])),
 			}),
 		),
 	),
@@ -577,13 +580,6 @@ function collectLocalRunnerConfigErrors(config: LeitwerkConfig): string[] {
 	if (!local) return ["local_worker config block is required when workers.runner is 'local'"];
 	requireNonEmpty("local_worker", { command: local.command }, errors);
 	if (!Array.isArray(local.args)) errors.push("local_worker.args must be an array");
-	for (const [id, profile] of Object.entries(config.worker_runtime_profiles ?? {})) {
-		if (profile.dind !== undefined) {
-			errors.push(
-				`worker_runtime_profiles.${id}.dind is not supported when workers.runner is 'local'`,
-			);
-		}
-	}
 	return errors;
 }
 
@@ -615,7 +611,6 @@ function collectDockerRunnerConfigErrors(config: LeitwerkConfig): string[] {
 			internalTlsEnabled: config.internal_tls?.enabled === true,
 		}),
 	);
-	errors.push(...collectWorkerDindCapabilityErrors(config));
 	return errors;
 }
 
@@ -654,6 +649,13 @@ function isSafeKubernetesNamespacePrefix(value: string): boolean {
 
 function isSafeKubernetesDnsLabel(value: string): boolean {
 	return /^(?!-)[a-z0-9-]{1,63}(?<!-)$/.test(value);
+}
+
+function isSafeKubernetesDnsSubdomain(value: string): boolean {
+	return (
+		value.length <= 253 &&
+		/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/.test(value)
+	);
 }
 
 function requireNonEmpty(
@@ -725,38 +727,16 @@ function collectKubernetesRunnerConfigErrors(config: LeitwerkConfig): string[] {
 	if (k.process_volume.access_modes.length === 0)
 		errors.push("kubernetes.process_volume.access_modes must not be empty");
 
-	for (const [id, profile] of Object.entries(config.worker_runtime_profiles ?? {})) {
-		if (profile.dind !== undefined)
-			errors.push(
-				`worker_runtime_profiles.${id}.dind is not supported when workers.runner is 'kubernetes'`,
-			);
-	}
-	return errors;
-}
-
-/**
- * Rejects DinD opt-in on a runtime profile unless the host runtime advertises
- * the matching capability under `docker.dind`. This is the config-time gate the
- * plan calls for: "DinD opt-in is rejected unless the runtime supports it."
- */
-function collectWorkerDindCapabilityErrors(config: LeitwerkConfig): string[] {
-	const errors: string[] = [];
-	const cap = config.docker?.dind;
-	for (const [id, profile] of Object.entries(config.worker_runtime_profiles ?? {})) {
-		const mode = profile.dind;
-		if (!mode) continue;
-		const enabled = mode === "privileged" ? cap?.privileged : cap?.sysbox;
-		if (!enabled) {
-			errors.push(
-				`worker_runtime_profiles.${id}.dind is '${mode}' but docker.dind.${mode} is not enabled`,
-			);
-			continue;
+	const dockerNames = {
+		runtime_class_name: k.docker?.runtime_class_name,
+		process_storage_class_name: k.docker?.process_storage_class_name,
+	};
+	for (const [field, value] of Object.entries(dockerNames)) {
+		if (value !== undefined && !isSafeKubernetesDnsSubdomain(value)) {
+			errors.push(`kubernetes.docker.${field} must be a valid Kubernetes DNS subdomain name`);
 		}
-		if (mode === "sysbox" && !cap?.sysbox_runtime?.trim())
-			errors.push(
-				`worker_runtime_profiles.${id}.dind is 'sysbox' but docker.dind.sysbox_runtime is not configured`,
-			);
 	}
+
 	return errors;
 }
 
@@ -842,6 +822,19 @@ function collectLegacyConfigKeyErrors(config: Record<string, unknown>): string[]
 			.filter(({ section, key }) => hasOwnKey(config[section], key))
 			.map(({ message }) => message),
 	);
+	if (hasOwnKey(config.docker, "dind")) {
+		errors.push("docker.dind was removed; configure docker.private_daemon.isolation");
+	}
+	const profiles = config.worker_runtime_profiles;
+	if (profiles && typeof profiles === "object" && !Array.isArray(profiles)) {
+		for (const [id, profile] of Object.entries(profiles)) {
+			if (hasOwnKey(profile, "dind")) {
+				errors.push(
+					`worker_runtime_profiles.${id}.dind was removed; declare runtime.docker in process code`,
+				);
+			}
+		}
+	}
 	return errors;
 }
 
