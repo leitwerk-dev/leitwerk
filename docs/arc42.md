@@ -183,7 +183,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 ## 11 Risks and Technical Debt
 
 - **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
-- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: it atomically launches a generic child from a durable result and records immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
+- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: it atomically launches the code-defined process and entry turn registered by the selected ticket capability, using a durable result and immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
 
 ## 12 Glossary
 

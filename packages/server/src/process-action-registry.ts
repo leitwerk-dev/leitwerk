@@ -116,6 +116,23 @@ export interface ProcessActionRegistry {
 	): ResolvedActionScheduling | null;
 }
 
+export function resolveTurnIntegrationToolNames(
+	registry: Pick<ProcessActionRegistry, "getTurnDefinition" | "resolveContextData">,
+	process: Pick<ProcessInstance, "processId" | "paramsJson" | "stateJson">,
+	turnId: string,
+): readonly string[] {
+	const turn = registry.getTurnDefinition(process.processId, turnId);
+	if (turn?.kind !== "llm" && turn?.kind !== "automatic") return [];
+	const dynamic =
+		turn.kind === "llm" && turn.resolveIntegrationTools
+			? (() => {
+					const context = registry.resolveContextData(process.processId, process);
+					return turn.resolveIntegrationTools?.(context.params, context.state) ?? [];
+				})()
+			: [];
+	return [...new Set([...(turn.integrationTools ?? []), ...dynamic])];
+}
+
 function resolveProcessContextData(
 	processDef: ExtensionProcessDefinition | undefined,
 	process: Pick<ProcessInstance, "paramsJson" | "stateJson">,

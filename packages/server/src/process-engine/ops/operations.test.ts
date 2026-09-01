@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ProcessActionRegistry } from "../../process-action-registry.js";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
 import {
 	createDefaultTestProcessGraphRegistry,
@@ -325,6 +326,72 @@ describe("ProcessEngine operation decisions", () => {
 		});
 
 		expect(decision).toMatchObject({ ok: false, code: "turn_result_markdown_missing" });
+	});
+
+	it("TurnOutcome requires an external receipt when process metadata opts in", async () => {
+		const deps = createDeps();
+		const processDefinition = createFixtureProcess({
+			id: "receipt_process",
+			entry: "create_external_item",
+			turns: {
+				create_external_item: createFixtureLlmTurn("Create external item", {
+					turnEnd: undefined,
+					outcomes: { created: { description: "Created", parameters: {}, complete: true } },
+				}),
+			},
+		});
+		const processActionRegistry = {
+			getTurnDefinition: (_processId: string, turnId: string) =>
+				processDefinition.turns.get(turnId)?.definition,
+			getServerDefinition: () => undefined,
+			resolveContextData: () => ({ params: {}, state: {} }),
+		} as ProcessActionRegistry;
+		const receiptDeps = {
+			...deps,
+			processGraphs: createProcessGraphRegistry([processDefinition]),
+			getProcessActionRegistry: () => processActionRegistry,
+		};
+		const process = receiptDeps.processes.create({
+			processId: processDefinition.id,
+			selectedTurnId: "create_external_item",
+			lifecycleStatus: "active",
+			metadata: { _leitwerk: { requiresExternalReceipt: true } },
+		});
+		receiptDeps.turnRecords.create({
+			id: "trn_receipt",
+			instanceId: process.id,
+			turnId: "create_external_item",
+			turnType: "llm",
+			status: "running",
+			pathType: "primary",
+		});
+		const input = {
+			instanceId: process.id,
+			payload: {
+				instanceId: process.id,
+				turnRecordId: "trn_receipt",
+				turnId: "create_external_item",
+				turnType: "llm" as const,
+				outcome: "created",
+				params: {},
+				pathType: "primary" as const,
+				resultPiEntryId: "entry_result",
+				turnResultMarkdown: "Created the external item",
+			},
+		};
+
+		const missingReceipt = await TurnOutcome.decide(ctx(receiptDeps, process.id), input);
+		expect(missingReceipt).toMatchObject({ ok: false, code: "ticket_receipt_missing" });
+
+		receiptDeps.processes.update(process.id, {
+			externalId: "EXT-123",
+			externalUrl: "https://tracker.test/EXT-123",
+		});
+		const withReceipt = await TurnOutcome.decide(ctx(receiptDeps, process.id), input);
+
+		expect(withReceipt.ok).toBe(true);
+		if (!withReceipt.ok) return;
+		expect(withReceipt.writes.processPatch.lifecycleStatus).toBe("completed");
 	});
 
 	it("TurnOutcome rejects when the action registry is not available", async () => {

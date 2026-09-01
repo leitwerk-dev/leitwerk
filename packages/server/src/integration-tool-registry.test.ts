@@ -5,6 +5,11 @@ import {
 	validateTicketCreationReceipt,
 } from "./integration-tool-registry.js";
 
+const ticketProcess = {
+	processId: "ticket_creation_process",
+	startTurnId: "create_ticket",
+} as const;
+
 function registerEcho(
 	registry: IntegrationToolRegistry,
 	execute = vi.fn(async (_ctx, args) => args),
@@ -66,6 +71,7 @@ describe("IntegrationToolRegistry", () => {
 			capability: {
 				kind: "ticket_creation",
 				displayName: "Tracker",
+				...ticketProcess,
 				titlePath: "/fields/summary",
 			},
 			execute: async () => ({ externalId: "ABC-1", url: "https://tracker.test/ABC-1" }),
@@ -78,7 +84,12 @@ describe("IntegrationToolRegistry", () => {
 				name: "broken_ticket",
 				description: "Broken",
 				parameters: {},
-				capability: { kind: "ticket_creation", displayName: "Broken", titlePath: "/bad~2path" },
+				capability: {
+					kind: "ticket_creation",
+					displayName: "Broken",
+					...ticketProcess,
+					titlePath: "/bad~2path",
+				},
 				execute: async () => ({}),
 			}),
 		).toThrow(/JSON Pointer/);
@@ -94,6 +105,7 @@ describe("IntegrationToolRegistry", () => {
 			capability: {
 				kind: "ticket_creation",
 				displayName: "Tracker",
+				...ticketProcess,
 				destinations: {
 					list: async () => ({
 						destinations: [{ id: "repo-1", displayName: "team/repo" }],
@@ -134,6 +146,7 @@ describe("IntegrationToolRegistry", () => {
 			capability: {
 				kind: "ticket_creation",
 				displayName: "Tracker",
+				...ticketProcess,
 				destinations: {
 					list: async () => ({ destinations: [] }),
 					resolve: async () => ({ summary: { id: "", displayName: "" }, data: {} }),
@@ -144,7 +157,6 @@ describe("IntegrationToolRegistry", () => {
 		});
 
 		const [declaration] = registry.declarations(["tracker_create"], {
-			processId: "ticket_creation_process",
 			paramsJson: JSON.stringify({
 				ticketDestinations: [{ id: "repo-1", displayName: "team/repo", group: "Tracker" }],
 			}),

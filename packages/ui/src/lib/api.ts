@@ -198,55 +198,44 @@ export async function submitQuestionAnswers(input: {
 }
 
 export async function fetchTicketCreationTools(): Promise<TicketCreationToolSummary[]> {
-	const response = await getFetchImpl()(resolveApiUrl("/api/ticket-creation/tools"));
-	if (!response.ok) throw new ApiResponseError("Couldn't load ticket systems", response.status);
 	return (
-		await readJsonObject<{ tools: TicketCreationToolSummary[] }>(
-			response,
-			"Malformed ticket tool response",
-		)
+		await requestJson<{ tools: TicketCreationToolSummary[] }>({
+			path: "/api/ticket-creation/tools",
+			malformed: "Malformed ticket tool response",
+			error: (response) => new ApiResponseError("Couldn't load ticket systems", response.status),
+		})
 	).tools;
 }
 
-export async function fetchTicketCreationDestinations(
+export function fetchTicketCreationDestinations(
 	toolName: string,
 ): Promise<TicketCreationDestinationListResponse> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/ticket-creation/tools/${encodeURIComponent(toolName)}/destinations`),
-	);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		throw new Error(readErrorMessage(body) ?? `Couldn't load destinations: ${response.status}`);
-	}
-	return readJsonObject<TicketCreationDestinationListResponse>(
-		response,
-		"Malformed ticket destination response",
-	);
+	return requestJson({
+		path: `/api/ticket-creation/tools/${encodeURIComponent(toolName)}/destinations`,
+		malformed: "Malformed ticket destination response",
+		error: (response, body) =>
+			new Error(readErrorMessage(body) ?? `Couldn't load destinations: ${response.status}`),
+	});
 }
 
-export async function launchTicketCreation(
+export function launchTicketCreation(
 	instanceId: string,
 	body: LaunchTicketCreationRequestBody,
 ): Promise<LaunchTicketCreationResponseBody> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`),
-		{
+	return requestJson({
+		path: `/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`,
+		init: {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify(body),
 		},
-	);
-	if (!response.ok) {
-		const value = await tryReadJson(response);
-		throw new ApiResponseError(
-			readErrorMessage(value) ?? "Couldn't start ticket creation",
-			response.status,
-		);
-	}
-	return readJsonObject<LaunchTicketCreationResponseBody>(
-		response,
-		"Malformed ticket launch response",
-	);
+		malformed: "Malformed ticket launch response",
+		error: (response, value) =>
+			new ApiResponseError(
+				readErrorMessage(value) ?? "Couldn't start ticket creation",
+				response.status,
+			),
+	});
 }
 
 export async function resolveToolApproval(input: {
@@ -254,28 +243,21 @@ export async function resolveToolApproval(input: {
 	requestId: string;
 	body: ResolveToolApprovalRequestBody;
 }): Promise<ProcessToolApprovalRequest> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
-		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(input.body),
-		},
-	);
-	if (!response.ok) {
-		const value = await tryReadJson(response);
-		throw new ApiResponseError(
-			readErrorMessage(value) ?? "Couldn't resolve approval",
-			response.status,
-		);
-	}
 	return (
-		await readJsonObject<{ request: ProcessToolApprovalRequest }>(
-			response,
-			"Malformed approval response",
-		)
+		await requestJson<{ request: ProcessToolApprovalRequest }>({
+			path: `/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
+			init: {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(input.body),
+			},
+			malformed: "Malformed approval response",
+			error: (response, value) =>
+				new ApiResponseError(
+					readErrorMessage(value) ?? "Couldn't resolve approval",
+					response.status,
+				),
+		})
 	).request;
 }
 
@@ -412,6 +394,19 @@ async function readJsonObject<T extends object>(response: Response, context: str
 		throw new Error(`${context}: response body must be a JSON object`);
 	}
 	return body as T;
+}
+
+async function requestJson<T extends object>(input: {
+	path: string;
+	init?: RequestInit;
+	malformed: string;
+	error(response: Response, body: unknown): Error;
+}): Promise<T> {
+	const fetchImpl = getFetchImpl();
+	const url = resolveApiUrl(input.path);
+	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
+	if (!response.ok) throw input.error(response, await tryReadJson(response));
+	return readJsonObject<T>(response, input.malformed);
 }
 
 function readOptionalString(value: unknown): string | null {

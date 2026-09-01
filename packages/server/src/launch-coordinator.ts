@@ -6,6 +6,8 @@ import type {
 	ProcessInstance,
 } from "@leitwerk-dev/domain";
 import {
+	type LaunchPreparationCheck,
+	type ProcessLaunchConfig,
 	type ProcessLaunchExecutorLike,
 	type ProcessLauncherService,
 	type ProcessLaunchPlanServiceLike,
@@ -47,6 +49,8 @@ const STARTUP_STEP_IDS = [
 	"prepare_workspace",
 	"start_first_turn",
 ] as const;
+
+const NOOP_LAUNCH_LOGGER = { info() {}, warn() {} };
 
 export interface StartLaunchRequest {
 	launcherId: string;
@@ -138,6 +142,50 @@ function transitionStep(
 	};
 }
 
+function initialSteps(): LaunchChecklistStep[] {
+	return CORE_STEPS.map(([id, label]) => step(id, label));
+}
+
+function withPreparationChecks(
+	run: LaunchRun,
+	checks: readonly LaunchPreparationCheck[],
+): LaunchRun {
+	if (checks.length === 0) return run;
+	return {
+		...run,
+		steps: [
+			run.steps[0] as LaunchChecklistStep,
+			...checks.map(
+				(check) =>
+					run.steps.find((item) => item.id === `check:${check.id}`) ??
+					step(`check:${check.id}`, check.label),
+			),
+			...run.steps.slice(1).filter((item) => !item.id.startsWith("check:")),
+		],
+	};
+}
+
+function finishRun(run: LaunchRun, status: "failed" | "cancelled"): LaunchRun {
+	return { ...run, status, completedAt: run.completedAt ?? new Date().toISOString() };
+}
+
+function failRun(run: LaunchRun, stepId: string, summary: string): LaunchRun {
+	return finishRun(transitionStep(run, stepId, "failed", summary), "failed");
+}
+
+function titleStepStatus(
+	process: Pick<ProcessInstance, "title">,
+	titleGenerationAvailable: boolean | undefined,
+): LaunchChecklistStepStatus {
+	return process.title ? "completed" : titleGenerationAvailable ? "in_progress" : "skipped";
+}
+
+function skipStartupSteps(run: LaunchRun): LaunchRun {
+	let next = run;
+	for (const id of STARTUP_STEP_IDS) next = transitionStep(next, id, "skipped");
+	return next;
+}
+
 function startupComplete(run: LaunchRun): boolean {
 	const required = run.steps.filter((item) =>
 		[...STARTUP_STEP_IDS, "choose_title"].includes(item.id as (typeof STARTUP_STEP_IDS)[number]),
@@ -171,6 +219,51 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		return run;
 	}
 
+	function createRun(input: {
+		launcherId: string | null;
+		idempotencyKey?: string | null;
+		origin: LaunchRun["origin"];
+		broadcastCreated?: boolean;
+	}): LaunchRun {
+		const { broadcastCreated = true, ...createInput } = input;
+		const run = deps.launchRuns.create({ ...createInput, steps: initialSteps() });
+		if (broadcastCreated) broadcast(run);
+		return run;
+	}
+
+	function fail(runId: string, stepId: string, summary: string): void {
+		mutate(runId, (run) => failRun(run, stepId, summary));
+	}
+
+	async function runPreparationChecks(
+		runId: string,
+		checks: readonly LaunchPreparationCheck[],
+		launchConfig: ProcessLaunchConfig,
+	): Promise<string | null> {
+		const controller = new AbortController();
+		for (const check of checks) {
+			const id = `check:${check.id}`;
+			mutate(runId, (run) => transitionStep(run, id, "in_progress"));
+			try {
+				await check.run({
+					signal: controller.signal,
+					launchConfig,
+					logger: deps.logger ?? NOOP_LAUNCH_LOGGER,
+				});
+				mutate(runId, (run) => transitionStep(run, id, "completed"));
+			} catch (error) {
+				controller.abort();
+				const summary =
+					error instanceof SafeLaunchPreparationError
+						? error.safeSummary
+						: "The preparation check did not complete. Verify access and try again.";
+				fail(runId, id, summary);
+				return summary;
+			}
+		}
+		return null;
+	}
+
 	function currentRun(instanceId: string, includeCompletedTitle = false): LaunchRun | null {
 		return (
 			[...deps.launchRuns.listByInstance(instanceId)]
@@ -198,18 +291,10 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 	}
 
 	async function execute(runId: string, input: StartLaunchRequest): Promise<LaunchMutationOutcome> {
-		const fail = (stepId: string, summary: string) => {
-			mutate(runId, (run) => ({
-				...transitionStep(run, stepId, "failed", summary),
-				status: "failed",
-				completedAt: new Date().toISOString(),
-			}));
-		};
-
 		try {
 			mutate(runId, (run) => transitionStep(run, "validate_request", "in_progress"));
 			if (input.request.schedule.mode !== "now") {
-				fail("validate_request", "Use the scheduling controls to save a future launch.");
+				fail(runId, "validate_request", "Use the scheduling controls to save a future launch.");
 				return deps.futureExecutionLifecycle.scheduleLaunch(input.launcherId, input.request, {
 					actor: input.actor,
 				});
@@ -219,7 +304,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				input.request.launcherInput,
 			);
 			if (!resolved.ok) {
-				fail("validate_request", "Review the highlighted launcher fields and try again.");
+				fail(runId, "validate_request", "Review the highlighted launcher fields and try again.");
 				return deps.futureExecutionLifecycle.scheduleLaunch(input.launcherId, input.request, {
 					actor: input.actor,
 				});
@@ -232,43 +317,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					input.request.launcherInput,
 					resolved.launcher.launchConfig,
 				) ?? [];
-			if (checks.length > 0) {
-				mutate(runId, (run) => ({
-					...run,
-					steps: [
-						run.steps[0] as LaunchChecklistStep,
-						...checks.map((check) => {
-							const existing = run.steps.find((item) => item.id === `check:${check.id}`);
-							return existing ?? step(`check:${check.id}`, check.label);
-						}),
-						...run.steps.slice(1).filter((item) => !item.id.startsWith("check:")),
-					],
-				}));
-			}
-			const controller = new AbortController();
-			for (const check of checks) {
-				const id = `check:${check.id}`;
-				mutate(runId, (run) => transitionStep(run, id, "in_progress"));
-				try {
-					await check.run({
-						signal: controller.signal,
-						launchConfig: resolved.launcher.launchConfig,
-						logger: deps.logger ?? { info() {}, warn() {} },
-					});
-					mutate(runId, (run) => transitionStep(run, id, "completed"));
-				} catch (error) {
-					controller.abort();
-					fail(
-						id,
-						error instanceof SafeLaunchPreparationError
-							? error.safeSummary
-							: "The preparation check did not complete. Verify access and try again.",
-					);
-					return {
-						kind: "invalid",
-						issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
-					};
-				}
+			mutate(runId, (run) => withPreparationChecks(run, checks));
+			if (await runPreparationChecks(runId, checks, resolved.launcher.launchConfig)) {
+				return {
+					kind: "invalid",
+					issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
+				};
 			}
 
 			mutate(runId, (run) => transitionStep(run, "resolve_models_skills", "in_progress"));
@@ -285,23 +339,17 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				mutate(runId, (run) => {
 					let next = transitionStep(run, "resolve_models_skills", "completed");
 					next = transitionStep(next, "create_process", "completed");
-					next = transitionStep(
-						next,
+					return failRun(
+						{ ...next, instanceId: result.process.id },
 						"start_worker",
-						"failed",
 						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
 					);
-					return {
-						...next,
-						instanceId: result.process.id,
-						status: "failed",
-						completedAt: new Date().toISOString(),
-					};
 				});
 				return result;
 			}
 			if (result.kind !== "launched") {
 				fail(
+					runId,
 					"resolve_models_skills",
 					result.kind === "invalid"
 						? "Review the launch configuration and try again."
@@ -317,16 +365,10 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					next = transitionStep(
 						next,
 						"choose_title",
-						result.process.title
-							? "completed"
-							: deps.titleGenerationAvailable
-								? "in_progress"
-								: "skipped",
+						titleStepStatus(result.process, deps.titleGenerationAvailable),
 					);
 				}
-				if (!resolved.launcher.launchPlan.startTurnId) {
-					for (const id of STARTUP_STEP_IDS) next = transitionStep(next, id, "skipped");
-				}
+				if (!resolved.launcher.launchPlan.startTurnId) next = skipStartupSteps(next);
 				return completeWhenReady({ ...next, instanceId: result.process.id, status: "starting" });
 			});
 			return result;
@@ -334,7 +376,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			const current = deps.launchRuns.getById(runId);
 			const failedStep =
 				current?.steps.find((item) => item.status === "in_progress")?.id ?? "validate_request";
-			fail(failedStep, "The launch could not be completed. Try again.");
+			fail(runId, failedStep, "The launch could not be completed. Try again.");
 			throw new Error("The launch could not be completed");
 		} finally {
 			deps.launchRuns.deleteReplay(runId);
@@ -347,14 +389,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				? deps.launchRuns.getByIdempotencyKey(input.idempotencyKey)
 				: null;
 			if (existing) return { launchRunId: existing.id };
-			const run = deps.launchRuns.create({
+			const run = createRun({
 				launcherId: input.launcherId,
 				idempotencyKey: input.idempotencyKey,
 				origin: "ui",
-				steps: CORE_STEPS.map(([id, label]) => step(id, label)),
 			});
 			deps.launchRuns.saveReplay(run.id, input);
-			broadcast(run);
 			setTimeout(() => {
 				void execute(run.id, input).catch(() => {
 					deps.logger?.warn(`Launch run '${run.id}' failed unexpectedly`);
@@ -364,14 +404,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		async startBlocking(input) {
-			const run = deps.launchRuns.create({
+			const run = createRun({
 				launcherId: input.launcherId,
 				idempotencyKey: input.idempotencyKey,
 				origin: "ui",
-				steps: CORE_STEPS.map(([id, label]) => step(id, label)),
 			});
 			deps.launchRuns.saveReplay(run.id, input);
-			broadcast(run);
 			return execute(run.id, input);
 		},
 
@@ -385,66 +423,37 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				};
 			}
 			if (existing) deps.launchRuns.archiveIdempotencyKey(existing.id, request.idempotencyKey);
-			const created = deps.launchRuns.create({
+			const created = createRun({
 				launcherId: `${watcher.processId}.${watcher.watcherId}`,
 				idempotencyKey: request.idempotencyKey,
 				origin: "watcher",
-				steps: CORE_STEPS.map(([id, label]) => step(id, label)),
 			});
-			broadcast(created);
 			const failWatcher = (stepId: string, summary: string) => {
-				mutate(created.id, (run) => ({
-					...transitionStep(run, stepId, "failed", summary),
-					status: "failed",
-					completedAt: new Date().toISOString(),
-				}));
+				fail(created.id, stepId, summary);
 				return { launchRunId: created.id, process: null, error: summary };
 			};
 			try {
 				mutate(created.id, (run) => transitionStep(run, "validate_request", "in_progress"));
 				const attempt = await watcher.resolveLaunchAttempt(event);
 				if (!attempt) {
-					mutate(created.id, (run) => ({
-						...transitionStep(run, "validate_request", "skipped"),
-						status: "cancelled",
-						completedAt: new Date().toISOString(),
-					}));
+					mutate(created.id, (run) =>
+						finishRun(transitionStep(run, "validate_request", "skipped"), "cancelled"),
+					);
 					return { launchRunId: created.id, process: null, error: null };
 				}
-				mutate(created.id, (run) => {
-					let next = transitionStep(run, "validate_request", "completed");
-					if (attempt.preparationChecks.length > 0) {
-						next = {
-							...next,
-							steps: [
-								next.steps[0] as LaunchChecklistStep,
-								...attempt.preparationChecks.map((check) => step(`check:${check.id}`, check.label)),
-								...next.steps.slice(1),
-							],
-						};
-					}
-					return next;
-				});
-				const controller = new AbortController();
-				for (const check of attempt.preparationChecks) {
-					const id = `check:${check.id}`;
-					mutate(created.id, (run) => transitionStep(run, id, "in_progress"));
-					try {
-						await check.run({
-							signal: controller.signal,
-							launchConfig: attempt.launchConfig,
-							logger: deps.logger ?? { info() {}, warn() {} },
-						});
-						mutate(created.id, (run) => transitionStep(run, id, "completed"));
-					} catch (error) {
-						controller.abort();
-						return failWatcher(
-							id,
-							error instanceof SafeLaunchPreparationError
-								? error.safeSummary
-								: "The preparation check did not complete. Verify access and try again.",
-						);
-					}
+				mutate(created.id, (run) =>
+					withPreparationChecks(
+						transitionStep(run, "validate_request", "completed"),
+						attempt.preparationChecks,
+					),
+				);
+				const preparationError = await runPreparationChecks(
+					created.id,
+					attempt.preparationChecks,
+					attempt.launchConfig,
+				);
+				if (preparationError) {
+					return { launchRunId: created.id, process: null, error: preparationError };
 				}
 				mutate(created.id, (run) => transitionStep(run, "resolve_models_skills", "in_progress"));
 				const prepared = await services.launchPlans.prepare(
@@ -474,49 +483,28 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					next = transitionStep(
 						next,
 						"choose_title",
-						process.title ? "completed" : deps.titleGenerationAvailable ? "in_progress" : "skipped",
+						titleStepStatus(process, deps.titleGenerationAvailable),
 					);
-					if (!prepared.launchPlan.startTurnId) {
-						for (const id of STARTUP_STEP_IDS) next = transitionStep(next, id, "skipped");
-					}
+					if (!prepared.launchPlan.startTurnId) next = skipStartupSteps(next);
 					if (result.ok && result.reused) {
 						const lease = deps.leases.getByInstance(process.id);
 						const hasTurn = deps.turnRecords.listByInstance(process.id).length > 0;
 						if (hasTurn) {
-							return {
-								...next,
-								instanceId: process.id,
-								status: "cancelled",
-								completedAt: new Date().toISOString(),
-							};
+							return finishRun({ ...next, instanceId: process.id }, "cancelled");
 						} else if (!lease || ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
-							next = transitionStep(
-								next,
+							return failRun(
+								{ ...next, instanceId: process.id },
 								"start_worker",
-								"failed",
 								"The existing process has not started a worker. Retry startup from the process page.",
 							);
-							return {
-								...next,
-								instanceId: process.id,
-								status: "failed",
-								completedAt: new Date().toISOString(),
-							};
 						}
 					}
 					if (!result.ok) {
-						next = transitionStep(
-							next,
+						return failRun(
+							{ ...next, instanceId: process.id },
 							"start_worker",
-							"failed",
 							"Process was created, but startup failed. Review the process error and retry startup.",
 						);
-						return {
-							...next,
-							instanceId: process.id,
-							status: "failed",
-							completedAt: new Date().toISOString(),
-						};
 					}
 					return completeWhenReady({ ...next, instanceId: process.id, status: "starting" });
 				});
@@ -541,11 +529,11 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		beginScheduled(launcherId, idempotencyKey) {
 			const existing = deps.launchRuns.getByIdempotencyKey(idempotencyKey);
 			if (existing) return { launchRunId: existing.id };
-			const run = deps.launchRuns.create({
+			const run = createRun({
 				launcherId,
 				idempotencyKey,
 				origin: "scheduled",
-				steps: CORE_STEPS.map(([id, label]) => step(id, label)),
+				broadcastCreated: false,
 			});
 			const updated = deps.launchRuns.update(run.id, (current) => {
 				let next = transitionStep(current, "validate_request", "completed");
@@ -570,38 +558,26 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				next = transitionStep(
 					next,
 					"choose_title",
-					process.title ? "completed" : deps.titleGenerationAvailable ? "in_progress" : "skipped",
+					titleStepStatus(process, deps.titleGenerationAvailable),
 				);
-				if (!startTurnId) {
-					for (const id of STARTUP_STEP_IDS) next = transitionStep(next, id, "skipped");
-				}
+				if (!startTurnId) next = skipStartupSteps(next);
 				if (reactionError) {
-					next = transitionStep(next, "start_worker", "failed", reactionError);
-					return {
-						...next,
-						instanceId: process.id,
-						status: "failed",
-						completedAt: new Date().toISOString(),
-					};
+					return failRun({ ...next, instanceId: process.id }, "start_worker", reactionError);
 				}
 				return completeWhenReady({ ...next, instanceId: process.id, status: "starting" });
 			});
 		},
 
 		failScheduled(launchRunId, stepId, safeSummary) {
-			mutate(launchRunId, (run) => ({
-				...transitionStep(run, stepId, "failed", safeSummary),
-				status: "failed",
-				completedAt: new Date().toISOString(),
-			}));
+			fail(launchRunId, stepId, safeSummary);
 		},
 
 		async retryStartup(instanceId) {
 			if (!deps.processes.getById(instanceId)) throw new Error("Process not found");
-			const run = deps.launchRuns.create({
+			const run = createRun({
 				launcherId: null,
 				origin: "startup_retry",
-				steps: CORE_STEPS.map(([id, label]) => step(id, label)),
+				broadcastCreated: false,
 			});
 			const updated = deps.launchRuns.update(run.id, (current) => ({
 				...current,
@@ -620,11 +596,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		failStartupRetry(instanceId, safeSummary) {
-			mutateCurrent(instanceId, null, (run) => ({
-				...transitionStep(run, "start_worker", "failed", safeSummary),
-				status: "failed",
-				completedAt: new Date().toISOString(),
-			}));
+			mutateCurrent(instanceId, null, (run) => failRun(run, "start_worker", safeSummary));
 		},
 
 		observeRunnerPhase(instanceId, workerId, phase) {
@@ -681,11 +653,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 						.find((id) =>
 							run.steps.some((item) => item.id === id && item.status === "in_progress"),
 						) ?? "start_worker";
-				return {
-					...transitionStep(run, failedStep, "failed", safeSummary),
-					status: "failed",
-					completedAt: new Date().toISOString(),
-				};
+				return failRun(run, failedStep, safeSummary);
 			});
 		},
 
@@ -735,11 +703,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			}
 			for (const run of incomplete) {
 				if (run.instanceId && authoritativeByInstance.get(run.instanceId)?.id !== run.id) {
-					mutate(run.id, (current) => ({
-						...current,
-						status: "cancelled",
-						completedAt: current.completedAt ?? new Date().toISOString(),
-					}));
+					mutate(run.id, (current) => finishRun(current, "cancelled"));
 					continue;
 				}
 				if (!run.instanceId) {
@@ -767,11 +731,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				}
 				const process = deps.processes.getById(run.instanceId);
 				if (!process) {
-					mutate(run.id, (current) => ({
-						...current,
-						status: "cancelled",
-						completedAt: current.completedAt ?? new Date().toISOString(),
-					}));
+					mutate(run.id, (current) => finishRun(current, "cancelled"));
 					continue;
 				}
 				const lease = deps.leases.getByInstance(run.instanceId);
@@ -788,13 +748,11 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 								.find((id) =>
 									next.steps.some((item) => item.id === id && item.status === "in_progress"),
 								) ?? "start_worker";
-						next = transitionStep(
+						return failRun(
 							next,
 							activeStep,
-							"failed",
 							"Worker startup stopped before completion. Retry startup from the process page.",
 						);
-						return { ...next, status: "failed", completedAt: new Date().toISOString() };
 					}
 					if (lease) next = transitionStep(next, "start_worker", "completed");
 					if (lease && lease.state !== "spawning") {

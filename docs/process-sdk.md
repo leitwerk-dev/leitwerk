@@ -161,9 +161,11 @@ Those remain turns.
 ### Ticket creation adapters
 
 A ticket adapter registers a normal integration tool with
-`capability.kind: "ticket_creation"`. The tool returns
-`{ externalId, url, result? }`, uses the execution context idempotency key for
-its external write, and reconciles ambiguous provider outcomes before retrying.
+`capability.kind: "ticket_creation"`. The capability also names the code-defined
+`processId` and `startTurnId` used for the derived process; core does not privilege a
+fixed process graph. The tool returns `{ externalId, url, result? }`, uses the execution
+context idempotency key for its external write, and reconciles ambiguous provider
+outcomes before retrying.
 
 Adapters that can target more than one destination attach a destination
 provider to the capability. `list()` returns browser-safe destination summaries
@@ -187,6 +189,8 @@ api.tool({
   capability: {
     kind: "ticket_creation",
     displayName: "Tracker",
+    processId: "tracker_ticket_process",
+    startTurnId: "draft_ticket",
     titlePath: "/title",
     descriptionPath: "/body",
     destinations: trackerDestinations,

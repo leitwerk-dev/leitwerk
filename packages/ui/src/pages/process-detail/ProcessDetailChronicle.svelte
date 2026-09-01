@@ -104,15 +104,9 @@ let {
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
-let mobileQuickNavSheet: HTMLElement | null = $state(null);
-let restoreMobileQuickNavFocus = $state(true);
-type TicketDraftArtifact = {
-	kind: "turn_result" | "leaf_outcome";
-	turnRecordId?: string;
-	leafEntryId?: string;
-	text: string;
-	excerpt?: string;
-};
+type TicketDraftArtifact =
+	| { kind: "turn_result"; turnRecordId: string; excerpt?: string }
+	| { kind: "leaf_outcome"; leafEntryId: string; excerpt?: string };
 let ticketDraft = $state<TicketDraftArtifact | null>(null);
 let ticketSelectionDraft = $state<TicketDraftArtifact | null>(null);
 let ticketTools = $state<TicketCreationToolSummary[]>([]);
@@ -142,9 +136,9 @@ function handleTicketSelection() {
 	if (!selected) return;
 	const [kind, id] = selected.artifactId.split(":", 2);
 	if (kind === "turn_result" && id)
-		ticketSelectionDraft = { kind, turnRecordId: id, text: selected.text, excerpt: selected.text };
+		ticketSelectionDraft = { kind, turnRecordId: id, excerpt: selected.text };
 	if (kind === "leaf_outcome" && id)
-		ticketSelectionDraft = { kind, leafEntryId: id, text: selected.text, excerpt: selected.text };
+		ticketSelectionDraft = { kind, leafEntryId: id, excerpt: selected.text };
 }
 
 async function submitTicketDraft() {
@@ -244,62 +238,18 @@ function openMobileQuickNav() {
 	mobileQuickNavOpen = true;
 }
 
-function closeMobileQuickNav(options: { restoreFocus?: boolean } = {}) {
+function closeMobileQuickNav() {
 	mobileQuickNavOpen = false;
-	if (options.restoreFocus) {
-		void tick().then(() => {
-			document.querySelector<HTMLButtonElement>("[data-action='open-mobile-quick-nav']")?.focus();
-		});
-	}
 }
 
 function selectMobileQuickNavAnchor(anchorId: string) {
 	chronicleScroll.jumpToAnchor(anchorId);
-	closeMobileQuickNav({ restoreFocus: true });
+	closeMobileQuickNav();
 }
 
 function openProcessInfoFromQuickNav() {
 	closeMobileQuickNav();
 	onToggleProcessInfo();
-}
-
-$effect(() => {
-	if (!mobileQuickNavOpen) {
-		return;
-	}
-	const previousOverflow = document.body.style.overflow;
-	document.body.style.overflow = "hidden";
-	void tick().then(() => {
-		const activeItem =
-			mobileQuickNavSheet?.querySelector<HTMLButtonElement>("[aria-current='step']");
-		(activeItem ?? mobileQuickNavSheet?.querySelector<HTMLButtonElement>("button"))?.focus();
-	});
-	return () => {
-		document.body.style.overflow = previousOverflow;
-	};
-});
-
-function handleMobileQuickNavKeydown(event: KeyboardEvent) {
-	if (event.key !== "Tab" || !mobileQuickNavSheet) {
-		return;
-	}
-	const controls = [
-		...mobileQuickNavSheet.querySelectorAll<HTMLElement>(
-			'button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
-		),
-	];
-	if (controls.length === 0) {
-		return;
-	}
-	const first = controls[0];
-	const last = controls.at(-1);
-	if (event.shiftKey && document.activeElement === first) {
-		event.preventDefault();
-		last?.focus();
-	} else if (!event.shiftKey && document.activeElement === last) {
-		event.preventDefault();
-		first?.focus();
-	}
 }
 
 function openDetailedActionForm(actionId: string) {
@@ -310,13 +260,7 @@ function openDetailedActionForm(actionId: string) {
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {
-	if (mobileQuickNavOpen) {
-		if (event.key === "Escape") {
-			event.preventDefault();
-			closeMobileQuickNav({ restoreFocus: true });
-		}
-		return;
-	}
+	if (mobileQuickNavOpen) return;
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
@@ -537,7 +481,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 				<span>Ticket system</span>
 				<select bind:value={selectedTicketTool}>
 					<option value="">Choose a ticket system</option>
-					{#each ticketTools as tool}<option value={tool.name}>{tool.displayName}</option>{/each}
+					{#each ticketTools as tool (tool.name)}<option value={tool.name}>{tool.displayName}</option>{/each}
 				</select>
 			</label>
 		{:else if ticketTools.length === 0 && !ticketError}
@@ -557,88 +501,67 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</footer>
 </ModalShell>
 
-{#if mobileQuickNavOpen}
-	<div
-		class="mobile-quick-nav-backdrop"
-		data-section="mobile-process-quick-nav-backdrop"
-	>
+<ModalShell
+	open={mobileQuickNavOpen}
+	titleId="mobile-process-quick-nav-title"
+	closeLabel="Close quick navigation"
+	onClose={closeMobileQuickNav}
+	dataSection="mobile-process-quick-nav"
+	panelId="mobile-process-quick-nav"
+	presentation="bottom-sheet"
+	width="min(100%, 560px)"
+	height="min(82svh, 720px)"
+	maxHeight="calc(100svh - max(48px, env(safe-area-inset-top)))"
+	initialFocusSelector="[aria-current='step']"
+	restoreFocusSelector="[data-action='open-mobile-quick-nav']"
+>
+	<div class="mobile-quick-nav-handle" aria-hidden="true"></div>
+	<header class="mobile-quick-nav-header">
+		<div>
+			<h2 id="mobile-process-quick-nav-title">Process steps</h2>
+			<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+		</div>
+	</header>
+
+	<div class="mobile-quick-nav-rail">
+		<ChronicleTurnRail
+			{detail}
+			{loading}
+			{error}
+			railItems={railItems}
+			activeAnchorId={chronicleScroll.activeAnchorId}
+			onSelectAnchor={selectMobileQuickNavAnchor}
+			headingId="mobile-process-navigation-heading"
+		/>
+	</div>
+
+	<footer class="mobile-quick-nav-utilities">
 		<button
 			type="button"
-			class="mobile-quick-nav-dismiss-layer"
-			aria-label="Close quick navigation"
-			onclick={() => closeMobileQuickNav({ restoreFocus: true })}
-		></button>
-		<div
-			id="mobile-process-quick-nav"
-			class="mobile-quick-nav-sheet"
-			data-section="mobile-process-quick-nav"
-			role="dialog"
-			tabindex="-1"
-			aria-modal="true"
-			aria-labelledby="mobile-process-quick-nav-title"
-			bind:this={mobileQuickNavSheet}
-			onkeydown={handleMobileQuickNavKeydown}
+			class="mobile-process-info-button"
+			data-pressable="true"
+			onclick={openProcessInfoFromQuickNav}
+			aria-expanded={isProcessInfoOpen}
+			aria-controls="process-info-overlay"
 		>
-			<div class="mobile-quick-nav-handle" aria-hidden="true"></div>
-			<header class="mobile-quick-nav-header">
-				<div>
-					<h2 id="mobile-process-quick-nav-title">Process steps</h2>
-					<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
-				</div>
-				<button
-					type="button"
-					class="mobile-quick-nav-close"
-					data-pressable="true"
-					aria-label="Close quick navigation"
-					onclick={() => closeMobileQuickNav({ restoreFocus: true })}
-				>
-					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-						<path d="M6 6l12 12M18 6 6 18"></path>
-					</svg>
-				</button>
-			</header>
-
-			<div class="mobile-quick-nav-rail">
-				<ChronicleTurnRail
-					{detail}
-					{loading}
-					{error}
-					railItems={railItems}
-					activeAnchorId={chronicleScroll.activeAnchorId}
-					onSelectAnchor={selectMobileQuickNavAnchor}
-					headingId="mobile-process-navigation-heading"
-				/>
-			</div>
-
-			<footer class="mobile-quick-nav-utilities">
-				<button
-					type="button"
-					class="mobile-process-info-button"
-					data-pressable="true"
-					onclick={openProcessInfoFromQuickNav}
-					aria-expanded={isProcessInfoOpen}
-					aria-controls="process-info-overlay"
-				>
-					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
-						<circle cx="12" cy="12" r="9"></circle>
-						<path d="M12 11v6M12 7.5h.01"></path>
-					</svg>
-					Process info
-				</button>
-				<ProcessActionsMenu
-					{instanceId}
-					lifecycleStatus={detail?.process.lifecycleStatus ?? null}
-					disabled={!detail}
-					hasSessionFile={detail?.session.signature !== null}
-					{processLabel}
-					{onDeleted}
-					presentation="sheet"
-					idSuffix="mobile"
-				/>
-			</footer>
-		</div>
-	</div>
-{/if}
+			<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true">
+				<circle cx="12" cy="12" r="9"></circle>
+				<path d="M12 11v6M12 7.5h.01"></path>
+			</svg>
+			Process info
+		</button>
+		<ProcessActionsMenu
+			{instanceId}
+			lifecycleStatus={detail?.process.lifecycleStatus ?? null}
+			disabled={!detail}
+			hasSessionFile={detail?.session.signature !== null}
+			{processLabel}
+			{onDeleted}
+			presentation="sheet"
+			idSuffix="mobile"
+		/>
+	</footer>
+</ModalShell>
 
 <style>
 	.ticket-composer-header {
@@ -804,8 +727,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.12);
 	}
 
-	.mobile-quick-nav-trigger,
-	.mobile-quick-nav-backdrop {
+	.mobile-quick-nav-trigger {
 		display: none;
 	}
 
@@ -1050,43 +972,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			display: none;
 		}
 
-		.mobile-quick-nav-backdrop {
-			position: fixed;
-			inset: 0;
-			z-index: 110;
-			display: flex;
-			align-items: flex-end;
-			justify-content: center;
-			padding-top: max(48px, env(safe-area-inset-top));
-			background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%);
-		}
-
-		.mobile-quick-nav-dismiss-layer {
-			position: absolute;
-			inset: 0;
-			padding: 0;
-			border: 0;
-			background: transparent;
-			cursor: default;
-		}
-
-		.mobile-quick-nav-sheet {
-			position: relative;
-			z-index: 1;
-			display: flex;
-			flex-direction: column;
-			width: min(100%, 560px);
-			height: min(82svh, 720px);
-			max-height: calc(100svh - max(48px, env(safe-area-inset-top)));
-			padding: 8px 16px max(14px, env(safe-area-inset-bottom));
-			border: 1px solid var(--chronicle-border-strong);
-			border-bottom: 0;
-			border-radius: 22px 22px 0 0;
-			background: var(--chronicle-card-surface);
-			box-shadow: var(--chronicle-shadow);
-			animation: mobile-quick-nav-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
-		}
-
 		.mobile-quick-nav-handle {
 			width: 38px;
 			height: 4px;
@@ -1100,7 +985,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			align-items: center;
 			justify-content: space-between;
 			gap: var(--space-md);
-			padding: 4px 2px 12px;
+			padding: 4px 44px 12px 2px;
 			border-bottom: 1px solid var(--chronicle-border);
 		}
 
@@ -1125,28 +1010,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			white-space: nowrap;
 		}
 
-		.mobile-quick-nav-close {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			flex: 0 0 auto;
-			width: 40px;
-			height: 40px;
-			padding: 0;
-			border: 1px solid var(--chronicle-border);
-			border-radius: 10px;
-			background: var(--chronicle-panel-muted);
-			color: var(--chronicle-text-muted);
-			cursor: pointer;
-		}
-
-		.mobile-quick-nav-close:hover,
-		.mobile-quick-nav-close:focus-visible {
-			color: var(--chronicle-text);
-			border-color: var(--chronicle-border-strong);
-		}
-
-		.mobile-quick-nav-close:focus-visible,
 		.mobile-process-info-button:focus-visible {
 			outline: 2px solid var(--chronicle-accent);
 			outline-offset: 2px;
@@ -1238,20 +1101,4 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		}
 	}
 
-	@keyframes mobile-quick-nav-in {
-		from {
-			transform: translateY(18px);
-			opacity: 0.88;
-		}
-		to {
-			transform: translateY(0);
-			opacity: 1;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.mobile-quick-nav-sheet {
-			animation: none;
-		}
-	}
 </style>

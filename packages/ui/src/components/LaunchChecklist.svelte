@@ -1,6 +1,5 @@
 <script lang="ts">
 import type { LaunchRun } from "@leitwerk-dev/domain";
-import { onDestroy, onMount } from "svelte";
 import { fetchLaunchRun, fetchProcessLaunchRuns } from "../lib/api.js";
 import { onLaunchUpdated } from "../lib/launch-updates.js";
 
@@ -17,13 +16,9 @@ let run = $state<LaunchRun | null>(null);
 let loadError = $state<string | null>(null);
 let knownAbsent = $state(false);
 let expanded = $state(true);
-let timer: ReturnType<typeof setTimeout> | null = null;
-let generation = 0;
 let notifiedInstanceId: string | null = null;
+let refresh = $state<() => void>(() => {});
 
-const terminal = $derived(
-	run?.status === "completed" || run?.status === "failed" || run?.status === "cancelled",
-);
 const elapsedSeconds = $derived.by(() => {
 	if (!run) return null;
 	const workerStart = run.steps.find((step) => step.id === "start_worker")?.startedAt;
@@ -52,59 +47,69 @@ const summary = $derived(
 				: "Starting process",
 );
 
-async function load() {
-	const requestGeneration = ++generation;
-	try {
-		const next = launchRunId
-			? await fetchLaunchRun(launchRunId)
-			: instanceId
-				? ((await fetchProcessLaunchRuns(instanceId)).at(-1) ?? null)
-				: null;
-		if (requestGeneration !== generation) return;
-		run = next;
-		knownAbsent = instanceId !== null && next === null;
-		loadError = null;
-		if (next?.instanceId && next.instanceId !== notifiedInstanceId) {
-			notifiedInstanceId = next.instanceId;
-			onInstanceAvailable?.(next.instanceId);
-		}
-		if (next?.status === "completed" || next?.status === "failed" || next?.status === "cancelled") {
-			expanded = false;
-		}
-	} catch (error) {
-		if (requestGeneration !== generation) return;
-		loadError = error instanceof Error ? error.message : "Couldn't load launch progress";
-	}
-	if (!terminal && !knownAbsent) timer = setTimeout(() => void load(), 750);
-}
-
 $effect(() => {
-	launchRunId;
-	instanceId;
-	if (timer) clearTimeout(timer);
+	const selectedLaunchRunId = launchRunId;
+	const selectedInstanceId = instanceId;
+	let cancelled = false;
+	let loadGeneration = 0;
+	let timer: ReturnType<typeof setTimeout> | null = null;
+
 	run = null;
 	knownAbsent = false;
 	loadError = null;
-	void load();
-});
 
-onMount(() =>
-	onLaunchUpdated((frame) => {
+	const load = async () => {
+		const generation = ++loadGeneration;
+		try {
+			const next = selectedLaunchRunId
+				? await fetchLaunchRun(selectedLaunchRunId)
+				: selectedInstanceId
+					? ((await fetchProcessLaunchRuns(selectedInstanceId)).at(-1) ?? null)
+					: null;
+			if (cancelled || generation !== loadGeneration) return;
+			run = next;
+			knownAbsent = selectedInstanceId !== null && next === null;
+			loadError = null;
+			if (next?.instanceId && next.instanceId !== notifiedInstanceId) {
+				notifiedInstanceId = next.instanceId;
+				onInstanceAvailable?.(next.instanceId);
+			}
+			if (
+				next?.status === "completed" ||
+				next?.status === "failed" ||
+				next?.status === "cancelled"
+			) {
+				expanded = false;
+				return;
+			}
+		} catch (error) {
+			if (cancelled || generation !== loadGeneration) return;
+			loadError = error instanceof Error ? error.message : "Couldn't load launch progress";
+		}
+		if (!knownAbsent) timer = setTimeout(() => void load(), 750);
+	};
+	refresh = () => {
+		if (timer) clearTimeout(timer);
+		timer = null;
+		void load();
+	};
+	const unsubscribe = onLaunchUpdated((frame) => {
 		if (
-			(frame.payload.launchRunId === launchRunId ||
-				(instanceId !== null && frame.payload.instanceId === instanceId)) &&
+			(frame.payload.launchRunId === selectedLaunchRunId ||
+				(selectedInstanceId !== null && frame.payload.instanceId === selectedInstanceId)) &&
 			!knownAbsent
 		) {
-			if (timer) clearTimeout(timer);
-			timer = null;
-			void load();
+			refresh();
 		}
-	}),
-);
+	});
+	void load();
 
-onDestroy(() => {
-	generation += 1;
-	if (timer) clearTimeout(timer);
+	return () => {
+		cancelled = true;
+		loadGeneration += 1;
+		if (timer) clearTimeout(timer);
+		unsubscribe();
+	};
 });
 </script>
 
@@ -113,7 +118,7 @@ onDestroy(() => {
 	{#if loadError && !run}
 		<div class="checklist-message" role="status">
 			<p>{loadError}</p>
-			<button type="button" class="text-button" onclick={() => void load()}>Retry progress</button>
+			<button type="button" class="text-button" onclick={refresh}>Retry progress</button>
 		</div>
 	{:else if !run}
 		<p class="checklist-message">Preparing launch checklist…</p>

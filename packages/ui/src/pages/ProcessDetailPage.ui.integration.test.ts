@@ -2059,7 +2059,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const sheet = target.querySelector<HTMLElement>('[data-section="mobile-process-quick-nav"]');
-		expect(sheet?.getAttribute("role")).toBe("dialog");
+		expect(sheet?.tagName).toBe("DIALOG");
 		expect(sheet?.querySelector('[data-section="turn-rail-list"]')).toBeTruthy();
 		expect(sheet?.textContent).toContain("Process info");
 		expect(

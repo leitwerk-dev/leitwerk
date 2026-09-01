@@ -508,6 +508,38 @@ type CompiledOutcomeRouting<TParams, TState> = {
 	choose: ProcessOutcomeBranchSelector<TParams, TState>;
 };
 
+type BranchRouteSpec = StaticRouteTarget & { trigger?: string };
+
+function compileBranchRoutes(input: {
+	branches: Record<string, BranchRouteSpec>;
+	knownTurnIds?: ReadonlySet<TurnId>;
+	targetContext(branchId: string): string;
+	emptyBranchError: string;
+	duplicateTriggerError(trigger: string): string;
+}): {
+	routes: Record<string, NormalizedActionRoute>;
+	transitions: NormalizedActionRoute[];
+} {
+	const routes: Record<string, NormalizedActionRoute> = {};
+	const transitions: NormalizedActionRoute[] = [];
+	const usedTriggers = new Set<string>();
+	for (const [branchId, branchSpec] of Object.entries(input.branches)) {
+		if (branchId.trim() === "") throw new Error(input.emptyBranchError);
+		const target = normalizeStaticRouteTarget(
+			input.targetContext(branchId),
+			branchSpec,
+			input.knownTurnIds,
+		);
+		const trigger = branchSpec.trigger ?? branchId;
+		if (usedTriggers.has(trigger)) throw new Error(input.duplicateTriggerError(trigger));
+		usedTriggers.add(trigger);
+		const route = { ...target, trigger };
+		routes[branchId] = route;
+		transitions.push(route);
+	}
+	return { routes, transitions };
+}
+
 function resolveOutcomeRouting<TParams, TState>(input: {
 	turnId: TurnId;
 	outcome: string;
@@ -523,28 +555,15 @@ function resolveOutcomeRouting<TParams, TState>(input: {
 			`Turn '${input.turnId}' outcome '${input.outcome}' must declare at least one branch`,
 		);
 	}
-	const routes: Record<string, NormalizedActionRoute> = {};
-	const usedTriggers = new Set<string>();
-	for (const [branchId, branchSpec] of entries) {
-		if (branchId.trim() === "") {
-			throw new Error(
-				`Turn '${input.turnId}' outcome '${input.outcome}' contains an empty branch id`,
-			);
-		}
-		const target = normalizeStaticRouteTarget(
+	const { routes } = compileBranchRoutes({
+		branches: input.spec.branches,
+		knownTurnIds: input.knownTurnIds,
+		targetContext: (branchId) =>
 			`Turn '${input.turnId}' outcome '${input.outcome}' branch '${branchId}'`,
-			branchSpec,
-			input.knownTurnIds,
-		);
-		const trigger = branchSpec.trigger ?? branchId;
-		if (usedTriggers.has(trigger)) {
-			throw new Error(
-				`Turn '${input.turnId}' outcome '${input.outcome}' contains duplicate branch trigger '${trigger}'`,
-			);
-		}
-		usedTriggers.add(trigger);
-		routes[branchId] = { ...target, trigger };
-	}
+		emptyBranchError: `Turn '${input.turnId}' outcome '${input.outcome}' contains an empty branch id`,
+		duplicateTriggerError: (trigger) =>
+			`Turn '${input.turnId}' outcome '${input.outcome}' contains duplicate branch trigger '${trigger}'`,
+	});
 	return { routes, choose: input.spec.choose };
 }
 
@@ -564,42 +583,22 @@ function resolveActionRouting<TParams, TState>(input: {
 				`Action '${input.actionId}' on turn '${input.turnId}' must declare at least one branch`,
 			);
 		}
-		const routes: Record<string, NormalizedActionRoute> = {};
-		const resolvedTransitions: NormalizedActionRoute[] = [];
-		const usedTriggers = new Set<string>();
-		for (const [branchId, branchSpec] of entries) {
-			if (branchId.trim() === "") {
-				throw new Error(
-					`Action '${input.actionId}' on turn '${input.turnId}' contains an empty branch id`,
-				);
-			}
-			const target = normalizeStaticRouteTarget(
+		const { routes, transitions } = compileBranchRoutes({
+			branches: input.spec.branches,
+			knownTurnIds: input.knownTurnIds,
+			targetContext: (branchId) =>
 				`Action '${input.actionId}' branch '${branchId}' on turn '${input.turnId}'`,
-				branchSpec,
-				input.knownTurnIds,
-			);
-			const trigger = branchSpec.trigger ?? branchId;
-			if (usedTriggers.has(trigger)) {
-				throw new Error(
-					`Action '${input.actionId}' on turn '${input.turnId}' contains duplicate branch trigger '${trigger}'`,
-				);
-			}
-			usedTriggers.add(trigger);
-			const normalized = {
-				...(target.nextTurnId ? { nextTurnId: target.nextTurnId } : {}),
-				...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
-				trigger,
-			};
-			routes[branchId] = normalized;
-			resolvedTransitions.push(normalized);
-		}
+			emptyBranchError: `Action '${input.actionId}' on turn '${input.turnId}' contains an empty branch id`,
+			duplicateTriggerError: (trigger) =>
+				`Action '${input.actionId}' on turn '${input.turnId}' contains duplicate branch trigger '${trigger}'`,
+		});
 		return {
 			routing: {
 				kind: "branches",
 				routes,
 				choose: input.spec.choose,
 			},
-			transitions: resolvedTransitions,
+			transitions,
 		};
 	}
 	const target = normalizeStaticRouteTarget(

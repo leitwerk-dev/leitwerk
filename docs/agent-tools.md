@@ -68,7 +68,9 @@ Automatic turns and LLM preparation phases invoke a declared tool with
 identity, cancellation, and credential isolation as agent-initiated LLM integration-tool calls.
 
 A tool marked with `capability.kind: "ticket_creation"` can back the generic derived-ticket
-process. It must return the standard `{ externalId, url, result? }` receipt. An optional
+route. Its extension registers the code-defined `processId` and `startTurnId` on the capability;
+core does not select a fixed process graph. The tool must return the standard
+`{ externalId, url, result? }` receipt. An optional
 destination provider lists sanitized choices for the derived process. The server adds the
 opaque choice to the worker's tool declaration and resolves it into a server-owned snapshot
 immediately before approval. The adapter receives that snapshot as `ctx.ticketDestination`;

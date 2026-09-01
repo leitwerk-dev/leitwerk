@@ -20,7 +20,10 @@ import {
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { ResolvedProviderCredential } from "../model-providers/credentials.js";
-import type { ProcessActionRegistry } from "../process-action-registry.js";
+import {
+	type ProcessActionRegistry,
+	resolveTurnIntegrationToolNames,
+} from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import { toInputDelivery } from "../process-input-dispatch.js";
 import { resolveProductTurnResultMarkdown } from "../product-turn-result-markdown.js";
@@ -53,7 +56,7 @@ export interface WorkerStartPayloadBuilderDeps
 	integrationTools?: {
 		declarations(
 			names: readonly string[],
-			context?: { processId: string; paramsJson: string | null },
+			context?: { paramsJson: string | null },
 		): import("@leitwerk-dev/worker-protocol").IntegrationToolDeclaration[];
 	};
 }
@@ -328,29 +331,14 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					projects: deps.projects.listByInstance(process.id),
 				}) ?? [];
 			const bootstrap = resolveBootstrap(start, deps);
-			const selectedTurn = deps.processActionRegistry.getTurnDefinition(
-				process.processId,
+			const integrationToolNames = resolveTurnIntegrationToolNames(
+				deps.processActionRegistry,
+				process,
 				start.turnId,
 			);
-			const staticIntegrationToolNames =
-				selectedTurn?.kind === "llm" || selectedTurn?.kind === "automatic"
-					? (selectedTurn.integrationTools ?? [])
-					: [];
-			const dynamicIntegrationToolNames = (() => {
-				if (selectedTurn?.kind !== "llm" || !selectedTurn.resolveIntegrationTools) return [];
-				const processContext = deps.processActionRegistry.resolveContextData(
-					process.processId,
-					process,
-				);
-				return selectedTurn.resolveIntegrationTools(processContext.params, processContext.state);
-			})();
-			const integrationToolNames = [
-				...new Set([...staticIntegrationToolNames, ...dynamicIntegrationToolNames]),
-			];
 			const integrationTools =
 				integrationToolNames.length > 0
 					? deps.integrationTools?.declarations(integrationToolNames, {
-							processId: process.processId,
 							paramsJson: process.paramsJson,
 						})
 					: undefined;

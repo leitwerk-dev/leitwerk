@@ -198,8 +198,9 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		if (correlationError) {
 			return reject(correlationError.code, correlationError.message);
 		}
+		const leitwerkMetadata = ctx.process.metadata?._leitwerk as Record<string, unknown> | undefined;
 		if (
-			ctx.process.processId === "ticket_creation_process" &&
+			leitwerkMetadata?.requiresExternalReceipt === true &&
 			(!ctx.process.externalId || !ctx.process.externalUrl)
 		) {
 			return reject(

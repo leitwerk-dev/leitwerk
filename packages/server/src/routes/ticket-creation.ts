@@ -152,12 +152,13 @@ export function registerTicketCreationRoutes(
 		"/api/processes/:instanceId/ticket-creation",
 		async (req, reply) => {
 			try {
-				if (!hasProcessGraph(deps.processGraphs, "ticket_creation_process")) {
+				const tool = registry.resolveTicketTool(req.body.toolName);
+				const { processId, startTurnId } = tool.capability;
+				if (!hasProcessGraph(deps.processGraphs, processId)) {
 					throw Object.assign(new Error("Ticket creation process is not available"), {
 						statusCode: 503,
 					});
 				}
-				const tool = registry.resolveTicketTool(req.body.toolName);
 				const actor = resolveActor(req);
 				const destinationId = req.body.destinationId?.trim();
 				if (!tool.capability.destinations && destinationId) {
@@ -174,9 +175,10 @@ export function registerTicketCreationRoutes(
 				const { parent, context } = assembleContext(deps, req.params.instanceId, req.body);
 				const committed = deps.transaction((repos) => {
 					const child = repos.processes.create({
-						processId: "ticket_creation_process",
+						processId,
 						title: `Ticket from ${parent.title ?? parent.id}`,
 						defaultModelProfileId: req.body.modelProfileId ?? null,
+						metadata: { _leitwerk: { requiresExternalReceipt: true } },
 						paramsJson: JSON.stringify({
 							parentInstanceId: parent.id,
 							artifact: req.body.artifact,
@@ -204,7 +206,7 @@ export function registerTicketCreationRoutes(
 					});
 					return { child, relation };
 				});
-				const started = await deps.processEngine.startProcess(committed.child.id, "create_ticket", {
+				const started = await deps.processEngine.startProcess(committed.child.id, startTurnId, {
 					actor,
 				});
 				if (!started.ok) {

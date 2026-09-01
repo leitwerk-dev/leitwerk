@@ -16,7 +16,10 @@ import type {
 	WorkerIntegrationToolResultPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "./db/repositories.js";
-import type { ProcessActionRegistry } from "./process-action-registry.js";
+import {
+	type ProcessActionRegistry,
+	resolveTurnIntegrationToolNames,
+} from "./process-action-registry.js";
 import type { ToolApprovalGate } from "./tool-approval-gate.js";
 
 type RegisteredIntegrationTool = IntegrationToolDefinition<unknown>;
@@ -50,6 +53,12 @@ function validateTicketCapability(name: string, value: TicketCreationCapability)
 	}
 	if (typeof value.displayName !== "string" || value.displayName.trim() === "") {
 		throw new Error(`Integration tool '${name}' ticket capability requires a displayName`);
+	}
+	if (typeof value.processId !== "string" || value.processId.trim() === "") {
+		throw new Error(`Integration tool '${name}' ticket capability requires a processId`);
+	}
+	if (typeof value.startTurnId !== "string" || value.startTurnId.trim() === "") {
+		throw new Error(`Integration tool '${name}' ticket capability requires a startTurnId`);
 	}
 	if (value.titlePath !== undefined) assertJsonPointer(value.titlePath, "titlePath");
 	if (value.descriptionPath !== undefined) {
@@ -267,8 +276,20 @@ export class IntegrationToolRegistry {
 			}));
 	}
 
+	findTicketTool(name: string): TicketToolCatalogEntry | null {
+		const definition = this.tools.get(name);
+		return definition?.capability?.kind === "ticket_creation"
+			? {
+					name: definition.name,
+					description: definition.description,
+					parameters: definition.parameters,
+					capability: { ...definition.capability },
+				}
+			: null;
+	}
+
 	resolveTicketTool(name: string): TicketToolCatalogEntry {
-		const tool = this.ticketCatalog().find((candidate) => candidate.name === name);
+		const tool = this.findTicketTool(name);
 		if (!tool) throw new Error(`Unknown ticket creation tool '${name}'`);
 		return tool;
 	}
@@ -308,12 +329,9 @@ export class IntegrationToolRegistry {
 
 	declarations(
 		names: readonly string[],
-		context?: { processId: string; paramsJson: string | null },
+		context?: { paramsJson: string | null },
 	): IntegrationToolDeclaration[] {
-		const destinations =
-			context?.processId === "ticket_creation_process"
-				? ticketDestinationChoices(context.paramsJson)
-				: [];
+		const destinations = ticketDestinationChoices(context?.paramsJson ?? null);
 		return names.map((name) => {
 			const definition = this.tools.get(name);
 			if (!definition) throw new Error(`Unknown integration tool '${name}'`);
@@ -411,26 +429,11 @@ export function createIntegrationToolRequestService(input: {
 			if (process.selectedTurnId !== turn.turnId) {
 				return fail("Integration tool call targets a stale turn");
 			}
-			const turnDefinition = input.processActionRegistry.getTurnDefinition(
-				process.processId,
+			const authorizedTools = resolveTurnIntegrationToolNames(
+				input.processActionRegistry,
+				process,
 				turn.turnId,
 			);
-			const processContext = input.processActionRegistry.resolveContextData(
-				process.processId,
-				process,
-			);
-			const authorizedTools =
-				turnDefinition?.kind === "llm"
-					? [
-							...(turnDefinition.integrationTools ?? []),
-							...(turnDefinition.resolveIntegrationTools?.(
-								processContext.params,
-								processContext.state,
-							) ?? []),
-						]
-					: turnDefinition?.kind === "automatic"
-						? (turnDefinition.integrationTools ?? [])
-						: [];
 			if (!authorizedTools.includes(payload.toolName)) {
 				return fail(`Integration tool '${payload.toolName}' is not authorized for this turn`);
 			}
@@ -444,9 +447,10 @@ export function createIntegrationToolRequestService(input: {
 			try {
 				let ticketDestination: TicketCreationDestinationSnapshot | undefined;
 				let executionArgs = payload.args;
-				if (process.processId === "ticket_creation_process") {
+				const ticketTool = input.registry.findTicketTool(payload.toolName);
+				if (ticketTool) {
 					if (!input.toolApprovalGate) return fail("Ticket approval gate is unavailable");
-					const capability = input.registry.resolveTicketTool(payload.toolName).capability;
+					const capability = ticketTool.capability;
 					if (capability.destinations) {
 						const params = process.paramsJson ? JSON.parse(process.paramsJson) : {};
 						if (params.ticketDestination) {
@@ -506,11 +510,8 @@ export function createIntegrationToolRequestService(input: {
 						toolName: payload.toolName,
 					}),
 				});
-				const responseResult =
-					process.processId === "ticket_creation_process"
-						? validateTicketCreationReceipt(result)
-						: result;
-				if (process.processId === "ticket_creation_process") {
+				const responseResult = ticketTool ? validateTicketCreationReceipt(result) : result;
+				if (ticketTool) {
 					const receipt = responseResult as TicketCreationReceipt;
 					input.repos.processes.update(instanceId, {
 						externalId: receipt.externalId,

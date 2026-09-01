@@ -681,6 +681,10 @@ export interface TicketCreationDestinationProvider {
 export interface TicketCreationCapability {
 	readonly kind: "ticket_creation";
 	readonly displayName: string;
+	/** Extension-owned process launched by the generic derived-ticket route. */
+	readonly processId: string;
+	/** Entry turn selected when the derived process starts. */
+	readonly startTurnId: TurnId;
 	/** RFC 6901 JSON Pointer into the tool arguments. */
 	readonly titlePath?: string;
 	/** RFC 6901 JSON Pointer into the tool arguments. */
