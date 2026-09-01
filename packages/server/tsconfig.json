@@ -2,7 +2,8 @@
 	"extends": "../../tsconfig.json",
 	"compilerOptions": {
 		"outDir": "dist",
-		"rootDir": "src"
+		"rootDir": "src",
+		"lib": ["ES2024", "DOM", "DOM.Iterable"]
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"],
@@ -12,6 +13,7 @@
 		{ "path": "../extension-runtime" },
 		{ "path": "../protocol" },
 		{ "path": "../process-sdk" },
+		{ "path": "../session-transfer" },
 		{ "path": "../watcher-utils" },
 		{ "path": "../worker-protocol" },
 		{ "path": "../worker-runners" }

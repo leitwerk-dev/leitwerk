@@ -15,9 +15,12 @@ import type {
 	ServerExtensionEventMap,
 } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
+import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { createPollingCoordinator, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import {
 	cleanupRetainedProcessVolumes,
+	type ProcessStateExporter,
+	type ProcessStateExportHelperRelayProvider,
 	type ProcessVolume,
 	planProcessVolumeRetentionCleanup,
 	type WorkerRunner,
@@ -103,6 +106,8 @@ import { loadServerExtensionCatalog } from "./server-bootstrap/load-extension-ca
 import { registerHttp } from "./server-bootstrap/register-http.js";
 import { registerWebsocket } from "./server-bootstrap/register-websocket.js";
 import { resolveServerTlsOptions } from "./server-topology.js";
+import { createSessionTransferHelperRelays } from "./session-transfer-helper-relays.js";
+import { createSessionTransferService } from "./session-transfer-service.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
 import { createDiagnosticTraceWriter } from "./supervisor/diagnostic-trace-writer.js";
 import { createIpcHandler, type IpcHandler } from "./supervisor/ipc-handler.js";
@@ -113,6 +118,7 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./supervisor/worker-websocket-ipc.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
+import { defaultWorkerRuntimeProfile } from "./worker-runtime-profile-selection.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
 export interface AppOptions {
@@ -133,6 +139,7 @@ export interface AppOptions {
 	workerRunnerRuntime?: {
 		runner: WorkerRunner;
 		volume?: ProcessVolume;
+		exporter: ProcessStateExporter;
 		webSocketIpc?: WorkerWebSocketIpcManager;
 	};
 	/** Local runner spawn seam for tests/dev only. */
@@ -168,14 +175,25 @@ function createConfiguredDatabase(config: LeitwerkConfig): LeitwerkDb {
 		: createDatabase({ sqlitePath: config.storage.sqlite_path });
 }
 
+function configuredExporterProfile(config: LeitwerkConfig): {
+	image: string | undefined;
+	imagePullPolicy: string | undefined;
+} {
+	const profileId = defaultWorkerRuntimeProfile(config);
+	const profile = profileId ? config.worker_runtime_profiles?.[profileId] : undefined;
+	return { image: profile?.image, imagePullPolicy: profile?.image_pull_policy };
+}
+
 async function createConfiguredWorkerRunnerRuntime(input: {
 	config: LeitwerkConfig;
 	webSocketIpc: WorkerWebSocketIpcManager;
 	provided?: AppOptions["workerRunnerRuntime"];
+	helperRelays: ProcessStateExportHelperRelayProvider;
 	localWorkerSpawnImpl?: AppOptions["localWorkerSpawnImpl"];
 }): Promise<{
 	runner: WorkerRunner;
 	volume?: ProcessVolume;
+	exporter: ProcessStateExporter;
 	webSocketIpc: WorkerWebSocketIpcManager;
 }> {
 	if (input.provided) {
@@ -189,6 +207,8 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		const created = createLocalWorkerRunner({
 			command: input.config.local_worker?.command,
 			args: input.config.local_worker?.args,
+			processWorkspacesDir: input.config.storage.process_workspaces_dir,
+			treeFilesDir: input.config.storage.tree_files_dir,
 			localWorkerSpawnImpl: input.localWorkerSpawnImpl,
 		});
 		return { ...created, webSocketIpc: input.webSocketIpc };
@@ -201,6 +221,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			]);
 		const processVolume = input.config.kubernetes?.process_volume;
 		const pod = input.config.kubernetes?.pod;
+		const exporterProfile = configuredExporterProfile(input.config);
 		const kubernetesClient = createInClusterKubernetesApiClient({
 			apiServerUrl: input.config.kubernetes?.api_server_url,
 		});
@@ -218,6 +239,10 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			},
 			serverCaFile: input.config.kubernetes?.server_ca_file,
 			serverNamespace: input.config.kubernetes?.server_namespace ?? "leitwerk-system",
+			serverUrl: input.config.kubernetes?.server_url,
+			exporterImage: exporterProfile.image,
+			exporterImagePullPolicy: exporterProfile.imagePullPolicy,
+			helperRelays: input.helperRelays,
 			imagePullSecretCopies: input.config.kubernetes?.image_pull_secret_copies?.map((copy) => ({
 				sourceName: copy.source_name,
 				targetName: copy.target_name,
@@ -242,6 +267,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		import("@leitwerk-dev/worker-runners/docker-client"),
 	]);
 	const dockerVolume = input.config.docker?.process_volume;
+	const exporterProfile = configuredExporterProfile(input.config);
 	const created = createDockerWorkerRunner({
 		engine: createDockerEngineHttpClient({
 			socket: input.config.docker?.socket ?? "unix:///var/run/docker.sock",
@@ -254,6 +280,9 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		defaultNetwork: input.config.docker?.network ?? "leitwerk",
 		sysboxRuntime: input.config.docker?.dind?.sysbox_runtime,
 		serverCaFile: input.config.docker?.server_ca_file,
+		serverUrl: input.config.docker?.server_url,
+		exporterImage: exporterProfile.image,
+		helperRelays: input.helperRelays,
 	});
 	return { ...created, webSocketIpc: input.webSocketIpc };
 }
@@ -626,6 +655,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	}
 
 	let supervisor: WorkerSupervisor | undefined;
+	let isNewTurnBlocked = (_instanceId: string): boolean => false;
 	const afterSuccessHooks = new Set<(instanceId: string) => void | Promise<void>>();
 	const toastTtlMs = parseDurationMs(config.server.websocket.toast_ttl, 6_000, {
 		allowHours: true,
@@ -663,6 +693,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			piResourceBundlePins.reconcile(process);
 		},
 		afterSuccessHooks,
+		isNewTurnBlocked: (instanceId) => isNewTurnBlocked(instanceId),
 		prepareTurnStarts: (process, writes, providerOptions, availabilitySnapshot) =>
 			prepareCreatedTurnStarts(
 				{
@@ -798,11 +829,23 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	);
 
 	const repositoryCredentials = new RepositoryCredentialService(extensionCatalog.processes);
+	const sessionTransferLimits = config.session_transfer
+		? {
+				maxEntries: config.session_transfer.max_entries,
+				maxLogicalBytes: config.session_transfer.max_logical_bytes,
+				maxCompressedBytes: config.session_transfer.max_compressed_bytes,
+			}
+		: DEFAULT_SESSION_TRANSFER_LIMITS;
+	const sessionTransferHelperRelays = createSessionTransferHelperRelays({
+		repos: baseDeps,
+		limits: sessionTransferLimits,
+	});
 	const supervisorConfig = config;
 	const runnerRuntime = await createConfiguredWorkerRunnerRuntime({
 		config: supervisorConfig,
 		webSocketIpc: workerWebSocketIpc,
 		provided: opts.workerRunnerRuntime,
+		helperRelays: sessionTransferHelperRelays,
 		localWorkerSpawnImpl: opts.localWorkerSpawnImpl,
 	});
 	markStartup("worker_runner");
@@ -995,6 +1038,35 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	});
 
 	if (!supervisor) throw new Error("worker supervisor not initialized");
+	const deletionPending = new Set<string>();
+	const sessionTransfers = createSessionTransferService({
+		repos: baseDeps,
+		processOperations,
+		supervisor,
+		exporter: runnerRuntime.exporter,
+		helperRelays: sessionTransferHelperRelays,
+		sessionSource: sessionSnapshots,
+		config,
+		limits: sessionTransferLimits,
+		logger: app.log,
+		isDeletionPending: (instanceId) => deletionPending.has(instanceId),
+		onUpdated: (attempt) => {
+			broadcaster.sendDurable(
+				"session_transfer.updated",
+				{ attemptId: attempt.id },
+				attempt.instanceId,
+			);
+		},
+	});
+	isNewTurnBlocked = (instanceId) => {
+		const attempt = sessionTransfers.activeForProcess(instanceId);
+		return attempt?.state === "queued" || attempt?.state === "exporting";
+	};
+	startHooks.push(async () => {
+		await sessionTransfers.reconcile();
+		sessionTransfers.start();
+	});
+	stopHooks.push(() => sessionTransfers.stop());
 	const processDeletion = createProcessDeletionService({
 		processes: baseDeps.processes,
 		processEngine,
@@ -1003,6 +1075,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		volume: runnerRuntime.volume,
 		sessionSnapshots,
 		resultImages,
+		sessionTransfers,
+		deletionPending,
 		broadcaster,
 		logger: app.log,
 	});
@@ -1113,6 +1187,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		processModelSelection,
 		skillCatalog,
+		sessionTransferService: sessionTransfers,
 	};
 
 	registerHttp({

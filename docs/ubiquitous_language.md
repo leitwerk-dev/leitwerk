@@ -44,6 +44,10 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | **Review Branch** | Side branch forked for code review or analysis that can merge back into the primary path upon completion. |
 | **Pi Resource Snapshot** | Immutable, content-addressed non-secret package containing settings, models, extensions, skills, and prompts for worker materialization. |
 | **Workspace Clone** | Dedicated full Git repository clone checked out to a specific work branch (`feat/...`). |
+| **Local Session Transfer Grant** | Expiring, process-bound bearer capability minted without reading retained state. SQLite stores only its token hash. |
+| **Local Session Transfer Attempt** | Durable queued claim of a grant with a renewable liveness lease, fixed hard deadline, phase progress, and at most one non-terminal owner per process. |
+| **Export Reservation** | Exclusive interval after accepted work becomes quiescent, during which no writable worker lease or process mutation may alter the retained snapshot being streamed. |
+| **Transfer Receipt** | Local Pi record keyed by origin, grant, and token hash that makes final acknowledgement and session switching recoverable without storing the bearer token. |
 
 ---
 

@@ -31,6 +31,8 @@ type AfterRecordFunction<TInput extends OperationInputBase, TData> = {
 export interface OperationSpec<TKind extends string, TInput extends OperationInputBase, TData> {
 	kind: TKind;
 	label?: string;
+	/** Reject this operation while another subsystem has reserved new-turn admission. */
+	admission?: "new_turn";
 
 	/**
 	 * Operation decisions are pure with respect to process-owned durable state and

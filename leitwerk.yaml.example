@@ -13,6 +13,11 @@ storage:
   process_workspaces_dir: ./.leitwerk/workspaces
   tree_files_dir: ./.leitwerk/trees
 
+session_transfer:
+  max_entries: 250000
+  max_logical_bytes: 21474836480
+  max_compressed_bytes: 10737418240
+
 # Optional Forgejo SSO for the web UI, HTTP API, and /ws.
 # When enabled, server.base_url and OIDC URLs must use HTTPS, except for loopback localhost development URLs.
 # Only enabled: true turns SSO on. Omit this block, omit enabled, or set

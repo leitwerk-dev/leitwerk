@@ -86,6 +86,7 @@ export interface ProcessEngineDeps
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
 	afterRecord?: (process: ProcessInstance) => void | Promise<void>;
 	afterSuccessHooks?: Set<(instanceId: string) => void | Promise<void>>;
+	isNewTurnBlocked?: (instanceId: string) => boolean;
 	prepareTurnStarts?: (
 		process: ProcessInstance,
 		writes: Writes,

@@ -1,3 +1,12 @@
+import type { Readable } from "node:stream";
+import type {
+	LeitwerkTransferManifestV1,
+	SessionTransferLimits,
+	SessionTransferPreflight,
+	SessionTransferPreflightReport,
+	TransferArchiveProgress,
+} from "@leitwerk-dev/session-transfer";
+
 /**
  * Runner API seams shared by worker run modes (Docker, Kubernetes, best-effort local).
  *
@@ -24,6 +33,46 @@ export interface VolumeRef {
 	mountPath: string;
 	/** Runtime-specific namespace/project for the volume (Kubernetes process namespace). */
 	namespace?: string;
+}
+
+export type ProcessStateExportPreflight = SessionTransferPreflight;
+export type ProcessStateExportHelperReport = SessionTransferPreflightReport;
+
+/** Server-owned, credential-scoped relay used by isolated export helpers. */
+export interface ProcessStateExportHelperRelay {
+	readonly exportId: string;
+	readonly credential: string;
+	waitForPreflight(signal?: AbortSignal): Promise<ProcessStateExportHelperReport>;
+	activateStream(): Readable;
+	fail(error: Error): void;
+}
+
+export interface PreparedProcessStateExport {
+	manifest: LeitwerkTransferManifestV1;
+	preflight: ProcessStateExportPreflight;
+	stream(input: {
+		signal?: AbortSignal;
+		onProgress?: (progress: TransferArchiveProgress) => void;
+	}): Readable;
+}
+
+/** Purpose-specific read-only export seam. It never creates a worker lease. */
+export interface ProcessStateExporter {
+	prepare(input: {
+		instanceId: string;
+		manifest: LeitwerkTransferManifestV1;
+		limits: SessionTransferLimits;
+		signal?: AbortSignal;
+	}): Promise<PreparedProcessStateExport>;
+	/** Removes stale runner-specific export helpers after restart. */
+	reconcile(): Promise<void>;
+}
+
+export interface ProcessStateExportHelperRelayProvider {
+	create(input: {
+		instanceId: string;
+		manifest: LeitwerkTransferManifestV1;
+	}): ProcessStateExportHelperRelay;
 }
 
 export interface ProcessVolume {

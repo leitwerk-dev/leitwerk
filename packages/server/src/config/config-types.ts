@@ -242,6 +242,12 @@ export interface InternalTlsConfig {
 	client_ca_file?: string;
 }
 
+export interface SessionTransferConfig {
+	max_entries: number;
+	max_logical_bytes: number;
+	max_compressed_bytes: number;
+}
+
 export interface DevelopmentToolsConfig {
 	install_timeout: string;
 	local: { mise_command: string };
@@ -275,4 +281,6 @@ export interface LeitwerkConfig extends ConfigSnapshot {
 	skill_repositories?: SkillRepositoryConfig[];
 	/** Server-owned repository-aware commit-message generation rules. */
 	commit_messages?: CommitMessageConfig;
+	/** Bounded archive and extraction ceilings for local session transfer. */
+	session_transfer?: SessionTransferConfig;
 }

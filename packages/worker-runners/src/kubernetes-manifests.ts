@@ -1,7 +1,10 @@
 import type { IsolatedStartWorkerInput, VolumeRef, WorkerExitInfo } from "./types.js";
 import {
+	buildExportHelperLabels,
 	buildProcessResourceLabels,
 	buildWorkerUnitLabels,
+	EXPORT_HELPER_COMPONENT_VALUE,
+	EXPORT_HELPER_LABEL_EXPORT_ID,
 	PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE,
 	PROCESS_NAMESPACE_COMPONENT_VALUE,
 	PROCESS_SERVER_CA_COMPONENT_VALUE,
@@ -125,9 +128,11 @@ export interface KubernetesPodManifest {
 		tolerations?: unknown[];
 		hostAliases?: Array<{ ip: string; hostnames: string[] }>;
 		imagePullSecrets?: Array<{ name: string }>;
+		automountServiceAccountToken?: boolean;
 		containers: Array<{
-			name: "worker";
+			name: string;
 			image: string;
+			command?: string[];
 			imagePullPolicy?: string;
 			env: Array<{ name: string; value: string }>;
 			volumeMounts: Array<{ name: string; mountPath: string; readOnly?: boolean }>;
@@ -172,6 +177,12 @@ export function sanitizeKubernetesNameSegment(value: string): string {
 export function kubernetesWorkerPodName(instanceId: string, workerId: string): string {
 	return safeKubernetesDnsName(
 		`leitwerk-worker-${sanitizeKubernetesNameSegment(instanceId)}-${sanitizeKubernetesNameSegment(workerId)}`,
+	);
+}
+
+export function kubernetesExportHelperPodName(instanceId: string, exportId: string): string {
+	return safeKubernetesDnsName(
+		`leitwerk-export-${sanitizeKubernetesNameSegment(instanceId)}-${sanitizeKubernetesNameSegment(exportId)}`,
 	);
 }
 
@@ -303,6 +314,119 @@ function resources(
 	return Object.keys(limits).length > 0 ? { limits } : undefined;
 }
 
+function podMetadata(
+	name: string,
+	namespace: string,
+	labels: Record<string, string>,
+	options: KubernetesPodSpecOptions,
+): KubernetesPodManifest["metadata"] {
+	return {
+		name,
+		namespace,
+		labels,
+		...(options.annotations && Object.keys(options.annotations).length > 0
+			? { annotations: { ...options.annotations } }
+			: {}),
+	};
+}
+
+function sharedPodSpec(options: KubernetesPodSpecOptions): Partial<KubernetesPodManifest["spec"]> {
+	return {
+		...(options.workerServiceAccount?.trim()
+			? { serviceAccountName: options.workerServiceAccount }
+			: {}),
+		...(options.imagePullSecrets?.length
+			? { imagePullSecrets: options.imagePullSecrets.map((name) => ({ name })) }
+			: {}),
+		...(options.nodeSelector && Object.keys(options.nodeSelector).length > 0
+			? { nodeSelector: { ...options.nodeSelector } }
+			: {}),
+		...(options.tolerations?.length ? { tolerations: [...options.tolerations] } : {}),
+		...(options.hostAliases?.length
+			? {
+					hostAliases: options.hostAliases.map(({ ip, hostnames }) => ({
+						ip,
+						hostnames: [...hostnames],
+					})),
+				}
+			: {}),
+	};
+}
+
+function processStateVolumes(
+	claimName: string,
+	ca: KubernetesWorkerServerCaConfigMapSpec | undefined,
+): KubernetesPodManifest["spec"]["volumes"] {
+	return [
+		{ name: WORKER_VOLUME_NAME, persistentVolumeClaim: { claimName } },
+		...(ca
+			? [
+					{
+						name: WORKER_SERVER_CA_VOLUME_NAME,
+						configMap: { name: ca.name, items: [{ key: ca.key, path: ca.key }] },
+					},
+				]
+			: []),
+	];
+}
+
+function processStateContainerConfig(
+	env: Record<string, string>,
+	mountPath: string,
+	readOnly: boolean,
+	ca: KubernetesWorkerServerCaConfigMapSpec | undefined,
+): Pick<KubernetesPodManifest["spec"]["containers"][number], "env" | "volumeMounts"> {
+	return {
+		env: envList(ca ? { ...env, NODE_EXTRA_CA_CERTS: `${ca.mountPath}/${ca.key}` } : env),
+		volumeMounts: [
+			{ name: WORKER_VOLUME_NAME, mountPath, ...(readOnly ? { readOnly: true } : {}) },
+			...(ca
+				? [{ name: WORKER_SERVER_CA_VOLUME_NAME, mountPath: ca.mountPath, readOnly: true }]
+				: []),
+		],
+	};
+}
+
+export function buildKubernetesExportHelperPodManifest(
+	input: {
+		instanceId: string;
+		exportId: string;
+		image: string;
+		command: string[];
+		env: Record<string, string>;
+		volume: VolumeRef;
+	},
+	options: KubernetesPodSpecOptions,
+): KubernetesPodManifest {
+	const ca = options.serverCaConfigMap;
+	const namespace = input.volume.namespace ?? options.namespace;
+	return {
+		apiVersion: "v1",
+		kind: "Pod",
+		metadata: podMetadata(
+			kubernetesExportHelperPodName(input.instanceId, input.exportId),
+			namespace,
+			buildExportHelperLabels({ instanceId: input.instanceId, exportId: input.exportId }),
+			options,
+		),
+		spec: {
+			restartPolicy: "Never",
+			automountServiceAccountToken: false,
+			...sharedPodSpec(options),
+			containers: [
+				{
+					name: "session-export-helper",
+					image: input.image,
+					command: [...input.command],
+					...processStateContainerConfig(input.env, input.volume.mountPath, true, ca),
+					...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
+				},
+			],
+			volumes: processStateVolumes(input.volume.id, ca),
+		},
+	};
+}
+
 export function buildKubernetesWorkerPodManifest(
 	input: IsolatedStartWorkerInput,
 	options: KubernetesPodSpecOptions,
@@ -315,70 +439,27 @@ export function buildKubernetesWorkerPodManifest(
 	});
 	const containerResources = resources(input);
 	const ca = options.serverCaConfigMap;
-	const caCertPath = ca ? `${ca.mountPath}/${ca.key}` : undefined;
-	const containerEnv = caCertPath ? { ...input.env, NODE_EXTRA_CA_CERTS: caCertPath } : input.env;
-	const volumeMounts: KubernetesPodManifest["spec"]["containers"][number]["volumeMounts"] = [
-		{ name: WORKER_VOLUME_NAME, mountPath: volume.mountPath },
-	];
-	if (ca) {
-		volumeMounts.push({
-			name: WORKER_SERVER_CA_VOLUME_NAME,
-			mountPath: ca.mountPath,
-			readOnly: true,
-		});
-	}
 	const container: KubernetesPodManifest["spec"]["containers"][number] = {
 		name: "worker",
 		image: input.image.reference,
-		env: envList(containerEnv),
-		volumeMounts,
+		...processStateContainerConfig(input.env, volume.mountPath, false, ca),
 		...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
 		...(containerResources ? { resources: containerResources } : {}),
 	};
-	const hasNodeSelector = options.nodeSelector && Object.keys(options.nodeSelector).length > 0;
-	const hasTolerations = options.tolerations && options.tolerations.length > 0;
-	const hasPullSecrets = options.imagePullSecrets && options.imagePullSecrets.length > 0;
-	const hasAnnotations = options.annotations && Object.keys(options.annotations).length > 0;
-	const hasHostAliases = options.hostAliases && options.hostAliases.length > 0;
 	return {
 		apiVersion: "v1",
 		kind: "Pod",
-		metadata: {
-			name: kubernetesWorkerPodName(input.instanceId, input.workerId),
-			namespace: volume.namespace ?? options.namespace,
+		metadata: podMetadata(
+			kubernetesWorkerPodName(input.instanceId, input.workerId),
+			volume.namespace ?? options.namespace,
 			labels,
-			...(hasAnnotations ? { annotations: { ...options.annotations } } : {}),
-		},
+			options,
+		),
 		spec: {
 			restartPolicy: "Never",
+			...sharedPodSpec(options),
 			containers: [container],
-			volumes: [
-				{ name: WORKER_VOLUME_NAME, persistentVolumeClaim: { claimName: volume.id } },
-				...(ca
-					? [
-							{
-								name: WORKER_SERVER_CA_VOLUME_NAME,
-								configMap: { name: ca.name, items: [{ key: ca.key, path: ca.key }] },
-							},
-						]
-					: []),
-			],
-			...(options.workerServiceAccount?.trim()
-				? { serviceAccountName: options.workerServiceAccount }
-				: {}),
-			...(hasPullSecrets
-				? { imagePullSecrets: options.imagePullSecrets?.map((n) => ({ name: n })) }
-				: {}),
-			...(hasNodeSelector ? { nodeSelector: { ...options.nodeSelector } } : {}),
-			...(hasTolerations ? { tolerations: [...(options.tolerations as unknown[])] } : {}),
-			...(hasHostAliases
-				? {
-						hostAliases: options.hostAliases?.map(({ ip, hostnames }) => ({
-							ip,
-							hostnames: [...hostnames],
-						})),
-					}
-				: {}),
+			volumes: processStateVolumes(volume.id, ca),
 		},
 	};
 }
@@ -469,6 +550,7 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 	const CA = PROCESS_SERVER_CA_COMPONENT_VALUE;
 	const IPS = PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE;
 	const CV = WORKER_LABEL_COMPONENT_VALUE;
+	const EH = EXPORT_HELPER_COMPONENT_VALUE;
 	const allowedSecretNames = (args.allowedImagePullSecretNames ?? []).map((name) => `'${name}'`);
 
 	const rules: AdmissionRule[] = [
@@ -509,8 +591,8 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 		},
 		{
 			scope: "Pod",
-			condition: `object.metadata.labels['${C}'] == '${CV}'`,
-			message: "leitwerk pods must carry worker component label",
+			condition: `object.metadata.labels['${C}'] in ['${CV}', '${EH}']`,
+			message: "leitwerk pods must carry worker or session-export-helper component label",
 		},
 		{
 			scope: "ServiceAccount",
@@ -552,13 +634,18 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 		},
 		{
 			scope: "Pod",
-			condition: `'${WORKER_LABEL_WORKER_ID}' in object.metadata.labels`,
+			condition: `object.metadata.labels['${C}'] != '${CV}' || '${WORKER_LABEL_WORKER_ID}' in object.metadata.labels`,
 			message: "leitwerk worker pods must carry worker-id label",
 		},
 		{
 			scope: "Pod",
-			condition: `'${WORKER_LABEL_SERVER_EPOCH}' in object.metadata.labels`,
+			condition: `object.metadata.labels['${C}'] != '${CV}' || '${WORKER_LABEL_SERVER_EPOCH}' in object.metadata.labels`,
 			message: "leitwerk worker pods must carry server-epoch label",
+		},
+		{
+			scope: "Pod",
+			condition: `object.metadata.labels['${C}'] != '${EH}' || '${EXPORT_HELPER_LABEL_EXPORT_ID}' in object.metadata.labels`,
+			message: "leitwerk session export helper pods must carry export-id label",
 		},
 	];
 

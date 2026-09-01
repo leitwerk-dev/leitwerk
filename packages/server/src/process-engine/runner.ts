@@ -120,6 +120,16 @@ export function createEngineRunner(
 						initialProcess: null,
 					};
 				}
+				if (operation.admission === "new_turn" && deps.isNewTurnBlocked?.(input.instanceId)) {
+					return {
+						kind: "pre_commit_failed",
+						failure: reject(
+							"session_transfer_in_progress",
+							"A local session transfer is waiting for a stable process snapshot",
+						),
+						initialProcess: process,
+					};
+				}
 
 				let decision: DecideResult<OperationData<TOp>>;
 				try {

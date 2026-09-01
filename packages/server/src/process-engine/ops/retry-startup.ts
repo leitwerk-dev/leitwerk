@@ -18,6 +18,7 @@ export const RetryStartup = defineOperation<
 >({
 	kind: "retry_startup",
 	label: "Retry startup",
+	admission: "new_turn",
 	decide(ctx, input) {
 		if (
 			ctx.process.lifecycleStatus !== "error" ||

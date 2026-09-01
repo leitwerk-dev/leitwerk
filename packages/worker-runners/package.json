@@ -42,6 +42,11 @@
 			"source": "./src/kubernetes-http-client.ts",
 			"import": "./dist/kubernetes-http-client.js",
 			"types": "./dist/kubernetes-http-client.d.ts"
+		},
+		"./session-transfer-helper": {
+			"source": "./src/session-transfer-helper.ts",
+			"import": "./dist/session-transfer-helper.js",
+			"types": "./dist/session-transfer-helper.d.ts"
 		}
 	},
 	"scripts": {
@@ -49,6 +54,7 @@
 	},
 	"dependencies": {
 		"@leitwerk-dev/domain": "0.1.9",
+		"@leitwerk-dev/session-transfer": "0.1.9",
 		"@leitwerk-dev/watcher-utils": "0.1.9"
 	},
 	"devDependencies": {

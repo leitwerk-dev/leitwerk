@@ -9,6 +9,7 @@ export default defineConfig((options) => ({
 		"src/docker-engine-http-client.ts",
 		"src/kubernetes-worker-runner.ts",
 		"src/kubernetes-http-client.ts",
+		"src/session-transfer-helper.ts",
 	],
 	format: ["esm"],
 	tsconfig: "tsconfig.tsup.json",

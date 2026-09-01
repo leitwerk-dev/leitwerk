@@ -40,6 +40,19 @@ function trimToUndefined(value: string | undefined): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
+export function defaultWorkerRuntimeProfile(config: LeitwerkConfig): string | null {
+	if (config.workers.runner === "local") {
+		return config.workers.default_runtime_profile ?? "local";
+	}
+	return (
+		(config.workers.runner === "kubernetes"
+			? config.kubernetes?.default_worker_runtime_profile
+			: undefined) ??
+		config.workers.default_runtime_profile ??
+		null
+	);
+}
+
 /**
  * Selects the worker runtime profile for a process.
  *
@@ -132,11 +145,7 @@ export function buildRuntimeProfileSelectionInput(args: {
 		processId,
 		processOverride: config.process_configs?.[processId]?.worker_runtime_profile,
 		componentProfiles,
-		defaultProfile:
-			config.workers.runner === "kubernetes"
-				? (config.kubernetes?.default_worker_runtime_profile ??
-					config.workers.default_runtime_profile)
-				: config.workers.default_runtime_profile,
+		defaultProfile: defaultWorkerRuntimeProfile(config) ?? undefined,
 		profiles: config.worker_runtime_profiles ?? {},
 	};
 }

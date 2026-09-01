@@ -31,7 +31,7 @@
 		"dev:ui": "node --import tsx scripts/dev-ui.ts",
 		"build": "DO_NOT_TRACK=1 SCARF_ANALYTICS=false TURBO_DISABLE_UPDATE_CHECK=1 TURBO_TELEMETRY_DISABLED=1 node --import tsx scripts/build-composed.ts",
 		"build:ext-ui": "DO_NOT_TRACK=1 SCARF_ANALYTICS=false TURBO_DISABLE_UPDATE_CHECK=1 TURBO_TELEMETRY_DISABLED=1 node --import tsx scripts/build-composed.ts --ext-ui",
-		"stage:licenses": "test -f LICENSE || { echo 'Root LICENSE is missing' >&2; exit 1; }; for d in packages/* extensions/*; do test -f \"$d/package.json\" || continue; test -d \"$d/dist\" || { echo \"Workspace dist directory is missing: $d/dist\" >&2; exit 1; }; cmp -s LICENSE \"$d/dist/LICENSE\" || cp LICENSE \"$d/dist/LICENSE\"; done",
+		"stage:licenses": "test -f LICENSE || { echo 'Root LICENSE is missing' >&2; exit 1; }; for d in packages/* extensions/*; do test -f \"$d/package.json\" || continue; node -e 'const p = require(`./${process.argv[1]}/package.json`); process.exit(typeof p.scripts?.build === `string` ? 0 : 1)' \"$d\" || continue; test -d \"$d/dist\" || { echo \"Workspace dist directory is missing: $d/dist\" >&2; exit 1; }; cmp -s LICENSE \"$d/dist/LICENSE\" || cp LICENSE \"$d/dist/LICENSE\"; done",
 		"parity:build": "npm run --silent build && npm run --silent build:ext-ui",
 		"parity:start": "node --import tsx scripts/parity-start.ts",
 		"lint": "node --import tsx scripts/lint-composed.ts",

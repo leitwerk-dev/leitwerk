@@ -62,6 +62,7 @@ import {
 	processDefinesLeafOutcome,
 	type RouteDeps,
 } from "./routes/process-route-helpers.js";
+import { presentSessionTransferOperation } from "./session-transfer-service.js";
 import { buildStartupEvidence, presentProcessStartupSummary } from "./startup-evidence.js";
 import { normalizeTurnProgressReport } from "./turn-progress.js";
 
@@ -1131,6 +1132,9 @@ export class ProcessUiSnapshotAssembler {
 			toolRenderers: [...(this.deps.toolRenderers?.values() ?? [])],
 			persistedModelSelectionWarning: readPersistedModelSelectionWarning(process),
 			session: { signature: session.signature },
+			sessionTransfer: presentSessionTransferOperation(
+				this.deps.sessionTransferService?.activeForProcess(process.id) ?? null,
+			),
 		};
 	}
 

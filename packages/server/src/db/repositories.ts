@@ -24,6 +24,7 @@ export * from "./process-tool-approval-request-repo.js";
 export * from "./process-turn-annotation-repo.js";
 export * from "./process-turn-record-repo.js";
 export * from "./provider-credential-repo.js";
+export * from "./session-transfer-repo.js";
 export * from "./skill-repo.js";
 export * from "./turn-start-record-repo.js";
 export * from "./worker-lease-repo.js";
@@ -46,6 +47,7 @@ import { createProcessToolApprovalRequestRepo } from "./process-tool-approval-re
 import { createProcessTurnAnnotationRepo } from "./process-turn-annotation-repo.js";
 import { createProcessTurnRecordRepo } from "./process-turn-record-repo.js";
 import { createProviderCredentialRepo } from "./provider-credential-repo.js";
+import { createSessionTransferRepo } from "./session-transfer-repo.js";
 import { createSkillRepo } from "./skill-repo.js";
 import { createTurnStartRecordRepo } from "./turn-start-record-repo.js";
 import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
@@ -73,6 +75,7 @@ export interface RepositoryBundle {
 	leases: ReturnType<typeof createWorkerLeaseRepo>;
 	providerCredentials: ReturnType<typeof createProviderCredentialRepo>;
 	externalWrites: ReturnType<typeof createExternalWriteLogRepo>;
+	sessionTransfers: ReturnType<typeof createSessionTransferRepo>;
 	skills: ReturnType<typeof createSkillRepo>;
 	processSkills: ReturnType<typeof createProcessSkillRepo>;
 	authSessions: ReturnType<typeof createAuthSessionRepo>;
@@ -106,6 +109,7 @@ export function createAllRepos(
 		leases: createWorkerLeaseRepo(db),
 		providerCredentials: createProviderCredentialRepo(db, credentialCipher),
 		externalWrites: createExternalWriteLogRepo(db),
+		sessionTransfers: createSessionTransferRepo(db),
 		skills: createSkillRepo(db),
 		processSkills: createProcessSkillRepo(db),
 		authSessions: createAuthSessionRepo(db),

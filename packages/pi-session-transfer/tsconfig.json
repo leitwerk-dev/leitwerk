@@ -1,0 +1,12 @@
+{
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"composite": true,
+		"noEmit": true,
+		"types": ["node"],
+		"tsBuildInfoFile": "tsconfig.tsbuildinfo"
+	},
+	"include": ["src"],
+	"exclude": ["src/**/*.test.ts"],
+	"references": [{ "path": "../session-transfer" }]
+}

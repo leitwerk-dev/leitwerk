@@ -31,6 +31,7 @@ describe("dockerEngineRequestMapping", () => {
 			name: "orch-worker",
 			image: "example/worker:latest",
 			env: ["A=B"],
+			command: ["node", "/app/helper.js"],
 			labels: { "leitwerk.dev/component": "worker" },
 			mounts: [
 				{ source: "/host/state", target: "/state" },
@@ -52,6 +53,7 @@ describe("dockerEngineRequestMapping", () => {
 		expect(mapped.body).toMatchObject({
 			Image: "example/worker:latest",
 			Env: ["A=B"],
+			Cmd: ["node", "/app/helper.js"],
 			Labels: { "leitwerk.dev/component": "worker" },
 			Volumes: { "/var/lib/docker": {} },
 			HostConfig: {

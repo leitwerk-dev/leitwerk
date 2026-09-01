@@ -33,6 +33,7 @@
 		"@leitwerk-dev/external-writes": "0.1.9",
 		"@leitwerk-dev/process-sdk": "0.1.9",
 		"@leitwerk-dev/protocol": "0.1.9",
+		"@leitwerk-dev/session-transfer": "0.1.9",
 		"@leitwerk-dev/watcher-utils": "0.1.9",
 		"@leitwerk-dev/worker-protocol": "0.1.9",
 		"@leitwerk-dev/worker-runners": "0.1.9",

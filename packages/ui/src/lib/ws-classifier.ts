@@ -19,6 +19,7 @@ const DETAIL_RELOAD_EVENTS = new Set([
 	"process.event",
 	"process.input.queued",
 	"process.input.acknowledged",
+	"session_transfer.updated",
 ]);
 
 const PRIMARY_PATH_FRAME_TYPES = new Set(Object.values(WS_PRIMARY_PATH_TYPES));

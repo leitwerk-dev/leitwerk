@@ -84,6 +84,7 @@ function toContainerCreateBody(spec: DockerContainerSpec): Record<string, unknow
 		Image: spec.image,
 		Env: spec.env,
 		Labels: spec.labels,
+		...(spec.command ? { Cmd: spec.command } : {}),
 		Volumes: volumes,
 		HostConfig: {
 			Mounts: toMounts(spec),

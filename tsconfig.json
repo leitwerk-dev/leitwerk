@@ -21,6 +21,8 @@
 		{ "path": "packages/process-sdk" },
 		{ "path": "packages/extension-runtime" },
 		{ "path": "packages/watcher-utils" },
+		{ "path": "packages/session-transfer" },
+		{ "path": "packages/pi-session-transfer" },
 		{ "path": "packages/worker-runners" },
 		{ "path": "packages/server" },
 		{ "path": "packages/worker" },

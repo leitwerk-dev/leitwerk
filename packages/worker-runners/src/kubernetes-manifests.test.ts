@@ -262,6 +262,8 @@ describe("Kubernetes manifest builders", () => {
 				expect.stringContaining("leitwerk-worker"),
 				expect.stringContaining("leitwerk.dev/worker-id"),
 				expect.stringContaining("leitwerk.dev/server-epoch"),
+				expect.stringContaining("session-export-helper"),
+				expect.stringContaining("leitwerk.dev/export-id"),
 			]),
 		);
 		expect(binding.spec).toEqual({

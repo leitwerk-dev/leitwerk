@@ -62,6 +62,8 @@ const ALL_TABLES = [
 	schema.processRelations,
 	schema.processToolApprovalRequests,
 	schema.providerCredentials,
+	schema.sessionTransferGrants,
+	schema.sessionTransferAttempts,
 	schema.externalWriteLog,
 ] as const;
 
@@ -261,6 +263,22 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260901_add_session_transfers",
+		tableNames: ["session_transfer_grants", "session_transfer_attempts"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) &&
+			(existingTableSql(sqlite, "session_transfer_grants") === null ||
+				existingTableSql(sqlite, "session_transfer_attempts") === null),
+		apply(sqlite) {
+			if (existingTableSql(sqlite, "session_transfer_grants") === null) {
+				createTableWithIndexes(sqlite, schema.sessionTransferGrants);
+			}
+			if (existingTableSql(sqlite, "session_transfer_attempts") === null) {
+				createTableWithIndexes(sqlite, schema.sessionTransferAttempts);
+			}
+		},
+	},
 	{
 		id: "20260827_add_worker_startup_observations",
 		tableNames: ["worker_leases"],

@@ -891,6 +891,37 @@ export async function postProcessStartupRetry(
 	}
 }
 
+export interface SessionTransferGrantResponse {
+	transferUrl: string;
+	expiresAt: string;
+}
+
+export async function createSessionTransferGrant(
+	instanceId: string,
+): Promise<SessionTransferGrantResponse> {
+	const response = await getFetchImpl()(
+		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/session-transfers`),
+		{ method: "POST" },
+	);
+	if (!response.ok) {
+		const body = await tryReadJson(response);
+		throw new Error(
+			readErrorMessage(body) ?? `Couldn't create local transfer link: ${response.status}`,
+		);
+	}
+	return readJsonObject<SessionTransferGrantResponse>(response, "Malformed transfer link response");
+}
+
+export async function cancelSessionTransfer(instanceId: string, attemptId: string): Promise<void> {
+	const response = await getFetchImpl()(
+		resolveApiUrl(
+			`/api/processes/${encodeURIComponent(instanceId)}/session-transfers/${encodeURIComponent(attemptId)}/cancel`,
+		),
+		{ method: "POST" },
+	);
+	await requireSuccessfulMutation(response, "Couldn't cancel the local session transfer");
+}
+
 export async function deleteProcess(instanceId: string): Promise<void> {
 	const response = await getFetchImpl()(
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}`),

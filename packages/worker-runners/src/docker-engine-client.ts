@@ -21,6 +21,8 @@ export interface DockerContainerSpec {
 	image: string;
 	/** `KEY=value` env entries. */
 	env: string[];
+	/** Container command override. */
+	command?: string[];
 	labels: Record<string, string>;
 	mounts: DockerMountSpec[];
 	/** Docker network the container attaches to (user-defined bridge). */

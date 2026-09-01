@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { RepositoryBundle } from "../db/repositories.js";
 import { isSafeSessionInstanceId } from "../process-session-store.js";
 import { verifyWorkerConnectToken } from "../supervisor/worker-connect-token.js";
+import { parseBearerToken } from "./bearer-token.js";
 
 export function headerValue(value: string | string[] | undefined): string | null {
 	return Array.isArray(value) ? (value[0] ?? null) : (value ?? null);
@@ -20,9 +21,7 @@ export function authenticateActiveWorker(input: {
 		return null;
 	}
 	const workerId = headerValue(input.request.headers[input.workerIdHeader]);
-	const token = headerValue(input.request.headers.authorization)
-		?.match(/^Bearer\s+(.+)$/i)?.[1]
-		?.trim();
+	const token = parseBearerToken(input.request.headers.authorization);
 	if (!workerId || !token) {
 		input.reply.code(401).send({ error: `Worker ${input.operation} authentication required` });
 		return null;

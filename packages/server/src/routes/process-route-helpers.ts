@@ -84,6 +84,7 @@ import type { ProcessQuestionService } from "../process-question-service.js";
 import type { ProcessSessionReader } from "../process-session-store.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import type { ProcessUiRegistry } from "../process-ui-registry.js";
+import type { SessionTransferService } from "../session-transfer-service.js";
 import type { SkillCatalogService } from "../skills/catalog-service.js";
 import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
 import type { ToolApprovalGate } from "../tool-approval-gate.js";
@@ -140,6 +141,7 @@ export interface RouteDeps
 	processModelPolicy: ServerProcessModelPolicy;
 	processModelSelection: ProcessModelSelectionServiceLike;
 	skillCatalog?: SkillCatalogService;
+	sessionTransferService?: SessionTransferService;
 }
 
 export function routeConfig(deps: RouteDeps): LeitwerkConfig {

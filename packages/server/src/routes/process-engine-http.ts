@@ -32,6 +32,12 @@ export function mapEngineFailure<T>(
 			body: { error: result.message },
 		};
 	}
+	if (result.code === "session_transfer_in_progress") {
+		return {
+			status: 409,
+			body: { error: result.message, code: result.code },
+		};
+	}
 
 	switch (variant) {
 		case "steer":

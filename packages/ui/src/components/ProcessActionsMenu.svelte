@@ -1,9 +1,13 @@
 <script lang="ts">
+import type { SessionTransferOperationView } from "@leitwerk-dev/protocol/http-contracts";
 import { tick } from "svelte";
 import {
+	cancelSessionTransfer,
+	createSessionTransferGrant,
 	fetchProcessRetryConfig,
 	postProcessAbort,
 	deleteProcess as requestProcessDeletion,
+	type SessionTransferGrantResponse,
 } from "../lib/api.js";
 import { keyboardShortcutHelpOpen } from "../lib/keyboard-shortcuts-help.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
@@ -19,6 +23,7 @@ interface Props {
 	onDeleted?: () => void;
 	presentation?: "default" | "sheet";
 	idSuffix?: string;
+	sessionTransfer?: SessionTransferOperationView | null;
 }
 
 let {
@@ -30,19 +35,27 @@ let {
 	onDeleted,
 	presentation = "default",
 	idSuffix = "",
+	sessionTransfer = null,
 }: Props = $props();
 
 let menuOpen = $state(false);
 let confirmation = $state<"abort" | "abort-and-retry" | "delete" | null>(null);
 let busy = $state(false);
 let error = $state<string | null>(null);
+let transferGrant = $state<SessionTransferGrantResponse | null>(null);
+let copyStatus = $state<"idle" | "copied" | "failed">("idle");
+let locallyCancelledAttemptId = $state<string | null>(null);
 
 let menuRef = $state<HTMLDivElement | null>(null);
 let triggerRef = $state<HTMLButtonElement | null>(null);
 let dropdownRef = $state<HTMLDivElement | null>(null);
+let transferLinkRef = $state<HTMLInputElement | null>(null);
 
 const isFinished = $derived(lifecycleStatus === "completed" || lifecycleStatus === "aborted");
 const actionTarget = $derived(processLabel.trim() || `process ${instanceId}`);
+const activeTransfer = $derived(
+	sessionTransfer?.attemptId === locallyCancelledAttemptId ? null : sessionTransfer,
+);
 const idDisambiguator = $derived(idSuffix ? `-${idSuffix}` : "");
 const triggerId = $derived(`process-actions-trigger-${instanceId}${idDisambiguator}`);
 const menuId = $derived(`process-actions-menu-${instanceId}${idDisambiguator}`);
@@ -79,6 +92,7 @@ function toggleMenu() {
 	menuOpen = !menuOpen;
 	confirmation = null;
 	error = null;
+	copyStatus = "idle";
 }
 
 function closeMenu(options: { restoreFocus?: boolean } = {}) {
@@ -178,6 +192,40 @@ function cancelConfirmation() {
 	error = null;
 }
 
+async function handleCreateTransfer() {
+	copyStatus = "idle";
+	await runBusy(async () => {
+		transferGrant = await createSessionTransferGrant(instanceId);
+		await tick();
+		transferLinkRef?.focus();
+	}, "Couldn't create local transfer link");
+}
+
+async function handleCopyTransferLink() {
+	if (!transferGrant) return;
+	try {
+		await navigator.clipboard.writeText(transferGrant.transferUrl);
+		copyStatus = "copied";
+	} catch {
+		copyStatus = "failed";
+	}
+}
+
+async function handleCancelTransfer() {
+	if (!activeTransfer) return;
+	await runBusy(async () => {
+		await cancelSessionTransfer(instanceId, activeTransfer.attemptId);
+		locallyCancelledAttemptId = activeTransfer.attemptId;
+	}, "Couldn't cancel the local session transfer");
+}
+
+function showActions() {
+	transferGrant = null;
+	copyStatus = "idle";
+	error = null;
+	void tick().then(focusFirstMenuControl);
+}
+
 async function handleDelete() {
 	if (confirmation !== "delete") {
 		confirmation = "delete";
@@ -254,8 +302,44 @@ function handleDownloadSession() {
 			{#if error}
 				<p class="menu-error" role="alert">{error}</p>
 			{/if}
+			{#if activeTransfer}
+				<p class="menu-note" role="status">
+					<strong>{activeTransfer.blocksManualTurns ? "Local transfer is preparing a stable snapshot." : "Local transfer is waiting for Pi to confirm the import."}</strong>
+					{activeTransfer.blocksManualTurns ? " New manual turns are blocked until streaming ends." : " The process is unblocked; streamed bytes can no longer be recalled."}
+				</p>
+				{#if activeTransfer.blocksManualTurns}
+					<button type="button" class="menu-item" data-pressable="true" disabled={busy} onclick={handleCancelTransfer}>
+						{busy ? "Cancelling…" : "Cancel transfer"}
+					</button>
+				{/if}
+				<div class="menu-divider" role="separator"></div>
+			{/if}
 
-			{#if confirmation}
+			{#if transferGrant}
+				<div class="confirm-panel transfer-panel" aria-label="Local Pi transfer link">
+					<p class="confirm-message">Open this process in local Pi</p>
+					<p class="transfer-note">Single use · start within 1 hour</p>
+					<label class="transfer-field-label" for={`transfer-link-${instanceId}${idDisambiguator}`}>Transfer link</label>
+					<input
+						bind:this={transferLinkRef}
+						id={`transfer-link-${instanceId}${idDisambiguator}`}
+						class="transfer-link"
+						readonly
+						value={transferGrant.transferUrl}
+						onfocus={(event) => event.currentTarget.select()}
+					/>
+					<p class="transfer-note">Anyone with this link can download this session and workspace.</p>
+					<div class="confirm-actions">
+						<button type="button" class="confirm-cancel" data-pressable="true" onclick={showActions}>Back</button>
+						<button type="button" class="confirm-cancel" data-pressable="true" onclick={handleCopyTransferLink}>
+							{copyStatus === "copied" ? "Copied" : "Copy link"}
+						</button>
+					</div>
+					<p class="transfer-note" aria-live="polite">
+						{copyStatus === "copied" ? "Transfer link copied." : copyStatus === "failed" ? "Copy failed. Select and copy the link manually." : ""}
+					</p>
+				</div>
+			{:else if confirmation}
 				<div class="confirm-panel">
 					<p class="confirm-message">{confirmationView.message}</p>
 					<div class="confirm-actions">
@@ -281,6 +365,16 @@ function handleDownloadSession() {
 				</div>
 			{:else}
 				{#if hasSessionFile}
+					<button
+						type="button"
+						class="menu-item"
+						role="menuitem"
+						data-pressable="true"
+						disabled={busy}
+						onclick={handleCreateTransfer}
+					>
+						{busy ? "Creating transfer link…" : "Create local transfer link"}
+					</button>
 					<button
 						type="button"
 						class="menu-item"
@@ -411,7 +505,7 @@ function handleDownloadSession() {
 		min-width: 248px;
 		padding: 8px;
 		border: 1px solid var(--chronicle-border-strong);
-		border-radius: 12px;
+		border-radius: 14px;
 		background: var(--chronicle-card-surface);
 		box-shadow: var(--chronicle-shadow);
 	}
@@ -438,7 +532,7 @@ function handleDownloadSession() {
 		width: 100%;
 		padding: 10px 12px;
 		border: none;
-		border-radius: 8px;
+		border-radius: 10px;
 		background: transparent;
 		color: var(--chronicle-text);
 		font: inherit;
@@ -471,13 +565,66 @@ function handleDownloadSession() {
 		background: var(--chronicle-border);
 	}
 
+	.menu-note {
+		margin: 0;
+		padding: 6px 8px;
+		font-size: var(--type-caption, 12px);
+		line-height: 1.45;
+		color: var(--chronicle-text-muted);
+	}
+
+	.menu-note strong {
+		color: var(--chronicle-text);
+	}
+
+	.transfer-panel {
+		width: min(352px, calc(100vw - 52px));
+	}
+
+	.transfer-note {
+		min-height: 18px;
+		margin: 8px 0;
+		font-size: var(--type-caption, 12px);
+		line-height: 1.45;
+		color: var(--chronicle-text-muted);
+	}
+
+	.transfer-field-label {
+		display: block;
+		margin: 12px 0 6px;
+		font-size: var(--type-caption, 12px);
+		font-weight: 700;
+		color: var(--chronicle-text-muted);
+	}
+
+	.transfer-link {
+		box-sizing: border-box;
+		width: 100%;
+		min-height: 42px;
+		padding: 10px 12px;
+		border: 1px solid var(--chronicle-border-strong);
+		border-radius: 10px;
+		background: var(--chronicle-panel-muted);
+		color: var(--chronicle-text);
+		font: 500 var(--type-caption, 12px) / 1.4 var(--font-mono, ui-monospace, monospace);
+	}
+
+	.transfer-link:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
+	}
+
+	.transfer-panel .confirm-actions {
+		margin-top: 12px;
+	}
+
 	.menu-error {
 		margin: 0 0 8px;
 		padding: 10px 12px;
 		border-radius: 10px;
 		background: var(--chronicle-danger-surface);
 		border: 1px solid var(--chronicle-danger-border);
-		font-size: 13px;
+		font-size: var(--type-body-sm, 13px);
 		line-height: 1.45;
 		color: var(--chronicle-danger-text);
 	}
@@ -506,9 +653,15 @@ function handleDownloadSession() {
 		padding: 0 14px;
 		border-radius: 999px;
 		font: inherit;
-		font-size: 13px;
+		font-size: var(--type-body-sm, 13px);
 		font-weight: 600;
 		cursor: pointer;
+	}
+
+	.confirm-cancel:disabled,
+	.confirm-danger:disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 
 	.confirm-cancel {
@@ -529,12 +682,6 @@ function handleDownloadSession() {
 
 	.confirm-danger:hover:not(:disabled) {
 		opacity: 0.9;
-	}
-
-	.confirm-cancel:disabled,
-	.confirm-danger:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 
 	@media (max-width: 720px) {

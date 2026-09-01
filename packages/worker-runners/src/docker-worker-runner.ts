@@ -2,9 +2,20 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { DockerEngineClient, DockerMountSpec } from "./docker-engine-client.js";
 import { isDockerEngineNotFoundError } from "./docker-engine-http-client.js";
+import { createFilesystemProcessStateExporter } from "./filesystem-process-state-exporter.js";
+import {
+	createHelperProcessStateExporter,
+	exportHelperEnvironment,
+} from "./helper-process-state-exporter.js";
 import { UnitExitNotifier } from "./runner-utils.js";
+import {
+	SESSION_TRANSFER_HELPER_ENTRY_PATH,
+	SESSION_TRANSFER_HELPER_MOUNT_PATH,
+} from "./session-transfer-helper.js";
 import type {
 	IsolatedStartWorkerInput,
+	ProcessStateExporter,
+	ProcessStateExportHelperRelayProvider,
 	ProcessVolume,
 	StopWorkerOptions,
 	WorkerExitInfo,
@@ -14,7 +25,9 @@ import type {
 	WorkerUnitRef,
 } from "./types.js";
 import {
+	buildExportHelperLabels,
 	buildWorkerUnitLabels,
+	managedExportHelperLabelSelector,
 	managedWorkerLabelSelector,
 	parseWorkerUnitIdentity,
 } from "./worker-labels.js";
@@ -38,8 +51,14 @@ export interface DockerWorkerRunnerOptions {
 	defaultNetwork: string;
 	/** Host runtime name registered for sysbox DinD (e.g. `sysbox-runc`). */
 	sysboxRuntime?: string;
-	/** Host CA bundle mounted read-only into workers and exposed via NODE_EXTRA_CA_CERTS. */
+	/** Host CA bundle mounted read-only into workers and export helpers. */
 	serverCaFile?: string;
+	/** Stable internal URL used by named-volume export helpers. */
+	serverUrl?: string;
+	/** Trusted image containing the bundled session-transfer helper entrypoint. */
+	exporterImage?: string;
+	/** Server-owned relay registry used by named-volume export helpers. */
+	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 
 const DEFAULT_NAMED_VOLUME_PREFIX = "leitwerk-process-";
@@ -134,7 +153,14 @@ function mapExit(info: {
 export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 	runner: WorkerRunner<IsolatedStartWorkerInput>;
 	volume: ProcessVolume;
+	exporter: ProcessStateExporter;
 } {
+	if (
+		options.volume.mode === "named_volume" &&
+		(!options.serverUrl || !options.exporterImage || !options.helperRelays)
+	) {
+		throw new Error("Docker named-volume transfer exporter is not configured");
+	}
 	const { engine } = options;
 	const mountPath = options.volume.mountPath;
 	const namedVolumePrefix = options.volume.namedVolumePrefix ?? DEFAULT_NAMED_VOLUME_PREFIX;
@@ -295,5 +321,96 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 		},
 	};
 
-	return { runner, volume };
+	const exporterServerUrl = options.serverUrl ?? "";
+	const exporterImage = options.exporterImage ?? "";
+	const helperRelays = options.helperRelays as ProcessStateExportHelperRelayProvider;
+	const exporter =
+		options.volume.mode === "bind"
+			? createFilesystemProcessStateExporter({
+					allowedRoots: [options.volume.hostRoot],
+					resolveSource: async (instanceId) => {
+						const { id } = await volume.ensure(instanceId);
+						return {
+							workspaceRoot: path.join(id, "workspace"),
+							sessionFile: path.join(id, "tree", "primary.jsonl"),
+						};
+					},
+				})
+			: createHelperProcessStateExporter({
+					volume,
+					helperRelays,
+					async launch(input) {
+						const mounts: DockerMountSpec[] = [
+							{
+								source: input.volume.id,
+								target: SESSION_TRANSFER_HELPER_MOUNT_PATH,
+								readOnly: true,
+							},
+						];
+						const env = exportHelperEnvironment({
+							serverUrl: exporterServerUrl,
+							exportId: input.exportId,
+							credential: input.credential,
+						});
+						if (options.serverCaFile) {
+							mounts.push({
+								source: options.serverCaFile,
+								target: WORKER_SERVER_CA_MOUNT_PATH,
+								readOnly: true,
+							});
+							env.NODE_EXTRA_CA_CERTS = WORKER_SERVER_CA_MOUNT_PATH;
+						}
+						const created = await engine.createContainer({
+							name: sanitizeNameSegment(input.name),
+							image: exporterImage,
+							command: ["node", SESSION_TRANSFER_HELPER_ENTRY_PATH],
+							env: toEnvList(env),
+							labels: buildExportHelperLabels({
+								instanceId: input.instanceId,
+								exportId: input.exportId,
+							}),
+							mounts,
+							networkMode: options.defaultNetwork,
+							privileged: false,
+						});
+						try {
+							await engine.startContainer(created.id);
+						} catch (error) {
+							try {
+								await engine.removeContainer(created.id, { force: true });
+							} catch (cleanupError) {
+								if (!isDockerEngineNotFoundError(cleanupError)) throw cleanupError;
+							}
+							throw error;
+						}
+						return {
+							wait: async () => {
+								const exit = await engine.waitContainer(created.id);
+								return { exitCode: exit.statusCode, reason: exit.error };
+							},
+							remove: async () => {
+								try {
+									await engine.removeContainer(created.id, { force: true });
+								} catch (error) {
+									if (!isDockerEngineNotFoundError(error)) throw error;
+								}
+							},
+						};
+					},
+					async reconcileHelpers() {
+						const helpers = await engine.listContainers({
+							labels: managedExportHelperLabelSelector(),
+						});
+						await Promise.all(
+							helpers.map(async (helper) => {
+								try {
+									await engine.removeContainer(helper.id, { force: true });
+								} catch (error) {
+									if (!isDockerEngineNotFoundError(error)) throw error;
+								}
+							}),
+						);
+					},
+				});
+	return { runner, volume, exporter };
 }

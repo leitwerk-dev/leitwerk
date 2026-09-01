@@ -91,6 +91,7 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 				lifecycleStatus={detail?.process.lifecycleStatus ?? null}
 				disabled={!detail}
 				hasSessionFile={detail?.session.signature !== null}
+				sessionTransfer={detail?.sessionTransfer ?? null}
 				processLabel={header.title}
 				{onDeleted}
 			/>

@@ -4,8 +4,19 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { createDockerWorkerRunner } from "./docker-worker-runner.js";
 import { createFakeDockerEngineClient } from "./fake-docker-engine-client.js";
+import { createExportTestFixture } from "./session-transfer.test-helper.js";
 import type { StartWorkerInput, VolumeRef } from "./types.js";
 import { buildWorkerUnitLabels } from "./worker-labels.js";
+
+const unusedNamedExporterOptions = {
+	serverUrl: "http://leitwerk-server:8080",
+	exporterImage: "ghcr.io/example/worker@sha256:abc",
+	helperRelays: {
+		create() {
+			throw new Error("unexpected export helper relay");
+		},
+	},
+};
 
 function startInput(
 	overrides: Partial<StartWorkerInput> & Pick<StartWorkerInput, "instanceId" | "workerId">,
@@ -69,12 +80,65 @@ describe("Docker ProcessVolume (named_volume mode)", () => {
 			engine,
 			volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
 			defaultNetwork: "leitwerk",
+			...unusedNamedExporterOptions,
 		});
 		const ref = await volume.ensure("proc-1");
 		expect(ref.id).toBe("leitwerk-process-proc-1");
 		expect(engine.volumesEnsured).toEqual(["leitwerk-process-proc-1"]);
 		await volume.release("proc-1");
 		expect(engine.volumesRemoved).toEqual(["leitwerk-process-proc-1"]);
+	});
+});
+
+describe("Docker named-volume session exporter", () => {
+	it("rejects missing helper configuration during runner construction", () => {
+		expect(() =>
+			createDockerWorkerRunner({
+				engine: createFakeDockerEngineClient(),
+				volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
+				defaultNetwork: "leitwerk",
+			}),
+		).toThrow("Docker named-volume transfer exporter is not configured");
+	});
+
+	it("starts a credential-scoped helper with only a read-only process volume", async () => {
+		const engine = createFakeDockerEngineClient();
+		const { manifest, relay } = createExportTestFixture();
+		const { exporter, runner, volume } = createDockerWorkerRunner({
+			engine,
+			volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
+			defaultNetwork: "leitwerk",
+			serverUrl: "http://leitwerk-server:8080",
+			exporterImage: "ghcr.io/example/worker@sha256:abc",
+			helperRelays: { create: () => relay },
+		});
+		const processVolume = await volume.ensure("proc-1");
+
+		await exporter.prepare({
+			instanceId: "proc-1",
+			manifest,
+			limits: { maxEntries: 100, maxLogicalBytes: 1_000, maxCompressedBytes: 1_000 },
+		});
+
+		const helper = [...engine.containers.values()].find(
+			(record) => record.spec.labels["leitwerk.dev/component"] === "session-export-helper",
+		);
+		expect(helper?.spec).toMatchObject({
+			image: "ghcr.io/example/worker@sha256:abc",
+			command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
+			privileged: false,
+			mounts: [{ source: processVolume.id, target: "/state", readOnly: true }],
+		});
+		expect(helper?.spec.env).toContain("LEITWERK_EXPORT_CREDENTIAL=internal-secret");
+		expect(helper?.spec.env.map((entry) => entry.split("=", 1)[0]).sort()).toEqual([
+			"LEITWERK_EXPORT_CREDENTIAL",
+			"LEITWERK_EXPORT_ID",
+			"LEITWERK_EXPORT_SERVER_URL",
+		]);
+		expect(await runner.list()).toEqual([]);
+
+		await exporter.reconcile();
+		expect(engine.containers.size).toBe(0);
 	});
 });
 
@@ -298,6 +362,7 @@ describe("DockerWorkerRunner.adopt", () => {
 			engine,
 			volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
 			defaultNetwork: "leitwerk",
+			...unusedNamedExporterOptions,
 		});
 		engine.seedContainer({
 			id: "existing-1",
@@ -321,6 +386,7 @@ describe("DockerWorkerRunner.adopt", () => {
 			engine,
 			volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
 			defaultNetwork: "leitwerk",
+			...unusedNamedExporterOptions,
 		});
 		engine.seedContainer({
 			id: "existing-1",

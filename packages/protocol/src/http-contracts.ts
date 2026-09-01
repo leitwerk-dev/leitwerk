@@ -70,6 +70,12 @@ export interface AuthMeResponseBody {
 	actor: Actor | null;
 }
 
+export interface SessionTransferOperationView {
+	attemptId: string;
+	phase: string;
+	blocksManualTurns: boolean;
+}
+
 export interface ProcessListItem {
 	process: ProcessInstance;
 	projects: ProcessProject[];
@@ -890,6 +896,7 @@ export interface ProcessDetailUiSnapshotResponseBody {
 	usageEstimate: ProcessUsageEstimateSnapshot | null;
 	persistedModelSelectionWarning: string | null;
 	session: { signature: string | null };
+	sessionTransfer: SessionTransferOperationView | null;
 }
 
 export type InstanceTreeTurnResultState = "succeeded" | "failed" | "aborted" | "pending";
