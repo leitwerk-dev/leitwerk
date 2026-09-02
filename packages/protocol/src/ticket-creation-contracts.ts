@@ -3,24 +3,6 @@ import type { Actor, ProcessRelation, ProcessToolApprovalRequest } from "@leitwe
 export interface TicketCreationToolSummary {
 	name: string;
 	displayName: string;
-	description: string;
-	parameters: Record<string, unknown>;
-	titlePath?: string;
-	descriptionPath?: string;
-	requiresDestination: boolean;
-}
-
-export interface TicketCreationDestinationSummary {
-	id: string;
-	displayName: string;
-	group?: string;
-	description?: string;
-	recent: boolean;
-}
-
-export interface TicketCreationDestinationListResponse {
-	destinations: TicketCreationDestinationSummary[];
-	warnings: string[];
 }
 
 export interface TicketResultArtifactLocator {
@@ -40,7 +22,6 @@ export interface LaunchTicketCreationRequestBody {
 	focus: TicketCreationFocus;
 	additionalInstructions?: string;
 	toolName: string;
-	destinationId?: string;
 	modelProfileId?: string;
 }
 

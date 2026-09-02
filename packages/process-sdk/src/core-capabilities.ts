@@ -520,7 +520,7 @@ export interface CoreServerSetupDeps {
 	processLaunches: ProcessLaunchExecutorLike;
 	handoffDedupKeys?: HandoffDedupKeyServiceLike;
 	processWatchers?: ProcessWatcherServiceLike;
-	launchRuns?: LaunchRunServiceLike;
+	launchRuns: LaunchRunServiceLike;
 	polling: PollingServiceLike;
 	processModelSelection?: ProcessModelSelectionServiceLike;
 	/** Durable active-turn questions for trusted operator-channel extensions. */

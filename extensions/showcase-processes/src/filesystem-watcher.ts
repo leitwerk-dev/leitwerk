@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import {
 	defineProcessWatcherSource,
@@ -84,40 +85,25 @@ export function createFilesystemWatcherProvider(deps: CoreServerSetupDeps) {
 				const result = emptyPollResult();
 				const file = await readTriggerFile(watcher.config.filePath);
 				if (!file.exists || file.content.trim() === "") return result;
-				const resolved = await watcher.resolveLaunch({
-					filePath: watcher.config.filePath,
-					content: file.content.trim(),
-				});
-				if (!resolved) {
-					result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
-					return result;
-				}
-				const prepared = await deps.launchPlans.prepare(resolved, {
-					modelConfig: watcher.launchModelConfig,
-					invalidModelConfig: "omit",
-				});
-				if (!prepared.ok) {
-					result.errors.push(
-						...prepared.errors.map(
-							(error) => `${watcher.processId}:${watcher.watcherId}:${error.code}`,
-						),
-					);
-					return result;
-				}
-				const created = await deps.processLaunches.createProcessFromLaunchPlan(prepared.launchPlan);
-				const durableProcess = created.ok
-					? created.process
-					: created.stage === "post_commit"
-						? created.process
-						: null;
-				if (durableProcess) {
+				const content = file.content.trim();
+				const sourceEventKey = createHash("sha256")
+					.update(`${watcher.config.filePath}\0${content}`)
+					.digest("hex");
+				const launched = await deps.launchRuns.startWatcher(
+					watcher,
+					{ filePath: watcher.config.filePath, content },
+					{
+						idempotencyKey: `showcase-filesystem:${watcher.processId}:${watcher.watcherId}:${sourceEventKey}`,
+					},
+				);
+				if (launched.process) {
 					await consumeTriggerFile(watcher.config.filePath);
-					result.created.push(durableProcess.id);
+					result.created.push(launched.process.id);
 				}
-				if (!created.ok) {
-					result.errors.push(
-						`${watcher.processId}:${watcher.watcherId}:${created.status}:${String(created.body.error ?? "launch_failed")}`,
-					);
+				if (launched.error) {
+					result.errors.push(`${watcher.processId}:${watcher.watcherId}:${launched.error}`);
+				} else if (!launched.process) {
+					result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
 				}
 				return result;
 			},

@@ -49,7 +49,6 @@ const ALL_TABLES = [
 	schema.processHandoffDedupKeys,
 	schema.futureExecutions,
 	schema.launcherRecentValues,
-	schema.ticketDestinationRecents,
 	schema.processTitleJobs,
 	schema.pendingExternalSourceFires,
 	schema.processLeafOutcomeSnapshots,
@@ -327,118 +326,6 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		},
 	},
 	{
-		id: "20260823_add_ticket_destination_recents",
-		tableNames: ["ticket_destination_recents"],
-		matches: (sqlite) =>
-			hasExistingSchema(sqlite) && existingTableSql(sqlite, "ticket_destination_recents") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.ticketDestinationRecents);
-		},
-	},
-	{
-		id: "20260821_remove_server_automatic_execution",
-		tableNames: ["process_instances", "turn_records"],
-		matches: (sqlite) =>
-			tableHasColumn(sqlite, "process_instances", "current_server_turn_record_id") ||
-			(existingTableSql(sqlite, "turn_records") ?? "").includes("server_automatic"),
-		apply(sqlite) {
-			const endedAt = new Date().toISOString();
-			sqlite
-				.prepare(`UPDATE turn_records
-					SET status = 'failed',
-						error_summary = coalesce(error_summary, 'Server-automatic execution was removed'),
-						ended_at = coalesce(ended_at, ?)
-					WHERE turn_type = 'server_automatic' AND status = 'running'`)
-				.run(endedAt);
-			sqlite
-				.prepare(`UPDATE process_instances
-					SET lifecycle_status = 'aborted',
-						closed_at = coalesce(closed_at, ?),
-						updated_at = ?
-					WHERE current_server_turn_record_id IS NOT NULL`)
-				.run(endedAt, endedAt);
-			sqlite
-				.prepare(`INSERT INTO worker_leases
-					(id, instance_id, worker_id, state, started_at, exited_at)
-				SELECT 'wkr_migrated_20260821_' || id, instance_id,
-					'server-automatic-migration:' || id, 'exited', started_at, coalesce(ended_at, ?)
-				FROM turn_records WHERE turn_type = 'server_automatic'`)
-				.run(endedAt);
-			sqlite
-				.prepare(`INSERT INTO turn_start_records
-					(id, instance_id, turn_id, turn_type, proposed_turn_record_id, start_kind,
-					 state_json, created_at, updated_at)
-				SELECT 'tsr_migrated_20260821_' || id, instance_id, turn_id, 'automatic', id,
-					'selected_turn',
-					json_object(
-						'kind', 'accepted',
-						'start', json_object('kind', 'automatic'),
-						'turnRecordId', id,
-						'acceptedWorkerLeaseId', 'wkr_migrated_20260821_' || id,
-						'acceptedAt', coalesce(ended_at, ?)
-					),
-					started_at, coalesce(ended_at, ?)
-				FROM turn_records WHERE turn_type = 'server_automatic'`)
-				.run(endedAt, endedAt);
-			const stagedProcesses = "staged_process_instances_20260821";
-			const stagedTurns = "staged_turn_records_20260821";
-			sqlite.exec(`
-				CREATE TEMP TABLE ${stagedProcesses} AS
-				SELECT id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
-					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
-					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
-					created_at, updated_at, closed_at, initial_default_model_profile_id,
-					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
-				FROM process_instances;
-
-				CREATE TEMP TABLE ${stagedTurns} AS
-				SELECT id, instance_id, turn_id,
-					CASE turn_type WHEN 'server_automatic' THEN 'automatic' ELSE turn_type END AS turn_type,
-					status, attempt_number, parent_turn_record_id,
-					CASE turn_type
-						WHEN 'server_automatic' THEN 'tsr_migrated_20260821_' || id
-						ELSE turn_start_record_id
-					END AS turn_start_record_id,
-					CASE turn_type
-						WHEN 'server_automatic' THEN 'wkr_migrated_20260821_' || id
-						ELSE accepted_worker_lease_id
-					END AS accepted_worker_lease_id,
-					path_type, fork_pi_entry_id, result_pi_entry_id,
-					model_profile_id, turn_result_markdown, error_summary, error_class, started_at,
-					ended_at, model_selection_kind, model_selection_source
-				FROM turn_records;
-
-				DROP TABLE turn_records;
-				DROP TABLE process_instances;
-			`);
-			sqlite.exec(createTableSql(schema.processInstances));
-			sqlite.exec(createTableSql(schema.turnRecords));
-			sqlite.exec(`
-				INSERT INTO process_instances (
-					id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
-					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
-					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
-					created_at, updated_at, closed_at, initial_default_model_profile_id,
-					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
-				)
-				SELECT * FROM ${stagedProcesses};
-
-				INSERT INTO turn_records (
-					id, instance_id, turn_id, turn_type, status, attempt_number, parent_turn_record_id,
-					turn_start_record_id, accepted_worker_lease_id, path_type, fork_pi_entry_id,
-					result_pi_entry_id, model_profile_id, turn_result_markdown, error_summary,
-					error_class, started_at, ended_at, model_selection_kind, model_selection_source
-				)
-				SELECT * FROM ${stagedTurns};
-				DROP TABLE ${stagedProcesses};
-				DROP TABLE ${stagedTurns};
-			`);
-			for (const table of [schema.processInstances, schema.turnRecords]) {
-				for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
-			}
-		},
-	},
-	{
 		id: "20260727_remove_process_question_draft_state",
 		tableNames: ["process_question_requests"],
 		legacyIndexNames: ["idx_question_requests_turn"],
@@ -615,6 +502,109 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			sqlite.exec("DROP TABLE provider_credentials_before_20260724");
 		},
 	},
+	{
+		id: "20260821_remove_server_automatic_execution",
+		tableNames: ["process_instances", "turn_records"],
+		matches: (sqlite) =>
+			tableHasColumn(sqlite, "process_instances", "current_server_turn_record_id") ||
+			(existingTableSql(sqlite, "turn_records") ?? "").includes("server_automatic"),
+		apply(sqlite) {
+			const endedAt = new Date().toISOString();
+			sqlite
+				.prepare(`UPDATE turn_records
+					SET status = 'failed',
+						error_summary = coalesce(error_summary, 'Server-automatic execution was removed'),
+						ended_at = coalesce(ended_at, ?)
+					WHERE turn_type = 'server_automatic' AND status = 'running'`)
+				.run(endedAt);
+			sqlite
+				.prepare(`UPDATE process_instances
+					SET lifecycle_status = 'aborted',
+						closed_at = coalesce(closed_at, ?),
+						updated_at = ?
+					WHERE current_server_turn_record_id IS NOT NULL`)
+				.run(endedAt, endedAt);
+			sqlite
+				.prepare(`INSERT INTO worker_leases
+					(id, instance_id, worker_id, state, started_at, exited_at)
+				SELECT 'wkr_migrated_20260821_' || id, instance_id,
+					'server-automatic-migration:' || id, 'exited', started_at, coalesce(ended_at, ?)
+				FROM turn_records WHERE turn_type = 'server_automatic'`)
+				.run(endedAt);
+			sqlite
+				.prepare(`INSERT INTO turn_start_records
+					(id, instance_id, turn_id, turn_type, proposed_turn_record_id, start_kind,
+					 state_json, created_at, updated_at)
+				SELECT 'tsr_migrated_20260821_' || id, instance_id, turn_id, 'automatic', id,
+					'selected_turn',
+					json_object(
+						'kind', 'accepted',
+						'start', json_object('kind', 'automatic'),
+						'turnRecordId', id,
+						'acceptedWorkerLeaseId', 'wkr_migrated_20260821_' || id,
+						'acceptedAt', coalesce(ended_at, ?)
+					),
+					started_at, coalesce(ended_at, ?)
+				FROM turn_records WHERE turn_type = 'server_automatic'`)
+				.run(endedAt, endedAt);
+			const stagedProcesses = "staged_process_instances_20260821";
+			const stagedTurns = "staged_turn_records_20260821";
+			sqlite.exec(`
+				CREATE TEMP TABLE ${stagedProcesses} AS
+				SELECT id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
+					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
+					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
+					created_at, updated_at, closed_at, initial_default_model_profile_id,
+					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
+				FROM process_instances;
+
+				CREATE TEMP TABLE ${stagedTurns} AS
+				SELECT id, instance_id, turn_id,
+					CASE turn_type WHEN 'server_automatic' THEN 'automatic' ELSE turn_type END AS turn_type,
+					status, attempt_number, parent_turn_record_id,
+					CASE turn_type
+						WHEN 'server_automatic' THEN 'tsr_migrated_20260821_' || id
+						ELSE turn_start_record_id
+					END AS turn_start_record_id,
+					CASE turn_type
+						WHEN 'server_automatic' THEN 'wkr_migrated_20260821_' || id
+						ELSE accepted_worker_lease_id
+					END AS accepted_worker_lease_id,
+					path_type, fork_pi_entry_id, result_pi_entry_id,
+					model_profile_id, turn_result_markdown, error_summary, error_class, started_at,
+					ended_at, model_selection_kind, model_selection_source
+				FROM turn_records;
+
+				DROP TABLE turn_records;
+				DROP TABLE process_instances;
+			`);
+			sqlite.exec(createTableSql(schema.processInstances));
+			sqlite.exec(createTableSql(schema.turnRecords));
+			sqlite.exec(`
+				INSERT INTO process_instances (
+					id, process_id, selected_turn_id, lifecycle_status, current_worker_start_id,
+					plan_revision, title, external_id, external_url, metadata, default_model_profile_id,
+					turn_configs_json, selected_turn_model_profile_id, params_json, state_json,
+					created_at, updated_at, closed_at, initial_default_model_profile_id,
+					selected_turn_model_source, selected_turn_model_kind, launch_intent_json
+				)
+				SELECT * FROM ${stagedProcesses};
+
+				INSERT INTO turn_records (
+					id, instance_id, turn_id, turn_type, status, attempt_number, parent_turn_record_id,
+					turn_start_record_id, accepted_worker_lease_id, path_type, fork_pi_entry_id,
+					result_pi_entry_id, model_profile_id, turn_result_markdown, error_summary,
+					error_class, started_at, ended_at, model_selection_kind, model_selection_source
+				)
+				SELECT * FROM ${stagedTurns};
+				DROP TABLE ${stagedProcesses};
+				DROP TABLE ${stagedTurns};
+			`);
+			for (const table of [schema.processInstances, schema.turnRecords]) {
+				for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
+			}
+		},
+	},
 ];
 
 function backupSqliteFiles(sqlite: DatabaseSync, sqlitePath: string): string {
@@ -641,11 +631,7 @@ export function applyKnownMigrations(
 	sqlite: DatabaseSync,
 	sqlitePath: string,
 ): AppliedMigrationSummary | null {
-	const migrations = KNOWN_MIGRATIONS.filter((migration) => migration.matches(sqlite)).sort(
-		(left, right) =>
-			Number(left.id === "20260821_remove_server_automatic_execution") -
-			Number(right.id === "20260821_remove_server_automatic_execution"),
-	);
+	const migrations = KNOWN_MIGRATIONS.filter((migration) => migration.matches(sqlite));
 	if (migrations.length === 0) return null;
 
 	const migratingTables = new Set(migrations.flatMap((migration) => migration.tableNames));

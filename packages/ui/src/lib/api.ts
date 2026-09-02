@@ -10,7 +10,6 @@ import type {
 	LaunchTicketCreationResponseBody,
 	PrimaryPathSnapshot,
 	ResolveToolApprovalRequestBody,
-	TicketCreationDestinationListResponse,
 	TicketCreationToolSummary,
 } from "@leitwerk-dev/protocol";
 import type {
@@ -205,17 +204,6 @@ export async function fetchTicketCreationTools(): Promise<TicketCreationToolSumm
 			error: (response) => new ApiResponseError("Couldn't load ticket systems", response.status),
 		})
 	).tools;
-}
-
-export function fetchTicketCreationDestinations(
-	toolName: string,
-): Promise<TicketCreationDestinationListResponse> {
-	return requestJson({
-		path: `/api/ticket-creation/tools/${encodeURIComponent(toolName)}/destinations`,
-		malformed: "Malformed ticket destination response",
-		error: (response, body) =>
-			new Error(readErrorMessage(body) ?? `Couldn't load destinations: ${response.status}`),
-	});
 }
 
 export function launchTicketCreation(

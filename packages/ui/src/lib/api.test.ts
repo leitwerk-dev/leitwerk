@@ -3,7 +3,6 @@ import {
 	ApiResponseError,
 	fetchAuthMeWithRetry,
 	fetchFutureExecution,
-	fetchTicketCreationDestinations,
 	logout,
 	registerSkill,
 	submitQuestionAnswers,
@@ -61,34 +60,6 @@ describe("fetchAuthMeWithRetry", () => {
 			fetchAuthMeWithRetry({ maxAttempts: 3, sleep: async () => {} }),
 		).rejects.toMatchObject({ status: 500 });
 		expect(fetchImpl).toHaveBeenCalledTimes(1);
-	});
-});
-
-describe("fetchTicketCreationDestinations", () => {
-	it("loads browser-safe repository choices", async () => {
-		const fetchImpl = vi.fn(
-			async () =>
-				new Response(
-					JSON.stringify({
-						destinations: [
-							{ id: "repo-1", displayName: "team/repo", group: "Tracker", recent: true },
-						],
-						warnings: [],
-					}),
-					{ status: 200, headers: { "content-type": "application/json" } },
-				),
-		);
-		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
-			fetchImpl: fetchImpl as unknown as typeof fetch,
-		};
-
-		await expect(fetchTicketCreationDestinations("tracker_create_ticket")).resolves.toEqual({
-			destinations: [{ id: "repo-1", displayName: "team/repo", group: "Tracker", recent: true }],
-			warnings: [],
-		});
-		expect(fetchImpl).toHaveBeenCalledWith(
-			"/api/ticket-creation/tools/tracker_create_ticket/destinations",
-		);
 	});
 });
 

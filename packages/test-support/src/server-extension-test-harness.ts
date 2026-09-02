@@ -124,6 +124,11 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 				throw new Error("not used");
 			},
 		},
+		launchRuns: {
+			async startWatcher() {
+				throw new Error("not used");
+			},
+		},
 	};
 }
 

@@ -3,7 +3,6 @@ import type {
 	LaunchTicketCreationRequestBody,
 	LaunchTicketCreationResponseBody,
 	ResolveToolApprovalRequestBody,
-	TicketCreationDestinationListResponse,
 	TicketCreationToolSummary,
 } from "@leitwerk-dev/protocol";
 import type { FastifyInstance } from "fastify";
@@ -80,17 +79,12 @@ function assembleContext(
 	};
 }
 
-/** Browser-safe ticket-system discovery and server-owned derived-process launch. */
-function recentActorKey(actor: ReturnType<typeof resolveActor>): string {
-	return actor.provider ? `${actor.provider}:${actor.id}` : "anonymous";
-}
-
 export function registerTicketCreationRoutes(
 	app: FastifyInstance,
 	deps: RouteDeps,
 	registry: Pick<
 		IntegrationToolRegistry,
-		"ticketCatalog" | "resolveTicketTool" | "listTicketDestinations" | "resolveTicketDestination"
+		"ticketCatalog" | "resolveTicketTool" | "listTicketDestinations"
 	>,
 ): void {
 	app.get(
@@ -99,53 +93,8 @@ export function registerTicketCreationRoutes(
 			tools: registry.ticketCatalog().map((tool) => ({
 				name: tool.name,
 				displayName: tool.capability.displayName,
-				description: tool.description,
-				parameters: tool.parameters,
-				...(tool.capability.titlePath !== undefined
-					? { titlePath: tool.capability.titlePath }
-					: {}),
-				...(tool.capability.descriptionPath !== undefined
-					? { descriptionPath: tool.capability.descriptionPath }
-					: {}),
-				requiresDestination: Boolean(tool.capability.destinations),
 			})),
 		}),
-	);
-
-	app.get<{ Params: { toolName: string } }>(
-		"/api/ticket-creation/tools/:toolName/destinations",
-		async (req, reply): Promise<TicketCreationDestinationListResponse | unknown> => {
-			try {
-				const actor = resolveActor(req);
-				const listed = await registry.listTicketDestinations(req.params.toolName, actor);
-				const recentIds = deps.ticketDestinationRecents
-					.list(recentActorKey(actor), req.params.toolName)
-					.map((entry) => entry.destinationId);
-				const recentRank = new Map(recentIds.map((id, index) => [id, index]));
-				const destinations = listed.destinations
-					.map((destination) => ({
-						...destination,
-						recent: recentRank.has(destination.id),
-					}))
-					.sort((a, b) => {
-						const aRank = recentRank.get(a.id);
-						const bRank = recentRank.get(b.id);
-						if (aRank !== undefined || bRank !== undefined) {
-							if (aRank === undefined) return 1;
-							if (bRank === undefined) return -1;
-							return aRank - bRank;
-						}
-						return `${a.group ?? ""}\0${a.displayName}`.localeCompare(
-							`${b.group ?? ""}\0${b.displayName}`,
-						);
-					});
-				return { destinations, warnings: [...(listed.warnings ?? [])] };
-			} catch (error) {
-				return reply
-					.code(400)
-					.send({ error: error instanceof Error ? error.message : String(error) });
-			}
-		},
 	);
 
 	app.post<{ Params: { instanceId: string }; Body: LaunchTicketCreationRequestBody }>(
@@ -160,18 +109,9 @@ export function registerTicketCreationRoutes(
 					});
 				}
 				const actor = resolveActor(req);
-				const destinationId = req.body.destinationId?.trim();
-				if (!tool.capability.destinations && destinationId) {
-					throw new Error("This ticket creation tool does not accept a destination");
-				}
-				const ticketDestination =
-					tool.capability.destinations && destinationId
-						? await registry.resolveTicketDestination(req.body.toolName, destinationId, actor)
-						: undefined;
-				const destinationList =
-					tool.capability.destinations && !ticketDestination
-						? await registry.listTicketDestinations(req.body.toolName, actor)
-						: undefined;
+				const destinationList = tool.capability.destinations
+					? await registry.listTicketDestinations(req.body.toolName, actor)
+					: undefined;
 				const { parent, context } = assembleContext(deps, req.params.instanceId, req.body);
 				const committed = deps.transaction((repos) => {
 					const child = repos.processes.create({
@@ -187,7 +127,6 @@ export function registerTicketCreationRoutes(
 							additionalInstructions: req.body.additionalInstructions?.trim() ?? "",
 							toolName: req.body.toolName,
 							initiatingActor: actor,
-							...(ticketDestination ? { ticketDestination } : {}),
 							...(destinationList
 								? {
 										ticketDestinations: destinationList.destinations,
@@ -226,13 +165,6 @@ export function registerTicketCreationRoutes(
 					return reply
 						.code(500)
 						.send({ error: started.message, childInstanceId: committed.child.id });
-				}
-				if (ticketDestination) {
-					deps.ticketDestinationRecents.record({
-						actorKey: recentActorKey(actor),
-						toolName: req.body.toolName,
-						destinationId: ticketDestination.summary.id,
-					});
 				}
 				return {
 					childInstanceId: committed.child.id,

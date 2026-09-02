@@ -102,8 +102,17 @@ const poller = deps.polling.create({
   async pollOnce() {
     const result = emptyPollResult();
     for (const watcher of watchers) {
-      const launchPlan = await watcher.resolveLaunch(event);
-      // Prepare and commit launchPlan through the server capabilities.
+      const launch = await deps.launchRuns.startWatcher(watcher, event, {
+        idempotencyKey: stableSourceEventKey(watcher, event),
+      });
+      if (launch.process) {
+        await consumeSourceEvent(event);
+        result.created.push(launch.process.id);
+      } else if (launch.error) {
+        result.errors.push(`${watcher.processId}:${watcher.watcherId}:${launch.error}`);
+      } else {
+        result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
+      }
     }
     return result;
   },

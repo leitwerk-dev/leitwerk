@@ -25,7 +25,6 @@ export * from "./process-turn-annotation-repo.js";
 export * from "./process-turn-record-repo.js";
 export * from "./provider-credential-repo.js";
 export * from "./skill-repo.js";
-export * from "./ticket-destination-recent-repo.js";
 export * from "./turn-start-record-repo.js";
 export * from "./worker-lease-repo.js";
 
@@ -48,7 +47,6 @@ import { createProcessTurnAnnotationRepo } from "./process-turn-annotation-repo.
 import { createProcessTurnRecordRepo } from "./process-turn-record-repo.js";
 import { createProviderCredentialRepo } from "./provider-credential-repo.js";
 import { createSkillRepo } from "./skill-repo.js";
-import { createTicketDestinationRecentRepo } from "./ticket-destination-recent-repo.js";
 import { createTurnStartRecordRepo } from "./turn-start-record-repo.js";
 import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 
@@ -66,7 +64,6 @@ export interface RepositoryBundle {
 	futureExecutions: ReturnType<typeof createFutureExecutionRepo>;
 	launcherRecentValues: ReturnType<typeof createLauncherRecentValueRepo>;
 	launchRuns: ReturnType<typeof createLaunchRunRepo>;
-	ticketDestinationRecents: ReturnType<typeof createTicketDestinationRecentRepo>;
 	titleJobs: ReturnType<typeof createProcessTitleJobRepo>;
 	pendingExternalSourceFires: ReturnType<typeof createPendingExternalSourceFireRepo>;
 	leafOutcomeSnapshots: ReturnType<typeof createProcessLeafOutcomeSnapshotRepo>;
@@ -100,7 +97,6 @@ export function createAllRepos(
 		futureExecutions: createFutureExecutionRepo(db),
 		launcherRecentValues: createLauncherRecentValueRepo(db),
 		launchRuns: createLaunchRunRepo(db),
-		ticketDestinationRecents: createTicketDestinationRecentRepo(db),
 		titleJobs: createProcessTitleJobRepo(db),
 		pendingExternalSourceFires: createPendingExternalSourceFireRepo(db),
 		leafOutcomeSnapshots: createProcessLeafOutcomeSnapshotRepo(db),

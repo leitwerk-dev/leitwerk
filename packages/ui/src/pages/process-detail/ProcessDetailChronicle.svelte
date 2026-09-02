@@ -19,9 +19,11 @@ import {
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
 import { readTicketResultSelection } from "../../chronicle/ticket-selection.js";
+import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
 import ModalShell from "../../components/ModalShell.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
+	FormFieldDefinition,
 	ProcessDetailData,
 	ProcessExternalTriggerSummary,
 	ProcessSelectedTurnSummary,
@@ -115,6 +117,18 @@ let selectedTicketTool = $state("");
 let ticketInstructions = $state("");
 let ticketError = $state<string | null>(null);
 let ticketLaunching = $state(false);
+
+const ticketInstructionsField: FormFieldDefinition<"textarea"> = {
+	id: "ticket-instructions",
+	label: "What issue should be created?",
+	kind: "textarea",
+	placeholder: "Describe the problem, expected outcome, and any important constraints.",
+};
+const ticketToolField: FormFieldDefinition<"select"> = {
+	id: "ticket-tool",
+	label: "Ticket system",
+	kind: "select",
+};
 
 async function openTicketComposer(artifact: typeof ticketDraft) {
 	if (!artifact) return;
@@ -466,24 +480,23 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		<p>Describe the issue to start a focused ticket-creation process.</p>
 	</header>
 	<div class="ticket-composer-body">
-		<label class="ticket-field">
-			<span>What issue should be created?</span>
-			<textarea
-				bind:value={ticketInstructions}
-				rows="6"
-				placeholder="Describe the problem, expected outcome, and any important constraints."
-			></textarea>
-		</label>
+		<FormFieldRenderer
+			field={ticketInstructionsField}
+			id="ticket-instructions"
+			value={ticketInstructions}
+			textareaRows={6}
+			onValueChange={(_, value) => (ticketInstructions = String(value))}
+		/>
 		{#if ticketToolsLoading}
 			<p class="ticket-composer-state" role="status">Loading ticket systems…</p>
 		{:else if ticketTools.length > 1}
-			<label class="ticket-field">
-				<span>Ticket system</span>
-				<select bind:value={selectedTicketTool}>
-					<option value="">Choose a ticket system</option>
-					{#each ticketTools as tool (tool.name)}<option value={tool.name}>{tool.displayName}</option>{/each}
-				</select>
-			</label>
+			<FormFieldRenderer
+				field={ticketToolField}
+				id="ticket-tool"
+				value={selectedTicketTool}
+				options={ticketTools.map((tool) => ({ value: tool.name, label: tool.displayName }))}
+				onValueChange={(_, value) => (selectedTicketTool = String(value))}
+			/>
 		{:else if ticketTools.length === 0 && !ticketError}
 			<p class="ticket-composer-state">No ticket system is configured.</p>
 		{/if}
@@ -589,58 +602,13 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		line-height: 1.5;
 	}
 
-	.ticket-composer-body,
-	.ticket-field {
-		display: grid;
-		gap: var(--space-xs);
-		min-width: 0;
-	}
-
 	.ticket-composer-body {
+		display: grid;
 		gap: var(--space-md);
+		min-width: 0;
 		overflow-y: auto;
 		padding: 2px;
 		scrollbar-color: var(--chronicle-border-strong) transparent;
-	}
-
-	.ticket-field > span {
-		color: var(--chronicle-text);
-		font-size: var(--type-body-sm);
-		font-weight: 700;
-	}
-
-	.ticket-field select,
-	.ticket-field textarea {
-		width: 100%;
-		border: 1px solid var(--chronicle-border-strong);
-		border-radius: var(--radius-md);
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-		font: inherit;
-	}
-
-	.ticket-field select {
-		min-height: 46px;
-		padding: 0 var(--space-sm);
-	}
-
-	.ticket-field textarea {
-		min-height: 152px;
-		padding: 13px 14px;
-		line-height: 1.55;
-		resize: vertical;
-		caret-color: var(--chronicle-accent);
-	}
-
-	.ticket-field textarea::placeholder {
-		color: var(--chronicle-text-muted);
-		opacity: 1;
-	}
-
-	.ticket-field select:focus-visible,
-	.ticket-field textarea:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
 	}
 
 	.ticket-composer-state,
@@ -889,11 +857,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 		.ticket-composer-body {
 			overscroll-behavior: contain;
-		}
-
-		.ticket-field textarea {
-			min-height: 132px;
-			resize: none;
 		}
 
 		.ticket-composer-actions {

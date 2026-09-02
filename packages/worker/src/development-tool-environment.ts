@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import { statfsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { DevelopmentToolsStartConfig } from "@leitwerk-dev/worker-protocol";
+import { execa } from "execa";
 
 export const PINNED_MISE_VERSION = "2026.8.14";
 const OUTPUT_LIMIT_BYTES = 64 * 1024;
@@ -177,97 +177,89 @@ async function runCommand(input: {
 	if (input.signal?.aborted) {
 		throw new DevelopmentToolPreparationError("mise preparation was cancelled", "cancelled");
 	}
-	return await new Promise((resolve, reject) => {
-		let stdout = "";
-		let stderr = "";
-		let settled = false;
-		let timedOut = false;
-		let killEscalation: ReturnType<typeof setTimeout> | null = null;
-		const child = spawn(input.command, input.args, {
-			cwd: input.cwd,
-			env: input.env,
-			stdio: ["ignore", "pipe", "pipe"],
-			detached: true,
-		});
-		const killGroup = (signal: NodeJS.Signals) => {
-			if (child.pid) {
-				try {
-					process.kill(-child.pid, signal);
-				} catch {
-					child.kill(signal);
-				}
-			}
-		};
-		const terminateGroup = () => {
-			killGroup("SIGTERM");
-			if (!killEscalation) {
-				killEscalation = setTimeout(() => killGroup("SIGKILL"), 2_000);
-				killEscalation.unref();
-			}
-		};
-		const timeout = setTimeout(() => {
-			timedOut = true;
-			terminateGroup();
-		}, input.timeoutMs);
-		const abort = terminateGroup;
-		input.signal?.addEventListener("abort", abort, { once: true });
-		child.stdout.on("data", (chunk: Buffer) => {
-			const text = chunk.toString("utf8");
-			emitDiagnosticTrace(input.onDiagnosticTrace, text);
-			stdout = appendBounded(stdout, chunk, input.outputLimit ?? OUTPUT_LIMIT_BYTES);
-		});
-		child.stderr.on("data", (chunk: Buffer) => {
-			const text = chunk.toString("utf8");
-			emitDiagnosticTrace(input.onDiagnosticTrace, text);
-			stderr = appendBounded(stderr, chunk, input.outputLimit ?? OUTPUT_LIMIT_BYTES);
-		});
-		child.on("error", (error: NodeJS.ErrnoException) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			if (killEscalation) clearTimeout(killEscalation);
-			input.signal?.removeEventListener("abort", abort);
-			if (error.code === "ENOENT") {
-				reject(
-					new DevelopmentToolPreparationError(
-						`mise command '${input.command}' was not found`,
-						"mise_missing",
-					),
-				);
-			} else reject(error);
-		});
-		child.on("close", (code, signal) => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(timeout);
-			if (killEscalation) clearTimeout(killEscalation);
-			input.signal?.removeEventListener("abort", abort);
-			const diagnostics = `${stdout}\n${stderr}`.trim();
-			if (input.signal?.aborted) {
-				reject(
-					new DevelopmentToolPreparationError(
-						"mise preparation was cancelled",
-						"cancelled",
-						diagnostics,
-					),
-				);
-			} else if (timedOut) {
-				reject(
-					new DevelopmentToolPreparationError(
-						`mise exceeded its ${input.timeoutMs}ms deadline`,
-						"timeout",
-						diagnostics,
-					),
-				);
-			} else if (code !== 0) {
-				reject(
-					new Error(
-						`mise exited with code ${code ?? "null"} (${signal ?? "no signal"})\n${diagnostics}`,
-					),
-				);
-			} else resolve({ stdout, stderr });
-		});
+
+	const child = execa(input.command, input.args, {
+		cwd: input.cwd,
+		env: input.env,
+		stdin: "ignore",
+		detached: true,
+		timeout: input.timeoutMs,
+		cancelSignal: input.signal,
+		forceKillAfterDelay: 2_000,
+		reject: false,
+		stripFinalNewline: false,
 	});
+	let stdout = "";
+	let stderr = "";
+	const outputLimit = input.outputLimit ?? OUTPUT_LIMIT_BYTES;
+	const appendOutput = (target: "stdout" | "stderr", chunk: Buffer | string) => {
+		const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+		const text = buffer.toString("utf8");
+		emitDiagnosticTrace(input.onDiagnosticTrace, text);
+		if (target === "stdout") stdout = appendBounded(stdout, buffer, outputLimit);
+		else stderr = appendBounded(stderr, buffer, outputLimit);
+	};
+	child.stdout?.on("data", (chunk: Buffer | string) => appendOutput("stdout", chunk));
+	child.stderr?.on("data", (chunk: Buffer | string) => appendOutput("stderr", chunk));
+
+	// mise can create child processes; terminate the detached process group when
+	// cancellation is requested, while execa owns timeout and escalation.
+	let groupEscalation: ReturnType<typeof setTimeout> | null = null;
+	const killGroup = () => {
+		if (!child.pid) return;
+		try {
+			process.kill(-child.pid, "SIGTERM");
+		} catch {
+			child.kill("SIGTERM");
+		}
+		if (!groupEscalation) {
+			const pid = child.pid;
+			if (!pid) return;
+			groupEscalation = setTimeout(() => {
+				try {
+					process.kill(-pid, "SIGKILL");
+				} catch {
+					/* execa will force-kill the child itself. */
+				}
+			}, 2_000);
+			groupEscalation.unref();
+		}
+	};
+	const groupTimeout = setTimeout(killGroup, input.timeoutMs);
+	input.signal?.addEventListener("abort", killGroup, { once: true });
+	try {
+		const result = await child;
+		const diagnostics = `${stdout}\n${stderr}`.trim();
+		if (input.signal?.aborted || result.isCanceled) {
+			throw new DevelopmentToolPreparationError(
+				"mise preparation was cancelled",
+				"cancelled",
+				diagnostics,
+			);
+		}
+		if (result.timedOut) {
+			throw new DevelopmentToolPreparationError(
+				`mise exceeded its ${input.timeoutMs}ms deadline`,
+				"timeout",
+				diagnostics,
+			);
+		}
+		if (result.code === "ENOENT") {
+			throw new DevelopmentToolPreparationError(
+				`mise command '${input.command}' was not found`,
+				"mise_missing",
+				diagnostics,
+			);
+		}
+		if (result.failed) {
+			throw new Error(`${result.shortMessage}\n${diagnostics}`);
+		}
+		return { stdout, stderr };
+	} finally {
+		clearTimeout(groupTimeout);
+		if (groupEscalation) clearTimeout(groupEscalation);
+		input.signal?.removeEventListener("abort", killGroup);
+	}
 }
 
 function toolPair(
@@ -314,6 +306,32 @@ function availableSpace(root: string): string | null {
 	} catch {
 		return null;
 	}
+}
+
+function translateCommandError(
+	error: unknown,
+	input: {
+		operation: "install" | "verification";
+		failureMessage: string;
+		repositoryKey: string;
+		timeoutMs: number;
+		root: string;
+	},
+): DevelopmentToolPreparationError {
+	if (error instanceof DevelopmentToolPreparationError) {
+		if (error.code !== "timeout") return error;
+		return new DevelopmentToolPreparationError(
+			`mise ${input.operation} timed out for repository '${input.repositoryKey}' after ${input.timeoutMs}ms`,
+			"timeout",
+			error.diagnostics,
+		);
+	}
+	const space = input.operation === "install" ? availableSpace(input.root) : null;
+	return new DevelopmentToolPreparationError(
+		`${input.failureMessage} '${input.repositoryKey}'${space ? ` (${space})` : ""}`,
+		input.operation === "install" ? "install_failed" : "verification_failed",
+		error instanceof Error ? error.message : String(error),
+	);
 }
 
 export class MiseDevelopmentToolEnvironment implements DevelopmentToolEnvironment {
@@ -367,20 +385,13 @@ export class MiseDevelopmentToolEnvironment implements DevelopmentToolEnvironmen
 					warnings.push(`${repository.repositoryKey}: ${installed.stderr.trim()}`);
 				}
 			} catch (error) {
-				if (error instanceof DevelopmentToolPreparationError) {
-					if (error.code !== "timeout") throw error;
-					throw new DevelopmentToolPreparationError(
-						`mise install timed out for repository '${repository.repositoryKey}' after ${input.config.installTimeoutMs}ms`,
-						"timeout",
-						error.diagnostics,
-					);
-				}
-				const space = availableSpace(input.config.processStorageRoot);
-				throw new DevelopmentToolPreparationError(
-					`mise install failed for repository '${repository.repositoryKey}'${space ? ` (${space})` : ""}`,
-					"install_failed",
-					error instanceof Error ? error.message : String(error),
-				);
+				throw translateCommandError(error, {
+					operation: "install",
+					failureMessage: "mise install failed for repository",
+					repositoryKey: repository.repositoryKey,
+					timeoutMs: input.config.installTimeoutMs,
+					root: input.config.processStorageRoot,
+				});
 			}
 			input.onProgress?.(repository.repositoryKey, "verifying");
 			let current: { stdout: string; stderr: string };
@@ -399,19 +410,13 @@ export class MiseDevelopmentToolEnvironment implements DevelopmentToolEnvironmen
 					onDiagnosticTrace: input.onDiagnosticTrace,
 				});
 			} catch (error) {
-				if (error instanceof DevelopmentToolPreparationError) {
-					if (error.code !== "timeout") throw error;
-					throw new DevelopmentToolPreparationError(
-						`mise verification timed out for repository '${repository.repositoryKey}' after ${input.config.installTimeoutMs}ms`,
-						"timeout",
-						error.diagnostics,
-					);
-				}
-				throw new DevelopmentToolPreparationError(
-					`mise could not verify repository '${repository.repositoryKey}'`,
-					"verification_failed",
-					error instanceof Error ? error.message : String(error),
-				);
+				throw translateCommandError(error, {
+					operation: "verification",
+					failureMessage: "mise could not verify repository",
+					repositoryKey: repository.repositoryKey,
+					timeoutMs: input.config.installTimeoutMs,
+					root: input.config.processStorageRoot,
+				});
 			}
 			let parsed: unknown;
 			try {

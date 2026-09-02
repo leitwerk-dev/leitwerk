@@ -107,7 +107,6 @@ export interface RouteDeps
 		| "questionRequests"
 		| "processRelations"
 		| "toolApprovalRequests"
-		| "ticketDestinationRecents"
 		| "turnRecords"
 		| "turnStarts"
 		| "turnAnnotations"

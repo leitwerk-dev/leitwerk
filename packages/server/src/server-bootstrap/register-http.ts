@@ -23,7 +23,7 @@ export function registerHttp(input: {
 	extensionUiCatalog: ExtensionUiCatalog;
 	integrationTools: Pick<
 		IntegrationToolRegistry,
-		"ticketCatalog" | "resolveTicketTool" | "listTicketDestinations" | "resolveTicketDestination"
+		"ticketCatalog" | "resolveTicketTool" | "listTicketDestinations"
 	>;
 	authService: AuthService;
 	sessionSnapshots: ProcessSessionSnapshotStore;

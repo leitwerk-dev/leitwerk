@@ -1754,9 +1754,6 @@ async function mountSubjectWithCurrentMocks() {
 		{
 			name: "tracker_create_issue",
 			displayName: "Issue tracker",
-			description: "Create a tracked issue",
-			parameters: {},
-			requiresDestination: true,
 		},
 	]);
 	mockLaunchTicketCreation.mockReset();

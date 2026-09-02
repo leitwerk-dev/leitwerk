@@ -142,6 +142,47 @@ function transitionStep(
 	};
 }
 
+type StepTransition = {
+	id: string;
+	status: LaunchChecklistStepStatus;
+	safeSummary?: string;
+};
+
+function applyTransitions(run: LaunchRun, transitions: readonly StepTransition[]): LaunchRun {
+	return transitions.reduce(
+		(next, transition) =>
+			transitionStep(next, transition.id, transition.status, transition.safeSummary),
+		run,
+	);
+}
+
+const RUNNER_PHASE_TRANSITIONS: Partial<Record<WorkerStartPhase, readonly StepTransition[]>> = {
+	preparing_runtime: [{ id: "start_worker", status: "in_progress" }],
+	starting_runtime: [
+		{ id: "start_worker", status: "completed" },
+		{ id: "connect_worker", status: "in_progress" },
+	],
+};
+
+const BOOTSTRAP_PHASE_TRANSITIONS: Record<
+	WorkerBootstrapProgressPayload["phase"],
+	readonly StepTransition[]
+> = {
+	worker_connected: [{ id: "connect_worker", status: "completed" }],
+	preparing_workspace: [
+		{ id: "connect_worker", status: "completed" },
+		{ id: "prepare_workspace", status: "in_progress" },
+	],
+	loading_resources: [
+		{ id: "connect_worker", status: "completed" },
+		{ id: "prepare_workspace", status: "in_progress" },
+	],
+	preparing_turn: [
+		{ id: "prepare_workspace", status: "completed" },
+		{ id: "start_first_turn", status: "in_progress" },
+	],
+};
+
 function initialSteps(): LaunchChecklistStep[] {
 	return CORE_STEPS.map(([id, label]) => step(id, label));
 }
@@ -180,10 +221,27 @@ function titleStepStatus(
 	return process.title ? "completed" : titleGenerationAvailable ? "in_progress" : "skipped";
 }
 
-function skipStartupSteps(run: LaunchRun): LaunchRun {
-	let next = run;
-	for (const id of STARTUP_STEP_IDS) next = transitionStep(next, id, "skipped");
-	return next;
+function recordCommittedProcess(
+	run: LaunchRun,
+	process: ProcessInstance,
+	startTurnId: string | null | undefined,
+	titleGenerationAvailable: boolean | undefined,
+): LaunchRun {
+	let next = applyTransitions(run, [
+		{ id: "resolve_models_skills", status: "completed" },
+		{ id: "create_process", status: "completed" },
+		{
+			id: "choose_title",
+			status: titleStepStatus(process, titleGenerationAvailable),
+		},
+	]);
+	if (!startTurnId) {
+		next = applyTransitions(
+			next,
+			STARTUP_STEP_IDS.map((id) => ({ id, status: "skipped" as const })),
+		);
+	}
+	return { ...next, instanceId: process.id, status: "starting" };
 }
 
 function startupComplete(run: LaunchRun): boolean {
@@ -201,6 +259,30 @@ function completeWhenReady(run: LaunchRun): LaunchRun {
 		status: "completed",
 		completedAt: run.completedAt ?? new Date().toISOString(),
 	};
+}
+
+function applyAuthoritativeStartupEvidence(
+	run: LaunchRun,
+	evidence: {
+		leaseState?: string;
+		hasBootstrapReceipt: boolean;
+		hasTurn: boolean;
+	},
+): LaunchRun {
+	let next = run;
+	if (evidence.leaseState) {
+		next = applyTransitions(next, RUNNER_PHASE_TRANSITIONS.starting_runtime ?? []);
+		if (evidence.leaseState !== "spawning") {
+			next = applyTransitions(next, BOOTSTRAP_PHASE_TRANSITIONS.worker_connected);
+		}
+	}
+	if (evidence.hasBootstrapReceipt) {
+		next = applyTransitions(next, [{ id: "prepare_workspace", status: "completed" }]);
+	}
+	if (evidence.hasTurn) {
+		next = applyTransitions(next, [{ id: "start_first_turn", status: "completed" }]);
+	}
+	return next;
 }
 
 export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoordinator {
@@ -336,15 +418,18 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				},
 			);
 			if (result.kind === "committed_with_reaction_error" && "process" in result) {
-				mutate(runId, (run) => {
-					let next = transitionStep(run, "resolve_models_skills", "completed");
-					next = transitionStep(next, "create_process", "completed");
-					return failRun(
-						{ ...next, instanceId: result.process.id },
+				mutate(runId, (run) =>
+					failRun(
+						recordCommittedProcess(
+							run,
+							result.process,
+							resolved.launcher.launchPlan.startTurnId,
+							deps.titleGenerationAvailable,
+						),
 						"start_worker",
 						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
-					);
-				});
+					),
+				);
 				return result;
 			}
 			if (result.kind !== "launched") {
@@ -357,20 +442,16 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				);
 				return result;
 			}
-			mutate(runId, (run) => {
-				let next = transitionStep(run, "resolve_models_skills", "completed");
-				next = transitionStep(next, "create_process", "completed");
-				const titleStep = next.steps.find((item) => item.id === "choose_title");
-				if (titleStep?.status === "pending" || titleStep?.status === "in_progress") {
-					next = transitionStep(
-						next,
-						"choose_title",
-						titleStepStatus(result.process, deps.titleGenerationAvailable),
-					);
-				}
-				if (!resolved.launcher.launchPlan.startTurnId) next = skipStartupSteps(next);
-				return completeWhenReady({ ...next, instanceId: result.process.id, status: "starting" });
-			});
+			mutate(runId, (run) =>
+				completeWhenReady(
+					recordCommittedProcess(
+						run,
+						result.process,
+						resolved.launcher.launchPlan.startTurnId,
+						deps.titleGenerationAvailable,
+					),
+				),
+			);
 			return result;
 		} catch {
 			const current = deps.launchRuns.getById(runId);
@@ -478,22 +559,19 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				}
 				const process = result.process;
 				mutate(created.id, (run) => {
-					let next = transitionStep(run, "resolve_models_skills", "completed");
-					next = transitionStep(next, "create_process", "completed");
-					next = transitionStep(
-						next,
-						"choose_title",
-						titleStepStatus(process, deps.titleGenerationAvailable),
+					const next = recordCommittedProcess(
+						run,
+						process,
+						prepared.launchPlan.startTurnId,
+						deps.titleGenerationAvailable,
 					);
-					if (!prepared.launchPlan.startTurnId) next = skipStartupSteps(next);
 					if (result.ok && result.reused) {
 						const lease = deps.leases.getByInstance(process.id);
 						const hasTurn = deps.turnRecords.listByInstance(process.id).length > 0;
-						if (hasTurn) {
-							return finishRun({ ...next, instanceId: process.id }, "cancelled");
-						} else if (!lease || ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
+						if (hasTurn) return finishRun(next, "cancelled");
+						if (!lease || ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
 							return failRun(
-								{ ...next, instanceId: process.id },
+								next,
 								"start_worker",
 								"The existing process has not started a worker. Retry startup from the process page.",
 							);
@@ -501,12 +579,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					}
 					if (!result.ok) {
 						return failRun(
-							{ ...next, instanceId: process.id },
+							next,
 							"start_worker",
 							"Process was created, but startup failed. Review the process error and retry startup.",
 						);
 					}
-					return completeWhenReady({ ...next, instanceId: process.id, status: "starting" });
+					return completeWhenReady(next);
 				});
 				return {
 					launchRunId: created.id,
@@ -554,17 +632,15 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 
 		observeScheduledCommitted(launchRunId, process, startTurnId, reactionError) {
 			mutate(launchRunId, (run) => {
-				let next = transitionStep(run, "create_process", "completed");
-				next = transitionStep(
-					next,
-					"choose_title",
-					titleStepStatus(process, deps.titleGenerationAvailable),
+				const next = recordCommittedProcess(
+					run,
+					process,
+					startTurnId,
+					deps.titleGenerationAvailable,
 				);
-				if (!startTurnId) next = skipStartupSteps(next);
-				if (reactionError) {
-					return failRun({ ...next, instanceId: process.id }, "start_worker", reactionError);
-				}
-				return completeWhenReady({ ...next, instanceId: process.id, status: "starting" });
+				return reactionError
+					? failRun(next, "start_worker", reactionError)
+					: completeWhenReady(next);
 			});
 		},
 
@@ -600,35 +676,17 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		observeRunnerPhase(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => {
-				let next: LaunchRun = { ...run, status: "starting" };
-				if (phase === "preparing_runtime") {
-					next = transitionStep(next, "start_worker", "in_progress");
-				}
-				if (phase === "starting_runtime") {
-					next = transitionStep(next, "start_worker", "completed");
-					next = transitionStep(next, "connect_worker", "in_progress");
-				}
-				return next;
-			});
+			mutateCurrent(instanceId, workerId, (run) => ({
+				...applyTransitions(run, RUNNER_PHASE_TRANSITIONS[phase] ?? []),
+				status: "starting",
+			}));
 		},
 
 		observeBootstrapProgress(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => {
-				let next: LaunchRun = { ...run, status: "starting" };
-				if (phase === "worker_connected") {
-					next = transitionStep(next, "connect_worker", "completed");
-				}
-				if (phase === "preparing_workspace" || phase === "loading_resources") {
-					next = transitionStep(next, "connect_worker", "completed");
-					next = transitionStep(next, "prepare_workspace", "in_progress");
-				}
-				if (phase === "preparing_turn") {
-					next = transitionStep(next, "prepare_workspace", "completed");
-					next = transitionStep(next, "start_first_turn", "in_progress");
-				}
-				return next;
-			});
+			mutateCurrent(instanceId, workerId, (run) => ({
+				...applyTransitions(run, BOOTSTRAP_PHASE_TRANSITIONS[phase]),
+				status: "starting",
+			}));
 		},
 
 		observeWorkerReady(instanceId, workerId) {
@@ -740,7 +798,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					.reverse()
 					.find((job) => job.launchRunId === run.id || job.launchRunId === null);
 				mutate(run.id, (current) => {
-					let next = transitionStep(current, "create_process", "completed");
+					let next = applyTransitions(current, [{ id: "create_process", status: "completed" }]);
 					if (lease && ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
 						const activeStep =
 							[...STARTUP_STEP_IDS]
@@ -754,24 +812,24 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 							"Worker startup stopped before completion. Retry startup from the process page.",
 						);
 					}
-					if (lease) next = transitionStep(next, "start_worker", "completed");
-					if (lease && lease.state !== "spawning") {
-						next = transitionStep(next, "connect_worker", "completed");
-					}
-					if (lease?.bootstrapReceipt) {
-						next = transitionStep(next, "prepare_workspace", "completed");
-					}
-					if (hasTurn) next = transitionStep(next, "start_first_turn", "completed");
-					if (process.title) next = transitionStep(next, "choose_title", "completed");
-					else if (!deps.titleGenerationAvailable) {
-						next = transitionStep(next, "choose_title", "skipped");
+					next = applyAuthoritativeStartupEvidence(next, {
+						leaseState: lease?.state,
+						hasBootstrapReceipt: Boolean(lease?.bootstrapReceipt),
+						hasTurn,
+					});
+					if (process.title) {
+						next = applyTransitions(next, [{ id: "choose_title", status: "completed" }]);
+					} else if (!deps.titleGenerationAvailable) {
+						next = applyTransitions(next, [{ id: "choose_title", status: "skipped" }]);
 					} else if (titleJob?.status === "failed") {
-						next = transitionStep(
-							next,
-							"choose_title",
-							"failed",
-							"Process started, but a title could not be generated. You can rename it later.",
-						);
+						next = applyTransitions(next, [
+							{
+								id: "choose_title",
+								status: "failed",
+								safeSummary:
+									"Process started, but a title could not be generated. You can rename it later.",
+							},
+						]);
 					}
 					return completeWhenReady({ ...next, status: lease ? "starting" : "process_created" });
 				});
