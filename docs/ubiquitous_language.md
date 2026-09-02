@@ -88,6 +88,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 - **Startup Attempt:** Process-detail projection of one turn start and its correlated worker lease, server-observed readiness, and accepted first turn.
 - **Launch checklist step:** Ordered operator-facing phase owned by the launch coordinator.
 - **Preparation check:** Optional launcher-owned validation that returns or throws a safe failure.
+- **Programmatic launch admission:** Trusted extension submission of launcher input plus caller idempotency intent. The server creates the Launch Run and executes the shared pipeline; the caller does not receive the raw process executor.
 
 A Launch Run is not a process instance, worker lease, runner unit, or title job. It references those
 facts without storing credentials, provider responses, PIDs, pod names, or container ids.

@@ -11,4 +11,6 @@ export {
 	type LaunchMutationOutcome,
 	type NormalizedScheduledActionInput,
 	type NormalizedScheduledLaunchInput,
+	type PreparedLaunch,
+	type PreparedLaunchResult,
 } from "./lifecycle.js";

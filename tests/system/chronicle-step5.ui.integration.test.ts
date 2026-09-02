@@ -11,6 +11,7 @@ import singlePromptExtension, {
 	buildPoemLeafOutcomeFallbackMarkdown,
 	buildPoemLeafOutcomePayload,
 } from "@leitwerk-dev/showcase-processes";
+import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
@@ -159,8 +160,8 @@ async function launchPoemCreator(
 	testApp: NonNullable<MountedUiHarness<Record<string, never>>["testApp"]>,
 	prompt: string,
 ) {
-	const response = await fetch(
-		`${testApp.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+	const response = await postImmediateLaunchRequest(
+		`${testApp.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },

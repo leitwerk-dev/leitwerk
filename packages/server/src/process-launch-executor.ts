@@ -1,8 +1,7 @@
 import type { Actor, ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
 import type {
 	ExtensionProcessDefinition,
-	ProcessLaunchConfigExecutionInput,
-	ProcessLaunchExecutionResultLike,
+	ProcessLaunchConfig,
 	ProcessLaunchPlan,
 } from "@leitwerk-dev/process-sdk";
 import type { SkillSelection } from "@leitwerk-dev/protocol";
@@ -24,6 +23,40 @@ import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ProcessTitleGenerator } from "./process-title-generator.js";
 import { buildProjectUpdatedEffect } from "./project-mutation-service.js";
 import type { Broadcaster } from "./ws/broadcast.js";
+
+export interface ProcessLaunchConfigExecutionInput {
+	launcherId: string;
+	launchConfig: ProcessLaunchConfig;
+	handoffDedupKey?: string | null;
+}
+
+export type ProcessLaunchExecutionResult =
+	| { ok: true; process: ProcessInstance; projects: ProcessProject[]; reused: boolean }
+	| {
+			ok: false;
+			stage: "pre_commit";
+			status: number;
+			body: Record<string, unknown>;
+	  }
+	| {
+			ok: false;
+			stage: "post_commit";
+			status: number;
+			body: Record<string, unknown>;
+			process: ProcessInstance;
+			projects: ProcessProject[];
+	  };
+
+export interface ProcessLaunchExecutorLike {
+	createProcessFromLaunchConfig(
+		input: ProcessLaunchConfigExecutionInput,
+		opts?: { actor?: Actor; launchRunId?: string },
+	): Promise<ProcessLaunchExecutionResult>;
+	createProcessFromLaunchPlan(
+		launchPlan: ProcessLaunchPlan,
+		opts?: { actor?: Actor; launchRunId?: string },
+	): Promise<ProcessLaunchExecutionResult>;
+}
 
 export interface ProcessLaunchExecutorDeps
 	extends Pick<
@@ -150,8 +183,6 @@ function toLaunchFailureBody(
 		},
 	};
 }
-
-export type ProcessLaunchExecutionResult = ProcessLaunchExecutionResultLike;
 
 export function commitProcessLaunch(
 	deps: ProcessLaunchExecutorDeps,

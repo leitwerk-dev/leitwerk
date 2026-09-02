@@ -161,17 +161,25 @@ Snapshot upload failures are treated as infrastructure failures, preserving serv
 
 ## 7. Launch progress
 
-Every launch attempt has a durable `LaunchRun`. The server attaches the process id after process
-creation. Launch Runs report orchestration progress, but they are not process-startup evidence.
+Every launch attempt has a durable `LaunchRun`. UI, trusted programmatic, watcher, and
+due-schedule adapters own source-specific admission, resolution, deduplication, and scheduling
+policy. Programmatic callers provide launcher input and an idempotency key; they never call the
+raw process executor or choose a Launch Run id. One server-owned launch pipeline sequences
+validation, ordered preparation checks, model and skill preparation, and process commit. Process creation and scheduled occurrence disposition commit atomically.
+The server attaches the process id in that commit. Pre-commit failures create no process;
+post-commit reaction failures retain and correlate the committed process. Launch Runs report
+orchestration progress, but they are not process-startup evidence.
 The process-detail API derives startup history from a `TurnStartRecord`, its correlated
 `WorkerLease`, server-observed connection and readiness timestamps, and the accepted first turn.
 A successful startup requires all of those records to agree. Runner observers expose only
 `preparing_runtime`, `allocating_runtime`, and
 `starting_runtime`. Workers may send monotonic `worker.bootstrap_progress` phases. These messages
 contain no runner ids, repository output, or credentials. Stale-lease observations are ignored.
-On restart, incomplete runs reconcile from durable process, lease, title-job, readiness, and turn
-records. Before process creation, UI launches resume from a server-private replay payload stored
-outside the launch read model and deleted when coordination finishes. After process creation,
+The pure launch-run progress projector applies runner, bootstrap, title, and restart evidence;
+the coordinator only selects and persists the affected run. On restart, incomplete runs reconcile
+from durable process, lease, title-job, readiness, and turn records. Before process creation, UI
+and trusted programmatic launches resume from a server-private replay payload stored outside the
+launch read model and deleted when coordination finishes. After process creation,
 recovery uses durable facts and does not repeat process creation. Duplicate incomplete Launch Runs
 for one process are cancelled during reconciliation and never select the startup shown on process
 detail. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt

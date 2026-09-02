@@ -103,8 +103,10 @@ and symbols carry the meaning without relying on color.
 
 ## 6. Launch checklist
 
-An immediate launcher submission replaces its submit area with the durable launch checklist and
-keeps the entered draft in memory. The browser navigates when the run gains an `instanceId`; the
+An immediate launcher submission uses `POST /api/launchers/:launcherId/launch-runs`, replaces its
+submit area with the durable launch checklist, and keeps the entered draft in memory. Scheduled
+submissions use `POST /api/launchers/:launcherId/future-launches`; saving a future launch does not
+create a launch run or startup checklist. The browser navigates when the run gains an `instanceId`; the
 process detail then renders authoritative startup history inside the Chronicle. Text and symbols
 name every state. The current step uses the operational accent. Failed steps show bounded
 remediation and the existing recovery action. Process detail never selects a Launch Run to infer

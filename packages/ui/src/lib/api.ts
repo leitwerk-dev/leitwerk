@@ -702,7 +702,7 @@ export async function launchLauncher(
 		return startLaunchRun(launcherId, title, launcherInput, modelConfig, skillIds);
 	}
 	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/launch`),
+		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/future-launches`),
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },

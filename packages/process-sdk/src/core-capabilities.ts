@@ -328,42 +328,6 @@ export interface ExternalSourceServiceLike {
 	fire(input: ExternalSourceFireInput): Promise<ActionExecutionResultLike>;
 }
 
-export type ProcessLaunchFailureStageLike = "pre_commit" | "post_commit";
-
-export type ProcessLaunchExecutionResultLike =
-	| { ok: true; process: ProcessInstance; projects: ProcessProject[]; reused: boolean }
-	| {
-			ok: false;
-			stage: "pre_commit";
-			status: number;
-			body: Record<string, unknown>;
-	  }
-	| {
-			ok: false;
-			stage: "post_commit";
-			status: number;
-			body: Record<string, unknown>;
-			process: ProcessInstance;
-			projects: ProcessProject[];
-	  };
-
-export interface ProcessLaunchConfigExecutionInput {
-	launcherId: string;
-	launchConfig: ProcessLaunchConfig;
-	handoffDedupKey?: string | null;
-}
-
-export interface ProcessLaunchExecutorLike {
-	createProcessFromLaunchConfig(
-		input: ProcessLaunchConfigExecutionInput,
-		opts?: { actor?: Actor; launchRunId?: string },
-	): Promise<ProcessLaunchExecutionResultLike>;
-	createProcessFromLaunchPlan(
-		launchPlan: ProcessLaunchPlan,
-		opts?: { actor?: Actor; launchRunId?: string },
-	): Promise<ProcessLaunchExecutionResultLike>;
-}
-
 export interface LauncherRecentValuesServiceLike {
 	list(launcherId: string): Record<string, readonly string[]>;
 	record(launcherId: string, launcherInput: Record<string, unknown>): void;
@@ -448,7 +412,27 @@ export interface WatcherLaunchResultLike {
 	error: string | null;
 }
 
+export interface ProgrammaticLaunchRequestLike {
+	launcherId: string;
+	launcherInput: Record<string, unknown>;
+	title?: string | null;
+	modelConfig?: LaunchModelConfigInputLike;
+	skillIds?: readonly string[];
+	/** Trusted, non-secret process metadata merged after launcher resolution. */
+	processMetadata?: Record<string, unknown>;
+}
+
+export interface ProgrammaticLaunchResultLike {
+	launchRunId: string;
+	process: ProcessInstance | null;
+	error: string | null;
+}
+
 export interface LaunchRunServiceLike {
+	startProgrammatic(
+		request: ProgrammaticLaunchRequestLike,
+		opts: { idempotencyKey: string; actor?: Actor },
+	): Promise<ProgrammaticLaunchResultLike>;
 	startWatcher<TConfig, TEvent>(
 		watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
 		event: TEvent,
@@ -517,7 +501,6 @@ export interface CoreServerSetupDeps {
 	launcherRecentValues: LauncherRecentValuesServiceLike;
 	launcherModelConfigs: LauncherModelConfigServiceLike;
 	launchPlans: ProcessLaunchPlanServiceLike;
-	processLaunches: ProcessLaunchExecutorLike;
 	handoffDedupKeys?: HandoffDedupKeyServiceLike;
 	processWatchers?: ProcessWatcherServiceLike;
 	launchRuns: LaunchRunServiceLike;

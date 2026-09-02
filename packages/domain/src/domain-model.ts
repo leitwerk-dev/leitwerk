@@ -599,7 +599,7 @@ export interface ProcessInput {
 	consumedAt: string | null;
 }
 
-export type LaunchOrigin = "ui" | "watcher" | "scheduled" | "startup_retry";
+export type LaunchOrigin = "ui" | "programmatic" | "watcher" | "scheduled" | "startup_retry";
 export type LaunchRunStatus =
 	| "preparing"
 	| "process_created"

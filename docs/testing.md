@@ -48,7 +48,7 @@ Turborepo entry point.
 
 ## 2. Test Layers
 
-- **Pure Unit Tests:** Test domain rules, state reducers, graph validation, and codecs without booting Fastify servers or workers.
+- **Pure Unit Tests:** Test domain rules, state reducers, graph validation, and codecs without booting Fastify servers or workers. Test launch orchestration through `createLaunchPipeline` with in-memory launch-run repositories and small source adapters. HTTP integration setup must admit immediate launches through `/launch-runs` and observe the durable run; `postImmediateLaunch` in test support provides that setup without restoring a blocking production route.
 - **Package Integration Tests:** Test package host behavior using synthetic processes and fakes.
 - **Extension Tests:** Test extension catalog registration, custom turns, watchers, outcome tools, and external provider integrations.
 - **Server & Worker System Tests:** Boot Fastify with in-memory SQLite and fake boundaries to test `ProcessEngine` lock coordination, WebSocket IPC streaming, turn correlation, and error recovery.

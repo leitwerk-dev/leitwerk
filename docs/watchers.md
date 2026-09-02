@@ -127,6 +127,8 @@ fixtures, but do not own scheduled polling lifecycle.
 
 ## Idempotency and deduplication
 
-Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
+Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. Watcher admission keeps that event key stable across retries. An uncommitted failed launch run may yield the key to a new attempt; once a run has a process, it remains authoritative. The shared server launch pipeline executes the admitted attempt and keeps the event key as the process handoff deduplication key.
+
+External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
 
 If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.

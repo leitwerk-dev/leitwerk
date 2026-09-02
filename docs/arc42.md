@@ -109,10 +109,11 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 
 ### 6.1 Process Launch Phase
 
-1. **Trigger & Resolution:** A manual launcher, automated watcher, or API adapter constructs the canonical launch configuration (`params`, `projects`, initial entry turn).
-2. **ProcessEngine Coordination:** The server acquires exclusive coordination for the new process key to prevent concurrent creation collisions.
-3. **Durable Seeding:** `ProcessLaunchExecutor` validates parameters, creates the `process_instances` row in SQLite, seeds repository metadata, and commits the initial process state.
-4. **Post-Commit Reaction:** After commit and lock release, the server broadcasts process creation and schedules worker activation for the primary entry turn.
+1. **Source Admission:** UI, trusted programmatic, watcher, and due-schedule adapters apply source-specific resolution, deduplication, and scheduling policy. Trusted extensions submit launcher input and an idempotency key through launch admission; the raw process executor remains server-internal.
+2. **Shared Launch Pipeline:** The server records a durable `LaunchRun`, validates the request, runs ordered preparation checks, and prepares models and skills. Immediate HTTP launches use `POST /api/launchers/:launcherId/launch-runs`. `POST /api/launchers/:launcherId/future-launches` persists future launches without creating a startup checklist. `future-execution/launch-lifecycle.ts` owns future-launch creation and revision; future actions remain in the future-execution facade.
+3. **Durable Seeding:** `ProcessLaunchExecutor` validates final pre-commit requirements, creates the process and repository state, and correlates the launch run in one transaction. A scheduled occurrence is consumed or advanced in the same transaction.
+4. **Post-Commit Reaction:** After commit and lock release, the server broadcasts process creation and schedules worker activation for the primary entry turn. Reaction failure does not erase the committed process.
+5. **Startup Observation:** Lease, connection, bootstrap, readiness, and accepted-turn records drive startup progress. `LaunchRun` state is not authoritative startup evidence.
 
 ### 6.2 Turn Execution Phase
 

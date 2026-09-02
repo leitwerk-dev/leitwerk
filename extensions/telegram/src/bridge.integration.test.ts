@@ -265,10 +265,10 @@ function setupLaunchBridge(
 	const client = new FakeTelegramClient();
 	const events = createEventBus();
 	const launcher = testLauncher();
-	const createProcessFromLaunchPlan = vi.fn(async () => ({
-		ok: true as const,
+	const startProgrammatic = vi.fn(async () => ({
+		launchRunId: "lnr_telegram",
 		process: launchedProcess,
-		projects: [],
+		error: null,
 	}));
 	const resolveUiLauncher =
 		options.resolveUiLauncher ??
@@ -325,7 +325,7 @@ function setupLaunchBridge(
 			preview: async () => options.modelPreview ?? null,
 		},
 		launchPlans: { prepare: prepareLaunchPlan },
-		processLaunches: { createProcessFromLaunchPlan },
+		launchRuns: { startProgrammatic },
 	});
 	const bridge = new TelegramBridge({ config: testConfig(), deps, client });
 	bridge.register(events);
@@ -335,7 +335,7 @@ function setupLaunchBridge(
 		bridge,
 		launcher,
 		launchedProcess,
-		createProcessFromLaunchPlan,
+		startProgrammatic,
 		resolveUiLauncher,
 		prepareLaunchPlan,
 		recordRecentValues,
@@ -595,20 +595,21 @@ describe("TelegramBridge", () => {
 	});
 
 	it("launches a process from an unmapped topic and claims that topic for the process", async () => {
-		const { bridge, client, createProcessFromLaunchPlan, recordRecentValues } = setupLaunchBridge();
+		const { bridge, client, startProgrammatic, recordRecentValues } = setupLaunchBridge();
 		await bridge.start();
 
 		await completeLaunchFormToReview(client);
 		expect(findCallbackData(client, "Change models")).toBeUndefined();
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledWith(expect.any(Object), {
+		expect(startProgrammatic).toHaveBeenCalledOnce();
+		expect(startProgrammatic).toHaveBeenCalledWith(expect.any(Object), {
 			actor: TELEGRAM_ACTOR,
+			idempotencyKey: expect.stringMatching(/^telegram:/),
 		});
 		expect(recordRecentValues).toHaveBeenCalledWith("test.launcher", expect.any(Object));
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.metadata).toMatchObject({
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.processMetadata).toMatchObject({
 			telegram: {
 				launchThread: {
 					mode: "forum_topic",
@@ -620,7 +621,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("allows Telegram launchers to change default and per-turn models", async () => {
-		const { bridge, client, createProcessFromLaunchPlan, prepareLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic, prepareLaunchPlan } = setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
@@ -636,7 +637,7 @@ describe("TelegramBridge", () => {
 		await sendUnmappedTopicText(client, "/skip");
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
+		expect(startProgrammatic).toHaveBeenCalledOnce();
 		expect(prepareLaunchPlan).toHaveBeenLastCalledWith(
 			expect.any(Object),
 			expect.objectContaining({
@@ -647,15 +648,15 @@ describe("TelegramBridge", () => {
 				},
 			}),
 		);
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.defaultModelProfileId).toBe("local_qwen");
-		expect(submittedPlan.processInput.turnConfigsJson).toBe(
-			JSON.stringify({ draft_plan: { modelProfileId: "claude_fast" } }),
-		);
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.modelConfig).toEqual({
+			defaultModelProfileId: "local_qwen",
+			turnConfigs: { draft_plan: { modelProfileId: "claude_fast" } },
+		});
 	});
 
 	it("keeps Telegram model edit open when a typed model profile is invalid", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
@@ -665,13 +666,13 @@ describe("TelegramBridge", () => {
 		await clickUnmappedTopicButton(client, "Change models");
 		await sendUnmappedTopicText(client, "missing_model");
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages.at(-1)?.text).toContain("must match an available model profile");
 		expect(client.sentMessages.at(-1)?.replyMarkup).toBeTruthy();
 	});
 
 	it("offers launcher recent values as field buttons", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			recentValues: { prompt: ["Use remembered prompt"] },
 		});
 		await bridge.start();
@@ -681,9 +682,9 @@ describe("TelegramBridge", () => {
 		await clickUnmappedTopicButton(client, "Develop");
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.paramsJson).toContain("Use remembered prompt");
+		expect(startProgrammatic).toHaveBeenCalledOnce();
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.launcherInput).toMatchObject({ prompt: "Use remembered prompt" });
 	});
 
 	it("keeps a launch draft open when launcher validation rejects a field", async () => {
@@ -691,7 +692,7 @@ describe("TelegramBridge", () => {
 			ok: false as const,
 			errors: [{ code: "invalid", message: "Prompt is required", fieldId: "prompt" }],
 		}));
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			resolveUiLauncher,
 		});
 		await bridge.start();
@@ -700,7 +701,7 @@ describe("TelegramBridge", () => {
 		await sendUnmappedTopicText(client, "bad prompt");
 		await clickUnmappedTopicButton(client, "Develop");
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages.at(-1)?.replyMarkup).toBeTruthy();
 	});
 
@@ -728,12 +729,12 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not allow non-allowlisted users to launch processes", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge();
+		const { bridge, client, startProgrammatic } = setupLaunchBridge();
 		await bridge.start();
 
 		await sendUnmappedTopicText(client, "/launch test.launcher", 777, { from: { id: 999 } });
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages).toHaveLength(0);
 	});
 

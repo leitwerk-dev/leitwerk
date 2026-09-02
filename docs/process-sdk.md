@@ -290,7 +290,21 @@ api.launcher({
 });
 ```
 
-### 2. Watchers (`api.watcher`)
+### 2. Programmatic launcher admission
+
+Trusted operator-channel extensions start processes through
+`deps.launchRuns.startProgrammatic(...)`. The operation accepts launcher input, optional model,
+skill, title, and bounded non-secret process metadata, plus a required caller idempotency key. The
+server creates the `LaunchRun`, repeats launcher resolution and preparation checks, prepares the
+launch plan, and commits through the shared pipeline. Extensions never call the raw process launch
+executor or supply a `launchRunId`.
+
+The call returns after process commit so the channel can report the process link. Worker startup
+remains asynchronous and is established only by lease, readiness, bootstrap, and accepted-turn
+evidence. A returned process remains authoritative even when the result also contains a follow-up
+error.
+
+### 3. Watchers (`api.watcher`)
 
 A **Watcher** monitors an extension-owned event source and constructs launch configs without human interaction. The extension owns its typed source, configuration parser, presentation, polling, and provider adapter. See [Watchers](watchers.md) for the source, process binding, and configuration contracts.
 
@@ -337,13 +351,13 @@ failure.
 ### Launch preparation checks
 
 A UI launcher may return ordered `preparationChecks`. Each check has a stable unique id, an
-operator label, and an asynchronous `run` function. The launch coordinator owns checklist state.
+operator label, and an asynchronous `run` function. The server launch pipeline owns checklist state.
 A check returns on success or throws `SafeLaunchPreparationError` with bounded remediation.
 The context supplies cancellation, the resolved launch configuration, and a safe logger. It does
 not grant checklist mutation or ambient credentials. Launchers without checks receive the core
 launch checklist.
 
 Watcher definitions use the same preparation-check contract. Polling providers submit watcher
-events through the server-owned launch-run service. The launch coordinator creates the durable
-run before resolving the event, executes checks, prepares model selections, and commits the
-process with the watcher deduplication key.
+events through the server-owned launch-run service. Watcher admission supplies the stable event
+key and source policy. The shared launch pipeline then resolves the event, executes checks,
+prepares model selections, and commits the process with the watcher deduplication key.

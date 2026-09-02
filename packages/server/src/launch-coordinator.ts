@@ -1,18 +1,13 @@
+import type { Actor, LaunchRun, ProcessInstance } from "@leitwerk-dev/domain";
 import type {
-	Actor,
-	LaunchChecklistStep,
-	LaunchChecklistStepStatus,
-	LaunchRun,
-	ProcessInstance,
-} from "@leitwerk-dev/domain";
-import {
-	type LaunchPreparationCheck,
-	type ProcessLaunchConfig,
-	type ProcessLaunchExecutorLike,
-	type ProcessLauncherService,
-	type ProcessLaunchPlanServiceLike,
-	type RegisteredProcessWatcherLike,
-	SafeLaunchPreparationError,
+	LaunchPreparationCheck,
+	ProcessLauncherService,
+	ProcessLaunchPlan,
+	ProcessLaunchPlanServiceLike,
+	ProgrammaticLaunchRequestLike,
+	ProgrammaticLaunchResultLike,
+	RegisteredProcessWatcherLike,
+	ResolvedProcessLauncher,
 } from "@leitwerk-dev/process-sdk";
 import type { WorkerBootstrapProgressPayload } from "@leitwerk-dev/worker-protocol";
 import type { WorkerStartPhase } from "@leitwerk-dev/worker-runners/types";
@@ -21,47 +16,79 @@ import type {
 	FutureExecutionLifecycle,
 	LaunchMutationOutcome,
 	NormalizedScheduledLaunchInput,
+	PreparedLaunch,
 } from "./future-execution/index.js";
+import { watcherAdmissionKey, withWatcherHandoffDedupKey } from "./launch-idempotency.js";
+import {
+	failLaunchRun,
+	finishLaunchRun,
+	initialLaunchSteps,
+	type LaunchPipeline,
+	type LaunchStageFailure,
+} from "./launch-pipeline.js";
+import {
+	cancelLaunchRun,
+	observeBootstrapProgress as projectBootstrapProgress,
+	observeFirstTurnStarted as projectFirstTurnStarted,
+	observeRunnerPhase as projectRunnerPhase,
+	observeTitle as projectTitle,
+	observeWorkerFailure as projectWorkerFailure,
+	observeWorkerReady as projectWorkerReady,
+	reconcileCommittedLaunch,
+	startupEvidenceScore,
+} from "./launch-run-progress.js";
+import type { ProcessLaunchExecutorLike } from "./process-launch-executor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
-const CORE_STEPS = [
-	["validate_request", "Validate launch request"],
-	["resolve_models_skills", "Resolve models and skills"],
-	["create_process", "Create process"],
-	["choose_title", "Choose process title"],
-	["start_worker", "Start worker"],
-	["connect_worker", "Connect worker"],
-	["prepare_workspace", "Prepare workspace"],
-	["start_first_turn", "Start first turn"],
-] as const;
-
-const STATUS_RANK: Record<LaunchChecklistStepStatus, number> = {
-	pending: 0,
-	in_progress: 1,
-	completed: 2,
-	skipped: 2,
-	failed: 2,
-};
-
-const STARTUP_STEP_IDS = [
-	"start_worker",
-	"connect_worker",
-	"prepare_workspace",
-	"start_first_turn",
-] as const;
-
 const NOOP_LAUNCH_LOGGER = { info() {}, warn() {} };
+const MAX_PROGRAMMATIC_METADATA_BYTES = 16 * 1024;
+
+function isMetadataRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function mergeProcessMetadata(
+	base: Record<string, unknown> | null | undefined,
+	patch: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!patch) return base ?? undefined;
+	if (Object.hasOwn(patch, "launcherId")) {
+		throw new Error("Programmatic process metadata cannot overwrite server-owned launcherId");
+	}
+	const encoded = JSON.stringify(patch);
+	if (encoded.length > MAX_PROGRAMMATIC_METADATA_BYTES) {
+		throw new Error("Programmatic process metadata exceeds 16 KiB");
+	}
+	const merge = (left: Record<string, unknown>, right: Record<string, unknown>) => {
+		const result = { ...left };
+		for (const [key, value] of Object.entries(right)) {
+			if (["__proto__", "constructor", "prototype"].includes(key)) {
+				throw new Error("Programmatic process metadata contains a forbidden key");
+			}
+			result[key] =
+				isMetadataRecord(result[key]) && isMetadataRecord(value)
+					? merge(result[key] as Record<string, unknown>, value)
+					: value;
+		}
+		return result;
+	};
+	return merge(base ?? {}, patch);
+}
 
 export interface StartLaunchRequest {
 	launcherId: string;
 	idempotencyKey?: string | null;
 	request: NormalizedScheduledLaunchInput;
 	actor: Actor;
+	processMetadata?: Record<string, unknown>;
 }
 
 export interface LaunchCoordinator {
 	start(request: StartLaunchRequest): Promise<{ launchRunId: string }>;
-	startBlocking(request: StartLaunchRequest): Promise<LaunchMutationOutcome>;
+	startProgrammatic(
+		request: ProgrammaticLaunchRequestLike,
+		opts: { idempotencyKey: string; actor: Actor },
+	): Promise<ProgrammaticLaunchResultLike>;
 	startWatcher<TConfig, TEvent>(
 		watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
 		event: TEvent,
@@ -71,15 +98,6 @@ export interface LaunchCoordinator {
 			processLaunches: ProcessLaunchExecutorLike;
 		},
 	): Promise<{ launchRunId: string; process: ProcessInstance | null; error: string | null }>;
-	beginScheduled(launcherId: string | null, idempotencyKey: string): { launchRunId: string };
-	observeScheduledPrepared(launchRunId: string): void;
-	observeScheduledCommitted(
-		launchRunId: string,
-		process: ProcessInstance,
-		startTurnId: string | null,
-		reactionError?: string,
-	): void;
-	failScheduled(launchRunId: string, stepId: string, safeSummary: string): void;
 	retryStartup(instanceId: string, actor: Actor): Promise<{ launchRunId: string }>;
 	failStartupRetry(instanceId: string, safeSummary: string): void;
 	observeRunnerPhase(instanceId: string, workerId: string, phase: WorkerStartPhase): void;
@@ -108,205 +126,10 @@ interface LaunchCoordinatorDeps {
 	titleJobs: RepositoryBundle["titleJobs"];
 	launcherService: ProcessLauncherService;
 	futureExecutionLifecycle: FutureExecutionLifecycle;
+	launchPipeline: LaunchPipeline;
 	broadcaster: Broadcaster;
 	titleGenerationAvailable?: boolean;
 	logger?: { info(message: string): void; warn(message: string): void };
-}
-
-function step(id: string, label: string): LaunchChecklistStep {
-	return { id, label, status: "pending" };
-}
-
-function transitionStep(
-	run: LaunchRun,
-	id: string,
-	status: LaunchChecklistStepStatus,
-	safeSummary?: string,
-): LaunchRun {
-	const timestamp = new Date().toISOString();
-	return {
-		...run,
-		steps: run.steps.map((item) => {
-			if (item.id !== id || STATUS_RANK[status] < STATUS_RANK[item.status]) return item;
-			if (STATUS_RANK[status] === STATUS_RANK[item.status] && item.status !== status) return item;
-			return {
-				...item,
-				status,
-				...(status === "in_progress" && !item.startedAt ? { startedAt: timestamp } : {}),
-				...(["completed", "failed", "skipped"].includes(status) && !item.completedAt
-					? { completedAt: timestamp }
-					: {}),
-				...(safeSummary ? { safeSummary } : {}),
-			};
-		}),
-	};
-}
-
-type StepTransition = {
-	id: string;
-	status: LaunchChecklistStepStatus;
-	safeSummary?: string;
-};
-
-function applyTransitions(run: LaunchRun, transitions: readonly StepTransition[]): LaunchRun {
-	return transitions.reduce(
-		(next, transition) =>
-			transitionStep(next, transition.id, transition.status, transition.safeSummary),
-		run,
-	);
-}
-
-const RUNNER_PHASE_TRANSITIONS: Partial<Record<WorkerStartPhase, readonly StepTransition[]>> = {
-	preparing_runtime: [{ id: "start_worker", status: "in_progress" }],
-	starting_runtime: [
-		{ id: "start_worker", status: "completed" },
-		{ id: "connect_worker", status: "in_progress" },
-	],
-};
-
-const BOOTSTRAP_PHASE_TRANSITIONS: Record<
-	WorkerBootstrapProgressPayload["phase"],
-	readonly StepTransition[]
-> = {
-	worker_connected: [{ id: "connect_worker", status: "completed" }],
-	preparing_workspace: [
-		{ id: "connect_worker", status: "completed" },
-		{ id: "prepare_workspace", status: "in_progress" },
-	],
-	loading_resources: [
-		{ id: "connect_worker", status: "completed" },
-		{ id: "prepare_workspace", status: "in_progress" },
-	],
-	preparing_turn: [
-		{ id: "prepare_workspace", status: "completed" },
-		{ id: "start_first_turn", status: "in_progress" },
-	],
-};
-
-function initialSteps(): LaunchChecklistStep[] {
-	return CORE_STEPS.map(([id, label]) => step(id, label));
-}
-
-function withPreparationChecks(
-	run: LaunchRun,
-	checks: readonly LaunchPreparationCheck[],
-): LaunchRun {
-	if (checks.length === 0) return run;
-	return {
-		...run,
-		steps: [
-			run.steps[0] as LaunchChecklistStep,
-			...checks.map(
-				(check) =>
-					run.steps.find((item) => item.id === `check:${check.id}`) ??
-					step(`check:${check.id}`, check.label),
-			),
-			...run.steps.slice(1).filter((item) => !item.id.startsWith("check:")),
-		],
-	};
-}
-
-function finishRun(run: LaunchRun, status: "failed" | "cancelled"): LaunchRun {
-	return { ...run, status, completedAt: run.completedAt ?? new Date().toISOString() };
-}
-
-function failRun(run: LaunchRun, stepId: string, summary: string): LaunchRun {
-	return finishRun(transitionStep(run, stepId, "failed", summary), "failed");
-}
-
-function titleStepStatus(
-	process: Pick<ProcessInstance, "title">,
-	titleGenerationAvailable: boolean | undefined,
-): LaunchChecklistStepStatus {
-	return process.title ? "completed" : titleGenerationAvailable ? "in_progress" : "skipped";
-}
-
-function recordCommittedProcess(
-	run: LaunchRun,
-	process: ProcessInstance,
-	startTurnId: string | null | undefined,
-	titleGenerationAvailable: boolean | undefined,
-): LaunchRun {
-	let next = applyTransitions(run, [
-		{ id: "resolve_models_skills", status: "completed" },
-		{ id: "create_process", status: "completed" },
-		{
-			id: "choose_title",
-			status: titleStepStatus(process, titleGenerationAvailable),
-		},
-	]);
-	if (!startTurnId) {
-		next = applyTransitions(
-			next,
-			STARTUP_STEP_IDS.map((id) => ({ id, status: "skipped" as const })),
-		);
-	}
-	return { ...next, instanceId: process.id, status: "starting" };
-}
-
-function activeStepId(run: LaunchRun): string {
-	return run.steps.find((item) => item.status === "in_progress")?.id ?? "validate_request";
-}
-
-function activeStartupStep(run: LaunchRun): string {
-	return (
-		[...STARTUP_STEP_IDS]
-			.reverse()
-			.find((id) => run.steps.some((item) => item.id === id && item.status === "in_progress")) ??
-		"start_worker"
-	);
-}
-
-function finishCommittedProcess(
-	run: LaunchRun,
-	process: ProcessInstance,
-	startTurnId: string | null | undefined,
-	titleGenerationAvailable: boolean | undefined,
-	reactionError?: string,
-): LaunchRun {
-	const next = recordCommittedProcess(run, process, startTurnId, titleGenerationAvailable);
-	return reactionError ? failRun(next, "start_worker", reactionError) : completeWhenReady(next);
-}
-
-function startupComplete(run: LaunchRun): boolean {
-	const required = run.steps.filter((item) =>
-		[...STARTUP_STEP_IDS, "choose_title"].includes(item.id as (typeof STARTUP_STEP_IDS)[number]),
-	);
-	return required.every((item) => ["completed", "skipped", "failed"].includes(item.status));
-}
-
-function completeWhenReady(run: LaunchRun): LaunchRun {
-	if (run.status === "failed" || run.status === "cancelled") return run;
-	if (!startupComplete(run)) return { ...run, status: "starting" };
-	return {
-		...run,
-		status: "completed",
-		completedAt: run.completedAt ?? new Date().toISOString(),
-	};
-}
-
-function applyAuthoritativeStartupEvidence(
-	run: LaunchRun,
-	evidence: {
-		leaseState?: string;
-		hasBootstrapReceipt: boolean;
-		hasTurn: boolean;
-	},
-): LaunchRun {
-	let next = run;
-	if (evidence.leaseState) {
-		next = applyTransitions(next, RUNNER_PHASE_TRANSITIONS.starting_runtime ?? []);
-		if (evidence.leaseState !== "spawning") {
-			next = applyTransitions(next, BOOTSTRAP_PHASE_TRANSITIONS.worker_connected);
-		}
-	}
-	if (evidence.hasBootstrapReceipt) {
-		next = applyTransitions(next, [{ id: "prepare_workspace", status: "completed" }]);
-	}
-	if (evidence.hasTurn) {
-		next = applyTransitions(next, [{ id: "start_first_turn", status: "completed" }]);
-	}
-	return next;
 }
 
 export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoordinator {
@@ -332,52 +155,9 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		broadcastCreated?: boolean;
 	}): LaunchRun {
 		const { broadcastCreated = true, ...createInput } = input;
-		const run = deps.launchRuns.create({ ...createInput, steps: initialSteps() });
+		const run = deps.launchRuns.create({ ...createInput, steps: initialLaunchSteps() });
 		if (broadcastCreated) broadcast(run);
 		return run;
-	}
-
-	function createUiRun(input: StartLaunchRequest): LaunchRun {
-		const run = createRun({
-			launcherId: input.launcherId,
-			idempotencyKey: input.idempotencyKey,
-			origin: "ui",
-		});
-		deps.launchRuns.saveReplay(run.id, input);
-		return run;
-	}
-
-	function fail(runId: string, stepId: string, summary: string): void {
-		mutate(runId, (run) => failRun(run, stepId, summary));
-	}
-
-	async function runPreparationChecks(
-		runId: string,
-		checks: readonly LaunchPreparationCheck[],
-		launchConfig: ProcessLaunchConfig,
-	): Promise<string | null> {
-		const controller = new AbortController();
-		for (const check of checks) {
-			const id = `check:${check.id}`;
-			mutate(runId, (run) => transitionStep(run, id, "in_progress"));
-			try {
-				await check.run({
-					signal: controller.signal,
-					launchConfig,
-					logger: deps.logger ?? NOOP_LAUNCH_LOGGER,
-				});
-				mutate(runId, (run) => transitionStep(run, id, "completed"));
-			} catch (error) {
-				controller.abort();
-				const summary =
-					error instanceof SafeLaunchPreparationError
-						? error.safeSummary
-						: "The preparation check did not complete. Verify access and try again.";
-				fail(runId, id, summary);
-				return summary;
-			}
-		}
-		return null;
 	}
 
 	function currentRun(instanceId: string, includeCompletedTitle = false): LaunchRun | null {
@@ -406,90 +186,153 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		return run ? mutate(run.id, fn) : null;
 	}
 
+	function failure<T>(safeSummary: string, value: T): LaunchStageFailure<T> {
+		return { safeSummary, value };
+	}
+
+	function bindChecks(
+		checks: readonly LaunchPreparationCheck[],
+		launchConfig: Parameters<LaunchPreparationCheck["run"]>[0]["launchConfig"],
+	) {
+		return checks.map((check) => ({
+			id: check.id,
+			label: check.label,
+			run: ({ signal, logger }: { signal: AbortSignal; logger: typeof NOOP_LAUNCH_LOGGER }) =>
+				check.run({ signal, logger, launchConfig }),
+		}));
+	}
+
 	async function execute(runId: string, input: StartLaunchRequest): Promise<LaunchMutationOutcome> {
 		try {
-			mutate(runId, (run) => transitionStep(run, "validate_request", "in_progress"));
-			if (input.request.schedule.mode !== "now") {
-				fail(runId, "validate_request", "Use the scheduling controls to save a future launch.");
-				return deps.futureExecutionLifecycle.scheduleLaunch(input.launcherId, input.request, {
-					actor: input.actor,
-				});
-			}
-			const resolved = await deps.launcherService.resolveUiLauncher(
-				input.launcherId,
-				input.request.launcherInput,
-			);
-			if (!resolved.ok) {
-				fail(runId, "validate_request", "Review the highlighted launcher fields and try again.");
-				return deps.futureExecutionLifecycle.scheduleLaunch(input.launcherId, input.request, {
-					actor: input.actor,
-				});
-			}
-			mutate(runId, (run) => transitionStep(run, "validate_request", "completed"));
-
-			const checks =
-				deps.launcherService.resolvePreparationChecks?.(
-					input.launcherId,
-					input.request.launcherInput,
-					resolved.launcher.launchConfig,
-				) ?? [];
-			mutate(runId, (run) => withPreparationChecks(run, checks));
-			if (await runPreparationChecks(runId, checks, resolved.launcher.launchConfig)) {
-				return {
-					kind: "invalid",
-					issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
-				};
-			}
-
-			mutate(runId, (run) => transitionStep(run, "resolve_models_skills", "in_progress"));
-			const result = await deps.futureExecutionLifecycle.scheduleLaunch(
-				input.launcherId,
-				input.request,
-				{
-					actor: input.actor,
-					launchRunId: runId,
-					resolvedLauncher: resolved.launcher,
+			const pipelineResult = await deps.launchPipeline.run<
+				StartLaunchRequest,
+				ResolvedProcessLauncher,
+				PreparedLaunch,
+				LaunchMutationOutcome,
+				unknown
+			>(runId, input, {
+				async resolve(request) {
+					if (request.request.schedule.mode !== "now") {
+						return {
+							kind: "failed" as const,
+							failure: failure("Use the scheduling controls to save a future launch.", {
+								kind: "invalid",
+								issues: [
+									{
+										code: "invalid_schedule",
+										message: "Immediate launches require schedule mode 'now'",
+									},
+								],
+							} as LaunchMutationOutcome),
+						};
+					}
+					const resolved = await deps.launcherService.resolveUiLauncher(
+						request.launcherId,
+						request.request.launcherInput,
+					);
+					return resolved.ok
+						? { kind: "resolved" as const, value: resolved.launcher }
+						: {
+								kind: "failed" as const,
+								failure: failure("Review the highlighted launcher fields and try again.", {
+									kind: "invalid",
+									issues: resolved.errors,
+								} as LaunchMutationOutcome),
+							};
 				},
-			);
-			if (result.kind === "committed_with_reaction_error" && "process" in result) {
-				mutate(runId, (run) =>
-					finishCommittedProcess(
-						run,
-						result.process,
-						resolved.launcher.launchPlan.startTurnId,
-						deps.titleGenerationAvailable,
-						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
-					),
-				);
-				return result;
+				preparationChecks(resolved) {
+					const checks =
+						deps.launcherService.resolvePreparationChecks?.(
+							input.launcherId,
+							input.request.launcherInput,
+							resolved.launchConfig,
+						) ?? [];
+					return bindChecks(checks, resolved.launchConfig);
+				},
+				preparationCheckFailure() {
+					return {
+						kind: "invalid",
+						issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
+					} as LaunchMutationOutcome;
+				},
+				async prepare(resolved) {
+					const prepared = await deps.futureExecutionLifecycle.prepareLaunch(
+						input.launcherId,
+						input.request,
+						{ resolvedLauncher: resolved },
+					);
+					return prepared.ok
+						? {
+								ok: true as const,
+								value: input.processMetadata
+									? {
+											...prepared.prepared,
+											launchPlan: {
+												...prepared.prepared.launchPlan,
+												processInput: {
+													...prepared.prepared.launchPlan.processInput,
+													metadata: mergeProcessMetadata(
+														prepared.prepared.launchPlan.processInput.metadata,
+														input.processMetadata,
+													),
+												},
+											},
+										}
+									: prepared.prepared,
+							}
+						: {
+								ok: false as const,
+								failure: failure(
+									"Review the launch configuration and try again.",
+									prepared.outcome,
+								),
+							};
+				},
+				async commit(prepared, ctx) {
+					const result = await deps.futureExecutionLifecycle.commitPreparedLaunch(prepared, {
+						actor: input.actor,
+						launchRunId: ctx.launchRunId,
+					});
+					if (result.kind === "launched") {
+						return {
+							kind: "committed" as const,
+							result,
+							process: result.process,
+							startTurnId: prepared.launchPlan.startTurnId,
+							reused: false,
+						};
+					}
+					if (result.kind === "committed_with_reaction_error" && "process" in result) {
+						return {
+							kind: "committed_with_reaction_error" as const,
+							result,
+							process: result.process,
+							startTurnId: prepared.launchPlan.startTurnId,
+							safeSummary:
+								"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+						};
+					}
+					return {
+						kind: "failed" as const,
+						failure: failure(
+							"The process could not be created. Check availability and try again.",
+							result,
+						),
+					};
+				},
+				unexpectedFailure() {
+					return failure("The launch could not be completed. Try again.", {
+						kind: "failed",
+						issue: { code: "launch_failed", message: "The launch could not be completed" },
+					} as LaunchMutationOutcome);
+				},
+			});
+			if (pipelineResult.kind === "failed")
+				return pipelineResult.failure.value as LaunchMutationOutcome;
+			if (pipelineResult.kind === "skipped") {
+				return { kind: "failed", issue: { code: "launch_skipped", message: "Launch skipped" } };
 			}
-			if (result.kind !== "launched") {
-				fail(
-					runId,
-					"resolve_models_skills",
-					result.kind === "invalid"
-						? "Review the launch configuration and try again."
-						: "The process could not be prepared. Check availability and try again.",
-				);
-				return result;
-			}
-			mutate(runId, (run) =>
-				finishCommittedProcess(
-					run,
-					result.process,
-					resolved.launcher.launchPlan.startTurnId,
-					deps.titleGenerationAvailable,
-				),
-			);
-			return result;
-		} catch {
-			const current = deps.launchRuns.getById(runId);
-			fail(
-				runId,
-				current ? activeStepId(current) : "validate_request",
-				"The launch could not be completed. Try again.",
-			);
-			throw new Error("The launch could not be completed");
+			return pipelineResult.result;
 		} finally {
 			deps.launchRuns.deleteReplay(runId);
 		}
@@ -497,26 +340,79 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 
 	return {
 		async start(input) {
-			const existing = input.idempotencyKey
-				? deps.launchRuns.getByIdempotencyKey(input.idempotencyKey)
-				: null;
-			if (existing) return { launchRunId: existing.id };
-			const run = createUiRun(input);
+			const opened = deps.launchPipeline.open({
+				launcherId: input.launcherId,
+				idempotencyKey: input.idempotencyKey,
+				origin: "ui",
+			});
+			if (opened.existing) return { launchRunId: opened.launchRunId };
+			deps.launchRuns.saveReplay(opened.launchRunId, input);
 			setTimeout(() => {
-				void execute(run.id, input).catch(() => {
-					deps.logger?.warn(`Launch run '${run.id}' failed unexpectedly`);
+				void execute(opened.launchRunId, input).catch(() => {
+					deps.logger?.warn(`Launch run '${opened.launchRunId}' failed unexpectedly`);
 				});
 			}, 0);
-			return { launchRunId: run.id };
+			return { launchRunId: opened.launchRunId };
 		},
 
-		async startBlocking(input) {
-			const run = createUiRun(input);
-			return execute(run.id, input);
+		async startProgrammatic(request, opts) {
+			mergeProcessMetadata(undefined, request.processMetadata);
+			const idempotencyKey = opts.idempotencyKey.trim();
+			if (!idempotencyKey) throw new Error("Programmatic launch idempotency key is required");
+			const existing = deps.launchRuns.getByIdempotencyKey(idempotencyKey);
+			if (existing) {
+				return {
+					launchRunId: existing.id,
+					process: existing.instanceId ? deps.processes.getById(existing.instanceId) : null,
+					error: existing.status === "failed" ? "The previous launch attempt failed." : null,
+				};
+			}
+			const input: StartLaunchRequest = {
+				launcherId: request.launcherId,
+				idempotencyKey,
+				request: {
+					title: request.title?.trim() || null,
+					titleProvided: request.title !== undefined,
+					launcherInput: request.launcherInput,
+					launcherInputProvided: true,
+					...(request.skillIds ? { skillIds: [...request.skillIds] } : {}),
+					modelConfig: request.modelConfig ?? {},
+					modelConfigProvided: request.modelConfig !== undefined,
+					schedule: { mode: "now" },
+					scheduleProvided: true,
+				},
+				actor: opts.actor,
+				...(request.processMetadata ? { processMetadata: request.processMetadata } : {}),
+			};
+			const opened = deps.launchPipeline.open({
+				launcherId: request.launcherId,
+				idempotencyKey,
+				origin: "programmatic",
+			});
+			deps.launchRuns.saveReplay(opened.launchRunId, input);
+			const result = await execute(opened.launchRunId, input);
+			if (result.kind === "launched" || result.kind === "committed_with_reaction_error") {
+				return {
+					launchRunId: opened.launchRunId,
+					process: "process" in result ? result.process : null,
+					error: result.kind === "committed_with_reaction_error" ? result.error : null,
+				};
+			}
+			return {
+				launchRunId: opened.launchRunId,
+				process: null,
+				error:
+					result.kind === "invalid"
+						? (result.issues[0]?.message ?? "Launch input is invalid")
+						: "issue" in result
+							? result.issue.message
+							: "The launch could not be completed",
+			};
 		},
 
 		async startWatcher(watcher, event, request, services) {
-			const existing = deps.launchRuns.getByIdempotencyKey(request.idempotencyKey);
+			const admissionKey = watcherAdmissionKey(request.idempotencyKey);
+			const existing = deps.launchRuns.getByIdempotencyKey(admissionKey);
 			if (existing && (existing.instanceId || !["failed", "cancelled"].includes(existing.status))) {
 				return {
 					launchRunId: existing.id,
@@ -524,141 +420,108 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					error: existing.status === "failed" ? "The previous launch attempt failed." : null,
 				};
 			}
-			if (existing) deps.launchRuns.archiveIdempotencyKey(existing.id, request.idempotencyKey);
-			const created = createRun({
+			if (existing) deps.launchRuns.archiveIdempotencyKey(existing.id, admissionKey);
+			const opened = deps.launchPipeline.open({
 				launcherId: `${watcher.processId}.${watcher.watcherId}`,
-				idempotencyKey: request.idempotencyKey,
+				idempotencyKey: admissionKey,
 				origin: "watcher",
 			});
-			const failWatcher = (stepId: string, summary: string) => {
-				fail(created.id, stepId, summary);
-				return { launchRunId: created.id, process: null, error: summary };
+			type WatcherAttempt = {
+				launchConfig: Parameters<LaunchPreparationCheck["run"]>[0]["launchConfig"];
+				launchPlan: ProcessLaunchPlan;
+				preparationChecks: readonly LaunchPreparationCheck[];
 			};
-			try {
-				mutate(created.id, (run) => transitionStep(run, "validate_request", "in_progress"));
-				const attempt = await watcher.resolveLaunchAttempt(event);
-				if (!attempt) {
-					mutate(created.id, (run) =>
-						finishRun(transitionStep(run, "validate_request", "skipped"), "cancelled"),
+			type WatcherResult = Awaited<
+				ReturnType<ProcessLaunchExecutorLike["createProcessFromLaunchPlan"]>
+			>;
+			const result = await deps.launchPipeline.run<
+				typeof event,
+				WatcherAttempt,
+				ProcessLaunchPlan,
+				WatcherResult,
+				unknown
+			>(opened.launchRunId, event, {
+				async resolve(value) {
+					const attempt = await watcher.resolveLaunchAttempt(value);
+					return attempt
+						? { kind: "resolved" as const, value: attempt }
+						: { kind: "skipped" as const };
+				},
+				preparationChecks(attempt) {
+					return bindChecks(attempt.preparationChecks, attempt.launchConfig);
+				},
+				async prepare(attempt) {
+					const prepared = await services.launchPlans.prepare(
+						withWatcherHandoffDedupKey(attempt.launchPlan, admissionKey),
+						{ modelConfig: watcher.launchModelConfig, invalidModelConfig: "omit" },
 					);
-					return { launchRunId: created.id, process: null, error: null };
-				}
-				mutate(created.id, (run) =>
-					withPreparationChecks(
-						transitionStep(run, "validate_request", "completed"),
-						attempt.preparationChecks,
-					),
-				);
-				const preparationError = await runPreparationChecks(
-					created.id,
-					attempt.preparationChecks,
-					attempt.launchConfig,
-				);
-				if (preparationError) {
-					return { launchRunId: created.id, process: null, error: preparationError };
-				}
-				mutate(created.id, (run) => transitionStep(run, "resolve_models_skills", "in_progress"));
-				const prepared = await services.launchPlans.prepare(
-					{ ...attempt.launchPlan, handoffDedupKey: request.idempotencyKey },
-					{ modelConfig: watcher.launchModelConfig, invalidModelConfig: "omit" },
-				);
-				if (!prepared.ok) {
-					return failWatcher(
-						"resolve_models_skills",
-						"The launch model configuration is unavailable. Review the watcher configuration.",
-					);
-				}
-				const result = await services.processLaunches.createProcessFromLaunchPlan(
-					prepared.launchPlan,
-					{ actor: request.actor, launchRunId: created.id },
-				);
-				if (!result.ok && result.stage === "pre_commit") {
-					return failWatcher(
-						"create_process",
-						"The process could not be created. Try again later.",
-					);
-				}
-				const process = result.process;
-				mutate(created.id, (run) => {
-					const next = finishCommittedProcess(
-						run,
-						process,
-						prepared.launchPlan.startTurnId,
-						deps.titleGenerationAvailable,
-						result.ok
-							? undefined
-							: "Process was created, but startup failed. Review the process error and retry startup.",
-					);
-					if (result.ok && result.reused) {
-						const lease = deps.leases.getByInstance(process.id);
-						const hasTurn = deps.turnRecords.listByInstance(process.id).length > 0;
-						if (hasTurn) return finishRun(next, "cancelled");
-						if (!lease || ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
-							return failRun(
-								next,
-								"start_worker",
-								"The existing process has not started a worker. Retry startup from the process page.",
-							);
-						}
+					return prepared.ok
+						? { ok: true as const, value: prepared.launchPlan }
+						: {
+								ok: false as const,
+								failure: failure(
+									"The launch model configuration is unavailable. Review the watcher configuration.",
+									prepared,
+								),
+							};
+				},
+				async commit(launchPlan, ctx) {
+					const created = await services.processLaunches.createProcessFromLaunchPlan(launchPlan, {
+						actor: request.actor,
+						launchRunId: ctx.launchRunId,
+					});
+					if (!created.ok && created.stage === "pre_commit") {
+						return {
+							kind: "failed" as const,
+							failure: failure("The process could not be created. Try again later.", created),
+						};
 					}
-					return next;
-				});
+					return created.ok
+						? {
+								kind: "committed" as const,
+								result: created,
+								process: created.process,
+								startTurnId: launchPlan.startTurnId,
+								reused: created.reused,
+							}
+						: {
+								kind: "committed_with_reaction_error" as const,
+								result: created,
+								process: created.process,
+								startTurnId: launchPlan.startTurnId,
+								safeSummary:
+									"Process was created, but startup failed. Review the process error and retry startup.",
+							};
+				},
+			});
+			if (result.kind === "skipped")
+				return { launchRunId: opened.launchRunId, process: null, error: null };
+			if (result.kind === "failed") {
 				return {
-					launchRunId: created.id,
-					process,
-					error: result.ok ? null : "Process startup failed.",
+					launchRunId: opened.launchRunId,
+					process: null,
+					error: result.failure.safeSummary,
 				};
-			} catch (error) {
-				const current = deps.launchRuns.getById(created.id);
-				return failWatcher(
-					current ? activeStepId(current) : "validate_request",
-					error instanceof SafeLaunchPreparationError
-						? error.safeSummary
-						: "The watcher launch could not be completed. Try again later.",
-				);
 			}
-		},
-
-		beginScheduled(launcherId, idempotencyKey) {
-			const existing = deps.launchRuns.getByIdempotencyKey(idempotencyKey);
-			if (existing) return { launchRunId: existing.id };
-			const run = createRun({
-				launcherId,
-				idempotencyKey,
-				origin: "scheduled",
-				broadcastCreated: false,
-			});
-			const updated = deps.launchRuns.update(run.id, (current) => {
-				let next = transitionStep(current, "validate_request", "completed");
-				next = transitionStep(next, "resolve_models_skills", "in_progress");
-				return next;
-			}) as LaunchRun;
-			broadcast(updated);
-			return { launchRunId: run.id };
-		},
-
-		observeScheduledPrepared(launchRunId) {
-			mutate(launchRunId, (run) => {
-				let next = transitionStep(run, "resolve_models_skills", "completed");
-				next = transitionStep(next, "create_process", "in_progress");
-				return next;
-			});
-		},
-
-		observeScheduledCommitted(launchRunId, process, startTurnId, reactionError) {
-			mutate(launchRunId, (run) =>
-				finishCommittedProcess(
-					run,
-					process,
-					startTurnId,
-					deps.titleGenerationAvailable,
-					reactionError,
-				),
-			);
-		},
-
-		failScheduled(launchRunId, stepId, safeSummary) {
-			fail(launchRunId, stepId, safeSummary);
+			if (result.kind === "committed" && result.reused) {
+				const hasTurn = deps.turnRecords.listByInstance(result.process.id).length > 0;
+				const lease = deps.leases.getByInstance(result.process.id);
+				if (hasTurn) mutate(opened.launchRunId, (run) => finishLaunchRun(run, "cancelled"));
+				else if (!lease || ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
+					mutate(opened.launchRunId, (run) =>
+						failLaunchRun(
+							run,
+							"start_worker",
+							"The existing process has not started a worker. Retry startup from the process page.",
+						),
+					);
+				}
+			}
+			return {
+				launchRunId: opened.launchRunId,
+				process: result.process,
+				error: result.kind === "committed_with_reaction_error" ? "Process startup failed." : null,
+			};
 		},
 
 		async retryStartup(instanceId) {
@@ -685,80 +548,43 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		failStartupRetry(instanceId, safeSummary) {
-			mutateCurrent(instanceId, null, (run) => failRun(run, "start_worker", safeSummary));
+			mutateCurrent(instanceId, null, (run) => failLaunchRun(run, "start_worker", safeSummary));
 		},
 
 		observeRunnerPhase(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => ({
-				...applyTransitions(run, RUNNER_PHASE_TRANSITIONS[phase] ?? []),
-				status: "starting",
-			}));
+			mutateCurrent(instanceId, workerId, (run) => projectRunnerPhase(run, phase));
 		},
 
 		observeBootstrapProgress(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => ({
-				...applyTransitions(run, BOOTSTRAP_PHASE_TRANSITIONS[phase]),
-				status: "starting",
-			}));
+			mutateCurrent(instanceId, workerId, (run) => projectBootstrapProgress(run, phase));
 		},
 
 		observeWorkerReady(instanceId, workerId) {
-			mutateCurrent(instanceId, workerId, (run) => {
-				let next = transitionStep(run, "prepare_workspace", "completed");
-				next = transitionStep(next, "start_first_turn", "in_progress");
-				return next;
-			});
+			mutateCurrent(instanceId, workerId, projectWorkerReady);
 		},
 
 		observeFirstTurnStarted(instanceId, workerId) {
-			mutateCurrent(instanceId, workerId, (run) =>
-				completeWhenReady(transitionStep(run, "start_first_turn", "completed")),
-			);
+			mutateCurrent(instanceId, workerId, projectFirstTurnStarted);
 		},
 
 		observeWorkerFailure(instanceId, workerId, safeSummary) {
-			mutateCurrent(instanceId, workerId, (run) => {
-				return failRun(run, activeStartupStep(run), safeSummary);
-			});
+			mutateCurrent(instanceId, workerId, (run) => projectWorkerFailure(run, safeSummary));
 		},
 
 		observeTitle(instanceId, status, safeSummary, launchRunId) {
 			if (launchRunId) {
 				const run = deps.launchRuns.getById(launchRunId);
 				if (run?.instanceId === instanceId) {
-					mutate(launchRunId, (current) =>
-						completeWhenReady(transitionStep(current, "choose_title", status, safeSummary)),
-					);
+					mutate(launchRunId, (current) => projectTitle(current, status, safeSummary));
 				}
 				return;
 			}
-			mutateCurrent(
-				instanceId,
-				null,
-				(run) => completeWhenReady(transitionStep(run, "choose_title", status, safeSummary)),
-				true,
-			);
+			mutateCurrent(instanceId, null, (run) => projectTitle(run, status, safeSummary), true);
 		},
 
 		async reconcileIncomplete() {
 			const incomplete = deps.launchRuns.listIncomplete();
 			const authoritativeByInstance = new Map<string, LaunchRun>();
-			const startupEvidenceScore = (run: LaunchRun) =>
-				(run.origin === "startup_retry" ? 100 : 0) +
-				run.steps
-					.filter((item) => STARTUP_STEP_IDS.includes(item.id as (typeof STARTUP_STEP_IDS)[number]))
-					.reduce(
-						(score, item) =>
-							score +
-							(item.status === "completed"
-								? 3
-								: item.status === "in_progress"
-									? 2
-									: item.status === "failed"
-										? 1
-										: 0),
-						0,
-					);
 			for (const run of incomplete) {
 				if (!run.instanceId) continue;
 				const current = authoritativeByInstance.get(run.instanceId);
@@ -768,12 +594,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			}
 			for (const run of incomplete) {
 				if (run.instanceId && authoritativeByInstance.get(run.instanceId)?.id !== run.id) {
-					mutate(run.id, (current) => finishRun(current, "cancelled"));
+					mutate(run.id, cancelLaunchRun);
 					continue;
 				}
 				if (!run.instanceId) {
 					const replay = deps.launchRuns.getReplay<StartLaunchRequest>(run.id);
-					if (run.origin === "ui" && replay) {
+					if (["ui", "programmatic"].includes(run.origin) && replay) {
 						await execute(run.id, replay);
 						continue;
 					}
@@ -796,7 +622,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				}
 				const process = deps.processes.getById(run.instanceId);
 				if (!process) {
-					mutate(run.id, (current) => finishRun(current, "cancelled"));
+					mutate(run.id, cancelLaunchRun);
 					continue;
 				}
 				const lease = deps.leases.getByInstance(run.instanceId);
@@ -804,36 +630,16 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				const titleJob = [...deps.titleJobs.listByProcessInstance(run.instanceId)]
 					.reverse()
 					.find((job) => job.launchRunId === run.id || job.launchRunId === null);
-				mutate(run.id, (current) => {
-					let next = applyTransitions(current, [{ id: "create_process", status: "completed" }]);
-					if (lease && ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
-						return failRun(
-							next,
-							activeStartupStep(next),
-							"Worker startup stopped before completion. Retry startup from the process page.",
-						);
-					}
-					next = applyAuthoritativeStartupEvidence(next, {
+				mutate(run.id, (current) =>
+					reconcileCommittedLaunch(current, {
+						process,
 						leaseState: lease?.state,
 						hasBootstrapReceipt: Boolean(lease?.bootstrapReceipt),
 						hasTurn,
-					});
-					if (process.title) {
-						next = applyTransitions(next, [{ id: "choose_title", status: "completed" }]);
-					} else if (!deps.titleGenerationAvailable) {
-						next = applyTransitions(next, [{ id: "choose_title", status: "skipped" }]);
-					} else if (titleJob?.status === "failed") {
-						next = applyTransitions(next, [
-							{
-								id: "choose_title",
-								status: "failed",
-								safeSummary:
-									"Process started, but a title could not be generated. You can rename it later.",
-							},
-						]);
-					}
-					return completeWhenReady({ ...next, status: lease ? "starting" : "process_created" });
-				});
+						titleGenerationAvailable: Boolean(deps.titleGenerationAvailable),
+						titleJobFailed: titleJob?.status === "failed",
+					}),
+				);
 			}
 		},
 	};

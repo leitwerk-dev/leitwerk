@@ -45,6 +45,7 @@ import {
 	IntegrationToolRegistry,
 } from "./integration-tool-registry.js";
 import { createLaunchCoordinator, type LaunchCoordinator } from "./launch-coordinator.js";
+import { createLaunchPipeline } from "./launch-pipeline.js";
 import { createLauncherModelConfigService } from "./launcher-model-config-service.js";
 import { createLauncherRecentValuesService } from "./launcher-recent-values-service.js";
 import {
@@ -912,6 +913,12 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		stopHooks.push(() => processTitles.close?.());
 	}
 
+	const launchPipeline = createLaunchPipeline({
+		launchRuns: baseDeps.launchRuns,
+		broadcaster,
+		titleGenerationAvailable: Boolean(processTitles),
+		logger: app.log,
+	});
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
 		futureExecutions: baseDeps.futureExecutions,
 		processes: baseDeps.processes,
@@ -933,7 +940,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		launchPlans,
 		modelStatusCache,
-		getLaunchCoordinator: () => launchCoordinator,
+		launchPipeline,
 		logger: app.log,
 	});
 	applyGeneratedFutureExecutionTitle = (input) =>
@@ -946,6 +953,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		titleJobs: baseDeps.titleJobs,
 		launcherService,
 		futureExecutionLifecycle,
+		launchPipeline,
 		broadcaster,
 		titleGenerationAvailable: Boolean(processTitles),
 		logger: app.log,

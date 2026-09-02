@@ -116,15 +116,10 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 				};
 			},
 		},
-		processLaunches: {
-			async createProcessFromLaunchConfig() {
-				throw new Error("not used");
-			},
-			async createProcessFromLaunchPlan() {
-				throw new Error("not used");
-			},
-		},
 		launchRuns: {
+			async startProgrammatic() {
+				throw new Error("not used");
+			},
 			async startWatcher() {
 				throw new Error("not used");
 			},
@@ -156,7 +151,7 @@ export function createTestServerSetupCapability(
 			...overrides.launcherModelConfigs,
 		},
 		launchPlans: { ...defaults.launchPlans, ...overrides.launchPlans },
-		processLaunches: { ...defaults.processLaunches, ...overrides.processLaunches },
+		launchRuns: { ...defaults.launchRuns, ...overrides.launchRuns },
 	};
 }
 

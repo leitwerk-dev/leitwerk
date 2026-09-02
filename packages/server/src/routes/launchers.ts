@@ -208,31 +208,36 @@ export function registerLauncherRoutes(
 	);
 
 	app.post<{ Params: { launcherId: string }; Body: unknown }>(
-		"/api/launchers/:launcherId/launch",
+		"/api/launchers/:launcherId/future-launches",
 		async (req, reply) => {
 			const normalized = normalizeLauncherRequest(req.body);
 			if (!normalized.ok) {
 				return sendLauncherRequestNormalizationError(reply, normalized.error);
 			}
+			if (normalized.request.schedule.mode === "now") {
+				return reply.code(400).send({
+					errors: [
+						{
+							code: "invalid_schedule",
+							message: "Future launches require schedule mode 'once' or 'cron'",
+						},
+					],
+				});
+			}
 
 			try {
-				const result =
-					normalized.request.schedule.mode === "now"
-						? await deps.launchCoordinator.startBlocking({
-								launcherId: req.params.launcherId,
-								request: normalized.request,
-								actor: resolveActor(req),
-							})
-						: await futureExecutionLifecycle.scheduleLaunch(
-								req.params.launcherId,
-								normalized.request,
-								{ actor: resolveActor(req) },
-							);
+				const prepared = await futureExecutionLifecycle.prepareLaunch(
+					req.params.launcherId,
+					normalized.request,
+				);
+				const result = prepared.ok
+					? await futureExecutionLifecycle.commitPreparedLaunch(prepared.prepared, {
+							actor: resolveActor(req),
+						})
+					: prepared.outcome;
 				return sendLauncherMutationResponse(reply, deps, result);
 			} catch (error) {
-				if (sendLauncherLookupFailure(reply, error)) {
-					return;
-				}
+				if (sendLauncherLookupFailure(reply, error)) return;
 				throw error;
 			}
 		},

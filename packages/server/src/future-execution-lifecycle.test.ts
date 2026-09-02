@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import { closeDatabase } from "./db/database.js";
 import { createFutureExecutionLifecycle } from "./future-execution/index.js";
+import { createLaunchPipeline } from "./launch-pipeline.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
 import type { ProcessEngine } from "./process-engine/types.js";
@@ -98,6 +99,10 @@ function createServiceHarness(
 			return [];
 		},
 	};
+	const launchPipeline = createLaunchPipeline({
+		launchRuns: deps.launchRuns,
+		broadcaster: deps.broadcaster,
+	});
 	const service = createFutureExecutionLifecycle({
 		...deps,
 		broadcaster: deps.broadcaster,
@@ -111,6 +116,7 @@ function createServiceHarness(
 		extensionHost: options.extensionHost,
 		processModelPolicy,
 		modelStatusCache,
+		launchPipeline,
 		processTitles: {
 			queueProcessTitleGeneration() {
 				if (options.failProcessTitleQueue) throw new Error("process title queue unavailable");
@@ -121,6 +127,16 @@ function createServiceHarness(
 		},
 	});
 	return { deps, service };
+}
+
+async function launch(
+	service: ReturnType<typeof createFutureExecutionLifecycle>,
+	launcherId: string,
+	request: Parameters<ReturnType<typeof createFutureExecutionLifecycle>["prepareLaunch"]>[1],
+	options?: { actor?: typeof ADMIN_ACTOR },
+) {
+	const prepared = await service.prepareLaunch(launcherId, request);
+	return prepared.ok ? service.commitPreparedLaunch(prepared.prepared, options) : prepared.outcome;
 }
 
 function createSchedulableActionRegistry(): ProcessActionRegistry {
@@ -213,7 +229,7 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: {},
@@ -237,7 +253,7 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: { repoLocator: "/tmp/repo" },
@@ -257,7 +273,8 @@ describe("FutureExecutionLifecycle", () => {
 	it("attests scheduled launches to the caller actor", async () => {
 		const { deps, service } = createServiceHarness();
 
-		const result = await service.scheduleLaunch(
+		const result = await launch(
+			service,
 			"demo.launcher",
 			{
 				title: null,
@@ -287,7 +304,7 @@ describe("FutureExecutionLifecycle", () => {
 			throw new Error("broadcast unavailable");
 		};
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: {},
@@ -703,6 +720,13 @@ describe("FutureExecutionLifecycle", () => {
 		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
 		if (kind === "launch") {
 			expect(deps.processes.listAll()).toHaveLength(1);
+			expect(
+				deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
+			).toMatchObject({
+				origin: "scheduled",
+				instanceId: deps.processes.listAll()[0]?.id,
+				status: "completed",
+			});
 		} else {
 			expect(executeProcessAction).toHaveBeenCalledOnce();
 		}
@@ -822,7 +846,37 @@ describe("FutureExecutionLifecycle", () => {
 		expect(deps.processes.listAll()).toHaveLength(0);
 	});
 
-	it("isolates unexpected due-row failures within a batch", async () => {
+	it("retries a scheduled preparation rejection without creating a process", async () => {
+		const { deps, service } = createServiceHarness({
+			launchPlans: {
+				async prepare(launchPlan) {
+					return {
+						ok: false as const,
+						launchPlan,
+						modelConfig: {},
+						errors: [{ code: "invalid_model_config" as const, message: "Model unavailable" }],
+					};
+				},
+			},
+		});
+		const execution = createDueLaunch(deps);
+
+		const result = await service.runDueWork(execution.nextRunAt);
+
+		expect(result.items).toContainEqual({
+			futureExecutionId: execution.id,
+			kind: "retry_scheduled",
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(
+			deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
+		).toMatchObject({
+			instanceId: null,
+			status: "failed",
+		});
+	});
+
+	it("maps unexpected preparation failures to retry and continues the batch", async () => {
 		let preparation = 0;
 		const { deps, service } = createServiceHarness({
 			launchPlans: {
@@ -840,8 +894,7 @@ describe("FutureExecutionLifecycle", () => {
 
 		expect(result.items).toContainEqual({
 			futureExecutionId: failing.id,
-			kind: "unexpected_error",
-			error: "preparation infrastructure failed",
+			kind: "retry_scheduled",
 		});
 		expect(result.items).toContainEqual({
 			futureExecutionId: succeeding.id,

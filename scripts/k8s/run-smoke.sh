@@ -137,9 +137,22 @@ launch_process() {
 	local launcher_id="$1"
 	local title="$2"
 	local input_json="$3"
-	local response
-	response="$(api_post "/api/launchers/${launcher_id}/launch" "{\"title\":\"${title}\",\"launcherInput\":${input_json}}")"
-	printf '%s' "${response}" | json_get "process.id"
+	local response launch_run_id instance_id=""
+	response="$(curl -fsS -X POST -H "Content-Type: application/json" \
+		-H "Idempotency-Key: k8s-smoke-$(date +%s)-${RANDOM}" \
+		-d "{\"title\":\"${title}\",\"launcherInput\":${input_json},\"schedule\":{\"mode\":\"now\"}}" \
+		"http://127.0.0.1:${local_port}/api/launchers/${launcher_id}/launch-runs")"
+	launch_run_id="$(printf '%s' "${response}" | json_get "launchRunId")"
+	for _ in $(seq 1 90); do
+		response="$(api_get "/api/launch-runs/${launch_run_id}")"
+		instance_id="$(printf '%s' "${response}" | node -e '
+const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8"));
+process.stdout.write(value.launchRun?.instanceId ?? "");')"
+		[[ -n "${instance_id}" ]] && break
+		sleep 1
+	done
+	[[ -n "${instance_id}" ]] || { echo "Launch run ${launch_run_id} did not create a process" >&2; exit 1; }
+	printf '%s' "${instance_id}"
 }
 
 namespace_for_instance() {

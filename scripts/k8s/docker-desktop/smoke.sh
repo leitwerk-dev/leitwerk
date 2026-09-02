@@ -5,11 +5,22 @@ base_url="http://127.0.0.1:${LEITWERK_PORT}"
 
 curl -fsS "${base_url}/api/health" >/dev/null
 response="$(curl -fsS -X POST -H 'Content-Type: application/json' \
-	-d '{"title":"Docker Desktop Kubernetes smoke","launcherInput":{"prompt":"docker desktop kubernetes smoke"}}' \
-	"${base_url}/api/launchers/k8s_smoke_process.k8s_smoke_ui/launch")"
-instance_id="$(printf '%s' "${response}" | node -e '
+	-H "Idempotency-Key: docker-desktop-smoke-$(date +%s)-${RANDOM}" \
+	-d '{"title":"Docker Desktop Kubernetes smoke","launcherInput":{"prompt":"docker desktop kubernetes smoke"},"schedule":{"mode":"now"}}' \
+	"${base_url}/api/launchers/k8s_smoke_process.k8s_smoke_ui/launch-runs")"
+launch_run_id="$(printf '%s' "${response}" | node -e '
 const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8"));
-if (!value.process?.id) process.exit(1); process.stdout.write(value.process.id);')"
+if (!value.launchRunId) process.exit(1); process.stdout.write(value.launchRunId);')"
+instance_id=""
+for _ in $(seq 1 120); do
+	response="$(curl -fsS "${base_url}/api/launch-runs/${launch_run_id}")"
+	instance_id="$(printf '%s' "${response}" | node -e '
+const fs=require("node:fs"); const value=JSON.parse(fs.readFileSync(0,"utf8"));
+process.stdout.write(value.launchRun?.instanceId ?? "");')"
+	[[ -n "${instance_id}" ]] && break
+	sleep 1
+done
+[[ -n "${instance_id}" ]] || { echo "Launch run did not create a process" >&2; exit 1; }
 
 ready=false
 for _ in $(seq 1 120); do

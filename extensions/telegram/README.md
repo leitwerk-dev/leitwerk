@@ -7,7 +7,7 @@ Server-side extension that exposes leitwerk processes through a Telegram bot.
 - One bot per leitwerk instance.
 - One private Telegram supergroup with forum topics enabled.
 - One forum topic per process; completed and aborted process topics are closed.
-- Operators can create a new forum topic, see launch help from the bot, send `/launch`, fill out launcher fields in Telegram, and have that topic become the process topic.
+- Operators can create a new forum topic, see launch help from the bot, send `/launch`, fill out launcher fields in Telegram, and have that topic become the process topic. Confirmed submissions use server-owned programmatic launch admission with one stable idempotency key per draft; Telegram does not call the raw process executor.
 - Condensed process feed: process creation, submitted action summaries, turn starts, turn outcome/leaf results, lifecycle changes, errors, and action prompts.
 - User actions through inline buttons and short form prompts. Optional action form fields include a `Skip` button.
 - Free-text messages in a process topic are queued to that process.

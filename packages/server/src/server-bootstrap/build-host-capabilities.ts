@@ -7,11 +7,11 @@ import {
 	type ExternalSourceServiceLike,
 	type PollingServiceLike,
 	type ProcessActionSummaryLike,
-	type ProcessLaunchExecutorLike,
 	type ProcessLaunchPlan,
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionServiceLike,
 	type ProcessQuestionServiceLike,
+	type ProgrammaticLaunchRequestLike,
 	type ProvidedCapability,
 	type RegisteredProcessWatcherLike,
 } from "@leitwerk-dev/process-sdk";
@@ -23,7 +23,9 @@ import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types
 import {
 	createProcessFromLaunchConfig,
 	createProcessFromLaunchPlan,
+	type ProcessLaunchConfigExecutionInput,
 	type ProcessLaunchExecutorDeps,
+	type ProcessLaunchExecutorLike,
 } from "../process-launch-executor.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import type { ProjectMutationService } from "../project-mutation-service.js";
@@ -75,7 +77,7 @@ export function buildHostCapabilities(input: {
 	} satisfies ProcessLaunchExecutorDeps;
 	const processLaunches = {
 		createProcessFromLaunchConfig(
-			configInput: import("@leitwerk-dev/process-sdk").ProcessLaunchConfigExecutionInput,
+			configInput: ProcessLaunchConfigExecutionInput,
 			opts?: { actor?: Actor; launchRunId?: string },
 		) {
 			return createProcessFromLaunchConfig(launchExecutorDeps, configInput, opts);
@@ -129,10 +131,18 @@ export function buildHostCapabilities(input: {
 				launcherRecentValues: input.launcherRecentValues,
 				launcherModelConfigs: input.launcherModelConfigs,
 				launchPlans: input.launchPlans,
-				processLaunches,
 				handoffDedupKeys: input.baseDeps.handoffDedupKeys,
 				processWatchers: input.processWatcherService,
 				launchRuns: {
+					startProgrammatic(
+						request: ProgrammaticLaunchRequestLike,
+						opts: { idempotencyKey: string; actor?: Actor },
+					) {
+						return input.launchCoordinator.startProgrammatic(request, {
+							idempotencyKey: opts.idempotencyKey,
+							actor: opts.actor ?? SYSTEM_ACTOR,
+						});
+					},
 					startWatcher<TConfig, TEvent>(
 						watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
 						event: TEvent,
