@@ -132,13 +132,21 @@ export function resolveCurrentExecutionTurnRecordId(
 	return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
 }
 
+type TurnStartLookup =
+	| ReadonlyMap<string, TurnStartRecord>
+	| { getById(id: string): TurnStartRecord | null };
+
+function getTurnStart(lookup: TurnStartLookup, id: string): TurnStartRecord | null {
+	return "getById" in lookup ? lookup.getById(id) : (lookup.get(id) ?? null);
+}
+
 export function buildStartupRecovery(
 	process: ProcessInstance,
-	turnStarts: { getById(id: string): TurnStartRecord | null },
+	turnStarts: TurnStartLookup,
 ): StartupRecoverySummary | null {
 	if (process.lifecycleStatus !== "error" || process.currentExecution?.kind !== "worker_start")
 		return null;
-	const start = turnStarts.getById(process.currentExecution.id);
+	const start = getTurnStart(turnStarts, process.currentExecution.id);
 	if (
 		!start ||
 		(start.state.kind !== "preparation_failed" && start.state.kind !== "bootstrap_failed")
@@ -196,6 +204,14 @@ export function buildProcessStartupSummary(input: {
 		(left, right) =>
 			left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
 	);
+	const turnStartsById = new Map(orderedStarts.map((start) => [start.id, start]));
+	const leasesByStartRecordId = new Map(
+		input.leases
+			.filter((lease) => lease.turnStartRecordId)
+			.map((lease) => [lease.turnStartRecordId as string, lease]),
+	);
+	const leasesById = new Map(input.leases.map((lease) => [lease.id, lease]));
+	const turnRecordsById = new Map(input.turnRecords.map((record) => [record.id, record]));
 	const firstAcceptedIndex = orderedStarts.findIndex((start) => start.state.kind === "accepted");
 	const currentStartId =
 		input.process.currentExecution?.kind === "worker_start"
@@ -212,8 +228,8 @@ export function buildProcessStartupSummary(input: {
 					? start.state.failedWorkerLeaseId
 					: null;
 		const lease =
-			input.leases.find((candidate) => candidate.turnStartRecordId === start.id) ??
-			(stateLeaseId ? input.leases.find((candidate) => candidate.id === stateLeaseId) : null) ??
+			leasesByStartRecordId.get(start.id) ??
+			(stateLeaseId ? leasesById.get(stateLeaseId) : null) ??
 			null;
 		const connectedAt = lease
 			? validObservedAt(lease.connectedAt ?? lease.bootstrapReceipt?.readyAt, lease.startedAt)
@@ -231,14 +247,15 @@ export function buildProcessStartupSummary(input: {
 				)
 			: null;
 		const acceptedState = start.state.kind === "accepted" ? start.state : null;
-		const acceptedTurn = acceptedState
-			? input.turnRecords.find(
-					(record) =>
-						record.id === acceptedState.turnRecordId &&
-						record.turnStartRecordId === start.id &&
-						record.acceptedWorkerLeaseId === acceptedState.acceptedWorkerLeaseId,
-				)
-			: null;
+		const acceptedTurnCandidate = acceptedState
+			? turnRecordsById.get(acceptedState.turnRecordId)
+			: undefined;
+		const acceptedTurn =
+			acceptedTurnCandidate &&
+			acceptedTurnCandidate.turnStartRecordId === start.id &&
+			acceptedTurnCandidate.acceptedWorkerLeaseId === acceptedState?.acceptedWorkerLeaseId
+				? acceptedTurnCandidate
+				: null;
 		const firstTurnAt =
 			acceptedTurn && readyAt ? validObservedAt(acceptedTurn.startedAt, readyAt) : null;
 		const succeeded = Boolean(lease && readyAt && firstTurnAt && start.state.kind === "accepted");
@@ -313,9 +330,7 @@ export function buildProcessStartupSummary(input: {
 	const authoritative = [...recoveredAttempts]
 		.reverse()
 		.find((attempt) => attempt.status === "succeeded");
-	const recovery = buildStartupRecovery(input.process, {
-		getById: (id) => orderedStarts.find((start) => start.id === id) ?? null,
-	});
+	const recovery = buildStartupRecovery(input.process, turnStartsById);
 	return {
 		authoritativeAttemptId: authoritative?.startRecordId ?? null,
 		attempts: recoveredAttempts,

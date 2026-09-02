@@ -262,6 +262,26 @@ async function finalizeRunRoot(
 	return { manifest, aggregatedAgentsMdSources, loadedSkills };
 }
 
+function finishRunRoot(
+	plan: RunRootPlan,
+	entries: ComponentManifestEntry[],
+	errors: string[],
+	result: Awaited<ReturnType<typeof finalizeRunRoot>>,
+): MaterializeResult {
+	const expectedKeys = new Set(plan.components.map((component) => component.key));
+	const hasAllExpectedEntries =
+		entries.length === expectedKeys.size &&
+		[...expectedKeys].every((key) => entries.some((entry) => entry.key === key));
+	if (errors.length > 0 || !hasAllExpectedEntries) {
+		throw new RunRootPreparationError(errors);
+	}
+	return {
+		ok: true,
+		...result,
+		errors,
+	};
+}
+
 export async function materializeRunRoot(
 	plan: RunRootPlan,
 	git: RunRootGitOps,
@@ -275,17 +295,11 @@ export async function materializeRunRoot(
 		errors,
 	);
 
-	const ok = errors.length === 0 && plan.components.length === entries.length;
-	if (!ok) {
-		throw new RunRootPreparationError(errors);
-	}
-	return {
-		ok,
+	return finishRunRoot(plan, entries, errors, {
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
-		errors,
-	};
+	});
 }
 
 export async function validateRunRoot(
@@ -358,20 +372,9 @@ export async function repairRunRoot(
 		errors,
 	);
 
-	const expectedKeys = new Set(plan.components.map((c) => c.key));
-	const ok =
-		errors.length === 0 &&
-		manifestEntries.length === plan.components.length &&
-		[...expectedKeys].every((k) => manifestEntries.some((e) => e.key === k));
-	if (!ok) {
-		throw new RunRootPreparationError(errors);
-	}
-
-	return {
-		ok,
+	return finishRunRoot(plan, manifestEntries, errors, {
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
-		errors,
-	};
+	});
 }
