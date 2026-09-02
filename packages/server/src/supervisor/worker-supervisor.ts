@@ -154,7 +154,6 @@ export interface WorkerSupervisor {
 	): void;
 	getWorker(instanceId: string): WorkerHandle | undefined;
 	isAdoptionPending(instanceId: string): boolean;
-	staleResourceBacklogCount(): number;
 	adoptRegisteredWorkers(): Promise<void>;
 	detachAll(reason: string): Promise<void>;
 	shutdownAll(reason: string): Promise<void>;
@@ -959,10 +958,6 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 
 		isAdoptionPending(instanceId: string): boolean {
 			return adoptionCoordinator.isPending(instanceId);
-		},
-
-		staleResourceBacklogCount(): number {
-			return unitReclaimer.staleResourceBacklogCount();
 		},
 
 		async adoptRegisteredWorkers(): Promise<void> {

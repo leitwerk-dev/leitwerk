@@ -67,9 +67,6 @@ export function createFakeWorkerSupervisor(
 		isAdoptionPending() {
 			return false;
 		},
-		staleResourceBacklogCount() {
-			return 0;
-		},
 		async adoptRegisteredWorkers() {},
 		async detachAll() {
 			workers.clear();

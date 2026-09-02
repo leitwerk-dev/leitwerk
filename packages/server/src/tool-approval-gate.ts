@@ -25,15 +25,6 @@ export function createToolApprovalGate(input: {
 			arguments: Record<string, unknown>;
 			destination?: ProcessToolApprovalDestination;
 		}): Promise<ToolApprovalDecision> {
-			const existing = input.repos.toolApprovalRequests.listByInstance(requestInput.instanceId);
-			if (
-				existing.some(
-					(request) =>
-						request.turnRecordId === requestInput.turnRecordId && request.status === "accepted",
-				)
-			) {
-				return { kind: "accepted" };
-			}
 			const result = input.repos.toolApprovalRequests.createIdempotent(requestInput);
 			if (result.request.status === "accepted") return { kind: "accepted" };
 			if (result.request.status === "feedback")

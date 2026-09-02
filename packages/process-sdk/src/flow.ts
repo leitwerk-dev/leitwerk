@@ -160,7 +160,7 @@ export type FlowLlmPreparationContext<
 	TState = unknown,
 > = FlowAutomaticRunContext<TParams, TState>;
 
-export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown> {
+interface FlowOutcomeEffectContext<TParams = unknown, TState = unknown> {
 	process: ProcessInstance;
 	projects: readonly ProcessProject[];
 	params: TParams;
@@ -168,13 +168,11 @@ export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown
 	output: { content: string | null } | null;
 }
 
-export interface FlowAutomaticOutcomeEffectContext<TParams = unknown, TState = unknown> {
-	process: ProcessInstance;
-	projects: readonly ProcessProject[];
-	params: TParams;
-	state: TState;
-	output: { content: string | null } | null;
-}
+export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown>
+	extends FlowOutcomeEffectContext<TParams, TState> {}
+
+export interface FlowAutomaticOutcomeEffectContext<TParams = unknown, TState = unknown>
+	extends FlowOutcomeEffectContext<TParams, TState> {}
 
 export interface FlowExternalSourceContext<
 	TParams = unknown,
@@ -475,10 +473,14 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 	};
 }
 
-function createFlowLlmOutcomeEffectContext<TParams, TState>(input: {
+function createFlowOutcomeEffectContext<
+	TParams,
+	TState,
+	TContext extends FlowOutcomeEffectContext<TParams, TState>,
+>(input: {
 	ctx: SnapshotContext<TParams, TState>;
 	event: ProcessOutcomeExecution<TParams, TState>["event"];
-}): FlowLlmOutcomeEffectContext<TParams, TState> {
+}): TContext {
 	return {
 		process: input.ctx.process,
 		projects: input.ctx.projects,
@@ -488,43 +490,20 @@ function createFlowLlmOutcomeEffectContext<TParams, TState>(input: {
 			typeof input.event.turnResultMarkdown === "string"
 				? { content: input.event.turnResultMarkdown }
 				: null,
-	};
+	} as TContext;
 }
 
-function createFlowAutomaticOutcomeEffectContext<TParams, TState>(input: {
-	ctx: SnapshotContext<TParams, TState>;
-	event: ProcessOutcomeExecution<TParams, TState>["event"];
-}): FlowAutomaticOutcomeEffectContext<TParams, TState> {
-	return {
-		process: input.ctx.process,
-		projects: input.ctx.projects,
-		params: input.ctx.params,
-		state: input.ctx.state,
-		output:
-			typeof input.event.turnResultMarkdown === "string"
-				? { content: input.event.turnResultMarkdown }
-				: null,
-	};
-}
-
-function wrapLlmOutcomeEffect<TParams, TState>(
-	effect: FlowOutcomeEffect<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>,
-): ProcessOutcomeEffect<TParams, TState> {
+function wrapOutcomeEffect<
+	TParams,
+	TState,
+	TContext extends FlowOutcomeEffectContext<TParams, TState>,
+>(effect: FlowOutcomeEffect<TParams, TState, TContext>): ProcessOutcomeEffect<TParams, TState> {
 	return (execution) =>
 		effect({
-			ctx: createFlowLlmOutcomeEffectContext({ ctx: execution.ctx, event: execution.event }),
-			event: execution.event,
-			turnId: execution.turnId,
-			outcome: execution.outcome,
-		});
-}
-
-function wrapAutomaticOutcomeEffect<TParams, TState>(
-	effect: FlowOutcomeEffect<TParams, TState, FlowAutomaticOutcomeEffectContext<TParams, TState>>,
-): ProcessOutcomeEffect<TParams, TState> {
-	return (execution) =>
-		effect({
-			ctx: createFlowAutomaticOutcomeEffectContext({ ctx: execution.ctx, event: execution.event }),
+			ctx: createFlowOutcomeEffectContext<TParams, TState, TContext>({
+				ctx: execution.ctx,
+				event: execution.event,
+			}),
 			event: execution.event,
 			turnId: execution.turnId,
 			outcome: execution.outcome,
@@ -674,13 +653,22 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		};
 	}
 
-	string(name: string, options: string | ParameterOptions = {}): this {
+	private typedParameter(
+		name: string,
+		type: OutcomeToolParameterSpec["type"],
+		options: string | ArrayParameterOptions = {},
+	): this {
 		const resolved = typeof options === "string" ? { description: options } : options;
 		return this.parameter(name, {
 			...resolved,
-			type: "string",
+			type,
 			description: resolved.description ?? "",
+			...(type === "array" ? { items: resolved.items ?? { type: "string" } } : {}),
 		});
+	}
+
+	string(name: string, options: string | ParameterOptions = {}): this {
+		return this.typedParameter(name, "string", options);
 	}
 
 	markdown(name: string, options: string | MarkdownParameterOptions = {}): this {
@@ -693,78 +681,39 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 			normalizeProductName(name);
 			this.publishedMarkdownParameter = name;
 		}
-		return this.parameter(name, {
+		return this.typedParameter(name, "string", {
 			...parameterOptions,
 			required: publish ? true : resolved.required,
 			requiredErrorCode: resolved.requiredErrorCode ?? (publish ? `${name}_required` : undefined),
-			type: "string",
-			description: resolved.description ?? "",
 		});
 	}
 
 	requiredString(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "string",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "string", this.withRequired(name, options));
 	}
 
 	number(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "number",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "number", options);
 	}
 
 	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "number",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "number", this.withRequired(name, options));
 	}
 
 	boolean(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "boolean",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "boolean", options);
 	}
 
 	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "boolean",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "boolean", this.withRequired(name, options));
 	}
 
 	stringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: resolved.items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", options);
 	}
 
 	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: (resolved as ArrayParameterOptions).items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", this.withRequired(name, options));
 	}
 
 	enum(name: string, valuesOrOptions: readonly string[] | EnumParameterOptions): this {
@@ -781,22 +730,11 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	}
 
 	object(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "object",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "object", options);
 	}
 
 	array(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: resolved.items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", options);
 	}
 }
 
@@ -864,7 +802,11 @@ export class OutcomeToolBuilder<
 						),
 						choose: (execution: ProcessOutcomeExecution<TParams, TState>) =>
 							stateRouting.choose({
-								ctx: createFlowLlmOutcomeEffectContext({
+								ctx: createFlowOutcomeEffectContext<
+									TParams,
+									TState,
+									FlowLlmOutcomeEffectContext<TParams, TState>
+								>({
 									ctx: execution.ctx,
 									event: execution.event,
 								}),
@@ -874,7 +816,7 @@ export class OutcomeToolBuilder<
 							}),
 					}
 				: this.buildRouteTarget()),
-			...(this.flowEffect ? { effect: wrapLlmOutcomeEffect(this.flowEffect) } : {}),
+			...(this.flowEffect ? { effect: wrapOutcomeEffect(this.flowEffect) } : {}),
 		};
 	}
 }
@@ -899,9 +841,7 @@ export class AutomaticOutcomeBuilder<
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
-		const configuredEffect = this.flowEffect
-			? wrapAutomaticOutcomeEffect(this.flowEffect)
-			: undefined;
+		const configuredEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		const effect = this.waits
 			? async (
 					execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0],
@@ -978,7 +918,7 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 		if (!this.reviewTurnId) {
 			throw new Error("plan result must declare .review(turnId)");
 		}
-		const stateEffect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const stateEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			description: this.resultDescription,
 			parameters: {
@@ -1025,7 +965,7 @@ export class PublishedResultBuilder<TParams = unknown, TState = unknown>
 	}
 
 	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			outcome: this.productName,
 			...this.buildRouteTarget(),
@@ -1063,7 +1003,7 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
 	}
 
 	build(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			outcome: this.outcomeId,
 			...this.buildRouteTarget(),

@@ -23,6 +23,7 @@ import {
 import type { ToolApprovalGate } from "./tool-approval-gate.js";
 
 type RegisteredIntegrationTool = IntegrationToolDefinition<unknown>;
+type TicketCreationTool = RegisteredIntegrationTool & { capability: TicketCreationCapability };
 type IntegrationToolExecutionInput = Omit<IntegrationToolExecutionContext, "signal">;
 
 interface PendingIntegrationToolExecution {
@@ -38,6 +39,21 @@ export interface TicketToolCatalogEntry {
 	readonly description: string;
 	readonly parameters: Record<string, unknown>;
 	readonly capability: TicketCreationCapability;
+}
+
+function isTicketCreationTool(
+	definition: RegisteredIntegrationTool,
+): definition is TicketCreationTool {
+	return definition.capability?.kind === "ticket_creation";
+}
+
+function projectTicketTool(definition: TicketCreationTool): TicketToolCatalogEntry {
+	return {
+		name: definition.name,
+		description: definition.description,
+		parameters: definition.parameters,
+		capability: { ...definition.capability },
+	};
 }
 
 function assertJsonPointer(value: string, field: string): void {
@@ -261,31 +277,12 @@ export class IntegrationToolRegistry {
 	}
 
 	ticketCatalog(): TicketToolCatalogEntry[] {
-		return [...this.tools.values()]
-			.filter(
-				(
-					definition,
-				): definition is RegisteredIntegrationTool & { capability: TicketCreationCapability } =>
-					definition.capability?.kind === "ticket_creation",
-			)
-			.map((definition) => ({
-				name: definition.name,
-				description: definition.description,
-				parameters: definition.parameters,
-				capability: { ...definition.capability },
-			}));
+		return [...this.tools.values()].filter(isTicketCreationTool).map(projectTicketTool);
 	}
 
 	findTicketTool(name: string): TicketToolCatalogEntry | null {
 		const definition = this.tools.get(name);
-		return definition?.capability?.kind === "ticket_creation"
-			? {
-					name: definition.name,
-					description: definition.description,
-					parameters: definition.parameters,
-					capability: { ...definition.capability },
-				}
-			: null;
+		return definition && isTicketCreationTool(definition) ? projectTicketTool(definition) : null;
 	}
 
 	resolveTicketTool(name: string): TicketToolCatalogEntry {
@@ -294,10 +291,14 @@ export class IntegrationToolRegistry {
 		return tool;
 	}
 
-	async listTicketDestinations(name: string, actor: Actor): Promise<TicketCreationDestinationList> {
+	private resolveTicketDestinationProvider(name: string) {
 		const provider = this.resolveTicketTool(name).capability.destinations;
 		if (!provider) throw new Error(`Ticket creation tool '${name}' has no destinations`);
-		const result = await provider.list({ actor });
+		return provider;
+	}
+
+	async listTicketDestinations(name: string, actor: Actor): Promise<TicketCreationDestinationList> {
+		const result = await this.resolveTicketDestinationProvider(name).list({ actor });
 		return {
 			destinations: result.destinations.map(validateDestinationSummary),
 			warnings: (result.warnings ?? []).filter(
@@ -311,19 +312,17 @@ export class IntegrationToolRegistry {
 		destinationId: string,
 		actor: Actor,
 	): Promise<TicketCreationDestinationSnapshot> {
-		const provider = this.resolveTicketTool(name).capability.destinations;
-		if (!provider) throw new Error(`Ticket creation tool '${name}' has no destinations`);
-		return validateDestinationSnapshot(await provider.resolve({ actor, destinationId }));
+		return validateDestinationSnapshot(
+			await this.resolveTicketDestinationProvider(name).resolve({ actor, destinationId }),
+		);
 	}
 
 	async validateTicketDestination(
 		name: string,
 		value: unknown,
 	): Promise<TicketCreationDestinationSnapshot> {
-		const provider = this.resolveTicketTool(name).capability.destinations;
-		if (!provider) throw new Error(`Ticket creation tool '${name}' has no destinations`);
 		const snapshot = validateDestinationSnapshot(value);
-		await provider.validate(snapshot);
+		await this.resolveTicketDestinationProvider(name).validate(snapshot);
 		return snapshot;
 	}
 
