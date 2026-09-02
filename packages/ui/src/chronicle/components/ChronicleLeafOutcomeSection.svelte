@@ -2,6 +2,8 @@
 import { formatRelativeTime } from "../../lib/format";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleLeafOutcomeItem } from "../lib/chronicle-projection.js";
+import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleLeafOutcomeRendererHost from "./ChronicleLeafOutcomeRendererHost.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
@@ -11,7 +13,7 @@ interface Props {
 	section: ChronicleLeafOutcomeItem;
 	isFocused: boolean;
 	compressHistory?: boolean;
-	onDraftTicket?: (artifact: { kind: "leaf_outcome"; leafEntryId: string; text: string }) => void;
+	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 }
 
 let { section, isFocused, compressHistory = false, onDraftTicket }: Props = $props();
@@ -62,12 +64,14 @@ function expandHistoryOutcome() {
 				headingLevel={3}
 			/>
 			{#if onDraftTicket && section.status === "ready"}
-				<button
-					type="button"
-					class="create-issue-button"
-					data-pressable="true"
-					onclick={() => onDraftTicket?.({ kind: "leaf_outcome", leafEntryId: section.leafEntryId, text: section.fallbackMarkdown ?? JSON.stringify(section.props, null, 2) })}
-				>Create issue</button>
+				<ChronicleCreateIssueButton
+					onDraftTicket={onDraftTicket}
+					artifact={{
+						kind: "leaf_outcome",
+						leafEntryId: section.leafEntryId,
+						text: section.fallbackMarkdown ?? JSON.stringify(section.props, null, 2),
+					}}
+				/>
 			{/if}
 			{#if shouldCompressOutcome}
 				<ChronicleExpandButton
@@ -180,31 +184,6 @@ function expandHistoryOutcome() {
 		font-size: var(--type-body-sm);
 		line-height: 1.55;
 		color: var(--chronicle-text-muted);
-	}
-
-	.create-issue-button {
-		flex: 0 0 auto;
-		min-height: 36px;
-		padding: 0 13px;
-		border: 1px solid var(--chronicle-border-strong);
-		border-radius: 999px;
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-		font: inherit;
-		font-size: var(--type-caption);
-		font-weight: 700;
-		cursor: pointer;
-	}
-
-	.create-issue-button:hover {
-		border-color: var(--chronicle-accent);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 94%, var(--chronicle-accent) 6%);
-		transform: translateY(-1px);
-	}
-
-	.create-issue-button:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
 	}
 
 	.leaf-outcome-content.is-compressed {

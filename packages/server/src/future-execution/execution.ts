@@ -147,20 +147,7 @@ async function executeScheduledLaunch(
 					)
 				: planConsumeFutureExecution(execution);
 		const result = await createScheduledProcessFromLaunchPlan(
-			{
-				processes: deps.processes,
-				projects: deps.projects,
-				processSkills: deps.processSkills,
-				skills: deps.skills,
-				handoffDedupKeys: deps.handoffDedupKeys,
-				futureExecutions: deps.futureExecutions,
-				broadcaster: deps.broadcaster,
-				commands: deps.commands,
-				processTitles: deps.processTitles,
-				extensionHost: deps.extensionHost,
-				logger: deps.logger,
-				transaction: deps.transaction,
-			},
+			deps,
 			preparedLaunchPlan.launchPlan,
 			transitionPlan,
 			{

@@ -534,34 +534,32 @@ export async function bootstrapWorkerRuntime(
 			instanceId: deps.instanceId,
 			startOrLeaseId: deps.payload.workerLeaseId,
 		});
+		const deliveredBundle =
+			llmPayload.bootstrap.resourceBundle.archiveBase64 === undefined
+				? undefined
+				: Buffer.from(llmPayload.bootstrap.resourceBundle.archiveBase64, "base64");
+		if (deliveredBundle) {
+			verifyCanonicalPiResourceBundle(deliveredBundle, llmPayload.bootstrap.resourceBundle.digest);
+		}
 		const resourceBundleInput = {
 			bundlesDir: deps.payload.treePaths.piResourceBundlesDir,
 			startRecordId: deps.payload.turnStart.id,
 			digest: llmPayload.bootstrap.resourceBundle.digest,
 			archiveBase64: llmPayload.bootstrap.resourceBundle.archiveBase64,
 		};
-		if (llmPayload.bootstrap.resourceBundle.archiveBase64 !== undefined) {
-			const deliveredBundle = Buffer.from(
-				llmPayload.bootstrap.resourceBundle.archiveBase64,
-				"base64",
-			);
-			verifyCanonicalPiResourceBundle(deliveredBundle, llmPayload.bootstrap.resourceBundle.digest);
-			await Promise.all([
-				persistPiResourceBundleForStart({ ...resourceBundleInput, deliveredBundle }),
-				materializeCanonicalPiResourceBundle({
-					bundle: deliveredBundle,
-					digest: llmPayload.bootstrap.resourceBundle.digest,
-					targetDir: managedAgentDir,
-				}),
-			]);
-		} else {
-			const persistedResourceBundle = await persistPiResourceBundleForStart(resourceBundleInput);
-			await materializeCanonicalPiResourceBundle({
-				bundle: persistedResourceBundle.bundle,
+		const persistedResourceBundle = persistPiResourceBundleForStart({
+			...resourceBundleInput,
+			...(deliveredBundle ? { deliveredBundle } : {}),
+		});
+		const bundle = deliveredBundle ?? (await persistedResourceBundle).bundle;
+		await Promise.all([
+			persistedResourceBundle,
+			materializeCanonicalPiResourceBundle({
+				bundle,
 				digest: llmPayload.bootstrap.resourceBundle.digest,
 				targetDir: managedAgentDir,
-			});
-		}
+			}),
+		]);
 		const manifest = await readAndValidateManagedPiResourceManifest({
 			agentDir: managedAgentDir,
 			resourceDigest: llmPayload.bootstrap.resourceBundle.digest,

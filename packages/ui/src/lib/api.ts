@@ -388,12 +388,17 @@ async function requestJson<T extends object>(input: {
 	path: string;
 	init?: RequestInit;
 	malformed: string;
-	error(response: Response, body: unknown): Error;
+	error?: (response: Response, body: unknown) => Error;
+	onError?: (response: Response, body: unknown) => T | Promise<T>;
 }): Promise<T> {
 	const fetchImpl = getFetchImpl();
 	const url = resolveApiUrl(input.path);
 	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
-	if (!response.ok) throw input.error(response, await tryReadJson(response));
+	if (!response.ok) {
+		const body = await tryReadJson(response);
+		if (input.onError) return input.onError(response, body);
+		throw input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`);
+	}
 	return readJsonObject<T>(response, input.malformed);
 }
 
@@ -614,8 +619,8 @@ export async function fetchLauncherModelConfigPreview(
 async function parseLauncherErrorResponse(
 	res: Response,
 	fallbackMessagePrefix: string,
+	body: unknown,
 ): Promise<LauncherSubmitResult> {
-	const body = await tryReadJson(res);
 	const errors = readLauncherValidationErrors(body);
 	if (errors.length > 0) {
 		return { kind: "validation_error", status: res.status, errors };
@@ -630,26 +635,26 @@ async function parseLauncherErrorResponse(
 export async function fetchLaunchRun(
 	launchRunId: string,
 ): Promise<LaunchRunResponseBody["launchRun"]> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launch-runs/${encodeURIComponent(launchRunId)}`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load launch progress: ${res.status}`);
-	return (await readJsonObject<LaunchRunResponseBody>(res, "Malformed launch run response"))
-		.launchRun;
+	return (
+		await requestJson<LaunchRunResponseBody>({
+			path: `/api/launch-runs/${encodeURIComponent(launchRunId)}`,
+			malformed: "Malformed launch run response",
+			error: (response) =>
+				new ApiResponseError(`Couldn't load launch progress: ${response.status}`, response.status),
+		})
+	).launchRun;
 }
 
 export async function fetchProcessLaunchRuns(
 	instanceId: string,
 ): Promise<ProcessLaunchRunsResponseBody["launchRuns"]> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/launch-runs`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load launch progress: ${res.status}`);
 	return (
-		await readJsonObject<ProcessLaunchRunsResponseBody>(
-			res,
-			"Malformed process launch runs response",
-		)
+		await requestJson<ProcessLaunchRunsResponseBody>({
+			path: `/api/processes/${encodeURIComponent(instanceId)}/launch-runs`,
+			malformed: "Malformed process launch runs response",
+			error: (response) =>
+				new ApiResponseError(`Couldn't load launch progress: ${response.status}`, response.status),
+		})
 	).launchRuns;
 }
 
@@ -660,9 +665,9 @@ export async function startLaunchRun(
 	modelConfig: LauncherModelConfigDefaults = {},
 	skillIds: readonly string[] = [],
 ): Promise<LauncherSubmitResult> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/launch-runs`),
-		{
+	const response = await requestJson<StartLaunchRunResponseBody | LauncherSubmitResult>({
+		path: `/api/launchers/${encodeURIComponent(launcherId)}/launch-runs`,
+		init: {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -676,13 +681,13 @@ export async function startLaunchRun(
 				skillIds,
 			}),
 		},
-	);
-	if (!res.ok) return parseLauncherErrorResponse(res, "Couldn't start this process");
-	const body = await readJsonObject<StartLaunchRunResponseBody>(
-		res,
-		"Malformed launch run response",
-	);
-	return { kind: "launch_started", launchRunId: body.launchRunId };
+		malformed: "Malformed launch run response",
+		onError: (response, body) =>
+			parseLauncherErrorResponse(response, "Couldn't start this process", body),
+	});
+	return "launchRunId" in response
+		? { kind: "launch_started", launchRunId: response.launchRunId }
+		: response;
 }
 
 export async function launchLauncher(
@@ -705,7 +710,7 @@ export async function launchLauncher(
 		},
 	);
 	if (!res.ok) {
-		return parseLauncherErrorResponse(res, "Couldn't start this process");
+		return parseLauncherErrorResponse(res, "Couldn't start this process", await tryReadJson(res));
 	}
 	const body = await readJsonObject<LauncherMutationResponseBody>(
 		res,
@@ -1024,7 +1029,11 @@ export async function updateScheduledLaunch(
 		},
 	);
 	if (!res.ok) {
-		return parseLauncherErrorResponse(res, "Couldn't update this scheduled launch");
+		return parseLauncherErrorResponse(
+			res,
+			"Couldn't update this scheduled launch",
+			await tryReadJson(res),
+		);
 	}
 	const body = await readJsonObject<LauncherMutationResponseBody>(
 		res,

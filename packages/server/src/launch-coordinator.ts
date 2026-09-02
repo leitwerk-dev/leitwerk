@@ -244,6 +244,30 @@ function recordCommittedProcess(
 	return { ...next, instanceId: process.id, status: "starting" };
 }
 
+function activeStepId(run: LaunchRun): string {
+	return run.steps.find((item) => item.status === "in_progress")?.id ?? "validate_request";
+}
+
+function activeStartupStep(run: LaunchRun): string {
+	return (
+		[...STARTUP_STEP_IDS]
+			.reverse()
+			.find((id) => run.steps.some((item) => item.id === id && item.status === "in_progress")) ??
+		"start_worker"
+	);
+}
+
+function finishCommittedProcess(
+	run: LaunchRun,
+	process: ProcessInstance,
+	startTurnId: string | null | undefined,
+	titleGenerationAvailable: boolean | undefined,
+	reactionError?: string,
+): LaunchRun {
+	const next = recordCommittedProcess(run, process, startTurnId, titleGenerationAvailable);
+	return reactionError ? failRun(next, "start_worker", reactionError) : completeWhenReady(next);
+}
+
 function startupComplete(run: LaunchRun): boolean {
 	const required = run.steps.filter((item) =>
 		[...STARTUP_STEP_IDS, "choose_title"].includes(item.id as (typeof STARTUP_STEP_IDS)[number]),
@@ -310,6 +334,16 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		const { broadcastCreated = true, ...createInput } = input;
 		const run = deps.launchRuns.create({ ...createInput, steps: initialSteps() });
 		if (broadcastCreated) broadcast(run);
+		return run;
+	}
+
+	function createUiRun(input: StartLaunchRequest): LaunchRun {
+		const run = createRun({
+			launcherId: input.launcherId,
+			idempotencyKey: input.idempotencyKey,
+			origin: "ui",
+		});
+		deps.launchRuns.saveReplay(run.id, input);
 		return run;
 	}
 
@@ -419,14 +453,11 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			);
 			if (result.kind === "committed_with_reaction_error" && "process" in result) {
 				mutate(runId, (run) =>
-					failRun(
-						recordCommittedProcess(
-							run,
-							result.process,
-							resolved.launcher.launchPlan.startTurnId,
-							deps.titleGenerationAvailable,
-						),
-						"start_worker",
+					finishCommittedProcess(
+						run,
+						result.process,
+						resolved.launcher.launchPlan.startTurnId,
+						deps.titleGenerationAvailable,
 						"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
 					),
 				);
@@ -443,21 +474,21 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				return result;
 			}
 			mutate(runId, (run) =>
-				completeWhenReady(
-					recordCommittedProcess(
-						run,
-						result.process,
-						resolved.launcher.launchPlan.startTurnId,
-						deps.titleGenerationAvailable,
-					),
+				finishCommittedProcess(
+					run,
+					result.process,
+					resolved.launcher.launchPlan.startTurnId,
+					deps.titleGenerationAvailable,
 				),
 			);
 			return result;
 		} catch {
 			const current = deps.launchRuns.getById(runId);
-			const failedStep =
-				current?.steps.find((item) => item.status === "in_progress")?.id ?? "validate_request";
-			fail(runId, failedStep, "The launch could not be completed. Try again.");
+			fail(
+				runId,
+				current ? activeStepId(current) : "validate_request",
+				"The launch could not be completed. Try again.",
+			);
 			throw new Error("The launch could not be completed");
 		} finally {
 			deps.launchRuns.deleteReplay(runId);
@@ -470,12 +501,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				? deps.launchRuns.getByIdempotencyKey(input.idempotencyKey)
 				: null;
 			if (existing) return { launchRunId: existing.id };
-			const run = createRun({
-				launcherId: input.launcherId,
-				idempotencyKey: input.idempotencyKey,
-				origin: "ui",
-			});
-			deps.launchRuns.saveReplay(run.id, input);
+			const run = createUiRun(input);
 			setTimeout(() => {
 				void execute(run.id, input).catch(() => {
 					deps.logger?.warn(`Launch run '${run.id}' failed unexpectedly`);
@@ -485,12 +511,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		async startBlocking(input) {
-			const run = createRun({
-				launcherId: input.launcherId,
-				idempotencyKey: input.idempotencyKey,
-				origin: "ui",
-			});
-			deps.launchRuns.saveReplay(run.id, input);
+			const run = createUiRun(input);
 			return execute(run.id, input);
 		},
 
@@ -559,11 +580,14 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				}
 				const process = result.process;
 				mutate(created.id, (run) => {
-					const next = recordCommittedProcess(
+					const next = finishCommittedProcess(
 						run,
 						process,
 						prepared.launchPlan.startTurnId,
 						deps.titleGenerationAvailable,
+						result.ok
+							? undefined
+							: "Process was created, but startup failed. Review the process error and retry startup.",
 					);
 					if (result.ok && result.reused) {
 						const lease = deps.leases.getByInstance(process.id);
@@ -577,14 +601,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 							);
 						}
 					}
-					if (!result.ok) {
-						return failRun(
-							next,
-							"start_worker",
-							"Process was created, but startup failed. Review the process error and retry startup.",
-						);
-					}
-					return completeWhenReady(next);
+					return next;
 				});
 				return {
 					launchRunId: created.id,
@@ -593,10 +610,8 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				};
 			} catch (error) {
 				const current = deps.launchRuns.getById(created.id);
-				const failedStep =
-					current?.steps.find((item) => item.status === "in_progress")?.id ?? "validate_request";
 				return failWatcher(
-					failedStep,
+					current ? activeStepId(current) : "validate_request",
 					error instanceof SafeLaunchPreparationError
 						? error.safeSummary
 						: "The watcher launch could not be completed. Try again later.",
@@ -631,17 +646,15 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		observeScheduledCommitted(launchRunId, process, startTurnId, reactionError) {
-			mutate(launchRunId, (run) => {
-				const next = recordCommittedProcess(
+			mutate(launchRunId, (run) =>
+				finishCommittedProcess(
 					run,
 					process,
 					startTurnId,
 					deps.titleGenerationAvailable,
-				);
-				return reactionError
-					? failRun(next, "start_worker", reactionError)
-					: completeWhenReady(next);
-			});
+					reactionError,
+				),
+			);
 		},
 
 		failScheduled(launchRunId, stepId, safeSummary) {
@@ -705,13 +718,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 
 		observeWorkerFailure(instanceId, workerId, safeSummary) {
 			mutateCurrent(instanceId, workerId, (run) => {
-				const failedStep =
-					[...STARTUP_STEP_IDS]
-						.reverse()
-						.find((id) =>
-							run.steps.some((item) => item.id === id && item.status === "in_progress"),
-						) ?? "start_worker";
-				return failRun(run, failedStep, safeSummary);
+				return failRun(run, activeStartupStep(run), safeSummary);
 			});
 		},
 
@@ -800,15 +807,9 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				mutate(run.id, (current) => {
 					let next = applyTransitions(current, [{ id: "create_process", status: "completed" }]);
 					if (lease && ["failed", "cleanup", "exited", "absent"].includes(lease.state)) {
-						const activeStep =
-							[...STARTUP_STEP_IDS]
-								.reverse()
-								.find((id) =>
-									next.steps.some((item) => item.id === id && item.status === "in_progress"),
-								) ?? "start_worker";
 						return failRun(
 							next,
-							activeStep,
+							activeStartupStep(next),
 							"Worker startup stopped before completion. Retry startup from the process page.",
 						);
 					}

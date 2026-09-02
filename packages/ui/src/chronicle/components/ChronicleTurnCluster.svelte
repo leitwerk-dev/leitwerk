@@ -5,6 +5,8 @@ import type {
 	ChronicleTurnClusterItem,
 	ChronicleTurnClusterSection,
 } from "../lib/chronicle-projection.js";
+import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
 import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
@@ -17,7 +19,7 @@ interface Props {
 	isFocused: boolean;
 	compressHistory?: boolean;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
-	onDraftTicket?: (artifact: { kind: "turn_result"; turnRecordId: string; text: string }) => void;
+	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 }
 
 let {
@@ -125,12 +127,10 @@ function expandHistoryResult() {
 						<div class="result-header-row">
 							<p class="section-label">Result</p>
 							{#if onDraftTicket}
-								<button
-									type="button"
-									class="create-issue-button"
-									data-pressable="true"
-									onclick={() => onDraftTicket?.({ kind: "turn_result", turnRecordId: cluster.turnRecordId, text: section.markdown })}
-								>Create issue</button>
+								<ChronicleCreateIssueButton
+									onDraftTicket={onDraftTicket}
+									artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId, text: section.markdown }}
+								/>
 							{/if}
 							{#if shouldCompressResult}
 								<ChronicleExpandButton
@@ -313,31 +313,6 @@ function expandHistoryResult() {
 
 	.result-section .section-label {
 		color: color-mix(in srgb, var(--chronicle-text-muted) 88%, var(--chronicle-text) 12%);
-	}
-
-	.create-issue-button {
-		flex: 0 0 auto;
-		min-height: 36px;
-		padding: 0 13px;
-		border: 1px solid var(--chronicle-border-strong);
-		border-radius: 999px;
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-		font: inherit;
-		font-size: var(--type-caption);
-		font-weight: 700;
-		cursor: pointer;
-	}
-
-	.create-issue-button:hover {
-		border-color: var(--chronicle-accent);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 94%, var(--chronicle-accent) 6%);
-		transform: translateY(-1px);
-	}
-
-	.create-issue-button:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
 	}
 
 	.turn-cluster.is-focused .result-section {

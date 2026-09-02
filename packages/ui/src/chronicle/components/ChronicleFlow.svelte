@@ -23,6 +23,7 @@ import {
 	CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 	CHRONICLE_PROCESS_ERROR_SECTION_ANCHOR_ID,
 } from "../lib/chronicle-selectable-items.js";
+import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
 import ChronicleActionSection from "./ChronicleActionSection.svelte";
 import ChronicleLeafOutcomePlaceholder from "./ChronicleLeafOutcomePlaceholder.svelte";
 import ChronicleLeafOutcomeSection from "./ChronicleLeafOutcomeSection.svelte";
@@ -75,12 +76,7 @@ interface Props {
 	} | null;
 	modelConfiguration: ProcessModelConfigurationView;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
-	onDraftTicket?: (artifact: {
-		kind: "turn_result" | "leaf_outcome";
-		turnRecordId?: string;
-		leafEntryId?: string;
-		text: string;
-	}) => void;
+	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 	hasTerminalSummary?: boolean;
 }
 
@@ -259,7 +255,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
 				onOpenReasoningDetails={onOpenReasoningDetails}
-				onDraftTicket={onDraftTicket as never}
+				onDraftTicket={onDraftTicket}
 			/>
 			{#each questionRequestsByTurn.get(item.turnRecordId)?.closed ?? [] as request (request.id)}
 				<ChronicleQuestionRequest {request} />
@@ -271,7 +267,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				section={item}
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
-				onDraftTicket={onDraftTicket as never}
+				onDraftTicket={onDraftTicket}
 			/>
 		{:else if item.kind === "leaf_outcome_placeholder"}
 			<ChronicleLeafOutcomePlaceholder latestTurnTitle={item.latestTurnTitle} />

@@ -7,6 +7,7 @@ import {
 	type ExternalSourceServiceLike,
 	type PollingServiceLike,
 	type ProcessActionSummaryLike,
+	type ProcessLaunchExecutorLike,
 	type ProcessLaunchPlan,
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionServiceLike,
@@ -72,6 +73,21 @@ export function buildHostCapabilities(input: {
 		processDefinitions: input.processDefinitions,
 		repositoryCredentials: input.repositoryCredentials,
 	} satisfies ProcessLaunchExecutorDeps;
+	const processLaunches = {
+		createProcessFromLaunchConfig(
+			configInput: import("@leitwerk-dev/process-sdk").ProcessLaunchConfigExecutionInput,
+			opts?: { actor?: Actor; launchRunId?: string },
+		) {
+			return createProcessFromLaunchConfig(launchExecutorDeps, configInput, opts);
+		},
+		createProcessFromLaunchPlan(
+			launchPlan: ProcessLaunchPlan,
+			opts?: { actor?: Actor; launchRunId?: string },
+		) {
+			return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, opts);
+		},
+	} satisfies ProcessLaunchExecutorLike;
+
 	const hostCapabilities = createCapabilityAccessor([
 		{
 			token: coreHostCapabilities.serverSetup,
@@ -113,20 +129,7 @@ export function buildHostCapabilities(input: {
 				launcherRecentValues: input.launcherRecentValues,
 				launcherModelConfigs: input.launcherModelConfigs,
 				launchPlans: input.launchPlans,
-				processLaunches: {
-					createProcessFromLaunchConfig(
-						configInput: import("@leitwerk-dev/process-sdk").ProcessLaunchConfigExecutionInput,
-						opts?: { actor?: import("@leitwerk-dev/domain").Actor; launchRunId?: string },
-					) {
-						return createProcessFromLaunchConfig(launchExecutorDeps, configInput, opts);
-					},
-					createProcessFromLaunchPlan(
-						launchPlan: ProcessLaunchPlan,
-						opts?: { actor?: import("@leitwerk-dev/domain").Actor; launchRunId?: string },
-					) {
-						return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, opts);
-					},
-				},
+				processLaunches,
 				handoffDedupKeys: input.baseDeps.handoffDedupKeys,
 				processWatchers: input.processWatcherService,
 				launchRuns: {
@@ -144,18 +147,7 @@ export function buildHostCapabilities(input: {
 							},
 							{
 								launchPlans: input.launchPlans,
-								processLaunches: {
-									createProcessFromLaunchConfig(configInput, launchOpts) {
-										return createProcessFromLaunchConfig(
-											launchExecutorDeps,
-											configInput,
-											launchOpts,
-										);
-									},
-									createProcessFromLaunchPlan(launchPlan, launchOpts) {
-										return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, launchOpts);
-									},
-								},
+								processLaunches,
 							},
 						);
 					},

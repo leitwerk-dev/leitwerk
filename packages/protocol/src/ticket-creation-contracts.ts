@@ -1,4 +1,4 @@
-import type { Actor, ProcessRelation, ProcessToolApprovalRequest } from "@leitwerk-dev/domain";
+import type { ProcessRelation } from "@leitwerk-dev/domain";
 
 export interface TicketCreationToolSummary {
 	name: string;
@@ -30,21 +30,7 @@ export interface LaunchTicketCreationResponseBody {
 	relation: ProcessRelation;
 }
 
-export interface TicketCreationRelationSummary {
-	relation: ProcessRelation;
-	title: string | null;
-	lifecycleStatus: string;
-	toolName?: string;
-	externalId?: string | null;
-	externalUrl?: string | null;
-}
-
 export interface ResolveToolApprovalRequestBody {
 	action: "accept" | "feedback" | "decline";
 	feedback?: string;
-}
-
-export interface ResolveToolApprovalResponseBody {
-	request: ProcessToolApprovalRequest;
-	resolvedBy: Actor;
 }

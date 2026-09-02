@@ -45,8 +45,6 @@ export interface WorkerTurnIpcRecorderCallbacks {
 	}) => void;
 }
 
-type TurnCorrelationCommandResult = Awaited<ReturnType<ProcessEngine["recordTurnOutcome"]>>;
-
 type TerminalType = "outcome" | "failure";
 
 function terminalWasAlreadyRecorded(
@@ -58,7 +56,7 @@ function terminalWasAlreadyRecorded(
 	return terminalType === "outcome" ? record?.status === "succeeded" : record?.status === "failed";
 }
 
-function failureDetails(result: TurnCorrelationCommandResult | unknown): {
+function failureDetails(result: unknown): {
 	code: string;
 	message: string;
 } {
@@ -160,6 +158,28 @@ export function createWorkerTurnIpcRecorder(
 			});
 		}
 	};
+	const recordTerminal = async <T>(input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		terminalType: TerminalType;
+		record: () => Promise<T>;
+		isSuccess: (result: T) => boolean;
+		onSuccess: (result: T) => void | Promise<void>;
+		resultPiEntryId?: string | null;
+		recoveryContext?: import("@leitwerk-dev/domain").FailedTurnRecoveryContext | null;
+	}): Promise<void> => {
+		try {
+			const result = await input.record();
+			if (!input.isSuccess(result)) {
+				await recoverRecordingFailure({ ...input, failure: result });
+				return;
+			}
+			await input.onSuccess(result);
+		} catch (error: unknown) {
+			await recoverRecordingFailure({ ...input, failure: error });
+		}
+	};
 
 	return {
 		recordTurnOutcome(
@@ -175,42 +195,27 @@ export function createWorkerTurnIpcRecorder(
 			if (deps.eventIngestor.getLiveTurnRecordId(instanceId) === rest.turnRecordId) {
 				deps.eventIngestor.clearLiveTurnState(instanceId);
 			}
-			void deps.commands
-				.recordTurnOutcome(
-					instanceId,
-					{
+			void recordTerminal({
+				instanceId,
+				workerId,
+				turnRecordId: rest.turnRecordId,
+				terminalType: "outcome",
+				record: () =>
+					deps.commands.recordTurnOutcome(
 						instanceId,
-						turnId,
-						...rest,
-					},
-					{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
-				)
-				.then(async (result) => {
-					if (!result.ok) {
-						await recoverRecordingFailure({
+						{
 							instanceId,
-							workerId,
-							turnRecordId: rest.turnRecordId,
-							terminalType: "outcome",
-							failure: result,
-							resultPiEntryId: rest.resultPiEntryId,
-							recoveryContext: createGenericFailedTurnRecoveryContext(),
-						});
-						return;
-					}
-					callbacks.onTurnOutcomeRecorded?.(instanceId, turnId, rest.outcome, rest.params);
-				})
-				.catch((error: unknown) =>
-					recoverRecordingFailure({
-						instanceId,
-						workerId,
-						turnRecordId: rest.turnRecordId,
-						terminalType: "outcome",
-						failure: error,
-						resultPiEntryId: rest.resultPiEntryId,
-						recoveryContext: createGenericFailedTurnRecoveryContext(),
-					}),
-				);
+							turnId,
+							...rest,
+						},
+						{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
+					),
+				isSuccess: (result) => result.ok,
+				onSuccess: () =>
+					callbacks.onTurnOutcomeRecorded?.(instanceId, turnId, rest.outcome, rest.params),
+				resultPiEntryId: rest.resultPiEntryId,
+				recoveryContext: createGenericFailedTurnRecoveryContext(),
+			});
 		},
 		recordTurnFailed(instanceId: string, workerId: string, payload: WorkerTurnFailedPayload): void {
 			const { errorClass, failureCode, failureDetails: details, ...rest } = payload;
@@ -233,56 +238,39 @@ export function createWorkerTurnIpcRecorder(
 			if (deps.eventIngestor.getLiveTurnRecordId(instanceId) === rest.turnRecordId) {
 				deps.eventIngestor.clearLiveTurnState(instanceId);
 			}
-			void deps.commands
-				.recordTurnFailed(
-					instanceId,
-					{
+			void recordTerminal({
+				instanceId,
+				workerId,
+				turnRecordId: rest.turnRecordId,
+				terminalType: "failure",
+				record: () =>
+					deps.commands.recordTurnFailed(
 						instanceId,
-						errorClass,
-						...(normalizedFailureCode
-							? { failureCode: normalizedFailureCode, failureDetails: details }
-							: {}),
-						...rest,
-					},
-					{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
-				)
-				.then(async (result) => {
-					if (result.ok) {
-						reportRecordedTurnFailure({
+						{
 							instanceId,
-							workerId,
-							turnRecordId: rest.turnRecordId,
-							turnId: rest.turnId,
-							turnType: deps.turnRecords.getById(rest.turnRecordId)?.turnType ?? rest.turnType,
-							errorSummary: rest.errorSummary,
-							...(errorClass !== undefined ? { errorClass } : {}),
-							...(normalizedFailureCode !== undefined
-								? { failureCode: normalizedFailureCode }
+							errorClass,
+							...(normalizedFailureCode
+								? { failureCode: normalizedFailureCode, failureDetails: details }
 								: {}),
-						});
-						return;
-					}
-					await recoverRecordingFailure({
+							...rest,
+						},
+						{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
+					),
+				isSuccess: (result) => result.ok,
+				onSuccess: () =>
+					reportRecordedTurnFailure({
 						instanceId,
 						workerId,
 						turnRecordId: rest.turnRecordId,
-						terminalType: "failure",
-						failure: result,
-						resultPiEntryId: rest.resultPiEntryId,
-						recoveryContext: rest.recoveryContext,
-					});
-				})
-				.catch((error: unknown) =>
-					recoverRecordingFailure({
-						instanceId,
-						workerId,
-						turnRecordId: rest.turnRecordId,
-						terminalType: "failure",
-						failure: error,
-						resultPiEntryId: rest.resultPiEntryId,
-						recoveryContext: rest.recoveryContext,
+						turnId: rest.turnId,
+						turnType: deps.turnRecords.getById(rest.turnRecordId)?.turnType ?? rest.turnType,
+						errorSummary: rest.errorSummary,
+						...(errorClass !== undefined ? { errorClass } : {}),
+						...(normalizedFailureCode !== undefined ? { failureCode: normalizedFailureCode } : {}),
 					}),
-				);
+				resultPiEntryId: rest.resultPiEntryId,
+				recoveryContext: rest.recoveryContext,
+			});
 		},
 	};
 }
