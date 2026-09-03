@@ -209,7 +209,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		reason?: string,
 	): ApplyWorkerLeaseObservationResult {
 		const process = observation === "spawn_requested" ? deps.processes.getById(instanceId) : null;
-		return applyWorkerLeaseObservation(
+		const result = applyWorkerLeaseObservation(
 			{ leases: deps.leases, broadcaster: deps.broadcaster },
 			{
 				instanceId,
@@ -220,6 +220,8 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 					process?.currentExecution?.kind === "worker_start" ? process.currentExecution.id : null,
 			},
 		);
+		if (result.kind === "applied") deps.getLaunchCoordinator?.()?.refresh(instanceId);
+		return result;
 	}
 
 	function safeGetLeaseByInstance(instanceId: string) {
@@ -745,13 +747,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				isolation: selection.isolation,
 				resources: resourceLimits,
 			},
-			{
-				report(phase) {
-					deps
-						.getLaunchCoordinator?.()
-						?.observeRunnerPhase(options.instanceId, options.workerId, phase);
-				},
-			},
+			{ report() {} },
 		);
 		return createRunnerHandle({
 			unit,

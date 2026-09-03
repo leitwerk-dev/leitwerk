@@ -26,7 +26,7 @@ Operators can derive a ticket from a durable turn result or leaf outcome. The
 initial dialog asks what issue to create and selects a capability-marked ticket
 adapter only when more than one is available. It does not preview the result or
 ask for a destination. The server snapshots the parent context and sanitized
-destination summaries before opening the derived process.
+destination summaries before admitting the derived process through an idempotent durable launch run.
 
 The derived process refines the ticket in the normal process UI. It chooses a
 destination from the operator's instructions or asks when the target is ambiguous.

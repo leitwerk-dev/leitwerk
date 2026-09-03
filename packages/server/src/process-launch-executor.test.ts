@@ -138,6 +138,27 @@ describe("process launch durable boundary", () => {
 		expect(commit.projects).toHaveLength(1);
 	});
 
+	it("commits a derived relation with its child process", async () => {
+		const deps = createTestDeps();
+		const parent = deps.processes.create({ processId: "parent_process" });
+
+		const result = await createProcessFromLaunchPlan(deps, createLaunchPlan(), {
+			relation: {
+				parentInstanceId: parent.id,
+				purpose: "ticket_creation",
+				createdBy: { id: "system", kind: "system" },
+			},
+		});
+
+		expect(result.ok).toBe(true);
+		if (!result.ok) return;
+		expect(deps.processRelations.getByChild(result.process.id)).toMatchObject({
+			parentInstanceId: parent.id,
+			childInstanceId: result.process.id,
+			purpose: "ticket_creation",
+		});
+	});
+
 	it("commits scheduled process creation and occurrence consumption atomically", () => {
 		const deps = createTestDeps();
 		const execution = deps.futureExecutions.create({

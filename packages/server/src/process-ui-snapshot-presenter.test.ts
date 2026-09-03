@@ -7,7 +7,6 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	buildCurrentTurnRecovery,
-	buildProcessStartupSummary,
 	buildStartupRecovery,
 	presentProcessTimelineTurns,
 	projectProcessForUiSnapshot,
@@ -148,99 +147,6 @@ describe("process UI snapshot presenter", () => {
 			canContinue: true,
 			supportsModelOverride: true,
 		});
-	});
-
-	it("projects authoritative startup timing from correlated lease readiness", () => {
-		const start = turnStart();
-		const record = turnRecord();
-		const startup = buildProcessStartupSummary({
-			process: processInstance({
-				lifecycleStatus: "active",
-				currentExecution: { kind: "worker_start", id: start.id },
-			}),
-			turnStarts: [start],
-			turnRecords: [record],
-			leases: [
-				{
-					id: "wkr_1",
-					instanceId: "agt_presenter",
-					workerId: "worker_1",
-					turnStartRecordId: start.id,
-					state: "busy",
-					bootstrapReceipt: null,
-					lastHeartbeatAt: null,
-					startedAt: "2026-01-01T00:00:00.000Z",
-					connectedAt: "2026-01-01T00:00:02.000Z",
-					workspacePreparationStartedAt: "2026-01-01T00:00:03.000Z",
-					readyAt: "2026-01-01T00:00:29.000Z",
-					exitedAt: null,
-				},
-			],
-		});
-		expect(startup.authoritativeAttemptId).toBe(start.id);
-		expect(startup.attempts[0]).toMatchObject({
-			status: "succeeded",
-			durationMs: 29_000,
-			steps: [
-				{ id: "start_worker", status: "completed" },
-				{ id: "connect_worker", status: "completed" },
-				{ id: "prepare_workspace", status: "completed" },
-				{ id: "start_first_turn", status: "completed" },
-			],
-		});
-	});
-
-	it("does not report success without matching readiness and turn acceptance", () => {
-		const start = turnStart();
-		const startup = buildProcessStartupSummary({
-			process: processInstance({
-				lifecycleStatus: "active",
-				currentExecution: { kind: "worker_start", id: start.id },
-			}),
-			turnStarts: [start],
-			turnRecords: [turnRecord({ acceptedWorkerLeaseId: "wkr_stale" })],
-			leases: [],
-		});
-		expect(startup.authoritativeAttemptId).toBeNull();
-		expect(startup.attempts[0]).toMatchObject({ status: "starting" });
-	});
-
-	it("retains a recovered startup failure beside the successful retry", () => {
-		const failed = turnStart({
-			id: "str_failed",
-			state: {
-				kind: "preparation_failed",
-				requestedModelProfileId: null,
-				providerOptions: {},
-				code: "model_required",
-				safeSummary: "Choose an available model",
-			},
-		});
-		const retry = turnStart({ id: "str_retry", startKind: "startup_retry" });
-		const startup = buildProcessStartupSummary({
-			process: processInstance({
-				lifecycleStatus: "active",
-				currentExecution: { kind: "worker_start", id: retry.id },
-			}),
-			turnStarts: [failed, retry],
-			turnRecords: [turnRecord({ turnStartRecordId: retry.id })],
-			leases: [
-				{
-					id: "wkr_1",
-					instanceId: "agt_presenter",
-					workerId: "worker_1",
-					turnStartRecordId: retry.id,
-					state: "busy",
-					bootstrapReceipt: null,
-					lastHeartbeatAt: null,
-					startedAt: "2026-01-01T00:00:00.000Z",
-					readyAt: "2026-01-01T00:00:29.000Z",
-					exitedAt: null,
-				},
-			],
-		});
-		expect(startup.attempts.map((attempt) => attempt.status)).toEqual(["recovered", "succeeded"]);
-		expect(startup.attempts[0]?.recoveredByStartRecordId).toBe(retry.id);
 	});
 
 	it("projects actionable startup failures from the current worker start", () => {

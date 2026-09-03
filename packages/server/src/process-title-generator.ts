@@ -417,12 +417,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		const queued = this.buildQueuedJobBase(input.launchPlan);
 		if (!queued) {
 			if (!input.launchPlan.processInput.title) {
-				this.getLaunchCoordinator?.()?.observeTitle(
-					input.processId,
-					"skipped",
-					undefined,
-					input.launchRunId,
-				);
+				this.getLaunchCoordinator?.()?.refresh(input.processId);
 			}
 			return;
 		}
@@ -792,17 +787,12 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 
 	private updateLaunchTitleStep(
 		processInstanceId: string | null,
-		status: "completed" | "skipped" | "failed",
-		safeSummary?: string,
-		launchRunId?: string | null,
+		_status: "completed" | "skipped" | "failed",
+		_safeSummary?: string,
+		_launchRunId?: string | null,
 	): void {
 		if (!processInstanceId) return;
-		this.getLaunchCoordinator?.()?.observeTitle(
-			processInstanceId,
-			status,
-			safeSummary,
-			launchRunId,
-		);
+		this.getLaunchCoordinator?.()?.refresh(processInstanceId);
 	}
 
 	private isJobStillRunning(jobId: string): boolean {

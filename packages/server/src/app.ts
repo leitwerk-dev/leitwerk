@@ -70,6 +70,7 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import { reconcileProcessesOnStartup } from "./process-engine/startup-reconciliation.js";
 import { prepareCreatedTurnStarts } from "./process-engine/turn-start-preflight.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
+import { createProcessLaunchExecutor } from "./process-launch-executor.js";
 import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 import { recoverModelAvailabilityFailures } from "./process-model-availability-recovery.js";
 import { applyProcessModelAvailabilityTransitions } from "./process-model-availability-transitions.js";
@@ -919,10 +920,23 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		titleGenerationAvailable: Boolean(processTitles),
 		logger: app.log,
 	});
+	const processLaunches = createProcessLaunchExecutor({
+		...baseDeps,
+		commitMessages: config.commit_messages,
+		broadcaster,
+		commands: processEngine,
+		processTitles,
+		extensionHost,
+		logger: app.log,
+		processDefinitions: extensionCatalog.processes,
+		repositoryCredentials,
+		getSupervisor: () => supervisor,
+	});
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
 		futureExecutions: baseDeps.futureExecutions,
 		processes: baseDeps.processes,
 		projects: baseDeps.projects,
+		processRelations: baseDeps.processRelations,
 		handoffDedupKeys: baseDeps.handoffDedupKeys,
 		turnRecords: baseDeps.turnRecords,
 		skills: baseDeps.skills,
@@ -950,11 +964,13 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processes: baseDeps.processes,
 		leases: baseDeps.leases,
 		turnRecords: baseDeps.turnRecords,
+		turnStarts: baseDeps.turnStarts,
 		titleJobs: baseDeps.titleJobs,
 		launcherService,
 		futureExecutionLifecycle,
 		launchPipeline,
-		broadcaster,
+		launchPlans,
+		processLaunches,
 		titleGenerationAvailable: Boolean(processTitles),
 		logger: app.log,
 	});
@@ -1026,16 +1042,12 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		launcherRecentValues,
 		launcherModelConfigs,
 		launchPlans,
-		processTitles,
-		extensionHost,
-		logger: app.log,
 		processWatcherService,
 		polling,
 		externalSourceService,
 		processModelSelection,
 		resultImages,
 		repositoryCredentials,
-		processDefinitions: extensionCatalog.processes,
 		processQuestions,
 		launchCoordinator,
 		preProvidedCapabilities: opts.preProvidedCapabilities,

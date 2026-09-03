@@ -38,6 +38,7 @@ import { evaluateFutureModelSelection } from "./model-projection.js";
 import { reconcileFutureExecutionModelBlocks } from "./reconciliation.js";
 import {
 	buildFutureExecutionUpdatedEffect,
+	resolveStoredScheduleRequest,
 	runFutureExecutionExclusive,
 	runFutureExecutionPostCommitEffects,
 } from "./support.js";
@@ -56,6 +57,7 @@ export interface FutureExecutionLifecycleDeps
 		| "futureExecutions"
 		| "processes"
 		| "projects"
+		| "processRelations"
 		| "handoffDedupKeys"
 		| "turnRecords"
 		| "skills"
@@ -149,30 +151,6 @@ export interface NormalizedScheduledActionInput {
 }
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; issue: FutureExecutionIssue };
-
-function resolveStoredScheduleRequest(
-	execution: Pick<FutureExecution, "scheduleKind" | "nextRunAt" | "cronExpression">,
-): Resolved<ParsedScheduleRequest> {
-	if (execution.scheduleKind === "cron") {
-		if (!execution.cronExpression) {
-			return {
-				ok: false,
-				issue: {
-					code: "invalid_schedule",
-					message: "Scheduled execution is missing its cron expression",
-				},
-			};
-		}
-		return {
-			ok: true,
-			value: { mode: "cron", cronExpression: execution.cronExpression },
-		};
-	}
-	return {
-		ok: true,
-		value: { mode: "once", runAt: execution.nextRunAt },
-	};
-}
 
 function resolveScheduledActionUpdateRequest(
 	execution: FutureExecution,

@@ -70,9 +70,9 @@ export type LaunchCommit<TResult, TFailure> =
 	  }
 	| { kind: "failed"; failure: LaunchStageFailure<TFailure> };
 
-export interface LaunchAdapter<TInput, TResolved, TPrepared, TResult, TFailure> {
-	resolve(input: TInput): Promise<LaunchResolution<TResolved, TFailure>>;
-	preparationChecks(resolved: TResolved): readonly LaunchPipelineCheck[];
+export interface LaunchAdapter<TResolved, TPrepared, TResult, TFailure> {
+	resolve(): Promise<LaunchResolution<TResolved, TFailure>>;
+	preparationChecks?(resolved: TResolved): readonly LaunchPipelineCheck[];
 	preparationCheckFailure?(error: unknown, safeSummary: string): TFailure;
 	prepare(
 		resolved: TResolved,
@@ -99,11 +99,12 @@ export interface LaunchPipeline {
 		launcherId: string | null;
 		idempotencyKey?: string | null;
 		origin: LaunchRun["origin"];
+		broadcast?: boolean;
 	}): { launchRunId: string; existing: boolean };
-	run<TInput, TResolved, TPrepared, TResult, TFailure>(
+	update(id: string, fn: (run: LaunchRun) => LaunchRun): LaunchRun;
+	run<TResolved, TPrepared, TResult, TFailure>(
 		launchRunId: string,
-		input: TInput,
-		adapter: LaunchAdapter<TInput, TResolved, TPrepared, TResult, TFailure>,
+		adapter: LaunchAdapter<TResolved, TPrepared, TResult, TFailure>,
 	): Promise<LaunchPipelineRunResult<TResult, TFailure>>;
 }
 
@@ -141,7 +142,25 @@ export function finishLaunchRun(run: LaunchRun, status: "failed" | "cancelled"):
 }
 
 export function failLaunchRun(run: LaunchRun, stepId: string, summary: string): LaunchRun {
-	return finishLaunchRun(transitionLaunchStep(run, stepId, "failed", summary), "failed");
+	const timestamp = new Date().toISOString();
+	const transitioned = transitionLaunchStep(run, stepId, "failed", summary);
+	return finishLaunchRun(
+		{
+			...transitioned,
+			steps: transitioned.steps.map((step) =>
+				step.id === stepId && step.status !== "failed"
+					? {
+							...step,
+							status: "failed",
+							startedAt: step.startedAt ?? timestamp,
+							completedAt: step.completedAt ?? timestamp,
+							safeSummary: summary,
+						}
+					: step,
+			),
+		},
+		"failed",
+	);
 }
 
 export function completeCommittedLaunch(
@@ -231,19 +250,21 @@ export function createLaunchPipeline(deps: {
 				? deps.launchRuns.getByIdempotencyKey(input.idempotencyKey)
 				: null;
 			if (existing) return { launchRunId: existing.id, existing: true };
-			const run = deps.launchRuns.create({ ...input, steps: initialLaunchSteps() });
-			broadcast(run);
+			const { broadcast: shouldBroadcast = true, ...createInput } = input;
+			const run = deps.launchRuns.create({ ...createInput, steps: initialLaunchSteps() });
+			if (shouldBroadcast) broadcast(run);
 			return { launchRunId: run.id, existing: false };
 		},
 
-		async run<TInput, TResolved, TPrepared, TResult, TFailure>(
+		update: mutate,
+
+		async run<TResolved, TPrepared, TResult, TFailure>(
 			launchRunId: string,
-			input: TInput,
-			adapter: LaunchAdapter<TInput, TResolved, TPrepared, TResult, TFailure>,
+			adapter: LaunchAdapter<TResolved, TPrepared, TResult, TFailure>,
 		): Promise<LaunchPipelineRunResult<TResult, TFailure>> {
 			try {
 				mutate(launchRunId, (run) => transitionLaunchStep(run, "validate_request", "in_progress"));
-				const resolution = await adapter.resolve(input);
+				const resolution = await adapter.resolve();
 				if (resolution.kind === "skipped") {
 					mutate(launchRunId, (run) =>
 						finishLaunchRun(transitionLaunchStep(run, "validate_request", "skipped"), "cancelled"),
@@ -254,7 +275,7 @@ export function createLaunchPipeline(deps: {
 					return fail(launchRunId, "validate_request", resolution.failure);
 				mutate(launchRunId, (run) => transitionLaunchStep(run, "validate_request", "completed"));
 
-				const checks = adapter.preparationChecks(resolution.value);
+				const checks = adapter.preparationChecks?.(resolution.value) ?? [];
 				mutate(launchRunId, (run) => withChecks(run, checks));
 				const controller = new AbortController();
 				for (const check of checks) {

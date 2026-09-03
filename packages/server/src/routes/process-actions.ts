@@ -189,12 +189,10 @@ export function registerProcessActionRoutes(
 			Object.keys(options).length > 0 ? options : undefined,
 		);
 		if (!result.ok) {
-			deps.launchCoordinator.failStartupRetry(
-				req.params.instanceId,
-				"The worker could not be restarted. Review the process error and try again.",
-			);
+			deps.launchCoordinator.refresh(req.params.instanceId);
 			return sendEngineFailure(reply, result, "retry");
 		}
+		deps.launchCoordinator.refresh(req.params.instanceId);
 		return { process: result.process, startRecordId: result.data.startRecordId, launchRunId };
 	});
 

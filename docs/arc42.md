@@ -113,7 +113,7 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 2. **Shared Launch Pipeline:** The server records a durable `LaunchRun`, validates the request, runs ordered preparation checks, and prepares models and skills. Immediate HTTP launches use `POST /api/launchers/:launcherId/launch-runs`. `POST /api/launchers/:launcherId/future-launches` persists future launches without creating a startup checklist. `future-execution/launch-lifecycle.ts` owns future-launch creation and revision; future actions remain in the future-execution facade.
 3. **Durable Seeding:** `ProcessLaunchExecutor` validates final pre-commit requirements, creates the process and repository state, and correlates the launch run in one transaction. A scheduled occurrence is consumed or advanced in the same transaction.
 4. **Post-Commit Reaction:** After commit and lock release, the server broadcasts process creation and schedules worker activation for the primary entry turn. Reaction failure does not erase the committed process.
-5. **Startup Observation:** Lease, connection, bootstrap, readiness, and accepted-turn records drive startup progress. `LaunchRun` state is not authoritative startup evidence.
+5. **Startup Projection:** One canonical server projector interprets durable process, turn-start, lease, readiness, and accepted-turn evidence. Launch runs consume this projection for their checklist but never own startup truth; missed refresh notifications are repaired when a launch run is read.
 
 ### 6.2 Turn Execution Phase
 
@@ -184,7 +184,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 ## 11 Risks and Technical Debt
 
 - **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
-- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: it atomically launches the code-defined process and entry turn registered by the selected ticket capability, using a durable result and immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
+- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: the Launch Coordinator admits an idempotent durable `LaunchRun`, atomically commits the code-defined child and relation registered by the selected ticket capability, and then starts its entry turn using a durable result and immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
 
 ## 12 Glossary
 

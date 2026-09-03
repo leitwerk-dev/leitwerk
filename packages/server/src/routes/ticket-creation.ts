@@ -1,4 +1,5 @@
 import type { ProcessRelation } from "@leitwerk-dev/domain";
+import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import type {
 	LaunchTicketCreationRequestBody,
 	LaunchTicketCreationResponseBody,
@@ -40,10 +41,10 @@ function assembleContext(
 		.sort((a, b) => a.startedAt.localeCompare(b.startedAt))
 		.map((turn) => ({ id: turn.id, markdown: turn.turnResultMarkdown as string }));
 	let durableText: string | null = null;
-	if (body.artifact.kind === "turn_result" && body.artifact.turnRecordId) {
-		durableText =
-			results.find((result) => result.id === body.artifact.turnRecordId)?.markdown ?? null;
-	} else if (body.artifact.kind === "leaf_outcome" && body.artifact.leafEntryId) {
+	if (body.artifact.kind === "turn_result") {
+		const turnRecordId = body.artifact.turnRecordId;
+		durableText = results.find((result) => result.id === turnRecordId)?.markdown ?? null;
+	} else {
 		const snapshot = deps.leafOutcomeSnapshots.getByInstanceAndLeafEntryId(
 			parentInstanceId,
 			body.artifact.leafEntryId,
@@ -101,6 +102,12 @@ export function registerTicketCreationRoutes(
 		"/api/processes/:instanceId/ticket-creation",
 		async (req, reply) => {
 			try {
+				const idempotencyKey = req.headers["idempotency-key"];
+				if (typeof idempotencyKey !== "string" || !idempotencyKey.trim()) {
+					throw Object.assign(new Error("Idempotency-Key header is required"), {
+						statusCode: 400,
+					});
+				}
 				const tool = registry.resolveTicketTool(req.body.toolName);
 				const { processId, startTurnId } = tool.capability;
 				if (!hasProcessGraph(deps.processGraphs, processId)) {
@@ -113,9 +120,13 @@ export function registerTicketCreationRoutes(
 					? await registry.listTicketDestinations(req.body.toolName, actor)
 					: undefined;
 				const { parent, context } = assembleContext(deps, req.params.instanceId, req.body);
-				const committed = deps.transaction((repos) => {
-					const child = repos.processes.create({
+				const launchPlan: ProcessLaunchPlan = {
+					launcherId: `ticket:${req.body.toolName}`,
+					processId,
+					processInput: {
 						processId,
+						selectedTurnId: null,
+						lifecycleStatus: "discovered",
 						title: `Ticket from ${parent.title ?? parent.id}`,
 						defaultModelProfileId: req.body.modelProfileId ?? null,
 						metadata: { _leitwerk: { requiresExternalReceipt: true } },
@@ -136,39 +147,34 @@ export function registerTicketCreationRoutes(
 							...(req.body.modelProfileId ? { launchModelProfileId: req.body.modelProfileId } : {}),
 						}),
 						stateJson: JSON.stringify({ semanticEntryRefs: {} }),
-					});
-					const relation = repos.processRelations.create({
+					},
+					projectInputs: [],
+					startTurnId,
+				};
+				const launched = await deps.launchCoordinator.startPreparedPlan({
+					launchPlan,
+					idempotencyKey,
+					actor,
+					origin: "ui",
+					relation: {
 						parentInstanceId: parent.id,
-						childInstanceId: child.id,
 						purpose: "ticket_creation",
 						createdBy: actor,
-					});
-					return { child, relation };
+					},
 				});
-				const started = await deps.processEngine.startProcess(committed.child.id, startTurnId, {
-					actor,
-				});
-				if (!started.ok) {
-					if (started.stage === "pre_commit") {
-						deps.transaction((repos) => {
-							const child = repos.processes.getById(committed.child.id);
-							if (
-								child &&
-								child.lifecycleStatus === "discovered" &&
-								child.selectedTurnId === null &&
-								child.currentExecution === null
-							) {
-								repos.processes.delete(committed.child.id);
-							}
-						});
-					}
+				if (!launched.process) {
+					return reply.code(500).send({ error: launched.error ?? "Ticket launch failed" });
+				}
+				const relation = deps.processRelations.getByChild(launched.process.id);
+				if (!relation) throw new Error("Ticket launch did not create its process relation");
+				if (launched.error) {
 					return reply
 						.code(500)
-						.send({ error: started.message, childInstanceId: committed.child.id });
+						.send({ error: launched.error, childInstanceId: launched.process.id });
 				}
 				return {
-					childInstanceId: committed.child.id,
-					relation: committed.relation,
+					childInstanceId: launched.process.id,
+					relation,
 				} satisfies LaunchTicketCreationResponseBody;
 			} catch (error) {
 				const status = (error as { statusCode?: number }).statusCode ?? 400;

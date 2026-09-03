@@ -193,7 +193,7 @@ export function registerLauncherRoutes(
 	app.get<{ Params: { launchRunId: string } }>(
 		"/api/launch-runs/:launchRunId",
 		async (req, reply) => {
-			const launchRun = deps.launchRuns.getById(req.params.launchRunId);
+			const launchRun = deps.launchCoordinator.get(req.params.launchRunId);
 			if (!launchRun) return reply.code(404).send({ error: "Launch run not found" });
 			return { launchRun } satisfies LaunchRunResponseBody;
 		},

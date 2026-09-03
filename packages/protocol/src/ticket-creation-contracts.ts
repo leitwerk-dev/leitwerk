@@ -5,11 +5,9 @@ export interface TicketCreationToolSummary {
 	displayName: string;
 }
 
-export interface TicketResultArtifactLocator {
-	kind: "turn_result" | "leaf_outcome";
-	turnRecordId?: string;
-	leafEntryId?: string;
-}
+export type TicketResultArtifactLocator =
+	| { kind: "turn_result"; turnRecordId: string }
+	| { kind: "leaf_outcome"; leafEntryId: string };
 
 export interface TicketCreationFocus {
 	kind: "whole_result" | "excerpt";

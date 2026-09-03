@@ -9,8 +9,6 @@ import type {
 	RegisteredProcessWatcherLike,
 	ResolvedProcessLauncher,
 } from "@leitwerk-dev/process-sdk";
-import type { WorkerBootstrapProgressPayload } from "@leitwerk-dev/worker-protocol";
-import type { WorkerStartPhase } from "@leitwerk-dev/worker-runners/types";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type {
 	FutureExecutionLifecycle,
@@ -22,23 +20,17 @@ import { watcherAdmissionKey, withWatcherHandoffDedupKey } from "./launch-idempo
 import {
 	failLaunchRun,
 	finishLaunchRun,
-	initialLaunchSteps,
 	type LaunchPipeline,
+	type LaunchPipelineRunResult,
 	type LaunchStageFailure,
 } from "./launch-pipeline.js";
-import {
-	cancelLaunchRun,
-	observeBootstrapProgress as projectBootstrapProgress,
-	observeFirstTurnStarted as projectFirstTurnStarted,
-	observeRunnerPhase as projectRunnerPhase,
-	observeTitle as projectTitle,
-	observeWorkerFailure as projectWorkerFailure,
-	observeWorkerReady as projectWorkerReady,
-	reconcileCommittedLaunch,
-	startupEvidenceScore,
-} from "./launch-run-progress.js";
-import type { ProcessLaunchExecutorLike } from "./process-launch-executor.js";
-import type { Broadcaster } from "./ws/broadcast.js";
+import type {
+	ProcessLaunchExecutorLike,
+	ProcessLaunchOptions,
+	ProcessLaunchRelationInput,
+} from "./process-launch-executor.js";
+import { toLaunchPipelineCommit } from "./process-launch-pipeline-adapter.js";
+import { buildStartupEvidence, projectLaunchRunStartup } from "./startup-evidence.js";
 
 const NOOP_LAUNCH_LOGGER = { info() {}, warn() {} };
 const MAX_PROGRAMMATIC_METADATA_BYTES = 16 * 1024;
@@ -83,8 +75,21 @@ export interface StartLaunchRequest {
 	processMetadata?: Record<string, unknown>;
 }
 
+export interface PreparedPlanLaunchRequest {
+	launchPlan: ProcessLaunchPlan;
+	idempotencyKey: string;
+	actor: Actor;
+	origin: LaunchRun["origin"];
+	relation?: ProcessLaunchRelationInput;
+}
+
 export interface LaunchCoordinator {
 	start(request: StartLaunchRequest): Promise<{ launchRunId: string }>;
+	startPreparedPlan(request: PreparedPlanLaunchRequest): Promise<{
+		launchRunId: string;
+		process: ProcessInstance | null;
+		error: string | null;
+	}>;
 	startProgrammatic(
 		request: ProgrammaticLaunchRequestLike,
 		opts: { idempotencyKey: string; actor: Actor },
@@ -93,28 +98,10 @@ export interface LaunchCoordinator {
 		watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
 		event: TEvent,
 		request: { idempotencyKey: string; actor: Actor },
-		services: {
-			launchPlans: ProcessLaunchPlanServiceLike;
-			processLaunches: ProcessLaunchExecutorLike;
-		},
 	): Promise<{ launchRunId: string; process: ProcessInstance | null; error: string | null }>;
 	retryStartup(instanceId: string, actor: Actor): Promise<{ launchRunId: string }>;
-	failStartupRetry(instanceId: string, safeSummary: string): void;
-	observeRunnerPhase(instanceId: string, workerId: string, phase: WorkerStartPhase): void;
-	observeBootstrapProgress(
-		instanceId: string,
-		workerId: string,
-		phase: WorkerBootstrapProgressPayload["phase"],
-	): void;
-	observeWorkerReady(instanceId: string, workerId: string): void;
-	observeFirstTurnStarted(instanceId: string, workerId: string): void;
-	observeWorkerFailure(instanceId: string, workerId: string, safeSummary: string): void;
-	observeTitle(
-		instanceId: string,
-		status: "completed" | "skipped" | "failed",
-		safeSummary?: string,
-		launchRunId?: string | null,
-	): void;
+	get(launchRunId: string): LaunchRun | null;
+	refresh(instanceId: string): LaunchRun | null;
 	reconcileIncomplete(): Promise<void>;
 }
 
@@ -123,71 +110,140 @@ interface LaunchCoordinatorDeps {
 	processes: RepositoryBundle["processes"];
 	leases: RepositoryBundle["leases"];
 	turnRecords: RepositoryBundle["turnRecords"];
+	turnStarts: RepositoryBundle["turnStarts"];
 	titleJobs: RepositoryBundle["titleJobs"];
 	launcherService: ProcessLauncherService;
 	futureExecutionLifecycle: FutureExecutionLifecycle;
 	launchPipeline: LaunchPipeline;
-	broadcaster: Broadcaster;
+	launchPlans: ProcessLaunchPlanServiceLike;
+	processLaunches: ProcessLaunchExecutorLike;
 	titleGenerationAvailable?: boolean;
 	logger?: { info(message: string): void; warn(message: string): void };
 }
 
 export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoordinator {
-	function broadcast(run: LaunchRun): void {
-		deps.broadcaster.sendDurable(
-			"launch.updated",
-			{ launchRunId: run.id, instanceId: run.instanceId },
-			run.instanceId ?? undefined,
-		);
+	const mutate = deps.launchPipeline.update;
+
+	function activeRuns(instanceId: string): LaunchRun[] {
+		return deps.launchRuns
+			.listByInstance(instanceId)
+			.filter(
+				(run) =>
+					["preparing", "process_created", "starting"].includes(run.status) ||
+					run.steps.some((step) => step.id === "choose_title" && step.status === "in_progress"),
+			);
 	}
 
-	function mutate(id: string, fn: (run: LaunchRun) => LaunchRun): LaunchRun {
-		const run = deps.launchRuns.update(id, fn);
-		if (!run) throw new Error(`Launch run '${id}' does not exist`);
-		broadcast(run);
-		return run;
-	}
-
-	function createRun(input: {
-		launcherId: string | null;
-		idempotencyKey?: string | null;
-		origin: LaunchRun["origin"];
-		broadcastCreated?: boolean;
-	}): LaunchRun {
-		const { broadcastCreated = true, ...createInput } = input;
-		const run = deps.launchRuns.create({ ...createInput, steps: initialLaunchSteps() });
-		if (broadcastCreated) broadcast(run);
-		return run;
-	}
-
-	function currentRun(instanceId: string, includeCompletedTitle = false): LaunchRun | null {
+	/** Retries are authoritative; otherwise durable creation identity breaks ties deterministically. */
+	function selectAuthoritativeRun(runs: readonly LaunchRun[]): LaunchRun | null {
+		const retries = runs.filter((run) => run.origin === "startup_retry");
 		return (
-			[...deps.launchRuns.listByInstance(instanceId)]
-				.reverse()
-				.find(
-					(run) =>
-						["preparing", "process_created", "starting"].includes(run.status) ||
-						(includeCompletedTitle &&
-							run.steps.some(
-								(item) => item.id === "choose_title" && item.status === "in_progress",
-							)),
-				) ?? null
+			[...(retries.length > 0 ? retries : runs)].sort(
+				(left, right) =>
+					right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+			)[0] ?? null
 		);
 	}
 
-	function mutateCurrent(
-		instanceId: string,
-		workerId: string | null,
-		fn: (run: LaunchRun) => LaunchRun,
-		includeCompletedTitle = false,
-	): LaunchRun | null {
-		if (workerId && deps.leases.getByInstance(instanceId)?.workerId !== workerId) return null;
-		const run = currentRun(instanceId, includeCompletedTitle);
-		return run ? mutate(run.id, fn) : null;
+	function titleState(run: LaunchRun, process: ProcessInstance) {
+		if (process.title) return { status: "completed" as const };
+		if (!deps.titleGenerationAvailable) return { status: "skipped" as const };
+		const job = [...deps.titleJobs.listByProcessInstance(process.id)]
+			.reverse()
+			.find((candidate) => candidate.launchRunId === run.id || candidate.launchRunId === null);
+		if (job?.status === "failed") {
+			return {
+				status: "failed" as const,
+				safeSummary:
+					"Process started, but a title could not be generated. You can rename it later.",
+			};
+		}
+		if (job?.status === "completed") return { status: "completed" as const };
+		if (job?.status === "pending" || job?.status === "running")
+			return { status: "pending" as const };
+		return { status: "skipped" as const };
+	}
+
+	function project(run: LaunchRun): LaunchRun {
+		if (!run.instanceId) return run;
+		const process = deps.processes.getById(run.instanceId);
+		if (!process) return run;
+		return projectLaunchRunStartup(
+			run,
+			buildStartupEvidence({
+				process,
+				turnStarts: deps.turnStarts.listByInstance(process.id),
+				leases: deps.leases.listByInstance(process.id),
+				turnRecords: deps.turnRecords.listByInstance(process.id),
+			}),
+			titleState(run, process),
+		);
+	}
+
+	function persistProjection(run: LaunchRun): LaunchRun {
+		const projected = project(run);
+		return JSON.stringify(projected) === JSON.stringify(run)
+			? run
+			: mutate(run.id, () => projected);
 	}
 
 	function failure<T>(safeSummary: string, value: T): LaunchStageFailure<T> {
 		return { safeSummary, value };
+	}
+
+	function existingLaunchResult(run: LaunchRun) {
+		return {
+			launchRunId: run.id,
+			process: run.instanceId ? deps.processes.getById(run.instanceId) : null,
+			error:
+				run.status === "failed"
+					? "The previous launch attempt failed."
+					: run.instanceId
+						? null
+						: "The launch is still in progress.",
+		};
+	}
+
+	function presentPipelineResult<TResult, TFailure>(
+		launchRunId: string,
+		result: LaunchPipelineRunResult<TResult, TFailure>,
+		skippedError: string | null,
+	) {
+		if (result.kind === "failed") {
+			return { launchRunId, process: null, error: result.failure.safeSummary };
+		}
+		if (result.kind === "skipped") return { launchRunId, process: null, error: skippedError };
+		return {
+			launchRunId,
+			process: result.process,
+			error:
+				result.kind === "committed_with_reaction_error"
+					? "Process was created, but the worker could not be started cleanly. Review the process error and retry startup."
+					: null,
+		};
+	}
+
+	function presentProgrammaticResult(
+		launchRunId: string,
+		result: LaunchMutationOutcome,
+	): ProgrammaticLaunchResultLike {
+		if (result.kind === "launched" || result.kind === "committed_with_reaction_error") {
+			return {
+				launchRunId,
+				process: "process" in result ? result.process : null,
+				error: result.kind === "committed_with_reaction_error" ? result.error : null,
+			};
+		}
+		return {
+			launchRunId,
+			process: null,
+			error:
+				result.kind === "invalid"
+					? (result.issues[0]?.message ?? "Launch input is invalid")
+					: "issue" in result
+						? result.issue.message
+						: "The launch could not be completed",
+		};
 	}
 
 	function bindChecks(
@@ -202,16 +258,35 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		}));
 	}
 
+	async function commitLaunchPlan(
+		executor: ProcessLaunchExecutorLike,
+		launchPlan: ProcessLaunchPlan,
+		launchRunId: string,
+		opts: ProcessLaunchOptions,
+	) {
+		const created = await executor.createProcessFromLaunchPlan(launchPlan, {
+			...opts,
+			launchRunId,
+		});
+		return toLaunchPipelineCommit(created, {
+			startTurnId: launchPlan.startTurnId,
+			preCommitSummary: "The process could not be created. Try again later.",
+			postCommitSummary:
+				"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+			mapPreCommitFailure: (failed) => failed,
+		});
+	}
+
 	async function execute(runId: string, input: StartLaunchRequest): Promise<LaunchMutationOutcome> {
 		try {
 			const pipelineResult = await deps.launchPipeline.run<
-				StartLaunchRequest,
 				ResolvedProcessLauncher,
 				PreparedLaunch,
 				LaunchMutationOutcome,
 				unknown
-			>(runId, input, {
-				async resolve(request) {
+			>(runId, {
+				async resolve() {
+					const request = input;
 					if (request.request.schedule.mode !== "now") {
 						return {
 							kind: "failed" as const,
@@ -332,6 +407,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			if (pipelineResult.kind === "skipped") {
 				return { kind: "failed", issue: { code: "launch_skipped", message: "Launch skipped" } };
 			}
+			persistProjection(deps.launchRuns.getById(runId) as LaunchRun);
 			return pipelineResult.result;
 		} finally {
 			deps.launchRuns.deleteReplay(runId);
@@ -353,6 +429,47 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				});
 			}, 0);
 			return { launchRunId: opened.launchRunId };
+		},
+
+		async startPreparedPlan(request) {
+			const idempotencyKey = request.idempotencyKey.trim();
+			if (!idempotencyKey) throw new Error("Launch idempotency key is required");
+			const opened = deps.launchPipeline.open({
+				launcherId: request.launchPlan.launcherId,
+				idempotencyKey,
+				origin: request.origin,
+			});
+			if (opened.existing) {
+				const existing = deps.launchRuns.getById(opened.launchRunId);
+				if (!existing) throw new Error(`Launch run '${opened.launchRunId}' does not exist`);
+				return existingLaunchResult(existing);
+			}
+			type PreparedPlanResult = Awaited<
+				ReturnType<ProcessLaunchExecutorLike["createProcessFromLaunchPlan"]>
+			>;
+			const result = await deps.launchPipeline.run<
+				ProcessLaunchPlan,
+				ProcessLaunchPlan,
+				PreparedPlanResult,
+				unknown
+			>(opened.launchRunId, {
+				async resolve() {
+					return { kind: "resolved", value: request.launchPlan };
+				},
+				async prepare(launchPlan) {
+					return { ok: true, value: launchPlan };
+				},
+				commit: (launchPlan, ctx) =>
+					commitLaunchPlan(deps.processLaunches, launchPlan, ctx.launchRunId, {
+						actor: request.actor,
+						...(request.relation ? { relation: request.relation } : {}),
+					}),
+			});
+			if (result.kind !== "failed" && result.kind !== "skipped") {
+				const projected = deps.launchRuns.getById(opened.launchRunId);
+				if (projected) persistProjection(projected);
+			}
+			return presentPipelineResult(opened.launchRunId, result, "Launch skipped.");
 		},
 
 		async startProgrammatic(request, opts) {
@@ -390,35 +507,18 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				origin: "programmatic",
 			});
 			deps.launchRuns.saveReplay(opened.launchRunId, input);
-			const result = await execute(opened.launchRunId, input);
-			if (result.kind === "launched" || result.kind === "committed_with_reaction_error") {
-				return {
-					launchRunId: opened.launchRunId,
-					process: "process" in result ? result.process : null,
-					error: result.kind === "committed_with_reaction_error" ? result.error : null,
-				};
-			}
-			return {
-				launchRunId: opened.launchRunId,
-				process: null,
-				error:
-					result.kind === "invalid"
-						? (result.issues[0]?.message ?? "Launch input is invalid")
-						: "issue" in result
-							? result.issue.message
-							: "The launch could not be completed",
-			};
+			return presentProgrammaticResult(
+				opened.launchRunId,
+				await execute(opened.launchRunId, input),
+			);
 		},
 
-		async startWatcher(watcher, event, request, services) {
+		async startWatcher(watcher, event, request) {
 			const admissionKey = watcherAdmissionKey(request.idempotencyKey);
 			const existing = deps.launchRuns.getByIdempotencyKey(admissionKey);
 			if (existing && (existing.instanceId || !["failed", "cancelled"].includes(existing.status))) {
-				return {
-					launchRunId: existing.id,
-					process: existing.instanceId ? deps.processes.getById(existing.instanceId) : null,
-					error: existing.status === "failed" ? "The previous launch attempt failed." : null,
-				};
+				const presented = existingLaunchResult(existing);
+				return { ...presented, error: existing.status === "failed" ? presented.error : null };
 			}
 			if (existing) deps.launchRuns.archiveIdempotencyKey(existing.id, admissionKey);
 			const opened = deps.launchPipeline.open({
@@ -435,14 +535,13 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				ReturnType<ProcessLaunchExecutorLike["createProcessFromLaunchPlan"]>
 			>;
 			const result = await deps.launchPipeline.run<
-				typeof event,
 				WatcherAttempt,
 				ProcessLaunchPlan,
 				WatcherResult,
 				unknown
-			>(opened.launchRunId, event, {
-				async resolve(value) {
-					const attempt = await watcher.resolveLaunchAttempt(value);
+			>(opened.launchRunId, {
+				async resolve() {
+					const attempt = await watcher.resolveLaunchAttempt(event);
 					return attempt
 						? { kind: "resolved" as const, value: attempt }
 						: { kind: "skipped" as const };
@@ -451,7 +550,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					return bindChecks(attempt.preparationChecks, attempt.launchConfig);
 				},
 				async prepare(attempt) {
-					const prepared = await services.launchPlans.prepare(
+					const prepared = await deps.launchPlans.prepare(
 						withWatcherHandoffDedupKey(attempt.launchPlan, admissionKey),
 						{ modelConfig: watcher.launchModelConfig, invalidModelConfig: "omit" },
 					);
@@ -465,44 +564,13 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 								),
 							};
 				},
-				async commit(launchPlan, ctx) {
-					const created = await services.processLaunches.createProcessFromLaunchPlan(launchPlan, {
+				commit: (launchPlan, ctx) =>
+					commitLaunchPlan(deps.processLaunches, launchPlan, ctx.launchRunId, {
 						actor: request.actor,
-						launchRunId: ctx.launchRunId,
-					});
-					if (!created.ok && created.stage === "pre_commit") {
-						return {
-							kind: "failed" as const,
-							failure: failure("The process could not be created. Try again later.", created),
-						};
-					}
-					return created.ok
-						? {
-								kind: "committed" as const,
-								result: created,
-								process: created.process,
-								startTurnId: launchPlan.startTurnId,
-								reused: created.reused,
-							}
-						: {
-								kind: "committed_with_reaction_error" as const,
-								result: created,
-								process: created.process,
-								startTurnId: launchPlan.startTurnId,
-								safeSummary:
-									"Process was created, but startup failed. Review the process error and retry startup.",
-							};
-				},
+					}),
 			});
-			if (result.kind === "skipped")
-				return { launchRunId: opened.launchRunId, process: null, error: null };
-			if (result.kind === "failed") {
-				return {
-					launchRunId: opened.launchRunId,
-					process: null,
-					error: result.failure.safeSummary,
-				};
-			}
+			if (result.kind === "skipped" || result.kind === "failed")
+				return presentPipelineResult(opened.launchRunId, result, null);
 			if (result.kind === "committed" && result.reused) {
 				const hasTurn = deps.turnRecords.listByInstance(result.process.id).length > 0;
 				const lease = deps.leases.getByInstance(result.process.id);
@@ -517,86 +585,65 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					);
 				}
 			}
-			return {
-				launchRunId: opened.launchRunId,
-				process: result.process,
-				error: result.kind === "committed_with_reaction_error" ? "Process startup failed." : null,
-			};
+			const projected = deps.launchRuns.getById(opened.launchRunId);
+			if (projected) persistProjection(projected);
+			return presentPipelineResult(opened.launchRunId, result, null);
 		},
 
 		async retryStartup(instanceId) {
 			if (!deps.processes.getById(instanceId)) throw new Error("Process not found");
-			const run = createRun({
+			const opened = deps.launchPipeline.open({
 				launcherId: null,
 				origin: "startup_retry",
-				broadcastCreated: false,
+				broadcast: false,
 			});
-			const updated = deps.launchRuns.update(run.id, (current) => ({
-				...current,
+			mutate(opened.launchRunId, (run) => ({
+				...run,
 				instanceId,
 				status: "starting",
-				steps: current.steps.map((item) =>
+				steps: run.steps.map((item) =>
 					["validate_request", "resolve_models_skills", "create_process", "choose_title"].includes(
 						item.id,
 					)
 						? { ...item, status: "skipped" as const }
 						: item,
 				),
-			})) as LaunchRun;
-			broadcast(updated);
-			return { launchRunId: run.id };
+			}));
+			return { launchRunId: opened.launchRunId };
 		},
 
-		failStartupRetry(instanceId, safeSummary) {
-			mutateCurrent(instanceId, null, (run) => failLaunchRun(run, "start_worker", safeSummary));
+		get(launchRunId) {
+			const run = deps.launchRuns.getById(launchRunId);
+			return run ? persistProjection(run) : null;
 		},
 
-		observeRunnerPhase(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => projectRunnerPhase(run, phase));
-		},
-
-		observeBootstrapProgress(instanceId, workerId, phase) {
-			mutateCurrent(instanceId, workerId, (run) => projectBootstrapProgress(run, phase));
-		},
-
-		observeWorkerReady(instanceId, workerId) {
-			mutateCurrent(instanceId, workerId, projectWorkerReady);
-		},
-
-		observeFirstTurnStarted(instanceId, workerId) {
-			mutateCurrent(instanceId, workerId, projectFirstTurnStarted);
-		},
-
-		observeWorkerFailure(instanceId, workerId, safeSummary) {
-			mutateCurrent(instanceId, workerId, (run) => projectWorkerFailure(run, safeSummary));
-		},
-
-		observeTitle(instanceId, status, safeSummary, launchRunId) {
-			if (launchRunId) {
-				const run = deps.launchRuns.getById(launchRunId);
-				if (run?.instanceId === instanceId) {
-					mutate(launchRunId, (current) => projectTitle(current, status, safeSummary));
-				}
-				return;
-			}
-			mutateCurrent(instanceId, null, (run) => projectTitle(run, status, safeSummary), true);
+		refresh(instanceId) {
+			const run = selectAuthoritativeRun(activeRuns(instanceId));
+			return run ? persistProjection(run) : null;
 		},
 
 		async reconcileIncomplete() {
 			const incomplete = deps.launchRuns.listIncomplete();
-			const authoritativeByInstance = new Map<string, LaunchRun>();
+			const byInstance = new Map<string, LaunchRun[]>();
 			for (const run of incomplete) {
 				if (!run.instanceId) continue;
-				const current = authoritativeByInstance.get(run.instanceId);
-				if (!current || startupEvidenceScore(run) > startupEvidenceScore(current)) {
-					authoritativeByInstance.set(run.instanceId, run);
+				const runs = byInstance.get(run.instanceId) ?? [];
+				runs.push(run);
+				byInstance.set(run.instanceId, runs);
+			}
+			for (const runs of byInstance.values()) {
+				const authoritative = selectAuthoritativeRun(runs);
+				for (const run of runs) {
+					if (run.id !== authoritative?.id)
+						mutate(run.id, (current) => finishLaunchRun(current, "cancelled"));
 				}
 			}
 			for (const run of incomplete) {
-				if (run.instanceId && authoritativeByInstance.get(run.instanceId)?.id !== run.id) {
-					mutate(run.id, cancelLaunchRun);
+				if (
+					run.instanceId &&
+					selectAuthoritativeRun(byInstance.get(run.instanceId) ?? [])?.id !== run.id
+				)
 					continue;
-				}
 				if (!run.instanceId) {
 					const replay = deps.launchRuns.getReplay<StartLaunchRequest>(run.id);
 					if (["ui", "programmatic"].includes(run.origin) && replay) {
@@ -620,26 +667,11 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					}));
 					continue;
 				}
-				const process = deps.processes.getById(run.instanceId);
-				if (!process) {
-					mutate(run.id, cancelLaunchRun);
+				if (!deps.processes.getById(run.instanceId)) {
+					mutate(run.id, (current) => finishLaunchRun(current, "cancelled"));
 					continue;
 				}
-				const lease = deps.leases.getByInstance(run.instanceId);
-				const hasTurn = deps.turnRecords.listByInstance(run.instanceId).length > 0;
-				const titleJob = [...deps.titleJobs.listByProcessInstance(run.instanceId)]
-					.reverse()
-					.find((job) => job.launchRunId === run.id || job.launchRunId === null);
-				mutate(run.id, (current) =>
-					reconcileCommittedLaunch(current, {
-						process,
-						leaseState: lease?.state,
-						hasBootstrapReceipt: Boolean(lease?.bootstrapReceipt),
-						hasTurn,
-						titleGenerationAvailable: Boolean(deps.titleGenerationAvailable),
-						titleJobFailed: titleJob?.status === "failed",
-					}),
-				);
+				persistProjection(run);
 			}
 		},
 	};

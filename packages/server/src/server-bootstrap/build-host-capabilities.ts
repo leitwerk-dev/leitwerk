@@ -3,11 +3,9 @@ import { type Actor, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import {
 	coreHostCapabilities,
 	createCapabilityAccessor,
-	type ExtensionProcessDefinition,
 	type ExternalSourceServiceLike,
 	type PollingServiceLike,
 	type ProcessActionSummaryLike,
-	type ProcessLaunchPlan,
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionServiceLike,
 	type ProcessQuestionServiceLike,
@@ -17,17 +15,8 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/index.js";
 import type { RepositoryBundle } from "../db/repositories.js";
-import type { ExtensionHost } from "../extensions/extension-host.js";
 import type { LaunchCoordinator } from "../launch-coordinator.js";
-import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types.js";
-import {
-	createProcessFromLaunchConfig,
-	createProcessFromLaunchPlan,
-	type ProcessLaunchConfigExecutionInput,
-	type ProcessLaunchExecutorDeps,
-	type ProcessLaunchExecutorLike,
-} from "../process-launch-executor.js";
-import type { ProcessTitleGenerator } from "../process-title-generator.js";
+import type { ProcessEngine } from "../process-engine/types.js";
 import type { ProjectMutationService } from "../project-mutation-service.js";
 import type { ResultImageStore } from "../result-image-store.js";
 import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
@@ -44,52 +33,16 @@ export function buildHostCapabilities(input: {
 	launcherRecentValues: unknown;
 	launcherModelConfigs: unknown;
 	launchPlans: ProcessLaunchPlanServiceLike;
-	processTitles?: ProcessTitleGenerator;
-	extensionHost?: ExtensionHost;
-	logger?: ProcessEngineLogger;
 	processWatcherService: unknown;
 	polling: PollingServiceLike;
 	externalSourceService: ExternalSourceServiceLike;
 	processModelSelection: ProcessModelSelectionServiceLike;
 	resultImages: ResultImageStore;
 	repositoryCredentials: import("../repository-credentials/service.js").RepositoryCredentialService;
-	processDefinitions: ReadonlyMap<string, ExtensionProcessDefinition>;
 	processQuestions: ProcessQuestionServiceLike;
 	launchCoordinator: LaunchCoordinator;
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 }) {
-	const launchExecutorDeps = {
-		commitMessages: input.config.commit_messages,
-		processes: input.baseDeps.processes,
-		projects: input.baseDeps.projects,
-		skills: input.baseDeps.skills,
-		processSkills: input.baseDeps.processSkills,
-		handoffDedupKeys: input.baseDeps.handoffDedupKeys,
-		futureExecutions: input.baseDeps.futureExecutions,
-		transaction: input.baseDeps.transaction,
-		broadcaster: input.baseDeps.broadcaster,
-		commands: input.commands,
-		processTitles: input.processTitles,
-		extensionHost: input.extensionHost,
-		logger: input.logger,
-		processDefinitions: input.processDefinitions,
-		repositoryCredentials: input.repositoryCredentials,
-	} satisfies ProcessLaunchExecutorDeps;
-	const processLaunches = {
-		createProcessFromLaunchConfig(
-			configInput: ProcessLaunchConfigExecutionInput,
-			opts?: { actor?: Actor; launchRunId?: string },
-		) {
-			return createProcessFromLaunchConfig(launchExecutorDeps, configInput, opts);
-		},
-		createProcessFromLaunchPlan(
-			launchPlan: ProcessLaunchPlan,
-			opts?: { actor?: Actor; launchRunId?: string },
-		) {
-			return createProcessFromLaunchPlan(launchExecutorDeps, launchPlan, opts);
-		},
-	} satisfies ProcessLaunchExecutorLike;
-
 	const hostCapabilities = createCapabilityAccessor([
 		{
 			token: coreHostCapabilities.serverSetup,
@@ -148,18 +101,10 @@ export function buildHostCapabilities(input: {
 						event: TEvent,
 						opts: { idempotencyKey: string; actor?: Actor },
 					) {
-						return input.launchCoordinator.startWatcher(
-							watcher,
-							event,
-							{
-								idempotencyKey: opts.idempotencyKey,
-								actor: opts.actor ?? SYSTEM_ACTOR,
-							},
-							{
-								launchPlans: input.launchPlans,
-								processLaunches,
-							},
-						);
+						return input.launchCoordinator.startWatcher(watcher, event, {
+							idempotencyKey: opts.idempotencyKey,
+							actor: opts.actor ?? SYSTEM_ACTOR,
+						});
 					},
 				},
 				polling: input.polling,

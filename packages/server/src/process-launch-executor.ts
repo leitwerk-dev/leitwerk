@@ -1,4 +1,4 @@
-import type { Actor, ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
+import type { Actor, ProcessInstance, ProcessProject, ProcessRelation } from "@leitwerk-dev/domain";
 import type {
 	ExtensionProcessDefinition,
 	ProcessLaunchConfig,
@@ -22,6 +22,7 @@ import type { EngineFailure, ProcessEngine, ProcessEngineLogger } from "./proces
 import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ProcessTitleGenerator } from "./process-title-generator.js";
 import { buildProjectUpdatedEffect } from "./project-mutation-service.js";
+import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
 export interface ProcessLaunchConfigExecutionInput {
@@ -50,11 +51,11 @@ export type ProcessLaunchExecutionResult =
 export interface ProcessLaunchExecutorLike {
 	createProcessFromLaunchConfig(
 		input: ProcessLaunchConfigExecutionInput,
-		opts?: { actor?: Actor; launchRunId?: string },
+		opts?: ProcessLaunchOptions,
 	): Promise<ProcessLaunchExecutionResult>;
 	createProcessFromLaunchPlan(
 		launchPlan: ProcessLaunchPlan,
-		opts?: { actor?: Actor; launchRunId?: string },
+		opts?: ProcessLaunchOptions,
 	): Promise<ProcessLaunchExecutionResult>;
 }
 
@@ -63,6 +64,7 @@ export interface ProcessLaunchExecutorDeps
 		RepositoryBundle,
 		| "processes"
 		| "projects"
+		| "processRelations"
 		| "skills"
 		| "processSkills"
 		| "handoffDedupKeys"
@@ -74,17 +76,34 @@ export interface ProcessLaunchExecutorDeps
 	processTitles?: ProcessTitleGenerator;
 	extensionHost?: ExtensionHost;
 	logger?: ProcessEngineLogger;
-	getSupervisor?: () => undefined;
+	getSupervisor?: () => WorkerSupervisor | undefined;
 	processDefinitions?: ReadonlyMap<string, ExtensionProcessDefinition>;
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
 	commitMessages?: CommitMessageConfig;
 }
+
+export type ProcessLaunchRelationInput = Omit<
+	ProcessRelation,
+	"kind" | "childInstanceId" | "createdAt"
+>;
 
 export interface ProcessLaunchOptions {
 	actor?: Actor;
 	resourceSelections?: readonly SkillSelection[];
 	launchIntent?: { launcherInput: Record<string, unknown> };
 	launchRunId?: string;
+	relation?: ProcessLaunchRelationInput;
+}
+
+export function createProcessLaunchExecutor(
+	deps: ProcessLaunchExecutorDeps,
+): ProcessLaunchExecutorLike {
+	return {
+		createProcessFromLaunchConfig: (input, opts) =>
+			createProcessFromLaunchConfig(deps, input, opts),
+		createProcessFromLaunchPlan: (launchPlan, opts) =>
+			createProcessFromLaunchPlan(deps, launchPlan, opts),
+	};
 }
 
 export interface ProcessLaunchCommit {
@@ -191,6 +210,7 @@ export function commitProcessLaunch(
 	resourceSelections: readonly SkillSelection[] = [],
 	launchIntent?: ProcessLaunchOptions["launchIntent"],
 	launchRunId?: string,
+	relation?: ProcessLaunchRelationInput,
 ): ProcessLaunchCommit {
 	return deps.transaction((repos) => {
 		const dedupKey =
@@ -213,6 +233,7 @@ export function commitProcessLaunch(
 			dedupKey,
 			resourceSelections,
 			launchIntent,
+			relation,
 		);
 		if (launchRunId) {
 			repos.launchRuns.update(launchRunId, (run) => ({
@@ -252,12 +273,13 @@ function reuseDeduplicatedCommit(
 function createProcessLaunchCommit(
 	repos: Pick<
 		ProcessLaunchExecutorDeps,
-		"processes" | "projects" | "processSkills" | "handoffDedupKeys"
+		"processes" | "projects" | "processRelations" | "processSkills" | "handoffDedupKeys"
 	>,
 	launchPlan: ProcessLaunchPlan,
 	dedupKey: string | null,
 	resourceSelections: readonly SkillSelection[],
 	launchIntent?: ProcessLaunchOptions["launchIntent"],
+	relation?: ProcessLaunchRelationInput,
 ): ProcessLaunchCommit {
 	const process = repos.processes.create({
 		...launchPlan.processInput,
@@ -271,6 +293,12 @@ function createProcessLaunchCommit(
 			: {}),
 	});
 	const projects = createLaunchProjects({ projects: repos.projects }, process, launchPlan);
+	if (relation) {
+		repos.processRelations.create({
+			...relation,
+			childInstanceId: process.id,
+		});
+	}
 	repos.processSkills.attach(process.id, resourceSelections);
 	if (dedupKey) {
 		repos.handoffDedupKeys.create({
@@ -446,6 +474,7 @@ async function createProcessFromLaunchPlanWithDisposition(
 			resourceSelections,
 			opts?.launchIntent,
 			opts?.launchRunId,
+			opts?.relation,
 		);
 	} catch (error) {
 		const dedupKey =

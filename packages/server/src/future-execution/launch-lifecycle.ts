@@ -48,6 +48,7 @@ import { projectLaunchPlanModelState } from "./model-projection.js";
 import {
 	buildFutureExecutionUpdatedEffect,
 	buildQueueFutureExecutionTitleEffect,
+	resolveStoredScheduleRequest,
 	runFutureExecutionExclusive,
 	runFutureExecutionPostCommitEffects,
 } from "./support.js";
@@ -129,6 +130,7 @@ export interface FutureLaunchLifecycleDeps
 		| "futureExecutions"
 		| "processes"
 		| "projects"
+		| "processRelations"
 		| "skills"
 		| "processSkills"
 		| "handoffDedupKeys"
@@ -202,23 +204,6 @@ function launchFailureOutcome(
 				code: issue.code,
 			}
 		: { kind: "failed", issue };
-}
-
-function resolveStoredScheduleRequest(
-	execution: Pick<FutureExecution, "scheduleKind" | "nextRunAt" | "cronExpression">,
-): { ok: true; value: ParsedScheduleRequest } | { ok: false; issue: FutureExecutionIssue } {
-	if (execution.scheduleKind === "cron") {
-		return execution.cronExpression
-			? { ok: true, value: { mode: "cron", cronExpression: execution.cronExpression } }
-			: {
-					ok: false,
-					issue: {
-						code: "invalid_schedule",
-						message: "Scheduled execution is missing its cron expression",
-					},
-				};
-	}
-	return { ok: true, value: { mode: "once", runAt: execution.nextRunAt } };
 }
 
 function resolveScheduledLaunchUpdateRequest(

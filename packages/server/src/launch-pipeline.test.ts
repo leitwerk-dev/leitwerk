@@ -35,41 +35,37 @@ describe("LaunchPipeline", () => {
 			origin: "ui",
 		});
 		const calls: string[] = [];
-		const result = await pipeline.run(
-			first.launchRunId,
-			{},
-			{
-				async resolve() {
-					calls.push("resolve");
-					return { kind: "resolved" as const, value: {} };
-				},
-				preparationChecks() {
-					return [
-						{
-							id: "access",
-							label: "Check access",
-							async run() {
-								calls.push("check");
-							},
-						},
-					];
-				},
-				async prepare() {
-					calls.push("prepare");
-					return { ok: true as const, value: {} };
-				},
-				async commit() {
-					calls.push("commit");
-					return {
-						kind: "committed" as const,
-						result: "created",
-						process: process(repos),
-						startTurnId: null,
-						reused: false,
-					};
-				},
+		const result = await pipeline.run(first.launchRunId, {
+			async resolve() {
+				calls.push("resolve");
+				return { kind: "resolved" as const, value: {} };
 			},
-		);
+			preparationChecks() {
+				return [
+					{
+						id: "access",
+						label: "Check access",
+						async run() {
+							calls.push("check");
+						},
+					},
+				];
+			},
+			async prepare() {
+				calls.push("prepare");
+				return { ok: true as const, value: {} };
+			},
+			async commit() {
+				calls.push("commit");
+				return {
+					kind: "committed" as const,
+					result: "created",
+					process: process(repos),
+					startTurnId: null,
+					reused: false,
+				};
+			},
+		});
 
 		expect(second).toEqual({ launchRunId: first.launchRunId, existing: true });
 		expect(calls).toEqual(["resolve", "check", "prepare", "commit"]);
@@ -88,28 +84,23 @@ describe("LaunchPipeline", () => {
 		const { pipeline, repos } = fixture();
 		const opened = pipeline.open({ launcherId: "demo.ui", origin: "ui" });
 		const committed = process(repos);
-		const result = await pipeline.run(
-			opened.launchRunId,
-			{},
-			{
-				async resolve() {
-					return { kind: "resolved" as const, value: {} };
-				},
-				preparationChecks: () => [],
-				async prepare() {
-					return { ok: true as const, value: {} };
-				},
-				async commit() {
-					return {
-						kind: "committed_with_reaction_error" as const,
-						result: "reaction_failed",
-						process: committed,
-						startTurnId: "start",
-						safeSummary: "Worker startup failed.",
-					};
-				},
+		const result = await pipeline.run(opened.launchRunId, {
+			async resolve() {
+				return { kind: "resolved" as const, value: {} };
 			},
-		);
+			async prepare() {
+				return { ok: true as const, value: {} };
+			},
+			async commit() {
+				return {
+					kind: "committed_with_reaction_error" as const,
+					result: "reaction_failed",
+					process: committed,
+					startTurnId: "start",
+					safeSummary: "Worker startup failed.",
+				};
+			},
+		});
 
 		expect(result).toMatchObject({
 			kind: "committed_with_reaction_error",
@@ -131,22 +122,17 @@ describe("LaunchPipeline", () => {
 	it("maps an unexpected stage exception to the active checklist step", async () => {
 		const { pipeline, repos } = fixture();
 		const opened = pipeline.open({ launcherId: "demo.ui", origin: "ui" });
-		const result = await pipeline.run(
-			opened.launchRunId,
-			{},
-			{
-				async resolve() {
-					return { kind: "resolved" as const, value: {} };
-				},
-				preparationChecks: () => [],
-				async prepare() {
-					throw new Error("secret backend detail");
-				},
-				async commit() {
-					throw new Error("unreachable");
-				},
+		const result = await pipeline.run(opened.launchRunId, {
+			async resolve() {
+				return { kind: "resolved" as const, value: {} };
 			},
-		);
+			async prepare() {
+				throw new Error("secret backend detail");
+			},
+			async commit() {
+				throw new Error("unreachable");
+			},
+		});
 
 		expect(result.kind).toBe("failed");
 		expect(repos.launchRuns.getById(opened.launchRunId)).toMatchObject({

@@ -974,6 +974,12 @@ export interface LauncherMutationResponseBody {
 	error?: string | null;
 }
 
+export interface FutureLaunchMutationResponseBody {
+	kind: "scheduled";
+	futureExecution: FutureLaunchSummary | null;
+	error?: string | null;
+}
+
 export type ScheduledActionMutationResponseBody = {
 	kind?: "scheduled";
 	scheduledAction?: ScheduledActionDetail | null;

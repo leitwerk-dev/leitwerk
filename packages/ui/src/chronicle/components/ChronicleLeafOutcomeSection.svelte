@@ -66,11 +66,7 @@ function expandHistoryOutcome() {
 			{#if onDraftTicket && section.status === "ready"}
 				<ChronicleCreateIssueButton
 					onDraftTicket={onDraftTicket}
-					artifact={{
-						kind: "leaf_outcome",
-						leafEntryId: section.leafEntryId,
-						text: section.fallbackMarkdown ?? JSON.stringify(section.props, null, 2),
-					}}
+					artifact={{ kind: "leaf_outcome", leafEntryId: section.leafEntryId }}
 				/>
 			{/if}
 			{#if shouldCompressOutcome}

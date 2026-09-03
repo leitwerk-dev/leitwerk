@@ -4,13 +4,12 @@ import type { LaunchRun } from "@leitwerk-dev/domain";
 import type { WsFrame } from "@leitwerk-dev/protocol";
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchLaunchRun, fetchProcessLaunchRuns } from "../lib/api.js";
+import { fetchLaunchRun } from "../lib/api.js";
 import { dispatchLaunchUpdated } from "../lib/launch-updates.js";
 import LaunchChecklist from "./LaunchChecklist.svelte";
 
 vi.mock("../lib/api.js", () => ({
 	fetchLaunchRun: vi.fn(),
-	fetchProcessLaunchRuns: vi.fn(),
 }));
 
 function deferred<T>() {
@@ -60,8 +59,6 @@ describe("LaunchChecklist", () => {
 		vi.mocked(fetchLaunchRun)
 			.mockReturnValueOnce(stale.promise)
 			.mockResolvedValueOnce(launchRun(2, "New launch state"));
-		vi.mocked(fetchProcessLaunchRuns).mockResolvedValue([]);
-
 		const target = document.createElement("div");
 		document.body.appendChild(target);
 		const component = mount(LaunchChecklist, {

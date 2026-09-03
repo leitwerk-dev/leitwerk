@@ -349,6 +349,7 @@ export function createTestIpcHandler(
 		toastTtlMs?: number;
 		workerEventLogger?: Parameters<typeof createIpcHandler>[0]["workerEventLogger"];
 		appendDiagnosticTrace?: Parameters<typeof createIpcHandler>[0]["appendDiagnosticTrace"];
+		getLaunchCoordinator?: Parameters<typeof createIpcHandler>[0]["getLaunchCoordinator"];
 		handleIntegrationToolCancel?: Parameters<
 			typeof createIpcHandler
 		>[0]["handleIntegrationToolCancel"];
@@ -415,6 +416,7 @@ export function createTestIpcHandler(
 			events: deps.events,
 			leases: deps.leases,
 			turnRecords: deps.turnRecords,
+			getLaunchCoordinator: opts.getLaunchCoordinator,
 			handleIntegrationToolCancel: opts.handleIntegrationToolCancel,
 			processQuestions,
 			broadcaster: deps.broadcaster,

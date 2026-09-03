@@ -358,6 +358,7 @@ not grant checklist mutation or ambient credentials. Launchers without checks re
 launch checklist.
 
 Watcher definitions use the same preparation-check contract. Polling providers submit watcher
-events through the server-owned launch-run service. Watcher admission supplies the stable event
-key and source policy. The shared launch pipeline then resolves the event, executes checks,
-prepares model selections, and commits the process with the watcher deduplication key.
+events and stable idempotency through the server-owned launch-run service; they do not supply
+launch-plan or process-executor services. Watcher admission supplies the stable event key and
+source policy. The shared launch pipeline then resolves the event, executes checks, prepares model
+selections, and commits the process with the watcher deduplication key.

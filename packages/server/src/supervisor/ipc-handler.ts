@@ -185,6 +185,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				case "worker.hello": {
 					observeWorkerLease("handshake_received", "worker.hello");
 					deps.leases.observeTimestamp(activeLease.id, "connectedAt");
+					launchCoordinator?.refresh(instanceId);
 					break;
 				}
 				case "worker.diagnostic_trace": {
@@ -198,7 +199,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					) {
 						deps.leases.observeTimestamp(activeLease.id, "workspacePreparationStartedAt");
 					}
-					launchCoordinator?.observeBootstrapProgress(instanceId, workerId, msg.payload.phase);
+					launchCoordinator?.refresh(instanceId);
 					break;
 				}
 				case "worker.ready": {
@@ -227,7 +228,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					const result = observeWorkerLease("bootstrap_completed", "worker.ready");
 					if (result.kind === "applied") {
 						deps.leases.observeTimestamp(activeLease.id, "readyAt");
-						launchCoordinator?.observeWorkerReady(instanceId, workerId);
+						launchCoordinator?.refresh(instanceId);
 						deps.leases.updateHeartbeat(activeLease.workerId);
 						void deps.commands
 							.updateSemanticEntryRefs(instanceId, {
@@ -287,7 +288,8 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 								return;
 							}
 							eventIngestor.noteTurnStarted(instanceId, result.data.turnRecordId);
-							launchCoordinator?.observeFirstTurnStarted(instanceId, workerId);
+							// Acceptance persists the correlated turn record before launch projection.
+							launchCoordinator?.refresh(instanceId);
 							callbacks.onWorkerTurnStartAccepted?.(instanceId, workerId, {
 								startRecordId: msg.payload.startRecordId,
 								turnRecordId: result.data.turnRecordId,
@@ -375,7 +377,6 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 				}
 				case "worker.failed": {
 					eventIngestor.clearLiveTurnState(instanceId);
-					launchCoordinator?.observeWorkerFailure(instanceId, workerId, msg.payload.message);
 					const result = observeWorkerLease("failure_reported", msg.payload.errorCode);
 					if (result.kind !== "applied") {
 						break;
@@ -413,6 +414,10 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 								message: msg.payload.message,
 								errorClass: workerFailureErrorClass,
 								workerLeaseId: activeLease.id,
+							})
+							.then(() => {
+								// Worker-failure state must be durable before launch projection.
+								launchCoordinator?.refresh(instanceId);
 							})
 							.catch(() => {});
 					}

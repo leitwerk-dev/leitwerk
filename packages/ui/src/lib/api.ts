@@ -19,6 +19,7 @@ import type {
 	FutureExecutionSummary as FullFutureExecutionSummary,
 	FutureExecutionDetailResponseBody,
 	FutureExecutionOverviewItem,
+	FutureLaunchMutationResponseBody,
 	FutureLaunchSummary,
 	InstalledSkillCatalogDetail,
 	InstalledSkillCatalogDetailResponseBody,
@@ -214,7 +215,10 @@ export function launchTicketCreation(
 		path: `/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`,
 		init: {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": crypto.randomUUID(),
+			},
 			body: JSON.stringify(body),
 		},
 		malformed: "Malformed ticket launch response",
@@ -712,32 +716,17 @@ export async function launchLauncher(
 	if (!res.ok) {
 		return parseLauncherErrorResponse(res, "Couldn't start this process", await tryReadJson(res));
 	}
-	const body = await readJsonObject<LauncherMutationResponseBody>(
+	const body = await readJsonObject<FutureLaunchMutationResponseBody>(
 		res,
-		"Malformed launcher launch response",
+		"Malformed future launch response",
 	);
-	const projects = body.projects ?? [];
-	const errorMessage = body.error ?? `Couldn't start this process: ${res.status}`;
-	if (res.status === 201 && body.futureExecution) {
-		return { kind: "scheduled", futureExecution: body.futureExecution };
-	}
-	if (res.status === 201 && body.process) {
-		return { kind: "success", process: body.process, projects };
-	}
-	if (body.process) {
-		return {
-			kind: "partial_success",
-			status: res.status,
-			warning: errorMessage,
-			process: body.process,
-			projects,
-		};
-	}
-	const errors = body.errors ?? [];
-	if (errors.length > 0) {
-		return { kind: "validation_error", status: res.status, errors };
-	}
-	return { kind: "failure", status: res.status, error: errorMessage };
+	return body.futureExecution
+		? { kind: "scheduled", futureExecution: body.futureExecution }
+		: {
+				kind: "failure",
+				status: res.status,
+				error: body.error ?? "The future launch response did not include the saved launch",
+			};
 }
 
 export async function fetchProcessDiagnostics(instanceId: string): Promise<ProcessDiagnosticsData> {

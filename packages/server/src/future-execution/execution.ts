@@ -16,6 +16,7 @@ import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import { createScheduledProcessFromLaunchPlan } from "../process-launch-executor.js";
+import { toLaunchPipelineCommit } from "../process-launch-pipeline-adapter.js";
 import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
@@ -46,6 +47,7 @@ export interface FutureExecutionExecutorDeps
 		| "futureExecutions"
 		| "processes"
 		| "projects"
+		| "processRelations"
 		| "processSkills"
 		| "skills"
 		| "handoffDedupKeys"
@@ -124,14 +126,13 @@ async function executeScheduledLaunch(
 		transitionPlan: FutureExecutionTransitionPlan;
 	};
 	const result = await deps.launchPipeline.run<
-		FutureExecution,
 		FutureLaunchPayload,
 		ScheduledPrepared,
 		FutureExecutionDisposition,
 		FutureExecutionDisposition
-	>(opened.launchRunId, execution, {
-		async resolve(value) {
-			const parsed = parseFutureLaunchPayloadJson(value.payloadJson);
+	>(opened.launchRunId, {
+		async resolve() {
+			const parsed = parseFutureLaunchPayloadJson(execution.payloadJson);
 			return parsed.ok
 				? { kind: "resolved" as const, value: parsed.value }
 				: {
@@ -141,9 +142,6 @@ async function executeScheduledLaunch(
 							value: { kind: "remove" as const, error: new Error(parsed.error) },
 						},
 					};
-		},
-		preparationChecks() {
-			return [];
 		},
 		async prepare(payload) {
 			const prepared = await deps.launchPlans.prepare(payload.launchPlan, {
@@ -189,42 +187,30 @@ async function executeScheduledLaunch(
 					launchRunId: ctx.launchRunId,
 				},
 			);
-			if (!created.ok && created.stage === "pre_commit") {
-				const error = new Error(
-					typeof created.body.error === "string"
+			const launchError = () =>
+				new Error(
+					!created.ok && typeof created.body.error === "string"
 						? created.body.error
 						: `Failed to execute scheduled launch '${execution.id}'`,
 				);
-				return {
-					kind: "failed" as const,
-					failure: {
-						safeSummary: "The scheduled process could not be created. It will be retried.",
-						value: { kind: "retry_later" as const, error },
-					},
-				};
-			}
-			if (!created.ok) {
-				const error = new Error(
-					typeof created.body.error === "string"
-						? created.body.error
-						: `Failed to execute scheduled launch '${execution.id}'`,
-				);
-				return {
-					kind: "committed_with_reaction_error" as const,
-					result: { kind: "committed" as const, dispositionApplied: true, reactionError: error },
-					process: created.process,
+			return toLaunchPipelineCommit<FutureExecutionDisposition, FutureExecutionDisposition>(
+				created,
+				{
 					startTurnId: prepared.launchPlan.startTurnId,
-					safeSummary:
+					preCommitSummary: "The scheduled process could not be created. It will be retried.",
+					postCommitSummary:
 						"Process was created, but scheduled startup failed. Retry startup from the process page.",
-				};
-			}
-			return {
-				kind: "committed" as const,
-				result: { kind: "committed" as const, dispositionApplied: true },
-				process: created.process,
-				startTurnId: prepared.launchPlan.startTurnId,
-				reused: created.reused,
-			};
+					mapPreCommitFailure: () => ({ kind: "retry_later", error: launchError() }),
+					mapCommittedResult: (outcome) =>
+						outcome.ok
+							? { kind: "committed", dispositionApplied: true }
+							: {
+									kind: "committed",
+									dispositionApplied: true,
+									reactionError: launchError(),
+								},
+				},
+			);
 		},
 		unexpectedFailure(error) {
 			return {

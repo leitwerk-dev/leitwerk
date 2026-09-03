@@ -1,7 +1,6 @@
 export interface TicketResultSelection {
 	artifactId: string;
 	text: string;
-	rect: DOMRect;
 }
 
 /** Accept selections only when both endpoints are inside the same durable result host. */
@@ -20,5 +19,5 @@ export function readTicketResultSelection(
 	const artifactId = start.dataset.ticketResultArtifact?.trim();
 	const text = selection.toString().replace(/\s+/gu, " ").trim();
 	if (!artifactId || !text) return null;
-	return { artifactId, text, rect: range.getBoundingClientRect() };
+	return { artifactId, text };
 }

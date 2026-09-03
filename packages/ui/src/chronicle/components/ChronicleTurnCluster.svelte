@@ -129,7 +129,7 @@ function expandHistoryResult() {
 							{#if onDraftTicket}
 								<ChronicleCreateIssueButton
 									onDraftTicket={onDraftTicket}
-									artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId, text: section.markdown }}
+									artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }}
 								/>
 							{/if}
 							{#if shouldCompressResult}

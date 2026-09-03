@@ -1,20 +1,18 @@
 <script lang="ts">
 import type { LaunchRun } from "@leitwerk-dev/domain";
-import { fetchLaunchRun, fetchProcessLaunchRuns } from "../lib/api.js";
+import { fetchLaunchRun } from "../lib/api.js";
 import { onLaunchUpdated } from "../lib/launch-updates.js";
 
 interface Props {
-	launchRunId?: string | null;
-	instanceId?: string | null;
+	launchRunId: string;
 	onInstanceAvailable?: (instanceId: string) => void;
 	onTryAgain?: () => void;
 }
 
-let { launchRunId = null, instanceId = null, onInstanceAvailable, onTryAgain }: Props = $props();
+let { launchRunId, onInstanceAvailable, onTryAgain }: Props = $props();
 
 let run = $state<LaunchRun | null>(null);
 let loadError = $state<string | null>(null);
-let knownAbsent = $state(false);
 let expanded = $state(true);
 let notifiedInstanceId: string | null = null;
 let refresh = $state<() => void>(() => {});
@@ -49,36 +47,25 @@ const summary = $derived(
 
 $effect(() => {
 	const selectedLaunchRunId = launchRunId;
-	const selectedInstanceId = instanceId;
 	let cancelled = false;
 	let loadGeneration = 0;
 	let timer: ReturnType<typeof setTimeout> | null = null;
 
 	run = null;
-	knownAbsent = false;
 	loadError = null;
 
 	const load = async () => {
 		const generation = ++loadGeneration;
 		try {
-			const next = selectedLaunchRunId
-				? await fetchLaunchRun(selectedLaunchRunId)
-				: selectedInstanceId
-					? ((await fetchProcessLaunchRuns(selectedInstanceId)).at(-1) ?? null)
-					: null;
+			const next = await fetchLaunchRun(selectedLaunchRunId);
 			if (cancelled || generation !== loadGeneration) return;
 			run = next;
-			knownAbsent = selectedInstanceId !== null && next === null;
 			loadError = null;
-			if (next?.instanceId && next.instanceId !== notifiedInstanceId) {
+			if (next.instanceId && next.instanceId !== notifiedInstanceId) {
 				notifiedInstanceId = next.instanceId;
 				onInstanceAvailable?.(next.instanceId);
 			}
-			if (
-				next?.status === "completed" ||
-				next?.status === "failed" ||
-				next?.status === "cancelled"
-			) {
+			if (["completed", "failed", "cancelled"].includes(next.status)) {
 				expanded = false;
 				return;
 			}
@@ -86,7 +73,7 @@ $effect(() => {
 			if (cancelled || generation !== loadGeneration) return;
 			loadError = error instanceof Error ? error.message : "Couldn't load launch progress";
 		}
-		if (!knownAbsent) timer = setTimeout(() => void load(), 750);
+		timer = setTimeout(() => void load(), 750);
 	};
 	refresh = () => {
 		if (timer) clearTimeout(timer);
@@ -94,13 +81,7 @@ $effect(() => {
 		void load();
 	};
 	const unsubscribe = onLaunchUpdated((frame) => {
-		if (
-			(frame.payload.launchRunId === selectedLaunchRunId ||
-				(selectedInstanceId !== null && frame.payload.instanceId === selectedInstanceId)) &&
-			!knownAbsent
-		) {
-			refresh();
-		}
+		if (frame.payload.launchRunId === selectedLaunchRunId) refresh();
 	});
 	void load();
 
@@ -113,7 +94,6 @@ $effect(() => {
 });
 </script>
 
-{#if !knownAbsent}
 <section class="launch-checklist" aria-label="Process startup" aria-live="polite" data-status={run?.status ?? "loading"}>
 	{#if loadError && !run}
 		<div class="checklist-message" role="status">
@@ -173,7 +153,6 @@ $effect(() => {
 		{/if}
 	{/if}
 </section>
-{/if}
 
 <style>
 	.launch-checklist {

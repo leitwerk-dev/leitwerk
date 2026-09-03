@@ -1614,7 +1614,7 @@ describe("createIpcHandler", () => {
 		}).not.toThrow();
 	});
 
-	it("handles worker.failed and updates lease + invokes callback", () => {
+	it("handles worker.failed and refreshes launch progress after failure recording", async () => {
 		const process = t.processes.create({
 			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
@@ -1624,7 +1624,14 @@ describe("createIpcHandler", () => {
 		t.leases.create({ instanceId: process.id, workerId, state: "busy" });
 
 		const onWorkerFailed = vi.fn();
-		const handler = createTestIpcHandler(t, { onWorkerFailed });
+		const refresh = vi.fn();
+		const handler = createTestIpcHandler(
+			t,
+			{ onWorkerFailed },
+			{
+				getLaunchCoordinator: () => ({ refresh }) as never,
+			},
+		);
 
 		handler.handleMessage(
 			baseEnvelope("worker.failed", process.id, workerId, {
@@ -1638,6 +1645,9 @@ describe("createIpcHandler", () => {
 
 		expect(t.leases.getByInstance(process.id)?.state).toBe("failed");
 		expect(onWorkerFailed).toHaveBeenCalledWith(process.id, workerId, "boom");
+		expect(refresh).not.toHaveBeenCalled();
+		await flushAsyncWork();
+		expect(refresh).toHaveBeenCalledWith(process.id);
 	});
 
 	it("handles llm_review turn outcomes and emits review.updated + process.event", async () => {

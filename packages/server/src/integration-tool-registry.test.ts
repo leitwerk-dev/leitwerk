@@ -114,7 +114,6 @@ describe("IntegrationToolRegistry", () => {
 					resolve: async () => ({
 						summary: { id: "repo-1", displayName: "team/repo" },
 						data: { repositoryId: 1 },
-						agentContext: "Labels: bug",
 					}),
 					validate,
 				},
