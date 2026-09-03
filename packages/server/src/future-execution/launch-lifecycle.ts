@@ -409,9 +409,6 @@ export function createFutureLaunchLifecycle(
 	}
 
 	return {
-		prepareResolvedLaunch,
-		persistPreparedLaunch,
-		recordLauncherRecentsBestEffort,
 		async prepareLaunch(
 			launcherId: string,
 			request: NormalizedScheduledLaunchInput,

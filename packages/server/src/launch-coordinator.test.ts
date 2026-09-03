@@ -238,7 +238,6 @@ describe("LaunchCoordinator reconciliation", () => {
 		const { coordinator } = createWatcherHarness({
 			launchPlans: { prepare: vi.fn() },
 			processLaunches: {
-				createProcessFromLaunchConfig: vi.fn(),
 				createProcessFromLaunchPlan: createProcess,
 			},
 		});
@@ -310,7 +309,6 @@ describe("LaunchCoordinator reconciliation", () => {
 				prepare: vi.fn(async (launchPlan) => ({ ok: true, launchPlan })),
 			},
 			processLaunches: {
-				createProcessFromLaunchConfig: vi.fn(),
 				createProcessFromLaunchPlan: createProcess,
 			},
 		};

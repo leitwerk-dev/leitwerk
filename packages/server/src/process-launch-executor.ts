@@ -1,11 +1,6 @@
 import type { Actor, ProcessInstance, ProcessProject, ProcessRelation } from "@leitwerk-dev/domain";
-import type {
-	ExtensionProcessDefinition,
-	ProcessLaunchConfig,
-	ProcessLaunchPlan,
-} from "@leitwerk-dev/process-sdk";
+import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import type { SkillSelection } from "@leitwerk-dev/protocol";
-import type { CommitMessageConfig } from "./config/config-types.js";
 import type { RepositoryBundle } from "./db/repositories.js";
 import { buildExtensionEventEffect, type PostCommitEffect } from "./effects/post-commit-effect.js";
 import { runPostCommitEffectList } from "./effects/post-commit-runner.js";
@@ -19,17 +14,10 @@ import {
 	publicInternalEngineFailureMessage,
 } from "./process-engine/internal-failures.js";
 import type { EngineFailure, ProcessEngine, ProcessEngineLogger } from "./process-engine/types.js";
-import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ProcessTitleGenerator } from "./process-title-generator.js";
 import { buildProjectUpdatedEffect } from "./project-mutation-service.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
-
-export interface ProcessLaunchConfigExecutionInput {
-	launcherId: string;
-	launchConfig: ProcessLaunchConfig;
-	handoffDedupKey?: string | null;
-}
 
 export type ProcessLaunchExecutionResult =
 	| { ok: true; process: ProcessInstance; projects: ProcessProject[]; reused: boolean }
@@ -47,17 +35,6 @@ export type ProcessLaunchExecutionResult =
 			process: ProcessInstance;
 			projects: ProcessProject[];
 	  };
-
-export interface ProcessLaunchExecutorLike {
-	createProcessFromLaunchConfig(
-		input: ProcessLaunchConfigExecutionInput,
-		opts?: ProcessLaunchOptions,
-	): Promise<ProcessLaunchExecutionResult>;
-	createProcessFromLaunchPlan(
-		launchPlan: ProcessLaunchPlan,
-		opts?: ProcessLaunchOptions,
-	): Promise<ProcessLaunchExecutionResult>;
-}
 
 export interface ProcessLaunchExecutorDeps
 	extends Pick<
@@ -77,9 +54,7 @@ export interface ProcessLaunchExecutorDeps
 	extensionHost?: ExtensionHost;
 	logger?: ProcessEngineLogger;
 	getSupervisor?: () => WorkerSupervisor | undefined;
-	processDefinitions?: ReadonlyMap<string, ExtensionProcessDefinition>;
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
-	commitMessages?: CommitMessageConfig;
 }
 
 export type ProcessLaunchRelationInput = Omit<
@@ -95,16 +70,10 @@ export interface ProcessLaunchOptions {
 	relation?: ProcessLaunchRelationInput;
 }
 
-export function createProcessLaunchExecutor(
-	deps: ProcessLaunchExecutorDeps,
-): ProcessLaunchExecutorLike {
-	return {
-		createProcessFromLaunchConfig: (input, opts) =>
-			createProcessFromLaunchConfig(deps, input, opts),
-		createProcessFromLaunchPlan: (launchPlan, opts) =>
-			createProcessFromLaunchPlan(deps, launchPlan, opts),
-	};
-}
+export type ProcessLaunchPlanExecutor = (
+	launchPlan: ProcessLaunchPlan,
+	opts?: ProcessLaunchOptions,
+) => Promise<ProcessLaunchExecutionResult>;
 
 export interface ProcessLaunchCommit {
 	process: ProcessInstance;
@@ -352,45 +321,6 @@ export async function createProcessFromLaunchPlan(
 	opts?: ProcessLaunchOptions,
 ): Promise<ProcessLaunchExecutionResult> {
 	return createProcessFromLaunchPlanWithDisposition(deps, launchPlan, opts);
-}
-
-export async function createProcessFromLaunchConfig(
-	deps: ProcessLaunchExecutorDeps,
-	input: ProcessLaunchConfigExecutionInput,
-	opts?: ProcessLaunchOptions,
-): Promise<ProcessLaunchExecutionResult> {
-	const processDef = deps.processDefinitions?.get(input.launchConfig.processId);
-	if (!processDef) {
-		return {
-			ok: false,
-			stage: "pre_commit",
-			status: 404,
-			body: { error: `Unknown process '${input.launchConfig.processId}'` },
-		};
-	}
-	let launchPlan: ProcessLaunchPlan;
-	try {
-		launchPlan = buildProcessLaunchPlan({
-			processDef,
-			launchConfig: input.launchConfig,
-			launcherId: input.launcherId,
-			metadataAdditions: { launcherId: input.launcherId },
-			errorSubject: `Programmatic launcher '${input.launcherId}'`,
-			commitMessages: deps.commitMessages,
-		});
-	} catch (error) {
-		return {
-			ok: false,
-			stage: "pre_commit",
-			status: 400,
-			body: { error: error instanceof Error ? error.message : String(error) },
-		};
-	}
-	return createProcessFromLaunchPlan(
-		deps,
-		input.handoffDedupKey ? { ...launchPlan, handoffDedupKey: input.handoffDedupKey } : launchPlan,
-		opts,
-	);
 }
 
 export async function createScheduledProcessFromLaunchPlan(

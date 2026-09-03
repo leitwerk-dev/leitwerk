@@ -70,7 +70,7 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import { reconcileProcessesOnStartup } from "./process-engine/startup-reconciliation.js";
 import { prepareCreatedTurnStarts } from "./process-engine/turn-start-preflight.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
-import { createProcessLaunchExecutor } from "./process-launch-executor.js";
+import { createProcessFromLaunchPlan } from "./process-launch-executor.js";
 import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 import { recoverModelAvailabilityFailures } from "./process-model-availability-recovery.js";
 import { applyProcessModelAvailabilityTransitions } from "./process-model-availability-transitions.js";
@@ -920,18 +920,17 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		titleGenerationAvailable: Boolean(processTitles),
 		logger: app.log,
 	});
-	const processLaunches = createProcessLaunchExecutor({
+	const processLaunchDeps = {
 		...baseDeps,
-		commitMessages: config.commit_messages,
 		broadcaster,
 		commands: processEngine,
 		processTitles,
 		extensionHost,
 		logger: app.log,
-		processDefinitions: extensionCatalog.processes,
 		repositoryCredentials,
 		getSupervisor: () => supervisor,
-	});
+	};
+	const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
 		futureExecutions: baseDeps.futureExecutions,
 		processes: baseDeps.processes,
@@ -970,7 +969,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		futureExecutionLifecycle,
 		launchPipeline,
 		launchPlans,
-		processLaunches,
+		createProcessFromLaunchPlan: createProcess,
 		titleGenerationAvailable: Boolean(processTitles),
 		logger: app.log,
 	});

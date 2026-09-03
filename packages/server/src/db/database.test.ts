@@ -654,6 +654,51 @@ describe("process question request migration", () => {
 			true,
 		);
 	});
+
+	it("rolls back the migration when foreign-key validation fails", () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-migration-rollback-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
+		initializeSchema(seed, { sqlitePath });
+		seed.exec(`
+			DROP TABLE process_question_requests;
+			${PROCESS_QUESTION_REQUESTS_WITH_DRAFT_STATE_SQL};
+		`);
+		seed
+			.prepare(
+				`INSERT INTO process_question_requests
+					(id, instance_id, turn_record_id, worker_lease_id, tool_call_id,
+					 questions_json, draft_json, draft_revision, status, asked_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			)
+			.run(
+				"orphan-question-request",
+				"missing-process",
+				"missing-turn",
+				"missing-lease",
+				"question-tool",
+				JSON.stringify([]),
+				JSON.stringify({}),
+				0,
+				"open",
+				"2026-07-26T00:00:00.000Z",
+			);
+		seed.close();
+
+		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(/foreign-key violation/);
+
+		const unchanged = new DatabaseSync(sqlitePath);
+		expect(columnNames(unchanged, "process_question_requests")).toEqual(
+			expect.arrayContaining(["worker_lease_id", "draft_json", "draft_revision"]),
+		);
+		expect(
+			unchanged
+				.prepare("SELECT id FROM process_question_requests WHERE id = ?")
+				.get("orphan-question-request"),
+		).toEqual({ id: "orphan-question-request" });
+		unchanged.close();
+	});
 });
 
 describe("unknown schema rejection", () => {

@@ -162,15 +162,14 @@ export function finishLaunchRun(run: LaunchRun, status: "failed" | "cancelled"):
 
 export function failLaunchRun(run: LaunchRun, stepId: string, summary: string): LaunchRun {
 	const timestamp = new Date().toISOString();
-	const transitioned = transitionLaunchStep(run, stepId, "failed", summary);
 	return finishLaunchRun(
 		{
-			...transitioned,
-			steps: transitioned.steps.map((step) =>
-				step.id === stepId && step.status !== "failed"
+			...run,
+			steps: run.steps.map((step) =>
+				step.id === stepId
 					? {
 							...step,
-							status: "failed",
+							status: "failed" as const,
 							startedAt: step.startedAt ?? timestamp,
 							completedAt: step.completedAt ?? timestamp,
 							safeSummary: summary,

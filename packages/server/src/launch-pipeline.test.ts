@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryDatabase } from "./db/database.js";
 import { createAllRepos } from "./db/repositories.js";
-import { createLaunchPipeline } from "./launch-pipeline.js";
+import { createLaunchPipeline, failLaunchRun, initialLaunchSteps } from "./launch-pipeline.js";
 
 function fixture() {
 	const repos = createAllRepos(createInMemoryDatabase());
@@ -22,6 +22,31 @@ function process(repos: ReturnType<typeof createAllRepos>) {
 }
 
 describe("LaunchPipeline", () => {
+	it("forces a terminal step to failed when startup failure is observed", () => {
+		const run = {
+			id: "launch-1",
+			launcherId: "demo.ui",
+			origin: "ui" as const,
+			instanceId: null,
+			status: "starting" as const,
+			steps: initialLaunchSteps().map((step) =>
+				step.id === "start_worker" ? { ...step, status: "completed" as const } : step,
+			),
+			createdAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+			completedAt: null,
+			revision: 1,
+		};
+
+		const failed = failLaunchRun(run, "start_worker", "Worker startup failed.");
+
+		expect(failed.status).toBe("failed");
+		expect(failed.steps.find((step) => step.id === "start_worker")).toMatchObject({
+			status: "failed",
+			safeSummary: "Worker startup failed.",
+		});
+	});
+
 	it("opens idempotently and runs ordered preparation before commit", async () => {
 		const { pipeline, repos, broadcaster } = fixture();
 		const first = pipeline.open({

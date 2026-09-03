@@ -646,14 +646,14 @@ export function applyKnownMigrations(
 		try {
 			for (const migration of migrations) migration.apply(sqlite);
 			assertBaselineSchema(sqlite, sqlitePath);
+			const violations = sqlite.prepare("PRAGMA foreign_key_check").all();
+			if (violations.length > 0) {
+				throw new Error(`SQLite migration produced ${violations.length} foreign-key violation(s)`);
+			}
 			sqlite.exec("COMMIT");
 		} catch (error) {
 			sqlite.exec("ROLLBACK");
 			throw error;
-		}
-		const violations = sqlite.prepare("PRAGMA foreign_key_check").all();
-		if (violations.length > 0) {
-			throw new Error(`SQLite migration produced ${violations.length} foreign-key violation(s)`);
 		}
 	} finally {
 		sqlite.exec("PRAGMA foreign_keys = ON");

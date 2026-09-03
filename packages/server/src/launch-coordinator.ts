@@ -25,8 +25,9 @@ import {
 	presentPipelineResult,
 } from "./launch-pipeline.js";
 import type {
-	ProcessLaunchExecutorLike,
+	ProcessLaunchExecutionResult,
 	ProcessLaunchOptions,
+	ProcessLaunchPlanExecutor,
 	ProcessLaunchRelationInput,
 } from "./process-launch-executor.js";
 import { toLaunchPipelineCommit } from "./process-launch-pipeline-adapter.js";
@@ -131,7 +132,7 @@ interface LaunchCoordinatorDeps {
 	futureExecutionLifecycle: FutureExecutionLifecycle;
 	launchPipeline: LaunchPipeline;
 	launchPlans: ProcessLaunchPlanServiceLike;
-	processLaunches: ProcessLaunchExecutorLike;
+	createProcessFromLaunchPlan: ProcessLaunchPlanExecutor;
 	titleGenerationAvailable?: boolean;
 	logger?: { info(message: string): void; warn(message: string): void };
 }
@@ -255,12 +256,12 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 	}
 
 	async function commitLaunchPlan(
-		executor: ProcessLaunchExecutorLike,
+		createProcess: ProcessLaunchPlanExecutor,
 		launchPlan: ProcessLaunchPlan,
 		launchRunId: string,
 		opts: ProcessLaunchOptions,
 	) {
-		const created = await executor.createProcessFromLaunchPlan(launchPlan, {
+		const created = await createProcess(launchPlan, {
 			...opts,
 			launchRunId,
 		});
@@ -440,9 +441,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				if (!existing) throw new Error(`Launch run '${opened.launchRunId}' does not exist`);
 				return existingLaunchResult(existing);
 			}
-			type PreparedPlanResult = Awaited<
-				ReturnType<ProcessLaunchExecutorLike["createProcessFromLaunchPlan"]>
-			>;
+			type PreparedPlanResult = ProcessLaunchExecutionResult;
 			const result = await deps.launchPipeline.run<
 				ProcessLaunchPlan,
 				ProcessLaunchPlan,
@@ -456,7 +455,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					return { ok: true, value: launchPlan };
 				},
 				commit: (launchPlan, ctx) =>
-					commitLaunchPlan(deps.processLaunches, launchPlan, ctx.launchRunId, {
+					commitLaunchPlan(deps.createProcessFromLaunchPlan, launchPlan, ctx.launchRunId, {
 						actor: request.actor,
 						...(request.relation ? { relation: request.relation } : {}),
 					}),
@@ -527,9 +526,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				launchPlan: ProcessLaunchPlan;
 				preparationChecks: readonly LaunchPreparationCheck[];
 			};
-			type WatcherResult = Awaited<
-				ReturnType<ProcessLaunchExecutorLike["createProcessFromLaunchPlan"]>
-			>;
+			type WatcherResult = ProcessLaunchExecutionResult;
 			const result = await deps.launchPipeline.run<
 				WatcherAttempt,
 				ProcessLaunchPlan,
@@ -561,7 +558,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 							};
 				},
 				commit: (launchPlan, ctx) =>
-					commitLaunchPlan(deps.processLaunches, launchPlan, ctx.launchRunId, {
+					commitLaunchPlan(deps.createProcessFromLaunchPlan, launchPlan, ctx.launchRunId, {
 						actor: request.actor,
 					}),
 			});

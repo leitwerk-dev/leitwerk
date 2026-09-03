@@ -4,6 +4,7 @@ import { createInMemoryDatabase } from "./db/database.js";
 import { createAllRepos } from "./db/repositories.js";
 import { createLaunchCoordinator } from "./launch-coordinator.js";
 import { createLaunchPipeline, initialLaunchSteps } from "./launch-pipeline.js";
+import type { ProcessLaunchPlanExecutor } from "./process-launch-executor.js";
 
 export const startupSteps = initialLaunchSteps()
 	.filter(
@@ -64,6 +65,13 @@ export function createCoordinatorHarness(
 			}),
 	);
 	const processLaunches = input.processLaunches ?? {};
+	const createProcessFromLaunchPlan: ProcessLaunchPlanExecutor = (launchPlan, opts) => {
+		const executor = processLaunches.createProcessFromLaunchPlan as
+			| ProcessLaunchPlanExecutor
+			| undefined;
+		if (!executor) throw new Error("createProcessFromLaunchPlan test double is not configured");
+		return executor(launchPlan, opts);
+	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
 		launcherService: {
@@ -73,7 +81,7 @@ export function createCoordinatorHarness(
 		futureExecutionLifecycle: { prepareLaunch, commitPreparedLaunch } as never,
 		launchPipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
 		launchPlans: {} as never,
-		processLaunches: processLaunches as never,
+		createProcessFromLaunchPlan,
 	});
 	const request = {
 		launcherId: "demo.ui",
@@ -129,13 +137,20 @@ export function createWatcherHarness(
 	const broadcaster = { sendDurable: vi.fn() } as never;
 	const launchPlans = (overrides.launchPlans ?? {}) as Record<string, unknown>;
 	const processLaunches = (overrides.processLaunches ?? {}) as Record<string, unknown>;
+	const createProcessFromLaunchPlan: ProcessLaunchPlanExecutor = (launchPlan, opts) => {
+		const executor = processLaunches.createProcessFromLaunchPlan as
+			| ProcessLaunchPlanExecutor
+			| undefined;
+		if (!executor) throw new Error("createProcessFromLaunchPlan test double is not configured");
+		return executor(launchPlan, opts);
+	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
 		launcherService: {} as never,
 		futureExecutionLifecycle: {} as never,
 		launchPipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
 		launchPlans: launchPlans as never,
-		processLaunches: processLaunches as never,
+		createProcessFromLaunchPlan,
 	});
 	const run = () => repos.launchRuns.getById(created.id) as LaunchRun;
 	return { broadcaster, coordinator, process, repos, run, launchPlans, processLaunches };

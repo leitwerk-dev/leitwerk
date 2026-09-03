@@ -1,10 +1,9 @@
-import { defineProcess, humanTurn, type ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
+import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { planConsumeFutureExecution } from "./future-execution/transition-planner.js";
 import {
 	buildProcessLaunchPostCommitEffects,
 	commitProcessLaunch,
-	createProcessFromLaunchConfig,
 	createProcessFromLaunchPlan,
 } from "./process-launch-executor.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
@@ -63,68 +62,6 @@ describe("process launch durable boundary", () => {
 			body: { error: "Unknown or unavailable skill 'missing-skill'" },
 		});
 		expect(deps.processes.listAll()).toHaveLength(0);
-	});
-
-	it("builds and executes a canonical config through the target codecs", async () => {
-		const deps = createTestDeps();
-		const processDef = defineProcess({
-			id: "configured_process",
-			displayName: "Configured",
-			entry: "review",
-			paramsCodec: {
-				parse: (value) => ({ prompt: (value as { prompt: string }).prompt.trim() }),
-				serialize: (value: { prompt: string }) => value,
-			},
-			stateCodec: {
-				parse: (value) => ({
-					initializedFrom: (value as { initializedFrom: string }).initializedFrom.toUpperCase(),
-				}),
-				serialize: (value: { initializedFrom: string }) => value,
-			},
-			initialState: (params) => ({ initializedFrom: params.prompt.trim() }),
-			turns: {
-				review: humanTurn({
-					description: "Review",
-					actions: { complete: { label: "Complete", complete: true } },
-				}),
-			},
-		});
-
-		const result = await createProcessFromLaunchConfig(
-			{ ...deps, processDefinitions: new Map([[processDef.id, processDef]]) },
-			{
-				launcherId: "configured_process.imported",
-				handoffDedupKey: "source:one",
-				launchConfig: {
-					processId: processDef.id,
-					params: { prompt: "  Fix it  " },
-					metadata: { source: "analysis" },
-					projects: [
-						{
-							key: "repo",
-							repoLocator: "./repo",
-							baseBranch: "main",
-							workBranch: null,
-						},
-					],
-				},
-			},
-		);
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(JSON.parse(result.process.paramsJson ?? "{}")).toEqual({ prompt: "Fix it" });
-		expect(JSON.parse(result.process.stateJson ?? "{}")).toEqual({ initializedFrom: "FIX IT" });
-		expect(result.process.metadata).toEqual({
-			source: "analysis",
-			launcherId: "configured_process.imported",
-		});
-		expect(result.projects).toEqual([
-			expect.objectContaining({ key: "repo", repoLocator: "./repo", workBranch: null }),
-		]);
-		expect(deps.handoffDedupKeys.getByKey("source:one")).toMatchObject({
-			instanceId: result.process.id,
-		});
 	});
 
 	it("commits process and projects in one durable transaction", () => {
