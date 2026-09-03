@@ -35,15 +35,15 @@ function assembleContext(
 ) {
 	const parent = deps.processes.getById(parentInstanceId);
 	if (!parent) throw Object.assign(new Error("Parent process not found"), { statusCode: 404 });
-	const results = deps.turnRecords
+	const durableTurns = deps.turnRecords
 		.listByInstance(parentInstanceId)
 		.filter((turn) => turn.status === "succeeded" && typeof turn.turnResultMarkdown === "string")
-		.sort((a, b) => a.startedAt.localeCompare(b.startedAt))
-		.map((turn) => ({ id: turn.id, markdown: turn.turnResultMarkdown as string }));
+		.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+	const durableResults = durableTurns.map((turn) => turn.turnResultMarkdown as string);
 	let durableText: string | null = null;
 	if (body.artifact.kind === "turn_result") {
 		const turnRecordId = body.artifact.turnRecordId;
-		durableText = results.find((result) => result.id === turnRecordId)?.markdown ?? null;
+		durableText = durableTurns.find((turn) => turn.id === turnRecordId)?.turnResultMarkdown ?? null;
 	} else {
 		const snapshot = deps.leafOutcomeSnapshots.getByInstanceAndLeafEntryId(
 			parentInstanceId,
@@ -73,7 +73,7 @@ function assembleContext(
 		context: {
 			focusedResult: body.focus.kind === "excerpt" ? excerpt : durableText,
 			parentPrompt: parseParentPrompt(parent.paramsJson),
-			durableResults: results.map((result) => result.markdown),
+			durableResults,
 			additionalInstructions: body.additionalInstructions?.trim() ?? "",
 			capturedAt: new Date().toISOString(),
 		},

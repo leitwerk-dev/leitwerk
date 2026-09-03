@@ -21,8 +21,8 @@ import {
 	failLaunchRun,
 	finishLaunchRun,
 	type LaunchPipeline,
-	type LaunchPipelineRunResult,
 	type LaunchStageFailure,
+	presentPipelineResult,
 } from "./launch-pipeline.js";
 import type {
 	ProcessLaunchExecutorLike,
@@ -39,24 +39,39 @@ function isMetadataRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function validateProcessMetadata(patch: Record<string, unknown> | undefined): void {
+	if (!patch) return;
+	if (Object.hasOwn(patch, "launcherId")) {
+		throw new Error("Programmatic process metadata cannot overwrite server-owned launcherId");
+	}
+	let encoded: string | undefined;
+	try {
+		encoded = JSON.stringify(patch);
+	} catch {
+		throw new Error("Programmatic process metadata must be JSON-serializable");
+	}
+	if (encoded === undefined || encoded.length > MAX_PROGRAMMATIC_METADATA_BYTES) {
+		throw new Error("Programmatic process metadata exceeds 16 KiB");
+	}
+	const visit = (value: Record<string, unknown>) => {
+		for (const [key, nested] of Object.entries(value)) {
+			if (["__proto__", "constructor", "prototype"].includes(key)) {
+				throw new Error("Programmatic process metadata contains a forbidden key");
+			}
+			if (isMetadataRecord(nested)) visit(nested);
+		}
+	};
+	visit(patch);
+}
+
 function mergeProcessMetadata(
 	base: Record<string, unknown> | null | undefined,
 	patch: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
 	if (!patch) return base ?? undefined;
-	if (Object.hasOwn(patch, "launcherId")) {
-		throw new Error("Programmatic process metadata cannot overwrite server-owned launcherId");
-	}
-	const encoded = JSON.stringify(patch);
-	if (encoded.length > MAX_PROGRAMMATIC_METADATA_BYTES) {
-		throw new Error("Programmatic process metadata exceeds 16 KiB");
-	}
 	const merge = (left: Record<string, unknown>, right: Record<string, unknown>) => {
 		const result = { ...left };
 		for (const [key, value] of Object.entries(right)) {
-			if (["__proto__", "constructor", "prototype"].includes(key)) {
-				throw new Error("Programmatic process metadata contains a forbidden key");
-			}
 			result[key] =
 				isMetadataRecord(result[key]) && isMetadataRecord(value)
 					? merge(result[key] as Record<string, unknown>, value)
@@ -201,25 +216,6 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					: run.instanceId
 						? null
 						: "The launch is still in progress.",
-		};
-	}
-
-	function presentPipelineResult<TResult, TFailure>(
-		launchRunId: string,
-		result: LaunchPipelineRunResult<TResult, TFailure>,
-		skippedError: string | null,
-	) {
-		if (result.kind === "failed") {
-			return { launchRunId, process: null, error: result.failure.safeSummary };
-		}
-		if (result.kind === "skipped") return { launchRunId, process: null, error: skippedError };
-		return {
-			launchRunId,
-			process: result.process,
-			error:
-				result.kind === "committed_with_reaction_error"
-					? "Process was created, but the worker could not be started cleanly. Review the process error and retry startup."
-					: null,
 		};
 	}
 
@@ -473,7 +469,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		},
 
 		async startProgrammatic(request, opts) {
-			mergeProcessMetadata(undefined, request.processMetadata);
+			validateProcessMetadata(request.processMetadata);
 			const idempotencyKey = opts.idempotencyKey.trim();
 			if (!idempotencyKey) throw new Error("Programmatic launch idempotency key is required");
 			const existing = deps.launchRuns.getByIdempotencyKey(idempotencyKey);

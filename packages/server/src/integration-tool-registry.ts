@@ -15,6 +15,7 @@ import type {
 	WorkerIntegrationToolRequestPayload,
 	WorkerIntegrationToolResultPayload,
 } from "@leitwerk-dev/worker-protocol";
+import * as v from "valibot";
 import type { RepositoryBundle } from "./db/repositories.js";
 import {
 	type ProcessActionRegistry,
@@ -64,52 +65,80 @@ function assertJsonPointer(value: string, field: string): void {
 }
 
 function validateTicketCapability(name: string, value: TicketCreationCapability): void {
-	if (value.kind !== "ticket_creation") {
-		throw new Error(`Integration tool '${name}' has an unknown capability kind`);
+	const capability = parseSchema(
+		ticketCapabilitySchema,
+		value,
+		`Integration tool '${name}' has an invalid ticket capability`,
+	);
+	if (capability.titlePath !== undefined) assertJsonPointer(capability.titlePath, "titlePath");
+	if (capability.descriptionPath !== undefined) {
+		assertJsonPointer(capability.descriptionPath, "descriptionPath");
 	}
-	if (typeof value.displayName !== "string" || value.displayName.trim() === "") {
-		throw new Error(`Integration tool '${name}' ticket capability requires a displayName`);
-	}
-	if (typeof value.processId !== "string" || value.processId.trim() === "") {
-		throw new Error(`Integration tool '${name}' ticket capability requires a processId`);
-	}
-	if (typeof value.startTurnId !== "string" || value.startTurnId.trim() === "") {
-		throw new Error(`Integration tool '${name}' ticket capability requires a startTurnId`);
-	}
-	if (value.titlePath !== undefined) assertJsonPointer(value.titlePath, "titlePath");
-	if (value.descriptionPath !== undefined) {
-		assertJsonPointer(value.descriptionPath, "descriptionPath");
-	}
-	if (value.destinations) {
+	if (capability.destinations) {
+		const provider = capability.destinations as Partial<
+			Record<"list" | "resolve" | "validate", unknown>
+		>;
 		for (const method of ["list", "resolve", "validate"] as const) {
-			if (typeof value.destinations[method] !== "function") {
+			if (typeof provider[method] !== "function") {
 				throw new Error(`Integration tool '${name}' destination provider requires ${method}()`);
 			}
 		}
 	}
 }
 
-function validateDestinationSummary(value: unknown): TicketCreationDestinationSummary {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error("Ticket destination summary must be an object");
-	}
-	const summary = value as Partial<TicketCreationDestinationSummary>;
-	if (typeof summary.id !== "string" || !summary.id.trim()) {
-		throw new Error("Ticket destination id must be a non-empty string");
-	}
-	if (typeof summary.displayName !== "string" || !summary.displayName.trim()) {
-		throw new Error("Ticket destination displayName must be a non-empty string");
-	}
-	return {
-		id: summary.id.trim(),
-		displayName: summary.displayName.trim(),
-		...(typeof summary.group === "string" && summary.group.trim()
-			? { group: summary.group.trim() }
-			: {}),
-		...(typeof summary.description === "string" && summary.description.trim()
-			? { description: summary.description.trim() }
-			: {}),
-	};
+const nonEmptyString = v.pipe(v.string(), v.trim(), v.nonEmpty());
+const ticketCapabilitySchema = v.object({
+	kind: v.literal("ticket_creation"),
+	displayName: nonEmptyString,
+	processId: nonEmptyString,
+	startTurnId: nonEmptyString,
+	titlePath: v.optional(v.string()),
+	descriptionPath: v.optional(v.string()),
+	destinations: v.optional(v.unknown()),
+});
+const destinationSummarySchema = v.pipe(
+	v.object({
+		id: nonEmptyString,
+		displayName: nonEmptyString,
+		group: v.optional(nonEmptyString),
+		description: v.optional(nonEmptyString),
+	}),
+	v.transform((summary) => ({
+		id: summary.id,
+		displayName: summary.displayName,
+		...(summary.group ? { group: summary.group } : {}),
+		...(summary.description ? { description: summary.description } : {}),
+	})),
+);
+const destinationSnapshotSchema = v.object({
+	summary: destinationSummarySchema,
+	data: v.unknown(),
+	agentContext: v.optional(v.string()),
+});
+const destinationListSchema = v.object({
+	destinations: v.array(destinationSummarySchema),
+	warnings: v.optional(v.array(v.string())),
+});
+const ticketReceiptSchema = v.object({
+	externalId: nonEmptyString,
+	url: v.string(),
+	result: v.optional(v.unknown()),
+});
+const persistedActorSchema = v.object({
+	id: v.string(),
+	kind: v.picklist(["user", "channel", "system"]),
+	provider: v.union([v.null(), v.string()]),
+	displayName: v.optional(v.string()),
+});
+
+function parseSchema<T>(
+	schema: v.BaseSchema<unknown, T, v.BaseIssue<unknown>>,
+	value: unknown,
+	message: string,
+): T {
+	const parsed = v.safeParse(schema, value);
+	if (!parsed.success) throw new Error(message);
+	return parsed.output;
 }
 
 function assertJsonSerializable(value: unknown, seen = new Set<object>()): void {
@@ -130,31 +159,26 @@ function assertJsonSerializable(value: unknown, seen = new Set<object>()): void 
 }
 
 function validateDestinationSnapshot(value: unknown): TicketCreationDestinationSnapshot {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error("Ticket destination snapshot must be an object");
-	}
-	const snapshot = value as Partial<TicketCreationDestinationSnapshot>;
-	if (!Object.hasOwn(snapshot, "data")) {
-		throw new Error("Ticket destination snapshot requires adapter data");
-	}
+	const snapshot = parseSchema(
+		destinationSnapshotSchema,
+		value,
+		"Ticket destination snapshot must be an object with summary and adapter data",
+	);
 	const normalized = {
-		summary: validateDestinationSummary(snapshot.summary),
+		summary: snapshot.summary,
 		data: snapshot.data,
-		...(typeof snapshot.agentContext === "string" ? { agentContext: snapshot.agentContext } : {}),
+		...(snapshot.agentContext !== undefined ? { agentContext: snapshot.agentContext } : {}),
 	};
 	assertJsonSerializable(normalized);
 	return JSON.parse(JSON.stringify(normalized)) as TicketCreationDestinationSnapshot;
 }
 
 export function validateTicketCreationReceipt(value: unknown): TicketCreationReceipt {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error("Ticket tool must return a receipt object");
-	}
-	const receipt = value as Partial<TicketCreationReceipt>;
-	if (typeof receipt.externalId !== "string" || receipt.externalId.trim() === "") {
-		throw new Error("Ticket receipt externalId must be a non-empty string");
-	}
-	if (typeof receipt.url !== "string") throw new Error("Ticket receipt url must be a URL");
+	const receipt = parseSchema(
+		ticketReceiptSchema,
+		value,
+		"Ticket tool must return a receipt object",
+	);
 	let url: URL;
 	try {
 		url = new URL(receipt.url);
@@ -164,8 +188,9 @@ export function validateTicketCreationReceipt(value: unknown): TicketCreationRec
 	if (url.protocol !== "https:" && url.protocol !== "http:") {
 		throw new Error("Ticket receipt url must use http or https");
 	}
+	if (Object.hasOwn(receipt, "result")) assertJsonSerializable(receipt.result);
 	return {
-		externalId: receipt.externalId.trim(),
+		externalId: receipt.externalId,
 		url: url.toString(),
 		...(Object.hasOwn(receipt, "result") ? { result: receipt.result } : {}),
 	};
@@ -191,31 +216,20 @@ function parseToolArgs(value: unknown): Record<string, unknown> {
 }
 
 function persistedTicketActor(value: unknown): Actor {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error("Ticket creation actor is unavailable");
-	}
-	const actor = value as Record<string, unknown>;
-	if (
-		typeof actor.id !== "string" ||
-		(actor.kind !== "user" && actor.kind !== "channel" && actor.kind !== "system") ||
-		(actor.provider !== null && typeof actor.provider !== "string")
-	) {
-		throw new Error("Ticket creation actor is invalid");
-	}
-	return {
-		id: actor.id,
-		kind: actor.kind,
-		provider: actor.provider,
-		...(typeof actor.displayName === "string" ? { displayName: actor.displayName } : {}),
-	};
+	return parseSchema(persistedActorSchema, value, "Ticket creation actor is invalid");
 }
 
 function ticketDestinationChoices(paramsJson: string | null): TicketCreationDestinationSummary[] {
 	if (!paramsJson) return [];
 	try {
-		const params = JSON.parse(paramsJson) as Record<string, unknown>;
-		if (!Array.isArray(params.ticketDestinations)) return [];
-		return params.ticketDestinations.map(validateDestinationSummary);
+		const params = JSON.parse(paramsJson);
+		const parsed = v.safeParse(
+			v.object({ ticketDestinations: v.optional(v.array(destinationSummarySchema)) }),
+			params,
+		);
+		return parsed.success && parsed.output.ticketDestinations
+			? parsed.output.ticketDestinations
+			: [];
 	} catch {
 		return [];
 	}
@@ -298,12 +312,14 @@ export class IntegrationToolRegistry {
 	}
 
 	async listTicketDestinations(name: string, actor: Actor): Promise<TicketCreationDestinationList> {
-		const result = await this.resolveTicketDestinationProvider(name).list({ actor });
+		const result = parseSchema(
+			destinationListSchema,
+			await this.resolveTicketDestinationProvider(name).list({ actor }),
+			"Ticket destination list is invalid",
+		);
 		return {
-			destinations: result.destinations.map(validateDestinationSummary),
-			warnings: (result.warnings ?? []).filter(
-				(warning): warning is string => typeof warning === "string" && warning.trim() !== "",
-			),
+			destinations: result.destinations,
+			warnings: (result.warnings ?? []).filter((warning) => warning.trim() !== ""),
 		};
 	}
 

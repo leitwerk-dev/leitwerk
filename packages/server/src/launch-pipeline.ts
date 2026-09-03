@@ -94,6 +94,25 @@ export type LaunchPipelineRunResult<TResult, TFailure> =
 			reused: boolean;
 	  };
 
+export function presentPipelineResult<TResult, TFailure>(
+	launchRunId: string,
+	result: LaunchPipelineRunResult<TResult, TFailure>,
+	skippedError: string | null,
+): { launchRunId: string; process: ProcessInstance | null; error: string | null } {
+	if (result.kind === "failed") {
+		return { launchRunId, process: null, error: result.failure.safeSummary };
+	}
+	if (result.kind === "skipped") return { launchRunId, process: null, error: skippedError };
+	return {
+		launchRunId,
+		process: result.process,
+		error:
+			result.kind === "committed_with_reaction_error"
+				? "Process was created, but the worker could not be started cleanly. Review the process error and retry startup."
+				: null,
+	};
+}
+
 export interface LaunchPipeline {
 	open(input: {
 		launcherId: string | null;

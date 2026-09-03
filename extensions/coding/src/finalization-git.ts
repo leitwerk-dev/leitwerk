@@ -281,6 +281,23 @@ function assertExpectedCheckout(repoPath: string, workBranch: string): void {
 	}
 }
 
+function assertFinalizationCheckout(input: {
+	repoPath: string;
+	workBranch: string;
+	commitMessage: string;
+	missingCommitMessage: string;
+}): void {
+	if (!repoExists(input.repoPath)) {
+		throw new DeterministicGitError(
+			`Repository workspace '${input.repoPath}' does not exist or is not a git repository`,
+		);
+	}
+	assertExpectedCheckout(input.repoPath, input.workBranch);
+	if (!trimToNull(input.commitMessage)) {
+		throw new DeterministicGitError(input.missingCommitMessage);
+	}
+}
+
 function assertGitIdentity(repoPath: string, identity?: GitIdentity): void {
 	const author = runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"], identity);
 	const committer = runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"], identity);
@@ -320,6 +337,17 @@ function commitDirtyWorktree(
 		);
 	}
 	return currentHeadSha(repoPath);
+}
+
+function commitIfDirty(input: {
+	repoPath: string;
+	commitMessage: string;
+	gitIdentity?: GitIdentity;
+}): string {
+	const status = workingTreeStatus(input.repoPath);
+	return status.dirtyFiles.length > 0
+		? commitDirtyWorktree(input.repoPath, input.commitMessage, input.gitIdentity)
+		: currentHeadSha(input.repoPath);
 }
 
 function assertPostConflictCheckpoint(
@@ -426,12 +454,20 @@ function branchRef(branch: string): string {
 	return `refs/heads/${branch}`;
 }
 
-function pushHeadToBranch(repoPath: string, branch: string): string {
+function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string): string {
 	const pushTarget = `origin/${branch}`;
 	const pushResult = runGit(repoPath, ["push", "origin", `HEAD:${branchRef(branch)}`]);
 	if (!pushResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to push HEAD to '${pushTarget}': ${trimToNull(pushResult.stderr) ?? trimToNull(pushResult.stdout) ?? "unknown git error"}`,
+		);
+	}
+	const remoteHead = gitOrNull(repoPath, "ls-remote", "--heads", "origin", branchRef(branch))
+		?.split(/\s+/)[0]
+		?.trim();
+	if (remoteHead !== expectedHeadSha) {
+		throw new DeterministicGitError(
+			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${expectedHeadSha}'`,
 		);
 	}
 	return pushTarget;
@@ -628,40 +664,24 @@ export function commitAndPushWorkBranch(input: {
 	gitIdentity: GitIdentity;
 }) {
 	const repoPath = path.resolve(input.repoPath);
-	if (!repoExists(repoPath)) {
-		throw new DeterministicGitError(
-			`Repository workspace '${repoPath}' does not exist or is not a git repository`,
-		);
-	}
-	assertExpectedCheckout(repoPath, input.workBranch);
-	if (!trimToNull(input.commitMessage)) {
-		throw new DeterministicGitError("A generated commit message is required before publication");
-	}
+	assertFinalizationCheckout({
+		repoPath,
+		workBranch: input.workBranch,
+		commitMessage: input.commitMessage,
+		missingCommitMessage: "A generated commit message is required before publication",
+	});
 	const conflicts = conflictedFiles(repoPath);
 	if (mergeInProgress(repoPath) || conflicts.length > 0) {
 		throw new DeterministicGitError(
 			`Cannot publish a work branch with unresolved conflicts: ${conflicts.join(", ") || "merge in progress"}`,
 		);
 	}
-	const dirty = workingTreeStatus(repoPath).dirtyFiles.length > 0;
-	const headSha = dirty
-		? commitDirtyWorktree(repoPath, input.commitMessage, input.gitIdentity)
-		: currentHeadSha(repoPath);
-	const pushTarget = pushHeadToBranch(repoPath, input.workBranch);
-	const remoteHead = gitOrNull(
+	const headSha = commitIfDirty({
 		repoPath,
-		"ls-remote",
-		"--heads",
-		"origin",
-		branchRef(input.workBranch),
-	)
-		?.split(/\s+/)[0]
-		?.trim();
-	if (remoteHead !== headSha) {
-		throw new DeterministicGitError(
-			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${headSha}'`,
-		);
-	}
+		commitMessage: input.commitMessage,
+		gitIdentity: input.gitIdentity,
+	});
+	const pushTarget = pushAndVerify(repoPath, input.workBranch, headSha);
 	return { headSha, pushTarget };
 }
 
@@ -712,17 +732,13 @@ export function runDeterministicFinalization<
 		gitIdentity,
 	};
 	const repoPath = path.resolve(input.repoPath);
-	if (!repoExists(repoPath)) {
-		throw new DeterministicGitError(
-			`Repository workspace '${repoPath}' does not exist or is not a git repository`,
-		);
-	}
-	assertExpectedCheckout(repoPath, input.workBranch);
-	if (!trimToNull(input.commitMessage)) {
-		throw new DeterministicGitError(
+	assertFinalizationCheckout({
+		repoPath,
+		workBranch: input.workBranch,
+		commitMessage: input.commitMessage,
+		missingCommitMessage:
 			"No generated commit message is available; retry commit-message generation before finalization",
-		);
-	}
+	});
 	assertPostConflictCheckpoint(input, repoPath);
 	reportProgress(1, 1);
 
@@ -752,10 +768,11 @@ export function runDeterministicFinalization<
 	}
 	reportProgress(2, 2);
 
-	const status = workingTreeStatus(repoPath);
-	if (status.dirtyFiles.length > 0) {
-		headSha = commitDirtyWorktree(repoPath, input.commitMessage, input.gitIdentity);
-	}
+	headSha = commitIfDirty({
+		repoPath,
+		commitMessage: input.commitMessage,
+		gitIdentity: input.gitIdentity,
+	});
 	const mergeResult = deterministicMerge({
 		repoPath,
 		baseBranch: input.baseBranch,
@@ -784,7 +801,7 @@ export function runDeterministicFinalization<
 	let sourceOriginPushTarget: string | null = null;
 	if (localSourceRepo?.kind === "non_bare") {
 		assertLocalBaseRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushHeadToBranch(repoPath, input.workBranch);
+		workspacePushTarget = pushAndVerify(repoPath, input.workBranch, mergeResult.headSha);
 		mergeWorkBranchIntoLocalBaseRepo({
 			localBaseRepoPath: localSourceRepo.path,
 			baseBranch: input.baseBranch,
@@ -800,7 +817,7 @@ export function runDeterministicFinalization<
 		pushTarget = sourceOriginPushTarget ?? originBaseRef(input.baseBranch);
 	} else if (localSourceRepo?.kind === "bare") {
 		assertLocalBareSourceRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushHeadToBranch(repoPath, input.baseBranch);
+		workspacePushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
 		sourceOriginPushTarget = pushLocalSourceBaseBranchToOriginIfPresent({
 			localSourceRepoPath: localSourceRepo.path,
 			baseBranch: input.baseBranch,
@@ -808,7 +825,7 @@ export function runDeterministicFinalization<
 		});
 		pushTarget = sourceOriginPushTarget ?? workspacePushTarget;
 	} else {
-		pushTarget = pushHeadToBranch(repoPath, input.baseBranch);
+		pushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
 	}
 	updateLocalBaseRef(repoPath, input.baseBranch);
 	const finalHeadSha = currentHeadSha(repoPath);

@@ -219,11 +219,16 @@ function resolveScheduledLaunchUpdateRequest(
 		ok: true as const,
 		value: {
 			title: request.titleProvided ? request.title : existingPayload.launchPlan.processInput.title,
+			titleProvided: true,
 			launcherInput: request.launcherInputProvided
 				? request.launcherInput
 				: existingPayload.launcherInput,
+			launcherInputProvided: true,
+			skillIds: request.skillIds ?? existingPayload.selectedSkillIds,
 			modelConfig: request.modelConfigProvided ? request.modelConfig : existingPayload.modelConfig,
+			modelConfigProvided: request.modelConfigProvided,
 			schedule: schedule.value,
+			scheduleProvided: true,
 			actor: existingPayload.actor,
 		},
 	};
@@ -346,6 +351,63 @@ export function createFutureLaunchLifecycle(
 				};
 	}
 
+	async function prepareLaunchInternal(input: {
+		launcherId: string;
+		request: NormalizedScheduledLaunchInput;
+		baseLaunchPlan?: ProcessLaunchPlan;
+		resourceSelections?: readonly SkillSelection[];
+		operationTime?: Date;
+		resolvedLauncher?: ResolvedProcessLauncher;
+	}): Promise<PreparedLaunchResult> {
+		if (!deps.launcherService)
+			return {
+				ok: false,
+				outcome: { kind: "unavailable", reason: "Launcher service is not available" },
+			};
+		const resolved = input.resolvedLauncher
+			? { ok: true as const, launcher: input.resolvedLauncher }
+			: await deps.launcherService.resolveUiLauncher(input.launcherId, input.request.launcherInput);
+		if (!resolved.ok) return { ok: false, outcome: launcherResolutionFailure(resolved) };
+		const resourceSelections = input.resourceSelections
+			? { ok: true as const, value: input.resourceSelections }
+			: resolveSelectedSkills(deps.skills, input.request.skillIds ?? []);
+		if (!resourceSelections.ok) return { ok: false, outcome: resourceSelections.outcome };
+
+		// A revised launch uses its persisted plan as the source of stored model
+		// defaults, while an explicit request always wins over those defaults.
+		const baseLaunchPlan = input.request.modelConfigProvided
+			? clearLaunchPlanModelConfig(resolved.launcher.launchPlan)
+			: input.baseLaunchPlan
+				? applyStoredLaunchPlanModelConfig(
+						resolved.launcher.launchPlan,
+						input.baseLaunchPlan.processInput,
+					)
+				: resolved.launcher.launchPlan;
+		const result = await prepareResolvedLaunch({
+			baseLaunchPlan,
+			modelConfig: input.request.modelConfig,
+			title: input.request.title,
+			titleProvided: input.request.titleProvided,
+			schedule: input.request.schedule,
+			operationTime: input.operationTime,
+		});
+		if (!result.ok) return { ok: false, outcome: result.outcome };
+		return {
+			ok: true,
+			prepared: {
+				processId: resolved.launcher.processId,
+				launcherId: resolved.launcher.launcherId,
+				launcherInput: input.request.launcherInput,
+				modelConfig: input.request.modelConfig,
+				launchPlan: result.launchPlan,
+				selectedSkillIds: input.request.skillIds ?? [],
+				resourceSelections: resourceSelections.value,
+				modelState: result.modelState,
+				schedule: result.schedule,
+			},
+		};
+	}
+
 	return {
 		prepareResolvedLaunch,
 		persistPreparedLaunch,
@@ -355,41 +417,11 @@ export function createFutureLaunchLifecycle(
 			request: NormalizedScheduledLaunchInput,
 			opts?: { resolvedLauncher?: ResolvedProcessLauncher },
 		): Promise<PreparedLaunchResult> {
-			if (!deps.launcherService)
-				return {
-					ok: false,
-					outcome: { kind: "unavailable", reason: "Launcher service is not available" },
-				};
-			const resolved = opts?.resolvedLauncher
-				? { ok: true as const, launcher: opts.resolvedLauncher }
-				: await deps.launcherService.resolveUiLauncher(launcherId, request.launcherInput);
-			if (!resolved.ok) return { ok: false, outcome: launcherResolutionFailure(resolved) };
-			const resourceSelections = resolveSelectedSkills(deps.skills, request.skillIds ?? []);
-			if (!resourceSelections.ok) return { ok: false, outcome: resourceSelections.outcome };
-			const result = await prepareResolvedLaunch({
-				baseLaunchPlan: request.modelConfigProvided
-					? clearLaunchPlanModelConfig(resolved.launcher.launchPlan)
-					: resolved.launcher.launchPlan,
-				modelConfig: request.modelConfig,
-				title: request.title,
-				titleProvided: request.titleProvided,
-				schedule: request.schedule,
+			return prepareLaunchInternal({
+				launcherId,
+				request,
+				...(opts?.resolvedLauncher ? { resolvedLauncher: opts.resolvedLauncher } : {}),
 			});
-			if (!result.ok) return { ok: false, outcome: result.outcome };
-			return {
-				ok: true,
-				prepared: {
-					processId: resolved.launcher.processId,
-					launcherId: resolved.launcher.launcherId,
-					launcherInput: request.launcherInput,
-					modelConfig: request.modelConfig,
-					launchPlan: result.launchPlan,
-					selectedSkillIds: request.skillIds ?? [],
-					resourceSelections: resourceSelections.value,
-					modelState: result.modelState,
-					schedule: result.schedule,
-				},
-			};
 		},
 		async commitPreparedLaunch(
 			prepared: PreparedLaunch,
@@ -479,8 +511,6 @@ export function createFutureLaunchLifecycle(
 		): Promise<LaunchMutationOutcome> {
 			const operationTime = now();
 			return runFutureExecutionExclusive(deps.processOperations, futureExecutionId, async () => {
-				if (!deps.launcherService)
-					return { kind: "unavailable", reason: "Launcher service is not available" };
 				const existing = deps.futureExecutions.getById(futureExecutionId);
 				if (!existing || existing.kind !== "launch") return { kind: "not_found", target: "launch" };
 				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
@@ -488,36 +518,23 @@ export function createFutureLaunchLifecycle(
 					return invalidOutcome("invalid_payload", "Scheduled launch payload is invalid");
 				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
 				if (!launchRequest.ok) return { kind: "invalid", issues: [launchRequest.issue] };
-				const resolved = await deps.launcherService.resolveUiLauncher(
-					existing.launcherId ?? parsed.value.launchPlan.launcherId,
-					launchRequest.value.launcherInput,
-				);
-				if (!resolved.ok) return launcherResolutionFailure(resolved);
-				let baseLaunchPlan = resolved.launcher.launchPlan;
-				const resourceSelections = request.skillIds
-					? resolveSelectedSkills(deps.skills, request.skillIds)
-					: { ok: true as const, value: parsed.value.resourceSelections };
-				if (!resourceSelections.ok) return resourceSelections.outcome;
-				baseLaunchPlan = request.modelConfigProvided
-					? clearLaunchPlanModelConfig(baseLaunchPlan)
-					: applyStoredLaunchPlanModelConfig(baseLaunchPlan, parsed.value.launchPlan.processInput);
-				const prepared = await prepareResolvedLaunch({
-					baseLaunchPlan,
-					modelConfig: launchRequest.value.modelConfig,
-					title: launchRequest.value.title,
-					titleProvided: true,
-					schedule: launchRequest.value.schedule,
+				const prepared = await prepareLaunchInternal({
+					launcherId: existing.launcherId ?? parsed.value.launchPlan.launcherId,
+					request: launchRequest.value,
+					baseLaunchPlan: parsed.value.launchPlan,
+					resourceSelections: request.skillIds ? undefined : parsed.value.resourceSelections,
 					operationTime,
 				});
 				if (!prepared.ok) return prepared.outcome;
-				if (prepared.schedule.mode === "now") {
+				const preparedLaunch = prepared.prepared;
+				if (preparedLaunch.schedule.mode === "now") {
 					const created = await createScheduledProcessFromLaunchPlan(
 						deps,
-						prepared.launchPlan,
+						preparedLaunch.launchPlan,
 						planConsumeFutureExecution(existing),
 						{
 							actor: opts?.actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
-							resourceSelections: resourceSelections.value,
+							resourceSelections: preparedLaunch.resourceSelections,
 							launchIntent: { launcherInput: launchRequest.value.launcherInput },
 						},
 					);
@@ -538,7 +555,7 @@ export function createFutureLaunchLifecycle(
 						};
 					}
 					recordLauncherRecentsBestEffort(
-						resolved.launcher.launcherId,
+						preparedLaunch.launcherId,
 						launchRequest.value.launcherInput,
 					);
 					return {
@@ -549,17 +566,9 @@ export function createFutureLaunchLifecycle(
 					};
 				}
 				return persistPreparedLaunch({
+					...preparedLaunch,
 					existing,
-					processId: resolved.launcher.processId,
-					launcherId: resolved.launcher.launcherId,
-					launcherInput: launchRequest.value.launcherInput,
-					modelConfig: launchRequest.value.modelConfig,
 					actor: opts?.actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
-					launchPlan: prepared.launchPlan,
-					selectedSkillIds: request.skillIds ?? parsed.value.selectedSkillIds,
-					resourceSelections: resourceSelections.value,
-					modelState: prepared.modelState,
-					schedule: prepared.schedule,
 				});
 			});
 		},

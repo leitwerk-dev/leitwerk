@@ -1,8 +1,5 @@
 <script lang="ts">
-import type {
-	ProcessExternalTriggerSignal,
-	TicketCreationToolSummary,
-} from "@leitwerk-dev/protocol";
+import type { ProcessExternalTriggerSignal } from "@leitwerk-dev/protocol";
 import { tick } from "svelte";
 import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
@@ -18,27 +15,28 @@ import {
 	moveChronicleAnchorByOffset,
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
+import type {
+	ChronicleTicketArtifact,
+	ChronicleTicketDraftArtifact,
+} from "../../chronicle/lib/chronicle-ticket-artifact.js";
 import { readTicketResultSelection } from "../../chronicle/ticket-selection.js";
-import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
 import ModalShell from "../../components/ModalShell.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
-	FormFieldDefinition,
 	ProcessDetailData,
 	ProcessExternalTriggerSummary,
 	ProcessSelectedTurnSummary,
 	ScheduledActionDetail,
 } from "../../lib/api.js";
-import { fetchTicketCreationTools, launchTicketCreation } from "../../lib/api.js";
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
-import { buildProcessPath, navigate } from "../../lib/router.svelte.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";
 import { createProcessDetailChronicleScroll } from "./process-detail-chronicle-scroll.svelte.js";
 import type {
 	CurrentProcessErrorViewModel,
 	CurrentTurnRecoveryViewModel,
 } from "./process-detail-view-model.js";
+import TicketCreationComposer from "./TicketCreationComposer.svelte";
 
 interface Props {
 	instanceId: string;
@@ -106,43 +104,11 @@ let {
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
-type TicketDraftArtifact =
-	| { kind: "turn_result"; turnRecordId: string; excerpt?: string }
-	| { kind: "leaf_outcome"; leafEntryId: string; excerpt?: string };
-let ticketDraft = $state<TicketDraftArtifact | null>(null);
-let ticketSelectionDraft = $state<TicketDraftArtifact | null>(null);
-let ticketTools = $state<TicketCreationToolSummary[]>([]);
-let ticketToolsLoading = $state(false);
-let selectedTicketTool = $state("");
-let ticketInstructions = $state("");
-let ticketError = $state<string | null>(null);
-let ticketLaunching = $state(false);
+let ticketDraft = $state<ChronicleTicketDraftArtifact | null>(null);
+let ticketSelectionDraft = $state<ChronicleTicketDraftArtifact | null>(null);
 
-const ticketInstructionsField: FormFieldDefinition<"textarea"> = {
-	id: "ticket-instructions",
-	label: "What issue should be created?",
-	kind: "textarea",
-	placeholder: "Describe the problem, expected outcome, and any important constraints.",
-};
-const ticketToolField: FormFieldDefinition<"select"> = {
-	id: "ticket-tool",
-	label: "Ticket system",
-	kind: "select",
-};
-
-async function openTicketComposer(artifact: typeof ticketDraft) {
-	if (!artifact) return;
-	ticketDraft = artifact;
-	ticketError = null;
-	ticketToolsLoading = true;
-	try {
-		ticketTools = await fetchTicketCreationTools();
-		selectedTicketTool = ticketTools.length === 1 ? (ticketTools[0]?.name ?? "") : "";
-	} catch (reason) {
-		ticketError = reason instanceof Error ? reason.message : String(reason);
-	} finally {
-		ticketToolsLoading = false;
-	}
+function openTicketComposer(artifact: ChronicleTicketArtifact) {
+	ticketDraft = { ...artifact };
 }
 
 function handleTicketSelection() {
@@ -153,30 +119,6 @@ function handleTicketSelection() {
 		ticketSelectionDraft = { kind, turnRecordId: id, excerpt: selected.text };
 	if (kind === "leaf_outcome" && id)
 		ticketSelectionDraft = { kind, leafEntryId: id, excerpt: selected.text };
-}
-
-async function submitTicketDraft() {
-	if (!ticketDraft || !selectedTicketTool) return;
-	ticketLaunching = true;
-	ticketError = null;
-	try {
-		const result = await launchTicketCreation(instanceId, {
-			artifact:
-				ticketDraft.kind === "turn_result"
-					? { kind: "turn_result", turnRecordId: ticketDraft.turnRecordId }
-					: { kind: "leaf_outcome", leafEntryId: ticketDraft.leafEntryId },
-			focus: ticketDraft.excerpt
-				? { kind: "excerpt", excerpt: ticketDraft.excerpt }
-				: { kind: "whole_result" },
-			additionalInstructions: ticketInstructions.trim(),
-			toolName: selectedTicketTool,
-		});
-		navigate(buildProcessPath(result.childInstanceId));
-	} catch (reason) {
-		ticketError = reason instanceof Error ? reason.message : String(reason);
-	} finally {
-		ticketLaunching = false;
-	}
 }
 
 const processLabel = $derived(
@@ -460,59 +402,18 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		type="button"
 		class="ticket-selection-action"
 		data-pressable="true"
-		onclick={() => { void openTicketComposer(ticketSelectionDraft); ticketSelectionDraft = null; }}
+		onclick={() => {
+			if (ticketSelectionDraft) openTicketComposer(ticketSelectionDraft);
+			ticketSelectionDraft = null;
+		}}
 	>Create issue</button>
 {/if}
 
-<ModalShell
-	open={ticketDraft !== null}
-	titleId="ticket-composer-title"
-	closeLabel="Close issue creator"
-	onClose={() => { ticketDraft = null; ticketInstructions = ""; }}
-	dataSection="ticket-composer"
-	panelId="ticket-composer"
-	width="min(100% - 32px, 520px)"
-	maxHeight="min(85dvh, 620px)"
-	initialFocusSelector="textarea"
->
-	<header class="ticket-composer-header">
-		<h2 id="ticket-composer-title">Create issue</h2>
-		<p>Describe the issue to start a focused ticket-creation process.</p>
-	</header>
-	<div class="ticket-composer-body">
-		<FormFieldRenderer
-			field={ticketInstructionsField}
-			id="ticket-instructions"
-			value={ticketInstructions}
-			textareaRows={6}
-			onValueChange={(_, value) => (ticketInstructions = String(value))}
-		/>
-		{#if ticketToolsLoading}
-			<p class="ticket-composer-state" role="status">Loading ticket systems…</p>
-		{:else if ticketTools.length > 1}
-			<FormFieldRenderer
-				field={ticketToolField}
-				id="ticket-tool"
-				value={selectedTicketTool}
-				options={ticketTools.map((tool) => ({ value: tool.name, label: tool.displayName }))}
-				onValueChange={(_, value) => (selectedTicketTool = String(value))}
-			/>
-		{:else if ticketTools.length === 0 && !ticketError}
-			<p class="ticket-composer-state">No ticket system is configured.</p>
-		{/if}
-		{#if ticketError}<p class="ticket-composer-error" role="alert">{ticketError}</p>{/if}
-	</div>
-	<footer class="ticket-composer-actions">
-		<button type="button" class="ticket-button-secondary" data-pressable="true" onclick={() => { ticketDraft = null; ticketInstructions = ""; }}>Cancel</button>
-		<button
-			type="button"
-			class="ticket-button-primary"
-			data-pressable="true"
-			disabled={!ticketInstructions.trim() || !selectedTicketTool || ticketLaunching}
-			onclick={submitTicketDraft}
-		>{ticketLaunching ? "Creating…" : "Create"}</button>
-	</footer>
-</ModalShell>
+<TicketCreationComposer
+	{instanceId}
+	draft={ticketDraft}
+	onClose={() => (ticketDraft = null)}
+/>
 
 <ModalShell
 	open={mobileQuickNavOpen}
@@ -577,65 +478,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 </ModalShell>
 
 <style>
-	.ticket-composer-header {
-		display: grid;
-		gap: 6px;
-		padding-right: var(--space-xl);
-	}
-
-	.ticket-composer-header h2,
-	.ticket-composer-header p,
-	.ticket-composer-state,
-	.ticket-composer-error {
-		margin: 0;
-	}
-
-	.ticket-composer-header h2 {
-		font-size: var(--type-title);
-		line-height: 1.2;
-	}
-
-	.ticket-composer-header p {
-		max-width: 44ch;
-		color: var(--chronicle-text-muted);
-		font-size: var(--type-body-sm);
-		line-height: 1.5;
-	}
-
-	.ticket-composer-body {
-		display: grid;
-		gap: var(--space-md);
-		min-width: 0;
-		overflow-y: auto;
-		padding: 2px;
-		scrollbar-color: var(--chronicle-border-strong) transparent;
-	}
-
-	.ticket-composer-state,
-	.ticket-composer-error {
-		padding: var(--space-sm);
-		border-radius: 10px;
-		background: var(--chronicle-panel-muted);
-		color: var(--chronicle-text-muted);
-		font-size: var(--type-body-sm);
-	}
-
-	.ticket-composer-error {
-		border: 1px solid var(--chronicle-danger-border);
-		background: var(--chronicle-danger-surface-soft);
-		color: var(--chronicle-danger-text-strong);
-	}
-
-	.ticket-composer-actions {
-		display: flex;
-		justify-content: flex-end;
-		gap: var(--space-xs);
-		padding-top: var(--space-xs);
-		border-top: 1px solid var(--chronicle-border);
-	}
-
-	.ticket-button-secondary,
-	.ticket-button-primary,
 	.ticket-selection-action {
 		min-height: 44px;
 		padding: 0 var(--space-md);
@@ -644,47 +486,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		font-size: var(--type-body-sm);
 		font-weight: 700;
 		cursor: pointer;
-	}
-
-	.ticket-button-secondary {
-		border: 1px solid var(--chronicle-border-strong);
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-	}
-
-	.ticket-button-primary {
-		border: 1px solid var(--chronicle-text);
-		background: var(--chronicle-text);
-		color: var(--chronicle-card-surface);
-	}
-
-	.ticket-button-secondary:hover:not(:disabled),
-	.ticket-button-primary:hover:not(:disabled),
-	.ticket-selection-action:hover:not(:disabled) {
-		transform: translateY(-1px);
-	}
-
-	.ticket-button-secondary:hover:not(:disabled) {
-		border-color: var(--chronicle-accent);
-	}
-
-	.ticket-button-primary:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--chronicle-text) 88%, var(--chronicle-accent) 12%);
-	}
-
-	.ticket-button-secondary:focus-visible,
-	.ticket-button-primary:focus-visible,
-	.ticket-selection-action:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
-	}
-
-	.ticket-button-primary:disabled {
-		opacity: 0.46;
-		cursor: not-allowed;
-	}
-
-	.ticket-selection-action {
 		position: fixed;
 		z-index: 42;
 		right: var(--space-md);
@@ -693,6 +494,15 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: var(--chronicle-text);
 		color: var(--chronicle-card-surface);
 		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.12);
+	}
+
+	.ticket-selection-action:hover:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
+	.ticket-selection-action:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
 	}
 
 	.mobile-quick-nav-trigger {
@@ -846,30 +656,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	@media (max-width: 720px) {
-		:global(dialog[data-section="ticket-composer"]) {
-			inset: auto 0 0;
-			width: 100%;
-			max-height: calc(100dvh - max(20px, env(safe-area-inset-top)));
-			margin: 0;
-			padding: var(--space-lg) var(--space-md) max(var(--space-md), env(safe-area-inset-bottom));
-			border-radius: 22px 22px 0 0;
-		}
-
-		.ticket-composer-body {
-			overscroll-behavior: contain;
-		}
-
-		.ticket-composer-actions {
-			position: sticky;
-			bottom: 0;
-			padding-top: var(--space-sm);
-			background: var(--chronicle-card-surface-strong);
-		}
-
-		.ticket-composer-actions button {
-			flex: 1 1 0;
-		}
-
 		.ticket-selection-action {
 			left: var(--space-sm);
 			right: var(--space-sm);
