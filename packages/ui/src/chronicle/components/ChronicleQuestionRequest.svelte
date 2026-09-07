@@ -10,10 +10,9 @@ import { submitQuestionAnswers } from "../../lib/api.js";
 interface Props {
 	request: ProcessQuestionRequest;
 	mode?: "interactive" | "trace";
-	onSubmitted?: (request: ProcessQuestionRequest) => void;
 }
 
-let { request, mode = "interactive", onSubmitted }: Props = $props();
+let { request, mode = "interactive" }: Props = $props();
 let draft = $state(untrack(() => emptyQuestionDrafts(request.questions)));
 let submitError = $state<string | null>(null);
 let submitting = $state(false);
@@ -53,7 +52,6 @@ async function submit() {
 			requestId: request.id,
 			draft,
 		});
-		onSubmitted?.(request);
 	} catch (error) {
 		submitError = error instanceof Error ? error.message : "Answers could not be sent. Try again.";
 	} finally {

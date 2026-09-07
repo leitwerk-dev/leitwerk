@@ -12,7 +12,6 @@ interface Props {
 	onAbortTurn?: (() => Promise<void> | void) | null;
 	abortBusy?: boolean;
 	abortError?: string | null;
-	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 }
 
 let {
@@ -23,7 +22,6 @@ let {
 	onAbortTurn = null,
 	abortBusy = false,
 	abortError = null,
-	onQuestionSubmitted,
 }: Props = $props();
 
 let confirmingStop = $state(false);
@@ -96,7 +94,6 @@ const screenReaderStatus = $derived.by(() => {
 				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
 				questionRequests={questionRequest ? [questionRequest] : []}
 				onOpenDetails={() => onOpenReasoningDetails(liveTail.turnRecordId)}
-				{onQuestionSubmitted}
 				isLive={true}
 			/>
 		{:else}

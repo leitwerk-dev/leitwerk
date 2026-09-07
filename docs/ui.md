@@ -34,6 +34,14 @@ The server resolves that opaque choice into a fresh destination snapshot. The
 external-write approval names the destination separately from the proposed tool
 arguments so the operator can verify both before accepting the write.
 
+Question requests appear inside their turn's reasoning section. Open requests are answered in
+the Chronicle; answered and cancelled requests remain with the turn's reasoning history. The
+reasoning-details overlay shows read-only question summaries and does not duplicate the answer
+form. Live question updates refresh the current process view without a browser reload.
+New requests, including follow-ups, notify the operator through a question toast without changing
+their scroll position or focus. Opening that notification closes blocking detail overlays and
+focuses the active question form.
+
 ## 3. Local session transfer
 
 A process with a primary Pi session exposes **More actions → Create local transfer link**. Link creation is explicit and never starts export work. The panel presents the complete bearer URL for copying, a one-hour expiry, and a warning that anyone holding it can download the retained workspace and conversation.

@@ -16,7 +16,6 @@ interface Props {
 	isLive?: boolean;
 	questionRequests?: readonly ProcessQuestionRequest[];
 	onOpenDetails?: (() => void) | null;
-	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 }
 
 let {
@@ -28,7 +27,6 @@ let {
 	isLive = false,
 	questionRequests = [],
 	onOpenDetails = null,
-	onQuestionSubmitted,
 }: Props = $props();
 
 const previewLines = $derived(splitChronicleLines(preview));
@@ -100,7 +98,7 @@ const overflowAffordanceCopy = $derived(
 	{#if questionRequests.length > 0}
 		<div class="reasoning-questions" data-section="reasoning-questions">
 			{#each questionRequests as request (request.id)}
-				<ChronicleQuestionRequest {request} onSubmitted={onQuestionSubmitted} />
+				<ChronicleQuestionRequest {request} />
 			{/each}
 		</div>
 	{/if}

@@ -76,7 +76,6 @@ interface Props {
 	modelConfiguration: ProcessModelConfigurationView;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
-	onQuestionSubmitted?: (request: ProcessQuestionRequest) => void;
 	hasTerminalSummary?: boolean;
 }
 
@@ -101,7 +100,6 @@ let {
 	processError = null,
 	modelConfiguration,
 	onOpenReasoningDetails,
-	onQuestionSubmitted,
 	onDraftTicket,
 	hasTerminalSummary = false,
 }: Props = $props();
@@ -281,7 +279,6 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				questionRequest={questionRequestsByTurn.get(item.turnRecordId)?.open ?? null}
 				isFocused={activeAnchorId === item.anchorId}
 				onOpenReasoningDetails={onOpenReasoningDetails}
-				{onQuestionSubmitted}
 				onAbortTurn={item.turnType === "llm" ? liveTailController.abortRunningTurn : null}
 				abortBusy={liveTailController.abortTurnBusy}
 				abortError={liveTailController.abortTurnError}
