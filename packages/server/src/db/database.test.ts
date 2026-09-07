@@ -736,16 +736,59 @@ describe("unknown schema rejection", () => {
 });
 
 describe("server-automatic removal migration", () => {
-	it("aborts in-flight execution, converts history, and preserves unrelated data", () => {
+	function restoreLegacyExecutionSchema(sqlite: DatabaseSync): void {
+		for (const table of ["process_instances", "turn_records"]) {
+			const { sql } = sqlite
+				.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?")
+				.get(table) as { sql: string };
+			const indexes = sqlite
+				.prepare(
+					"SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+				)
+				.all(table) as Array<{ sql: string }>;
+			const legacySql =
+				table === "process_instances"
+					? sql.replace("(\n", "(\ncurrent_server_turn_record_id text,\n").replace(
+							/\n\)$/,
+							`,
+					CONSTRAINT process_instances_one_current_execution CHECK (not ("process_instances"."current_worker_start_id" is not null and "process_instances"."current_server_turn_record_id" is not null)),
+					CONSTRAINT fk_process_instances_server_turn FOREIGN KEY (id, current_server_turn_record_id) REFERENCES turn_records(instance_id, id)
+				)`,
+						)
+					: sql.replace(
+							"in ('llm', 'human', 'external', 'automatic')",
+							"in ('llm', 'human', 'external', 'automatic', 'server_automatic')",
+						);
+			sqlite.exec(`DROP TABLE ${table}`);
+			sqlite.exec(legacySql);
+			for (const index of indexes) sqlite.exec(index.sql);
+		}
+	}
+
+	it.each([
+		false,
+		true,
+	])("aborts in-flight execution, converts history, and preserves unrelated data (older migrations: %s)", (olderMigrations) => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-server-automatic-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
 
 		const legacy = new DatabaseSync(sqlitePath);
-		legacy.exec("ALTER TABLE process_instances ADD COLUMN current_server_turn_record_id text");
+		restoreLegacyExecutionSchema(legacy);
+		if (olderMigrations) {
+			legacy.exec(`
+				ALTER TABLE process_instances DROP COLUMN selected_turn_model_kind;
+				ALTER TABLE process_instances DROP COLUMN launch_intent_json;
+				ALTER TABLE future_executions DROP COLUMN model_profile_id;
+				ALTER TABLE future_executions DROP COLUMN model_selection_kind;
+				ALTER TABLE future_executions DROP COLUMN model_selection_source;
+				ALTER TABLE future_executions DROP COLUMN blocked_reason_json;
+				ALTER TABLE turn_records DROP COLUMN model_selection_kind;
+				ALTER TABLE turn_records DROP COLUMN model_selection_source;
+			`);
+		}
 		insertProcess(legacy, "active-server-process");
 		insertProcess(legacy, "unrelated-process");
-		legacy.exec("PRAGMA ignore_check_constraints = ON");
 		legacy.exec(`
 			INSERT INTO turn_records
 				(id, instance_id, turn_id, turn_type, status, started_at)
@@ -756,7 +799,6 @@ describe("server-automatic removal migration", () => {
 			SET current_server_turn_record_id = 'server-running'
 			WHERE id = 'active-server-process';
 		`);
-		legacy.exec("PRAGMA ignore_check_constraints = OFF");
 		legacy.close();
 
 		const migrated = createDatabase({ sqlitePath, enableWAL: false });
@@ -793,6 +835,47 @@ describe("server-automatic removal migration", () => {
 			true,
 		);
 		sqlite.close();
+	});
+
+	it.each([
+		"ALTER TABLE process_instances ADD COLUMN operator_notes text DEFAULT 'preserve me'",
+		"ALTER TABLE turn_records ADD COLUMN operator_notes text DEFAULT 'preserve me'",
+		"ALTER TABLE process_instances ADD COLUMN operator_constraint text CHECK (operator_constraint IS NULL)",
+		"DROP INDEX idx_turn_records_status; CREATE INDEX idx_turn_records_status ON turn_records(turn_id)",
+		"DROP INDEX idx_process_instances_process",
+		"CREATE TRIGGER operator_trigger AFTER UPDATE ON process_instances BEGIN SELECT 1; END",
+	])("rejects unknown source drift and preserves operator data: %s", (driftSql) => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-server-automatic-drift-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+		const legacy = new DatabaseSync(sqlitePath);
+		restoreLegacyExecutionSchema(legacy);
+		insertProcess(legacy, "operator-process");
+		legacy.exec(`
+			INSERT INTO turn_records (id, instance_id, turn_id, turn_type, status, started_at)
+			VALUES ('operator-turn', 'operator-process', 'deliver', 'server_automatic', 'running', '2026-08-20');
+			UPDATE process_instances SET current_server_turn_record_id = 'operator-turn';
+		`);
+		legacy.exec(driftSql);
+		const beforeSchema = legacy
+			.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
+			.all();
+		const beforeProcesses = legacy.prepare("SELECT * FROM process_instances").all();
+		const beforeTurns = legacy.prepare("SELECT * FROM turn_records").all();
+		legacy.close();
+
+		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
+			DatabaseSchemaMismatchError,
+		);
+		const preserved = new DatabaseSync(sqlitePath);
+		expect(
+			preserved.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all(),
+		).toEqual(beforeSchema);
+		expect(preserved.prepare("SELECT * FROM process_instances").all()).toEqual(beforeProcesses);
+		expect(preserved.prepare("SELECT * FROM turn_records").all()).toEqual(beforeTurns);
+		expect(preserved.prepare("SELECT * FROM worker_leases").all()).toEqual([]);
+		expect(preserved.prepare("SELECT * FROM turn_start_records").all()).toEqual([]);
+		preserved.close();
 	});
 });
 

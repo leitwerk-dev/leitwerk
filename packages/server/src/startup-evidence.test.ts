@@ -142,6 +142,52 @@ describe("startup evidence", () => {
 		expect(result.currentAttempt?.steps.at(-1)?.status).toBe("completed");
 	});
 
+	it("retains successful startup when a replacement worker reuses the accepted start", () => {
+		const accepted = start({
+			kind: "accepted",
+			start: {} as never,
+			turnRecordId: "trn_1",
+			acceptedWorkerLeaseId: "wls_1",
+		});
+		const originalLease = lease({
+			connectedAt: "2026-01-01T00:00:02.000Z",
+			readyAt: "2026-01-01T00:00:04.000Z",
+			exitedAt: "2026-01-01T00:00:06.000Z",
+		});
+		const records = [
+			{
+				id: "trn_1",
+				turnStartRecordId: "tsr_1",
+				acceptedWorkerLeaseId: "wls_1",
+				startedAt: "2026-01-01T00:00:05.000Z",
+			} as ProcessTurnRecord,
+		];
+		const before = evidence({ starts: [accepted], leases: [originalLease], records });
+		const after = evidence({
+			starts: [accepted],
+			leases: [
+				originalLease,
+				lease({
+					id: "wls_2",
+					workerId: "wrk_2",
+					startedAt: "2026-01-01T00:00:07.000Z",
+					connectedAt: "2026-01-01T00:00:08.000Z",
+					readyAt: "2026-01-01T00:00:09.000Z",
+				}),
+			],
+			records,
+		});
+
+		expect(after).toEqual(before);
+		expect(after.currentAttempt).toMatchObject({
+			status: "succeeded",
+			workerLeaseId: "wls_1",
+		});
+		const completed = projectLaunchRunStartup(run(), before, { status: "skipped" });
+		expect(completed.status).toBe("completed");
+		expect(projectLaunchRunStartup(completed, after, { status: "skipped" })).toEqual(completed);
+	});
+
 	it("marks an older unaccepted attempt as superseded", () => {
 		const newer = start(undefined, {
 			id: "tsr_2",

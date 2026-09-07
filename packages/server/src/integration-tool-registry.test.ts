@@ -4,11 +4,150 @@ import {
 	IntegrationToolRegistry,
 	validateTicketCreationReceipt,
 } from "./integration-tool-registry.js";
+import type { ToolApprovalDecision } from "./tool-approval-gate.js";
 
 const ticketProcess = {
 	processId: "ticket_creation_process",
 	startTurnId: "create_ticket",
 } as const;
+
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => {
+		resolve = done;
+	});
+	return { promise, resolve };
+}
+
+function pendingTicketRequest() {
+	const registry = new IntegrationToolRegistry();
+	const destination = deferred<{
+		summary: { id: string; displayName: string };
+		data: Record<string, unknown>;
+	}>();
+	const approval = deferred<ToolApprovalDecision>();
+	const review = vi.fn(() => approval.promise);
+	const execute = vi.fn(async () => ({ externalId: "1", url: "https://tracker.test/1" }));
+	const resolve = vi.fn(() => destination.promise);
+	registry.register({
+		name: "tracker_create",
+		description: "Create tracker item",
+		parameters: { type: "object" },
+		capability: {
+			kind: "ticket_creation",
+			displayName: "Tracker",
+			...ticketProcess,
+			destinations: {
+				list: async () => ({ destinations: [] }),
+				resolve,
+				validate: async () => undefined,
+			},
+		},
+		execute,
+	});
+	const process = {
+		id: "instance-1",
+		processId: ticketProcess.processId,
+		selectedTurnId: ticketProcess.startTurnId,
+		currentExecution: { kind: "worker_start", id: "start-1" },
+		paramsJson: JSON.stringify({
+			initiatingActor: { id: "operator", kind: "user", provider: null },
+		}),
+	};
+	const turn = {
+		id: "turn-1",
+		instanceId: process.id,
+		turnId: process.selectedTurnId,
+		status: "running",
+	};
+	const update = vi.fn();
+	const service = createIntegrationToolRequestService({
+		registry,
+		repos: {
+			processes: { getById: () => process, update },
+			turnRecords: { getById: () => turn },
+			turnStarts: { getById: () => ({ state: { kind: "accepted", turnRecordId: turn.id } }) },
+			projects: { listByInstance: () => [] },
+		} as never,
+		processActionRegistry: {
+			getTurnDefinition: () => ({ kind: "llm", integrationTools: ["tracker_create"] }),
+			resolveContextData: () => ({ params: {}, state: {} }),
+		},
+		toolApprovalGate: {
+			review,
+			cancelTurn: () => {
+				approval.resolve({ kind: "declined" });
+				return 0;
+			},
+		} as never,
+	});
+	const payload = {
+		turnRecordId: turn.id,
+		toolCallId: "call-1",
+		toolName: "tracker_create",
+		args: { destinationId: "repo" },
+	};
+	return {
+		service,
+		payload,
+		process,
+		turn,
+		destination,
+		approval,
+		review,
+		execute,
+		resolve,
+		update,
+	};
+}
+
+describe("ticket request lifetime", () => {
+	it("shares destination preparation and approval across reconnect replays", async () => {
+		const fixture = pendingTicketRequest();
+		const first = fixture.service.handle(fixture.process.id, fixture.payload);
+		const replay = fixture.service.handle(fixture.process.id, fixture.payload);
+		expect(replay).toBe(first);
+		fixture.destination.resolve({ summary: { id: "repo", displayName: "Repository" }, data: {} });
+		fixture.approval.resolve({ kind: "accepted" });
+		await expect(Promise.all([first, replay])).resolves.toMatchObject([{ ok: true }, { ok: true }]);
+		expect(fixture.resolve).toHaveBeenCalledTimes(1);
+		expect(fixture.review).toHaveBeenCalledTimes(1);
+		expect(fixture.execute).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		"cancelled",
+		"stale",
+	] as const)("does not open approval after preparation becomes %s", async (reason) => {
+		const fixture = pendingTicketRequest();
+		const result = fixture.service.handle(fixture.process.id, fixture.payload);
+		if (reason === "cancelled")
+			expect(fixture.service.cancel(fixture.process.id, fixture.payload)).toBe(true);
+		else fixture.turn.status = "failed";
+		fixture.destination.resolve({ summary: { id: "repo", displayName: "Repository" }, data: {} });
+		await expect(result).resolves.toMatchObject({
+			ok: false,
+			error: expect.stringContaining(reason),
+		});
+		expect(fixture.review).not.toHaveBeenCalled();
+		expect(fixture.execute).not.toHaveBeenCalled();
+		expect(fixture.update).not.toHaveBeenCalled();
+	});
+
+	it("rechecks the turn after operator approval", async () => {
+		const fixture = pendingTicketRequest();
+		const result = fixture.service.handle(fixture.process.id, fixture.payload);
+		fixture.destination.resolve({ summary: { id: "repo", displayName: "Repository" }, data: {} });
+		await vi.waitFor(() => expect(fixture.review).toHaveBeenCalledTimes(1));
+		fixture.turn.status = "failed";
+		fixture.approval.resolve({ kind: "accepted" });
+		await expect(result).resolves.toMatchObject({
+			ok: false,
+			error: expect.stringContaining("stale"),
+		});
+		expect(fixture.execute).not.toHaveBeenCalled();
+	});
+});
 
 function registerEcho(
 	registry: IntegrationToolRegistry,

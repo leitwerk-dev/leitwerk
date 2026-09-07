@@ -405,21 +405,23 @@ export function createIntegrationToolRequestService(input: {
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition" | "resolveContextData">;
 	toolApprovalGate?: ToolApprovalGate;
 }) {
-	return {
+	const pending = new Map<
+		string,
+		{ controller: AbortController; promise: Promise<WorkerIntegrationToolResultPayload> }
+	>();
+	const service = {
 		cancel(instanceId: string, payload: WorkerIntegrationToolCancelPayload): boolean {
+			const key = integrationToolIdempotencyKey({ instanceId, ...payload });
+			const request = pending.get(key);
+			request?.controller.abort();
 			input.toolApprovalGate?.cancelTurn(instanceId, payload.turnRecordId);
-			return input.registry.cancel(
-				integrationToolIdempotencyKey({
-					instanceId,
-					turnRecordId: payload.turnRecordId,
-					toolCallId: payload.toolCallId,
-					toolName: payload.toolName,
-				}),
-			);
+			const cancelled = input.registry.cancel(key);
+			return request !== undefined || cancelled;
 		},
 		async handle(
 			instanceId: string,
 			payload: WorkerIntegrationToolRequestPayload,
+			signal: AbortSignal,
 		): Promise<WorkerIntegrationToolResultPayload> {
 			const fail = (error: string): WorkerIntegrationToolResultPayload => ({
 				turnRecordId: payload.turnRecordId,
@@ -444,6 +446,23 @@ export function createIntegrationToolRequestService(input: {
 			if (process.selectedTurnId !== turn.turnId) {
 				return fail("Integration tool call targets a stale turn");
 			}
+			const assertActive = () => {
+				if (signal.aborted) throw new Error("Integration tool execution cancelled");
+				const current = input.repos.processes.getById(instanceId);
+				const currentTurn = input.repos.turnRecords.getById(payload.turnRecordId);
+				const start =
+					current?.currentExecution?.kind === "worker_start"
+						? input.repos.turnStarts.getById(current.currentExecution.id)
+						: null;
+				if (
+					!current ||
+					currentTurn?.status !== "running" ||
+					current.selectedTurnId !== turn.turnId ||
+					start?.state.kind !== "accepted" ||
+					start.state.turnRecordId !== payload.turnRecordId
+				)
+					throw new Error("Integration tool call targets a stale turn record");
+			};
 			const authorizedTools = resolveTurnIntegrationToolNames(
 				input.processActionRegistry,
 				process,
@@ -487,6 +506,7 @@ export function createIntegrationToolRequestService(input: {
 							executionArgs = adapterArgs;
 						}
 					}
+					assertActive();
 					const proposedTitle = capability.titlePath
 						? resolveJsonPointer(executionArgs, capability.titlePath)
 						: undefined;
@@ -512,6 +532,7 @@ export function createIntegrationToolRequestService(input: {
 					if (decision.kind === "declined")
 						return fail("Ticket creation was declined by the operator");
 				}
+				assertActive();
 				const result = await input.registry.execute(payload.toolName, executionArgs, {
 					process,
 					projects,
@@ -525,6 +546,7 @@ export function createIntegrationToolRequestService(input: {
 						toolName: payload.toolName,
 					}),
 				});
+				assertActive();
 				const responseResult = ticketTool ? validateTicketCreationReceipt(result) : result;
 				if (ticketTool) {
 					const receipt = responseResult as TicketCreationReceipt;
@@ -542,6 +564,20 @@ export function createIntegrationToolRequestService(input: {
 			} catch (error) {
 				return fail(error instanceof Error ? error.message : "Integration tool execution failed");
 			}
+		},
+	};
+	return {
+		cancel: service.cancel,
+		handle(instanceId: string, payload: WorkerIntegrationToolRequestPayload) {
+			const key = integrationToolIdempotencyKey({ instanceId, ...payload });
+			const existing = pending.get(key);
+			if (existing) return existing.promise;
+			const controller = new AbortController();
+			const promise = service
+				.handle(instanceId, payload, controller.signal)
+				.finally(() => pending.delete(key));
+			pending.set(key, { controller, promise });
+			return promise;
 		},
 	};
 }
