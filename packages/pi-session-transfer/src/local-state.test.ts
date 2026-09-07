@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ParsedTransferLink } from "@leitwerk-dev/session-transfer";
@@ -36,6 +36,77 @@ async function ageRecord(agent: string): Promise<void> {
 }
 
 describe("local transfer state", () => {
+	it("preserves an unresolved commit record when the link is retried", async () => {
+		const agent = await root();
+		const state = new LocalTransferState(agent);
+		await state.begin(link, {
+			attemptId: "original",
+			temporaryDirectory: path.join(agent, "original"),
+			ownerId: "original-owner",
+		});
+		await state.recordCommitTargets(link, {
+			destination: path.join(agent, "destination"),
+			sessionPath: path.join(agent, "session.jsonl"),
+		});
+		const recordsRoot = path.join(agent, "leitwerk-session-transfer", "transfers");
+		const [recordName] = await readdir(recordsRoot);
+		if (!recordName) throw new Error("Expected recovery record");
+		const recordFile = path.join(recordsRoot, recordName);
+		const before = await readFile(recordFile, "utf8");
+		await expect(
+			state.begin(link, {
+				attemptId: "retry",
+				temporaryDirectory: path.join(agent, "retry"),
+				ownerId: "retry-owner",
+			}),
+		).rejects.toThrow("still has recovery state");
+		expect(await readFile(recordFile, "utf8")).toBe(before);
+		expect(await readdir(recordsRoot)).toEqual([recordName]);
+	});
+
+	it.skipIf(process.getuid?.() === 0)(
+		"retains recovery state and the ownership marker when cleanup fails",
+		async () => {
+			const agent = await root();
+			const state = new LocalTransferState(agent);
+			const temporaryDirectory = path.join(agent, "temporary");
+			const protectedDirectory = path.join(temporaryDirectory, "read-only");
+			await mkdir(protectedDirectory, { recursive: true });
+			await writeFile(path.join(temporaryDirectory, state.markerName()), "owner\n");
+			await writeFile(path.join(protectedDirectory, "retained.txt"), "retained");
+			await state.begin(link, { attemptId: "tra_1", temporaryDirectory, ownerId: "owner" });
+			await chmod(protectedDirectory, 0o555);
+			try {
+				await expect(state.discard(link)).rejects.toThrow();
+				expect(await readFile(path.join(temporaryDirectory, state.markerName()), "utf8")).toBe(
+					"owner\n",
+				);
+				expect(
+					await readdir(path.join(agent, "leitwerk-session-transfer", "transfers")),
+				).toHaveLength(1);
+			} finally {
+				await chmod(protectedDirectory, 0o700);
+			}
+			await state.discard(link);
+			await expect(stat(temporaryDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+			expect(await readdir(path.join(agent, "leitwerk-session-transfer", "transfers"))).toEqual([]);
+		},
+	);
+
+	it("preserves temporary paths without its matching ownership marker", async () => {
+		const agent = await root();
+		const state = new LocalTransferState(agent);
+		const temporaryDirectory = path.join(agent, "unowned");
+		await mkdir(temporaryDirectory);
+		await writeFile(path.join(temporaryDirectory, state.markerName()), "another-owner\n");
+		await writeFile(path.join(temporaryDirectory, "existing.txt"), "existing work");
+		await state.begin(link, { attemptId: "tra_1", temporaryDirectory, ownerId: "owner" });
+		await state.discard(link);
+		expect(await readFile(path.join(temporaryDirectory, "existing.txt"), "utf8")).toBe(
+			"existing work",
+		);
+	});
+
 	it("atomically promotes recovery state into a token-free completion receipt", async () => {
 		const agent = await root();
 		const state = new LocalTransferState(agent);

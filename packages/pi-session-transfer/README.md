@@ -34,7 +34,7 @@ import fails.
 The link is a bearer credential. Do not paste it into logs, tickets, or chat. Confirm the exact
 Leitwerk origin shown by Pi before claiming it. A transfer must start within one hour. Press
 `Esc` before the final local commit to cancel; the link can be explicitly retried while its grant
-remains valid.
+remains valid. Pi waits for cancellation cleanup before closing the progress view.
 
 ## What is copied
 
@@ -58,6 +58,8 @@ Each import uses one mode-0600 recovery record. Verified entries move into the o
 before the local session is written. The record then transitions atomically from temporary import
 state to a token-free completion receipt. Pi removes only stale incomplete paths that still
 carry the matching ownership marker. Completed records let acknowledgement and session switching
-be retried safely.
+be retried safely. A pending acknowledgement does not prevent opening the completed local session;
+use the same link to retry acknowledgement without copying again. An incomplete recovery record
+is retained if cleanup fails and cannot be overwritten by another import of the same link.
 
 V1 supports interactive TUI mode only.

@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { IsolatedStartWorkerInput, VolumeRef, WorkerExitInfo } from "./types.js";
 import {
 	buildExportHelperLabels,
@@ -135,7 +136,12 @@ export interface KubernetesPodManifest {
 			command?: string[];
 			imagePullPolicy?: string;
 			env: Array<{ name: string; value: string }>;
-			volumeMounts: Array<{ name: string; mountPath: string; readOnly?: boolean }>;
+			volumeMounts: Array<{
+				name: string;
+				mountPath: string;
+				readOnly?: boolean;
+				subPath?: string;
+			}>;
 			resources?: {
 				requests?: Record<string, string>;
 				limits?: Record<string, string>;
@@ -380,13 +386,20 @@ function processStateVolumes(
 function processStateContainerConfig(
 	env: Record<string, string>,
 	mountPath: string,
-	readOnly: boolean,
+	exportOnly: boolean,
 	ca: KubernetesWorkerServerCaConfigMapSpec | undefined,
 ): Pick<KubernetesPodManifest["spec"]["containers"][number], "env" | "volumeMounts"> {
 	return {
 		env: envList(ca ? { ...env, NODE_EXTRA_CA_CERTS: `${ca.mountPath}/${ca.key}` } : env),
 		volumeMounts: [
-			{ name: WORKER_VOLUME_NAME, mountPath, ...(readOnly ? { readOnly: true } : {}) },
+			...(exportOnly
+				? ["workspace", "tree"].map((subPath) => ({
+						name: WORKER_VOLUME_NAME,
+						mountPath: path.posix.join(mountPath, subPath),
+						subPath,
+						readOnly: true,
+					}))
+				: [{ name: WORKER_VOLUME_NAME, mountPath }]),
 			...(ca
 				? [{ name: WORKER_SERVER_CA_VOLUME_NAME, mountPath: ca.mountPath, readOnly: true }]
 				: []),

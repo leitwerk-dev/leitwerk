@@ -138,13 +138,13 @@ describe("Kubernetes PVC session exporter", () => {
 		).toThrow("Kubernetes transfer exporter is not configured");
 	});
 
-	it("starts a non-adoptable helper Pod with a read-only PVC and no API token", async () => {
+	it("mounts only workspace and tree into a non-adoptable helper at its fixed root", async () => {
 		const client = new FakeKubernetesApiClient();
 		const { manifest, relay } = createExportTestFixture();
 		const { exporter, runner } = createKubernetesWorkerRunner({
 			client,
 			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/retained/process" },
 			serverUrl: "http://leitwerk-server:8080",
 			exporterImage: "ghcr.io/example/worker@sha256:abc",
 			helperRelays: { create: () => relay },
@@ -171,10 +171,23 @@ describe("Kubernetes PVC session exporter", () => {
 					name: "session-export-helper",
 					image: "ghcr.io/example/worker@sha256:abc",
 					command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
-					volumeMounts: [{ name: "process-state", mountPath: "/state", readOnly: true }],
 				},
 			],
 		});
+		expect(helper?.spec.containers[0]?.volumeMounts).toEqual([
+			{
+				name: "process-state",
+				mountPath: "/state/workspace",
+				subPath: "workspace",
+				readOnly: true,
+			},
+			{
+				name: "process-state",
+				mountPath: "/state/tree",
+				subPath: "tree",
+				readOnly: true,
+			},
+		]);
 		expect(helper?.spec.containers[0]?.env).toContainEqual({
 			name: "LEITWERK_EXPORT_CREDENTIAL",
 			value: "internal-secret",

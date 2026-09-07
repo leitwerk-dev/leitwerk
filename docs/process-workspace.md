@@ -100,6 +100,8 @@ The transfer exporter waits for already accepted work and automatic successors t
 
 Local import preserves regular files, executable modes, timestamps, and confined relative symlinks. It accepts Pi session format V3 only, validates project branch/HEAD evidence and the append-ordered entry tree, rewrites the session cwd, removes source `parentSession` metadata, and stores the validated conversation in local Pi's normal session directory without migration. Future turns use local Pi configuration and credentials; they are not part of the server process.
 
+Independent root branches remain valid in the imported tree. Local session switching does not wait for server acknowledgement. A completed receipt lets the operator reopen the local session and retry acknowledgement with the same link without copying again.
+
 ## 6. Storage Retention & Cleanup
 
 Process storage is retained across worker restarts and cleaned up based on process outcome. Pi resource bundles are content-addressed and are not overwritten or garbage-collected independently. A retry resolves the latest authorized resources. It reuses the digest when their content is unchanged and adds a new bundle when their content changed.

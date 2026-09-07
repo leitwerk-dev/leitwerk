@@ -340,13 +340,12 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 					volume,
 					helperRelays,
 					async launch(input) {
-						const mounts: DockerMountSpec[] = [
-							{
-								source: input.volume.id,
-								target: SESSION_TRANSFER_HELPER_MOUNT_PATH,
-								readOnly: true,
-							},
-						];
+						const mounts: DockerMountSpec[] = ["workspace", "tree"].map((volumeSubpath) => ({
+							source: input.volume.id,
+							target: path.posix.join(SESSION_TRANSFER_HELPER_MOUNT_PATH, volumeSubpath),
+							readOnly: true,
+							volumeSubpath,
+						}));
 						const env = exportHelperEnvironment({
 							serverUrl: exporterServerUrl,
 							exportId: input.exportId,

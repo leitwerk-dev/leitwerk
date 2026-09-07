@@ -1,5 +1,16 @@
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	link as linkFile,
+	lstat,
+	mkdir,
+	readdir,
+	readFile,
+	rename,
+	rm,
+	rmdir,
+	writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { isPathInside, type ParsedTransferLink } from "@leitwerk-dev/session-transfer";
 
@@ -41,12 +52,43 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 	}
 }
 
-async function atomicJson(file: string, value: unknown): Promise<void> {
+async function atomicJson(file: string, value: unknown, exclusive = false): Promise<void> {
 	await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
 	const temporary = `${file}.${randomUUID()}.tmp`;
-	await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-	await rename(temporary, file);
-	await chmod(file, 0o600);
+	try {
+		await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+		if (exclusive) await linkFile(temporary, file);
+		else await rename(temporary, file);
+		await chmod(file, 0o600);
+	} finally {
+		await rm(temporary, { force: true });
+	}
+}
+
+async function ownsDirectory(directory: string, ownerId: string, marker: string): Promise<boolean> {
+	try {
+		return (
+			(await lstat(directory)).isDirectory() &&
+			(await readFile(path.join(directory, marker), "utf8")).trim() === ownerId
+		);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
+}
+
+async function removeOwnedDirectory(
+	directory: string,
+	ownerId: string,
+	marker: string,
+): Promise<void> {
+	if (!(await ownsDirectory(directory, ownerId, marker))) return;
+	// Keep the ownership proof until all imported children have been removed.
+	for (const name of await readdir(directory)) {
+		if (name !== marker) await rm(path.join(directory, name), { recursive: true, force: true });
+	}
+	await rm(path.join(directory, marker));
+	await rmdir(directory);
 }
 
 function tokenHash(token: string): string {
@@ -121,19 +163,32 @@ export class LocalTransferState {
 		link: ParsedTransferLink,
 		input: { attemptId: string; temporaryDirectory: string; ownerId: string },
 	): Promise<void> {
-		await this.serialized(() =>
-			atomicJson(this.recordFile(link), {
-				version: 1,
-				phase: "temporary",
-				origin: link.origin,
-				grantId: link.grantId,
-				tokenHash: tokenHash(link.token),
-				attemptId: input.attemptId,
-				createdAt: new Date().toISOString(),
-				temporaryDirectory: input.temporaryDirectory,
-				ownerId: input.ownerId,
-			} satisfies TransferStateRecord),
-		);
+		await this.serialized(async () => {
+			try {
+				await atomicJson(
+					this.recordFile(link),
+					{
+						version: 1,
+						phase: "temporary",
+						origin: link.origin,
+						grantId: link.grantId,
+						tokenHash: tokenHash(link.token),
+						attemptId: input.attemptId,
+						createdAt: new Date().toISOString(),
+						temporaryDirectory: input.temporaryDirectory,
+						ownerId: input.ownerId,
+					} satisfies TransferStateRecord,
+					true,
+				);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+					throw new Error("A previous import for this link still has recovery state", {
+						cause: error,
+					});
+				}
+				throw error;
+			}
+		});
 	}
 
 	async recordCommitTargets(
@@ -165,7 +220,20 @@ export class LocalTransferState {
 	}
 
 	async discard(link: ParsedTransferLink): Promise<void> {
-		await this.serialized(() => rm(this.recordFile(link), { force: true }));
+		await this.serialized(async () => {
+			const file = this.recordFile(link);
+			const record = await readJson<TransferStateRecord | null>(file, null);
+			if (!record) return;
+			if (record.phase === "completed") throw new Error("Completed imports cannot be discarded");
+			if (
+				record.destination &&
+				(await ownsDirectory(record.destination, record.ownerId, this.markerName(record.ownerId)))
+			) {
+				throw new Error("A reserved import must retain its recovery state");
+			}
+			await removeOwnedDirectory(record.temporaryDirectory, record.ownerId, OWNER_MARKER);
+			await rm(file, { force: true });
+		});
 	}
 
 	async reconcile(): Promise<void> {
@@ -188,37 +256,24 @@ export class LocalTransferState {
 					) {
 						continue;
 					}
-					const owns = async (directory: string, marker = OWNER_MARKER): Promise<boolean> => {
-						try {
-							return (
-								(await lstat(directory)).isDirectory() &&
-								(await readFile(path.join(directory, marker), "utf8")).trim() === record.ownerId
-							);
-						} catch (error) {
-							if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-							throw error;
-						}
-					};
-					const ownsTemporary = await owns(record.temporaryDirectory);
 					const destinationMarker = this.markerName(record.ownerId);
 					const ownsDestination = record.destination
-						? await owns(record.destination, destinationMarker)
+						? await ownsDirectory(record.destination, record.ownerId, destinationMarker)
 						: false;
 					if (record.phase === "completed") {
 						if (ownsDestination && record.destination) {
 							await rm(path.join(record.destination, destinationMarker), { force: true });
 						}
-						if (ownsTemporary)
-							await rm(record.temporaryDirectory, { recursive: true, force: true });
+						await removeOwnedDirectory(record.temporaryDirectory, record.ownerId, OWNER_MARKER);
 						continue;
 					}
 					if (ownsDestination && record.destination) {
-						await rm(record.destination, { recursive: true, force: true });
+						await removeOwnedDirectory(record.destination, record.ownerId, destinationMarker);
 					}
 					if (record.sessionPath && isPathInside(this.agentRoot, record.sessionPath)) {
 						await rm(record.sessionPath, { force: true });
 					}
-					if (ownsTemporary) await rm(record.temporaryDirectory, { recursive: true, force: true });
+					await removeOwnedDirectory(record.temporaryDirectory, record.ownerId, OWNER_MARKER);
 					await rm(file, { force: true });
 				} catch {
 					// Keep the record for a later reconciliation attempt.

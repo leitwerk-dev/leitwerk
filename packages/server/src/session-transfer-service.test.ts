@@ -153,6 +153,72 @@ describe("session transfer service", () => {
 		if (retried.kind === "created") service.cancelForWeb(process.id, retried.attempt.id);
 	});
 
+	it("does not revive a cancelled attempt when exporter preparation finishes", async () => {
+		const { repos, process, service, prepare, streamBody } = harness();
+		const preparation = Promise.withResolvers<Awaited<ReturnType<typeof prepare>>>();
+		prepare.mockImplementationOnce(() => preparation.promise);
+		const createdGrant = await grant(service, process.id);
+		const started = service.startAttempt({
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			token: createdGrant.rawToken,
+		});
+		if (started.kind !== "created") throw new Error("Expected attempt");
+		await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+		expect(service.cancelForWeb(process.id, started.attempt.id)?.phase).toBe("cancelled");
+
+		preparation.resolve({
+			manifest: prepare.mock.calls[0]?.[0].manifest,
+			preflight: { entriesTotal: 2, logicalBytesTotal: 42 },
+			stream: () => Readable.from([streamBody]),
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+
+		expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("cancelled");
+		expect(service.activeForProcess(process.id)).toBeNull();
+	});
+
+	it("closes the export source without replacing cancellation with a stream failure", async () => {
+		const { repos, process, service, prepare } = harness();
+		const source = new Readable({ read() {} });
+		prepare.mockImplementationOnce(async (request) => ({
+			manifest: request.manifest,
+			preflight: { entriesTotal: 2, logicalBytesTotal: 42 },
+			stream: () => source,
+		}));
+		const createdGrant = await grant(service, process.id);
+		const started = service.startAttempt({
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			token: createdGrant.rawToken,
+		});
+		if (started.kind !== "created") throw new Error("Expected attempt");
+		await vi.waitFor(() =>
+			expect(service.activeForProcess(process.id)?.phase).toBe("ready_to_stream"),
+		);
+		const output = service.openStream({
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			attemptId: started.attempt.id,
+			token: createdGrant.rawToken,
+		});
+		const consuming = (async () => {
+			for await (const _chunk of output) {
+				/* Drain until cancellation. */
+			}
+		})();
+		const cancelled = expect(consuming).rejects.toThrow();
+		service.cancelForWeb(process.id, started.attempt.id);
+		await cancelled;
+
+		expect(source.destroyed).toBe(true);
+		expect(repos.sessionTransfers.getAttempt(started.attempt.id)).toMatchObject({
+			phase: "cancelled",
+			failureCode: "operator_cancelled",
+		});
+		expect(service.activeForProcess(process.id)).toBeNull();
+	});
+
 	it("deletes expired grants without active attempts", () => {
 		const { repos, process } = harness();
 		const created = repos.sessionTransfers.createGrant({

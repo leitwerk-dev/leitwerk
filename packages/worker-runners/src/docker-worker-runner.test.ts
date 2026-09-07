@@ -101,16 +101,23 @@ describe("Docker named-volume session exporter", () => {
 		).toThrow("Docker named-volume transfer exporter is not configured");
 	});
 
-	it("starts a credential-scoped helper with only a read-only process volume", async () => {
+	it.each([
+		{ mountPath: "/state", serverCaFile: undefined },
+		{ mountPath: "/retained/process", serverCaFile: "/host/server-ca.pem" },
+	])("mounts only retained workspace and tree from $mountPath into the helper", async ({
+		mountPath,
+		serverCaFile,
+	}) => {
 		const engine = createFakeDockerEngineClient();
 		const { manifest, relay } = createExportTestFixture();
 		const { exporter, runner, volume } = createDockerWorkerRunner({
 			engine,
-			volume: { mode: "named_volume", hostRoot: "/unused", mountPath: "/state" },
+			volume: { mode: "named_volume", hostRoot: "/unused", mountPath },
 			defaultNetwork: "leitwerk",
 			serverUrl: "http://leitwerk-server:8080",
 			exporterImage: "ghcr.io/example/worker@sha256:abc",
 			helperRelays: { create: () => relay },
+			serverCaFile,
 		});
 		const processVolume = await volume.ensure("proc-1");
 
@@ -127,14 +134,34 @@ describe("Docker named-volume session exporter", () => {
 			image: "ghcr.io/example/worker@sha256:abc",
 			command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
 			privileged: false,
-			mounts: [{ source: processVolume.id, target: "/state", readOnly: true }],
 		});
+		expect(helper?.spec.mounts).toEqual([
+			{
+				source: processVolume.id,
+				target: "/state/workspace",
+				volumeSubpath: "workspace",
+				readOnly: true,
+			},
+			{
+				source: processVolume.id,
+				target: "/state/tree",
+				volumeSubpath: "tree",
+				readOnly: true,
+			},
+			...(serverCaFile
+				? [{ source: serverCaFile, target: "/leitwerk/server-ca.pem", readOnly: true }]
+				: []),
+		]);
 		expect(helper?.spec.env).toContain("LEITWERK_EXPORT_CREDENTIAL=internal-secret");
 		expect(helper?.spec.env.map((entry) => entry.split("=", 1)[0]).sort()).toEqual([
 			"LEITWERK_EXPORT_CREDENTIAL",
 			"LEITWERK_EXPORT_ID",
 			"LEITWERK_EXPORT_SERVER_URL",
+			...(serverCaFile ? ["NODE_EXTRA_CA_CERTS"] : []),
 		]);
+		if (serverCaFile) {
+			expect(helper?.spec.env).toContain("NODE_EXTRA_CA_CERTS=/leitwerk/server-ca.pem");
+		}
 		expect(await runner.list()).toEqual([]);
 
 		await exporter.reconcile();

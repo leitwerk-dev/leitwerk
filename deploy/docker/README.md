@@ -58,6 +58,10 @@ coincide.
 
 Image builds require BuildKit and the `docker/dockerfile:1` frontend. `COPY --parents` keeps workspace manifests in the dependency layer, so source changes reuse installed dependencies.
 
+Named-volume session transfers require Docker Engine 26.0 or newer (API 1.45+).
+Export helpers mount only the retained `workspace/` and `tree/` subdirectories read-only.
+The server rejects unsupported APIs instead of mounting the complete process volume.
+
 ## Quick start
 
 1. Copy the sample config and edit it for your install:

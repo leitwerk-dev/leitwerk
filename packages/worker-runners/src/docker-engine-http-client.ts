@@ -74,7 +74,18 @@ function toMounts(spec: DockerContainerSpec): Array<Record<string, unknown>> {
 		Source: mount.source,
 		Target: mount.target,
 		ReadOnly: mount.readOnly ?? false,
+		...(mount.volumeSubpath !== undefined
+			? { VolumeOptions: { Subpath: mount.volumeSubpath, NoCopy: true } }
+			: {}),
 	}));
+}
+
+function requireVolumeSubpathApiVersion(value: unknown): string {
+	if (typeof value === "string" && /^\d+\.\d+$/.test(value)) {
+		const [major = 0, minor = 0] = value.split(".").map(Number);
+		if (major > 1 || (major === 1 && minor >= 45)) return value;
+	}
+	throw new Error("Scoped Docker volume mounts require Docker Engine 26.0 or newer (API 1.45+)");
 }
 
 function toContainerCreateBody(spec: DockerContainerSpec): Record<string, unknown> {
@@ -192,8 +203,12 @@ export function createDockerEngineHttpClient(
 	options: DockerEngineHttpClientOptions,
 ): DockerEngineClient {
 	const endpoint = parseDockerEngineSocket(options.socket);
-	const prefix = options.apiVersion ? `/v${options.apiVersion.replace(/^v/, "")}` : "";
-	async function request<T>(apiReq: DockerApiRequest): Promise<T> {
+	const configuredApiVersion = options.apiVersion?.replace(/^v/, "");
+	async function request<T>(
+		apiReq: DockerApiRequest,
+		apiVersion = configuredApiVersion,
+	): Promise<T> {
+		const prefix = apiVersion ? `/v${apiVersion}` : "";
 		const path = `${prefix}${apiReq.path}${encodeQuery(apiReq.query)}`;
 		const body = apiReq.body === undefined ? undefined : JSON.stringify(apiReq.body);
 		return new Promise<T>((resolve, reject) => {
@@ -232,8 +247,18 @@ export function createDockerEngineHttpClient(
 	}
 	return {
 		async createContainer(spec) {
+			let apiVersion = configuredApiVersion;
+			if (spec.mounts.some((mount) => mount.volumeSubpath !== undefined)) {
+				const version =
+					configuredApiVersion ??
+					(await request<{ ApiVersion?: string }>({ method: "GET", path: "/version" })).ApiVersion;
+				// Pin this request to an API that understands Subpath. An older daemon
+				// must reject the request, never ignore the option and mount the volume root.
+				apiVersion = requireVolumeSubpathApiVersion(version);
+			}
 			const raw = await request<DockerCreateResponse>(
 				dockerEngineRequestMapping("createContainer", [spec]),
+				apiVersion,
 			);
 			return { id: raw.Id };
 		},
