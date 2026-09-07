@@ -203,15 +203,41 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 		if (existing) return existing;
 		const operation = Promise.resolve()
 			.then(async () => {
-				await client.deletePod(name, namespace, { gracePeriodSeconds });
 				const deadline = Date.now() + podDisappearanceTimeoutMs;
-				while (await client.getPod(name, namespace)) {
-					if (Date.now() >= deadline) {
-						throw new Error(
-							`Kubernetes worker Pod ${namespace}/${name} did not disappear within ${podDisappearanceTimeoutMs}ms; replacement was not started`,
+				const timeoutError = new Error(
+					`Kubernetes worker Pod ${namespace}/${name} did not disappear within ${podDisappearanceTimeoutMs}ms; replacement was not started`,
+				);
+				const controller = new AbortController();
+				const { signal } = controller;
+				let rejectTimeout!: (error: Error) => void;
+				const timedOut = new Promise<never>((_resolve, reject) => {
+					rejectTimeout = reject;
+				});
+				const timer = setTimeout(() => {
+					controller.abort(timeoutError);
+					rejectTimeout(timeoutError);
+				}, podDisappearanceTimeoutMs);
+				const waitForDisappearance = async () => {
+					await client.deletePod(name, namespace, { gracePeriodSeconds, signal });
+					while (true) {
+						signal.throwIfAborted();
+						if (Date.now() >= deadline) throw timeoutError;
+						const pod = await client.getPod(name, namespace, { signal });
+						signal.throwIfAborted();
+						if (Date.now() >= deadline) throw timeoutError;
+						if (!pod) return;
+						await delay(
+							Math.min(podDisappearancePollIntervalMs, Math.max(0, deadline - Date.now())),
 						);
 					}
-					await delay(Math.min(podDisappearancePollIntervalMs, Math.max(0, deadline - Date.now())));
+				};
+				try {
+					await Promise.race([waitForDisappearance(), timedOut]);
+				} catch (error) {
+					if (signal.aborted) throw timeoutError;
+					throw error;
+				} finally {
+					clearTimeout(timer);
 				}
 			})
 			.finally(() => disappearancePromises.delete(key));

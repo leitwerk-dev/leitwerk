@@ -172,6 +172,21 @@ function createHarness(
 }
 
 describe("createWorkerAdoptionCoordinator", () => {
+	it("keeps a timed-out adopted worker attached until its physical exit handoff", async () => {
+		vi.useFakeTimers();
+		try {
+			const harness = createHarness();
+			await harness.coordinator.adoptRegisteredWorkers();
+			const adopted = harness.workers.get("proc-1");
+			await vi.advanceTimersByTimeAsync(30_000);
+			expect(adopted?.kill).toHaveBeenCalledWith("SIGKILL");
+			expect(harness.coordinator.isPending("proc-1")).toBe(false);
+			expect(harness.workers.get("proc-1")).toBe(adopted);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("buffers early reconnect envelopes until the adopted unit is attached", async () => {
 		const harness = createHarness();
 		harness.runner.adopt.mockImplementationOnce(async (candidate) => {

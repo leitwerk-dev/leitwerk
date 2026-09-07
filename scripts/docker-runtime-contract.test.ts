@@ -48,4 +48,91 @@ exit 1
 			rmSync(root, { recursive: true, force: true });
 		}
 	});
+
+	it.each([
+		{ failAt: "network-create", removed: [] },
+		{ failAt: "server-create", removed: ["network rm owned-network-id"] },
+		{
+			failAt: "server-start",
+			removed: ["rm -f owned-server-id", "network rm owned-network-id"],
+		},
+		{
+			failAt: "volume-create",
+			removed: ["rm -f owned-server-id", "network rm owned-network-id"],
+		},
+		{
+			failAt: "worker-create",
+			removed: [
+				"rm -f owned-server-id",
+				"network rm owned-network-id",
+				"volume rm -f owned-volume-id",
+			],
+		},
+		{
+			failAt: "worker-start",
+			removed: [
+				"rm -f owned-worker-id",
+				"rm -f owned-server-id",
+				"network rm owned-network-id",
+				"volume rm -f owned-volume-id",
+			],
+		},
+		{
+			failAt: "worker-start",
+			stateVolume: "operator-retained-volume",
+			removed: ["rm -f owned-worker-id", "rm -f owned-server-id", "network rm owned-network-id"],
+		},
+	])("cleans up only Docker resources created before $failAt", ({
+		failAt,
+		stateVolume,
+		removed,
+	}) => {
+		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-docker-canary-ownership-"));
+		const calls = path.join(root, "calls");
+		try {
+			writeFileSync(
+				path.join(root, "docker"),
+				`#!/bin/sh
+printf '%s\\n' "$*" >> "$CANARY_TEST_CALLS"
+case "$1:$2" in
+  network:create) operation=network-create; resource=owned-network-id ;;
+  create:--name)
+    case "$3" in
+      leitwerk-docker-canary-server-*) operation=server-create; resource=owned-server-id ;;
+      *) operation=worker-create; resource=owned-worker-id ;;
+    esac ;;
+  start:owned-server-id) operation=server-start; resource=owned-server-id ;;
+  start:owned-worker-id) operation=worker-start; resource=owned-worker-id ;;
+  volume:create) operation=volume-create; resource=owned-volume-id ;;
+  rm:*|network:rm|volume:rm) exit 0 ;;
+  *) exit 2 ;;
+esac
+if [ "$operation" = "$CANARY_TEST_FAIL_AT" ]; then exit 1; fi
+printf '%s\\n' "$resource"
+`,
+				{ mode: 0o700 },
+			);
+			const result = spawnSync("/bin/bash", [path.join(scriptsDir, "test-docker-runner.sh")], {
+				env: {
+					PATH: root,
+					CANARY_TEST_CALLS: calls,
+					CANARY_TEST_FAIL_AT: failAt,
+					LEITWERK_WORKER_IMAGE: "test-image",
+					...(stateVolume ? { LEITWERK_DOCKER_STATE_VOLUME: stateVolume } : {}),
+				},
+			});
+			expect(result.status).toBe(1);
+			const commands = readFileSync(calls, "utf8").trim().split("\n");
+			expect(
+				commands.filter((command) => /^(?:rm |network rm |volume rm )/u.test(command)),
+			).toEqual(removed);
+			if (failAt === "network-create") expect(commands).toHaveLength(1);
+			if (stateVolume) {
+				expect(commands.some((command) => command.startsWith("volume create"))).toBe(false);
+				expect(commands.some((command) => command.includes(`-v ${stateVolume}:/state`))).toBe(true);
+			}
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
 });

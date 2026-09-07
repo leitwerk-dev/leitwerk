@@ -50,6 +50,7 @@ function logBindings(
 /** Reclaims terminal worker units without making cleanup a server availability dependency. */
 export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 	const backlog = new Map<string, WorkerUnitRef>();
+	const pendingUnits = new Map<string, WorkerUnitRef>();
 	const notifyAfterReclaim = new Map<string, () => void>();
 	const sleep = deps.retry?.sleep ?? defaultSleep;
 	const initialDelayMs = Math.max(1, deps.retry?.initialDelayMs ?? 250);
@@ -58,11 +59,13 @@ export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 
 	async function attempt(ref: WorkerUnitRef, source: string): Promise<boolean> {
 		const key = descriptorKey(ref);
+		pendingUnits.set(key, ref);
 		deps.logger?.info?.(logBindings(ref, source, backlog.size), "Reclaiming terminal worker unit");
 		try {
 			const options: StopWorkerOptions = { graceMs: 0 };
 			await deps.runner.stop(ref, options);
 			backlog.delete(key);
+			pendingUnits.delete(key);
 			deps.logger?.info?.(logBindings(ref, source, backlog.size), "Reclaimed terminal worker unit");
 			const notify = notifyAfterReclaim.get(key);
 			if (notify) {
@@ -113,6 +116,13 @@ export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 
 	return {
 		reclaim,
+		assertProcessReclaimed(instanceId: string): void {
+			if ([...pendingUnits.values()].some((ref) => ref.instanceId === instanceId)) {
+				throw new Error(
+					`Previous runtime units for process ${instanceId} are still being removed; retry after cleanup succeeds`,
+				);
+			}
+		},
 		observeExit(unit: WorkerUnit, listener: (info: WorkerExitInfo) => void): void {
 			unit.onExit((info) => {
 				if (unit.replacementHandoff === "stop-before-replacement") {

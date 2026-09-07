@@ -25,4 +25,6 @@ scripts/docker-runtime/test-kubernetes-runner.sh
 
 The local check verifies the explicitly selected host context. The isolated checks run the candidate image's trusted entrypoint against a minimal disposable WebSocket endpoint, wait for its private daemon, build and run a nested image, replace the outer container or Pod, and run the prior image with `--pull=never`. The Kubernetes check also verifies `overlay2`, DNS, `hostUsers: false`, and the absence of privileged mode and host paths.
 
+The Docker canary removes only resource IDs created by that run. Its default state volume gets a fresh Docker-generated name. Set `LEITWERK_DOCKER_STATE_VOLUME` to reuse a retained volume; cleanup preserves that volume.
+
 Blocking tests cover runner-generated manifests and replacement handoff. The live canaries add runtime-handler, storage, entrypoint, and daemon compatibility without requiring a durable Leitwerk process.

@@ -1,5 +1,8 @@
-import type { ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
 import { runWorkerContainerEntrypoint } from "./container-entry.js";
@@ -7,6 +10,7 @@ import { runWorkerContainerEntrypoint } from "./container-entry.js";
 function child() {
 	const value = new EventEmitter() as ChildProcess;
 	Object.assign(value, {
+		pid: 1,
 		exitCode: null,
 		signalCode: null,
 		stdout: new PassThrough(),
@@ -45,11 +49,97 @@ describe("worker container entrypoint", () => {
 	it("starts only the worker in ordinary mode", async () => {
 		const worker = child();
 		const runtime = deps([worker]);
-		const running = runWorkerContainerEntrypoint({}, runtime);
+		const env = {
+			DOCKER_HOST: "tcp://operator-daemon:2376",
+			DOCKER_CONTEXT: "operator-context",
+			DOCKER_TLS_VERIFY: "1",
+			DOCKER_CERT_PATH: "/operator/certs",
+		};
+		const running = runWorkerContainerEntrypoint(env, runtime);
 		exit(worker, 0);
 		await expect(running).resolves.toBe(0);
 		expect(runtime.spawn).toHaveBeenCalledOnce();
 		expect(runtime.spawn.mock.calls[0]?.[1]?.[0]).toMatch(/worker-entry\.js$/u);
+		expect(runtime.spawn).toHaveBeenCalledWith(process.execPath, expect.any(Array), {
+			stdio: "inherit",
+			env,
+		});
+		expect(runtime.dockerInfo).not.toHaveBeenCalled();
+	});
+
+	it("pins every private Docker subprocess to its daemon despite image environment overrides", async () => {
+		const daemon = child();
+		const worker = child();
+		const runtime = deps([daemon, worker]);
+		const env = {
+			LEITWERK_PRIVATE_DOCKER: "1",
+			DOCKER_HOST: "tcp://external-daemon:2376",
+			DOCKER_CONTEXT: "external-context",
+			DOCKER_TLS: "1",
+			DOCKER_TLS_VERIFY: "1",
+			DOCKER_CERT_PATH: "/external/certs",
+			DOCKER_CONFIG: "/registry-auth",
+			PATH: "/worker/bin:/usr/bin",
+		};
+		const privateEnv = {
+			LEITWERK_PRIVATE_DOCKER: "1",
+			DOCKER_HOST: "unix:///var/run/docker.sock",
+			DOCKER_CONFIG: "/registry-auth",
+			PATH: "/worker/bin:/usr/bin",
+		};
+		const running = runWorkerContainerEntrypoint(env, runtime);
+		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(2));
+		expect(runtime.spawn).toHaveBeenNthCalledWith(1, "dockerd", expect.any(Array), {
+			stdio: ["ignore", "pipe", "pipe"],
+			env: privateEnv,
+		});
+		expect(runtime.spawn).toHaveBeenNthCalledWith(2, process.execPath, expect.any(Array), {
+			stdio: "inherit",
+			env: privateEnv,
+		});
+		expect(runtime.dockerInfo).toHaveBeenCalledWith(privateEnv, expect.any(AbortSignal));
+		expect(env.DOCKER_CONTEXT).toBe("external-context");
+		expect(env.DOCKER_HOST).toBe("tcp://external-daemon:2376");
+		exit(worker, 0);
+		await expect(running).resolves.toBe(0);
+	});
+
+	it.each([
+		"ENOENT",
+		"EACCES",
+	])("reports dockerd spawn %s without resetting its data", async (code) => {
+		const directory = await mkdtemp(join(tmpdir(), "leitwerk-container-entry-"));
+		const executable = join(directory, "dockerd");
+		try {
+			if (code === "EACCES") {
+				await writeFile(executable, "#!/bin/sh\nexit 1\n", { mode: 0o600 });
+			}
+			const runtime = deps([], {
+				spawn: vi.fn((_command, args, options) => spawn(executable, args, options)),
+				dockerInfo: vi.fn(() => new Promise<void>(() => undefined)),
+			});
+			await expect(
+				runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime),
+			).rejects.toThrow(`Failed to start dockerd: spawn ${executable} ${code}`);
+			expect(runtime.remove).not.toHaveBeenCalled();
+			expect(runtime.spawn).toHaveBeenCalledOnce();
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	});
+
+	it("reports a worker spawn failure and stops its daemon without retrying readiness", async () => {
+		const daemon = child();
+		const worker = child();
+		const runtime = deps([daemon, worker]);
+		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
+		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(2));
+		worker.emit("error", new Error(`spawn ${process.execPath} EACCES`));
+		await expect(running).rejects.toThrow(`Failed to start ${process.execPath}: spawn`);
+		expect(daemon.kill).toHaveBeenCalled();
+		expect(runtime.dockerInfo).toHaveBeenCalledOnce();
+		expect(runtime.spawn).toHaveBeenCalledTimes(2);
+		expect(runtime.remove).not.toHaveBeenCalled();
 	});
 
 	it("waits for daemon readiness before starting the worker", async () => {
@@ -66,14 +156,14 @@ describe("worker container entrypoint", () => {
 	it("stops pending readiness on SIGTERM without resetting data or spawning again", async () => {
 		const daemon = child();
 		const probe = Promise.withResolvers<void>();
-		const dockerInfo = vi.fn((_signal: AbortSignal) => probe.promise);
+		const dockerInfo = vi.fn((_env: NodeJS.ProcessEnv, _signal: AbortSignal) => probe.promise);
 		const runtime = deps([daemon], { dockerInfo });
 		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
 		await vi.waitFor(() => expect(dockerInfo).toHaveBeenCalledOnce());
 
 		process.emit("SIGTERM");
 		await expect(running).resolves.toBe(0);
-		expect(dockerInfo.mock.calls[0]?.[0].aborted).toBe(true);
+		expect(dockerInfo.mock.calls[0]?.[1].aborted).toBe(true);
 		expect(daemon.kill).toHaveBeenCalled();
 		expect(runtime.remove).not.toHaveBeenCalled();
 		expect(runtime.spawn).toHaveBeenCalledOnce();

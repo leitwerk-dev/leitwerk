@@ -36,6 +36,64 @@ function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"
 }
 
 describe("createAppContext", () => {
+	it("blocks replacement of a stale runtime until background cleanup releases its process storage", async () => {
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
+		const runtime = fakeWorkerRunnerRuntime();
+		const cleanup = Promise.withResolvers<void>();
+		vi.mocked(runtime.runner.stop).mockImplementation(() => cleanup.promise);
+		const ctx = await createAppContext({
+			config,
+			logger: false,
+			extensionCatalog: buildExtensionCatalogFromModules([]),
+			workerRunnerRuntime: runtime,
+		});
+		try {
+			const process = ctx.deps.processes.create({ processId: "test_process" });
+			const unrelated = ctx.deps.processes.create({ processId: "test_process" });
+			for (const candidate of [process, unrelated]) {
+				const start = ctx.deps.turnStarts.create({
+					instanceId: candidate.id,
+					turnId: "work",
+					turnType: "automatic",
+					proposedTurnRecordId: `trn_${candidate.id}`,
+					startKind: "selected_turn",
+					recoveryTurnRecordId: null,
+					continuation: null,
+					state: { kind: "starting", start: { kind: "automatic" } },
+				});
+				ctx.deps.processes.update(candidate.id, {
+					selectedTurnId: "work",
+					currentExecution: { kind: "worker_start", id: start.id },
+				});
+			}
+			vi.mocked(runtime.runner.list).mockResolvedValue([
+				{ instanceId: process.id, workerId: "stale-worker", unitId: "stale-container" },
+			]);
+			await ctx.supervisor.adoptRegisteredWorkers();
+			await expect(ctx.supervisor.spawnWorker(process.id)).rejects.toThrow("still being removed");
+			expect(runtime.runner.start).not.toHaveBeenCalled();
+			expect(ctx.deps.leases.getByInstance(process.id)).toBeNull();
+
+			// An unrelated process still reaches the runner while stale cleanup is pending.
+			await expect(ctx.supervisor.spawnWorker(unrelated.id)).rejects.toThrow(
+				"unexpected worker start",
+			);
+			expect(runtime.runner.start).toHaveBeenCalledTimes(1);
+
+			cleanup.resolve();
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			await expect(ctx.supervisor.spawnWorker(process.id)).rejects.toThrow(
+				"unexpected worker start",
+			);
+			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+		} finally {
+			cleanup.resolve();
+			await ctx.app.close();
+		}
+	});
+
 	it("keeps raw project repos silent and emits project updates through the mutation service", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
