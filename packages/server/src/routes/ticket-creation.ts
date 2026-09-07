@@ -9,6 +9,7 @@ import type {
 import type { FastifyInstance } from "fastify";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import { hasProcessGraph } from "../process-graph.js";
+import { sendEngineFailure } from "./process-engine-http.js";
 import { type RouteDeps, resolveActor } from "./process-route-helpers.js";
 
 function parseParentPrompt(paramsJson: string | null): string {
@@ -215,7 +216,15 @@ export function registerTicketCreationRoutes(
 		);
 		if (!request) return reply.code(409).send({ error: "Approval request is no longer open" });
 		if (action === "decline") {
-			await deps.processEngine.abortProcess(req.params.instanceId, { actor: resolveActor(req) });
+			const aborted = await deps.processEngine.abortProcess(req.params.instanceId, {
+				actor: resolveActor(req),
+				expectedTurnRecordId: request.turnRecordId,
+			});
+			if (!aborted.ok) {
+				if (aborted.code === "stale_turn_record")
+					return reply.code(409).send({ error: aborted.message });
+				return sendEngineFailure(reply, aborted, "abort");
+			}
 		}
 		return { request };
 	});

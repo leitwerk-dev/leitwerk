@@ -11,12 +11,53 @@ export type ToolApprovalDecision =
 	| { kind: "feedback"; feedback: string }
 	| { kind: "declined" };
 
+type ToolApprovalRepos = Pick<
+	RepositoryBundle,
+	"processes" | "turnRecords" | "turnStarts" | "toolApprovalRequests" | "transaction"
+>;
+
+function isCurrentTurn(
+	repos: ToolApprovalRepos,
+	request: { instanceId: string; turnRecordId: string },
+): boolean {
+	const process = repos.processes.getById(request.instanceId);
+	const turn = repos.turnRecords.getById(request.turnRecordId);
+	const start =
+		process?.currentExecution?.kind === "worker_start"
+			? repos.turnStarts.getById(process.currentExecution.id)
+			: null;
+	return (
+		process?.lifecycleStatus === "active" &&
+		turn?.instanceId === request.instanceId &&
+		turn.status === "running" &&
+		process.selectedTurnId === turn.turnId &&
+		start?.state.kind === "accepted" &&
+		start.state.turnRecordId === request.turnRecordId
+	);
+}
+
+function resolvedDecision(request: ProcessToolApprovalRequest): ToolApprovalDecision | null {
+	if (request.status === "open") return null;
+	if (request.status === "accepted") return { kind: "accepted" };
+	if (request.status === "feedback") return { kind: "feedback", feedback: request.feedback ?? "" };
+	return { kind: "declined" };
+}
+
 export function createToolApprovalGate(input: {
-	repos: Pick<RepositoryBundle, "toolApprovalRequests" | "transaction">;
+	repos: ToolApprovalRepos;
 	processOperations: ProcessOperationCoordinator;
 }) {
 	const waiters = new Map<string, Set<(decision: ToolApprovalDecision) => void>>();
+	function reconcile(instanceId: string): void {
+		for (const request of input.repos.toolApprovalRequests.listByInstance(instanceId)) {
+			const decision = resolvedDecision(request);
+			if (!decision) continue;
+			for (const resolve of waiters.get(request.id) ?? []) resolve(decision);
+			waiters.delete(request.id);
+		}
+	}
 	return {
+		reconcile,
 		async review(requestInput: {
 			instanceId: string;
 			turnRecordId: string;
@@ -25,12 +66,10 @@ export function createToolApprovalGate(input: {
 			arguments: Record<string, unknown>;
 			destination?: ProcessToolApprovalDestination;
 		}): Promise<ToolApprovalDecision> {
+			if (!isCurrentTurn(input.repos, requestInput)) return { kind: "declined" };
 			const result = input.repos.toolApprovalRequests.createIdempotent(requestInput);
-			if (result.request.status === "accepted") return { kind: "accepted" };
-			if (result.request.status === "feedback")
-				return { kind: "feedback", feedback: result.request.feedback ?? "" };
-			if (result.request.status === "declined" || result.request.status === "cancelled")
-				return { kind: "declined" };
+			const decision = resolvedDecision(result.request);
+			if (decision) return decision;
 			return await new Promise<ToolApprovalDecision>((resolve) => {
 				const pending = waiters.get(result.request.id) ?? new Set();
 				pending.add(resolve);
@@ -46,35 +85,30 @@ export function createToolApprovalGate(input: {
 			decision: ToolApprovalDecision,
 			actor: Actor,
 		) {
-			return input.processOperations.runExclusive(instanceId, () =>
+			const resolved = await input.processOperations.runExclusive(instanceId, () =>
 				input.repos.transaction((repos) => {
 					const open = repos.toolApprovalRequests
 						.listOpen(instanceId)
 						.find((candidate) => candidate.id === requestId);
 					if (!open) return null;
-					const resolved = repos.toolApprovalRequests.resolve({
+					if (!isCurrentTurn(repos, open)) {
+						repos.toolApprovalRequests.cancelOpenByTurn(instanceId, open.turnRecordId);
+						return null;
+					}
+					return repos.toolApprovalRequests.resolve({
 						id: requestId,
 						status: decision.kind,
 						actor,
 						...(decision.kind === "feedback" ? { feedback: decision.feedback } : {}),
 					});
-					if (resolved) {
-						for (const resolve of waiters.get(requestId) ?? []) resolve(decision);
-						waiters.delete(requestId);
-					}
-					return resolved;
 				}),
 			);
+			reconcile(instanceId);
+			return resolved;
 		},
 		cancelTurn(instanceId: string, turnRecordId: string): number {
-			const open = input.repos.toolApprovalRequests
-				.listOpen(instanceId)
-				.filter((request) => request.turnRecordId === turnRecordId);
 			const changed = input.repos.toolApprovalRequests.cancelOpenByTurn(instanceId, turnRecordId);
-			for (const request of open) {
-				for (const resolve of waiters.get(request.id) ?? []) resolve({ kind: "declined" });
-				waiters.delete(request.id);
-			}
+			reconcile(instanceId);
 			return changed;
 		},
 	};

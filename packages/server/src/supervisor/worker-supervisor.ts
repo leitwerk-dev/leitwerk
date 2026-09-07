@@ -829,6 +829,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 
 	return {
 		async spawnWorker(instanceId: string): Promise<WorkerHandle> {
+			unitReclaimer.assertProcessReclaimed(instanceId);
 			clearIdleStopTimer(instanceId);
 			if (workers.has(instanceId)) {
 				throw new Error(`worker already running for process ${instanceId}`);

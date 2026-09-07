@@ -77,6 +77,11 @@ opaque choice to the worker's tool declaration and resolves it into a server-own
 immediately before approval. The adapter receives that snapshot as `ctx.ticketDestination`;
 destination credentials never enter the worker or browser.
 
+Tool approvals belong to the current accepted turn record. Ending that turn cancels its
+open approvals even when the worker exits without sending cancellation. Decisions for an
+older attempt are rejected. Declining an approval aborts only its still-current turn's
+process; a concurrent retry cannot be aborted by that stale decision.
+
 ## 3. Interactive Tools (`ask_questions`)
 
 Unlike terminal outcome tools, **Interactive Tools** do not end the turn. They allow agents to pause and gather operator feedback mid-execution.

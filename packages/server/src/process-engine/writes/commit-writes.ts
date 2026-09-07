@@ -198,6 +198,7 @@ export function commitWrites(
 				committedTurnRecords.push(committedTurnRecord);
 				if (committedTurnRecord.status !== "running") {
 					repos.questionRequests.cancelOpenByTurn(instanceId, committedTurnRecord.id);
+					repos.toolApprovalRequests.cancelOpenByTurn(instanceId, committedTurnRecord.id);
 				}
 			}
 		}

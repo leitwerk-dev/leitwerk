@@ -38,11 +38,11 @@ Before starting isolated runners (Docker or Kubernetes), the supervisor invokes 
 
 Launch configuration is immutable for the lifetime of a physical worker. Configuration changes apply only when the server creates a new worker. Operators must explicitly recycle existing workers when a change must take effect immediately.
 
-A terminal worker observation triggers immediate, idempotent removal of its runtime unit. Docker containers and Kubernetes Pods mark removal as their replacement handoff, so the supervisor does not finalize the physical exit or permit replacement until cleanup succeeds. Failed removals enter a background backlog with bounded backoff. Startup adoption also queues stale units this way: one reclamation failure does not block other adoptions, durable reconciliation, or server readiness. Cleanup logs identify the unit and report the backlog count, but never include worker connection or snapshot tokens.
+A terminal worker observation triggers immediate, idempotent removal of its runtime unit. Docker containers and Kubernetes Pods mark removal as their replacement handoff, so the supervisor does not finalize the physical exit or permit replacement until cleanup succeeds. Failed removals enter a background backlog with bounded backoff. Startup adoption also queues stale units this way: one reclamation failure does not block other adoptions, durable reconciliation, or server readiness. Pending removal blocks new workers for that process until all its stale units are gone. An adopted worker that times out remains attached until physical cleanup finishes. Cleanup logs identify the unit and report the backlog count, but never include worker connection or snapshot tokens.
 
-`ProcessStateExporter` is a separate, read-only runner seam for local session transfer. An attempt waits behind the accepted execution chain under the per-process operation coordinator. At quiescence, the server stops the idle worker, confirms that no writable worker lease remains, and holds the reservation through preflight and streaming. The exporter resolves or provisions its runner-specific storage from the process id. It never starts an agent turn or receives model, provider, or repository credentials. Cancellation, lease expiry, hard deadline, deletion, and stream completion release the reservation.
+`ProcessStateExporter` is a separate, read-only runner seam for local session transfer. An attempt waits behind the accepted execution chain under the per-process operation coordinator. At quiescence, the server stops the idle worker, confirms that no writable worker lease remains, and holds the reservation through preflight and streaming. The exporter resolves or provisions its runner-specific storage from the process id. It never starts an agent turn or receives model, provider, or repository credentials. Cancellation, lease expiry, hard deadline, deletion, and stream completion release the reservation. Cancelled and failed attempts remain terminal when pending exporter work finishes. Ending a stream closes its source as well as the relay.
 
-Local and Docker bind-volume exporters read confined host paths. Docker named-volume exports run a short-lived container with the process volume mounted read-only. Kubernetes exports run a short-lived Pod in the process namespace with the PVC mounted read-only; normal scheduler and volume attachment rules determine placement after the worker Pod is gone. Isolated helpers use the runner's default trusted image, are labelled `session-export-helper` rather than `worker`, and cannot enter worker adoption. Missing helper image, server URL, or relay configuration fails runner construction. Startup reconciliation removes stale helpers.
+Local and Docker bind-volume exporters read confined host paths. Docker named-volume exports run a short-lived container with only the volume's `workspace/` and `tree/` subdirectories mounted read-only. Kubernetes exports run a short-lived Pod in the process namespace with the same two read-only PVC subdirectory mounts; normal scheduler and volume attachment rules determine placement after the worker Pod is gone. Helpers may also mount the server CA certificate read-only. Other process-volume directories remain inaccessible. Isolated helpers use the runner's default trusted image, are labelled `session-export-helper` rather than `worker`, and cannot enter worker adoption. Missing helper image, server URL, or relay configuration fails runner construction. Startup reconciliation removes stale helpers.
 
 ---
 
@@ -188,8 +188,14 @@ projection, repairing a missed event-triggered refresh. On restart, incomplete r
 from durable process, lease, title-job, readiness, turn-start, and turn records. Before process creation, UI
 and trusted programmatic launches resume from a server-private replay payload stored outside the
 launch read model and deleted when coordination finishes. After process creation,
-recovery uses durable facts and does not repeat process creation. Duplicate incomplete Launch Runs
-for one process are cancelled during reconciliation and never select the startup shown on process
+recovery uses durable facts and does not repeat process creation.
+The process-creation transaction also records the requested initial turn and actor in private
+replay storage. If the server stops before selecting that turn, recovery selects it under the
+process lock only while the process remains unstarted. Recovery never repeats process-created
+extension reactions or overwrites a turn selection or abort that already committed. Plans without
+an initial turn, or with an initial human or external turn, complete startup without starting a worker.
+The private replay is deleted when coordination finishes. Duplicate incomplete Launch Runs for one
+process are cancelled during reconciliation and never select the startup shown on process
 detail. The latest startup-retry run is authoritative; without a retry, the latest `createdAt` and
 then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
 commits a process, later polls return that attempt instead of creating incomplete launch runs.

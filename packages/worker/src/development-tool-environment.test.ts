@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -196,5 +196,67 @@ while :; do sleep 1; done
 		});
 		await expect(preparation).rejects.toMatchObject({ code: "cancelled" });
 		expect(Date.now() - startedAt).toBeLessThan(5_000);
+	}, 10_000);
+
+	it.each([
+		"cancel",
+		"timeout",
+	])("terminates installer descendants after mise exits on %s", async (reason) => {
+		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-descendant-test-"));
+		const command = path.join(root, "mise");
+		const pidFile = path.join(root, "child.pid");
+		await writeFile(
+			command,
+			`#!${process.execPath}
+const { spawn } = require("node:child_process");
+const { writeFileSync } = require("node:fs");
+if (process.argv[2] === "--version") { console.log("mise ${PINNED_MISE_VERSION}"); process.exit(); }
+const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); process.send("ready"); setInterval(() => {}, 1000)'], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
+child.on("message", () => console.log("started"));
+`,
+		);
+		await chmod(command, 0o755);
+		const abort = new AbortController();
+		let childPid: number | undefined;
+		try {
+			const preparation = new MiseDevelopmentToolEnvironment({ PATH: "/usr/bin:/bin" }).prepare({
+				config: {
+					...isolated,
+					miseCommand: command,
+					processStorageRoot: root,
+					installTimeoutMs: reason === "timeout" ? 1_000 : 10_000,
+				},
+				repositories: [{ repositoryKey: "repo", workingDirectory: root }],
+				signal: abort.signal,
+				onDiagnosticTrace(text) {
+					if (reason === "cancel" && text.includes("started")) abort.abort();
+				},
+			});
+			await expect(preparation).rejects.toMatchObject({
+				code: reason === "cancel" ? "cancelled" : "timeout",
+			});
+			childPid = Number(await readFile(pidFile, "utf8"));
+			await expect
+				.poll(() => {
+					try {
+						process.kill(childPid as number, 0);
+						return true;
+					} catch {
+						return false;
+					}
+				})
+				.toBe(false);
+		} finally {
+			childPid ??= await readFile(pidFile, "utf8").then(Number, () => undefined);
+			if (childPid) {
+				try {
+					process.kill(childPid, "SIGKILL");
+				} catch {
+					/* The regression check already observed the child exit. */
+				}
+			}
+			await rm(root, { recursive: true, force: true });
+		}
 	}, 10_000);
 });

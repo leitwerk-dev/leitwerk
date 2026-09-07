@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import { setTimeout as sleep } from "node:timers/promises";
 import { URL } from "node:url";
 import type {
 	KubernetesApiClient,
@@ -39,10 +40,6 @@ function boundedApiError(text: string): string {
 	return summary.length <= MAX_API_ERROR_LENGTH
 		? summary
 		: `${summary.slice(0, MAX_API_ERROR_LENGTH - 1)}…`;
-}
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 interface KubernetesListResponse<T> {
@@ -120,28 +117,35 @@ export function createKubernetesHttpApiClient(options: {
 		body?: unknown;
 		contentType?: string;
 		ok?: readonly number[];
+		signal?: AbortSignal;
 	}): Promise<{ status: number; body: T | null; text: string }> {
 		const url = new URL(input.path, baseUrl);
 		const serialized = input.body === undefined ? undefined : JSON.stringify(input.body);
 		const headers: Record<string, string> = {
 			Accept: "application/json",
 			...(serialized !== undefined
-				? { "Content-Type": input.contentType ?? "application/json" }
+				? {
+						"Content-Type": input.contentType ?? "application/json",
+						"Content-Length": String(Buffer.byteLength(serialized)),
+					}
 				: {}),
 			...(options.bearerToken ? { Authorization: `Bearer ${options.bearerToken}` } : {}),
 		};
 		const transport = url.protocol === "http:" ? http : https;
 		let response: { statusCode: number; text: string };
 		for (let attempt = 1; ; attempt += 1) {
+			input.signal?.throwIfAborted();
 			response = await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
 				const req = transport.request(
 					url,
 					{
 						method: input.method,
 						headers,
+						signal: input.signal,
 						...(url.protocol === "https:" && options.ca ? { ca: options.ca } : {}),
 					},
 					(res) => {
+						res.on("error", reject);
 						const chunks: Buffer[] = [];
 						res.on("data", (chunk: Buffer | string) =>
 							chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
@@ -168,7 +172,9 @@ export function createKubernetesHttpApiClient(options: {
 			) {
 				break;
 			}
-			await sleep(TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS * attempt);
+			await sleep(TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS * attempt, undefined, {
+				signal: input.signal,
+			});
 		}
 		const ok = input.ok ?? [200, 201, 202];
 		if (!ok.includes(response.statusCode)) {
@@ -415,7 +421,7 @@ export function createKubernetesHttpApiClient(options: {
 				body: manifest,
 			});
 		},
-		async deletePod(name: string, namespace: string, options: { gracePeriodSeconds: number }) {
+		async deletePod(name, namespace, options) {
 			await request({
 				method: "DELETE",
 				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
@@ -425,13 +431,15 @@ export function createKubernetesHttpApiClient(options: {
 					gracePeriodSeconds: options.gracePeriodSeconds,
 				},
 				ok: [200, 202, 404],
+				signal: options.signal,
 			});
 		},
-		async getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null> {
+		async getPod(name, namespace, options): Promise<KubernetesPodSummary | null> {
 			const result = await request<KubernetesObjectResponse>({
 				method: "GET",
 				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
 				ok: [200, 404],
+				signal: options?.signal,
 			});
 			return result.status === 404 ? null : podSummary(result.body ?? {});
 		},

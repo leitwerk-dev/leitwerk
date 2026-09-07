@@ -79,8 +79,8 @@ export async function importTransfer(input: {
 	const client = new SessionTransferClient(input.link);
 	let attempt: RemoteTransferAttempt | null = null;
 	let temporaryDirectory: string | null = null;
+	let recoveryRecordCreated = false;
 	let destinationReserved = false;
-	let sessionPath: string | null = null;
 	let heartbeat: NodeJS.Timeout | null = null;
 	const progress: ImportProgress = {
 		phase: "queued",
@@ -127,6 +127,7 @@ export async function importTransfer(input: {
 			temporaryDirectory,
 			ownerId,
 		});
+		recoveryRecordCreated = true;
 		report({
 			phase: "streaming",
 			entriesTotal: attempt.entriesTotal,
@@ -166,15 +167,19 @@ export async function importTransfer(input: {
 			throw new Error("Imported session cwd escapes the workspace");
 		await access(temporaryCwd);
 		const rewritten = rewritePiSession(
-			await readFile(path.join(temporaryDirectory, "session.jsonl"), "utf8"),
+			await readFile(path.join(temporaryDirectory, "session.jsonl"), {
+				encoding: "utf8",
+				signal: input.signal,
+			}),
 			localCwd,
 			extracted.manifest.session.sourceCwd,
 		);
 
+		input.signal.throwIfAborted();
 		report({ finishing: true, phase: "finishing_import" });
 		const createdSessionPath = SessionManager.create(localCwd).getSessionFile();
 		if (!createdSessionPath) throw new Error("Pi did not create a persistent target session");
-		sessionPath = createdSessionPath;
+		const sessionPath = createdSessionPath;
 		await input.state.recordCommitTargets(input.link, { destination, sessionPath });
 		await reserveWorkspaceDestination(destination, { name: destinationMarkerName, ownerId });
 		destinationReserved = true;
@@ -189,14 +194,11 @@ export async function importTransfer(input: {
 		});
 		await rm(path.join(destination, destinationMarkerName), { force: true });
 		await restoreWorkspaceMetadata(destination, workspaceMetadata);
-		await client.acknowledge(attempt.id, AbortSignal.timeout(30_000));
 		await rm(temporaryDirectory, { recursive: true, force: true });
 		return { destination, sessionPath, attemptId: attempt.id };
 	} catch (error) {
 		if (attempt && !progress.finishing) await client.cancel(attempt.id).catch(() => undefined);
-		if (temporaryDirectory && !destinationReserved) {
-			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
-			if (sessionPath) await rm(sessionPath, { force: true }).catch(() => undefined);
+		if (recoveryRecordCreated && !destinationReserved) {
 			await input.state.discard(input.link).catch(() => undefined);
 		}
 		throw error;

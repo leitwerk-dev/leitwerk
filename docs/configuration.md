@@ -149,6 +149,8 @@ kubernetes:
 
 Worker launch configuration is immutable for a physical worker. Changes affect only newly created workers. Recycle existing workers explicitly when a change must apply immediately. Docker process state lives at `/state/tooling/docker` in the process volume and survives worker replacement. Kubernetes Docker processes use the configured RuntimeClass and Docker process StorageClass; the runner does not preflight cluster runtime infrastructure.
 
+Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. It preserves `DOCKER_CONFIG` for registry credentials. Local workers retain their host Docker configuration.
+
 ---
 
 ## 5. Model Profiles, Pi Runtime & Extensions

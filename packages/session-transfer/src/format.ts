@@ -314,11 +314,7 @@ export function rewritePiSession(
 		const id = string(entry.id, `session line ${index + 1}.id`);
 		if (ids.has(id)) throw new Error(`Transferred session contains duplicate entry id '${id}'`);
 		const parentId = entry.parentId;
-		if (index === 1) {
-			if (parentId !== null) throw new Error("Transferred session first entry must be the root");
-		} else if (parentId === null) {
-			throw new Error("Transferred session contains multiple roots");
-		} else if (typeof parentId !== "string" || !ids.has(parentId)) {
+		if (parentId !== null && (typeof parentId !== "string" || !ids.has(parentId))) {
 			throw new Error(`Transferred session entry '${id}' has an invalid parent`);
 		}
 		ids.add(id);

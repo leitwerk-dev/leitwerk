@@ -18,13 +18,17 @@ import type {
 } from "./future-execution/index.js";
 import { watcherAdmissionKey, withWatcherHandoffDedupKey } from "./launch-idempotency.js";
 import {
+	completeCommittedLaunch,
 	failLaunchRun,
 	finishLaunchRun,
 	type LaunchPipeline,
 	type LaunchStageFailure,
 	presentPipelineResult,
 } from "./launch-pipeline.js";
+import { StartProcess } from "./process-engine/ops/start-process.js";
+import type { ProcessEngine } from "./process-engine/types.js";
 import type {
+	CommittedLaunchReplay,
 	ProcessLaunchExecutionResult,
 	ProcessLaunchOptions,
 	ProcessLaunchPlanExecutor,
@@ -128,6 +132,7 @@ interface LaunchCoordinatorDeps {
 	turnRecords: RepositoryBundle["turnRecords"];
 	turnStarts: RepositoryBundle["turnStarts"];
 	titleJobs: RepositoryBundle["titleJobs"];
+	commands: Pick<ProcessEngine, "run">;
 	launcherService: ProcessLauncherService;
 	futureExecutionLifecycle: FutureExecutionLifecycle;
 	launchPipeline: LaunchPipeline;
@@ -275,139 +280,181 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 	}
 
 	async function execute(runId: string, input: StartLaunchRequest): Promise<LaunchMutationOutcome> {
-		try {
-			const pipelineResult = await deps.launchPipeline.run<
-				ResolvedProcessLauncher,
-				PreparedLaunch,
-				LaunchMutationOutcome,
-				unknown
-			>(runId, {
-				async resolve() {
-					const request = input;
-					if (request.request.schedule.mode !== "now") {
-						return {
-							kind: "failed" as const,
-							failure: failure("Use the scheduling controls to save a future launch.", {
-								kind: "invalid",
-								issues: [
-									{
-										code: "invalid_schedule",
-										message: "Immediate launches require schedule mode 'now'",
-									},
-								],
-							} as LaunchMutationOutcome),
-						};
-					}
-					const resolved = await deps.launcherService.resolveUiLauncher(
-						request.launcherId,
-						request.request.launcherInput,
-					);
-					return resolved.ok
-						? { kind: "resolved" as const, value: resolved.launcher }
-						: {
-								kind: "failed" as const,
-								failure: failure("Review the highlighted launcher fields and try again.", {
-									kind: "invalid",
-									issues: resolved.errors,
-								} as LaunchMutationOutcome),
-							};
-				},
-				preparationChecks(resolved) {
-					const checks =
-						deps.launcherService.resolvePreparationChecks?.(
-							input.launcherId,
-							input.request.launcherInput,
-							resolved.launchConfig,
-						) ?? [];
-					return bindChecks(checks, resolved.launchConfig);
-				},
-				preparationCheckFailure() {
-					return {
-						kind: "invalid",
-						issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
-					} as LaunchMutationOutcome;
-				},
-				async prepare(resolved) {
-					const prepared = await deps.futureExecutionLifecycle.prepareLaunch(
-						input.launcherId,
-						input.request,
-						{ resolvedLauncher: resolved },
-					);
-					return prepared.ok
-						? {
-								ok: true as const,
-								value: input.processMetadata
-									? {
-											...prepared.prepared,
-											launchPlan: {
-												...prepared.prepared.launchPlan,
-												processInput: {
-													...prepared.prepared.launchPlan.processInput,
-													metadata: mergeProcessMetadata(
-														prepared.prepared.launchPlan.processInput.metadata,
-														input.processMetadata,
-													),
-												},
-											},
-										}
-									: prepared.prepared,
-							}
-						: {
-								ok: false as const,
-								failure: failure(
-									"Review the launch configuration and try again.",
-									prepared.outcome,
-								),
-							};
-				},
-				async commit(prepared, ctx) {
-					const result = await deps.futureExecutionLifecycle.commitPreparedLaunch(prepared, {
-						actor: input.actor,
-						launchRunId: ctx.launchRunId,
-					});
-					if (result.kind === "launched") {
-						return {
-							kind: "committed" as const,
-							result,
-							process: result.process,
-							startTurnId: prepared.launchPlan.startTurnId,
-							reused: false,
-						};
-					}
-					if (result.kind === "committed_with_reaction_error" && "process" in result) {
-						return {
-							kind: "committed_with_reaction_error" as const,
-							result,
-							process: result.process,
-							startTurnId: prepared.launchPlan.startTurnId,
-							safeSummary:
-								"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
-						};
-					}
+		const pipelineResult = await deps.launchPipeline.run<
+			ResolvedProcessLauncher,
+			PreparedLaunch,
+			LaunchMutationOutcome,
+			unknown
+		>(runId, {
+			async resolve() {
+				const request = input;
+				if (request.request.schedule.mode !== "now") {
 					return {
 						kind: "failed" as const,
-						failure: failure(
-							"The process could not be created. Check availability and try again.",
-							result,
-						),
+						failure: failure("Use the scheduling controls to save a future launch.", {
+							kind: "invalid",
+							issues: [
+								{
+									code: "invalid_schedule",
+									message: "Immediate launches require schedule mode 'now'",
+								},
+							],
+						} as LaunchMutationOutcome),
 					};
-				},
-				unexpectedFailure() {
-					return failure("The launch could not be completed. Try again.", {
-						kind: "failed",
-						issue: { code: "launch_failed", message: "The launch could not be completed" },
-					} as LaunchMutationOutcome);
-				},
-			});
-			if (pipelineResult.kind === "failed")
-				return pipelineResult.failure.value as LaunchMutationOutcome;
-			if (pipelineResult.kind === "skipped") {
-				return { kind: "failed", issue: { code: "launch_skipped", message: "Launch skipped" } };
+				}
+				const resolved = await deps.launcherService.resolveUiLauncher(
+					request.launcherId,
+					request.request.launcherInput,
+				);
+				return resolved.ok
+					? { kind: "resolved" as const, value: resolved.launcher }
+					: {
+							kind: "failed" as const,
+							failure: failure("Review the highlighted launcher fields and try again.", {
+								kind: "invalid",
+								issues: resolved.errors,
+							} as LaunchMutationOutcome),
+						};
+			},
+			preparationChecks(resolved) {
+				const checks =
+					deps.launcherService.resolvePreparationChecks?.(
+						input.launcherId,
+						input.request.launcherInput,
+						resolved.launchConfig,
+					) ?? [];
+				return bindChecks(checks, resolved.launchConfig);
+			},
+			preparationCheckFailure() {
+				return {
+					kind: "invalid",
+					issues: [{ code: "preparation_failed", message: "Launch preparation failed" }],
+				} as LaunchMutationOutcome;
+			},
+			async prepare(resolved) {
+				const prepared = await deps.futureExecutionLifecycle.prepareLaunch(
+					input.launcherId,
+					input.request,
+					{ resolvedLauncher: resolved },
+				);
+				return prepared.ok
+					? {
+							ok: true as const,
+							value: input.processMetadata
+								? {
+										...prepared.prepared,
+										launchPlan: {
+											...prepared.prepared.launchPlan,
+											processInput: {
+												...prepared.prepared.launchPlan.processInput,
+												metadata: mergeProcessMetadata(
+													prepared.prepared.launchPlan.processInput.metadata,
+													input.processMetadata,
+												),
+											},
+										},
+									}
+								: prepared.prepared,
+						}
+					: {
+							ok: false as const,
+							failure: failure("Review the launch configuration and try again.", prepared.outcome),
+						};
+			},
+			async commit(prepared, ctx) {
+				const result = await deps.futureExecutionLifecycle.commitPreparedLaunch(prepared, {
+					actor: input.actor,
+					launchRunId: ctx.launchRunId,
+				});
+				if (result.kind === "launched") {
+					return {
+						kind: "committed" as const,
+						result,
+						process: result.process,
+						startTurnId: prepared.launchPlan.startTurnId,
+						reused: false,
+					};
+				}
+				if (result.kind === "committed_with_reaction_error" && "process" in result) {
+					return {
+						kind: "committed_with_reaction_error" as const,
+						result,
+						process: result.process,
+						startTurnId: prepared.launchPlan.startTurnId,
+						safeSummary:
+							"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+					};
+				}
+				return {
+					kind: "failed" as const,
+					failure: failure(
+						"The process could not be created. Check availability and try again.",
+						result,
+					),
+				};
+			},
+			unexpectedFailure() {
+				return failure("The launch could not be completed. Try again.", {
+					kind: "failed",
+					issue: { code: "launch_failed", message: "The launch could not be completed" },
+				} as LaunchMutationOutcome);
+			},
+		});
+		if (pipelineResult.kind === "failed")
+			return pipelineResult.failure.value as LaunchMutationOutcome;
+		if (pipelineResult.kind === "skipped") {
+			return { kind: "failed", issue: { code: "launch_skipped", message: "Launch skipped" } };
+		}
+		persistProjection(deps.launchRuns.getById(runId) as LaunchRun);
+		return pipelineResult.result;
+	}
+
+	async function recoverCommittedStart(run: LaunchRun, replay: CommittedLaunchReplay) {
+		try {
+			let process = run.instanceId ? deps.processes.getById(run.instanceId) : null;
+			if (!process) return;
+			let reactionError: string | undefined;
+			if (replay.startTurnId && process.lifecycleStatus === "discovered") {
+				const started = await deps.commands.run(StartProcess, {
+					instanceId: process.id,
+					startTurnId: replay.startTurnId,
+					actor: replay.actor,
+					onlyIfUnstarted: true,
+				});
+				process = deps.processes.getById(process.id) ?? process;
+				if (!started.ok) {
+					reactionError =
+						"Process was created, but startup could not resume after the server restarted. Review the process error.";
+				}
 			}
-			persistProjection(deps.launchRuns.getById(runId) as LaunchRun);
-			return pipelineResult.result;
+			if (
+				["completed", "aborted"].includes(process.lifecycleStatus) &&
+				deps.turnStarts.listByInstance(process.id).length === 0
+			) {
+				mutate(run.id, (current) => finishLaunchRun(current, "cancelled"));
+				return;
+			}
+			const committedProcess = process;
+			const committed = mutate(run.id, (current) =>
+				completeCommittedLaunch(
+					current,
+					committedProcess,
+					replay.startTurnId,
+					deps.titleGenerationAvailable,
+					reactionError,
+				),
+			);
+			persistProjection(committed);
+		} catch {
+			mutate(run.id, (current) =>
+				failLaunchRun(
+					current,
+					"start_worker",
+					"Process was created, but startup could not resume after the server restarted. Review the process error.",
+				),
+			);
 		} finally {
-			deps.launchRuns.deleteReplay(runId);
+			deps.launchRuns.deleteReplay(run.id);
 		}
 	}
 
@@ -627,8 +674,10 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 			for (const runs of byInstance.values()) {
 				const authoritative = selectAuthoritativeRun(runs);
 				for (const run of runs) {
-					if (run.id !== authoritative?.id)
+					if (run.id !== authoritative?.id) {
 						mutate(run.id, (current) => finishLaunchRun(current, "cancelled"));
+						deps.launchRuns.deleteReplay(run.id);
+					}
 				}
 			}
 			for (const run of incomplete) {
@@ -638,8 +687,10 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				)
 					continue;
 				if (!run.instanceId) {
-					const replay = deps.launchRuns.getReplay<StartLaunchRequest>(run.id);
-					if (["ui", "programmatic"].includes(run.origin) && replay) {
+					const replay = deps.launchRuns.getReplay<StartLaunchRequest | CommittedLaunchReplay>(
+						run.id,
+					);
+					if (["ui", "programmatic"].includes(run.origin) && replay && !("kind" in replay)) {
 						await execute(run.id, replay);
 						continue;
 					}
@@ -662,6 +713,14 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 				}
 				if (!deps.processes.getById(run.instanceId)) {
 					mutate(run.id, (current) => finishLaunchRun(current, "cancelled"));
+					deps.launchRuns.deleteReplay(run.id);
+					continue;
+				}
+				const replay = deps.launchRuns.getReplay<StartLaunchRequest | CommittedLaunchReplay>(
+					run.id,
+				);
+				if (replay && "kind" in replay && replay.kind === "committed_start") {
+					await recoverCommittedStart(run, replay);
 					continue;
 				}
 				persistProjection(run);

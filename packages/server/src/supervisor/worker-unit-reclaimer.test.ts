@@ -78,9 +78,12 @@ describe("createWorkerUnitReclaimer", () => {
 
 		await reclaimer.reclaim(unit, "startup_stale");
 		expect(reclaimer.staleResourceBacklogCount()).toBe(1);
+		expect(() => reclaimer.assertProcessReclaimed("proc-1")).toThrow("still being removed");
+		expect(() => reclaimer.assertProcessReclaimed("proc-2")).not.toThrow();
 		await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
 
 		expect(reclaimer.staleResourceBacklogCount()).toBe(0);
+		expect(() => reclaimer.assertProcessReclaimed("proc-1")).not.toThrow();
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ staleResourceBacklogCount: 1 }),
 			"Terminal worker unit cleanup failed; queued for retry",

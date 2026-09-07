@@ -40,12 +40,17 @@ export function createHelperProcessStateExporter(input: {
 }): ProcessStateExporter {
 	return {
 		async prepare(request) {
+			request.signal?.throwIfAborted();
 			const volume = await input.volume.ensure(request.instanceId);
+			request.signal?.throwIfAborted();
 			const relay = input.helperRelays.create({
 				instanceId: request.instanceId,
 				manifest: request.manifest,
 			});
 			let removed = false;
+			let removal: Promise<void> | null = null;
+			let retryTimer: NodeJS.Timeout | null = null;
+			let retryDelayMs = 250;
 			let streamCompleted = false;
 			let helper: ExportHelperUnit;
 			try {
@@ -62,9 +67,29 @@ export function createHelperProcessStateExporter(input: {
 				throw error;
 			}
 			const remove = async (): Promise<void> => {
-				if (removed) return;
-				removed = true;
-				await helper.remove();
+				if (removed || retryTimer) return;
+				if (removal) return removal;
+				removal = Promise.resolve()
+					.then(() => helper.remove())
+					.then(
+						() => {
+							removed = true;
+						},
+						() => {
+							// Keep cleanup owned until the runner confirms removal. A transient
+							// API failure must not escape an abort or stream event handler.
+							retryTimer = setTimeout(() => {
+								retryTimer = null;
+								void remove();
+							}, retryDelayMs);
+							retryTimer.unref();
+							retryDelayMs = Math.min(retryDelayMs * 2, 30_000);
+						},
+					)
+					.finally(() => {
+						removal = null;
+					});
+				return removal;
 			};
 			const onAbort = (): void => {
 				relay.fail(new Error("session_transfer_cancelled"));
@@ -84,15 +109,21 @@ export function createHelperProcessStateExporter(input: {
 				},
 			);
 			try {
+				request.signal?.throwIfAborted();
 				const report = await relay.waitForPreflight(request.signal);
+				request.signal?.throwIfAborted();
 				return {
 					...report,
 					stream(): Readable {
 						const stream = relay.activateStream();
+						let cleanupRequested = false;
 						const cleanup = (error?: Error): void => {
+							if (cleanupRequested) return;
+							cleanupRequested = true;
 							if (!streamCompleted && error) relay.fail(error);
 							request.signal?.removeEventListener("abort", onAbort);
-							void exited.finally(remove);
+							if (streamCompleted) void exited.then(remove);
+							else void remove();
 						};
 						stream.once("end", () => {
 							streamCompleted = true;

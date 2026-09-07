@@ -10,12 +10,21 @@ const MAX_DIAGNOSTIC_BYTES = 16 * 1024;
 
 interface EntrypointDeps {
 	spawn: typeof spawn;
-	dockerInfo: (signal: AbortSignal) => Promise<void>;
+	dockerInfo: (env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<void>;
 	mkdir: typeof mkdir;
 	remove: typeof rm;
 	now: () => number;
 	delay: (ms: number) => Promise<void>;
 	warn: (message: string) => void;
+}
+
+function privateDockerEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const result: NodeJS.ProcessEnv = { ...env, DOCKER_HOST: `unix://${DOCKER_SOCKET}` };
+	delete result.DOCKER_CONTEXT;
+	delete result.DOCKER_TLS;
+	delete result.DOCKER_TLS_VERIFY;
+	delete result.DOCKER_CERT_PATH;
+	return result;
 }
 
 function boundedAppend(current: string, chunk: Buffer | string): string {
@@ -29,14 +38,43 @@ function workerEntryPath(): string {
 	return fileURLToPath(new URL("./worker-entry.js", import.meta.url));
 }
 
-function waitForExit(
-	child: ChildProcess,
-): Promise<{ code: number | null; signal: NodeJS.Signals | null }> {
-	return new Promise((resolve) => child.once("exit", (code, signal) => resolve({ code, signal })));
+interface ChildExit {
+	code: number | null;
+	signal: NodeJS.Signals | null;
+	error?: Error;
+}
+
+const childExits = new WeakMap<ChildProcess, Promise<ChildExit>>();
+
+function waitForExit(child: ChildProcess): Promise<ChildExit> {
+	const pending = childExits.get(child);
+	if (pending) return pending;
+	const exited = new Promise<ChildExit>((resolve) => {
+		const onExit = (code: number | null, signal: NodeJS.Signals | null) => {
+			child.removeListener("error", onError);
+			resolve({ code, signal });
+		};
+		const onError = (error: Error) => {
+			child.removeListener("exit", onExit);
+			resolve({ code: null, signal: null, error });
+		};
+		child.once("exit", onExit);
+		child.once("error", onError);
+	});
+	childExits.set(child, exited);
+	return exited;
+}
+
+function requireStarted(exit: ChildExit, executable: string): void {
+	if (exit.error) {
+		throw new Error(`Failed to start ${executable}: ${exit.error.message}`, { cause: exit.error });
+	}
 }
 
 async function stop(child: ChildProcess | undefined, graceMs = 5_000): Promise<void> {
-	if (!child || child.exitCode !== null || child.signalCode !== null) return;
+	if (!child || child.pid === undefined || child.exitCode !== null || child.signalCode !== null) {
+		return;
+	}
 	const exited = waitForExit(child);
 	child.kill("SIGTERM");
 	if (graceMs > 0) {
@@ -52,9 +90,9 @@ export async function runWorkerContainerEntrypoint(
 	env: NodeJS.ProcessEnv = process.env,
 	deps: EntrypointDeps = {
 		spawn,
-		dockerInfo: (signal) =>
+		dockerInfo: (env, signal) =>
 			promisify(execFile)("docker", ["--host", `unix://${DOCKER_SOCKET}`, "info"], {
-				env: { ...process.env, DOCKER_HOST: `unix://${DOCKER_SOCKET}` },
+				env,
 				signal,
 			}).then(() => undefined),
 		mkdir,
@@ -85,8 +123,10 @@ export async function runWorkerContainerEntrypoint(
 		if (env[PRIVATE_DOCKER_ENV] !== "1") {
 			worker = deps.spawn(process.execPath, [workerEntryPath()], { stdio: "inherit", env });
 			const exit = await waitForExit(worker);
+			requireStarted(exit, process.execPath);
 			return exit.code ?? (terminating ? 0 : 1);
 		}
+		const privateEnv = privateDockerEnvironment(env);
 
 		const dockerDataRoot = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/docker`;
 		await deps.mkdir(dockerDataRoot, { recursive: true });
@@ -114,7 +154,7 @@ export async function runWorkerContainerEntrypoint(
 					"--pidfile",
 					"/var/run/leitwerk-dockerd.pid",
 				],
-				{ stdio: ["ignore", "pipe", "pipe"], env },
+				{ stdio: ["ignore", "pipe", "pipe"], env: privateEnv },
 			);
 			daemon.stdout?.on("data", (chunk) => {
 				diagnostic = boundedAppend(diagnostic, chunk);
@@ -129,27 +169,36 @@ export async function runWorkerContainerEntrypoint(
 			});
 			while (!terminating && !exited && deps.now() < startupDeadlineMs) {
 				try {
-					await Promise.race([deps.dockerInfo(shutdown.signal), terminated]);
-					if (terminating) return 0;
-					if (exited) break;
-					if (recovered) {
-						deps.warn(
-							`Private Docker daemon recovered after resetting its data root: ${firstSummary}`,
-						);
-					}
-					worker = deps.spawn(process.execPath, [workerEntryPath()], { stdio: "inherit", env });
-					const winner = await Promise.race([
-						waitForExit(worker).then((exit) => ({ source: "worker" as const, exit })),
-						daemonExit.then((exit) => ({ source: "daemon" as const, exit })),
+					await Promise.race([
+						deps.dockerInfo(privateEnv, shutdown.signal),
+						terminated,
+						daemonExit,
 					]);
-					if (!terminating) {
-						await stop(winner.source === "worker" ? daemon : worker);
-					}
-					return winner.exit.code ?? (terminating ? 0 : 1);
 				} catch {
 					if (terminating) return 0;
 					await deps.delay(250);
+					continue;
 				}
+				if (terminating) return 0;
+				if (exited) break;
+				if (recovered) {
+					deps.warn(
+						`Private Docker daemon recovered after resetting its data root: ${firstSummary}`,
+					);
+				}
+				worker = deps.spawn(process.execPath, [workerEntryPath()], {
+					stdio: "inherit",
+					env: privateEnv,
+				});
+				const winner = await Promise.race([
+					waitForExit(worker).then((exit) => ({ source: "worker" as const, exit })),
+					daemonExit.then((exit) => ({ source: "daemon" as const, exit })),
+				]);
+				requireStarted(winner.exit, winner.source === "worker" ? process.execPath : "dockerd");
+				if (!terminating) {
+					await stop(winner.source === "worker" ? daemon : worker);
+				}
+				return winner.exit.code ?? (terminating ? 0 : 1);
 			}
 			if (terminating) return 0;
 			if (!exited) {
@@ -161,6 +210,7 @@ export async function runWorkerContainerEntrypoint(
 			}
 			const exit = await daemonExit;
 			if (terminating) return 0;
+			requireStarted(exit, "dockerd");
 			const summary = `exit=${exit.code ?? exit.signal ?? "unknown"}; ${diagnostic || "no diagnostic"}`;
 			if (attempt === 0) {
 				firstSummary = summary;
@@ -178,6 +228,7 @@ export async function runWorkerContainerEntrypoint(
 	} finally {
 		process.removeListener("SIGTERM", terminate);
 		process.removeListener("SIGINT", terminate);
+		shutdown.abort();
 		await Promise.all([stop(worker), stop(daemon)]);
 	}
 }

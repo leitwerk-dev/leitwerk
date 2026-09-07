@@ -25,6 +25,10 @@ export interface KubernetesPodDiagnosticOptions {
 	sensitiveValues?: readonly string[];
 }
 
+export interface KubernetesApiRequestOptions {
+	signal?: AbortSignal;
+}
+
 export interface KubernetesApiClient {
 	ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void>;
 	deleteNamespace(name: string): Promise<void>;
@@ -43,9 +47,13 @@ export interface KubernetesApiClient {
 	deletePod(
 		name: string,
 		namespace: string,
-		options: { gracePeriodSeconds: number },
+		options: KubernetesApiRequestOptions & { gracePeriodSeconds: number },
 	): Promise<void>;
-	getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null>;
+	getPod(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodSummary | null>;
 	listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]>;
 	listPods(namespace: string, labels: Record<string, string>): Promise<KubernetesPodSummary[]>;
 	onPodExit(
@@ -152,14 +160,20 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 	async deletePod(
 		name: string,
 		namespace: string,
-		options: { gracePeriodSeconds: number },
+		options: KubernetesApiRequestOptions & { gracePeriodSeconds: number },
 	): Promise<void> {
+		options.signal?.throwIfAborted();
 		this.deletedPods.push({ name, namespace, gracePeriodSeconds: options.gracePeriodSeconds });
 		this.pods.delete(key(namespace, name));
 		this.emit(name, namespace, { exitCode: 0, signal: null, reason: "Deleted" });
 	}
 
-	async getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null> {
+	async getPod(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodSummary | null> {
+		options?.signal?.throwIfAborted();
 		const pod = this.pods.get(key(namespace, name));
 		return pod
 			? {

@@ -18,6 +18,7 @@ import type { DecideContext } from "../types.js";
 export interface AbortProcessInput {
 	instanceId: string;
 	actor?: Actor;
+	expectedTurnRecordId?: string;
 }
 
 function toErrorMessage(error: unknown): string {
@@ -85,6 +86,12 @@ export const AbortProcess = defineOperation<"abort_process", AbortProcessInput, 
 		const activeTurnRecord = activeTurnRecordId
 			? ctx.deps.turnRecords.getById(activeTurnRecordId)
 			: null;
+		if (
+			input.expectedTurnRecordId !== undefined &&
+			activeTurnRecordId !== input.expectedTurnRecordId
+		) {
+			return reject("stale_turn_record", "The approval's turn is no longer active");
+		}
 		const currentWorkerStart =
 			ctx.process.currentExecution?.kind === "worker_start"
 				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)

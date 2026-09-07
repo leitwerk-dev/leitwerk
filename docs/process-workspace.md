@@ -56,6 +56,8 @@ does not scan nested directories, generate mise configuration, interpret ecosyst
 install package dependencies. Docker and Kubernetes store mise state in the process volume.
 Local workers use the host mise installation and host mise storage. Mise shims lead `PATH` for
 agent commands; full mise shell activation and `[env]` propagation are not guaranteed.
+Cancellation and timeouts terminate the installer process group, including child processes
+that outlive mise. The worker waits for termination before finishing preparation.
 
 ---
 
@@ -97,6 +99,8 @@ An authenticated operator can create an expiring local-transfer link from a proc
 The transfer exporter waits for already accepted work and automatic successors to reach a stable `waiting`, `error`, `completed`, or `aborted` state. It then reserves the process, removes the idle worker and writable lease, pre-scans retained storage, and streams a tar+Zstandard archive. The archive contains only `workspace/`, `tree/primary.jsonl` as `session.jsonl`, and a versioned manifest. It excludes `pi-agent/`, tooling and dependency caches, credentials, temporary state, and unrelated volume paths.
 
 Local import preserves regular files, executable modes, timestamps, and confined relative symlinks. It accepts Pi session format V3 only, validates project branch/HEAD evidence and the append-ordered entry tree, rewrites the session cwd, removes source `parentSession` metadata, and stores the validated conversation in local Pi's normal session directory without migration. Future turns use local Pi configuration and credentials; they are not part of the server process.
+
+Independent root branches remain valid in the imported tree. Local session switching does not wait for server acknowledgement. A completed receipt lets the operator reopen the local session and retry acknowledgement with the same link without copying again.
 
 ## 6. Storage Retention, Backup & Cleanup
 

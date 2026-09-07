@@ -83,6 +83,12 @@ export interface ProcessLaunchCommit {
 	dedupReused?: boolean;
 }
 
+export interface CommittedLaunchReplay {
+	kind: "committed_start";
+	startTurnId: string | null;
+	actor?: Actor;
+}
+
 function mapLaunchStartFailure<T>(result: EngineFailure<T>): {
 	status: number;
 	body: Record<string, unknown>;
@@ -182,8 +188,16 @@ export function commitProcessLaunch(
 	launchIntent?: ProcessLaunchOptions["launchIntent"],
 	launchRunId?: string,
 	relation?: ProcessLaunchRelationInput,
+	actor?: Actor,
 ): ProcessLaunchCommit {
 	return deps.transaction((repos) => {
+		if (launchRunId) {
+			repos.launchRuns.saveReplay(launchRunId, {
+				kind: "committed_start",
+				startTurnId: launchPlan.startTurnId,
+				...(actor ? { actor } : {}),
+			} satisfies CommittedLaunchReplay);
+		}
 		const dedupKey =
 			(launchPlan as { handoffDedupKey?: string | null }).handoffDedupKey?.trim() || null;
 		const reused = dedupKey ? reuseDeduplicatedCommit(repos, dedupKey, futureExecutionPlan) : null;
@@ -417,6 +431,7 @@ async function createProcessFromLaunchPlanWithDisposition(
 			opts?.launchIntent,
 			opts?.launchRunId,
 			opts?.relation,
+			opts?.actor,
 		);
 	} catch (error) {
 		const dedupKey =

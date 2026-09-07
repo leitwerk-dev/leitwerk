@@ -130,3 +130,8 @@ remediation and the existing recovery action. Process detail never selects a Lau
 startup: it uses the correlated worker start, lease, readiness observation, and accepted first turn.
 A failed attempt remains visible after recovery. Terminal launcher runs collapse to an expandable
 summary; failed runs expand again when the operator selects the summary.
+
+The launch-run route accepts only `schedule.mode = "now"`; the future-launch route accepts only
+`"once"` and `"cron"`. Other modes return `400` before admission. Updating a future launch to
+`"now"` admits a launch run and repeats launcher preparation checks. The future launch is consumed
+atomically with process creation; a preparation failure preserves it for a later revision or run.
