@@ -6,15 +6,11 @@ export function createExportTestFixture() {
 	const manifest: LeitwerkTransferManifestV1 = {
 		version: 1,
 		instanceId: "proc-1",
-		processId: "demo",
-		processTitle: "Demo",
 		createdAt: "2026-09-01T00:00:00.000Z",
 		session: {
-			relativePath: "session.jsonl",
 			sourceCwd: "/state/workspace",
 			cwdRelativeToWorkspace: ".",
 		},
-		workspace: { relativePath: "workspace", hasLocalState: true },
 		projects: [],
 	};
 	const upload = new PassThrough();

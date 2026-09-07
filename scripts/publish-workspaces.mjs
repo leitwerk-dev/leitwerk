@@ -9,8 +9,7 @@ const DEPENDENCY_FIELDS = [
 	"peerDependencies",
 	"optionalDependencies",
 ];
-const SOURCE_FILE_PATTERNS = ["src/**", "!src/**/*.test.ts"];
-const BUILT_FILE_PATTERNS = ["dist/**", "!dist/**/*.test.*", ...SOURCE_FILE_PATTERNS];
+const BUILT_FILE_PATTERNS = ["dist/**", "!dist/**/*.test.*", "src/**", "!src/**/*.test.ts"];
 const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
 const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
 
@@ -122,7 +121,7 @@ function listPublishableWorkspaces(rootDir, rootPackageJson) {
 						name: packageJson.name,
 						dir: path.dirname(packageJsonPath),
 						packageJson,
-						licensePath: packageLicensePath(packageJson),
+						licensePath: "./dist/LICENSE",
 						requiredFiles: requiredPackageFiles(packageJson),
 					};
 				})
@@ -174,7 +173,7 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 		if (!Array.isArray(packageJson.files)) {
 			errors.push(`${label}: files must be declared for predictable npm packages`);
 		} else {
-			for (const pattern of requiredFilePatterns(packageJson)) {
+			for (const pattern of BUILT_FILE_PATTERNS) {
 				if (!packageJson.files.includes(pattern)) {
 					errors.push(`${label}: files must include ${pattern}`);
 				}
@@ -253,22 +252,10 @@ function validateExtensionUiManifest(rootDir, manifestPath, label) {
 	});
 }
 
-function hasBuildScript(packageJson) {
-	return typeof packageJson.scripts?.build === "string";
-}
-
-function packageLicensePath(packageJson) {
-	return hasBuildScript(packageJson) ? "./dist/LICENSE" : "./LICENSE";
-}
-
-function requiredFilePatterns(packageJson) {
-	return hasBuildScript(packageJson) ? BUILT_FILE_PATTERNS : SOURCE_FILE_PATTERNS;
-}
-
 function requiredPackageFiles(packageJson) {
 	return [
 		...new Set([
-			packageLicensePath(packageJson),
+			"./dist/LICENSE",
 			...collectPackagePaths(packageJson.exports),
 			packageJson.leitwerk?.extension?.import,
 			packageJson.leitwerk?.extension?.source,

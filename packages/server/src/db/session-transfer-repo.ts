@@ -1,6 +1,7 @@
-import type {
-	SessionTransferAttemptState,
-	SessionTransferAttemptWire,
+import {
+	type SessionTransferAttemptWire,
+	type SessionTransferPhase,
+	sessionTransferAttemptStateForPhase,
 } from "@leitwerk-dev/session-transfer";
 import { and, eq, inArray, isNotNull, isNull, lt, notExists, or } from "drizzle-orm";
 import { createOpaqueToken, hashOpaqueToken, verifyOpaqueToken } from "../auth/auth-tokens.js";
@@ -28,9 +29,32 @@ export interface SessionTransferAttempt extends SessionTransferAttemptWire {
 	completedAt: string | null;
 }
 
-const ACTIVE_STATES: SessionTransferAttemptState[] = ["queued", "exporting", "awaiting_ack"];
+const ACTIVE_PHASES: SessionTransferPhase[] = [
+	"queued",
+	"waiting_for_execution_chain",
+	"stopping_worker",
+	"starting_exporter",
+	"scanning",
+	"ready_to_stream",
+	"streaming",
+	"awaiting_ack",
+];
+
+function isActivePhase(phase: SessionTransferPhase): boolean {
+	return ACTIVE_PHASES.includes(phase);
+}
 
 export function createSessionTransferRepo(db: LeitwerkDb) {
+	const toAttempt = (
+		row: typeof s.sessionTransferAttempts.$inferSelect | undefined,
+	): SessionTransferAttempt | null =>
+		row
+			? {
+					...row,
+					state: sessionTransferAttemptStateForPhase(row.phase),
+				}
+			: null;
+
 	return {
 		createGrant(input: { instanceId: string; now: Date; lifetimeMs: number }): {
 			grant: SessionTransferGrant;
@@ -58,27 +82,27 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 		},
 
 		getAttempt(id: string): SessionTransferAttempt | null {
-			return (
+			return toAttempt(
 				db
 					.select()
 					.from(s.sessionTransferAttempts)
 					.where(eq(s.sessionTransferAttempts.id, id))
-					.get() ?? null
+					.get(),
 			);
 		},
 
 		getActiveByInstance(instanceId: string): SessionTransferAttempt | null {
-			return (
+			return toAttempt(
 				db
 					.select()
 					.from(s.sessionTransferAttempts)
 					.where(
 						and(
 							eq(s.sessionTransferAttempts.instanceId, instanceId),
-							inArray(s.sessionTransferAttempts.state, ACTIVE_STATES),
+							inArray(s.sessionTransferAttempts.phase, ACTIVE_PHASES),
 						),
 					)
-					.get() ?? null
+					.get(),
 			);
 		},
 
@@ -86,8 +110,9 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return db
 				.select()
 				.from(s.sessionTransferAttempts)
-				.where(inArray(s.sessionTransferAttempts.state, ACTIVE_STATES))
-				.all();
+				.where(inArray(s.sessionTransferAttempts.phase, ACTIVE_PHASES))
+				.all()
+				.map((row) => toAttempt(row) as SessionTransferAttempt);
 		},
 
 		startAttempt(input: {
@@ -116,15 +141,12 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 				id: generateId("tra"),
 				grantId: grant.id,
 				instanceId: input.instanceId,
-				state: "queued",
 				phase: "queued",
 				createdAt: input.now.toISOString(),
 				leaseUntil: new Date(input.now.getTime() + input.leaseMs).toISOString(),
 				hardDeadline: new Date(input.now.getTime() + input.hardDeadlineMs).toISOString(),
 				entriesTotal: null,
-				entriesProcessed: 0,
 				logicalBytesTotal: null,
-				logicalBytesProcessed: 0,
 				compressedBytes: null,
 				streamSha256: null,
 				failureCode: null,
@@ -164,7 +186,9 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 
 		updateAttempt(
 			id: string,
-			patch: Partial<Omit<SessionTransferAttempt, "id" | "grantId" | "instanceId" | "createdAt">>,
+			patch: Partial<
+				Omit<SessionTransferAttempt, "id" | "grantId" | "instanceId" | "createdAt" | "state">
+			>,
 		): SessionTransferAttempt | null {
 			db.update(s.sessionTransferAttempts)
 				.set(patch)
@@ -175,7 +199,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 
 		renew(id: string, input: { now: Date; leaseMs: number }): SessionTransferAttempt | null {
 			const attempt = this.getAttempt(id);
-			if (!attempt || !ACTIVE_STATES.includes(attempt.state)) return attempt;
+			if (!attempt || !isActivePhase(attempt.phase)) return attempt;
 			const nextLease = Math.min(
 				input.now.getTime() + input.leaseMs,
 				Date.parse(attempt.hardDeadline),
@@ -190,20 +214,20 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 		}): SessionTransferAttempt | null {
 			const attempt = this.getAttempt(input.attemptId);
 			if (!attempt) return null;
-			if (attempt.state === "consumed") return attempt;
+			if (attempt.phase === "consumed") return attempt;
 			if (
-				attempt.state !== "awaiting_ack" ||
+				attempt.phase !== "awaiting_ack" ||
 				attempt.compressedBytes === null ||
 				!attempt.streamSha256
 			)
 				return null;
 			const completedAt = input.now.toISOString();
 			db.update(s.sessionTransferAttempts)
-				.set({ state: "consumed", phase: "consumed", completedAt })
+				.set({ phase: "consumed", completedAt })
 				.where(
 					and(
 						eq(s.sessionTransferAttempts.id, attempt.id),
-						eq(s.sessionTransferAttempts.state, "awaiting_ack"),
+						eq(s.sessionTransferAttempts.phase, "awaiting_ack"),
 					),
 				)
 				.run();
@@ -250,7 +274,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 								.where(
 									and(
 										eq(s.sessionTransferAttempts.grantId, s.sessionTransferGrants.id),
-										inArray(s.sessionTransferAttempts.state, ACTIVE_STATES),
+										inArray(s.sessionTransferAttempts.phase, ACTIVE_PHASES),
 									),
 								),
 						),

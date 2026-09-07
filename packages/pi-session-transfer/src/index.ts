@@ -2,32 +2,14 @@ import path from "node:path";
 import {
 	type ExtensionAPI,
 	type ExtensionCommandContext,
+	formatSize,
 	getAgentDir,
 } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { CancellableLoader } from "@earendil-works/pi-tui";
 import { type ParsedTransferLink, parseTransferLink } from "@leitwerk-dev/session-transfer";
 import { SessionTransferClient } from "./client.js";
 import { type ImportProgress, type ImportResult, importTransfer } from "./importer.js";
 import { LocalTransferState } from "./local-state.js";
-
-interface CommandOutcome {
-	result?: ImportResult;
-	error?: Error;
-	cancelled?: boolean;
-}
-
-function formatBytes(bytes: number | null): string {
-	if (bytes === null) return "—";
-	if (bytes < 1024) return `${bytes} B`;
-	const units = ["KiB", "MiB", "GiB", "TiB"];
-	let value = bytes / 1024;
-	let unit = units[0] as string;
-	for (let index = 1; index < units.length && value >= 1024; index += 1) {
-		value /= 1024;
-		unit = units[index] as string;
-	}
-	return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${unit}`;
-}
 
 function phaseLabel(phase: string): string {
 	return (
@@ -58,6 +40,14 @@ function percentage(progress: ImportProgress): number | null {
 	return null;
 }
 
+function progressMessage(progress: ImportProgress): string {
+	const percent = percentage(progress);
+	const files = `${progress.entriesProcessed}${progress.entriesTotal === null ? "" : ` / ${progress.entriesTotal}`} files`;
+	const logical = `${formatSize(progress.logicalBytesProcessed)}${progress.logicalBytesTotal === null ? "" : ` / ${formatSize(progress.logicalBytesTotal)}`} expanded`;
+	const received = `${formatSize(progress.compressedBytes)} received`;
+	return `${phaseLabel(progress.phase)} · ${percent === null ? "" : `${percent}% · `}${files} · ${logical} · ${received}`;
+}
+
 async function switchImportedSession(
 	ctx: ExtensionCommandContext,
 	sessionPath: string,
@@ -78,9 +68,9 @@ async function switchImportedSession(
 	}
 }
 
-export default function leitwerkSessionTransfer(pi: ExtensionAPI) {
+export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 	const state = new LocalTransferState(getAgentDir());
-	void state.reconcile().catch(() => undefined);
+	await state.reconcile();
 
 	pi.registerCommand("leitwerk-transfer", {
 		description: "Import a Leitwerk process workspace and Pi session",
@@ -89,7 +79,6 @@ export default function leitwerkSessionTransfer(pi: ExtensionAPI) {
 				ctx.ui.notify("/leitwerk-transfer is available only in interactive TUI mode", "error");
 				return;
 			}
-			await state.reconcile();
 			const rawLink =
 				args.trim() ||
 				(await ctx.ui.input(
@@ -148,75 +137,47 @@ export default function leitwerkSessionTransfer(pi: ExtensionAPI) {
 			)
 				return;
 
-			const controller = new AbortController();
-			let current: ImportProgress = {
-				phase: "queued",
-				compressedBytes: 0,
-				entriesProcessed: 0,
-				logicalBytesProcessed: 0,
-				entriesTotal: null,
-				logicalBytesTotal: null,
-				finishing: false,
-			};
-			const outcome = await ctx.ui.custom<CommandOutcome>((tui, theme, _keybindings, done) => {
-				void importTransfer({
-					link,
-					destination,
-					state,
-					signal: controller.signal,
-					onProgress(progress) {
-						current = progress;
-						tui.requestRender();
-					},
-				}).then(
-					(result) => done({ result }),
-					(error: unknown) =>
-						done({
-							error: error instanceof Error ? error : new Error("Transfer failed"),
-							cancelled: controller.signal.aborted,
-						}),
-				);
-				return {
-					render(width: number): string[] {
-						const percent = percentage(current);
-						const title = theme.fg("accent", theme.bold("Leitwerk local transfer"));
-						const phase = theme.fg("text", phaseLabel(current.phase));
-						const files = `${current.entriesProcessed}${current.entriesTotal === null ? "" : ` / ${current.entriesTotal}`} files`;
-						const logical = `${formatBytes(current.logicalBytesProcessed)}${current.logicalBytesTotal === null ? "" : ` / ${formatBytes(current.logicalBytesTotal)}`} expanded`;
-						const received = `${formatBytes(current.compressedBytes)} received`;
-						const progressText =
-							percent === null ? `${files} · ${logical}` : `${percent}% · ${files} · ${logical}`;
-						const hint = current.finishing
-							? "Final local commit cannot be cancelled"
-							: "Esc cancel";
-						return [
-							title,
-							phase,
-							theme.fg("muted", progressText),
-							theme.fg("muted", received),
-							theme.fg("dim", hint),
-						].map((line) => truncateToWidth(line, width));
-					},
-					handleInput(data: string): void {
-						if (!current.finishing && matchesKey(data, Key.escape))
-							controller.abort(new Error("Transfer cancelled"));
-					},
-					invalidate(): void {},
-				};
-			});
+			let finishing = false;
+			const outcome = await ctx.ui.custom<ImportResult | Error | null>(
+				(tui, theme, _keybindings, done) => {
+					const loader = new CancellableLoader(
+						tui,
+						(s) => theme.fg("accent", s),
+						(s) => theme.fg("muted", s),
+						"Starting transfer…",
+					);
+					loader.onAbort = () => {
+						if (!finishing) done(null);
+					};
+					void importTransfer({
+						link,
+						destination,
+						state,
+						signal: loader.signal,
+						onProgress(progress) {
+							finishing = progress.finishing;
+							loader.setMessage(progressMessage(progress));
+						},
+					}).then(
+						(result) => done(result),
+						(error: unknown) => done(error instanceof Error ? error : new Error("Transfer failed")),
+					);
+					return loader;
+				},
+			);
 
-			if (!outcome || outcome.cancelled) {
+			if (!outcome) {
 				ctx.ui.notify(
 					"Transfer cancelled. The link can be retried while it remains valid.",
 					"info",
 				);
 				return;
 			}
-			if (outcome.error || !outcome.result) {
-				ctx.ui.notify(outcome.error?.message ?? "Transfer failed", "error");
+			if (outcome instanceof Error) {
+				ctx.ui.notify(outcome.message, "error");
 				return;
 			}
-			await switchImportedSession(ctx, outcome.result.sessionPath);
+			await switchImportedSession(ctx, outcome.sessionPath);
 		},
 	});
 }

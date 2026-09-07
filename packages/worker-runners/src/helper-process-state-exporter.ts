@@ -89,7 +89,8 @@ export function createHelperProcessStateExporter(input: {
 					...report,
 					stream(): Readable {
 						const stream = relay.activateStream();
-						const cleanup = (): void => {
+						const cleanup = (error?: Error): void => {
+							if (!streamCompleted && error) relay.fail(error);
 							request.signal?.removeEventListener("abort", onAbort);
 							void exited.finally(remove);
 						};
@@ -97,13 +98,17 @@ export function createHelperProcessStateExporter(input: {
 							streamCompleted = true;
 							cleanup();
 						});
-						stream.once("error", cleanup);
-						stream.once("close", cleanup);
+						stream.once("error", (error: Error) => cleanup(error));
+						stream.once("close", () => {
+							if (!streamCompleted) relay.fail(new Error("session_transfer_stream_closed"));
+							cleanup();
+						});
 						return stream;
 					},
 				};
 			} catch (error) {
 				request.signal?.removeEventListener("abort", onAbort);
+				relay.fail(error instanceof Error ? error : new Error("session_transfer_failed"));
 				await remove();
 				throw error;
 			}

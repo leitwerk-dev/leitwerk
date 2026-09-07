@@ -37,6 +37,10 @@ async function assertDestinationAbsent(destination: string): Promise<void> {
 	}
 }
 
+function resolveImportedCwd(root: string, relative: string | null): string {
+	return relative === null || relative === "." ? root : path.resolve(root, ...relative.split("/"));
+}
+
 async function validateProjects(
 	workspaceRoot: string,
 	projects: Parameters<typeof readProjectEvidence>[1],
@@ -89,7 +93,7 @@ export async function importTransfer(input: {
 	try {
 		attempt = await client.start(input.signal);
 		heartbeat = setInterval(() => {
-			if (attempt) void client.heartbeat(attempt.id).catch(() => undefined);
+			if (attempt) void client.status(attempt.id).catch(() => undefined);
 		}, 30_000);
 		while (attempt.phase !== "ready_to_stream") {
 			if (["cancelled", "failed", "consumed"].includes(attempt.state)) {
@@ -103,8 +107,6 @@ export async function importTransfer(input: {
 				phase: attempt.phase,
 				entriesTotal: attempt.entriesTotal,
 				logicalBytesTotal: attempt.logicalBytesTotal,
-				entriesProcessed: attempt.entriesProcessed,
-				logicalBytesProcessed: attempt.logicalBytesProcessed,
 			});
 			await delay(1_000, undefined, { signal: input.signal });
 			attempt = await client.status(attempt.id, input.signal);
@@ -151,16 +153,10 @@ export async function importTransfer(input: {
 		const temporaryWorkspace = path.join(temporaryDirectory, "workspace");
 		await validateProjects(temporaryWorkspace, extracted.manifest.projects, input.signal);
 		const relativeCwd = extracted.manifest.session.cwdRelativeToWorkspace;
-		const localCwd =
-			relativeCwd === null || relativeCwd === "."
-				? destination
-				: path.resolve(destination, ...relativeCwd.split("/"));
+		const localCwd = resolveImportedCwd(destination, relativeCwd);
 		if (!isPathInside(destination, localCwd))
 			throw new Error("Imported session cwd escapes the destination");
-		const temporaryCwd =
-			relativeCwd === null || relativeCwd === "."
-				? temporaryWorkspace
-				: path.resolve(temporaryWorkspace, ...relativeCwd.split("/"));
+		const temporaryCwd = resolveImportedCwd(temporaryWorkspace, relativeCwd);
 		if (!isPathInside(temporaryWorkspace, temporaryCwd))
 			throw new Error("Imported session cwd escapes the workspace");
 		await access(temporaryCwd);

@@ -28,18 +28,46 @@ export const SESSION_TRANSFER_PHASES = [
 ] as const;
 export type SessionTransferPhase = (typeof SESSION_TRANSFER_PHASES)[number];
 
+const SESSION_TRANSFER_QUEUED_PHASES = new Set<SessionTransferPhase>([
+	"queued",
+	"waiting_for_execution_chain",
+]);
+const SESSION_TRANSFER_EXPORTING_PHASES = new Set<SessionTransferPhase>([
+	"stopping_worker",
+	"starting_exporter",
+	"scanning",
+	"ready_to_stream",
+	"streaming",
+]);
+
+/** Derives the public coarse status from the persisted lifecycle phase. */
+export function sessionTransferAttemptStateForPhase(
+	phase: SessionTransferPhase,
+): SessionTransferAttemptState {
+	if (SESSION_TRANSFER_QUEUED_PHASES.has(phase)) return "queued";
+	if (SESSION_TRANSFER_EXPORTING_PHASES.has(phase)) return "exporting";
+	switch (phase) {
+		case "awaiting_ack":
+		case "consumed":
+		case "cancelled":
+		case "failed":
+			return phase;
+		default:
+			throw new Error(`Unknown session transfer phase: ${phase}`);
+	}
+}
+
 export interface SessionTransferAttemptWire {
 	id: string;
 	grantId: string;
 	instanceId: string;
+	/** Derived from phase; it is not persisted in the server database. */
 	state: SessionTransferAttemptState;
 	phase: SessionTransferPhase;
 	leaseUntil: string;
 	hardDeadline: string;
 	entriesTotal: number | null;
-	entriesProcessed: number;
 	logicalBytesTotal: number | null;
-	logicalBytesProcessed: number;
 	compressedBytes: number | null;
 	streamSha256: string | null;
 	failureCode: string | null;
@@ -79,20 +107,13 @@ export const DEFAULT_SESSION_TRANSFER_LIMITS: SessionTransferLimits = {
 export const leitwerkTransferManifestV1Schema = v.object({
 	version: v.literal(1, "Unsupported transfer manifest version"),
 	instanceId: nonBlankStringSchema,
-	processId: nonBlankStringSchema,
-	processTitle: v.nullable(nonBlankStringSchema),
 	createdAt: v.pipe(
 		nonBlankStringSchema,
 		v.check((value) => Number.isFinite(Date.parse(value)), "Expected an ISO datetime"),
 	),
 	session: v.object({
-		relativePath: v.literal("session.jsonl"),
 		sourceCwd: nonBlankStringSchema,
 		cwdRelativeToWorkspace: v.nullable(v.union([v.literal("."), normalizedRelativePathSchema])),
-	}),
-	workspace: v.object({
-		relativePath: v.literal("workspace"),
-		hasLocalState: v.boolean(),
 	}),
 	projects: v.array(
 		v.object({
@@ -119,11 +140,10 @@ export type SessionTransferPreflightReport = v.InferOutput<
 	typeof sessionTransferPreflightReportSchema
 >;
 
-export const sessionTransferProgressSchema = v.object({
-	entriesProcessed: nonNegativeSafeIntegerSchema,
-	logicalBytesProcessed: nonNegativeSafeIntegerSchema,
-});
-export type TransferArchiveProgress = v.InferOutput<typeof sessionTransferProgressSchema>;
+export interface TransferArchiveProgress {
+	entriesProcessed: number;
+	logicalBytesProcessed: number;
+}
 
 export const sessionTransferHelperSpecSchema = v.object({
 	manifest: leitwerkTransferManifestV1Schema,
@@ -153,6 +173,21 @@ function string(value: unknown, label: string): string {
 	return value;
 }
 
+export function parsePiSessionHeader(content: string): Record<string, unknown> {
+	const firstLine = content.split(/\r?\n/, 1)[0];
+	if (!firstLine) throw new Error("Pi session is empty");
+	const value = JSON.parse(firstLine) as unknown;
+	if (
+		!value ||
+		typeof value !== "object" ||
+		Array.isArray(value) ||
+		(value as Record<string, unknown>).type !== "session"
+	) {
+		throw new Error("Pi session header is invalid");
+	}
+	return value as Record<string, unknown>;
+}
+
 export function isPathInside(root: string, candidate: string): boolean {
 	const relative = path.relative(path.resolve(root), path.resolve(candidate));
 	return (
@@ -180,6 +215,24 @@ export function parseSessionTransferHelperSpec(value: unknown): SessionTransferH
 	return v.parse(sessionTransferHelperSpecSchema, value);
 }
 
+const TRANSFER_ID_PATTERN = /^[A-Za-z0-9_.-]+$/;
+
+function decodeTransferId(value: string, label: string): string {
+	let decoded: string;
+	try {
+		decoded = decodeURIComponent(value);
+	} catch (error) {
+		throw new Error(`Transfer link has an invalid ${label}`, { cause: error });
+	}
+	// IDs are used to construct subsequent request paths. Reject encoded path
+	// separators rather than allowing a single route parameter to become a
+	// different path when it is re-encoded by the client.
+	if (!TRANSFER_ID_PATTERN.test(decoded)) {
+		throw new Error(`Transfer link has an invalid ${label}`);
+	}
+	return decoded;
+}
+
 export function parseTransferLink(raw: string): ParsedTransferLink {
 	let url: URL;
 	try {
@@ -199,16 +252,17 @@ export function parseTransferLink(raw: string): ParsedTransferLink {
 		throw new Error("Transfer link contains unexpected URL credentials or query parameters");
 	const match = /^\/api\/session-transfers\/([^/]+)\/([^/]+)$/.exec(url.pathname);
 	if (!match) throw new Error("Transfer link has an unexpected path");
+	const instanceId = decodeTransferId(match[1] as string, "instance id");
+	const grantId = decodeTransferId(match[2] as string, "grant id");
 	const token = new URLSearchParams(url.hash.slice(1)).get("token");
 	if (!token || token.length < 32)
 		throw new Error("Transfer link is missing its bearer token fragment");
-	url.hash = "";
 	return {
 		origin: url.origin,
-		instanceId: decodeURIComponent(match[1] as string),
-		grantId: decodeURIComponent(match[2] as string),
+		instanceId,
+		grantId,
 		token,
-		grantUrl: url.toString().replace(/\/$/, ""),
+		grantUrl: `${url.origin}/api/session-transfers/${encodeURIComponent(instanceId)}/${encodeURIComponent(grantId)}`,
 	};
 }
 
@@ -234,10 +288,7 @@ export function rewritePiSession(
 			throw error;
 		}
 	});
-	const sourceHeader = parsed[0] as Record<string, unknown>;
-	if (sourceHeader.type !== "session") {
-		throw new Error("Transferred session has no Pi session header");
-	}
+	const sourceHeader = parsePiSessionHeader(content);
 	if (sourceHeader.version !== 3) {
 		throw new Error("unsupported_pi_session_version");
 	}

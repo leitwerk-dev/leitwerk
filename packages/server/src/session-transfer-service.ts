@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import {
 	DEFAULT_SESSION_TRANSFER_LIMITS,
 	type LeitwerkTransferManifestV1,
+	parsePiSessionHeader,
 	type SessionTransferLimits,
 } from "@leitwerk-dev/session-transfer";
 import type {
@@ -46,24 +47,13 @@ export function presentSessionTransferOperation(attempt: SessionTransferAttempt 
 		? {
 				attemptId: attempt.id,
 				phase: attempt.phase,
-				blocksManualTurns: attempt.state === "queued" || attempt.state === "exporting",
+				blocksManualTurns:
+					attempt.phase !== "awaiting_ack" &&
+					attempt.phase !== "consumed" &&
+					attempt.phase !== "cancelled" &&
+					attempt.phase !== "failed",
 			}
 		: null;
-}
-
-function parseSessionHeader(content: string): Record<string, unknown> {
-	const firstLine = content.split(/\r?\n/, 1)[0];
-	if (!firstLine) throw new Error("Primary Pi session is empty");
-	const value = JSON.parse(firstLine) as unknown;
-	if (
-		!value ||
-		typeof value !== "object" ||
-		Array.isArray(value) ||
-		(value as Record<string, unknown>).type !== "session"
-	) {
-		throw new Error("Primary Pi session header is invalid");
-	}
-	return value as Record<string, unknown>;
 }
 
 function relativeSessionCwd(input: {
@@ -123,7 +113,7 @@ export function createSessionTransferService(deps: {
 	function updatePhase(
 		id: string,
 		phase: SessionTransferPhase,
-		extra: Partial<SessionTransferAttempt> = {},
+		extra: Partial<Omit<SessionTransferAttempt, "state">> = {},
 	): SessionTransferAttempt | null {
 		return publish(deps.repos.sessionTransfers.updateAttempt(id, { phase, ...extra }));
 	}
@@ -135,7 +125,7 @@ export function createSessionTransferService(deps: {
 		if (!process) throw new Error("Process was deleted");
 		const handle = await deps.sessionSource.readSnapshotHandle(attempt.instanceId);
 		if (!handle) throw new Error("Primary Pi session is unavailable");
-		const header = parseSessionHeader(await handle.load());
+		const header = parsePiSessionHeader(await handle.load());
 		const sourceCwd = typeof header.cwd === "string" ? header.cwd : "";
 		if (!sourceCwd) throw new Error("Primary Pi session header has no cwd");
 		const projects = deps.repos.projects.listByInstance(attempt.instanceId);
@@ -143,11 +133,8 @@ export function createSessionTransferService(deps: {
 		return {
 			version: 1,
 			instanceId: process.id,
-			processId: process.processId,
-			processTitle: process.title,
 			createdAt: now().toISOString(),
 			session: {
-				relativePath: "session.jsonl",
 				sourceCwd,
 				cwdRelativeToWorkspace: relativeSessionCwd({
 					sourceCwd,
@@ -155,7 +142,6 @@ export function createSessionTransferService(deps: {
 					repositoryBacked: projects.length > 0,
 				}),
 			},
-			workspace: { relativePath: "workspace", hasLocalState: projects.length > 0 },
 			projects: projects.map((project) => ({
 				key: project.key,
 				relativePath: project.key,
@@ -167,13 +153,12 @@ export function createSessionTransferService(deps: {
 
 	function transitionTerminal(
 		attemptId: string,
-		state: "failed" | "cancelled",
+		phase: "failed" | "cancelled",
 		code: string,
 	): SessionTransferAttempt | null {
 		const attempt = publish(
 			deps.repos.sessionTransfers.updateAttempt(attemptId, {
-				state,
-				phase: state,
+				phase,
 				failureCode: code,
 				completedAt: now().toISOString(),
 			}),
@@ -206,7 +191,7 @@ export function createSessionTransferService(deps: {
 					if (!stable || (lease && lease.state !== "idle" && lease.state !== "failed")) {
 						return false;
 					}
-					updatePhase(attempt.id, "stopping_worker", { state: "exporting" });
+					updatePhase(attempt.id, "stopping_worker");
 					return true;
 				});
 				if (reserved) break;
@@ -234,23 +219,43 @@ export function createSessionTransferService(deps: {
 		})()
 			.catch((error: unknown) => {
 				const current = deps.repos.sessionTransfers.getAttempt(attempt.id);
-				if (current && (current.state === "queued" || current.state === "exporting")) {
+				if (
+					current &&
+					current.phase !== "awaiting_ack" &&
+					current.phase !== "consumed" &&
+					current.phase !== "cancelled" &&
+					current.phase !== "failed"
+				) {
 					failAttempt(attempt.id, error instanceof Error ? error.message : "export_failed");
 				}
 				deps.logger?.warn({ error, attemptId: attempt.id }, "session transfer export failed");
 			})
 			.finally(() => {
 				const current = deps.repos.sessionTransfers.getAttempt(attempt.id);
-				if (current && current.state !== "exporting" && current.state !== "queued") {
+				if (
+					current &&
+					["awaiting_ack", "consumed", "cancelled", "failed"].includes(current.phase)
+				) {
 					runtimes.delete(attempt.id);
 				}
 			});
 	}
 
 	function cancelAttempt(attempt: SessionTransferAttempt, code: string): SessionTransferAttempt {
-		if (attempt.state === "consumed" || attempt.state === "cancelled" || attempt.state === "failed")
-			return attempt;
+		if (["consumed", "cancelled", "failed"].includes(attempt.phase)) return attempt;
 		return transitionTerminal(attempt.id, "cancelled", code) as SessionTransferAttempt;
+	}
+
+	function deadlineCode(attempt: SessionTransferAttempt): string | null {
+		const currentTime = now().getTime();
+		if (Date.parse(attempt.hardDeadline) <= currentTime) return "hard_deadline_expired";
+		if (Date.parse(attempt.leaseUntil) <= currentTime) return "lease_expired";
+		return null;
+	}
+
+	function cancelIfExpired(attempt: SessionTransferAttempt): SessionTransferAttempt {
+		const code = deadlineCode(attempt);
+		return (code ? cancelAttempt(attempt, code) : attempt) ?? attempt;
 	}
 
 	function sweep(): void {
@@ -286,6 +291,7 @@ export function createSessionTransferService(deps: {
 			});
 		},
 		startAttempt(input: { instanceId: string; grantId: string; token: string }) {
+			if (deps.isDeletionPending?.(input.instanceId)) return { kind: "not_found" as const };
 			const result = deps.repos.transaction((repos) =>
 				repos.sessionTransfers.startAttempt({
 					...input,
@@ -303,30 +309,34 @@ export function createSessionTransferService(deps: {
 		heartbeat(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			if (!attempt) return null;
+			const current = cancelIfExpired(attempt);
+			if (current.phase === "cancelled" || current.phase === "failed") return current;
 			return (
-				deps.repos.sessionTransfers.renew(attempt.id, { now: now(), leaseMs: ATTEMPT_LEASE_MS }) ??
-				attempt
+				deps.repos.sessionTransfers.renew(current.id, { now: now(), leaseMs: ATTEMPT_LEASE_MS }) ??
+				current
 			);
 		},
 		openStream(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
-			const runtime = attempt ? runtimes.get(attempt.id) : undefined;
-			if (
-				!runtime?.prepared ||
-				!attempt ||
-				attempt.phase !== "ready_to_stream" ||
-				runtime.streamClaimed
-			) {
+			if (!attempt || deadlineCode(attempt)) {
+				if (attempt) cancelIfExpired(attempt);
+				throw new Error("transfer_stream_unavailable");
+			}
+			const runtime = runtimes.get(attempt.id);
+			if (!runtime?.prepared || attempt.phase !== "ready_to_stream" || runtime.streamClaimed) {
 				throw new Error("transfer_stream_unavailable");
 			}
 			runtime.streamClaimed = true;
 			updatePhase(attempt.id, "streaming");
-			const source = runtime.prepared.stream({
-				signal: runtime.controller.signal,
-				onProgress: (progress) => {
-					deps.repos.sessionTransfers.updateAttempt(attempt.id, progress);
-				},
-			});
+			let source: ReturnType<PreparedProcessStateExport["stream"]>;
+			try {
+				source = runtime.prepared.stream({
+					signal: runtime.controller.signal,
+				});
+			} catch (error) {
+				failAttempt(attempt.id, error instanceof Error ? error.message : "stream_failed");
+				throw error;
+			}
 			const hash = createHash("sha256");
 			let compressedBytes = 0;
 			let finished = false;
@@ -344,7 +354,6 @@ export function createSessionTransferService(deps: {
 					finished = true;
 					publish(
 						deps.repos.sessionTransfers.updateAttempt(attempt.id, {
-							state: "awaiting_ack",
 							phase: "awaiting_ack",
 							compressedBytes,
 							streamSha256: hash.digest("hex"),
@@ -355,10 +364,15 @@ export function createSessionTransferService(deps: {
 				},
 			});
 			source.on("error", (error) => meter.destroy(error));
+			const abortStream = (): void => {
+				if (!finished) failAttempt(attempt.id, "stream_interrupted");
+				runtimes.delete(attempt.id);
+			};
 			meter.on("error", (error) => {
 				if (!finished) failAttempt(attempt.id, error.message || "stream_failed");
 				runtimes.delete(attempt.id);
 			});
+			meter.on("close", abortStream);
 			source.pipe(meter);
 			return meter;
 		},
@@ -369,13 +383,18 @@ export function createSessionTransferService(deps: {
 		cancelForWeb(instanceId: string, attemptId: string) {
 			const attempt = deps.repos.sessionTransfers.getAttempt(attemptId);
 			if (!attempt || attempt.instanceId !== instanceId) return null;
-			return attempt.state === "awaiting_ack"
+			return attempt.phase === "awaiting_ack"
 				? attempt
 				: cancelAttempt(attempt, "operator_cancelled");
 		},
 		acknowledge(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			if (!attempt) return null;
+			if (attempt.phase === "consumed") return attempt;
+			if (deadlineCode(attempt)) {
+				cancelIfExpired(attempt);
+				return null;
+			}
 			const acknowledged = deps.repos.transaction((repos) =>
 				repos.sessionTransfers.acknowledge({
 					attemptId: attempt.id,
@@ -398,12 +417,9 @@ export function createSessionTransferService(deps: {
 			for (const attempt of deps.repos.sessionTransfers.listActive()) {
 				if (attempt.phase === "streaming") {
 					failAttempt(attempt.id, "server_restarted_during_stream");
-				} else if (attempt.state === "queued" || attempt.state === "exporting") {
-					deps.repos.sessionTransfers.updateAttempt(attempt.id, {
-						state: "queued",
-						phase: "queued",
-					});
-					launch({ ...attempt, state: "queued", phase: "queued" });
+				} else if (attempt.phase !== "awaiting_ack") {
+					deps.repos.sessionTransfers.updateAttempt(attempt.id, { phase: "queued" });
+					launch({ ...attempt, phase: "queued", state: "queued" });
 				}
 			}
 			sweep();
@@ -414,12 +430,15 @@ export function createSessionTransferService(deps: {
 		stop() {
 			if (sweepTimer) clearInterval(sweepTimer);
 			sweepTimer = null;
+			for (const runtime of runtimes.values()) {
+				runtime.controller.abort(new Error("server_stopping"));
+			}
+			runtimes.clear();
 			deps.helperRelays.stop();
 		},
 		helperSpec: deps.helperRelays.helperSpec,
 		reportHelperPreflight: deps.helperRelays.reportHelperPreflight,
 		acceptHelperStream: deps.helperRelays.acceptHelperStream,
-		reportHelperProgress: deps.helperRelays.reportHelperProgress,
 	};
 }
 

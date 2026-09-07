@@ -235,13 +235,6 @@ describe("session transfer service", () => {
 			for await (const chunk of output) delivered.push(Buffer.from(chunk));
 		})();
 		await expect(preflightAccepted).resolves.toBe(true);
-		expect(
-			service.reportHelperProgress({
-				exportId: helper.exportId,
-				credential: helper.credential,
-				progress: { entriesProcessed: 1, logicalBytesProcessed: 20 },
-			}),
-		).toBe(true);
 		const upload = new Readable({ read() {} });
 		expect(
 			service.acceptHelperStream({
@@ -256,10 +249,34 @@ describe("session transfer service", () => {
 		expect(Buffer.concat(delivered).toString()).toBe("helper archive");
 		expect(service.heartbeat(auth)).toMatchObject({
 			state: "awaiting_ack",
-			entriesProcessed: 1,
-			logicalBytesProcessed: 20,
+			phase: "awaiting_ack",
 			compressedBytes: 14,
 		});
+	});
+
+	it("does not open an expired stream even before the periodic sweep", async () => {
+		const { repos, process, service } = harness();
+		const createdGrant = await grant(service, process.id);
+		const started = service.startAttempt({
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			token: createdGrant.rawToken,
+		});
+		if (started.kind !== "created") throw new Error("Expected attempt");
+		await vi.waitFor(() =>
+			expect(service.activeForProcess(process.id)?.phase).toBe("ready_to_stream"),
+		);
+		repos.sessionTransfers.updateAttempt(started.attempt.id, {
+			leaseUntil: new Date(Date.now() - 1_000).toISOString(),
+		});
+		const auth = {
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			attemptId: started.attempt.id,
+			token: createdGrant.rawToken,
+		};
+		expect(() => service.openStream(auth)).toThrow("transfer_stream_unavailable");
+		expect(service.activeForProcess(process.id)).toBeNull();
 	});
 
 	it("records the delivered stream digest before idempotent acknowledgement", async () => {

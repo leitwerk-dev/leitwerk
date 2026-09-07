@@ -48,17 +48,12 @@ export interface ExtractTransferResult {
 	manifest: LeitwerkTransferManifestV1;
 	compressedBytes: number;
 	streamSha256: string;
-	entriesProcessed: number;
-	logicalBytesProcessed: number;
 }
 
 export interface PreparedTransferArchive {
 	manifest: LeitwerkTransferManifestV1;
 	preflight: TransferPreflight;
-	stream(input: {
-		signal?: AbortSignal;
-		onProgress?: (progress: TransferArchiveProgress) => void;
-	}): Readable;
+	stream(input: { signal?: AbortSignal }): Readable;
 }
 
 function abortIfNeeded(signal?: AbortSignal): void {
@@ -100,6 +95,12 @@ export async function scanPortableWorkspace(input: {
 		names.sort((left, right) => Buffer.from(left).compare(Buffer.from(right)));
 		for (const name of names) {
 			abortIfNeeded(input.signal);
+			// Archive paths are normalized with POSIX separators during extraction.
+			// A backslash is a valid POSIX filename character, so reject it here
+			// rather than silently changing the exported filename on import.
+			if (name.includes("\\")) {
+				throw new Error(`Workspace entry contains an unsupported path separator: ${name}`);
+			}
 			const absolute = path.join(directory, name);
 			if (!isPathInside(root, absolute))
 				throw new Error("Workspace scan escaped its configured root");
@@ -154,7 +155,6 @@ function addFileEntry(
 	header: TarHeader,
 	filePath: string,
 	signal: AbortSignal | undefined,
-	onBytes: (bytes: number) => void,
 ): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const entry = pack.entry(header, (error) => (error ? reject(error) : resolve()));
@@ -162,7 +162,6 @@ function addFileEntry(
 			transform(chunk: Buffer, _encoding, callback) {
 				try {
 					abortIfNeeded(signal);
-					onBytes(chunk.length);
 					callback(null, chunk);
 				} catch (error) {
 					callback(error as Error);
@@ -183,14 +182,12 @@ export async function prepareTransferArchive(input: {
 	const preflight = await scanPortableWorkspace(input);
 	const manifest: LeitwerkTransferManifestV1 = {
 		...input.manifest,
-		workspace: { ...input.manifest.workspace, hasLocalState: preflight.entries.length > 0 },
 		projects: await readProjectEvidence(input.workspaceRoot, input.manifest.projects, input.signal),
 	};
 	return {
 		manifest,
 		preflight,
-		stream: ({ signal, onProgress }) =>
-			createTransferArchive({ ...input, manifest, preflight, signal, onProgress }),
+		stream: ({ signal }) => createTransferArchive({ ...input, manifest, preflight, signal }),
 	};
 }
 
@@ -200,7 +197,6 @@ export function createTransferArchive(input: {
 	manifest: LeitwerkTransferManifestV1;
 	preflight: TransferPreflight;
 	signal?: AbortSignal;
-	onProgress?: (progress: TransferArchiveProgress) => void;
 }): Readable {
 	const pack = tar.pack();
 	const zstd = createZstdCompress({
@@ -210,22 +206,15 @@ export function createTransferArchive(input: {
 		},
 	});
 	const createdAt = new Date(input.manifest.createdAt);
-	let entriesProcessed = 0;
-	let logicalBytesProcessed = 0;
-	const report = (): void => input.onProgress?.({ entriesProcessed, logicalBytesProcessed });
 	const finish = async (): Promise<void> => {
 		const manifest = `${JSON.stringify(input.manifest)}\n`;
 		await addBufferEntry(pack, { name: "manifest.json", mode: 0o600, mtime: createdAt }, manifest);
-		entriesProcessed += 1;
-		report();
 		await addBufferEntry(pack, {
 			name: "workspace/",
 			type: "directory",
 			mode: 0o755,
 			mtime: createdAt,
 		});
-		entriesProcessed += 1;
-		report();
 		for (const entry of input.preflight.entries) {
 			abortIfNeeded(input.signal);
 			const name = `workspace/${entry.relativePath}${entry.kind === "directory" ? "/" : ""}`;
@@ -243,16 +232,10 @@ export function createTransferArchive(input: {
 					header,
 					path.join(input.workspaceRoot, ...entry.relativePath.split("/")),
 					input.signal,
-					(bytes) => {
-						logicalBytesProcessed += bytes;
-						report();
-					},
 				);
 			} else {
 				await addBufferEntry(pack, header);
 			}
-			entriesProcessed += 1;
-			report();
 		}
 		const workspaceBytes = input.preflight.entries.reduce(
 			(sum, entry) => sum + (entry.kind === "file" ? entry.size : 0),
@@ -268,13 +251,7 @@ export function createTransferArchive(input: {
 			},
 			input.sessionFile,
 			input.signal,
-			(bytes) => {
-				logicalBytesProcessed += bytes;
-				report();
-			},
 		);
-		entriesProcessed += 1;
-		report();
 		pack.finalize();
 	};
 	void finish().catch((error) => pack.destroy(error as Error));
@@ -412,11 +389,8 @@ export async function extractTransferArchive(input: {
 				await symlink(link, target);
 			} else if (header.type === "file" || !header.type) {
 				const size = header.size ?? 0;
-				if (name !== "manifest.json") {
-					logicalBytesProcessed += size;
-					if (logicalBytesProcessed > limits.maxLogicalBytes) {
-						throw new Error("Transfer logical byte limit exceeded");
-					}
+				if (!Number.isSafeInteger(size) || size < 0) {
+					throw new Error(`Invalid size for archive entry '${name}'`);
 				}
 				await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
 				if (name === "manifest.json") {
@@ -429,12 +403,25 @@ export async function extractTransferArchive(input: {
 					manifest = parseTransferManifest(JSON.parse(content.toString("utf8")));
 				} else {
 					const handle = await open(target, "wx", mode);
+					let actualSize = 0;
 					try {
 						for await (const chunk of entryStream as AsyncIterable<Uint8Array>) {
-							await handle.write(chunk);
+							const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+							actualSize += buffer.length;
+							logicalBytesProcessed += buffer.length;
+							if (
+								!Number.isSafeInteger(actualSize) ||
+								logicalBytesProcessed > limits.maxLogicalBytes
+							) {
+								throw new Error("Transfer logical byte limit exceeded");
+							}
+							await handle.write(buffer);
 						}
 					} finally {
 						await handle.close();
+					}
+					if (actualSize !== size) {
+						throw new Error(`Archive entry '${name}' size does not match its content`);
 					}
 					await chmod(target, mode);
 					await utimes(target, mtime, mtime);
@@ -466,7 +453,5 @@ export async function extractTransferArchive(input: {
 		manifest,
 		compressedBytes,
 		streamSha256: hash.digest("hex"),
-		entriesProcessed,
-		logicalBytesProcessed,
 	};
 }

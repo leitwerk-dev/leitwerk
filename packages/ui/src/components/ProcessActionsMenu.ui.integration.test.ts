@@ -341,6 +341,8 @@ describe("ProcessActionsMenu", () => {
 
 			expect(createSessionTransferGrant).toHaveBeenCalledWith("test-instance-id");
 			expect(target.textContent).toContain("Open this process in local Pi");
+			expect(target.textContent).toContain("expires");
+			expect(target.textContent).not.toContain("start within 1 hour");
 			expect(target.textContent).toContain(
 				"Anyone with this link can download this session and workspace.",
 			);
@@ -361,7 +363,8 @@ describe("ProcessActionsMenu", () => {
 			await flush();
 			openMenu(target);
 			await flush();
-			expect(target.textContent).toContain("preparing a stable snapshot");
+			expect(target.textContent).toContain("Local transfer: Scanning.");
+			expect(target.textContent).toContain("New manual turns are blocked until streaming ends.");
 			clickButtonByText(target, "Cancel transfer");
 			await flush();
 			expect(cancelSessionTransfer).toHaveBeenCalledWith("test-instance-id", "tra_1");

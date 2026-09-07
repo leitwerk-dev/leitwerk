@@ -33,11 +33,8 @@ async function fixture() {
 	const manifest: LeitwerkTransferManifestV1 = {
 		version: 1,
 		instanceId: "agt_1",
-		processId: "demo",
-		processTitle: "Demo",
 		createdAt: new Date().toISOString(),
-		session: { relativePath: "session.jsonl", sourceCwd: workspace, cwdRelativeToWorkspace: "." },
-		workspace: { relativePath: "workspace", hasLocalState: true },
+		session: { sourceCwd: workspace, cwdRelativeToWorkspace: "." },
 		projects: [],
 	};
 	return { root, workspace, session, manifest };
@@ -55,6 +52,14 @@ describe("session transfer format", () => {
 				"http://leitwerk.example/api/session-transfers/agt_1/trg_1#token=abcdefghijklmnopqrstuvwxyz123456",
 			),
 		).toThrow("require HTTPS");
+	});
+
+	it("rejects transfer ids that decode into path separators", () => {
+		expect(() =>
+			parseTransferLink(
+				"https://leitwerk.example/api/session-transfers/agt%2Fescape/trg_1#token=abcdefghijklmnopqrstuvwxyz123456",
+			),
+		).toThrow("invalid instance id");
 	});
 
 	it("validates helper specs with the shared transfer schemas", async () => {

@@ -22,22 +22,11 @@ export class SessionTransferClient {
 	constructor(private readonly link: ParsedTransferLink) {}
 
 	private attemptPath(attemptId: string, suffix = ""): string {
-		return `${this.link.grantUrl}/attempts/${encodeURIComponent(attemptId)}${suffix}`;
+		return `/attempts/${encodeURIComponent(attemptId)}${suffix}`;
 	}
 
-	private async request(url: string, init: RequestInit = {}): Promise<Response> {
-		const target = new URL(url);
-		if (
-			target.origin !== this.link.origin ||
-			!target.pathname.startsWith(
-				`/api/session-transfers/${encodeURIComponent(this.link.instanceId)}/${encodeURIComponent(this.link.grantId)}`,
-			)
-		) {
-			throw new Error(
-				"Refusing to send the transfer token outside its exact origin and grant path",
-			);
-		}
-		const response = await fetch(target, {
+	private async request(suffix: string, init: RequestInit = {}): Promise<Response> {
+		const response = await fetch(`${this.link.grantUrl}${suffix}`, {
 			...init,
 			redirect: "manual",
 			headers: { ...init.headers, Authorization: `Bearer ${this.link.token}` },
@@ -63,18 +52,11 @@ export class SessionTransferClient {
 	}
 
 	async start(signal?: AbortSignal): Promise<RemoteTransferAttempt> {
-		return this.requestAttempt(`${this.link.grantUrl}/attempts`, { method: "POST", signal });
+		return this.requestAttempt("/attempts", { method: "POST", signal });
 	}
 
 	async status(attemptId: string, signal?: AbortSignal): Promise<RemoteTransferAttempt> {
 		return this.requestAttempt(this.attemptPath(attemptId), { signal });
-	}
-
-	async heartbeat(attemptId: string, signal?: AbortSignal): Promise<void> {
-		await this.requestOk(this.attemptPath(attemptId, "/heartbeat"), {
-			method: "POST",
-			signal,
-		});
 	}
 
 	async stream(attemptId: string, signal?: AbortSignal): Promise<Readable> {

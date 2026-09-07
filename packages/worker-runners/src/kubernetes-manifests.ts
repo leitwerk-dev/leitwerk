@@ -181,9 +181,16 @@ export function kubernetesWorkerPodName(instanceId: string, workerId: string): s
 }
 
 export function kubernetesExportHelperPodName(instanceId: string, exportId: string): string {
-	return safeKubernetesDnsName(
-		`leitwerk-export-${sanitizeKubernetesNameSegment(instanceId)}-${sanitizeKubernetesNameSegment(exportId)}`,
+	const exportSegment = sanitizeKubernetesNameSegment(exportId);
+	const suffix = `-${exportSegment}`;
+	const instancePrefix = safeKubernetesDnsName(
+		`leitwerk-export-${sanitizeKubernetesNameSegment(instanceId)}`,
+		Math.max(1, DNS_LABEL_MAX - suffix.length),
 	);
+	// Keep the random export id at the end of the name. Truncating the full
+	// prefix would otherwise make long instance ids produce colliding helper
+	// names for different exports.
+	return safeKubernetesDnsName(`${instancePrefix}${suffix}`);
 }
 
 export function kubernetesProcessPvcName(

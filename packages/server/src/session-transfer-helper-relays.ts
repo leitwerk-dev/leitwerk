@@ -4,7 +4,6 @@ import {
 	type LeitwerkTransferManifestV1,
 	type SessionTransferLimits,
 	sessionTransferPreflightReportSchema,
-	sessionTransferProgressSchema,
 } from "@leitwerk-dev/session-transfer";
 import type {
 	ProcessStateExportHelperRelay,
@@ -45,11 +44,8 @@ function manifestAuthority(manifest: LeitwerkTransferManifestV1) {
 	return {
 		version: manifest.version,
 		instanceId: manifest.instanceId,
-		processId: manifest.processId,
-		processTitle: manifest.processTitle,
 		createdAt: manifest.createdAt,
 		session: manifest.session,
-		workspacePath: manifest.workspace.relativePath,
 		projects: manifest.projects.map(({ key, relativePath }) => ({ key, relativePath })),
 	};
 }
@@ -203,28 +199,6 @@ export function createSessionTransferHelperRelays(deps: {
 			input.stream.on("error", (error) => helper.upload.destroy(error));
 			input.stream.once("end", () => helpers.delete(input.exportId));
 			input.stream.pipe(helper.upload);
-			return true;
-		},
-		reportHelperProgress(input: {
-			exportId: string;
-			credential: string;
-			progress: unknown;
-		}): boolean {
-			const helper = active(input.exportId, input.credential);
-			if (!helper?.reported) return false;
-			const attempt = deps.repos.sessionTransfers.getAttempt(helper.attemptId);
-			const parsed = v.safeParse(sessionTransferProgressSchema, input.progress);
-			if (!attempt || attempt.phase !== "streaming" || !parsed.success) return false;
-			const progress = parsed.output;
-			if (
-				progress.entriesProcessed < attempt.entriesProcessed ||
-				progress.entriesProcessed > (attempt.entriesTotal ?? 0) ||
-				progress.logicalBytesProcessed < attempt.logicalBytesProcessed ||
-				progress.logicalBytesProcessed > (attempt.logicalBytesTotal ?? 0)
-			) {
-				return false;
-			}
-			deps.repos.sessionTransfers.updateAttempt(attempt.id, progress);
 			return true;
 		},
 	};

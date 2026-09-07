@@ -281,6 +281,41 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		},
 	},
 	{
+		id: "20260902_session_transfer_phase_state_and_progress",
+		tableNames: ["session_transfer_attempts"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "session_transfer_attempts") !== null &&
+			(tableHasColumn(sqlite, "session_transfer_attempts", "state") ||
+				tableHasColumn(sqlite, "session_transfer_attempts", "entries_processed") ||
+				tableHasColumn(sqlite, "session_transfer_attempts", "logical_bytes_processed")),
+		apply(sqlite) {
+			for (const index of [
+				"uq_session_transfer_active_instance",
+				"idx_session_transfer_attempts_grant",
+				"idx_session_transfer_attempts_instance",
+				"idx_session_transfer_attempts_deadlines",
+			]) {
+				sqlite.exec(`DROP INDEX IF EXISTS ${index}`);
+			}
+			sqlite.exec(
+				"ALTER TABLE session_transfer_attempts RENAME TO session_transfer_attempts_legacy",
+			);
+			createTableWithIndexes(sqlite, schema.sessionTransferAttempts);
+			sqlite.exec(`
+				INSERT INTO session_transfer_attempts (
+					id, grant_id, instance_id, phase, created_at, lease_until, hard_deadline,
+					entries_total, logical_bytes_total, compressed_bytes, stream_sha256,
+					failure_code, completed_at
+				)
+				SELECT id, grant_id, instance_id, phase, created_at, lease_until, hard_deadline,
+					entries_total, logical_bytes_total, compressed_bytes, stream_sha256,
+					failure_code, completed_at
+				FROM session_transfer_attempts_legacy
+			`);
+			sqlite.exec("DROP TABLE session_transfer_attempts_legacy");
+		},
+	},
+	{
 		id: "20260827_add_worker_startup_observations",
 		tableNames: ["worker_leases"],
 		matches: (sqlite) =>

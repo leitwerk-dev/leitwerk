@@ -15,11 +15,18 @@
 	],
 	"pi": {
 		"extensions": [
-			"./src/index.ts"
+			"./dist/index.js"
 		]
 	},
 	"exports": {
-		".": "./src/index.ts"
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
 	},
 	"dependencies": {
 		"@leitwerk-dev/session-transfer": "0.1.9"
@@ -31,7 +38,8 @@
 	"devDependencies": {
 		"@earendil-works/pi-coding-agent": "^0.81.1",
 		"@earendil-works/pi-tui": "^0.81.1",
-		"@types/node": "^25.0.3"
+		"@types/node": "^25.0.3",
+		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {
@@ -41,9 +49,9 @@
 		"node": ">=26 <27"
 	},
 	"files": [
+		"dist/**",
 		"src/**",
-		"LICENSE",
-		"README.md",
+		"!dist/**/*.test.*",
 		"!src/**/*.test.ts"
 	]
 }

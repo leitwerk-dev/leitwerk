@@ -40,21 +40,6 @@ export function registerInternalSessionTransferExportRoutes(
 		return reply.code(204).send();
 	});
 
-	app.post("/internal/session-transfer-exports/:exportId/progress", async (request, reply) => {
-		const credential = bearerToken(request);
-		if (
-			!credential ||
-			!service.reportHelperProgress({
-				exportId: exportId(request),
-				credential,
-				progress: request.body,
-			})
-		) {
-			return reply.code(404).send({ error: "Export not found" });
-		}
-		return reply.code(204).send();
-	});
-
 	app.put("/internal/session-transfer-exports/:exportId/stream", async (request, reply) => {
 		const credential = bearerToken(request);
 		const stream = request.body;

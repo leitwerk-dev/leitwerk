@@ -1,10 +1,9 @@
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
 	parseSessionTransferHelperSpec,
 	prepareTransferArchive,
-	type TransferArchiveProgress,
 } from "@leitwerk-dev/session-transfer";
 
 export const SESSION_TRANSFER_HELPER_ENTRY_PATH =
@@ -75,52 +74,6 @@ async function readHelperSpec(environment: HelperEnvironment) {
 	return parseSessionTransferHelperSpec(await response.json());
 }
 
-function createProgressReporter(environment: HelperEnvironment) {
-	let latest: TransferArchiveProgress | null = null;
-	let sent: TransferArchiveProgress | null = null;
-	let inFlight: Promise<void> = Promise.resolve();
-	let failure: unknown = null;
-	let lastQueuedAt = 0;
-	const queue = (force: boolean): void => {
-		if (!latest || failure) return;
-		const now = Date.now();
-		if (!force && now - lastQueuedAt < 250) return;
-		if (
-			sent &&
-			sent.entriesProcessed === latest.entriesProcessed &&
-			sent.logicalBytesProcessed === latest.logicalBytesProcessed
-		)
-			return;
-		const progress = { ...latest };
-		lastQueuedAt = now;
-		inFlight = inFlight
-			.then(() =>
-				helperRequest(environment, "/progress", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(progress),
-				}),
-			)
-			.then(() => {
-				sent = progress;
-			})
-			.catch((error) => {
-				failure = error;
-			});
-	};
-	return {
-		report(progress: TransferArchiveProgress): void {
-			latest = progress;
-			queue(false);
-		},
-		async flush(): Promise<void> {
-			queue(true);
-			await inFlight;
-			if (failure) throw failure;
-		},
-	};
-}
-
 export async function runSessionTransferHelper(): Promise<void> {
 	const environment = readEnvironment();
 	const spec = await readHelperSpec(environment);
@@ -143,20 +96,11 @@ export async function runSessionTransferHelper(): Promise<void> {
 			},
 		}),
 	});
-	const progress = createProgressReporter(environment);
-	const archive = prepared.stream({ onProgress: progress.report });
-	const flushProgress = new Transform({
-		transform(chunk, _encoding, callback) {
-			callback(null, chunk);
-		},
-		flush(callback) {
-			progress.flush().then(() => callback(), callback);
-		},
-	});
+	const archive = prepared.stream({});
 	await helperRequest(environment, "/stream", {
 		method: "PUT",
 		headers: { "Content-Type": "application/vnd.leitwerk.session-transfer+tar+zstd" },
-		body: Readable.toWeb(archive.pipe(flushProgress)) as ReadableStream,
+		body: Readable.toWeb(archive) as ReadableStream,
 		duplex: "half",
 	});
 }

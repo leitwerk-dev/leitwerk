@@ -4,7 +4,6 @@ import type {
 	SessionTransferLimits,
 	SessionTransferPreflight,
 	SessionTransferPreflightReport,
-	TransferArchiveProgress,
 } from "@leitwerk-dev/session-transfer";
 
 /**
@@ -50,10 +49,7 @@ export interface ProcessStateExportHelperRelay {
 export interface PreparedProcessStateExport {
 	manifest: LeitwerkTransferManifestV1;
 	preflight: ProcessStateExportPreflight;
-	stream(input: {
-		signal?: AbortSignal;
-		onProgress?: (progress: TransferArchiveProgress) => void;
-	}): Readable;
+	stream(input: { signal?: AbortSignal }): Readable;
 }
 
 /** Purpose-specific read-only export seam. It never creates a worker lease. */

@@ -899,17 +899,15 @@ export interface SessionTransferGrantResponse {
 export async function createSessionTransferGrant(
 	instanceId: string,
 ): Promise<SessionTransferGrantResponse> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/session-transfers`),
-		{ method: "POST" },
-	);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		throw new Error(
-			readErrorMessage(body) ?? `Couldn't create local transfer link: ${response.status}`,
-		);
-	}
-	return readJsonObject<SessionTransferGrantResponse>(response, "Malformed transfer link response");
+	return requestJson<SessionTransferGrantResponse>({
+		path: `/api/processes/${encodeURIComponent(instanceId)}/session-transfers`,
+		init: { method: "POST" },
+		malformed: "Malformed transfer link response",
+		error: (response, body) =>
+			new Error(
+				readErrorMessage(body) ?? `Couldn't create local transfer link: ${response.status}`,
+			),
+	});
 }
 
 export async function cancelSessionTransfer(instanceId: string, attemptId: string): Promise<void> {

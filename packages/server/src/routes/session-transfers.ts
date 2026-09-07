@@ -78,10 +78,6 @@ export function registerSessionTransferRoutes(
 			: reply.code(404).send({ error: "Transfer not found" });
 	};
 	app.get("/api/session-transfers/:instanceId/:grantId/attempts/:attemptId", sendHeartbeat);
-	app.post(
-		"/api/session-transfers/:instanceId/:grantId/attempts/:attemptId/heartbeat",
-		sendHeartbeat,
-	);
 
 	app.get(
 		"/api/session-transfers/:instanceId/:grantId/attempts/:attemptId/stream",

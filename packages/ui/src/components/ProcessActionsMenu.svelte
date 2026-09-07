@@ -56,6 +56,36 @@ const actionTarget = $derived(processLabel.trim() || `process ${instanceId}`);
 const activeTransfer = $derived(
 	sessionTransfer?.attemptId === locallyCancelledAttemptId ? null : sessionTransfer,
 );
+
+function phaseLabel(phase: string): string {
+	return (
+		(
+			{
+				queued: "Queued",
+				waiting_for_execution_chain: "Waiting for execution",
+				stopping_worker: "Stopping worker",
+				starting_exporter: "Starting exporter",
+				scanning: "Scanning",
+				ready_to_stream: "Ready to stream",
+				streaming: "Streaming",
+				awaiting_ack: "Awaiting local acknowledgement",
+				consumed: "Consumed",
+				cancelled: "Cancelled",
+				failed: "Failed",
+			} as Record<string, string>
+		)[phase] ?? phase
+	);
+}
+
+function transferExpiryLabel(expiresAt: string): string {
+	const timestamp = Date.parse(expiresAt);
+	if (!Number.isFinite(timestamp)) return "Expiry unavailable";
+	return new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(timestamp);
+}
+
 const idDisambiguator = $derived(idSuffix ? `-${idSuffix}` : "");
 const triggerId = $derived(`process-actions-trigger-${instanceId}${idDisambiguator}`);
 const menuId = $derived(`process-actions-menu-${instanceId}${idDisambiguator}`);
@@ -266,6 +296,26 @@ function handleDownloadSession() {
 }
 </script>
 
+{#snippet menuItem(
+	key: string,
+	label: string,
+	action: () => void,
+	danger = false,
+)}
+	<button
+		type="button"
+		class="menu-item"
+		class:menu-item-danger={danger}
+		role="menuitem"
+		data-menu-item={key}
+		data-pressable="true"
+		disabled={busy}
+		onclick={action}
+	>
+		{label}
+	</button>
+{/snippet}
+
 <div class="process-actions-menu" data-presentation={presentation} bind:this={menuRef}>
 	<button
 		bind:this={triggerRef}
@@ -304,13 +354,11 @@ function handleDownloadSession() {
 			{/if}
 			{#if activeTransfer}
 				<p class="menu-note" role="status">
-					<strong>{activeTransfer.blocksManualTurns ? "Local transfer is preparing a stable snapshot." : "Local transfer is waiting for Pi to confirm the import."}</strong>
+					<strong>Local transfer: {phaseLabel(activeTransfer.phase)}.</strong>
 					{activeTransfer.blocksManualTurns ? " New manual turns are blocked until streaming ends." : " The process is unblocked; streamed bytes can no longer be recalled."}
 				</p>
 				{#if activeTransfer.blocksManualTurns}
-					<button type="button" class="menu-item" data-pressable="true" disabled={busy} onclick={handleCancelTransfer}>
-						{busy ? "Cancelling…" : "Cancel transfer"}
-					</button>
+					{@render menuItem("cancel-transfer", busy ? "Cancelling…" : "Cancel transfer", handleCancelTransfer)}
 				{/if}
 				<div class="menu-divider" role="separator"></div>
 			{/if}
@@ -318,7 +366,7 @@ function handleDownloadSession() {
 			{#if transferGrant}
 				<div class="confirm-panel transfer-panel" aria-label="Local Pi transfer link">
 					<p class="confirm-message">Open this process in local Pi</p>
-					<p class="transfer-note">Single use · start within 1 hour</p>
+					<p class="transfer-note">Single use · expires {transferExpiryLabel(transferGrant.expiresAt)}</p>
 					<label class="transfer-field-label" for={`transfer-link-${instanceId}${idDisambiguator}`}>Transfer link</label>
 					<input
 						bind:this={transferLinkRef}
@@ -365,73 +413,19 @@ function handleDownloadSession() {
 				</div>
 			{:else}
 				{#if hasSessionFile}
-					<button
-						type="button"
-						class="menu-item"
-						role="menuitem"
-						data-pressable="true"
-						disabled={busy}
-						onclick={handleCreateTransfer}
-					>
-						{busy ? "Creating transfer link…" : "Create local transfer link"}
-					</button>
-					<button
-						type="button"
-						class="menu-item"
-						role="menuitem"
-						data-pressable="true"
-						disabled={busy}
-						onclick={handleDownloadSession}
-					>
-						Download Pi session (.jsonl)
-					</button>
+					{@render menuItem("create-transfer", busy ? "Creating transfer link…" : "Create local transfer link", handleCreateTransfer)}
+					{@render menuItem("download-session", "Download Pi session (.jsonl)", handleDownloadSession)}
 					<div class="menu-divider" role="separator"></div>
 				{/if}
 				{#if !isFinished}
-					<button
-						type="button"
-						class="menu-item"
-						role="menuitem"
-						data-pressable="true"
-						disabled={busy}
-						onclick={handleAbort}
-					>
-						Abort process
-					</button>
+					{@render menuItem("abort", "Abort process", handleAbort)}
 				{/if}
-				<button
-					type="button"
-					class="menu-item"
-					role="menuitem"
-					data-pressable="true"
-					disabled={busy}
-					onclick={handleRetry}
-				>
-					{busy ? "Loading…" : "Retry as new process"}
-				</button>
+				{@render menuItem("retry", busy ? "Loading…" : "Retry as new process", handleRetry)}
 				{#if !isFinished}
-					<button
-						type="button"
-						class="menu-item"
-						role="menuitem"
-						data-pressable="true"
-						disabled={busy}
-						onclick={handleAbortAndRetry}
-					>
-						Abort and retry as new process
-					</button>
+					{@render menuItem("abort-and-retry", "Abort and retry as new process", handleAbortAndRetry)}
 				{/if}
 				<div class="menu-divider" role="separator"></div>
-				<button
-					type="button"
-					class="menu-item menu-item-danger"
-					role="menuitem"
-					data-pressable="true"
-					disabled={busy}
-					onclick={handleDelete}
-				>
-					Delete process
-				</button>
+				{@render menuItem("delete", "Delete process", handleDelete, true)}
 			{/if}
 		</div>
 	{/if}
