@@ -188,6 +188,29 @@ describe("Kubernetes manifest builders", () => {
 		});
 	});
 
+	it("keeps private Docker state on the configured PVC mount despite caller environment", () => {
+		const manifest = buildKubernetesWorkerPodManifest(
+			startInput({
+				docker: true,
+				volume: {
+					instanceId: "PROC_1",
+					id: "leitwerk-process-proc-1",
+					mountPath: "/process-storage",
+				},
+				env: { LEITWERK_PROCESS_VOLUME_MOUNT_PATH: "/unmounted" },
+			}),
+			{ namespace: "leitwerk", docker: { runtimeClassName: "sysbox", hostUsers: false } },
+		);
+		const container = manifest.spec.containers[0];
+		expect(container.volumeMounts).toContainEqual({
+			name: "process-state",
+			mountPath: "/process-storage",
+		});
+		expect(
+			container.env.filter(({ name }) => name === "LEITWERK_PROCESS_VOLUME_MOUNT_PATH"),
+		).toEqual([{ name: "LEITWERK_PROCESS_VOLUME_MOUNT_PATH", value: "/process-storage" }]);
+	});
+
 	it("omits host aliases from worker Pods when none are configured", () => {
 		const manifest = buildKubernetesWorkerPodManifest(startInput(), { namespace: "leitwerk" });
 

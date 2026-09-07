@@ -10,7 +10,7 @@ const MAX_DIAGNOSTIC_BYTES = 16 * 1024;
 
 interface EntrypointDeps {
 	spawn: typeof spawn;
-	dockerInfo: () => Promise<void>;
+	dockerInfo: (signal: AbortSignal) => Promise<void>;
 	mkdir: typeof mkdir;
 	remove: typeof rm;
 	now: () => number;
@@ -52,9 +52,10 @@ export async function runWorkerContainerEntrypoint(
 	env: NodeJS.ProcessEnv = process.env,
 	deps: EntrypointDeps = {
 		spawn,
-		dockerInfo: () =>
+		dockerInfo: (signal) =>
 			promisify(execFile)("docker", ["--host", `unix://${DOCKER_SOCKET}`, "info"], {
 				env: { ...process.env, DOCKER_HOST: `unix://${DOCKER_SOCKET}` },
+				signal,
 			}).then(() => undefined),
 		mkdir,
 		remove: rm,
@@ -66,8 +67,15 @@ export async function runWorkerContainerEntrypoint(
 	let daemon: ChildProcess | undefined;
 	let worker: ChildProcess | undefined;
 	let terminating = false;
+	const shutdown = new AbortController();
+	let resolveTermination!: () => void;
+	const terminated = new Promise<void>((resolve) => {
+		resolveTermination = resolve;
+	});
 	const terminate = () => {
 		terminating = true;
+		shutdown.abort();
+		resolveTermination();
 		void Promise.all([stop(worker), stop(daemon)]);
 	};
 	process.once("SIGTERM", terminate);
@@ -82,7 +90,9 @@ export async function runWorkerContainerEntrypoint(
 
 		const dockerDataRoot = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/docker`;
 		await deps.mkdir(dockerDataRoot, { recursive: true });
+		if (terminating) return 0;
 		await deps.mkdir("/var/run", { recursive: true });
+		if (terminating) return 0;
 		const timeoutMs = Number.parseInt(env.LEITWERK_WORKER_STARTUP_TIMEOUT_MS ?? "60000", 10);
 		const configuredDeadlineMs = Number.parseInt(env.LEITWERK_WORKER_STARTUP_DEADLINE_MS ?? "", 10);
 		const startupDeadlineMs = Number.isFinite(configuredDeadlineMs)
@@ -92,6 +102,7 @@ export async function runWorkerContainerEntrypoint(
 		let firstSummary = "";
 
 		for (let attempt = 0; attempt < 2; attempt += 1) {
+			if (terminating) return 0;
 			let diagnostic = "";
 			daemon = deps.spawn(
 				"dockerd",
@@ -116,9 +127,10 @@ export async function runWorkerContainerEntrypoint(
 				exited = true;
 				return value;
 			});
-			while (!exited && deps.now() < startupDeadlineMs) {
+			while (!terminating && !exited && deps.now() < startupDeadlineMs) {
 				try {
-					await deps.dockerInfo();
+					await Promise.race([deps.dockerInfo(shutdown.signal), terminated]);
+					if (terminating) return 0;
 					if (exited) break;
 					if (recovered) {
 						deps.warn(
@@ -135,9 +147,11 @@ export async function runWorkerContainerEntrypoint(
 					}
 					return winner.exit.code ?? (terminating ? 0 : 1);
 				} catch {
+					if (terminating) return 0;
 					await deps.delay(250);
 				}
 			}
+			if (terminating) return 0;
 			if (!exited) {
 				await stop(daemon, 0);
 				daemon = undefined;
@@ -146,10 +160,12 @@ export async function runWorkerContainerEntrypoint(
 				);
 			}
 			const exit = await daemonExit;
+			if (terminating) return 0;
 			const summary = `exit=${exit.code ?? exit.signal ?? "unknown"}; ${diagnostic || "no diagnostic"}`;
 			if (attempt === 0) {
 				firstSummary = summary;
 				await deps.remove(dockerDataRoot, { recursive: true, force: true });
+				if (terminating) return 0;
 				await deps.mkdir(dockerDataRoot, { recursive: true });
 				recovered = true;
 				continue;

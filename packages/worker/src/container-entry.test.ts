@@ -63,6 +63,38 @@ describe("worker container entrypoint", () => {
 		await expect(running).resolves.toBe(0);
 	});
 
+	it("stops pending readiness on SIGTERM without resetting data or spawning again", async () => {
+		const daemon = child();
+		const probe = Promise.withResolvers<void>();
+		const dockerInfo = vi.fn((_signal: AbortSignal) => probe.promise);
+		const runtime = deps([daemon], { dockerInfo });
+		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
+		await vi.waitFor(() => expect(dockerInfo).toHaveBeenCalledOnce());
+
+		process.emit("SIGTERM");
+		await expect(running).resolves.toBe(0);
+		expect(dockerInfo.mock.calls[0]?.[0].aborted).toBe(true);
+		expect(daemon.kill).toHaveBeenCalled();
+		expect(runtime.remove).not.toHaveBeenCalled();
+		expect(runtime.spawn).toHaveBeenCalledOnce();
+
+		probe.resolve();
+		await probe.promise;
+		expect(runtime.remove).not.toHaveBeenCalled();
+		expect(runtime.spawn).toHaveBeenCalledOnce();
+	});
+
+	it("does not spawn a daemon when shutdown interrupts directory preparation", async () => {
+		const directory = Promise.withResolvers<void>();
+		const runtime = deps([], { mkdir: vi.fn(() => directory.promise) });
+		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
+		process.emit("SIGTERM");
+		directory.resolve();
+		await expect(running).resolves.toBe(0);
+		expect(runtime.remove).not.toHaveBeenCalled();
+		expect(runtime.spawn).not.toHaveBeenCalled();
+	});
+
 	it("resets only the Docker data root and retries once after an early exit", async () => {
 		const first = child();
 		const second = child();

@@ -9,9 +9,9 @@ pod="docker-canary"
 pvc="docker-state"
 tag="leitwerk-nested-canary:latest"
 cleanup() { kubectl delete namespace "$namespace" --wait=true --ignore-not-found >/dev/null 2>&1 || true; }
-trap cleanup EXIT
 
 kubectl create namespace "$namespace" >/dev/null
+trap cleanup EXIT
 cat <<EOF | kubectl -n "$namespace" apply -f - >/dev/null
 apiVersion: v1
 kind: PersistentVolumeClaim

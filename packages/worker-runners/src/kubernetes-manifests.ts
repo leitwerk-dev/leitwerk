@@ -461,6 +461,7 @@ export function buildKubernetesWorkerPodManifest(
 				...input.env,
 				DOCKER_HOST: "unix:///var/run/docker.sock",
 				LEITWERK_PRIVATE_DOCKER: "1",
+				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
 			}
 		: input.env;
 	const containerEnv = caCertPath
