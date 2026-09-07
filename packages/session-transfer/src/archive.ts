@@ -27,6 +27,7 @@ import {
 	type TransferArchiveProgress,
 } from "./format.js";
 import { readProjectEvidence } from "./project-evidence.js";
+import { assertConfinedSymlinks } from "./symlink-confinement.js";
 
 const MANIFEST_MAX_BYTES = 1024 * 1024;
 type TarHeader = Partial<tar.Header> & Pick<tar.Header, "name">;
@@ -121,9 +122,6 @@ export async function scanPortableWorkspace(input: {
 				if (path.isAbsolute(linkTarget) || path.win32.isAbsolute(linkTarget)) {
 					throw new Error(`Absolute symlink is not portable: ${relativePath}`);
 				}
-				if (!isPathInside(root, path.resolve(path.dirname(absolute), linkTarget))) {
-					throw new Error(`Symlink escapes the workspace: ${relativePath}`);
-				}
 				add({ ...common, kind: "symlink", size: 0, linkTarget });
 			} else {
 				throw new Error(`Unsupported workspace entry type: ${relativePath}`);
@@ -131,6 +129,13 @@ export async function scanPortableWorkspace(input: {
 		}
 	};
 	await walk(root, "");
+	assertConfinedSymlinks(
+		new Map(
+			entries.flatMap((entry) =>
+				entry.kind === "symlink" ? [[entry.relativePath, entry.linkTarget ?? ""] as const] : [],
+			),
+		),
+	);
 	const sessionStats = await lstat(path.resolve(input.sessionFile), { bigint: true });
 	if (!sessionStats.isFile()) throw new Error("Primary Pi session is not a regular file");
 	logicalBytesTotal += toSafeNumber(sessionStats.size, "Pi session");
@@ -150,26 +155,15 @@ function addBufferEntry(
 	});
 }
 
-function addFileEntry(
+async function addFileEntry(
 	pack: tar.Pack,
 	header: TarHeader,
 	filePath: string,
 	signal: AbortSignal | undefined,
 ): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const entry = pack.entry(header, (error) => (error ? reject(error) : resolve()));
-		const meter = new Transform({
-			transform(chunk: Buffer, _encoding, callback) {
-				try {
-					abortIfNeeded(signal);
-					callback(null, chunk);
-				} catch (error) {
-					callback(error as Error);
-				}
-			},
-		});
-		createReadStream(filePath).once("error", reject).pipe(meter).once("error", reject).pipe(entry);
-	});
+	abortIfNeeded(signal);
+	const entry = pack.entry(header);
+	await pipeline(createReadStream(filePath), entry, { signal });
 }
 
 export async function prepareTransferArchive(input: {
@@ -207,6 +201,7 @@ export function createTransferArchive(input: {
 	});
 	const createdAt = new Date(input.manifest.createdAt);
 	const finish = async (): Promise<void> => {
+		abortIfNeeded(input.signal);
 		const manifest = `${JSON.stringify(input.manifest)}\n`;
 		await addBufferEntry(pack, { name: "manifest.json", mode: 0o600, mtime: createdAt }, manifest);
 		await addBufferEntry(pack, {
@@ -254,9 +249,11 @@ export function createTransferArchive(input: {
 		);
 		pack.finalize();
 	};
+	// Pipeline propagates failures and consumer cancellation in both directions.
+	// Its rejection is also exposed as an error on the returned compressed stream.
+	void pipeline(pack, zstd, { signal: input.signal }).catch(() => undefined);
 	void finish().catch((error) => pack.destroy(error as Error));
-	input.signal?.addEventListener("abort", () => pack.destroy(input.signal?.reason), { once: true });
-	return pack.pipe(zstd);
+	return zstd;
 }
 
 async function assertNoSymlinkParents(root: string, target: string): Promise<void> {
@@ -321,6 +318,7 @@ export async function extractTransferArchive(input: {
 	let logicalBytesProcessed = 0;
 	let manifest: LeitwerkTransferManifestV1 | null = null;
 	const seen = new Set<string>();
+	const symlinks = new Map<string, string>();
 	const directoryMetadata: Array<{ target: string; mode: number; mtime: Date }> = [];
 	const report = (): void =>
 		input.onProgress?.({ entriesProcessed, logicalBytesProcessed, compressedBytes });
@@ -365,7 +363,7 @@ export async function extractTransferArchive(input: {
 			if (header.type === "directory") {
 				if (header.size !== 0) throw new Error(`Directory '${name}' has content`);
 				await drainEntry(entryStream);
-				await mkdir(target, { recursive: false, mode });
+				await mkdir(target, { recursive: false, mode: mode | 0o700 });
 				directoryMetadata.push({ target, mode, mtime });
 			} else if (header.type === "symlink") {
 				if (header.size !== 0) throw new Error(`Symlink '${name}' has content`);
@@ -377,16 +375,9 @@ export async function extractTransferArchive(input: {
 				if (path.isAbsolute(link) || path.win32.isAbsolute(link)) {
 					throw new Error(`Absolute archive symlink '${name}'`);
 				}
-				if (
-					!isPathInside(
-						path.join(outputRoot, "workspace"),
-						path.resolve(path.dirname(target), link),
-					)
-				) {
-					throw new Error(`Archive symlink escapes workspace: ${name}`);
-				}
 				await mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
 				await symlink(link, target);
+				symlinks.set(name.slice("workspace/".length), link);
 			} else if (header.type === "file" || !header.type) {
 				const size = header.size ?? 0;
 				if (!Number.isSafeInteger(size) || size < 0) {
@@ -441,6 +432,7 @@ export async function extractTransferArchive(input: {
 	} finally {
 		input.signal?.removeEventListener("abort", abort);
 	}
+	assertConfinedSymlinks(symlinks);
 	for (const directory of directoryMetadata.reverse()) {
 		await chmod(directory.target, directory.mode);
 		await utimes(directory.target, directory.mtime, directory.mtime);

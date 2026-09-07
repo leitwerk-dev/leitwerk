@@ -129,7 +129,7 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 1. **Grant:** An authenticated operator mints a hashed, expiring bearer grant without reading retained files.
 2. **Queue and Reservation:** Local Pi claims the grant. The durable attempt waits behind accepted work and automatic successors, then reserves the stable process under the same per-process coordinator.
 3. **Read-only Export:** The server removes the writable worker lease, preflights only the process workspace and primary session, and streams a bounded portable archive while hashing compressed bytes.
-4. **Local Commit:** Pi extracts into an owned temporary directory, compares the durable server digest, validates Git and a V3 Pi session, atomically commits a fresh destination and local Pi session, promotes its recovery record to a receipt, and acknowledges consumption.
+4. **Local Commit:** Pi extracts into an owned temporary directory, compares the durable server digest, and validates Git and a V3 Pi session. It reserves a fresh destination exclusively, moves the verified workspace entries into it, and writes the local Pi session. An atomic completion receipt commits the import before acknowledgement. Interrupted imports retain ownership markers for recovery.
 
 ### 6.4 Process Lifecycle State Transitions
 

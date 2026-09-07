@@ -13,6 +13,11 @@ import {
 } from "@leitwerk-dev/session-transfer";
 import { type RemoteTransferAttempt, SessionTransferClient } from "./client.js";
 import type { LocalTransferState } from "./local-state.js";
+import {
+	populateWorkspaceDestination,
+	reserveWorkspaceDestination,
+	restoreWorkspaceMetadata,
+} from "./workspace-commit.js";
 
 export interface ImportProgress extends TransferArchiveProgress {
 	phase: string;
@@ -74,7 +79,7 @@ export async function importTransfer(input: {
 	const client = new SessionTransferClient(input.link);
 	let attempt: RemoteTransferAttempt | null = null;
 	let temporaryDirectory: string | null = null;
-	let destinationCommitted = false;
+	let destinationReserved = false;
 	let sessionPath: string | null = null;
 	let heartbeat: NodeJS.Timeout | null = null;
 	const progress: ImportProgress = {
@@ -170,13 +175,10 @@ export async function importTransfer(input: {
 		const createdSessionPath = SessionManager.create(localCwd).getSessionFile();
 		if (!createdSessionPath) throw new Error("Pi did not create a persistent target session");
 		sessionPath = createdSessionPath;
-		await writeFile(path.join(temporaryWorkspace, destinationMarkerName), `${ownerId}\n`, {
-			mode: 0o600,
-			flag: "wx",
-		});
 		await input.state.recordCommitTargets(input.link, { destination, sessionPath });
-		await rename(temporaryWorkspace, destination);
-		destinationCommitted = true;
+		await reserveWorkspaceDestination(destination, { name: destinationMarkerName, ownerId });
+		destinationReserved = true;
+		const workspaceMetadata = await populateWorkspaceDestination(temporaryWorkspace, destination);
 		const temporarySession = `${sessionPath}.${randomUUID()}.importing`;
 		await writeFile(temporarySession, rewritten.content, { mode: 0o600, flag: "wx" });
 		await rename(temporarySession, sessionPath);
@@ -186,12 +188,13 @@ export async function importTransfer(input: {
 			completedAt: new Date().toISOString(),
 		});
 		await rm(path.join(destination, destinationMarkerName), { force: true });
+		await restoreWorkspaceMetadata(destination, workspaceMetadata);
 		await client.acknowledge(attempt.id, AbortSignal.timeout(30_000));
 		await rm(temporaryDirectory, { recursive: true, force: true });
 		return { destination, sessionPath, attemptId: attempt.id };
 	} catch (error) {
 		if (attempt && !progress.finishing) await client.cancel(attempt.id).catch(() => undefined);
-		if (temporaryDirectory && !destinationCommitted) {
+		if (temporaryDirectory && !destinationReserved) {
 			await rm(temporaryDirectory, { recursive: true, force: true }).catch(() => undefined);
 			if (sessionPath) await rm(sessionPath, { force: true }).catch(() => undefined);
 			await input.state.discard(input.link).catch(() => undefined);

@@ -1,6 +1,8 @@
+import { randomBytes } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { buffer } from "node:stream/consumers";
 import { afterEach, describe, expect, it } from "vitest";
 import {
 	createTransferArchive,
@@ -107,6 +109,47 @@ describe("session transfer format", () => {
 		await expect(
 			scanPortableWorkspace({ workspaceRoot: source.workspace, sessionFile: source.session }),
 		).rejects.toThrow("escapes the workspace");
+	});
+
+	it("rejects the compressed stream when a source file disappears after preflight", async () => {
+		const source = await fixture();
+		const preflight = await scanPortableWorkspace({
+			workspaceRoot: source.workspace,
+			sessionFile: source.session,
+		});
+		await rm(path.join(source.workspace, "repo", "dirty.txt"));
+		const archive = createTransferArchive({
+			workspaceRoot: source.workspace,
+			sessionFile: source.session,
+			manifest: source.manifest,
+			preflight,
+		});
+		await expect(buffer(archive)).rejects.toMatchObject({ code: "ENOENT" });
+		expect(archive.destroyed).toBe(true);
+	});
+
+	it.each([
+		"before streaming",
+		"during streaming",
+	])("rejects the compressed stream when cancelled %s", async (timing) => {
+		const source = await fixture();
+		await writeFile(path.join(source.workspace, "large.bin"), randomBytes(2 * 1024 * 1024));
+		const preflight = await scanPortableWorkspace({
+			workspaceRoot: source.workspace,
+			sessionFile: source.session,
+		});
+		const controller = new AbortController();
+		if (timing === "before streaming") controller.abort();
+		const archive = createTransferArchive({
+			workspaceRoot: source.workspace,
+			sessionFile: source.session,
+			manifest: source.manifest,
+			preflight,
+			signal: controller.signal,
+		});
+		if (timing === "during streaming") archive.once("data", () => controller.abort());
+		await expect(buffer(archive)).rejects.toMatchObject({ name: "AbortError" });
+		expect(archive.destroyed).toBe(true);
 	});
 
 	it("rewrites only location metadata and preserves unknown nested JSON values", async () => {

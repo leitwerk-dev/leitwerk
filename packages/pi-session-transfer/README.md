@@ -27,7 +27,9 @@ interactive Pi:
 ```
 
 With no argument, the command asks for the link. It defaults the new destination to
-`<current-directory>/<process-instance-id>`. The destination must not exist.
+`<current-directory>/<process-instance-id>`. The destination must not exist. After validation,
+Pi reserves it exclusively; a directory created there during the transfer is preserved and the
+import fails.
 
 The link is a bearer credential. Do not paste it into logs, tickets, or chat. Confirm the exact
 Leitwerk origin shown by Pi before claiming it. A transfer must start within one hour. Press
@@ -52,8 +54,9 @@ count, validates Git branch and HEAD evidence, rewrites only the session cwd, re
 `parentSession` metadata, places the validated JSONL in Pi's normal session store without running
 Pi migration code, and then offers to switch to it.
 
-Each import uses one mode-0600 recovery record. The record transitions atomically from temporary
-import state to a token-free completion receipt. Pi removes only stale incomplete paths that still
+Each import uses one mode-0600 recovery record. Verified entries move into the owned destination
+before the local session is written. The record then transitions atomically from temporary import
+state to a token-free completion receipt. Pi removes only stale incomplete paths that still
 carry the matching ownership marker. Completed records let acknowledgement and session switching
 be retried safely.
 
