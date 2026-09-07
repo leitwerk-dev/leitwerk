@@ -11,6 +11,7 @@ import {
 	type TurnTraceSnapshot,
 	timelinePresentationForTurnType,
 } from "@leitwerk-dev/protocol";
+import { createTestQuestionRequest } from "@leitwerk-dev/test-support/fixtures";
 import { describe, expect, it } from "vitest";
 
 type TurnRecordView = ProcessTimelineTurnSummary;
@@ -1087,6 +1088,37 @@ describe("buildChronicleProjection", () => {
 		expect(entry?.reasoningSection.items).toEqual([]);
 		expect(entry?.reasoningSection.text).toBe("");
 		expect(entry?.piInput?.userInput).toBe("operator request");
+	});
+
+	it.each([
+		"completed",
+		"in_progress",
+	] as const)("opens reasoning details for a %s turn with questions but no trace", (status) => {
+		const projection = buildProjection({
+			turnRecords: [
+				makeTurnRecord({ id: "trn_unrelated" }),
+				makeTurnRecord({ id: "trn_question", status, outcome: status }),
+			],
+			turnTraceIndex: {},
+			activeTurn:
+				status === "in_progress"
+					? makeActiveTurn({ turnRecordId: "trn_question", eventWindowTruncated: true })
+					: null,
+		});
+
+		expect(extractChronicleReasoningDetailEntries(projection)).toEqual([]);
+		const entries = extractChronicleReasoningDetailEntries(projection, [
+			createTestQuestionRequest({
+				turnRecordId: "trn_question",
+				status: status === "in_progress" ? "open" : "answered",
+			}),
+		]);
+		expect(entries).toHaveLength(1);
+		expect(entries[0]).toMatchObject({
+			turnRecordId: "trn_question",
+			isLive: status === "in_progress",
+			reasoningSection: { text: "", items: [] },
+		});
 	});
 
 	it("projects tool-only compact traces as accessible reasoning details", () => {

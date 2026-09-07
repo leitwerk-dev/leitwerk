@@ -194,7 +194,10 @@ const chronicleProjection = $derived(
 	}),
 );
 const reasoningDetailEntries = $derived(
-	extractChronicleReasoningDetailEntries(chronicleProjection),
+	extractChronicleReasoningDetailEntries(
+		chronicleProjection,
+		$detailState.data?.questionRequests ?? [],
+	),
 );
 const processDetailOverlay = $derived(readProcessDetailOverlay($locationStore));
 const isProcessInfoOverlayOpen = $derived(processDetailOverlay.kind === "process-info");

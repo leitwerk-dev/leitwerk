@@ -3039,8 +3039,21 @@ describe("ProcessDetailPage", () => {
 		expect(request?.contains(document.activeElement)).toBe(false);
 	});
 
-	it("keeps the tool question visible when the reasoning trace is opened", async () => {
-		const { target } = await mountSubject(createQuestionRequestDetail());
+	it.each([
+		"recorded",
+		"unavailable",
+	])("opens a read-only question summary when the trace is %s", async (traceState) => {
+		const detail = createQuestionRequestDetail();
+		if (traceState === "unavailable") {
+			const activeTurn = detail.primaryPath.turnState.activeTurn;
+			if (!activeTurn) throw new Error("Expected an active turn");
+			activeTurn.assistant.text = "";
+			activeTurn.assistant.thinking = "";
+			activeTurn.toolCalls = [];
+			activeTurn.traceItems = [];
+			activeTurn.eventWindowTruncated = true;
+		}
+		const { target } = await mountSubject(detail);
 		await flushUi();
 
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
@@ -3049,6 +3062,10 @@ describe("ProcessDetailPage", () => {
 		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
 		expect(overlay).toBeTruthy();
 		expect(overlay?.querySelector("[data-question-request-id='qst_1']")).toBeTruthy();
+		expect(overlay?.querySelector("form")).toBeNull();
+		expect(
+			target.querySelector('[data-section="live-tail"] [data-question-request-id="qst_1"] form'),
+		).toBeTruthy();
 	});
 
 	it("notifies about follow-up questions without interrupting history until the toast is opened", async () => {
@@ -3118,6 +3135,16 @@ describe("ProcessDetailPage", () => {
 
 		const followUp = target.querySelector<HTMLElement>("[data-question-request-id='qst_2']");
 		expect(followUp).toBeTruthy();
+		const liveReasoning = target.querySelector<HTMLElement>(
+			'[data-section="live-tail"] [data-section="reasoning-questions"]',
+		);
+		const answeredQuestion = liveReasoning?.querySelector<HTMLElement>(
+			"[data-question-request-id='qst_1']",
+		);
+		expect(answeredQuestion?.textContent).toContain("Use the existing tracker");
+		expect(answeredQuestion?.querySelector("form")).toBeNull();
+		expect(liveReasoning?.querySelectorAll("form")).toHaveLength(1);
+		expect(liveReasoning?.contains(followUp)).toBe(true);
 		expect(document.activeElement).toBe(closeOverlay);
 		expect(metrics.getScrollTop()).toBe(previousScrollTop);
 		expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();

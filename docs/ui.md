@@ -38,9 +38,10 @@ external-write approval names the destination separately from the proposed tool
 arguments so the operator can verify both before accepting the write.
 
 Question requests appear inside their turn's reasoning section. Open requests are answered in
-the Chronicle; answered and cancelled requests remain with the turn's reasoning history. The
-reasoning-details overlay shows read-only question summaries and does not duplicate the answer
-form. Live question updates refresh the current process view without a browser reload.
+the Chronicle; answered and cancelled requests remain visible while follow-up questions are open
+and after the turn ends. The reasoning-details overlay shows read-only question summaries even
+when the turn has no recorded trace, and does not duplicate the answer form. Live question
+updates refresh the current process view without a browser reload.
 New requests, including follow-ups, notify the operator through a question toast without changing
 their scroll position or focus. Opening that notification closes blocking detail overlays and
 focuses the active question form.

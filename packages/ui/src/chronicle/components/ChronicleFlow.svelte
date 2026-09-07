@@ -276,7 +276,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		{:else if item.kind === "live_tail"}
 			<ChronicleLiveTail
 				liveTail={item}
-				questionRequest={questionRequestsByTurn.get(item.turnRecordId)?.open ?? null}
+				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				isFocused={activeAnchorId === item.anchorId}
 				onOpenReasoningDetails={onOpenReasoningDetails}
 				onAbortTurn={item.turnType === "llm" ? liveTailController.abortRunningTurn : null}
