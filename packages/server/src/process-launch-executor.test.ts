@@ -1,6 +1,7 @@
 import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { planConsumeFutureExecution } from "./future-execution/transition-planner.js";
+import { initialLaunchSteps } from "./launch-pipeline.js";
 import {
 	buildProcessLaunchPostCommitEffects,
 	commitProcessLaunch,
@@ -117,6 +118,33 @@ describe("process launch durable boundary", () => {
 		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
 	});
 
+	it("stores the requested first turn and actor with process correlation", () => {
+		const deps = createTestDeps();
+		const run = deps.launchRuns.create({
+			launcherId: "demo.launcher",
+			origin: "scheduled",
+			steps: initialLaunchSteps(),
+		});
+		const actor = { id: "operator", kind: "user" as const, provider: null };
+		const commit = commitProcessLaunch(
+			deps,
+			{ ...createLaunchPlan(), startTurnId: "requested_start" },
+			undefined,
+			[],
+			undefined,
+			run.id,
+			undefined,
+			actor,
+		);
+
+		expect(deps.launchRuns.getById(run.id)?.instanceId).toBe(commit.process.id);
+		expect(deps.launchRuns.getReplay(run.id)).toEqual({
+			kind: "committed_start",
+			startTurnId: "requested_start",
+			actor,
+		});
+	});
+
 	it("rolls process creation back when the scheduled occurrence is stale", () => {
 		const deps = createTestDeps();
 		const execution = deps.futureExecutions.create({
@@ -128,15 +156,23 @@ describe("process launch durable boundary", () => {
 			nextRunAt: "2026-04-25T10:00:00.000Z",
 		});
 		const plan = planConsumeFutureExecution(execution);
+		const run = deps.launchRuns.create({
+			launcherId: "demo.launcher",
+			origin: "scheduled",
+			steps: initialLaunchSteps(),
+		});
+		deps.launchRuns.saveReplay(run.id, { original: "uncommitted input" });
 		deps.futureExecutions.update(execution.id, {
 			nextRunAt: "2026-04-25T11:00:00.000Z",
 		});
 
-		expect(() => commitProcessLaunch(deps, createLaunchPlan(), plan)).toThrow(
-			"Future execution changed",
-		);
+		expect(() =>
+			commitProcessLaunch(deps, createLaunchPlan(), plan, [], undefined, run.id),
+		).toThrow("Future execution changed");
 		expect(deps.processes.listAll()).toHaveLength(0);
 		expect(deps.futureExecutions.getById(execution.id)).not.toBeNull();
+		expect(deps.launchRuns.getById(run.id)?.instanceId).toBeNull();
+		expect(deps.launchRuns.getReplay(run.id)).toEqual({ original: "uncommitted input" });
 	});
 
 	it("persists handoff dedup keys and reuses the claimed process", () => {

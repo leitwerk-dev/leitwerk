@@ -175,6 +175,16 @@ export function registerLauncherRoutes(
 			if (!normalized.ok) {
 				return sendLauncherRequestNormalizationError(reply, normalized.error);
 			}
+			if (normalized.request.schedule.mode !== "now") {
+				return reply.code(400).send({
+					errors: [
+						{
+							code: "invalid_schedule",
+							message: "Immediate launches require schedule mode 'now'",
+						},
+					],
+				});
+			}
 			const idempotencyKey = req.headers["idempotency-key"];
 			const started = await deps.launchCoordinator.start({
 				launcherId: req.params.launcherId,

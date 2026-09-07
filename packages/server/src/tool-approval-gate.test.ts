@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "./db/database.js";
-import { createAllRepos } from "./db/repositories.js";
+import { commitWrites } from "./process-engine/writes/commit-writes.js";
+import { createWrites } from "./process-engine/writes/writes.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
+import { createTestDeps } from "./test-helpers/unit-deps.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
 
 describe("tool approval gate", () => {
@@ -9,14 +10,18 @@ describe("tool approval gate", () => {
 		"accepted",
 		"cancelled",
 	] as const)("settles every replayed waiter when %s", async (outcome) => {
-		const repos = createAllRepos(createInMemoryDatabase());
-		const process = repos.processes.create({ processId: "approval_process" });
+		const repos = createTestDeps();
+		const process = repos.processes.create({
+			processId: "approval_process",
+			selectedTurnId: "run",
+			lifecycleStatus: "active",
+		});
 		const turn = repos.turnRecords.create({
 			id: "replayed-turn",
 			instanceId: process.id,
 			turnId: "run",
-			turnType: "human",
-			status: "succeeded",
+			turnType: "llm",
+			status: "running",
 			pathType: "primary",
 		});
 		const gate = createToolApprovalGate({
@@ -50,14 +55,18 @@ describe("tool approval gate", () => {
 		]);
 	});
 	it("does not reuse approval for a different tool call in the same turn", async () => {
-		const repos = createAllRepos(createInMemoryDatabase());
-		const process = repos.processes.create({ processId: "approval_process" });
+		const repos = createTestDeps();
+		const process = repos.processes.create({
+			processId: "approval_process",
+			selectedTurnId: "run",
+			lifecycleStatus: "active",
+		});
 		const turnRecord = repos.turnRecords.create({
 			id: "turn-1",
 			instanceId: process.id,
 			turnId: "run",
-			turnType: "human",
-			status: "succeeded",
+			turnType: "llm",
+			status: "running",
 			pathType: "primary",
 		});
 		const gate = createToolApprovalGate({
@@ -97,5 +106,99 @@ describe("tool approval gate", () => {
 
 		gate.cancelTurn(process.id, turnRecord.id);
 		await expect(second).resolves.toEqual({ kind: "declined" });
+	});
+
+	it.each([
+		"failed",
+		"superseded",
+		"succeeded",
+	] as const)("cancels approvals and settles waiters when the turn becomes %s without worker cancellation", async (status) => {
+		const repos = createTestDeps();
+		const process = repos.processes.create({
+			processId: "approval_process",
+			selectedTurnId: "run",
+			lifecycleStatus: "active",
+		});
+		const turn = repos.turnRecords.create({
+			instanceId: process.id,
+			turnId: "run",
+			status: "running",
+		});
+		const gate = createToolApprovalGate({
+			repos,
+			processOperations: createProcessOperationCoordinator(),
+		});
+		const pending = gate.review({
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			toolCallId: "call-1",
+			toolName: "dangerous_tool",
+			arguments: { value: 1 },
+		});
+		commitWrites(
+			repos,
+			process.id,
+			createWrites({
+				turnRecordWrites: [{ kind: "update", id: turn.id, input: { status } }],
+			}),
+		);
+		gate.reconcile(process.id);
+
+		await expect(pending).resolves.toEqual({ kind: "declined" });
+		expect(gate.listOpen(process.id)).toEqual([]);
+		expect(repos.toolApprovalRequests.listByInstance(process.id)[0]).toMatchObject({
+			status: "cancelled",
+			resolvedAt: expect.any(String),
+		});
+	});
+
+	it.each([
+		"accepted",
+		"feedback",
+		"declined",
+	] as const)("rejects a stale %s decision after a replacement turn starts", async (kind) => {
+		const repos = createTestDeps();
+		const process = repos.processes.create({
+			processId: "approval_process",
+			selectedTurnId: "run",
+			lifecycleStatus: "active",
+		});
+		const original = repos.turnRecords.create({
+			instanceId: process.id,
+			turnId: "run",
+			status: "running",
+		});
+		const gate = createToolApprovalGate({
+			repos,
+			processOperations: createProcessOperationCoordinator(),
+		});
+		const pending = gate.review({
+			instanceId: process.id,
+			turnRecordId: original.id,
+			toolCallId: "call-1",
+			toolName: "dangerous_tool",
+			arguments: { value: 1 },
+		});
+		const request = gate.listOpen(process.id)[0];
+		if (!request) throw new Error("Expected approval request");
+		// Persisted requests from before terminal cancellation was enforced can remain open.
+		repos.turnRecords.update(original.id, { status: "failed" });
+		const replacement = repos.turnRecords.create({
+			instanceId: process.id,
+			turnId: "run",
+			status: "running",
+		});
+
+		await expect(
+			gate.resolve(
+				process.id,
+				request.id,
+				kind === "feedback" ? { kind, feedback: "Change the title" } : { kind },
+				{ id: "operator", kind: "user", provider: null },
+			),
+		).resolves.toBeNull();
+		await expect(pending).resolves.toEqual({ kind: "declined" });
+		expect(repos.turnRecords.getById(replacement.id)?.status).toBe("running");
+		expect(gate.listOpen(process.id)).toEqual([]);
 	});
 });
