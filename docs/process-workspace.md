@@ -56,6 +56,8 @@ does not scan nested directories, generate mise configuration, interpret ecosyst
 install package dependencies. Docker and Kubernetes store mise state in the process volume.
 Local workers use the host mise installation and host mise storage. Mise shims lead `PATH` for
 agent commands; full mise shell activation and `[env]` propagation are not guaranteed.
+Cancellation and timeouts terminate the installer process group, including child processes
+that outlive mise. The worker waits for termination before finishing preparation.
 
 ---
 

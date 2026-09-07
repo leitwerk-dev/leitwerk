@@ -137,7 +137,7 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 		},
 
 		abortProcess(instanceId, opts) {
-			return run(AbortProcess, { instanceId, ...(opts?.actor ? { actor: opts.actor } : {}) });
+			return run(AbortProcess, { instanceId, ...opts });
 		},
 
 		abortTurn(instanceId, opts) {

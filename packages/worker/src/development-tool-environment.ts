@@ -203,28 +203,26 @@ async function runCommand(input: {
 	child.stdout?.on("data", (chunk: Buffer | string) => appendOutput("stdout", chunk));
 	child.stderr?.on("data", (chunk: Buffer | string) => appendOutput("stderr", chunk));
 
-	// mise can create child processes; terminate the detached process group when
-	// cancellation is requested, while execa owns timeout and escalation.
-	let groupEscalation: ReturnType<typeof setTimeout> | null = null;
+	// Wait for process-group termination even when mise itself exits before its children.
+	let groupTermination: Promise<void> | null = null;
 	const killGroup = () => {
-		if (!child.pid) return;
+		if (!child.pid || groupTermination) return;
+		const pid = child.pid;
 		try {
-			process.kill(-child.pid, "SIGTERM");
+			process.kill(-pid, "SIGTERM");
 		} catch {
 			child.kill("SIGTERM");
 		}
-		if (!groupEscalation) {
-			const pid = child.pid;
-			if (!pid) return;
-			groupEscalation = setTimeout(() => {
+		groupTermination = new Promise<void>((resolve) => {
+			setTimeout(() => {
 				try {
 					process.kill(-pid, "SIGKILL");
 				} catch {
-					/* execa will force-kill the child itself. */
+					/* The process group has already exited. */
 				}
+				resolve();
 			}, 2_000);
-			groupEscalation.unref();
-		}
+		});
 	};
 	const groupTimeout = setTimeout(killGroup, input.timeoutMs);
 	input.signal?.addEventListener("abort", killGroup, { once: true });
@@ -258,8 +256,8 @@ async function runCommand(input: {
 		return { stdout, stderr };
 	} finally {
 		clearTimeout(groupTimeout);
-		if (groupEscalation) clearTimeout(groupEscalation);
 		input.signal?.removeEventListener("abort", killGroup);
+		await groupTermination;
 	}
 }
 

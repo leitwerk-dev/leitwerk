@@ -1,6 +1,11 @@
 import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
+import { createProcessEngine } from "../process-engine/engine.js";
+import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
+import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createToolApprovalGate } from "../tool-approval-gate.js";
 import type { RouteDeps } from "./process-route-helpers.js";
 import { registerTicketCreationRoutes } from "./ticket-creation.js";
 
@@ -197,5 +202,96 @@ describe("ticket creation routes", () => {
 		expect(params.ticketDestination).toBeUndefined();
 		expect(params.ticketDestinations).toEqual([{ id: "repo-1", displayName: "team/repo" }]);
 		expect(params.ticketDestinationWarnings).toEqual(["A secondary profile is unavailable"]);
+	});
+});
+
+describe("ticket approval decisions", () => {
+	it.each([
+		"running",
+		"failed",
+		"replacement",
+	] as const)("correlates a decline when its turn is %s before the abort command runs", async (turnState) => {
+		const repos = createTestDeps();
+		const process = repos.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		const original = repos.turnRecords.create({
+			instanceId: process.id,
+			turnId: "generate_plan",
+			status: "running",
+		});
+		const processOperations = createProcessOperationCoordinator();
+		const gate = createToolApprovalGate({ repos, processOperations });
+		const processGraphs = createDefaultTestProcessGraphRegistry();
+		const processEngine = createProcessEngine({
+			...repos,
+			processOperations,
+			processGraphs,
+			getSupervisor: () => undefined,
+			afterRecord: (changed) => gate.reconcile(changed.id),
+		});
+		const pending = gate.review({
+			instanceId: process.id,
+			turnRecordId: original.id,
+			toolCallId: "create-ticket",
+			toolName: "tracker_create_ticket",
+			arguments: { title: "Ticket" },
+		});
+		const request = gate.listOpen(process.id)[0];
+		if (!request) throw new Error("Expected approval request");
+		const app = appWith(
+			{
+				...repos,
+				processEngine,
+				processGraphs,
+				toolApprovalGate: {
+					...gate,
+					async resolve(...args: Parameters<typeof gate.resolve>) {
+						const resolved = await gate.resolve(...args);
+						if (turnState !== "running") {
+							const failure = await processEngine.recordTurnFailed(process.id, {
+								instanceId: process.id,
+								turnRecordId: original.id,
+								turnId: original.turnId,
+								turnType: "llm",
+								pathType: "primary",
+								errorSummary: "Worker stopped after the tool was declined",
+							});
+							expect(failure.ok).toBe(true);
+						}
+						if (turnState === "replacement") {
+							await processOperations.runExclusive(process.id, () => {
+								repos.processes.update(process.id, { lifecycleStatus: "active" });
+								repos.turnRecords.create({
+									id: "approval-replacement",
+									instanceId: process.id,
+									turnId: original.turnId,
+									status: "running",
+								});
+							});
+						}
+						return resolved;
+					},
+				},
+			},
+			{},
+		);
+
+		const response = await app.inject({
+			method: "POST",
+			url: `/api/processes/${process.id}/tool-approval-requests/${request.id}`,
+			payload: { action: "decline" },
+		});
+
+		await expect(pending).resolves.toEqual({ kind: "declined" });
+		expect(response.statusCode).toBe(turnState === "replacement" ? 409 : 200);
+		expect(repos.processes.getById(process.id)?.lifecycleStatus).toBe(
+			turnState === "replacement" ? "active" : "aborted",
+		);
+		if (turnState === "replacement") {
+			expect(repos.turnRecords.getById("approval-replacement")?.status).toBe("running");
+		}
 	});
 });

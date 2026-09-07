@@ -691,6 +691,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			// The process volume is the durable source for an already-created start.
 			// A missing server-cache entry is valid after restart.
 			piResourceBundlePins.reconcile(process);
+			toolApprovalGate.reconcile(process.id);
 		},
 		afterSuccessHooks,
 		isNewTurnBlocked: (instanceId) => isNewTurnBlocked(instanceId),
@@ -1002,6 +1003,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	applyGeneratedFutureExecutionTitle = (input) =>
 		futureExecutionLifecycle.applyGeneratedFutureLaunchTitleIfUnchanged(input);
 	launchCoordinator = createLaunchCoordinator({
+		commands: processEngine,
 		launchRuns: baseDeps.launchRuns,
 		processes: baseDeps.processes,
 		leases: baseDeps.leases,

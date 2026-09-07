@@ -186,8 +186,14 @@ projection, repairing a missed event-triggered refresh. On restart, incomplete r
 from durable process, lease, title-job, readiness, turn-start, and turn records. Before process creation, UI
 and trusted programmatic launches resume from a server-private replay payload stored outside the
 launch read model and deleted when coordination finishes. After process creation,
-recovery uses durable facts and does not repeat process creation. Duplicate incomplete Launch Runs
-for one process are cancelled during reconciliation and never select the startup shown on process
+recovery uses durable facts and does not repeat process creation.
+The process-creation transaction also records the requested initial turn and actor in private
+replay storage. If the server stops before selecting that turn, recovery selects it under the
+process lock only while the process remains unstarted. Recovery never repeats process-created
+extension reactions or overwrites a turn selection or abort that already committed. Plans without
+an initial turn, or with an initial human or external turn, complete startup without starting a worker.
+The private replay is deleted when coordination finishes. Duplicate incomplete Launch Runs for one
+process are cancelled during reconciliation and never select the startup shown on process
 detail. The latest startup-retry run is authoritative; without a retry, the latest `createdAt` and
 then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
 commits a process, later polls return that attempt instead of creating incomplete launch runs.

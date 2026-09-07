@@ -24,6 +24,7 @@ import {
 import type { RepositoryBundle } from "../db/repositories.js";
 import { nextCronOccurrenceUtc } from "../domain-logic/cron.js";
 import type { ExtensionHost } from "../extensions/extension-host.js";
+import type { LaunchPipeline, LaunchPipelineCheck } from "../launch-pipeline.js";
 import {
 	applySubmittedProcessTitleToLaunchPlan,
 	normalizeProcessTitleInput,
@@ -35,6 +36,7 @@ import {
 	createProcessFromLaunchPlan,
 	createScheduledProcessFromLaunchPlan,
 } from "../process-launch-executor.js";
+import { toLaunchPipelineCommit } from "../process-launch-pipeline-adapter.js";
 import {
 	applyStoredLaunchPlanModelConfig,
 	clearLaunchPlanModelConfig,
@@ -142,6 +144,7 @@ export interface FutureLaunchLifecycleDeps
 	processOperations: ProcessOperationCoordinator;
 	launcherRecentValues?: LauncherRecentValuesService;
 	launchPlans: ProcessLaunchPlanServiceLike;
+	launchPipeline: LaunchPipeline;
 	processTitles?: ProcessTitleGenerator;
 	extensionHost?: ExtensionHost;
 	processModelPolicy: ServerProcessModelPolicy;
@@ -408,6 +411,157 @@ export function createFutureLaunchLifecycle(
 		};
 	}
 
+	async function launchScheduledNow(
+		existing: FutureExecution,
+		request: NormalizedScheduledLaunchInput,
+		operationTime: Date,
+		actor?: Actor,
+	): Promise<LaunchMutationOutcome> {
+		const opened = deps.launchPipeline.open({ launcherId: existing.launcherId, origin: "ui" });
+		type ResolvedRevision = {
+			payload: FutureLaunchPayload;
+			request: NormalizedScheduledLaunchInput;
+			launcher: ResolvedProcessLauncher;
+			actor: Actor;
+		};
+		const result = await deps.launchPipeline.run<
+			ResolvedRevision,
+			PreparedLaunch & { actor: Actor },
+			LaunchMutationOutcome,
+			LaunchMutationOutcome
+		>(opened.launchRunId, {
+			async resolve() {
+				const failure = (value: LaunchMutationOutcome) => ({
+					kind: "failed" as const,
+					failure: { safeSummary: "Review the launch configuration and try again.", value },
+				});
+				if (!deps.launcherService)
+					return failure({ kind: "unavailable", reason: "Launcher service is not available" });
+				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
+				if (!parsed.ok)
+					return failure(invalidOutcome("invalid_payload", "Scheduled launch payload is invalid"));
+				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
+				if (!launchRequest.ok) return failure({ kind: "invalid", issues: [launchRequest.issue] });
+				const resolved = await deps.launcherService.resolveUiLauncher(
+					existing.launcherId ?? parsed.value.launchPlan.launcherId,
+					launchRequest.value.launcherInput,
+				);
+				if (!resolved.ok) return failure(launcherResolutionFailure(resolved));
+				return {
+					kind: "resolved",
+					value: {
+						payload: parsed.value,
+						request: launchRequest.value,
+						launcher: resolved.launcher,
+						actor: actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
+					},
+				};
+			},
+			preparationChecks(resolved) {
+				const checks =
+					deps.launcherService?.resolvePreparationChecks?.(
+						resolved.launcher.launcherId,
+						resolved.request.launcherInput,
+						resolved.launcher.launchConfig,
+					) ?? [];
+				return checks.map((check) => ({
+					id: check.id,
+					label: check.label,
+					run: (context: Parameters<LaunchPipelineCheck["run"]>[0]) =>
+						check.run({ ...context, launchConfig: resolved.launcher.launchConfig }),
+				}));
+			},
+			preparationCheckFailure() {
+				return invalidOutcome("preparation_failed", "Launch preparation failed");
+			},
+			async prepare(resolved) {
+				const prepared = await prepareLaunchInternal({
+					launcherId: resolved.launcher.launcherId,
+					request: resolved.request,
+					baseLaunchPlan: resolved.payload.launchPlan,
+					resourceSelections: request.skillIds ? undefined : resolved.payload.resourceSelections,
+					operationTime,
+					resolvedLauncher: resolved.launcher,
+				});
+				return prepared.ok
+					? { ok: true, value: { ...prepared.prepared, actor: resolved.actor } }
+					: {
+							ok: false,
+							failure: {
+								safeSummary: "Review the launch configuration and try again.",
+								value: prepared.outcome,
+							},
+						};
+			},
+			async commit(prepared, ctx) {
+				const created = await createScheduledProcessFromLaunchPlan(
+					deps,
+					prepared.launchPlan,
+					planConsumeFutureExecution(existing),
+					{
+						actor: prepared.actor,
+						resourceSelections: prepared.resourceSelections,
+						launchIntent: { launcherInput: prepared.launcherInput },
+						launchRunId: ctx.launchRunId,
+					},
+				);
+				const committed = toLaunchPipelineCommit<LaunchMutationOutcome, LaunchMutationOutcome>(
+					created,
+					{
+						startTurnId: prepared.launchPlan.startTurnId,
+						preCommitSummary: "The process could not be created. Try again later.",
+						postCommitSummary:
+							"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
+						mapPreCommitFailure: launchFailureOutcome,
+						mapCommittedResult: (outcome) =>
+							outcome.ok
+								? {
+										kind: "launched",
+										process: outcome.process,
+										projects: outcome.projects,
+										operation: "updated",
+									}
+								: launchFailureOutcome(outcome),
+					},
+				);
+				if (committed.kind === "failed") return committed;
+				const reaction = await runFutureExecutionPostCommitEffects(deps, [
+					buildFutureExecutionUpdatedEffect(existing, "deleted"),
+				]);
+				if (!reaction.ok && created.ok) {
+					return {
+						kind: "committed_with_reaction_error",
+						process: committed.process,
+						startTurnId: prepared.launchPlan.startTurnId,
+						safeSummary: "Process was created, but the schedule update could not be published.",
+						result: {
+							kind: "committed_with_reaction_error",
+							process: committed.process,
+							projects: created.projects,
+							error: reaction.message,
+							code: reaction.code,
+						},
+					};
+				}
+				if (committed.kind === "committed")
+					recordLauncherRecentsBestEffort(prepared.launcherId, prepared.launcherInput);
+				return committed;
+			},
+			unexpectedFailure() {
+				return {
+					safeSummary: "The launch could not be completed. Try again.",
+					value: {
+						kind: "failed",
+						issue: { code: "process_launch_failed", message: "The launch could not be completed" },
+					},
+				};
+			},
+		});
+		if (result.kind === "failed") return result.failure.value;
+		if (result.kind === "skipped") return { kind: "not_found", target: "launch" };
+		return result.result;
+	}
+
 	return {
 		async prepareLaunch(
 			launcherId: string,
@@ -510,6 +664,8 @@ export function createFutureLaunchLifecycle(
 			return runFutureExecutionExclusive(deps.processOperations, futureExecutionId, async () => {
 				const existing = deps.futureExecutions.getById(futureExecutionId);
 				if (!existing || existing.kind !== "launch") return { kind: "not_found", target: "launch" };
+				if (request.scheduleProvided && request.schedule.mode === "now")
+					return launchScheduledNow(existing, request, operationTime, opts?.actor);
 				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
 				if (!parsed.ok)
 					return invalidOutcome("invalid_payload", "Scheduled launch payload is invalid");
@@ -524,44 +680,6 @@ export function createFutureLaunchLifecycle(
 				});
 				if (!prepared.ok) return prepared.outcome;
 				const preparedLaunch = prepared.prepared;
-				if (preparedLaunch.schedule.mode === "now") {
-					const created = await createScheduledProcessFromLaunchPlan(
-						deps,
-						preparedLaunch.launchPlan,
-						planConsumeFutureExecution(existing),
-						{
-							actor: opts?.actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
-							resourceSelections: preparedLaunch.resourceSelections,
-							launchIntent: { launcherInput: launchRequest.value.launcherInput },
-						},
-					);
-					const reaction =
-						created.ok || created.stage === "post_commit"
-							? await runFutureExecutionPostCommitEffects(deps, [
-									buildFutureExecutionUpdatedEffect(existing, "deleted"),
-								])
-							: null;
-					if (!created.ok) return launchFailureOutcome(created);
-					if (reaction && !reaction.ok) {
-						return {
-							kind: "committed_with_reaction_error",
-							process: created.process,
-							projects: created.projects,
-							error: reaction.message,
-							code: reaction.code,
-						};
-					}
-					recordLauncherRecentsBestEffort(
-						preparedLaunch.launcherId,
-						launchRequest.value.launcherInput,
-					);
-					return {
-						kind: "launched",
-						process: created.process,
-						projects: created.projects,
-						operation: "updated",
-					};
-				}
 				return persistPreparedLaunch({
 					...preparedLaunch,
 					existing,

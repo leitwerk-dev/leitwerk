@@ -74,6 +74,7 @@ export function createCoordinatorHarness(
 	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
+		commands: { run: vi.fn() } as never,
 		launcherService: {
 			resolveUiLauncher: input.resolve ?? (async () => ({ ok: true, launcher: resolvedLauncher })),
 			resolvePreparationChecks: () => input.checks ?? [],
@@ -146,6 +147,7 @@ export function createWatcherHarness(
 	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
+		commands: { run: vi.fn() } as never,
 		launcherService: {} as never,
 		futureExecutionLifecycle: {} as never,
 		launchPipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
