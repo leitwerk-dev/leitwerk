@@ -117,8 +117,8 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 					? start.state.failedWorkerLeaseId
 					: null;
 		const lease =
-			leasesByStartRecordId.get(start.id) ??
 			(stateLeaseId ? leasesById.get(stateLeaseId) : null) ??
+			leasesByStartRecordId.get(start.id) ??
 			null;
 		const connectedAt = lease
 			? validObservedAt(lease.connectedAt ?? lease.bootstrapReceipt?.readyAt, lease.startedAt)

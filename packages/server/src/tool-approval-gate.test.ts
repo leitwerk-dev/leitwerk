@@ -5,6 +5,50 @@ import { createProcessOperationCoordinator } from "./process-operation-coordinat
 import { createToolApprovalGate } from "./tool-approval-gate.js";
 
 describe("tool approval gate", () => {
+	it.each([
+		"accepted",
+		"cancelled",
+	] as const)("settles every replayed waiter when %s", async (outcome) => {
+		const repos = createAllRepos(createInMemoryDatabase());
+		const process = repos.processes.create({ processId: "approval_process" });
+		const turn = repos.turnRecords.create({
+			id: "replayed-turn",
+			instanceId: process.id,
+			turnId: "run",
+			turnType: "human",
+			status: "succeeded",
+			pathType: "primary",
+		});
+		const gate = createToolApprovalGate({
+			repos,
+			processOperations: createProcessOperationCoordinator(),
+		});
+		const requestInput = {
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			toolCallId: "replayed-call",
+			toolName: "dangerous_tool",
+			arguments: { value: 1 },
+		};
+		const first = gate.review(requestInput);
+		const replay = gate.review(requestInput);
+		const requests = gate.listOpen(process.id);
+		expect(requests).toHaveLength(1);
+		const request = requests[0];
+		if (!request) throw new Error("Expected approval request");
+		if (outcome === "cancelled") gate.cancelTurn(process.id, turn.id);
+		else
+			await gate.resolve(
+				process.id,
+				request.id,
+				{ kind: "accepted" },
+				{ id: "operator", kind: "user", provider: null },
+			);
+		await expect(Promise.all([first, replay])).resolves.toEqual([
+			{ kind: outcome === "cancelled" ? "declined" : "accepted" },
+			{ kind: outcome === "cancelled" ? "declined" : "accepted" },
+		]);
+	});
 	it("does not reuse approval for a different tool call in the same turn", async () => {
 		const repos = createAllRepos(createInMemoryDatabase());
 		const process = repos.processes.create({ processId: "approval_process" });

@@ -181,6 +181,7 @@ async function runCommand(input: {
 	const child = execa(input.command, input.args, {
 		cwd: input.cwd,
 		env: input.env,
+		extendEnv: false,
 		stdin: "ignore",
 		detached: true,
 		timeout: input.timeoutMs,

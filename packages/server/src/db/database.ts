@@ -257,6 +257,7 @@ interface KnownMigration {
 	tableNames: readonly string[];
 	legacyIndexNames?: readonly string[];
 	matches(sqlite: DatabaseSync): boolean;
+	validateSource?(sqlite: DatabaseSync, sqlitePath: string): void;
 	apply(sqlite: DatabaseSync): void;
 }
 
@@ -508,6 +509,59 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		matches: (sqlite) =>
 			tableHasColumn(sqlite, "process_instances", "current_server_turn_record_id") ||
 			(existingTableSql(sqlite, "turn_records") ?? "").includes("server_automatic"),
+		validateSource(sqlite, sqlitePath) {
+			// Earlier migrations restore model provenance and launch-intent columns first.
+			// Validate the complete source before rebuilding either table loses its DDL.
+			const legacyProcessSql = createTableSql(schema.processInstances)
+				.replace("(\n", "(\ncurrent_server_turn_record_id text,\n")
+				.replace(
+					/\n\)$/,
+					`,
+				CONSTRAINT process_instances_one_current_execution CHECK (not ("process_instances"."current_worker_start_id" is not null and "process_instances"."current_server_turn_record_id" is not null)),
+				CONSTRAINT fk_process_instances_server_turn FOREIGN KEY (id, current_server_turn_record_id) REFERENCES turn_records(instance_id, id)
+				)`,
+				);
+			const legacyTurnSql = createTableSql(schema.turnRecords).replace(
+				"in ('llm', 'human', 'external', 'automatic')",
+				"in ('llm', 'human', 'external', 'automatic', 'server_automatic')",
+			);
+			for (const [table, expectedSql] of [
+				[schema.processInstances, legacyProcessSql],
+				[schema.turnRecords, legacyTurnSql],
+			] as const) {
+				const tableName = getTableName(table);
+				if (
+					normalizeCreateTableSql(existingTableSql(sqlite, tableName) ?? "") !==
+					normalizeCreateTableSql(expectedSql)
+				) {
+					throw new DatabaseSchemaMismatchError(sqlitePath, tableName);
+				}
+				const actualIndexes = sqlite
+					.prepare(
+						"SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+					)
+					.all(tableName) as Array<{ name: string; sql: string }>;
+				const expectedIndexes = generateCreateIndexDDL(table);
+				if (
+					actualIndexes.length !== expectedIndexes.length ||
+					actualIndexes.some(
+						(actual) =>
+							!expectedIndexes.some(
+								(expected) => normalizeSchemaSql(actual.sql) === normalizeSchemaSql(expected),
+							),
+					)
+				) {
+					throw new DatabaseSchemaMismatchError(sqlitePath, `indexes:${tableName}`);
+				}
+				if (
+					sqlite
+						.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?")
+						.get(tableName)
+				) {
+					throw new DatabaseSchemaMismatchError(sqlitePath, `triggers:${tableName}`);
+				}
+			}
+		},
 		apply(sqlite) {
 			const endedAt = new Date().toISOString();
 			sqlite
@@ -644,7 +698,10 @@ export function applyKnownMigrations(
 	try {
 		sqlite.exec("BEGIN");
 		try {
-			for (const migration of migrations) migration.apply(sqlite);
+			for (const migration of migrations) {
+				migration.validateSource?.(sqlite, sqlitePath);
+				migration.apply(sqlite);
+			}
 			assertBaselineSchema(sqlite, sqlitePath);
 			const violations = sqlite.prepare("PRAGMA foreign_key_check").all();
 			if (violations.length > 0) {

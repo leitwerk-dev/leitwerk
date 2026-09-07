@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	buildMiseSubprocessEnvironment,
 	DevelopmentToolPreparationError,
@@ -49,6 +49,31 @@ describe("development tool environment", () => {
 		expect(() => validateMiseVersion("mise 2026.8.15 linux-x64", "isolated")).toThrow(
 			DevelopmentToolPreparationError,
 		);
+	});
+
+	it("does not restore ambient credentials when spawning mise", async () => {
+		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-env-test-"));
+		const command = path.join(root, "mise");
+		await writeFile(
+			command,
+			`#!/bin/sh
+if [ -n "$LEITWERK_WORKER_CONNECT_TOKEN" ]; then exit 42; fi
+if [ "$1" = "--version" ]; then echo "mise ${PINNED_MISE_VERSION} linux-x64"; exit 0; fi
+if [ "$1" = "install" ]; then exit 0; fi
+printf '{}\\n'
+`,
+		);
+		await chmod(command, 0o755);
+		vi.stubEnv("LEITWERK_WORKER_CONNECT_TOKEN", "test-credential");
+		try {
+			const prepared = await new MiseDevelopmentToolEnvironment().prepare({
+				config: { ...isolated, miseCommand: command, processStorageRoot: root },
+				repositories: [{ repositoryKey: "repo", workingDirectory: root }],
+			});
+			expect(prepared.repositories).toHaveLength(1);
+		} finally {
+			vi.unstubAllEnvs();
+		}
 	});
 
 	it("accepts only newer local releases in the pinned calendar major", () => {

@@ -15,7 +15,7 @@ export function createToolApprovalGate(input: {
 	repos: Pick<RepositoryBundle, "toolApprovalRequests" | "transaction">;
 	processOperations: ProcessOperationCoordinator;
 }) {
-	const waiters = new Map<string, (decision: ToolApprovalDecision) => void>();
+	const waiters = new Map<string, Set<(decision: ToolApprovalDecision) => void>>();
 	return {
 		async review(requestInput: {
 			instanceId: string;
@@ -31,9 +31,11 @@ export function createToolApprovalGate(input: {
 				return { kind: "feedback", feedback: result.request.feedback ?? "" };
 			if (result.request.status === "declined" || result.request.status === "cancelled")
 				return { kind: "declined" };
-			return await new Promise<ToolApprovalDecision>((resolve) =>
-				waiters.set(result.request.id, resolve),
-			);
+			return await new Promise<ToolApprovalDecision>((resolve) => {
+				const pending = waiters.get(result.request.id) ?? new Set();
+				pending.add(resolve);
+				waiters.set(result.request.id, pending);
+			});
 		},
 		listOpen(instanceId?: string): ProcessToolApprovalRequest[] {
 			return input.repos.toolApprovalRequests.listOpen(instanceId);
@@ -57,7 +59,7 @@ export function createToolApprovalGate(input: {
 						...(decision.kind === "feedback" ? { feedback: decision.feedback } : {}),
 					});
 					if (resolved) {
-						waiters.get(requestId)?.(decision);
+						for (const resolve of waiters.get(requestId) ?? []) resolve(decision);
 						waiters.delete(requestId);
 					}
 					return resolved;
@@ -70,7 +72,7 @@ export function createToolApprovalGate(input: {
 				.filter((request) => request.turnRecordId === turnRecordId);
 			const changed = input.repos.toolApprovalRequests.cancelOpenByTurn(instanceId, turnRecordId);
 			for (const request of open) {
-				waiters.get(request.id)?.({ kind: "declined" });
+				for (const resolve of waiters.get(request.id) ?? []) resolve({ kind: "declined" });
 				waiters.delete(request.id);
 			}
 			return changed;
