@@ -58,7 +58,7 @@ describe("renderMarkdownToHtml", () => {
 		expect(html).toContain("<code>&lt;br&gt;</code>");
 	});
 
-	it("opens sanitized links in a new window", () => {
+	it("opens sanitized links to other pages in a new window", () => {
 		const html = normalizeHtml(
 			renderMarkdownToHtml(
 				"[safe](https://example.com) [unsafe](javascript:alert(1)) [ftp](ftp://example.com) [rel](./x)",
@@ -74,6 +74,19 @@ describe("renderMarkdownToHtml", () => {
 		);
 		expect(html).toContain('<a href="./x" target="_blank" rel="noopener noreferrer">rel</a>');
 		expect(html).not.toContain('href="javascript:alert(1)"');
+	});
+
+	it.each([
+		renderMarkdownToHtml,
+		renderRichMarkdownToHtml,
+	])("keeps same-page links in the current tab in %s", (render) => {
+		const html = normalizeHtml(
+			render('[Details](#details) [Top](#) <a href="#notes" target="_blank">Notes</a>'),
+		);
+		expect(html).toContain('<a href="#details">Details</a>');
+		expect(html).toContain('<a href="#">Top</a>');
+		expect(html).toContain('<a href="#notes">Notes</a>');
+		expect(html).not.toContain('target="_blank"');
 	});
 
 	it("strips resource-loading media elements from markdown output", () => {

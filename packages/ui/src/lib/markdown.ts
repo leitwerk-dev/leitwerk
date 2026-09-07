@@ -58,6 +58,10 @@ function sanitizeRenderedHtml(renderedHtml: string): string {
 	const template = globalThis.document.createElement("template");
 	template.innerHTML = sanitizedHtml;
 	for (const link of template.content.querySelectorAll("a[href]")) {
+		if (link.getAttribute("href")?.trim().startsWith("#")) {
+			link.removeAttribute("target");
+			continue;
+		}
 		link.setAttribute("target", "_blank");
 		link.setAttribute("rel", "noopener noreferrer");
 	}

@@ -18,6 +18,9 @@ The process detail view is organized into three distinct visual regions:
 
 Process detail is a workspace route. Its `RouteViewport` remains contained so the Chronicle can own timeline scrolling.
 
+Markdown fragment links such as `#details` navigate within the current page. Links to other pages
+open a new tab with `noopener noreferrer`.
+
 ---
 
 ## 2. Ticket creation modal
