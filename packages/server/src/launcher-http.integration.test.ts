@@ -633,6 +633,31 @@ describe("launcher HTTP routes", () => {
 		});
 	});
 
+	it.each([
+		{ mode: "once", runAt: "2027-04-25T09:00:00.000Z" },
+		{ mode: "cron", cronExpression: "0 9 * * *" },
+	])("rejects $mode schedules before immediate launch admission", async (schedule) => {
+		const idempotencyKey = crypto.randomUUID();
+		const response = await globalThis.fetch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json", "idempotency-key": idempotencyKey },
+				body: JSON.stringify({ launcherInput: {}, schedule }),
+			},
+		);
+		expect(response.status).toBe(400);
+		expect(await response.json()).toEqual({
+			errors: [
+				{
+					code: "invalid_schedule",
+					message: "Immediate launches require schedule mode 'now'",
+				},
+			],
+		});
+		expect(harness.ctx.deps.launchRuns.getByIdempotencyKey(idempotencyKey)).toBeNull();
+	});
+
 	it("lists UI-visible launchers with model-config schema metadata", async () => {
 		const response = await testFetch(`${harness.address}/api/launchers`);
 		const body = await response.json();

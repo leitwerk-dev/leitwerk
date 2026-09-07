@@ -50,21 +50,38 @@ function progressMessage(progress: ImportProgress): string {
 
 async function switchImportedSession(
 	ctx: ExtensionCommandContext,
-	sessionPath: string,
+	link: ParsedTransferLink,
+	imported: Pick<ImportResult, "sessionPath" | "attemptId">,
 ): Promise<void> {
-	const switched = await ctx.switchSession(sessionPath, {
+	const retryAcknowledgement = (activeCtx: ExtensionCommandContext): void => {
+		void new SessionTransferClient(link)
+			.acknowledge(imported.attemptId, AbortSignal.timeout(30_000))
+			.catch(() => {
+				try {
+					activeCtx.ui.notify(
+						"The local import is complete. Leitwerk acknowledgement is still pending; use the same link to retry it.",
+						"warning",
+					);
+				} catch {
+					// Pi may have replaced this context while acknowledgement was pending.
+				}
+			});
+	};
+	const switched = await ctx.switchSession(imported.sessionPath, {
 		withSession: async (replacementCtx) => {
 			replacementCtx.ui.notify(
 				"Leitwerk process imported. Local Pi tools and resources are active.",
 				"info",
 			);
+			retryAcknowledgement(replacementCtx);
 		},
 	});
 	if (switched.cancelled) {
 		ctx.ui.notify(
-			`Import complete. Session switch was cancelled; open it with /resume: ${sessionPath}`,
+			`Import complete. Session switch was cancelled; open it with /resume: ${imported.sessionPath}`,
 			"info",
 		);
+		retryAcknowledgement(ctx);
 	}
 }
 
@@ -105,19 +122,7 @@ export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 				) {
 					return;
 				}
-				try {
-					await new SessionTransferClient(link).acknowledge(
-						receipt.attemptId,
-						AbortSignal.timeout(30_000),
-					);
-				} catch (error) {
-					ctx.ui.notify(
-						error instanceof Error ? error.message : "Could not reconcile the completed import",
-						"error",
-					);
-					return;
-				}
-				await switchImportedSession(ctx, receipt.sessionPath);
+				await switchImportedSession(ctx, link, receipt);
 				return;
 			}
 
@@ -147,7 +152,7 @@ export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 						"Starting transfer…",
 					);
 					loader.onAbort = () => {
-						if (!finishing) done(null);
+						if (!finishing) loader.setMessage("Cancelling transfer…");
 					};
 					void importTransfer({
 						link,
@@ -160,7 +165,14 @@ export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 						},
 					}).then(
 						(result) => done(result),
-						(error: unknown) => done(error instanceof Error ? error : new Error("Transfer failed")),
+						(error: unknown) =>
+							done(
+								loader.aborted && !finishing
+									? null
+									: error instanceof Error
+										? error
+										: new Error("Transfer failed"),
+							),
 					);
 					return loader;
 				},
@@ -177,7 +189,7 @@ export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 				ctx.ui.notify(outcome.message, "error");
 				return;
 			}
-			await switchImportedSession(ctx, outcome.sessionPath);
+			await switchImportedSession(ctx, link, outcome);
 		},
 	});
 }

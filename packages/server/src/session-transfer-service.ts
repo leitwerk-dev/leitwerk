@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import {
 	DEFAULT_SESSION_TRANSFER_LIMITS,
@@ -115,6 +116,8 @@ export function createSessionTransferService(deps: {
 		phase: SessionTransferPhase,
 		extra: Partial<Omit<SessionTransferAttempt, "state">> = {},
 	): SessionTransferAttempt | null {
+		const current = deps.repos.sessionTransfers.getAttempt(id);
+		if (!current || ["consumed", "cancelled", "failed"].includes(current.phase)) return current;
 		return publish(deps.repos.sessionTransfers.updateAttempt(id, { phase, ...extra }));
 	}
 
@@ -156,6 +159,8 @@ export function createSessionTransferService(deps: {
 		phase: "failed" | "cancelled",
 		code: string,
 	): SessionTransferAttempt | null {
+		const current = deps.repos.sessionTransfers.getAttempt(attemptId);
+		if (!current || ["consumed", "cancelled", "failed"].includes(current.phase)) return current;
 		const attempt = publish(
 			deps.repos.sessionTransfers.updateAttempt(attemptId, {
 				phase,
@@ -198,6 +203,7 @@ export function createSessionTransferService(deps: {
 				await delay(250, undefined, { signal: runtime.controller.signal });
 			}
 
+			runtime.controller.signal.throwIfAborted();
 			await deps.supervisor.stopWorker(attempt.instanceId, "session_transfer");
 			if (deps.repos.leases.getByInstance(attempt.instanceId)) {
 				throw new Error("worker_lease_remains");
@@ -205,6 +211,7 @@ export function createSessionTransferService(deps: {
 			runtime.controller.signal.throwIfAborted();
 			updatePhase(attempt.id, "starting_exporter");
 			const manifest = await snapshotManifest(attempt);
+			runtime.controller.signal.throwIfAborted();
 			updatePhase(attempt.id, "scanning");
 			runtime.prepared = await deps.exporter.prepare({
 				instanceId: attempt.instanceId,
@@ -212,6 +219,7 @@ export function createSessionTransferService(deps: {
 				limits,
 				signal: runtime.controller.signal,
 			});
+			runtime.controller.signal.throwIfAborted();
 			updatePhase(attempt.id, "ready_to_stream", {
 				entriesTotal: runtime.prepared.preflight.entriesTotal,
 				logicalBytesTotal: runtime.prepared.preflight.logicalBytesTotal,
@@ -351,19 +359,19 @@ export function createSessionTransferService(deps: {
 					callback(null, chunk);
 				},
 				flush(callback) {
+					if (runtime.controller.signal.aborted) {
+						callback(runtime.controller.signal.reason);
+						return;
+					}
 					finished = true;
-					publish(
-						deps.repos.sessionTransfers.updateAttempt(attempt.id, {
-							phase: "awaiting_ack",
-							compressedBytes,
-							streamSha256: hash.digest("hex"),
-						}),
-					);
+					updatePhase(attempt.id, "awaiting_ack", {
+						compressedBytes,
+						streamSha256: hash.digest("hex"),
+					});
 					runtimes.delete(attempt.id);
 					callback();
 				},
 			});
-			source.on("error", (error) => meter.destroy(error));
 			const abortStream = (): void => {
 				if (!finished) failAttempt(attempt.id, "stream_interrupted");
 				runtimes.delete(attempt.id);
@@ -373,7 +381,7 @@ export function createSessionTransferService(deps: {
 				runtimes.delete(attempt.id);
 			});
 			meter.on("close", abortStream);
-			source.pipe(meter);
+			void pipeline(source, meter, { signal: runtime.controller.signal }).catch(() => undefined);
 			return meter;
 		},
 		cancel(input: AttemptAuth & { code?: string }) {

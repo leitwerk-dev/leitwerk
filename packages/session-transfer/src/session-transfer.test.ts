@@ -181,6 +181,35 @@ describe("session transfer format", () => {
 		});
 	});
 
+	it("preserves independent fresh root branches in append order", () => {
+		const header = {
+			type: "session",
+			version: 3,
+			id: "session-1",
+			timestamp: "2026-09-01T00:00:00.000Z",
+			cwd: "/source",
+		};
+		const entries = [
+			{ type: "message", id: "first-root", parentId: null },
+			{ type: "custom", id: "first-result", parentId: "first-root" },
+			{ type: "message", id: "fresh-root", parentId: null },
+			{ type: "custom", id: "fresh-result", parentId: "fresh-root" },
+			{ type: "custom", id: "first-review", parentId: "first-result" },
+		];
+		const rewritten = rewritePiSession(
+			`${[header, ...entries].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
+			"/target",
+		);
+		expect(rewritten.entryCount).toBe(entries.length);
+		expect(
+			rewritten.content
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line))
+				.slice(1),
+		).toEqual(entries);
+	});
+
 	it.each([undefined, 1, 2, 4])("rejects unsupported Pi session version %s", (version) => {
 		const header = {
 			type: "session",
@@ -204,10 +233,11 @@ describe("session transfer format", () => {
 		],
 		["orphan parents", [{ type: "message", id: "entry-1", parentId: "missing" }]],
 		[
-			"multiple roots",
+			"forward parents",
 			[
 				{ type: "message", id: "entry-1", parentId: null },
-				{ type: "custom", id: "entry-2", parentId: null },
+				{ type: "custom", id: "entry-2", parentId: "entry-3" },
+				{ type: "custom", id: "entry-3", parentId: "entry-1" },
 			],
 		],
 		["second headers", [{ type: "session", version: 3, id: "entry-1", parentId: null }]],

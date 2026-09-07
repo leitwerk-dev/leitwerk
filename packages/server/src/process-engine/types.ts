@@ -200,7 +200,10 @@ export interface ProcessEngine {
 		startTurnId: TurnId,
 		opts?: { actor?: Actor },
 	): Promise<EngineResult<void>>;
-	abortProcess(instanceId: string, opts?: { actor?: Actor }): Promise<EngineResult<void>>;
+	abortProcess(
+		instanceId: string,
+		opts?: { actor?: Actor; expectedTurnRecordId?: string },
+	): Promise<EngineResult<void>>;
 	abortTurn(
 		instanceId: string,
 		opts?: { reason?: string; actor?: Actor },

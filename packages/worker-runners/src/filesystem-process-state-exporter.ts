@@ -12,10 +12,12 @@ export function createFilesystemProcessStateExporter(input: {
 	resolveSource(instanceId: string): FilesystemExportSource | Promise<FilesystemExportSource>;
 	allowedRoots: readonly string[];
 }): ProcessStateExporter {
-	const allowedRoots = input.allowedRoots.map((root) => path.resolve(root));
 	return {
 		async prepare(request) {
 			const source = await input.resolveSource(request.instanceId);
+			const allowedRoots = await Promise.all(
+				input.allowedRoots.map((root) => realpath(path.resolve(root))),
+			);
 			const workspaceRoot = await realpath(path.resolve(source.workspaceRoot));
 			const sessionFile = await realpath(path.resolve(source.sessionFile));
 			for (const candidate of [workspaceRoot, sessionFile]) {

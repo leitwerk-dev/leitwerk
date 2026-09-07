@@ -7,7 +7,7 @@ This guide explains how to deploy Leitwerk on a single machine using Docker and 
 ## 1. Prerequisites & Host Constraints
 
 ### Prerequisites
-- Docker Engine or Docker Desktop
+- Docker Engine or Docker Desktop. Named-volume session transfers require Engine 26.0 or newer (API 1.45+) for read-only workspace and tree subdirectory mounts.
 - Docker Compose v2
 - OpenSSL, `curl`, and `jq`
 

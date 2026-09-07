@@ -67,7 +67,13 @@ export async function preflightGitSshAccess(
 				{ mode: 0o700 },
 			),
 		]);
-		const env = { ...process.env, GIT_SSH: sshPath, SSH_AUTH_SOCK: "" };
+		const env = {
+			...process.env,
+			GIT_SSH: sshPath,
+			// This also overrides ambient core.sshCommand, which takes precedence over GIT_SSH.
+			GIT_SSH_COMMAND: `'${sshPath.replaceAll("'", "'\\''")}'`,
+			SSH_AUTH_SOCK: "",
+		};
 		const ref = `refs/heads/${input.baseBranch}`;
 		try {
 			await execFileAsync(gitBinary, ["ls-remote", "--exit-code", input.repoLocator, ref], {

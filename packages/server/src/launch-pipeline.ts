@@ -195,7 +195,12 @@ export function completeCommittedLaunch(
 		"choose_title",
 		process.title ? "completed" : titleGenerationAvailable ? "in_progress" : "skipped",
 	);
-	if (!startTurnId) {
+	if (
+		!startTurnId ||
+		(process.selectedTurnId !== null &&
+			process.lifecycleStatus === "waiting" &&
+			process.currentExecution === null)
+	) {
 		for (const id of STARTUP_STEP_IDS) next = transitionLaunchStep(next, id, "skipped");
 	}
 	next = { ...next, instanceId: process.id, status: "starting" };
@@ -352,6 +357,8 @@ export function createLaunchPipeline(deps: {
 					value: error as TFailure,
 				};
 				return fail(launchRunId, run ? activeStepId(run) : "validate_request", failure);
+			} finally {
+				deps.launchRuns.deleteReplay(launchRunId);
 			}
 		},
 	};

@@ -14,6 +14,8 @@ export interface DockerMountSpec {
 	target: string;
 	/** Mount read-only inside the container. */
 	readOnly?: boolean;
+	/** Mount only this relative directory of a named volume, without copying image files into it. */
+	volumeSubpath?: string;
 }
 
 export interface DockerContainerSpec {

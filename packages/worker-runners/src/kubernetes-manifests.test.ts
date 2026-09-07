@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildKubernetesAdmissionPolicyManifests,
 	buildKubernetesDockerConfigJsonSecretManifest,
+	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesServerCaConfigMapManifest,
@@ -249,6 +250,48 @@ describe("Kubernetes manifest builders", () => {
 				],
 			},
 		});
+	});
+
+	it("restricts helper PVC mounts to workspace and tree while retaining a read-only CA mount", () => {
+		const manifest = buildKubernetesExportHelperPodManifest(
+			{
+				instanceId: "PROC_1",
+				exportId: "exp_1",
+				image: "example/worker:1",
+				command: ["node", "/app/helper.js"],
+				env: { LEITWERK_EXPORT_CREDENTIAL: "export-only-token" },
+				volume: { instanceId: "PROC_1", id: "retained-state", mountPath: "/state" },
+			},
+			{
+				namespace: "leitwerk-process-proc-1",
+				serverCaConfigMap: {
+					name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+					key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
+					mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
+				},
+			},
+		);
+		const container = manifest.spec.containers[0];
+		expect(container.volumeMounts).toEqual([
+			{
+				name: "process-state",
+				mountPath: "/state/workspace",
+				subPath: "workspace",
+				readOnly: true,
+			},
+			{
+				name: "process-state",
+				mountPath: "/state/tree",
+				subPath: "tree",
+				readOnly: true,
+			},
+			{ name: "server-ca", mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH, readOnly: true },
+		]);
+		expect(container.env).toEqual([
+			{ name: "LEITWERK_EXPORT_CREDENTIAL", value: "export-only-token" },
+			{ name: "NODE_EXTRA_CA_CERTS", value: KUBERNETES_WORKER_SERVER_CA_CERT_PATH },
+		]);
+		expect(manifest.spec.automountServiceAccountToken).toBe(false);
 	});
 
 	it("builds admission policy constraints for process resources", () => {
