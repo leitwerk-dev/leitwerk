@@ -147,6 +147,8 @@ export async function runWorkerContainerEntrypoint(
 				[
 					"--data-root",
 					dockerDataRoot,
+					"--storage-driver",
+					"overlay2",
 					"--host",
 					`unix://${DOCKER_SOCKET}`,
 					"--pidfile",

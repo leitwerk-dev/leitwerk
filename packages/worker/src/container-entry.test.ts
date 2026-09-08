@@ -212,7 +212,16 @@ describe("worker container entrypoint", () => {
 			}
 			expect(await readFile(retainedImage, "utf8")).toBe("keep this image");
 			for (const call of runtime.spawn.mock.calls.slice(0, 2)) {
-				expect(call[1]).toContain(dockerDataRoot);
+				expect(call[1]).toEqual([
+					"--data-root",
+					dockerDataRoot,
+					"--storage-driver",
+					"overlay2",
+					"--host",
+					"unix:///var/run/docker.sock",
+					"--pidfile",
+					"/var/run/leitwerk-dockerd.pid",
+				]);
 			}
 		} finally {
 			await rm(directory, { recursive: true, force: true });

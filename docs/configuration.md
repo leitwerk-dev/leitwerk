@@ -151,6 +151,8 @@ Worker launch configuration is immutable for a physical worker. Changes affect o
 
 Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. It preserves `DOCKER_CONFIG` for registry credentials. Local workers retain their host Docker configuration.
 
+The private daemon explicitly uses `overlay2`, including on a verified direct Btrfs process filesystem. It does not select a storage driver from the backing filesystem. Operators must verify persistent overlay mounts with their runtime, kernel and volume combination before activation.
+
 An early private-daemon exit permits one retry within the same startup deadline. Both attempts use the existing Docker data directory. Startup failure never deletes or resets retained Docker data.
 
 ---
