@@ -96,7 +96,49 @@ commit of a same-repository Release Please PR targeting `main`. The commit must 
 on `main`. All later jobs check out that verified SHA, not the mutable tag reference.
 Verification runs before release code or registry writes. Manual dispatch can resume such
 a release; it cannot publish an arbitrary tag or an unmerged release PR. Prerelease npm
-publication is not enabled.
+publication uses the separate opt-in workflow below.
+
+## Opt-in npm release candidates
+
+Run **Publish release candidate** (`publish-rc.yml`) from `main`, select the open Release
+Please PR number, and enable **publish**. Leave **publish** unchecked to validate and retain
+the package archives without publishing. The CLI equivalent is:
+
+```bash
+gh workflow run publish-rc.yml --ref main -f release_pr=40 -F publish=true
+```
+
+The workflow captures the PR's current head and assigns every npm workspace
+`X.Y.Z-rc.<workflow-run-id>`, derived from the proposed stable version. Exact internal
+dependencies use the same RC version. Install with `npm install @leitwerk-dev/server@next`
+or pin the exact RC version for a reproducible private composition.
+
+The source must be an open, non-draft, same-repository Release Please PR that includes the
+trusted workflow revision from `main`. The workflow runs the full test gate and checks
+package contents without publishing permissions. A fresh publisher checks out only trusted
+main tooling, verifies every downloaded archive's package name, version, Git SHA, internal
+dependencies, and npm publishing configuration, and rechecks the PR has not changed or
+closed. It never installs or executes PR code with npm publishing permissions. Packaging
+and publication disable npm lifecycle hooks.
+
+RC publication uses only npm's `next` tag. It never changes `latest`, tags Git, creates a
+GitHub Release, publishes images or charts, or promotes a deployment lock. It does not
+modify the PR's tracked manifests or Release Please metadata. Existing versions can only
+be reused if both their Git SHA and archive integrity match; a conflicting partial
+publication fails before any further package is published. Rerun failed jobs to resume with
+the retained artifacts. If the PR head changes, start a new workflow run.
+
+Configure the `npm-prerelease` GitHub environment to allow only the exact `main` branch,
+with administrator bypass disabled. Add an **additional** trusted publisher to every public
+npm workspace; keep the existing stable publisher unchanged:
+
+- Organization: `leitwerk-dev`
+- Repository: `leitwerk`
+- Workflow: `publish-rc.yml`
+- Environment: `npm-prerelease`
+- Allowed action: `npm publish` (enable direct publication, not only staged publication)
+
+This one-time npm setup is required before opting into publication. No npm token is needed.
 
 ## Retry and conflicts
 
