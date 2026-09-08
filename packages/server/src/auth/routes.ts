@@ -27,9 +27,6 @@ export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): voi
 				.code(401)
 				.send({ authEnabled: auth.config.enabled, actor: null } satisfies AuthMeResponseBody);
 		}
-		if (actor) {
-			request.actor = actor;
-		}
 		return reply.send({ authEnabled: auth.config.enabled, actor } satisfies AuthMeResponseBody);
 	});
 

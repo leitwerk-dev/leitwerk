@@ -15,7 +15,6 @@ import type {
 import type {
 	AuthMeResponseBody,
 	CronPreviewResponseBody,
-	ErrorResponseBody,
 	FutureExecutionSummary as FullFutureExecutionSummary,
 	FutureExecutionDetailResponseBody,
 	FutureExecutionOverviewItem,
@@ -64,6 +63,13 @@ import type {
 } from "@leitwerk-dev/protocol/launcher-contract";
 import * as v from "valibot";
 import { formatDefinition } from "./format.js";
+import {
+	readErrorMessage,
+	readJsonObject,
+	requestJson,
+	tryReadJson,
+	unknownRecordSchema,
+} from "./http-client.js";
 import { getFetchImpl, resolveApiUrl } from "./runtime-config";
 
 export class ApiResponseError extends Error {
@@ -362,59 +368,6 @@ export type LauncherSubmitResult =
 			status: number;
 			error: string;
 	  };
-
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
-
-async function tryReadJson(response: Response): Promise<unknown> {
-	try {
-		return await response.json();
-	} catch {
-		return null;
-	}
-}
-
-async function readJsonObject<T extends object>(response: Response, context: string): Promise<T> {
-	const body = await tryReadJson(response);
-	if (!v.safeParse(unknownRecordSchema, body).success) {
-		throw new Error(`${context}: response body must be a JSON object`);
-	}
-	return body as T;
-}
-
-async function requestJson<T extends object>(input: {
-	path: string;
-	init?: RequestInit;
-	malformed: string;
-	error?: (response: Response, body: unknown) => Error;
-	onError?: (response: Response, body: unknown) => T | Promise<T>;
-}): Promise<T> {
-	const fetchImpl = getFetchImpl();
-	const url = resolveApiUrl(input.path);
-	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		if (input.onError) return input.onError(response, body);
-		throw input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`);
-	}
-	return readJsonObject<T>(response, input.malformed);
-}
-
-function readOptionalString(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
-}
-
-function readErrorMessage(body: unknown): string | null {
-	const response = body as (ErrorResponseBody & { message?: unknown }) | null;
-	const error = readOptionalString(response?.error) ?? readOptionalString(response?.message);
-	return error && error.trim() !== "" ? error : null;
-}
 
 async function requireSuccessfulMutation(response: Response, fallbackError: string): Promise<void> {
 	if (response.ok) return;

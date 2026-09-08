@@ -88,9 +88,7 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 				return reply.code(201).send(result);
 			} catch (error) {
 				if (!(error instanceof ApiTokenValidationError)) throw error;
-				return reply
-					.code(400)
-					.send({ error: error instanceof Error ? error.message : "Invalid token request" });
+				return reply.code(400).send({ error: error.message });
 			}
 		});
 		management.delete<{ Params: { id: string } }>(

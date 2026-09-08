@@ -2,11 +2,6 @@ import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuthService } from "./auth-service.js";
 
-export interface RequestAuthContext {
-	credentialKind: "session" | "api_token" | "anonymous";
-	actor: Actor;
-	tokenId?: string;
-}
 export interface TokenAuditContext {
 	operation: string;
 	tokenId?: string;
@@ -17,7 +12,6 @@ export interface TokenAuditContext {
 declare module "fastify" {
 	interface FastifyRequest {
 		actor?: Actor;
-		authentication?: RequestAuthContext;
 		tokenAudit?: TokenAuditContext;
 	}
 }
@@ -32,20 +26,18 @@ export function hasAuthorization(request: FastifyRequest): boolean {
 		)
 	);
 }
-function resolved(request: FastifyRequest, context: RequestAuthContext): Actor {
-	request.authentication = context;
-	request.actor = context.actor;
-	return context.actor;
+function resolved(request: FastifyRequest, actor: Actor): Actor {
+	request.actor = actor;
+	return actor;
 }
 export function authenticateBrowserRequest(
 	auth: AuthService,
 	request: FastifyRequest,
 ): Actor | null {
 	if (hasAuthorization(request)) return null;
-	if (!auth.config.enabled)
-		return resolved(request, { credentialKind: "anonymous", actor: ADMIN_ACTOR });
+	if (!auth.config.enabled) return resolved(request, ADMIN_ACTOR);
 	const actor = auth.resolveSession(request.cookies?.[auth.config.sessionCookieName]);
-	return actor ? resolved(request, { credentialKind: "session", actor }) : null;
+	return actor ? resolved(request, actor) : null;
 }
 export function authenticateRequest(auth: AuthService, request: FastifyRequest): Actor | null {
 	if (!hasAuthorization(request)) return authenticateBrowserRequest(auth, request);
@@ -71,13 +63,7 @@ export function authenticateRequest(auth: AuthService, request: FastifyRequest):
 			ownerKind: result.token.owner.kind,
 		};
 	}
-	return result.actor && result.token
-		? resolved(request, {
-				credentialKind: "api_token",
-				actor: result.actor,
-				tokenId: result.token.id,
-			})
-		: null;
+	return result.actor && result.token ? resolved(request, result.actor) : null;
 }
 export function requireApiActor(
 	auth: AuthService,

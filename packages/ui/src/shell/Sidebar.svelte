@@ -3,10 +3,7 @@ import type { Actor } from "@leitwerk-dev/domain";
 import { type FutureActionSummary, type FutureExecutionSummary, logout } from "../lib/api.js";
 
 import { formatLocalDateTime, formatLocalDateTime24Hour } from "../lib/format.js";
-import {
-	keyboardShortcutHelpOpen,
-	openKeyboardShortcutHelp,
-} from "../lib/keyboard-shortcuts-help.js";
+import { openKeyboardShortcutHelp } from "../lib/keyboard-shortcuts-help.js";
 import type { ProcessRowView } from "../lib/process-row-view.js";
 import {
 	futureExecutions,
@@ -29,8 +26,8 @@ import { wsStore } from "../lib/ws.svelte";
 
 interface Props {
 	currentRoute: Route;
-	authEnabled?: boolean;
-	actor?: Actor | null;
+	authEnabled: boolean;
+	actor: Actor;
 	onLoggedOut?: () => void;
 }
 
@@ -38,8 +35,8 @@ const collapseBreakpointPx = 960;
 
 let {
 	currentRoute,
-	authEnabled = false,
-	actor = null,
+	authEnabled,
+	actor,
 	onLoggedOut = () => window.location.assign("/"),
 }: Props = $props();
 
@@ -108,7 +105,7 @@ const futureExecutionsControlActive = $derived(
 	effectiveSidebarCollapsed &&
 		(futureExecutionsPopoverOpen || currentRoute.page === "future-launch-detail"),
 );
-const userName = $derived(authEnabled ? (actor?.displayName ?? actor?.id ?? "User") : "Anonymous");
+const userName = $derived(authEnabled ? (actor.displayName ?? actor.id) : "Anonymous");
 
 $effect(() => {
 	const reconnectCount = $wsStore.reconnectCount;
@@ -801,7 +798,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	{/if}
 
 	<div class="sidebar-footer" class:is-collapsed={effectiveSidebarCollapsed}>
-		{#if !authEnabled || actor}
 			<button
 				type="button"
 				class="user-trigger"
@@ -851,30 +847,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
  {/if}
 				</div>
 			{/if}
-		{:else}
-			<button
-				type="button"
-				class="help-trigger"
-				class:is-collapsed={effectiveSidebarCollapsed}
-				data-action="show-help"
-				data-pressable="true"
-				aria-haspopup="dialog"
-				aria-controls="keyboard-shortcuts-modal"
-				aria-expanded={$keyboardShortcutHelpOpen}
-				aria-label="Show help"
-				title="Show help (?)"
-				onclick={showHelp}
-			>
-				<span class="footer-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="8.25"></circle>
-						<path d="M9.8 9.4a2.45 2.45 0 0 1 4.65 1.1c0 1.85-2.45 2.05-2.45 3.65"></path>
-						<path d="M12 17.4h.01"></path>
-					</svg>
-				</span>
-				{#if !effectiveSidebarCollapsed}<span>Show help</span>{/if}
-			</button>
-		{/if}
 	</div>
 </aside>
 
@@ -1154,8 +1126,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		padding-top: 8px;
 	}
 
-	.user-trigger,
-	.help-trigger {
+	.user-trigger {
 		display: grid;
 		grid-template-columns: 30px minmax(0, 1fr);
 		align-items: center;
@@ -1173,15 +1144,13 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	}
 
 	.user-trigger:hover,
-	.user-trigger[aria-expanded="true"],
-	.help-trigger:hover {
+	.user-trigger[aria-expanded="true"] {
 		border-color: color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
 		background: color-mix(in srgb, var(--chronicle-card-surface) 78%, transparent 22%);
 		color: var(--chronicle-text);
 	}
 
-	.user-trigger.is-collapsed,
-	.help-trigger.is-collapsed {
+	.user-trigger.is-collapsed {
 		display: grid;
 		grid-template-columns: 1fr;
 		place-items: center;

@@ -134,7 +134,7 @@ function mountSubject(
 	currentRoute = HOME_ROUTE,
 	auth: {
 		authEnabled?: boolean;
-		actor?: { id: string; kind: "user"; provider: string | null; displayName?: string } | null;
+		actor?: { id: string; kind: "user"; provider: string | null; displayName?: string };
 	} = {},
 ) {
 	const target = document.createElement("div");
@@ -146,7 +146,7 @@ function mountSubject(
 			props: {
 				currentRoute,
 				authEnabled: auth.authEnabled ?? false,
-				actor: auth.actor ?? null,
+				actor: auth.actor ?? { id: "admin", kind: "user", provider: null },
 				onLoggedOut: mocks.onLoggedOut,
 			},
 		}),
