@@ -775,3 +775,25 @@ export const BASELINE_TABLE_CONSTRAINTS: Readonly<Record<string, readonly string
 		"CONSTRAINT fk_tool_approval_turn FOREIGN KEY (instance_id, turn_record_id) REFERENCES turn_records(instance_id, id)",
 	],
 };
+
+export const apiTokens = sqliteTable(
+	"api_tokens",
+	{
+		id: text("id").primaryKey(),
+		prefix: text("prefix").notNull(),
+		secretHash: text("secret_hash").notNull(),
+		ownerKind: text("owner_kind", { enum: ["user", "anonymous"] }).notNull(),
+		ownerId: text("owner_id").notNull(),
+		actorJson: text("actor_json").notNull(),
+		providerBindingJson: text("provider_binding_json"),
+		name: text("name").notNull(),
+		createdAt: text("created_at").notNull(),
+		expiresAt: text("expires_at"),
+		revokedAt: text("revoked_at"),
+		lastUsedAt: text("last_used_at"),
+	},
+	(t) => [
+		uniqueIndex("idx_api_tokens_secret_hash").on(t.secretHash),
+		index("idx_api_tokens_owner").on(t.ownerKind, t.ownerId),
+	],
+);

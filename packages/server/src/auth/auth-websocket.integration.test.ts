@@ -1,5 +1,5 @@
 import cookie from "@fastify/cookie";
-import type { Actor } from "@leitwerk-dev/domain";
+import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -101,5 +101,28 @@ describe("auth WebSocket guard", () => {
 		} finally {
 			ws.close();
 		}
+	});
+	it.each([
+		true,
+		false,
+	])("rejects API tokens at the actual WebSocket upgrade with auth enabled=%s", async (enabled) => {
+		const config = testAuthConfig({ auth: { enabled } });
+		const auth = createAuthService({ config, repos: createAllRepos(createInMemoryDatabase()) });
+		const actor: Actor = enabled
+			? { id: "identity:alice", kind: "user", provider: "identity" }
+			: ADMIN_ACTOR;
+		const { secret } = auth.apiTokens.create(
+			auth.apiTokens.ownerForActor(actor),
+			"ws-denial",
+			null,
+		);
+		app = Fastify({ logger: false });
+		await app.register(cookie);
+		await registerWebsocket(app, createBroadcaster(), createWorkerWebSocketIpcManager(), auth);
+		const address = await app.listen({ host: "127.0.0.1", port: 0 });
+		await expectRejectedWebsocketWithHeaders(`${address.replace("http://", "ws://")}/ws`, {
+			authorization: `Bearer ${secret}`,
+			origin: config.server.base_url,
+		});
 	});
 });

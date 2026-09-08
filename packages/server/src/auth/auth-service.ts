@@ -1,6 +1,8 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { AuthLoginFlowRecord, RepositoryBundle } from "../db/repositories.js";
+import { resolveApiTokenPolicy } from "./api-token-policy.js";
+import { type ApiTokenService, createApiTokenService } from "./api-token-service.js";
 import { type AuthClient, createAuthClient } from "./auth-client.js";
 import {
 	isActorAllowedByConfig,
@@ -30,6 +32,7 @@ export interface AuthSweepResult {
 
 export interface AuthService {
 	readonly config: ResolvedAuthConfig;
+	readonly apiTokens: ApiTokenService;
 	startLogin(): Promise<CreatedLoginFlow>;
 	completeLogin(input: { loginCookieValue: string; callbackUrl: URL }): Promise<CompletedLogin>;
 	resolveSession(cookieValue: string | undefined): Actor | null;
@@ -81,7 +84,7 @@ function consumeValidFlow(
 
 export function createAuthService(input: {
 	config: LeitwerkConfig;
-	repos: Pick<RepositoryBundle, "authSessions" | "authLoginFlows">;
+	repos: Pick<RepositoryBundle, "authSessions" | "authLoginFlows" | "apiTokens">;
 	oidcClient?: OidcClient;
 	authClient?: AuthClient;
 }): AuthService {
@@ -99,6 +102,11 @@ export function createAuthService(input: {
 
 	return {
 		config: auth,
+		apiTokens: createApiTokenService({
+			auth,
+			policy: resolveApiTokenPolicy(input.config.auth?.api_tokens),
+			repo: input.repos.apiTokens,
+		}),
 		async startLogin() {
 			sweepExpiredAuthState();
 			if (!auth.enabled || auth.providers.length === 0) {

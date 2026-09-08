@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { registerApiTokenAudit } from "../auth/api-token-audit.js";
 import type { AuthService } from "../auth/auth-service.js";
 import { requireApiActor } from "../auth/fastify-auth.js";
 import { registerAuthRoutes } from "../auth/routes.js";
@@ -32,6 +33,7 @@ export function registerHttp(input: {
 	maxSessionSnapshotBytes?: number;
 	extensionUiAssetCacheControl?: string;
 }): void {
+	registerApiTokenAudit(input.app);
 	input.app.get("/api/health", async () => healthBody());
 	input.app.get("/api/ready", async (_request, reply) => {
 		const ready = input.isReady();
@@ -58,7 +60,9 @@ export function registerHttp(input: {
 			url === "/api/health" ||
 			url === "/api/ready" ||
 			url === "/api/auth/me" ||
-			url.startsWith("/api/session-transfers/")
+			url.startsWith("/api/session-transfers/") ||
+			url === "/api/auth/tokens" ||
+			url.startsWith("/api/auth/tokens/")
 		) {
 			return;
 		}

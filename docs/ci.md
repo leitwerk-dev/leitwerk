@@ -10,6 +10,11 @@ Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm p
 
 Every PR must pass `Full validation` and `Conventional PR title and DCO`. These checks cover builds, type checks, tests, PR title format, and commit sign-offs. Publication also validates release metadata and package contents.
 
+Builds, tests, and browser installation use Node 26. Playwright 1.63 supports
+fresh browser archive extraction on Node 26.8.1, so the older temporary Node 24
+installer workaround is no longer needed. Browser installation retains a
+five-minute timeout.
+
 ## Publication safeguards
 
 Stable publication accepts only releases created from a merged Release Please PR on `main`. RC publication accepts only the validated revision of an open release PR. Both use main-only publishing environments and short-lived npm credentials.

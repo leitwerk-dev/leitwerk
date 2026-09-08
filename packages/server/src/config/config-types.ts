@@ -71,7 +71,15 @@ export interface AuthGithubProviderConfig {
 
 export type AuthProviderConfig = AuthOidcProviderConfig | AuthGithubProviderConfig;
 
+export interface ApiTokensConfig {
+	enabled?: boolean;
+	default_ttl?: string;
+	max_ttl?: string;
+	allow_no_expiry?: boolean;
+}
+
 export interface AuthConfig {
+	api_tokens?: ApiTokensConfig;
 	/** Only true enables authentication; omit or set false to keep the leitwerk unauthenticated. */
 	enabled?: boolean;
 	session?: AuthSessionConfig;

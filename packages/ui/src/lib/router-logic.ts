@@ -1,4 +1,5 @@
 export type Page =
+	| "api-tokens"
 	| "home"
 	| "processes"
 	| "process-detail"
@@ -125,6 +126,8 @@ function matchPrefixedDetailRoute(
 
 export function matchRoute(pathnameWithSearch: string): Route {
 	const pathname = stripSearchAndHash(pathnameWithSearch);
+	if (pathname === "/account/api-tokens" || pathname === "/account/api-tokens/")
+		return { page: "api-tokens", params: {} };
 	const processDetailRoute = matchPrefixedDetailRoute(
 		pathnameWithSearch,
 		"/processes/",

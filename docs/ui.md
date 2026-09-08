@@ -8,7 +8,7 @@ The Leitwerk user interface provides real-time visibility and steering control o
 
 The process detail view is organized into three distinct visual regions:
 
-- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. Its footer shows the authenticated user's name and a menu for keyboard help and Leitwerk-session logout. When authentication is disabled, the footer shows keyboard help only. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
+- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
 - **Turn Rail:** Right-hand outline listing completed turns, active execution leaves, and declared future turns for jumping directly to specific steps.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
 
@@ -136,3 +136,16 @@ The launch-run route accepts only `schedule.mode = "now"`; the future-launch rou
 `"once"` and `"cron"`. Other modes return `400` before admission. Updating a future launch to
 `"now"` admits a launch run and repeats launcher preparation checks. The future launch is consumed
 atomically with process creation; a preparation failure preserves it for a later revision or run.
+
+## API tokens account page
+
+Open **API tokens** in the account menu or visit `/account/api-tokens`. Create a
+named token with the configured default expiry, a chosen local date/time, a
+30-minute expiry, or no expiration when allowed. The new secret is displayed
+once with explicit copy feedback. Save it before dismissal or leaving the page;
+reloading cannot retrieve it.
+
+The list shows public ID/prefix, name, creation, expiry, last use, and revocation
+status. Revoke individually or confirm revocation of all current-owner tokens.
+Listing and revocation remain usable when issuance is disabled. In anonymous
+mode, every visitor shares and manages the same token list.
