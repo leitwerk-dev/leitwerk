@@ -1,4 +1,5 @@
 import type { Actor } from "@leitwerk-dev/domain";
+import type { ApiTokenMetadata } from "@leitwerk-dev/protocol/http-contracts";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { apiTokens } from "./schema.js";
@@ -12,33 +13,20 @@ export interface ApiTokenOwner {
 	actor: Actor;
 	providerBinding: TokenProviderBinding | null;
 }
-export interface ApiTokenRecord {
-	id: string;
-	prefix: string;
+export interface ApiTokenRecord extends ApiTokenMetadata {
 	secretHash: string;
 	owner: ApiTokenOwner;
-	name: string;
-	createdAt: string;
-	expiresAt: string | null;
-	revokedAt: string | null;
-	lastUsedAt: string | null;
 }
 function record(row: typeof apiTokens.$inferSelect): ApiTokenRecord {
+	const { ownerKind, ownerId, actorJson, providerBindingJson, ...fields } = row;
 	return {
-		id: row.id,
-		prefix: row.prefix,
-		secretHash: row.secretHash,
+		...fields,
 		owner: {
-			kind: row.ownerKind,
-			id: row.ownerId,
-			actor: JSON.parse(row.actorJson),
-			providerBinding: row.providerBindingJson ? JSON.parse(row.providerBindingJson) : null,
+			kind: ownerKind,
+			id: ownerId,
+			actor: JSON.parse(actorJson),
+			providerBinding: providerBindingJson ? JSON.parse(providerBindingJson) : null,
 		},
-		name: row.name,
-		createdAt: row.createdAt,
-		expiresAt: row.expiresAt,
-		revokedAt: row.revokedAt,
-		lastUsedAt: row.lastUsedAt,
 	};
 }
 function owned(owner: ApiTokenOwner) {
@@ -46,23 +34,14 @@ function owned(owner: ApiTokenOwner) {
 }
 export function createApiTokenRepo(db: LeitwerkDb) {
 	return {
-		create(token: ApiTokenRecord): void {
+		create({ owner, ...fields }: ApiTokenRecord): void {
 			db.insert(apiTokens)
 				.values({
-					id: token.id,
-					prefix: token.prefix,
-					secretHash: token.secretHash,
-					ownerKind: token.owner.kind,
-					ownerId: token.owner.id,
-					actorJson: JSON.stringify(token.owner.actor),
-					providerBindingJson: token.owner.providerBinding
-						? JSON.stringify(token.owner.providerBinding)
-						: null,
-					name: token.name,
-					createdAt: token.createdAt,
-					expiresAt: token.expiresAt,
-					revokedAt: token.revokedAt,
-					lastUsedAt: token.lastUsedAt,
+					...fields,
+					ownerKind: owner.kind,
+					ownerId: owner.id,
+					actorJson: JSON.stringify(owner.actor),
+					providerBindingJson: owner.providerBinding ? JSON.stringify(owner.providerBinding) : null,
 				})
 				.run();
 		},

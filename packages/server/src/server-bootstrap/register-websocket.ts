@@ -36,9 +36,6 @@ function authenticateClientWebSocket(
 		reply.code(401).send({ error: "Authentication required" });
 		return;
 	}
-	if (actor) {
-		request.actor = actor;
-	}
 	if (!auth.config.enabled) {
 		return;
 	}

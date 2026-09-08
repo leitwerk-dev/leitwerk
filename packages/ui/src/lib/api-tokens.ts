@@ -2,17 +2,16 @@ import type {
 	ApiTokensResponseBody,
 	CreateApiTokenResponseBody,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { getFetchImpl, resolveApiUrl } from "./runtime-config.js";
+import { readErrorMessage, requestJson } from "./http-client.js";
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-	const response = await getFetchImpl()(resolveApiUrl(path), {
-		...options,
-		credentials: "same-origin",
-		cache: "no-store",
+function request<T extends object>(path: string, options: RequestInit = {}): Promise<T> {
+	return requestJson({
+		path,
+		init: { ...options, credentials: "same-origin", cache: "no-store" },
+		malformed: "Malformed API token response",
+		error: (response, body) =>
+			new Error(readErrorMessage(body) ?? `Request failed (${response.status})`),
 	});
-	const body = await response.json();
-	if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
-	return body as T;
 }
 export function fetchApiTokens(): Promise<ApiTokensResponseBody> {
 	return request("/api/auth/tokens");

@@ -64,10 +64,7 @@ async function create(event: SubmitEvent) {
 					: expiration === "date"
 						? new Date(date).toISOString()
 						: undefined;
-		const result = await createApiToken(data.csrfToken, {
-			name,
-			...(expiresAt !== undefined ? { expiresAt } : {}),
-		});
+		const result = await createApiToken(data.csrfToken, { name, expiresAt });
 		if (!alive) return;
 		secret = result.secret;
 		copyStatus = "";
