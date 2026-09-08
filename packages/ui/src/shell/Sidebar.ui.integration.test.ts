@@ -200,22 +200,18 @@ describe("Sidebar", () => {
 		expect(target.textContent).not.toContain("DONE-101");
 	});
 
-	it("shows help without the synthetic admin identity when auth is disabled", async () => {
+	it("shows the shared anonymous account with token management and no logout", async () => {
 		const { target } = mountSubject(HOME_ROUTE, {
 			authEnabled: false,
 			actor: { id: "admin", kind: "user", provider: null },
 		});
 		await flush();
-
-		expect(target.querySelector('[data-action="show-help"]')?.textContent).toContain("Show help");
-		expect(target.querySelector('[data-action="show-help"]')?.getAttribute("aria-label")).toBe(
-			"Show help",
-		);
-		expect(target.querySelector('[data-action="user-menu"]')).toBeNull();
+		expect(target.textContent).toContain("Anonymous");
 		expect(target.textContent).not.toContain("admin");
-
-		click(target.querySelector('[data-action="show-help"]'));
-		expect(mocks.openKeyboardShortcutHelp).toHaveBeenCalledOnce();
+		click(target.querySelector('[data-action="user-menu"]'));
+		await flush();
+		expect(target.querySelector('a[href="/account/api-tokens"]')).toBeTruthy();
+		expect(target.textContent).not.toContain("Log out");
 	});
 
 	it("shows the authenticated user and opens help from the user popover", async () => {

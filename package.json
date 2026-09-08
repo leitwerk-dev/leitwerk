@@ -70,9 +70,17 @@
 		"tsx": "^4.21.0",
 		"turbo": "^2.10.8",
 		"typescript": "^6.0.2",
-		"vitest": "^4.1.2",
+		"vitest": "^4.1.11",
 		"ws": "^8.20.0",
 		"yaml": "^2.8.3"
 	},
-	"license": "Apache-2.0"
+	"license": "Apache-2.0",
+	"allowScripts": {
+		"better-sqlite3": true,
+		"esbuild": true,
+		"sharp": true,
+		"protobufjs": true,
+		"fsevents": true,
+		"@google/genai": true
+	}
 }

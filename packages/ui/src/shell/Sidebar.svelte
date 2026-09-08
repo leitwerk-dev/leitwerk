@@ -108,7 +108,7 @@ const futureExecutionsControlActive = $derived(
 	effectiveSidebarCollapsed &&
 		(futureExecutionsPopoverOpen || currentRoute.page === "future-launch-detail"),
 );
-const userName = $derived(actor?.displayName ?? actor?.id ?? "User");
+const userName = $derived(authEnabled ? (actor?.displayName ?? actor?.id ?? "User") : "Anonymous");
 
 $effect(() => {
 	const reconnectCount = $wsStore.reconnectCount;
@@ -801,7 +801,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	{/if}
 
 	<div class="sidebar-footer" class:is-collapsed={effectiveSidebarCollapsed}>
-		{#if authEnabled && actor}
+		{#if !authEnabled || actor}
 			<button
 				type="button"
 				class="user-trigger"
@@ -836,7 +836,9 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					aria-label={`User options for ${userName}`}
 					bind:this={userPopoverRef}
 				>
-					<button type="button" class="user-popover-action" onclick={showHelp}>Show help</button>
+					<a class="user-popover-action" href="/account/api-tokens" onclick={(event) => { userPopoverOpen = false; followLink(event, "/account/api-tokens"); }}>API tokens</a>
+ <button type="button" class="user-popover-action" onclick={showHelp}>Show help</button>
+ {#if authEnabled}
 					<button
 						type="button"
 						class="user-popover-action"
@@ -846,6 +848,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 						{logoutPending ? "Logging out…" : "Log out"}
 					</button>
 					{#if logoutError}<p class="logout-error" role="alert">{logoutError}</p>{/if}
+ {/if}
 				</div>
 			{/if}
 		{:else}
@@ -1229,6 +1232,8 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	}
 
 	.user-popover-action {
+ display: block;
+ text-decoration: none;
 		width: 100%;
 		min-height: 38px;
 		padding: 8px 10px;

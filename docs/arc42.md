@@ -182,6 +182,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 
 ## 11 Risks and Technical Debt
 
+- **API tokens:** Dedicated SQLite storage and migration support owner-equivalent application HTTP access. The HTTP boundary resolves session, API token, or shared anonymous context; browser-only management and WebSockets remain separate. See [security](security.md#personal-and-anonymous-api-tokens).
 - **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
 - **Process-to-Process Creation:** Processes communicate via imported plan handovers; direct process-to-process dynamic instantiation is out of scope.
 

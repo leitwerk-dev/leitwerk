@@ -152,3 +152,26 @@ Development compositions may add extension sources from a separate npm workspace
 Provider-backed watchers live under the target process configuration. See
 [Process Watchers](watchers.md) for an extension-owned source example. Profile secrets remain
 server-only; LLM turns access providers through declared integration tools.
+
+## API token policy
+
+```yaml
+auth:
+  api_tokens:
+    enabled: true
+    default_ttl: 7d
+    max_ttl: 90d
+    allow_no_expiry: true
+```
+
+These defaults apply independently of `auth.enabled`. Durations must be positive,
+valid durations; the default cannot exceed the maximum. Creation without
+`expiresAt` uses the default TTL. An explicit ISO date-time must be after creation
+and within the maximum TTL. Expiry takes effect at that timestamp. Explicit
+`expiresAt: null` requests no expiration and requires `allow_no_expiry: true`.
+
+Setting `enabled: false` blocks creation and bearer authentication while retaining
+browser metadata listing and revocation. It never removes records or suppresses
+the permanent anonymous-token revocation on authentication-enabled startup.
+See [security](security.md#personal-and-anonymous-api-tokens) for provider binding,
+anonymous ownership, and rollback.

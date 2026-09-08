@@ -19,6 +19,11 @@ storage:
 # enabled: false to keep local unauthenticated behavior with web actions
 # attributed to the built-in admin actor.
 # auth:
+#   api_tokens:
+#     enabled: true
+#     default_ttl: 7d
+#     max_ttl: 90d
+#     allow_no_expiry: true
 #   enabled: true
 #   session:
 #     cookie_name: leitwerk_session

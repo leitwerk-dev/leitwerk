@@ -135,6 +135,7 @@ $effect(() => {
 });
 
 const shortcutHelpTitle = $derived.by(() => {
+	if (route.page === "api-tokens") return "API tokens";
 	if (route.page === "home") {
 		return "Start a process";
 	}
@@ -178,7 +179,7 @@ const shortcutHelpItems = $derived.by(() => {
 	if (route.page === "processes") {
 		return [...browseShortcutItems, ...extensionItems];
 	}
-	if (route.page === "watchers" || route.page === "skills") {
+	if (route.page === "watchers" || route.page === "skills" || route.page === "api-tokens") {
 		return [...watcherShortcutItems, ...extensionItems];
 	}
 	if (route.page === "future-launch-detail") {
@@ -293,6 +294,8 @@ $effect(() => {
 				load={import("../pages/HomePage.svelte")}
 				props={{ launcherId: route.params.launcher ?? null }}
 			/>
+		{:else if route.page === "api-tokens"}
+ <RouteLoadBoundary load={import("../pages/ApiTokensPage.svelte")} props={{ authEnabled, actor }} />
 		{:else if route.page === "processes"}
 			<RouteLoadBoundary load={import("../pages/ProcessesPage.svelte")} props={{}} />
 		{:else if route.page === "watchers"}

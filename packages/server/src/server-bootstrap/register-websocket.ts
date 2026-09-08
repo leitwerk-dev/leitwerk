@@ -2,7 +2,7 @@ import websocket from "@fastify/websocket";
 import { createEphemeralWsFrame, WS_PROTOCOL_VERSION } from "@leitwerk-dev/protocol";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { AuthService } from "../auth/auth-service.js";
-import { authenticateRequest } from "../auth/fastify-auth.js";
+import { authenticateBrowserRequest } from "../auth/fastify-auth.js";
 import type { WorkerWebSocketIpcManager } from "../supervisor/worker-websocket-ipc.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 
@@ -31,8 +31,8 @@ function authenticateClientWebSocket(
 	request: FastifyRequest,
 	reply: FastifyReply,
 ): void {
-	const actor = authenticateRequest(auth, request);
-	if (!actor && auth.config.enabled) {
+	const actor = authenticateBrowserRequest(auth, request);
+	if (!actor) {
 		reply.code(401).send({ error: "Authentication required" });
 		return;
 	}

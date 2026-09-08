@@ -43,3 +43,5 @@ The Showcase extension provides zero-dependency demo workflows for local testing
 
 - **Run Leitwerk Locally:** Execute `npm run dev` to launch the local server, web dashboard, and showcase processes.
 - **Build a Custom Process:** Use the [Process SDK](process-sdk.md) to define custom turn graphs and outcome tools.
+
+Use **API tokens** in the account menu to connect HTTP clients with your existing application access. See [security](security.md#personal-and-anonymous-api-tokens) for ownership and credential boundaries.
