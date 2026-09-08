@@ -88,6 +88,16 @@ Configure npm trusted publishing for each workspace with:
 
 The workflow uses a GitHub-hosted runner, npm 11, and `id-token: write`. It has no npm token. Make the two image packages and `charts/leitwerk` public in GHCR before the first release.
 
+Restrict the `npm-publish` environment to the exact `main` branch, not tags or pull request
+branches. Publication is dispatched from `main`; checking out a release tag does not change
+the workflow's deployment branch. The trusted publication workflow verifies that the stable
+GitHub Release was created by `github-actions[bot]` and that its tag resolves to the merge
+commit of a same-repository Release Please PR targeting `main`. The commit must still be
+on `main`. All later jobs check out that verified SHA, not the mutable tag reference.
+Verification runs before release code or registry writes. Manual dispatch can resume such
+a release; it cannot publish an arbitrary tag or an unmerged release PR. Prerelease npm
+publication is not enabled.
+
 ## Retry and conflicts
 
 Cross-registry publication is not atomic. If a publication attempt fails for an external

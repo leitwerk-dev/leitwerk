@@ -24,15 +24,30 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
       git_sha: ${{ steps.release.outputs.git_sha }}
     steps:
+      - name: Checkout trusted publication tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          persist-credentials: false
+
+      - name: Verify merged Release Please origin
+        id: origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: node .release-tooling/scripts/verify-release-origin.mjs
+
       - name: Checkout release tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ inputs.release_tag }}
+          ref: ${{ steps.origin.outputs.git_sha }}
           persist-credentials: false
 
       - name: Resolve release coordinates
@@ -89,7 +104,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
+          ref: ${{ needs.resolve.outputs.git_sha }}
           persist-credentials: false
 
       - name: Setup Node.js
@@ -268,7 +283,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
+          ref: ${{ needs.resolve.outputs.git_sha }}
           persist-credentials: false
 
       - name: Set up Docker Buildx
@@ -496,7 +511,7 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.resolve.outputs.tag }}
+          ref: ${{ needs.resolve.outputs.git_sha }}
           persist-credentials: false
 
       - name: Setup trusted-publishing Node.js
