@@ -48,7 +48,7 @@ COPY --from=build /app/node_modules ./node_modules
 # The generic validation worker runs the repository's complete test:full gate,
 # including Playwright browser tests. Link Debian Chromium at the revisioned
 # Playwright path without downloading and unpacking a second browser archive.
-RUN browser_path="$(node -e "const {registry}=require('./node_modules/playwright-core/lib/server/registry'); process.stdout.write(registry.findExecutable('chromium-headless-shell').executablePath())")" \
+RUN browser_path="$(node -e "const {registry:{registry}}=require('playwright-core/lib/coreBundle'); process.stdout.write(registry.findExecutable('chromium-headless-shell').executablePath())")" \
 	&& mkdir -p "$(dirname "$browser_path")" \
 	&& ln -s /usr/bin/chromium "$browser_path"
 # Copy stable manifests before frequently changing application code.
