@@ -15,6 +15,34 @@ function writeJson(filePath: string, value: unknown): void {
 }
 
 describe("development composition", () => {
+	it("uses the executing checkout with installed extension package names", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-installed-composition-"));
+		tempDirs.push(root);
+		const checkout = path.join(root, "core");
+		const extension = path.join(root, "node_modules/@example/extension");
+		mkdirSync(checkout, { recursive: true });
+		mkdirSync(extension, { recursive: true });
+		writeJson(path.join(root, "package.json"), { private: true, workspaces: [] });
+		writeJson(path.join(extension, "package.json"), {
+			name: "@example/extension",
+			exports: { ".": "./dist/index.js" },
+		});
+		writeFileSync(path.join(root, "leitwerk.yaml"), "{}");
+		const manifest = path.join(root, "composition.yaml");
+		writeFileSync(
+			manifest,
+			'version: 1\nruntime_config: ./leitwerk.yaml\nextensions: ["@example/extension"]\n',
+		);
+		const composition = loadDevelopmentComposition(manifest, checkout);
+		expect(composition.leitwerkRoot).toBe(realpathSync(checkout));
+		expect(composition.extensionDirs).toEqual([realpathSync(extension)]);
+		writeFileSync(
+			manifest,
+			'version: 1\nruntime_config: ./leitwerk.yaml\nextensions: ["@example/missing"]\n',
+		);
+		expect(() => loadDevelopmentComposition(manifest, checkout)).toThrow(/is not installed/);
+	});
+
 	it("resolves external workspace packages, extensions, config, and test roots", () => {
 		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-composition-"));
 		tempDirs.push(root);
