@@ -65,10 +65,9 @@ COPY --from=build /app/node_modules ./node_modules
 # The generic validation worker runs the repository's complete test:full gate,
 # including Playwright browser tests. Link Debian Chromium at the revisioned
 # Playwright path without downloading and unpacking a second browser archive.
-RUN revision="$(node -e "const b=require('./node_modules/playwright-core/browsers.json').browsers.find((item) => item.name === 'chromium-headless-shell'); process.stdout.write(b.revision)")" \
-	&& browser_dir="$PLAYWRIGHT_BROWSERS_PATH/chromium_headless_shell-$revision/chrome-headless-shell-linux64" \
-	&& mkdir -p "$browser_dir" \
-	&& ln -s /usr/bin/chromium "$browser_dir/chrome-headless-shell"
+RUN browser_path="$(node -e "const {registry:{registry}}=require('playwright-core/lib/coreBundle'); process.stdout.write(registry.findExecutable('chromium-headless-shell').executablePath())")" \
+	&& mkdir -p "$(dirname "$browser_path")" \
+	&& ln -s /usr/bin/chromium "$browser_path"
 # Copy stable dependencies and manifests before frequently changing application code.
 COPY --from=build --parents \
 	/app/./package.json \
