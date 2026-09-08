@@ -1471,3 +1471,10 @@ export function parseFutureActionPayloadJson(
 	const parsed = parseJsonPayload(payloadJson, "Scheduled action payload");
 	return parsed.ok ? parseFutureActionPayloadObject(parsed.value) : parsed;
 }
+
+export type {
+	ApiTokenMetadata,
+	ApiTokenPolicy,
+	ApiTokensResponseBody,
+	CreateApiTokenResponseBody,
+} from "./api-token-contracts.js";

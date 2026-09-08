@@ -231,8 +231,12 @@ Navigation is a persistent operational shell, not a marketing frame.
 - **Sidebar:** Soft gray surface, grouped rows for Current, Future, and Browse. Active rows use subtle Operational Blue tint or stronger border, not loud fills.
 - **Collapsed Rail:** Icon controls are standard, compact, and labeled with accessible names. Popovers must remain content-scoped and not clip inside overflow containers.
 - **Process Rows:** Expanded sidebar rows are text-first: title, readable state metadata, and optional secondary line. Color only the state word inside the normal metadata flow when scan emphasis is useful; avoid dominant leading status icons, dots, or symbolic badges in front of Current/Future rows.
-- **Identity Footer:** When authentication is enabled, pin the authenticated user's icon and name below the scrolling navigation. Its compact popover exposes keyboard help and Leitwerk-session logout. Fall back to the actor id when no display name is available. When authentication is disabled, show a direct help control instead of the synthetic local admin identity. Preserve accessible names and the same behavior in the collapsed rail.
+- **Identity Footer:** Pin the account icon and name below the scrolling navigation. Its compact popover exposes API tokens and keyboard help in both authentication modes. When authentication is enabled, show the authenticated user's name (falling back to the actor id) and Leitwerk-session logout. When authentication is disabled, show “Anonymous” and omit logout. Preserve accessible names and the same behavior in the collapsed rail.
 - **Mobile:** Under the narrow breakpoint, expose global navigation as a closed-by-default drawer from a sticky shell bar. Preserve the full navigation hierarchy and identity/help footer, and close the drawer after navigation. Process-local overlays must use another edge so navigation layers remain spatially distinct.
+
+### API Token Management
+
+The account token surface uses the existing Public Sans and chronicle tokens: a quiet white operation form followed by divided metadata rows. Its composition, responsive behavior, temporary secret display, and recovery states are recorded in the [API tokens surface brief](surfaces/api-tokens.md).
 
 ### Process Chronicle
 

@@ -1,5 +1,7 @@
 # CI, dependency updates, and releases
 
+CI and publication use Node.js 26. Server and generic worker images pin the same Node 26 image digest for dependency installation and runtime.
+
 Leitwerk releases are maintainer-controlled. Ordinary merges update one Release Please pull request. They do not publish artifacts. Merging that release pull request creates one tag and one GitHub Release, which starts publication.
 
 ## Required pull request policy

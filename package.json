@@ -62,7 +62,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
-		"@playwright/test": "^1.59.1",
+		"@playwright/test": "^1.63.0",
 		"chokidar": "4.0.3",
 		"concurrently": "^9.2.1",
 		"jsdom": "^29.0.1",
@@ -70,9 +70,17 @@
 		"tsx": "^4.21.0",
 		"turbo": "^2.10.8",
 		"typescript": "^6.0.2",
-		"vitest": "^4.1.2",
+		"vitest": "^4.1.11",
 		"ws": "^8.20.0",
 		"yaml": "^2.8.3"
 	},
-	"license": "Apache-2.0"
+	"license": "Apache-2.0",
+	"allowScripts": {
+		"better-sqlite3": true,
+		"esbuild": true,
+		"sharp": true,
+		"protobufjs": true,
+		"fsevents": true,
+		"@google/genai": true
+	}
 }

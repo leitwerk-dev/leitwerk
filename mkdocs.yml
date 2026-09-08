@@ -101,4 +101,5 @@ nav:
       - Testing: testing.md
       - CI and publishing: ci.md
       - Security: security.md
+      - API tokens: api-tokens.md
       - Future: future.md

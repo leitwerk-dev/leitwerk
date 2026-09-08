@@ -74,7 +74,7 @@ Common entry points:
 
 ## Quick Start
 
-Prerequisites: Node.js 22.19.0+, npm, and Pi credentials/config for at least one model profile.
+Prerequisites: Node.js 26 (latest patch), npm, and Pi credentials/config for at least one model profile.
 
 ```bash
 npm install
