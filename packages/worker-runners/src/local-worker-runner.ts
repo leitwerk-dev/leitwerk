@@ -33,12 +33,26 @@ export interface LocalWorkerRunnerOptions {
 	/** Test seam. Production uses node's spawn directly. */
 	localWorkerSpawnImpl?: typeof spawn;
 	/** Test seam for the shared host-Docker preflight. */
-	dockerPreflightImpl?: () => Promise<void>;
+	dockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
 }
 
 /** Verifies that the inherited Docker CLI context can reach its daemon. */
-export async function preflightHostDocker(): Promise<void> {
-	await promisify(execFile)("docker", ["info"], { env: process.env });
+export async function preflightHostDocker(timeoutMs: number): Promise<void> {
+	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+		throw new Error("Docker preflight requires a positive startup timeout");
+	}
+	try {
+		await promisify(execFile)("docker", ["info"], {
+			env: process.env,
+			timeout: timeoutMs,
+			killSignal: "SIGKILL",
+		});
+	} catch (error) {
+		if (error && typeof error === "object" && "killed" in error && error.killed) {
+			throw new Error(`Docker preflight timed out after ${timeoutMs}ms`, { cause: error });
+		}
+		throw error;
+	}
 }
 
 interface LocalWorkerUnitState {
@@ -111,7 +125,23 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 					throw new Error("Docker-requiring processes need local_worker.allow_host_docker: true");
 				}
 				try {
-					await dockerPreflightImpl();
+					const configuredTimeoutMs = Number.parseInt(
+						input.env.LEITWERK_WORKER_STARTUP_TIMEOUT_MS ?? "30000",
+						10,
+					);
+					const deadlineMs = Number.parseInt(
+						input.env.LEITWERK_WORKER_STARTUP_DEADLINE_MS ?? "",
+						10,
+					);
+					const timeoutMs = Number.isFinite(deadlineMs)
+						? Math.min(configuredTimeoutMs, deadlineMs - Date.now())
+						: configuredTimeoutMs;
+					if (timeoutMs <= 0)
+						throw new Error("Worker startup deadline expired before Docker preflight");
+					await dockerPreflightImpl(timeoutMs);
+					if (Date.now() >= deadlineMs) {
+						throw new Error("Worker startup deadline expired during Docker preflight");
+					}
 				} catch (error) {
 					throw new Error("Local Docker preflight failed: Docker CLI or daemon is unavailable", {
 						cause: error,

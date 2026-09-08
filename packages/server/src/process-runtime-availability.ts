@@ -1,11 +1,12 @@
 import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
+import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { preflightHostDocker } from "@leitwerk-dev/worker-runners/local";
 import type { LeitwerkConfig } from "./config/config-types.js";
 
 export interface ProcessRuntimeAvailabilityDeps {
 	config: LeitwerkConfig;
 	processes: ReadonlyMap<string, ExtensionProcessDefinition>;
-	dockerInfo?: () => Promise<void>;
+	dockerInfo?: (timeoutMs: number) => Promise<void>;
 }
 
 export interface ResolvedKubernetesDockerConfig {
@@ -61,7 +62,9 @@ export async function assertProcessRuntimeAvailable(
 				);
 			}
 			try {
-				await (deps.dockerInfo ?? preflightHostDocker)();
+				await (deps.dockerInfo ?? preflightHostDocker)(
+					parseDurationMs(deps.config.workers.startup_timeout, 30_000, { allowHours: true }),
+				);
 			} catch (error) {
 				throw new Error("This process requires Docker, but `docker info` failed", { cause: error });
 			}

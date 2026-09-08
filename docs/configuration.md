@@ -138,7 +138,7 @@ kubernetes:
 - `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
 - `development_tools.install_timeout`: Hard deadline for each opted-in repository's mise preparation. Defaults to `30m`.
 - `development_tools.local.mise_command`: Host mise command used by local workers. It is validated only when an opted-in process starts.
-- `local_worker.allow_host_docker`: Acknowledges that Docker processes inherit the host Docker context and credentials. Their launch runs `docker info` first.
+- `local_worker.allow_host_docker`: Acknowledges that Docker processes inherit the host Docker context and credentials. Launch admission and worker startup each run `docker info` within `workers.startup_timeout`; the worker check is also bounded by its remaining startup deadline. A timeout kills the probe and rejects the launch or worker start.
 - `docker.private_daemon.isolation`: Selects exactly one private-daemon isolation. `privileged` grants broad host-kernel authority. `sysbox-runc` requires that runtime on the Docker host. Neither mode mounts the host runtime socket.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
 - `kubernetes.docker`: Trusted RuntimeClass, `hostUsers`, and process StorageClass wiring for process definitions that declare `runtime.docker`. All three fields are required for those definitions to be available. Ordinary processes ignore this block.
@@ -150,6 +150,8 @@ kubernetes:
 Worker launch configuration is immutable for a physical worker. Changes affect only newly created workers. Recycle existing workers explicitly when a change must apply immediately. Docker process state lives at `/state/tooling/docker` in the process volume and survives worker replacement. Kubernetes Docker processes use the configured RuntimeClass and Docker process StorageClass; the runner does not preflight cluster runtime infrastructure.
 
 Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. It preserves `DOCKER_CONFIG` for registry credentials. Local workers retain their host Docker configuration.
+
+An early private-daemon exit permits one retry within the same startup deadline. Both attempts use the existing Docker data directory. Startup failure never deletes or resets retained Docker data.
 
 ---
 

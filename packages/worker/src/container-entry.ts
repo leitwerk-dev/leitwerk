@@ -1,5 +1,5 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -12,7 +12,6 @@ interface EntrypointDeps {
 	spawn: typeof spawn;
 	dockerInfo: (env: NodeJS.ProcessEnv, signal: AbortSignal) => Promise<void>;
 	mkdir: typeof mkdir;
-	remove: typeof rm;
 	now: () => number;
 	delay: (ms: number) => Promise<void>;
 	warn: (message: string) => void;
@@ -96,7 +95,6 @@ export async function runWorkerContainerEntrypoint(
 				signal,
 			}).then(() => undefined),
 		mkdir,
-		remove: rm,
 		now: Date.now,
 		delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 		warn: (message) => console.warn(message),
@@ -183,7 +181,7 @@ export async function runWorkerContainerEntrypoint(
 				if (exited) break;
 				if (recovered) {
 					deps.warn(
-						`Private Docker daemon recovered after resetting its data root: ${firstSummary}`,
+						`Private Docker daemon recovered after retrying with retained data: ${firstSummary}`,
 					);
 				}
 				worker = deps.spawn(process.execPath, [workerEntryPath()], {
@@ -214,9 +212,6 @@ export async function runWorkerContainerEntrypoint(
 			const summary = `exit=${exit.code ?? exit.signal ?? "unknown"}; ${diagnostic || "no diagnostic"}`;
 			if (attempt === 0) {
 				firstSummary = summary;
-				await deps.remove(dockerDataRoot, { recursive: true, force: true });
-				if (terminating) return 0;
-				await deps.mkdir(dockerDataRoot, { recursive: true });
 				recovered = true;
 				continue;
 			}
