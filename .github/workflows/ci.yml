@@ -45,8 +45,19 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
+      - name: Setup Node.js for Playwright installation
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
       - name: Install Playwright browser dependencies
+        timeout-minutes: 5
         run: npx playwright install --with-deps chromium
+
+      - name: Restore application Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
 
       - name: Install documentation dependencies
         run: python -m pip install -r requirements-docs.txt
