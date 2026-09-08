@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, globSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const DEPENDENCY_FIELDS = [
 	"dependencies",
@@ -13,7 +14,9 @@ const BUILT_FILE_PATTERNS = ["dist/**", "!dist/**/*.test.*", "src/**", "!src/**/
 const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
 const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
 
-await main();
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+	await main();
+}
 
 async function main() {
 	const mode = process.argv[2] ?? "check";
@@ -31,7 +34,13 @@ async function main() {
 	}
 	const workspaces = listPublishableWorkspaces(rootDir, rootPackageJson);
 	const workspaceNames = new Set(workspaces.map((workspace) => workspace.name));
-	const errors = validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames });
+	const errors = validateWorkspaces({
+		rootDir,
+		rootVersion,
+		rootNodeRange: rootPackageJson.engines?.node,
+		workspaces,
+		workspaceNames,
+	});
 
 	if (mode === "preflight" || mode === "publish" || mode === "verify") {
 		errors.push(...validatePublishRef(rootVersion));
@@ -138,7 +147,7 @@ function dependencyEntries(packageJson, fields) {
 	);
 }
 
-function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }) {
+function validateWorkspaces({ rootDir, rootVersion, rootNodeRange, workspaces, workspaceNames }) {
 	const rootLicensePath = path.join(rootDir, "LICENSE");
 	const rootLicenseText = existsSync(rootLicensePath)
 		? readFileSync(rootLicensePath, "utf8")
@@ -161,8 +170,8 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 				`repository.directory must be ${relative(rootDir, dir)}`,
 			],
 			[
-				isSupportedNodeRange(packageJson.engines?.node),
-				"engines.node must declare an explicit >=22 minimum",
+				isSupportedNodeRange(packageJson.engines?.node, rootNodeRange),
+				`engines.node must match the root range '${rootNodeRange}'`,
 			],
 		]) {
 			if (!ok) {
@@ -277,8 +286,8 @@ function expandPackagePattern(dir, filePattern) {
 		.sort((left, right) => left.localeCompare(right));
 }
 
-function isSupportedNodeRange(range) {
-	return typeof range === "string" && /^>=\s*22(?:\.\d+(?:\.\d+)?)?(?:\s|$)/u.test(range);
+export function isSupportedNodeRange(range, rootRange) {
+	return typeof rootRange === "string" && rootRange.length > 0 && range === rootRange;
 }
 
 function collectPackagePaths(value) {
