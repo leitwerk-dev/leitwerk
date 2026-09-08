@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import { setTimeout as sleep } from "node:timers/promises";
 import { URL } from "node:url";
 import type {
 	KubernetesApiClient,
@@ -11,6 +12,7 @@ import {
 	type KubernetesConfigMapManifest,
 	type KubernetesDockerConfigJsonSecretManifest,
 	type KubernetesPersistentVolumeClaimManifest,
+	type KubernetesPodEventSummary,
 	type KubernetesPodManifest,
 	type KubernetesProcessNamespaceManifest,
 	mapKubernetesPodExit,
@@ -22,9 +24,22 @@ const IN_CLUSTER_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 const DEFAULT_IN_CLUSTER_API = "https://kubernetes.default.svc";
 const TRANSIENT_PLAIN_BAD_REQUEST_MAX_ATTEMPTS = 3;
 const TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS = 25;
+const MAX_API_ERROR_LENGTH = 2_048;
 
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+function boundedApiError(text: string): string {
+	let summary = text.trim();
+	try {
+		const parsed = JSON.parse(summary) as { reason?: unknown; message?: unknown };
+		summary = [parsed.reason, parsed.message]
+			.filter((value): value is string => typeof value === "string" && value.trim() !== "")
+			.join(": ");
+	} catch {
+		// Plain-text API errors are already summaries.
+	}
+	if (!summary) return "no diagnostic";
+	return summary.length <= MAX_API_ERROR_LENGTH
+		? summary
+		: `${summary.slice(0, MAX_API_ERROR_LENGTH - 1)}…`;
 }
 
 interface KubernetesListResponse<T> {
@@ -46,6 +61,7 @@ interface KubernetesObjectResponse {
 					exitCode?: number;
 					reason?: string;
 					signal?: number;
+					message?: string;
 				};
 			};
 			lastState?: {
@@ -53,11 +69,16 @@ interface KubernetesObjectResponse {
 					exitCode?: number;
 					reason?: string;
 					signal?: number;
+					message?: string;
 				};
 			};
 		}>;
 	};
 	type?: string;
+	reason?: string;
+	message?: string;
+	count?: number;
+	lastTimestamp?: string;
 	data?: Record<string, string>;
 }
 
@@ -96,28 +117,35 @@ export function createKubernetesHttpApiClient(options: {
 		body?: unknown;
 		contentType?: string;
 		ok?: readonly number[];
+		signal?: AbortSignal;
 	}): Promise<{ status: number; body: T | null; text: string }> {
 		const url = new URL(input.path, baseUrl);
 		const serialized = input.body === undefined ? undefined : JSON.stringify(input.body);
 		const headers: Record<string, string> = {
 			Accept: "application/json",
 			...(serialized !== undefined
-				? { "Content-Type": input.contentType ?? "application/json" }
+				? {
+						"Content-Type": input.contentType ?? "application/json",
+						"Content-Length": String(Buffer.byteLength(serialized)),
+					}
 				: {}),
 			...(options.bearerToken ? { Authorization: `Bearer ${options.bearerToken}` } : {}),
 		};
 		const transport = url.protocol === "http:" ? http : https;
 		let response: { statusCode: number; text: string };
 		for (let attempt = 1; ; attempt += 1) {
+			input.signal?.throwIfAborted();
 			response = await new Promise<{ statusCode: number; text: string }>((resolve, reject) => {
 				const req = transport.request(
 					url,
 					{
 						method: input.method,
 						headers,
+						signal: input.signal,
 						...(url.protocol === "https:" && options.ca ? { ca: options.ca } : {}),
 					},
 					(res) => {
+						res.on("error", reject);
 						const chunks: Buffer[] = [];
 						res.on("data", (chunk: Buffer | string) =>
 							chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
@@ -144,12 +172,14 @@ export function createKubernetesHttpApiClient(options: {
 			) {
 				break;
 			}
-			await sleep(TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS * attempt);
+			await sleep(TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS * attempt, undefined, {
+				signal: input.signal,
+			});
 		}
 		const ok = input.ok ?? [200, 201, 202];
 		if (!ok.includes(response.statusCode)) {
 			throw new Error(
-				`Kubernetes API ${input.method} ${input.path} failed with HTTP ${response.statusCode}: ${response.text}`,
+				`Kubernetes API ${input.method} ${input.path} failed with HTTP ${response.statusCode}: ${boundedApiError(response.text)}`,
 			);
 		}
 		const text = response.text.trim();
@@ -214,8 +244,38 @@ export function createKubernetesHttpApiClient(options: {
 		};
 	}
 
-	function podExitInfo(item: KubernetesObjectResponse | null): WorkerExitInfo {
-		if (!item) return { exitCode: 0, signal: null, reason: "Deleted" };
+	async function listPodEvents(
+		name: string,
+		namespace: string,
+	): Promise<KubernetesPodEventSummary[]> {
+		const fieldSelector = `involvedObject.kind=Pod,involvedObject.name=${name}`;
+		const result = await request<KubernetesListResponse<KubernetesObjectResponse>>({
+			method: "GET",
+			path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/events?fieldSelector=${encodeURIComponent(fieldSelector)}&limit=10`,
+		});
+		return (result.body?.items ?? []).map((event) => ({
+			type: event.type,
+			reason: event.reason,
+			message: event.message,
+			count: event.count,
+			lastTimestamp: event.lastTimestamp,
+		}));
+	}
+
+	function podExitInfo(
+		item: KubernetesObjectResponse | null,
+		events?: KubernetesPodEventSummary[],
+		sensitiveValues: readonly string[] = [],
+	): WorkerExitInfo {
+		if (!item) {
+			return mapKubernetesPodExit({
+				reason: "Deleted",
+				exitCode: 0,
+				signal: null,
+				events,
+				sensitiveValues,
+			});
+		}
 		const statusWithTermination = item.status?.containerStatuses?.find(
 			(s) => s.state?.terminated || s.lastState?.terminated,
 		);
@@ -227,6 +287,9 @@ export function createKubernetesHttpApiClient(options: {
 			exitCode: status?.exitCode,
 			signal: status?.signal ? `SIG${status.signal}` : null,
 			oomKilled: status?.reason === "OOMKilled",
+			terminationMessage: status?.message,
+			events,
+			sensitiveValues,
 		});
 	}
 
@@ -358,7 +421,7 @@ export function createKubernetesHttpApiClient(options: {
 				body: manifest,
 			});
 		},
-		async deletePod(name: string, namespace: string, options: { gracePeriodSeconds: number }) {
+		async deletePod(name, namespace, options) {
 			await request({
 				method: "DELETE",
 				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
@@ -368,16 +431,19 @@ export function createKubernetesHttpApiClient(options: {
 					gracePeriodSeconds: options.gracePeriodSeconds,
 				},
 				ok: [200, 202, 404],
+				signal: options.signal,
 			});
 		},
-		async getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null> {
+		async getPod(name, namespace, options): Promise<KubernetesPodSummary | null> {
 			const result = await request<KubernetesObjectResponse>({
 				method: "GET",
 				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
 				ok: [200, 404],
+				signal: options?.signal,
 			});
 			return result.status === 404 ? null : podSummary(result.body ?? {});
 		},
+		listPodEvents,
 		async listPods(
 			namespace: string,
 			labels: Record<string, string>,
@@ -393,6 +459,7 @@ export function createKubernetesHttpApiClient(options: {
 			name: string,
 			namespace: string,
 			listener: (info: WorkerExitInfo) => void,
+			options,
 		): () => void {
 			let stopped = false;
 			const timer = setInterval(async () => {
@@ -409,7 +476,19 @@ export function createKubernetesHttpApiClient(options: {
 					) {
 						stopped = true;
 						clearInterval(timer);
-						listener(podExitInfo(result.status === 404 ? null : result.body));
+						let events: KubernetesPodEventSummary[] = [];
+						try {
+							events = await listPodEvents(name, namespace);
+						} catch {
+							// Exit status remains useful when event access fails transiently.
+						}
+						listener(
+							podExitInfo(
+								result.status === 404 ? null : result.body,
+								events,
+								options?.sensitiveValues,
+							),
+						);
 					}
 				} catch {
 					// Transient API failures are handled by the next poll; the supervisor's

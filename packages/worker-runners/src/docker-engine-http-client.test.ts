@@ -40,7 +40,6 @@ describe("dockerEngineRequestMapping", () => {
 			networkMode: "leitwerk",
 			privileged: true,
 			runtime: "sysbox-runc",
-			anonymousVolumes: ["/var/lib/docker"],
 			nanoCpus: 1_000_000_000,
 			memoryBytes: 512 * 1024 * 1024,
 		};
@@ -55,7 +54,6 @@ describe("dockerEngineRequestMapping", () => {
 			Env: ["A=B"],
 			Cmd: ["node", "/app/helper.js"],
 			Labels: { "leitwerk.dev/component": "worker" },
-			Volumes: { "/var/lib/docker": {} },
 			HostConfig: {
 				NetworkMode: "leitwerk",
 				Privileged: true,

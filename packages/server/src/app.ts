@@ -84,6 +84,10 @@ import { createProcessOperationCoordinator } from "./process-operation-coordinat
 import { listVisibleActionsForProcess as listVisibleOperatorActionsForProcess } from "./process-operator-attention.js";
 import { createProcessQuestionService } from "./process-question-service.js";
 import {
+	assertProcessRuntimeAvailable,
+	resolveKubernetesDockerConfig,
+} from "./process-runtime-availability.js";
+import {
 	createFileBackedProcessSessionSnapshotStore,
 	ProcessSessionReader,
 } from "./process-session-store.js";
@@ -209,6 +213,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			args: input.config.local_worker?.args,
 			processWorkspacesDir: input.config.storage.process_workspaces_dir,
 			treeFilesDir: input.config.storage.tree_files_dir,
+			allowHostDocker: input.config.local_worker?.allow_host_docker,
 			localWorkerSpawnImpl: input.localWorkerSpawnImpl,
 		});
 		return { ...created, webSocketIpc: input.webSocketIpc };
@@ -220,6 +225,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 				import("@leitwerk-dev/worker-runners/kubernetes-client"),
 			]);
 		const processVolume = input.config.kubernetes?.process_volume;
+		const kubernetesDocker = resolveKubernetesDockerConfig(input.config);
 		const pod = input.config.kubernetes?.pod;
 		const exporterProfile = configuredExporterProfile(input.config);
 		const kubernetesClient = createInClusterKubernetesApiClient({
@@ -237,6 +243,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 					? { storageClassName: processVolume.storage_class_name }
 					: {}),
 			},
+			docker: kubernetesDocker,
 			serverCaFile: input.config.kubernetes?.server_ca_file,
 			serverNamespace: input.config.kubernetes?.server_namespace ?? "leitwerk-system",
 			serverUrl: input.config.kubernetes?.server_url,
@@ -278,7 +285,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			mountPath: dockerVolume?.mount_path ?? "/state",
 		},
 		defaultNetwork: input.config.docker?.network ?? "leitwerk",
-		sysboxRuntime: input.config.docker?.dind?.sysbox_runtime,
+		privateDaemonIsolation: input.config.docker?.private_daemon?.isolation,
 		serverCaFile: input.config.docker?.server_ca_file,
 		serverUrl: input.config.docker?.server_url,
 		exporterImage: exporterProfile.image,
@@ -973,6 +980,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		logger: app.log,
 		repositoryCredentials,
 		getSupervisor: () => supervisor,
+		assertRuntimeAvailable: (processId: string) =>
+			assertProcessRuntimeAvailable({ config, processes: extensionCatalog.processes }, processId),
 	};
 	const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
@@ -998,6 +1007,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		launchPlans,
 		modelStatusCache,
 		launchPipeline,
+		assertRuntimeAvailable: (processId) =>
+			assertProcessRuntimeAvailable({ config, processes: extensionCatalog.processes }, processId),
 		logger: app.log,
 	});
 	applyGeneratedFutureExecutionTitle = (input) =>

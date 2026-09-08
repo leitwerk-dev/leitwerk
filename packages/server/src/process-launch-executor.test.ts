@@ -49,6 +49,27 @@ function createLaunchPlan(): ProcessLaunchPlan {
 }
 
 describe("process launch durable boundary", () => {
+	it("rejects unavailable process runtime requirements before creation", async () => {
+		const deps = createTestDeps();
+		const result = await createProcessFromLaunchPlan(
+			{
+				...deps,
+				assertRuntimeAvailable: async () => {
+					throw new Error("Docker is unavailable");
+				},
+			},
+			createLaunchPlan(),
+		);
+
+		expect(result).toMatchObject({
+			ok: false,
+			stage: "pre_commit",
+			status: 503,
+			body: { error: "Docker is unavailable" },
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+	});
+
 	it("rejects watcher-selected skills that are unknown or inactive before creation", async () => {
 		const deps = createTestDeps();
 		const result = await createProcessFromLaunchPlan(deps, {

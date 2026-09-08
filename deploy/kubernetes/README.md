@@ -11,7 +11,7 @@ This directory contains the Kubernetes packaging:
 
 Published charts are available at `oci://ghcr.io/leitwerk-dev/charts/leitwerk` and as GitHub Release assets. The release workflow replaces the source defaults with digest-pinned server and generic-worker images before packaging the chart.
 
-Worker Pods, per-process worker ServiceAccounts, process PVCs, and per-process server-CA ConfigMaps are not Helm-managed. They are created dynamically by the server's Kubernetes runner and reconciled by the server lifecycle. For production internal TLS, set `internalTls.enabled=true`, provide a Secret containing the server cert/key and CA bundle, and let the chart render `kubernetes.server_ca_file`; the runner copies that CA into each process namespace for worker Pods.
+Worker Pods, per-process worker ServiceAccounts, process PVCs, and per-process server-CA ConfigMaps are not Helm-managed. They are created dynamically by the server's Kubernetes runner and reconciled by the server lifecycle. To enable process definitions that declare `runtime.docker`, set `kubernetes.docker.enabled`, `runtimeClassName`, `hostUsers`, and `processStorageClassName`. The chart does not install the referenced RuntimeClass, runtime handler, nodes, or StorageClass. For production internal TLS, set `internalTls.enabled=true`, provide a Secret containing the server cert/key and CA bundle, and let the chart render `kubernetes.server_ca_file`; the runner copies that CA into each process namespace for worker Pods.
 
 Set `server.existingConfigSecret` to mount an operator-managed Secret whose
 `leitwerk.yaml` key contains the complete server configuration. Helm values do
@@ -104,4 +104,4 @@ Set resource requests/limits on every `workerRuntimeProfiles.*.resources` entry 
 
 ## Retained process PVC cleanup
 
-Stopping or idling a worker deletes only the worker Pod. The per-process PVC is retained for resume and is released only through explicit retention cleanup (`ProcessVolume.release`) after a terminal process exceeds the configured retention window. Use conservative retention in production and snapshot or back up PVCs before lowering it.
+Stopping or idling a worker deletes only the worker Pod and waits for it to disappear before replacement. The per-process PVC is retained for resume and is released only through explicit retention cleanup (`ProcessVolume.release`) after a terminal process exceeds the configured retention window. Leitwerk does not back up or restore process PVCs. Operators who need protection from PVC loss or retention cleanup must independently snapshot or back up those PVCs and test restoration before lowering retention.

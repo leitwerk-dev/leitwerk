@@ -55,6 +55,8 @@ export interface ProcessLaunchExecutorDeps
 	logger?: ProcessEngineLogger;
 	getSupervisor?: () => WorkerSupervisor | undefined;
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
+	/** Runner requirement check executed before the durable launch transaction. */
+	assertRuntimeAvailable?: (processId: string) => Promise<void>;
 }
 
 export type ProcessLaunchRelationInput = Omit<
@@ -380,6 +382,16 @@ async function createProcessFromLaunchPlanWithDisposition(
 	opts?: ProcessLaunchOptions,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): Promise<ProcessLaunchExecutionResult> {
+	try {
+		await deps.assertRuntimeAvailable?.(launchPlan.processId);
+	} catch (error) {
+		return {
+			ok: false,
+			stage: "pre_commit",
+			status: 503,
+			body: { error: error instanceof Error ? error.message : String(error) },
+		};
+	}
 	let resourceSelections = opts?.resourceSelections;
 	if (!resourceSelections && launchPlan.skillIds) {
 		try {

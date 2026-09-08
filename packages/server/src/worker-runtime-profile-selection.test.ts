@@ -25,7 +25,6 @@ describe("selectWorkerRuntimeProfile", () => {
 			ok: true,
 			runtimeProfile: "java21",
 			image: { reference: "ghcr.io/example/java21:1" },
-			isolation: { dind: false },
 		});
 	});
 
@@ -105,38 +104,6 @@ describe("selectWorkerRuntimeProfile", () => {
 			profiles,
 		});
 		expect(result).toMatchObject({ ok: true, runtimeProfile: "generic" });
-	});
-
-	it("derives DinD isolation from the resolved profile", () => {
-		const dindProfiles: Record<string, WorkerRuntimeProfileConfig> = {
-			generic: { image: "ghcr.io/example/generic:1" },
-			nested: { image: "ghcr.io/example/nested:1", dind: "privileged" },
-			sysboxed: { image: "ghcr.io/example/sysboxed:1", dind: "sysbox" },
-		};
-		expect(
-			selectWorkerRuntimeProfile({
-				processId: "p",
-				processOverride: "nested",
-				componentProfiles: [],
-				profiles: dindProfiles,
-			}),
-		).toMatchObject({ ok: true, isolation: { dind: "privileged" } });
-		expect(
-			selectWorkerRuntimeProfile({
-				processId: "p",
-				processOverride: "sysboxed",
-				componentProfiles: [],
-				profiles: dindProfiles,
-			}),
-		).toMatchObject({ ok: true, isolation: { dind: "sysbox" } });
-		expect(
-			selectWorkerRuntimeProfile({
-				processId: "p",
-				processOverride: "generic",
-				componentProfiles: [],
-				profiles: dindProfiles,
-			}),
-		).toMatchObject({ ok: true, isolation: { dind: false } });
 	});
 });
 

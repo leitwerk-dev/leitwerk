@@ -13,12 +13,15 @@ describe("release image definitions", () => {
 		expect(runtimeBase).toMatch(/^FROM node:26-bookworm-slim@sha256:[a-f0-9]{64} AS runtime$/u);
 	});
 
-	it("pins mise for both release architectures and keeps the worker on its own Node", () => {
+	it("pins mise and Docker and uses the container entrypoint", () => {
 		const dockerfile = readFileSync(`${repoRoot}/deploy/images/Dockerfile.worker-generic`, "utf8");
 		expect(dockerfile).toContain("ARG MISE_VERSION=2026.8.14");
 		expect(dockerfile).toMatch(/amd64\) mise_arch=x64; mise_sha=[a-f0-9]{64}/u);
 		expect(dockerfile).toMatch(/arm64\) mise_arch=arm64; mise_sha=[a-f0-9]{64}/u);
-		expect(dockerfile).toContain('CMD ["/usr/local/bin/node", "dist/worker-entry.js"]');
+		expect(dockerfile).toContain("ARG DOCKER_IO_VERSION=");
+		expect(dockerfile).toContain("docker --version");
+		expect(dockerfile).toContain("dockerd --version");
+		expect(dockerfile).toContain('CMD ["/usr/local/bin/node", "dist/container-entry-main.js"]');
 	});
 
 	for (const image of ["server", "worker-generic"]) {

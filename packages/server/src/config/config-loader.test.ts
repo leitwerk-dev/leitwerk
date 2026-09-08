@@ -135,6 +135,31 @@ describe("validateConfig", () => {
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
+	it("accepts incomplete Kubernetes Docker wiring for per-process availability checks", () => {
+		const config = kubernetesConfig();
+		if (config.kubernetes) {
+			config.kubernetes.docker = { runtime_class_name: "leitwerk-sysbox" };
+		}
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it("validates Kubernetes Docker RuntimeClass and StorageClass names", () => {
+		const config = kubernetesConfig();
+		if (config.kubernetes) {
+			config.kubernetes.docker = {
+				runtime_class_name: "Invalid_Name",
+				host_users: false,
+				process_storage_class_name: "-invalid",
+			};
+		}
+
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([
+			expect.stringContaining("kubernetes.docker.runtime_class_name"),
+			expect.stringContaining("kubernetes.docker.process_storage_class_name"),
+		]);
+	});
+
 	it("rejects Kubernetes runner config before pod creation when required wiring is missing", () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
@@ -198,23 +223,6 @@ describe("validateConfig", () => {
 		expect(errors.some((e) => e.includes("must be dedicated"))).toBe(true);
 	});
 
-	it("rejects Docker-in-Docker runtime profiles for Kubernetes runner", () => {
-		const config = kubernetesConfig();
-		config.worker_runtime_profiles.generic = {
-			image: "ghcr.io/example/generic:1",
-			dind: "privileged",
-		};
-
-		const errors = validateConfig(config as unknown as Record<string, unknown>);
-		expect(
-			errors.some(
-				(e) =>
-					e.includes("worker_runtime_profiles.generic.dind is not supported") &&
-					e.includes("kubernetes"),
-			),
-		).toBe(true);
-	});
-
 	it("rejects non-positive session snapshot byte limits", () => {
 		const config = getDefaultConfig();
 		config.workers.session_snapshot_max_size_bytes = -1;
@@ -254,77 +262,34 @@ describe("validateConfig", () => {
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
-	it("rejects privileged DinD opt-in when the host runtime does not enable it", () => {
-		const config = getDefaultConfig();
-		config.workers.default_runtime_profile = "nested";
-		config.worker_runtime_profiles = {
-			nested: { image: "ghcr.io/example/nested:1", dind: "privileged" },
+	it("rejects the removed profile-level dind contract", () => {
+		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		(config.docker as Record<string, unknown>).dind = { privileged: true };
+		(config.worker_runtime_profiles as Record<string, unknown>).generic = {
+			image: "worker",
+			dind: "privileged",
 		};
-		const errors = validateConfig(config as unknown as Record<string, unknown>);
-		expect(
-			errors.some((e) =>
-				e.includes(
-					"worker_runtime_profiles.nested.dind is 'privileged' but docker.dind.privileged",
-				),
-			),
-		).toBe(true);
+		expect(validateConfig(config)).toEqual([
+			"docker.dind was removed; configure docker.private_daemon.isolation",
+			"worker_runtime_profiles.generic.dind was removed; declare runtime.docker in process code",
+		]);
 	});
 
-	it("accepts privileged DinD opt-in when the host runtime enables it", () => {
+	it.each([
+		"privileged",
+		"sysbox-runc",
+	] as const)("accepts Docker private daemon isolation %s", (isolation) => {
 		const config = getDefaultConfig();
-		if (config.docker) {
-			config.docker.dind = { privileged: true, sysbox: false };
-		}
-		config.workers.default_runtime_profile = "nested";
-		config.worker_runtime_profiles = {
-			nested: { image: "ghcr.io/example/nested:1", dind: "privileged" },
-		};
+		if (config.docker) config.docker.private_daemon = { isolation };
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
-	it("rejects sysbox DinD opt-in when the host runtime does not enable it", () => {
-		const config = getDefaultConfig();
-		config.workers.default_runtime_profile = "sysboxed";
-		config.worker_runtime_profiles = {
-			sysboxed: { image: "ghcr.io/example/sysboxed:1", dind: "sysbox" },
-		};
-		const errors = validateConfig(config as unknown as Record<string, unknown>);
-		expect(
-			errors.some((e) =>
-				e.includes("worker_runtime_profiles.sysboxed.dind is 'sysbox' but docker.dind.sysbox"),
-			),
-		).toBe(true);
-	});
-
-	it("rejects sysbox DinD opt-in when no host sysbox runtime is configured", () => {
-		const config = getDefaultConfig();
-		if (config.docker) {
-			config.docker.dind = { privileged: false, sysbox: true };
-		}
-		config.workers.default_runtime_profile = "sysboxed";
-		config.worker_runtime_profiles = {
-			sysboxed: { image: "ghcr.io/example/sysboxed:1", dind: "sysbox" },
-		};
-		const errors = validateConfig(config as unknown as Record<string, unknown>);
-		expect(
-			errors.some((e) =>
-				e.includes(
-					"worker_runtime_profiles.sysboxed.dind is 'sysbox' but docker.dind.sysbox_runtime",
-				),
-			),
-		).toBe(true);
-	});
-
-	it("accepts sysbox DinD opt-in when enabled with a configured runtime", () => {
-		const config = getDefaultConfig();
-		if (config.docker) {
-			config.docker.dind = { privileged: false, sysbox: true, sysbox_runtime: "sysbox-runc" };
-		}
-		config.workers.default_runtime_profile = "sysboxed";
-		config.worker_runtime_profiles = {
-			sysboxed: { image: "ghcr.io/example/sysboxed:1", dind: "sysbox" },
-		};
-		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	it("rejects unsupported Docker private daemon isolation", () => {
+		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		(config.docker as Record<string, unknown>).private_daemon = { isolation: "automatic" };
+		expect(validateConfig(config)).toContainEqual(
+			expect.stringContaining("docker.private_daemon.isolation"),
+		);
 	});
 
 	it("accepts internal TLS with cert, key, https worker URL, and runner CA file", () => {

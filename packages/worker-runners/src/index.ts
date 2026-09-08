@@ -58,6 +58,7 @@ export {
 	createLocalWorkerRunner,
 	DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER,
 	type LocalWorkerRunnerOptions,
+	preflightHostDocker,
 	resolveLocalWorkerSpawnArgs,
 } from "./local-worker-runner.js";
 export {
@@ -82,13 +83,13 @@ export type {
 	StopWorkerOptions,
 	VolumeRef,
 	WorkerExitInfo,
-	WorkerIsolation,
 	WorkerResourceLimits,
 	WorkerRunner,
 	WorkerUnit,
 	WorkerUnitDescriptor,
 	WorkerUnitRef,
 } from "./types.js";
+export { WorkerStartDiagnosticError } from "./types.js";
 export {
 	buildExportHelperLabels,
 	buildProcessResourceLabels,

@@ -99,6 +99,9 @@ local_worker:
   command: node
   args:
     - "@leitwerk-dev/worker/worker-entry"
+  # Docker processes inherit the host CLI context and credentials only after
+  # this explicit host-authority acknowledgement.
+  allow_host_docker: false
 
 # Docker run-mode wiring (used when workers.runner is docker).
 # The worker never receives this block; it dials back over WebSocket using
@@ -115,14 +118,11 @@ docker:
     mode: bind            # bind | named_volume
     host_root: /var/lib/leitwerk/processes
     mount_path: /state
-  # Nested-container (Docker-in-Docker) capability the host runtime exposes to
-  # workers. A runtime profile's `dind` opt-in is rejected unless the matching
-  # capability is enabled here. Default workers run unprivileged with no nested
-  # daemon.
-  # dind:
-  #   privileged: true        # allow profiles with dind: privileged
-  #   sysbox: false           # allow profiles with dind: sysbox (needs sysbox_runtime)
-  #   sysbox_runtime: sysbox-runc
+  # Required to run process definitions that declare runtime.docker. Privileged
+  # grants broad host-kernel authority. sysbox-runc requires that exact runtime
+  # on the Docker host and does not set privileged. No host socket is mounted.
+  # private_daemon:
+  #   isolation: privileged # privileged | sysbox-runc
 
 # Kubernetes run-mode wiring (used when workers.runner is kubernetes).
 # The server runs in a dedicated namespace and creates one namespace + retained
@@ -145,6 +145,12 @@ docker:
 #     size: 20Gi
 #     access_modes: [ReadWriteOnce]
 #     mount_path: /state
+#   # Required as a complete block only for process definitions that declare
+#   # runtime.docker. Leitwerk does not install either named cluster resource.
+#   docker:
+#     runtime_class_name: leitwerk-sysbox
+#     host_users: false
+#     process_storage_class_name: leitwerk-docker-process
 #   pod:
 #     node_selector: {}
 #     tolerations: []
@@ -172,12 +178,6 @@ worker_runtime_profiles:
     #   limits:
     #     cpu: "4"
     #     memory: 8Gi
-  # A nested-container profile for processes that launch their own containers
-  # and networks (for example deploying leitwerk-on-itself). Requires the
-  # matching docker.dind capability above.
-  # nested:
-  #   image: ghcr.io/example/leitwerk-worker-nested:0.1.0
-  #   dind: privileged        # privileged | sysbox
 
 # Internal worker -> server TLS (disabled by default). Public UI/API HTTPS is
 # terminated by a reverse proxy in front of the server; this only secures the

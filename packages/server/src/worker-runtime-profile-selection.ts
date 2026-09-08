@@ -1,4 +1,4 @@
-import type { ResolvedWorkerImage, WorkerIsolation } from "@leitwerk-dev/worker-runners/types";
+import type { ResolvedWorkerImage } from "@leitwerk-dev/worker-runners/types";
 import type { LeitwerkConfig, WorkerRuntimeProfileConfig } from "./config/config-types.js";
 
 /**
@@ -27,8 +27,6 @@ export type RuntimeProfileSelectionResult =
 			ok: true;
 			runtimeProfile: string;
 			image: ResolvedWorkerImage;
-			/** Nested-container isolation derived from the profile's `dind` mode. */
-			isolation: WorkerIsolation;
 	  }
 	| { ok: false; error: string };
 
@@ -123,7 +121,6 @@ function resolveProfileImage(
 		ok: true,
 		runtimeProfile,
 		image: { reference: profile.image },
-		isolation: profile.dind ? { dind: profile.dind } : { dind: false },
 	};
 }
 

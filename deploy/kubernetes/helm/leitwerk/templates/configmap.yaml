@@ -68,6 +68,12 @@ data:
         access_modes:
           {{- toYaml .Values.kubernetes.processVolume.accessModes | nindent 10 }}
         mount_path: {{ .Values.kubernetes.processVolume.mountPath | quote }}
+      {{- if .Values.kubernetes.docker.enabled }}
+      docker:
+        runtime_class_name: {{ required "kubernetes.docker.runtimeClassName is required when Kubernetes Docker support is enabled" .Values.kubernetes.docker.runtimeClassName | quote }}
+        host_users: {{ .Values.kubernetes.docker.hostUsers }}
+        process_storage_class_name: {{ required "kubernetes.docker.processStorageClassName is required when Kubernetes Docker support is enabled" .Values.kubernetes.docker.processStorageClassName | quote }}
+      {{- end }}
       pod:
         node_selector:
           {{- toYaml .Values.kubernetes.pod.nodeSelector | nindent 10 }}

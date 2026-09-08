@@ -104,6 +104,7 @@ describe("buildWorkerRuntimeDefinition", () => {
 		piConfig: {
 			systemPromptTemplate: "You are working with {{flag}}",
 		},
+		runtime: { docker: true },
 		paramsCodec: {
 			parse: (value: unknown) => ({
 				flag:
@@ -149,16 +150,18 @@ describe("buildWorkerRuntimeDefinition", () => {
 			piConfig: {
 				systemPromptTemplate: "You are working with {{flag}}",
 			},
+			runtime: { developmentTools: false, docker: true },
 		});
 		expect(runtime?.definition.turns.has("entry_turn")).toBe(true);
 	});
 
-	it("falls back to codec/default-derived params and initial state", () => {
-		const runtime = buildWorkerRuntimeDefinition(process);
+	it("falls back to codec/default-derived params, state, and disabled capabilities", () => {
+		const runtime = buildWorkerRuntimeDefinition({ ...process, runtime: undefined });
 
 		expect(runtime).toMatchObject({
 			params: { flag: true },
 			state: { attempts: 1 },
+			runtime: { developmentTools: false, docker: false },
 		});
 	});
 

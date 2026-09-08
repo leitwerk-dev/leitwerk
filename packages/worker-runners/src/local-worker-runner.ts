@@ -1,7 +1,8 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { createFilesystemProcessStateExporter } from "./filesystem-process-state-exporter.js";
 import { UnitExitNotifier } from "./runner-utils.js";
 import type {
@@ -27,8 +28,31 @@ export interface LocalWorkerRunnerOptions {
 	/** Process storage roots used by the read-only session exporter. */
 	processWorkspacesDir?: string;
 	treeFilesDir?: string;
+	/** Explicit acknowledgement that Docker processes inherit host Docker authority. */
+	allowHostDocker?: boolean;
 	/** Test seam. Production uses node's spawn directly. */
 	localWorkerSpawnImpl?: typeof spawn;
+	/** Test seam for the shared host-Docker preflight. */
+	dockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
+}
+
+/** Verifies that the inherited Docker CLI context can reach its daemon. */
+export async function preflightHostDocker(timeoutMs: number): Promise<void> {
+	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+		throw new Error("Docker preflight requires a positive startup timeout");
+	}
+	try {
+		await promisify(execFile)("docker", ["info"], {
+			env: process.env,
+			timeout: timeoutMs,
+			killSignal: "SIGKILL",
+		});
+	} catch (error) {
+		if (error && typeof error === "object" && "killed" in error && error.killed) {
+			throw new Error(`Docker preflight timed out after ${timeoutMs}ms`, { cause: error });
+		}
+		throw error;
+	}
 }
 
 interface LocalWorkerUnitState {
@@ -85,6 +109,7 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 	const args = resolveLocalWorkerSpawnArgs(options.args ?? [DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER]);
 	const cwd = options.cwd ?? findServerPackageDir();
 	const localWorkerSpawnImpl = options.localWorkerSpawnImpl ?? spawn;
+	const dockerPreflightImpl = options.dockerPreflightImpl ?? preflightHostDocker;
 	const units = new Map<string, LocalWorkerUnitState>();
 	const exitNotifier = new UnitExitNotifier();
 
@@ -95,8 +120,33 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 	const runner: WorkerRunner<LocalStartWorkerInput> = {
 		async start(input: LocalStartWorkerInput, observer): Promise<WorkerUnit> {
 			observer?.report("preparing_runtime");
-			if (input.isolation.dind !== false) {
-				throw new Error("Local worker runner does not support Docker-in-Docker profiles");
+			if (input.docker) {
+				if (options.allowHostDocker !== true) {
+					throw new Error("Docker-requiring processes need local_worker.allow_host_docker: true");
+				}
+				try {
+					const configuredTimeoutMs = Number.parseInt(
+						input.env.LEITWERK_WORKER_STARTUP_TIMEOUT_MS ?? "30000",
+						10,
+					);
+					const deadlineMs = Number.parseInt(
+						input.env.LEITWERK_WORKER_STARTUP_DEADLINE_MS ?? "",
+						10,
+					);
+					const timeoutMs = Number.isFinite(deadlineMs)
+						? Math.min(configuredTimeoutMs, deadlineMs - Date.now())
+						: configuredTimeoutMs;
+					if (timeoutMs <= 0)
+						throw new Error("Worker startup deadline expired before Docker preflight");
+					await dockerPreflightImpl(timeoutMs);
+					if (Date.now() >= deadlineMs) {
+						throw new Error("Worker startup deadline expired during Docker preflight");
+					}
+				} catch (error) {
+					throw new Error("Local Docker preflight failed: Docker CLI or daemon is unavailable", {
+						cause: error,
+					});
+				}
 			}
 			const unitId = nextUnitId(input.instanceId, input.workerId);
 			const ref: WorkerUnitRef = { instanceId: input.instanceId, workerId: input.workerId, unitId };

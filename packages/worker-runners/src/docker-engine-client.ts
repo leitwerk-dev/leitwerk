@@ -29,20 +29,10 @@ export interface DockerContainerSpec {
 	mounts: DockerMountSpec[];
 	/** Docker network the container attaches to (user-defined bridge). */
 	networkMode: string;
-	/** Maps to HostConfig.Privileged; set for privileged DinD isolation. */
+	/** Maps to HostConfig.Privileged for private-daemon isolation. */
 	privileged: boolean;
-	/**
-	 * HostConfig.Runtime override. Set to the host's sysbox runtime for sysbox
-	 * DinD so the worker gets a nested daemon without `--privileged`. Omitted for
-	 * the default runtime.
-	 */
+	/** HostConfig.Runtime override. Set to `sysbox-runc` for private Docker. */
 	runtime?: string;
-	/**
-	 * Anonymous volumes Docker manages for the container (no host source). Used
-	 * to back the inner `dockerd` storage (`/var/lib/docker`) under DinD so inner
-	 * image/layer state never lands in the server-opaque process volume.
-	 */
-	anonymousVolumes?: string[];
 	/** NanoCPUs (1 CPU == 1e9). Omitted when no limit is configured. */
 	nanoCpus?: number;
 	/** Memory limit in bytes. Omitted when no limit is configured. */

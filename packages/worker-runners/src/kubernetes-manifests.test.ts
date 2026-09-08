@@ -7,6 +7,7 @@ import {
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesServerCaConfigMapManifest,
 	buildKubernetesWorkerPodManifest,
+	formatKubernetesPodDiagnostics,
 	KUBERNETES_WORKER_SERVER_CA_CERT_PATH,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
@@ -33,7 +34,7 @@ function startInput(overrides: Partial<StartWorkerInput> = {}): StartWorkerInput
 			LEITWERK_WORKER_CONNECT_TOKEN: "secret-token",
 		},
 		volume: { instanceId: "PROC_1", id: "leitwerk-process-proc-1", mountPath: "/state" },
-		isolation: { dind: false },
+		docker: false,
 		resources: { cpu: "2", memory: "4Gi" },
 		...overrides,
 	};
@@ -188,6 +189,29 @@ describe("Kubernetes manifest builders", () => {
 		});
 	});
 
+	it("keeps private Docker state on the configured PVC mount despite caller environment", () => {
+		const manifest = buildKubernetesWorkerPodManifest(
+			startInput({
+				docker: true,
+				volume: {
+					instanceId: "PROC_1",
+					id: "leitwerk-process-proc-1",
+					mountPath: "/process-storage",
+				},
+				env: { LEITWERK_PROCESS_VOLUME_MOUNT_PATH: "/unmounted" },
+			}),
+			{ namespace: "leitwerk", docker: { runtimeClassName: "sysbox", hostUsers: false } },
+		);
+		const container = manifest.spec.containers[0];
+		expect(container.volumeMounts).toContainEqual({
+			name: "process-state",
+			mountPath: "/process-storage",
+		});
+		expect(
+			container.env.filter(({ name }) => name === "LEITWERK_PROCESS_VOLUME_MOUNT_PATH"),
+		).toEqual([{ name: "LEITWERK_PROCESS_VOLUME_MOUNT_PATH", value: "/process-storage" }]);
+	});
+
 	it("omits host aliases from worker Pods when none are configured", () => {
 		const manifest = buildKubernetesWorkerPodManifest(startInput(), { namespace: "leitwerk" });
 
@@ -321,6 +345,27 @@ describe("Kubernetes manifest builders", () => {
 			signal: null,
 			reason: "Evicted",
 		});
+	});
+
+	it("includes a bounded container startup termination diagnostic", () => {
+		const exit = mapKubernetesPodExit({
+			phase: "Failed",
+			reason: "Error",
+			exitCode: 1,
+			terminationMessage: `dockerd failed: ${"x".repeat(10_000)}`,
+		});
+
+		expect(exit.reason).toContain("Runtime startup: dockerd failed");
+		expect(exit.reason?.length).toBeLessThanOrEqual(2_048);
+	});
+
+	it("bounds individual Kubernetes diagnostic messages", () => {
+		const diagnostics = formatKubernetesPodDiagnostics([
+			{ type: "Warning", reason: "FailedCreatePodSandBox", message: "x".repeat(10_000) },
+		]);
+
+		expect(diagnostics?.length).toBeLessThanOrEqual(2_048);
+		expect(diagnostics).toContain("FailedCreatePodSandBox");
 	});
 
 	it("adds bounded Kubernetes event diagnostics to failure reasons", () => {

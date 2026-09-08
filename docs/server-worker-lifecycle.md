@@ -31,12 +31,14 @@ The supervisor separates durable lease state from physical execution through `Wo
 | Runner | Isolation Level | Process Storage | Production Suitability |
 |---|---|---|---|
 | **Docker** | Container isolation per process | Mounts `ProcessVolume` at `/state` | Production single-machine |
-| **Kubernetes** | Pod per process in dedicated namespace | Mounts PVC at `/state` | Production cloud-native |
+| **Kubernetes** | Pod per process in dedicated namespace; optional operator-selected RuntimeClass for private Docker | Mounts PVC at `/state` | Production cloud-native |
 | **Local** | Node.js subprocess (no container isolation) | Server directory paths | Local development & testing |
 
-Before starting isolated runners (Docker or Kubernetes), the supervisor invokes `ProcessVolume.ensure(instanceId)` and passes the returned volume reference to `WorkerRunner.start(...)`. Isolated runners must not create process storage implicitly.
+Before starting isolated runners (Docker or Kubernetes), the supervisor invokes `ProcessVolume.ensure(instanceId, requirements)` and passes the returned volume reference to `WorkerRunner.start(...)`. Isolated runners must not create process storage implicitly. Kubernetes selects the configured Docker process StorageClass when `requirements.docker` is true.
 
-A terminal worker observation triggers immediate, idempotent removal of its runtime unit. Failed removals enter a background backlog with bounded backoff. Startup adoption also queues stale units this way: one reclamation failure does not block other adoptions, durable reconciliation, or server readiness. Cleanup logs identify the unit and report the backlog count, but never include worker connection or snapshot tokens.
+Launch configuration is immutable for the lifetime of a physical worker. Configuration changes apply only when the server creates a new worker. Operators must explicitly recycle existing workers when a change must take effect immediately.
+
+A terminal worker observation triggers immediate, idempotent removal of its runtime unit. Docker containers and Kubernetes Pods mark removal as their replacement handoff, so the supervisor does not finalize the physical exit or permit replacement until cleanup succeeds. Failed removals enter a background backlog with bounded backoff. Startup adoption also queues stale units this way: one reclamation failure does not block other adoptions, durable reconciliation, or server readiness. Pending removal blocks new workers for that process until all its stale units are gone. An adopted worker that times out remains attached until physical cleanup finishes. Cleanup logs identify the unit and report the backlog count, but never include worker connection or snapshot tokens.
 
 `ProcessStateExporter` is a separate, read-only runner seam for local session transfer. An attempt waits behind the accepted execution chain under the per-process operation coordinator. At quiescence, the server stops the idle worker, confirms that no writable worker lease remains, and holds the reservation through preflight and streaming. The exporter resolves or provisions its runner-specific storage from the process id. It never starts an agent turn or receives model, provider, or repository credentials. Cancellation, lease expiry, hard deadline, deletion, and stream completion release the reservation. Cancelled and failed attempts remain terminal when pending exporter work finishes. Ending a stream closes its source as well as the relay.
 

@@ -106,6 +106,35 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		});
 	});
 
+	it("templates trusted Kubernetes Docker wiring only when enabled", () => {
+		const defaultConfig = renderedLeitwerkConfig(renderChart([]));
+		expect((defaultConfig.kubernetes as JsonObject).docker).toBeUndefined();
+
+		const config = renderedLeitwerkConfig(
+			renderChart([
+				"--set",
+				"kubernetes.docker.enabled=true",
+				"--set",
+				"kubernetes.docker.runtimeClassName=leitwerk-sysbox",
+				"--set",
+				"kubernetes.docker.hostUsers=false",
+				"--set",
+				"kubernetes.docker.processStorageClassName=leitwerk-docker-process",
+			]),
+		);
+
+		expect(validateConfig(config)).toEqual([]);
+		expect(config).toMatchObject({
+			kubernetes: {
+				docker: {
+					runtime_class_name: "leitwerk-sysbox",
+					host_users: false,
+					process_storage_class_name: "leitwerk-docker-process",
+				},
+			},
+		});
+	});
+
 	it("templates internal TLS config and Kubernetes worker CA wiring when enabled", () => {
 		const documents = renderChart([
 			"--set",

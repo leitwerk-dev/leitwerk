@@ -21,6 +21,14 @@ export interface KubernetesNamespaceSummary {
 	labels: Record<string, string>;
 }
 
+export interface KubernetesPodDiagnosticOptions {
+	sensitiveValues?: readonly string[];
+}
+
+export interface KubernetesApiRequestOptions {
+	signal?: AbortSignal;
+}
+
 export interface KubernetesApiClient {
 	ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void>;
 	deleteNamespace(name: string): Promise<void>;
@@ -39,11 +47,21 @@ export interface KubernetesApiClient {
 	deletePod(
 		name: string,
 		namespace: string,
-		options: { gracePeriodSeconds: number },
+		options: KubernetesApiRequestOptions & { gracePeriodSeconds: number },
 	): Promise<void>;
-	getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null>;
+	getPod(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodSummary | null>;
+	listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]>;
 	listPods(namespace: string, labels: Record<string, string>): Promise<KubernetesPodSummary[]>;
-	onPodExit(name: string, namespace: string, listener: (info: WorkerExitInfo) => void): () => void;
+	onPodExit(
+		name: string,
+		namespace: string,
+		listener: (info: WorkerExitInfo) => void,
+		options?: KubernetesPodDiagnosticOptions,
+	): () => void;
 }
 
 function labelsMatch(actual: Record<string, string>, selector: Record<string, string>): boolean {
@@ -142,14 +160,20 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 	async deletePod(
 		name: string,
 		namespace: string,
-		options: { gracePeriodSeconds: number },
+		options: KubernetesApiRequestOptions & { gracePeriodSeconds: number },
 	): Promise<void> {
+		options.signal?.throwIfAborted();
 		this.deletedPods.push({ name, namespace, gracePeriodSeconds: options.gracePeriodSeconds });
 		this.pods.delete(key(namespace, name));
 		this.emit(name, namespace, { exitCode: 0, signal: null, reason: "Deleted" });
 	}
 
-	async getPod(name: string, namespace: string): Promise<KubernetesPodSummary | null> {
+	async getPod(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodSummary | null> {
+		options?.signal?.throwIfAborted();
 		const pod = this.pods.get(key(namespace, name));
 		return pod
 			? {
@@ -159,6 +183,10 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 					phase: pod.phase,
 				}
 			: null;
+	}
+
+	async listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]> {
+		return (this.podEvents.get(key(namespace, name)) ?? []).map((event) => ({ ...event }));
 	}
 
 	async listPods(
@@ -179,7 +207,12 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 		return summaries;
 	}
 
-	onPodExit(name: string, namespace: string, listener: (info: WorkerExitInfo) => void): () => void {
+	onPodExit(
+		name: string,
+		namespace: string,
+		listener: (info: WorkerExitInfo) => void,
+		_options?: KubernetesPodDiagnosticOptions,
+	): () => void {
 		const k = key(namespace, name);
 		const listeners = this.listeners.get(k) ?? [];
 		listeners.push(listener);

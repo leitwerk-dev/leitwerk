@@ -165,6 +165,13 @@ kubernetes:
     accessModes:
       - ReadWriteOnce
     mountPath: /state
+  # Enables process definitions that declare runtime.docker. The chart does not
+  # install the RuntimeClass or StorageClass.
+  docker:
+    enabled: false
+    runtimeClassName: ""
+    hostUsers: false
+    processStorageClassName: ""
   pod:
     nodeSelector: {}
     tolerations: []

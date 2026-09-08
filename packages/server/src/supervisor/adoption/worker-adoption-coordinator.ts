@@ -91,7 +91,6 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 			if (!pending.delete(instanceId)) {
 				return;
 			}
-			deps.workers.delete(instanceId);
 			const lease = deps.safeGetLeaseByInstance(instanceId);
 			if (lease?.workerId === handle.workerId) {
 				deps.emitServerObservedWorkerFailure(instanceId, handle.workerId, {
@@ -102,6 +101,7 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 				handle.kill("SIGKILL");
 				return;
 			}
+			deps.workers.delete(instanceId);
 			handle.detach("adoption_timeout");
 		}, deps.startupTimeoutMs);
 		timers.set(instanceId, timer);

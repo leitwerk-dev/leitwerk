@@ -1,19 +1,19 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createKubernetesHttpApiClient } from "./kubernetes-http-client.js";
+import { createKubernetesWorkerRunner } from "./kubernetes-worker-runner.js";
 
 const servers: http.Server[] = [];
 
 afterEach(async () => {
 	await Promise.all(
-		servers
-			.splice(0)
-			.map(
-				(server) =>
-					new Promise<void>((resolve, reject) =>
-						server.close((error) => (error ? reject(error) : resolve())),
-					),
-			),
+		servers.splice(0).map(
+			(server) =>
+				new Promise<void>((resolve, reject) => {
+					server.closeAllConnections();
+					server.close((error) => (error ? reject(error) : resolve()));
+				}),
+		),
 	);
 });
 
@@ -27,6 +27,87 @@ async function listen(handler: http.RequestListener): Promise<string> {
 }
 
 describe("Kubernetes HTTP API client", () => {
+	it.each([
+		"DELETE",
+		"GET",
+	])("bounds Pod disappearance and closes a stalled %s request before retry", async (stalledMethod) => {
+		const requestMethods: string[] = [];
+		let allowReplies = false;
+		const stalledConnectionClosed = Promise.withResolvers<void>();
+		const apiServerUrl = await listen((request, response) => {
+			requestMethods.push(request.method ?? "");
+			if (!allowReplies && request.method === stalledMethod) {
+				response.once("close", () => stalledConnectionClosed.resolve());
+				if (stalledMethod === "GET") {
+					response.writeHead(200, { "Content-Type": "application/json" });
+					response.write('{"metadata":');
+				}
+				return;
+			}
+			response.writeHead(request.method === "GET" ? 404 : 200, {
+				"Content-Type": "application/json",
+			});
+			response.end("{}");
+		});
+		const { runner } = createKubernetesWorkerRunner({
+			client: createKubernetesHttpApiClient({ apiServerUrl }),
+			processNamespacePrefix: "leitwerk-test-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			podDisappearanceTimeoutMs: 200,
+			serverUrl: "http://leitwerk-server:8080",
+			exporterImage: "ghcr.io/example/worker@sha256:abc",
+			helperRelays: {
+				create() {
+					throw new Error("unexpected export helper relay");
+				},
+			},
+		});
+		const unit = {
+			instanceId: "process",
+			workerId: "worker",
+			unitId: "worker-pod",
+			namespace: "process-namespace",
+		};
+		const startedAt = Date.now();
+
+		await expect(runner.stop(unit, { graceMs: 0 })).rejects.toThrow(
+			"did not disappear within 200ms; replacement was not started",
+		);
+		expect(Date.now() - startedAt).toBeLessThan(2_000);
+		await stalledConnectionClosed.promise;
+		expect(requestMethods).toEqual(stalledMethod === "DELETE" ? ["DELETE"] : ["DELETE", "GET"]);
+
+		allowReplies = true;
+		await runner.stop(unit, { graceMs: 0 });
+		expect(requestMethods.slice(-2)).toEqual(["DELETE", "GET"]);
+	});
+
+	it("sends the complete framed DeleteOptions body", async () => {
+		let requestBody = "";
+		let contentLength: string | undefined;
+		const apiServerUrl = await listen((request, response) => {
+			contentLength = request.headers["content-length"];
+			request.setEncoding("utf8");
+			request.on("data", (chunk: string) => {
+				requestBody += chunk;
+			});
+			request.on("end", () => {
+				response.writeHead(200, { "Content-Type": "application/json" });
+				response.end("{}");
+			});
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl });
+
+		await client.deletePod("worker-pod", "process-namespace", { gracePeriodSeconds: 2 });
+
+		expect(JSON.parse(requestBody)).toEqual({
+			apiVersion: "v1",
+			kind: "DeleteOptions",
+			gracePeriodSeconds: 2,
+		});
+		expect(contentLength).toBe(String(Buffer.byteLength(requestBody)));
+	});
+
 	it("retries one plain bad-request response for an idempotent GET", async () => {
 		const requests: Array<{ method: string; url: string }> = [];
 		let namespaceReads = 0;
@@ -78,6 +159,81 @@ describe("Kubernetes HTTP API client", () => {
 		await client.deletePod("worker-pod", "process-namespace", { gracePeriodSeconds: 0 });
 
 		expect(requests).toBe(2);
+	});
+
+	it("bounds structured admission diagnostics without echoing response objects", async () => {
+		const apiServerUrl = await listen((_request, response) => {
+			response.writeHead(422, { "Content-Type": "application/json" });
+			response.end(
+				JSON.stringify({
+					kind: "Status",
+					reason: "Invalid",
+					message: "x".repeat(10_000),
+					object: { env: [{ name: "TOKEN", value: "secret" }] },
+				}),
+			);
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl });
+
+		const error = await client
+			.createPod({ metadata: { namespace: "process-namespace" } } as never)
+			.then(() => "")
+			.catch((cause: Error) => cause.message);
+
+		expect(error.length).toBeLessThan(2_200);
+		expect(error).toContain("Invalid");
+		expect(error).not.toContain("secret");
+	});
+
+	it("surfaces bounded redacted Pod exit diagnostics", async () => {
+		const workerToken = "worker-connect-token-value";
+		const apiServerUrl = await listen((request, response) => {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			if (request.url?.includes("/events?")) {
+				response.end(
+					JSON.stringify({
+						items: [
+							{
+								type: "Warning",
+								reason: "FailedScheduling",
+								message: `rejected manifest containing ${workerToken}`,
+							},
+						],
+					}),
+				);
+				return;
+			}
+			response.end(
+				JSON.stringify({
+					status: {
+						phase: "Failed",
+						containerStatuses: [
+							{
+								state: {
+									terminated: {
+										exitCode: 1,
+										reason: "Error",
+										message: `dockerd failed for ${workerToken}: ${"x".repeat(100)}`,
+									},
+								},
+							},
+						],
+					},
+				}),
+			);
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl, pollIntervalMs: 1 });
+		const exit = new Promise((resolve) =>
+			client.onPodExit("worker", "process", resolve, { sensitiveValues: [workerToken] }),
+		);
+
+		const info = (await exit) as { exitCode: number; reason: string };
+		expect(info.exitCode).toBe(1);
+		expect(info.reason).toContain("Runtime startup: dockerd failed");
+		expect(info.reason).toContain("Kubernetes events: Warning FailedScheduling");
+		expect(info.reason).toContain("<redacted>");
+		expect(info.reason).not.toContain(workerToken);
+		expect(info.reason.length).toBeLessThanOrEqual(2_048);
 	});
 
 	it("does not retry structured Kubernetes bad requests when deleting a pod", async () => {

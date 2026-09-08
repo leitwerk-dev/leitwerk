@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig((options) => ({
-	entry: ["src/index.ts", "src/worker-entry.ts"],
+	entry: ["src/index.ts", "src/worker-entry.ts", "src/container-entry-main.ts"],
 	format: ["esm"],
 	tsconfig: "tsconfig.tsup.json",
 	dts: true,

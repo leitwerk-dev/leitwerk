@@ -39,6 +39,11 @@ export interface KubernetesWorkerServerCaConfigMapSpec {
 	mountPath: string;
 }
 
+export interface KubernetesDockerPodSpecOptions {
+	runtimeClassName: string;
+	hostUsers: boolean;
+}
+
 export interface KubernetesPodSpecOptions {
 	namespace: string;
 	workerServiceAccount?: string;
@@ -49,6 +54,8 @@ export interface KubernetesPodSpecOptions {
 	tolerations?: unknown[];
 	hostAliases?: Array<{ ip: string; hostnames: string[] }>;
 	serverCaConfigMap?: KubernetesWorkerServerCaConfigMapSpec;
+	/** Trusted operator wiring used only when the process declares runtime.docker. */
+	docker?: KubernetesDockerPodSpecOptions;
 }
 
 export interface KubernetesPersistentVolumeClaimManifest {
@@ -124,6 +131,8 @@ export interface KubernetesPodManifest {
 	};
 	spec: {
 		restartPolicy: "Never";
+		runtimeClassName?: string;
+		hostUsers?: boolean;
 		serviceAccountName?: string;
 		nodeSelector?: Record<string, string>;
 		tolerations?: unknown[];
@@ -459,10 +468,33 @@ export function buildKubernetesWorkerPodManifest(
 	});
 	const containerResources = resources(input);
 	const ca = options.serverCaConfigMap;
+	const caCertPath = ca ? `${ca.mountPath}/${ca.key}` : undefined;
+	const trustedDockerEnv = input.docker
+		? {
+				...input.env,
+				DOCKER_HOST: "unix:///var/run/docker.sock",
+				LEITWERK_PRIVATE_DOCKER: "1",
+				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
+			}
+		: input.env;
+	const containerEnv = caCertPath
+		? { ...trustedDockerEnv, NODE_EXTRA_CA_CERTS: caCertPath }
+		: trustedDockerEnv;
+	const volumeMounts: KubernetesPodManifest["spec"]["containers"][number]["volumeMounts"] = [
+		{ name: WORKER_VOLUME_NAME, mountPath: volume.mountPath },
+	];
+	if (ca) {
+		volumeMounts.push({
+			name: WORKER_SERVER_CA_VOLUME_NAME,
+			mountPath: ca.mountPath,
+			readOnly: true,
+		});
+	}
 	const container: KubernetesPodManifest["spec"]["containers"][number] = {
 		name: "worker",
 		image: input.image.reference,
-		...processStateContainerConfig(input.env, volume.mountPath, false, ca),
+		env: envList(containerEnv),
+		volumeMounts,
 		...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
 		...(containerResources ? { resources: containerResources } : {}),
 	};
@@ -478,13 +510,42 @@ export function buildKubernetesWorkerPodManifest(
 		spec: {
 			restartPolicy: "Never",
 			...sharedPodSpec(options),
+			...(input.docker && options.docker
+				? {
+						runtimeClassName: options.docker.runtimeClassName,
+						hostUsers: options.docker.hostUsers,
+					}
+				: {}),
 			containers: [container],
 			volumes: processStateVolumes(volume.id, ca),
 		},
 	};
 }
 
-function formatPodEvent(event: KubernetesPodEventSummary): string | null {
+const KUBERNETES_DIAGNOSTIC_MAX_LENGTH = 2_048;
+
+export function redactKubernetesDiagnostic(
+	value: string,
+	sensitiveValues: readonly string[] = [],
+): string {
+	let redacted = value;
+	for (const sensitiveValue of sensitiveValues) {
+		if (sensitiveValue.length >= 8) redacted = redacted.replaceAll(sensitiveValue, "<redacted>");
+	}
+	return redacted;
+}
+
+function boundedDiagnostic(value: string, sensitiveValues: readonly string[] = []): string {
+	const redacted = redactKubernetesDiagnostic(value, sensitiveValues);
+	return redacted.length <= KUBERNETES_DIAGNOSTIC_MAX_LENGTH
+		? redacted
+		: `${redacted.slice(0, KUBERNETES_DIAGNOSTIC_MAX_LENGTH - 1)}…`;
+}
+
+function formatPodEvent(
+	event: KubernetesPodEventSummary,
+	sensitiveValues: readonly string[],
+): string | null {
 	const pieces: string[] = [];
 	if (event.type?.trim()) pieces.push(event.type.trim());
 	if (event.reason?.trim()) pieces.push(event.reason.trim());
@@ -492,18 +553,24 @@ function formatPodEvent(event: KubernetesPodEventSummary): string | null {
 	const prefix = pieces.join(" ");
 	const message = event.message?.trim();
 	if (!prefix && !message) return null;
-	return message ? `${prefix ? `${prefix}: ` : ""}${message}` : prefix;
+	return boundedDiagnostic(
+		message ? `${prefix ? `${prefix}: ` : ""}${message}` : prefix,
+		sensitiveValues,
+	);
 }
 
 export function formatKubernetesPodDiagnostics(
 	events: readonly KubernetesPodEventSummary[] | undefined,
 	limit = 3,
+	sensitiveValues: readonly string[] = [],
 ): string | undefined {
 	const formatted = (events ?? [])
-		.map(formatPodEvent)
+		.map((event) => formatPodEvent(event, sensitiveValues))
 		.filter((entry): entry is string => entry !== null)
 		.slice(0, limit);
-	return formatted.length > 0 ? `Kubernetes events: ${formatted.join(" | ")}` : undefined;
+	return formatted.length > 0
+		? boundedDiagnostic(`Kubernetes events: ${formatted.join(" | ")}`, sensitiveValues)
+		: undefined;
 }
 
 export function mapKubernetesPodExit(args: {
@@ -512,11 +579,20 @@ export function mapKubernetesPodExit(args: {
 	exitCode?: number | null;
 	signal?: string | null;
 	oomKilled?: boolean;
+	terminationMessage?: string;
 	events?: readonly KubernetesPodEventSummary[];
+	sensitiveValues?: readonly string[];
 }): WorkerExitInfo {
+	const sensitiveValues = args.sensitiveValues ?? [];
 	const baseReason = args.reason ?? args.phase;
-	const diagnostics = formatKubernetesPodDiagnostics(args.events);
-	const reason = [baseReason, diagnostics].filter(Boolean).join("; ");
+	const startupDiagnostic = args.terminationMessage?.trim()
+		? `Runtime startup: ${boundedDiagnostic(args.terminationMessage.trim(), sensitiveValues)}`
+		: undefined;
+	const diagnostics = formatKubernetesPodDiagnostics(args.events, 3, sensitiveValues);
+	const reason = boundedDiagnostic(
+		[baseReason, startupDiagnostic, diagnostics].filter(Boolean).join("; "),
+		sensitiveValues,
+	);
 	return {
 		exitCode: args.exitCode ?? null,
 		signal: args.signal ?? null,

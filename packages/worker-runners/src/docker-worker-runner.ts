@@ -49,8 +49,8 @@ export interface DockerWorkerRunnerOptions {
 	volume: DockerProcessVolumeOptions;
 	/** Shared private network attached to every worker container. */
 	defaultNetwork: string;
-	/** Host runtime name registered for sysbox DinD (e.g. `sysbox-runc`). */
-	sysboxRuntime?: string;
+	/** Exact isolation used for Docker-requiring processes. Omit to make them unavailable. */
+	privateDaemonIsolation?: "privileged" | "sysbox-runc";
 	/** Host CA bundle mounted read-only into workers and export helpers. */
 	serverCaFile?: string;
 	/** Stable internal URL used by named-volume export helpers. */
@@ -63,12 +63,8 @@ export interface DockerWorkerRunnerOptions {
 
 const DEFAULT_NAMED_VOLUME_PREFIX = "leitwerk-process-";
 const NANO_CPUS_PER_CPU = 1_000_000_000;
-/**
- * Mount path of the inner `dockerd` storage under DinD. Backed by an anonymous
- * Docker-managed volume so inner image/layer state never lands in the
- * server-opaque process volume mounted at the worker's `mountPath`.
- */
-const DIND_DAEMON_STORAGE_PATH = "/var/lib/docker";
+const PRIVATE_DOCKER_ENV = "LEITWERK_PRIVATE_DOCKER";
+const PROCESS_VOLUME_MOUNT_PATH_ENV = "LEITWERK_PROCESS_VOLUME_MOUNT_PATH";
 const WORKER_SERVER_CA_MOUNT_PATH = "/leitwerk/server-ca.pem";
 
 /** Replaces characters Docker rejects in container names. */
@@ -195,6 +191,29 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 
 	const exitNotifier = new UnitExitNotifier();
 	const watched = new Set<string>();
+	const stopPromises = new Map<string, Promise<void>>();
+
+	function stopAndRemove(ref: WorkerUnitRef, opts: StopWorkerOptions): Promise<void> {
+		const existing = stopPromises.get(ref.unitId);
+		if (existing) return existing;
+		const operation = Promise.resolve()
+			.then(async () => {
+				const timeoutSeconds = Math.max(0, Math.ceil(opts.graceMs / 1000));
+				try {
+					await engine.stopContainer(ref.unitId, { timeoutSeconds });
+				} catch (error) {
+					if (!isDockerEngineNotFoundError(error)) throw error;
+				}
+				try {
+					await engine.removeContainer(ref.unitId, { force: true });
+				} catch (error) {
+					if (!isDockerEngineNotFoundError(error)) throw error;
+				}
+			})
+			.finally(() => stopPromises.delete(ref.unitId));
+		stopPromises.set(ref.unitId, operation);
+		return operation;
+	}
 
 	function watchForExit(unitId: string): void {
 		if (watched.has(unitId)) return;
@@ -218,7 +237,10 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				serverEpoch: input.serverEpoch,
 			});
 			const mounts: DockerMountSpec[] = [{ source: volume.id, target: volume.mountPath }];
-			const env = { ...input.env };
+			const env: Record<string, string> = {
+				...input.env,
+				[PROCESS_VOLUME_MOUNT_PATH_ENV]: volume.mountPath,
+			};
 			if (options.serverCaFile) {
 				mounts.push({
 					source: options.serverCaFile,
@@ -227,19 +249,15 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				});
 				env.NODE_EXTRA_CA_CERTS = WORKER_SERVER_CA_MOUNT_PATH;
 			}
-			const privileged = input.isolation.dind === "privileged";
-			const dindMode = input.isolation.dind;
-			const sysbox = dindMode === "sysbox";
-			if (sysbox && !options.sysboxRuntime) {
+			const isolation = input.docker ? options.privateDaemonIsolation : undefined;
+			if (input.docker && !isolation) {
 				throw new Error(
-					`Cannot start worker for ${input.instanceId}: sysbox DinD requested but no host sysbox runtime is configured`,
+					`Cannot start Docker-requiring process ${input.instanceId}: docker.private_daemon is not configured`,
 				);
 			}
-			// Under any DinD mode the inner dockerd needs its own storage. Back it with
-			// an anonymous Docker-managed volume so inner image/layer state stays out
-			// of the server-opaque process volume and is reclaimed when the worker
-			// container is removed.
-			const anonymousVolumes = dindMode === false ? undefined : [DIND_DAEMON_STORAGE_PATH];
+			if (input.docker) env[PRIVATE_DOCKER_ENV] = "1";
+			const privileged = isolation === "privileged";
+			const sysbox = isolation === "sysbox-runc";
 			observer?.report("allocating_runtime");
 			const { id } = await engine.createContainer({
 				name: containerName(input.instanceId, input.workerId),
@@ -249,8 +267,7 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				mounts,
 				networkMode: options.defaultNetwork,
 				privileged,
-				...(sysbox ? { runtime: options.sysboxRuntime } : {}),
-				...(anonymousVolumes ? { anonymousVolumes } : {}),
+				...(sysbox ? { runtime: "sysbox-runc" } : {}),
 				nanoCpus: parseCpuToNanoCpus(input.resources?.cpu),
 				memoryBytes: parseMemoryToBytes(input.resources?.memory),
 			});
@@ -262,22 +279,14 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				unitId: id,
 			};
 			watchForExit(id);
-			return exitNotifier.wrapUnit(ref, ref.unitId);
+			return exitNotifier.wrapUnit(ref, ref.unitId, {
+				replacementHandoff: "stop-before-replacement",
+			});
 		},
 		async stop(ref: WorkerUnitRef, opts: StopWorkerOptions) {
-			const timeoutSeconds = Math.max(0, Math.ceil(opts.graceMs / 1000));
-			try {
-				await engine.stopContainer(ref.unitId, { timeoutSeconds });
-			} catch (error) {
-				if (!isDockerEngineNotFoundError(error)) throw error;
-			}
-			try {
-				await engine.removeContainer(ref.unitId, { force: true });
-			} catch (error) {
-				if (!isDockerEngineNotFoundError(error)) throw error;
-			}
-			// The process volume is intentionally kept for resume; removing the ephemeral
-			// container reclaims Docker-managed anonymous volumes (including DinD storage).
+			await stopAndRemove(ref, opts);
+			// Container removal is the replacement handoff boundary. The process volume,
+			// including private daemon state, remains available to the replacement.
 		},
 		async list(): Promise<WorkerUnitDescriptor[]> {
 			const summaries = await engine.listContainers({
@@ -317,7 +326,9 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				unitId: descriptor.unitId,
 			};
 			watchForExit(descriptor.unitId);
-			return exitNotifier.wrapUnit(ref, ref.unitId);
+			return exitNotifier.wrapUnit(ref, ref.unitId, {
+				replacementHandoff: "stop-before-replacement",
+			});
 		},
 	};
 
