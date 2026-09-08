@@ -6,6 +6,7 @@ import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { createDefu } from "defu";
 import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
+import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
 import type { LeitwerkConfig, ModelProfile } from "./config-types.js";
@@ -165,6 +166,14 @@ const authGithubProviderSchema = v.looseObject({
 });
 
 const authConfigSchema = v.looseObject({
+	api_tokens: v.optional(
+		v.strictObject({
+			enabled: v.optional(v.boolean()),
+			default_ttl: v.optional(v.string()),
+			max_ttl: v.optional(v.string()),
+			allow_no_expiry: v.optional(v.boolean()),
+		}),
+	),
 	enabled: v.optional(v.boolean()),
 	session: v.optional(
 		v.looseObject({
@@ -758,6 +767,11 @@ function collectInternalTlsConfigErrors(config: LeitwerkConfig): string[] {
 function collectAuthConfigErrors(config: LeitwerkConfig): string[] {
 	const errors: string[] = [];
 	const auth = config.auth;
+	try {
+		resolveApiTokenPolicy(auth?.api_tokens);
+	} catch (error) {
+		errors.push(error instanceof Error ? error.message : "Invalid auth.api_tokens configuration");
+	}
 	if (!auth || auth.enabled !== true) {
 		return errors;
 	}

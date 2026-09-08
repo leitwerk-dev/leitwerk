@@ -192,6 +192,7 @@ The server builds immutable, content-addressed Pi resource bundles. Physical wor
 
 ## 11 Risks and Technical Debt
 
+- **API tokens:** Dedicated SQLite storage and migration support owner-equivalent application HTTP access. The HTTP boundary resolves session, API token, or shared anonymous context; browser-only management and WebSockets remain separate. See [security](security.md#personal-and-anonymous-api-tokens).
 - **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
 - **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: the Launch Coordinator admits an idempotent durable `LaunchRun`, atomically commits the code-defined child and relation registered by the selected ticket capability, and then starts its entry turn using a durable result and immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
 

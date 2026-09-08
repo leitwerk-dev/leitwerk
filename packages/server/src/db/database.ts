@@ -54,6 +54,7 @@ const ALL_TABLES = [
 	schema.processLeafOutcomeSnapshots,
 	schema.turnRecords,
 	schema.turnStartRecords,
+	schema.apiTokens,
 	schema.authSessions,
 	schema.authLoginFlows,
 	schema.turnAnnotations,
@@ -322,6 +323,14 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260908_add_api_tokens",
+		tableNames: ["api_tokens"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "auth_sessions") !== null &&
+			existingTableSql(sqlite, "api_tokens") === null,
+		apply: (sqlite) => createTableWithIndexes(sqlite, schema.apiTokens),
+	},
 	{
 		id: "20260901_add_session_transfers",
 		tableNames: ["session_transfer_grants", "session_transfer_attempts"],

@@ -1,5 +1,6 @@
 import type { AuthMeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance } from "fastify";
+import { registerApiTokenRoutes } from "./api-token-routes.js";
 import type { AuthService } from "./auth-service.js";
 import { authenticateRequest } from "./fastify-auth.js";
 
@@ -18,10 +19,13 @@ function cookieOptions(input: { secure: boolean; maxAge: number }) {
 }
 
 export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): void {
+	registerApiTokenRoutes(app, auth);
 	app.get("/api/auth/me", async (request, reply) => {
 		const actor = authenticateRequest(auth, request);
-		if (!actor && auth.config.enabled) {
-			return reply.code(401).send({ authEnabled: true, actor: null } satisfies AuthMeResponseBody);
+		if (!actor) {
+			return reply
+				.code(401)
+				.send({ authEnabled: auth.config.enabled, actor: null } satisfies AuthMeResponseBody);
 		}
 		if (actor) {
 			request.actor = actor;
