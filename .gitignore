@@ -32,6 +32,11 @@ analysis
 leitwerk.yaml
 .impeccable
 .agents/
+!/.agents/
+/.agents/*
+!/.agents/skills/
+/.agents/skills/*
+!/.agents/skills/review-stack/
 .codex/
 .DS_Store
 .release-please-runtime-config.json
