@@ -18,6 +18,7 @@ import {
 	createTestQuestionRequest,
 } from "@leitwerk-dev/test-support/fixtures";
 import { mount, unmount } from "svelte";
+import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProcessActionModelPreview, ProcessDetailData } from "../lib/api.js";
 
@@ -32,6 +33,7 @@ const {
 	mockPostProcessRetry,
 	mockPostProcessTurnContinue,
 	mockLaunchTicketCreation,
+	mockSubmitQuestionAnswers,
 	mockUpdateScheduledAction,
 } = vi.hoisted(() => ({
 	mockDeleteFutureExecution: vi.fn(),
@@ -64,6 +66,7 @@ const {
 	mockPostProcessRetry: vi.fn(),
 	mockPostProcessTurnContinue: vi.fn(),
 	mockLaunchTicketCreation: vi.fn(),
+	mockSubmitQuestionAnswers: vi.fn(),
 	mockUpdateScheduledAction: vi.fn(),
 }));
 
@@ -78,6 +81,7 @@ vi.mock("../lib/api", () => ({
 	postProcessRetry: mockPostProcessRetry,
 	postProcessTurnContinue: mockPostProcessTurnContinue,
 	launchTicketCreation: mockLaunchTicketCreation,
+	submitQuestionAnswers: mockSubmitQuestionAnswers,
 	updateScheduledAction: mockUpdateScheduledAction,
 	deleteFutureExecution: mockDeleteFutureExecution,
 }));
@@ -94,6 +98,7 @@ import {
 } from "../lib/process-toast-focus.svelte.js";
 import { clearDetail, detailState, handleWsEvent } from "../lib/processes.svelte";
 import { emptyLaunchConfiguration } from "../lib/test-fixtures.js";
+import { dismissToast, handleToastFrame, openToast, toastStore } from "../lib/toasts.svelte.js";
 import ProcessDetailPage from "./ProcessDetailPage.svelte";
 
 const mountedApps: Array<ReturnType<typeof mount>> = [];
@@ -1483,6 +1488,27 @@ function createQuestionRequestDetail(): ProcessDetailData {
 	return detail;
 }
 
+function createReplacementQuestionRequestDetail(): ProcessDetailData {
+	const detail = createLiveReasoningTransitionDetail();
+	detail.questionRequests = [
+		createTestQuestionRequest({
+			id: "qst_1",
+			turnRecordId: "trn_live",
+			status: "answered",
+			answers: ["Use the existing tracker"],
+			askedAt: "2026-01-01T00:01:15Z",
+			answeredAt: "2026-01-01T00:01:30Z",
+		}),
+		createTestQuestionRequest({
+			id: "qst_2",
+			toolCallId: "tool-question-2",
+			turnRecordId: "trn_live",
+			askedAt: "2026-01-01T00:01:45Z",
+		}),
+	];
+	return detail;
+}
+
 function createCommittedReasoningTransitionDetail(): ProcessDetailData {
 	const detail = createProcessDetail();
 	detail.turnRecords = [
@@ -1757,6 +1783,7 @@ async function mountSubjectWithCurrentMocks() {
 		},
 	]);
 	mockLaunchTicketCreation.mockReset();
+	mockSubmitQuestionAnswers.mockReset();
 	mockFetchTurnReasoningDetail.mockReset();
 	mockFetchTurnReasoningDetail.mockImplementation(
 		async (requestInstanceId: string, turnRecordId: string) =>
@@ -1872,6 +1899,7 @@ afterEach(() => {
 	}
 	clearPendingProcessToastFocus();
 	clearDetail();
+	for (const toast of get(toastStore)) dismissToast(toast.id);
 	scheduledFrameCallbacks = new Map();
 	FakeResizeObserver.reset();
 	FakeMutationObserver.reset();
@@ -3007,7 +3035,136 @@ describe("ProcessDetailPage", () => {
 
 		const request = target.querySelector<HTMLElement>("[data-question-request-id='qst_1']");
 		expect(request).toBeTruthy();
+		expect(request?.closest('[data-section="thinking-preview"]')).toBeTruthy();
 		expect(request?.contains(document.activeElement)).toBe(false);
+	});
+
+	it.each([
+		"recorded",
+		"unavailable",
+	])("opens a read-only question summary when the trace is %s", async (traceState) => {
+		const detail = createQuestionRequestDetail();
+		if (traceState === "unavailable") {
+			const activeTurn = detail.primaryPath.turnState.activeTurn;
+			if (!activeTurn) throw new Error("Expected an active turn");
+			activeTurn.assistant.text = "";
+			activeTurn.assistant.thinking = "";
+			activeTurn.toolCalls = [];
+			activeTurn.traceItems = [];
+			activeTurn.eventWindowTruncated = true;
+		}
+		const { target } = await mountSubject(detail);
+		await flushUi();
+
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		await flushUi();
+
+		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
+		expect(overlay).toBeTruthy();
+		expect(overlay?.querySelector("[data-question-request-id='qst_1']")).toBeTruthy();
+		expect(overlay?.querySelector("form")).toBeNull();
+		expect(
+			target.querySelector('[data-section="live-tail"] [data-question-request-id="qst_1"] form'),
+		).toBeTruthy();
+	});
+
+	it("notifies about follow-up questions without interrupting history until the toast is opened", async () => {
+		const initialDetail = createQuestionRequestDetail();
+		const answeredRequest = {
+			...initialDetail.questionRequests[0],
+			status: "answered" as const,
+			answers: ["Safe"],
+			answeredAt: "2026-01-01T00:01:30Z",
+		};
+		const { target, viewport } = await mountSubject(initialDetail);
+		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_400 });
+		mockSubmitQuestionAnswers.mockResolvedValue(answeredRequest);
+		await flushUi();
+
+		const firstRequest = target.querySelector<HTMLElement>("[data-question-request-id='qst_1']");
+		const firstOption = firstRequest?.querySelector<HTMLInputElement>("input[type='radio']");
+		expect(firstOption).toBeTruthy();
+		firstOption?.click();
+		await flushUi();
+		firstRequest?.querySelector<HTMLButtonElement>("button[type='submit']")?.click();
+		await flushUi();
+		expect(mockSubmitQuestionAnswers).toHaveBeenCalledOnce();
+
+		viewport.scrollTop = 300;
+		viewport.dispatchEvent(new Event("scroll"));
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		await flushUi();
+		const closeOverlay = target.querySelector<HTMLButtonElement>(
+			'[data-action="close-reasoning-overlay"]',
+		);
+		expect(closeOverlay).toBeTruthy();
+		expect(document.activeElement).toBe(closeOverlay);
+		const previousScrollTop = metrics.getScrollTop();
+		vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
+
+		mockFetchProcessDetail.mockResolvedValue(createReplacementQuestionRequestDetail());
+		handleWsEvent(
+			createDurableWsFrame({
+				type: "process.event",
+				instanceId: "agt_1",
+				payload: {
+					eventType: "question_requested",
+					level: "info",
+					message: "Operator answers requested",
+				},
+			}),
+		);
+		handleToastFrame({
+			protocol: "leitwerk/ws/v1",
+			type: "process.toast",
+			durability: "ephemeral",
+			sentAt: "2026-01-01T00:01:45Z",
+			instanceId: "agt_1",
+			payload: {
+				instanceId: "agt_1",
+				level: "warn",
+				message: "The active turn is waiting for your answers.",
+				eventType: "question_requested",
+				dedupeKey: "question-request:qst_2",
+				ttlMs: 10_000,
+				focusTarget: { kind: "question_request", requestId: "qst_2" },
+			},
+		});
+		await vi.advanceTimersByTimeAsync(120);
+		await flushUi();
+
+		const followUp = target.querySelector<HTMLElement>("[data-question-request-id='qst_2']");
+		expect(followUp).toBeTruthy();
+		const liveReasoning = target.querySelector<HTMLElement>(
+			'[data-section="live-tail"] [data-section="reasoning-questions"]',
+		);
+		const answeredQuestion = liveReasoning?.querySelector<HTMLElement>(
+			"[data-question-request-id='qst_1']",
+		);
+		expect(answeredQuestion?.textContent).toContain("Use the existing tracker");
+		expect(answeredQuestion?.querySelector("form")).toBeNull();
+		expect(liveReasoning?.querySelectorAll("form")).toHaveLength(1);
+		expect(liveReasoning?.contains(followUp)).toBe(true);
+		expect(document.activeElement).toBe(closeOverlay);
+		expect(metrics.getScrollTop()).toBe(previousScrollTop);
+		expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
+		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		const notification = get(toastStore).find(
+			(toast) => toast.dedupeKey === "question-request:qst_2",
+		);
+		expect(notification).toMatchObject({
+			message: "The active turn is waiting for your answers.",
+			focusTarget: { kind: "question_request", requestId: "qst_2" },
+		});
+		if (!notification) throw new Error("Expected follow-up question notification");
+		openToast(notification.id);
+		await flushUi();
+
+		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+		expect(
+			target.querySelector("[data-question-request-id='qst_2']")?.contains(document.activeElement),
+		).toBe(true);
+		expect(get(toastStore)).toHaveLength(0);
 	});
 
 	it("focuses a question only after the operator opens its toast", async () => {

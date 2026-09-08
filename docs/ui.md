@@ -18,6 +18,9 @@ The process detail view is organized into three distinct visual regions:
 
 Process detail is a workspace route. Its `RouteViewport` remains contained so the Chronicle can own timeline scrolling.
 
+Markdown fragment links such as `#details` navigate within the current page. Links to other pages
+open a new tab with `noopener noreferrer`.
+
 ---
 
 ## 2. Ticket creation modal
@@ -33,6 +36,15 @@ destination from the operator's instructions or asks when the target is ambiguou
 The server resolves that opaque choice into a fresh destination snapshot. The
 external-write approval names the destination separately from the proposed tool
 arguments so the operator can verify both before accepting the write.
+
+Question requests appear inside their turn's reasoning section. Open requests are answered in
+the Chronicle; answered and cancelled requests remain visible while follow-up questions are open
+and after the turn ends. The reasoning-details overlay shows read-only question summaries even
+when the turn has no recorded trace, and does not duplicate the answer form. Live question
+updates refresh the current process view without a browser reload.
+New requests, including follow-ups, notify the operator through a question toast without changing
+their scroll position or focus. Opening that notification closes blocking detail overlays and
+focuses the active question form.
 
 ## 3. Local session transfer
 

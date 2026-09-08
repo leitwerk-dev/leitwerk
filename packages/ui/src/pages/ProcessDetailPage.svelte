@@ -194,7 +194,10 @@ const chronicleProjection = $derived(
 	}),
 );
 const reasoningDetailEntries = $derived(
-	extractChronicleReasoningDetailEntries(chronicleProjection),
+	extractChronicleReasoningDetailEntries(
+		chronicleProjection,
+		$detailState.data?.questionRequests ?? [],
+	),
 );
 const processDetailOverlay = $derived(readProcessDetailOverlay($locationStore));
 const isProcessInfoOverlayOpen = $derived(processDetailOverlay.kind === "process-info");
@@ -552,6 +555,9 @@ function openNextReasoningDetails() {
 			<ChronicleReasoningDetailsOverlay
 				entry={activeReasoningDetail}
 				{toolRendererIndex}
+				questionRequests={$detailState.data?.questionRequests.filter(
+					(request) => request.turnRecordId === activeReasoningDetail.turnRecordId,
+				) ?? []}
 				hasPrevious={hasPreviousReasoningDetail}
 				hasNext={hasNextReasoningDetail}
 				onClose={() => closeReasoningDetails()}

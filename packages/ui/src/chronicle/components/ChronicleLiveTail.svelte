@@ -2,12 +2,11 @@
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
-import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 
 interface Props {
 	liveTail: ChronicleLiveTailItem;
-	questionRequest?: ProcessQuestionRequest | null;
+	questionRequests?: readonly ProcessQuestionRequest[];
 	isFocused: boolean;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onAbortTurn?: (() => Promise<void> | void) | null;
@@ -17,7 +16,7 @@ interface Props {
 
 let {
 	liveTail,
-	questionRequest = null,
+	questionRequests = [],
 	isFocused,
 	onOpenReasoningDetails,
 	onAbortTurn = null,
@@ -26,6 +25,9 @@ let {
 }: Props = $props();
 
 let confirmingStop = $state(false);
+const openQuestionRequest = $derived(
+	questionRequests.find((request) => request.status === "open") ?? null,
+);
 
 function requestStop() {
 	if (!confirmingStop) {
@@ -41,7 +43,7 @@ function cancelStop() {
 
 const screenReaderStatus = $derived.by(() => {
 	const statusParts = [
-		questionRequest
+		openQuestionRequest
 			? "Answers requested. The active turn is paused for your response."
 			: `${liveTail.stateLabel}: ${liveTail.title}.`,
 	];
@@ -71,8 +73,8 @@ const screenReaderStatus = $derived.by(() => {
 		<div class="live-tail-heading">
 			<span class="live-pulse" aria-hidden="true"></span>
 			<div class="live-heading-copy">
-				<p class="live-eyebrow">{questionRequest ? "Operator input needed" : liveTail.stateLabel}</p>
-				<h3>{questionRequest ? "Waiting for your answers" : liveTail.title}</h3>
+				<p class="live-eyebrow">{openQuestionRequest ? "Operator input needed" : liveTail.stateLabel}</p>
+				<h3>{openQuestionRequest ? "Waiting for your answers" : liveTail.title}</h3>
 				{#if liveTail.pathLabel || liveTail.modelProfileId}
 					<div class="live-meta-row">
 						{#if liveTail.pathLabel}
@@ -86,24 +88,19 @@ const screenReaderStatus = $derived.by(() => {
 			</div>
 		</div>
 
-		{#if liveTail.reasoningSection}
+		{#if liveTail.reasoningSection || questionRequests.length > 0}
 			<ChronicleThinkingSection
-				text={liveTail.reasoningSection.text}
-				preview={liveTail.reasoningSection.preview}
-				previewTruncated={liveTail.reasoningSection.previewTruncated}
-				toolCallCount={liveTail.reasoningSection.toolCallCount}
-				traceItemCount={liveTail.reasoningSection.traceItemCount}
+				text={liveTail.reasoningSection?.text ?? ""}
+				preview={liveTail.reasoningSection?.preview ?? ""}
+				previewTruncated={liveTail.reasoningSection?.previewTruncated ?? false}
+				toolCallCount={liveTail.reasoningSection?.toolCallCount ?? 0}
+				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
+				{questionRequests}
 				onOpenDetails={() => onOpenReasoningDetails(liveTail.turnRecordId)}
 				isLive={true}
 			/>
 		{:else}
 			<p class="live-copy">{liveTail.copy}</p>
-		{/if}
-
-		{#if questionRequest}
-			{#key questionRequest.id}
-				<ChronicleQuestionRequest request={questionRequest} />
-			{/key}
 		{/if}
 
 		{#if liveTail.eventWindowTruncated}

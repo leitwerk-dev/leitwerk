@@ -31,7 +31,6 @@ import ChronicleLiveTail from "./ChronicleLiveTail.svelte";
 import ChronicleOperatorInputSection from "./ChronicleOperatorInputSection.svelte";
 import ChronicleProcessErrorSection from "./ChronicleProcessErrorSection.svelte";
 import ChroniclePromptSection from "./ChroniclePromptSection.svelte";
-import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleRecoverySection from "./ChronicleRecoverySection.svelte";
 import ChronicleScheduledActionSection from "./ChronicleScheduledActionSection.svelte";
 import ChronicleStartupHistory from "./ChronicleStartupHistory.svelte";
@@ -119,6 +118,11 @@ const questionRequestsByTurn = $derived.by(() => {
 	}
 	return grouped;
 });
+
+function questionRequestsForTurn(turnRecordId: string): ProcessQuestionRequest[] {
+	const requests = questionRequestsByTurn.get(turnRecordId);
+	return requests ? [...requests.closed, ...(requests.open ? [requests.open] : [])] : [];
+}
 
 function chronicleItemKey(item: ChronicleTimelineItem, index: number): string {
 	switch (item.kind) {
@@ -254,12 +258,10 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				cluster={item}
 				isFocused={activeAnchorId === item.anchorId}
 				compressHistory={item !== latestTimelineItem}
+				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				onOpenReasoningDetails={onOpenReasoningDetails}
 				onDraftTicket={onDraftTicket}
 			/>
-			{#each questionRequestsByTurn.get(item.turnRecordId)?.closed ?? [] as request (request.id)}
-				<ChronicleQuestionRequest {request} />
-			{/each}
 		{:else if item.kind === "operator_input"}
 			<ChronicleOperatorInputSection section={item} />
 		{:else if item.kind === "leaf_outcome"}
@@ -274,7 +276,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		{:else if item.kind === "live_tail"}
 			<ChronicleLiveTail
 				liveTail={item}
-				questionRequest={questionRequestsByTurn.get(item.turnRecordId)?.open ?? null}
+				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				isFocused={activeAnchorId === item.anchorId}
 				onOpenReasoningDetails={onOpenReasoningDetails}
 				onAbortTurn={item.turnType === "llm" ? liveTailController.abortRunningTurn : null}

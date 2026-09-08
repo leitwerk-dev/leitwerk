@@ -2,6 +2,7 @@ import {
 	formatPathTypeLabel,
 	type ProcessInput,
 	type ProcessLeafOutcomeSnapshot,
+	type ProcessQuestionRequest,
 	type ProcessTurnRecord,
 	type TurnProgressReport,
 	trimToNull,
@@ -1162,14 +1163,25 @@ function findReasoningSection(
 
 export function extractChronicleReasoningDetailEntries(
 	projection: ChronicleProjection,
+	questionRequests: readonly ProcessQuestionRequest[] = [],
 ): ChronicleReasoningDetailEntry[] {
 	const entries: ChronicleReasoningDetailEntry[] = [];
+	const questionTurnRecordIds = new Set(questionRequests.map((request) => request.turnRecordId));
 	for (const item of projection.timelineItems) {
+		if (item.kind !== "turn_cluster" && item.kind !== "live_tail") {
+			continue;
+		}
+		const recordedReasoningSection =
+			item.kind === "turn_cluster" ? findReasoningSection(item.sections) : item.reasoningSection;
+		const reasoningSection =
+			recordedReasoningSection ??
+			(questionTurnRecordIds.has(item.turnRecordId)
+				? buildEmptyReasoningSection({ trace: undefined, preview: undefined })
+				: null);
+		if (!reasoningSection) {
+			continue;
+		}
 		if (item.kind === "turn_cluster") {
-			const reasoningSection = findReasoningSection(item.sections);
-			if (!reasoningSection) {
-				continue;
-			}
 			entries.push({
 				entryId: item.turnRecordId,
 				turnRecordId: item.turnRecordId,
@@ -1187,9 +1199,6 @@ export function extractChronicleReasoningDetailEntries(
 			});
 			continue;
 		}
-		if (item.kind !== "live_tail" || !item.reasoningSection) {
-			continue;
-		}
 		entries.push({
 			entryId: item.turnRecordId,
 			turnRecordId: item.turnRecordId,
@@ -1203,7 +1212,7 @@ export function extractChronicleReasoningDetailEntries(
 			triggeringInput: item.triggeringInput,
 			piInput: item.piInput,
 			facts: item.facts,
-			reasoningSection: item.reasoningSection,
+			reasoningSection,
 		});
 	}
 	return entries;
