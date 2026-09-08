@@ -1,3 +1,7 @@
+import { createApiTokenRepo } from "./api-token-repo.js";
+
+export * from "./api-token-repo.js";
+
 import { createAuthLoginFlowRepo, createAuthSessionRepo } from "./auth-repo.js";
 import { type CredentialCipher, createUnavailableCredentialCipher } from "./credential-cipher.js";
 import type { LeitwerkDb } from "./database.js";
@@ -78,6 +82,7 @@ export interface RepositoryBundle {
 	sessionTransfers: ReturnType<typeof createSessionTransferRepo>;
 	skills: ReturnType<typeof createSkillRepo>;
 	processSkills: ReturnType<typeof createProcessSkillRepo>;
+	apiTokens: ReturnType<typeof createApiTokenRepo>;
 	authSessions: ReturnType<typeof createAuthSessionRepo>;
 	authLoginFlows: ReturnType<typeof createAuthLoginFlowRepo>;
 	transaction<T>(fn: (repos: RepositoryBundle) => T): T;
@@ -112,6 +117,7 @@ export function createAllRepos(
 		sessionTransfers: createSessionTransferRepo(db),
 		skills: createSkillRepo(db),
 		processSkills: createProcessSkillRepo(db),
+		apiTokens: createApiTokenRepo(db),
 		authSessions: createAuthSessionRepo(db),
 		authLoginFlows: createAuthLoginFlowRepo(db),
 		transaction<T>(fn: (repos: RepositoryBundle) => T): T {

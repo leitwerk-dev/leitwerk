@@ -6,7 +6,7 @@ Real-time client updates in Leitwerk are handled via a persistent WebSocket stre
 
 ## 1. Connection & Message Envelope
 
-Clients connect to `GET /ws` using the `leitwerk/ws/v1` subprotocol. When authentication is enabled, connection upgrades require a valid session cookie and an `Origin` matching the server host.
+Clients connect to `GET /ws` using the `leitwerk/ws/v1` subprotocol. When authentication is enabled, connection upgrades require a valid session cookie and an `Origin` matching the configured application origin. API token Authorization headers are rejected on `/ws` in both authentication modes; use browser access. Worker connection and snapshot credentials remain separate.
 
 All server frames follow a unified message envelope:
 
