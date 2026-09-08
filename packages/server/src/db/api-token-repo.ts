@@ -89,18 +89,20 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 			return true;
 		},
 		revokeAll(owner: ApiTokenOwner, at: string): number {
-			return db
+			const result = db
 				.update(apiTokens)
 				.set({ revokedAt: at })
 				.where(and(owned(owner), isNull(apiTokens.revokedAt)))
-				.run().changes;
+				.run();
+			return Number(result.changes);
 		},
 		revokeAnonymous(at: string): number {
-			return db
+			const result = db
 				.update(apiTokens)
 				.set({ revokedAt: at })
 				.where(and(eq(apiTokens.ownerKind, "anonymous"), isNull(apiTokens.revokedAt)))
-				.run().changes;
+				.run();
+			return Number(result.changes);
 		},
 		touch(id: string, at: string): void {
 			db.update(apiTokens).set({ lastUsedAt: at }).where(eq(apiTokens.id, id)).run();

@@ -7,7 +7,7 @@ describe("CI browser installation", () => {
 	it.each([
 		["ci.yml", "validate"],
 		["publish.yml", "validate"],
-	])("isolates the Node 24 installer and restores Node 26 in %s", (filename, jobName) => {
+	])("uses Node 26 for browser installation and validation in %s", (filename, jobName) => {
 		const workflowPath = fileURLToPath(
 			new URL(`../.github/workflows/${filename}`, import.meta.url),
 		);
@@ -17,16 +17,17 @@ describe("CI browser installation", () => {
 			(step: { run?: string }) => step.run === "npx playwright install --with-deps chromium",
 		);
 		expect(installer).toBeGreaterThan(0);
-		expect(steps[installer - 1].uses).toMatch(/^actions\/setup-node@/u);
-		expect(steps[installer - 1].with["node-version"]).toBe(24);
+		const nodeSetups = steps.filter((step: { uses?: string }) =>
+			step.uses?.startsWith("actions/setup-node@"),
+		);
+		expect(nodeSetups.length).toBeGreaterThan(0);
+		for (const setup of nodeSetups) expect(setup.with["node-version"]).toBe(26);
 		expect(steps[installer]["timeout-minutes"]).toBe(5);
-		expect(steps[installer + 1].uses).toMatch(/^actions\/setup-node@/u);
-		expect(steps[installer + 1].with["node-version"]).toBe(26);
 		expect(steps.findIndex((step: { run?: string }) => step.run === "npm ci")).toBeLessThan(
 			installer,
 		);
 		expect(
 			steps.findIndex((step: { run?: string }) => step.run === "npm run test:full"),
-		).toBeGreaterThan(installer + 1);
+		).toBeGreaterThan(installer);
 	});
 });
