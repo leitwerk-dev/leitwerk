@@ -1,5 +1,6 @@
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import type { EventBus, PiCustomTool } from "@leitwerk-dev/process-sdk";
+import type { DevelopmentToolEnvironment } from "../development-tool-environment.js";
 import type { WorkerIpc } from "../ipc.js";
 import type { PiTreeHandleFactory } from "../pi-adapter.js";
 import type { PromptGuardScheduler, PromptGuardTimer } from "../prompt-guards.js";
@@ -52,6 +53,7 @@ export interface WorkerRuntimeAdapters {
 	resultImageTools: ResultImageToolFactory;
 	piFactory: PiTreeHandleFactory;
 	gitOps: RunRootGitOps;
+	developmentTools?: DevelopmentToolEnvironment;
 	scheduler: WorkerRuntimeScheduler;
 	exit(code: number): void;
 	stderr?: NodeJS.WritableStream;

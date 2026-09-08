@@ -119,17 +119,19 @@ export function createProcessQuestionRequestRepo(db: LeitwerkDb) {
 			return row ? map(row) : null;
 		},
 		cancelOpenByTurn(instanceId: string, turnRecordId: string): number {
-			return db
-				.update(s.processQuestionRequests)
-				.set({ status: "cancelled", cancelledAt: now() })
-				.where(
-					and(
-						eq(s.processQuestionRequests.instanceId, instanceId),
-						eq(s.processQuestionRequests.turnRecordId, turnRecordId),
-						eq(s.processQuestionRequests.status, "open"),
-					),
-				)
-				.run().changes;
+			return Number(
+				db
+					.update(s.processQuestionRequests)
+					.set({ status: "cancelled", cancelledAt: now() })
+					.where(
+						and(
+							eq(s.processQuestionRequests.instanceId, instanceId),
+							eq(s.processQuestionRequests.turnRecordId, turnRecordId),
+							eq(s.processQuestionRequests.status, "open"),
+						),
+					)
+					.run().changes,
+			);
 		},
 	};
 }

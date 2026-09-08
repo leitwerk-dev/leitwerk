@@ -113,6 +113,7 @@ describe("localRepoChangeProcess", () => {
 		);
 		expect(graph.primaryEntryTurnId).toBe("generate_plan");
 		expect([...graph.entryTurnIds]).toEqual(["generate_plan", "import_plan"]);
+		expect(localRepoChangeProcess.turns.get("import_plan")?.definition.kind).toBe("automatic");
 		expect(sorted(localRepoChangeProcess.turns.keys())).toEqual([
 			"commit_and_merge",
 			"generate_commit_message",

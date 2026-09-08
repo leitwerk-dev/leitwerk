@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import type {
 	ProcessInstance,
 	ProcessSemanticEntryRefKey,
@@ -6,6 +7,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { parseProductRefsFromStateJsonLenient } from "@leitwerk-dev/domain";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
+import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import {
 	createIpcMessage,
 	type InputDelivery,
@@ -18,7 +20,10 @@ import {
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { ResolvedProviderCredential } from "../model-providers/credentials.js";
-import type { ProcessActionRegistry } from "../process-action-registry.js";
+import {
+	type ProcessActionRegistry,
+	resolveTurnIntegrationToolNames,
+} from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import { toInputDelivery } from "../process-input-dispatch.js";
 import { resolveProductTurnResultMarkdown } from "../product-turn-result-markdown.js";
@@ -28,11 +33,11 @@ import { createWorkerStorageLayout, type WorkerStorageLayout } from "./worker-st
 export interface WorkerStartPayloadBuilderDeps
 	extends Pick<
 		RepositoryBundle,
-		"processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "leases"
+		"processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "leases" | "events"
 	> {
 	config: LeitwerkConfig;
 	processGraphs: ProcessGraphRegistry;
-	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition">;
+	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition" | "resolveContextData">;
 	storageLayout?: WorkerStorageLayout;
 	/**
 	 * The sole server-side resource-bundle seam. The resulting canonical bytes are
@@ -51,6 +56,7 @@ export interface WorkerStartPayloadBuilderDeps
 	integrationTools?: {
 		declarations(
 			names: readonly string[],
+			context?: { paramsJson: string | null },
 		): import("@leitwerk-dev/worker-protocol").IntegrationToolDeclaration[];
 	};
 }
@@ -218,6 +224,27 @@ function buildTurnResultMarkdownByProduct(
 	return Object.keys(byProduct).length > 0 ? byProduct : undefined;
 }
 
+function resolveLlmPreparation(
+	start: TurnStartRecord,
+	deps: Pick<WorkerStartPayloadBuilderDeps, "events">,
+): WorkerStartPayload["llmPreparation"] {
+	const sourceTurnRecordId =
+		start.state.kind === "accepted"
+			? start.state.turnRecordId
+			: start.startKind === "continue"
+				? start.recoveryTurnRecordId
+				: null;
+	if (!sourceTurnRecordId) return undefined;
+	const events = deps.events.listByInstanceTurnRecordEventTypes(
+		start.instanceId,
+		sourceTurnRecordId,
+		["turn.prepared"],
+	);
+	const event = events.at(-1);
+	if (!event || !("data" in event.data)) return undefined;
+	return { sourceTurnRecordId, data: event.data.data };
+}
+
 export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderDeps) {
 	const storageLayout = deps.storageLayout ?? createWorkerStorageLayout(deps.config);
 
@@ -291,6 +318,8 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					: null;
 			const treePaths = storageLayout(instanceId);
 			const pendingInputs = buildPendingInputsSnapshot(instanceId);
+			const llmPreparation =
+				start.turnType === "llm" ? resolveLlmPreparation(start, deps) : undefined;
 			const resumeLeafEntryId = treePaths.resume
 				? (deps.turnRecords.getLatestSucceededPrimaryByInstance(instanceId)?.resultPiEntryId ??
 					null)
@@ -302,17 +331,16 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					projects: deps.projects.listByInstance(process.id),
 				}) ?? [];
 			const bootstrap = resolveBootstrap(start, deps);
-			const selectedTurn = deps.processActionRegistry.getTurnDefinition(
-				process.processId,
+			const integrationToolNames = resolveTurnIntegrationToolNames(
+				deps.processActionRegistry,
+				process,
 				start.turnId,
 			);
-			const integrationToolNames =
-				selectedTurn?.kind === "llm" || selectedTurn?.kind === "automatic"
-					? (selectedTurn.integrationTools ?? [])
-					: [];
 			const integrationTools =
 				integrationToolNames.length > 0
-					? deps.integrationTools?.declarations(integrationToolNames)
+					? deps.integrationTools?.declarations(integrationToolNames, {
+							paramsJson: process.paramsJson,
+						})
 					: undefined;
 			if (integrationToolNames.length > 0 && !integrationTools) {
 				throw new Error(`Integration tools are unavailable for turn '${start.turnId}'`);
@@ -326,10 +354,29 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 				treePaths: {
 					primaryTreeFile: treePaths.primaryTreeFile,
 					workspaceRoot: treePaths.workspaceRoot,
+					piResourceBundlesDir: treePaths.piResourceBundlesDir,
 				},
 				resume: treePaths.resume,
 				workerRuntimeSettings: buildWorkerRuntimeSettingsSnapshot(deps.config),
+				developmentTools: {
+					runner:
+						deps.config.workers.runner === "local" ? ("local" as const) : ("isolated" as const),
+					miseCommand:
+						deps.config.workers.runner === "local"
+							? deps.config.development_tools.local.mise_command
+							: "/usr/local/bin/mise",
+					installTimeoutMs: parseDurationMs(
+						deps.config.development_tools.install_timeout,
+						30 * 60 * 1_000,
+						{ allowHours: true },
+					),
+					processStorageRoot:
+						deps.config.workers.runner === "local"
+							? treePaths.workspaceRoot
+							: path.dirname(treePaths.workspaceRoot),
+				},
 				...(treePaths.resume ? { resumeLeafEntryId } : {}),
+				...(llmPreparation ? { llmPreparation } : {}),
 				...(repositoryCredentials.length > 0 ? { repositoryCredentials } : {}),
 				...(integrationTools && integrationTools.length > 0 ? { integrationTools } : {}),
 			};
@@ -365,11 +412,7 @@ function resolveBootstrap(
 		throw new Error(`LLM start '${start.id}' has no resolved LLM inputs`);
 	}
 	const bundle = deps.resolveResourceBundle?.(start.state.start.piResourceSnapshotDigest) ?? null;
-	if (!bundle)
-		throw new Error(
-			`Pi resource bundle '${start.state.start.piResourceSnapshotDigest}' is unavailable`,
-		);
-	if (bundle.digest !== start.state.start.piResourceSnapshotDigest) {
+	if (bundle && bundle.digest !== start.state.start.piResourceSnapshotDigest) {
 		throw new Error(
 			`Pi resource bundle resolver returned '${bundle.digest}' for requested digest '${start.state.start.piResourceSnapshotDigest}'`,
 		);
@@ -377,7 +420,7 @@ function resolveBootstrap(
 	// Cache implementations normally verify on insertion. Recheck at this IPC
 	// boundary so an alternate resolver cannot turn a runner path into a
 	// filesystem or network-bundle bypass.
-	verifyCanonicalPiResourceBundle(bundle.bytes, bundle.digest);
+	if (bundle) verifyCanonicalPiResourceBundle(bundle.bytes, bundle.digest);
 	const credential =
 		deps.resolveCredential?.(
 			start.state.start.model.providerId,
@@ -387,7 +430,7 @@ function resolveBootstrap(
 		kind: "llm",
 		resourceBundle: {
 			digest: start.state.start.piResourceSnapshotDigest,
-			archiveBase64: Buffer.from(bundle.bytes).toString("base64"),
+			...(bundle ? { archiveBase64: Buffer.from(bundle.bytes).toString("base64") } : {}),
 		},
 		credential: credential
 			? {

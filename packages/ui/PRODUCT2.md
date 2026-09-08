@@ -20,7 +20,7 @@ Leitwerk represents multi-step AI work as one durable process instance with a pe
 
 ## Operating Context
 
-Operators launch or discover processes, inspect their chronicle and process information, review model-produced plans or findings, request revisions, steer active work, recover failed turns, and finalize repository changes. Processes can include LLM, human, automatic, server-automatic, and external turns.
+Operators launch or discover processes, inspect their chronicle and process information, review model-produced plans or findings, request revisions, steer active work, recover failed turns, and finalize repository changes. Processes can include LLM, human, automatic, and external turns.
 
 ## Capabilities and Constraints
 

@@ -20,18 +20,25 @@ export const WorkerFailure = defineOperation<"worker_failure", WorkerFailureInpu
 	label: "Worker failure",
 	decide(ctx, input) {
 		const activeLease = ctx.deps.leases.getByInstance(ctx.process.id);
-		if (
-			input.payload.workerLeaseId &&
-			(!activeLease || activeLease.id !== input.payload.workerLeaseId)
-		) {
-			// A late failure from a replaced physical worker must never park the
-			// start or turn now owned by the current lease.
-			return noWrites();
-		}
+		const reportedLease = input.payload.workerLeaseId
+			? ctx.deps.leases.getById(input.payload.workerLeaseId)
+			: activeLease;
 		const currentStart =
 			ctx.process.currentExecution?.kind === "worker_start"
 				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
 				: null;
+		if (
+			input.payload.workerLeaseId &&
+			(!reportedLease ||
+				reportedLease.instanceId !== ctx.process.id ||
+				(reportedLease.turnStartRecordId !== null &&
+					reportedLease.turnStartRecordId !== currentStart?.id) ||
+				(reportedLease.turnStartRecordId === null && activeLease?.id !== reportedLease.id))
+		) {
+			// A late failure from a replaced physical worker must never park the
+			// start or turn now owned by another lease.
+			return noWrites();
+		}
 		if (currentStart?.state.kind === "starting") {
 			if (ctx.process.lifecycleStatus !== "active") return noWrites();
 			return accept({
@@ -44,7 +51,7 @@ export const WorkerFailure = defineOperation<"worker_failure", WorkerFailureInpu
 							state: {
 								kind: "bootstrap_failed",
 								start: currentStart.state.start,
-								failedWorkerLeaseId: activeLease?.id ?? null,
+								failedWorkerLeaseId: reportedLease?.id ?? null,
 								code: input.payload.errorCode,
 								safeSummary: input.payload.message,
 							},
@@ -62,9 +69,7 @@ export const WorkerFailure = defineOperation<"worker_failure", WorkerFailureInpu
 		const activeTurnRecord =
 			currentStart?.state.kind === "accepted"
 				? ctx.deps.turnRecords.getById(currentStart.state.turnRecordId)
-				: ctx.process.currentExecution?.kind === "server_turn"
-					? ctx.deps.turnRecords.getById(ctx.process.currentExecution.id)
-					: null;
+				: null;
 		const runningTurnRecord = activeTurnRecord?.status === "running" ? activeTurnRecord : null;
 		if (runningTurnRecord === null) {
 			if (ctx.process.lifecycleStatus === "error") {

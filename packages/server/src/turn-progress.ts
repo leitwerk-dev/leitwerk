@@ -39,7 +39,6 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 		const id = text(step.id, 80);
 		const label = text(step.label, 240);
 		const status = step.status;
-		const detail = text(step.detail, 1_000);
 		if (!id || ids.has(id) || !label || !STEP_STATUSES.has(status as TurnProgressStepStatus)) {
 			return [];
 		}
@@ -49,7 +48,7 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 				id,
 				label,
 				status: status as TurnProgressStepStatus,
-				...(detail ? { detail } : {}),
+				...(text(step.detail, 1_000) ? { detail: text(step.detail, 1_000) } : {}),
 			},
 		];
 	});
@@ -98,10 +97,14 @@ export function recordTurnProgress(
 		!report
 	)
 		return false;
+	const revision =
+		deps.events.listByInstanceTurnRecordEventTypes(input.instanceId, input.turnRecordId, [
+			"turn.progress",
+		]).length + 1;
 	deps.events.create({
 		instanceId: input.instanceId,
 		eventType: "turn.progress",
-		data: { turnRecordId: input.turnRecordId, report },
+		data: { turnRecordId: input.turnRecordId, revision, report },
 	});
 	deps.broadcaster.broadcast(
 		createDurableWsFrame({

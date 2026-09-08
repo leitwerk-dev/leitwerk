@@ -52,6 +52,16 @@ export interface ValidationResult {
 	existingManifest: ComponentManifest | null;
 }
 
+export class RunRootPreparationError extends Error {
+	readonly errors: readonly string[];
+
+	constructor(errors: readonly string[]) {
+		super(`Workspace preparation failed: ${errors.join("; ")}`);
+		this.name = "RunRootPreparationError";
+		this.errors = [...errors];
+	}
+}
+
 const MANIFEST_REL = path.join(".leitwerk", "components.json");
 const AGGREGATED_AGENTS_REL = "AGENTS.md";
 const SKILLS_DIR_REL = path.join(".leitwerk", "skills");
@@ -252,6 +262,26 @@ async function finalizeRunRoot(
 	return { manifest, aggregatedAgentsMdSources, loadedSkills };
 }
 
+function finishRunRoot(
+	plan: RunRootPlan,
+	entries: ComponentManifestEntry[],
+	errors: string[],
+	result: Awaited<ReturnType<typeof finalizeRunRoot>>,
+): MaterializeResult {
+	const expectedKeys = new Set(plan.components.map((component) => component.key));
+	const hasAllExpectedEntries =
+		entries.length === expectedKeys.size &&
+		[...expectedKeys].every((key) => entries.some((entry) => entry.key === key));
+	if (errors.length > 0 || !hasAllExpectedEntries) {
+		throw new RunRootPreparationError(errors);
+	}
+	return {
+		ok: true,
+		...result,
+		errors,
+	};
+}
+
 export async function materializeRunRoot(
 	plan: RunRootPlan,
 	git: RunRootGitOps,
@@ -265,14 +295,11 @@ export async function materializeRunRoot(
 		errors,
 	);
 
-	const ok = errors.length === 0 && plan.components.length === entries.length;
-	return {
-		ok,
+	return finishRunRoot(plan, entries, errors, {
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
-		errors,
-	};
+	});
 }
 
 export async function validateRunRoot(
@@ -345,17 +372,9 @@ export async function repairRunRoot(
 		errors,
 	);
 
-	const expectedKeys = new Set(plan.components.map((c) => c.key));
-	const ok =
-		errors.length === 0 &&
-		manifestEntries.length === plan.components.length &&
-		[...expectedKeys].every((k) => manifestEntries.some((e) => e.key === k));
-
-	return {
-		ok,
+	return finishRunRoot(plan, manifestEntries, errors, {
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
-		errors,
-	};
+	});
 }

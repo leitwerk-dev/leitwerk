@@ -5,6 +5,8 @@ import type {
 	ChronicleTurnClusterItem,
 	ChronicleTurnClusterSection,
 } from "../lib/chronicle-projection.js";
+import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
 import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
@@ -17,9 +19,16 @@ interface Props {
 	isFocused: boolean;
 	compressHistory?: boolean;
 	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 }
 
-let { cluster, isFocused, compressHistory = false, onOpenReasoningDetails }: Props = $props();
+let {
+	cluster,
+	isFocused,
+	compressHistory = false,
+	onOpenReasoningDetails,
+	onDraftTicket,
+}: Props = $props();
 let expandedHistoryResult = $state(false);
 
 const shouldCompressResult = $derived(compressHistory && !expandedHistoryResult);
@@ -111,10 +120,18 @@ function expandHistoryResult() {
 						class="content-section result-section"
 						class:is-compressed={shouldCompressResult}
 						data-section="turn-result"
+						data-ticket-result-artifact={`turn_result:${cluster.turnRecordId}`}
+						data-ticket-result-durable="true"
 						data-compressed={shouldCompressResult ? "true" : undefined}
 					>
 						<div class="result-header-row">
 							<p class="section-label">Result</p>
+							{#if onDraftTicket}
+								<ChronicleCreateIssueButton
+									onDraftTicket={onDraftTicket}
+									artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }}
+								/>
+							{/if}
 							{#if shouldCompressResult}
 								<ChronicleExpandButton
 									expanded={false}
@@ -323,6 +340,11 @@ function expandHistoryResult() {
 
 		.cluster-header {
 			flex-direction: column;
+		}
+
+		.result-header-row {
+			align-items: start;
+			flex-wrap: wrap;
 		}
 	}
 </style>

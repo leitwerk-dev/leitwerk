@@ -4,11 +4,10 @@
 #
 # This is the demo/easy-setup generic runtime profile. Production should use
 # specialized, digest-pinned images closer to each repository's CI toolchain.
-# The runtime uses Node 26 so workers can validate repositories that require the
-# current Node release. Dependencies remain built on the supported Node 22 toolchain;
-# worker code does not load the server-only native SQLite dependency.
+# Build and runtime stages use the same pinned Node 26 image. This keeps native
+# dependencies and repository validation on the supported runtime baseline.
 
-FROM node:22-bookworm-slim@sha256:d649c27dae7ba0137b3cef5dd75baa422c08dc3d9e3fc0c23dfb172dc3cc6436 AS dependencies
+FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS dependencies
 WORKDIR /app
 
 # Keep dependency installation independent of frequently changing source files.
@@ -34,6 +33,8 @@ COPY turbo.json tsconfig.json biome.json ./
 RUN npm run build
 
 FROM node:26-bookworm-slim@sha256:cd565714d4da3e84bfd341e31448f81d47c6362198f152345297c9c1154e6341 AS runtime
+ARG TARGETARCH
+ARG MISE_VERSION=2026.8.14
 WORKDIR /app
 ENV NODE_ENV=production \
 	PI_CODING_AGENT_DIR=/state/pi-agent \
@@ -42,16 +43,30 @@ ENV NODE_ENV=production \
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		git openssh-client bash ca-certificates chromium curl python3 make g++ jq \
+		tar gzip xz-utils unzip zstd \
+	&& case "$TARGETARCH" in \
+		amd64) mise_arch=x64; mise_sha=80b49fa2dff282d3346524aec4466bbab536296ed5ba4d8c3b1b451022e94f56 ;; \
+		arm64) mise_arch=arm64; mise_sha=81e1c5fa79c3d46cf93aac0ef9a5540bce9856634901a0db8301a656c370eb58 ;; \
+		*) echo "unsupported worker architecture: $TARGETARCH" >&2; exit 1 ;; \
+	esac \
+	&& archive="mise-v${MISE_VERSION}-linux-${mise_arch}.tar.xz" \
+	&& curl -fsSLo "/tmp/$archive" "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/$archive" \
+	&& echo "$mise_sha  /tmp/$archive" | sha256sum -c - \
+	&& tar -xJf "/tmp/$archive" -C /tmp mise/bin/mise \
+	&& install -m 0755 /tmp/mise/bin/mise /usr/local/bin/mise \
+	&& /usr/local/bin/mise --version \
+	&& rm -rf "/tmp/$archive" /tmp/mise \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/node_modules ./node_modules
 # The generic validation worker runs the repository's complete test:full gate,
 # including Playwright browser tests. Link Debian Chromium at the revisioned
 # Playwright path without downloading and unpacking a second browser archive.
-RUN browser_path="$(node -e "const {registry}=require('./node_modules/playwright-core/lib/server/registry'); process.stdout.write(registry.findExecutable('chromium-headless-shell').executablePath())")" \
-	&& mkdir -p "$(dirname "$browser_path")" \
-	&& ln -s /usr/bin/chromium "$browser_path"
-# Copy stable manifests before frequently changing application code.
+RUN revision="$(node -e "const b=require('./node_modules/playwright-core/browsers.json').browsers.find((item) => item.name === 'chromium-headless-shell'); process.stdout.write(b.revision)")" \
+	&& browser_dir="$PLAYWRIGHT_BROWSERS_PATH/chromium_headless_shell-$revision/chrome-headless-shell-linux64" \
+	&& mkdir -p "$browser_dir" \
+	&& ln -s /usr/bin/chromium "$browser_dir/chrome-headless-shell"
+# Copy stable dependencies and manifests before frequently changing application code.
 COPY --from=build --parents \
 	/app/./package.json \
 	/app/./LICENSE \
@@ -71,4 +86,4 @@ LABEL org.opencontainers.image.title="leitwerk-worker-generic" \
 
 VOLUME ["/state"]
 WORKDIR /app/packages/worker
-CMD ["node", "dist/worker-entry.js"]
+CMD ["/usr/local/bin/node", "dist/worker-entry.js"]

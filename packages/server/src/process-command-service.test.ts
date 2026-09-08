@@ -13,11 +13,7 @@ import { createProcessOperationCoordinator } from "./process-operation-coordinat
 import { createFilesystemSessionReader } from "./process-session-store.js";
 import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpers/fake-worker-supervisor.js";
 import { defineGraphFixtureProcess } from "./test-helpers/process-binding-fixtures.js";
-import {
-	createDefaultTestProcessGraphRegistry,
-	createFixtureServerAutomaticProcess,
-	createProcessGraphRegistry,
-} from "./test-helpers/process-fixtures.js";
+import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
@@ -75,7 +71,7 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 		{
 			id: "handoff_review",
 			description: "Handoff review",
-			kind: "server_automatic",
+			kind: "automatic",
 			outcomes: { created: { description: "created", parameters: {} } },
 			run: async () => ({ outcome: "created", params: {} }),
 		},
@@ -937,44 +933,6 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		expect(supervisor.stopCalls).toEqual([]);
 		expect(supervisor.spawnCalls).toEqual([]);
 		expect(supervisor.callLog).toEqual([]);
-	});
-
-	it("stops stale workers without parking after a process reaches a server-automatic turn", async () => {
-		const deps = createTestDeps();
-		const serverAutomaticGraphs = createProcessGraphRegistry([
-			createFixtureServerAutomaticProcess({ id: "server_auto_failure_process" }),
-		]);
-		const process = deps.processes.create({
-			processId: "server_auto_failure_process",
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-			currentExecution: null,
-		});
-		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => supervisor,
-			processGraphs: serverAutomaticGraphs,
-		});
-
-		const result = await commands.recordWorkerFailure(process.id, {
-			errorCode: "startup_timeout",
-			message: "Stale adopted worker timed out",
-			errorClass: "infrastructure",
-		});
-
-		expect(result.ok).toBe(true);
-		expect(deps.processes.getById(process.id)).toMatchObject({
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-		});
-		expect(deps.turnRecords.listByInstance(process.id)).toEqual([]);
-		expect(supervisor.stopCalls).toEqual([
-			{ instanceId: process.id, reason: "worker_failed:startup_timeout" },
-		]);
-		expect(supervisor.spawnCalls).toEqual([]);
-		expect(supervisor.callLog).toEqual([`stop:${process.id}:worker_failed:startup_timeout`]);
 	});
 });
 

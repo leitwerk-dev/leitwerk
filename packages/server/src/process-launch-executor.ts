@@ -1,12 +1,6 @@
-import type { Actor, ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
-import type {
-	ExtensionProcessDefinition,
-	ProcessLaunchConfigExecutionInput,
-	ProcessLaunchExecutionResultLike,
-	ProcessLaunchPlan,
-} from "@leitwerk-dev/process-sdk";
+import type { Actor, ProcessInstance, ProcessProject, ProcessRelation } from "@leitwerk-dev/domain";
+import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import type { SkillSelection } from "@leitwerk-dev/protocol";
-import type { CommitMessageConfig } from "./config/config-types.js";
 import type { RepositoryBundle } from "./db/repositories.js";
 import { buildExtensionEventEffect, type PostCommitEffect } from "./effects/post-commit-effect.js";
 import { runPostCommitEffectList } from "./effects/post-commit-runner.js";
@@ -20,16 +14,34 @@ import {
 	publicInternalEngineFailureMessage,
 } from "./process-engine/internal-failures.js";
 import type { EngineFailure, ProcessEngine, ProcessEngineLogger } from "./process-engine/types.js";
-import { buildProcessLaunchPlan } from "./process-launch-plan.js";
 import type { ProcessTitleGenerator } from "./process-title-generator.js";
 import { buildProjectUpdatedEffect } from "./project-mutation-service.js";
+import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
+
+export type ProcessLaunchExecutionResult =
+	| { ok: true; process: ProcessInstance; projects: ProcessProject[]; reused: boolean }
+	| {
+			ok: false;
+			stage: "pre_commit";
+			status: number;
+			body: Record<string, unknown>;
+	  }
+	| {
+			ok: false;
+			stage: "post_commit";
+			status: number;
+			body: Record<string, unknown>;
+			process: ProcessInstance;
+			projects: ProcessProject[];
+	  };
 
 export interface ProcessLaunchExecutorDeps
 	extends Pick<
 		RepositoryBundle,
 		| "processes"
 		| "projects"
+		| "processRelations"
 		| "skills"
 		| "processSkills"
 		| "handoffDedupKeys"
@@ -41,22 +53,38 @@ export interface ProcessLaunchExecutorDeps
 	processTitles?: ProcessTitleGenerator;
 	extensionHost?: ExtensionHost;
 	logger?: ProcessEngineLogger;
-	getSupervisor?: () => undefined;
+	getSupervisor?: () => WorkerSupervisor | undefined;
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
-	processDefinitions?: ReadonlyMap<string, ExtensionProcessDefinition>;
-	commitMessages?: CommitMessageConfig;
 }
+
+export type ProcessLaunchRelationInput = Omit<
+	ProcessRelation,
+	"kind" | "childInstanceId" | "createdAt"
+>;
 
 export interface ProcessLaunchOptions {
 	actor?: Actor;
 	resourceSelections?: readonly SkillSelection[];
 	launchIntent?: { launcherInput: Record<string, unknown> };
+	launchRunId?: string;
+	relation?: ProcessLaunchRelationInput;
 }
+
+export type ProcessLaunchPlanExecutor = (
+	launchPlan: ProcessLaunchPlan,
+	opts?: ProcessLaunchOptions,
+) => Promise<ProcessLaunchExecutionResult>;
 
 export interface ProcessLaunchCommit {
 	process: ProcessInstance;
 	projects: ProcessProject[];
 	dedupReused?: boolean;
+}
+
+export interface CommittedLaunchReplay {
+	kind: "committed_start";
+	startTurnId: string | null;
+	actor?: Actor;
 }
 
 function mapLaunchStartFailure<T>(result: EngineFailure<T>): {
@@ -101,7 +129,7 @@ function mapLaunchStartFailure<T>(result: EngineFailure<T>): {
 }
 
 function createLaunchProjects(
-	deps: Pick<RepositoryBundle, "projects">,
+	deps: Pick<ProcessLaunchExecutorDeps, "projects">,
 	process: ProcessInstance,
 	launchPlan: ProcessLaunchPlan,
 ): ProcessProject[] {
@@ -150,20 +178,35 @@ function toLaunchFailureBody(
 	};
 }
 
-export type ProcessLaunchExecutionResult = ProcessLaunchExecutionResultLike;
-
 export function commitProcessLaunch(
-	deps: Pick<RepositoryBundle, "transaction">,
+	deps: ProcessLaunchExecutorDeps,
 	launchPlan: ProcessLaunchPlan,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 	resourceSelections: readonly SkillSelection[] = [],
 	launchIntent?: ProcessLaunchOptions["launchIntent"],
+	launchRunId?: string,
+	relation?: ProcessLaunchRelationInput,
+	actor?: Actor,
 ): ProcessLaunchCommit {
 	return deps.transaction((repos) => {
+		if (launchRunId) {
+			repos.launchRuns.saveReplay(launchRunId, {
+				kind: "committed_start",
+				startTurnId: launchPlan.startTurnId,
+				...(actor ? { actor } : {}),
+			} satisfies CommittedLaunchReplay);
+		}
 		const dedupKey =
 			(launchPlan as { handoffDedupKey?: string | null }).handoffDedupKey?.trim() || null;
 		const reused = dedupKey ? reuseDeduplicatedCommit(repos, dedupKey, futureExecutionPlan) : null;
 		if (reused) {
+			if (launchRunId) {
+				repos.launchRuns.update(launchRunId, (run) => ({
+					...run,
+					instanceId: reused.process.id,
+					status: "process_created",
+				}));
+			}
 			return reused;
 		}
 
@@ -173,7 +216,15 @@ export function commitProcessLaunch(
 			dedupKey,
 			resourceSelections,
 			launchIntent,
+			relation,
 		);
+		if (launchRunId) {
+			repos.launchRuns.update(launchRunId, (run) => ({
+				...run,
+				instanceId: commit.process.id,
+				status: "process_created",
+			}));
+		}
 		if (futureExecutionPlan) {
 			applyRequiredFutureExecutionTransitionPlan(repos.futureExecutions, futureExecutionPlan);
 		}
@@ -182,7 +233,10 @@ export function commitProcessLaunch(
 }
 
 function reuseDeduplicatedCommit(
-	repos: Pick<RepositoryBundle, "processes" | "projects" | "handoffDedupKeys" | "futureExecutions">,
+	repos: Pick<
+		ProcessLaunchExecutorDeps,
+		"processes" | "projects" | "handoffDedupKeys" | "futureExecutions"
+	>,
 	dedupKey: string,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): ProcessLaunchCommit | null {
@@ -200,11 +254,15 @@ function reuseDeduplicatedCommit(
 }
 
 function createProcessLaunchCommit(
-	repos: Pick<RepositoryBundle, "processes" | "projects" | "processSkills" | "handoffDedupKeys">,
+	repos: Pick<
+		ProcessLaunchExecutorDeps,
+		"processes" | "projects" | "processRelations" | "processSkills" | "handoffDedupKeys"
+	>,
 	launchPlan: ProcessLaunchPlan,
 	dedupKey: string | null,
 	resourceSelections: readonly SkillSelection[],
 	launchIntent?: ProcessLaunchOptions["launchIntent"],
+	relation?: ProcessLaunchRelationInput,
 ): ProcessLaunchCommit {
 	const process = repos.processes.create({
 		...launchPlan.processInput,
@@ -218,6 +276,12 @@ function createProcessLaunchCommit(
 			: {}),
 	});
 	const projects = createLaunchProjects({ projects: repos.projects }, process, launchPlan);
+	if (relation) {
+		repos.processRelations.create({
+			...relation,
+			childInstanceId: process.id,
+		});
+	}
 	repos.processSkills.attach(process.id, resourceSelections);
 	if (dedupKey) {
 		repos.handoffDedupKeys.create({
@@ -235,6 +299,7 @@ function createProcessLaunchCommit(
 export function buildProcessLaunchPostCommitEffects(
 	commit: ProcessLaunchCommit,
 	launchPlan: ProcessLaunchPlan,
+	launchRunId?: string,
 ): PostCommitEffect[] {
 	return [
 		{
@@ -250,7 +315,12 @@ export function buildProcessLaunchPostCommitEffects(
 			},
 		},
 		...commit.projects.map((project) => buildProjectUpdatedEffect(project)),
-		{ kind: "queue_process_title", processId: commit.process.id, launchPlan },
+		{
+			kind: "queue_process_title",
+			processId: commit.process.id,
+			launchPlan,
+			...(launchRunId ? { launchRunId } : {}),
+		},
 		buildExtensionEventEffect(commit.process.id, "process_created", {
 			process: commit.process,
 			projects: commit.projects,
@@ -267,56 +337,17 @@ export async function createProcessFromLaunchPlan(
 	return createProcessFromLaunchPlanWithDisposition(deps, launchPlan, opts);
 }
 
-export async function createProcessFromLaunchConfig(
-	deps: ProcessLaunchExecutorDeps,
-	input: ProcessLaunchConfigExecutionInput,
-	opts?: ProcessLaunchOptions,
-): Promise<ProcessLaunchExecutionResult> {
-	const processDef = deps.processDefinitions?.get(input.launchConfig.processId);
-	if (!processDef) {
-		return {
-			ok: false,
-			stage: "pre_commit",
-			status: 404,
-			body: { error: `Unknown process '${input.launchConfig.processId}'` },
-		};
-	}
-	let launchPlan: ProcessLaunchPlan;
-	try {
-		launchPlan = buildProcessLaunchPlan({
-			processDef,
-			launchConfig: input.launchConfig,
-			launcherId: input.launcherId,
-			metadataAdditions: { launcherId: input.launcherId },
-			errorSubject: `Programmatic launcher '${input.launcherId}'`,
-			commitMessages: deps.commitMessages,
-		});
-	} catch (error) {
-		return {
-			ok: false,
-			stage: "pre_commit",
-			status: 400,
-			body: { error: error instanceof Error ? error.message : String(error) },
-		};
-	}
-	return createProcessFromLaunchPlan(
-		deps,
-		input.handoffDedupKey ? { ...launchPlan, handoffDedupKey: input.handoffDedupKey } : launchPlan,
-		opts,
-	);
-}
-
 export async function createScheduledProcessFromLaunchPlan(
 	deps: ProcessLaunchExecutorDeps,
 	launchPlan: ProcessLaunchPlan,
 	futureExecutionPlan: FutureExecutionTransitionPlan,
-	opts: ProcessLaunchOptions & { resourceSelections: readonly SkillSelection[] },
+	opts?: ProcessLaunchOptions,
 ): Promise<ProcessLaunchExecutionResult> {
 	return createProcessFromLaunchPlanWithDisposition(deps, launchPlan, opts, futureExecutionPlan);
 }
 
 function recoverDeduplicatedCommit(
-	deps: Pick<RepositoryBundle, "transaction">,
+	deps: ProcessLaunchExecutorDeps,
 	dedupKey: string,
 	futureExecutionPlan?: FutureExecutionTransitionPlan,
 ): ProcessLaunchCommit | null {
@@ -362,7 +393,6 @@ async function createProcessFromLaunchPlanWithDisposition(
 			};
 		}
 	}
-	opts = { ...opts, resourceSelections: resourceSelections ?? [] };
 	if (deps.repositoryCredentials) {
 		try {
 			deps.repositoryCredentials.validateLaunch({
@@ -385,8 +415,11 @@ async function createProcessFromLaunchPlanWithDisposition(
 			deps,
 			launchPlan,
 			futureExecutionPlan,
-			opts.resourceSelections,
-			opts.launchIntent,
+			resourceSelections,
+			opts?.launchIntent,
+			opts?.launchRunId,
+			opts?.relation,
+			opts?.actor,
 		);
 	} catch (error) {
 		const dedupKey =
@@ -413,7 +446,7 @@ async function createProcessFromLaunchPlanWithDisposition(
 					processTitles: deps.processTitles,
 					extensionHost: deps.extensionHost,
 				},
-				buildProcessLaunchPostCommitEffects(commit, launchPlan),
+				buildProcessLaunchPostCommitEffects(commit, launchPlan, opts?.launchRunId),
 				{},
 				{ logger: deps.logger, operationKind: "process_launch", stage: "post_commit" },
 				{ reportBestEffortFailures: futureExecutionPlan !== undefined },

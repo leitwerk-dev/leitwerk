@@ -54,6 +54,46 @@ async function createHarness(maxSnapshotBytes = 64) {
 	return { app, repos, process, sessionSnapshots, token };
 }
 
+function seedAcceptedAutomaticTurn(
+	repos: ReturnType<typeof createAllRepos>,
+	processId: string,
+	turnRecordId: string,
+	status: "running" | "failed" = "running",
+): void {
+	const lease = repos.leases.getByInstance(processId);
+	if (!lease) throw new Error("expected lease");
+	const start = repos.turnStarts.create({
+		id: `tsr_${turnRecordId}`,
+		instanceId: processId,
+		turnId: "test_turn",
+		turnType: "automatic",
+		proposedTurnRecordId: turnRecordId,
+		startKind: "selected_turn",
+		recoveryTurnRecordId: null,
+		continuation: null,
+		state: {
+			kind: "accepted",
+			start: { kind: "automatic" },
+			turnRecordId,
+			acceptedWorkerLeaseId: lease.id,
+			acceptedAt: new Date().toISOString(),
+		},
+	});
+	repos.turnRecords.create({
+		id: turnRecordId,
+		instanceId: processId,
+		turnId: "test_turn",
+		turnType: "automatic",
+		turnStartRecordId: start.id,
+		acceptedWorkerLeaseId: lease.id,
+		status,
+		pathType: "primary",
+	});
+	repos.processes.update(processId, {
+		currentExecution: { kind: "worker_start", id: start.id },
+	});
+}
+
 function snapshotHeaders(input: {
 	token: string;
 	workerId?: string;
@@ -168,17 +208,7 @@ describe("internal worker session snapshot routes", () => {
 	it("requires the supplied turn record id to match the process current turn", async () => {
 		const { app, process, repos, sessionSnapshots, token } = await createHarness();
 		const content = `${JSON.stringify({ n: 1 })}\n`;
-		repos.turnRecords.create({
-			id: "trn_current",
-			instanceId: process.id,
-			turnId: "test_turn",
-			turnType: "human",
-			status: "running",
-			pathType: "primary",
-		});
-		repos.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_current" },
-		});
+		seedAcceptedAutomaticTurn(repos, process.id, "trn_current");
 
 		const missingTurn = await app.inject({
 			method: "PUT",
@@ -211,29 +241,17 @@ describe("internal worker session snapshot routes", () => {
 		const bundle = createCanonicalPiResourceBundle([
 			{ path: "skills/review/SKILL.md", content: Buffer.from("# Review") },
 		]);
-		repos.skills.mergeCatalog("test", [
+		repos.skills.reconcile([
 			{
-				sourcePath: "skills/review",
 				skillId: "review",
 				label: "Review",
 				description: null,
 				bundle,
-				sourceRevision: "test",
+				sourceRevision: null,
 			},
 		]);
-		repos.skills.registerCatalogEntry("test", "review");
 		repos.processSkills.attach(process.id, repos.skills.resolveActive(["review"]));
-		repos.turnRecords.create({
-			id: "trn_current",
-			instanceId: process.id,
-			turnId: "test_turn",
-			turnType: "human",
-			status: "running",
-			pathType: "primary",
-		});
-		repos.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_current" },
-		});
+		seedAcceptedAutomaticTurn(repos, process.id, "trn_current");
 		const lease = repos.leases.getByInstance(process.id);
 		if (!lease) throw new Error("expected lease");
 		const invokedAt = new Date(Date.now() + 1_000).toISOString();
@@ -271,17 +289,7 @@ describe("internal worker session snapshot routes", () => {
 	it("accepts an uncorrelated final snapshot while the active worker is draining", async () => {
 		const { app, process, repos, sessionSnapshots, token } = await createHarness();
 		const content = `${JSON.stringify({ n: 1 })}\n`;
-		repos.turnRecords.create({
-			id: "trn_failed",
-			instanceId: process.id,
-			turnId: "test_turn",
-			turnType: "human",
-			status: "failed",
-			pathType: "primary",
-		});
-		repos.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_failed" },
-		});
+		seedAcceptedAutomaticTurn(repos, process.id, "trn_failed", "failed");
 		const lease = repos.leases.getByInstance(process.id);
 		if (!lease) throw new Error("expected lease");
 		repos.leases.update(lease.id, { state: "draining" });

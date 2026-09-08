@@ -1,8 +1,4 @@
-import {
-	buildFailedTurnRecoveryMetadata,
-	formatPathTypeLabel,
-	type QuestionAnswerDraft,
-} from "@leitwerk-dev/domain";
+import { formatPathTypeLabel, type QuestionAnswerDraft } from "@leitwerk-dev/domain";
 import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	type CoreServerSetupDeps,
@@ -269,10 +265,10 @@ function setupLaunchBridge(
 	const client = new FakeTelegramClient();
 	const events = createEventBus();
 	const launcher = testLauncher();
-	const createProcessFromLaunchPlan = vi.fn(async () => ({
-		ok: true as const,
+	const startProgrammatic = vi.fn(async () => ({
+		launchRunId: "lnr_telegram",
 		process: launchedProcess,
-		projects: [],
+		error: null,
 	}));
 	const resolveUiLauncher =
 		options.resolveUiLauncher ??
@@ -329,7 +325,7 @@ function setupLaunchBridge(
 			preview: async () => options.modelPreview ?? null,
 		},
 		launchPlans: { prepare: prepareLaunchPlan },
-		processLaunches: { createProcessFromLaunchPlan },
+		launchRuns: { startProgrammatic },
 	});
 	const bridge = new TelegramBridge({ config: testConfig(), deps, client });
 	bridge.register(events);
@@ -339,7 +335,7 @@ function setupLaunchBridge(
 		bridge,
 		launcher,
 		launchedProcess,
-		createProcessFromLaunchPlan,
+		startProgrammatic,
 		resolveUiLauncher,
 		prepareLaunchPlan,
 		recordRecentValues,
@@ -529,60 +525,6 @@ const tailLogsAction = {
 	},
 	preview: { kind: "fixed_turn", turnId: "run_operation" },
 };
-const localShellRunCommandAction = {
-	id: "run_command",
-	label: "Run command",
-	description: null,
-	form: {
-		id: "local_shell_run_command_form",
-		title: "Run shell command",
-		fields: [
-			{
-				id: "command",
-				label: "Command",
-				kind: "textarea" as const,
-				required: true,
-				placeholder: "pwd && ls -la",
-				description: "Runs as bash -lc on the leitwerk server machine.",
-			},
-			{
-				id: "cwd",
-				label: "Working directory",
-				kind: "text" as const,
-				placeholder: "Use the current shell default",
-				description: "Optional absolute or relative directory for this and later commands.",
-			},
-			{
-				id: "timeoutSeconds",
-				label: "Timeout seconds",
-				kind: "number" as const,
-				placeholder: "120",
-				description: "Optional per-command timeout.",
-			},
-		],
-	},
-	preview: { kind: "fixed_turn", turnId: "execute_command" },
-};
-const piShellSendPromptAction = {
-	id: "send_prompt",
-	label: "Send prompt",
-	description: null,
-	form: {
-		id: "pi_shell_prompt",
-		title: "Send prompt",
-		fields: [
-			{
-				id: "prompt",
-				label: "Prompt",
-				kind: "textarea" as const,
-				required: true,
-				description: "Instruction for the next Pi shell turn.",
-			},
-		],
-	},
-	preview: { kind: "fixed_turn", turnId: "run_prompt" },
-};
-
 function turnRecord(processId: string) {
 	return {
 		id: "trn_failed",
@@ -653,20 +595,21 @@ describe("TelegramBridge", () => {
 	});
 
 	it("launches a process from an unmapped topic and claims that topic for the process", async () => {
-		const { bridge, client, createProcessFromLaunchPlan, recordRecentValues } = setupLaunchBridge();
+		const { bridge, client, startProgrammatic, recordRecentValues } = setupLaunchBridge();
 		await bridge.start();
 
 		await completeLaunchFormToReview(client);
 		expect(findCallbackData(client, "Change models")).toBeUndefined();
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledWith(expect.any(Object), {
+		expect(startProgrammatic).toHaveBeenCalledOnce();
+		expect(startProgrammatic).toHaveBeenCalledWith(expect.any(Object), {
 			actor: TELEGRAM_ACTOR,
+			idempotencyKey: expect.stringMatching(/^telegram:/),
 		});
 		expect(recordRecentValues).toHaveBeenCalledWith("test.launcher", expect.any(Object));
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.metadata).toMatchObject({
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.processMetadata).toMatchObject({
 			telegram: {
 				launchThread: {
 					mode: "forum_topic",
@@ -678,7 +621,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("allows Telegram launchers to change default and per-turn models", async () => {
-		const { bridge, client, createProcessFromLaunchPlan, prepareLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic, prepareLaunchPlan } = setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
@@ -694,7 +637,7 @@ describe("TelegramBridge", () => {
 		await sendUnmappedTopicText(client, "/skip");
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
+		expect(startProgrammatic).toHaveBeenCalledOnce();
 		expect(prepareLaunchPlan).toHaveBeenLastCalledWith(
 			expect.any(Object),
 			expect.objectContaining({
@@ -705,15 +648,15 @@ describe("TelegramBridge", () => {
 				},
 			}),
 		);
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.defaultModelProfileId).toBe("local_qwen");
-		expect(submittedPlan.processInput.turnConfigsJson).toBe(
-			JSON.stringify({ draft_plan: { modelProfileId: "claude_fast" } }),
-		);
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.modelConfig).toEqual({
+			defaultModelProfileId: "local_qwen",
+			turnConfigs: { draft_plan: { modelProfileId: "claude_fast" } },
+		});
 	});
 
 	it("keeps Telegram model edit open when a typed model profile is invalid", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
@@ -723,13 +666,13 @@ describe("TelegramBridge", () => {
 		await clickUnmappedTopicButton(client, "Change models");
 		await sendUnmappedTopicText(client, "missing_model");
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages.at(-1)?.text).toContain("must match an available model profile");
 		expect(client.sentMessages.at(-1)?.replyMarkup).toBeTruthy();
 	});
 
 	it("offers launcher recent values as field buttons", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			recentValues: { prompt: ["Use remembered prompt"] },
 		});
 		await bridge.start();
@@ -739,9 +682,9 @@ describe("TelegramBridge", () => {
 		await clickUnmappedTopicButton(client, "Develop");
 		await clickUnmappedTopicButton(client, "Start process");
 
-		expect(createProcessFromLaunchPlan).toHaveBeenCalledOnce();
-		const submittedPlan = createProcessFromLaunchPlan.mock.calls[0]?.[0] as ProcessLaunchPlan;
-		expect(submittedPlan.processInput.paramsJson).toContain("Use remembered prompt");
+		expect(startProgrammatic).toHaveBeenCalledOnce();
+		const submittedRequest = startProgrammatic.mock.calls[0]?.[0];
+		expect(submittedRequest?.launcherInput).toMatchObject({ prompt: "Use remembered prompt" });
 	});
 
 	it("keeps a launch draft open when launcher validation rejects a field", async () => {
@@ -749,7 +692,7 @@ describe("TelegramBridge", () => {
 			ok: false as const,
 			errors: [{ code: "invalid", message: "Prompt is required", fieldId: "prompt" }],
 		}));
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge({
+		const { bridge, client, startProgrammatic } = setupLaunchBridge({
 			resolveUiLauncher,
 		});
 		await bridge.start();
@@ -758,7 +701,7 @@ describe("TelegramBridge", () => {
 		await sendUnmappedTopicText(client, "bad prompt");
 		await clickUnmappedTopicButton(client, "Develop");
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages.at(-1)?.replyMarkup).toBeTruthy();
 	});
 
@@ -786,12 +729,12 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not allow non-allowlisted users to launch processes", async () => {
-		const { bridge, client, createProcessFromLaunchPlan } = setupLaunchBridge();
+		const { bridge, client, startProgrammatic } = setupLaunchBridge();
 		await bridge.start();
 
 		await sendUnmappedTopicText(client, "/launch test.launcher", 777, { from: { id: 999 } });
 
-		expect(createProcessFromLaunchPlan).not.toHaveBeenCalled();
+		expect(startProgrammatic).not.toHaveBeenCalled();
 		expect(client.sentMessages).toHaveLength(0);
 	});
 
@@ -994,93 +937,6 @@ describe("TelegramBridge", () => {
 
 		expect(client.sentMessages.at(-1)?.text).toContain("Tail logs");
 		expect(client.sentMessages.at(-1)?.text).toContain("Control Panel");
-	});
-
-	it("supports local-shell command forms with skipped optional fields and command output", async () => {
-		const process = createTestProcessInstance({
-			processId: "local_shell_process",
-			lifecycleStatus: "waiting",
-			selectedTurnId: "command_console",
-		});
-		const { client, executeAction, events } = await startProcessTopic({
-			process,
-			actions: [localShellRunCommandAction],
-		});
-		const latestSkipData = () => {
-			const data = allButtons(client)
-				.filter((button) => button.text === "Skip")
-				.at(-1)?.callbackData;
-			expect(data).toBeTruthy();
-			return data as string;
-		};
-
-		await clickButton(client, callbackData(client, "Run command"));
-		await sendText(client, "printf LOCAL_SHELL_TOKEN");
-		await clickButton(client, latestSkipData());
-		await clickButton(client, latestSkipData());
-
-		expect(executeAction).toHaveBeenCalledWith(
-			process.id,
-			"run_command",
-			{ command: "printf LOCAL_SHELL_TOKEN" },
-			{ source: "ui", origin: "external_interface", actor: TELEGRAM_ACTOR },
-		);
-		expect(client.sentMessages.at(-1)?.text).toContain("execute_command");
-
-		process.lifecycleStatus = "waiting";
-		process.selectedTurnId = "command_console";
-		events.emit("turn_outcome", {
-			instanceId: process.id,
-			turnRecordId: "trn_local_shell",
-			turnId: "execute_command",
-			outcome: "command_finished",
-			params: {},
-			turnResultMarkdown: "## Command result\n\nLOCAL_SHELL_TOKEN",
-		});
-		await flushAsyncWork(5);
-
-		expect(client.sentMessages.some((message) => message.text.includes("LOCAL_SHELL_TOKEN"))).toBe(
-			true,
-		);
-	});
-
-	it("supports pi-shell prompt actions and assistant-output results", async () => {
-		const process = createTestProcessInstance({
-			processId: "pi_shell_process",
-			lifecycleStatus: "waiting",
-			selectedTurnId: "prompt_console",
-		});
-		const { client, executeAction, events } = await startProcessTopic({
-			process,
-			actions: [piShellSendPromptAction],
-		});
-
-		await clickButton(client, callbackData(client, "Send prompt"));
-		await sendText(client, "Inspect the primary status");
-
-		expect(executeAction).toHaveBeenCalledWith(
-			process.id,
-			"send_prompt",
-			{ prompt: "Inspect the primary status" },
-			{ source: "ui", origin: "external_interface", actor: TELEGRAM_ACTOR },
-		);
-		expect(client.sentMessages.at(-1)?.text).toContain("run_prompt");
-
-		process.lifecycleStatus = "waiting";
-		process.selectedTurnId = "prompt_console";
-		events.emit("turn_outcome", {
-			instanceId: process.id,
-			turnRecordId: "trn_pi_shell",
-			turnId: "run_prompt",
-			outcome: "responded",
-			params: {},
-			turnResultMarkdown: "## Pi answer\n\nPI_SHELL_RESULT_TOKEN",
-		});
-		await flushAsyncWork(5);
-
-		expect(
-			client.sentMessages.some((message) => message.text.includes("PI_SHELL_RESULT_TOKEN")),
-		).toBe(true);
 	});
 
 	it("collects action form input and escapes form prompts before executing", async () => {
@@ -1694,23 +1550,15 @@ describe("TelegramBridge", () => {
 		);
 	});
 
-	it("runs generic recovery commands from error-process buttons", async () => {
+	it("runs the generic retry command from an error-process button", async () => {
 		const process = createTestProcessInstance({
 			lifecycleStatus: "error",
-			currentExecution: { kind: "server_turn", id: "trn_failed" },
-			metadata: buildFailedTurnRecoveryMetadata("trn_failed"),
+			currentExecution: { kind: "worker_start", id: "tsr_failed" },
 		});
-		const { client, retryProcess, continueFailedTurn } = await startProcessTopic({ process });
+		const { client, retryProcess } = await startProcessTopic({ process });
 
 		await clickButton(client, callbackData(client, "Retry"));
 		expect(retryProcess).toHaveBeenCalledWith(process.id, { actor: TELEGRAM_ACTOR });
-
-		await clickButton(client, callbackData(client, "Continue"));
-		await sendText(client, "/skip");
-		expect(continueFailedTurn).toHaveBeenCalledWith(process.id, "trn_failed", {
-			prompt: null,
-			actor: TELEGRAM_ACTOR,
-		});
 	});
 
 	it("does not offer unusable recovery buttons without matching recovery state", async () => {
@@ -1724,7 +1572,7 @@ describe("TelegramBridge", () => {
 
 		const failedAutomaticProcess = createTestProcessInstance({
 			lifecycleStatus: "error",
-			currentExecution: { kind: "server_turn", id: "trn_failed_automatic" },
+			currentExecution: { kind: "worker_start", id: "tsr_failed_automatic" },
 		});
 		const failedAutomatic = await startProcessTopic({ process: failedAutomaticProcess });
 		expect(findCallbackData(failedAutomatic.client, "Retry")).toBeTruthy();
@@ -1737,8 +1585,7 @@ describe("TelegramBridge", () => {
 
 		const staleRecoveredProcess = createTestProcessInstance({
 			lifecycleStatus: "active",
-			currentExecution: { kind: "server_turn", id: "trn_stale_recovered" },
-			metadata: buildFailedTurnRecoveryMetadata("trn_stale_recovered"),
+			currentExecution: { kind: "worker_start", id: "tsr_stale_recovered" },
 		});
 		const staleRecovered = await startProcessTopic({ process: staleRecoveredProcess });
 		const messagesBeforeRecoveredContinue = staleRecovered.client.sentMessages.length;
@@ -1991,8 +1838,7 @@ describe("model filtering via allowedModelProfileIds", () => {
 	it("shows only allowed profiles in recovery model selection", async () => {
 		const process = createTestProcessInstance({
 			lifecycleStatus: "error",
-			currentExecution: { kind: "server_turn", id: "trn_failed" },
-			metadata: buildFailedTurnRecoveryMetadata("trn_failed"),
+			currentExecution: { kind: "worker_start", id: "tsr_failed" },
 		});
 		const harness = await setupActionModelSelection({
 			process,

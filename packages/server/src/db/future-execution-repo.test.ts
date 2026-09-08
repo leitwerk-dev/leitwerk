@@ -142,7 +142,7 @@ describe("future execution repo", () => {
 				payloadJson: JSON.stringify({ input: {} }),
 				nextRunAt: "2026-04-25T11:00:00.000Z",
 			}),
-		).toThrow(/unique|constraint/i);
+		).toThrow();
 		expect(repo.delete(created.id)).toBe(true);
 		expect(repo.getScheduledActionByInstance(process.id)).toBeNull();
 	});

@@ -1,13 +1,12 @@
 import type { ProcessInstance, WorkerLease } from "@leitwerk-dev/domain";
-import { isServerAutomaticTurnDefinition } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { PiResourceBundlePinReconciler } from "../pi-resources/index.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
-import type { ProcessEngine } from "../process-engine/types.js";
 import { applyWorkerLeaseObservation } from "../supervisor/worker-lease-observer.js";
 import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+import type { ProcessEngine } from "./types.js";
 
 interface LoggerLike {
 	info?: (...args: unknown[]) => void;
@@ -20,8 +19,7 @@ export interface StartupReconciliationDeps
 	config: LeitwerkConfig;
 	broadcaster: Broadcaster;
 	supervisor: WorkerSupervisor;
-	commands: Pick<ProcessEngine, "drainServerAutomaticTurns"> &
-		Partial<Pick<ProcessEngine, "recordWorkerFailure">>;
+	commands: Partial<Pick<ProcessEngine, "recordWorkerFailure">>;
 	bundlePins?: PiResourceBundlePinReconciler;
 	processActionRegistry: ProcessActionRegistry;
 	logger?: LoggerLike;
@@ -38,20 +36,6 @@ export function shouldResumeProcessOnStartup(
 		return false;
 	}
 	return true;
-}
-
-function isSelectedServerAutomaticTurn(
-	process: Pick<ProcessInstance, "processId" | "selectedTurnId" | "lifecycleStatus">,
-	processActionRegistry: ProcessActionRegistry,
-): boolean {
-	if (process.lifecycleStatus !== "active" || !process.selectedTurnId) {
-		return false;
-	}
-	const turnDef = processActionRegistry.getTurnDefinition(
-		process.processId,
-		process.selectedTurnId,
-	);
-	return !!turnDef && isServerAutomaticTurnDefinition(turnDef);
 }
 
 function reclaimPersistedLease(
@@ -93,17 +77,15 @@ function reclaimPersistedLease(
 export async function reconcileProcessesOnStartup(deps: StartupReconciliationDeps): Promise<void> {
 	const processes = deps.processes.listAll();
 	const staleLeases = deps.leases.listActive();
-	const missingBundleProcesses = new Set<string>();
+	const missingLocalBundleProcesses = new Set<string>();
 	for (const process of processes) {
 		const missingDigest = deps.bundlePins?.reconcile(process).missingDigest;
-		if (!missingDigest) continue;
+		if (!missingDigest || deps.config.workers.runner !== "local") continue;
 		await deps.commands.recordWorkerFailure?.(process.id, {
 			errorCode: "pi_resource_bundle_unavailable",
 			message: "The Pi resource bundle for this worker start is unavailable",
 		});
-		const updated = deps.processes.getById(process.id);
-		if (updated) deps.bundlePins?.reconcile(updated);
-		if (deps.commands.recordWorkerFailure) missingBundleProcesses.add(process.id);
+		if (deps.commands.recordWorkerFailure) missingLocalBundleProcesses.add(process.id);
 	}
 
 	for (const lease of staleLeases) {
@@ -115,35 +97,13 @@ export async function reconcileProcessesOnStartup(deps: StartupReconciliationDep
 	}
 
 	let resumedCount = 0;
-	let drainedServerAutomaticCount = 0;
 	for (const process of processes) {
-		if (missingBundleProcesses.has(process.id)) continue;
+		if (missingLocalBundleProcesses.has(process.id)) continue;
 		if (!shouldResumeProcessOnStartup(process, deps.config)) {
 			continue;
 		}
 		try {
 			const adoptedOrRunningWorker = deps.supervisor.getWorker(process.id);
-			if (process.currentExecution?.kind === "server_turn") {
-				const turn = deps.turnRecords.getById(process.currentExecution.id);
-				if (
-					!turn ||
-					turn.instanceId !== process.id ||
-					turn.status !== "running" ||
-					!isSelectedServerAutomaticTurn(process, deps.processActionRegistry)
-				) {
-					deps.logger?.warn?.(
-						{ instanceId: process.id },
-						"Skipping invalid current server-turn execution during startup reconciliation",
-					);
-					continue;
-				}
-				if (adoptedOrRunningWorker) {
-					await deps.supervisor.stopWorker(process.id, "startup_reconciliation:server_automatic");
-				}
-				await deps.commands.drainServerAutomaticTurns(process.id);
-				drainedServerAutomaticCount += 1;
-				continue;
-			}
 			if (process.currentExecution?.kind !== "worker_start") continue;
 			const start = deps.turnStarts.getById(process.currentExecution.id);
 			const reusable =
@@ -184,7 +144,6 @@ export async function reconcileProcessesOnStartup(deps: StartupReconciliationDep
 			processCount: processes.length,
 			staleLeaseCount: staleLeases.length,
 			resumedCount,
-			drainedServerAutomaticCount,
 			resumeOnBoot: deps.config.workers.resume_on_boot,
 		},
 		"Startup reconciliation complete",

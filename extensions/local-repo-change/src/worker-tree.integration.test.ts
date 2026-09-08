@@ -440,7 +440,6 @@ describe("local repo change instance tree", () => {
 				turnResultMarkdown: "## Finalized\n\nCommitted and merged.",
 			},
 		);
-		await harness.commands.drainServerAutomaticTurns(harness.instanceId);
 		expect(currentProcess(harness)).toMatchObject({
 			selectedTurnId: null,
 			lifecycleStatus: "completed",

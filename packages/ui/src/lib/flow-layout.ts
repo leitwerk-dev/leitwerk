@@ -118,8 +118,6 @@ export function turnTypeLabel(turnType: ProcessTurnType): string {
 			return "External wait";
 		case "automatic":
 			return "Automatic";
-		case "server_automatic":
-			return "Server step";
 	}
 }
 
@@ -138,8 +136,6 @@ export function turnTypeDescription(turnType: ProcessTurnType): string {
 			return "The process pauses until an outside system or event reports back.";
 		case "automatic":
 			return "A deterministic step runs automatically in the workspace, with no AI or operator input.";
-		case "server_automatic":
-			return "The server runs this step automatically to prepare or finalize process state.";
 	}
 }
 

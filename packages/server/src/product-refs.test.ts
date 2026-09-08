@@ -6,7 +6,6 @@ import {
 	createEmptyStructuralProcessState,
 	humanTurn,
 	llmTurn,
-	serverAutomaticTurn,
 } from "@leitwerk-dev/process-sdk";
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -538,81 +537,6 @@ describe("product refs", () => {
 		).toBe("Published from params");
 	});
 
-	it("publishes server-automatic outcome markdown parameters as products", async () => {
-		const deps = createTestDeps();
-		const processDefinition = createFixtureProcess({
-			id: "server_automatic_message_process",
-			entry: "produce",
-			turns: {
-				produce: serverAutomaticTurn({
-					description: "Produce message",
-					run: async () => ({ outcome: "published", params: { message: "Published" } }),
-					outcomes: {
-						published: {
-							description: "Published",
-							parameters: {
-								message: { type: "string", description: "Message", required: true },
-							},
-							publishedProduct: "message",
-							turnResultMarkdownParameter: "message",
-							complete: true,
-						},
-					},
-				}),
-			},
-		});
-		const processGraphs = createProcessGraphRegistry([processDefinition]);
-		const registry = buildProcessActionRegistry({ processes: processGraphs });
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => undefined,
-			processGraphs,
-			getProcessActionRegistry: () => registry,
-		});
-		const process = deps.processes.create({
-			processId: "server_automatic_message_process",
-			selectedTurnId: "produce",
-			lifecycleStatus: "active",
-			stateJson: JSON.stringify(createEmptyStructuralProcessState()),
-		});
-		deps.turnRecords.create({
-			id: "trn_server_auto_1",
-			instanceId: process.id,
-			turnId: "produce",
-			turnType: "server_automatic",
-			status: "running",
-			pathType: "primary",
-		});
-		deps.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: "trn_server_auto_1" },
-		});
-
-		const result = await commands.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_server_auto_1",
-			turnId: "produce",
-			turnType: "server_automatic",
-			outcome: "published",
-			params: { message: "Published from params" },
-			pathType: "primary",
-			turnResultMarkdown: null,
-		});
-
-		expect(result.ok).toBe(true);
-		expect(deps.turnRecords.getById("trn_server_auto_1")?.resultPiEntryId).toBe(
-			"server_automatic:trn_server_auto_1:message",
-		);
-		expect(
-			resolveProductTurnResultMarkdown({
-				process: deps.processes.getById(process.id) ?? process,
-				productName: "message",
-				turnRecords: deps.turnRecords,
-				required: true,
-			}),
-		).toBe("Published from params");
-	});
-
 	it("publishes human action form fields as products", async () => {
 		const deps = createTestDeps();
 		const processDefinition = createFixtureProcess({
@@ -725,7 +649,10 @@ describe("product refs", () => {
 			...deps,
 			config,
 			processGraphs,
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
 		});
 
@@ -797,7 +724,10 @@ describe("product refs", () => {
 			...deps,
 			config,
 			processGraphs,
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
 		});
 
@@ -873,7 +803,10 @@ describe("product refs", () => {
 			...deps,
 			config,
 			processGraphs,
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
 		});
 

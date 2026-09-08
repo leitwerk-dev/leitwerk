@@ -9,6 +9,7 @@ import {
 	defineModelProviders,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
+import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -310,8 +311,8 @@ describe("single prompt extension", () => {
 	});
 
 	it("runs a launched single prompt once and completes on turn end without a done tool", async () => {
-		const launchResponse = await fetch(
-			`${harness.address}/api/launchers/single_prompt_process.single_prompt_ui/launch`,
+		const launchResponse = await postImmediateLaunchRequest(
+			`${harness.address}/api/launchers/single_prompt_process.single_prompt_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -351,8 +352,8 @@ describe("single prompt extension", () => {
 	});
 
 	it("runs a launched single prompt that explicitly requires the done tool", async () => {
-		const launchResponse = await fetch(
-			`${harness.address}/api/launchers/single_prompt_with_tool_process.single_prompt_with_tool_ui/launch`,
+		const launchResponse = await postImmediateLaunchRequest(
+			`${harness.address}/api/launchers/single_prompt_with_tool_process.single_prompt_with_tool_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -400,8 +401,8 @@ describe("single prompt extension", () => {
 			completePromptPath,
 		});
 		try {
-			const launchResponse = await fetch(
-				`${fileTriggerHarness.address}/api/launchers/single_prompt_external_complete_process.single_prompt_external_complete_ui/launch`,
+			const launchResponse = await postImmediateLaunchRequest(
+				`${fileTriggerHarness.address}/api/launchers/single_prompt_external_complete_process.single_prompt_external_complete_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -499,8 +500,8 @@ describe("single prompt extension", () => {
 			completePromptPath,
 		});
 		try {
-			const launchResponse = await fetch(
-				`${fileTriggerHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+			const launchResponse = await postImmediateLaunchRequest(
+				`${fileTriggerHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -604,8 +605,8 @@ describe("single prompt extension", () => {
 		const defaultsBody = await defaultsResponse.json();
 		expect(defaultsResponse.status).toBe(200);
 
-		const launchResponse = await fetch(
-			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+		const launchResponse = await postImmediateLaunchRequest(
+			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -808,8 +809,8 @@ describe("single prompt extension", () => {
 	});
 
 	it("schedules poem review-loop actions while rejecting terminal poem completion scheduling", async () => {
-		const launchResponse = await fetch(
-			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+		const launchResponse = await postImmediateLaunchRequest(
+			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -894,8 +895,8 @@ describe("single prompt extension", () => {
 		try {
 			issuesHarness = await createLeaveFeedbackReviewHarness();
 
-			const launchResponse = await fetch(
-				`${issuesHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+			const launchResponse = await postImmediateLaunchRequest(
+				`${issuesHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1068,8 +1069,8 @@ describe("single prompt extension", () => {
 	});
 
 	it("supports a human revision loop for poem creator before returning to review", async () => {
-		const launchResponse = await fetch(
-			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+		const launchResponse = await postImmediateLaunchRequest(
+			`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1152,8 +1153,8 @@ describe("single prompt extension", () => {
 		try {
 			issuesHarness = await createLeaveFeedbackReviewHarness();
 
-			const launchResponse = await fetch(
-				`${issuesHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+			const launchResponse = await postImmediateLaunchRequest(
+				`${issuesHarness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },

@@ -63,9 +63,24 @@ server aborts `ctx.signal`; tool implementations must pass it to cancellable pro
 
 Authors register tools for the external systems their extension owns, such as issue trackers,
 VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.
-Automatic turns invoke a declared tool with `ctx.callIntegrationTool(name, args)`. Calls use
-the same turn-record authorization, replay identity, cancellation, and credential isolation
-as LLM integration-tool calls.
+Automatic turns and LLM preparation phases invoke a declared tool with
+`ctx.callIntegrationTool(name, args)`. Calls use the same turn-record authorization, replay
+identity, cancellation, and credential isolation as agent-initiated LLM integration-tool calls.
+
+A tool marked with `capability.kind: "ticket_creation"` can back the generic derived-ticket
+route. Its extension registers the code-defined `processId` and `startTurnId` on the capability;
+core does not select a fixed process graph. The route admits the child through an idempotent durable
+launch run and commits the child relation in the same transaction as the process. The tool must return the standard
+`{ externalId, url, result? }` receipt. An optional
+destination provider lists sanitized choices for the derived process. The server adds the
+opaque choice to the worker's tool declaration and resolves it into a server-owned snapshot
+immediately before approval. The adapter receives that snapshot as `ctx.ticketDestination`;
+destination credentials never enter the worker or browser.
+
+Tool approvals belong to the current accepted turn record. Ending that turn cancels its
+open approvals even when the worker exits without sending cancellation. Decisions for an
+older attempt are rejected. Declining an approval aborts only its still-current turn's
+process; a concurrent retry cannot be aborted by that stale decision.
 
 ## 3. Interactive Tools (`ask_questions`)
 

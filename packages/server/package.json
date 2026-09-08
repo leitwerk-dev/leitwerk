@@ -36,10 +36,9 @@
 		"@leitwerk-dev/watcher-utils": "0.1.9",
 		"@leitwerk-dev/worker-protocol": "0.1.9",
 		"@leitwerk-dev/worker-runners": "0.1.9",
-		"better-sqlite3": "^12.8.0",
 		"cron-parser": "^5.5.0",
 		"defu": "^6.1.7",
-		"drizzle-orm": "^0.45.2",
+		"drizzle-orm": "1.0.0-rc.4",
 		"esbuild": "0.28.1",
 		"fastify": "^5.8.4",
 		"openid-client": "6.8.4",
@@ -51,7 +50,6 @@
 		"@leitwerk-dev/worker": "0.1.9"
 	},
 	"devDependencies": {
-		"@types/better-sqlite3": "^7.6.13",
 		"tsup": "^8.5.1",
 		"tsx": "^4.21.0"
 	},
@@ -60,7 +58,7 @@
 		"access": "public"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=26 <27"
 	},
 	"files": [
 		"dist/**",

@@ -13,7 +13,10 @@ const outcome = {
 	turnResultMarkdown: "# Plan",
 };
 
-function createHarness(recordTurnOutcome: ProcessEngine["recordTurnOutcome"]) {
+function createHarness(
+	recordTurnOutcome: ProcessEngine["recordTurnOutcome"],
+	readStatus?: () => "running" | "failed" | "succeeded",
+) {
 	let status: "running" | "failed" | "succeeded" = "running";
 	const onTurnTerminalRecorded = vi.fn();
 	const onTurnTerminalRecordingFailed = vi.fn();
@@ -23,8 +26,9 @@ function createHarness(recordTurnOutcome: ProcessEngine["recordTurnOutcome"]) {
 	});
 	const recorder = createWorkerTurnIpcRecorder(
 		{
+			processes: {} as never,
 			turnRecords: {
-				getById: () => ({ status }),
+				getById: () => ({ status: readStatus?.() ?? status }),
 			} as never,
 			commands: { recordTurnOutcome, recordWorkerFailure } as never,
 			eventIngestor: {
@@ -98,5 +102,30 @@ describe("worker turn IPC recording", () => {
 		);
 		expect(harness.recordWorkerFailure).toHaveBeenCalledOnce();
 		expect(harness.onTurnTerminalRecorded).toHaveBeenCalledOnce();
+	});
+
+	it("contains recovery when storage closes during shutdown", async () => {
+		let reads = 0;
+		const harness = createHarness(
+			async () => {
+				throw new Error("database unavailable");
+			},
+			() => {
+				reads += 1;
+				if (reads > 1) throw new Error("The database connection is not open");
+				return "running";
+			},
+		);
+
+		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", outcome);
+		await flushAsyncWork();
+
+		expect(harness.recordWorkerFailure).not.toHaveBeenCalled();
+		expect(harness.onTurnTerminalRecordingFailed).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				code: "worker_failure_fallback_failed",
+				message: "The database connection is not open",
+			}),
+		);
 	});
 });

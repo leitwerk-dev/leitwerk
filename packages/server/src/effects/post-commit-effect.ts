@@ -52,7 +52,12 @@ export type PostCommitEffect =
 			change: WorkerReconcileEffectChange;
 	  }
 	| { kind: "extension_event"; event: DeferredProcessExtensionEvent }
-	| { kind: "queue_process_title"; processId: string; launchPlan: ProcessLaunchPlan }
+	| {
+			kind: "queue_process_title";
+			processId: string;
+			launchPlan: ProcessLaunchPlan;
+			launchRunId?: string;
+	  }
 	| {
 			kind: "queue_future_execution_title";
 			futureExecutionId: string;

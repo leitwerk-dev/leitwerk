@@ -35,14 +35,12 @@ export class ProcessPrimaryPathAssembler {
 		}
 		const turnRecords = overrides.turnRecords ?? this.deps.turnRecords.listByInstance(process.id);
 		const currentTurnRecordId =
-			process.currentExecution?.kind === "server_turn"
-				? process.currentExecution.id
-				: process.currentExecution?.kind === "worker_start"
-					? (() => {
-							const start = this.deps.turnStarts.getById(process.currentExecution.id);
-							return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-						})()
-					: null;
+			process.currentExecution?.kind === "worker_start"
+				? (() => {
+						const start = this.deps.turnStarts.getById(process.currentExecution.id);
+						return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
+					})()
+				: null;
 		const activeTurnRecord = currentTurnRecordId
 			? turnRecords.find(
 					(turnRecord) => turnRecord.id === currentTurnRecordId && turnRecord.status === "running",

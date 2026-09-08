@@ -1,5 +1,5 @@
+import type { DatabaseSync } from "node:sqlite";
 import type { WorkerBootstrapReceipt } from "@leitwerk-dev/domain";
-import type Database from "better-sqlite3";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createAes256GcmCredentialCipher } from "./credential-cipher.js";
 import { createInMemoryDatabase, type LeitwerkDb } from "./database.js";
@@ -14,8 +14,8 @@ beforeEach(() => {
 	db = createInMemoryDatabase();
 });
 
-function client(): Database.Database {
-	return (db as unknown as { $client: Database.Database }).$client;
+function client(): DatabaseSync {
+	return (db as unknown as { $client: DatabaseSync }).$client;
 }
 
 describe("turn-start persistence", () => {

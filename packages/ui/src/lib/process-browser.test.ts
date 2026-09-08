@@ -17,16 +17,16 @@ function processItem(overrides: Partial<ProcessOverviewItem> = {}): ProcessBrows
 		kind: "process",
 		item: {
 			instanceId: "agt_1",
-			processId: "local_shell_process",
+			processId: "review_process",
 			title: "Build navigation",
-			subtitle: "local_shell_process · 0 components",
-			selectedTurnId: "run_command",
+			subtitle: "review_process · 0 components",
+			selectedTurnId: "review",
 			lifecycleStatus: "active",
 			statusCategory: "active",
 			projectCount: 0,
 			externalId: null,
 			externalLinkCount: 0,
-			processDisplayName: "Local Shell",
+			processDisplayName: "Review",
 			processTitle: "Build navigation",
 			createdAt: "2026-01-01T10:00:00Z",
 			updatedAt: "2026-01-01T11:00:00Z",
@@ -88,7 +88,7 @@ describe("process browser helpers", () => {
 		expect(hasActiveFilters(defaultFilters)).toBe(false);
 		expect(hasActiveFilters({ ...defaultFilters, query: "history" })).toBe(true);
 		expect(hasActiveFilters({ ...defaultFilters, status: "completed" })).toBe(true);
-		expect(hasActiveFilters({ ...defaultFilters, processType: "local_shell_process" })).toBe(true);
+		expect(hasActiveFilters({ ...defaultFilters, processType: "review_process" })).toBe(true);
 	});
 
 	it.each([

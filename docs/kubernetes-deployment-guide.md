@@ -71,8 +71,9 @@ helm upgrade leitwerk oci://ghcr.io/leitwerk-dev/charts/leitwerk \
 
 Preflight requires an operator-managed configuration Secret and production
 PVC. Before cutover, a `pre-upgrade` Job runs the candidate image on the old
-server's node, mounts the PVC read-only, and creates a consistent online SQLite
-backup in scratch `emptyDir`. The candidate loads the real configuration and
+server's node, mounts the PVC writable for SQLite WAL/SHM access, opens the
+database read-only, and creates a consistent online SQLite backup in scratch
+`emptyDir`. The candidate loads the real configuration and
 credential key, validates and migrates only the copy, loads extensions, starts
 a loopback HTTP listener, and checks `/api/health`. Background hooks, workers,
 and Telegram polling do not start. A failed Job is retained for logs and aborts

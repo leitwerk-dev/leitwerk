@@ -7,6 +7,9 @@
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git"
 	},
 	"type": "module",
+	"engines": {
+		"node": ">=26 <27"
+	},
 	"packageManager": "npm@10.9.2",
 	"workspaces": [
 		"packages/*",

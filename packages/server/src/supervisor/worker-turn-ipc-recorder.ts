@@ -1,6 +1,5 @@
 import {
 	createGenericFailedTurnRecoveryContext,
-	type FailedTurnRecoveryContext,
 	isTurnFailureCode,
 	isWorkerErrorClass,
 } from "@leitwerk-dev/domain";
@@ -12,7 +11,8 @@ import type { RepositoryBundle } from "../db/repositories.js";
 import type { ProcessEngine } from "../process-engine/types.js";
 import type { createWorkerEventIngestor } from "./worker-event-ingestor.js";
 
-export interface WorkerTurnIpcRecorderDeps extends Pick<RepositoryBundle, "turnRecords"> {
+export interface WorkerTurnIpcRecorderDeps
+	extends Pick<RepositoryBundle, "processes" | "turnRecords"> {
 	commands: ProcessEngine;
 	eventIngestor: ReturnType<typeof createWorkerEventIngestor>;
 }
@@ -25,6 +25,16 @@ export interface WorkerTurnIpcRecorderCallbacks {
 		params: Record<string, unknown>,
 	) => void;
 	onTurnTerminalRecorded?: (instanceId: string, workerId: string, turnRecordId: string) => void;
+	onTurnFailedRecorded?: (input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		turnId: string;
+		turnType: WorkerTurnFailedPayload["turnType"];
+		errorSummary: string;
+		errorClass?: WorkerTurnFailedPayload["errorClass"];
+		failureCode?: WorkerTurnFailedPayload["failureCode"];
+	}) => void;
 	onTurnTerminalRecordingFailed?: (input: {
 		instanceId: string;
 		workerId: string;
@@ -36,16 +46,6 @@ export interface WorkerTurnIpcRecorderCallbacks {
 }
 
 type TerminalType = "outcome" | "failure";
-
-type TerminalRecordingFailureInput = {
-	instanceId: string;
-	workerId: string;
-	turnRecordId: string;
-	terminalType: TerminalType;
-	failure: unknown;
-	resultPiEntryId?: string | null;
-	recoveryContext?: FailedTurnRecoveryContext | null;
-};
 
 function terminalWasAlreadyRecorded(
 	deps: Pick<WorkerTurnIpcRecorderDeps, "turnRecords">,
@@ -95,12 +95,25 @@ export function createWorkerTurnIpcRecorder(
 			// Observability must not prevent durable failure recovery or terminal replay.
 		}
 	};
-
-	const recoverRecordingFailure = async (input: TerminalRecordingFailureInput): Promise<void> => {
-		if (terminalWasAlreadyRecorded(deps, input.turnRecordId, input.terminalType)) {
-			acknowledge(input.instanceId, input.workerId, input.turnRecordId);
-			return;
+	const reportRecordedTurnFailure = (
+		input: Parameters<NonNullable<typeof callbacks.onTurnFailedRecorded>>[0],
+	): void => {
+		try {
+			callbacks.onTurnFailedRecorded?.(input);
+		} catch {
+			// Observability must not turn a durably recorded business failure into an IPC failure.
 		}
+	};
+
+	const recoverRecordingFailure = async (input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		terminalType: TerminalType;
+		failure: unknown;
+		resultPiEntryId?: string | null;
+		recoveryContext?: import("@leitwerk-dev/domain").FailedTurnRecoveryContext | null;
+	}): Promise<void> => {
 		const details = failureDetails(input.failure);
 		reportRecordingFailure({
 			instanceId: input.instanceId,
@@ -110,6 +123,10 @@ export function createWorkerTurnIpcRecorder(
 			...details,
 		});
 		try {
+			if (terminalWasAlreadyRecorded(deps, input.turnRecordId, input.terminalType)) {
+				acknowledge(input.instanceId, input.workerId, input.turnRecordId);
+				return;
+			}
 			const fallback = await deps.commands.recordWorkerFailure(input.instanceId, {
 				errorCode: details.code,
 				message: `Server could not durably record worker turn ${input.terminalType}: ${details.message}`,
@@ -141,13 +158,26 @@ export function createWorkerTurnIpcRecorder(
 			});
 		}
 	};
-	const recover =
-		(input: Omit<TerminalRecordingFailureInput, "failure">) =>
-		(failure: unknown): Promise<void> =>
-			recoverRecordingFailure({ ...input, failure });
-	const clearLiveTurn = (instanceId: string, turnRecordId: string): void => {
-		if (deps.eventIngestor.getLiveTurnRecordId(instanceId) === turnRecordId) {
-			deps.eventIngestor.clearLiveTurnState(instanceId);
+	const recordTerminal = async <T>(input: {
+		instanceId: string;
+		workerId: string;
+		turnRecordId: string;
+		terminalType: TerminalType;
+		record: () => Promise<T>;
+		isSuccess: (result: T) => boolean;
+		onSuccess: (result: T) => void | Promise<void>;
+		resultPiEntryId?: string | null;
+		recoveryContext?: import("@leitwerk-dev/domain").FailedTurnRecoveryContext | null;
+	}): Promise<void> => {
+		try {
+			const result = await input.record();
+			if (!input.isSuccess(result)) {
+				await recoverRecordingFailure({ ...input, failure: result });
+				return;
+			}
+			await input.onSuccess(result);
+		} catch (error: unknown) {
+			await recoverRecordingFailure({ ...input, failure: error });
 		}
 	};
 
@@ -162,30 +192,30 @@ export function createWorkerTurnIpcRecorder(
 				acknowledge(instanceId, workerId, rest.turnRecordId);
 				return;
 			}
-			clearLiveTurn(instanceId, rest.turnRecordId);
-			const recoverOutcome = recover({
+			if (deps.eventIngestor.getLiveTurnRecordId(instanceId) === rest.turnRecordId) {
+				deps.eventIngestor.clearLiveTurnState(instanceId);
+			}
+			void recordTerminal({
 				instanceId,
 				workerId,
 				turnRecordId: rest.turnRecordId,
 				terminalType: "outcome",
+				record: () =>
+					deps.commands.recordTurnOutcome(
+						instanceId,
+						{
+							instanceId,
+							turnId,
+							...rest,
+						},
+						{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
+					),
+				isSuccess: (result) => result.ok,
+				onSuccess: () =>
+					callbacks.onTurnOutcomeRecorded?.(instanceId, turnId, rest.outcome, rest.params),
 				resultPiEntryId: rest.resultPiEntryId,
 				recoveryContext: createGenericFailedTurnRecoveryContext(),
 			});
-			void deps.commands
-				.recordTurnOutcome(
-					instanceId,
-					{
-						instanceId,
-						turnId,
-						...rest,
-					},
-					{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
-				)
-				.then((result) => {
-					if (!result.ok) return recoverOutcome(result);
-					callbacks.onTurnOutcomeRecorded?.(instanceId, turnId, rest.outcome, rest.params);
-				})
-				.catch(recoverOutcome);
 		},
 		recordTurnFailed(instanceId: string, workerId: string, payload: WorkerTurnFailedPayload): void {
 			const { errorClass, failureCode, failureDetails: details, ...rest } = payload;
@@ -205,30 +235,42 @@ export function createWorkerTurnIpcRecorder(
 			}
 			const normalizedFailureCode =
 				failureCode && isTurnFailureCode(failureCode) ? failureCode : undefined;
-			clearLiveTurn(instanceId, rest.turnRecordId);
-			const recoverFailure = recover({
+			if (deps.eventIngestor.getLiveTurnRecordId(instanceId) === rest.turnRecordId) {
+				deps.eventIngestor.clearLiveTurnState(instanceId);
+			}
+			void recordTerminal({
 				instanceId,
 				workerId,
 				turnRecordId: rest.turnRecordId,
 				terminalType: "failure",
+				record: () =>
+					deps.commands.recordTurnFailed(
+						instanceId,
+						{
+							instanceId,
+							errorClass,
+							...(normalizedFailureCode
+								? { failureCode: normalizedFailureCode, failureDetails: details }
+								: {}),
+							...rest,
+						},
+						{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
+					),
+				isSuccess: (result) => result.ok,
+				onSuccess: () =>
+					reportRecordedTurnFailure({
+						instanceId,
+						workerId,
+						turnRecordId: rest.turnRecordId,
+						turnId: rest.turnId,
+						turnType: deps.turnRecords.getById(rest.turnRecordId)?.turnType ?? rest.turnType,
+						errorSummary: rest.errorSummary,
+						...(errorClass !== undefined ? { errorClass } : {}),
+						...(normalizedFailureCode !== undefined ? { failureCode: normalizedFailureCode } : {}),
+					}),
 				resultPiEntryId: rest.resultPiEntryId,
 				recoveryContext: rest.recoveryContext,
 			});
-			void deps.commands
-				.recordTurnFailed(
-					instanceId,
-					{
-						instanceId,
-						errorClass,
-						...(normalizedFailureCode
-							? { failureCode: normalizedFailureCode, failureDetails: details }
-							: {}),
-						...rest,
-					},
-					{ onRecorded: () => acknowledge(instanceId, workerId, rest.turnRecordId) },
-				)
-				.then((result) => (result.ok ? undefined : recoverFailure(result)))
-				.catch(recoverFailure);
 		},
 	};
 }

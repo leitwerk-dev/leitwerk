@@ -2,9 +2,16 @@ import type {
 	ProcessInstance,
 	ProcessProject,
 	ProcessQuestionRequest,
+	ProcessToolApprovalRequest,
 	QuestionAnswerDraft,
 } from "@leitwerk-dev/domain";
-import type { PrimaryPathSnapshot } from "@leitwerk-dev/protocol";
+import type {
+	LaunchTicketCreationRequestBody,
+	LaunchTicketCreationResponseBody,
+	PrimaryPathSnapshot,
+	ResolveToolApprovalRequestBody,
+	TicketCreationToolSummary,
+} from "@leitwerk-dev/protocol";
 import type {
 	AuthMeResponseBody,
 	CronPreviewResponseBody,
@@ -12,6 +19,7 @@ import type {
 	FutureExecutionSummary as FullFutureExecutionSummary,
 	FutureExecutionDetailResponseBody,
 	FutureExecutionOverviewItem,
+	FutureLaunchMutationResponseBody,
 	FutureLaunchSummary,
 	InstalledSkillCatalogDetail,
 	InstalledSkillCatalogDetailResponseBody,
@@ -23,6 +31,7 @@ import type {
 	LauncherOptionsResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
+	LaunchRunResponseBody,
 	ModelProviderOptionsResponseBody,
 	PrimaryPathSnapshotResponseBody,
 	ProcessActionModelPreview,
@@ -32,6 +41,7 @@ import type {
 	ProcessDiagnosticsData,
 	ProcessDiagnosticsResponseBody,
 	ProcessesOverviewResponseBody,
+	ProcessLaunchRunsResponseBody,
 	ProcessOverviewItem,
 	ProcessRetryConfig,
 	ProcessRetryConfigResponseBody,
@@ -42,6 +52,7 @@ import type {
 	SkillCatalogDetail,
 	SkillCatalogDetailResponseBody,
 	SkillsCatalogResponseBody,
+	StartLaunchRunResponseBody,
 	TurnReasoningDetailResponseBody,
 	UiLauncherSummary,
 	WatcherSummary,
@@ -186,6 +197,62 @@ export async function submitQuestionAnswers(input: {
 	).request;
 }
 
+export async function fetchTicketCreationTools(): Promise<TicketCreationToolSummary[]> {
+	return (
+		await requestJson<{ tools: TicketCreationToolSummary[] }>({
+			path: "/api/ticket-creation/tools",
+			malformed: "Malformed ticket tool response",
+			error: (response) => new ApiResponseError("Couldn't load ticket systems", response.status),
+		})
+	).tools;
+}
+
+export function launchTicketCreation(
+	instanceId: string,
+	body: LaunchTicketCreationRequestBody,
+): Promise<LaunchTicketCreationResponseBody> {
+	return requestJson({
+		path: `/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`,
+		init: {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": crypto.randomUUID(),
+			},
+			body: JSON.stringify(body),
+		},
+		malformed: "Malformed ticket launch response",
+		error: (response, value) =>
+			new ApiResponseError(
+				readErrorMessage(value) ?? "Couldn't start ticket creation",
+				response.status,
+			),
+	});
+}
+
+export async function resolveToolApproval(input: {
+	instanceId: string;
+	requestId: string;
+	body: ResolveToolApprovalRequestBody;
+}): Promise<ProcessToolApprovalRequest> {
+	return (
+		await requestJson<{ request: ProcessToolApprovalRequest }>({
+			path: `/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
+			init: {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(input.body),
+			},
+			malformed: "Malformed approval response",
+			error: (response, value) =>
+				new ApiResponseError(
+					readErrorMessage(value) ?? "Couldn't resolve approval",
+					response.status,
+				),
+		})
+	).request;
+}
+
 export async function fetchAuthMe(): Promise<AuthMeResponseBody> {
 	const res = await getFetchImpl()(resolveApiUrl("/api/auth/me"));
 	if (res.status === 401) {
@@ -266,6 +333,10 @@ export async function fetchAuthMeWithRetry(
 
 export type LauncherSubmitResult =
 	| {
+			kind: "launch_started";
+			launchRunId: string;
+	  }
+	| {
 			kind: "success";
 			process: ProcessInstance;
 			projects: ProcessProject[];
@@ -315,6 +386,24 @@ async function readJsonObject<T extends object>(response: Response, context: str
 		throw new Error(`${context}: response body must be a JSON object`);
 	}
 	return body as T;
+}
+
+async function requestJson<T extends object>(input: {
+	path: string;
+	init?: RequestInit;
+	malformed: string;
+	error?: (response: Response, body: unknown) => Error;
+	onError?: (response: Response, body: unknown) => T | Promise<T>;
+}): Promise<T> {
+	const fetchImpl = getFetchImpl();
+	const url = resolveApiUrl(input.path);
+	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
+	if (!response.ok) {
+		const body = await tryReadJson(response);
+		if (input.onError) return input.onError(response, body);
+		throw input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`);
+	}
+	return readJsonObject<T>(response, input.malformed);
 }
 
 function readOptionalString(value: unknown): string | null {
@@ -534,8 +623,8 @@ export async function fetchLauncherModelConfigPreview(
 async function parseLauncherErrorResponse(
 	res: Response,
 	fallbackMessagePrefix: string,
+	body: unknown,
 ): Promise<LauncherSubmitResult> {
-	const body = await tryReadJson(res);
 	const errors = readLauncherValidationErrors(body);
 	if (errors.length > 0) {
 		return { kind: "validation_error", status: res.status, errors };
@@ -547,6 +636,64 @@ async function parseLauncherErrorResponse(
 	};
 }
 
+export async function fetchLaunchRun(
+	launchRunId: string,
+): Promise<LaunchRunResponseBody["launchRun"]> {
+	return (
+		await requestJson<LaunchRunResponseBody>({
+			path: `/api/launch-runs/${encodeURIComponent(launchRunId)}`,
+			malformed: "Malformed launch run response",
+			error: (response) =>
+				new ApiResponseError(`Couldn't load launch progress: ${response.status}`, response.status),
+		})
+	).launchRun;
+}
+
+export async function fetchProcessLaunchRuns(
+	instanceId: string,
+): Promise<ProcessLaunchRunsResponseBody["launchRuns"]> {
+	return (
+		await requestJson<ProcessLaunchRunsResponseBody>({
+			path: `/api/processes/${encodeURIComponent(instanceId)}/launch-runs`,
+			malformed: "Malformed process launch runs response",
+			error: (response) =>
+				new ApiResponseError(`Couldn't load launch progress: ${response.status}`, response.status),
+		})
+	).launchRuns;
+}
+
+export async function startLaunchRun(
+	launcherId: string,
+	title: string | null,
+	launcherInput: Record<string, unknown>,
+	modelConfig: LauncherModelConfigDefaults = {},
+	skillIds: readonly string[] = [],
+): Promise<LauncherSubmitResult> {
+	const response = await requestJson<StartLaunchRunResponseBody | LauncherSubmitResult>({
+		path: `/api/launchers/${encodeURIComponent(launcherId)}/launch-runs`,
+		init: {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"idempotency-key": crypto.randomUUID(),
+			},
+			body: JSON.stringify({
+				title,
+				launcherInput,
+				modelConfig,
+				schedule: { mode: "now" },
+				skillIds,
+			}),
+		},
+		malformed: "Malformed launch run response",
+		onError: (response, body) =>
+			parseLauncherErrorResponse(response, "Couldn't start this process", body),
+	});
+	return "launchRunId" in response
+		? { kind: "launch_started", launchRunId: response.launchRunId }
+		: response;
+}
+
 export async function launchLauncher(
 	launcherId: string,
 	title: string | null,
@@ -555,8 +702,11 @@ export async function launchLauncher(
 	schedule: ScheduleConfigInput = { mode: "now" },
 	skillIds: readonly string[] = [],
 ): Promise<LauncherSubmitResult> {
+	if (schedule.mode === "now") {
+		return startLaunchRun(launcherId, title, launcherInput, modelConfig, skillIds);
+	}
 	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/launch`),
+		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/future-launches`),
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },
@@ -564,34 +714,19 @@ export async function launchLauncher(
 		},
 	);
 	if (!res.ok) {
-		return parseLauncherErrorResponse(res, "Couldn't start this process");
+		return parseLauncherErrorResponse(res, "Couldn't start this process", await tryReadJson(res));
 	}
-	const body = await readJsonObject<LauncherMutationResponseBody>(
+	const body = await readJsonObject<FutureLaunchMutationResponseBody>(
 		res,
-		"Malformed launcher launch response",
+		"Malformed future launch response",
 	);
-	const projects = body.projects ?? [];
-	const errorMessage = body.error ?? `Couldn't start this process: ${res.status}`;
-	if (res.status === 201 && body.futureExecution) {
-		return { kind: "scheduled", futureExecution: body.futureExecution };
-	}
-	if (res.status === 201 && body.process) {
-		return { kind: "success", process: body.process, projects };
-	}
-	if (body.process) {
-		return {
-			kind: "partial_success",
-			status: res.status,
-			warning: errorMessage,
-			process: body.process,
-			projects,
-		};
-	}
-	const errors = body.errors ?? [];
-	if (errors.length > 0) {
-		return { kind: "validation_error", status: res.status, errors };
-	}
-	return { kind: "failure", status: res.status, error: errorMessage };
+	return body.futureExecution
+		? { kind: "scheduled", futureExecution: body.futureExecution }
+		: {
+				kind: "failure",
+				status: res.status,
+				error: body.error ?? "The future launch response did not include the saved launch",
+			};
 }
 
 export async function fetchProcessDiagnostics(instanceId: string): Promise<ProcessDiagnosticsData> {
@@ -883,7 +1018,11 @@ export async function updateScheduledLaunch(
 		},
 	);
 	if (!res.ok) {
-		return parseLauncherErrorResponse(res, "Couldn't update this scheduled launch");
+		return parseLauncherErrorResponse(
+			res,
+			"Couldn't update this scheduled launch",
+			await tryReadJson(res),
+		);
 	}
 	const body = await readJsonObject<LauncherMutationResponseBody>(
 		res,

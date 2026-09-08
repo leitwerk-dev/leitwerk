@@ -152,6 +152,40 @@ describe("worker runtime reducer", () => {
 		expect(duplicate.outputs).toEqual([]);
 	});
 
+	it("does not acknowledge a turn when pre-turn bootstrap fails", () => {
+		const started = reduceWorkerRuntime(createInitialWorkerRuntimeState(), {
+			kind: "runtime_started",
+		});
+		const message = {
+			type: "worker.start",
+			payload: {
+				processSnapshot: {
+					selectedTurnId: "turn_definition",
+					lifecycleStatus: "running",
+				},
+				turnStart: { id: "start_tools", proposedTurnRecordId: "record_tools" },
+				bootstrap: { kind: "automatic" },
+				treePaths: { primaryTreeFile: "/tmp/tree.jsonl" },
+			},
+		} as ServerToWorkerMessage;
+		const bootstrapping = reduceWorkerRuntime(started.state, {
+			kind: "server_message",
+			message,
+		});
+		const bootstrap = outputsOfKind(bootstrapping.outputs, "bootstrap")[0];
+		if (!bootstrap) throw new Error("Expected bootstrap output");
+
+		const failed = reduceWorkerRuntime(bootstrapping.state, {
+			kind: "bootstrap_failed",
+			startRecordId: "start_tools",
+			payload: bootstrap.payload,
+			error: new Error("mise install failed"),
+		});
+
+		expect(protocolTypes(failed.outputs)).not.toContain("worker.turn_started");
+		expect(failed.state.phase.kind).not.toBe("active");
+	});
+
 	it("ignores stale command completions by domain identity", () => {
 		const state = createInitialWorkerRuntimeState();
 		const reduced = reduceWorkerRuntime(state, {

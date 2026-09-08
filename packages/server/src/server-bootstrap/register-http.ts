@@ -3,12 +3,14 @@ import type { AuthService } from "../auth/auth-service.js";
 import { requireApiActor } from "../auth/fastify-auth.js";
 import { registerAuthRoutes } from "../auth/routes.js";
 import type { ExtensionUiCatalog } from "../extension-ui/catalog.js";
+import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import type { ProcessSessionSnapshotStore } from "../process-session-store.js";
 import type { ResultImageStore } from "../result-image-store.js";
 import { registerInternalWorkerSessionSnapshotRoutes } from "../routes/internal-worker-session-snapshot.js";
 import { type RouteDeps, registerProcessRoutes } from "../routes/processes.js";
 import { registerResultImageRoutes } from "../routes/result-images.js";
 import { registerSkillRoutes } from "../routes/skills.js";
+import { registerTicketCreationRoutes } from "../routes/ticket-creation.js";
 import { registerUiRendererRoutes } from "../routes/ui-renderers.js";
 import { registerWatcherRoutes } from "../routes/watchers.js";
 import { healthBody } from "./register-websocket.js";
@@ -19,6 +21,10 @@ export function registerHttp(input: {
 	deps: RouteDeps;
 	processWatcherService: Parameters<typeof registerWatcherRoutes>[1]["processWatchers"];
 	extensionUiCatalog: ExtensionUiCatalog;
+	integrationTools: Pick<
+		IntegrationToolRegistry,
+		"ticketCatalog" | "resolveTicketTool" | "listTicketDestinations"
+	>;
 	authService: AuthService;
 	sessionSnapshots: ProcessSessionSnapshotStore;
 	resultImages: ResultImageStore;
@@ -60,6 +66,7 @@ export function registerHttp(input: {
 	});
 	registerProcessRoutes(input.app, input.deps);
 	registerWatcherRoutes(input.app, { processWatchers: input.processWatcherService });
+	registerTicketCreationRoutes(input.app, input.deps, input.integrationTools);
 	if (input.deps.skillCatalog) {
 		registerSkillRoutes(input.app, { skillCatalog: input.deps.skillCatalog });
 	}

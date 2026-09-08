@@ -8,7 +8,6 @@ import { buildProcessActionRegistry } from "../process-action-registry.js";
 import { createFakeWorkerSupervisor } from "../test-helpers/fake-worker-supervisor.js";
 import {
 	createFixtureProcess,
-	createFixtureServerAutomaticProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
 import { createTestLlmTurn } from "../test-helpers/turn-fixtures.js";
@@ -16,7 +15,7 @@ import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { reconcileProcessesOnStartup } from "./startup-reconciliation.js";
 
 describe("reconcileProcessesOnStartup", () => {
-	it("fails a missing starting LLM bundle before it can be resumed", async () => {
+	it("resumes an LLM start when its bundle is absent from the server cache", async () => {
 		const deps = createTestDeps();
 		const processDef = createFixtureProcess({
 			id: "startup_missing_bundle_process",
@@ -53,7 +52,6 @@ describe("reconcileProcessesOnStartup", () => {
 		});
 		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		const supervisor = createFakeWorkerSupervisor();
-		const failures: unknown[] = [];
 
 		await reconcileProcessesOnStartup({
 			config: getDefaultConfig(),
@@ -63,15 +61,7 @@ describe("reconcileProcessesOnStartup", () => {
 			turnRecords: deps.turnRecords,
 			broadcaster: deps.broadcaster,
 			supervisor,
-			commands: {
-				async drainServerAutomaticTurns() {},
-				async recordWorkerFailure(_instanceId, payload) {
-					failures.push(payload);
-					const current = deps.processes.getById(process.id);
-					if (!current) throw new Error("Expected process");
-					return { ok: true, process: current, data: undefined };
-				},
-			},
+			commands: {},
 			bundlePins: createPiResourceBundlePinReconciler({
 				turnStarts: deps.turnStarts,
 				turnRecords: deps.turnRecords,
@@ -80,13 +70,8 @@ describe("reconcileProcessesOnStartup", () => {
 			processActionRegistry,
 		});
 
-		expect(failures).toEqual([
-			{
-				errorCode: "pi_resource_bundle_unavailable",
-				message: "The Pi resource bundle for this worker start is unavailable",
-			},
-		]);
-		expect(supervisor.spawnCalls).toEqual([]);
+		expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("active");
+		expect(supervisor.spawnCalls).toEqual([process.id]);
 	});
 
 	it("reclaims stale leases and resumes active processes without an adopted worker", async () => {
@@ -125,9 +110,7 @@ describe("reconcileProcessesOnStartup", () => {
 			turnRecords: deps.turnRecords,
 			broadcaster: deps.broadcaster,
 			supervisor,
-			commands: {
-				async drainServerAutomaticTurns() {},
-			},
+			commands: {},
 			processActionRegistry,
 		});
 
@@ -165,53 +148,10 @@ describe("reconcileProcessesOnStartup", () => {
 			turnRecords: deps.turnRecords,
 			broadcaster: deps.broadcaster,
 			supervisor,
-			commands: { async drainServerAutomaticTurns() {} },
+			commands: {},
 			processActionRegistry,
 		});
 
 		expect(supervisor.callLog).toEqual([]);
-	});
-
-	it("stops adopted workers before draining selected server-owned turns", async () => {
-		const deps = createTestDeps();
-		const processDef = createFixtureServerAutomaticProcess({ id: "startup_server_auto_process" });
-		const processGraphs = createProcessGraphRegistry([processDef]);
-		const processActionRegistry = buildProcessActionRegistry({ processes: processGraphs });
-		const process = deps.processes.create({
-			processId: processDef.id,
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-		});
-		const serverTurn = deps.turnRecords.create({
-			instanceId: process.id,
-			turnId: "server_auto",
-			turnType: "server_automatic",
-			status: "running",
-		});
-		deps.processes.update(process.id, {
-			currentExecution: { kind: "server_turn", id: serverTurn.id },
-		});
-		const supervisor = createFakeWorkerSupervisor([process.id]);
-
-		await reconcileProcessesOnStartup({
-			config: getDefaultConfig(),
-			processes: deps.processes,
-			leases: deps.leases,
-			turnStarts: deps.turnStarts,
-			turnRecords: deps.turnRecords,
-			broadcaster: deps.broadcaster,
-			supervisor,
-			commands: {
-				async drainServerAutomaticTurns(instanceId) {
-					supervisor.callLog.push(`drain:${instanceId}`);
-				},
-			},
-			processActionRegistry,
-		});
-
-		expect(supervisor.callLog).toEqual([
-			`stop:${process.id}:startup_reconciliation:server_automatic`,
-			`drain:${process.id}`,
-		]);
 	});
 });

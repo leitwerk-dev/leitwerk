@@ -26,6 +26,7 @@ import {
 	writeLauncherRecentValue,
 } from "../lib/launcher-recent-values.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
+import LaunchChecklist from "./LaunchChecklist.svelte";
 import {
 	buildLauncherDefaultsNotice,
 	getFirstLauncherFieldIdWithErrors,
@@ -98,6 +99,7 @@ let recommendedDefaultModelPreview = $state<LauncherModelConfigPreview["defaultM
 let modelConfigPreviewLoading = $state(false);
 let modelConfigPreviewError = $state<string | null>(null);
 let submitBusy = $state(false);
+let activeLaunchRunId = $state<string | null>(null);
 let submitError = $state<string | null>(null);
 let submitSuccess = $state<string | null>(null);
 let formErrors = $state<string[]>([]);
@@ -985,6 +987,9 @@ async function handleSubmit(event: SubmitEvent) {
 					selectedSkillIds,
 				);
 		switch (result.kind) {
+			case "launch_started":
+				activeLaunchRunId = result.launchRunId;
+				return;
 			case "success":
 				rememberSuccessfulLauncherFieldValues(launcherInput);
 				onLaunched(result.process.id);
@@ -1429,7 +1434,22 @@ async function handleSubmit(event: SubmitEvent) {
 				{/if}
 			</section>
 
-			<div class="form-footer">
+				<div class="form-footer">
+				{#if activeLaunchRunId}
+					<div class="active-launch-checklist">
+					<LaunchChecklist
+						launchRunId={activeLaunchRunId}
+						onInstanceAvailable={(instanceId) => {
+							rememberSuccessfulLauncherFieldValues(buildLaunchInput());
+							onLaunched(instanceId);
+						}}
+						onTryAgain={() => {
+							activeLaunchRunId = null;
+							submitBusy = false;
+						}}
+					/>
+					</div>
+				{:else}
 				<button
 					class="submit-button"
 					type="submit"
@@ -1438,6 +1458,7 @@ async function handleSubmit(event: SubmitEvent) {
 				>
 					{submitButtonLabel()}
 				</button>
+				{/if}
 			</div>
 		</form>
 	{/if}
@@ -1456,6 +1477,10 @@ async function handleSubmit(event: SubmitEvent) {
 		display: flex;
 		flex-direction: column;
 		gap: 0;
+	}
+
+	.launcher-fields:has(.active-launch-checklist) > :not(.form-footer) {
+		display: none;
 	}
 
 	.field-group {

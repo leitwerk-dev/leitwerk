@@ -232,6 +232,7 @@ export type WsPayloadByType = {
 	hello: { serverVersion: string };
 	pong: Record<string, never>;
 	"process.created": { process: ProcessInstance; processId: string; launcherId?: string };
+	"launch.updated": { launchRunId: string; instanceId: string | null };
 	"process.updated": { process: Partial<ProcessInstance>; changedFields?: readonly string[] };
 	"process.deleted": { instanceId: string };
 	"project.updated": {
@@ -344,6 +345,7 @@ export const WS_FRAME_DURABILITY = {
 	hello: "ephemeral",
 	pong: "ephemeral",
 	"process.created": "durable",
+	"launch.updated": "durable",
 	"process.updated": "durable",
 	"process.deleted": "durable",
 	"project.updated": "durable",

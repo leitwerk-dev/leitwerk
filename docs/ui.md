@@ -20,7 +20,21 @@ Process detail is a workspace route. Its `RouteViewport` remains contained so th
 
 ---
 
-## 2. Live Streaming Text Overlays
+## 2. Ticket creation modal
+
+Operators can derive a ticket from a durable turn result or leaf outcome. The
+initial dialog asks what issue to create and selects a capability-marked ticket
+adapter only when more than one is available. It does not preview the result or
+ask for a destination. The server snapshots the parent context and sanitized
+destination summaries before admitting the derived process through an idempotent durable launch run.
+
+The derived process refines the ticket in the normal process UI. It chooses a
+destination from the operator's instructions or asks when the target is ambiguous.
+The server resolves that opaque choice into a fresh destination snapshot. The
+external-write approval names the destination separately from the proposed tool
+arguments so the operator can verify both before accepting the write.
+
+## 3. Live Streaming Text Overlays
 
 When an AI agent is actively executing a turn, text tokens stream over the WebSocket directly into active Chronicle turn blocks:
 
@@ -30,7 +44,7 @@ When an AI agent is actively executing a turn, text tokens stream over the WebSo
 
 ---
 
-## 3. Extension UI Renderers
+## 4. Extension UI Renderers
 
 Process extensions can ship browser UI as custom elements that render leaf outcomes (and related Chronicle slots) for domain-specific props.
 
@@ -79,10 +93,28 @@ Durable leaf-outcome captures reference the same `rendererId`. The UI loads the 
 
 ---
 
-## 4. Automatic-turn progress
+## 5. Turn progress
 
-Automatic turns may expose a durable ordered progress report in their Chronicle cluster. The
+Automatic turns and LLM preparation phases may expose a durable ordered progress report in their Chronicle cluster. The
 UI names every step state, highlights the current step, preserves failed steps beside generic
 recovery controls, and lists created pull requests, merge requests, commits, or pipelines under
 **Created changes**. Historical reports remain part of their owning turn attempt. Status text
 and symbols carry the meaning without relying on color.
+
+## 6. Launch checklist
+
+An immediate launcher submission uses `POST /api/launchers/:launcherId/launch-runs`, replaces its
+submit area with the durable launch checklist, and keeps the entered draft in memory. Scheduled
+submissions use `POST /api/launchers/:launcherId/future-launches`; saving a future launch does not
+create a launch run or startup checklist. The browser navigates when the run gains an `instanceId`; the
+process detail then renders authoritative startup history inside the Chronicle. Text and symbols
+name every state. The current step uses the operational accent. Failed steps show bounded
+remediation and the existing recovery action. Process detail never selects a Launch Run to infer
+startup: it uses the correlated worker start, lease, readiness observation, and accepted first turn.
+A failed attempt remains visible after recovery. Terminal launcher runs collapse to an expandable
+summary; failed runs expand again when the operator selects the summary.
+
+The launch-run route accepts only `schedule.mode = "now"`; the future-launch route accepts only
+`"once"` and `"cron"`. Other modes return `400` before admission. Updating a future launch to
+`"now"` admits a launch run and repeats launcher preparation checks. The future launch is consumed
+atomically with process creation; a preparation failure preserves it for a later revision or run.

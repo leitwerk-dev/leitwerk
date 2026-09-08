@@ -5,6 +5,7 @@ import {
 	defineModelProviders,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
+import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
@@ -144,8 +145,8 @@ function createPoemSnapshotSpawn(
 
 async function launchPoemProcess(harness: Awaited<ReturnType<typeof createIntegrationHarness>>) {
 	const prompt = "Write a short poem about Berlin rooftops and release trains at dusk.";
-	const response = await fetch(
-		`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch`,
+	const response = await postImmediateLaunchRequest(
+		`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },

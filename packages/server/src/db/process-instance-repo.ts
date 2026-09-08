@@ -142,9 +142,7 @@ function rowToProcessInstance(row: typeof s.processInstances.$inferSelect): Proc
 		lifecycleStatus: (row.lifecycleStatus as ProcessLifecycleStatus) ?? "discovered",
 		currentExecution: row.currentWorkerStartId
 			? { kind: "worker_start", id: row.currentWorkerStartId }
-			: row.currentServerTurnRecordId
-				? { kind: "server_turn", id: row.currentServerTurnRecordId }
-				: null,
+			: null,
 		planRevision: row.planRevision,
 		title: row.title ?? null,
 		externalId: row.externalId ?? null,
@@ -190,8 +188,6 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				lifecycleStatus,
 				currentWorkerStartId:
 					input.currentExecution?.kind === "worker_start" ? input.currentExecution.id : null,
-				currentServerTurnRecordId:
-					input.currentExecution?.kind === "server_turn" ? input.currentExecution.id : null,
 				planRevision: 0,
 				title: normalizeProcessTitleInput(input.title),
 				externalId: input.externalId ?? null,
@@ -328,8 +324,6 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			if (input.currentExecution !== undefined) {
 				setValues.currentWorkerStartId =
 					input.currentExecution?.kind === "worker_start" ? input.currentExecution.id : null;
-				setValues.currentServerTurnRecordId =
-					input.currentExecution?.kind === "server_turn" ? input.currentExecution.id : null;
 			}
 			if (input.planRevision !== undefined) setValues.planRevision = input.planRevision;
 			if (input.title !== undefined) setValues.title = normalizeProcessTitleInput(input.title);

@@ -4,7 +4,15 @@ export {
 	emptyPollResult,
 	type PollLoop,
 	type PollResult,
+	type PollResultWithErrors,
 } from "./poll-loop.js";
+export {
+	createPollingCoordinator,
+	type PollingCoordinator,
+	type PollingLogger,
+	type PollingRegistration,
+	type RegisteredPoller,
+} from "./polling-coordinator.js";
 export {
 	ensureWorkerForActiveAgent,
 	hasProcessEvent,

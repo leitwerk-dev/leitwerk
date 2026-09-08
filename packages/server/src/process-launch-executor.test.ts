@@ -1,12 +1,11 @@
-import { defineProcess, humanTurn, type ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
+import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { planConsumeFutureExecution } from "./future-execution/transition-planner.js";
+import { initialLaunchSteps } from "./launch-pipeline.js";
 import {
 	buildProcessLaunchPostCommitEffects,
 	commitProcessLaunch,
-	createProcessFromLaunchConfig,
 	createProcessFromLaunchPlan,
-	createScheduledProcessFromLaunchPlan,
 } from "./process-launch-executor.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 
@@ -66,68 +65,6 @@ describe("process launch durable boundary", () => {
 		expect(deps.processes.listAll()).toHaveLength(0);
 	});
 
-	it("builds and executes a canonical config through the target codecs", async () => {
-		const deps = createTestDeps();
-		const processDef = defineProcess({
-			id: "configured_process",
-			displayName: "Configured",
-			entry: "review",
-			paramsCodec: {
-				parse: (value) => ({ prompt: (value as { prompt: string }).prompt.trim() }),
-				serialize: (value: { prompt: string }) => value,
-			},
-			stateCodec: {
-				parse: (value) => ({
-					initializedFrom: (value as { initializedFrom: string }).initializedFrom.toUpperCase(),
-				}),
-				serialize: (value: { initializedFrom: string }) => value,
-			},
-			initialState: (params) => ({ initializedFrom: params.prompt.trim() }),
-			turns: {
-				review: humanTurn({
-					description: "Review",
-					actions: { complete: { label: "Complete", complete: true } },
-				}),
-			},
-		});
-
-		const result = await createProcessFromLaunchConfig(
-			{ ...deps, processDefinitions: new Map([[processDef.id, processDef]]) },
-			{
-				launcherId: "configured_process.imported",
-				handoffDedupKey: "source:one",
-				launchConfig: {
-					processId: processDef.id,
-					params: { prompt: "  Fix it  " },
-					metadata: { source: "analysis" },
-					projects: [
-						{
-							key: "repo",
-							repoLocator: "./repo",
-							baseBranch: "main",
-							workBranch: null,
-						},
-					],
-				},
-			},
-		);
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(JSON.parse(result.process.paramsJson ?? "{}")).toEqual({ prompt: "Fix it" });
-		expect(JSON.parse(result.process.stateJson ?? "{}")).toEqual({ initializedFrom: "FIX IT" });
-		expect(result.process.metadata).toEqual({
-			source: "analysis",
-			launcherId: "configured_process.imported",
-		});
-		expect(result.projects).toEqual([
-			expect.objectContaining({ key: "repo", repoLocator: "./repo", workBranch: null }),
-		]);
-		expect(deps.handoffDedupKeys.getByKey("source:one")).toMatchObject({
-			instanceId: result.process.id,
-		});
-	});
-
 	it("commits process and projects in one durable transaction", () => {
 		const deps = createTestDeps();
 		const launchPlan = createLaunchPlan();
@@ -139,26 +76,25 @@ describe("process launch durable boundary", () => {
 		expect(commit.projects).toHaveLength(1);
 	});
 
-	it("uses pinned resource selections for scheduled launches without a skill resolver", async () => {
+	it("commits a derived relation with its child process", async () => {
 		const deps = createTestDeps();
-		const execution = deps.futureExecutions.create({
-			kind: "launch",
-			scheduleKind: "once",
-			processId: "demo_process",
-			launcherId: "demo.launcher",
-			payloadJson: "{}",
-			nextRunAt: "2026-04-25T10:00:00.000Z",
+		const parent = deps.processes.create({ processId: "parent_process" });
+
+		const result = await createProcessFromLaunchPlan(deps, createLaunchPlan(), {
+			relation: {
+				parentInstanceId: parent.id,
+				purpose: "ticket_creation",
+				createdBy: { id: "system", kind: "system" },
+			},
 		});
-		const result = await createScheduledProcessFromLaunchPlan(
-			deps,
-			{ ...createLaunchPlan(), skillIds: ["missing-skill"] },
-			planConsumeFutureExecution(execution),
-			{ resourceSelections: [] },
-		);
 
 		expect(result.ok).toBe(true);
-		expect(deps.processes.listAll()).toHaveLength(1);
-		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
+		if (!result.ok) return;
+		expect(deps.processRelations.getByChild(result.process.id)).toMatchObject({
+			parentInstanceId: parent.id,
+			childInstanceId: result.process.id,
+			purpose: "ticket_creation",
+		});
 	});
 
 	it("commits scheduled process creation and occurrence consumption atomically", () => {
@@ -182,6 +118,33 @@ describe("process launch durable boundary", () => {
 		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
 	});
 
+	it("stores the requested first turn and actor with process correlation", () => {
+		const deps = createTestDeps();
+		const run = deps.launchRuns.create({
+			launcherId: "demo.launcher",
+			origin: "scheduled",
+			steps: initialLaunchSteps(),
+		});
+		const actor = { id: "operator", kind: "user" as const, provider: null };
+		const commit = commitProcessLaunch(
+			deps,
+			{ ...createLaunchPlan(), startTurnId: "requested_start" },
+			undefined,
+			[],
+			undefined,
+			run.id,
+			undefined,
+			actor,
+		);
+
+		expect(deps.launchRuns.getById(run.id)?.instanceId).toBe(commit.process.id);
+		expect(deps.launchRuns.getReplay(run.id)).toEqual({
+			kind: "committed_start",
+			startTurnId: "requested_start",
+			actor,
+		});
+	});
+
 	it("rolls process creation back when the scheduled occurrence is stale", () => {
 		const deps = createTestDeps();
 		const execution = deps.futureExecutions.create({
@@ -193,15 +156,23 @@ describe("process launch durable boundary", () => {
 			nextRunAt: "2026-04-25T10:00:00.000Z",
 		});
 		const plan = planConsumeFutureExecution(execution);
+		const run = deps.launchRuns.create({
+			launcherId: "demo.launcher",
+			origin: "scheduled",
+			steps: initialLaunchSteps(),
+		});
+		deps.launchRuns.saveReplay(run.id, { original: "uncommitted input" });
 		deps.futureExecutions.update(execution.id, {
 			nextRunAt: "2026-04-25T11:00:00.000Z",
 		});
 
-		expect(() => commitProcessLaunch(deps, createLaunchPlan(), plan)).toThrow(
-			"Future execution changed",
-		);
+		expect(() =>
+			commitProcessLaunch(deps, createLaunchPlan(), plan, [], undefined, run.id),
+		).toThrow("Future execution changed");
 		expect(deps.processes.listAll()).toHaveLength(0);
 		expect(deps.futureExecutions.getById(execution.id)).not.toBeNull();
+		expect(deps.launchRuns.getById(run.id)?.instanceId).toBeNull();
+		expect(deps.launchRuns.getReplay(run.id)).toEqual({ original: "uncommitted input" });
 	});
 
 	it("persists handoff dedup keys and reuses the claimed process", () => {

@@ -147,6 +147,7 @@ describe("createIpcHandler", () => {
 
 		const lease = t.leases.getByInstance(process.id);
 		expect(lease?.state).toBe("bootstrapping");
+		expect(lease?.connectedAt).toEqual(expect.any(String));
 	});
 
 	it("routes integration-tool cancellation from the active worker", () => {
@@ -337,6 +338,7 @@ describe("createIpcHandler", () => {
 		expect(t.leases.getByInstance(process.id)).toMatchObject({
 			state: "idle",
 			lastHeartbeatAt: expect.any(String),
+			readyAt: expect.any(String),
 		});
 		expect(JSON.parse(t.processes.getById(process.id)?.stateJson ?? "null")).toMatchObject({
 			semanticEntryRefs: {
@@ -1218,6 +1220,26 @@ describe("createIpcHandler", () => {
 		).toBe(false);
 	});
 
+	it("writes worker diagnostic trace messages verbatim", () => {
+		const appendDiagnosticTrace = vi.fn();
+		const process = t.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		const workerId = "wkr_diagnostic_trace";
+		t.leases.create({ instanceId: process.id, workerId, state: "bootstrapping" });
+		const handler = createTestIpcHandler(t, {}, { appendDiagnosticTrace });
+
+		handler.handleMessage(
+			baseEnvelope("worker.diagnostic_trace", process.id, workerId, {
+				text: "token=unredacted\n",
+			}),
+		);
+
+		expect(appendDiagnosticTrace).toHaveBeenCalledWith(process.id, "token=unredacted\n");
+	});
+
 	it("can mirror worker.event payloads to an injected logger", async () => {
 		const workerEventLogger = vi.fn();
 		const process = t.processes.create({
@@ -1469,7 +1491,8 @@ describe("createIpcHandler", () => {
 			turnId: "implement",
 		});
 
-		const handler = createTestIpcHandler(t);
+		const onTurnFailedRecorded = vi.fn();
+		const handler = createTestIpcHandler(t, { onTurnFailedRecorded });
 		await acknowledgeAcceptedTurn(handler, {
 			instanceId: process.id,
 			workerId,
@@ -1502,6 +1525,16 @@ describe("createIpcHandler", () => {
 			turnRecordId: "trn_impl_1",
 			failureCode: "branch_drift",
 			failureDetails: promptBranchDriftDetails,
+		});
+		expect(onTurnFailedRecorded).toHaveBeenCalledWith({
+			instanceId: process.id,
+			workerId,
+			turnRecordId: "trn_impl_1",
+			turnId: "implement",
+			turnType: "llm",
+			errorSummary: "Result branch drifted",
+			errorClass: "infrastructure",
+			failureCode: "branch_drift",
 		});
 	});
 
@@ -1581,7 +1614,7 @@ describe("createIpcHandler", () => {
 		}).not.toThrow();
 	});
 
-	it("handles worker.failed and updates lease + invokes callback", () => {
+	it("handles worker.failed and refreshes launch progress after failure recording", async () => {
 		const process = t.processes.create({
 			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",
@@ -1591,7 +1624,14 @@ describe("createIpcHandler", () => {
 		t.leases.create({ instanceId: process.id, workerId, state: "busy" });
 
 		const onWorkerFailed = vi.fn();
-		const handler = createTestIpcHandler(t, { onWorkerFailed });
+		const refresh = vi.fn();
+		const handler = createTestIpcHandler(
+			t,
+			{ onWorkerFailed },
+			{
+				getLaunchCoordinator: () => ({ refresh }) as never,
+			},
+		);
 
 		handler.handleMessage(
 			baseEnvelope("worker.failed", process.id, workerId, {
@@ -1605,6 +1645,9 @@ describe("createIpcHandler", () => {
 
 		expect(t.leases.getByInstance(process.id)?.state).toBe("failed");
 		expect(onWorkerFailed).toHaveBeenCalledWith(process.id, workerId, "boom");
+		expect(refresh).not.toHaveBeenCalled();
+		await flushAsyncWork();
+		expect(refresh).toHaveBeenCalledWith(process.id);
 	});
 
 	it("handles llm_review turn outcomes and emits review.updated + process.event", async () => {

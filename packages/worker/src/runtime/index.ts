@@ -1,4 +1,5 @@
 import type { ServerToWorkerMessage } from "@leitwerk-dev/worker-protocol";
+import { MiseDevelopmentToolEnvironment } from "../development-tool-environment.js";
 import { deliverBatch } from "../input-consumer.js";
 import { WorkerIntegrationToolBridge } from "../integration-tool-bridge.js";
 import type { WorkerIpc } from "../ipc.js";
@@ -74,11 +75,15 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		instanceId: config.instanceId,
 		piFactory: adapters.piFactory,
 		gitOps: adapters.gitOps,
+		developmentTools: adapters.developmentTools ?? new MiseDevelopmentToolEnvironment(),
 		scheduler: adapters.scheduler,
 		sessionSnapshots: adapters.sessionSnapshots,
 		resolveWorkerProcess: adapters.resolveWorkerProcess,
 		progress(payload) {
 			reporter.workerTrace(payload, state.session?.selectedTurnId ?? null);
+		},
+		diagnosticTrace(text) {
+			reporter.project({ kind: "protocol", type: "worker.diagnostic_trace", payload: { text } });
 		},
 	});
 
@@ -214,6 +219,12 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 									reporter.workerEvent(
 										"turn.progress",
 										{ turnRecordId: emission.turnRecordId, report: emission.report },
+										command.session.selectedTurnId,
+									);
+								} else if (emission.kind === "prepared") {
+									reporter.workerEvent(
+										"turn.prepared",
+										{ turnRecordId: emission.turnRecordId, data: emission.data },
 										command.session.selectedTurnId,
 									);
 								} else reporter.workerError(emission.payload, command.session.selectedTurnId);
@@ -353,6 +364,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 			dispatch({ kind: "operator_abort_observed" });
 			return;
 		}
+		if (message.type === "worker.stop") resources.abortToolPreparation();
 		dispatch({ kind: "server_message", message });
 	};
 

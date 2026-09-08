@@ -3,7 +3,6 @@ import {
 	createDefaultTestProcessGraphRegistry,
 	createFixtureAutomaticTurn,
 	createFixtureProcess,
-	createFixtureServerAutomaticProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
 import { createTestDeps } from "../../test-helpers/unit-deps.js";
@@ -89,24 +88,5 @@ describe("buildServerTransitionWrites", () => {
 		if ("ok" in planned) return;
 		expect(planned.processPatch.stateJson).toBe(JSON.stringify({ readyForHumanReview: true }));
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
-	});
-
-	it("rejects restart_worker for active server-owned turns", () => {
-		const serverOwnedRegistry = createProcessGraphRegistry([
-			createFixtureServerAutomaticProcess({ id: "server_owned_transition_process" }),
-		]);
-		const process = createTestDeps().processes.create({
-			processId: "server_owned_transition_process",
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-		});
-
-		const planned = buildServerTransitionWrites(serverOwnedRegistry, process, {
-			effect: { runtime: "restart_worker" },
-		});
-
-		expect("ok" in planned).toBe(true);
-		if (!("ok" in planned)) return;
-		expect(planned.code).toBe("invalid_transition");
 	});
 });

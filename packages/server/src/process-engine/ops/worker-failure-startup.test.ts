@@ -52,6 +52,7 @@ function setup() {
 		instanceId: process.id,
 		workerId: "worker-current",
 		state: "bootstrapping",
+		turnStartRecordId: start.id,
 	});
 	const context = (): DecideContext => {
 		const current = deps.processes.getById(process.id);
@@ -77,6 +78,33 @@ describe("WorkerFailure startup correlation", () => {
 			expect(decision.writes.turnStartWrites).toEqual([]);
 			expect(decision.writes.changedFields).toEqual([]);
 		}
+	});
+
+	it("accepts a correlated failure after the physical lease has exited", () => {
+		const s = setup();
+		s.deps.leases.update(s.lease.id, {
+			state: "exited",
+			exitedAt: "2026-08-27T12:00:00.000Z",
+		});
+		const decision = WorkerFailure.decide(s.context(), {
+			instanceId: s.process.id,
+			payload: {
+				errorCode: "worker_spawn_failed",
+				message: "worker failed before registration",
+				workerLeaseId: s.lease.id,
+			},
+		});
+		expect(decision).toMatchObject({ ok: true });
+		if (!decision.ok) return;
+		expect(decision.writes.processPatch.lifecycleStatus).toBe("error");
+		expect(decision.writes.turnStartWrites).toEqual([
+			expect.objectContaining({
+				state: expect.objectContaining({
+					kind: "bootstrap_failed",
+					failedWorkerLeaseId: s.lease.id,
+				}),
+			}),
+		]);
 	});
 
 	it("parks a starting record for the current physical lease without creating an attempt", () => {

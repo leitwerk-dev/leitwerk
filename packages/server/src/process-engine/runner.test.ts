@@ -348,6 +348,10 @@ describe("ProcessEngine runner", () => {
 		});
 		const StartsWorker = defineOperation<"starts_worker", { instanceId: string }, void>({
 			kind: "starts_worker",
+			afterRecord() {
+				observedLockedAfterRecord = locked;
+				order.push("after_record");
+			},
 			decide() {
 				return accept({
 					writes: { workerIntent: { kind: "start_if_needed" } },
@@ -357,16 +361,7 @@ describe("ProcessEngine runner", () => {
 		});
 		const run = createEngineRunner(deps);
 
-		const result = await run(
-			StartsWorker,
-			{ instanceId: process.id },
-			{
-				afterRecord() {
-					observedLockedAfterRecord = locked;
-					order.push("after_record");
-				},
-			},
-		);
+		const result = await run(StartsWorker, { instanceId: process.id });
 
 		expect(result.ok).toBe(true);
 		expect(observedLockedAfterRecord).toBe(false);

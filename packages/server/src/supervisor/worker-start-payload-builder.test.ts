@@ -93,10 +93,14 @@ describe("worker.start runtime settings", () => {
 			...deps,
 			config,
 			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			storageLayout: () => ({
 				primaryTreeFile: "/tree/primary.jsonl",
 				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
 				resume: false,
 			}),
 		});
@@ -173,10 +177,14 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			...deps,
 			config,
 			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			storageLayout: () => ({
 				primaryTreeFile: "/tree/primary.jsonl",
 				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
 				resume: false,
 			}),
 			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
@@ -243,6 +251,11 @@ describe("worker.start Pi resource-bundle delivery", () => {
 				acceptedWorkerLeaseId: originalLease.id,
 			},
 		});
+		deps.events.create({
+			instanceId: process.id,
+			eventType: "turn.prepared",
+			data: { turnRecordId: "trn_bundle", data: { snapshotDir: "/tmp/snapshot" } },
+		});
 		deps.leases.update(originalLease.id, { state: "exited", exitedAt: "2026-01-01T00:00:01.000Z" });
 		deps.leases.create({
 			instanceId: process.id,
@@ -254,10 +267,14 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			...deps,
 			config,
 			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			storageLayout: () => ({
 				primaryTreeFile: "/tree/primary.jsonl",
 				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
 				resume: true,
 			}),
 			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
@@ -272,6 +289,37 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			startTarget: { kind: "current_leaf" },
 			forkPiEntryId: null,
 		});
+		expect(message?.payload.llmPreparation).toEqual({
+			sourceTurnRecordId: "trn_bundle",
+			data: { snapshotDir: "/tmp/snapshot" },
+		});
+	});
+
+	it("references the process-volume bundle when the server cache is empty", () => {
+		const { bundle, config, deps, process } = setup();
+		const builder = createWorkerStartPayloadBuilder({
+			...deps,
+			config,
+			processGraphs: createDefaultTestProcessGraphRegistry(),
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
+			storageLayout: () => ({
+				primaryTreeFile: "/tree/primary.jsonl",
+				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
+				resume: true,
+			}),
+			resolveResourceBundle: () => null,
+		});
+
+		const message = builder.buildStartMessage(process.id, "wkr_bundle");
+		expect(message?.payload.bootstrap).toEqual({
+			kind: "llm",
+			resourceBundle: { digest: bundle.digest },
+			credential: null,
+		});
 	});
 
 	it("rejects a resolver response that is not the requested canonical bundle", () => {
@@ -280,10 +328,14 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			...deps,
 			config,
 			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			storageLayout: () => ({
 				primaryTreeFile: "/tree/primary.jsonl",
 				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
 				resume: false,
 			}),
 			resolveResourceBundle: () => ({ ...bundle, digest: "0".repeat(64) }),
@@ -302,10 +354,14 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			...deps,
 			config,
 			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: { getTurnDefinition: () => undefined },
+			processActionRegistry: {
+				getTurnDefinition: () => undefined,
+				resolveContextData: () => ({ params: {}, state: {} }),
+			},
 			storageLayout: () => ({
 				primaryTreeFile: "/tree/primary.jsonl",
 				workspaceRoot: "/workspace",
+				piResourceBundlesDir: "/pi-resource-bundles",
 				resume: false,
 			}),
 			resolveResourceBundle: () => ({ digest: bundle.digest, bytes: modified }),

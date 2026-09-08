@@ -296,11 +296,7 @@ export function buildPrimaryPathSnapshotFromTree(
 		semanticEntryRefs,
 		displayedEntryIds,
 	);
-	const currentTurnRecordId =
-		input.currentExecutionTurnRecordId ??
-		(input.process.currentExecution?.kind === "server_turn"
-			? input.process.currentExecution.id
-			: null);
+	const currentTurnRecordId = input.currentExecutionTurnRecordId ?? null;
 	const relevantTurnRecordIds = collectRelevantTurnRecordIds({
 		turnRecords: input.turnRecords,
 		displayedEntryIds,

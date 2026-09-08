@@ -15,7 +15,6 @@ describe("selectedTurnRequiresWorker", () => {
 		["active LLM turns", processId, "llm_turn", "active", true],
 		["active worker-owned automatic turns", processId, "automatic_turn", "active", true],
 		["active human turns", processId, "human_turn", "active", false],
-		["active server-automatic turns", processId, "server_automatic_turn", "active", false],
 		["waiting turns", processId, "llm_turn", "waiting", false],
 		["missing selected turns", processId, null, "active", false],
 		["unknown active turns", processId, "unknown_turn", "active", true],

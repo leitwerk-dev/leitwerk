@@ -5,7 +5,6 @@ import {
 	emptyParamsCodec,
 	llmTurn,
 	routeTurnOutcomes,
-	serverAutomaticTurn,
 } from "./index.js";
 
 const stateCodec = {
@@ -46,23 +45,6 @@ describe("routeTurnOutcomes", () => {
 
 		expect(routed.run).toBe(run);
 		expect(await routed.run({} as never)).toEqual({ outcome: "done", params: {} });
-	});
-
-	it("routes a server-automatic turn while preserving run", async () => {
-		const run = async () => ({ outcome: "done" as const, params: {}, state: { ready: true } });
-		const base = serverAutomaticTurn({
-			description: "Server auto",
-			run,
-			outcomes: { done: { description: "Done", parameters: {} } },
-		});
-		const routed = routeTurnOutcomes(base, { done: { lifecycleStatus: "aborted" } });
-
-		expect(routed.run).toBe(run);
-		expect(await routed.run({} as never)).toEqual({
-			outcome: "done",
-			params: {},
-			state: { ready: true },
-		});
 	});
 
 	it("throws for unknown routed outcomes", () => {

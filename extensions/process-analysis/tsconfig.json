@@ -3,9 +3,5 @@
 	"compilerOptions": { "outDir": "dist", "rootDir": "src", "types": ["node"] },
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"],
-	"references": [
-		{ "path": "../../packages/domain" },
-		{ "path": "../../packages/process-sdk" },
-		{ "path": "../local-repo-change" }
-	]
+	"references": [{ "path": "../../packages/domain" }, { "path": "../../packages/process-sdk" }]
 }

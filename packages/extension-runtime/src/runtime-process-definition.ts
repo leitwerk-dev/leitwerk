@@ -23,6 +23,7 @@ export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
 	turns: ReadonlyMap<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>;
 	definition: BuiltWorkerProcessDefinition;
 	repositoryCredentials?: ExtensionProcessDefinition<TParams, TState>["repositoryCredentials"];
+	runtime: { readonly developmentTools: boolean };
 	params: TParams;
 	state: TState;
 	piConfig?: ProcessPiConfig;
@@ -101,6 +102,7 @@ export function buildWorkerRuntimeDefinition<TParams = unknown, TState = unknown
 		turns: extensionProcess.turns,
 		definition: built as BuiltWorkerProcessDefinition,
 		repositoryCredentials: extensionProcess.repositoryCredentials,
+		runtime: { developmentTools: extensionProcess.runtime?.developmentTools === true },
 		params,
 		state,
 		piConfig: extensionProcess.piConfig,

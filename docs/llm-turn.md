@@ -5,6 +5,18 @@ An active LLM turn uses two server paths:
 - lifecycle messages mutate durable process state through ProcessEngine;
 - runtime events update diagnostics and the live browser projection directly.
 
+## Preparation phase
+
+An LLM turn may declare deterministic preparation. After start acceptance, the worker runs this
+phase before prompt evaluation. Preparation can call only the turn's authorized integration tools
+and can emit the same durable progress reports as an automatic turn. Its bounded, non-secret JSON
+result is emitted as `turn.prepared` and passed to the prompt as `ctx.prepared`.
+
+A replacement worker reuses a checkpoint stored for the same running turn record. Continue reuses
+the failed attempt's checkpoint; Retry creates a new attempt and runs preparation again. If no
+checkpoint reached the server before a worker failure, deterministic preparation may run again.
+Preparation failure records the owning LLM turn as failed without prompting Pi.
+
 ## Durable path
 
 These messages use ProcessEngine operations:
@@ -57,6 +69,12 @@ sequenceDiagram
     E->>DB: create one turn record and increment attempt
     I->>W: worker.turn_start_accepted
     E->>WS: durable frames
+
+    opt authored LLM preparation
+        W->>I: worker.event(turn.progress)
+        W->>I: worker.event(turn.prepared)
+        I->>DB: store preparation checkpoint
+    end
 
     W->>I: worker.event(pi.*)
     I->>DB: store diagnostic

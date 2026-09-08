@@ -80,6 +80,7 @@ export function applyWorkerLeaseObservation(
 		observation: WorkerLeaseObservation;
 		reason?: string;
 		exitedAt?: string;
+		turnStartRecordId?: string | null;
 	},
 ): ApplyWorkerLeaseObservationResult {
 	const currentLease = deps.leases.getByInstance(input.instanceId);
@@ -115,6 +116,7 @@ export function applyWorkerLeaseObservation(
 			instanceId: input.instanceId,
 			workerId: input.workerId,
 			state: transition.to,
+			turnStartRecordId: input.turnStartRecordId ?? null,
 		});
 		broadcastWorkerState(deps.broadcaster, input.instanceId, lease, transition.from, reason);
 		return { kind: "applied", transition, lease };

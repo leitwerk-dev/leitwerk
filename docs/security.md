@@ -15,4 +15,5 @@ This document defines security boundaries, authentication models, and credential
 
 - **SQLite Secret Encryption:** Provider credentials stored in SQLite are encrypted using a 32-byte application key (`LEITWERK_CREDENTIAL_ENCRYPTION_KEY`). Raw secrets never appear in logs, process state, or session tree files.
 - **Container Isolation:** Docker and Kubernetes container runtimes provide the production security boundary. Workers operate in isolated environments without direct database access.
+- **Repository Tool Configuration:** Opted-in mise configuration and plugins are trusted repository code. Initial installation precedes managed Pi credential materialization. Later preparation omits known credentials from the child environment but shares the worker filesystem and OS identity; it is not credential isolation. Authenticated private tool sources are unsupported. Mise output is stored verbatim in server diagnostic trace files and must be treated as sensitive.
 - **Frontend Sanitization:** Browser markdown rendering uses DOMPurify to sanitize HTML and block XSS constructs before inserting content into the Chronicle view.

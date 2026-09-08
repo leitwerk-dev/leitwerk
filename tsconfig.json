@@ -32,9 +32,7 @@
 		{ "path": "extensions/local-repo-change" },
 		{ "path": "extensions/remote-repo-change" },
 		{ "path": "extensions/process-analysis" },
-		{ "path": "extensions/local-shell" },
 		{ "path": "extensions/models" },
-		{ "path": "extensions/pi-shell" },
 		{ "path": "extensions/telegram" }
 	],
 	"files": []

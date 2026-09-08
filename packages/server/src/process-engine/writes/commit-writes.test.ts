@@ -1,10 +1,6 @@
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { WS_PRIMARY_PATH_TYPES } from "@leitwerk-dev/protocol";
 import { describe, expect, it } from "vitest";
-import {
-	createFixtureServerAutomaticProcess,
-	createProcessGraphRegistry,
-} from "../../test-helpers/process-fixtures.js";
 import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { commitWrites, deriveReactions } from "./commit-writes.js";
 import { createWrites, type Writes } from "./writes.js";
@@ -217,30 +213,6 @@ describe("record writes", () => {
 		expect(applied.workerIntent).toEqual({ kind: "reconcile" });
 	});
 
-	it("does not spawn a worker to deliver inputs for active server-owned turns", () => {
-		const deps = createTestDeps();
-		const processGraphs = createProcessGraphRegistry([
-			createFixtureServerAutomaticProcess({ id: "server_owned_input_process" }),
-		]);
-		const process = deps.processes.create({
-			processId: "server_owned_input_process",
-			selectedTurnId: "server_auto",
-			lifecycleStatus: "active",
-		});
-
-		const applied = recordWrites(
-			deps,
-			process.id,
-			createWrites({
-				queuedInputs: [{ source: "app_steer", kind: "instruction", bodyMarkdown: "Hello" }],
-			}),
-			{ processGraphs },
-		);
-
-		const dispatch = applied.effects.find((effect) => effect.kind === "dispatch_inputs");
-		expect(dispatch).toMatchObject({ kind: "dispatch_inputs", spawnIfMissing: false });
-	});
-
 	it("includes the committed process updatedAt in process.updated patches", () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
@@ -328,8 +300,8 @@ describe("record writes", () => {
 			deps,
 			process.id,
 			createWrites({
-				processPatch: { currentExecution: { kind: "server_turn", id: "trn_live_1" } },
-				changedFields: ["currentExecution"],
+				processPatch: { stateJson: "{}" },
+				changedFields: ["stateJson"],
 				turnRecordWrites: [
 					{
 						kind: "create",
@@ -337,7 +309,7 @@ describe("record writes", () => {
 							id: "trn_live_1",
 							instanceId: process.id,
 							turnId: "implement",
-							turnType: "server_automatic",
+							turnType: "human",
 							status: "running",
 							pathType: "primary",
 							startedAt: "2026-04-14T10:00:00.000Z",
@@ -349,7 +321,7 @@ describe("record writes", () => {
 							id: "trn_failed_1",
 							instanceId: process.id,
 							turnId: "implement",
-							turnType: "server_automatic",
+							turnType: "human",
 							status: "failed",
 							pathType: "primary",
 							startedAt: "2026-04-14T10:00:00.000Z",
@@ -416,10 +388,9 @@ describe("record writes", () => {
 			process.id,
 			createWrites({
 				processPatch: {
-					currentExecution: { kind: "server_turn", id: "trn_live_1" },
 					lifecycleStatus: "active",
 				},
-				changedFields: ["currentExecution", "lifecycleStatus"],
+				changedFields: ["lifecycleStatus"],
 				turnRecordWrites: [
 					{
 						kind: "create",
@@ -427,7 +398,7 @@ describe("record writes", () => {
 							id: "trn_live_1",
 							instanceId: process.id,
 							turnId: "implement",
-							turnType: "server_automatic",
+							turnType: "human",
 							status: "running",
 							pathType: "primary",
 							startedAt: "2026-04-14T10:00:00.000Z",

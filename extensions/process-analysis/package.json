@@ -25,8 +25,7 @@
 	},
 	"dependencies": {
 		"@leitwerk-dev/domain": "0.1.9",
-		"@leitwerk-dev/process-sdk": "0.1.9",
-		"@leitwerk-dev/local-repo-change": "0.1.9"
+		"@leitwerk-dev/process-sdk": "0.1.9"
 	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
@@ -37,7 +36,7 @@
 		"access": "public"
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=26 <27"
 	},
 	"files": [
 		"dist/**",

@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { ADMIN_ACTOR, type ProcessInstance, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import { type LaunchPreparationCheck, SafeLaunchPreparationError } from "@leitwerk-dev/process-sdk";
 import {
 	parseFutureActionPayloadJson,
 	parseFutureLaunchPayloadJson,
@@ -11,7 +12,9 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import { closeDatabase } from "./db/database.js";
+import { createExtensionHost } from "./extensions/extension-host.js";
 import { createFutureExecutionLifecycle } from "./future-execution/index.js";
+import { createLaunchPipeline } from "./launch-pipeline.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
 import type { ProcessEngine } from "./process-engine/types.js";
@@ -38,6 +41,7 @@ function createServiceHarness(
 			typeof createFutureExecutionLifecycle
 		>[0]["launcherRecentValues"];
 		launchPlans?: Parameters<typeof createFutureExecutionLifecycle>[0]["launchPlans"];
+		preparationChecks?: readonly LaunchPreparationCheck[];
 		processActionRegistry?: ProcessActionRegistry;
 		startTurnId?: string | null;
 		failTitleQueue?: boolean;
@@ -52,7 +56,10 @@ function createServiceHarness(
 	const processModelPolicy = createServerProcessModelPolicy({
 		config: getDefaultConfig(),
 		processGraphs,
-		processActionRegistry: { getTurnDefinition: () => undefined },
+		processActionRegistry: {
+			getTurnDefinition: () => undefined,
+			resolveContextData: () => ({ params: {}, state: {} }),
+		},
 	});
 	const modelStatusCache = {
 		snapshot: () => ({
@@ -71,6 +78,9 @@ function createServiceHarness(
 			processGraphs,
 		});
 	const launcherService = {
+		resolvePreparationChecks() {
+			return options.preparationChecks ?? [];
+		},
 		async resolveUiLauncher() {
 			return {
 				ok: true as const,
@@ -95,6 +105,10 @@ function createServiceHarness(
 			return [];
 		},
 	};
+	const launchPipeline = createLaunchPipeline({
+		launchRuns: deps.launchRuns,
+		broadcaster: deps.broadcaster,
+	});
 	const service = createFutureExecutionLifecycle({
 		...deps,
 		broadcaster: deps.broadcaster,
@@ -108,6 +122,7 @@ function createServiceHarness(
 		extensionHost: options.extensionHost,
 		processModelPolicy,
 		modelStatusCache,
+		launchPipeline,
 		processTitles: {
 			queueProcessTitleGeneration() {
 				if (options.failProcessTitleQueue) throw new Error("process title queue unavailable");
@@ -118,6 +133,16 @@ function createServiceHarness(
 		},
 	});
 	return { deps, service };
+}
+
+async function launch(
+	service: ReturnType<typeof createFutureExecutionLifecycle>,
+	launcherId: string,
+	request: Parameters<ReturnType<typeof createFutureExecutionLifecycle>["prepareLaunch"]>[1],
+	options?: { actor?: typeof ADMIN_ACTOR },
+) {
+	const prepared = await service.prepareLaunch(launcherId, request);
+	return prepared.ok ? service.commitPreparedLaunch(prepared.prepared, options) : prepared.outcome;
 }
 
 function createSchedulableActionRegistry(): ProcessActionRegistry {
@@ -210,7 +235,7 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: {},
@@ -234,7 +259,7 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: { repoLocator: "/tmp/repo" },
@@ -254,7 +279,8 @@ describe("FutureExecutionLifecycle", () => {
 	it("attests scheduled launches to the caller actor", async () => {
 		const { deps, service } = createServiceHarness();
 
-		const result = await service.scheduleLaunch(
+		const result = await launch(
+			service,
 			"demo.launcher",
 			{
 				title: null,
@@ -284,7 +310,7 @@ describe("FutureExecutionLifecycle", () => {
 			throw new Error("broadcast unavailable");
 		};
 
-		const result = await service.scheduleLaunch("demo.launcher", {
+		const result = await launch(service, "demo.launcher", {
 			title: null,
 			titleProvided: false,
 			launcherInput: {},
@@ -657,6 +683,141 @@ describe("FutureExecutionLifecycle", () => {
 		});
 		expect(deps.processes.listAll()).toHaveLength(1);
 		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
+		if (!("process" in outcome)) throw new Error("Expected committed process");
+		expect(deps.launchRuns.listByInstance(outcome.process.id)).toMatchObject([
+			{
+				origin: "ui",
+				status: "failed",
+				steps: expect.arrayContaining([
+					expect.objectContaining({ id: "create_process", status: "completed" }),
+					expect.objectContaining({ id: "start_worker", status: "failed" }),
+				]),
+			},
+		]);
+	});
+
+	it("admits update-to-now preparation failures without consuming the future launch", async () => {
+		let shouldFail = true;
+		let observedRunId = "";
+		const { deps, service } = createServiceHarness({
+			preparationChecks: [
+				{
+					id: "repository_access",
+					label: "Check repository access",
+					async run() {
+						const run = deps.launchRuns.listIncomplete()[0];
+						if (!run) throw new Error("Expected admitted launch before preparation");
+						observedRunId = run.id;
+						if (shouldFail)
+							throw new SafeLaunchPreparationError(
+								"Repository access failed",
+								"Repository is unavailable",
+							);
+					},
+				},
+			],
+		});
+		const execution = createDueLaunch(deps);
+		const request = {
+			title: null,
+			titleProvided: false,
+			launcherInput: {},
+			launcherInputProvided: false,
+			modelConfig: {},
+			modelConfigProvided: false,
+			schedule: { mode: "now" as const },
+			scheduleProvided: true,
+		};
+
+		const rejected = await service.reviseScheduledLaunch(execution.id, request);
+
+		expect(rejected).toMatchObject({
+			kind: "invalid",
+			issues: [{ code: "preparation_failed" }],
+		});
+		const failedRunId = observedRunId;
+		expect(deps.launchRuns.getById(failedRunId)).toMatchObject({
+			origin: "ui",
+			status: "failed",
+			instanceId: null,
+			steps: expect.arrayContaining([
+				expect.objectContaining({
+					id: "check:repository_access",
+					status: "failed",
+					safeSummary: "Repository is unavailable",
+				}),
+			]),
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(deps.futureExecutions.getById(execution.id)).toEqual(execution);
+
+		shouldFail = false;
+		const retried = await service.reviseScheduledLaunch(execution.id, request);
+
+		expect(retried.kind).toBe("launched");
+		expect(observedRunId).not.toBe(failedRunId);
+		expect(deps.launchRuns.getById(observedRunId)).toMatchObject({
+			status: "completed",
+			steps: expect.arrayContaining([
+				expect.objectContaining({ id: "check:repository_access", status: "completed" }),
+			]),
+		});
+		expect(deps.processes.listAll()).toHaveLength(1);
+		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
+	});
+
+	it.each([
+		"once",
+		"cron",
+	] as const)("atomically correlates update-to-now and consumes the %s schedule once", async (scheduleKind) => {
+		const committedSnapshots: Array<{
+			processId: string;
+			runCount: number;
+			scheduleExists: boolean;
+		}> = [];
+		const extensionHost = createExtensionHost();
+		const { deps, service } = createServiceHarness({ extensionHost });
+		const execution = createDueLaunch(deps, {
+			scheduleKind,
+			...(scheduleKind === "cron" ? { cronExpression: "0 9 * * *" } : {}),
+		});
+		extensionHost.on("process_created", ({ process }) => {
+			committedSnapshots.push({
+				processId: process.id,
+				runCount: deps.launchRuns.listByInstance(process.id).length,
+				scheduleExists: deps.futureExecutions.getById(execution.id) !== null,
+			});
+		});
+		const request = {
+			title: "Launch now",
+			titleProvided: true,
+			launcherInput: {},
+			launcherInputProvided: false,
+			modelConfig: {},
+			modelConfigProvided: false,
+			schedule: { mode: "now" as const },
+			scheduleProvided: true,
+		};
+
+		const [launched, repeated, due] = await Promise.all([
+			service.reviseScheduledLaunch(execution.id, request, { actor: ADMIN_ACTOR }),
+			service.reviseScheduledLaunch(execution.id, request),
+			service.runDueWork(execution.nextRunAt),
+		]);
+
+		expect(launched.kind).toBe("launched");
+		if (launched.kind !== "launched") throw new Error("Expected committed process");
+		expect(launched.process).toMatchObject({ title: "Launch now" });
+		expect(repeated).toEqual({ kind: "not_found", target: "launch" });
+		expect(due.items).toEqual([{ futureExecutionId: execution.id, kind: "no_work" }]);
+		expect(deps.processes.listAll()).toHaveLength(1);
+		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
+		expect(committedSnapshots).toEqual([
+			{ processId: launched.process.id, runCount: 1, scheduleExists: false },
+		]);
+		expect(deps.launchRuns.listByInstance(launched.process.id)).toMatchObject([
+			{ origin: "ui", status: "completed" },
+		]);
 	});
 
 	it.each([
@@ -700,6 +861,13 @@ describe("FutureExecutionLifecycle", () => {
 		expect(deps.futureExecutions.getById(execution.id)).toBeNull();
 		if (kind === "launch") {
 			expect(deps.processes.listAll()).toHaveLength(1);
+			expect(
+				deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
+			).toMatchObject({
+				origin: "scheduled",
+				instanceId: deps.processes.listAll()[0]?.id,
+				status: "completed",
+			});
 		} else {
 			expect(executeProcessAction).toHaveBeenCalledOnce();
 		}
@@ -819,7 +987,37 @@ describe("FutureExecutionLifecycle", () => {
 		expect(deps.processes.listAll()).toHaveLength(0);
 	});
 
-	it("isolates unexpected due-row failures within a batch", async () => {
+	it("retries a scheduled preparation rejection without creating a process", async () => {
+		const { deps, service } = createServiceHarness({
+			launchPlans: {
+				async prepare(launchPlan) {
+					return {
+						ok: false as const,
+						launchPlan,
+						modelConfig: {},
+						errors: [{ code: "invalid_model_config" as const, message: "Model unavailable" }],
+					};
+				},
+			},
+		});
+		const execution = createDueLaunch(deps);
+
+		const result = await service.runDueWork(execution.nextRunAt);
+
+		expect(result.items).toContainEqual({
+			futureExecutionId: execution.id,
+			kind: "retry_scheduled",
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(
+			deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
+		).toMatchObject({
+			instanceId: null,
+			status: "failed",
+		});
+	});
+
+	it("maps unexpected preparation failures to retry and continues the batch", async () => {
 		let preparation = 0;
 		const { deps, service } = createServiceHarness({
 			launchPlans: {
@@ -837,8 +1035,7 @@ describe("FutureExecutionLifecycle", () => {
 
 		expect(result.items).toContainEqual({
 			futureExecutionId: failing.id,
-			kind: "unexpected_error",
-			error: "preparation infrastructure failed",
+			kind: "retry_scheduled",
 		});
 		expect(result.items).toContainEqual({
 			futureExecutionId: succeeding.id,

@@ -1,4 +1,12 @@
-import { lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
@@ -11,7 +19,7 @@ import {
 	type PiResourceBundle,
 	WORKER_API_VERSION,
 } from "@leitwerk-dev/worker-protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	inspectPiTreeForPlanning,
 	type PiTreeHandleOptions,
@@ -24,6 +32,7 @@ import { activatePreparedStart, bootstrapWorkerRuntime } from "./bootstrap.js";
 
 const tempDirs: string[] = [];
 const originalPiAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalPath = process.env.PATH;
 const bootstrapNow = "2026-02-03T04:05:06.000Z";
 const bootstrapScheduler = {
 	...nodeWorkerRuntimeScheduler,
@@ -42,6 +51,8 @@ afterEach(() => {
 	}
 	if (originalPiAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
 	else process.env.PI_CODING_AGENT_DIR = originalPiAgentDir;
+	if (originalPath === undefined) delete process.env.PATH;
+	else process.env.PATH = originalPath;
 });
 
 function noProjectGitOps(): RunRootGitOps {
@@ -131,6 +142,17 @@ describe("bootstrapWorkerRuntime", () => {
 			paramsJson: JSON.stringify({ workingDirectory: sessionTarget }),
 			stateJson: JSON.stringify({}),
 		});
+		const authPath = path.join(root, "agent-root", processSnapshot.id, "lease-1", "auth.json");
+		const prepareDevelopmentTools = vi.fn(async () => {
+			expect(existsSync(workspaceRoot)).toBe(true);
+			expect(existsSync(authPath)).toBe(false);
+			return {
+				miseVersion: "2026.8.14",
+				commandEnvironment: { PATH: "/tooling/mise/shims:/usr/bin" },
+				repositories: [],
+				warnings: [],
+			};
+		});
 		const resolvedWorkerProcess: ResolvedWorkerProcess<
 			{ workingDirectory: string },
 			Record<string, never>
@@ -154,6 +176,7 @@ describe("bootstrapWorkerRuntime", () => {
 				],
 			]),
 			definition: { startTurnId: "run", turns: new Map() },
+			runtime: { developmentTools: true },
 			params: { workingDirectory: sessionTarget },
 			state: {},
 			piConfig: { sessionCwdTemplate: "{{{workingDirectory}}}" },
@@ -218,23 +241,29 @@ describe("bootstrapWorkerRuntime", () => {
 					},
 					credential: { providerId: "openai", revision: 1, values: { apiKey: "sk-test" } },
 				},
-				treePaths: { primaryTreeFile: treeFile, workspaceRoot },
+				treePaths: {
+					primaryTreeFile: treeFile,
+					workspaceRoot,
+					piResourceBundlesDir: path.join(root, "pi-resource-bundles"),
+				},
 				resume: false,
+				developmentTools: {
+					runner: "isolated",
+					miseCommand: "/usr/local/bin/mise",
+					installTimeoutMs: 1_800_000,
+					processStorageRoot: root,
+				},
 			},
 			piFactory,
 			gitOps: noProjectGitOps(),
+			developmentTools: { prepare: prepareDevelopmentTools },
 			scheduler: bootstrapScheduler,
 			resolveWorkerProcess: () => resolvedWorkerProcess,
 		});
 
 		expect(piFactory.options).toHaveLength(0);
+		expect(prepareDevelopmentTools).toHaveBeenCalledOnce();
 		expect(process.env.PI_CODING_AGENT_DIR).toBe(path.join(root, "ambient-agent-dir"));
-		const authPath = path.join(
-			configSnapshot.pi.agent_dir,
-			processSnapshot.id,
-			"lease-1",
-			"auth.json",
-		);
 		expect(JSON.parse(readFileSync(authPath, "utf8"))).toEqual({
 			openai: { type: "api_key", key: "sk-test" },
 		});
@@ -353,6 +382,9 @@ describe("bootstrapWorkerRuntime", () => {
 			},
 		];
 		const piFactory = new CapturingPiTreeHandleFactory();
+		const prepareDevelopmentTools = vi.fn(() => {
+			throw new Error("opted-out process must not prepare development tools");
+		});
 
 		const bootstrapped = await bootstrapWorkerRuntime({
 			instanceId: processSnapshot.id,
@@ -394,17 +426,23 @@ describe("bootstrapWorkerRuntime", () => {
 					},
 					credential: { providerId: "openai", revision: 1, values: { apiKey: "sk-test" } },
 				},
-				treePaths: { primaryTreeFile: treeFile, workspaceRoot },
+				treePaths: {
+					primaryTreeFile: treeFile,
+					workspaceRoot,
+					piResourceBundlesDir: path.join(root, "pi-resource-bundles"),
+				},
 				resume: true,
 				resumeLeafEntryId: "primary-assistant",
 			},
 			piFactory,
 			gitOps: noProjectGitOps(),
+			developmentTools: { prepare: prepareDevelopmentTools },
 			scheduler: bootstrapScheduler,
 			resolveWorkerProcess: () => resolvedWorkerProcess,
 		});
 
 		expect(piFactory.options).toHaveLength(0);
+		expect(prepareDevelopmentTools).not.toHaveBeenCalled();
 		expect(readFileSync(treeFile, "utf8")).toBe(treeContents);
 		expect(bootstrapped.readyPayload.receipt).toMatchObject({
 			preparedStart: {

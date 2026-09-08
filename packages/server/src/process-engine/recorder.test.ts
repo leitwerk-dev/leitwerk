@@ -129,9 +129,8 @@ describe("ProcessEngine recorder", () => {
 			processPatch: {
 				lifecycleStatus: "active",
 				selectedTurnId: "generate_plan",
-				currentExecution: { kind: "server_turn", id: "trn_recorded" },
 			},
-			changedFields: ["lifecycleStatus", "selectedTurnId", "currentExecution"],
+			changedFields: ["lifecycleStatus", "selectedTurnId"],
 			turnRecordWrites: [
 				{
 					kind: "create",
@@ -139,7 +138,7 @@ describe("ProcessEngine recorder", () => {
 						id: "trn_recorded",
 						instanceId: process.id,
 						turnId: "generate_plan",
-						turnType: "server_automatic",
+						turnType: "human",
 						status: "running",
 					},
 				},

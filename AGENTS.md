@@ -3,7 +3,7 @@
 Concise guidance for AI processes working in `leitwerk/`.
 
 ## 1. Source of truth
-Keep these documents aligned when a change alters a contract they already describe or changes cross-cutting architecture, runtime invariants, configuration, or core UX:
+When changing the design or implementation, keep these aligned:
 - `docs/arc42.md`
 - `docs/introduction.md`
 - `docs/process-sdk.md`
@@ -23,7 +23,7 @@ Keep these documents aligned when a change alters a contract they already descri
 - `docs/ci.md`
 - `docs/future.md`
 
-Treat `docs/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract. API additions and refactors alone do not require documentation changes.
+Treat `docs/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract.
 - Follow `WRITING.md` for API docs, semantic rules, compatibility tables, tests, and implementation notes.
 - Document extension/process-specific behavior in that extension's `README.md`.
 - Do not update cross-cutting `docs/*.md` or `leitwerk.yaml.example` merely because an optional extension/process is added. Update them only when shared contracts, config schema, runtime invariants, or core UX change.
@@ -32,7 +32,7 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 ## 2. Technology stack & Product model
 - **Server**: Fastify (HTTP + WebSocket via `@fastify/websocket`)
 - **UI**: Svelte 5 SPA built with Vite (Unified Processes view, no separate tracker/MR areas)
-- **Database**: Drizzle ORM + better-sqlite3 (synchronous)
+- **Database**: Drizzle ORM + `node:sqlite` (synchronous)
 - **Testing**: Vitest
 - **Linting/formatting**: Biome
 - **Build**: tsup (server/worker/domain/protocol), tsx (dev), Vite (UI)
@@ -42,11 +42,9 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 ## 3. Package layout & Boundaries
 Monorepo using npm workspaces. 
 - **Core (`packages/`)**: `domain`, `protocol`, `worker-protocol`, `process-sdk`, `extension-runtime`, `watcher-utils`, `external-writes`, `worker-runners`, `server`, `worker`, `ui`, `test-support`.
-- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `local-repo-change`, `remote-repo-change`, `git-ssh`, `local-shell`, `pi-shell`, `process-analysis`, `telegram`, etc.
+- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `local-repo-change`, `remote-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
 
 **Hard Rule:** Core packages under `packages/` must **never** import from `extensions/` (applies to runtime, tests, and types). Top-level `tests/` should import via package specifiers (e.g., `@leitwerk-dev/domain`).
-
-Exported `domain` and `process-sdk` symbols may be consumed by independently versioned extensions outside this repository. Do not classify an exported symbol as unused from repository-local searches alone. Check its release tag and downstream API contract tests.
 
 ## 4. Architecture & Runtime Invariants
 - **State Ownership:** The server is the exclusive source of truth for durable state. Workers are disposable and **never** access SQLite. All state flows via IPC (stdin/stdout).

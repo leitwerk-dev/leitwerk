@@ -97,6 +97,7 @@ function createGeneratorHarness(options: {
 	outcomes: RuntimeOutcome[];
 	retryBaseDelayMs?: number;
 	pollIntervalMs?: number;
+	now?: () => Date;
 }) {
 	const deps = options.deps ?? createTestDeps();
 	const config = getDefaultConfig();
@@ -121,6 +122,7 @@ function createGeneratorHarness(options: {
 			return outcome.title;
 		},
 		pollIntervalMs: options.pollIntervalMs ?? 5,
+		...(options.now ? { now: options.now } : {}),
 	} satisfies Partial<ProcessTitleGeneratorRuntimeDeps>;
 
 	const generator = createProcessTitleGenerator({
@@ -298,10 +300,13 @@ describe("process title generator retries", () => {
 	it("retries persisted pending title jobs after the service restarts", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create(createLaunchPlan().processInput);
+		let nowMs = Date.parse("2026-08-23T00:00:00.000Z");
+		const now = () => new Date(nowMs);
 		const firstHarness = createGeneratorHarness({
 			deps,
 			outcomes: [{ kind: "throw", error: new Error("temporary timeout") }],
 			retryBaseDelayMs: 25,
+			now,
 		});
 
 		firstHarness.generator.queueProcessTitleGeneration?.({
@@ -314,11 +319,13 @@ describe("process title generator retries", () => {
 		);
 		await firstHarness.generator.close?.();
 		expect(firstHarness.getCallCount()).toBe(1);
+		nowMs += 25;
 
 		const secondHarness = createGeneratorHarness({
 			deps,
 			outcomes: [{ kind: "return", title: "Recovered after restart" }],
 			retryBaseDelayMs: 25,
+			now,
 		});
 
 		try {

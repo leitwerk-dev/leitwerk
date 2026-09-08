@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import Database from "better-sqlite3";
+import { backup, DatabaseSync } from "node:sqlite";
 import { type AppContext, createAppContext } from "./app.js";
 import type { LeitwerkConfig } from "./config/index.js";
 
@@ -11,9 +11,9 @@ export async function backupProductionDatabase(input: {
 	destinationPath: string;
 }): Promise<void> {
 	await mkdir(path.dirname(input.destinationPath), { recursive: true });
-	const source = new Database(input.sourcePath, { readonly: true, fileMustExist: true });
+	const source = new DatabaseSync(input.sourcePath, { readOnly: true });
 	try {
-		await source.backup(input.destinationPath);
+		await backup(source, input.destinationPath);
 	} finally {
 		source.close();
 	}

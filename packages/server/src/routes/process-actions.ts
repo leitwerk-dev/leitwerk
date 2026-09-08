@@ -179,13 +179,21 @@ export function registerProcessActionRoutes(
 				? { providerOptions: normalized.request.providerOptions ?? {} }
 				: {}),
 		};
+		const { launchRunId } = await deps.launchCoordinator.retryStartup(
+			req.params.instanceId,
+			resolveActor(req),
+		);
 		const result = await deps.processEngine.retryStartup(
 			req.params.instanceId,
 			req.params.startRecordId,
 			Object.keys(options).length > 0 ? options : undefined,
 		);
-		if (!result.ok) return sendEngineFailure(reply, result, "retry");
-		return { process: result.process, startRecordId: result.data.startRecordId };
+		if (!result.ok) {
+			deps.launchCoordinator.refresh(req.params.instanceId);
+			return sendEngineFailure(reply, result, "retry");
+		}
+		deps.launchCoordinator.refresh(req.params.instanceId);
+		return { process: result.process, startRecordId: result.data.startRecordId, launchRunId };
 	});
 
 	app.post<{ Params: { instanceId: string; turnRecordId: string } }>(

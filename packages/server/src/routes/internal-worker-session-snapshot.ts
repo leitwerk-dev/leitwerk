@@ -105,14 +105,12 @@ function validateTurnRecord(input: {
 		input.request.headers[WORKER_SESSION_SNAPSHOT_TURN_RECORD_ID_HEADER],
 	);
 	const expectedTurnRecordId =
-		currentProcess.currentExecution?.kind === "server_turn"
-			? currentProcess.currentExecution.id
-			: currentProcess.currentExecution?.kind === "worker_start"
-				? (() => {
-						const start = input.turnStarts.getById(currentProcess.currentExecution.id);
-						return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-					})()
-				: null;
+		currentProcess.currentExecution?.kind === "worker_start"
+			? (() => {
+					const start = input.turnStarts.getById(currentProcess.currentExecution.id);
+					return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
+				})()
+			: null;
 	if ((suppliedTurnRecordId ?? null) !== expectedTurnRecordId) {
 		const reason = headerValue(input.request.headers[WORKER_SESSION_SNAPSHOT_REASON_HEADER]);
 		const lease = input.leases.getByInstance(input.instanceId);

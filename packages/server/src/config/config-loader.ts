@@ -226,6 +226,10 @@ const configSchema = v.looseObject({
 			worker_runtime_profile: v.optional(v.string()),
 		}),
 	),
+	development_tools: v.looseObject({
+		install_timeout: v.string(),
+		local: v.looseObject({ mise_command: v.string() }),
+	}),
 	workers: v.looseObject({
 		runner: v.optional(v.picklist(["docker", "kubernetes", "local"])),
 		default_runtime_profile: v.optional(v.string()),
@@ -531,6 +535,12 @@ function collectWorkerRuntimeProfileErrors(config: LeitwerkConfig): string[] {
 
 function collectWorkersConfigErrors(config: LeitwerkConfig): string[] {
 	const errors: string[] = [];
+	if (!isValidPositiveDuration(config.development_tools.install_timeout)) {
+		errors.push("development_tools.install_timeout must be a positive duration");
+	}
+	if (config.development_tools.local.mise_command.trim() === "") {
+		errors.push("development_tools.local.mise_command must be a non-empty string");
+	}
 	const maxSnapshotBytes = config.workers.session_snapshot_max_size_bytes;
 	if (
 		maxSnapshotBytes !== undefined &&
@@ -946,6 +956,10 @@ export function getDefaultConfig(): LeitwerkConfig {
 			tree_files_dir: "/tmp/leitwerk/trees",
 		},
 		components: {},
+		development_tools: {
+			install_timeout: "30m",
+			local: { mise_command: "mise" },
+		},
 		workers: {
 			runner: "docker",
 			default_runtime_profile: "generic",

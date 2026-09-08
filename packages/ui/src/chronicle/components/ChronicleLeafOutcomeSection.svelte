@@ -2,6 +2,8 @@
 import { formatRelativeTime } from "../../lib/format";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleLeafOutcomeItem } from "../lib/chronicle-projection.js";
+import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleLeafOutcomeRendererHost from "./ChronicleLeafOutcomeRendererHost.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
@@ -11,9 +13,10 @@ interface Props {
 	section: ChronicleLeafOutcomeItem;
 	isFocused: boolean;
 	compressHistory?: boolean;
+	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 }
 
-let { section, isFocused, compressHistory = false }: Props = $props();
+let { section, isFocused, compressHistory = false, onDraftTicket }: Props = $props();
 let expandedHistoryOutcome = $state(false);
 
 const shouldCompressOutcome = $derived(compressHistory && !expandedHistoryOutcome);
@@ -46,6 +49,8 @@ function expandHistoryOutcome() {
 	data-anchor-id={section.anchorId}
 	data-focused={isFocused ? "true" : "false"}
 	data-section="leaf-outcome"
+	data-ticket-result-artifact={`leaf_outcome:${section.leafEntryId}`}
+	data-ticket-result-durable={section.status === "ready" ? "true" : "false"}
 	data-status={section.status}
 	data-snapshot-id={section.snapshotId}
 	data-renderer-mode={section.status === "ready" && section.rendererId ? "runtime" : "fallback"}
@@ -58,6 +63,12 @@ function expandHistoryOutcome() {
 				tone="accent"
 				headingLevel={3}
 			/>
+			{#if onDraftTicket && section.status === "ready"}
+				<ChronicleCreateIssueButton
+					onDraftTicket={onDraftTicket}
+					artifact={{ kind: "leaf_outcome", leafEntryId: section.leafEntryId }}
+				/>
+			{/if}
 			{#if shouldCompressOutcome}
 				<ChronicleExpandButton
 					expanded={false}
@@ -246,6 +257,11 @@ function expandHistoryOutcome() {
 	}
 
 	@media (max-width: 720px) {
+		.leaf-outcome-header-row {
+			align-items: start;
+			flex-wrap: wrap;
+		}
+
 		.warning-header {
 			flex-direction: column;
 		}

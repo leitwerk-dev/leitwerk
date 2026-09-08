@@ -5,7 +5,7 @@ import {
 	type TransitionTrigger,
 	type TurnId,
 } from "@leitwerk-dev/domain";
-import { generateId, now } from "../../db/repo-helpers.js";
+import { generateId } from "../../db/repo-helpers.js";
 import { tryTransition } from "../../domain-logic/process-state-machine.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../../process-graph.js";
 import { selectedTurnRequiresWorker } from "../turn-worker-requirement.js";
@@ -164,23 +164,6 @@ export function buildTurnSelectionWrites(
 			});
 			if (target.turnType === "llm")
 				applyProcessPatchField(writes, process, "lifecycleStatus", "error");
-		} else if (target?.turnType === "server_automatic") {
-			const turnRecordId = generateId("trn");
-			writes.turnRecordWrites.push({
-				kind: "create",
-				input: {
-					id: turnRecordId,
-					instanceId: process.id,
-					turnId: input.toTurnId,
-					turnType: "server_automatic",
-					status: "running",
-					startedAt: now(),
-				},
-			});
-			applyProcessPatchField(writes, process, "currentExecution", {
-				kind: "server_turn",
-				id: turnRecordId,
-			});
 		}
 	} else if (
 		input.toTurnId === null ||

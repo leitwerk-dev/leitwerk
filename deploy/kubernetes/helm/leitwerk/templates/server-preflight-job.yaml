@@ -86,9 +86,12 @@ spec:
             - name: config
               mountPath: /etc/leitwerk
               readOnly: true
+            # SQLite may need writable WAL/SHM sidecars while opening the source
+            # read-only for its online backup. The preflight application still
+            # opens the production database with readOnly: true.
             - name: data
               mountPath: {{ .Values.server.storage.mountPath | quote }}
-              readOnly: true
+              readOnly: false
             - name: scratch
               mountPath: /var/lib/leitwerk-preflight
             {{- if .Values.internalTls.enabled }}

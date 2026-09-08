@@ -17,6 +17,7 @@ export interface WorkerDiagnosticPayload {
 export type WorkerOperationEmission =
 	| { kind: "trace" | "error"; payload: WorkerDiagnosticPayload }
 	| { kind: "progress"; turnRecordId: string; report: TurnProgressReport }
+	| { kind: "prepared"; turnRecordId: string; data: unknown }
 	| { kind: "session_tainted"; reason: string };
 
 export type WorkerOperationEmitter = (emission: WorkerOperationEmission) => void;

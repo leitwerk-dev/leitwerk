@@ -160,6 +160,23 @@ export function buildProcessLauncherRegistry(
 			return input ? { ...input } : { ...previousInput };
 		},
 
+		resolvePreparationChecks(launcherId, input, launchConfig) {
+			const launcher = launchers.get(launcherId);
+			const ui = getRequiredUiDefinition(launcher, launcherId);
+			const checks = [...(ui.preparationChecks?.(input, launchConfig) ?? [])];
+			const ids = new Set<string>();
+			for (const check of checks) {
+				if (!check.id.trim() || !check.label.trim()) {
+					throw new Error(`Launcher '${launcherId}' preparation checks require ids and labels`);
+				}
+				if (ids.has(check.id)) {
+					throw new Error(`Launcher '${launcherId}' has duplicate preparation check '${check.id}'`);
+				}
+				ids.add(check.id);
+			}
+			return checks;
+		},
+
 		async resolveUiLauncher(launcherId, input, ctx = {}) {
 			const launcher = launchers.get(launcherId);
 			const ui = getRequiredUiDefinition(launcher, launcherId);

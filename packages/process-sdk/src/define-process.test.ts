@@ -17,7 +17,6 @@ import {
 	humanTurn,
 	llmTurn,
 	revisionAction,
-	serverAutomaticTurn,
 } from "./index.js";
 
 const emptyParamsCodec = {
@@ -1254,38 +1253,5 @@ describe("defineProcess", () => {
 		});
 
 		expect(() => buildServerProcessForTest(process)).toThrow(/same form/);
-	});
-
-	it("compiles server automatic turns into graph transitions without worker registration", () => {
-		const process = defineProcess({
-			id: "server_auto_process",
-			displayName: "Server automatic process",
-			entry: "create_mr",
-			paramsCodec: emptyParamsCodec,
-			stateCodec,
-			initialState: () => ({ branch: "start" }),
-			turns: {
-				create_mr: serverAutomaticTurn({
-					description: "Create MR",
-					run: () => ({ outcome: "created", params: {}, state: { branch: "created" } }),
-					outcomes: {
-						created: { description: "Created", parameters: {}, to: "review" },
-					},
-				}),
-				review: humanTurn({
-					description: "Review",
-					actions: {
-						approve: { label: "Approve", acceptanceState: "accepted", complete: true },
-					},
-				}),
-			},
-		});
-
-		expect(process.turns.get("create_mr")?.definition.kind).toBe("server_automatic");
-		expect(transitionsFor(process, "create_mr")).toContainEqual({
-			nextTurnId: "review",
-			outcome: "created",
-		});
-		expect(buildWorkerProcessForTest(process)?.turns.has("create_mr")).toBe(false);
 	});
 });

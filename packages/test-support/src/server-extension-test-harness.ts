@@ -40,6 +40,11 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 		serverBaseUrl: "https://leitwerk.example",
 		components: {},
 		externalWrites: createInMemoryExternalWriteLog(),
+		polling: {
+			create(options) {
+				return { poll: options.pollOnce };
+			},
+		},
 		repositoryCredentials: { register: () => {} },
 		processes: {
 			create: () => {
@@ -111,11 +116,11 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 				};
 			},
 		},
-		processLaunches: {
-			async createProcessFromLaunchConfig() {
+		launchRuns: {
+			async startProgrammatic() {
 				throw new Error("not used");
 			},
-			async createProcessFromLaunchPlan() {
+			async startWatcher() {
 				throw new Error("not used");
 			},
 		},
@@ -146,7 +151,7 @@ export function createTestServerSetupCapability(
 			...overrides.launcherModelConfigs,
 		},
 		launchPlans: { ...defaults.launchPlans, ...overrides.launchPlans },
-		processLaunches: { ...defaults.processLaunches, ...overrides.processLaunches },
+		launchRuns: { ...defaults.launchRuns, ...overrides.launchRuns },
 	};
 }
 

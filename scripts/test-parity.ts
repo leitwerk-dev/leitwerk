@@ -129,13 +129,24 @@ async function launchNow(
 	launcherId: string,
 	launcherInput: Record<string, unknown>,
 ): Promise<string> {
-	const body = (await fetchJson(`${baseUrl}/api/launchers/${launcherId}/launch`, {
+	const admitted = (await fetchJson(`${baseUrl}/api/launchers/${launcherId}/launch-runs`, {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
 		body: JSON.stringify({ launcherInput, modelConfig: {}, schedule: { mode: "now" } }),
-	})) as { process?: { id?: string } };
-	assert(body.process?.id, `expected launcher ${launcherId} to create a process`);
-	return body.process.id;
+	})) as { launchRunId?: string };
+	assert(admitted.launchRunId, `expected launcher ${launcherId} to admit a launch run`);
+	const run = (await waitFor(
+		async () =>
+			(await fetchJson(
+				`${baseUrl}/api/launch-runs/${encodeURIComponent(admitted.launchRunId as string)}`,
+			)) as {
+				launchRun?: { instanceId?: string | null; status?: string };
+			},
+		(value) => Boolean(value.launchRun?.instanceId) || value.launchRun?.status === "failed",
+		30_000,
+	)) as { launchRun?: { instanceId?: string | null; status?: string } };
+	assert(run.launchRun?.instanceId, `expected launcher ${launcherId} to create a process`);
+	return run.launchRun.instanceId;
 }
 
 async function waitForProcess(

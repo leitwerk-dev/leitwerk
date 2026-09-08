@@ -27,8 +27,6 @@ import type {
 	ProcessRuntimeTurnContext,
 	ProcessToolOutcomeSpec,
 	ProcessTurnEndSpec,
-	ServerAutomaticTurnDefinition,
-	ServerAutomaticTurnRestartBehavior,
 	TurnDefinition,
 	TurnDefinitionRecord,
 } from "./define-process.js";
@@ -82,15 +80,6 @@ export interface FlowAutomaticTurn<
 	definition: AutomaticTurnDefinition<TOutcome, TParams, TState>;
 }
 
-export interface FlowServerAutomaticTurn<
-	TParams = unknown,
-	TState = unknown,
-	TOutcome extends string = string,
-> {
-	id: TurnId;
-	definition: ServerAutomaticTurnDefinition<TOutcome, TParams, TState>;
-}
-
 export interface FlowHumanTurn<TParams = unknown, TState = unknown> {
 	id: TurnId;
 	definition: HumanTurnDefinition<TParams, TState>;
@@ -104,7 +93,6 @@ export interface FlowExternalTurn<TParams = unknown, TState = unknown> {
 export type FlowTurn<TParams = unknown, TState = unknown> =
 	| FlowLlmTurn<TParams, TState, string>
 	| FlowAutomaticTurn<TParams, TState, string>
-	| FlowServerAutomaticTurn<TParams, TState, string>
 	| FlowHumanTurn<TParams, TState>
 	| FlowExternalTurn<TParams, TState>
 	| { id: TurnId; definition: TurnDefinition<TParams, TState> };
@@ -138,11 +126,12 @@ export interface FlowRepoLookup {
 	all(): FlowRepoContext[];
 }
 
-export interface FlowPromptContext<
+export type FlowPromptContext<
 	TParams = unknown,
 	TState = unknown,
 	TConsumedProducts extends string = string,
-> {
+	TPrepared = undefined,
+> = {
 	process: ProcessInstance;
 	projects: readonly ProcessProject[];
 	params: TParams;
@@ -153,7 +142,7 @@ export interface FlowPromptContext<
 	};
 	input: Readonly<Partial<Record<TConsumedProducts, string>>>;
 	repo: FlowRepoLookup;
-}
+} & ([TPrepared] extends [undefined] ? { prepared?: undefined } : { prepared: TPrepared });
 
 export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	process: ProcessInstance;
@@ -166,7 +155,12 @@ export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	reportProgress(report: TurnProgressReport): void;
 }
 
-export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown> {
+export type FlowLlmPreparationContext<
+	TParams = unknown,
+	TState = unknown,
+> = FlowAutomaticRunContext<TParams, TState>;
+
+interface FlowOutcomeEffectContext<TParams = unknown, TState = unknown> {
 	process: ProcessInstance;
 	projects: readonly ProcessProject[];
 	params: TParams;
@@ -174,13 +168,11 @@ export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown
 	output: { content: string | null } | null;
 }
 
-export interface FlowAutomaticOutcomeEffectContext<TParams = unknown, TState = unknown> {
-	process: ProcessInstance;
-	projects: readonly ProcessProject[];
-	params: TParams;
-	state: TState;
-	output: { content: string | null } | null;
-}
+export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown>
+	extends FlowOutcomeEffectContext<TParams, TState> {}
+
+export interface FlowAutomaticOutcomeEffectContext<TParams = unknown, TState = unknown>
+	extends FlowOutcomeEffectContext<TParams, TState> {}
 
 export interface FlowExternalSourceContext<
 	TParams = unknown,
@@ -409,11 +401,16 @@ function createFlowRepoLookup(input: {
 	};
 }
 
-export function createFlowPromptContext<TParams, TState, TConsumedProducts extends string = string>(
+export function createFlowPromptContext<
+	TParams,
+	TState,
+	TConsumedProducts extends string = string,
+	TPrepared = undefined,
+>(
 	ctx: ProcessRuntimeTurnContext<TParams, TState>,
 	consumedProducts: readonly TConsumedProducts[],
 	optionalConsumedProducts: readonly string[] = [],
-): FlowPromptContext<TParams, TState, TConsumedProducts> {
+): FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared> {
 	const productInput: Record<string, string> = {};
 	for (const productName of consumedProducts) {
 		const markdown = ctx.turnResultMarkdownByProduct?.[productName];
@@ -443,11 +440,12 @@ export function createFlowPromptContext<TParams, TState, TConsumedProducts exten
 			initial: readInitialPrompt(ctx.params),
 		},
 		input: productInput as Partial<Record<TConsumedProducts, string>>,
+		prepared: ctx.prepared as TPrepared,
 		repo: createFlowRepoLookup({
 			projects: ctx.projects,
 			workspaceRoot: ctx.workspaceRoot,
 		}),
-	};
+	} as FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>;
 }
 
 export function createFlowAutomaticRunContext<TParams, TState>(
@@ -475,10 +473,14 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 	};
 }
 
-function createFlowLlmOutcomeEffectContext<TParams, TState>(input: {
+function createFlowOutcomeEffectContext<
+	TParams,
+	TState,
+	TContext extends FlowOutcomeEffectContext<TParams, TState>,
+>(input: {
 	ctx: SnapshotContext<TParams, TState>;
 	event: ProcessOutcomeExecution<TParams, TState>["event"];
-}): FlowLlmOutcomeEffectContext<TParams, TState> {
+}): TContext {
 	return {
 		process: input.ctx.process,
 		projects: input.ctx.projects,
@@ -488,43 +490,20 @@ function createFlowLlmOutcomeEffectContext<TParams, TState>(input: {
 			typeof input.event.turnResultMarkdown === "string"
 				? { content: input.event.turnResultMarkdown }
 				: null,
-	};
+	} as TContext;
 }
 
-function createFlowAutomaticOutcomeEffectContext<TParams, TState>(input: {
-	ctx: SnapshotContext<TParams, TState>;
-	event: ProcessOutcomeExecution<TParams, TState>["event"];
-}): FlowAutomaticOutcomeEffectContext<TParams, TState> {
-	return {
-		process: input.ctx.process,
-		projects: input.ctx.projects,
-		params: input.ctx.params,
-		state: input.ctx.state,
-		output:
-			typeof input.event.turnResultMarkdown === "string"
-				? { content: input.event.turnResultMarkdown }
-				: null,
-	};
-}
-
-function wrapLlmOutcomeEffect<TParams, TState>(
-	effect: FlowOutcomeEffect<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>,
-): ProcessOutcomeEffect<TParams, TState> {
+function wrapOutcomeEffect<
+	TParams,
+	TState,
+	TContext extends FlowOutcomeEffectContext<TParams, TState>,
+>(effect: FlowOutcomeEffect<TParams, TState, TContext>): ProcessOutcomeEffect<TParams, TState> {
 	return (execution) =>
 		effect({
-			ctx: createFlowLlmOutcomeEffectContext({ ctx: execution.ctx, event: execution.event }),
-			event: execution.event,
-			turnId: execution.turnId,
-			outcome: execution.outcome,
-		});
-}
-
-function wrapAutomaticOutcomeEffect<TParams, TState>(
-	effect: FlowOutcomeEffect<TParams, TState, FlowAutomaticOutcomeEffectContext<TParams, TState>>,
-): ProcessOutcomeEffect<TParams, TState> {
-	return (execution) =>
-		effect({
-			ctx: createFlowAutomaticOutcomeEffectContext({ ctx: execution.ctx, event: execution.event }),
+			ctx: createFlowOutcomeEffectContext<TParams, TState, TContext>({
+				ctx: execution.ctx,
+				event: execution.event,
+			}),
 			event: execution.event,
 			turnId: execution.turnId,
 			outcome: execution.outcome,
@@ -674,13 +653,22 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		};
 	}
 
-	string(name: string, options: string | ParameterOptions = {}): this {
+	private typedParameter(
+		name: string,
+		type: OutcomeToolParameterSpec["type"],
+		options: string | ArrayParameterOptions = {},
+	): this {
 		const resolved = typeof options === "string" ? { description: options } : options;
 		return this.parameter(name, {
 			...resolved,
-			type: "string",
+			type,
 			description: resolved.description ?? "",
+			...(type === "array" ? { items: resolved.items ?? { type: "string" } } : {}),
 		});
+	}
+
+	string(name: string, options: string | ParameterOptions = {}): this {
+		return this.typedParameter(name, "string", options);
 	}
 
 	markdown(name: string, options: string | MarkdownParameterOptions = {}): this {
@@ -693,78 +681,39 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 			normalizeProductName(name);
 			this.publishedMarkdownParameter = name;
 		}
-		return this.parameter(name, {
+		return this.typedParameter(name, "string", {
 			...parameterOptions,
 			required: publish ? true : resolved.required,
 			requiredErrorCode: resolved.requiredErrorCode ?? (publish ? `${name}_required` : undefined),
-			type: "string",
-			description: resolved.description ?? "",
 		});
 	}
 
 	requiredString(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "string",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "string", this.withRequired(name, options));
 	}
 
 	number(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "number",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "number", options);
 	}
 
 	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "number",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "number", this.withRequired(name, options));
 	}
 
 	boolean(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "boolean",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "boolean", options);
 	}
 
 	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "boolean",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "boolean", this.withRequired(name, options));
 	}
 
 	stringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: resolved.items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", options);
 	}
 
 	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = this.withRequired(name, options);
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: (resolved as ArrayParameterOptions).items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", this.withRequired(name, options));
 	}
 
 	enum(name: string, valuesOrOptions: readonly string[] | EnumParameterOptions): this {
@@ -781,22 +730,11 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	}
 
 	object(name: string, options: string | ParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "object",
-			description: resolved.description ?? "",
-		});
+		return this.typedParameter(name, "object", options);
 	}
 
 	array(name: string, options: string | ArrayParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		return this.parameter(name, {
-			...resolved,
-			type: "array",
-			description: resolved.description ?? "",
-			items: resolved.items ?? { type: "string" },
-		});
+		return this.typedParameter(name, "array", options);
 	}
 }
 
@@ -864,7 +802,11 @@ export class OutcomeToolBuilder<
 						),
 						choose: (execution: ProcessOutcomeExecution<TParams, TState>) =>
 							stateRouting.choose({
-								ctx: createFlowLlmOutcomeEffectContext({
+								ctx: createFlowOutcomeEffectContext<
+									TParams,
+									TState,
+									FlowLlmOutcomeEffectContext<TParams, TState>
+								>({
 									ctx: execution.ctx,
 									event: execution.event,
 								}),
@@ -874,7 +816,7 @@ export class OutcomeToolBuilder<
 							}),
 					}
 				: this.buildRouteTarget()),
-			...(this.flowEffect ? { effect: wrapLlmOutcomeEffect(this.flowEffect) } : {}),
+			...(this.flowEffect ? { effect: wrapOutcomeEffect(this.flowEffect) } : {}),
 		};
 	}
 }
@@ -899,10 +841,18 @@ export class AutomaticOutcomeBuilder<
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
-		if (this.waits && this.hasRoute()) {
-			throw new Error("Waiting outcome cannot declare another route");
-		}
-		const effect = this.flowEffect ? wrapAutomaticOutcomeEffect(this.flowEffect) : undefined;
+		const configuredEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.waits
+			? async (
+					execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0],
+				) => {
+					const result = configuredEffect ? await configuredEffect(execution) : undefined;
+					return {
+						...result,
+						processPatch: { ...(result?.processPatch ?? {}), lifecycleStatus: "waiting" as const },
+					};
+				}
+			: configuredEffect;
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
@@ -913,7 +863,6 @@ export class AutomaticOutcomeBuilder<
 					}
 				: {}),
 			...this.buildRouteTarget(),
-			...(this.waits ? { wait: true as const } : {}),
 			...(effect ? { effect } : {}),
 		};
 	}
@@ -969,7 +918,7 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 		if (!this.reviewTurnId) {
 			throw new Error("plan result must declare .review(turnId)");
 		}
-		const stateEffect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const stateEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			description: this.resultDescription,
 			parameters: {
@@ -1016,7 +965,7 @@ export class PublishedResultBuilder<TParams = unknown, TState = unknown>
 	}
 
 	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			outcome: this.productName,
 			...this.buildRouteTarget(),
@@ -1054,7 +1003,7 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
 	}
 
 	build(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapLlmOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
 		return {
 			outcome: this.outcomeId,
 			...this.buildRouteTarget(),
@@ -1063,14 +1012,15 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
 	}
 }
 
-type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string> = (
-	ctx: FlowPromptContext<TParams, TState, TConsumedProducts>,
+type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepared> = (
+	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
 ) => MaybePromise<string>;
 
 export class LlmFlowBuilder<
 	TParams = unknown,
 	TState = unknown,
 	TConsumedProducts extends string = never,
+	TPrepared = undefined,
 > implements FlowLlmTurn<TParams, TState, string>
 {
 	private readonly turnId: TurnId;
@@ -1078,6 +1028,12 @@ export class LlmFlowBuilder<
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
 	private availableIntegrationTools: readonly string[] = [];
+	private integrationToolResolver:
+		| ((params: TParams, state: TState) => readonly string[])
+		| undefined;
+	private preparation:
+		| ((ctx: FlowLlmPreparationContext<TParams, TState>) => MaybePromise<unknown>)
+		| null = null;
 	private promptBuilder:
 		| ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>)
 		| null = null;
@@ -1126,6 +1082,18 @@ export class LlmFlowBuilder<
 	integrationTools(...tools: readonly string[]): this {
 		this.availableIntegrationTools = tools.map((tool) => tool.trim());
 		return this;
+	}
+
+	resolveIntegrationTools(resolver: (params: TParams, state: TState) => readonly string[]): this {
+		this.integrationToolResolver = resolver;
+		return this;
+	}
+
+	prepare<TNextPrepared>(
+		fn: (ctx: FlowLlmPreparationContext<TParams, TState>) => MaybePromise<TNextPrepared>,
+	): LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared> {
+		this.preparation = fn;
+		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared>;
 	}
 
 	/** Enable durable operator questions for this LLM turn. */
@@ -1225,22 +1193,32 @@ export class LlmFlowBuilder<
 
 	consume<TProductName extends string>(
 		productName: TProductName,
-	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName> {
+	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
 		const normalized = normalizeProductName(productName);
 		if (!this.consumedProductNames.includes(normalized)) {
 			this.consumedProductNames.push(normalized);
 		}
-		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName>;
+		return this as unknown as LlmFlowBuilder<
+			TParams,
+			TState,
+			TConsumedProducts | TProductName,
+			TPrepared
+		>;
 	}
 
 	optionalConsume<TProductName extends string>(
 		productName: TProductName,
-	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName> {
+	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
 		const normalized = normalizeProductName(productName);
 		if (!this.optionalConsumedProductNames.includes(normalized)) {
 			this.optionalConsumedProductNames.push(normalized);
 		}
-		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName>;
+		return this as unknown as LlmFlowBuilder<
+			TParams,
+			TState,
+			TConsumedProducts | TProductName,
+			TPrepared
+		>;
 	}
 
 	publish(productName: string): PublishedResultBuilder<TParams, TState> {
@@ -1270,7 +1248,7 @@ export class LlmFlowBuilder<
 		return this.endResult;
 	}
 
-	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts>): this {
+	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
 		this.promptBuilder = (ctx) =>
 			fn(
 				createFlowPromptContext(
@@ -1319,6 +1297,7 @@ export class LlmFlowBuilder<
 		if (!prompt) {
 			throw new Error(`LLM turn '${this.turnId}' must declare .buildPrompt(...)`);
 		}
+		const preparation = this.preparation;
 		return {
 			kind: "llm" as const,
 			description: this.turnDescription,
@@ -1327,7 +1306,16 @@ export class LlmFlowBuilder<
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),
+			...(this.integrationToolResolver
+				? { resolveIntegrationTools: this.integrationToolResolver }
+				: {}),
 			...(this.questionsEnabled ? { askQuestions: true as const } : {}),
+			...(preparation
+				? {
+						prepare: (ctx: ProcessRuntimeTurnContext<TParams, TState>) =>
+							preparation(createFlowAutomaticRunContext(ctx)),
+					}
+				: {}),
 			completionMode: this.completionMode,
 			branchType: this.branchType,
 			context: this.context,
@@ -1452,35 +1440,42 @@ export class LlmFlowBuilder<
 	}
 }
 
-type ExternalActionBuilderMap<TParams, TState> = Map<
-	string,
-	ExternalActionBuilder<TParams, TState, unknown, Record<string, unknown>>
+type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
+	TParams,
+	TState,
+	unknown,
+	Record<string, unknown>
 >;
 
-function addExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(input: {
-	builders: ExternalActionBuilderMap<TParams, TState>;
-	turnId: TurnId;
-	turnKind: "Automatic" | "Human";
-	externalActionId: string;
-	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
+function registerExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(
+	builders: Map<string, StoredExternalActionBuilder<TParams, TState>>,
+	turnKind: "Automatic" | "Human",
+	turnId: TurnId,
+	externalActionId: string,
+	source: ExternalActionSource<TParams, TState, TEvent, TInput>,
 	configure: (
-		external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined;
-}): void {
-	if (input.builders.has(input.externalActionId)) {
+		builder: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+): void {
+	if (builders.has(externalActionId)) {
 		throw new Error(
-			`${input.turnKind} turn '${input.turnId}' declares duplicate external action '${input.externalActionId}'`,
+			`${turnKind} turn '${turnId}' declares duplicate external action '${externalActionId}'`,
 		);
 	}
-	const builder = new ExternalActionBuilder(input.externalActionId, input.source);
-	input.configure(builder);
-	input.builders.set(input.externalActionId, builder as ExternalActionBuilder<TParams, TState>);
+	const builder = new ExternalActionBuilder(externalActionId, source);
+	configure(builder);
+	builders.set(
+		externalActionId,
+		builder as unknown as StoredExternalActionBuilder<TParams, TState>,
+	);
 }
 
 function buildExternalActions<TParams, TState>(
-	builders: ExternalActionBuilderMap<TParams, TState>,
-) {
-	return Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]));
+	builders: ReadonlyMap<string, StoredExternalActionBuilder<TParams, TState>>,
+): Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>> | undefined {
+	return builders.size > 0
+		? Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]))
+		: undefined;
 }
 
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
@@ -1493,7 +1488,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
-	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
+	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
 	constructor(turnId: TurnId) {
 		this.turnId = turnId;
@@ -1536,14 +1531,14 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
 		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		addExternalAction({
-			builders: this.externalActionBuilders,
-			turnId: this.turnId,
-			turnKind: "Automatic",
+		registerExternalAction(
+			this.externalActionBuilders,
+			"Automatic",
+			this.turnId,
 			externalActionId,
 			source,
 			configure,
-		});
+		);
 		return this;
 	}
 
@@ -1580,103 +1575,16 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			outcomes[outcomeId] = builder.build();
 		}
 		const runFn = this.runFn;
+		const externalActions = buildExternalActions(this.externalActionBuilders);
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),
-			...(this.externalActionBuilders.size > 0
-				? { externalActions: buildExternalActions(this.externalActionBuilders) }
-				: {}),
+			...(externalActions ? { externalActions } : {}),
 			outcomes,
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),
-		};
-	}
-}
-
-export class ServerAutomaticFlowBuilder<TParams = unknown, TState = unknown>
-	implements FlowServerAutomaticTurn<TParams, TState, string>
-{
-	private readonly turnId: TurnId;
-	private turnDescription: string | null = null;
-	private restartBehaviorValue: ServerAutomaticTurnRestartBehavior | undefined;
-	private runFn:
-		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
-		| null = null;
-	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
-
-	constructor(turnId: TurnId) {
-		this.turnId = turnId;
-	}
-
-	get id(): TurnId {
-		return this.turnId;
-	}
-
-	get definition(): ServerAutomaticTurnDefinition<string, TParams, TState> {
-		return this.buildDefinition();
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
-	}
-
-	run(
-		fn: (
-			ctx: FlowAutomaticRunContext<TParams, TState>,
-		) => MaybePromise<WorkerCompleteInput<string> & { state?: TState }>,
-	): this {
-		this.runFn = fn;
-		return this;
-	}
-
-	restartBehavior(behavior: ServerAutomaticTurnRestartBehavior): this {
-		this.restartBehaviorValue = behavior;
-		return this;
-	}
-
-	outcome(
-		id: string,
-		configure: (
-			outcome: AutomaticOutcomeBuilder<TParams, TState>,
-		) => AutomaticOutcomeBuilder<TParams, TState> | undefined,
-	): this {
-		if (id.trim() === "") {
-			throw new Error(`Server automatic turn '${this.turnId}' declares an empty outcome id`);
-		}
-		if (this.outcomeBuilders.has(id)) {
-			throw new Error(`Server automatic turn '${this.turnId}' declares duplicate outcome '${id}'`);
-		}
-		const builder = new AutomaticOutcomeBuilder<TParams, TState>();
-		configure(builder);
-		this.outcomeBuilders.set(id, builder);
-		return this;
-	}
-
-	private buildDefinition(): ServerAutomaticTurnDefinition<string, TParams, TState> {
-		if (!this.turnDescription) {
-			throw new Error(`Server automatic turn '${this.turnId}' must declare .description(...)`);
-		}
-		if (!this.runFn) {
-			throw new Error(`Server automatic turn '${this.turnId}' must declare .run(...)`);
-		}
-		if (this.outcomeBuilders.size === 0) {
-			throw new Error(`Server automatic turn '${this.turnId}' must declare at least one outcome`);
-		}
-		const outcomes: Record<string, ProcessToolOutcomeSpec<TParams, TState>> = {};
-		for (const [outcomeId, builder] of this.outcomeBuilders) {
-			outcomes[outcomeId] = builder.build();
-		}
-		const runFn = this.runFn;
-		return {
-			kind: "server_automatic",
-			description: this.turnDescription,
-			outcomes,
-			...(this.restartBehaviorValue ? { restartBehavior: this.restartBehaviorValue } : {}),
-			run: (ctx) =>
-				runFn(createFlowAutomaticRunContext(ctx as ProcessRuntimeTurnContext<TParams, TState>)),
 		};
 	}
 }
@@ -1843,7 +1751,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	private turnCommentary: string | undefined;
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
-	private externalActionBuilders: ExternalActionBuilderMap<TParams, TState> = new Map();
+	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
 	constructor(private readonly turnId: TurnId) {}
 
@@ -1855,6 +1763,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		if (!this.turnDescription) {
 			throw new Error(`Human turn '${this.turnId}' must declare .description(...)`);
 		}
+		const externalActions = buildExternalActions(this.externalActionBuilders);
 		return {
 			kind: "human",
 			description: this.turnDescription,
@@ -1866,9 +1775,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			actions: Object.fromEntries(
 				[...this.actions.entries()].map(([actionId, builder]) => [actionId, builder.build()]),
 			),
-			...(this.externalActionBuilders.size > 0
-				? { externalActions: buildExternalActions(this.externalActionBuilders) }
-				: {}),
+			...(externalActions ? { externalActions } : {}),
 		};
 	}
 
@@ -1925,14 +1832,14 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
 		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
 	): this {
-		addExternalAction({
-			builders: this.externalActionBuilders,
-			turnId: this.turnId,
-			turnKind: "Human",
+		registerExternalAction(
+			this.externalActionBuilders,
+			"Human",
+			this.turnId,
 			externalActionId,
 			source,
 			configure,
-		});
+		);
 		return this;
 	}
 }
@@ -2161,6 +2068,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		  }) => readonly RepositoryCredentialRequirement[])
 		| undefined;
 	private processPiConfig: ProcessPiConfig | undefined;
+	private developmentTools = false;
 
 	constructor(processId: string) {
 		super();
@@ -2219,6 +2127,12 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 
 	piConfig(config: ProcessPiConfig): this {
 		this.processPiConfig = config;
+		return this;
+	}
+
+	/** Opt this process into repository-local development tool preparation with mise. */
+	runtime(capabilities: { developmentTools?: boolean }): this {
+		this.developmentTools = capabilities.developmentTools === true;
 		return this;
 	}
 
@@ -2311,6 +2225,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			paramsCodec: this.paramsCodec,
 			stateCodec: this.stateCodec,
 			initialState: this.initialStateFn,
+			...(this.developmentTools ? { runtime: { developmentTools: true } } : {}),
 			...(this.repositoryCredentialsFn
 				? { repositoryCredentials: this.repositoryCredentialsFn }
 				: {}),
@@ -2365,11 +2280,6 @@ export const flow = {
 		turnId: TurnId,
 	): AutomaticFlowBuilder<TParams, TState> {
 		return new AutomaticFlowBuilder<TParams, TState>(turnId);
-	},
-	serverAutomatic<TParams = unknown, TState = unknown>(
-		turnId: TurnId,
-	): ServerAutomaticFlowBuilder<TParams, TState> {
-		return new ServerAutomaticFlowBuilder<TParams, TState>(turnId);
 	},
 	human<TParams = unknown, TState = unknown>(turnId: TurnId): HumanFlowBuilder<TParams, TState> {
 		return new HumanFlowBuilder<TParams, TState>(turnId);

@@ -1,6 +1,7 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
+import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -211,23 +212,22 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 			extensionCatalog: buildExtensionCatalogFromModules([retryConfigTestExtension]),
 		});
 		try {
-			const skill = {
-				sourcePath: "skills/review-draft",
-				skillId: "review-draft",
-				label: "Review draft",
-				description: null,
-				bundle: createCanonicalPiResourceBundle([
-					{
-						path: "skills/review-draft/SKILL.md",
-						content: Buffer.from("# Review draft"),
-					},
-				]),
-				sourceRevision: "test",
-			};
-			harness.ctx.deps.skills.mergeCatalog("test", [skill]);
-			harness.ctx.deps.skills.registerCatalogEntry("test", skill.skillId);
-			const launched = await fetch(
-				`${harness.address}/api/launchers/retry_config_test_process.primary_ui/launch`,
+			harness.ctx.deps.skills.reconcile([
+				{
+					skillId: "review-draft",
+					label: "Review draft",
+					description: null,
+					bundle: createCanonicalPiResourceBundle([
+						{
+							path: "skills/review-draft/SKILL.md",
+							content: Buffer.from("# Review draft"),
+						},
+					]),
+					sourceRevision: null,
+				},
+			]);
+			const launched = await postImmediateLaunchRequest(
+				`${harness.address}/api/launchers/retry_config_test_process.primary_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },

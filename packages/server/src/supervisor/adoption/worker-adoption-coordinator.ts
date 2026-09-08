@@ -4,6 +4,7 @@ import type { WorkerUnit, WorkerUnitDescriptor } from "@leitwerk-dev/worker-runn
 import type { RepositoryBundle } from "../../db/repositories.js";
 import { toInputDelivery } from "../../process-input-dispatch.js";
 import type { WorkerHandle } from "../worker-supervisor.js";
+import type { WorkerUnitReclaimer } from "../worker-unit-reclaimer.js";
 import type { WorkerWebSocketIpcManager } from "../worker-websocket-ipc.js";
 import { classifyWorkerDescriptor, workerDescriptorKey } from "./adoption-plan.js";
 
@@ -19,10 +20,10 @@ export interface WorkerAdoptionCoordinatorDeps {
 		runner: {
 			list(): Promise<WorkerUnitDescriptor[]>;
 			adopt(descriptor: WorkerUnitDescriptor): Promise<WorkerUnit>;
-			stop(descriptor: WorkerUnitDescriptor, opts: { graceMs: number }): Promise<void>;
 		};
 		webSocketIpc: WorkerWebSocketIpcManager;
 	};
+	unitReclaimer: WorkerUnitReclaimer;
 	workers: Map<string, WorkerHandle>;
 	leases: Pick<RepositoryBundle["leases"], "update">;
 	inputs: Pick<RepositoryBundle["inputs"], "listUnconsumed" | "markConsumed">;
@@ -276,11 +277,13 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 					});
 				}
 			}
-			for (const descriptor of [...stopStale, ...failedAdoptions]) {
-				if (adopted.has(workerDescriptorKey(descriptor))) {
-					continue;
-				}
-				await deps.runnerRuntime.runner.stop(descriptor, { graceMs: 0 });
+			for (const descriptor of stopStale) {
+				if (adopted.has(workerDescriptorKey(descriptor))) continue;
+				void deps.unitReclaimer.reclaim(descriptor, "startup_stale");
+			}
+			for (const descriptor of failedAdoptions) {
+				if (adopted.has(workerDescriptorKey(descriptor))) continue;
+				void deps.unitReclaimer.reclaim(descriptor, "adoption_failed");
 			}
 		},
 	};

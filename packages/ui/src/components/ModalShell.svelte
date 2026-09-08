@@ -12,9 +12,10 @@ interface Props {
 	panelId?: string;
 	width?: string;
 	maxHeight?: string;
-	presentation?: "default" | "bottom-sheet";
-	initialFocus?: string;
-	returnFocus?: string;
+	initialFocusSelector?: string;
+	restoreFocusSelector?: string;
+	presentation?: "center" | "bottom-sheet";
+	height?: string;
 }
 
 let {
@@ -27,9 +28,10 @@ let {
 	panelId,
 	width = "min(100% - 32px, 600px)",
 	maxHeight = "85vh",
-	presentation = "default",
-	initialFocus,
-	returnFocus,
+	initialFocusSelector,
+	restoreFocusSelector,
+	presentation = "center",
+	height = "auto",
 }: Props = $props();
 
 const showModal: Attachment<HTMLDialogElement> = (dialog) => {
@@ -60,26 +62,29 @@ const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 	};
 	dialog.addEventListener("cancel", handleCancel);
 	dialog.addEventListener("keydown", handleKeydown);
-	const previousOverflow = document.body.style.overflow;
-	if (presentation === "bottom-sheet") document.body.style.overflow = "hidden";
 	if (typeof dialog.showModal === "function") dialog.showModal();
 	else dialog.setAttribute("open", "");
 	queueMicrotask(() => {
-		const fallbackSelector =
-			"[autofocus], button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+		const requested = initialFocusSelector
+			? dialog.querySelector<HTMLElement>(initialFocusSelector)
+			: null;
 		(
-			dialog.querySelector<HTMLElement>(initialFocus ?? fallbackSelector) ??
-			dialog.querySelector<HTMLElement>(fallbackSelector)
+			requested ??
+			dialog.querySelector<HTMLElement>(
+				"button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+			)
 		)?.focus();
 	});
 	return () => {
 		dialog.removeEventListener("cancel", handleCancel);
 		dialog.removeEventListener("keydown", handleKeydown);
-		if (presentation === "bottom-sheet") document.body.style.overflow = previousOverflow;
 		if (typeof dialog.close === "function" && dialog.open) dialog.close();
-		queueMicrotask(() =>
-			(returnFocus ? document.querySelector<HTMLElement>(returnFocus) : previous)?.focus(),
-		);
+		queueMicrotask(() => {
+			const requested = restoreFocusSelector
+				? document.querySelector<HTMLElement>(restoreFocusSelector)
+				: null;
+			(requested ?? previous)?.focus();
+		});
 	};
 };
 </script>
@@ -88,14 +93,14 @@ const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 	<dialog
 		{@attach showModal}
 		data-section={dataSection}
-		class="modal-panel"
 		data-presentation={presentation}
+		class="modal-panel"
 		id={panelId}
 		aria-labelledby={titleId}
 		onclick={(event) => {
 			if (event.target === event.currentTarget) onClose();
 		}}
-		style={`--modal-width: ${width}; --modal-max-height: ${maxHeight}`}
+		style={`--modal-width: ${width}; --modal-height: ${height}; --modal-max-height: ${maxHeight}`}
 	>
 		<button type="button" class="modal-close" aria-label={closeLabel} onclick={onClose} autofocus>
 			<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"></path></svg>
@@ -105,24 +110,25 @@ const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 {/if}
 
 <style>
-	.modal-panel { position: fixed; inset: 0; width: var(--modal-width); max-width: none; max-height: var(--modal-max-height); margin: auto; display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-xl); border: 0; border-radius: var(--radius-lg); background: var(--chronicle-card-surface-strong); box-shadow: var(--chronicle-shadow); color: inherit; overflow: hidden; }
+	.modal-panel { position: fixed; inset: 0; width: var(--modal-width); height: var(--modal-height); max-width: none; max-height: var(--modal-max-height); margin: auto; display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-xl); border: 0; border-radius: var(--radius-lg); background: var(--chronicle-card-surface-strong); box-shadow: var(--chronicle-shadow); color: inherit; overflow: hidden; }
 	.modal-panel::backdrop { background: color-mix(in srgb, var(--chronicle-bg) 45%, transparent 55%); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+	.modal-panel[data-presentation="bottom-sheet"] { inset: auto 0 0; gap: 0; margin: 0 auto; padding: 8px 16px max(14px, env(safe-area-inset-bottom)); border: 1px solid var(--chronicle-border-strong); border-bottom: 0; border-radius: 22px 22px 0 0; background: var(--chronicle-card-surface); animation: modal-bottom-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+	.modal-panel[data-presentation="bottom-sheet"]::backdrop { background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%); backdrop-filter: none; -webkit-backdrop-filter: none; }
 	.modal-close { position: absolute; right: var(--space-md); top: var(--space-md); display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--chronicle-text-muted); cursor: pointer; }
 	.modal-close:hover { background: var(--chronicle-panel-muted); color: var(--chronicle-text); }
 	.modal-close:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; }
 	.modal-close svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.7; fill: none; }
 
-	.modal-panel[data-presentation="bottom-sheet"] { inset: auto 0 0; width: min(100%, 560px); height: min(82svh, 720px); max-height: calc(100svh - max(48px, env(safe-area-inset-top))); margin: 0 auto; gap: 0; padding: 20px 16px max(14px, env(safe-area-inset-bottom)); border: 1px solid var(--chronicle-border-strong); border-bottom: 0; border-radius: 22px 22px 0 0; background: var(--chronicle-card-surface); animation: bottom-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
-	.modal-panel[data-presentation="bottom-sheet"]::backdrop { background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%); backdrop-filter: none; -webkit-backdrop-filter: none; }
-	.modal-panel[data-presentation="bottom-sheet"] .modal-close { top: 16px; right: 16px; width: 40px; height: 40px; border: 1px solid var(--chronicle-border); background: var(--chronicle-panel-muted); }
+	@media (max-width: 640px) {
+		.modal-panel:not([data-presentation="bottom-sheet"]) { padding: var(--space-lg); }
+	}
 
-	@keyframes bottom-sheet-in { from { transform: translateY(18px); opacity: 0.88; } }
+	@keyframes modal-bottom-sheet-in {
+		from { transform: translateY(18px); opacity: 0.88; }
+		to { transform: translateY(0); opacity: 1; }
+	}
 
 	@media (prefers-reduced-motion: reduce) {
 		.modal-panel[data-presentation="bottom-sheet"] { animation: none; }
-	}
-
-	@media (max-width: 640px) {
-		.modal-panel { padding: var(--space-lg); }
 	}
 </style>

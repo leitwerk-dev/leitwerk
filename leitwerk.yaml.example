@@ -52,6 +52,14 @@ commit_messages:
     "https://git.example.com/platform/api.git": conventional
     "/srv/git/internal-tool": concise
 
+# Used only by process definitions that opt in with runtime.developmentTools.
+development_tools:
+  # Hard deadline for each repository's mise install and evidence check.
+  install_timeout: 30m
+  local:
+    # Local mode delegates to this host command and host mise storage.
+    mise_command: mise
+
 workers:
   # Worker run mode: docker | kubernetes | local.
   # `local` is best-effort developer/test mode only; Docker/Kubernetes define production behavior.

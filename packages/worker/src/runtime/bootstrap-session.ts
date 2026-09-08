@@ -8,6 +8,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import type { WorkerReadyPayload, WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
+import type { DevelopmentToolEnvironment } from "../development-tool-environment.js";
 import type { WorkerDiagnosticPayload } from "../diagnostics.js";
 import type { InputItem } from "../input-consumer.js";
 import type { PiTreeHandle, PiTreeHandleFactory } from "../pi-adapter.js";
@@ -30,6 +31,8 @@ interface PreparedSessionBase {
 	startRecordId: string;
 	proposedTurnRecordId: string;
 	acceptedTurnRecordId: string | null;
+	startKind: WorkerStartPayload["turnStart"]["startKind"];
+	llmPreparation?: NonNullable<WorkerStartPayload["llmPreparation"]>;
 	treeFile: string;
 	workspaceRoot: string;
 	turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
@@ -102,6 +105,8 @@ function validatePreparedSession(input: {
 		proposedTurnRecordId: payload.turnStart.proposedTurnRecordId,
 		acceptedTurnRecordId:
 			payload.turnStart.state.kind === "accepted" ? payload.turnStart.state.turnRecordId : null,
+		startKind: payload.turnStart.startKind,
+		...(payload.llmPreparation ? { llmPreparation: payload.llmPreparation } : {}),
 		treeFile: payload.treePaths.primaryTreeFile,
 		workspaceRoot: payload.treePaths.workspaceRoot,
 		turnResultMarkdownBySemanticRef: payload.turnResultMarkdownBySemanticRef,
@@ -132,6 +137,7 @@ type WorkerLiveResourcesDeps = {
 	instanceId: string;
 	piFactory: PiTreeHandleFactory;
 	gitOps: RunRootGitOps;
+	developmentTools: DevelopmentToolEnvironment;
 	scheduler: WorkerRuntimeScheduler;
 	sessionSnapshots?: WorkerSessionSnapshotExchange;
 	resolveWorkerProcess?: (
@@ -139,12 +145,14 @@ type WorkerLiveResourcesDeps = {
 		opts?: { paramsJson?: string | null; stateJson?: string | null },
 	) => Promise<ResolvedWorkerProcess | undefined> | ResolvedWorkerProcess | undefined;
 	progress(payload: WorkerDiagnosticPayload): void;
+	diagnosticTrace(text: string): void;
 };
 
 /** Private concrete holder for provisional and active live resources. */
 export class WorkerLiveResources {
 	#piHandle: PiTreeHandle | null = null;
 	#activeTurnAbort: AbortController | null = null;
+	#toolPreparationAbort: AbortController | null = null;
 	#provisional = new Map<string, PreparedStartActivation>();
 
 	constructor(private readonly deps: WorkerLiveResourcesDeps) {}
@@ -157,13 +165,27 @@ export class WorkerLiveResources {
 		payload: WorkerStartPayload,
 		settings: WorkerRuntimeSettings,
 	): Promise<WorkerBootstrapCompletion> {
+		const toolPreparationAbort = new AbortController();
+		this.#toolPreparationAbort = toolPreparationAbort;
 		const bootstrapped = await bootstrapWorkerRuntime({
 			instanceId: this.deps.instanceId,
 			payload,
 			piFactory: this.deps.piFactory,
 			gitOps: this.deps.gitOps,
+			developmentTools: this.deps.developmentTools,
+			toolPreparationSignal: toolPreparationAbort.signal,
 			scheduler: this.deps.scheduler,
+			onToolPreparationProgress: (repositoryKey, phase) =>
+				this.deps.progress({
+					level: "info",
+					code: `development_tools.${phase}`,
+					message: `${phase === "installing" ? "Installing" : "Verifying"} development tools for ${repositoryKey}`,
+					details: { repositoryKey },
+				}),
+			onToolDiagnosticTrace: this.deps.diagnosticTrace,
 			resolveWorkerProcess: this.deps.resolveWorkerProcess,
+		}).finally(() => {
+			if (this.#toolPreparationAbort === toolPreparationAbort) this.#toolPreparationAbort = null;
 		});
 		this.#provisional.set(payload.turnStart.id, bootstrapped.activation);
 		return {
@@ -235,6 +257,12 @@ export class WorkerLiveResources {
 		} finally {
 			if (this.#activeTurnAbort === controller) this.#activeTurnAbort = null;
 		}
+	}
+
+	abortToolPreparation(): boolean {
+		if (!this.#toolPreparationAbort) return false;
+		this.#toolPreparationAbort.abort();
+		return true;
 	}
 
 	abortActiveTurn(): boolean {

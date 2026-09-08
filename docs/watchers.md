@@ -90,18 +90,45 @@ launch:
 Before process creation, the server resolves each id to its active revision and pins the
 immutable selections to the process. An unknown or inactive skill rejects the launch.
 
-The provider adapter obtains only registrations for its exact typed source:
+The provider adapter obtains only registrations for its exact typed source and registers
+its polling work with the server:
 
 ```ts
 const watchers = deps.processWatchers?.listBySource(queueSource) ?? [];
-for (const watcher of watchers) {
-  const launchPlan = await watcher.resolveLaunch(event);
-  // Prepare and commit launchPlan through the server capabilities.
-}
+const poller = deps.polling.create({
+  id: "acme-work-queue",
+  pollInterval: () => "5s",
+  isEnabled: () => true,
+  async pollOnce() {
+    const result = emptyPollResult();
+    for (const watcher of watchers) {
+      const launch = await deps.launchRuns.startWatcher(watcher, event, {
+        idempotencyKey: stableSourceEventKey(watcher, event),
+      });
+      if (launch.process) {
+        await consumeSourceEvent(event);
+        result.created.push(launch.process.id);
+      } else if (launch.error) {
+        result.errors.push(`${watcher.processId}:${watcher.watcherId}:${launch.error}`);
+      } else {
+        result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
+      }
+    }
+    return result;
+  },
+});
 ```
+
+The server starts registered pollers after extension setup and stops them during
+shutdown. Poller IDs must be unique. Scheduled passes do not overlap. A rejected pass
+is logged with the full error. A completed pass with a non-empty `errors` array is logged
+with the complete result. Providers may call `poller.poll()` directly in tests or explicit
+fixtures, but do not own scheduled polling lifecycle.
 
 ## Idempotency and deduplication
 
-Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
+Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. Watcher callers provide only the registered watcher, event intent, idempotency key, and optional actor attribution; the server-owned coordinator supplies launch-plan and process-executor dependencies. Watcher admission keeps the event key stable across retries. An uncommitted failed launch run may yield the key to a new attempt; once a run has a process, it remains authoritative. The shared server launch pipeline executes the admitted attempt and keeps the event key as the process handoff deduplication key.
+
+External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
 
 If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.

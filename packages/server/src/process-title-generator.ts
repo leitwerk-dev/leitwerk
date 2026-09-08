@@ -12,6 +12,7 @@ import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { LeitwerkConfig } from "./config/config-types.js";
 import type { ProcessTitleJob, RepositoryBundle } from "./db/repositories.js";
 import type { ExtensionHost } from "./extensions/extension-host.js";
+import type { LaunchCoordinator } from "./launch-coordinator.js";
 import { normalizeProcessTitleInput, truncateTextAtWordBoundary } from "./launch-title.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
@@ -33,7 +34,11 @@ export interface ProcessTitleLogger {
 
 export interface ProcessTitleGenerator {
 	start?(): Promise<void>;
-	queueProcessTitleGeneration(input: { processId: string; launchPlan: ProcessLaunchPlan }): void;
+	queueProcessTitleGeneration(input: {
+		processId: string;
+		launchPlan: ProcessLaunchPlan;
+		launchRunId?: string;
+	}): void;
 	queueFutureExecutionTitleGeneration(input: {
 		futureExecutionId: string;
 		launchPlan: ProcessLaunchPlan;
@@ -384,6 +389,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		private readonly runtime: ProcessTitleGeneratorRuntimeDeps = createDefaultRuntimeDeps(),
 		private readonly extensionHost?: ExtensionHost,
 		private readonly futureExecutionTitleApplier?: FutureExecutionTitleApplier,
+		private readonly getLaunchCoordinator?: () => LaunchCoordinator | undefined,
 	) {
 		this.configuredProfileId = trimToNull(config.pi.process_title_generation.model_profile);
 		this.retryPolicy = buildProcessTitleRetryPolicy(config);
@@ -400,17 +406,25 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		await Promise.resolve();
 	}
 
-	queueProcessTitleGeneration(input: { processId: string; launchPlan: ProcessLaunchPlan }): void {
+	queueProcessTitleGeneration(input: {
+		processId: string;
+		launchPlan: ProcessLaunchPlan;
+		launchRunId?: string;
+	}): void {
 		if (this.closed) {
 			return;
 		}
 		const queued = this.buildQueuedJobBase(input.launchPlan);
 		if (!queued) {
+			if (!input.launchPlan.processInput.title) {
+				this.getLaunchCoordinator?.()?.refresh(input.processId);
+			}
 			return;
 		}
 		this.repos.titleJobs.enqueueProcessJob({
 			processInstanceId: input.processId,
 			processDefinitionId: queued.processDefinitionId,
+			launchRunId: input.launchRunId,
 			modelProfileId: queued.modelProfileId,
 			prompt: queued.prompt,
 			maxAttempts: this.retryPolicy.maxAttempts,
@@ -571,7 +585,14 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 			return;
 		}
 		if (targetState.kind === "failed") {
-			this.repos.titleJobs.markFailed(job.id, targetState.error);
+			if (this.repos.titleJobs.markFailed(job.id, targetState.error)) {
+				this.updateLaunchTitleStep(
+					job.processInstanceId,
+					"failed",
+					"Process started, but title generation is unavailable. You can rename it later.",
+					job.launchRunId,
+				);
+			}
 			return;
 		}
 
@@ -598,6 +619,9 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		}
 		if (!this.repos.titleJobs.markCompleted(job.id)) {
 			return;
+		}
+		if (job.targetKind === "process") {
+			this.updateLaunchTitleStep(job.processInstanceId, "completed", undefined, job.launchRunId);
 		}
 		await applied.postCommit?.();
 	}
@@ -761,6 +785,16 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		};
 	}
 
+	private updateLaunchTitleStep(
+		processInstanceId: string | null,
+		_status: "completed" | "skipped" | "failed",
+		_safeSummary?: string,
+		_launchRunId?: string | null,
+	): void {
+		if (!processInstanceId) return;
+		this.getLaunchCoordinator?.()?.refresh(processInstanceId);
+	}
+
 	private isJobStillRunning(jobId: string): boolean {
 		return this.repos.titleJobs.getById(jobId)?.status === "running";
 	}
@@ -772,6 +806,12 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		}
 		if (current.attemptCount >= current.maxAttempts) {
 			if (this.repos.titleJobs.markFailed(jobId, error)) {
+				this.updateLaunchTitleStep(
+					current.processInstanceId,
+					"failed",
+					"Process started, but a title could not be generated. You can rename it later.",
+					current.launchRunId,
+				);
 				this.logger?.warn("Process title generation exhausted its retry budget", {
 					jobId,
 					targetKind: current.targetKind,
@@ -809,6 +849,7 @@ export function createProcessTitleGenerator(options: {
 	runtime?: Partial<ProcessTitleGeneratorRuntimeDeps>;
 	extensionHost?: ExtensionHost;
 	futureExecutionTitleApplier?: FutureExecutionTitleApplier;
+	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 }): ProcessTitleGenerator {
 	const runtime = { ...createDefaultRuntimeDeps(), ...options.runtime };
 	return new DefaultProcessTitleGenerator(
@@ -819,5 +860,6 @@ export function createProcessTitleGenerator(options: {
 		runtime,
 		options.extensionHost,
 		options.futureExecutionTitleApplier,
+		options.getLaunchCoordinator,
 	);
 }

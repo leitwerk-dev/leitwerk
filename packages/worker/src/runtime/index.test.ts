@@ -36,7 +36,10 @@ describe("worker runtime interface", () => {
 		await runtime.start();
 
 		expect(transport.start).toHaveBeenCalledOnce();
-		expect(outgoing.map((message) => message.type)).toEqual(["worker.hello"]);
+		expect(outgoing.map((message) => message.type)).toEqual([
+			"worker.hello",
+			"worker.bootstrap_progress",
+		]);
 		expect(Object.keys(runtime).sort()).toEqual(["start", "stop"]);
 	});
 });

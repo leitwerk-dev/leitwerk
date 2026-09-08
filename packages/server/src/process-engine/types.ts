@@ -39,7 +39,6 @@ import type {
 	OperationData,
 	OperationInput,
 	OperationInputBase,
-	OperationRunOptions,
 	OperationSpec,
 } from "./operation.js";
 import type { Writes } from "./writes/writes.js";
@@ -193,7 +192,6 @@ export interface ProcessEngine {
 	run<TOp extends OperationSpec<string, OperationInputBase, unknown>>(
 		operation: TOp,
 		input: OperationInput<TOp>,
-		options?: OperationRunOptions<OperationData<TOp>>,
 	): Promise<EngineResult<OperationData<TOp>>>;
 
 	startProcess(
@@ -201,7 +199,10 @@ export interface ProcessEngine {
 		startTurnId: TurnId,
 		opts?: { actor?: Actor },
 	): Promise<EngineResult<void>>;
-	abortProcess(instanceId: string, opts?: { actor?: Actor }): Promise<EngineResult<void>>;
+	abortProcess(
+		instanceId: string,
+		opts?: { actor?: Actor; expectedTurnRecordId?: string },
+	): Promise<EngineResult<void>>;
 	abortTurn(
 		instanceId: string,
 		opts?: { reason?: string; actor?: Actor },
@@ -271,7 +272,6 @@ export interface ProcessEngine {
 		queued: QueuedProcessInput[],
 		opts?: { dispatchErrorMessage?: string; actor?: Actor },
 	): Promise<EngineResult<ProcessInput[]>>;
-	drainServerAutomaticTurns(instanceId: string): Promise<void>;
 	dispatchExternalTurnTrigger(
 		instanceId: string,
 		actionId: string,

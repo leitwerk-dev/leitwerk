@@ -15,6 +15,11 @@ import {
 	moveChronicleAnchorByOffset,
 	resolveChronicleTurnRecordIdForAnchor,
 } from "../../chronicle/lib/chronicle-selectable-items.js";
+import type {
+	ChronicleTicketArtifact,
+	ChronicleTicketDraftArtifact,
+} from "../../chronicle/lib/chronicle-ticket-artifact.js";
+import { readTicketResultSelection } from "../../chronicle/ticket-selection.js";
 import ModalShell from "../../components/ModalShell.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type {
@@ -31,6 +36,7 @@ import type {
 	CurrentProcessErrorViewModel,
 	CurrentTurnRecoveryViewModel,
 } from "./process-detail-view-model.js";
+import TicketCreationComposer from "./TicketCreationComposer.svelte";
 
 interface Props {
 	instanceId: string;
@@ -47,6 +53,7 @@ interface Props {
 	externalTriggerSignals: readonly ProcessExternalTriggerSignal[];
 	selectedTurn?: ProcessSelectedTurnSummary | null;
 	recovery: CurrentTurnRecoveryViewModel | null;
+	startup: ProcessDetailData["startup"];
 	startupRecovery: ProcessDetailData["startupRecovery"];
 	processError: CurrentProcessErrorViewModel | null;
 	scheduledActionDetail: ScheduledActionDetail | null;
@@ -78,6 +85,7 @@ let {
 	externalTriggerSignals,
 	selectedTurn = null,
 	recovery,
+	startup,
 	startupRecovery,
 	processError,
 	scheduledActionDetail,
@@ -96,7 +104,22 @@ let {
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
-let restoreMobileQuickNavFocus = $state(true);
+let ticketDraft = $state<ChronicleTicketDraftArtifact | null>(null);
+let ticketSelectionDraft = $state<ChronicleTicketDraftArtifact | null>(null);
+
+function openTicketComposer(artifact: ChronicleTicketArtifact) {
+	ticketDraft = { ...artifact };
+}
+
+function handleTicketSelection() {
+	const selected = readTicketResultSelection(window.getSelection());
+	if (!selected) return;
+	const [kind, id] = selected.artifactId.split(":", 2);
+	if (kind === "turn_result" && id)
+		ticketSelectionDraft = { kind, turnRecordId: id, excerpt: selected.text };
+	if (kind === "leaf_outcome" && id)
+		ticketSelectionDraft = { kind, leafEntryId: id, excerpt: selected.text };
+}
 
 const processLabel = $derived(
 	detail?.process.title ??
@@ -168,12 +191,10 @@ function moveActiveAnchorByOffset(offset: number) {
 }
 
 function openMobileQuickNav() {
-	restoreMobileQuickNavFocus = true;
 	mobileQuickNavOpen = true;
 }
 
-function closeMobileQuickNav(restoreFocus = true) {
-	restoreMobileQuickNavFocus = restoreFocus;
+function closeMobileQuickNav() {
 	mobileQuickNavOpen = false;
 }
 
@@ -183,7 +204,7 @@ function selectMobileQuickNavAnchor(anchorId: string) {
 }
 
 function openProcessInfoFromQuickNav() {
-	closeMobileQuickNav(false);
+	closeMobileQuickNav();
 	onToggleProcessInfo();
 }
 
@@ -267,12 +288,16 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		aria-labelledby={headingId}
 	>
 		<h2 id={headingId} class="sr-only">Process timeline</h2>
+		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- selection preserves native copy behavior -->
 		<div
 			class="chronicle-scroll"
 			bind:this={chronicleViewport}
 			data-role="chronicle-scroll"
+			role="region"
+			aria-label="Process results"
 			data-layout-observer-ready={chronicleScroll.isLayoutObserverReady ? "true" : undefined}
 			onscroll={chronicleScroll.handleScroll}
+			onmouseup={handleTicketSelection}
 		>
 			{#if launchWarning}
 				<div class="warning-banner" role="status">
@@ -308,7 +333,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					<div class="refresh-banner">{error} — showing the last process state we loaded.</div>
 				{/if}
 
-				{#if projection.timelineItems.length === 0 && !startupRecovery}
+				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery}
 					<div class="empty-state" data-section="chronicle-empty-state">
 						<p>
 							This process has not recorded activity yet. As the worker plans, acts, and saves results, the timeline will fill in here.
@@ -319,6 +344,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 						{instanceId}
 						{projection}
 						questionRequests={detail.questionRequests}
+						toolApprovalRequests={detail.toolApprovalRequests}
 						activeAnchorId={chronicleScroll.activeAnchorId}
 						{definesLeafOutcome}
 						hasTerminalSummary={terminalSummaryStatus !== null}
@@ -330,6 +356,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 						externalTriggerSignals={externalTriggerSignals}
 						selectedTurn={selectedTurn}
 						{recovery}
+						{startup}
 						{startupRecovery}
 						{processError}
 						scheduledAction={scheduledActionDetail && actionsController.editingScheduledActionId !== scheduledActionDetail.id
@@ -337,6 +364,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 							: null}
 						modelConfiguration={detail.modelConfiguration}
 						onOpenReasoningDetails={onOpenReasoningDetails}
+						onDraftTicket={openTicketComposer}
 					/>
 				{/if}
 
@@ -369,6 +397,24 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</section>
 </div>
 
+{#if ticketSelectionDraft}
+	<button
+		type="button"
+		class="ticket-selection-action"
+		data-pressable="true"
+		onclick={() => {
+			if (ticketSelectionDraft) openTicketComposer(ticketSelectionDraft);
+			ticketSelectionDraft = null;
+		}}
+	>Create issue</button>
+{/if}
+
+<TicketCreationComposer
+	{instanceId}
+	draft={ticketDraft}
+	onClose={() => (ticketDraft = null)}
+/>
+
 <ModalShell
 	open={mobileQuickNavOpen}
 	titleId="mobile-process-quick-nav-title"
@@ -377,14 +423,18 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	dataSection="mobile-process-quick-nav"
 	panelId="mobile-process-quick-nav"
 	presentation="bottom-sheet"
-	initialFocus="[aria-current='step']"
-	returnFocus={restoreMobileQuickNavFocus
-		? "[data-action='open-mobile-quick-nav']"
-		: undefined}
+	width="min(100%, 560px)"
+	height="min(82svh, 720px)"
+	maxHeight="calc(100svh - max(48px, env(safe-area-inset-top)))"
+	initialFocusSelector="[aria-current='step']"
+	restoreFocusSelector="[data-action='open-mobile-quick-nav']"
 >
+	<div class="mobile-quick-nav-handle" aria-hidden="true"></div>
 	<header class="mobile-quick-nav-header">
-		<h2 id="mobile-process-quick-nav-title">Process steps</h2>
-		<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+		<div>
+			<h2 id="mobile-process-quick-nav-title">Process steps</h2>
+			<p>{activeQuickNavItem?.title ?? "Choose a step"}</p>
+		</div>
 	</header>
 
 	<div class="mobile-quick-nav-rail">
@@ -428,6 +478,33 @@ function handleWindowKeydown(event: KeyboardEvent) {
 </ModalShell>
 
 <style>
+	.ticket-selection-action {
+		min-height: 44px;
+		padding: 0 var(--space-md);
+		border-radius: 999px;
+		font: inherit;
+		font-size: var(--type-body-sm);
+		font-weight: 700;
+		cursor: pointer;
+		position: fixed;
+		z-index: 42;
+		right: var(--space-md);
+		bottom: var(--space-md);
+		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 30%, var(--chronicle-border) 70%);
+		background: var(--chronicle-text);
+		color: var(--chronicle-card-surface);
+		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.12);
+	}
+
+	.ticket-selection-action:hover:not(:disabled) {
+		transform: translateY(-1px);
+	}
+
+	.ticket-selection-action:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
+	}
+
 	.mobile-quick-nav-trigger {
 		display: none;
 	}
@@ -484,7 +561,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 	.warning-title {
 		margin: 0 0 6px;
-		font-size: 12px;
+		font-size: var(--type-caption);
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -503,7 +580,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		border-radius: 999px;
 		background: color-mix(in srgb, white 92%, var(--chronicle-card-surface) 8%);
 		color: var(--chronicle-danger-text);
-		font-size: 13px;
+		font-size: var(--type-body-sm);
 		font-weight: 620;
 		cursor: pointer;
 	}
@@ -554,7 +631,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		background: var(--chronicle-panel-surface);
 		color: var(--chronicle-text);
 		font: inherit;
-		font-size: 13px;
+		font-size: var(--type-body-sm);
 		font-weight: 620;
 		cursor: pointer;
 		box-shadow: 0 10px 24px rgba(24, 33, 43, 0.08);
@@ -579,6 +656,13 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	@media (max-width: 720px) {
+		.ticket-selection-action {
+			left: var(--space-sm);
+			right: var(--space-sm);
+			bottom: max(var(--space-sm), env(safe-area-inset-bottom));
+			width: calc(100% - (2 * var(--space-sm)));
+		}
+
 		.mobile-quick-nav-trigger {
 			display: grid;
 			grid-template-columns: auto minmax(0, 1fr) auto;
@@ -637,10 +721,20 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			display: none;
 		}
 
+		.mobile-quick-nav-handle {
+			width: 38px;
+			height: 4px;
+			margin: 0 auto 8px;
+			border-radius: 999px;
+			background: var(--chronicle-border-strong);
+		}
+
 		.mobile-quick-nav-header {
-			display: grid;
-			gap: 3px;
-			padding: 0 52px 12px 2px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: var(--space-md);
+			padding: 4px 44px 12px 2px;
 			border-bottom: 1px solid var(--chronicle-border);
 		}
 

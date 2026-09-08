@@ -11,6 +11,7 @@ export * from "./protocol.js";
 export * from "./session-entry-tree.js";
 export * from "./streamable-events.js";
 export * from "./text-preview.js";
+export * from "./ticket-creation-contracts.js";
 export * from "./timeline-projection.js";
 export * from "./timestamp-ordering.js";
 export * from "./tool-renderer-contract.js";

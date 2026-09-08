@@ -35,9 +35,20 @@ export const RetryStartup = defineOperation<
 		}
 		const id = generateId("tsr");
 		const state =
-			failed.state.kind === "bootstrap_failed"
-				? { kind: "starting" as const, start: failed.state.start }
-				: failed.state;
+			failed.state.kind === "preparation_failed"
+				? failed.state
+				: failed.state.start.kind === "automatic"
+					? { kind: "starting" as const, start: failed.state.start }
+					: {
+							kind: "preparation_failed" as const,
+							requestedModelProfileId: failed.state.start.model.profileId,
+							providerOptions: { ...failed.state.start.providerOptions },
+							code: "model_required" as const,
+							safeSummary: "LLM start requires retry preparation",
+							...(failed.state.start.modelSelectionProvenance
+								? { modelSelectionProvenance: failed.state.start.modelSelectionProvenance }
+								: {}),
+						};
 		const writes = createWrites({
 			workerIntent: state.kind === "starting" ? { kind: "restart_worker" } : undefined,
 		});

@@ -1,4 +1,5 @@
 import type {
+	Actor,
 	InputKind,
 	InputSource,
 	LaunchModelConfigInput,
@@ -116,6 +117,32 @@ export type UiLauncherConfigResolution<TParams = unknown> =
 			errors: readonly LauncherValidationError[];
 	  };
 
+export interface LaunchPreparationContext<TParams = unknown> {
+	readonly signal: AbortSignal;
+	readonly launchConfig: ProcessLaunchConfig<TParams>;
+	readonly logger: {
+		info(message: string): void;
+		warn(message: string): void;
+	};
+}
+
+export interface LaunchPreparationCheck<TParams = unknown> {
+	readonly id: string;
+	readonly label: string;
+	run(ctx: LaunchPreparationContext<TParams>): Promise<void>;
+}
+
+/** A launcher check may throw this error to expose bounded operator-safe remediation. */
+export class SafeLaunchPreparationError extends Error {
+	constructor(
+		message: string,
+		readonly safeSummary: string,
+	) {
+		super(message);
+		this.name = "SafeLaunchPreparationError";
+	}
+}
+
 export interface UiLauncherDefinition<TParams = unknown> {
 	card: LauncherCardMetadata;
 	launchConfigSchema: LauncherSchemaDefinition;
@@ -136,6 +163,10 @@ export interface UiLauncherDefinition<TParams = unknown> {
 		previousInput: Record<string, unknown>,
 		ctx: LauncherContext,
 	): Record<string, unknown> | Promise<Record<string, unknown>>;
+	preparationChecks?(
+		input: Record<string, unknown>,
+		launchConfig: ProcessLaunchConfig<TParams>,
+	): readonly LaunchPreparationCheck<TParams>[];
 	resolveLaunchConfig(
 		input: Record<string, unknown>,
 		ctx: LauncherContext,
@@ -171,6 +202,10 @@ export interface ProcessWatcherDefinition<TParams = unknown, TEvent = unknown, T
 	description: string;
 	source: ProcessWatcherSource<TConfig, TEvent>;
 	matches?(event: TEvent, ctx: LauncherContext): boolean | Promise<boolean>;
+	preparationChecks?(
+		event: TEvent,
+		launchConfig: ProcessLaunchConfig<TParams>,
+	): readonly LaunchPreparationCheck<TParams>[];
 	resolveLaunchConfig(
 		event: TEvent,
 		ctx: LauncherContext,
@@ -239,6 +274,11 @@ export interface ProcessLauncherService {
 		previousInput: Record<string, unknown>,
 		ctx?: LauncherContext,
 	): Promise<Record<string, unknown>>;
+	resolvePreparationChecks?(
+		launcherId: string,
+		input: Record<string, unknown>,
+		launchConfig: ProcessLaunchConfig,
+	): readonly LaunchPreparationCheck[];
 	resolveUiLauncher(
 		launcherId: string,
 		input: Record<string, unknown>,
@@ -452,9 +492,11 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	readonly turnResultMarkdownByProduct?: Readonly<Record<string, string>>;
 	/** Absolute workspace root for the current process instance, when available. */
 	readonly workspaceRoot?: string;
-	/** Invoke a server-owned integration tool authorized for this automatic turn. */
+	/** Durable output produced by this LLM turn's preparation phase, when declared. */
+	readonly prepared?: unknown;
+	/** Invoke a server-owned integration tool authorized for this automatic turn or LLM preparation. */
 	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
-	/** Replace the durable operator-facing progress report for this automatic turn attempt. */
+	/** Replace the durable operator-facing progress report for this turn attempt. */
 	reportProgress?(report: TurnProgressReport): void;
 }
 
@@ -545,6 +587,11 @@ export interface RepositoryCredentialRegistrar {
 	register(provider: RepositoryCredentialProvider): void;
 }
 
+export interface ProcessRuntimeCapabilities {
+	/** Install repository-declared development tools with mise before accepting work. */
+	readonly developmentTools?: boolean;
+}
+
 export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown> {
 	id: string;
 	displayName: string;
@@ -563,6 +610,8 @@ export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown>
 	paramsCodec: Codec<TParams>;
 	stateCodec: Codec<TState>;
 	initialState(params: TParams): TState;
+	/** Process-owned runtime capabilities. All capabilities default to disabled. */
+	runtime?: ProcessRuntimeCapabilities;
 	/** Runtime-only requirements; references are non-secret and remain in opaque params JSON. */
 	repositoryCredentials?(input: {
 		params: TParams;
@@ -595,11 +644,66 @@ export interface ServerExtensionLogger {
 	error?(payload: Record<string, unknown>, message?: string): void;
 }
 
+export interface TicketCreationDestinationSummary {
+	/** Adapter-owned opaque identifier. Browsers must not construct or interpret it. */
+	readonly id: string;
+	readonly displayName: string;
+	readonly group?: string;
+	readonly description?: string;
+}
+
+export interface TicketCreationDestinationList {
+	readonly destinations: readonly TicketCreationDestinationSummary[];
+	readonly warnings?: readonly string[];
+}
+
+export interface TicketCreationDestinationSnapshot {
+	readonly summary: TicketCreationDestinationSummary;
+	/** Adapter-owned, JSON-serializable immutable destination state. */
+	readonly data: unknown;
+	/** Untrusted destination context included in the ticket agent prompt. */
+	readonly agentContext?: string;
+}
+
+export interface TicketCreationDestinationContext {
+	readonly actor: Actor;
+}
+
+export interface TicketCreationDestinationProvider {
+	list(ctx: TicketCreationDestinationContext): Promise<TicketCreationDestinationList>;
+	resolve(
+		ctx: TicketCreationDestinationContext & { destinationId: string },
+	): Promise<TicketCreationDestinationSnapshot>;
+	/** Rejects stale, renamed, transferred, or otherwise invalid snapshots. */
+	validate(snapshot: TicketCreationDestinationSnapshot): Promise<void>;
+}
+
+export interface TicketCreationCapability {
+	readonly kind: "ticket_creation";
+	readonly displayName: string;
+	/** Extension-owned process launched by the generic derived-ticket route. */
+	readonly processId: string;
+	/** Entry turn selected when the derived process starts. */
+	readonly startTurnId: TurnId;
+	/** RFC 6901 JSON Pointer into the tool arguments. */
+	readonly titlePath?: string;
+	/** RFC 6901 JSON Pointer into the tool arguments. */
+	readonly descriptionPath?: string;
+	readonly destinations?: TicketCreationDestinationProvider;
+}
+
+export interface TicketCreationReceipt {
+	readonly externalId: string;
+	readonly url: string;
+	readonly result?: unknown;
+}
+
 export interface IntegrationToolExecutionContext {
 	readonly process: ProcessInstance;
 	readonly projects: readonly ProcessProject[];
 	readonly turn: ProcessTurnRecord;
 	readonly project: ProcessProject | null;
+	readonly ticketDestination?: TicketCreationDestinationSnapshot;
 	/** Stable for a single Pi tool call, including reconnect/replay. */
 	readonly idempotencyKey: string;
 	/** Aborted when the worker stops waiting for this tool call. */
@@ -610,6 +714,8 @@ export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {
 	readonly name: string;
 	readonly description: string;
 	readonly parameters: Record<string, unknown>;
+	/** Sanitized discovery metadata; credentials and adapter configuration never belong here. */
+	readonly capability?: TicketCreationCapability;
 	parse?(value: unknown): TArgs;
 	execute(ctx: IntegrationToolExecutionContext, args: TArgs): Promise<unknown>;
 }

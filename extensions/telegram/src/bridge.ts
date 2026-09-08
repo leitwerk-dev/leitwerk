@@ -357,27 +357,6 @@ function createActionFormSessionId(): string {
 	return randomBytes(4).toString("hex");
 }
 
-function attachLaunchThreadMetadata(
-	launchPlan: ProcessLaunchPlan,
-	thread: Pick<TelegramProcessThread, "mode" | "chatId" | "messageThreadId">,
-): ProcessLaunchPlan {
-	const metadata = launchPlan.processInput.metadata ?? {};
-	const telegram = isRecord(metadata.telegram) ? metadata.telegram : {};
-	return {
-		...launchPlan,
-		processInput: {
-			...launchPlan.processInput,
-			metadata: {
-				...metadata,
-				telegram: {
-					...telegram,
-					launchThread: { ...thread },
-				},
-			},
-		},
-	};
-}
-
 export class TelegramBridge {
 	private readonly store: ProcessThreadStore;
 	private readonly sessions = new Map<string, PendingTelegramSession>();
@@ -1740,20 +1719,26 @@ export class TelegramBridge {
 			);
 			return;
 		}
-		const launchPlan = attachLaunchThreadMetadata(prepared.launchPlan, {
-			mode: "forum_topic",
-			chatId,
-			messageThreadId,
-		});
-		let result: Awaited<
-			ReturnType<CoreServerSetupDeps["processLaunches"]["createProcessFromLaunchPlan"]>
-		>;
+		let result: Awaited<ReturnType<CoreServerSetupDeps["launchRuns"]["startProgrammatic"]>>;
 		try {
-			result = await this.input.deps.processLaunches.createProcessFromLaunchPlan(launchPlan, {
-				actor: TELEGRAM_ACTOR,
-			});
+			result = await this.input.deps.launchRuns.startProgrammatic(
+				{
+					launcherId: launcher.id,
+					launcherInput: buildLaunchInput(session),
+					...(session.modelConfigTouched ? { modelConfig: buildLaunchModelConfig(session) } : {}),
+					processMetadata: {
+						telegram: {
+							launchThread: { mode: "forum_topic", chatId, messageThreadId },
+						},
+					},
+				},
+				{
+					actor: TELEGRAM_ACTOR,
+					idempotencyKey: `telegram:${sessionKey}:${session.expiresAt}`,
+				},
+			);
 		} catch (error) {
-			this.logError(error, "Failed to create Telegram-launched process");
+			this.logError(error, "Failed to admit Telegram-launched process");
 			await this.sendHtmlToChat(
 				chatId,
 				messageThreadId,
@@ -1761,31 +1746,22 @@ export class TelegramBridge {
 			);
 			return;
 		}
-		if (result.ok) {
+		if (result.process) {
 			this.recordLaunchRecentValuesBestEffort(session);
 			this.launchSessions.delete(sessionKey);
 			await this.sendHtmlToChat(
 				chatId,
 				messageThreadId,
-				`✅ Process launched. Web UI: ${escapeHtml(`${this.input.deps.serverBaseUrl.replace(/\/$/, "")}/processes/${result.process.id}`)}`,
-			);
-			return;
-		}
-		const process = "process" in result ? result.process : null;
-		if (process) {
-			this.recordLaunchRecentValuesBestEffort(session);
-			this.launchSessions.delete(sessionKey);
-			await this.sendHtmlToChat(
-				chatId,
-				messageThreadId,
-				`⚠️ Process was created but launch had a follow-up problem. Web UI: ${escapeHtml(`${this.input.deps.serverBaseUrl.replace(/\/$/, "")}/processes/${process.id}`)}`,
+				result.error
+					? `⚠️ Process was created but launch had a follow-up problem. Web UI: ${escapeHtml(`${this.input.deps.serverBaseUrl.replace(/\/$/, "")}/processes/${result.process.id}`)}`
+					: `✅ Process launched. Web UI: ${escapeHtml(`${this.input.deps.serverBaseUrl.replace(/\/$/, "")}/processes/${result.process.id}`)}`,
 			);
 			return;
 		}
 		await this.sendHtmlToChat(
 			chatId,
 			messageThreadId,
-			`⚠️ ${escapeHtml(String(result.body.error ?? "Launch failed"))}`,
+			`⚠️ ${escapeHtml(result.error ?? "Launch failed")}`,
 		);
 	}
 

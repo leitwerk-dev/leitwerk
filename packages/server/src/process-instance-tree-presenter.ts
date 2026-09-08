@@ -87,10 +87,7 @@ function actionDecisions(
 				: undefined;
 		const directTarget =
 			causedTurnType === undefined || causedTurnType === "llm" ? findCaused("llm") : undefined;
-		const causedAutomatic =
-			causedTurnType === "automatic" || causedTurnType === "server_automatic"
-				? findCaused(causedTurnType)
-				: undefined;
+		const causedAutomatic = causedTurnType === "automatic" ? findCaused(causedTurnType) : undefined;
 		const target =
 			directTarget ??
 			(causedAutomatic ? nextLlmAfterAutomatic(causedAutomatic, allRecords) : undefined);
@@ -124,10 +121,7 @@ function automaticTransitions(
 	for (const annotation of annotations) {
 		const causedTurnId = annotation.payload.causedSelectedTurnId;
 		const causedTurnType = annotation.payload.causedSelectedTurnType;
-		if (
-			typeof causedTurnId !== "string" ||
-			(causedTurnType !== "automatic" && causedTurnType !== "server_automatic")
-		) {
+		if (typeof causedTurnId !== "string" || causedTurnType !== "automatic") {
 			continue;
 		}
 		const caused = allRecords.find(
@@ -140,9 +134,7 @@ function automaticTransitions(
 	}
 
 	const transitions: Decision[] = [];
-	for (const automatic of allRecords.filter(
-		(record) => record.turnType === "automatic" || record.turnType === "server_automatic",
-	)) {
+	for (const automatic of allRecords.filter((record) => record.turnType === "automatic")) {
 		if (actionCausedAutomaticIds.has(automatic.id)) continue;
 		const source = findLast(
 			llmRecords,

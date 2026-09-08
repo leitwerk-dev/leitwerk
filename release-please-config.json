@@ -53,9 +53,7 @@
 				"@leitwerk-dev/coding",
 				"@leitwerk-dev/git-ssh",
 				"@leitwerk-dev/local-repo-change",
-				"@leitwerk-dev/local-shell",
 				"@leitwerk-dev/models",
-				"@leitwerk-dev/pi-shell",
 				"@leitwerk-dev/process-analysis",
 				"@leitwerk-dev/remote-repo-change",
 				"@leitwerk-dev/showcase-processes",
@@ -154,18 +152,8 @@
 			"skip-github-release": true,
 			"skip-changelog": true
 		},
-		"extensions/local-shell": {
-			"component": "@leitwerk-dev/local-shell",
-			"skip-github-release": true,
-			"skip-changelog": true
-		},
 		"extensions/models": {
 			"component": "@leitwerk-dev/models",
-			"skip-github-release": true,
-			"skip-changelog": true
-		},
-		"extensions/pi-shell": {
-			"component": "@leitwerk-dev/pi-shell",
 			"skip-github-release": true,
 			"skip-changelog": true
 		},

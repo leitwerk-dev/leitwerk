@@ -24,6 +24,7 @@ import {
 	WORKER_IPC_SERVER_URL_ENV,
 	WORKER_SNAPSHOT_TOKEN_ENV,
 } from "@leitwerk-dev/worker-protocol";
+import { MiseDevelopmentToolEnvironment } from "./development-tool-environment.js";
 import {
 	entriesExistWithinAllowedRoots,
 	parseExtensionAllowedRoots,
@@ -124,6 +125,7 @@ function getRuntimeCatalog(): Promise<ExtensionCatalog> {
 export interface WorkerEntryRuntimeOverrides extends Partial<WorkerRuntimeConfig> {
 	piFactory?: PiTreeHandleFactory;
 	gitOps?: RunRootGitOps;
+	developmentTools?: WorkerRuntimeAdapters["developmentTools"];
 	transport?: WorkerIpc;
 	sessionSnapshots?: WorkerSessionSnapshotExchange;
 	resultImageTools?: WorkerRuntimeAdapters["resultImageTools"];
@@ -225,6 +227,8 @@ export function createWorkerEntryRuntime(
 			resultImageTools,
 			piFactory: overrides.piFactory ?? resolveDefaultPiFactory(),
 			gitOps: overrides.gitOps ?? new NodeRunRootGitOps(),
+			developmentTools:
+				overrides.developmentTools ?? new MiseDevelopmentToolEnvironment(runtimeEnv),
 			resolveWorkerProcess,
 			extensionEvents: workerExtensionApi.events,
 			stderr: overrides.stderr,

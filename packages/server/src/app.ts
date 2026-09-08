@@ -15,7 +15,7 @@ import type {
 	ServerExtensionEventMap,
 } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
-import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { createPollingCoordinator, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import {
 	cleanupRetainedProcessVolumes,
 	type ProcessVolume,
@@ -44,6 +44,8 @@ import {
 	createIntegrationToolRequestService,
 	IntegrationToolRegistry,
 } from "./integration-tool-registry.js";
+import { createLaunchCoordinator, type LaunchCoordinator } from "./launch-coordinator.js";
+import { createLaunchPipeline } from "./launch-pipeline.js";
 import { createLauncherModelConfigService } from "./launcher-model-config-service.js";
 import { createLauncherRecentValuesService } from "./launcher-recent-values-service.js";
 import {
@@ -68,6 +70,7 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import { reconcileProcessesOnStartup } from "./process-engine/startup-reconciliation.js";
 import { prepareCreatedTurnStarts } from "./process-engine/turn-start-preflight.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
+import { createProcessFromLaunchPlan } from "./process-launch-executor.js";
 import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 import { recoverModelAvailabilityFailures } from "./process-model-availability-recovery.js";
 import { applyProcessModelAvailabilityTransitions } from "./process-model-availability-transitions.js";
@@ -101,6 +104,7 @@ import { registerHttp } from "./server-bootstrap/register-http.js";
 import { registerWebsocket } from "./server-bootstrap/register-websocket.js";
 import { resolveServerTlsOptions } from "./server-topology.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
+import { createDiagnosticTraceWriter } from "./supervisor/diagnostic-trace-writer.js";
 import { createIpcHandler, type IpcHandler } from "./supervisor/ipc-handler.js";
 import { startStaleHeartbeatWatchdog } from "./supervisor/stale-heartbeat-watchdog.js";
 import { createWorkerSupervisor, type WorkerSupervisor } from "./supervisor/worker-supervisor.js";
@@ -108,6 +112,7 @@ import {
 	createWorkerWebSocketIpcManager,
 	type WorkerWebSocketIpcManager,
 } from "./supervisor/worker-websocket-ipc.js";
+import { createToolApprovalGate } from "./tool-approval-gate.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
 export interface AppOptions {
@@ -319,7 +324,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		...(credentialCipher ? { credentialCipher } : {}),
 	});
 	repos.transaction((transactionRepos) => {
-		transactionRepos.skills.deactivateConfiguredSkills();
+		// Directly configured skills are no longer supported. Deactivate any left by an older release.
+		transactionRepos.skills.reconcile([]);
 		transactionRepos.skills.backfillDependencies();
 	});
 	const skillCatalog = createSkillCatalogService({
@@ -429,6 +435,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	const authService = createAuthService({ config, repos });
 	await registerWebsocket(app, broadcaster, workerWebSocketIpc, authService);
 	const extensionHost = createExtensionHost<ServerExtensionEventMap>();
+	let launchCoordinator: LaunchCoordinator | undefined;
 	let applyGeneratedFutureExecutionTitle: NonNullable<
 		Parameters<typeof createProcessTitleGenerator>[0]["futureExecutionTitleApplier"]
 	> = async () => ({
@@ -445,6 +452,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 					broadcaster,
 					extensionHost,
 					futureExecutionTitleApplier: (input) => applyGeneratedFutureExecutionTitle(input),
+					getLaunchCoordinator: () => launchCoordinator,
 					logger: {
 						warn: (message, details) => app.log.warn(details ?? {}, message),
 					},
@@ -487,6 +495,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		modelStatusCache,
 	});
+	const polling = createPollingCoordinator(app.log);
 
 	let backgroundServicesStarted = false;
 	let backgroundServicesReady = false;
@@ -649,10 +658,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		getModelAvailabilitySnapshot: () => modelStatusCache.snapshot(),
 		afterRecord(process) {
-			const { missingDigest } = piResourceBundlePins.reconcile(process);
-			if (missingDigest) {
-				throw new Error(`Pi resource bundle '${missingDigest}' is unavailable after commit`);
-			}
+			// The process volume is the durable source for an already-created start.
+			// A missing server-cache entry is valid after restart.
+			piResourceBundlePins.reconcile(process);
+			toolApprovalGate.reconcile(process.id);
 		},
 		afterSuccessHooks,
 		prepareTurnStarts: (process, writes, providerOptions, availabilitySnapshot) =>
@@ -691,14 +700,23 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				),
 	});
 
+	const toolApprovalGate = createToolApprovalGate({
+		repos: baseDeps,
+		processOperations,
+	});
 	const integrationToolRequests = createIntegrationToolRequestService({
 		registry: integrationTools,
 		repos: baseDeps,
 		processActionRegistry,
+		toolApprovalGate,
 	});
+	const diagnosticTraceWriter = createDiagnosticTraceWriter(
+		path.join(config.storage.tree_files_dir, "diagnostic-traces"),
+	);
 	const ipcHandler = createIpcHandler(
 		{
 			processes: baseDeps.processes,
+			getLaunchCoordinator: () => launchCoordinator,
 			projects: baseDeps.projects,
 			inputs: baseDeps.inputs,
 			events: baseDeps.events,
@@ -727,6 +745,13 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				}
 				return result;
 			},
+			appendDiagnosticTrace(instanceId, text) {
+				try {
+					diagnosticTraceWriter.append(instanceId, text);
+				} catch (error) {
+					app.log.warn({ error, instanceId }, "Could not append worker diagnostic trace");
+				}
+			},
 			workerEventLogger: config.workers.log_worker_events_to_stdout
 				? (entry) => {
 						// Worker IPC is WebSocket-only; terminal visibility comes from mirroring
@@ -738,6 +763,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		{
 			onTurnTerminalRecorded(instanceId, workerId, turnRecordId) {
 				supervisor?.acknowledgeTurnTerminal(instanceId, workerId, { turnRecordId });
+			},
+			onTurnFailedRecorded(input) {
+				app.log.warn(input, "Worker turn failed");
 			},
 			onTurnTerminalRecordingFailed(input) {
 				app.log.error(input, "Worker turn terminal recording failed");
@@ -786,13 +814,16 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		ipcHandler,
 		leases: baseDeps.leases,
+		getLaunchCoordinator: () => launchCoordinator,
 		processes: baseDeps.processes,
 		projects: baseDeps.projects,
 		inputs: baseDeps.inputs,
 		turnRecords: baseDeps.turnRecords,
 		turnStarts: baseDeps.turnStarts,
+		events: baseDeps.events,
 		broadcaster,
 		runnerRuntime,
+		logger: app.log,
 		resolvedExtensionEntriesJson: serializeResolvedExtensionEntries(resolvedExtensionEntries),
 		serverEpoch,
 		resolveResourceBundle(digest) {
@@ -884,10 +915,28 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		stopHooks.push(() => processTitles.close?.());
 	}
 
+	const launchPipeline = createLaunchPipeline({
+		launchRuns: baseDeps.launchRuns,
+		broadcaster,
+		titleGenerationAvailable: Boolean(processTitles),
+		logger: app.log,
+	});
+	const processLaunchDeps = {
+		...baseDeps,
+		broadcaster,
+		commands: processEngine,
+		processTitles,
+		extensionHost,
+		logger: app.log,
+		repositoryCredentials,
+		getSupervisor: () => supervisor,
+	};
+	const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
 		futureExecutions: baseDeps.futureExecutions,
 		processes: baseDeps.processes,
 		projects: baseDeps.projects,
+		processRelations: baseDeps.processRelations,
 		handoffDedupKeys: baseDeps.handoffDedupKeys,
 		turnRecords: baseDeps.turnRecords,
 		skills: baseDeps.skills,
@@ -905,10 +954,28 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		processModelPolicy,
 		launchPlans,
 		modelStatusCache,
+		launchPipeline,
 		logger: app.log,
 	});
 	applyGeneratedFutureExecutionTitle = (input) =>
 		futureExecutionLifecycle.applyGeneratedFutureLaunchTitleIfUnchanged(input);
+	launchCoordinator = createLaunchCoordinator({
+		commands: processEngine,
+		launchRuns: baseDeps.launchRuns,
+		processes: baseDeps.processes,
+		leases: baseDeps.leases,
+		turnRecords: baseDeps.turnRecords,
+		turnStarts: baseDeps.turnStarts,
+		titleJobs: baseDeps.titleJobs,
+		launcherService,
+		futureExecutionLifecycle,
+		launchPipeline,
+		launchPlans,
+		createProcessFromLaunchPlan: createProcess,
+		titleGenerationAvailable: Boolean(processTitles),
+		logger: app.log,
+	});
+	startHooks.push(() => launchCoordinator?.reconcileIncomplete());
 	const futureExecutionScheduler = startFutureExecutionScheduler(futureExecutionLifecycle);
 	startHooks.push(() => futureExecutionScheduler.start());
 	stopHooks.push(() => futureExecutionScheduler.stop());
@@ -976,16 +1043,14 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		launcherRecentValues,
 		launcherModelConfigs,
 		launchPlans,
-		processTitles,
-		extensionHost,
-		logger: app.log,
 		processWatcherService,
+		polling,
 		externalSourceService,
 		processModelSelection,
 		resultImages,
 		repositoryCredentials,
-		processDefinitions: extensionCatalog.processes,
 		processQuestions,
+		launchCoordinator,
 		preProvidedCapabilities: opts.preProvidedCapabilities,
 	});
 
@@ -1007,6 +1072,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		},
 		(id: string) => config.extensions?.[id],
 	);
+	startHooks.push(() => polling.start());
+	stopHooks.push(() => polling.stop());
 	for (const process of extensionCatalog.processes.values()) {
 		for (const [turnId, binding] of process.turns) {
 			const definition = binding.definition;
@@ -1024,10 +1091,12 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 
 	const deps: RouteDeps = {
 		...baseDeps,
+		launchCoordinator,
 		processGraphs,
 		supervisor,
 		processEngine,
 		processQuestions,
+		toolApprovalGate,
 		processDeletion,
 		processActionRegistry,
 		processUiRegistry,
@@ -1055,6 +1124,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		authService,
 		processWatcherService,
 		extensionUiCatalog,
+		integrationTools,
 		sessionSnapshots,
 		resultImages,
 		maxSessionSnapshotBytes: config.workers.session_snapshot_max_size_bytes,

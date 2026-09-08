@@ -1,10 +1,110 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
 import {
 	coreHostCapabilities,
+	createCapabilityToken,
 	type GitSshCredentialMaterial,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
 
+const execFileAsync = promisify(execFile);
+
 export const manifest = { id: "git-ssh", version: "0.1.0" } as const;
+
+export interface GitSshAuthorizationPreflightInput {
+	credentialRef: string;
+	repoLocator: string;
+	baseBranch: string;
+	requireWrite: boolean;
+}
+
+export type GitSshAuthorizationPreflightResult =
+	| { ok: true }
+	| { ok: false; access: "read" | "write"; detail: string };
+
+export interface GitSshIntegration {
+	profiles(): readonly string[];
+	preflight(input: GitSshAuthorizationPreflightInput): Promise<GitSshAuthorizationPreflightResult>;
+}
+
+export const gitSshIntegration = createCapabilityToken<GitSshIntegration>(
+	"@leitwerk-dev/git-ssh.integration",
+);
+
+function gitFailureDetail(error: unknown): string {
+	if (!error || typeof error !== "object") return "Git SSH access check failed";
+	const value = error as { stderr?: unknown; stdout?: unknown; message?: unknown };
+	const output =
+		typeof value.stderr === "string" && value.stderr.trim()
+			? value.stderr
+			: typeof value.stdout === "string" && value.stdout.trim()
+				? value.stdout
+				: typeof value.message === "string"
+					? value.message
+					: "Git SSH access check failed";
+	return output.replace(/\s+/g, " ").trim().slice(0, 500);
+}
+
+export async function preflightGitSshAccess(
+	input: Omit<GitSshAuthorizationPreflightInput, "credentialRef">,
+	material: GitSshCredentialMaterial,
+	gitBinary = "git",
+): Promise<GitSshAuthorizationPreflightResult> {
+	const directory = await mkdtemp(join(tmpdir(), "leitwerk-git-ssh-preflight-"));
+	try {
+		const keyPath = join(directory, "identity");
+		const knownHostsPath = join(directory, "known_hosts");
+		const sshPath = join(directory, "ssh");
+		await Promise.all([
+			writeFile(keyPath, `${material.privateKey.trim()}\n`, { mode: 0o600 }),
+			writeFile(knownHostsPath, `${material.knownHosts.trim()}\n`, { mode: 0o600 }),
+			writeFile(
+				sshPath,
+				`#!/bin/sh\nexec ssh -F /dev/null -i "${keyPath}" -o IdentitiesOnly=yes -o UserKnownHostsFile="${knownHostsPath}" -o StrictHostKeyChecking=yes -o BatchMode=yes "$@"\n`,
+				{ mode: 0o700 },
+			),
+		]);
+		const env = {
+			...process.env,
+			GIT_SSH: sshPath,
+			// This also overrides ambient core.sshCommand, which takes precedence over GIT_SSH.
+			GIT_SSH_COMMAND: `'${sshPath.replaceAll("'", "'\\''")}'`,
+			SSH_AUTH_SOCK: "",
+		};
+		const ref = `refs/heads/${input.baseBranch}`;
+		try {
+			await execFileAsync(gitBinary, ["ls-remote", "--exit-code", input.repoLocator, ref], {
+				env,
+			});
+		} catch (error) {
+			return { ok: false, access: "read", detail: gitFailureDetail(error) };
+		}
+		if (!input.requireWrite) return { ok: true };
+
+		try {
+			await execFileAsync(gitBinary, ["init", "--quiet", directory], { env });
+			await execFileAsync(
+				gitBinary,
+				["-C", directory, "fetch", "--quiet", "--depth=1", input.repoLocator, ref],
+				{ env },
+			);
+			const probeBranch = `refs/heads/leitwerk/preflight-${process.pid}-${Date.now()}`;
+			await execFileAsync(
+				gitBinary,
+				["-C", directory, "push", "--dry-run", input.repoLocator, `FETCH_HEAD:${probeBranch}`],
+				{ env },
+			);
+			return { ok: true };
+		} catch (error) {
+			return { ok: false, access: "write", detail: gitFailureDetail(error) };
+		}
+	} finally {
+		await rm(directory, { recursive: true, force: true });
+	}
+}
 
 function parseProfiles(raw: unknown): Map<string, GitSshCredentialMaterial> {
 	const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
@@ -50,6 +150,20 @@ const extension: LeitwerkExtensionModule = {
 		deps.repositoryCredentials.register({
 			kind: "git_ssh",
 			resolve: (ref) => profiles.get(ref) ?? null,
+		});
+		api.provide(gitSshIntegration, {
+			profiles: () => [...profiles.keys()].sort(),
+			async preflight(input) {
+				const material = profiles.get(input.credentialRef);
+				if (!material) {
+					return {
+						ok: false,
+						access: "read",
+						detail: `Unknown git_ssh credential '${input.credentialRef}'`,
+					};
+				}
+				return preflightGitSshAccess(input, material);
+			},
 		});
 	},
 };

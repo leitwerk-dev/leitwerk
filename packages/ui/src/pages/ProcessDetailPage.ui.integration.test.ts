@@ -25,16 +25,19 @@ const {
 	mockDeleteFutureExecution,
 	mockFetchProcessActionModelPreview,
 	mockFetchProcessDetail,
+	mockFetchTicketCreationTools,
 	mockFetchTurnReasoningDetail,
 	mockWs,
 	mockPostProcessAction,
 	mockPostProcessRetry,
 	mockPostProcessTurnContinue,
+	mockLaunchTicketCreation,
 	mockUpdateScheduledAction,
 } = vi.hoisted(() => ({
 	mockDeleteFutureExecution: vi.fn(),
 	mockFetchProcessActionModelPreview: vi.fn(),
 	mockFetchProcessDetail: vi.fn(),
+	mockFetchTicketCreationTools: vi.fn(),
 	mockFetchTurnReasoningDetail: vi.fn(),
 	mockWs: (() => {
 		let state = {
@@ -60,6 +63,7 @@ const {
 	mockPostProcessAction: vi.fn(),
 	mockPostProcessRetry: vi.fn(),
 	mockPostProcessTurnContinue: vi.fn(),
+	mockLaunchTicketCreation: vi.fn(),
 	mockUpdateScheduledAction: vi.fn(),
 }));
 
@@ -68,10 +72,12 @@ vi.mock("../lib/api", () => ({
 	fetchProcessDetail: async (...args: unknown[]) =>
 		compactTestDetail(await mockFetchProcessDetail(...args)),
 	fetchProcessesList: vi.fn().mockResolvedValue({ processes: [], futureExecutions: [] }),
+	fetchTicketCreationTools: mockFetchTicketCreationTools,
 	fetchTurnReasoningDetail: mockFetchTurnReasoningDetail,
 	postProcessAction: mockPostProcessAction,
 	postProcessRetry: mockPostProcessRetry,
 	postProcessTurnContinue: mockPostProcessTurnContinue,
+	launchTicketCreation: mockLaunchTicketCreation,
 	updateScheduledAction: mockUpdateScheduledAction,
 	deleteFutureExecution: mockDeleteFutureExecution,
 }));
@@ -483,6 +489,7 @@ function compactTestDetail(
 		...compacted,
 		questionRequests: input.questionRequests ?? compacted.questionRequests,
 		recovery: input.recovery ?? compacted.recovery,
+		startup: input.startup ?? compacted.startup,
 		startupRecovery: input.startupRecovery ?? compacted.startupRecovery,
 	};
 }
@@ -1186,7 +1193,7 @@ function createContinuableFailedDetail(): ProcessDetailData {
 	const detail = createReasoningOverlayDetail();
 	detail.process.selectedTurnId = "implement_fix";
 	detail.process.lifecycleStatus = "error";
-	detail.process.currentExecution = { kind: "server_turn", id: "trn_2" };
+	detail.process.currentExecution = { kind: "worker_start", id: "tsr_2" };
 	detail.recovery = createFailedTurnRecovery("trn_2");
 	detail.turnRecords[1] = {
 		...detail.turnRecords[1],
@@ -1205,7 +1212,7 @@ function createContinuableFailedDetailWithHistoricalLeafOutcome(): ProcessDetail
 	const detail = createReasoningOverlayDetail();
 	detail.process.selectedTurnId = "implement_fix";
 	detail.process.lifecycleStatus = "error";
-	detail.process.currentExecution = { kind: "server_turn", id: "trn_3" };
+	detail.process.currentExecution = { kind: "worker_start", id: "tsr_3" };
 	detail.recovery = createFailedTurnRecovery("trn_3");
 	detail.actions = [];
 	detail.definesLeafOutcome = true;
@@ -1385,7 +1392,7 @@ function createPreStreamingActiveDetail(): ProcessDetailData {
 function createLiveReasoningTransitionDetail(): ProcessDetailData {
 	const detail = createProcessDetail();
 	detail.process.lifecycleStatus = "active";
-	detail.process.currentExecution = { kind: "server_turn", id: "trn_live" };
+	detail.process.currentExecution = { kind: "worker_start", id: "tsr_live" };
 	detail.turnRecords = [
 		{
 			id: "trn_live",
@@ -1742,6 +1749,14 @@ async function mountSubjectWithCurrentMocks() {
 	mockPostProcessAction.mockReset();
 	mockPostProcessRetry.mockReset();
 	mockPostProcessTurnContinue.mockReset();
+	mockFetchTicketCreationTools.mockReset();
+	mockFetchTicketCreationTools.mockResolvedValue([
+		{
+			name: "tracker_create_issue",
+			displayName: "Issue tracker",
+		},
+	]);
+	mockLaunchTicketCreation.mockReset();
 	mockFetchTurnReasoningDetail.mockReset();
 	mockFetchTurnReasoningDetail.mockImplementation(
 		async (requestInstanceId: string, turnRecordId: string) =>
@@ -1869,6 +1884,75 @@ afterEach(() => {
 });
 
 describe("ProcessDetailPage", () => {
+	it("renders authoritative startup history and remediation inside the Chronicle", async () => {
+		const recovery = {
+			startRecordId: "str_failed",
+			kind: "bootstrap_failed" as const,
+			action: "retry_startup" as const,
+			defaultModelProfileId: null,
+			providerOptions: {},
+			title: "Worker startup failed",
+			summary: "Worker timed out while preparing the workspace",
+		};
+		const detail = compactTestDetail({
+			...createProcessDetail(),
+			startup: {
+				authoritativeAttemptId: null,
+				recovery,
+				attempts: [
+					{
+						startRecordId: "str_failed",
+						workerLeaseId: "wls_failed",
+						status: "failed",
+						startedAt: "2026-01-01T00:00:00.000Z",
+						readyAt: null,
+						durationMs: null,
+						summary: recovery.summary,
+						recoveredByStartRecordId: null,
+						steps: [
+							{
+								id: "start_worker",
+								label: "Start worker",
+								status: "completed",
+								occurredAt: "2026-01-01T00:00:00.000Z",
+							},
+							{
+								id: "connect_worker",
+								label: "Connect worker",
+								status: "completed",
+								occurredAt: "2026-01-01T00:00:02.000Z",
+							},
+							{
+								id: "prepare_workspace",
+								label: "Prepare workspace",
+								status: "failed",
+								occurredAt: null,
+							},
+							{
+								id: "start_first_turn",
+								label: "Start first turn",
+								status: "pending",
+								occurredAt: null,
+							},
+						],
+					},
+				],
+			},
+			startupRecovery: recovery,
+		});
+
+		const { target } = await mountSubject(detail);
+		await flushUi();
+
+		expect(target.querySelector('[data-section="startup-history"]')?.textContent).toContain(
+			"Process startup failed",
+		);
+		expect(target.querySelector('[data-section="startup-recovery"]')?.textContent).toContain(
+			"Retry startup",
+		);
+		expect(target.querySelector('[aria-label="Process startup"]')).toBeNull();
+	});
+
 	it("keeps the chronicle pinned to the bottom while the initial layout is still settling", async () => {
 		const { viewport } = await mountSubject(createProcessDetail());
 		const metrics = installViewportMetrics(viewport, { clientHeight: 500, scrollHeight: 1_000 });
@@ -1972,7 +2056,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const sheet = target.querySelector<HTMLElement>('[data-section="mobile-process-quick-nav"]');
-		expect(sheet).toBeInstanceOf(HTMLDialogElement);
+		expect(sheet?.tagName).toBe("DIALOG");
 		expect(sheet?.querySelector('[data-section="turn-rail-list"]')).toBeTruthy();
 		expect(sheet?.textContent).toContain("Process info");
 		expect(
@@ -2577,7 +2661,7 @@ describe("ProcessDetailPage", () => {
 				type: "process.updated",
 				instanceId: "agt_1",
 				payload: {
-					process: { currentExecution: { kind: "server_turn", id: "trn_live" } },
+					process: { currentExecution: { kind: "worker_start", id: "tsr_live" } },
 					changedFields: ["currentExecution"],
 				},
 			}),
@@ -2750,7 +2834,7 @@ describe("ProcessDetailPage", () => {
 		);
 	});
 
-	it("renders Retry without model controls for a failed server automatic turn", async () => {
+	it("renders Retry without model controls for a failed automatic turn", async () => {
 		mockPostProcessRetry.mockResolvedValue(undefined);
 		const detail = createContinuableFailedDetail();
 		detail.recovery = createFailedTurnRecovery("trn_2", {
@@ -3913,6 +3997,46 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(metrics.getScrollTop()).toBe(2_232);
 		expect(lastTurnButton?.dataset.active).toBe("true");
+	});
+
+	it("launches ticket creation from a compact issue description dialog", async () => {
+		mockLaunchTicketCreation.mockResolvedValue({
+			childInstanceId: "agt_ticket",
+			relation: { id: "rel_1" },
+		});
+		const { target } = await mountSubject(createReasoningOverlayDetail());
+		await flushUi();
+
+		const createIssueButton = target.querySelector<HTMLButtonElement>(
+			'[data-section="chronicle-turn"][data-turn-record-id="trn_2"] .create-issue-button',
+		);
+		expect(createIssueButton?.textContent).toContain("Create issue");
+		createIssueButton?.click();
+		await flushUi();
+
+		const dialog = target.querySelector<HTMLElement>('[data-section="ticket-composer"]');
+		const description = dialog?.querySelector<HTMLTextAreaElement>("textarea");
+		const submit = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
+			(button) => button.textContent?.trim() === "Create",
+		);
+		expect(dialog?.querySelector("pre")).toBeNull();
+		expect(description?.getAttribute("placeholder")).toContain("Describe the problem");
+		expect(submit?.disabled).toBe(true);
+
+		if (!description) throw new Error("Expected issue description field");
+		description.value = "Fix the issue creation flow on narrow mobile screens.";
+		description.dispatchEvent(new Event("input", { bubbles: true }));
+		await flushUi();
+		expect(submit?.disabled).toBe(false);
+		submit?.click();
+		await flushUi();
+
+		expect(mockLaunchTicketCreation).toHaveBeenCalledWith("agt_1", {
+			artifact: { kind: "turn_result", turnRecordId: "trn_2" },
+			focus: { kind: "whole_result" },
+			additionalInstructions: "Fix the issue creation flow on narrow mobile screens.",
+			toolName: "tracker_create_issue",
+		});
 	});
 
 	it("keeps historical turn results compressed until the user explicitly expands them", async () => {

@@ -20,6 +20,8 @@ const SERVER_TO_WORKER_TYPES = [
 const WORKER_TO_SERVER_TYPES = [
 	"worker.hello",
 	"worker.credential_update",
+	"worker.bootstrap_progress",
+	"worker.diagnostic_trace",
 	"worker.ready",
 	"worker.heartbeat",
 	"worker.state",

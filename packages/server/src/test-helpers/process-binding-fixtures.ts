@@ -78,11 +78,7 @@ function routeDefinition<TParams, TState>(
 			...(!edge && !hasTarget ? { complete: true } : {}),
 		};
 	}
-	if (
-		definition.kind === "llm" ||
-		definition.kind === "automatic" ||
-		definition.kind === "server_automatic"
-	) {
+	if (definition.kind === "llm" || definition.kind === "automatic") {
 		if (edges.length > 0) {
 			return {
 				...definition,

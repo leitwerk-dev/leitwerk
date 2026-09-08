@@ -14,6 +14,11 @@ import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
 export type DeterministicFinalizationMergeMode = "noop" | "fast_forward" | "merge_commit";
 
+export interface GitIdentity {
+	name: string;
+	email: string;
+}
+
 interface DeterministicFinalizationInput {
 	repoPath: string;
 	workspaceClonePath: string;
@@ -22,6 +27,7 @@ interface DeterministicFinalizationInput {
 	expectedPostConflictHeadSha?: string | null;
 	usedConflictResolution?: boolean;
 	commitMessage: string;
+	gitIdentity?: GitIdentity;
 }
 
 export type DeterministicFinalizationResult =
@@ -106,9 +112,19 @@ function gitConfigIdentityEnv(): NodeJS.ProcessEnv {
 	return env;
 }
 
-function runGit(repoPath: string, args: readonly string[]): GitExecResult {
+function gitIdentityArgs(identity: GitIdentity): string[] {
+	const name = trimToNull(identity.name);
+	const email = trimToNull(identity.email);
+	if (!name || !email || /[\r\n\0]/.test(name) || /[\r\n\0]/.test(email)) {
+		throw new DeterministicGitError("Git identity requires a valid name and email");
+	}
+	return ["-c", `user.name=${name}`, "-c", `user.email=${email}`];
+}
+
+function runGit(repoPath: string, args: readonly string[], identity?: GitIdentity): GitExecResult {
+	const trustedArgs = identity ? [...gitIdentityArgs(identity), ...args] : args;
 	try {
-		const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(args), {
+		const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(trustedArgs), {
 			cwd: repoPath,
 			encoding: "utf8",
 			env: gitConfigIdentityEnv(),
@@ -265,9 +281,26 @@ function assertExpectedCheckout(repoPath: string, workBranch: string): void {
 	}
 }
 
-function assertGitIdentity(repoPath: string): void {
-	const author = runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"]);
-	const committer = runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"]);
+function assertFinalizationCheckout(input: {
+	repoPath: string;
+	workBranch: string;
+	commitMessage: string;
+	missingCommitMessage: string;
+}): void {
+	if (!repoExists(input.repoPath)) {
+		throw new DeterministicGitError(
+			`Repository workspace '${input.repoPath}' does not exist or is not a git repository`,
+		);
+	}
+	assertExpectedCheckout(input.repoPath, input.workBranch);
+	if (!trimToNull(input.commitMessage)) {
+		throw new DeterministicGitError(input.missingCommitMessage);
+	}
+}
+
+function assertGitIdentity(repoPath: string, identity?: GitIdentity): void {
+	const author = runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"], identity);
+	const committer = runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"], identity);
 	if (!author.ok || !committer.ok) {
 		throw new DeterministicGitError(
 			"Git author/committer identity is not configured. Configure user.name and user.email in this repository or the operator's global Git config, then retry finalization.",
@@ -275,22 +308,23 @@ function assertGitIdentity(repoPath: string): void {
 	}
 }
 
-function commitDirtyWorktree(repoPath: string, commitMessage: string): string {
-	assertGitIdentity(repoPath);
+function commitDirtyWorktree(
+	repoPath: string,
+	commitMessage: string,
+	identity?: GitIdentity,
+): string {
+	assertGitIdentity(repoPath, identity);
 	const addResult = runGit(repoPath, ["add", "--all"]);
 	if (!addResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to stage the completed change: ${trimToNull(addResult.stderr) ?? trimToNull(addResult.stdout) ?? "unknown git error"}`,
 		);
 	}
-	const commitResult = runGit(repoPath, [
-		"-c",
-		"core.hooksPath=/dev/null",
-		"commit",
-		"--no-gpg-sign",
-		"-m",
-		commitMessage,
-	]);
+	const commitResult = runGit(
+		repoPath,
+		["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", commitMessage],
+		identity,
+	);
 	if (!commitResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to commit the completed change: ${trimToNull(commitResult.stderr) ?? trimToNull(commitResult.stdout) ?? "unknown git error"}`,
@@ -303,6 +337,17 @@ function commitDirtyWorktree(repoPath: string, commitMessage: string): string {
 		);
 	}
 	return currentHeadSha(repoPath);
+}
+
+function commitIfDirty(input: {
+	repoPath: string;
+	commitMessage: string;
+	gitIdentity?: GitIdentity;
+}): string {
+	const status = workingTreeStatus(input.repoPath);
+	return status.dirtyFiles.length > 0
+		? commitDirtyWorktree(input.repoPath, input.commitMessage, input.gitIdentity)
+		: currentHeadSha(input.repoPath);
 }
 
 function assertPostConflictCheckpoint(
@@ -349,6 +394,7 @@ function deterministicMerge(input: {
 	baseBranch: string;
 	headBefore: string;
 	baseSha: string;
+	gitIdentity?: GitIdentity;
 }):
 	| { ok: true; mergeMode: DeterministicFinalizationMergeMode; headSha: string }
 	| { ok: false; conflict: true; headSha: string; conflictedFiles: string[] } {
@@ -375,15 +421,12 @@ function deterministicMerge(input: {
 		};
 	}
 
-	assertGitIdentity(repoPath);
-	const mergeResult = runGit(repoPath, [
-		"-c",
-		"core.hooksPath=/dev/null",
-		"merge",
-		"--no-edit",
-		"--no-gpg-sign",
-		ref,
-	]);
+	assertGitIdentity(repoPath, input.gitIdentity);
+	const mergeResult = runGit(
+		repoPath,
+		["-c", "core.hooksPath=/dev/null", "merge", "--no-edit", "--no-gpg-sign", ref],
+		input.gitIdentity,
+	);
 	if (!mergeResult.ok) {
 		const conflicts = conflictedFiles(repoPath);
 		if (mergeInProgress(repoPath) || conflicts.length > 0) {
@@ -411,12 +454,20 @@ function branchRef(branch: string): string {
 	return `refs/heads/${branch}`;
 }
 
-function pushHeadToBranch(repoPath: string, branch: string): string {
+function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string): string {
 	const pushTarget = `origin/${branch}`;
 	const pushResult = runGit(repoPath, ["push", "origin", `HEAD:${branchRef(branch)}`]);
 	if (!pushResult.ok) {
 		throw new DeterministicGitError(
 			`Failed to push HEAD to '${pushTarget}': ${trimToNull(pushResult.stderr) ?? trimToNull(pushResult.stdout) ?? "unknown git error"}`,
+		);
+	}
+	const remoteHead = gitOrNull(repoPath, "ls-remote", "--heads", "origin", branchRef(branch))
+		?.split(/\s+/)[0]
+		?.trim();
+	if (remoteHead !== expectedHeadSha) {
+		throw new DeterministicGitError(
+			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${expectedHeadSha}'`,
 		);
 	}
 	return pushTarget;
@@ -610,49 +661,37 @@ export function commitAndPushWorkBranch(input: {
 	repoPath: string;
 	workBranch: string;
 	commitMessage: string;
+	gitIdentity: GitIdentity;
 }) {
 	const repoPath = path.resolve(input.repoPath);
-	if (!repoExists(repoPath)) {
-		throw new DeterministicGitError(
-			`Repository workspace '${repoPath}' does not exist or is not a git repository`,
-		);
-	}
-	assertExpectedCheckout(repoPath, input.workBranch);
-	if (!trimToNull(input.commitMessage)) {
-		throw new DeterministicGitError("A generated commit message is required before publication");
-	}
+	assertFinalizationCheckout({
+		repoPath,
+		workBranch: input.workBranch,
+		commitMessage: input.commitMessage,
+		missingCommitMessage: "A generated commit message is required before publication",
+	});
 	const conflicts = conflictedFiles(repoPath);
 	if (mergeInProgress(repoPath) || conflicts.length > 0) {
 		throw new DeterministicGitError(
 			`Cannot publish a work branch with unresolved conflicts: ${conflicts.join(", ") || "merge in progress"}`,
 		);
 	}
-	const dirty = workingTreeStatus(repoPath).dirtyFiles.length > 0;
-	const headSha = dirty
-		? commitDirtyWorktree(repoPath, input.commitMessage)
-		: currentHeadSha(repoPath);
-	const pushTarget = pushHeadToBranch(repoPath, input.workBranch);
-	const remoteHead = gitOrNull(
+	const headSha = commitIfDirty({
 		repoPath,
-		"ls-remote",
-		"--heads",
-		"origin",
-		branchRef(input.workBranch),
-	)
-		?.split(/\s+/)[0]
-		?.trim();
-	if (remoteHead !== headSha) {
-		throw new DeterministicGitError(
-			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${headSha}'`,
-		);
-	}
+		commitMessage: input.commitMessage,
+		gitIdentity: input.gitIdentity,
+	});
+	const pushTarget = pushAndVerify(repoPath, input.workBranch, headSha);
 	return { headSha, pushTarget };
 }
 
 export function runDeterministicFinalization<
 	TParams,
 	TState extends RepositoryChangeFinalizationContextState,
->(ctx: FlowAutomaticRunContext<TParams, TState>): DeterministicFinalizationResult {
+>(
+	ctx: FlowAutomaticRunContext<TParams, TState>,
+	gitIdentity?: GitIdentity,
+): DeterministicFinalizationResult {
 	const progressSteps = [
 		["validate_checkout", "Validate the repository checkout"],
 		["fetch_base", "Fetch and verify the latest base branch"],
@@ -664,7 +703,7 @@ export function runDeterministicFinalization<
 		completedCount: number,
 		failure?: { index: number; detail: string },
 	) =>
-		ctx.reportProgress({
+		ctx.reportProgress?.({
 			title: "Finalization progress",
 			steps: progressSteps.map(([id, label], index) => ({
 				id,
@@ -690,19 +729,16 @@ export function runDeterministicFinalization<
 		expectedPostConflictHeadSha: ctx.state.finalization.expectedPostConflictHeadSha,
 		usedConflictResolution: ctx.state.finalization.usedConflictResolution,
 		commitMessage: ctx.state.finalization.generatedCommitMessage ?? "",
+		gitIdentity,
 	};
 	const repoPath = path.resolve(input.repoPath);
-	if (!repoExists(repoPath)) {
-		throw new DeterministicGitError(
-			`Repository workspace '${repoPath}' does not exist or is not a git repository`,
-		);
-	}
-	assertExpectedCheckout(repoPath, input.workBranch);
-	if (!trimToNull(input.commitMessage)) {
-		throw new DeterministicGitError(
+	assertFinalizationCheckout({
+		repoPath,
+		workBranch: input.workBranch,
+		commitMessage: input.commitMessage,
+		missingCommitMessage:
 			"No generated commit message is available; retry commit-message generation before finalization",
-		);
-	}
+	});
 	assertPostConflictCheckpoint(input, repoPath);
 	reportProgress(1, 1);
 
@@ -732,15 +768,17 @@ export function runDeterministicFinalization<
 	}
 	reportProgress(2, 2);
 
-	const status = workingTreeStatus(repoPath);
-	if (status.dirtyFiles.length > 0) {
-		headSha = commitDirtyWorktree(repoPath, input.commitMessage);
-	}
+	headSha = commitIfDirty({
+		repoPath,
+		commitMessage: input.commitMessage,
+		gitIdentity: input.gitIdentity,
+	});
 	const mergeResult = deterministicMerge({
 		repoPath,
 		baseBranch: input.baseBranch,
 		headBefore: headSha,
 		baseSha,
+		gitIdentity: input.gitIdentity,
 	});
 	if (!mergeResult.ok) {
 		reportProgress(null, 2, {
@@ -763,7 +801,7 @@ export function runDeterministicFinalization<
 	let sourceOriginPushTarget: string | null = null;
 	if (localSourceRepo?.kind === "non_bare") {
 		assertLocalBaseRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushHeadToBranch(repoPath, input.workBranch);
+		workspacePushTarget = pushAndVerify(repoPath, input.workBranch, mergeResult.headSha);
 		mergeWorkBranchIntoLocalBaseRepo({
 			localBaseRepoPath: localSourceRepo.path,
 			baseBranch: input.baseBranch,
@@ -779,7 +817,7 @@ export function runDeterministicFinalization<
 		pushTarget = sourceOriginPushTarget ?? originBaseRef(input.baseBranch);
 	} else if (localSourceRepo?.kind === "bare") {
 		assertLocalBareSourceRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushHeadToBranch(repoPath, input.baseBranch);
+		workspacePushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
 		sourceOriginPushTarget = pushLocalSourceBaseBranchToOriginIfPresent({
 			localSourceRepoPath: localSourceRepo.path,
 			baseBranch: input.baseBranch,
@@ -787,7 +825,7 @@ export function runDeterministicFinalization<
 		});
 		pushTarget = sourceOriginPushTarget ?? workspacePushTarget;
 	} else {
-		pushTarget = pushHeadToBranch(repoPath, input.baseBranch);
+		pushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
 	}
 	updateLocalBaseRef(repoPath, input.baseBranch);
 	const finalHeadSha = currentHeadSha(repoPath);

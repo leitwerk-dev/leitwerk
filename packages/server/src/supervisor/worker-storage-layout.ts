@@ -6,6 +6,7 @@ import type { LeitwerkConfig } from "../config/config-types.js";
 export interface WorkerTreePaths {
 	primaryTreeFile: string;
 	workspaceRoot: string;
+	piResourceBundlesDir: string;
 	resume: boolean;
 }
 
@@ -38,7 +39,12 @@ export function createLocalWorkerStorageLayout(input: {
 		mkdirSync(processWorkspacesDir, { recursive: true });
 		mkdirSync(treeFilesDir, { recursive: true });
 		mkdirSync(workspaceRoot, { recursive: true });
-		return { primaryTreeFile, workspaceRoot, resume };
+		return {
+			primaryTreeFile,
+			workspaceRoot,
+			piResourceBundlesDir: path.join(workspaceRoot, ".leitwerk", "pi-resource-bundles"),
+			resume,
+		};
 	};
 }
 
@@ -48,6 +54,7 @@ export function createProcessVolumeWorkerStorageLayout(input: {
 	return () => ({
 		workspaceRoot: joinContainerPath(input.mountPath, "workspace"),
 		primaryTreeFile: joinContainerPath(input.mountPath, "tree", "primary.jsonl"),
+		piResourceBundlesDir: joinContainerPath(input.mountPath, "pi-resource-bundles"),
 		// Server-opaque volumes may already contain the authoritative worker tree even
 		// when the server has no fresh snapshot. Never tell the worker to initialize a
 		// known-empty local session just because the server cannot inspect the volume.

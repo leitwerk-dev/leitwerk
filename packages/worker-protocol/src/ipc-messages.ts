@@ -86,7 +86,11 @@ export interface WorkerGitSshCredential {
 
 export interface LlmWorkerStartBootstrap {
 	kind: "llm";
-	resourceBundle: { digest: string; archiveBase64: string };
+	resourceBundle: {
+		digest: string;
+		/** Present for a newly assembled bundle; omitted when the worker can reuse its process volume. */
+		archiveBase64?: string;
+	};
 	credential: WorkerCredentialMaterial | null;
 }
 
@@ -95,6 +99,13 @@ export interface AutomaticWorkerStartBootstrap {
 }
 
 export type WorkerRuntimeSettingsSnapshot = ConfigSnapshot["workers"];
+
+export interface DevelopmentToolsStartConfig {
+	runner: "local" | "isolated";
+	miseCommand: string;
+	installTimeoutMs: number;
+	processStorageRoot: string;
+}
 
 export interface IntegrationToolDeclaration {
 	name: string;
@@ -114,13 +125,19 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	treePaths: {
 		primaryTreeFile: string;
 		workspaceRoot: string;
+		/** Process-scoped persistent storage for immutable Pi resource bundles. */
+		piResourceBundlesDir: string;
 	};
 	resume: boolean;
 	resumeLeafEntryId?: string | null;
+	/** Durable non-secret preparation checkpoint reused by a replacement or Continue start. */
+	llmPreparation?: { sourceTurnRecordId: string; data: unknown };
 	/** Fresh secret material resolved for this physical worker start only. */
 	repositoryCredentials?: WorkerGitSshCredential[];
 	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
+	/** Non-secret mise adapter settings. Ignored unless the process opts in. */
+	developmentTools?: DevelopmentToolsStartConfig;
 	/** Non-secret declarations authorized for the selected LLM turn. */
 	integrationTools?: IntegrationToolDeclaration[];
 }
@@ -239,8 +256,21 @@ export interface WorkerHelloPayload {
 	capabilities: string[];
 }
 
+export interface WorkerBootstrapProgressPayload {
+	phase: "worker_connected" | "preparing_workspace" | "loading_resources" | "preparing_turn";
+}
+
+export interface WorkerDiagnosticTracePayload {
+	text: string;
+}
+
 export interface WorkerReadyPayload {
 	receipt: WorkerBootstrapReceipt;
+	developmentTools?: {
+		miseVersion: string;
+		repositories: Array<{ repositoryKey: string; tools: Array<{ name: string; version: string }> }>;
+		warnings: string[];
+	};
 	resumed: boolean;
 	primaryTreeFile: string;
 	workspaceRoot: string;
@@ -350,6 +380,14 @@ export type WorkerToServerMessage =
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.credential_update";
 			payload: WorkerCredentialUpdatePayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.bootstrap_progress";
+			payload: WorkerBootstrapProgressPayload;
+	  })
+	| (Omit<IpcEnvelope, "type" | "payload"> & {
+			type: "worker.diagnostic_trace";
+			payload: WorkerDiagnosticTracePayload;
 	  })
 	| (Omit<IpcEnvelope, "type" | "payload"> & {
 			type: "worker.ready";

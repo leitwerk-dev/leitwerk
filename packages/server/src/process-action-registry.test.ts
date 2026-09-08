@@ -57,7 +57,7 @@ function createDefaultTurnDefinitions(): ReadonlyMap<string, TurnDefinition> {
 			{
 				id: "handoff_review",
 				description: "Handoff review",
-				kind: "server_automatic",
+				kind: "automatic",
 				outcomes: { created: { description: "created", parameters: {} } },
 				run: async () => ({ outcome: "created", params: {} }),
 			},

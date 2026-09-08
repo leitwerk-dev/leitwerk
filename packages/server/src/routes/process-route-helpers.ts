@@ -56,6 +56,7 @@ import {
 	buildFutureExecutionListView,
 	getScheduledActionDetailForProcess as getPresentedScheduledActionDetailForProcess,
 } from "../future-execution-presenter.js";
+import type { LaunchCoordinator } from "../launch-coordinator.js";
 import { normalizeSubmittedProcessTitle } from "../launch-title.js";
 import type { LauncherRecentValuesService } from "../launcher-recent-values-service.js";
 import type {
@@ -85,6 +86,7 @@ import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import type { ProcessUiRegistry } from "../process-ui-registry.js";
 import type { SkillCatalogService } from "../skills/catalog-service.js";
 import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
+import type { ToolApprovalGate } from "../tool-approval-gate.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 
 export const PRIMARY_PATH_ACTIVE_TURN_EVENT_LIMIT = 500;
@@ -93,6 +95,7 @@ export interface RouteDeps
 	extends Pick<
 		RepositoryBundle,
 		| "processes"
+		| "launchRuns"
 		| "projects"
 		| "inputs"
 		| "events"
@@ -102,6 +105,8 @@ export interface RouteDeps
 		| "handoffDedupKeys"
 		| "leafOutcomeSnapshots"
 		| "questionRequests"
+		| "processRelations"
+		| "toolApprovalRequests"
 		| "turnRecords"
 		| "turnStarts"
 		| "turnAnnotations"
@@ -112,6 +117,7 @@ export interface RouteDeps
 	broadcaster: Broadcaster;
 	processOperations: ProcessOperationCoordinator;
 	processQuestions: ProcessQuestionService;
+	toolApprovalGate: ToolApprovalGate;
 	processGraphs: ProcessGraphRegistry;
 	supervisor?: WorkerSupervisor;
 	processEngine: ProcessEngine;
@@ -120,6 +126,7 @@ export interface RouteDeps
 	processUiRegistry?: ProcessUiRegistry;
 	extensionHost?: ExtensionHost;
 	launcherService: ProcessLauncherService;
+	launchCoordinator: LaunchCoordinator;
 	launcherRecentValues: LauncherRecentValuesService;
 	launchPlans: ProcessLaunchPlanServiceLike;
 	processTitles?: ProcessTitleGenerator;

@@ -26,7 +26,8 @@ chart does not create or own a PVC when this value is set.
 Set `server.preflight.enabled=true` only with an operator-managed
 `server.existingConfigSecret` and `server.storage.existingClaim`. On upgrade,
 Helm runs the candidate server image as a `pre-upgrade` Job on the current
-server's node. The Job mounts the production PVC read-only, uses SQLite's
+server's node. The Job mounts the production PVC writable because SQLite may
+need WAL/SHM sidecars, opens the production database read-only, uses SQLite's
 online backup API to create a consistent copy in `emptyDir`, redirects all
 server writes to that scratch volume, loads the candidate configuration and
 extensions, migrates the copy, and verifies `/api/health`. It never starts

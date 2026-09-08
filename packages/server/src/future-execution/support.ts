@@ -1,5 +1,6 @@
 import type { FutureExecution } from "@leitwerk-dev/domain";
 import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
+import type { ParsedScheduleRequest } from "@leitwerk-dev/protocol";
 import type { PostCommitEffect } from "../effects/post-commit-effect.js";
 import {
 	type PostCommitEffectResult,
@@ -8,6 +9,25 @@ import {
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+
+export function resolveStoredScheduleRequest(
+	execution: Pick<FutureExecution, "scheduleKind" | "nextRunAt" | "cronExpression">,
+):
+	| { ok: true; value: ParsedScheduleRequest }
+	| { ok: false; issue: { code: string; message: string } } {
+	if (execution.scheduleKind === "cron") {
+		return execution.cronExpression
+			? { ok: true, value: { mode: "cron", cronExpression: execution.cronExpression } }
+			: {
+					ok: false,
+					issue: {
+						code: "invalid_schedule",
+						message: "Scheduled execution is missing its cron expression",
+					},
+				};
+	}
+	return { ok: true, value: { mode: "once", runAt: execution.nextRunAt } };
+}
 
 export function buildFutureExecutionUpdatedEffect(
 	futureExecution: Pick<FutureExecution, "id" | "kind" | "instanceId">,

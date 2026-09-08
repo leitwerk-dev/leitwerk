@@ -11,7 +11,6 @@ import type {
 	HumanTurnDefinition,
 	LlmTurnDefinition,
 	ProcessToolOutcomeSpec,
-	ServerAutomaticTurnDefinition,
 	TurnDefinition,
 } from "./define-process.js";
 import { llmTurn, resolveHumanTurnView } from "./define-process.js";
@@ -35,12 +34,6 @@ export function isAutomaticTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): turnDef is AutomaticTurnDefinition<string, TParams, TState> {
 	return turnDef.kind === "automatic";
-}
-
-export function isServerAutomaticTurnDefinition<TParams = unknown, TState = unknown>(
-	turnDef: TurnDefinition<TParams, TState>,
-): turnDef is ServerAutomaticTurnDefinition<string, TParams, TState> {
-	return turnDef.kind === "server_automatic";
 }
 
 export function isHumanTurnDefinition<TParams = unknown, TState = unknown>(
@@ -338,12 +331,7 @@ export function validateAutomaticTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
 	TState = unknown,
->(
-	turnId: string,
-	turnDef:
-		| AutomaticTurnDefinition<TOutcome, TParams, TState>
-		| ServerAutomaticTurnDefinition<TOutcome, TParams, TState>,
-): string[] {
+>(turnId: string, turnDef: AutomaticTurnDefinition<TOutcome, TParams, TState>): string[] {
 	const errors: string[] = [];
 	const declaredOutcomes = turnDef.outcomes;
 	const declaredTurnEnd = turnDef.turnEnd;
@@ -531,8 +519,7 @@ export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	}
 	return isLlmTurnDefinition(effectiveTurnDef)
 		? validateLlmTurnDefinition(effectiveTurnId, effectiveTurnDef)
-		: isAutomaticTurnDefinition(effectiveTurnDef) ||
-				isServerAutomaticTurnDefinition(effectiveTurnDef)
+		: isAutomaticTurnDefinition(effectiveTurnDef)
 			? validateAutomaticTurnDefinition(effectiveTurnId, effectiveTurnDef)
 			: isHumanTurnDefinition(effectiveTurnDef)
 				? validateHumanTurnDefinition(effectiveTurnId, effectiveTurnDef)
