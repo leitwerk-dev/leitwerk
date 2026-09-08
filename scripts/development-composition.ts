@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 
@@ -57,6 +58,22 @@ function resolveExisting(baseDir: string, declaredPath: string, label: string): 
 	const resolved = path.resolve(baseDir, declaredPath);
 	if (!existsSync(resolved)) throw new Error(`${label} does not exist at '${resolved}'`);
 	return realpathSync(resolved);
+}
+
+/** Resolve installed extensions without requiring their package.json to be exported. */
+function resolveExtension(baseDir: string, source: string): string {
+	if (source.startsWith(".") || path.isAbsolute(source)) {
+		return resolveExisting(baseDir, source, `Extension '${source}'`);
+	}
+	if (!/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(source)) {
+		throw new Error(`Invalid extension package name '${source}'`);
+	}
+	const require = createRequire(path.join(baseDir, "package.json"));
+	for (const directory of require.resolve.paths(source) ?? []) {
+		const candidate = path.join(directory, source);
+		if (existsSync(path.join(candidate, "package.json"))) return realpathSync(candidate);
+	}
+	throw new Error(`Extension package '${source}' is not installed in '${baseDir}'`);
 }
 
 function workspacePatterns(value: unknown): string[] {
@@ -134,14 +151,15 @@ export function loadDevelopmentComposition(
 	if (!isRecord(parsed)) throw new Error("Development composition must be a YAML object");
 	const manifest = parsed as CompositionManifest;
 	if (manifest.version !== 1) throw new Error("Development composition version must be 1");
-	if (!isRecord(manifest.leitwerk))
-		throw new Error("Development composition must declare leitwerk.root");
-	const leitwerkRoot = resolveExisting(
-		manifestDir,
-		requiredString(manifest.leitwerk.root, "leitwerk.root"),
-		"leitwerk.root",
-	);
 	const currentRoot = realpathSync(path.resolve(executingLeitwerkRoot));
+	const leitwerkRoot =
+		manifest.leitwerk === undefined
+			? currentRoot
+			: resolveExisting(
+					manifestDir,
+					requiredString(manifest.leitwerk?.root, "leitwerk.root"),
+					"leitwerk.root",
+				);
 	if (leitwerkRoot !== currentRoot) {
 		throw new Error(
 			`Composition targets Leitwerk checkout '${leitwerkRoot}', but the command is running from '${currentRoot}'`,
@@ -158,7 +176,7 @@ export function loadDevelopmentComposition(
 		"runtime_config",
 	);
 	const extensionDirs = optionalStringArray(manifest.extensions, "extensions").map((entry) =>
-		resolveExisting(manifestDir, entry, `Extension '${entry}'`),
+		resolveExtension(manifestDir, entry),
 	);
 	const testRoots = optionalStringArray(manifest.test_roots, "test_roots").map((entry) =>
 		resolveExisting(manifestDir, entry, `Test root '${entry}'`),

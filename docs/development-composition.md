@@ -1,6 +1,16 @@
 # Development Compositions
 
-A development composition combines this Leitwerk checkout with packages and extensions from a separate npm workspace. It is a development and test input. It does not change production configuration or the public publish set.
+A development composition declares an extension workspace and its runtime configuration. Extension workspaces can use published npm packages without a core checkout. When a core checkout executes a composed command, it includes the workspace in source development and full validation. The manifest does not change production configuration or the public publish set.
+
+## Installed packages and optional source development
+
+An extension repository should declare only its own packages as npm workspaces and depend on released `@leitwerk-dev/*` packages normally. Build and TypeScript configuration should use package exports, not references into a core checkout. The committed npm lockfile records the released dependency graph.
+
+Keep an optional core clone inside the extension repository, for example `.leitwerk-base/`. A repository-owned `core:use-local` command can clone the matching release on first use, install its dependencies, and link the public packages into the extension workspace. Existing checkouts retain their branch and uncommitted edits. Activate the entire local public package graph consistently for runtime, types, and tests; do not mix registry copies with local SDK packages. Keep selection metadata ignored and leave the committed package manifests and release lock unchanged.
+
+`core:use-release` restores the committed npm installation and retains the checkout. Normal development commands must not clone, fetch, switch branches, or select source mode merely because a checkout exists. Each extension repository owns its own optional checkout and selection.
+
+The runtime and extension APIs are available from installed `@leitwerk-dev/server` and `@leitwerk-dev/extension-runtime` packages. `@leitwerk-dev/ui` includes compiled UI assets. A repository runner can build and watch its extensions, restart the installed server after successful builds, and serve the installed UI with API/WebSocket forwarding. Core source development continues to use this repository's `dev` command.
 
 ## Layout
 
@@ -49,7 +59,7 @@ test_roots:
   - ./tests
 ```
 
-Paths are relative to the manifest. `leitwerk.root` must identify the checkout executing the command. `workspace_root` defaults to the manifest directory. `runtime_config` is required. Listed extensions are added to the development extension catalog. Test roots contribute integration, E2E, UI integration, and `*.browser.test.ts` Playwright tests.
+Paths are relative to the manifest. `leitwerk.root` is optional; when present it must identify the checkout executing the command, otherwise that checkout is used. `workspace_root` defaults to the manifest directory. `runtime_config` is required. Listed extensions can be filesystem paths or installed package names such as `@leitwerk-dev/coding`; package metadata need not be exported. They are added to the development extension catalog. Test roots contribute integration, E2E, UI integration, and `*.browser.test.ts` Playwright tests.
 
 ## Commands
 
