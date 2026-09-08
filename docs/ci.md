@@ -6,6 +6,7 @@ Builds and tests run on Node 26. CI and release validation temporarily use Node 
 install Playwright browsers: the bundled archive extractor does not complete under Node
 26. They restore Node 26 immediately after installation. Browser installation has a
 five-minute timeout so an installer regression cannot leave validation running indefinitely.
+Publishable workspaces must declare the same Node engine range as the root package.
 
 ## Required pull request policy
 
