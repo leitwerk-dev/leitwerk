@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.9...v0.1.10) (2026-09-08)
+
+
+### Features
+
+* **auth:** add personal and shared anonymous API tokens ([abaafbd](https://github.com/leitwerk-dev/leitwerk/commit/abaafbd60ce41ee8a48318b7854d2efafff1e401))
+
 ## [0.1.9](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.8...v0.1.9) (2026-08-20)
 
 
