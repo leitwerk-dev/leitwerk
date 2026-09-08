@@ -92,9 +92,19 @@ The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<stora
 
 ---
 
-## 5. Storage Retention & Cleanup
+## 5. Local Pi Session Transfer
+
+An authenticated operator can create an expiring local-transfer link from a process with a primary Pi session. Link creation only stores a hashed bearer grant; workspace reading starts when local Pi claims it.
+
+The transfer exporter waits for already accepted work and automatic successors to reach a stable `waiting`, `error`, `completed`, or `aborted` state. It then reserves the process, removes the idle worker and writable lease, pre-scans retained storage, and streams a tar+Zstandard archive. The archive contains only `workspace/`, `tree/primary.jsonl` as `session.jsonl`, and a versioned manifest. It excludes `pi-agent/`, tooling and dependency caches, credentials, temporary state, and unrelated volume paths.
+
+Local import preserves regular files, executable modes, timestamps, and confined relative symlinks. It accepts Pi session format V3 only, validates project branch/HEAD evidence and the append-ordered entry tree, rewrites the session cwd, removes source `parentSession` metadata, and stores the validated conversation in local Pi's normal session directory without migration. Future turns use local Pi configuration and credentials; they are not part of the server process.
+
+Independent root branches remain valid in the imported tree. Local session switching does not wait for server acknowledgement. A completed receipt lets the operator reopen the local session and retry acknowledgement with the same link without copying again.
+
+## 6. Storage Retention & Cleanup
 
 Process storage is retained across worker restarts and cleaned up based on process outcome. Pi resource bundles are content-addressed and are not overwritten or garbage-collected independently. A retry resolves the latest authorized resources. It reuses the digest when their content is unchanged and adds a new bundle when their content changed.
 
 - **Retention Thresholds:** Storage is retained after process completion or failure according to `storage.completed_process_retention` and `storage.error_process_retention` settings before worker volumes are released.
-- **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.
+- **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) revokes transfer grants and attempts, then immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.

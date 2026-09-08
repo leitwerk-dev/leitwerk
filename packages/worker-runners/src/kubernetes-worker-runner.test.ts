@@ -12,7 +12,18 @@ import {
 	kubernetesWorkerPodName,
 } from "./kubernetes-manifests.js";
 import { createKubernetesWorkerRunner } from "./kubernetes-worker-runner.js";
+import { createExportTestFixture } from "./session-transfer.test-helper.js";
 import type { StartWorkerInput, VolumeRef } from "./types.js";
+
+const unusedExporterOptions = {
+	serverUrl: "http://leitwerk-server:8080",
+	exporterImage: "ghcr.io/example/worker@sha256:abc",
+	helperRelays: {
+		create() {
+			throw new Error("unexpected export helper relay");
+		},
+	},
+};
 
 function bindRunner() {
 	const client = new FakeKubernetesApiClient();
@@ -21,6 +32,7 @@ function bindRunner() {
 		processNamespacePrefix: "leitwerk-test-process-",
 		volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
 		pod: { workerServiceAccount: "leitwerk-worker", imagePullSecrets: ["registry"] },
+		...unusedExporterOptions,
 	});
 	return { client, runner, volume };
 }
@@ -56,6 +68,7 @@ describe("Kubernetes ProcessVolume", () => {
 			serverNamespace: "leitwerk-system",
 			imagePullSecretCopies: [{ sourceName: "registry-source", targetName: "registry-target" }],
 			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
 		});
 
 		await volume.ensure("proc-1");
@@ -114,6 +127,78 @@ describe("Kubernetes ProcessVolume", () => {
 	});
 });
 
+describe("Kubernetes PVC session exporter", () => {
+	it("rejects missing helper configuration during runner construction", () => {
+		expect(() =>
+			createKubernetesWorkerRunner({
+				client: new FakeKubernetesApiClient(),
+				processNamespacePrefix: "leitwerk-test-process-",
+				volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			}),
+		).toThrow("Kubernetes transfer exporter is not configured");
+	});
+
+	it("mounts only workspace and tree into a non-adoptable helper at its fixed root", async () => {
+		const client = new FakeKubernetesApiClient();
+		const { manifest, relay } = createExportTestFixture();
+		const { exporter, runner } = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/retained/process" },
+			serverUrl: "http://leitwerk-server:8080",
+			exporterImage: "ghcr.io/example/worker@sha256:abc",
+			helperRelays: { create: () => relay },
+			pod: { workerServiceAccount: "leitwerk-worker", imagePullSecrets: ["registry"] },
+		});
+
+		await exporter.prepare({
+			instanceId: "proc-1",
+			manifest,
+			limits: { maxEntries: 100, maxLogicalBytes: 1_000, maxCompressedBytes: 1_000 },
+		});
+
+		const helper = client.pods.get("leitwerk-test-process-proc-1/leitwerk-export-proc-1-exp-1");
+		expect(helper?.metadata.labels).toMatchObject({
+			"leitwerk.dev/component": "session-export-helper",
+			"leitwerk.dev/export-id": "exp-1",
+		});
+		expect(helper?.metadata.labels["leitwerk.dev/worker-id"]).toBeUndefined();
+		expect(helper?.spec).toMatchObject({
+			automountServiceAccountToken: false,
+			serviceAccountName: "leitwerk-worker",
+			containers: [
+				{
+					name: "session-export-helper",
+					image: "ghcr.io/example/worker@sha256:abc",
+					command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
+				},
+			],
+		});
+		expect(helper?.spec.containers[0]?.volumeMounts).toEqual([
+			{
+				name: "process-state",
+				mountPath: "/state/workspace",
+				subPath: "workspace",
+				readOnly: true,
+			},
+			{
+				name: "process-state",
+				mountPath: "/state/tree",
+				subPath: "tree",
+				readOnly: true,
+			},
+		]);
+		expect(helper?.spec.containers[0]?.env).toContainEqual({
+			name: "LEITWERK_EXPORT_CREDENTIAL",
+			value: "internal-secret",
+		});
+		expect(await runner.list()).toEqual([]);
+
+		await exporter.reconcile();
+		expect(client.pods.size).toBe(0);
+	});
+});
+
 describe("KubernetesWorkerRunner", () => {
 	it("start creates a pod after PVC ensure and wires Kubernetes metadata", async () => {
 		const { client, runner, volume } = bindRunner();
@@ -146,6 +231,7 @@ describe("KubernetesWorkerRunner", () => {
 				processNamespacePrefix: "leitwerk-test-process-",
 				volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
 				serverCaFile: caFile,
+				...unusedExporterOptions,
 			});
 			const vol = await volume.ensure("proc-1");
 			await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));

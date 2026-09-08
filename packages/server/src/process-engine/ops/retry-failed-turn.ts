@@ -14,6 +14,7 @@ export interface RetryFailedTurnInput {
 export const RetryFailedTurn = defineOperation<"retry_failed_turn", RetryFailedTurnInput, void>({
 	kind: "retry_failed_turn",
 	label: "Retry failed turn",
+	admission: "new_turn",
 	messages: {
 		reconcileErrorMessage: "Process was reactivated, but the worker could not be started cleanly",
 	},

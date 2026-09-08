@@ -6,6 +6,7 @@ import type { ExtensionUiCatalog } from "../extension-ui/catalog.js";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import type { ProcessSessionSnapshotStore } from "../process-session-store.js";
 import type { ResultImageStore } from "../result-image-store.js";
+import { registerInternalSessionTransferExportRoutes } from "../routes/internal-session-transfer-exports.js";
 import { registerInternalWorkerSessionSnapshotRoutes } from "../routes/internal-worker-session-snapshot.js";
 import { type RouteDeps, registerProcessRoutes } from "../routes/processes.js";
 import { registerResultImageRoutes } from "../routes/result-images.js";
@@ -36,6 +37,9 @@ export function registerHttp(input: {
 		const ready = input.isReady();
 		return reply.status(ready ? 200 : 503).send({ status: ready ? "ready" : "not_ready" });
 	});
+	if (input.deps.sessionTransferService) {
+		registerInternalSessionTransferExportRoutes(input.app, input.deps.sessionTransferService);
+	}
 	registerInternalWorkerSessionSnapshotRoutes({
 		app: input.app,
 		leases: input.deps.leases,
@@ -53,7 +57,8 @@ export function registerHttp(input: {
 			!url.startsWith("/api/") ||
 			url === "/api/health" ||
 			url === "/api/ready" ||
-			url === "/api/auth/me"
+			url === "/api/auth/me" ||
+			url.startsWith("/api/session-transfers/")
 		) {
 			return;
 		}

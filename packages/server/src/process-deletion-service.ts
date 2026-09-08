@@ -5,6 +5,7 @@ import type { EngineFailure, ProcessEngine } from "./process-engine/types.js";
 import type { ProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import type { ProcessSessionSnapshotStore } from "./process-session-store.js";
 import type { ResultImageStore } from "./result-image-store.js";
+import type { SessionTransferService } from "./session-transfer-service.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
@@ -26,7 +27,9 @@ interface ProcessDeletionDeps extends Pick<RepositoryBundle, "processes"> {
 	sessionSnapshots: ProcessSessionSnapshotStore;
 	resultImages: ResultImageStore;
 	broadcaster: Broadcaster;
+	sessionTransfers?: Pick<SessionTransferService, "revokeProcess">;
 	logger?: { error(details: unknown, message: string): void };
+	deletionPending?: Set<string>;
 }
 
 const TERMINAL_STATUSES = new Set(["completed", "aborted"]);
@@ -36,41 +39,47 @@ const CLEANUP_FAILURE_MESSAGE = "The process could not be deleted; retry deletio
 export function createProcessDeletionService(deps: ProcessDeletionDeps): ProcessDeletionService {
 	return {
 		async deleteProcess(instanceId, actor) {
-			const initial = deps.processes.getById(instanceId);
-			if (!initial) return { ok: false, kind: "not_found" };
-
-			if (!TERMINAL_STATUSES.has(initial.lifecycleStatus)) {
-				const aborted = await deps.processEngine.abortProcess(instanceId, { actor });
-				if (!aborted.ok) return { ok: false, kind: "abort_failed", failure: aborted };
-			}
-
+			deps.deletionPending?.add(instanceId);
 			try {
-				await deps.supervisor.stopWorker(instanceId, "process_deleted");
-				return await deps.processOperations.runExclusive(instanceId, async () => {
-					const process = deps.processes.getById(instanceId);
-					if (!process) return { ok: false, kind: "not_found" };
-					if (!TERMINAL_STATUSES.has(process.lifecycleStatus)) {
-						return { ok: false, kind: "cleanup_failed", message: CLEANUP_FAILURE_MESSAGE };
-					}
+				const initial = deps.processes.getById(instanceId);
+				if (!initial) return { ok: false, kind: "not_found" };
+				deps.sessionTransfers?.revokeProcess(instanceId);
 
-					await Promise.all([
-						deps.volume?.deleteProcessResources(instanceId),
-						deps.sessionSnapshots.deleteSnapshot(instanceId),
-						deps.resultImages.deleteProcess(instanceId),
-					]);
-					if (!deps.processes.delete(instanceId)) return { ok: false, kind: "not_found" };
+				if (!TERMINAL_STATUSES.has(initial.lifecycleStatus)) {
+					const aborted = await deps.processEngine.abortProcess(instanceId, { actor });
+					if (!aborted.ok) return { ok: false, kind: "abort_failed", failure: aborted };
+				}
 
-					try {
-						deps.broadcaster.sendDurable("process.deleted", { instanceId }, instanceId);
-					} catch (error) {
-						// Durable deletion already committed, so broadcast failure cannot make it retryable.
-						deps.logger?.error({ error, instanceId }, "process deletion broadcast failed");
-					}
-					return { ok: true };
-				});
-			} catch (error) {
-				deps.logger?.error({ error, instanceId }, "process deletion cleanup failed");
-				return { ok: false, kind: "cleanup_failed", message: CLEANUP_FAILURE_MESSAGE };
+				try {
+					await deps.supervisor.stopWorker(instanceId, "process_deleted");
+					return await deps.processOperations.runExclusive(instanceId, async () => {
+						const process = deps.processes.getById(instanceId);
+						if (!process) return { ok: false, kind: "not_found" };
+						if (!TERMINAL_STATUSES.has(process.lifecycleStatus)) {
+							return { ok: false, kind: "cleanup_failed", message: CLEANUP_FAILURE_MESSAGE };
+						}
+
+						await Promise.all([
+							deps.volume?.deleteProcessResources(instanceId),
+							deps.sessionSnapshots.deleteSnapshot(instanceId),
+							deps.resultImages.deleteProcess(instanceId),
+						]);
+						if (!deps.processes.delete(instanceId)) return { ok: false, kind: "not_found" };
+
+						try {
+							deps.broadcaster.sendDurable("process.deleted", { instanceId }, instanceId);
+						} catch (error) {
+							// Durable deletion already committed, so broadcast failure cannot make it retryable.
+							deps.logger?.error({ error, instanceId }, "process deletion broadcast failed");
+						}
+						return { ok: true };
+					});
+				} catch (error) {
+					deps.logger?.error({ error, instanceId }, "process deletion cleanup failed");
+					return { ok: false, kind: "cleanup_failed", message: CLEANUP_FAILURE_MESSAGE };
+				}
+			} finally {
+				deps.deletionPending?.delete(instanceId);
 			}
 		},
 	};

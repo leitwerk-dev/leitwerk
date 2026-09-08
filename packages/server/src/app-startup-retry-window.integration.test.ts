@@ -39,6 +39,12 @@ function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"
 				throw new Error("unexpected worker adoption");
 			}),
 		},
+		exporter: {
+			prepare: vi.fn(async () => {
+				throw new Error("unexpected process state export");
+			}),
+			reconcile: vi.fn(async () => {}),
+		},
 		volume: {
 			ensure: vi.fn(async (instanceId: string) => ({
 				instanceId,

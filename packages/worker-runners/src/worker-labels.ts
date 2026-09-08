@@ -20,6 +20,8 @@ export const PROCESS_NAMESPACE_COMPONENT_VALUE = "process-namespace";
 export const PROCESS_VOLUME_COMPONENT_VALUE = "process-volume";
 export const PROCESS_SERVER_CA_COMPONENT_VALUE = "server-ca";
 export const PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE = "image-pull-secret";
+export const EXPORT_HELPER_COMPONENT_VALUE = "session-export-helper";
+export const EXPORT_HELPER_LABEL_EXPORT_ID = "leitwerk.dev/export-id";
 
 export interface WorkerUnitIdentity {
 	instanceId: string;
@@ -79,6 +81,22 @@ function managedResourceLabelSelector(component: string): Record<string, string>
 
 export function managedProcessNamespaceLabelSelector(): Record<string, string> {
 	return managedResourceLabelSelector(PROCESS_NAMESPACE_COMPONENT_VALUE);
+}
+
+export function buildExportHelperLabels(input: {
+	instanceId: string;
+	exportId: string;
+}): Record<string, string> {
+	return {
+		[WORKER_LABEL_MANAGED_BY]: WORKER_LABEL_MANAGED_BY_VALUE,
+		[WORKER_LABEL_COMPONENT]: EXPORT_HELPER_COMPONENT_VALUE,
+		[WORKER_LABEL_INSTANCE_ID]: input.instanceId,
+		[EXPORT_HELPER_LABEL_EXPORT_ID]: input.exportId,
+	};
+}
+
+export function managedExportHelperLabelSelector(): Record<string, string> {
+	return managedResourceLabelSelector(EXPORT_HELPER_COMPONENT_VALUE);
 }
 
 /** True when the labels identify an leitwerk-managed worker unit. */

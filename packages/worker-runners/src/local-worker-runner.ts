@@ -2,9 +2,11 @@ import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createFilesystemProcessStateExporter } from "./filesystem-process-state-exporter.js";
 import { UnitExitNotifier } from "./runner-utils.js";
 import type {
 	LocalStartWorkerInput,
+	ProcessStateExporter,
 	StopWorkerOptions,
 	WorkerExitInfo,
 	WorkerRunner,
@@ -22,6 +24,9 @@ export interface LocalWorkerRunnerOptions {
 	args?: readonly string[];
 	/** Working directory for the spawned worker. Defaults to the installed server package dir. */
 	cwd?: string;
+	/** Process storage roots used by the read-only session exporter. */
+	processWorkspacesDir?: string;
+	treeFilesDir?: string;
 	/** Test seam. Production uses node's spawn directly. */
 	localWorkerSpawnImpl?: typeof spawn;
 }
@@ -74,6 +79,7 @@ function exitInfo(code: number | null, signal: NodeJS.Signals | null): WorkerExi
  */
 export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 	runner: WorkerRunner<LocalStartWorkerInput>;
+	exporter: ProcessStateExporter;
 } {
 	const command = options.command ?? "node";
 	const args = resolveLocalWorkerSpawnArgs(options.args ?? [DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER]);
@@ -143,5 +149,16 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 		},
 	};
 
-	return { runner };
+	const processWorkspacesDir = path.resolve(
+		options.processWorkspacesDir ?? "/tmp/leitwerk/workspaces",
+	);
+	const treeFilesDir = path.resolve(options.treeFilesDir ?? "/tmp/leitwerk/trees");
+	const exporter = createFilesystemProcessStateExporter({
+		allowedRoots: [processWorkspacesDir, treeFilesDir],
+		resolveSource: (instanceId) => ({
+			workspaceRoot: path.join(processWorkspacesDir, instanceId),
+			sessionFile: path.join(treeFilesDir, `${instanceId}.jsonl`),
+		}),
+	});
+	return { runner, exporter };
 }

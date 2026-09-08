@@ -96,6 +96,7 @@ export function createCompactProcessDetailFixtureFactory() {
 			toolRenderers: legacy.toolRenderers,
 			persistedModelSelectionWarning: null,
 			session: { signature },
+			sessionTransfer: null,
 		};
 		reasoningSourceByInstanceId.set(projections.process.id, { signature, traceIndex });
 		return compactDetail;

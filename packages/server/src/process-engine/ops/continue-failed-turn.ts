@@ -105,6 +105,7 @@ export const ContinueFailedTurn = defineOperation<
 >({
 	kind: "continue_failed_turn",
 	label: "Continue failed turn",
+	admission: "new_turn",
 	messages: {
 		reconcileErrorMessage: "Process was reactivated, but the worker could not be started cleanly",
 	},

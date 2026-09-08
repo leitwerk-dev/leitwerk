@@ -146,6 +146,7 @@ export const ExecuteAction = defineOperation<
 >({
 	kind: "execute_action",
 	label: "Execute process action",
+	admission: "new_turn",
 	reportBestEffortFailures: (input) => input.opts?.source === "scheduled",
 	async decide(ctx, input) {
 		const actionSource = input.opts?.source ?? "ui";

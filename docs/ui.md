@@ -34,7 +34,13 @@ The server resolves that opaque choice into a fresh destination snapshot. The
 external-write approval names the destination separately from the proposed tool
 arguments so the operator can verify both before accepting the write.
 
-## 3. Live Streaming Text Overlays
+## 3. Local session transfer
+
+A process with a primary Pi session exposes **More actions → Create local transfer link**. Link creation is explicit and never starts export work. The panel presents the complete bearer URL for copying, a one-hour expiry, and a warning that anyone holding it can download the retained workspace and conversation.
+
+While local Pi waits for accepted work, scans, or streams, process detail shows the non-secret phase and explains that new manual turns are blocked. An authenticated operator can cancel before streaming finishes. Once all bytes are delivered, process mutations are unblocked; the status remains visible as awaiting local acknowledgement and does not claim that delivered bytes can be recalled.
+
+## 4. Live Streaming Text Overlays
 
 When an AI agent is actively executing a turn, text tokens stream over the WebSocket directly into active Chronicle turn blocks:
 
@@ -44,7 +50,7 @@ When an AI agent is actively executing a turn, text tokens stream over the WebSo
 
 ---
 
-## 4. Extension UI Renderers
+## 5. Extension UI Renderers
 
 Process extensions can ship browser UI as custom elements that render leaf outcomes (and related Chronicle slots) for domain-specific props.
 
@@ -93,7 +99,7 @@ Durable leaf-outcome captures reference the same `rendererId`. The UI loads the 
 
 ---
 
-## 5. Turn progress
+## 6. Turn progress
 
 Automatic turns and LLM preparation phases may expose a durable ordered progress report in their Chronicle cluster. The
 UI names every step state, highlights the current step, preserves failed steps beside generic
@@ -101,7 +107,7 @@ recovery controls, and lists created pull requests, merge requests, commits, or 
 **Created changes**. Historical reports remain part of their owning turn attempt. Status text
 and symbols carry the meaning without relying on color.
 
-## 6. Launch checklist
+## 7. Launch checklist
 
 An immediate launcher submission uses `POST /api/launchers/:launcherId/launch-runs`, replaces its
 submit area with the durable launch checklist, and keeps the entered draft in memory. Scheduled

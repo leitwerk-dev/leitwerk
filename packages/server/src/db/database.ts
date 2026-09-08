@@ -62,6 +62,8 @@ const ALL_TABLES = [
 	schema.processRelations,
 	schema.processToolApprovalRequests,
 	schema.providerCredentials,
+	schema.sessionTransferGrants,
+	schema.sessionTransferAttempts,
 	schema.externalWriteLog,
 ] as const;
 
@@ -252,6 +254,64 @@ const PROVIDER_CREDENTIALS_WITH_SCHEMA_VERSION_SQL = `CREATE TABLE provider_cred
 	CONSTRAINT provider_credentials_positive_schema_version CHECK ("provider_credentials"."credential_schema_version" > 0)
 )`;
 
+function assertMigrationSource(
+	sqlite: DatabaseSync,
+	sqlitePath: string,
+	tableName: string,
+	expectedSql: string,
+	expectedIndexes: readonly string[],
+): void {
+	if (
+		normalizeCreateTableSql(existingTableSql(sqlite, tableName) ?? "") !==
+		normalizeCreateTableSql(expectedSql)
+	) {
+		throw new DatabaseSchemaMismatchError(sqlitePath, tableName);
+	}
+	const actualIndexes = sqlite
+		.prepare(
+			"SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
+		)
+		.all(tableName) as Array<{ sql: string }>;
+	if (
+		actualIndexes.length !== expectedIndexes.length ||
+		actualIndexes.some(
+			(actual) =>
+				!expectedIndexes.some(
+					(expected) => normalizeSchemaSql(actual.sql) === normalizeSchemaSql(expected),
+				),
+		)
+	) {
+		throw new DatabaseSchemaMismatchError(sqlitePath, `indexes:${tableName}`);
+	}
+	if (
+		sqlite
+			.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?")
+			.get(tableName)
+	) {
+		throw new DatabaseSchemaMismatchError(sqlitePath, `triggers:${tableName}`);
+	}
+}
+
+const SESSION_TRANSFER_ATTEMPTS_WITH_PROGRESS_SQL = `CREATE TABLE session_transfer_attempts (
+	id text PRIMARY KEY NOT NULL,
+	grant_id text NOT NULL REFERENCES session_transfer_grants(id) ON DELETE CASCADE,
+	instance_id text NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+	state text NOT NULL,
+	phase text NOT NULL,
+	created_at text NOT NULL,
+	lease_until text NOT NULL,
+	hard_deadline text NOT NULL,
+	entries_total integer,
+	entries_processed integer NOT NULL DEFAULT 0,
+	logical_bytes_total integer,
+	logical_bytes_processed integer NOT NULL DEFAULT 0,
+	compressed_bytes integer,
+	stream_sha256 text,
+	failure_code text,
+	completed_at text,
+	CONSTRAINT session_transfer_attempts_state CHECK ("session_transfer_attempts"."state" in ('queued', 'exporting', 'awaiting_ack', 'cancelled', 'failed', 'consumed'))
+)`;
+
 interface KnownMigration {
 	id: string;
 	tableNames: readonly string[];
@@ -262,6 +322,72 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260901_add_session_transfers",
+		tableNames: ["session_transfer_grants", "session_transfer_attempts"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) &&
+			(existingTableSql(sqlite, "session_transfer_grants") === null ||
+				existingTableSql(sqlite, "session_transfer_attempts") === null),
+		apply(sqlite) {
+			if (existingTableSql(sqlite, "session_transfer_grants") === null) {
+				createTableWithIndexes(sqlite, schema.sessionTransferGrants);
+			}
+			if (existingTableSql(sqlite, "session_transfer_attempts") === null) {
+				createTableWithIndexes(sqlite, schema.sessionTransferAttempts);
+			}
+		},
+	},
+	{
+		id: "20260902_session_transfer_phase_state_and_progress",
+		tableNames: ["session_transfer_attempts"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "session_transfer_attempts") !== null &&
+			(tableHasColumn(sqlite, "session_transfer_attempts", "state") ||
+				tableHasColumn(sqlite, "session_transfer_attempts", "entries_processed") ||
+				tableHasColumn(sqlite, "session_transfer_attempts", "logical_bytes_processed")),
+		validateSource(sqlite, sqlitePath) {
+			const legacyIndexes = generateCreateIndexDDL(schema.sessionTransferAttempts).map(
+				(statement) =>
+					statement.includes("uq_session_transfer_active_instance")
+						? `CREATE UNIQUE INDEX uq_session_transfer_active_instance ON session_transfer_attempts(instance_id) WHERE "session_transfer_attempts"."state" in ('queued', 'exporting', 'awaiting_ack')`
+						: statement,
+			);
+			assertMigrationSource(
+				sqlite,
+				sqlitePath,
+				"session_transfer_attempts",
+				SESSION_TRANSFER_ATTEMPTS_WITH_PROGRESS_SQL,
+				legacyIndexes,
+			);
+		},
+		apply(sqlite) {
+			for (const index of [
+				"uq_session_transfer_active_instance",
+				"idx_session_transfer_attempts_grant",
+				"idx_session_transfer_attempts_instance",
+				"idx_session_transfer_attempts_deadlines",
+			]) {
+				sqlite.exec(`DROP INDEX IF EXISTS ${index}`);
+			}
+			sqlite.exec(
+				"ALTER TABLE session_transfer_attempts RENAME TO session_transfer_attempts_legacy",
+			);
+			createTableWithIndexes(sqlite, schema.sessionTransferAttempts);
+			sqlite.exec(`
+				INSERT INTO session_transfer_attempts (
+					id, grant_id, instance_id, phase, created_at, lease_until, hard_deadline,
+					entries_total, logical_bytes_total, compressed_bytes, stream_sha256,
+					failure_code, completed_at
+				)
+				SELECT id, grant_id, instance_id, phase, created_at, lease_until, hard_deadline,
+					entries_total, logical_bytes_total, compressed_bytes, stream_sha256,
+					failure_code, completed_at
+				FROM session_transfer_attempts_legacy
+			`);
+			sqlite.exec("DROP TABLE session_transfer_attempts_legacy");
+		},
+	},
 	{
 		id: "20260827_add_worker_startup_observations",
 		tableNames: ["worker_leases"],
@@ -529,37 +655,13 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 				[schema.processInstances, legacyProcessSql],
 				[schema.turnRecords, legacyTurnSql],
 			] as const) {
-				const tableName = getTableName(table);
-				if (
-					normalizeCreateTableSql(existingTableSql(sqlite, tableName) ?? "") !==
-					normalizeCreateTableSql(expectedSql)
-				) {
-					throw new DatabaseSchemaMismatchError(sqlitePath, tableName);
-				}
-				const actualIndexes = sqlite
-					.prepare(
-						"SELECT name, sql FROM sqlite_master WHERE type = 'index' AND tbl_name = ? AND sql IS NOT NULL",
-					)
-					.all(tableName) as Array<{ name: string; sql: string }>;
-				const expectedIndexes = generateCreateIndexDDL(table);
-				if (
-					actualIndexes.length !== expectedIndexes.length ||
-					actualIndexes.some(
-						(actual) =>
-							!expectedIndexes.some(
-								(expected) => normalizeSchemaSql(actual.sql) === normalizeSchemaSql(expected),
-							),
-					)
-				) {
-					throw new DatabaseSchemaMismatchError(sqlitePath, `indexes:${tableName}`);
-				}
-				if (
-					sqlite
-						.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ?")
-						.get(tableName)
-				) {
-					throw new DatabaseSchemaMismatchError(sqlitePath, `triggers:${tableName}`);
-				}
+				assertMigrationSource(
+					sqlite,
+					sqlitePath,
+					getTableName(table),
+					expectedSql,
+					generateCreateIndexDDL(table),
+				);
 			}
 		},
 		apply(sqlite) {

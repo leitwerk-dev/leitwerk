@@ -102,7 +102,9 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 | `extension-runtime` | Config-driven extension discovery, catalog loading, and host assembly. |
 | `watcher-utils` | Provider-neutral watcher polling and reconciliation utilities. |
 | `external-writes` | Idempotent external-write coordination (`ensureWrite`). |
-| `worker-runners` | Local, Docker, and Kubernetes execution adapters. |
+| `session-transfer` | Portable manifest, path validation, tar+Zstandard streaming, limits, and Pi-session rewriting. |
+| `pi-session-transfer` | Interactive local Pi import, atomic recovery records, and session switching. |
+| `worker-runners` | Local, Docker, and Kubernetes execution and read-only process-export adapters. |
 | `server`, `worker`, `ui` | Composition shells for the Fastify server, worker process, and Svelte 5 UI. |
 
 ## 6 Runtime View
@@ -122,7 +124,14 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 3. **Turn Execution & Tool Calls:** The worker executes code or prompts Pi in the workspace clone. An authored LLM preparation phase completes and checkpoints its bounded JSON result before Pi is prompted. Active turn tools (outcome tools, `ask_questions`) run in-flight.
 4. **Snapshot Upload & Outcome Commit:** Before completing, the worker uploads the latest JSONL tree snapshot. The server commits the outcome (`worker.turn_outcome`), updates process state, and broadcasts WebSocket updates.
 
-### 6.3 Process Lifecycle State Transitions
+### 6.3 Local Session Transfer
+
+1. **Grant:** An authenticated operator mints a hashed, expiring bearer grant without reading retained files.
+2. **Queue and Reservation:** Local Pi claims the grant. The durable attempt waits behind accepted work and automatic successors, then reserves the stable process under the same per-process coordinator.
+3. **Read-only Export:** The server removes the writable worker lease, preflights only the process workspace and primary session, and streams a bounded portable archive while hashing compressed bytes.
+4. **Local Commit:** Pi extracts into an owned temporary directory, compares the durable server digest, and validates Git and a V3 Pi session. It reserves a fresh destination exclusively, moves the verified workspace entries into it, and writes the local Pi session. An atomic completion receipt commits the import before acknowledgement. Interrupted imports retain ownership markers for recovery.
+
+### 6.4 Process Lifecycle State Transitions
 
 A process position consists of `selectedTurnId` plus `lifecycleStatus`. `error` is orthogonal to business position (a turn failure keeps `selectedTurnId` unchanged and moves status to `error`):
 

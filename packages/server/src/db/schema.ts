@@ -1,4 +1,5 @@
 import { SERIALIZED_SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import type { SessionTransferPhase } from "@leitwerk-dev/session-transfer";
 import { sql } from "drizzle-orm";
 import {
 	blob,
@@ -668,6 +669,63 @@ export const pendingExternalSourceFires = sqliteTable(
 		uniqueIndex("uq_pending_external_fires_merge_key")
 			.on(t.instanceId, t.armingId, t.mergeKey)
 			.where(sql`${t.mergeKey} is not null`),
+	],
+);
+
+export const sessionTransferGrants = sqliteTable(
+	"session_transfer_grants",
+	{
+		id: text("id").primaryKey(),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		tokenHash: text("token_hash").notNull(),
+		createdAt: text("created_at").notNull(),
+		expiresAt: text("expires_at").notNull(),
+		consumedAt: text("consumed_at"),
+		tombstoneUntil: text("tombstone_until"),
+	},
+	(t) => [
+		index("idx_session_transfer_grants_instance").on(t.instanceId),
+		index("idx_session_transfer_grants_expiry").on(t.expiresAt),
+		index("idx_session_transfer_grants_tombstone").on(t.tombstoneUntil),
+	],
+);
+
+export const sessionTransferAttempts = sqliteTable(
+	"session_transfer_attempts",
+	{
+		id: text("id").primaryKey(),
+		grantId: text("grant_id")
+			.notNull()
+			.references(() => sessionTransferGrants.id, { onDelete: "cascade" }),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		phase: text("phase").$type<SessionTransferPhase>().notNull(),
+		createdAt: text("created_at").notNull(),
+		leaseUntil: text("lease_until").notNull(),
+		hardDeadline: text("hard_deadline").notNull(),
+		entriesTotal: integer("entries_total"),
+		logicalBytesTotal: integer("logical_bytes_total"),
+		compressedBytes: integer("compressed_bytes"),
+		streamSha256: text("stream_sha256"),
+		failureCode: text("failure_code"),
+		completedAt: text("completed_at"),
+	},
+	(t) => [
+		index("idx_session_transfer_attempts_grant").on(t.grantId),
+		index("idx_session_transfer_attempts_instance").on(t.instanceId),
+		index("idx_session_transfer_attempts_deadlines").on(t.leaseUntil, t.hardDeadline),
+		uniqueIndex("uq_session_transfer_active_instance")
+			.on(t.instanceId)
+			.where(
+				sql`${t.phase} in ('queued', 'waiting_for_execution_chain', 'stopping_worker', 'starting_exporter', 'scanning', 'ready_to_stream', 'streaming', 'awaiting_ack')`,
+			),
+		check(
+			"session_transfer_attempts_phase",
+			sql`${t.phase} in ('queued', 'waiting_for_execution_chain', 'stopping_worker', 'starting_exporter', 'scanning', 'ready_to_stream', 'streaming', 'awaiting_ack', 'consumed', 'cancelled', 'failed')`,
+		),
 	],
 );
 

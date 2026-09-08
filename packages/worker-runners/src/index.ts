@@ -30,6 +30,7 @@ export {
 } from "./kubernetes-api-client.js";
 export {
 	buildKubernetesAdmissionPolicyManifests,
+	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesWorkerPodManifest,
@@ -42,6 +43,7 @@ export {
 	type KubernetesProcessVolumeSpec,
 	type KubernetesValidatingAdmissionPolicyBindingManifest,
 	type KubernetesValidatingAdmissionPolicyManifest,
+	kubernetesExportHelperPodName,
 	kubernetesProcessNamespaceName,
 	kubernetesProcessPvcName,
 	kubernetesWorkerPodName,
@@ -68,6 +70,12 @@ export { UnitExitNotifier } from "./runner-utils.js";
 export type {
 	IsolatedStartWorkerInput,
 	LocalStartWorkerInput,
+	PreparedProcessStateExport,
+	ProcessStateExporter,
+	ProcessStateExportHelperRelay,
+	ProcessStateExportHelperRelayProvider,
+	ProcessStateExportHelperReport,
+	ProcessStateExportPreflight,
 	ProcessVolume,
 	ResolvedWorkerImage,
 	StartWorkerInput,
@@ -82,9 +90,13 @@ export type {
 	WorkerUnitRef,
 } from "./types.js";
 export {
+	buildExportHelperLabels,
 	buildProcessResourceLabels,
 	buildWorkerUnitLabels,
+	EXPORT_HELPER_COMPONENT_VALUE,
+	EXPORT_HELPER_LABEL_EXPORT_ID,
 	isManagedWorkerUnitLabels,
+	managedExportHelperLabelSelector,
 	managedProcessNamespaceLabelSelector,
 	managedWorkerLabelSelector,
 	PROCESS_NAMESPACE_COMPONENT_VALUE,

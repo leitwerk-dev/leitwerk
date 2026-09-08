@@ -14,6 +14,8 @@ export interface DockerMountSpec {
 	target: string;
 	/** Mount read-only inside the container. */
 	readOnly?: boolean;
+	/** Mount only this relative directory of a named volume, without copying image files into it. */
+	volumeSubpath?: string;
 }
 
 export interface DockerContainerSpec {
@@ -21,6 +23,8 @@ export interface DockerContainerSpec {
 	image: string;
 	/** `KEY=value` env entries. */
 	env: string[];
+	/** Container command override. */
+	command?: string[];
 	labels: Record<string, string>;
 	mounts: DockerMountSpec[];
 	/** Docker network the container attaches to (user-defined bridge). */

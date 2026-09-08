@@ -41,9 +41,11 @@
 				"@leitwerk-dev/domain",
 				"@leitwerk-dev/extension-runtime",
 				"@leitwerk-dev/external-writes",
+				"@leitwerk-dev/pi-session-transfer",
 				"@leitwerk-dev/process-sdk",
 				"@leitwerk-dev/protocol",
 				"@leitwerk-dev/server",
+				"@leitwerk-dev/session-transfer",
 				"@leitwerk-dev/test-support",
 				"@leitwerk-dev/ui",
 				"@leitwerk-dev/watcher-utils",
@@ -92,6 +94,11 @@
 			"skip-github-release": true,
 			"skip-changelog": true
 		},
+		"packages/pi-session-transfer": {
+			"component": "@leitwerk-dev/pi-session-transfer",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
 		"packages/process-sdk": {
 			"component": "@leitwerk-dev/process-sdk",
 			"skip-github-release": true,
@@ -104,6 +111,11 @@
 		},
 		"packages/server": {
 			"component": "@leitwerk-dev/server",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/session-transfer": {
+			"component": "@leitwerk-dev/session-transfer",
 			"skip-github-release": true,
 			"skip-changelog": true
 		},

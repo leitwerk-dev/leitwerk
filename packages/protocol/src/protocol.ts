@@ -235,6 +235,7 @@ export type WsPayloadByType = {
 	"launch.updated": { launchRunId: string; instanceId: string | null };
 	"process.updated": { process: Partial<ProcessInstance>; changedFields?: readonly string[] };
 	"process.deleted": { instanceId: string };
+	"session_transfer.updated": { attemptId: string };
 	"project.updated": {
 		projectId: string;
 		project: {
@@ -348,6 +349,7 @@ export const WS_FRAME_DURABILITY = {
 	"launch.updated": "durable",
 	"process.updated": "durable",
 	"process.deleted": "durable",
+	"session_transfer.updated": "durable",
 	"project.updated": "durable",
 	"worker.state": "durable",
 	"process.input.queued": "durable",

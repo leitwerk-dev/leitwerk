@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
+import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { createDefu } from "defu";
 import * as v from "valibot";
@@ -15,6 +16,12 @@ const REDACTED_LOG_VALUE = "<redacted>";
 const SENSITIVE_CONFIG_KEY_PATTERN =
 	/(token|secret|password|passphrase|api[_-]?key|private[_-]?key|known[_-]?hosts|webhook)/i;
 const DEFAULT_MODEL_PROFILES: ModelProfile[] = [];
+const positiveSafeInteger = v.pipe(
+	v.number(),
+	v.integer(),
+	v.minValue(1),
+	v.maxValue(Number.MAX_SAFE_INTEGER),
+);
 
 export interface ConfigLoadResult {
 	ok: true;
@@ -201,6 +208,18 @@ const configSchema = v.looseObject({
 			templates: v.record(v.string(), v.strictObject({ rules: v.pipe(v.string(), v.nonEmpty()) })),
 			default_template: v.optional(v.nullable(v.pipe(v.string(), v.nonEmpty()))),
 			repositories: v.record(v.string(), v.pipe(v.string(), v.nonEmpty())),
+		}),
+	),
+	session_transfer: v.optional(
+		v.strictObject({
+			max_entries: v.pipe(
+				v.number(),
+				v.integer(),
+				v.minValue(3),
+				v.maxValue(Number.MAX_SAFE_INTEGER),
+			),
+			max_logical_bytes: positiveSafeInteger,
+			max_compressed_bytes: positiveSafeInteger,
 		}),
 	),
 	server: v.looseObject({
@@ -943,6 +962,11 @@ export function getDefaultConfig(): LeitwerkConfig {
 			templates: {},
 			default_template: null,
 			repositories: {},
+		},
+		session_transfer: {
+			max_entries: DEFAULT_SESSION_TRANSFER_LIMITS.maxEntries,
+			max_logical_bytes: DEFAULT_SESSION_TRANSFER_LIMITS.maxLogicalBytes,
+			max_compressed_bytes: DEFAULT_SESSION_TRANSFER_LIMITS.maxCompressedBytes,
 		},
 		server: {
 			host: "127.0.0.1",

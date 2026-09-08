@@ -469,6 +469,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			lifecycleStatus={detail?.process.lifecycleStatus ?? null}
 			disabled={!detail}
 			hasSessionFile={detail?.session.signature !== null}
+			sessionTransfer={detail?.sessionTransfer ?? null}
 			{processLabel}
 			{onDeleted}
 			presentation="sheet"

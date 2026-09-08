@@ -9,9 +9,8 @@ const DEPENDENCY_FIELDS = [
 	"peerDependencies",
 	"optionalDependencies",
 ];
-const REQUIRED_FILE_PATTERNS = ["dist/**", "src/**", "!dist/**/*.test.*", "!src/**/*.test.ts"];
+const BUILT_FILE_PATTERNS = ["dist/**", "!dist/**/*.test.*", "src/**", "!src/**/*.test.ts"];
 const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
-const STAGED_LICENSE_PATH = "./dist/LICENSE";
 const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
 
 await main();
@@ -122,6 +121,7 @@ function listPublishableWorkspaces(rootDir, rootPackageJson) {
 						name: packageJson.name,
 						dir: path.dirname(packageJsonPath),
 						packageJson,
+						licensePath: "./dist/LICENSE",
 						requiredFiles: requiredPackageFiles(packageJson),
 					};
 				})
@@ -145,7 +145,7 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 		: null;
 	const errors = rootLicenseText ? [] : ["root LICENSE is missing"];
 	for (const workspace of workspaces) {
-		const { dir, name, packageJson } = workspace;
+		const { dir, licensePath, name, packageJson } = workspace;
 		const label = `${relative(rootDir, dir)} (${name})`;
 		for (const [ok, message] of [
 			[packageJson.private !== true, "must not set private:true"],
@@ -173,7 +173,7 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 		if (!Array.isArray(packageJson.files)) {
 			errors.push(`${label}: files must be declared for predictable npm packages`);
 		} else {
-			for (const pattern of REQUIRED_FILE_PATTERNS) {
+			for (const pattern of BUILT_FILE_PATTERNS) {
 				if (!packageJson.files.includes(pattern)) {
 					errors.push(`${label}: files must include ${pattern}`);
 				}
@@ -209,11 +209,11 @@ function validateWorkspaces({ rootDir, rootVersion, workspaces, workspaceNames }
 			}
 			for (const targetPath of targetPaths) {
 				if (
-					targetPath === STAGED_LICENSE_PATH &&
+					targetPath === licensePath &&
 					rootLicenseText !== null &&
 					readFileSync(path.join(dir, targetPath), "utf8") !== rootLicenseText
 				) {
-					errors.push(`${label}: ${STAGED_LICENSE_PATH} must match the root LICENSE`);
+					errors.push(`${label}: ${licensePath} must match the root LICENSE`);
 				}
 			}
 		}
@@ -255,7 +255,7 @@ function validateExtensionUiManifest(rootDir, manifestPath, label) {
 function requiredPackageFiles(packageJson) {
 	return [
 		...new Set([
-			STAGED_LICENSE_PATH,
+			"./dist/LICENSE",
 			...collectPackagePaths(packageJson.exports),
 			packageJson.leitwerk?.extension?.import,
 			packageJson.leitwerk?.extension?.source,
@@ -313,7 +313,7 @@ function runPackDryRun(rootDir, workspaces) {
 		const filePaths = new Set((packument?.files ?? []).map((file) => file.path));
 		const requiredFiles = [
 			"package.json",
-			STAGED_LICENSE_PATH.slice(2),
+			workspace.licensePath.slice(2),
 			...workspace.requiredFiles.flatMap((filePattern) =>
 				expandPackagePattern(workspace.dir, filePattern).map((filePath) => filePath.slice(2)),
 			),

@@ -879,6 +879,130 @@ describe("server-automatic removal migration", () => {
 	});
 });
 
+describe("session transfer migrations", () => {
+	function openFile(): { sqlitePath: string; sqlite: DatabaseSync; tempRoot: string } {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-session-transfer-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+		const sqlite = new DatabaseSync(sqlitePath);
+		insertProcess(sqlite, "retained-process");
+		return { sqlitePath, sqlite, tempRoot };
+	}
+
+	function restoreLegacyAttempt(sqlite: DatabaseSync): void {
+		sqlite.exec(`
+			DROP TABLE session_transfer_attempts;
+			CREATE TABLE session_transfer_attempts (
+				id text PRIMARY KEY NOT NULL,
+				grant_id text NOT NULL REFERENCES session_transfer_grants(id) ON DELETE CASCADE,
+				instance_id text NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+				state text NOT NULL, phase text NOT NULL, created_at text NOT NULL,
+				lease_until text NOT NULL, hard_deadline text NOT NULL,
+				entries_total integer, entries_processed integer NOT NULL DEFAULT 0,
+				logical_bytes_total integer, logical_bytes_processed integer NOT NULL DEFAULT 0,
+				compressed_bytes integer, stream_sha256 text, failure_code text, completed_at text,
+				CONSTRAINT session_transfer_attempts_state CHECK ("session_transfer_attempts"."state" in ('queued', 'exporting', 'awaiting_ack', 'cancelled', 'failed', 'consumed'))
+			);
+			CREATE INDEX idx_session_transfer_attempts_grant ON session_transfer_attempts(grant_id);
+			CREATE INDEX idx_session_transfer_attempts_instance ON session_transfer_attempts(instance_id);
+			CREATE INDEX idx_session_transfer_attempts_deadlines ON session_transfer_attempts(lease_until, hard_deadline);
+			CREATE UNIQUE INDEX uq_session_transfer_active_instance ON session_transfer_attempts(instance_id) WHERE "session_transfer_attempts"."state" in ('queued', 'exporting', 'awaiting_ack');
+			INSERT INTO session_transfer_grants (id, instance_id, token_hash, created_at, expires_at)
+			VALUES ('retained-grant', 'retained-process', 'retained-token-hash', '2026-09-01', '2026-09-03');
+			INSERT INTO session_transfer_attempts (id, grant_id, instance_id, state, phase, created_at, lease_until, hard_deadline, entries_total, entries_processed, logical_bytes_total, logical_bytes_processed, compressed_bytes, stream_sha256)
+			VALUES ('retained-attempt', 'retained-grant', 'retained-process', 'awaiting_ack', 'awaiting_ack', '2026-09-01', '2026-09-02', '2026-09-03', 12, 12, 900, 900, 100, 'retained-digest');
+		`);
+	}
+
+	it("adds transfer tables to file-backed storage without losing processes and backs up the source", () => {
+		const { sqlitePath, sqlite, tempRoot } = openFile();
+		sqlite.exec("DROP TABLE session_transfer_attempts; DROP TABLE session_transfer_grants;");
+		sqlite.close();
+		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+		const upgraded = new DatabaseSync(sqlitePath);
+		expect(tableNames(upgraded)).toContain("session_transfer_attempts");
+		expect(tableNames(upgraded)).toContain("session_transfer_grants");
+		expect(upgraded.prepare("SELECT id FROM process_instances").all()).toEqual([
+			{ id: "retained-process" },
+		]);
+		upgraded.close();
+		const backupName = readdirSync(path.join(tempRoot, "backups")).find((name) =>
+			name.endsWith(".bak"),
+		);
+		expect(backupName).toBeDefined();
+		if (!backupName) throw new Error("Expected a migration backup");
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", backupName));
+		expect(tableNames(backup)).not.toContain("session_transfer_grants");
+		expect(backup.prepare("SELECT id FROM process_instances").all()).toEqual([
+			{ id: "retained-process" },
+		]);
+		backup.close();
+	});
+
+	it("retains grants and attempt metadata while removing legacy progress, with a readable source backup", () => {
+		const { sqlitePath, sqlite, tempRoot } = openFile();
+		restoreLegacyAttempt(sqlite);
+		const grants = sqlite.prepare("SELECT * FROM session_transfer_grants").all();
+		const legacyAttempt = sqlite.prepare("SELECT * FROM session_transfer_attempts").get();
+		if (!legacyAttempt) throw new Error("Expected a retained transfer attempt");
+		const {
+			state: _state,
+			entries_processed: _entries,
+			logical_bytes_processed: _bytes,
+			...attempt
+		} = legacyAttempt;
+		sqlite.close();
+		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+		const upgraded = new DatabaseSync(sqlitePath);
+		expect(upgraded.prepare("SELECT * FROM session_transfer_grants").all()).toEqual(grants);
+		expect(upgraded.prepare("SELECT * FROM session_transfer_attempts").all()).toEqual([attempt]);
+		expect(upgraded.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+		upgraded.close();
+		const backupName = readdirSync(path.join(tempRoot, "backups")).find((name) =>
+			name.endsWith(".bak"),
+		);
+		expect(backupName).toBeDefined();
+		if (!backupName) throw new Error("Expected a migration backup");
+		const backup = new DatabaseSync(path.join(tempRoot, "backups", backupName));
+		expect(
+			backup
+				.prepare(
+					"SELECT state, entries_processed, logical_bytes_processed FROM session_transfer_attempts",
+				)
+				.get(),
+		).toEqual({ state: "awaiting_ack", entries_processed: 12, logical_bytes_processed: 900 });
+		backup.close();
+	});
+
+	it.each([
+		"ALTER TABLE session_transfer_attempts ADD COLUMN operator_notes text DEFAULT 'preserve me'",
+		"DROP INDEX idx_session_transfer_attempts_grant; CREATE INDEX idx_session_transfer_attempts_grant ON session_transfer_attempts(phase)",
+		"CREATE TRIGGER operator_transfer_trigger AFTER UPDATE ON session_transfer_attempts BEGIN SELECT 1; END",
+	])("rejects unknown transfer schema drift and preserves data: %s", (driftSql) => {
+		const { sqlitePath, sqlite } = openFile();
+		restoreLegacyAttempt(sqlite);
+		sqlite.exec(driftSql);
+		const beforeSchema = sqlite
+			.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
+			.all();
+		const beforeGrants = sqlite.prepare("SELECT * FROM session_transfer_grants").all();
+		const beforeAttempts = sqlite.prepare("SELECT * FROM session_transfer_attempts").all();
+		sqlite.close();
+		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
+			DatabaseSchemaMismatchError,
+		);
+		const preserved = new DatabaseSync(sqlitePath);
+		expect(
+			preserved.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all(),
+		).toEqual(beforeSchema);
+		expect(preserved.prepare("SELECT * FROM session_transfer_grants").all()).toEqual(beforeGrants);
+		expect(preserved.prepare("SELECT * FROM session_transfer_attempts").all()).toEqual(
+			beforeAttempts,
+		);
+		preserved.close();
+	});
+});
+
 describe("execution lineage constraints", () => {
 	it("rejects execution pointers to another process", () => {
 		const sqlite = openBaseline();

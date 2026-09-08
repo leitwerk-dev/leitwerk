@@ -47,6 +47,24 @@ describe("mapEngineFailure", () => {
 		});
 	});
 
+	it("maps new-turn transfer reservations to a retryable conflict", () => {
+		expect(
+			mapEngineFailure(
+				makeFailure({
+					code: "session_transfer_in_progress",
+					message: "A local session transfer is waiting for a stable process snapshot",
+				}),
+				"retry",
+			),
+		).toEqual({
+			status: 409,
+			body: {
+				error: "A local session transfer is waiting for a stable process snapshot",
+				code: "session_transfer_in_progress",
+			},
+		});
+	});
+
 	it("preserves the steer route's code-only 400 behavior", () => {
 		const result = mapEngineFailure(
 			makeFailure({

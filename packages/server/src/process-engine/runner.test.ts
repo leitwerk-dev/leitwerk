@@ -44,6 +44,28 @@ describe("ProcessEngine runner", () => {
 		});
 	});
 
+	it("blocks only operations at the central new-turn admission boundary", async () => {
+		const base = createTestDeps();
+		const process = base.processes.create({ processId: "ticket_issue_process" });
+		const decide = vi.fn(() => accept());
+		const NewTurn = defineOperation<"new_turn", { instanceId: string }, void>({
+			kind: "new_turn",
+			admission: "new_turn",
+			decide,
+		});
+		const run = createEngineRunner(
+			createDeps({ ...base, isNewTurnBlocked: (instanceId) => instanceId === process.id }),
+		);
+
+		expect(await run(NewTurn, { instanceId: process.id })).toMatchObject({
+			ok: false,
+			code: "session_transfer_in_progress",
+			stage: "pre_commit",
+		});
+		expect(decide).not.toHaveBeenCalled();
+		expect(await run(AcceptedNoop, { instanceId: process.id })).toMatchObject({ ok: true });
+	});
+
 	it("does not record rejected decisions", async () => {
 		const base = createTestDeps();
 		const process = base.processes.create({ processId: "ticket_issue_process" });

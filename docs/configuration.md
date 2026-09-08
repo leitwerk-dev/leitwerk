@@ -66,6 +66,11 @@ storage:
   process_workspaces_dir: ./data/workspaces
   tree_files_dir: ./data/trees
 
+session_transfer:
+  max_entries: 250000
+  max_logical_bytes: 21474836480
+  max_compressed_bytes: 10737418240
+
 workers:
   cleanup:
     completed_process_retention: 24h
@@ -73,9 +78,14 @@ workers:
 ```
 
 - `storage.sqlite_path`: Path to SQLite database holding durable process state.
+- `session_transfer.max_entries`: Maximum manifest, workspace, and session entries accepted by one transfer.
+- `session_transfer.max_logical_bytes`: Maximum expanded regular-file bytes, enforced during server preflight and local extraction.
+- `session_transfer.max_compressed_bytes`: Maximum compressed bytes, enforced by the server relay and local importer.
 - Worker diagnostic traces are appended verbatim to `<storage.tree_files_dir>/diagnostic-traces/<instance-id>.log`.
 - `workers.cleanup.completed_process_retention`: Duration to retain completed process storage before automatic volume cleanup.
 - `workers.cleanup.error_process_retention`: Duration to retain failed/aborted process storage for diagnostics.
+
+Transfer links use `server.base_url` as their fixed origin. Non-loopback deployments must configure an HTTPS URL; request `Host` and forwarding headers cannot change the generated link origin.
 
 ---
 
@@ -120,6 +130,7 @@ kubernetes:
 - `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
 - `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
+- `workers.default_runtime_profile` (or `kubernetes.default_worker_runtime_profile`): Selects the trusted image used by isolated session-export helpers as well as the default worker image. The image must contain Leitwerk's bundled helper entrypoint; production references should be digest-pinned.
 
 ---
 

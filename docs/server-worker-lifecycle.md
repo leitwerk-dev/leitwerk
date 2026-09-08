@@ -38,6 +38,10 @@ Before starting isolated runners (Docker or Kubernetes), the supervisor invokes 
 
 A terminal worker observation triggers immediate, idempotent removal of its runtime unit. Failed removals enter a background backlog with bounded backoff. Startup adoption also queues stale units this way: one reclamation failure does not block other adoptions, durable reconciliation, or server readiness. Cleanup logs identify the unit and report the backlog count, but never include worker connection or snapshot tokens.
 
+`ProcessStateExporter` is a separate, read-only runner seam for local session transfer. An attempt waits behind the accepted execution chain under the per-process operation coordinator. At quiescence, the server stops the idle worker, confirms that no writable worker lease remains, and holds the reservation through preflight and streaming. The exporter resolves or provisions its runner-specific storage from the process id. It never starts an agent turn or receives model, provider, or repository credentials. Cancellation, lease expiry, hard deadline, deletion, and stream completion release the reservation. Cancelled and failed attempts remain terminal when pending exporter work finishes. Ending a stream closes its source as well as the relay.
+
+Local and Docker bind-volume exporters read confined host paths. Docker named-volume exports run a short-lived container with only the volume's `workspace/` and `tree/` subdirectories mounted read-only. Kubernetes exports run a short-lived Pod in the process namespace with the same two read-only PVC subdirectory mounts; normal scheduler and volume attachment rules determine placement after the worker Pod is gone. Helpers may also mount the server CA certificate read-only. Other process-volume directories remain inaccessible. Isolated helpers use the runner's default trusted image, are labelled `session-export-helper` rather than `worker`, and cannot enter worker adoption. Missing helper image, server URL, or relay configuration fails runner construction. Startup reconciliation removes stale helpers.
+
 ---
 
 ## 3. Worker Lease Lifecycle States

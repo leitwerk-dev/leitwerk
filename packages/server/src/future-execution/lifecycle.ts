@@ -295,7 +295,11 @@ function actionFailureOutcome(
 			target: issue.code === "action_not_found" ? "action" : "process",
 		};
 	}
-	if (issue.code === "action_not_visible" || issue.code === "action_locked_by_schedule") {
+	if (
+		issue.code === "action_not_visible" ||
+		issue.code === "action_locked_by_schedule" ||
+		issue.code === "session_transfer_in_progress"
+	) {
 		return { kind: "conflict", issue };
 	}
 	if (isInternalEngineFailureCode(issue.code)) {

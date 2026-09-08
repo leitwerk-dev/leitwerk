@@ -2,7 +2,13 @@
 
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { deleteProcess, fetchProcessRetryConfig, postProcessAbort } from "../lib/api.js";
+import {
+	cancelSessionTransfer,
+	createSessionTransferGrant,
+	deleteProcess,
+	fetchProcessRetryConfig,
+	postProcessAbort,
+} from "../lib/api.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildHomePath, navigate } from "../lib/router.svelte.js";
 import ProcessActionsMenu from "./ProcessActionsMenu.svelte";
@@ -16,6 +22,8 @@ const defaultRetryConfig = {
 };
 
 vi.mock("../lib/api.js", () => ({
+	cancelSessionTransfer: vi.fn(),
+	createSessionTransferGrant: vi.fn(),
 	deleteProcess: vi.fn(),
 	fetchProcessRetryConfig: vi.fn(),
 	postProcessAbort: vi.fn(),
@@ -39,6 +47,12 @@ function resetDefaultMocks() {
 	});
 	vi.mocked(postProcessAbort).mockResolvedValue(undefined);
 	vi.mocked(deleteProcess).mockResolvedValue(undefined);
+	vi.mocked(cancelSessionTransfer).mockResolvedValue(undefined);
+	vi.mocked(createSessionTransferGrant).mockResolvedValue({
+		transferUrl:
+			"https://leitwerk.example/api/session-transfers/test-instance-id/trg_1#token=secret-token",
+		expiresAt: "2026-09-01T01:00:00.000Z",
+	});
 	vi.mocked(buildHomePath).mockImplementation((launcherId?: string | null) =>
 		launcherId ? `/?launcher=${launcherId}` : "/",
 	);
@@ -51,11 +65,19 @@ function mountSubject({
 	disabled = false,
 	processLabel = "Test process",
 	onDeleted,
+	hasSessionFile = false,
+	sessionTransfer = null,
 }: {
 	lifecycleStatus?: string | null;
 	disabled?: boolean;
 	processLabel?: string | null;
 	onDeleted?: () => void;
+	hasSessionFile?: boolean;
+	sessionTransfer?: {
+		attemptId: string;
+		phase: string;
+		blocksManualTurns: boolean;
+	} | null;
 } = {}) {
 	const target = document.createElement("div");
 	document.body.appendChild(target);
@@ -68,6 +90,8 @@ function mountSubject({
 			disabled,
 			processLabel,
 			onDeleted,
+			hasSessionFile,
+			sessionTransfer,
 		},
 	});
 
@@ -302,6 +326,48 @@ describe("ProcessActionsMenu", () => {
 			expect(setPendingRetryConfig).not.toHaveBeenCalled();
 			expect(target.textContent).toContain("retry config unavailable");
 
+			unmount(app);
+		});
+	});
+
+	describe("local session transfer", () => {
+		it("creates an expiring link only when a primary session exists", async () => {
+			const { app, target } = mountSubject({ hasSessionFile: true });
+			await flush();
+			openMenu(target);
+			await flush();
+			clickButtonByText(target, "Create local transfer link");
+			await flush();
+
+			expect(createSessionTransferGrant).toHaveBeenCalledWith("test-instance-id");
+			expect(target.textContent).toContain("Open this process in local Pi");
+			expect(target.textContent).toContain("expires");
+			expect(target.textContent).not.toContain("start within 1 hour");
+			expect(target.textContent).toContain(
+				"Anyone with this link can download this session and workspace.",
+			);
+			const transferLink = target.querySelector(".transfer-link") as HTMLInputElement;
+			expect(transferLink.value).toContain("#token=secret-token");
+			expect(document.activeElement).toBe(transferLink);
+			unmount(app);
+		});
+
+		it("presents and cancels a transfer that still blocks manual turns", async () => {
+			const { app, target } = mountSubject({
+				sessionTransfer: {
+					attemptId: "tra_1",
+					phase: "scanning",
+					blocksManualTurns: true,
+				},
+			});
+			await flush();
+			openMenu(target);
+			await flush();
+			expect(target.textContent).toContain("Local transfer: Scanning.");
+			expect(target.textContent).toContain("New manual turns are blocked until streaming ends.");
+			clickButtonByText(target, "Cancel transfer");
+			await flush();
+			expect(cancelSessionTransfer).toHaveBeenCalledWith("test-instance-id", "tra_1");
 			unmount(app);
 		});
 	});

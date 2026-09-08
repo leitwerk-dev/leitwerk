@@ -52,3 +52,4 @@ Turborepo entry point.
 - **Package Integration Tests:** Test package host behavior using synthetic processes and fakes.
 - **Extension Tests:** Test extension catalog registration, custom turns, watchers, outcome tools, and external provider integrations.
 - **Server & Worker System Tests:** Boot Fastify with in-memory SQLite and fake boundaries to test `ProcessEngine` lock coordination, WebSocket IPC streaming, turn correlation, and error recovery.
+- **Session Transfer Tests:** Cover grant expiry and hashing, one-active-attempt exclusion, quiescent snapshot ordering, lease/deadline cancellation, restart reconciliation, archive limits and unsafe paths, stream digest acknowledgement, atomic local import recovery, and Svelte link/cancellation states. Archive tests must use generated fixtures and never real provider or repository credentials.

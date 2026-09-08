@@ -18,6 +18,7 @@ import type { ModelProviderRegistry } from "../model-providers/registry.js";
 import { assemblePiResourceSnapshot, type PiResourceBundleCache } from "../pi-resources/index.js";
 import {
 	buildRuntimeProfileSelectionInput,
+	defaultWorkerRuntimeProfile,
 	selectWorkerRuntimeProfile,
 } from "../worker-runtime-profile-selection.js";
 import type { Writes } from "./writes/writes.js";
@@ -92,25 +93,12 @@ function candidateProcess(process: ProcessInstance, writes: Writes): ProcessInst
 	return { ...process, ...writes.processPatch };
 }
 
-function defaultRuntimeProfile(config: LeitwerkConfig): string | null {
-	if (config.workers.runner === "local") {
-		return config.workers.default_runtime_profile ?? "local";
-	}
-	return (
-		(config.workers.runner === "kubernetes"
-			? config.kubernetes?.default_worker_runtime_profile
-			: undefined) ??
-		config.workers.default_runtime_profile ??
-		null
-	);
-}
-
 function resolveRuntimeProfile(
 	deps: TurnStartPreflightDeps,
 	process: ProcessInstance,
 ): { ok: true; id: string } | { ok: false; message: string } {
 	if (deps.config.workers.runner === "local") {
-		return { ok: true, id: defaultRuntimeProfile(deps.config) ?? "local" };
+		return { ok: true, id: defaultWorkerRuntimeProfile(deps.config) ?? "local" };
 	}
 	const selection = selectWorkerRuntimeProfile(
 		buildRuntimeProfileSelectionInput({

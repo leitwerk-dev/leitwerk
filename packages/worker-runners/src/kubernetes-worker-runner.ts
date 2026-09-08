@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
+import {
+	createHelperProcessStateExporter,
+	exportHelperEnvironment,
+} from "./helper-process-state-exporter.js";
 import type { KubernetesApiClient } from "./kubernetes-api-client.js";
 import {
 	buildKubernetesDockerConfigJsonSecretManifest,
+	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesServerCaConfigMapManifest,
@@ -11,13 +16,20 @@ import {
 	KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
 	type KubernetesPodSpecOptions,
 	type KubernetesProcessVolumeSpec,
+	kubernetesExportHelperPodName,
 	kubernetesProcessNamespaceName,
 	kubernetesProcessPvcName,
 	volumeRefFromPvc,
 } from "./kubernetes-manifests.js";
 import { UnitExitNotifier } from "./runner-utils.js";
+import {
+	SESSION_TRANSFER_HELPER_ENTRY_PATH,
+	SESSION_TRANSFER_HELPER_MOUNT_PATH,
+} from "./session-transfer-helper.js";
 import type {
 	IsolatedStartWorkerInput,
+	ProcessStateExporter,
+	ProcessStateExportHelperRelayProvider,
 	ProcessVolume,
 	StopWorkerOptions,
 	WorkerRunner,
@@ -26,6 +38,7 @@ import type {
 	WorkerUnitRef,
 } from "./types.js";
 import {
+	managedExportHelperLabelSelector,
 	managedProcessNamespaceLabelSelector,
 	managedWorkerLabelSelector,
 	parseWorkerUnitIdentity,
@@ -47,13 +60,28 @@ export interface KubernetesWorkerRunnerOptions {
 	/** Docker registry Secrets copied into every process namespace. */
 	imagePullSecretCopies?: Array<{ sourceName: string; targetName: string }>;
 	pod?: Omit<KubernetesPodSpecOptions, "namespace">;
+	/** Stable internal URL used by PVC export helpers. */
+	serverUrl?: string;
+	/** Trusted image containing the bundled session-transfer helper entrypoint. */
+	exporterImage?: string;
+	/** Pull policy for the trusted helper image. */
+	exporterImagePullPolicy?: string;
+	/** Server-owned relay registry used by PVC export helpers. */
+	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 
 export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOptions): {
 	runner: WorkerRunner<IsolatedStartWorkerInput>;
 	volume: ProcessVolume;
+	exporter: ProcessStateExporter;
 } {
+	if (!options.serverUrl || !options.exporterImage || !options.helperRelays) {
+		throw new Error("Kubernetes transfer exporter is not configured");
+	}
 	const { client } = options;
+	const exporterServerUrl = options.serverUrl;
+	const exporterImage = options.exporterImage;
+	const helperRelays = options.helperRelays;
 	const serverCaFile = options.serverCaFile?.trim();
 	const namespaceForProcess = (instanceId: string) =>
 		kubernetesProcessNamespaceName(instanceId, options.processNamespacePrefix);
@@ -234,5 +262,63 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 		},
 	};
 
-	return { runner, volume };
+	const exporter = createHelperProcessStateExporter({
+		volume,
+		helperRelays,
+		async launch(input) {
+			const namespace = input.volume.namespace ?? namespaceForProcess(input.instanceId);
+			const podName = kubernetesExportHelperPodName(input.instanceId, input.exportId);
+			const manifest = buildKubernetesExportHelperPodManifest(
+				{
+					instanceId: input.instanceId,
+					exportId: input.exportId,
+					image: exporterImage,
+					command: ["node", SESSION_TRANSFER_HELPER_ENTRY_PATH],
+					env: exportHelperEnvironment({
+						serverUrl: exporterServerUrl,
+						exportId: input.exportId,
+						credential: input.credential,
+					}),
+					volume: { ...input.volume, mountPath: SESSION_TRANSFER_HELPER_MOUNT_PATH },
+				},
+				{
+					namespace,
+					...(options.pod ?? {}),
+					imagePullPolicy: options.exporterImagePullPolicy,
+					...(serverCaFile
+						? {
+								serverCaConfigMap: {
+									name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+									key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
+									mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
+								},
+							}
+						: {}),
+				},
+			);
+			await client.createPod(manifest);
+			const exit = new Promise<{ exitCode: number | null; reason?: string }>((resolve) => {
+				client.onPodExit(podName, namespace, (info) =>
+					resolve({ exitCode: info.exitCode, reason: info.reason }),
+				);
+			});
+			return {
+				wait: () => exit,
+				remove: () => client.deletePod(podName, namespace, { gracePeriodSeconds: 0 }),
+			};
+		},
+		async reconcileHelpers() {
+			const namespaces = await client.listNamespaces(managedProcessNamespaceLabelSelector());
+			for (const namespace of namespaces) {
+				const helpers = await client.listPods(namespace.name, managedExportHelperLabelSelector());
+				await Promise.all(
+					helpers.map((helper) =>
+						client.deletePod(helper.name, helper.namespace, { gracePeriodSeconds: 0 }),
+					),
+				);
+			}
+		},
+	});
+
+	return { runner, volume, exporter };
 }
