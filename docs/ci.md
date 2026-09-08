@@ -2,6 +2,12 @@
 
 Leitwerk releases are maintainer-controlled. Ordinary merges update one Release Please pull request. They do not publish artifacts. Merging that release pull request creates one tag and one GitHub Release, which starts publication.
 
+Builds and tests run on Node 26. CI and release validation temporarily use Node 24 to
+install Playwright browsers: the bundled archive extractor does not complete under Node
+26. They restore Node 26 immediately after installation. Browser installation has a
+five-minute timeout so an installer regression cannot leave validation running indefinitely.
+Publishable workspaces must declare the same Node engine range as the root package.
+
 ## Required pull request policy
 
 GitHub accepts squash merges only. Configure the repository to use the pull request title as the default squash commit title. The `Conventional PR title and DCO` check validates every pull request title and every commit sign-off.
