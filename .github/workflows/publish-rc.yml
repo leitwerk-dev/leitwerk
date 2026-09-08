@@ -1,0 +1,138 @@
+name: Publish release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_pr:
+        description: Open Release Please PR number
+        required: true
+        type: string
+      publish:
+        description: Publish the validated RC packages to npm next (otherwise prepare artifacts only)
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-release-candidate
+  cancel-in-progress: false
+
+env:
+  DO_NOT_TRACK: '1'
+  SCARF_ANALYTICS: 'false'
+  TURBO_DISABLE_UPDATE_CHECK: '1'
+  TURBO_TELEMETRY_DISABLED: '1'
+
+jobs:
+  resolve:
+    name: Resolve open release PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      git_sha: ${{ steps.candidate.outputs.git_sha }}
+      version: ${{ steps.candidate.outputs.version }}
+    steps:
+      - name: Checkout trusted RC tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Resolve candidate
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: node scripts/release-candidate.mjs resolve
+
+  validate:
+    name: Validate and package release candidate
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: source
+    env:
+      RC_VERSION: ${{ needs.resolve.outputs.version }}
+      RC_GIT_SHA: ${{ needs.resolve.outputs.git_sha }}
+      RC_ARTIFACTS: ${{ github.workspace }}/rc-packages
+    steps:
+      - name: Checkout candidate source without publishing permissions
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.resolve.outputs.git_sha }}
+          path: source
+          persist-credentials: false
+      - name: Checkout trusted RC tooling separately
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: tooling
+          persist-credentials: false
+      - name: Setup application Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+      - name: Install npm dependencies
+        run: npm ci
+      - name: Install Playwright browser dependencies
+        timeout-minutes: 5
+        run: npx playwright install --with-deps chromium
+      - name: Run full candidate test gate
+        run: npm run test:full
+      - name: Validate package contents before RC versioning
+        run: node ../tooling/scripts/publish-workspaces.mjs dry-run
+      - name: Prepare immutable RC archives without lifecycle hooks
+        run: node ../tooling/scripts/release-candidate.mjs prepare
+      - name: Retain validated RC packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: rc-packages-${{ needs.resolve.outputs.git_sha }}
+          path: rc-packages/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  publish:
+    name: Publish RC packages to npm next
+    if: ${{ inputs.publish }}
+    needs: [resolve, validate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm-prerelease
+    permissions:
+      contents: read
+      pull-requests: read
+      id-token: write
+    steps:
+      - name: Checkout only trusted publication tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Setup trusted-publishing Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 26
+          registry-url: https://registry.npmjs.org
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.16.0
+      - name: Download this run's validated package archives
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: rc-packages-${{ needs.resolve.outputs.git_sha }}
+          path: rc-packages
+      - name: Recheck PR, verify every archive, and publish with hooks disabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          RC_GIT_SHA: ${{ needs.resolve.outputs.git_sha }}
+          RC_VERSION: ${{ needs.resolve.outputs.version }}
+          RC_ARTIFACTS: ${{ github.workspace }}/rc-packages
+          RC_PUBLISH: ${{ inputs.publish }}
+        run: node scripts/release-candidate.mjs publish

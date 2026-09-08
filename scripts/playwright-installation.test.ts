@@ -7,6 +7,7 @@ describe("CI browser installation", () => {
 	it.each([
 		["ci.yml", "validate"],
 		["publish.yml", "validate"],
+		["publish-rc.yml", "validate"],
 	])("uses Node 26 for browser installation and validation in %s", (filename, jobName) => {
 		const workflowPath = fileURLToPath(
 			new URL(`../.github/workflows/${filename}`, import.meta.url),
