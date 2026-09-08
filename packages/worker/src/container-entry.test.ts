@@ -1,6 +1,6 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -35,7 +35,6 @@ function deps(spawned: ChildProcess[], overrides: Record<string, unknown> = {}) 
 		spawn: vi.fn(() => spawned.shift() as ChildProcess) as unknown as typeof spawn,
 		dockerInfo: vi.fn().mockResolvedValue(undefined),
 		mkdir: vi.fn().mockResolvedValue(undefined),
-		remove: vi.fn().mockResolvedValue(undefined),
 		now: () => time,
 		delay: vi.fn(async (ms: number) => {
 			time += ms;
@@ -121,7 +120,6 @@ describe("worker container entrypoint", () => {
 			await expect(
 				runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime),
 			).rejects.toThrow(`Failed to start dockerd: spawn ${executable} ${code}`);
-			expect(runtime.remove).not.toHaveBeenCalled();
 			expect(runtime.spawn).toHaveBeenCalledOnce();
 		} finally {
 			await rm(directory, { recursive: true, force: true });
@@ -139,7 +137,6 @@ describe("worker container entrypoint", () => {
 		expect(daemon.kill).toHaveBeenCalled();
 		expect(runtime.dockerInfo).toHaveBeenCalledOnce();
 		expect(runtime.spawn).toHaveBeenCalledTimes(2);
-		expect(runtime.remove).not.toHaveBeenCalled();
 	});
 
 	it("waits for daemon readiness before starting the worker", async () => {
@@ -165,12 +162,10 @@ describe("worker container entrypoint", () => {
 		await expect(running).resolves.toBe(0);
 		expect(dockerInfo.mock.calls[0]?.[1].aborted).toBe(true);
 		expect(daemon.kill).toHaveBeenCalled();
-		expect(runtime.remove).not.toHaveBeenCalled();
 		expect(runtime.spawn).toHaveBeenCalledOnce();
 
 		probe.resolve();
 		await probe.promise;
-		expect(runtime.remove).not.toHaveBeenCalled();
 		expect(runtime.spawn).toHaveBeenCalledOnce();
 	});
 
@@ -181,11 +176,15 @@ describe("worker container entrypoint", () => {
 		process.emit("SIGTERM");
 		directory.resolve();
 		await expect(running).resolves.toBe(0);
-		expect(runtime.remove).not.toHaveBeenCalled();
 		expect(runtime.spawn).not.toHaveBeenCalled();
 	});
 
-	it("resets only the Docker data root and retries once after an early exit", async () => {
+	it.each(["ready", "failed"])("retains Docker data when the retry is %s", async (outcome) => {
+		const directory = await mkdtemp(join(tmpdir(), "leitwerk-docker-data-"));
+		const dockerDataRoot = join(directory, "tooling", "docker");
+		await mkdir(dockerDataRoot, { recursive: true });
+		const retainedImage = join(dockerDataRoot, "retained-image");
+		await writeFile(retainedImage, "keep this image");
 		const first = child();
 		const second = child();
 		const worker = child();
@@ -194,19 +193,30 @@ describe("worker container entrypoint", () => {
 			dockerInfo: vi.fn(async () => {
 				checks += 1;
 				if (checks === 1) exit(first, 1);
-				if (checks === 2) throw new Error("not ready");
+				if (checks === 2 && outcome === "failed") exit(second, 1);
 			}),
 		});
-		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
-		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(3));
-		exit(worker, 0);
-		await expect(running).resolves.toBe(0);
-		expect(runtime.remove).toHaveBeenCalledOnce();
-		expect(runtime.remove).toHaveBeenCalledWith("/state/tooling/docker", {
-			recursive: true,
-			force: true,
-		});
-		expect(runtime.warn).toHaveBeenCalledOnce();
+		try {
+			const running = runWorkerContainerEntrypoint(
+				{ LEITWERK_PRIVATE_DOCKER: "1", LEITWERK_PROCESS_VOLUME_MOUNT_PATH: directory },
+				runtime,
+			);
+			if (outcome === "ready") {
+				await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(3));
+				exit(worker, 0);
+				await expect(running).resolves.toBe(0);
+				expect(runtime.warn).toHaveBeenCalledWith(expect.stringContaining("retained data"));
+			} else {
+				await expect(running).rejects.toThrow("Private Docker daemon failed twice");
+				expect(runtime.spawn).toHaveBeenCalledTimes(2);
+			}
+			expect(await readFile(retainedImage, "utf8")).toBe("keep this image");
+			for (const call of runtime.spawn.mock.calls.slice(0, 2)) {
+				expect(call[1]).toContain(dockerDataRoot);
+			}
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
 	});
 
 	it("does not reset a live daemon when readiness times out", async () => {
@@ -220,7 +230,6 @@ describe("worker container entrypoint", () => {
 				runtime,
 			),
 		).rejects.toThrow(/readiness timed out/);
-		expect(runtime.remove).not.toHaveBeenCalled();
 	});
 
 	it("shares one absolute readiness deadline across recovery attempts", async () => {
@@ -230,15 +239,14 @@ describe("worker container entrypoint", () => {
 		let checks = 0;
 		const dockerInfo = vi.fn(async () => {
 			checks += 1;
-			if (checks === 1) exit(first, 1);
-			else throw new Error("not ready");
+			if (checks === 1) {
+				time = 450;
+				exit(first, 1);
+			} else throw new Error("not ready");
 		});
 		const runtime = deps([first, second], {
 			now: () => time,
 			dockerInfo,
-			remove: vi.fn(async () => {
-				time = 450;
-			}),
 			delay: vi.fn(async (ms: number) => {
 				time += ms;
 			}),
@@ -251,6 +259,5 @@ describe("worker container entrypoint", () => {
 			),
 		).rejects.toThrow(/readiness timed out/);
 		expect(dockerInfo).toHaveBeenCalledTimes(2);
-		expect(runtime.remove).toHaveBeenCalledOnce();
 	});
 });

@@ -40,6 +40,7 @@ describe("process runtime availability", () => {
 	it("runs docker info for acknowledged local Docker processes", async () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "local";
+		config.workers.startup_timeout = "750ms";
 		if (config.local_worker) config.local_worker.allow_host_docker = true;
 		const dockerInfo = vi.fn().mockResolvedValue(undefined);
 		await assertProcessRuntimeAvailable(
@@ -47,6 +48,7 @@ describe("process runtime availability", () => {
 			"process",
 		);
 		expect(dockerInfo).toHaveBeenCalledOnce();
+		expect(dockerInfo).toHaveBeenCalledWith(750);
 	});
 
 	it("requires Docker runner private daemon configuration", async () => {
