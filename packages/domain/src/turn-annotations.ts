@@ -2,6 +2,7 @@ import {
 	isProcessSemanticEntryRefKey,
 	type ProcessSemanticEntryRefKey,
 } from "./semantic-entry-refs.js";
+import { trimToNull } from "./string-normalize.js";
 
 export const TURN_ANNOTATION_REFERENCE_KINDS = [
 	"turn_record",
@@ -46,38 +47,23 @@ export interface ProcessTurnAnnotation {
 	updatedAt: string;
 }
 
-function parseNonEmptyString(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
-
-function parseTurnAnnotationReferenceRole(value: unknown): TurnAnnotationReferenceRole | null {
-	return parseNonEmptyString(value);
-}
-
 export function parseTurnAnnotationReference(value: unknown): TurnAnnotationReference | null {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return null;
 	}
 	const record = value as Record<string, unknown>;
-	const kind = parseNonEmptyString(record.kind);
-	const role = parseTurnAnnotationReferenceRole(record.role);
-	if (!kind) {
-		return null;
-	}
+	const kind = trimToNull(record.kind);
+	const role = trimToNull(record.role);
 	if (kind === "turn_record") {
-		const turnRecordId = parseNonEmptyString(record.turnRecordId);
+		const turnRecordId = trimToNull(record.turnRecordId);
 		return turnRecordId ? { kind, turnRecordId, role } : null;
 	}
 	if (kind === "entry") {
-		const entryId = parseNonEmptyString(record.entryId);
+		const entryId = trimToNull(record.entryId);
 		return entryId ? { kind, entryId, role } : null;
 	}
 	if (kind === "semantic_entry_ref") {
-		const ref = parseNonEmptyString(record.ref);
+		const ref = trimToNull(record.ref);
 		return ref && isProcessSemanticEntryRefKey(ref) ? { kind, ref, role } : null;
 	}
 	return null;
@@ -88,6 +74,6 @@ export function parseTurnAnnotationReferences(value: unknown): TurnAnnotationRef
 		return [];
 	}
 	return value
-		.map((reference) => parseTurnAnnotationReference(reference))
+		.map(parseTurnAnnotationReference)
 		.filter((reference): reference is TurnAnnotationReference => reference !== null);
 }

@@ -29,31 +29,6 @@ export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
 	piConfig?: ProcessPiConfig;
 }
 
-function hasOwnKey<T extends object>(value: T, key: PropertyKey): boolean {
-	return Object.hasOwn(value, key);
-}
-
-function resolveParams<TParams, TState>(
-	extensionProcess: ExtensionProcessDefinition<TParams, TState>,
-	options?: RuntimeProcessDefinitionBuildOptions<TParams, TState>,
-): TParams {
-	if (options && hasOwnKey(options, "params")) {
-		return options.params as TParams;
-	}
-	return extensionProcess.paramsCodec.parse(undefined);
-}
-
-function resolveState<TParams, TState>(
-	extensionProcess: ExtensionProcessDefinition<TParams, TState>,
-	params: TParams,
-	options?: RuntimeProcessDefinitionBuildOptions<TParams, TState>,
-): TState {
-	if (options && hasOwnKey(options, "state")) {
-		return options.state as TState;
-	}
-	return extensionProcess.initialState(params);
-}
-
 /**
  * Build a ResolvedWorkerProcess directly from an extension process definition.
  * Resolves params/state from options or codec defaults. Parses paramsJson/stateJson
@@ -85,15 +60,19 @@ export function buildWorkerRuntimeDefinition<TParams = unknown, TState = unknown
 	let params: TParams;
 	if (options?.paramsJson) {
 		params = extensionProcess.paramsCodec.parse(JSON.parse(options.paramsJson));
+	} else if (options && Object.hasOwn(options, "params")) {
+		params = options.params as TParams;
 	} else {
-		params = resolveParams(extensionProcess, options);
+		params = extensionProcess.paramsCodec.parse(undefined);
 	}
 
 	let state: TState;
 	if (options?.stateJson) {
 		state = extensionProcess.stateCodec.parse(JSON.parse(options.stateJson));
+	} else if (options && Object.hasOwn(options, "state")) {
+		state = options.state as TState;
 	} else {
-		state = resolveState(extensionProcess, params, options);
+		state = extensionProcess.initialState(params);
 	}
 
 	return {

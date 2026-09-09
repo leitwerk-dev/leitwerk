@@ -18,16 +18,12 @@ interface HelperRuntime {
 	credentialHash: string;
 	expiresAt: number;
 	expectedManifest: LeitwerkTransferManifestV1;
-	preflight: ReturnType<typeof deferred<ProcessStateExportHelperReport>>;
-	start: ReturnType<typeof deferred<void>>;
+	preflight: PromiseWithResolvers<ProcessStateExportHelperReport>;
+	start: PromiseWithResolvers<void>;
 	upload: PassThrough;
 	reported: boolean;
 	streamAccepted: boolean;
 	fail(error: Error): void;
-}
-
-function deferred<T>() {
-	return Promise.withResolvers<T>();
 }
 
 function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
@@ -102,25 +98,23 @@ export function createSessionTransferHelperRelays(deps: {
 				credentialHash: hashOpaqueToken(credential, "hex"),
 				expiresAt: Date.parse(attempt.hardDeadline),
 				expectedManifest: input.manifest,
-				preflight: deferred<ProcessStateExportHelperReport>(),
-				start: deferred<void>(),
+				preflight: Promise.withResolvers<ProcessStateExportHelperReport>(),
+				start: Promise.withResolvers<void>(),
 				upload: new PassThrough(),
 				reported: false,
 				streamAccepted: false,
-				fail: () => undefined,
+				fail(error) {
+					if (helpers.get(exportId) !== runtime) return;
+					helpers.delete(exportId);
+					runtime.preflight.reject(error);
+					runtime.start.reject(error);
+					runtime.upload.destroy(error);
+				},
 			};
 			runtime.preflight.promise.catch(() => undefined);
 			runtime.start.promise.catch(() => undefined);
 			runtime.upload.on("error", () => undefined);
 			helpers.set(exportId, runtime);
-			const fail = (error: Error): void => {
-				if (helpers.get(exportId) !== runtime) return;
-				helpers.delete(exportId);
-				runtime.preflight.reject(error);
-				runtime.start.reject(error);
-				runtime.upload.destroy(error);
-			};
-			runtime.fail = fail;
 			return {
 				exportId,
 				credential,
@@ -131,7 +125,7 @@ export function createSessionTransferHelperRelays(deps: {
 					runtime.start.resolve(undefined);
 					return runtime.upload;
 				},
-				fail,
+				fail: runtime.fail,
 			};
 		},
 		sweep(): void {

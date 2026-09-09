@@ -152,6 +152,19 @@ describe("buildTurnOutcomeWrites", () => {
 								planMarkdown,
 								acceptanceCriteria,
 							});
+							ctx.queueInput({
+								source: "action_prompt",
+								kind: "instruction",
+								bodyMarkdown: "First",
+							});
+						});
+						api.onTurnOutcome("generate_plan", async (_event, ctx) => {
+							ctx.applyLifecycleEffects?.({ processPatch: { planRevision: 2 } });
+							ctx.queueInput({
+								source: "action_prompt",
+								kind: "instruction",
+								bodyMarkdown: "Second",
+							});
 						});
 					}),
 				],
@@ -181,9 +194,15 @@ describe("buildTurnOutcomeWrites", () => {
 		expect(planned.processPatch).toMatchObject({
 			selectedTurnId: "plan_review",
 			lifecycleStatus: "waiting",
-			planRevision: 1,
+			planRevision: 2,
 			stateJson: JSON.stringify({}),
 		});
+		expect(planned.queuedInputs.map((input) => input.bodyMarkdown)).toEqual(["First", "Second"]);
+		expect(planned.events.slice(0, 2).map((event) => event.eventType)).toEqual([
+			"turn_outcome_recorded",
+			"plan_saved",
+		]);
+		expect(deps.processes.getById(process.id)).toEqual(process);
 		expect(planned.extensionEvents).toEqual(
 			expect.arrayContaining([
 				{

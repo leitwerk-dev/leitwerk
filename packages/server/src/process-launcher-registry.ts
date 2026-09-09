@@ -7,12 +7,11 @@ import type {
 	ProcessLauncherDefinition,
 	ProcessLauncherService,
 	ResolvedProcessLauncher,
-	UiLauncherDefinition,
 	UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
 import { buildProcessLaunchers } from "@leitwerk-dev/process-sdk";
 import type { CommitMessageConfig } from "./config/config-types.js";
-import { buildProcessLaunchPlan } from "./process-launch-plan.js";
+import { buildProcessLaunchPlan, validateLaunchPreparationChecks } from "./process-launch-plan.js";
 
 interface RegisteredProcessLauncher {
 	processId: string;
@@ -27,23 +26,6 @@ interface ProcessLauncherRegistryOptions {
 	commitMessages?: CommitMessageConfig;
 }
 
-function buildLaunchPlan(
-	launcher: RegisteredProcessLauncher,
-	launchConfig: ProcessLaunchConfig,
-	commitMessages?: CommitMessageConfig,
-) {
-	return buildProcessLaunchPlan({
-		processDef: launcher.processDef,
-		launchConfig,
-		launcherId: launcher.definition.id,
-		metadataAdditions: {
-			launcherId: launcher.definition.id,
-		},
-		errorSubject: `Launcher '${launcher.definition.id}'`,
-		commitMessages,
-	});
-}
-
 function buildResolvedProcessLauncher(
 	launcher: RegisteredProcessLauncher,
 	launchConfig: ProcessLaunchConfig,
@@ -54,21 +36,15 @@ function buildResolvedProcessLauncher(
 		processId: launcher.processId,
 		displayName: launcher.displayName,
 		launchConfig,
-		launchPlan: buildLaunchPlan(launcher, launchConfig, commitMessages),
+		launchPlan: buildProcessLaunchPlan({
+			processDef: launcher.processDef,
+			launchConfig,
+			launcherId: launcher.definition.id,
+			metadataAdditions: { launcherId: launcher.definition.id },
+			errorSubject: `Launcher '${launcher.definition.id}'`,
+			commitMessages,
+		}),
 	};
-}
-
-function getRequiredUiDefinition(
-	launcher: RegisteredProcessLauncher | undefined,
-	launcherId: string,
-): UiLauncherDefinition {
-	if (!launcher) {
-		throw new Error(`Unknown launcher '${launcherId}'`);
-	}
-	if (!launcher.definition.ui) {
-		throw new Error(`Launcher '${launcherId}' is not UI-visible`);
-	}
-	return launcher.definition.ui;
 }
 
 export function buildProcessLauncherRegistry(
@@ -92,17 +68,24 @@ export function buildProcessLauncherRegistry(
 		}
 	}
 
-	const getDefaultModelProfilesForProcess = (
-		processId: string,
-	): readonly LauncherModelProfileSummary[] =>
-		options.getModelProfilesForProcess?.(processId) ?? options.modelProfiles ?? [];
+	function requireUiLauncher(launcherId: string) {
+		const launcher = launchers.get(launcherId);
+		if (!launcher) throw new Error(`Unknown launcher '${launcherId}'`);
+		const ui = launcher.definition.ui;
+		if (!ui) throw new Error(`Launcher '${launcherId}' is not UI-visible`);
+		return { launcher, ui };
+	}
 
 	const createLauncherContext = (
 		processId: string,
 		ctx: LauncherContext = {},
 	): LauncherContext => ({
 		...ctx,
-		modelProfiles: ctx.modelProfiles ?? getDefaultModelProfilesForProcess(processId),
+		modelProfiles:
+			ctx.modelProfiles ??
+			options.getModelProfilesForProcess?.(processId) ??
+			options.modelProfiles ??
+			[],
 	});
 
 	const uiLaunchers = [...launchers.values()]
@@ -130,59 +113,39 @@ export function buildProcessLauncherRegistry(
 		},
 
 		async resolveUiDefaults(launcherId, ctx = {}) {
-			const launcher = launchers.get(launcherId);
-			const ui = getRequiredUiDefinition(launcher, launcherId);
-			return (
-				(await ui.resolveDefaults?.(
-					createLauncherContext((launcher as RegisteredProcessLauncher).processId, ctx),
-				)) ?? {}
-			);
+			const { launcher, ui } = requireUiLauncher(launcherId);
+			return (await ui.resolveDefaults?.(createLauncherContext(launcher.processId, ctx))) ?? {};
 		},
 
 		async resolveUiOptions(launcherId, input, ctx = {}) {
-			const launcher = launchers.get(launcherId);
-			const ui = getRequiredUiDefinition(launcher, launcherId);
+			const { launcher, ui } = requireUiLauncher(launcherId);
 			return (
-				(await ui.resolveOptions?.(
-					input,
-					createLauncherContext((launcher as RegisteredProcessLauncher).processId, ctx),
-				)) ?? {}
+				(await ui.resolveOptions?.(input, createLauncherContext(launcher.processId, ctx))) ?? {}
 			);
 		},
 
 		async resolveUiRelaunchInput(launcherId, previousInput, ctx = {}) {
-			const launcher = launchers.get(launcherId);
-			const ui = getRequiredUiDefinition(launcher, launcherId);
+			const { launcher, ui } = requireUiLauncher(launcherId);
 			const input = await ui.resolveRelaunchInput?.(
 				{ ...previousInput },
-				createLauncherContext((launcher as RegisteredProcessLauncher).processId, ctx),
+				createLauncherContext(launcher.processId, ctx),
 			);
 			return input ? { ...input } : { ...previousInput };
 		},
 
 		resolvePreparationChecks(launcherId, input, launchConfig) {
-			const launcher = launchers.get(launcherId);
-			const ui = getRequiredUiDefinition(launcher, launcherId);
-			const checks = [...(ui.preparationChecks?.(input, launchConfig) ?? [])];
-			const ids = new Set<string>();
-			for (const check of checks) {
-				if (!check.id.trim() || !check.label.trim()) {
-					throw new Error(`Launcher '${launcherId}' preparation checks require ids and labels`);
-				}
-				if (ids.has(check.id)) {
-					throw new Error(`Launcher '${launcherId}' has duplicate preparation check '${check.id}'`);
-				}
-				ids.add(check.id);
-			}
-			return checks;
+			const { ui } = requireUiLauncher(launcherId);
+			return validateLaunchPreparationChecks(
+				ui.preparationChecks?.(input, launchConfig),
+				`Launcher '${launcherId}'`,
+			);
 		},
 
 		async resolveUiLauncher(launcherId, input, ctx = {}) {
-			const launcher = launchers.get(launcherId);
-			const ui = getRequiredUiDefinition(launcher, launcherId);
+			const { launcher, ui } = requireUiLauncher(launcherId);
 			const resolved = await ui.resolveLaunchConfig(
 				input,
-				createLauncherContext((launcher as RegisteredProcessLauncher).processId, ctx),
+				createLauncherContext(launcher.processId, ctx),
 			);
 			if (!resolved.ok) {
 				return resolved;
@@ -190,7 +153,7 @@ export function buildProcessLauncherRegistry(
 			return {
 				ok: true as const,
 				launcher: buildResolvedProcessLauncher(
-					launcher as RegisteredProcessLauncher,
+					launcher,
 					resolved.launchConfig,
 					options.commitMessages,
 				),

@@ -36,63 +36,42 @@ export interface ProcessGraphView {
 	turns: ReadonlyMap<TurnId, ProcessGraphTurnView>;
 }
 
-function toTurnType(definition: TurnDefinition<unknown, unknown>): ProcessTurnType {
-	switch (definition.kind) {
-		case "llm":
-		case "human":
-		case "external":
-		case "automatic":
-			return definition.kind;
-	}
-}
-
-function humanPublishedProducts(definition: TurnDefinition<unknown, unknown>): string[] {
-	if (definition.kind !== "human") {
-		return [];
-	}
-	const products: string[] = [];
-	for (const action of Object.values(definition.actions)) {
-		for (const field of action.form?.fields ?? []) {
-			if (!field.publish) {
-				continue;
+function turnPublishedProducts(definition: TurnDefinition<unknown, unknown>): string[] {
+	const products = new Set<string>();
+	if (definition.kind === "human") {
+		for (const action of Object.values(definition.actions)) {
+			for (const field of action.form?.fields ?? []) {
+				if (field.publish) {
+					products.add(
+						typeof field.publish === "object" && field.publish.product
+							? field.publish.product
+							: field.id,
+					);
+				}
 			}
-			products.push(
-				typeof field.publish === "object" && field.publish.product
-					? field.publish.product
-					: field.id,
-			);
+		}
+		for (const action of Object.values(definition.externalActions ?? {})) {
+			if (action.publishInput) {
+				products.add(action.publishInput.productName);
+			}
+		}
+	} else if (definition.kind === "llm" || definition.kind === "automatic") {
+		for (const outcome of Object.values(definition.outcomes ?? {})) {
+			if (typeof outcome?.publishedProduct === "string") {
+				products.add(outcome.publishedProduct);
+			}
 		}
 	}
-	for (const externalAction of Object.values(definition.externalActions ?? {})) {
-		if (externalAction.publishInput) {
-			products.push(externalAction.publishInput.productName);
-		}
-	}
-	return [...new Set(products)];
-}
-
-function outcomePublishedProducts(definition: TurnDefinition<unknown, unknown>): string[] {
-	if (definition.kind !== "llm" && definition.kind !== "automatic") {
-		return [];
-	}
-	return [
-		...new Set(
-			Object.values(definition.outcomes ?? {})
-				.map((outcome) => outcome?.publishedProduct)
-				.filter((productName): productName is string => typeof productName === "string"),
-		),
-	];
+	return [...products];
 }
 
 function toTurnView(
 	binding: ProcessTurnBinding<TurnDefinition<unknown, unknown>>,
 ): ProcessGraphTurnView {
 	const definition = binding.definition;
-	const publishedProducts = [
-		...new Set([...humanPublishedProducts(definition), ...outcomePublishedProducts(definition)]),
-	];
+	const publishedProducts = turnPublishedProducts(definition);
 	return {
-		turnType: toTurnType(definition),
+		turnType: definition.kind,
 		description: definition.description,
 		transitions: getProcessTurnTransitions(binding),
 		...(definition.kind === "human" && definition.reviewProduct

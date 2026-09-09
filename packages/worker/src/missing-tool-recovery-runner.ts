@@ -21,10 +21,8 @@ export async function runMissingToolRecovery<TOutcome extends string>(input: {
 		options?: { baseState?: ToolCompletionSnapshot<TOutcome> },
 	): Promise<LogicalPromptAttempt<TOutcome>>;
 }): Promise<{
-	recovered: boolean;
 	finalAttempt: LogicalPromptAttempt<TOutcome>;
-	recoveryContext: FailedTurnRecoveryContext | null;
-	baseMissingToolRecoveryDescription: string | null;
+	failure?: { recoveryContext: FailedTurnRecoveryContext; description: string };
 }> {
 	const trace = (payload: WorkerDiagnosticPayload) => input.emit?.({ kind: "trace", payload });
 	const reportError = (payload: WorkerDiagnosticPayload) =>
@@ -33,12 +31,7 @@ export async function runMissingToolRecovery<TOutcome extends string>(input: {
 		input.initialAttempt.completionState,
 	);
 	if (!baseMissingToolRecovery) {
-		return {
-			recovered: true,
-			finalAttempt: input.initialAttempt,
-			recoveryContext: null,
-			baseMissingToolRecoveryDescription: null,
-		};
+		return { finalAttempt: input.initialAttempt };
 	}
 
 	const recoveryContext = input.toolSession.buildRecoveryContext(baseMissingToolRecovery);
@@ -83,12 +76,7 @@ export async function runMissingToolRecovery<TOutcome extends string>(input: {
 			{ baseState: input.initialAttempt.completionState },
 		);
 		if (!input.toolSession.resolveMissingToolRecovery(finalAttempt.completionState)) {
-			return {
-				recovered: true,
-				finalAttempt,
-				recoveryContext,
-				baseMissingToolRecoveryDescription: description,
-			};
+			return { finalAttempt };
 		}
 	}
 
@@ -104,9 +92,7 @@ export async function runMissingToolRecovery<TOutcome extends string>(input: {
 		},
 	});
 	return {
-		recovered: false,
 		finalAttempt,
-		recoveryContext,
-		baseMissingToolRecoveryDescription: description,
+		failure: { recoveryContext, description },
 	};
 }

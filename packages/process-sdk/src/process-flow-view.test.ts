@@ -434,6 +434,10 @@ describe("collapseRoutingTurns", () => {
 			entry: "implement",
 			happyPath: ["implement", "commit"],
 			turns: {
+				review: llm({
+					description: "Review",
+					outcomes: { no_issues: { to: "impl_decision" } },
+				}),
 				implement: llm({ description: "Implement", outcomes: { done: { to: "impl_decision" } } }),
 				impl_decision: human({
 					description: "Implementation decision",
@@ -443,10 +447,6 @@ describe("collapseRoutingTurns", () => {
 						simplify: { to: "simplify" },
 						review: { to: "review" },
 					},
-				}),
-				review: llm({
-					description: "Review",
-					outcomes: { no_issues: { to: "impl_decision" } },
 				}),
 				simplify: llm({ description: "Simplify", outcomes: { done: { to: "impl_decision" } } }),
 				commit: llm({ description: "Commit", turnEnd: { complete: true } }),

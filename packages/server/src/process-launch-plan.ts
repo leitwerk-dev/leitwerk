@@ -1,6 +1,7 @@
 import {
 	COMMIT_MESSAGE_PROJECT_METADATA_KEY,
 	type ExtensionProcessDefinition,
+	type LaunchPreparationCheck,
 	type ProcessLaunchConfig,
 	type ProcessLaunchPlan,
 } from "@leitwerk-dev/process-sdk";
@@ -15,6 +16,24 @@ export interface BuildProcessLaunchPlanInput {
 	metadataAdditions?: Record<string, unknown>;
 	errorSubject?: string;
 	commitMessages?: CommitMessageConfig;
+}
+
+export function validateLaunchPreparationChecks(
+	checks: readonly LaunchPreparationCheck[] | undefined,
+	subject: string,
+): LaunchPreparationCheck[] {
+	const result = [...(checks ?? [])];
+	const ids = new Set<string>();
+	for (const check of result) {
+		if (!check.id.trim() || !check.label.trim()) {
+			throw new Error(`${subject} preparation checks require ids and labels`);
+		}
+		if (ids.has(check.id)) {
+			throw new Error(`${subject} has duplicate preparation check '${check.id}'`);
+		}
+		ids.add(check.id);
+	}
+	return result;
 }
 
 function serializeJson(value: unknown): string | null {

@@ -1,5 +1,6 @@
 import type { WorkerBootstrapReceipt, WorkerLease, WorkerState } from "@leitwerk-dev/domain";
 import { and, asc, eq, isNull } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -113,20 +114,18 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 		},
 
 		update(id: string, input: UpdateWorkerLeaseInput): WorkerLease | null {
-			const setValues: Record<string, unknown> = {};
-			if (input.state !== undefined) setValues.state = input.state;
-			if (input.serverEpoch !== undefined) setValues.serverEpoch = input.serverEpoch;
-			if (input.connectTokenHash !== undefined) setValues.connectTokenHash = input.connectTokenHash;
-			if (input.snapshotTokenHash !== undefined)
-				setValues.snapshotTokenHash = input.snapshotTokenHash;
-			if (input.modelPolicyFingerprint !== undefined)
-				setValues.modelPolicyFingerprint = input.modelPolicyFingerprint;
-			if (input.lastHeartbeatAt !== undefined) setValues.lastHeartbeatAt = input.lastHeartbeatAt;
-			if (input.connectedAt !== undefined) setValues.connectedAt = input.connectedAt;
-			if (input.workspacePreparationStartedAt !== undefined)
-				setValues.workspacePreparationStartedAt = input.workspacePreparationStartedAt;
-			if (input.readyAt !== undefined) setValues.readyAt = input.readyAt;
-			if (input.exitedAt !== undefined) setValues.exitedAt = input.exitedAt;
+			const setValues: SQLiteUpdateSetSource<typeof s.workerLeases> = {
+				state: input.state,
+				serverEpoch: input.serverEpoch,
+				connectTokenHash: input.connectTokenHash,
+				snapshotTokenHash: input.snapshotTokenHash,
+				modelPolicyFingerprint: input.modelPolicyFingerprint,
+				lastHeartbeatAt: input.lastHeartbeatAt,
+				connectedAt: input.connectedAt,
+				workspacePreparationStartedAt: input.workspacePreparationStartedAt,
+				readyAt: input.readyAt,
+				exitedAt: input.exitedAt,
+			};
 
 			db.update(s.workerLeases).set(setValues).where(eq(s.workerLeases.id, id)).run();
 			const row = db.select().from(s.workerLeases).where(eq(s.workerLeases.id, id)).get();

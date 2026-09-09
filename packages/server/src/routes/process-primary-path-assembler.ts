@@ -8,6 +8,7 @@ import {
 	buildPrimaryPathSnapshotFromTree,
 	type PrimaryPathSnapshotProjectionInput,
 } from "../primary-path-snapshot.js";
+import { resolveCurrentExecutionTurnRecordId } from "../process-execution.js";
 import type { ProcessSessionTreeReadResult } from "../process-session-store.js";
 import {
 	mergeProcessEventWindowsAscending,
@@ -34,13 +35,7 @@ export class ProcessPrimaryPathAssembler {
 			return null;
 		}
 		const turnRecords = overrides.turnRecords ?? this.deps.turnRecords.listByInstance(process.id);
-		const currentTurnRecordId =
-			process.currentExecution?.kind === "worker_start"
-				? (() => {
-						const start = this.deps.turnStarts.getById(process.currentExecution.id);
-						return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-					})()
-				: null;
+		const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, this.deps.turnStarts);
 		const activeTurnRecord = currentTurnRecordId
 			? turnRecords.find(
 					(turnRecord) => turnRecord.id === currentTurnRecordId && turnRecord.status === "running",

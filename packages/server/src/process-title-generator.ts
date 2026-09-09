@@ -421,7 +421,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 			}
 			return;
 		}
-		this.repos.titleJobs.enqueueProcessJob({
+		this.repos.titleJobs.enqueue({
 			processInstanceId: input.processId,
 			processDefinitionId: queued.processDefinitionId,
 			launchRunId: input.launchRunId,
@@ -453,7 +453,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		if (!expectedPayloadJson) {
 			return;
 		}
-		this.repos.titleJobs.enqueueFutureExecutionJob({
+		this.repos.titleJobs.enqueue({
 			futureExecutionId: input.futureExecutionId,
 			processDefinitionId: queued.processDefinitionId,
 			modelProfileId: queued.modelProfileId,

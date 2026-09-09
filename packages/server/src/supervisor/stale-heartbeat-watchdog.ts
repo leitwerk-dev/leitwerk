@@ -1,5 +1,6 @@
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { RepositoryBundle } from "../db/repositories.js";
+import { resolveCurrentExecutionTurnRecordId } from "../process-execution.js";
 import type { IpcHandler } from "./ipc-handler.js";
 import { createServerObservedWorkerFailedMessage } from "./synthetic-worker-failure.js";
 import type { WorkerSupervisor } from "./worker-supervisor.js";
@@ -54,8 +55,7 @@ export function startStaleHeartbeatWatchdog(
 				deps.turnStarts &&
 				deps.turnRecords
 			) {
-				const start = deps.turnStarts.getById(process.currentExecution.id);
-				const turnRecordId = start?.state.kind === "accepted" ? start.state.turnRecordId : null;
+				const turnRecordId = resolveCurrentExecutionTurnRecordId(process, deps.turnStarts);
 				const turnRecord = turnRecordId ? deps.turnRecords.getById(turnRecordId) : null;
 				const startedAtMs = turnRecord ? Date.parse(turnRecord.startedAt) : Number.NaN;
 				if (

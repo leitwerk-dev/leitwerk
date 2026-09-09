@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { activateDevelopmentComposition } from "./development-composition.ts";
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 const DEPENDENCY_FIELDS = [
 	"dependencies",
@@ -34,13 +35,9 @@ main();
 
 function main() {
 	const rootDir = process.cwd();
-	const rootPackageJson = readJson(path.join(rootDir, "package.json"));
-	const workspacePatterns = Array.isArray(rootPackageJson.workspaces)
-		? rootPackageJson.workspaces.filter((value) => typeof value === "string")
-		: [];
 	const composition = activateDevelopmentComposition(rootDir);
 	const workspaces = dedupeWorkspaceInfos([
-		...listWorkspaceInfos(rootDir, workspacePatterns),
+		...listWorkspaceInfos(rootDir),
 		...listComposedWorkspaceInfos(composition),
 	]);
 	const extensionPackageNames = new Set(
@@ -75,38 +72,20 @@ function main() {
 	process.exit(1);
 }
 
-function listWorkspaceInfos(rootDir, workspacePatterns) {
-	const infos = [];
-	for (const pattern of workspacePatterns) {
-		if (!pattern.endsWith("/*")) {
-			continue;
-		}
-		const baseDir = path.join(rootDir, pattern.slice(0, -2));
-		if (!existsSync(baseDir)) {
-			continue;
-		}
-		for (const entry of readdirSync(baseDir, { withFileTypes: true })) {
-			if (!entry.isDirectory()) {
-				continue;
-			}
-			const dir = path.join(baseDir, entry.name);
-			const packageJsonPath = path.join(dir, "package.json");
-			if (!existsSync(packageJsonPath)) {
-				continue;
-			}
-			const packageJson = readJson(packageJsonPath);
-			if (typeof packageJson.name !== "string") {
-				continue;
-			}
-			infos.push({
-				name: packageJson.name,
-				dir,
-				packageJson,
-				kind: dir.includes(`${path.sep}extensions${path.sep}`) ? "extension" : "package",
-			});
-		}
-	}
-	return infos.sort((left, right) => left.dir.localeCompare(right.dir));
+function listWorkspaceInfos(rootDir) {
+	return listWorkspacePackageDirs(rootDir).flatMap((dir) => {
+		const packageJson = readJson(path.join(dir, "package.json"));
+		return typeof packageJson.name === "string"
+			? [
+					{
+						name: packageJson.name,
+						dir,
+						packageJson,
+						kind: dir.includes(`${path.sep}extensions${path.sep}`) ? "extension" : "package",
+					},
+				]
+			: [];
+	});
 }
 
 function listComposedWorkspaceInfos(composition) {

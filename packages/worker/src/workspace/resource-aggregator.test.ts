@@ -37,15 +37,21 @@ describe("collectSkills", () => {
 		const m = collectSkills([
 			{ componentKey: "b", skillId: "s1", content: "from-b" },
 			{ componentKey: "a", skillId: "s1", content: "from-a" },
+			{ componentKey: "a", skillId: "s1", content: "later-from-a" },
+			{ componentKey: "c", skillId: "s1", content: "from-c" },
 		]);
 		expect(m.get("s1")).toEqual({ content: "from-a", source: "a" });
 	});
 
-	it("keeps distinct skill ids", () => {
+	it("keeps skill ids in first-seen order when replacing a winner", () => {
 		const m = collectSkills([
-			{ componentKey: "a", skillId: "s1", content: "1" },
-			{ componentKey: "a", skillId: "s2", content: "2" },
+			{ componentKey: "c", skillId: "s2", content: "old" },
+			{ componentKey: "b", skillId: "s1", content: "1" },
+			{ componentKey: "a", skillId: "s2", content: "new" },
 		]);
-		expect([...m.keys()].sort()).toEqual(["s1", "s2"]);
+		expect([...m]).toEqual([
+			["s2", { content: "new", source: "a" }],
+			["s1", { content: "1", source: "b" }],
+		]);
 	});
 });

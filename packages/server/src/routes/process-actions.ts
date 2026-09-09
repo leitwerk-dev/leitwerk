@@ -151,12 +151,7 @@ export function registerProcessActionRoutes(
 			if (!normalized.ok) return reply.code(400).send({ error: normalized.error });
 			const result = await deps.processEngine.retryProcess(req.params.instanceId, {
 				actor: resolveActor(req),
-				...(normalized.request.nextTurnModelProfileIdProvided
-					? { nextTurnModelProfileId: normalized.request.nextTurnModelProfileId ?? null }
-					: {}),
-				...(normalized.request.providerOptionsProvided
-					? { providerOptions: normalized.request.providerOptions ?? {} }
-					: {}),
+				...normalized.request,
 			});
 			if (!result.ok) {
 				return sendEngineFailure(reply, result, "retry");
@@ -171,14 +166,7 @@ export function registerProcessActionRoutes(
 	}>("/api/processes/:instanceId/turn-starts/:startRecordId/retry", async (req, reply) => {
 		const normalized = normalizeRecoveryModelRequest(req.body);
 		if (!normalized.ok) return reply.code(400).send({ error: normalized.error });
-		const options = {
-			...(normalized.request.nextTurnModelProfileIdProvided
-				? { nextTurnModelProfileId: normalized.request.nextTurnModelProfileId ?? null }
-				: {}),
-			...(normalized.request.providerOptionsProvided
-				? { providerOptions: normalized.request.providerOptions ?? {} }
-				: {}),
-		};
+		const options = normalized.request;
 		const { launchRunId } = await deps.launchCoordinator.retryStartup(
 			req.params.instanceId,
 			resolveActor(req),
@@ -188,11 +176,10 @@ export function registerProcessActionRoutes(
 			req.params.startRecordId,
 			Object.keys(options).length > 0 ? options : undefined,
 		);
+		deps.launchCoordinator.refresh(req.params.instanceId);
 		if (!result.ok) {
-			deps.launchCoordinator.refresh(req.params.instanceId);
 			return sendEngineFailure(reply, result, "retry");
 		}
-		deps.launchCoordinator.refresh(req.params.instanceId);
 		return { process: result.process, startRecordId: result.data.startRecordId, launchRunId };
 	});
 
@@ -206,13 +193,7 @@ export function registerProcessActionRoutes(
 			const actor = resolveActor(req);
 			const options = {
 				actor,
-				...(normalized.request.promptProvided ? { prompt: normalized.request.prompt ?? null } : {}),
-				...(normalized.request.nextTurnModelProfileIdProvided
-					? { nextTurnModelProfileId: normalized.request.nextTurnModelProfileId ?? null }
-					: {}),
-				...(normalized.request.providerOptionsProvided
-					? { providerOptions: normalized.request.providerOptions ?? {} }
-					: {}),
+				...normalized.request,
 			};
 			const result = await deps.processEngine.continueFailedTurn(
 				req.params.instanceId,

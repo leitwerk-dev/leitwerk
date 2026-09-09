@@ -1,4 +1,4 @@
-import type { ProcessSemanticEntryRefKey, TurnProgressReport } from "@leitwerk-dev/domain";
+import type { TurnProgressReport } from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	TurnOptions,
@@ -10,7 +10,10 @@ import { assertValidLlmTurnDefinition } from "@leitwerk-dev/process-sdk";
 import { createAutomaticTurnExecutor } from "../automatic-turn-executor.js";
 import type { WorkerOperationEmitter } from "../diagnostics.js";
 import type { PiTreeHandle } from "../pi-adapter.js";
-import type { PreTurnTargetedInput } from "../pre-turn-targeted-inputs.js";
+import type {
+	AppliedTargetedInputMetadata,
+	PreTurnTargetedInput,
+} from "../pre-turn-targeted-inputs.js";
 import type { WorkerQuestionRequest } from "../question-tool.js";
 import { TurnExecutionError } from "../turn-execution-error.js";
 import { TurnExecutionFailure, type TurnExecutionMeta } from "../turn-execution-result.js";
@@ -21,13 +24,7 @@ import { executeLlmTurn } from "./llm-turn-execution.js";
 export interface AppliedTargetedInput {
 	inputId: string;
 	sequence: number;
-	meta?: {
-		currentPrimaryPathLeafId?: string | null;
-		rootEntryId?: string | null;
-		targetSemanticRef?: ProcessSemanticEntryRefKey | null;
-		targetProductName?: string | null;
-		targetEntryId?: string | null;
-	};
+	meta?: AppliedTargetedInputMetadata;
 }
 
 export type SelectedTurnExecutionResult =

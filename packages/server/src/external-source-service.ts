@@ -22,7 +22,7 @@ import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositor
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { accept, reject } from "./process-engine/decision.js";
 import { defineOperation } from "./process-engine/operation.js";
-import type { ProcessEngine } from "./process-engine/types.js";
+import type { EngineFailure, ProcessEngine } from "./process-engine/types.js";
 import { buildServerTransitionWrites } from "./process-engine/writes/build-server-transition-writes.js";
 import { createDeferredExtensionEvent } from "./process-engine/writes/deferred-extension-events.js";
 import { appendProcessEffects } from "./process-engine/writes/process-effects.js";
@@ -45,7 +45,6 @@ interface ExternalTransitionRuntime<TParams = unknown, TState = unknown> {
 }
 
 interface ResolvedExternalSourceArming extends ExternalSourceArmingLike {
-	transitionIndex: number;
 	transition: ExternalTransitionRuntime;
 	transitionTrigger: string;
 	label: string | null;
@@ -91,21 +90,6 @@ function sourceDescription(source: ExternalActionSource): string | null {
 	return typeof source.description === "string" && source.description.trim() !== ""
 		? source.description
 		: null;
-}
-
-function resolveSource(input: {
-	source: ExternalActionSource;
-	process: ProcessInstance;
-	projects: readonly ProcessProject[];
-	params: unknown;
-	state: unknown;
-}): unknown {
-	return input.source.resolve?.({
-		process: input.process,
-		projects: input.projects,
-		params: input.params,
-		state: input.state,
-	});
 }
 
 function isSelectedWaitingTurn(process: ProcessInstance): boolean {
@@ -217,6 +201,18 @@ function buildExternalSourceEventPayload(input: {
 	};
 }
 
+function armingEventData(arming: ResolvedExternalSourceArming) {
+	return {
+		armingId: arming.id,
+		instanceId: arming.instanceId,
+		turnId: arming.turnId,
+		externalActionId: arming.externalActionId,
+		sourceKind: arming.source.kind,
+		label: arming.label,
+		description: arming.description,
+	};
+}
+
 function readPublishedInput(input: {
 	arming: ResolvedExternalSourceArming;
 	fireInput: Record<string, unknown>;
@@ -300,20 +296,6 @@ async function buildExternalSourceEffectWrites(input: {
 	return writes;
 }
 
-function parseNewExternalActionArmingId(armingId: string): {
-	turnId: string;
-	externalActionId: string;
-} | null {
-	const separator = armingId.indexOf(":");
-	if (separator <= 0 || separator === armingId.length - 1) {
-		return null;
-	}
-	return {
-		turnId: armingId.slice(0, separator),
-		externalActionId: armingId.slice(separator + 1),
-	};
-}
-
 function mergeInstructionText(values: readonly Record<string, unknown>[]): string | null {
 	const parts: string[] = [];
 	for (const input of values) {
@@ -328,23 +310,20 @@ function mergeInstructionText(values: readonly Record<string, unknown>[]): strin
 	return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
-function providerEventsFrom(event: Record<string, unknown>): Record<string, unknown>[] {
-	const nested = event.providerEvents;
+function providerRecordsFrom(
+	value: Record<string, unknown>,
+	key: "providerEvents" | "providerInputs",
+): Record<string, unknown>[] {
+	const nested = value[key];
 	if (Array.isArray(nested)) {
 		return nested.map(normalizeRecord).filter((entry) => Object.keys(entry).length > 0);
 	}
-	return Object.keys(event).length > 0 ? [event] : [];
+	return Object.keys(value).length > 0 ? [value] : [];
 }
 
-function providerInputsFrom(input: Record<string, unknown>): Record<string, unknown>[] {
-	const nested = input.providerInputs;
-	if (Array.isArray(nested)) {
-		return nested.map(normalizeRecord).filter((entry) => Object.keys(entry).length > 0);
-	}
-	return Object.keys(input).length > 0 ? [input] : [];
-}
-
-function mergePendingFires(fires: readonly PendingExternalSourceFire[]): {
+function mergePendingFires(
+	fires: readonly Pick<PendingExternalSourceFire, "input" | "event" | "queuedCount">[],
+): {
 	input: Record<string, unknown>;
 	event: Record<string, unknown>;
 	queuedCount: number;
@@ -369,11 +348,11 @@ function mergePendingFires(fires: readonly PendingExternalSourceFire[]): {
 			mergedInput.instruction = instruction;
 		}
 	}
-	const providerInputs = fires.flatMap((fire) => providerInputsFrom(fire.input));
+	const providerInputs = fires.flatMap((fire) => providerRecordsFrom(fire.input, "providerInputs"));
 	if (providerInputs.length > 0) {
 		mergedInput.providerInputs = providerInputs;
 	}
-	const providerEvents = fires.flatMap((fire) => providerEventsFrom(fire.event));
+	const providerEvents = fires.flatMap((fire) => providerRecordsFrom(fire.event, "providerEvents"));
 	return {
 		input: mergedInput,
 		event: {
@@ -382,6 +361,19 @@ function mergePendingFires(fires: readonly PendingExternalSourceFire[]): {
 		},
 		queuedCount: fires.reduce((sum, fire) => sum + fire.queuedCount, 0),
 	};
+}
+
+function externalSourceFailure(result: EngineFailure<unknown>): ActionExecutionResultLike {
+	if (result.stage === "post_commit" && result.process) {
+		return {
+			ok: false,
+			stage: "post_commit",
+			process: result.process,
+			code: result.code,
+			error: result.message,
+		};
+	}
+	return { ok: false, stage: "pre_commit", code: result.code, error: result.message };
 }
 
 function terminal(process: ProcessInstance): boolean {
@@ -417,6 +409,7 @@ export function createExternalSourceService(
 			process,
 		);
 		const projects = deps.projects.listByInstance(process.id);
+		const context = { process, projects, params, state };
 
 		if (isExternalTurnDefinition(turnDef)) {
 			turnDef.transitions.forEach((transition, transitionIndex) => {
@@ -432,22 +425,12 @@ export function createExternalSourceService(
 					turnId,
 					externalActionId: `${transition.source.kind}:${transitionIndex}`,
 					source: transition.source,
-					resolved: resolveSource({
-						source: transition.source,
-						process,
-						projects,
-						params,
-						state,
-					}),
-					transitionIndex,
+					resolved: transition.source.resolve?.({ ...context }),
 					transition,
 					transitionTrigger: id,
 					label: sourceLabel(transition.source),
 					description: sourceDescription(transition.source),
-					process,
-					projects,
-					params,
-					state,
+					...context,
 				});
 			});
 			return armed;
@@ -457,7 +440,7 @@ export function createExternalSourceService(
 			return [];
 		}
 		for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
-			if (action.when && !action.when({ process, projects, params, state })) {
+			if (action.when && !action.when({ ...context })) {
 				continue;
 			}
 			const id = getExternalActionArmingId({ turnId, externalActionId });
@@ -468,22 +451,12 @@ export function createExternalSourceService(
 				turnId,
 				externalActionId,
 				source: action.source,
-				resolved: resolveSource({
-					source: action.source,
-					process,
-					projects,
-					params,
-					state,
-				}),
-				transitionIndex: 0,
+				resolved: action.source.resolve?.({ ...context }),
 				transition: action,
 				transitionTrigger: getExternalActionTransitionTrigger({ externalActionId }),
 				label: action.label ?? sourceLabel(action.source),
 				description: action.description ?? sourceDescription(action.source),
-				process,
-				projects,
-				params,
-				state,
+				...context,
 			});
 		}
 		return armed;
@@ -589,13 +562,7 @@ export function createExternalSourceService(
 					instanceId: entry.instanceId,
 					eventType: "external_source_armed",
 					data: buildExternalSourceEventPayload({
-						armingId: entry.id,
-						instanceId: entry.instanceId,
-						turnId: entry.turnId,
-						externalActionId: entry.externalActionId,
-						sourceKind: entry.source.kind,
-						label: entry.label,
-						description: entry.description,
+						...armingEventData(entry),
 						resolved: entry.resolved,
 						provider: normalizeRecord(entry.resolved),
 					}),
@@ -727,59 +694,35 @@ export function createExternalSourceService(
 				);
 			}
 
+			const failedDecision = (failure: { code: string; message: string }) => {
+				const writes = createWrites();
+				appendExternalSourceEvent(
+					writes,
+					arming.instanceId,
+					"external_source_failed",
+					buildExternalSourceEventPayload({
+						...armingEventData(arming),
+						provider: input.event,
+						fireInput: input.input,
+						code: failure.code,
+						message: failure.message,
+					}),
+				);
+				return accept({ writes, data: { ok: false, code: failure.code } });
+			};
+
 			const effectWrites = await buildExternalSourceEffectWrites({
 				arming,
 				fireInput: input.input,
 				fireEvent: input.event,
 			});
-			if (isWriteBuildFailure(effectWrites)) {
-				const failedWrites = createWrites();
-				appendExternalSourceEvent(
-					failedWrites,
-					arming.instanceId,
-					"external_source_failed",
-					buildExternalSourceEventPayload({
-						armingId: arming.id,
-						instanceId: arming.instanceId,
-						turnId: arming.turnId,
-						externalActionId: arming.externalActionId,
-						sourceKind: arming.source.kind,
-						label: arming.label,
-						description: arming.description,
-						provider: input.event,
-						fireInput: input.input,
-						code: effectWrites.code,
-						message: effectWrites.message,
-					}),
-				);
-				return accept({ writes: failedWrites, data: { ok: false, code: effectWrites.code } });
-			}
+			if (isWriteBuildFailure(effectWrites)) return failedDecision(effectWrites);
+
+			const publishedInput = readPublishedInput({ arming, fireInput: input.input });
+			if (publishedInput && "ok" in publishedInput) return failedDecision(publishedInput);
 
 			const recordedAt = now();
 			const turnRecordId = generateId("trn");
-			const publishedInput = readPublishedInput({ arming, fireInput: input.input });
-			if (publishedInput && "ok" in publishedInput && publishedInput.ok === false) {
-				const failedWrites = createWrites();
-				appendExternalSourceEvent(
-					failedWrites,
-					arming.instanceId,
-					"external_source_failed",
-					buildExternalSourceEventPayload({
-						armingId: arming.id,
-						instanceId: arming.instanceId,
-						turnId: arming.turnId,
-						externalActionId: arming.externalActionId,
-						sourceKind: arming.source.kind,
-						label: arming.label,
-						description: arming.description,
-						provider: input.event,
-						fireInput: input.input,
-						code: publishedInput.code,
-						message: publishedInput.message,
-					}),
-				);
-				return accept({ writes: failedWrites, data: { ok: false, code: publishedInput.code } });
-			}
 
 			const externalWrites = createWrites({
 				turnRecordWrites: [
@@ -792,7 +735,7 @@ export function createExternalSourceService(
 							turnType: "external",
 							status: "succeeded",
 							pathType: "primary",
-							...(publishedInput && !("ok" in publishedInput)
+							...(publishedInput
 								? {
 										resultPiEntryId: `external:${turnRecordId}:${publishedInput.productName}`,
 										turnResultMarkdown: publishedInput.markdown,
@@ -819,9 +762,7 @@ export function createExternalSourceService(
 								label: arming.label,
 								description: arming.description,
 								event: input.event,
-								...(publishedInput && !("ok" in publishedInput)
-									? { publishedProduct: publishedInput.productName }
-									: {}),
+								...(publishedInput ? { publishedProduct: publishedInput.productName } : {}),
 							},
 							createdAt: recordedAt,
 							updatedAt: recordedAt,
@@ -830,7 +771,7 @@ export function createExternalSourceService(
 				],
 			});
 
-			if (publishedInput && !("ok" in publishedInput)) {
+			if (publishedInput) {
 				const baseStateJson = effectWrites.processPatch.stateJson ?? ctx.process.stateJson;
 				const patchedStateJson = mergeProductRefPatchIntoStateJson(
 					baseStateJson,
@@ -864,19 +805,12 @@ export function createExternalSourceService(
 				arming.instanceId,
 				"external_source_consumed",
 				buildExternalSourceEventPayload({
-					armingId: arming.id,
-					instanceId: arming.instanceId,
-					turnId: arming.turnId,
-					externalActionId: arming.externalActionId,
-					sourceKind: arming.source.kind,
-					label: arming.label,
-					description: arming.description,
+					...armingEventData(arming),
 					resolved: arming.resolved,
 					provider: input.event,
 					fireInput: input.input,
 					queuedCount: input.queuedCount,
-					publishedProduct:
-						publishedInput && !("ok" in publishedInput) ? publishedInput.productName : null,
+					publishedProduct: publishedInput ? publishedInput.productName : null,
 				}),
 			);
 
@@ -944,18 +878,9 @@ export function createExternalSourceService(
 				const merged = mergePendingFires([
 					existing,
 					{
-						id: "pending:new",
-						instanceId: input.instanceId,
-						armingId: input.armingId,
-						turnId: input.known.turnId,
-						externalActionId: input.known.externalActionId,
-						sourceKind: input.known.sourceKind,
 						input: input.fireInput,
 						event: input.fireEvent,
-						mergeKey,
 						queuedCount: 1,
-						createdAt: now(),
-						updatedAt: now(),
 					},
 				]);
 				queuedCount = merged.queuedCount;
@@ -1064,23 +989,7 @@ export function createExternalSourceService(
 			fireEvent: input.fireEvent,
 			mergeKey: input.mergeKey ?? null,
 		});
-		if (!result.ok) {
-			if (result.stage === "post_commit" && result.process) {
-				return {
-					ok: false,
-					stage: "post_commit",
-					process: result.process,
-					code: result.code,
-					error: result.message,
-				};
-			}
-			return {
-				ok: false,
-				stage: "pre_commit",
-				code: result.code,
-				error: result.message,
-			};
-		}
+		if (!result.ok) return externalSourceFailure(result);
 		return {
 			ok: true,
 			process: result.process,
@@ -1098,16 +1007,7 @@ export function createExternalSourceService(
 		message: string;
 		pendingFireId?: string;
 	}): Promise<void> {
-		await deps.commands.run(DropExternalSourceFire, {
-			instanceId: input.instanceId,
-			armingId: input.armingId,
-			known: input.known,
-			fireInput: input.fireInput,
-			fireEvent: input.fireEvent,
-			code: input.code,
-			message: input.message,
-			pendingFireId: input.pendingFireId,
-		});
+		await deps.commands.run(DropExternalSourceFire, input);
 	}
 
 	async function fireImmediate(input: {
@@ -1126,23 +1026,7 @@ export function createExternalSourceService(
 			queuedCount: input.queuedCount,
 			pendingFireIds: input.pendingFireIds,
 		});
-		if (!result.ok) {
-			if (result.stage === "post_commit" && result.process) {
-				return {
-					ok: false,
-					stage: "post_commit",
-					process: result.process,
-					code: result.code,
-					error: result.message,
-				};
-			}
-			return {
-				ok: false,
-				stage: "pre_commit",
-				code: result.code,
-				error: result.message,
-			};
-		}
+		if (!result.ok) return externalSourceFailure(result);
 		if ((result.data as { ok?: unknown }).ok === false) {
 			return {
 				ok: false,
@@ -1160,8 +1044,6 @@ export function createExternalSourceService(
 		fireInput: Record<string, unknown>;
 		fireEvent: Record<string, unknown>;
 		mergeKey?: string | null;
-		code?: string;
-		message?: string;
 	}): Promise<ActionExecutionResultLike> {
 		const process = deps.processes.getById(input.instanceId);
 		if (!process) {
@@ -1208,6 +1090,26 @@ export function createExternalSourceService(
 		});
 	}
 
+	async function dropQueuedFires(
+		instanceId: string,
+		fires: readonly PendingExternalSourceFire[],
+		code: string,
+		message: string,
+	): Promise<void> {
+		for (const fire of fires) {
+			await dropPendingFire({
+				instanceId,
+				armingId: fire.armingId,
+				known: fire,
+				fireInput: fire.input,
+				fireEvent: fire.event,
+				code,
+				message,
+				pendingFireId: fire.id,
+			});
+		}
+	}
+
 	async function drainQueued(instanceId: string): Promise<void> {
 		if (drainingInstances.has(instanceId)) {
 			drainAgain.add(instanceId);
@@ -1228,39 +1130,26 @@ export function createExternalSourceService(
 					continue;
 				}
 				if (terminal(process)) {
-					for (const pendingFire of pending) {
-						await dropPendingFire({
-							instanceId,
-							armingId: pendingFire.armingId,
-							known: pendingFire,
-							fireInput: pendingFire.input,
-							fireEvent: pendingFire.event,
-							code: "external_source_terminal",
-							message: "Queued external source was dropped because the process is terminal",
-							pendingFireId: pendingFire.id,
-						});
-					}
+					await dropQueuedFires(
+						instanceId,
+						pending,
+						"external_source_terminal",
+						"Queued external source was dropped because the process is terminal",
+					);
 					continue;
 				}
 				await reconcileArmings(instanceId);
-				const active = process ? listArmingsForProcess(process) : [];
+				const active = listArmingsForProcess(process);
 				const activeIds = new Set(active.map((entry) => entry.id));
 				const drainable = pending.find((entry) => activeIds.has(entry.armingId));
 				if (!drainable) {
 					if (process.lifecycleStatus === "waiting") {
-						for (const pendingFire of pending) {
-							await dropPendingFire({
-								instanceId,
-								armingId: pendingFire.armingId,
-								known: pendingFire,
-								fireInput: pendingFire.input,
-								fireEvent: pendingFire.event,
-								code: "external_source_no_longer_exposed",
-								message:
-									"Queued external source was dropped because the selected turn no longer exposes that external action",
-								pendingFireId: pendingFire.id,
-							});
-						}
+						await dropQueuedFires(
+							instanceId,
+							pending,
+							"external_source_no_longer_exposed",
+							"Queued external source was dropped because the selected turn no longer exposes that external action",
+						);
 					}
 					continue;
 				}
@@ -1277,18 +1166,12 @@ export function createExternalSourceService(
 					pendingFireIds: group.map((pendingFire) => pendingFire.id),
 				});
 				if (!result.ok) {
-					for (const pendingFire of group) {
-						await dropPendingFire({
-							instanceId,
-							armingId: pendingFire.armingId,
-							known: pendingFire,
-							fireInput: pendingFire.input,
-							fireEvent: pendingFire.event,
-							code: result.code ?? "external_source_failed",
-							message: result.error,
-							pendingFireId: pendingFire.id,
-						});
-					}
+					await dropQueuedFires(
+						instanceId,
+						group,
+						result.code ?? "external_source_failed",
+						result.error,
+					);
 				}
 			} while (drainAgain.has(instanceId));
 		} finally {
@@ -1305,7 +1188,6 @@ export function createExternalSourceService(
 				.map(
 					({
 						transition: _transition,
-						transitionIndex: _transitionIndex,
 						transitionTrigger: _transitionTrigger,
 						label: _label,
 						description: _description,
@@ -1318,37 +1200,20 @@ export function createExternalSourceService(
 				);
 		},
 		async fire(input: ExternalSourceFireInput): Promise<ActionExecutionResultLike> {
-			const fireInput = normalizeRecord(input.input);
-			const fireEvent = normalizeRecord(input.event);
-			const active = resolveArming(input.instanceId, input.armingId);
-			if (!active) {
-				return queueOrDrop({
-					instanceId: input.instanceId,
-					armingId: input.armingId,
-					fireInput,
-					fireEvent,
-					mergeKey: input.mergeKey,
-				});
-			}
-			const result = await fireImmediate({
+			const fire = {
 				instanceId: input.instanceId,
 				armingId: input.armingId,
-				fireInput,
-				fireEvent,
-			});
+				fireInput: normalizeRecord(input.input),
+				fireEvent: normalizeRecord(input.event),
+			};
+			const active = resolveArming(input.instanceId, input.armingId);
+			const result = active ? await fireImmediate(fire) : null;
 			if (
-				!result.ok &&
-				(result.code === "external_source_stale" || result.code === "external_source_not_armed")
+				!result ||
+				(!result.ok &&
+					(result.code === "external_source_stale" || result.code === "external_source_not_armed"))
 			) {
-				return queueOrDrop({
-					instanceId: input.instanceId,
-					armingId: input.armingId,
-					fireInput,
-					fireEvent,
-					mergeKey: input.mergeKey,
-					code: result.code,
-					message: result.error,
-				});
+				return queueOrDrop({ ...fire, mergeKey: input.mergeKey });
 			}
 			if (result.ok) {
 				await drainQueued(input.instanceId);
@@ -1363,5 +1228,3 @@ export function createExternalSourceService(
 		reconcileAllArmings,
 	};
 }
-
-void parseNewExternalActionArmingId;

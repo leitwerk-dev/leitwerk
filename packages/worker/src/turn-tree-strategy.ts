@@ -24,7 +24,6 @@ export interface TurnTreePlan {
 }
 
 export function resolveRootEntryId(input: {
-	currentLeafId: string | null;
 	currentBranch: readonly Pick<PiTreeEntry, "id">[];
 	topLevelNodes: readonly Pick<PiTreeNode, "entry">[];
 }): string | null {
@@ -41,7 +40,7 @@ export function resolveRootEntryIdFromHandle(
 	const currentLeafId = piHandle.getLeafId();
 	const currentBranch = piHandle.getBranch(currentLeafId ?? undefined);
 	const topLevelNodes = piHandle.getTree();
-	return resolveRootEntryId({ currentLeafId, currentBranch, topLevelNodes });
+	return resolveRootEntryId({ currentBranch, topLevelNodes });
 }
 
 function resolveContextAwareTurnStartSelection(input: {
@@ -83,11 +82,7 @@ export function planTurnTreeExecution(input: {
 	hasPreTurnTargetedInputs?: boolean;
 }): TurnTreePlan {
 	const startTarget = resolveProcessTurnStartTarget({
-		selection: resolveContextAwareTurnStartSelection({
-			turnDef: input.turnDef,
-			preTurnStartSelection: input.preTurnStartSelection,
-			hasPreTurnTargetedInputs: input.hasPreTurnTargetedInputs,
-		}),
+		selection: resolveContextAwareTurnStartSelection(input),
 		branchType: input.turnDef.branchType,
 		currentLeafId: input.currentLeafId,
 		rootEntryId: input.rootEntryId,
@@ -109,18 +104,10 @@ export async function positionHandleForTurn(
 	piHandle: Pick<PiTreeHandle, "branch" | "branchFromRoot">,
 	plan: TurnTreePlan,
 ): Promise<void> {
-	switch (plan.startTarget.kind) {
-		case "current_leaf": {
-			return;
-		}
-		case "entry": {
-			await piHandle.branch(plan.startTarget.entryId);
-			return;
-		}
-		case "root": {
-			await piHandle.branchFromRoot();
-			return;
-		}
+	if (plan.startTarget.kind === "entry") {
+		await piHandle.branch(plan.startTarget.entryId);
+	} else if (plan.startTarget.kind === "root") {
+		await piHandle.branchFromRoot();
 	}
 }
 

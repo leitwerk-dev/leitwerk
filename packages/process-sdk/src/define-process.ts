@@ -432,20 +432,9 @@ type CompiledActionUse<TParams, TState> = {
 	routing: CompiledActionRouting<TParams, TState>;
 };
 
-type CompiledExecutableTurn<TParams, TState> =
-	| {
-			kind: "llm";
-			id: TurnId;
-			spec: LlmTurnDefinition<string, TParams, TState>;
-	  }
-	| {
-			kind: "automatic";
-			id: TurnId;
-			spec: AutomaticTurnDefinition<string, TParams, TState>;
-	  };
-
-function createTransitionTargetError(context: string, detail: string): Error {
-	return new Error(`${context} ${detail}`);
+interface CompiledOutcomeHandlers<TParams, TState> {
+	effects: ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>;
+	routings: ReadonlyMap<string, CompiledOutcomeRouting<TParams, TState>>;
 }
 
 function createProcessTurnBinding<TTurn>(
@@ -469,14 +458,13 @@ function normalizeStaticRouteTarget(
 		(target.complete === true ? 1 : 0) +
 		(target.lifecycleStatus !== undefined ? 1 : 0);
 	if (declaredTargetCount !== 1) {
-		throw createTransitionTargetError(
-			context,
-			"must declare exactly one target via 'to', 'complete', or 'lifecycleStatus'",
+		throw new Error(
+			`${context} must declare exactly one target via 'to', 'complete', or 'lifecycleStatus'`,
 		);
 	}
 	if (target.to !== undefined) {
 		if (knownTurnIds && !knownTurnIds.has(target.to)) {
-			throw createTransitionTargetError(context, `references unknown turn '${target.to}'`);
+			throw new Error(`${context} references unknown turn '${target.to}'`);
 		}
 		return { nextTurnId: target.to };
 	}
@@ -620,7 +608,7 @@ function resolveActionRouting<TParams, TState>(input: {
 	};
 }
 
-function externalSourceTransitionId(input: {
+export function getExternalSourceTransitionId(input: {
 	turnId: TurnId;
 	source: ExternalActionSource;
 	index: number;
@@ -628,11 +616,14 @@ function externalSourceTransitionId(input: {
 	return `${input.turnId}:${input.source.kind}:${input.index}`;
 }
 
-function externalActionArmingId(input: { turnId: TurnId; externalActionId: string }): string {
+export function getExternalActionArmingId(input: {
+	turnId: TurnId;
+	externalActionId: string;
+}): string {
 	return `${input.turnId}:${input.externalActionId}`;
 }
 
-function externalActionTransitionTrigger(input: { externalActionId: string }): string {
+export function getExternalActionTransitionTrigger(input: { externalActionId: string }): string {
 	return `external:${input.externalActionId}`;
 }
 
@@ -658,32 +649,13 @@ function compileExternalSourceTransitions<TParams, TState>(input: {
 		return {
 			...(target.nextTurnId ? { nextTurnId: target.nextTurnId } : {}),
 			...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
-			trigger: externalSourceTransitionId({
+			trigger: getExternalSourceTransitionId({
 				turnId: input.turnId,
 				source: transition.source,
 				index,
 			}),
 		};
 	});
-}
-
-export function getExternalSourceTransitionId(input: {
-	turnId: TurnId;
-	source: ExternalActionSource;
-	index: number;
-}): string {
-	return externalSourceTransitionId(input);
-}
-
-export function getExternalActionArmingId(input: {
-	turnId: TurnId;
-	externalActionId: string;
-}): string {
-	return externalActionArmingId(input);
-}
-
-export function getExternalActionTransitionTrigger(input: { externalActionId: string }): string {
-	return externalActionTransitionTrigger(input);
 }
 
 function previewMatchesTransition(
@@ -1020,10 +992,8 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 	outcomes?: Partial<Record<string, ProcessToolOutcomeSpec<TParams, TState>>>;
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, string>;
 	knownTurnIds: ReadonlySet<TurnId>;
-}): {
+}): CompiledOutcomeHandlers<TParams, TState> & {
 	transitions: readonly ProcessTurnTransition[];
-	effects: ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>;
-	routings: ReadonlyMap<string, CompiledOutcomeRouting<TParams, TState>>;
 } {
 	const outcomeEntries = Object.entries(input.outcomes ?? {}) as Array<
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
@@ -1164,7 +1134,7 @@ function resolveExternalActionRoute<TParams, TState>(input: {
 	return {
 		...(target.nextTurnId ? { nextTurnId: target.nextTurnId } : {}),
 		...(target.lifecycleStatus ? { lifecycleStatus: target.lifecycleStatus } : {}),
-		trigger: externalActionTransitionTrigger({ externalActionId: input.externalActionId }),
+		trigger: getExternalActionTransitionTrigger({ externalActionId: input.externalActionId }),
 	};
 }
 
@@ -1364,7 +1334,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 			actionSpec,
 			transition,
 			view: {
-				id: externalActionArmingId({ turnId: input.turnId, externalActionId }),
+				id: getExternalActionArmingId({ turnId: input.turnId, externalActionId }),
 				externalActionId,
 				sourceKind: actionSpec.source.kind,
 				label: actionSpec.label ?? actionSpec.source.label ?? null,
@@ -1448,12 +1418,6 @@ function compileExternalTurn<TParams, TState>(input: {
 	return {
 		binding: createProcessTurnBinding(input.spec, transitions),
 	};
-}
-
-function getTurnEntries<TParams, TState>(
-	turns: TurnDefinitionRecord<TParams, TState>,
-): Array<[TurnId, TurnDefinition<TParams, TState>]> {
-	return Object.entries(turns) as Array<[TurnId, TurnDefinition<TParams, TState>]>;
 }
 
 function resolveActionRouteForExecution<TParams, TState>(input: {
@@ -1555,7 +1519,7 @@ function validateHappyPathConnectivity<TParams, TState>(input: {
 function buildDefinedProcess<TParams, TState>(
 	input: DefinedProcessInput<TParams, TState>,
 ): Pick<ExtensionProcessDefinition<TParams, TState>, "turns" | "worker" | "server"> {
-	const turnEntries = getTurnEntries(input.turns);
+	const turnEntries = Object.entries(input.turns);
 	if (turnEntries.length === 0) {
 		throw new Error(`Process '${input.id}' must declare at least one turn`);
 	}
@@ -1600,70 +1564,41 @@ function buildDefinedProcess<TParams, TState>(
 
 	const turns = new Map<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>();
 	const actionUses = new Map<string, CompiledActionUse<TParams, TState>[]>();
-	const outcomeEffects = new Map<
+	const executableTurns = new Map<
 		TurnId,
-		ReadonlyMap<string, ProcessOutcomeEffect<TParams, TState> | undefined>
+		CompiledOutcomeHandlers<TParams, TState> & {
+			spec: RoutableTurnDefinition<string, TParams, TState>;
+		}
 	>();
-	const outcomeRoutings = new Map<
-		TurnId,
-		ReadonlyMap<string, CompiledOutcomeRouting<TParams, TState>>
-	>();
-	const executableTurns = new Map<TurnId, CompiledExecutableTurn<TParams, TState>>();
 
 	for (const [turnId, turnSpec] of turnEntries) {
-		if (turnSpec.kind === "llm") {
-			const compiledOutcomes = compileTurnOutcomeDefinitions({
+		if (turnSpec.kind === "llm" || turnSpec.kind === "automatic") {
+			const { transitions, effects, routings } = compileTurnOutcomeDefinitions({
 				turnId,
 				outcomes: turnSpec.outcomes,
 				turnEnd: turnSpec.turnEnd,
 				knownTurnIds,
 			});
-			turns.set(turnId, createProcessTurnBinding(turnSpec, compiledOutcomes.transitions));
-			outcomeEffects.set(turnId, compiledOutcomes.effects);
-			outcomeRoutings.set(turnId, compiledOutcomes.routings);
-			executableTurns.set(turnId, {
-				kind: "llm",
-				id: turnId,
-				spec: turnSpec,
-			});
-			continue;
-		}
-
-		if (turnSpec.kind === "automatic") {
-			const compiledOutcomes = compileTurnOutcomeDefinitions({
-				turnId,
-				outcomes: turnSpec.outcomes,
-				turnEnd: turnSpec.turnEnd,
-				knownTurnIds,
-			});
-			const externalTransitions = turnSpec.externalActions
-				? deriveHumanTurnActions({
-						turnId,
-						spec: {
-							kind: "human",
-							description: turnSpec.description,
-							actions: {},
-							externalActions: turnSpec.externalActions,
-						},
-						knownTurnIds,
-						turnDefinitionsById,
-						requireHumanActions: false,
-					}).transitions
-				: [];
+			const externalTransitions =
+				turnSpec.kind === "automatic" && turnSpec.externalActions
+					? deriveHumanTurnActions({
+							turnId,
+							spec: {
+								kind: "human",
+								description: turnSpec.description,
+								actions: {},
+								externalActions: turnSpec.externalActions,
+							},
+							knownTurnIds,
+							turnDefinitionsById,
+							requireHumanActions: false,
+						}).transitions
+					: [];
 			turns.set(
 				turnId,
-				createProcessTurnBinding(turnSpec, [
-					...compiledOutcomes.transitions,
-					...externalTransitions,
-				]),
+				createProcessTurnBinding(turnSpec, [...transitions, ...externalTransitions]),
 			);
-			outcomeEffects.set(turnId, compiledOutcomes.effects);
-			outcomeRoutings.set(turnId, compiledOutcomes.routings);
-			executableTurns.set(turnId, {
-				kind: "automatic",
-				id: turnId,
-				spec: turnSpec,
-			});
+			executableTurns.set(turnId, { spec: turnSpec, effects, routings });
 			continue;
 		}
 
@@ -1706,18 +1641,18 @@ function buildDefinedProcess<TParams, TState>(
 				api.turn(turnId, handler);
 			},
 		});
-		for (const executable of executableTurns.values()) {
-			if (manuallyRegisteredTurns.has(executable.id)) {
+		for (const [turnId, { spec }] of executableTurns) {
+			if (manuallyRegisteredTurns.has(turnId)) {
 				continue;
 			}
-			if (executable.kind === "llm") {
-				api.turn(executable.id, async (run) => {
-					await run.turn(executable.spec);
+			if (spec.kind === "llm") {
+				api.turn(turnId, async (run) => {
+					await run.turn(spec);
 				});
 				continue;
 			}
-			api.turn(executable.id, async (run) => {
-				await run.complete(await executable.spec.run(run.ctx));
+			api.turn(turnId, async (run) => {
+				await run.complete(await spec.run(run.ctx));
 			});
 		}
 	};
@@ -1779,10 +1714,10 @@ function buildDefinedProcess<TParams, TState>(
 			});
 		}
 
-		for (const [turnId, effects] of outcomeEffects) {
+		for (const [turnId, { effects, routings }] of executableTurns) {
 			api.onTurnOutcome(turnId, async (event, ctx) => {
 				const effect = effects.get(event.outcome);
-				const routing = outcomeRoutings.get(turnId)?.get(event.outcome);
+				const routing = routings.get(event.outcome);
 				if (!effect && !routing) {
 					return;
 				}

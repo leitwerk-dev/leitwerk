@@ -153,12 +153,8 @@ export function createPiEventReporter(options: PiEventReporterOptions): PiEventR
 				);
 				options.emitExtensionEvent?.("worker.pi_event", payload);
 			});
-			piHandle.subscribeDiagnostics?.((diagnostic) => {
-				reportPiDiagnostic(diagnostic);
-			});
+			piHandle.subscribeDiagnostics?.(reportPiDiagnostic);
 		},
-		resetRetryState() {
-			resetPiRetryState();
-		},
+		resetRetryState: resetPiRetryState,
 	};
 }

@@ -24,7 +24,7 @@ import {
 import type { RepositoryBundle } from "../db/repositories.js";
 import { nextCronOccurrenceUtc } from "../domain-logic/cron.js";
 import type { ExtensionHost } from "../extensions/extension-host.js";
-import type { LaunchPipeline, LaunchPipelineCheck } from "../launch-pipeline.js";
+import type { LaunchPipeline } from "../launch-pipeline.js";
 import {
 	applySubmittedProcessTitleToLaunchPlan,
 	normalizeProcessTitleInput,
@@ -36,7 +36,10 @@ import {
 	createProcessFromLaunchPlan,
 	createScheduledProcessFromLaunchPlan,
 } from "../process-launch-executor.js";
-import { toLaunchPipelineCommit } from "../process-launch-pipeline-adapter.js";
+import {
+	bindLaunchPreparationChecks,
+	toLaunchPipelineCommit,
+} from "../process-launch-pipeline-adapter.js";
 import {
 	applyStoredLaunchPlanModelConfig,
 	clearLaunchPlanModelConfig,
@@ -242,12 +245,6 @@ export function createFutureLaunchLifecycle(
 	options: { now?: () => Date } = {},
 ) {
 	const now = options.now ?? (() => new Date());
-	const launchPlanSelectionState = (launchPlan: ProcessLaunchPlan, operationTime: Date) =>
-		projectLaunchPlanModelState(launchPlan, {
-			policy: deps.processModelPolicy,
-			availability: deps.modelStatusCache.snapshot(),
-			detectedAt: operationTime.toISOString(),
-		});
 
 	function recordLauncherRecentsBestEffort(
 		launcherId: string,
@@ -281,36 +278,31 @@ export function createFutureLaunchLifecycle(
 			modelConfig: normalizeLaunchModelConfigInput(input.modelConfig),
 			invalidModelConfig: "reject",
 		});
-		if (!prepared.ok) {
-			if (schedule.value.mode === "now") {
-				return {
-					ok: false as const,
-					outcome: {
-						kind: "invalid" as const,
-						issues: presentLaunchPlanPreparationIssues(prepared.errors),
-					},
-				};
-			}
-			const launchPlan = applySubmittedProcessTitleToLaunchPlan(prepared.launchPlan, input);
-			const modelState = launchPlanSelectionState(launchPlan, operationTime);
-			if (!modelState.blockedReason) {
-				return {
-					ok: false as const,
-					outcome: {
-						kind: "invalid" as const,
-						issues: presentLaunchPlanPreparationIssues(prepared.errors),
-					},
-				};
-			}
-			return { ok: true as const, launchPlan, modelState, schedule: schedule.value };
+		if (!prepared.ok && schedule.value.mode === "now") {
+			return {
+				ok: false as const,
+				outcome: {
+					kind: "invalid" as const,
+					issues: presentLaunchPlanPreparationIssues(prepared.errors),
+				},
+			};
 		}
 		const launchPlan = applySubmittedProcessTitleToLaunchPlan(prepared.launchPlan, input);
-		return {
-			ok: true as const,
-			launchPlan,
-			modelState: launchPlanSelectionState(launchPlan, operationTime),
-			schedule: schedule.value,
-		};
+		const modelState = projectLaunchPlanModelState(launchPlan, {
+			policy: deps.processModelPolicy,
+			availability: deps.modelStatusCache.snapshot(),
+			detectedAt: operationTime.toISOString(),
+		});
+		if (!prepared.ok && !modelState.blockedReason) {
+			return {
+				ok: false as const,
+				outcome: {
+					kind: "invalid" as const,
+					issues: presentLaunchPlanPreparationIssues(prepared.errors),
+				},
+			};
+		}
+		return { ok: true as const, launchPlan, modelState, schedule: schedule.value };
 	}
 
 	async function persistPreparedLaunch(
@@ -318,7 +310,7 @@ export function createFutureLaunchLifecycle(
 	): Promise<LaunchMutationOutcome> {
 		if (input.schedule.mode === "now") throw new Error("Immediate launches cannot be persisted");
 		const values = {
-			scheduleKind: input.schedule.mode === "cron" ? ("cron" as const) : ("once" as const),
+			scheduleKind: input.schedule.mode,
 			processId: input.processId,
 			launcherId: input.launcherId,
 			payloadJson: serializeFutureLaunchPayload({
@@ -464,12 +456,7 @@ export function createFutureLaunchLifecycle(
 						resolved.request.launcherInput,
 						resolved.launcher.launchConfig,
 					) ?? [];
-				return checks.map((check) => ({
-					id: check.id,
-					label: check.label,
-					run: (context: Parameters<LaunchPipelineCheck["run"]>[0]) =>
-						check.run({ ...context, launchConfig: resolved.launcher.launchConfig }),
-				}));
+				return bindLaunchPreparationChecks(checks, resolved.launcher.launchConfig);
 			},
 			preparationCheckFailure() {
 				return invalidOutcome("preparation_failed", "Launch preparation failed");
@@ -679,9 +666,8 @@ export function createFutureLaunchLifecycle(
 					operationTime,
 				});
 				if (!prepared.ok) return prepared.outcome;
-				const preparedLaunch = prepared.prepared;
 				return persistPreparedLaunch({
-					...preparedLaunch,
+					...prepared.prepared,
 					existing,
 					actor: opts?.actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
 				});
@@ -689,5 +675,3 @@ export function createFutureLaunchLifecycle(
 		},
 	};
 }
-
-export type FutureLaunchLifecycle = ReturnType<typeof createFutureLaunchLifecycle>;

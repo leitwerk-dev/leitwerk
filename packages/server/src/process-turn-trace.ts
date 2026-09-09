@@ -32,13 +32,6 @@ const THINKING_PREVIEW_LINE_COUNT = 3;
 const THINKING_PREVIEW_MAX_LENGTH = 320;
 const OPERATIONAL_PI_EVENT_TYPE_SET = new Set<string>(PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES);
 
-function composeTurnPiInputFullPrompt(parts: readonly TurnPiInputPart[]): string {
-	if (parts.length === 1) {
-		return parts[0]?.text ?? "";
-	}
-	return parts.map((part) => part.text).join(MULTI_PART_PI_INPUT_SEPARATOR);
-}
-
 function buildTurnPiInputSnapshot(parts: readonly TurnPiInputPart[]): TurnPiInputSnapshot | null {
 	const firstPart = parts[0];
 	if (!firstPart) {
@@ -46,7 +39,7 @@ function buildTurnPiInputSnapshot(parts: readonly TurnPiInputPart[]): TurnPiInpu
 	}
 	return {
 		parts: [...parts],
-		fullPrompt: composeTurnPiInputFullPrompt(parts),
+		fullPrompt: parts.map((part) => part.text).join(MULTI_PART_PI_INPUT_SEPARATOR),
 		createdAt: firstPart.createdAt,
 		userInput: null,
 	};
@@ -105,28 +98,8 @@ const TOOL_TRUNCATION_TEXT_MARKERS = [
 	"truncated since",
 ] as const;
 
-function readStringField(value: unknown, keys: readonly string[]): string | null {
-	const record = asUnknownRecord(value);
-	if (!record) {
-		return null;
-	}
-	for (const key of keys) {
-		const fieldValue = record[key];
-		if (typeof fieldValue === "string" && fieldValue.trim() !== "") {
-			return fieldValue;
-		}
-	}
-	return null;
-}
-
-function readFirstStringField(values: readonly unknown[], keys: readonly string[]): string | null {
-	for (const value of values) {
-		const field = readStringField(value, keys);
-		if (field) {
-			return field;
-		}
-	}
-	return null;
+function readNonBlankString(value: unknown): string | null {
+	return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
 function readTruncationPayload(value: unknown): unknown {
@@ -182,11 +155,7 @@ function isTruthyTruncationValue(value: unknown): boolean {
 			return true;
 		}
 	}
-	const keys = Object.keys(record);
-	if (keys.length === 0) {
-		return false;
-	}
-	return keys.some((key) => {
+	return Object.keys(record).some((key) => {
 		if (
 			TOOL_TRUNCATION_BOOLEAN_KEYS.includes(key as (typeof TOOL_TRUNCATION_BOOLEAN_KEYS)[number])
 		) {
@@ -209,25 +178,10 @@ function isToolResultTruncated(input: {
 	);
 }
 
-function supportsCommittedTurnTrace(turnRecord: Pick<ProcessTurnRecord, "turnType">): boolean {
-	return turnRecord.turnType === "llm";
-}
-
 type TraceTurnRecord = Pick<
 	ProcessTurnRecord,
 	"id" | "turnType" | "forkPiEntryId" | "resultPiEntryId" | "startedAt" | "endedAt" | "status"
 >;
-
-type PiSessionContinuationIndex = ReturnType<typeof createTurnContinuationIndex<PiSessionEntry>>;
-
-function buildTurnSlice(
-	continuationIndex: PiSessionContinuationIndex,
-	turnRecord: TraceTurnRecord,
-): PiSessionEntry[] {
-	return supportsCommittedTurnTrace(turnRecord)
-		? continuationIndex.buildSlice(turnRecord, { endedAt: turnRecord.endedAt })
-		: [];
-}
 
 function indexEventsByTurnRecordId(
 	events: readonly ProcessEvent[] = [],
@@ -272,7 +226,7 @@ function buildAssistantErrorTraceItem(
 	if (message.role !== "assistant" || message.stopReason !== "error") {
 		return null;
 	}
-	const errorMessage = readFirstStringField([message], ["errorMessage"]);
+	const errorMessage = readNonBlankString(message.errorMessage);
 	if (!errorMessage) {
 		return null;
 	}
@@ -281,8 +235,8 @@ function buildAssistantErrorTraceItem(
 		data: asWsEventPayloadRecord({
 			message: errorMessage,
 			errorMessage,
-			provider: readFirstStringField([message], ["provider"]),
-			model: readFirstStringField([message], ["model"]),
+			provider: readNonBlankString(message.provider),
+			model: readNonBlankString(message.model),
 			timestamp: entry.timestamp,
 		}),
 		fallbackTimestamp: entry.timestamp,
@@ -321,23 +275,18 @@ function buildOperationalEventTraceItem(
 }
 
 function eventTurnRecordId(event: ProcessEvent): string | null {
-	const value = event.data.turnRecordId;
-	return typeof value === "string" && value.trim() !== "" ? value : null;
+	return readNonBlankString(event.data.turnRecordId);
 }
 
 function compareOperationalTraceItems(
 	left: PrimaryPathOperationalTraceItemSnapshot,
 	right: PrimaryPathOperationalTraceItemSnapshot,
 ): number {
-	const timestampComparison = compareTimestampStrings(left.timestamp, right.timestamp);
-	if (timestampComparison !== 0) {
-		return timestampComparison;
-	}
-	const eventTypeComparison = left.eventType.localeCompare(right.eventType);
-	if (eventTypeComparison !== 0) {
-		return eventTypeComparison;
-	}
-	return left.message.localeCompare(right.message);
+	return (
+		compareTimestampStrings(left.timestamp, right.timestamp) ||
+		left.eventType.localeCompare(right.eventType) ||
+		left.message.localeCompare(right.message)
+	);
 }
 
 function ensureSortedTraceItems(
@@ -404,18 +353,8 @@ function buildTurnTraceFromSlice(input: {
 		};
 		toolCalls.push(toolCall);
 		toolCallsById.set(toolInput.toolCallId, toolCall);
+		traceItems.push({ kind: "tool_call", toolCallId: toolInput.toolCallId });
 		return toolCall;
-	};
-
-	const ensureToolTraceItem = (toolCallId: string) => {
-		if (
-			traceItems.some(
-				(traceItem) => traceItem.kind === "tool_call" && traceItem.toolCallId === toolCallId,
-			)
-		) {
-			return;
-		}
-		traceItems.push({ kind: "tool_call", toolCallId });
 	};
 
 	for (const entry of turnSlice) {
@@ -459,7 +398,6 @@ function buildTurnTraceFromSlice(input: {
 						startedAt: entry.timestamp,
 						arguments: normalizeToolArguments(block.arguments),
 					});
-					ensureToolTraceItem(toolCallId);
 					continue;
 				}
 				if (block.type === "text" && typeof block.text === "string") {
@@ -478,14 +416,12 @@ function buildTurnTraceFromSlice(input: {
 		if (!toolCallId) {
 			continue;
 		}
-		const toolCall =
-			toolCallsById.get(toolCallId) ??
-			ensureToolCall({
-				toolCallId,
-				toolName,
-				startedAt: entry.timestamp,
-				arguments: null,
-			});
+		const toolCall = ensureToolCall({
+			toolCallId,
+			toolName,
+			startedAt: entry.timestamp,
+			arguments: null,
+		});
 		const resultValue = extractToolResultValue(message);
 		const resultContent = message.content ?? null;
 		const rawResultText = extractPiSessionMessageText(resultContent);
@@ -497,7 +433,6 @@ function buildTurnTraceFromSlice(input: {
 		toolCall.isError = message.isError === true;
 		toolCall.resultText = resultText;
 		toolCall.truncated = truncated;
-		ensureToolTraceItem(toolCallId);
 	}
 
 	for (const event of input.events ?? []) {
@@ -531,7 +466,7 @@ export function buildTurnTraceFromSession(input: {
 	turnRecord: TraceTurnRecord;
 	events?: readonly ProcessEvent[];
 }): TurnTraceSnapshot | undefined {
-	if (!supportsCommittedTurnTrace(input.turnRecord)) {
+	if (input.turnRecord.turnType !== "llm") {
 		return undefined;
 	}
 	const continuationIndex = createTurnContinuationIndex(
@@ -539,7 +474,9 @@ export function buildTurnTraceFromSession(input: {
 	);
 	return buildTurnTraceFromSlice({
 		turnRecordId: input.turnRecord.id,
-		turnSlice: buildTurnSlice(continuationIndex, input.turnRecord),
+		turnSlice: continuationIndex.buildSlice(input.turnRecord, {
+			endedAt: input.turnRecord.endedAt,
+		}),
 		events: input.events,
 	});
 }
@@ -600,12 +537,12 @@ function visitTurnTraces(
 	);
 	const eventsByTurnRecordId = indexEventsByTurnRecordId(input.events);
 	for (const turnRecord of input.turnRecords) {
-		if (!supportsCommittedTurnTrace(turnRecord)) {
+		if (turnRecord.turnType !== "llm") {
 			continue;
 		}
 		const trace = buildTurnTraceFromSlice({
 			turnRecordId: turnRecord.id,
-			turnSlice: buildTurnSlice(continuationIndex, turnRecord),
+			turnSlice: continuationIndex.buildSlice(turnRecord, { endedAt: turnRecord.endedAt }),
 			events: eventsByTurnRecordId.get(turnRecord.id),
 		});
 		if (trace) {

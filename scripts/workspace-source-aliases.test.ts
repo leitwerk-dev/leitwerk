@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { buildWorkspaceSourceAliases } from "./workspace-source-aliases.js";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 function findReplacement(specifier: string): string | undefined {
 	return buildWorkspaceSourceAliases(repoRoot).find((alias) => alias.find.test(specifier))

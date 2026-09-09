@@ -146,19 +146,9 @@ function isLeitwerkExtensionModule(value: unknown): value is LeitwerkExtensionMo
 	if (!v.is(optionalStringArraySchema, manifest.optional)) {
 		return false;
 	}
-	if (module.setupCatalog !== undefined && typeof module.setupCatalog !== "function") {
-		return false;
-	}
-	if (module.setupServer !== undefined && typeof module.setupServer !== "function") {
-		return false;
-	}
-	if (module.setupWorker !== undefined && typeof module.setupWorker !== "function") {
-		return false;
-	}
-	if (module.modelProviders !== undefined && typeof module.modelProviders !== "function") {
-		return false;
-	}
-	return true;
+	return ["setupCatalog", "setupServer", "setupWorker", "modelProviders"].every(
+		(key) => module[key] === undefined || typeof module[key] === "function",
+	);
 }
 
 async function readJsonFile(pathname: string): Promise<unknown> {
@@ -601,15 +591,9 @@ export async function buildExtensionCatalog(
 				},
 			});
 		},
-		provide<T>(token: CapabilityToken<T>, value: T) {
-			capabilities.provide(token, value);
-		},
-		get<T>(token: CapabilityToken<T>): T | T[] | undefined {
-			return capabilities.get(token);
-		},
-		require<T>(token: CapabilityToken<T>): T | T[] {
-			return capabilities.require(token);
-		},
+		provide: capabilities.provide,
+		get: capabilities.get,
+		require: capabilities.require.bind(capabilities),
 	} satisfies CatalogExtensionAPI;
 
 	for (const loaded of orderedModules) {
@@ -674,12 +658,8 @@ export async function buildExtensionCatalog(
 		toolRenderers: new Map(toolRenderers),
 		piContributions: piContributions,
 		modelProviders: modelProviders,
-		get<T>(token: CapabilityToken<T>): T | T[] | undefined {
-			return capabilities.get(token);
-		},
-		require<T>(token: CapabilityToken<T>): T | T[] {
-			return capabilities.require(token);
-		},
+		get: capabilities.get,
+		require: capabilities.require.bind(capabilities),
 	} satisfies ExtensionCatalog;
 	return catalog;
 }

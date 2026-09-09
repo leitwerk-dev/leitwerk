@@ -9,6 +9,7 @@ import {
 	type TurnId,
 } from "@leitwerk-dev/domain";
 import { and, asc, count, desc, eq, inArray, notInArray, or, type SQL, sql } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { normalizeProcessTitleInput } from "../launch-title.js";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now, sqliteLikePatterns } from "./repo-helpers.js";
@@ -318,34 +319,29 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 
 		update(id: string, input: UpdateProcessInstanceInput): ProcessInstance | null {
 			const ts = now();
-			const setValues: Record<string, unknown> = { updatedAt: ts };
-			if (input.selectedTurnId !== undefined) setValues.selectedTurnId = input.selectedTurnId;
-			if (input.lifecycleStatus !== undefined) setValues.lifecycleStatus = input.lifecycleStatus;
+			const setValues: SQLiteUpdateSetSource<typeof s.processInstances> = {
+				updatedAt: ts,
+				defaultModelProfileId: input.defaultModelProfileId,
+				initialDefaultModelProfileId: input.initialDefaultModelProfileId,
+				selectedTurnId: input.selectedTurnId,
+				lifecycleStatus: input.lifecycleStatus,
+				planRevision: input.planRevision,
+				externalId: input.externalId,
+				externalUrl: input.externalUrl,
+				turnConfigsJson: input.turnConfigsJson,
+				selectedTurnModelProfileId: input.selectedTurnModelProfileId,
+				selectedTurnModelKind: input.selectedTurnModelKind,
+				selectedTurnModelSource: input.selectedTurnModelSource,
+				paramsJson: input.paramsJson,
+				stateJson: input.stateJson,
+			};
 			if (input.currentExecution !== undefined) {
 				setValues.currentWorkerStartId =
 					input.currentExecution?.kind === "worker_start" ? input.currentExecution.id : null;
 			}
-			if (input.planRevision !== undefined) setValues.planRevision = input.planRevision;
 			if (input.title !== undefined) setValues.title = normalizeProcessTitleInput(input.title);
-			if (input.externalId !== undefined) setValues.externalId = input.externalId;
-			if (input.externalUrl !== undefined) setValues.externalUrl = input.externalUrl;
 			if (input.metadata !== undefined)
 				setValues.metadata = input.metadata ? JSON.stringify(input.metadata) : null;
-			if (input.defaultModelProfileId !== undefined) {
-				setValues.defaultModelProfileId = input.defaultModelProfileId;
-			}
-			if (input.initialDefaultModelProfileId !== undefined) {
-				setValues.initialDefaultModelProfileId = input.initialDefaultModelProfileId;
-			}
-			if (input.turnConfigsJson !== undefined) setValues.turnConfigsJson = input.turnConfigsJson;
-			if (input.selectedTurnModelProfileId !== undefined)
-				setValues.selectedTurnModelProfileId = input.selectedTurnModelProfileId;
-			if (input.selectedTurnModelKind !== undefined)
-				setValues.selectedTurnModelKind = input.selectedTurnModelKind;
-			if (input.selectedTurnModelSource !== undefined)
-				setValues.selectedTurnModelSource = input.selectedTurnModelSource;
-			if (input.paramsJson !== undefined) setValues.paramsJson = input.paramsJson;
-			if (input.stateJson !== undefined) setValues.stateJson = input.stateJson;
 			if (isTerminalLifecycleStatus(input.lifecycleStatus)) {
 				setValues.closedAt = sql`coalesce(${s.processInstances.closedAt}, ${ts})`;
 			}

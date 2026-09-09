@@ -1,6 +1,11 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { ParkProcessLifecyclePayload } from "../../process-engine/types.js";
-import { applyProcessPatchField, createWrites, type WriteBuildResult } from "./writes.js";
+import {
+	appendProcessEvent,
+	applyProcessPatchField,
+	createWrites,
+	type WriteBuildResult,
+} from "./writes.js";
 
 interface ParkProcessWritesOptions {
 	allowInactiveLifecycle?: boolean;
@@ -38,25 +43,17 @@ export function buildParkProcessWrites(
 		},
 	});
 	applyProcessPatchField(writes, process, "lifecycleStatus", "error");
-	writes.events.push({
-		instanceId: process.id,
+	appendProcessEvent(writes, process, {
 		eventType: "lifecycle_parked",
+		level: "warn",
+		message: payload.reason
+			? `Lifecycle parked with error: ${payload.reason}`
+			: "Lifecycle parked with error",
 		data: {
 			selectedTurnId: process.selectedTurnId,
 			reason: payload.reason,
 			errorClass: payload.errorClass,
 		},
-	});
-	writes.broadcasts.push({
-		type: "process.event",
-		payload: {
-			eventType: "lifecycle_parked",
-			level: "warn",
-			message: payload.reason
-				? `Lifecycle parked with error: ${payload.reason}`
-				: "Lifecycle parked with error",
-		},
-		instanceId: process.id,
 	});
 
 	return writes;

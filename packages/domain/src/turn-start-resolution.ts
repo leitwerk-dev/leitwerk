@@ -146,32 +146,18 @@ export function resolveProcessTurnStartTarget(input: {
 				startTarget: { kind: "entry", entryId: input.selection.entryId },
 			};
 		}
-		case "semantic_ref": {
-			const entryId = resolveProcessSemanticRefEntryId({
-				ref: input.selection.ref,
-				semanticEntryRefs: input.semanticEntryRefs,
-				currentLeafId: input.currentLeafId,
-				rootEntryId: input.rootEntryId,
-				entryExists: input.entryExists,
-			});
-			if (entryId) {
-				return {
-					forkPiEntryId: entryId,
-					startTarget: { kind: "entry", entryId },
-				};
-			}
-
-			return resolveProcessTurnStartTarget({
-				...input,
-				selection: input.selection.fallback ?? defaultProcessTurnStartSelection(input.branchType),
-			});
-		}
+		case "semantic_ref":
 		case "product_ref": {
-			const entryId = resolveProcessProductRefEntryId({
-				productName: input.selection.productName,
-				productRefs: input.productRefs,
-				entryExists: input.entryExists,
-			});
+			const entryId =
+				input.selection.kind === "semantic_ref"
+					? resolveProcessSemanticRefEntryId({
+							...input,
+							ref: input.selection.ref,
+						})
+					: resolveProcessProductRefEntryId({
+							...input,
+							productName: input.selection.productName,
+						});
 			if (entryId) {
 				return {
 					forkPiEntryId: entryId,

@@ -63,7 +63,6 @@ interface GitExecResult {
 	ok: boolean;
 	stdout: string;
 	stderr: string;
-	status: number | null;
 }
 
 interface LocalSourceRepo {
@@ -134,42 +133,40 @@ function runGit(repoPath: string, args: readonly string[], identity?: GitIdentit
 			ok: true,
 			stdout,
 			stderr: "",
-			status: 0,
 		};
 	} catch (error) {
 		const execError = error as {
-			status?: number | null;
 			stdout?: string | Buffer;
 			stderr?: string | Buffer;
 			message?: string;
 		};
 		return {
 			ok: false,
-			stdout:
-				typeof execError.stdout === "string"
-					? execError.stdout
-					: execError.stdout
-						? execError.stdout.toString("utf8")
-						: "",
-			stderr:
-				typeof execError.stderr === "string"
-					? execError.stderr
-					: execError.stderr
-						? execError.stderr.toString("utf8")
-						: (trimToNull(execError.message) ?? ""),
-			status: execError.status ?? null,
+			stdout: execError.stdout?.toString() ?? "",
+			stderr: execError.stderr?.toString() ?? trimToNull(execError.message) ?? "",
 		};
 	}
 }
 
-function git(repoPath: string, ...args: string[]): string {
-	const result = runGit(repoPath, args);
+function gitFailureDetail(result: GitExecResult): string {
+	return trimToNull(result.stderr) ?? trimToNull(result.stdout) ?? "unknown git error";
+}
+
+function checkedGit(
+	repoPath: string,
+	args: readonly string[],
+	failureMessage: string,
+	identity?: GitIdentity,
+): string {
+	const result = runGit(repoPath, args, identity);
 	if (!result.ok) {
-		throw new DeterministicGitError(
-			`git ${args.join(" ")} failed in '${repoPath}': ${trimToNull(result.stderr) ?? trimToNull(result.stdout) ?? "unknown git error"}`,
-		);
+		throw new DeterministicGitError(`${failureMessage}: ${gitFailureDetail(result)}`);
 	}
-	return result.stdout.trim();
+	return result.stdout;
+}
+
+function git(repoPath: string, ...args: string[]): string {
+	return checkedGit(repoPath, args, `git ${args.join(" ")} failed in '${repoPath}'`).trim();
 }
 
 function gitOrNull(repoPath: string, ...args: string[]): string | null {
@@ -314,22 +311,13 @@ function commitDirtyWorktree(
 	identity?: GitIdentity,
 ): string {
 	assertGitIdentity(repoPath, identity);
-	const addResult = runGit(repoPath, ["add", "--all"]);
-	if (!addResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to stage the completed change: ${trimToNull(addResult.stderr) ?? trimToNull(addResult.stdout) ?? "unknown git error"}`,
-		);
-	}
-	const commitResult = runGit(
+	checkedGit(repoPath, ["add", "--all"], "Failed to stage the completed change");
+	checkedGit(
 		repoPath,
 		["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", commitMessage],
+		"Failed to commit the completed change",
 		identity,
 	);
-	if (!commitResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to commit the completed change: ${trimToNull(commitResult.stderr) ?? trimToNull(commitResult.stdout) ?? "unknown git error"}`,
-		);
-	}
 	const remaining = workingTreeStatus(repoPath);
 	if (remaining.dirtyFiles.length > 0) {
 		throw new DeterministicGitError(
@@ -372,12 +360,7 @@ function assertPostConflictCheckpoint(
 
 function fetchOriginBase(repoPath: string, baseBranch: string): string {
 	const ref = originBaseRef(baseBranch);
-	const fetchResult = runGit(repoPath, ["fetch", "origin", baseBranch]);
-	if (!fetchResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to fetch '${ref}': ${trimToNull(fetchResult.stderr) ?? trimToNull(fetchResult.stdout) ?? "unknown git error"}`,
-		);
-	}
+	checkedGit(repoPath, ["fetch", "origin", baseBranch], `Failed to fetch '${ref}'`);
 	const baseSha = gitOrNull(repoPath, "rev-parse", ref);
 	if (!baseSha) {
 		throw new DeterministicGitError(`Fetched '${ref}' but could not resolve its commit sha`);
@@ -408,12 +391,7 @@ function deterministicMerge(input: {
 	}
 
 	if (headIsAncestorOfBase) {
-		const ffResult = runGit(repoPath, ["merge", "--ff-only", ref]);
-		if (!ffResult.ok) {
-			throw new DeterministicGitError(
-				`Fast-forward merge from '${ref}' failed: ${trimToNull(ffResult.stderr) ?? trimToNull(ffResult.stdout) ?? "unknown git error"}`,
-			);
-		}
+		checkedGit(repoPath, ["merge", "--ff-only", ref], `Fast-forward merge from '${ref}' failed`);
 		return {
 			ok: true,
 			mergeMode: "fast_forward",
@@ -438,7 +416,7 @@ function deterministicMerge(input: {
 			};
 		}
 		throw new DeterministicGitError(
-			`Deterministic merge from '${ref}' failed: ${trimToNull(mergeResult.stderr) ?? trimToNull(mergeResult.stdout) ?? "unknown git error"}`,
+			`Deterministic merge from '${ref}' failed: ${gitFailureDetail(mergeResult)}`,
 		);
 	}
 
@@ -456,12 +434,11 @@ function branchRef(branch: string): string {
 
 function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string): string {
 	const pushTarget = `origin/${branch}`;
-	const pushResult = runGit(repoPath, ["push", "origin", `HEAD:${branchRef(branch)}`]);
-	if (!pushResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to push HEAD to '${pushTarget}': ${trimToNull(pushResult.stderr) ?? trimToNull(pushResult.stdout) ?? "unknown git error"}`,
-		);
-	}
+	checkedGit(
+		repoPath,
+		["push", "origin", `HEAD:${branchRef(branch)}`],
+		`Failed to push HEAD to '${pushTarget}'`,
+	);
 	const remoteHead = gitOrNull(repoPath, "ls-remote", "--heads", "origin", branchRef(branch))
 		?.split(/\s+/)[0]
 		?.trim();
@@ -522,12 +499,11 @@ function pushLocalSourceBaseBranchToOriginIfPresent(input: {
 	});
 	const ref = branchRef(input.baseBranch);
 	const pushTarget = originBaseRef(input.baseBranch);
-	const pushResult = runGit(input.localSourceRepoPath, ["push", "origin", `${ref}:${ref}`]);
-	if (!pushResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to push local source repo '${input.localSourceRepoPath}' base branch '${input.baseBranch}' to '${pushTarget}': ${trimToNull(pushResult.stderr) ?? trimToNull(pushResult.stdout) ?? "unknown git error"}`,
-		);
-	}
+	checkedGit(
+		input.localSourceRepoPath,
+		["push", "origin", `${ref}:${ref}`],
+		`Failed to push local source repo '${input.localSourceRepoPath}' base branch '${input.baseBranch}' to '${pushTarget}'`,
+	);
 	return pushTarget;
 }
 
@@ -569,16 +545,11 @@ function mergeWorkBranchIntoLocalBaseRepo(input: {
 	expectedHeadSha: string;
 }): void {
 	assertLocalBaseRepoReady(input.localBaseRepoPath, input.baseBranch, input.expectedBaseSha);
-	const mergeResult = runGit(input.localBaseRepoPath, [
-		"merge",
-		"--ff-only",
-		`refs/heads/${input.workBranch}`,
-	]);
-	if (!mergeResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to fast-forward local source repo '${input.localBaseRepoPath}' branch '${input.baseBranch}' from '${input.workBranch}': ${trimToNull(mergeResult.stderr) ?? trimToNull(mergeResult.stdout) ?? "unknown git error"}`,
-		);
-	}
+	checkedGit(
+		input.localBaseRepoPath,
+		["merge", "--ff-only", `refs/heads/${input.workBranch}`],
+		`Failed to fast-forward local source repo '${input.localBaseRepoPath}' branch '${input.baseBranch}' from '${input.workBranch}'`,
+	);
 	const actualHeadSha = currentHeadSha(input.localBaseRepoPath);
 	if (actualHeadSha !== input.expectedHeadSha) {
 		throw new DeterministicGitError(
@@ -592,12 +563,11 @@ function updateLocalBaseRef(repoPath: string, baseBranch: string): void {
 	if (branch === baseBranch) {
 		return;
 	}
-	const updateResult = runGit(repoPath, ["branch", "--force", baseBranch, "HEAD"]);
-	if (!updateResult.ok) {
-		throw new DeterministicGitError(
-			`Failed to update the local '${baseBranch}' ref to the finalized HEAD: ${trimToNull(updateResult.stderr) ?? trimToNull(updateResult.stdout) ?? "unknown git error"}`,
-		);
-	}
+	checkedGit(
+		repoPath,
+		["branch", "--force", baseBranch, "HEAD"],
+		`Failed to update the local '${baseBranch}' ref to the finalized HEAD`,
+	);
 }
 
 function buildFinalizationMarkdown(input: {
@@ -799,31 +769,27 @@ export function runDeterministicFinalization<
 	let pushTarget: string;
 	let workspacePushTarget: string | null = null;
 	let sourceOriginPushTarget: string | null = null;
-	if (localSourceRepo?.kind === "non_bare") {
-		assertLocalBaseRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushAndVerify(repoPath, input.workBranch, mergeResult.headSha);
-		mergeWorkBranchIntoLocalBaseRepo({
-			localBaseRepoPath: localSourceRepo.path,
-			baseBranch: input.baseBranch,
-			workBranch: input.workBranch,
-			expectedBaseSha: baseSha,
-			expectedHeadSha: mergeResult.headSha,
-		});
+	if (localSourceRepo) {
+		if (localSourceRepo.kind === "non_bare") {
+			assertLocalBaseRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
+			workspacePushTarget = pushAndVerify(repoPath, input.workBranch, mergeResult.headSha);
+			mergeWorkBranchIntoLocalBaseRepo({
+				localBaseRepoPath: localSourceRepo.path,
+				baseBranch: input.baseBranch,
+				workBranch: input.workBranch,
+				expectedBaseSha: baseSha,
+				expectedHeadSha: mergeResult.headSha,
+			});
+		} else {
+			assertLocalBareSourceRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
+			workspacePushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
+		}
 		sourceOriginPushTarget = pushLocalSourceBaseBranchToOriginIfPresent({
 			localSourceRepoPath: localSourceRepo.path,
 			baseBranch: input.baseBranch,
 			expectedHeadSha: mergeResult.headSha,
 		});
 		pushTarget = sourceOriginPushTarget ?? originBaseRef(input.baseBranch);
-	} else if (localSourceRepo?.kind === "bare") {
-		assertLocalBareSourceRepoReady(localSourceRepo.path, input.baseBranch, baseSha);
-		workspacePushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
-		sourceOriginPushTarget = pushLocalSourceBaseBranchToOriginIfPresent({
-			localSourceRepoPath: localSourceRepo.path,
-			baseBranch: input.baseBranch,
-			expectedHeadSha: mergeResult.headSha,
-		});
-		pushTarget = sourceOriginPushTarget ?? workspacePushTarget;
 	} else {
 		pushTarget = pushAndVerify(repoPath, input.baseBranch, mergeResult.headSha);
 	}

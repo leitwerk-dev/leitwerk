@@ -419,7 +419,15 @@ describe("ProcessActionRegistry", () => {
 			processes: [
 				makeProcess({
 					server(api) {
-						api.action({ id: "approve_plan", label: "Approve", plan: async () => {} });
+						api.action({
+							id: "approve_plan",
+							label: "Approve",
+							preview: { kind: "terminal", lifecycleStatus: "aborted" },
+							scheduling: { preview: { kind: "terminal", lifecycleStatus: "aborted" } },
+							plan: async () => {
+								throw new Error("Preview must not execute the action");
+							},
+						});
 					},
 					turnDefinitions: withTurnDefinitionOverrides(
 						new Map([
@@ -444,6 +452,12 @@ describe("ProcessActionRegistry", () => {
 		const process = createPlanReviewProcess();
 
 		expect(
+			registry.resolveActionPreview("ticket_issue_process", process, "approve_plan"),
+		).toMatchObject({
+			candidateSelectedTurnId: "implement",
+			lifecycleStatus: null,
+		});
+		expect(
 			registry.resolveActionScheduling("ticket_issue_process", process, "approve_plan"),
 		).toEqual({
 			definition: { preview: { kind: "trigger", trigger: "plan_approved" } },
@@ -452,12 +466,22 @@ describe("ProcessActionRegistry", () => {
 		});
 	});
 
-	it("resolves action previews independently from scheduling support", () => {
+	it.each([
+		false,
+		true,
+	])("resolves unschedulable action previews (side effect: %s)", (sideEffect) => {
 		const registry = buildRegistry({
 			processes: [
 				makeProcess({
 					server(api) {
-						api.action({ id: "approve_plan", label: "Approve", plan: async () => {} });
+						api.action({
+							id: "approve_plan",
+							label: "Approve",
+							plan: async () => {},
+							...(sideEffect
+								? { executionMode: "side_effect" as const, execute: async () => {} }
+								: {}),
+						});
 					},
 					turnDefinitions: withTurnDefinitionOverrides(
 						new Map([
@@ -480,6 +504,9 @@ describe("ProcessActionRegistry", () => {
 			],
 		});
 		const process = createPlanReviewProcess();
+		expect(
+			registry.resolveActionScheduling("ticket_issue_process", process, "approve_plan"),
+		).toBeNull();
 
 		expect(registry.resolveActionPreview("ticket_issue_process", process, "approve_plan")).toEqual({
 			definition: { kind: "trigger", trigger: "plan_approved" },
@@ -500,6 +527,50 @@ describe("ProcessActionRegistry", () => {
 				}),
 			}),
 		]);
+	});
+
+	it.each([
+		[
+			{ kind: "fixed_turn", turnId: "implement" },
+			{ candidateSelectedTurnId: "implement", lifecycleStatus: null },
+		],
+		[
+			{ kind: "fixed_turn", turnId: null },
+			{ candidateSelectedTurnId: null, lifecycleStatus: null },
+		],
+		[
+			{ kind: "terminal", lifecycleStatus: "completed" },
+			{ candidateSelectedTurnId: null, lifecycleStatus: "completed" },
+		],
+		[
+			{ kind: "trigger", trigger: "approve_plan" },
+			{ candidateSelectedTurnId: null, lifecycleStatus: "completed" },
+		],
+		[{ kind: "trigger", trigger: "unknown" }, null],
+	] as const)("resolves server preview and scheduling targets for %j", (preview, target) => {
+		const registry = buildRegistry({
+			processes: [
+				makeProcess({
+					server(api) {
+						api.action({
+							id: "inspect",
+							label: "Inspect",
+							scheduling: { preview },
+							plan: async () => {
+								throw new Error("Preview must not execute the action");
+							},
+						});
+					},
+				}),
+			],
+		});
+		const process = createPlanReviewProcess();
+		expect(registry.resolveActionPreview("ticket_issue_process", process, "inspect")).toEqual(
+			target ? { definition: preview, ...target } : null,
+		);
+		expect(registry.resolveActionScheduling("ticket_issue_process", process, "inspect")).toEqual(
+			target ? { definition: { preview }, ...target } : null,
+		);
 	});
 
 	it("resolves UI human-turn actions from the selected turn", () => {

@@ -30,6 +30,7 @@ import {
 } from "../missing-tool-recovery-runner.js";
 import type { PiTreeHandle } from "../pi-adapter.js";
 import {
+	type AppliedTargetedInputMetadata,
 	applyPreTurnTargetedInputs,
 	type PreTurnTargetedInput,
 	resolvePreTurnTargetStartSelection,
@@ -108,13 +109,7 @@ export interface LlmTurnExecutorCallbacks {
 	onPreTurnTargetedInputApplied?(
 		inputId: string,
 		sequence: number,
-		meta?: {
-			currentPrimaryPathLeafId?: string | null;
-			rootEntryId?: string | null;
-			targetSemanticRef?: import("@leitwerk-dev/domain").ProcessSemanticEntryRefKey | null;
-			targetProductName?: string | null;
-			targetEntryId?: string | null;
-		},
+		meta?: AppliedTargetedInputMetadata,
 	): void;
 	emit?: WorkerOperationEmitter;
 	integrationTools?: readonly import("@leitwerk-dev/process-sdk").PiCustomTool[];
@@ -122,16 +117,6 @@ export interface LlmTurnExecutorCallbacks {
 
 /** Pi writes these on new sessions before any conversational content exists. */
 const PI_SESSION_BOOTSTRAP_ENTRY_TYPES = new Set(["model_change", "thinking_level_change"]);
-
-function visitPiTreeEntries(
-	nodes: readonly PiTreeNode[],
-	visit: (entryType: string) => void,
-): void {
-	for (const node of nodes) {
-		visit(node.entry.type);
-		visitPiTreeEntries(node.children, visit);
-	}
-}
 
 /**
  * Empty-tree prepared starts mean "no conversational fork yet". Pi still appends
@@ -141,13 +126,9 @@ function visitPiTreeEntries(
 export function isPiTreeEmptyForPreparedEmptyPlan(
 	piHandle: Pick<PiTreeHandle, "getTree">,
 ): boolean {
-	let hasNonBootstrap = false;
-	visitPiTreeEntries(piHandle.getTree(), (entryType) => {
-		if (!PI_SESSION_BOOTSTRAP_ENTRY_TYPES.has(entryType)) {
-			hasNonBootstrap = true;
-		}
-	});
-	return !hasNonBootstrap;
+	const isBootstrapOnly = (node: PiTreeNode): boolean =>
+		PI_SESSION_BOOTSTRAP_ENTRY_TYPES.has(node.entry.type) && node.children.every(isBootstrapOnly);
+	return piHandle.getTree().every(isBootstrapOnly);
 }
 
 /**
@@ -666,15 +647,15 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 	const finalCompletionState = recoveryResult.finalAttempt.completionState;
 	const finalPromptResult = recoveryResult.finalAttempt.promptResult;
 	const finalResolvedOutcome = recoveryResult.finalAttempt.resolvedOutcome;
-	if (!recoveryResult.recovered) {
+	if (recoveryResult.failure) {
+		const { recoveryContext, description } = recoveryResult.failure;
 		return reportFailedTurn(
 			"protocol_error",
-			`Turn '${turnId}' completed without the required tool calls after ${MAX_MISSING_TOOL_CALL_RECOVERY_ATTEMPTS} automatic recovery attempts: ${recoveryResult.baseMissingToolRecoveryDescription}`,
+			`Turn '${turnId}' completed without the required tool calls after ${MAX_MISSING_TOOL_CALL_RECOVERY_ATTEMPTS} automatic recovery attempts: ${description}`,
 			finalPromptResult.resultEntryId,
 			{
-				recoveryContext: recoveryResult.recoveryContext,
-				restorePrimaryLeaf:
-					recoveryResult.recoveryContext?.failureCode !== "missing_markdown_result",
+				recoveryContext,
+				restorePrimaryLeaf: recoveryContext.failureCode !== "missing_markdown_result",
 			},
 		);
 	}

@@ -47,12 +47,10 @@ export function buildFutureExecutionOverviewItems(
 
 function buildOverviewItems(deps: RouteDeps, processes: readonly ProcessInstance[]) {
 	const instanceIds = processes.map((process) => process.id);
-	const projectsByInstanceId = new Map<string, ProcessProject[]>();
-	for (const project of deps.projects.listByInstances(instanceIds)) {
-		const projects = projectsByInstanceId.get(project.instanceId) ?? [];
-		projects.push(project);
-		projectsByInstanceId.set(project.instanceId, projects);
-	}
+	const projectsByInstanceId = Map.groupBy(
+		deps.projects.listByInstances(instanceIds),
+		(project) => project.instanceId,
+	);
 	return processes.map((process) =>
 		buildProcessOverviewItem({
 			process,
@@ -194,7 +192,7 @@ export function buildProcessBrowse(deps: RouteDeps, input: ProcessBrowseQuery) {
 		buildOverviewItems(
 			deps,
 			page.flatMap((row) => (row.kind === "process" ? [row.value] : [])),
-		).map((item) => [(item as ProcessOverviewItem & { instanceId: string }).instanceId, item]),
+		).map((item) => [item.instanceId, item]),
 	);
 	const items = page.map((row) => {
 		if (row.kind === "future") return { kind: "future" as const, item: row.value };
@@ -203,46 +201,37 @@ export function buildProcessBrowse(deps: RouteDeps, input: ProcessBrowseQuery) {
 		return { kind: "process" as const, item };
 	});
 	const processTotal = deps.processes.countOverview(sharedQuery);
-	const futureExecutionTotal = deps.futureExecutions.countOverview({
-		...sharedQuery,
-		matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
-	});
-	const total = processTotal + futureExecutionTotal;
 	const lifecycleCounts = Object.fromEntries(
 		deps.processes
 			.countOverviewByLifecycle({ query: input.query, processType: input.processType })
 			.map((row) => [row.lifecycleStatus, row.value]),
 	) as Record<string, number>;
-	const allFutureCount = deps.futureExecutions.countOverview({
-		query: input.query,
-		processType: input.processType,
-		status: "all",
-		matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
-	});
-	const scheduledCount = deps.futureExecutions.countOverview({
-		query: input.query,
-		processType: input.processType,
-		status: "scheduled",
-		matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
-	});
-	const blockedFutureCount = deps.futureExecutions.countOverview({
-		query: input.query,
-		processType: input.processType,
-		status: "needs_attention",
-		matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
-	});
+	const countFutureExecutions = (status: ProcessOverviewStatusFilter) =>
+		deps.futureExecutions.countOverview({
+			query: input.query,
+			processType: input.processType,
+			status,
+			matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
+		});
+	const allFutureCount = countFutureExecutions("all");
+	const blockedFutureCount = countFutureExecutions("needs_attention");
+	const scheduledCount = allFutureCount - blockedFutureCount;
+	const futureExecutionTotal =
+		new Map<ProcessOverviewStatusFilter, number>([
+			["all", allFutureCount],
+			["scheduled", scheduledCount],
+			["needs_attention", blockedFutureCount],
+		]).get(sharedQuery.status) ?? 0;
+	const total = processTotal + futureExecutionTotal;
 	const processTypeCounts = new Map<string, number>();
-	for (const row of deps.processes.listOverviewProcessTypes({
-		query: input.query,
-		status: input.status ?? "all",
-	})) {
-		processTypeCounts.set(row.processId, row.value);
-	}
-	for (const row of deps.futureExecutions.listOverviewProcessTypes({
-		query: input.query,
-		status: input.status ?? "all",
-		matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
-	})) {
+	for (const row of [
+		...deps.processes.listOverviewProcessTypes({ query: input.query, status: sharedQuery.status }),
+		...deps.futureExecutions.listOverviewProcessTypes({
+			query: input.query,
+			status: sharedQuery.status,
+			matchingLauncherIdsByTerm: launcherMetadata.matchingIdsByTerm,
+		}),
+	]) {
 		processTypeCounts.set(row.processId, (processTypeCounts.get(row.processId) ?? 0) + row.value);
 	}
 	const runningCount = (lifecycleCounts.discovered ?? 0) + (lifecycleCounts.active ?? 0);

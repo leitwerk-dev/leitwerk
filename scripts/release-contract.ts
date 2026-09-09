@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 export const dependencyFields = [
 	"dependencies",
@@ -32,18 +33,8 @@ export function readJson(filePath: string): JsonRecord {
 }
 
 export function discoverWorkspaces(rootDir: string, rootManifest: PackageManifest) {
-	const workspacePatterns = Array.isArray(rootManifest.workspaces) ? rootManifest.workspaces : [];
-	return workspacePatterns
-		.flatMap((pattern) => {
-			if (!pattern.endsWith("/*")) return [];
-			const parentPath = pattern.slice(0, -2);
-			const parentDir = path.join(rootDir, parentPath);
-			if (!existsSync(parentDir)) return [];
-			return readdirSync(parentDir, { withFileTypes: true })
-				.filter((entry) => entry.isDirectory())
-				.map((entry) => path.posix.join(parentPath, entry.name))
-				.filter((workspacePath) => existsSync(path.join(rootDir, workspacePath, "package.json")));
-		})
+	return listWorkspacePackageDirs(rootDir, rootManifest)
+		.map((dir) => path.relative(rootDir, dir).split(path.sep).join("/"))
 		.sort();
 }
 

@@ -1,5 +1,5 @@
 import type { ProcessEvent } from "@leitwerk-dev/domain";
-import { and, asc, desc, eq, gte, inArray, like, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, like, type SQL, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -21,6 +21,15 @@ function rowToProcessEvent(row: typeof s.processEvents.$inferSelect): ProcessEve
 }
 
 export function createProcessEventRepo(db: LeitwerkDb) {
+	const listNewest = (where: SQL | undefined, limit: number): ProcessEvent[] =>
+		db
+			.select()
+			.from(s.processEvents)
+			.where(where)
+			.orderBy(desc(s.processEvents.createdAt))
+			.limit(limit)
+			.all()
+			.map(rowToProcessEvent);
 	return {
 		create(input: CreateProcessEventInput): ProcessEvent {
 			const id = generateId("evt");
@@ -37,14 +46,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 		},
 
 		listByInstance(instanceId: string, limit = 100): ProcessEvent[] {
-			return db
-				.select()
-				.from(s.processEvents)
-				.where(eq(s.processEvents.instanceId, instanceId))
-				.orderBy(desc(s.processEvents.createdAt))
-				.limit(limit)
-				.all()
-				.map(rowToProcessEvent);
+			return listNewest(eq(s.processEvents.instanceId, instanceId), limit);
 		},
 
 		listByInstanceEventTypes(
@@ -56,19 +58,13 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			if (filteredEventTypes.length === 0) {
 				return [];
 			}
-			return db
-				.select()
-				.from(s.processEvents)
-				.where(
-					and(
-						eq(s.processEvents.instanceId, instanceId),
-						inArray(s.processEvents.eventType, filteredEventTypes),
-					),
-				)
-				.orderBy(desc(s.processEvents.createdAt))
-				.limit(limit)
-				.all()
-				.map(rowToProcessEvent);
+			return listNewest(
+				and(
+					eq(s.processEvents.instanceId, instanceId),
+					inArray(s.processEvents.eventType, filteredEventTypes),
+				),
+				limit,
+			);
 		},
 
 		listByInstanceSince(
@@ -76,25 +72,16 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			sinceCreatedAt: string,
 			options: { limit?: number; eventTypePrefix?: string } = {},
 		): ProcessEvent[] {
-			const predicates = [
-				eq(s.processEvents.instanceId, instanceId),
-				gte(s.processEvents.createdAt, sinceCreatedAt),
-			] as const;
-			const whereClause =
-				typeof options.eventTypePrefix === "string" && options.eventTypePrefix.trim() !== ""
-					? and(
-							...predicates,
-							like(s.processEvents.eventType, `${options.eventTypePrefix.trim()}%`),
-						)
-					: and(...predicates);
-			return db
-				.select()
-				.from(s.processEvents)
-				.where(whereClause)
-				.orderBy(desc(s.processEvents.createdAt))
-				.limit(options.limit ?? 100)
-				.all()
-				.map(rowToProcessEvent);
+			const prefix =
+				typeof options.eventTypePrefix === "string" ? options.eventTypePrefix.trim() : "";
+			return listNewest(
+				and(
+					eq(s.processEvents.instanceId, instanceId),
+					gte(s.processEvents.createdAt, sinceCreatedAt),
+					prefix ? like(s.processEvents.eventType, `${prefix}%`) : undefined,
+				),
+				options.limit ?? 100,
+			);
 		},
 
 		listByInstanceTurnRecordEventTypes(
@@ -131,20 +118,14 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			if (filteredEventTypes.length === 0) {
 				return [];
 			}
-			return db
-				.select()
-				.from(s.processEvents)
-				.where(
-					and(
-						eq(s.processEvents.instanceId, instanceId),
-						gte(s.processEvents.createdAt, sinceCreatedAt),
-						inArray(s.processEvents.eventType, filteredEventTypes),
-					),
-				)
-				.orderBy(desc(s.processEvents.createdAt))
-				.limit(limit)
-				.all()
-				.map(rowToProcessEvent);
+			return listNewest(
+				and(
+					eq(s.processEvents.instanceId, instanceId),
+					gte(s.processEvents.createdAt, sinceCreatedAt),
+					inArray(s.processEvents.eventType, filteredEventTypes),
+				),
+				limit,
+			);
 		},
 	};
 }

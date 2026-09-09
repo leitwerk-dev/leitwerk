@@ -1,8 +1,9 @@
 import { createManualWorkerRuntimeScheduler } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
+import type { WorkerOperationEmission } from "./diagnostics.js";
 import { OperatorAbortError, PromptGuardSuspension, promptWithGuards } from "./prompt-guards.js";
 
-function createMinimalPiHandle() {
+function createMinimalPiHandle(abortBehavior: "complete" | "reject" | "pending" = "complete") {
 	let abortCount = 0;
 	return {
 		get abortCount() {
@@ -13,6 +14,8 @@ function createMinimalPiHandle() {
 		},
 		async abortTurn() {
 			abortCount += 1;
+			if (abortBehavior === "reject") throw new Error("Abort failed");
+			if (abortBehavior === "pending") await new Promise(() => {});
 		},
 	};
 }
@@ -51,13 +54,20 @@ describe("promptWithGuards", () => {
 		expect(piHandle.abortCount).toBe(1);
 	});
 
-	it("uses the injected scheduler for maximum-duration timeouts", async () => {
+	it.each([
+		"complete",
+		"reject",
+		"pending",
+	] as const)("preserves the timeout when abort behavior is %s", async (abortBehavior) => {
 		const scheduler = createManualWorkerRuntimeScheduler();
-		const piHandle = createMinimalPiHandle();
+		const piHandle = createMinimalPiHandle(abortBehavior);
+		const emissions: WorkerOperationEmission[] = [];
 		const prompt = promptWithGuards(
 			{
 				scheduler,
 				turnMaxDurationMs: 250,
+				turnAbortGracePeriodMs: 10,
+				emit: (event) => emissions.push(event),
 			},
 			{
 				piHandle,
@@ -72,6 +82,15 @@ describe("promptWithGuards", () => {
 		await scheduler.advanceBy(1);
 		await expect(prompt).rejects.toMatchObject({ timeoutKind: "max_duration", timeoutMs: 250 });
 		expect(piHandle.abortCount).toBe(1);
+		await scheduler.advanceBy(10);
+		expect(
+			emissions.filter((event) => event.kind === "error").map((event) => event.payload.code),
+		).toEqual([
+			"guard.turn_max_duration_exceeded",
+			...(abortBehavior === "complete"
+				? []
+				: [abortBehavior === "reject" ? "guard.abort_failed" : "guard.abort_grace_elapsed"]),
+		]);
 	});
 
 	it("pauses maximum-duration and inactivity budgets while awaiting operator input", async () => {

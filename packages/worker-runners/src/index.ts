@@ -11,7 +11,6 @@ export {
 	createDockerEngineHttpClient,
 	type DockerEngineHttpClientOptions,
 	DockerEngineHttpError,
-	dockerEngineRequestMapping,
 	isDockerEngineNotFoundError,
 	type ParsedDockerEngineSocket,
 	parseDockerEngineSocket,

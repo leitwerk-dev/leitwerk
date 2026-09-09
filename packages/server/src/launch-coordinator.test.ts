@@ -445,19 +445,26 @@ describe("LaunchCoordinator reconciliation", () => {
 			completedAt: current.updatedAt,
 		}));
 		const createdAt = "2026-01-01T00:00:00.000Z";
-		const duplicates = Array.from({ length: 2 }, () => {
-			const created = repos.launchRuns.create({
-				launcherId: "demo.ui",
-				origin: "ui",
-				steps: initialLaunchSteps(),
+		let duplicates: LaunchRun[];
+		vi.useFakeTimers({ toFake: ["Date"] });
+		try {
+			vi.setSystemTime(createdAt);
+			duplicates = Array.from({ length: 2 }, () => {
+				const created = repos.launchRuns.create({
+					launcherId: "demo.ui",
+					origin: "ui",
+					steps: initialLaunchSteps(),
+				});
+				return repos.launchRuns.update(created.id, (current) => ({
+					...current,
+					instanceId: process.id,
+					status: "starting",
+				})) as LaunchRun;
 			});
-			return repos.launchRuns.update(created.id, (current) => ({
-				...current,
-				instanceId: process.id,
-				status: "starting",
-				createdAt,
-			})) as LaunchRun;
-		});
+		} finally {
+			vi.useRealTimers();
+		}
+		expect(duplicates.map((duplicate) => duplicate.createdAt)).toEqual([createdAt, createdAt]);
 		const expectedId = duplicates
 			.map((duplicate) => duplicate.id)
 			.sort()

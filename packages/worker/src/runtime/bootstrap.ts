@@ -11,7 +11,11 @@ import type {
 	ResolvedProcessPiConfig,
 } from "@leitwerk-dev/process-sdk";
 import { createTemplateContext, resolveProcessPiConfig } from "@leitwerk-dev/process-sdk/pi-config";
-import type { WorkerGitSshCredential, WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
+import type {
+	WorkerGitSshCredential,
+	WorkerReadyPayload,
+	WorkerStartPayload,
+} from "@leitwerk-dev/worker-protocol";
 import {
 	type DevelopmentToolEnvironment,
 	MiseDevelopmentToolEnvironment,
@@ -92,25 +96,7 @@ export interface BootstrapWorkerRuntimeResult {
 	activation: PreparedStartActivation;
 	resolvedPiConfig: ResolvedProcessPiConfig;
 	diagnostics: string[];
-	readyPayload: {
-		resumed: boolean;
-		primaryTreeFile: string;
-		workspaceRoot: string;
-		aggregatedAgentsSources: string[];
-		loadedSkills: string[];
-		loadedAgentsFiles: Array<{ path: string; sizeBytes: number }>;
-		loadedSkillFiles: Array<{ name: string; path: string }>;
-		rootEntryId: string | null;
-		receipt: WorkerBootstrapReceipt;
-		developmentTools?: {
-			miseVersion: string;
-			repositories: Array<{
-				repositoryKey: string;
-				tools: Array<{ name: string; version: string }>;
-			}>;
-			warnings: string[];
-		};
-	};
+	readyPayload: WorkerReadyPayload & { rootEntryId: string | null };
 	pendingInputs: InputItem[];
 	credentialRefresh?: {
 		agentDir: string;
@@ -170,27 +156,17 @@ export function shouldPreservePersistedLeafForActiveTurnResume(input: {
 	processSnapshot: Pick<ProcessInstance, "selectedTurnId" | "currentExecution" | "metadata">;
 	payload: Pick<WorkerStartPayload, "resume" | "turnStart">;
 }): boolean {
-	if (!input.payload.resume) {
-		return false;
-	}
-	if (!readNonEmptyString(input.processSnapshot.selectedTurnId)) {
-		return false;
-	}
-	if (
-		input.processSnapshot.currentExecution?.kind !== "worker_start" ||
-		input.processSnapshot.currentExecution.id !== input.payload.turnStart.id ||
-		input.payload.turnStart.state.kind !== "accepted" ||
-		!readNonEmptyString(input.payload.turnStart.state.turnRecordId)
-	) {
-		return false;
-	}
-	if (readNonEmptyString(input.processSnapshot.metadata?.continueFromPiEntryId)) {
-		return false;
-	}
-	if (readNonEmptyString(input.processSnapshot.metadata?.retryForkPiEntryId)) {
-		return false;
-	}
-	return true;
+	const { payload, processSnapshot } = input;
+	return (
+		payload.resume &&
+		readNonEmptyString(processSnapshot.selectedTurnId) !== null &&
+		processSnapshot.currentExecution?.kind === "worker_start" &&
+		processSnapshot.currentExecution.id === payload.turnStart.id &&
+		payload.turnStart.state.kind === "accepted" &&
+		readNonEmptyString(payload.turnStart.state.turnRecordId) !== null &&
+		readNonEmptyString(processSnapshot.metadata?.continueFromPiEntryId) === null &&
+		readNonEmptyString(processSnapshot.metadata?.retryForkPiEntryId) === null
+	);
 }
 
 type ResumeLeafEntryCandidate = {
@@ -202,39 +178,27 @@ function resolveResumeLeafEntryCandidates(
 	processSnapshot: ProcessInstance,
 	payload: WorkerStartPayload,
 ): ResumeLeafEntryCandidate[] {
-	const candidates: ResumeLeafEntryCandidate[] = [];
-	const continueFromPiEntryId =
-		typeof processSnapshot.metadata?.continueFromPiEntryId === "string"
-			? processSnapshot.metadata.continueFromPiEntryId
-			: null;
-	if (continueFromPiEntryId) {
-		candidates.push({ entryId: continueFromPiEntryId, source: "continue" });
-	}
-
-	const retryForkPiEntryId =
-		typeof processSnapshot.metadata?.retryForkPiEntryId === "string"
-			? processSnapshot.metadata.retryForkPiEntryId
-			: null;
-	if (retryForkPiEntryId && retryForkPiEntryId !== continueFromPiEntryId) {
-		candidates.push({ entryId: retryForkPiEntryId, source: "retry" });
-	}
-
 	const semanticEntryRefs = parseProcessSemanticEntryRefsFromStateJson(processSnapshot.stateJson);
-	const stateLeafId = payload.resume
-		? (semanticEntryRefs.currentPrimaryPathLeaf?.entryId ?? null)
-		: null;
-	if (stateLeafId && stateLeafId !== continueFromPiEntryId && stateLeafId !== retryForkPiEntryId) {
-		candidates.push({ entryId: stateLeafId, source: "state" });
-	}
-
-	const payloadLeafId = payload.resume ? (payload.resumeLeafEntryId ?? null) : null;
-	if (
-		payloadLeafId &&
-		payloadLeafId !== continueFromPiEntryId &&
-		payloadLeafId !== retryForkPiEntryId &&
-		payloadLeafId !== stateLeafId
-	) {
-		candidates.push({ entryId: payloadLeafId, source: "payload" });
+	const candidates: ResumeLeafEntryCandidate[] = [];
+	for (const [source, entryId] of [
+		[
+			"continue",
+			typeof processSnapshot.metadata?.continueFromPiEntryId === "string"
+				? processSnapshot.metadata.continueFromPiEntryId
+				: null,
+		],
+		[
+			"retry",
+			typeof processSnapshot.metadata?.retryForkPiEntryId === "string"
+				? processSnapshot.metadata.retryForkPiEntryId
+				: null,
+		],
+		["state", payload.resume ? semanticEntryRefs.currentPrimaryPathLeaf?.entryId : null],
+		["payload", payload.resume ? payload.resumeLeafEntryId : null],
+	] as const) {
+		if (entryId && !candidates.some((candidate) => candidate.entryId === entryId)) {
+			candidates.push({ entryId, source });
+		}
 	}
 
 	return candidates;
@@ -414,7 +378,6 @@ export async function bootstrapWorkerRuntime(
 	const paramsJson = deps.payload.processSnapshot.paramsJson ?? null;
 	const stateJson = deps.payload.processSnapshot.stateJson ?? null;
 
-	// Try the new worker process resolver first
 	const resolvedWorkerProcess = deps.resolveWorkerProcess
 		? await deps.resolveWorkerProcess(processId, { paramsJson, stateJson })
 		: undefined;
@@ -444,8 +407,6 @@ export async function bootstrapWorkerRuntime(
 	}));
 	const plan = planRunRoot(workspaceRoot, deps.instanceId, runRootProjects);
 
-	let aggregatedAgentsMdSources: string[] = [];
-	let loadedSkills: string[] = [];
 	const runRootPreparation = deps.payload.resume
 		? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
 				repairRunRoot(workspaceRoot, validation, plan, deps.gitOps),
@@ -478,8 +439,6 @@ export async function bootstrapWorkerRuntime(
 	let loadedSkillFiles: Array<{ name: string; path: string }> = [];
 	let receipt: WorkerBootstrapReceipt;
 	const runRoot = await runRootPreparation;
-	aggregatedAgentsMdSources = runRoot.aggregatedAgentsMdSources;
-	loadedSkills = runRoot.loadedSkills;
 	let preparedTools: PreparedToolEnvironment | undefined;
 	if (resolvedWorkerProcess?.runtime?.developmentTools) {
 		if (!deps.payload.developmentTools) {
@@ -666,8 +625,8 @@ export async function bootstrapWorkerRuntime(
 			resumed: deps.payload.resume,
 			primaryTreeFile: deps.payload.treePaths.primaryTreeFile,
 			workspaceRoot: deps.payload.treePaths.workspaceRoot,
-			aggregatedAgentsSources: aggregatedAgentsMdSources,
-			loadedSkills,
+			aggregatedAgentsSources: runRoot.aggregatedAgentsMdSources,
+			loadedSkills: runRoot.loadedSkills,
 			loadedAgentsFiles,
 			loadedSkillFiles,
 			rootEntryId: null,

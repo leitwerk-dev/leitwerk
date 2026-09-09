@@ -9,14 +9,13 @@ import { parse as parseYaml } from "yaml";
 import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
-import type { LeitwerkConfig, ModelProfile } from "./config-types.js";
+import type { LeitwerkConfig } from "./config-types.js";
 import { isHttpsOrLoopbackHttpUrl, isValidHttpUrl, parseHttpUrl } from "./url-policy.js";
 
 const DEFAULT_SEARCH_PATHS = ["./leitwerk.yaml", "~/.leitwerk/leitwerk.yaml"];
 const REDACTED_LOG_VALUE = "<redacted>";
 const SENSITIVE_CONFIG_KEY_PATTERN =
 	/(token|secret|password|passphrase|api[_-]?key|private[_-]?key|known[_-]?hosts|webhook)/i;
-const DEFAULT_MODEL_PROFILES: ModelProfile[] = [];
 const positiveSafeInteger = v.pipe(
 	v.number(),
 	v.integer(),
@@ -58,10 +57,6 @@ function describeType(value: unknown): string {
 	return typeof value;
 }
 
-function cloneValue<T>(value: T): T {
-	return structuredClone(value);
-}
-
 const mergeConfigDefaults = createDefu((object, key, value) => {
 	if (Array.isArray(object[key]) && Array.isArray(value)) {
 		object[key] = value;
@@ -70,15 +65,8 @@ const mergeConfigDefaults = createDefu((object, key, value) => {
 	return false;
 });
 
-function mergeConfigValue(defaultValue: unknown, overrideValue: unknown): unknown {
-	return mergeConfigDefaults(
-		cloneValue(overrideValue) as Record<string, unknown>,
-		cloneValue(defaultValue) as Record<string, unknown>,
-	);
-}
-
 export function applyConfigDefaults(raw: Record<string, unknown>): LeitwerkConfig {
-	const merged = mergeConfigValue(getDefaultConfig(), raw) as LeitwerkConfig;
+	const merged = mergeConfigDefaults(structuredClone(raw), getDefaultConfig()) as LeitwerkConfig;
 	if (Object.hasOwn(raw, "worker_runtime_profiles")) {
 		merged.worker_runtime_profiles =
 			raw.worker_runtime_profiles as LeitwerkConfig["worker_runtime_profiles"];
@@ -923,23 +911,11 @@ export function validateConfig(raw: Record<string, unknown>): string[] {
 }
 
 function shouldRedactForLogging(path: readonly string[], key: string): boolean {
-	if (SENSITIVE_CONFIG_KEY_PATTERN.test(key)) {
-		return true;
-	}
-	if (path[0] === "notifications" && key === "url") {
-		return true;
-	}
-	if (key === "url" && path.some((segment) => /webhook/i.test(segment))) {
-		return true;
-	}
-	return false;
-}
-
-function redactLoggedValue(value: unknown): unknown {
-	if (typeof value === "string" && value.length === 0) {
-		return "";
-	}
-	return REDACTED_LOG_VALUE;
+	return (
+		SENSITIVE_CONFIG_KEY_PATTERN.test(key) ||
+		(key === "url" &&
+			(path[0] === "notifications" || path.some((segment) => /webhook/i.test(segment))))
+	);
 }
 
 export function sanitizeConfigForLogging(value: unknown, path: readonly string[] = []): unknown {
@@ -954,7 +930,7 @@ export function sanitizeConfigForLogging(value: unknown, path: readonly string[]
 	const sanitized: Record<string, unknown> = {};
 	for (const [key, entry] of Object.entries(parsedRecord.output)) {
 		if (shouldRedactForLogging(path, key)) {
-			sanitized[key] = redactLoggedValue(entry);
+			sanitized[key] = entry === "" ? "" : REDACTED_LOG_VALUE;
 			continue;
 		}
 		sanitized[key] = sanitizeConfigForLogging(entry, [...path, key]);
@@ -1014,7 +990,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 		},
 		pi: {
 			agent_dir: "~/.pi/leitwerk",
-			model_profiles: cloneValue(DEFAULT_MODEL_PROFILES),
+			model_profiles: [],
 			process_title_generation: {
 				model_profile: null,
 				retry: {

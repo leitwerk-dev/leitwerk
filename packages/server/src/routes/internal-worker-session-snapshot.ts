@@ -11,6 +11,7 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { RepositoryBundle } from "../db/repositories.js";
+import { resolveCurrentExecutionTurnRecordId } from "../process-execution.js";
 import type { ProcessSessionSnapshotStore } from "../process-session-store.js";
 import { detectSkillInvocations } from "../skills/invocation-detector.js";
 import { authenticateActiveWorker, headerValue } from "./internal-worker-auth.js";
@@ -21,13 +22,14 @@ interface ParsedSnapshotBody {
 	path: string;
 }
 
-function validateJsonLine(line: string, lineNumber: number): string | null {
-	if (line.trim() === "") return null;
+function validateJsonLine(line: string, lineNumber: number): void {
+	if (line.trim() === "") return;
 	try {
 		JSON.parse(line);
-		return null;
 	} catch {
-		return `Session snapshot line ${lineNumber} is not valid JSON`;
+		throw Object.assign(new Error(`Session snapshot line ${lineNumber} is not valid JSON`), {
+			statusCode: 400,
+		});
 	}
 }
 
@@ -51,25 +53,17 @@ async function streamSnapshotToTempFile(
 				});
 			}
 			await writeFile(file, buffer, { flag: "a" });
-			const text = decoder.write(buffer);
-			pendingLine += text;
-			let newlineIndex = pendingLine.search(/\r?\n/);
+			pendingLine += decoder.write(buffer);
+			let newlineIndex = pendingLine.indexOf("\n");
 			while (newlineIndex >= 0) {
-				const line = pendingLine.slice(0, newlineIndex);
-				const error = validateJsonLine(line, lineNumber);
-				if (error) throw Object.assign(new Error(error), { statusCode: 400 });
-				pendingLine = pendingLine.slice(
-					pendingLine[newlineIndex] === "\r" && pendingLine[newlineIndex + 1] === "\n"
-						? newlineIndex + 2
-						: newlineIndex + 1,
-				);
+				validateJsonLine(pendingLine.slice(0, newlineIndex), lineNumber);
+				pendingLine = pendingLine.slice(newlineIndex + 1);
 				lineNumber += 1;
-				newlineIndex = pendingLine.search(/\r?\n/);
+				newlineIndex = pendingLine.indexOf("\n");
 			}
 		}
 		pendingLine += decoder.end();
-		const finalLineError = validateJsonLine(pendingLine, lineNumber);
-		if (finalLineError) throw Object.assign(new Error(finalLineError), { statusCode: 400 });
+		validateJsonLine(pendingLine, lineNumber);
 		return { path: file };
 	} catch (error) {
 		await rm(dir, { recursive: true, force: true });
@@ -104,13 +98,10 @@ function validateTurnRecord(input: {
 	const suppliedTurnRecordId = headerValue(
 		input.request.headers[WORKER_SESSION_SNAPSHOT_TURN_RECORD_ID_HEADER],
 	);
-	const expectedTurnRecordId =
-		currentProcess.currentExecution?.kind === "worker_start"
-			? (() => {
-					const start = input.turnStarts.getById(currentProcess.currentExecution.id);
-					return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-				})()
-			: null;
+	const expectedTurnRecordId = resolveCurrentExecutionTurnRecordId(
+		currentProcess,
+		input.turnStarts,
+	);
 	if ((suppliedTurnRecordId ?? null) !== expectedTurnRecordId) {
 		const reason = headerValue(input.request.headers[WORKER_SESSION_SNAPSHOT_REASON_HEADER]);
 		const lease = input.leases.getByInstance(input.instanceId);
@@ -146,9 +137,6 @@ export function registerInternalWorkerSessionSnapshotRoutes(input: {
 		async (request, reply) => {
 			const { instanceId } = request.params;
 			const body = request.body;
-			const cleanupBody = async () => {
-				if (body?.path) await rm(path.dirname(body.path), { recursive: true, force: true });
-			};
 			try {
 				const auth = authenticateActiveWorker({
 					request,
@@ -210,7 +198,7 @@ export function registerInternalWorkerSessionSnapshotRoutes(input: {
 				await input.sessionSnapshots.writeSnapshotFile(instanceId, body.path);
 				reply.code(204).send();
 			} finally {
-				await cleanupBody();
+				if (body?.path) await rm(path.dirname(body.path), { recursive: true, force: true });
 			}
 			return reply;
 		},

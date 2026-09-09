@@ -305,7 +305,7 @@ export const processTitleJobs = sqliteTable(
 	"process_title_jobs",
 	{
 		id: text("id").primaryKey(),
-		targetKind: text("target_kind").notNull(),
+		targetKind: text("target_kind", { enum: ["process", "future_execution"] }).notNull(),
 		processDefinitionId: text("process_definition_id").notNull(),
 		processInstanceId: text("process_instance_id").references(() => processInstances.id, {
 			onDelete: "cascade",
@@ -319,7 +319,9 @@ export const processTitleJobs = sqliteTable(
 		modelProfileId: text("model_profile_id").notNull(),
 		prompt: text("prompt").notNull(),
 		expectedPayloadJson: text("expected_payload_json"),
-		status: text("status").notNull(),
+		status: text("status", {
+			enum: ["pending", "running", "completed", "superseded", "failed"],
+		}).notNull(),
 		attemptCount: integer("attempt_count").notNull().default(0),
 		maxAttempts: integer("max_attempts").notNull(),
 		nextRunAt: text("next_run_at").notNull(),

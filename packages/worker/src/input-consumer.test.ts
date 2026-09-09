@@ -1,60 +1,19 @@
-import type { PiEventHandler, PiTreeHandle, PiTreeNode } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import {
 	classifyDeliveryMode,
 	deliverBatch,
 	deliverInput,
-	filterInputsAfterConsumedSequence,
 	type InputItem,
 } from "./input-consumer.js";
 
-function createMockSession(): PiTreeHandle & {
-	prompts: string[];
-	steers: string[];
-} {
+function createRecordingSession() {
 	const prompts: string[] = [];
 	const steers: string[] = [];
 	return {
-		sessionId: "mock-session",
-		treeFile: "/mock/session.json",
-		isResumed: false,
 		prompts,
 		steers,
-		getRunDetails() {
-			return {
-				loadedAgentsFiles: [],
-				loadedSkills: [],
-				availableToolNames: ["read", "bash", "edit", "write"],
-			};
-		},
-		getLeafId() {
-			return null;
-		},
-		getEntry() {
-			return undefined;
-		},
-		getBranch() {
-			return [];
-		},
-		getChildren() {
-			return [];
-		},
-		getTree() {
-			return [] as PiTreeNode[];
-		},
-		async branch() {},
-		async branchFromRoot() {},
-		async resetLeaf() {},
 		async prompt(body: string) {
 			prompts.push(body);
-			return {
-				startLeafId: null,
-				endLeafId: "mock-result",
-				createdEntryIds: [],
-				resultEntryId: "mock-result",
-			};
-		},
-		async continueTurn() {
 			return {
 				startLeafId: null,
 				endLeafId: "mock-result",
@@ -65,11 +24,6 @@ function createMockSession(): PiTreeHandle & {
 		async steer(body: string) {
 			steers.push(body);
 		},
-		async abortTurn() {},
-		subscribe(_handler: PiEventHandler) {
-			return () => {};
-		},
-		async close() {},
 	};
 }
 
@@ -82,20 +36,6 @@ function item(overrides: Partial<InputItem> & Pick<InputItem, "inputId" | "seque
 		...overrides,
 	};
 }
-
-describe("filterInputsAfterConsumedSequence", () => {
-	it("drops redelivered inputs at or below the consumed sequence and keeps newer inputs", () => {
-		const inputs = [
-			item({ inputId: "already-1", sequence: 1 }),
-			item({ inputId: "already-2", sequence: 2 }),
-			item({ inputId: "new-3", sequence: 3 }),
-		];
-
-		expect(filterInputsAfterConsumedSequence(inputs, 2).map((input) => input.inputId)).toEqual([
-			"new-3",
-		]);
-	});
-});
 
 describe("classifyDeliveryMode", () => {
 	it('returns "prompt" when there is no active turn', () => {
@@ -119,7 +59,7 @@ describe("classifyDeliveryMode", () => {
 
 describe("deliverInput", () => {
 	it("calls session.prompt for prompt mode", async () => {
-		const session = createMockSession();
+		const session = createRecordingSession();
 		await deliverInput(
 			session,
 			item({ inputId: "i1", sequence: 1, bodyMarkdown: "hello" }),
@@ -130,7 +70,7 @@ describe("deliverInput", () => {
 	});
 
 	it("calls session.steer for steer mode", async () => {
-		const session = createMockSession();
+		const session = createRecordingSession();
 		await deliverInput(
 			session,
 			item({ inputId: "i2", sequence: 2, bodyMarkdown: "hint" }),
@@ -143,7 +83,7 @@ describe("deliverInput", () => {
 
 describe("deliverBatch", () => {
 	it("delivers the first input according to turn state and the rest as steers", async () => {
-		const session = createMockSession();
+		const session = createRecordingSession();
 		const inputs = [
 			item({ inputId: "1", sequence: 1, bodyMarkdown: "first" }),
 			item({ inputId: "2", sequence: 2, bodyMarkdown: "second" }),
@@ -160,7 +100,7 @@ describe("deliverBatch", () => {
 	});
 
 	it("uses steer for the first input when a turn is already active", async () => {
-		const session = createMockSession();
+		const session = createRecordingSession();
 		const inputs = [
 			item({ inputId: "1", sequence: 1, bodyMarkdown: "a" }),
 			item({ inputId: "2", sequence: 2, bodyMarkdown: "b" }),

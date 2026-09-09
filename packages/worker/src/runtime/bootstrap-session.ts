@@ -283,17 +283,6 @@ export class WorkerLiveResources {
 	}
 }
 
-function strings(value: unknown, name: string): Record<string, string> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`Credential file '${name}' must contain a JSON object`);
-	}
-	return Object.fromEntries(
-		Object.entries(value).filter(
-			(entry): entry is [string, string] => typeof entry[1] === "string",
-		),
-	);
-}
-
 /** Reads one credential sample. Values are transient command-result data. */
 export async function sampleCredentialFiles(
 	descriptor: CredentialRefreshDescriptor,
@@ -301,10 +290,10 @@ export async function sampleCredentialFiles(
 	const values: Record<string, string> = {};
 	for (const credentialPath of descriptor.declaredCredentialPaths) {
 		const json = JSON.parse(await readFile(path.join(descriptor.agentDir, credentialPath), "utf8"));
+		if (!json || typeof json !== "object" || Array.isArray(json)) {
+			throw new Error(`Credential file '${credentialPath}' must contain a JSON object`);
+		}
 		if (credentialPath === "auth.json") {
-			if (!json || typeof json !== "object" || Array.isArray(json)) {
-				throw new Error(`Credential file '${credentialPath}' must contain a JSON object`);
-			}
 			const selected = (json as Record<string, unknown>)[descriptor.providerId];
 			if (selected && typeof selected === "object" && !Array.isArray(selected)) {
 				for (const [key, value] of Object.entries(selected as Record<string, unknown>)) {
@@ -313,7 +302,12 @@ export async function sampleCredentialFiles(
 						values[key] = String(value);
 				}
 			}
-		} else Object.assign(values, strings(json, credentialPath));
+		} else {
+			Object.assign(
+				values,
+				Object.fromEntries(Object.entries(json).filter(([, value]) => typeof value === "string")),
+			);
+		}
 	}
 	const fingerprint = JSON.stringify(
 		Object.keys(values)

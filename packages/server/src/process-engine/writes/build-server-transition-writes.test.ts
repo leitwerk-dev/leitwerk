@@ -40,6 +40,7 @@ describe("buildServerTransitionWrites", () => {
 			stateJson: JSON.stringify(implementationState),
 		});
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+		expect(planned.turnStartWrites).toHaveLength(1);
 	});
 
 	it("re-enters a waiting worker automatic turn when it is selected again", () => {
@@ -88,5 +89,37 @@ describe("buildServerTransitionWrites", () => {
 		if ("ok" in planned) return;
 		expect(planned.processPatch.stateJson).toBe(JSON.stringify({ readyForHumanReview: true }));
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+		expect(planned.turnStartWrites).toEqual([]);
+	});
+
+	it.each([
+		undefined,
+		"plan_review",
+	])("rejects restarting a human turn with target %s", (turnId) => {
+		const planned = buildServerTransitionWrites(
+			registry,
+			createProcess({ selectedTurnId: "plan_review", lifecycleStatus: "waiting" }),
+			{ turnId, effect: { runtime: "restart_worker" } },
+		);
+		expect(planned).toEqual({
+			ok: false,
+			code: "invalid_transition",
+			message: "restart_worker requires a target selected turn that uses a worker",
+		});
+	});
+
+	it("applies state and lifecycle updates without scheduling a worker", () => {
+		const planned = buildServerTransitionWrites(registry, createProcess({}), {
+			state: implementationState,
+			lifecycleStatus: "waiting",
+		});
+		expect("ok" in planned).toBe(false);
+		if ("ok" in planned) return;
+		expect(planned.processPatch).toEqual({
+			stateJson: JSON.stringify(implementationState),
+			lifecycleStatus: "waiting",
+		});
+		expect(planned.workerIntent).toBeUndefined();
+		expect(planned.turnStartWrites).toEqual([]);
 	});
 });

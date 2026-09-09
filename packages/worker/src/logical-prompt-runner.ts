@@ -30,13 +30,11 @@ export function shouldAutoContinueAfterPromptReturn(input: {
 	sawCompaction: boolean;
 	compactionContinueAttempts: number;
 }): boolean {
-	if (input.resolvedOutcome) {
-		return false;
-	}
-	if (!input.sawCompaction) {
-		return false;
-	}
-	return input.compactionContinueAttempts < MAX_COMPACTION_CONTINUE_ATTEMPTS;
+	return (
+		!input.resolvedOutcome &&
+		input.sawCompaction &&
+		input.compactionContinueAttempts < MAX_COMPACTION_CONTINUE_ATTEMPTS
+	);
 }
 
 function isContextWindowError(error: unknown): boolean {
@@ -158,9 +156,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 	};
 
 	for (;;) {
-		const continuePlan = currentPlan.kind === "continue" ? currentPlan : null;
-		const promptPlan = currentPlan.kind === "prompt" ? currentPlan : null;
-		const usingContinueThisAttempt = continuePlan !== null;
+		const plan = currentPlan;
 		const guardSuspension = new PromptGuardSuspension();
 		const promptOptions =
 			input.toolSession.tools.length > 0
@@ -178,13 +174,16 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 					}
 				: { activeTools: input.toolSession.activeTools };
 
-		let preparedPromptRun: (() => Promise<PiTurnExecutionResult>) | null = null;
-		if (continuePlan) {
+		let runPrompt = () =>
+			plan.kind === "continue"
+				? input.piHandle.continueTurn(promptOptions)
+				: input.piHandle.prompt(plan.promptText ?? "", promptOptions);
+		if (plan.kind === "continue") {
 			try {
-				await continuePlan.prepareForContinuation?.();
-				if (continuePlan.continueUserPrompt !== null) {
-					const content = continuePlan.continueUserPrompt;
-					const identity = continuePlan.identifiedPrompt;
+				await plan.prepareForContinuation?.();
+				if (plan.continueUserPrompt !== null) {
+					const content = plan.continueUserPrompt;
+					const identity = plan.identifiedPrompt;
 					if (identity) {
 						const expectedParentId = input.piHandle.getLeafId();
 						if (findIdentifiedPrompt(input.piHandle, identity)) {
@@ -195,7 +194,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 								expectedParentId,
 							});
 						} else {
-							preparedPromptRun = () =>
+							runPrompt = () =>
 								input.piHandle.promptCustom({ content, details: identity }, promptOptions);
 						}
 					} else {
@@ -205,7 +204,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 							promptText: content,
 						});
 						if (promptText) {
-							preparedPromptRun = () => input.piHandle.promptLiteral(promptText, promptOptions);
+							runPrompt = () => input.piHandle.promptLiteral(promptText, promptOptions);
 						}
 					}
 				}
@@ -229,13 +228,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 					piHandle: input.piHandle,
 					turnRecordId: input.turnRecordId,
 					turnId: input.turnId,
-					runPrompt: () => {
-						if (preparedPromptRun) return preparedPromptRun();
-						if (continuePlan) {
-							return input.piHandle.continueTurn(promptOptions);
-						}
-						return input.piHandle.prompt(promptPlan?.promptText ?? "", promptOptions);
-					},
+					runPrompt,
 				},
 			);
 			if (input.toolSession.terminalAcknowledgement.state() === "outcome_accepted") {
@@ -306,14 +299,15 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				continue;
 			}
 			return reportFailure(error, {
-				code: usingContinueThisAttempt ? "turn.continue_failed" : "turn.prompt_failed",
+				code: plan.kind === "continue" ? "turn.continue_failed" : "turn.prompt_failed",
 				emitWorkerError: !(
 					error instanceof PromptTimeoutError || error instanceof OperatorAbortError
 				),
 				fallbackErrorClass: "llm_error",
-				messagePrefix: usingContinueThisAttempt
-					? `Turn '${input.turnId}' continuation failed`
-					: `Turn '${input.turnId}' prompt failed`,
+				messagePrefix:
+					plan.kind === "continue"
+						? `Turn '${input.turnId}' continuation failed`
+						: `Turn '${input.turnId}' prompt failed`,
 			});
 		}
 	}

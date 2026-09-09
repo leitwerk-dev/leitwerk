@@ -34,10 +34,12 @@ import type {
 	ProcessLaunchPlanExecutor,
 	ProcessLaunchRelationInput,
 } from "./process-launch-executor.js";
-import { toLaunchPipelineCommit } from "./process-launch-pipeline-adapter.js";
+import {
+	bindLaunchPreparationChecks,
+	toLaunchPipelineCommit,
+} from "./process-launch-pipeline-adapter.js";
 import { buildStartupEvidence, projectLaunchRunStartup } from "./startup-evidence.js";
 
-const NOOP_LAUNCH_LOGGER = { info() {}, warn() {} };
 const MAX_PROGRAMMATIC_METADATA_BYTES = 16 * 1024;
 
 function isMetadataRecord(value: unknown): value is Record<string, unknown> {
@@ -248,18 +250,6 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		};
 	}
 
-	function bindChecks(
-		checks: readonly LaunchPreparationCheck[],
-		launchConfig: Parameters<LaunchPreparationCheck["run"]>[0]["launchConfig"],
-	) {
-		return checks.map((check) => ({
-			id: check.id,
-			label: check.label,
-			run: ({ signal, logger }: { signal: AbortSignal; logger: typeof NOOP_LAUNCH_LOGGER }) =>
-				check.run({ signal, logger, launchConfig }),
-		}));
-	}
-
 	async function commitLaunchPlan(
 		createProcess: ProcessLaunchPlanExecutor,
 		launchPlan: ProcessLaunchPlan,
@@ -323,7 +313,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 						input.request.launcherInput,
 						resolved.launchConfig,
 					) ?? [];
-				return bindChecks(checks, resolved.launchConfig);
+				return bindLaunchPreparationChecks(checks, resolved.launchConfig);
 			},
 			preparationCheckFailure() {
 				return {
@@ -587,7 +577,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 						: { kind: "skipped" as const };
 				},
 				preparationChecks(attempt) {
-					return bindChecks(attempt.preparationChecks, attempt.launchConfig);
+					return bindLaunchPreparationChecks(attempt.preparationChecks, attempt.launchConfig);
 				},
 				async prepare(attempt) {
 					const prepared = await deps.launchPlans.prepare(

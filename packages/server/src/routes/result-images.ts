@@ -4,6 +4,7 @@ import {
 	WORKER_RESULT_IMAGE_WORKER_ID_HEADER,
 } from "@leitwerk-dev/worker-protocol";
 import type { FastifyInstance } from "fastify";
+import { resolveCurrentExecutionTurnRecordId } from "../process-execution.js";
 import type { ResultImageStore } from "../result-image-store.js";
 import { validateResultImage } from "../result-image-validation.js";
 import { authenticateActiveWorker } from "./internal-worker-auth.js";
@@ -58,13 +59,10 @@ export function registerResultImageRoutes(input: {
 					return null;
 				const process = input.deps.processes.getById(instanceId);
 				const turn = input.deps.turnRecords.getById(turnRecordId);
-				const expectedTurnRecordId =
-					process?.currentExecution?.kind === "worker_start"
-						? (() => {
-								const start = input.deps.turnStarts.getById(process.currentExecution.id);
-								return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-							})()
-						: null;
+				const expectedTurnRecordId = resolveCurrentExecutionTurnRecordId(
+					process,
+					input.deps.turnStarts,
+				);
 				if (
 					!process ||
 					expectedTurnRecordId !== turnRecordId ||

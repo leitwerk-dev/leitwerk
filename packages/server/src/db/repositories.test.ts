@@ -83,15 +83,27 @@ describe("ProcessInstanceRepo", () => {
 		const process = repo.create({
 			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
+			externalId: "issue-123",
+			metadata: { source: "tracker" },
 		});
 		const updated = repo.update(process.id, {
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
+			externalId: undefined,
+			metadata: undefined,
 		});
 
 		expect(updated?.selectedTurnId).toBe("generate_plan");
 		expect(updated?.lifecycleStatus).toBe("active");
 		expect(updated?.currentExecution).toBeNull();
+		expect(updated?.externalId).toBe("issue-123");
+		expect(updated?.metadata).toEqual({ source: "tracker" });
+		expect(repo.update(process.id, { externalId: null, metadata: null })).toMatchObject({
+			externalId: null,
+			metadata: null,
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
 	});
 
 	it("sets closedAt once when a process becomes terminal", () => {
@@ -195,7 +207,7 @@ describe("ProcessInstanceRepo", () => {
 			payload: { turnId: "generate_plan" },
 		});
 		leases.create({ instanceId: process.id, workerId: "wrk_cascade", state: "busy" });
-		titleJobs.enqueueProcessJob({
+		titleJobs.enqueue({
 			processInstanceId: process.id,
 			processDefinitionId: process.processId,
 			modelProfileId: "claude_fast",
@@ -680,16 +692,32 @@ describe("FutureExecutionRepo", () => {
 });
 
 describe("ProcessTitleJobRepo", () => {
-	it("supersedes older active jobs for the same process target", () => {
+	it.each([
+		"process",
+		"future_execution",
+	])("supersedes older active jobs for the same %s target", (kind) => {
 		const processes = createProcessInstanceRepo(db);
 		const repo = createProcessTitleJobRepo(db);
 		const process = processes.create({
 			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
+		const target =
+			kind === "process"
+				? { processInstanceId: process.id }
+				: {
+						futureExecutionId: createFutureExecutionRepo(db).create({
+							kind: "launch",
+							scheduleKind: "once",
+							processId: process.processId,
+							payloadJson: "{}",
+							nextRunAt: new Date().toISOString(),
+						}).id,
+						expectedPayloadJson: "{}",
+					};
 
-		const first = repo.enqueueProcessJob({
-			processInstanceId: process.id,
+		const first = repo.enqueue({
+			...target,
 			processDefinitionId: process.processId,
 			modelProfileId: "claude_fast",
 			prompt: "Prompt one",
@@ -698,8 +726,8 @@ describe("ProcessTitleJobRepo", () => {
 		});
 		expect(repo.markRunning(first.id)?.status).toBe("running");
 
-		const second = repo.enqueueProcessJob({
-			processInstanceId: process.id,
+		const second = repo.enqueue({
+			...target,
 			processDefinitionId: process.processId,
 			modelProfileId: "claude_fast",
 			prompt: "Prompt two",
@@ -709,6 +737,8 @@ describe("ProcessTitleJobRepo", () => {
 
 		expect(repo.getById(first.id)?.status).toBe("superseded");
 		expect(repo.getById(second.id)?.status).toBe("pending");
+		expect(second).toMatchObject(target);
+		expect(repo.markCompleted(first.id)).toBeNull();
 	});
 
 	it("claims due jobs, tracks attempts, and reschedules retries", () => {
@@ -718,7 +748,7 @@ describe("ProcessTitleJobRepo", () => {
 			processId: "ticket_issue_process",
 			lifecycleStatus: "discovered",
 		});
-		const job = repo.enqueueProcessJob({
+		const job = repo.enqueue({
 			processInstanceId: process.id,
 			processDefinitionId: process.processId,
 			modelProfileId: "claude_fast",
@@ -731,11 +761,18 @@ describe("ProcessTitleJobRepo", () => {
 		expect(repo.listDuePending("2026-01-01T00:00:00.000Z", 10).map((entry) => entry.id)).toEqual([
 			job.id,
 		]);
+		expect(repo.markCompleted(job.id)).toBeNull();
 		expect(repo.markRunning(job.id)?.attemptCount).toBe(1);
+		expect(repo.markRunning(job.id)).toBeNull();
 		expect(repo.reschedule(job.id, "2026-01-01T00:00:05.000Z", "provider timeout")?.status).toBe(
 			"pending",
 		);
 		expect(repo.getById(job.id)?.lastError).toBe("provider timeout");
+		expect(repo.markRunning(job.id)).toMatchObject({ attemptCount: 2, lastError: null });
+		expect(repo.markCompleted(job.id)?.status).toBe("completed");
+		expect(repo.markRunning(job.id)).toBeNull();
+		expect(repo.markFailed(job.id, "late failure")).toBeNull();
+		expect(repo.markSuperseded(job.id)).toBeNull();
 	});
 });
 

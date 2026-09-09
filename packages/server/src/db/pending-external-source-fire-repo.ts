@@ -1,4 +1,5 @@
 import { and, asc, eq } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -94,21 +95,6 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 				.map(rowToPendingExternalSourceFire);
 		},
 
-		listByInstanceAndArming(instanceId: string, armingId: string): PendingExternalSourceFire[] {
-			return db
-				.select()
-				.from(s.pendingExternalSourceFires)
-				.where(
-					and(
-						eq(s.pendingExternalSourceFires.instanceId, instanceId),
-						eq(s.pendingExternalSourceFires.armingId, armingId),
-					),
-				)
-				.orderBy(asc(s.pendingExternalSourceFires.createdAt))
-				.all()
-				.map(rowToPendingExternalSourceFire);
-		},
-
 		getByMergeKey(
 			instanceId: string,
 			armingId: string,
@@ -132,10 +118,13 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 			id: string,
 			input: UpdatePendingExternalSourceFireInput,
 		): PendingExternalSourceFire | null {
-			const setValues: Record<string, unknown> = { updatedAt: now() };
+			const setValues: SQLiteUpdateSetSource<typeof s.pendingExternalSourceFires> = {
+				updatedAt: now(),
+				queuedCount: input.queuedCount,
+			};
 			if (input.input !== undefined) setValues.inputJson = JSON.stringify(input.input);
 			if (input.event !== undefined) setValues.eventJson = JSON.stringify(input.event);
-			if (input.queuedCount !== undefined) setValues.queuedCount = input.queuedCount;
+
 			db.update(s.pendingExternalSourceFires)
 				.set(setValues)
 				.where(eq(s.pendingExternalSourceFires.id, id))
@@ -154,19 +143,6 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 				.where(eq(s.pendingExternalSourceFires.id, id))
 				.run();
 			return result.changes > 0;
-		},
-
-		deleteByInstanceAndArming(instanceId: string, armingId: string): number {
-			const result = db
-				.delete(s.pendingExternalSourceFires)
-				.where(
-					and(
-						eq(s.pendingExternalSourceFires.instanceId, instanceId),
-						eq(s.pendingExternalSourceFires.armingId, armingId),
-					),
-				)
-				.run();
-			return Number(result.changes);
 		},
 	};
 }

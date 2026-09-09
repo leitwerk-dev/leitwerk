@@ -81,7 +81,13 @@ function validateProviderStatuses(
 				`Provider '${provider.id}' returned duplicate status for model '${status.modelId}'`,
 			);
 		}
-		byModel.set(status.modelId, status);
+		byModel.set(status.modelId, {
+			modelId: status.modelId,
+			availability: status.availability,
+			...(status.safeReason
+				? { safeReason: safeReason(status.safeReason, "Provider reported the model unavailable") }
+				: {}),
+		});
 	}
 	return byModel;
 }
@@ -116,6 +122,7 @@ export function createModelStatusCache(input: CreateModelStatusCacheInput): Mode
 
 	const now = input.now ?? (() => new Date());
 	const orderedProfiles = [...input.modelProfiles];
+	const profilesByProvider = Map.groupBy(orderedProfiles, (profile) => profile.provider);
 	let revision = 0;
 	let inFlight: Promise<ModelStatusCacheSnapshot> | null = null;
 	let statuses = new Map<string, CachedModelProfileStatus>(
@@ -135,14 +142,13 @@ export function createModelStatusCache(input: CreateModelStatusCacheInput): Mode
 
 	function expire(at: Date): void {
 		let changed = false;
-		const next = new Map(statuses);
 		for (const [profileId, status] of statuses) {
 			if (
 				status.availability !== "stale" &&
 				status.expiresAt !== null &&
 				Date.parse(status.expiresAt) <= at.getTime()
 			) {
-				next.set(profileId, {
+				statuses.set(profileId, {
 					...status,
 					availability: "stale",
 					safeReason: "Model status expired",
@@ -150,10 +156,7 @@ export function createModelStatusCache(input: CreateModelStatusCacheInput): Mode
 				changed = true;
 			}
 		}
-		if (changed) {
-			statuses = next;
-			revision += 1;
-		}
+		if (changed) revision += 1;
 	}
 
 	function capture(
@@ -175,17 +178,20 @@ export function createModelStatusCache(input: CreateModelStatusCacheInput): Mode
 		provider: RegisteredModelProvider,
 		profiles: readonly ModelProfileSnapshot[],
 	): Promise<Map<string, Omit<CachedModelProfileStatus, "checkedAt" | "expiresAt">>> {
+		let providerStatuses: ReadonlyMap<string, ProviderModelStatus> | null = null;
+		let fallback: Pick<ProviderModelStatus, "availability" | "safeReason"> = {
+			availability: "unavailable",
+			safeReason: "Provider did not report model availability",
+		};
 		try {
-			const result = await withTimeout(
+			providerStatuses = await withTimeout(
 				(async () => {
 					const credentialStatus = validateCredentialStatus(
 						await input.credentialStatus(provider),
 						"Provider returned an invalid credential status",
 					);
-					if (!credentialStatus.available) {
-						return { kind: "credentials_unavailable" as const };
-					}
-					const providerStatuses = await provider.definition.models({
+					if (!credentialStatus.available) return null;
+					const statuses = await provider.definition.models({
 						config: provider.config,
 						credentialStatus,
 						configuredModels: profiles.map((profile) => ({
@@ -193,81 +199,47 @@ export function createModelStatusCache(input: CreateModelStatusCacheInput): Mode
 							modelId: profile.model_id,
 						})),
 					});
-					return {
-						kind: "statuses" as const,
-						statuses: validateProviderStatuses(provider, providerStatuses),
-					};
+					return validateProviderStatuses(provider, statuses);
 				})(),
 				timeoutMs,
 				"provider_status_timeout",
 			);
-			return new Map(
-				profiles.map((profile) => {
-					if (result.kind === "credentials_unavailable") {
-						return [
-							profile.id,
-							{
-								profileId: profile.id,
-								providerId: profile.provider,
-								modelId: profile.model_id,
-								availability: "unavailable" as const,
-								safeReason: "Provider credentials are unavailable",
-							},
-						];
-					}
-					const providerStatus = result.statuses.get(profile.model_id);
-					return [
-						profile.id,
-						{
-							profileId: profile.id,
-							providerId: profile.provider,
-							modelId: profile.model_id,
-							availability: providerStatus?.availability ?? "unavailable",
-							...(providerStatus?.safeReason
-								? {
-										safeReason: safeReason(
-											providerStatus.safeReason,
-											"Provider reported the model unavailable",
-										),
-									}
-								: providerStatus
-									? {}
-									: { safeReason: "Provider did not report model availability" }),
-						},
-					];
-				}),
-			);
+			if (!providerStatuses) {
+				fallback = {
+					availability: "unavailable",
+					safeReason: "Provider credentials are unavailable",
+				};
+			}
 		} catch (error) {
-			const reason =
-				error instanceof Error && error.message === "provider_status_timeout"
-					? "Provider model status refresh timed out"
-					: "Provider model status refresh failed";
-			return new Map(
-				profiles.map((profile) => [
+			fallback = {
+				availability: "stale",
+				safeReason:
+					error instanceof Error && error.message === "provider_status_timeout"
+						? "Provider model status refresh timed out"
+						: "Provider model status refresh failed",
+			};
+		}
+		return new Map(
+			profiles.map((profile) => {
+				const status = providerStatuses?.get(profile.model_id) ?? fallback;
+				return [
 					profile.id,
 					{
 						profileId: profile.id,
 						providerId: profile.provider,
 						modelId: profile.model_id,
-						availability: "stale" as const,
-						safeReason: reason,
+						...status,
 					},
-				]),
-			);
-		}
+				];
+			}),
+		);
 	}
 
 	async function refresh(): Promise<ModelStatusCacheSnapshot> {
 		if (inFlight) return inFlight;
 		inFlight = (async () => {
-			const profilesByProvider = new Map<string, ModelProfileSnapshot[]>();
-			for (const profile of orderedProfiles) {
-				const profiles = profilesByProvider.get(profile.provider) ?? [];
-				profiles.push(profile);
-				profilesByProvider.set(profile.provider, profiles);
-			}
 			const refreshed = await Promise.all(
-				[...profilesByProvider].map(async ([providerId, profiles]) =>
+				[...profilesByProvider].map(([providerId, profiles]) =>
 					refreshProvider(input.registry.require(providerId), profiles),
 				),
 			);

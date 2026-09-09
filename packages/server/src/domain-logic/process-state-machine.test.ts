@@ -35,14 +35,23 @@ describe("process-state-machine", () => {
 		const multiEntryRegistry = createProcessGraphRegistry([process]);
 
 		expect(
-			tryTransition(multiEntryRegistry, process.id, null, "start", undefined, "discovered"),
-		).toMatchObject({ ok: true, toTurnId: "generate_plan" });
+			tryTransition(multiEntryRegistry, process.id, null, undefined, undefined, "discovered"),
+		).toMatchObject({ ok: true, toTurnId: "generate_plan", trigger: "start" });
 		expect(
 			tryTransition(multiEntryRegistry, process.id, null, "start", "import_plan", "discovered"),
 		).toMatchObject({ ok: true, toTurnId: "import_plan" });
 		expect(
 			tryTransition(multiEntryRegistry, process.id, null, "start", "missing", "discovered"),
 		).toMatchObject({ ok: false, code: "invalid_transition" });
+		expect(
+			tryTransition(multiEntryRegistry, process.id, null, undefined, null, "discovered"),
+		).toEqual({
+			ok: false,
+			code: "invalid_transition",
+			message: "Turn 'null' is not a declared entry turn for process 'multi_entry_process'",
+			fromTurnId: null,
+			toTurnId: null,
+		});
 	});
 
 	it("validates direct turn-to-turn transitions on the graph", () => {
@@ -68,17 +77,20 @@ describe("process-state-machine", () => {
 		expect(result.message).toContain("Ambiguous turn transition");
 	});
 
-	it("rejects non-graph transitions", () => {
+	it.each([null, "run_llm_review"])("rejects non-graph target %s", (target) => {
 		const result = tryTransition(
 			registry,
 			"ticket_issue_process",
 			"generate_plan",
 			undefined,
-			"run_llm_review",
+			target,
 		);
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.code).toBe("invalid_transition");
+		expect(result).toMatchObject({
+			ok: false,
+			code: "invalid_transition",
+			fromTurnId: "generate_plan",
+			toTurnId: target ?? "generate_plan",
+		});
 	});
 
 	describe("canAbort", () => {

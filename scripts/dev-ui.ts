@@ -1,8 +1,7 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import { loadDevContext } from "./dev-context.ts";
-
-const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+import { forwardChildLifecycle } from "./dev-process.ts";
 
 async function main(): Promise<void> {
 	const runtimeLane = process.env.LEITWERK_RUNTIME_LANE ?? "source";
@@ -16,29 +15,13 @@ async function main(): Promise<void> {
 			context.extensions.flatMap((extension) => (extension.uiSource ? [extension.uiSource] : [])),
 		);
 	}
-	const child = spawn(npmCommand, ["run", "dev", "-w", "@leitwerk-dev/ui"], {
+	const child = spawn("npm", ["run", "dev", "-w", "@leitwerk-dev/ui"], {
 		cwd: process.cwd(),
 		env,
 		stdio: "inherit",
 	});
 
-	process.once("SIGINT", () => child.kill("SIGINT"));
-	process.once("SIGTERM", () => child.kill("SIGTERM"));
-	child.once("error", (error) => {
-		console.error(error instanceof Error ? error.message : error);
-		process.exit(1);
-	});
-	child.once("exit", (code, signal) => {
-		if (signal === "SIGINT") {
-			process.exit(130);
-			return;
-		}
-		if (signal === "SIGTERM") {
-			process.exit(143);
-			return;
-		}
-		process.exit(code ?? 1);
-	});
+	forwardChildLifecycle(child);
 }
 
 void main().catch((error) => {

@@ -1,3 +1,5 @@
+import { trimToNull } from "./string-normalize.js";
+
 export const PROCESS_SEMANTIC_ENTRY_REF_KEYS = [
 	"plan",
 	"review",
@@ -47,14 +49,6 @@ export interface ProcessSemanticEntryRefs {
 	rootEntry: SemanticEntryRef | null;
 }
 
-function parseSemanticEntryId(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
-
 export function isProcessSemanticEntryRefKey(value: string): value is ProcessSemanticEntryRefKey {
 	return (PROCESS_SEMANTIC_ENTRY_REF_KEYS as readonly string[]).includes(value);
 }
@@ -64,13 +58,13 @@ export function parseSemanticEntryRef(value: unknown): SemanticEntryRef | null {
 		return null;
 	}
 	const record = value as Record<string, unknown>;
-	const entryId = parseSemanticEntryId(record.entryId);
+	const entryId = trimToNull(record.entryId);
 	if (!entryId) {
 		return null;
 	}
 	return {
 		entryId,
-		turnRecordId: parseSemanticEntryId(record.turnRecordId),
+		turnRecordId: trimToNull(record.turnRecordId),
 	};
 }
 

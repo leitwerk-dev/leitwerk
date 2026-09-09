@@ -1,9 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-
-interface RootPackageJson {
-	workspaces?: string[] | { packages?: string[] };
-}
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 interface WorkspacePackageJson {
 	name?: string;
@@ -52,34 +49,6 @@ function buildAliasesForPackage(packageDir: string): WorkspaceSourceAlias[] {
 			return [{ find: createExactSpecifierPattern(specifier), replacement }];
 		},
 	);
-}
-
-function listWorkspacePackageDirs(rootDir: string): string[] {
-	const rootPackageJson = readJson<RootPackageJson>(path.join(rootDir, "package.json"));
-	const workspacePatterns = Array.isArray(rootPackageJson.workspaces)
-		? rootPackageJson.workspaces
-		: (rootPackageJson.workspaces?.packages ?? []);
-
-	return workspacePatterns
-		.flatMap((pattern) => expandWorkspacePattern(rootDir, pattern))
-		.filter((packageDir, index, dirs) => dirs.indexOf(packageDir) === index)
-		.sort((left, right) => left.localeCompare(right));
-}
-
-function expandWorkspacePattern(rootDir: string, pattern: string): string[] {
-	if (pattern.endsWith("/*")) {
-		const baseDir = path.join(rootDir, pattern.slice(0, -2));
-		if (!existsSync(baseDir)) {
-			return [];
-		}
-		return readdirSync(baseDir, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => path.join(baseDir, entry.name))
-			.filter((packageDir) => existsSync(path.join(packageDir, "package.json")));
-	}
-
-	const packageDir = path.join(rootDir, pattern);
-	return existsSync(path.join(packageDir, "package.json")) ? [packageDir] : [];
 }
 
 function listPackageExportTargets(

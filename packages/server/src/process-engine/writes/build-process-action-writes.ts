@@ -1,28 +1,11 @@
-import type {
-	InputKind,
-	InputSource,
-	ProcessInputTarget,
-	ProcessInstance,
-} from "@leitwerk-dev/domain";
-import type {
-	ProcessActionDefinition,
-	ProcessLifecycleEffects,
-	ServerProcessContext,
-	ServerTransitionRequest,
-} from "@leitwerk-dev/process-sdk";
+import type { ProcessInstance } from "@leitwerk-dev/domain";
+import type { ProcessActionDefinition, ServerProcessContext } from "@leitwerk-dev/process-sdk";
 import type { ProcessGraphRegistry } from "../../process-graph.js";
 import { validateQueuedProcessInput } from "../../process-input-dispatch.js";
-import { resolveProductTurnResultMarkdown } from "../../product-turn-result-markdown.js";
-import {
-	resolveSemanticTurnResultMarkdown,
-	type TurnRecordMarkdownLookup,
-} from "../../semantic-turn-result-markdown.js";
+import type { TurnRecordMarkdownLookup } from "../../turn-result-markdown.js";
 import { buildServerTransitionWrites } from "./build-server-transition-writes.js";
-import {
-	createDeferredExtensionEvent,
-	type DeferredProcessExtensionEvent,
-} from "./deferred-extension-events.js";
 import { appendProcessEffects } from "./process-effects.js";
+import { createProcessPlanCollector } from "./process-plan-collector.js";
 import { createWrites, isWriteBuildFailure, mergeWrites, type Writes } from "./writes.js";
 
 export interface ProcessActionPlanningFailure {
@@ -45,76 +28,34 @@ export interface ProcessActionPlanningInput<TParams = unknown, TState = unknown>
 	isVisible: boolean;
 }
 
-async function collectProcessActionPlanWithExecutor<TParams = unknown, TState = unknown>(input: {
-	planning: ProcessActionPlanningInput<TParams, TState>;
-	execute: (
-		input: Record<string, unknown>,
-		ctx: ServerProcessContext<TParams, TState>,
-	) => Promise<void>;
-}): Promise<ProcessActionPlanningResult> {
-	const queuedInputs: Array<{
-		source: InputSource;
-		kind: InputKind;
-		target?: ProcessInputTarget | null;
-		bodyMarkdown: string;
-	}> = [];
-	const emittedEvents: DeferredProcessExtensionEvent[] = [];
-	const lifecycleEffects: ProcessLifecycleEffects[] = [];
-	let transitionRequest: ServerTransitionRequest<TState> | null = null;
-
-	const ctx: ServerProcessContext<TParams, TState> = {
-		process: input.planning.process,
-		projects: input.planning.projects,
-		params: input.planning.params,
-		state: input.planning.state,
-		async transition(next: ServerTransitionRequest<TState>) {
-			transitionRequest = next;
-		},
-		emitEvent(
-			eventType: Parameters<ServerProcessContext<TParams, TState>["emitEvent"]>[0],
-			data: Parameters<ServerProcessContext<TParams, TState>["emitEvent"]>[1],
-		) {
-			emittedEvents.push(createDeferredExtensionEvent(input.planning.process.id, eventType, data));
-		},
-		readSemanticTurnResultMarkdown(ref) {
-			return resolveSemanticTurnResultMarkdown({
-				process: input.planning.process,
-				semanticEntryRefKey: ref,
-				turnRecords: input.planning.turnRecords,
-				required: false,
-			});
-		},
-		readProductTurnResultMarkdown(productName) {
-			return resolveProductTurnResultMarkdown({
-				process: input.planning.process,
-				productName,
-				turnRecords: input.planning.turnRecords,
-				required: false,
-			});
-		},
-		queueInput(queued) {
-			queuedInputs.push({
-				source: queued.source as InputSource,
-				kind: queued.kind as InputKind,
-				target: queued.target ?? null,
-				bodyMarkdown: queued.bodyMarkdown,
-			});
-		},
-		applyLifecycleEffects(effects) {
-			lifecycleEffects.push(effects);
-		},
-	};
-
-	if (!input.planning.isVisible) {
+async function collectActionPlan<TParams, TState>(
+	input: ProcessActionPlanningInput<TParams, TState>,
+	requirePurePlan: boolean,
+): Promise<ProcessActionPlanningResult> {
+	const action = input.action;
+	const execute =
+		action.plan ??
+		(!requirePurePlan && action.executionMode === "side_effect" ? action.execute : undefined);
+	if (!execute) {
+		return {
+			ok: false,
+			code: "action_failed",
+			error: requirePurePlan
+				? `Action '${action.id}' does not declare a pure plan(...) hook`
+				: `Action '${action.id}' does not declare plan(...) or side-effect execute(...)`,
+		};
+	}
+	if (!input.isVisible) {
 		return {
 			ok: false,
 			code: "action_not_visible",
-			error: `Action '${input.planning.action.id}' is not available in the current state`,
+			error: `Action '${input.action.id}' is not available in the current state`,
 		};
 	}
 
+	const plan = createProcessPlanCollector(input);
 	try {
-		await input.execute(input.planning.input, ctx);
+		await execute(input.input, plan.context);
 	} catch (error) {
 		return {
 			ok: false,
@@ -123,7 +64,7 @@ async function collectProcessActionPlanWithExecutor<TParams = unknown, TState = 
 		};
 	}
 
-	for (const queuedInput of queuedInputs) {
+	for (const queuedInput of plan.queuedInputs) {
 		const validationError = validateQueuedProcessInput(queuedInput);
 		if (validationError) {
 			return {
@@ -135,23 +76,16 @@ async function collectProcessActionPlanWithExecutor<TParams = unknown, TState = 
 	}
 
 	const baseWrites = createWrites({
-		queuedInputs,
-		extensionEvents: emittedEvents,
+		queuedInputs: plan.queuedInputs,
+		extensionEvents: plan.emittedEvents,
 	});
-	for (const effects of lifecycleEffects) {
-		appendProcessEffects(
-			baseWrites,
-			{ ...input.planning.process, ...baseWrites.processPatch },
-			effects,
-		);
+	for (const effects of plan.lifecycleEffects) {
+		appendProcessEffects(baseWrites, { ...input.process, ...baseWrites.processPatch }, effects);
 	}
 
+	const transitionRequest = plan.transitionRequest;
 	const transitionWrites = transitionRequest
-		? buildServerTransitionWrites(
-				input.planning.processGraphs,
-				input.planning.process,
-				transitionRequest,
-			)
+		? buildServerTransitionWrites(input.processGraphs, input.process, transitionRequest)
 		: createWrites();
 	if (isWriteBuildFailure(transitionWrites)) {
 		return {
@@ -164,62 +98,14 @@ async function collectProcessActionPlanWithExecutor<TParams = unknown, TState = 
 	return mergeWrites(baseWrites, transitionWrites);
 }
 
-function resolveActionExecutor<TParams = unknown, TState = unknown>(input: {
-	action: ProcessActionDefinition<TParams, TState>;
-	requirePurePlan: boolean;
-}):
-	| ((input: Record<string, unknown>, ctx: ServerProcessContext<TParams, TState>) => Promise<void>)
-	| null {
-	if (input.action.plan) {
-		return input.action.plan;
-	}
-	if (
-		!input.requirePurePlan &&
-		input.action.executionMode === "side_effect" &&
-		input.action.execute
-	) {
-		return input.action.execute;
-	}
-	return null;
-}
-
-async function collectResolvedProcessActionPlan<TParams = unknown, TState = unknown>(input: {
-	planning: ProcessActionPlanningInput<TParams, TState>;
-	requirePurePlan: boolean;
-}): Promise<ProcessActionPlanningResult> {
-	const execute = resolveActionExecutor({
-		action: input.planning.action,
-		requirePurePlan: input.requirePurePlan,
-	});
-	if (!execute) {
-		return {
-			ok: false,
-			code: "action_failed",
-			error: input.requirePurePlan
-				? `Action '${input.planning.action.id}' does not declare a pure plan(...) hook`
-				: `Action '${input.planning.action.id}' does not declare plan(...) or side-effect execute(...)`,
-		};
-	}
-	return collectProcessActionPlanWithExecutor({
-		planning: input.planning,
-		execute,
-	});
-}
-
-export async function collectProcessActionPlan<TParams = unknown, TState = unknown>(
+export function collectProcessActionPlan<TParams = unknown, TState = unknown>(
 	input: ProcessActionPlanningInput<TParams, TState>,
 ): Promise<ProcessActionPlanningResult> {
-	return collectResolvedProcessActionPlan({
-		planning: input,
-		requirePurePlan: false,
-	});
+	return collectActionPlan(input, false);
 }
 
-export async function collectPureProcessActionPlan<TParams = unknown, TState = unknown>(
+export function collectPureProcessActionPlan<TParams = unknown, TState = unknown>(
 	input: ProcessActionPlanningInput<TParams, TState>,
 ): Promise<ProcessActionPlanningResult> {
-	return collectResolvedProcessActionPlan({
-		planning: input,
-		requirePurePlan: true,
-	});
+	return collectActionPlan(input, true);
 }

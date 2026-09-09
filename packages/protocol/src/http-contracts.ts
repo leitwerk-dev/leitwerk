@@ -1127,12 +1127,6 @@ type FutureLaunchPayloadBase = v.InferOutput<typeof futureLaunchPayloadInputSche
 type FutureActionPayloadBase = v.InferOutput<typeof futureActionPayloadInputSchema>;
 const cloneUnknownRecord = (value?: Record<string, unknown> | null) =>
 	value ? { ...value } : null;
-const cloneTurnConfigMap = (turnConfigs: InstanceTurnConfigMap = {}) =>
-	Object.fromEntries(
-		Object.entries(turnConfigs as Record<string, InstanceTurnConfigMap[string]>).map(
-			([turnId, turnConfig]) => [turnId, { ...turnConfig }],
-		),
-	) as InstanceTurnConfigMap;
 const normalizeFutureLaunchPayload = (payload: FutureLaunchPayloadBase) => {
 	const modelConfig = normalizeLaunchModelConfigInput(
 		(payload.modelConfig ?? {}) as LaunchModelConfigInput,
@@ -1141,7 +1135,7 @@ const normalizeFutureLaunchPayload = (payload: FutureLaunchPayloadBase) => {
 		launcherInput: cloneUnknownRecord(payload.launcherInput) ?? {},
 		modelConfig: {
 			defaultModelProfileId: modelConfig.defaultModelProfileId ?? null,
-			turnConfigs: cloneTurnConfigMap(modelConfig.turnConfigs),
+			turnConfigs: { ...modelConfig.turnConfigs },
 		},
 		actor: normalizeActor(payload.actor),
 		selectedSkillIds: [
@@ -1196,10 +1190,6 @@ const normalizeFutureActionPayload = (payload: FutureActionPayloadBase) => ({
 
 export type FutureLaunchPayload = ReturnType<typeof normalizeFutureLaunchPayload>;
 export type FutureActionPayload = ReturnType<typeof normalizeFutureActionPayload>;
-
-function hasOwn(object: Record<string, unknown>, key: string): boolean {
-	return Object.hasOwn(object, key);
-}
 
 function parseJsonPayload(payloadJson: string, context: string): ParseResult<unknown> {
 	try {
@@ -1329,7 +1319,7 @@ export function parseLauncherModelConfigInput(
 	}
 	const defaultModelProfileId = trimToNull(record.value.defaultModelProfileId);
 	if (
-		hasOwn(record.value, "defaultModelProfileId") &&
+		Object.hasOwn(record.value, "defaultModelProfileId") &&
 		record.value.defaultModelProfileId !== null &&
 		typeof record.value.defaultModelProfileId !== "string"
 	) {
@@ -1350,7 +1340,11 @@ export function parseLauncherModelConfigInput(
 }
 
 function hasInlineScheduleFields(object: Record<string, unknown>): boolean {
-	return hasOwn(object, "mode") || hasOwn(object, "runAt") || hasOwn(object, "cronExpression");
+	return (
+		Object.hasOwn(object, "mode") ||
+		Object.hasOwn(object, "runAt") ||
+		Object.hasOwn(object, "cronExpression")
+	);
 }
 
 export function parseLauncherRequestBody(value: unknown): ParseResult<ParsedLauncherRequestBody> {
@@ -1371,7 +1365,7 @@ export function parseLauncherRequestBody(value: unknown): ParseResult<ParsedLaun
 		return record;
 	}
 	if (
-		hasOwn(record.value, "title") ||
+		Object.hasOwn(record.value, "title") ||
 		record.value.launcherInput !== undefined ||
 		record.value.skillIds !== undefined ||
 		record.value.modelConfig !== undefined ||
@@ -1379,12 +1373,7 @@ export function parseLauncherRequestBody(value: unknown): ParseResult<ParsedLaun
 	) {
 		if (
 			Object.keys(record.value).some(
-				(key) =>
-					key !== "title" &&
-					key !== "launcherInput" &&
-					key !== "skillIds" &&
-					key !== "modelConfig" &&
-					key !== "schedule",
+				(key) => !Object.hasOwn(launcherStructuredBodySchema.entries, key),
 			)
 		) {
 			return err(
@@ -1409,14 +1398,14 @@ export function parseLauncherRequestBody(value: unknown): ParseResult<ParsedLaun
 		}
 		return ok({
 			title: parsed.value.title ?? null,
-			titleProvided: hasOwn(record.value, "title"),
+			titleProvided: Object.hasOwn(record.value, "title"),
 			launcherInput: parsed.value.launcherInput ?? {},
-			launcherInputProvided: hasOwn(record.value, "launcherInput"),
-			...(hasOwn(record.value, "skillIds") ? { skillIds: [...skillIds] } : {}),
+			launcherInputProvided: Object.hasOwn(record.value, "launcherInput"),
+			...(Object.hasOwn(record.value, "skillIds") ? { skillIds: [...skillIds] } : {}),
 			modelConfig: modelConfig.value,
-			modelConfigProvided: hasOwn(record.value, "modelConfig"),
+			modelConfigProvided: Object.hasOwn(record.value, "modelConfig"),
 			schedule: schedule.value,
-			scheduleProvided: hasOwn(record.value, "schedule"),
+			scheduleProvided: Object.hasOwn(record.value, "schedule"),
 		});
 	}
 	const modelConfig = parseLauncherModelConfigInput(record.value, "modelConfig");
@@ -1453,7 +1442,7 @@ export function parseActionRequestBody(value: unknown): ParseResult<ParsedAction
 	if (!record.ok) {
 		return record;
 	}
-	const nextTurnModelProfileIdProvided = hasOwn(record.value, "nextTurnModelProfileId");
+	const nextTurnModelProfileIdProvided = Object.hasOwn(record.value, "nextTurnModelProfileId");
 	if (
 		record.value.input !== undefined ||
 		nextTurnModelProfileIdProvided ||
@@ -1461,7 +1450,7 @@ export function parseActionRequestBody(value: unknown): ParseResult<ParsedAction
 	) {
 		if (
 			Object.keys(record.value).some(
-				(key) => key !== "input" && key !== "nextTurnModelProfileId" && key !== "schedule",
+				(key) => !Object.hasOwn(actionStructuredBodySchema.entries, key),
 			)
 		) {
 			return err("action request body must use { input, nextTurnModelProfileId }");
@@ -1476,10 +1465,10 @@ export function parseActionRequestBody(value: unknown): ParseResult<ParsedAction
 		}
 		return ok({
 			input: parsed.value.input ?? {},
-			inputProvided: hasOwn(record.value, "input"),
+			inputProvided: Object.hasOwn(record.value, "input"),
 			nextTurnModelProfileIdProvided,
 			schedule: schedule.value,
-			scheduleProvided: hasOwn(record.value, "schedule"),
+			scheduleProvided: Object.hasOwn(record.value, "schedule"),
 			...(nextTurnModelProfileIdProvided
 				? { nextTurnModelProfileId: parsed.value.nextTurnModelProfileId ?? null }
 				: {}),
@@ -1495,9 +1484,6 @@ export function parseActionRequestBody(value: unknown): ParseResult<ParsedAction
 		nextTurnModelProfileIdProvided,
 		schedule: schedule.value,
 		scheduleProvided: hasInlineScheduleFields(record.value),
-		...(nextTurnModelProfileIdProvided
-			? { nextTurnModelProfileId: trimToNull(record.value.nextTurnModelProfileId) }
-			: {}),
 	});
 }
 

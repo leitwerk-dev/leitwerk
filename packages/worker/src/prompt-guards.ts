@@ -121,8 +121,7 @@ export async function promptWithGuards(
 	let maxDurationTimer: PromptGuardTimer | null = null;
 	let inactivityTimer: PromptGuardTimer | null = null;
 	let rejectTimeout: ((error: Error) => void) | null = null;
-	let timedOut = false;
-	let aborted = false;
+	let abortReason: PromptGuardTimeoutKind | "operator_abort" | null = null;
 	let sawCompaction = false;
 	let removeOperatorAbortListener: (() => void) | null = null;
 	let removeSuspensionListener: (() => void) | null = null;
@@ -141,11 +140,44 @@ export async function promptWithGuards(
 		}
 	};
 
+	const abortWithinGracePeriod = async (timeoutKind?: PromptGuardTimeoutKind) => {
+		let abortCompleted = false;
+		try {
+			await Promise.race([
+				input.piHandle.abortTurn().then(() => {
+					abortCompleted = true;
+				}),
+				deps.scheduler.sleep(turnAbortGracePeriodMs),
+			]);
+			if (!abortCompleted) {
+				reportError({
+					level: "error",
+					code: "guard.abort_grace_elapsed",
+					message: `${timeoutKind ? "Timed out" : "Operator-stopped"} turn '${input.turnId}' did not abort within ${turnAbortGracePeriodMs}ms`,
+					turnRecordId: input.turnRecordId,
+					turnId: input.turnId,
+					errorClass: "infrastructure",
+					details: { turnAbortGracePeriodMs, ...(timeoutKind ? { timeoutKind } : {}) },
+				});
+			}
+		} catch (error) {
+			reportError({
+				level: "error",
+				code: "guard.abort_failed",
+				message: `Failed to abort ${timeoutKind ? "timed out" : "operator-stopped"} turn '${input.turnId}': ${toErrorMessage(error)}`,
+				turnRecordId: input.turnRecordId,
+				turnId: input.turnId,
+				errorClass: "infrastructure",
+				...(timeoutKind ? { details: { timeoutKind } } : {}),
+			});
+		}
+	};
+
 	const requestAbortForTimeout = (timeoutKind: PromptGuardTimeoutKind, timeoutMs: number) => {
-		if (timedOut || aborted) {
+		if (abortReason !== null) {
 			return;
 		}
-		timedOut = true;
+		abortReason = timeoutKind;
 		clearTimers();
 		const error = new PromptTimeoutError(input.turnId, timeoutKind, timeoutMs);
 		reportError({
@@ -171,45 +203,14 @@ export async function promptWithGuards(
 		});
 		rejectTimeout?.(error);
 
-		void (async () => {
-			let abortCompleted = false;
-			try {
-				await Promise.race([
-					input.piHandle.abortTurn().then(() => {
-						abortCompleted = true;
-					}),
-					deps.scheduler.sleep(turnAbortGracePeriodMs),
-				]);
-				if (!abortCompleted) {
-					reportError({
-						level: "error",
-						code: "guard.abort_grace_elapsed",
-						message: `Timed out turn '${input.turnId}' did not abort within ${turnAbortGracePeriodMs}ms`,
-						turnRecordId: input.turnRecordId,
-						turnId: input.turnId,
-						errorClass: "infrastructure",
-						details: { turnAbortGracePeriodMs, timeoutKind },
-					});
-				}
-			} catch (error) {
-				reportError({
-					level: "error",
-					code: "guard.abort_failed",
-					message: `Failed to abort timed out turn '${input.turnId}': ${toErrorMessage(error)}`,
-					turnRecordId: input.turnRecordId,
-					turnId: input.turnId,
-					errorClass: "infrastructure",
-					details: { timeoutKind },
-				});
-			}
-		})();
+		void abortWithinGracePeriod(timeoutKind);
 	};
 
 	const requestOperatorAbort = () => {
-		if (timedOut || aborted) {
+		if (abortReason !== null) {
 			return;
 		}
-		aborted = true;
+		abortReason = "operator_abort";
 		clearTimers();
 		const error = new OperatorAbortError(input.turnId);
 		reportError({
@@ -231,37 +232,7 @@ export async function promptWithGuards(
 		});
 		rejectTimeout?.(error);
 
-		void (async () => {
-			let abortCompleted = false;
-			try {
-				await Promise.race([
-					input.piHandle.abortTurn().then(() => {
-						abortCompleted = true;
-					}),
-					deps.scheduler.sleep(turnAbortGracePeriodMs),
-				]);
-				if (!abortCompleted) {
-					reportError({
-						level: "error",
-						code: "guard.abort_grace_elapsed",
-						message: `Operator-stopped turn '${input.turnId}' did not abort within ${turnAbortGracePeriodMs}ms`,
-						turnRecordId: input.turnRecordId,
-						turnId: input.turnId,
-						errorClass: "infrastructure",
-						details: { turnAbortGracePeriodMs },
-					});
-				}
-			} catch (error) {
-				reportError({
-					level: "error",
-					code: "guard.abort_failed",
-					message: `Failed to abort operator-stopped turn '${input.turnId}': ${toErrorMessage(error)}`,
-					turnRecordId: input.turnRecordId,
-					turnId: input.turnId,
-					errorClass: "infrastructure",
-				});
-			}
-		})();
+		void abortWithinGracePeriod();
 	};
 
 	const armMaxDurationTimer = () => {
@@ -270,8 +241,7 @@ export async function promptWithGuards(
 			turnMaxDurationMs <= 0 ||
 			maxDurationRemainingMs <= 0 ||
 			guardsPaused ||
-			timedOut ||
-			aborted
+			abortReason !== null
 		)
 			return;
 		maxDurationArmedAt = deps.scheduler.now().getTime();
@@ -285,8 +255,7 @@ export async function promptWithGuards(
 			!turnInactivityTimeoutMs ||
 			turnInactivityTimeoutMs <= 0 ||
 			guardsPaused ||
-			timedOut ||
-			aborted
+			abortReason !== null
 		) {
 			return;
 		}
@@ -315,7 +284,7 @@ export async function promptWithGuards(
 	});
 	removeSuspensionListener =
 		deps.guardSuspension?.subscribe((paused) => {
-			if (guardsPaused === paused || timedOut || aborted) return;
+			if (guardsPaused === paused || abortReason !== null) return;
 			guardsPaused = paused;
 			if (paused) {
 				if (maxDurationTimer !== null) {
@@ -358,7 +327,7 @@ export async function promptWithGuards(
 		operatorAbortSignal !== undefined;
 
 	try {
-		if (aborted) {
+		if (abortReason === "operator_abort") {
 			await guardPromise;
 		}
 		const result = !hasGuards

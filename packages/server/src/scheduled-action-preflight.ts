@@ -3,7 +3,7 @@ import { isLlmTurnDefinition, type ProcessActionDefinition } from "@leitwerk-dev
 import { planProcessAction } from "./process-action-planner.js";
 import type { ProcessActionRegistry, ResolvedActionScheduling } from "./process-action-registry.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
-import type { TurnRecordMarkdownLookup } from "./semantic-turn-result-markdown.js";
+import type { TurnRecordMarkdownLookup } from "./turn-result-markdown.js";
 
 export interface ScheduledActionPreflightFailure {
 	ok: false;

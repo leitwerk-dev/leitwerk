@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { isEnoent } from "@leitwerk-dev/process-sdk";
 import {
 	buildWorkerSessionSnapshotPath,
@@ -31,40 +31,6 @@ export interface WorkerSessionSnapshotExchange {
 
 type FetchLike = typeof fetch;
 
-export function resolveWorkerSessionSnapshotUrl(input: {
-	serverUrl: string;
-	instanceId: string;
-}): string {
-	return resolveWorkerHttpUrl(input.serverUrl, buildWorkerSessionSnapshotPath(input.instanceId));
-}
-
-async function localFileSize(filePath: string): Promise<number | null> {
-	try {
-		return (await stat(filePath)).size;
-	} catch (error) {
-		if (isEnoent(error)) {
-			return null;
-		}
-		throw error;
-	}
-}
-
-async function fetchWithTimeout(input: {
-	fetchImpl: FetchLike;
-	url: string;
-	init: RequestInit;
-	timeoutMs: number;
-}): Promise<Response> {
-	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
-	timeout.unref?.();
-	try {
-		return await input.fetchImpl(input.url, { ...input.init, signal: controller.signal });
-	} finally {
-		clearTimeout(timeout);
-	}
-}
-
 export function createWorkerSessionSnapshotExchange(input: {
 	serverUrl: string;
 	token: string;
@@ -78,10 +44,10 @@ export function createWorkerSessionSnapshotExchange(input: {
 		return disabledWorkerSessionSnapshotExchange;
 	}
 	const timeoutMs = input.timeoutMs ?? 30_000;
-	const snapshotUrl = resolveWorkerSessionSnapshotUrl({
-		serverUrl: input.serverUrl,
-		instanceId: input.instanceId,
-	});
+	const snapshotUrl = resolveWorkerHttpUrl(
+		input.serverUrl,
+		buildWorkerSessionSnapshotPath(input.instanceId),
+	);
 	const authHeaders = {
 		authorization: `Bearer ${input.token}`,
 		[WORKER_SESSION_SNAPSHOT_WORKER_ID_HEADER]: input.workerId,
@@ -89,33 +55,26 @@ export function createWorkerSessionSnapshotExchange(input: {
 
 	return {
 		async uploadSnapshot(treeFile, reason, metadata = {}) {
-			const size = await localFileSize(treeFile);
-			if (size === null) {
-				return { kind: "missing" };
+			let content: string;
+			try {
+				content = await readFile(treeFile, "utf8");
+			} catch (error) {
+				if (isEnoent(error)) return { kind: "missing" };
+				throw error;
 			}
-			if (size === 0) {
-				return { kind: "empty" };
-			}
-			const content = await readFile(treeFile, "utf8");
-			if (content.length === 0) {
-				return { kind: "empty" };
-			}
-			const response = await fetchWithTimeout({
-				fetchImpl,
-				url: snapshotUrl,
-				timeoutMs,
-				init: {
-					method: "PUT",
-					headers: {
-						...authHeaders,
-						"content-type": WORKER_SESSION_SNAPSHOT_CONTENT_TYPE,
-						[WORKER_SESSION_SNAPSHOT_REASON_HEADER]: reason,
-						...(metadata.turnRecordId
-							? { [WORKER_SESSION_SNAPSHOT_TURN_RECORD_ID_HEADER]: metadata.turnRecordId }
-							: {}),
-					},
-					body: content,
+			if (content.length === 0) return { kind: "empty" };
+			const response = await fetchImpl(snapshotUrl, {
+				method: "PUT",
+				headers: {
+					...authHeaders,
+					"content-type": WORKER_SESSION_SNAPSHOT_CONTENT_TYPE,
+					[WORKER_SESSION_SNAPSHOT_REASON_HEADER]: reason,
+					...(metadata.turnRecordId
+						? { [WORKER_SESSION_SNAPSHOT_TURN_RECORD_ID_HEADER]: metadata.turnRecordId }
+						: {}),
 				},
+				body: content,
+				signal: AbortSignal.timeout(timeoutMs),
 			});
 			if (!response.ok) {
 				throw new Error(`Session snapshot upload failed with HTTP ${response.status}`);

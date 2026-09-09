@@ -23,13 +23,6 @@ function payloadString(annotation: ProcessTurnAnnotation, key: string): string |
 	return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function findLast<T>(items: readonly T[], predicate: (item: T) => boolean): T | undefined {
-	for (let index = items.length - 1; index >= 0; index -= 1) {
-		if (predicate(items[index])) return items[index];
-	}
-	return undefined;
-}
-
 function nextLlmAfterAutomatic(
 	automatic: ProcessTurnRecord,
 	allRecords: readonly ProcessTurnRecord[],
@@ -70,7 +63,7 @@ function actionDecisions(
 		const recordedSourceId = payloadString(annotation, "sourceTurnRecordId");
 		const source =
 			(recordedSourceId ? llmById.get(recordedSourceId) : undefined) ??
-			findLast(llmRecords, (record) => record.startedAt.localeCompare(annotation.createdAt) <= 0);
+			llmRecords.findLast((record) => record.startedAt.localeCompare(annotation.createdAt) <= 0);
 		if (!source) continue;
 
 		const causedTurnId = payloadString(annotation, "causedSelectedTurnId");
@@ -136,8 +129,7 @@ function automaticTransitions(
 	const transitions: Decision[] = [];
 	for (const automatic of allRecords.filter((record) => record.turnType === "automatic")) {
 		if (actionCausedAutomaticIds.has(automatic.id)) continue;
-		const source = findLast(
-			llmRecords,
+		const source = llmRecords.findLast(
 			(record) => record.startedAt.localeCompare(automatic.startedAt) < 0,
 		);
 		if (!source) continue;
@@ -238,8 +230,7 @@ export function presentProcessInstanceTree(input: {
 		if (node.parentId) connect(node.parentId, node.id).hasContext = true;
 		const detail = detailsByTurnId.get(record.turnId);
 		for (const productName of detail?.consumedProducts ?? []) {
-			const publisher = findLast(
-				records,
+			const publisher = records.findLast(
 				(candidate) =>
 					candidate.startedAt.localeCompare(record.startedAt) < 0 &&
 					candidate.status === "succeeded" &&

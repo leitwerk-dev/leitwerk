@@ -384,24 +384,13 @@ export function resolveActor(req: FastifyRequest): Actor {
 	return actorForRequest(req);
 }
 
-export interface NormalizedContinueRequest {
+export interface NormalizedContinueRequest extends NormalizedRecoveryModelRequest {
 	prompt?: string | null;
-	promptProvided: boolean;
-	nextTurnModelProfileId?: string | null;
-	nextTurnModelProfileIdProvided: boolean;
-	providerOptions?: Record<string, string>;
-	providerOptionsProvided: boolean;
 }
 
 export interface NormalizedRecoveryModelRequest {
 	nextTurnModelProfileId?: string | null;
-	nextTurnModelProfileIdProvided: boolean;
 	providerOptions?: Record<string, string>;
-	providerOptionsProvided: boolean;
-}
-
-function hasOwn(object: Record<string, unknown>, key: string): boolean {
-	return Object.hasOwn(object, key);
 }
 
 const unknownRecordSchema = v.pipe(
@@ -431,24 +420,17 @@ function normalizeProviderOptions(
 	return { ok: true, value: result };
 }
 
-interface ParsedModelRequest {
-	nextTurnModelProfileId?: string | null;
-	nextTurnModelProfileIdProvided: boolean;
-	providerOptions?: Record<string, string>;
-	providerOptionsProvided: boolean;
-}
-
 function parseModelRequest(
 	value: unknown,
 	input: { requestName: string; allowedKeys: readonly string[]; expectedShape: string },
 ):
-	| { ok: true; body: Record<string, unknown>; request: ParsedModelRequest }
+	| { ok: true; body: Record<string, unknown>; request: NormalizedRecoveryModelRequest }
 	| { ok: false; error: string } {
 	if (value === undefined || value === null) {
 		return {
 			ok: true,
 			body: {},
-			request: { nextTurnModelProfileIdProvided: false, providerOptionsProvided: false },
+			request: {},
 		};
 	}
 	const parsedValue = v.safeParse(unknownRecordSchema, value);
@@ -462,7 +444,7 @@ function parseModelRequest(
 			error: `${input.requestName} request body must use ${input.expectedShape}`,
 		};
 	}
-	const nextTurnModelProfileIdProvided = hasOwn(body, "nextTurnModelProfileId");
+	const nextTurnModelProfileIdProvided = Object.hasOwn(body, "nextTurnModelProfileId");
 	const modelProfileId = body.nextTurnModelProfileId;
 	if (
 		modelProfileId !== undefined &&
@@ -471,7 +453,7 @@ function parseModelRequest(
 	) {
 		return { ok: false, error: "nextTurnModelProfileId must be a string or null" };
 	}
-	const providerOptionsProvided = hasOwn(body, "providerOptions");
+	const providerOptionsProvided = Object.hasOwn(body, "providerOptions");
 	const providerOptions = providerOptionsProvided
 		? normalizeProviderOptions(body.providerOptions)
 		: ({ ok: true, value: {} } as const);
@@ -480,8 +462,6 @@ function parseModelRequest(
 		ok: true,
 		body,
 		request: {
-			nextTurnModelProfileIdProvided,
-			providerOptionsProvided,
 			...(nextTurnModelProfileIdProvided
 				? {
 						nextTurnModelProfileId:
@@ -577,13 +557,12 @@ export function normalizeContinueRequest(
 	) {
 		return { ok: false, error: "prompt must be a string or null" };
 	}
-	const promptProvided = hasOwn(parsed.body, "prompt");
+	const promptProvided = Object.hasOwn(parsed.body, "prompt");
 	return {
 		ok: true,
 		request: {
 			...parsed.request,
-			promptProvided,
-			...(promptProvided ? { prompt: parsed.body.prompt as string | null } : {}),
+			...(promptProvided ? { prompt: parsed.body.prompt ?? null } : {}),
 		},
 	};
 }
@@ -753,29 +732,25 @@ export function sendLauncherMutationResponse(
 	deps: RouteDeps,
 	outcome: LaunchMutationOutcome,
 ) {
+	if ("execution" in outcome) {
+		const summary = buildFutureExecutionListView(deps, outcome.execution);
+		const body = {
+			kind: "scheduled",
+			futureExecution: summary?.kind === "launch" ? summary : null,
+			...(outcome.kind === "committed_with_reaction_error"
+				? { error: outcome.error, code: outcome.code }
+				: {}),
+		} satisfies LauncherMutationResponseBody;
+		return reply
+			.code(outcome.kind === "scheduled" && outcome.operation === "created" ? 201 : 200)
+			.send(body);
+	}
 	switch (outcome.kind) {
-		case "scheduled": {
-			const summary = buildFutureExecutionListView(deps, outcome.execution);
-			const body = {
-				kind: "scheduled",
-				futureExecution: summary?.kind === "launch" ? summary : null,
-			} satisfies LauncherMutationResponseBody;
-			return reply.code(outcome.operation === "created" ? 201 : 200).send(body);
-		}
 		case "launched":
 			return reply
 				.code(outcome.operation === "created" ? 201 : 200)
 				.send({ process: outcome.process, projects: outcome.projects });
 		case "committed_with_reaction_error":
-			if ("execution" in outcome) {
-				const summary = buildFutureExecutionListView(deps, outcome.execution);
-				return reply.code(200).send({
-					kind: "scheduled",
-					futureExecution: summary?.kind === "launch" ? summary : null,
-					error: outcome.error,
-					code: outcome.code,
-				});
-			}
 			return reply.code(200).send({
 				process: outcome.process,
 				projects: outcome.projects,
@@ -798,33 +773,27 @@ export function sendScheduledActionMutationResponse(
 	deps: RouteDeps,
 	outcome: ActionMutationOutcome,
 ) {
+	if ("execution" in outcome) {
+		const lockedProcess = deps.processes.getById(outcome.instanceId);
+		const body = {
+			kind: "scheduled",
+			scheduledAction: lockedProcess
+				? getScheduledActionDetailForProcess(deps, lockedProcess)
+				: null,
+			...(outcome.kind === "committed_with_reaction_error"
+				? { error: outcome.error, code: outcome.code }
+				: {}),
+		} satisfies ScheduledActionMutationResponseBody;
+		return reply
+			.code(outcome.kind === "scheduled" && outcome.operation === "created" ? 201 : 200)
+			.send(body);
+	}
 	switch (outcome.kind) {
-		case "scheduled": {
-			const lockedProcess = deps.processes.getById(outcome.instanceId);
-			const body = {
-				kind: "scheduled",
-				scheduledAction: lockedProcess
-					? getScheduledActionDetailForProcess(deps, lockedProcess)
-					: null,
-			} satisfies ScheduledActionMutationResponseBody;
-			return reply.code(outcome.operation === "created" ? 201 : 200).send(body);
-		}
 		case "executed":
 			return reply
 				.code(200)
 				.send({ process: outcome.process, ...(outcome.data ? { data: outcome.data } : {}) });
 		case "committed_with_reaction_error":
-			if ("execution" in outcome) {
-				const lockedProcess = deps.processes.getById(outcome.instanceId);
-				return reply.code(200).send({
-					kind: "scheduled",
-					scheduledAction: lockedProcess
-						? getScheduledActionDetailForProcess(deps, lockedProcess)
-						: null,
-					error: outcome.error,
-					code: outcome.code,
-				});
-			}
 			return reply.code(200).send({
 				process: outcome.process,
 				error: outcome.error,

@@ -12,11 +12,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import chokidar from "chokidar";
+import { forwardChildLifecycle } from "./dev-process.ts";
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
-
-interface RootPackageJson {
-	workspaces?: unknown;
-}
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 interface WorkspacePackageJson {
 	name?: unknown;
@@ -31,38 +29,11 @@ function readJson<T>(filePath: string): T {
 	return JSON.parse(readFileSync(filePath, "utf8")) as T;
 }
 
-function listWorkspacePatterns(workspaces: unknown): string[] {
-	if (Array.isArray(workspaces)) {
-		return workspaces.filter((value): value is string => typeof value === "string");
-	}
-	if (isRecord(workspaces) && Array.isArray(workspaces.packages)) {
-		return workspaces.packages.filter((value): value is string => typeof value === "string");
-	}
-	return [];
-}
-
 function hasScript(scripts: unknown, scriptName: string): boolean {
 	return isRecord(scripts) && typeof scripts[scriptName] === "string";
 }
 
-function expandWorkspacePattern(workspaceRoot: string, pattern: string): string[] {
-	if (pattern.endsWith("/*")) {
-		const baseDir = path.join(workspaceRoot, pattern.slice(0, -2));
-		if (!existsSync(baseDir)) {
-			return [];
-		}
-		return readdirSync(baseDir, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => path.join(baseDir, entry.name))
-			.filter((packageDir) => existsSync(path.join(packageDir, "package.json")));
-	}
-
-	const packageDir = path.join(workspaceRoot, pattern);
-	return existsSync(path.join(packageDir, "package.json")) ? [packageDir] : [];
-}
-
 function listRuntimeDistWatchPaths(workspaceRoot: string): string[] {
-	const rootPackageJson = readJson<RootPackageJson>(path.join(workspaceRoot, "package.json"));
 	const watchPaths = new Set<string>();
 	const addPackageDist = (workspaceDir: string, packageJson: WorkspacePackageJson): void => {
 		if (packageJson.name === "@leitwerk-dev/ui") return;
@@ -77,13 +48,11 @@ function listRuntimeDistWatchPaths(workspaceRoot: string): string[] {
 		watchPaths.add(distDir);
 	};
 
-	for (const pattern of listWorkspacePatterns(rootPackageJson.workspaces)) {
-		for (const workspaceDir of expandWorkspacePattern(workspaceRoot, pattern)) {
-			addPackageDist(
-				workspaceDir,
-				readJson<WorkspacePackageJson>(path.join(workspaceDir, "package.json")),
-			);
-		}
+	for (const workspaceDir of listWorkspacePackageDirs(workspaceRoot)) {
+		addPackageDist(
+			workspaceDir,
+			readJson<WorkspacePackageJson>(path.join(workspaceDir, "package.json")),
+		);
 	}
 
 	const composition = loadActiveDevelopmentComposition(workspaceRoot);
@@ -292,32 +261,7 @@ async function main(): Promise<void> {
 		rmSync(sentinelPath, { force: true });
 	};
 
-	process.once("SIGINT", () => {
-		cleanup();
-		child.kill("SIGINT");
-	});
-	process.once("SIGTERM", () => {
-		cleanup();
-		child.kill("SIGTERM");
-	});
-
-	child.once("error", (error) => {
-		cleanup();
-		console.error(error instanceof Error ? error.message : error);
-		process.exit(1);
-	});
-	child.once("exit", (code, signal) => {
-		cleanup();
-		if (signal === "SIGINT") {
-			process.exit(130);
-			return;
-		}
-		if (signal === "SIGTERM") {
-			process.exit(143);
-			return;
-		}
-		process.exit(code ?? 1);
-	});
+	forwardChildLifecycle(child, cleanup);
 }
 
 void main().catch((error) => {

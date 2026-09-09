@@ -5,12 +5,12 @@ import type {
 	TurnStartRecord,
 } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
+import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import {
 	buildCurrentTurnRecovery,
 	buildStartupRecovery,
 	presentProcessTimelineTurns,
 	projectProcessForUiSnapshot,
-	resolveCurrentExecutionTurnRecordId,
 } from "./process-ui-snapshot-presenter.js";
 
 function processInstance(overrides: Partial<ProcessInstance> = {}): ProcessInstance {

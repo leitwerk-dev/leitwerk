@@ -179,89 +179,39 @@ function launchSessionKey(input: {
 		: null;
 }
 
-function splitScopedCallbackPayload(payload: string): { instanceId: string; value: string } | null {
-	const separator = payload.indexOf(":");
-	if (separator <= 0 || separator === payload.length - 1) return null;
-	return {
-		instanceId: payload.slice(0, separator),
-		value: payload.slice(separator + 1),
-	};
-}
-
-function parseTripleCallbackPayload(
-	payload: string,
-): { instanceId: string; sessionId: string; value: string } | null {
-	const parts = payload.split(":");
-	const [instanceId, sessionId, ...rest] = parts;
-	if (!instanceId || !sessionId) return null;
-	return { instanceId, sessionId, value: rest.join(":") };
-}
-
-function parseActionFormSkipCallbackPayload(
-	payload: string,
-): Extract<TelegramCallbackCommand, { kind: "action_form_skip" }> | null {
-	const parsed = parseTripleCallbackPayload(payload);
-	if (!parsed) return null;
-	return {
-		kind: "action_form_skip",
-		instanceId: parsed.instanceId,
-		sessionId: parsed.sessionId,
-		fieldId: parsed.value,
-	};
-}
-
 function parseCallbackCommand(data: string): TelegramCallbackCommand | null {
-	if (data.startsWith("a:")) {
-		const scoped = splitScopedCallbackPayload(data.slice("a:".length));
-		return scoped
-			? { kind: "process_action", instanceId: scoped.instanceId, actionId: scoped.value }
-			: null;
+	const separator = data.indexOf(":");
+	if (separator < 0) return null;
+	const prefix = data.slice(0, separator);
+	const payload = data.slice(separator + 1);
+	if (prefix === "r" || prefix === "c") {
+		return payload ? { kind: prefix === "r" ? "retry" : "continue", instanceId: payload } : null;
 	}
-	if (data.startsWith("fs:")) {
-		return parseActionFormSkipCallbackPayload(data.slice("fs:".length));
+	if (prefix === "a") {
+		const separator = payload.indexOf(":");
+		if (separator <= 0 || separator === payload.length - 1) return null;
+		return {
+			kind: "process_action",
+			instanceId: payload.slice(0, separator),
+			actionId: payload.slice(separator + 1),
+		};
 	}
-	if (data.startsWith("ams:")) {
-		return parseActionModelSelectCallbackPayload(data.slice("ams:".length));
+	const [instanceId, sessionId, ...rest] = payload.split(":");
+	if (!instanceId || !sessionId) return null;
+	switch (prefix) {
+		case "fs":
+			return { kind: "action_form_skip", instanceId, sessionId, fieldId: rest.join(":") };
+		case "amk":
+			return { kind: "action_model_skip", instanceId, sessionId };
+		case "ams": {
+			const profileIndex = Number(rest.join(":"));
+			return Number.isInteger(profileIndex) && profileIndex >= 1
+				? { kind: "action_model_select", instanceId, sessionId, profileIndex }
+				: null;
+		}
+		default:
+			return null;
 	}
-	if (data.startsWith("amk:")) {
-		return parseActionModelSkipCallbackPayload(data.slice("amk:".length));
-	}
-	if (data.startsWith("r:")) {
-		const instanceId = data.slice("r:".length);
-		return instanceId ? { kind: "retry", instanceId } : null;
-	}
-	if (data.startsWith("c:")) {
-		const instanceId = data.slice("c:".length);
-		return instanceId ? { kind: "continue", instanceId } : null;
-	}
-	return null;
-}
-
-function parseActionModelSelectCallbackPayload(
-	payload: string,
-): Extract<TelegramCallbackCommand, { kind: "action_model_select" }> | null {
-	const parsed = parseTripleCallbackPayload(payload);
-	if (!parsed) return null;
-	const profileIndex = Number(parsed.value);
-	if (!Number.isInteger(profileIndex) || profileIndex < 1) return null;
-	return {
-		kind: "action_model_select",
-		instanceId: parsed.instanceId,
-		sessionId: parsed.sessionId,
-		profileIndex,
-	};
-}
-
-function parseActionModelSkipCallbackPayload(
-	payload: string,
-): Extract<TelegramCallbackCommand, { kind: "action_model_skip" }> | null {
-	const parsed = parseTripleCallbackPayload(payload);
-	if (!parsed) return null;
-	return {
-		kind: "action_model_skip",
-		instanceId: parsed.instanceId,
-		sessionId: parsed.sessionId,
-	};
 }
 
 function resolveProfileByTextOrIndex(
@@ -283,14 +233,9 @@ function resolveModelProfileFromSession(
 	session: PendingTelegramSession | undefined,
 	profileIndex: number,
 ): ModelProfileOptionSummaryLike | null {
-	const profiles =
-		session?.kind === "action_model"
-			? session.profiles
-			: session?.kind === "recovery_model"
-				? session.profiles
-				: null;
-	if (!profiles) return null;
-	return profiles[profileIndex - 1] ?? null;
+	return session?.kind === "action_model" || session?.kind === "recovery_model"
+		? (session.profiles?.[profileIndex - 1] ?? null)
+		: null;
 }
 
 function processCanAcceptFreeText(process: ProcessInstance): boolean {
@@ -2083,13 +2028,9 @@ export class TelegramBridge {
 					return;
 				}
 				if (modelSession?.kind === "recovery_model") {
-					await this.handleRecoveryModelSelect(
-						key,
-						command.sessionId,
-						modelProfile.id,
-						modelSession,
-						thread,
-					);
+					await this.executeRecoveryModelSession(key, modelSession, thread, {
+						nextTurnModelProfileId: modelProfile.id,
+					});
 					return;
 				}
 				await this.handleActionModelSelect(key, command.sessionId, modelProfile.id, thread);
@@ -2098,7 +2039,7 @@ export class TelegramBridge {
 			case "action_model_skip": {
 				const modelSession = this.sessions.get(key);
 				if (modelSession?.kind === "recovery_model") {
-					await this.handleRecoveryModelSkip(key, command.sessionId, modelSession, thread);
+					await this.executeRecoveryModelSession(key, modelSession, thread);
 					return;
 				}
 				await this.handleActionModelSkip(key, command.sessionId, thread);
@@ -2161,21 +2102,13 @@ export class TelegramBridge {
 			await this.sendHtml(thread, escapeHtml(buildQuestionPrompt(session)));
 			return true;
 		}
-		if (session.kind === "action_model") {
-			await this.sendActionModelPrompt(thread, session);
-			return true;
-		}
-		if (session.kind === "recovery_model") {
-			await this.sendRecoveryModelPrompt(thread, session);
+		if (session.kind === "action_model" || session.kind === "recovery_model") {
+			await this.sendModelPrompt(thread, session);
 			return true;
 		}
 		const field = currentField(session);
 		if (!field) return false;
-		if (session.kind === "action_form") {
-			await this.sendActionFormFieldPrompt(thread, session, field);
-			return true;
-		}
-		await this.sendHtml(thread, escapeHtml(buildFieldPrompt(field)));
+		await this.sendActionFormFieldPrompt(thread, session, field);
 		return true;
 	}
 
@@ -2227,7 +2160,7 @@ export class TelegramBridge {
 				profiles,
 			});
 			this.sessions.set(input.sessionKey, session);
-			await this.sendActionModelPrompt(input.thread, session);
+			await this.sendModelPrompt(input.thread, session);
 		} catch (error) {
 			this.logError(error, "Action model preview failed; falling back to direct execution");
 			return fallback();
@@ -2307,43 +2240,51 @@ export class TelegramBridge {
 		await this.executeActionModelSession(session, thread);
 	}
 
-	private async sendActionModelPrompt(
+	private async sendModelPrompt(
 		thread: TelegramProcessThread,
-		session: PendingActionModelSession,
+		session: PendingActionModelSession | PendingRecoveryModelSession,
+		error = "",
 	): Promise<void> {
+		const prompt =
+			session.kind === "action_model"
+				? buildActionModelPrompt({ session })
+				: buildRecoveryModelPrompt({ session });
 		await this.sendHtml(
 			thread,
-			escapeHtml(buildActionModelPrompt({ session })),
-			this.buildActionModelReplyMarkup(session),
+			escapeHtml(`${error}${prompt}`),
+			this.buildModelReplyMarkup(session),
 		);
 	}
 
-	private buildActionModelReplyMarkup(
-		session: PendingActionModelSession,
-	): TelegramInlineKeyboard | undefined {
+	private buildModelReplyMarkup(
+		session: PendingActionModelSession | PendingRecoveryModelSession,
+	): TelegramInlineKeyboard {
 		const buttons: Array<{ text: string; callbackData: string }> = [];
 		let index = 0;
 		for (const profile of session.profiles.slice(0, 20)) {
 			index += 1;
-			const switchesModel = buildActionModelSwitchWarning({
-				session,
-				effectiveModelProfileId: profile.id,
-			});
+			const switchesModel =
+				session.kind === "action_model" &&
+				buildActionModelSwitchWarning({
+					session,
+					effectiveModelProfileId: profile.id,
+				});
 			buttons.push({
 				text: `${switchesModel ? "⚠ " : ""}${profile.id}`,
 				callbackData: `ams:${session.instanceId}:${session.sessionId}:${index}`,
 			});
 		}
-		const resolved = session.preview.resolvedModel;
+		const resolved = session.kind === "action_model" ? session.preview.resolvedModel : null;
 		const resolvedProfileId = resolved?.status === "resolved" ? resolved.modelProfileId : null;
-		const keepingCurrentSwitchesModel = resolvedProfileId
-			? buildActionModelSwitchWarning({ session, effectiveModelProfileId: resolvedProfileId })
-			: null;
+		const keepingCurrentSwitchesModel =
+			session.kind === "action_model" && resolvedProfileId
+				? buildActionModelSwitchWarning({ session, effectiveModelProfileId: resolvedProfileId })
+				: null;
 		buttons.push({
 			text: `${keepingCurrentSwitchesModel ? "⚠ " : ""}Keep current`,
 			callbackData: `amk:${session.instanceId}:${session.sessionId}`,
 		});
-		return buttons.length ? { inlineKeyboard: rows(buttons, 1) } : undefined;
+		return { inlineKeyboard: rows(buttons, 1) };
 	}
 
 	private async applyActionFormStep(
@@ -2374,23 +2315,6 @@ export class TelegramBridge {
 			sessionKey: key,
 			thread,
 		});
-	}
-
-	private async applyActionFormText(
-		key: string,
-		session: PendingActionFormSession,
-		text: string,
-		thread: TelegramProcessThread,
-	): Promise<void> {
-		await this.applyActionFormStep(key, session, applyFormText(session, text), thread);
-	}
-
-	private async applyActionFormSkip(
-		key: string,
-		session: PendingActionFormSession,
-		thread: TelegramProcessThread,
-	): Promise<void> {
-		await this.applyActionFormStep(key, session, applyFormSkip(session), thread);
 	}
 
 	private async skipCurrentActionFormField(
@@ -2426,7 +2350,7 @@ export class TelegramBridge {
 			);
 			return;
 		}
-		await this.applyActionFormSkip(key, session, thread);
+		await this.applyActionFormStep(key, session, applyFormSkip(session), thread);
 	}
 
 	private async handleSessionText(
@@ -2485,9 +2409,13 @@ export class TelegramBridge {
 			);
 			return;
 		}
-		if (session.kind === "action_model") {
+		if (session.kind === "action_model" || session.kind === "recovery_model") {
 			if (name === "skip") {
-				await this.handleActionModelSkip(key, session.sessionId, thread);
+				if (session.kind === "action_model") {
+					await this.handleActionModelSkip(key, session.sessionId, thread);
+				} else {
+					await this.executeRecoveryModelSession(key, session, thread);
+				}
 				return;
 			}
 			if (name === "cancel") {
@@ -2495,20 +2423,7 @@ export class TelegramBridge {
 				await this.sendHtml(thread, "Cancelled.");
 				return;
 			}
-			await this.handleActionModelText(key, session, text, thread);
-			return;
-		}
-		if (session.kind === "recovery_model") {
-			if (name === "skip") {
-				await this.handleRecoveryModelSkip(key, session.sessionId, session, thread);
-				return;
-			}
-			if (name === "cancel") {
-				this.sessions.delete(key);
-				await this.sendHtml(thread, "Cancelled.");
-				return;
-			}
-			await this.handleRecoveryModelText(key, session, text, thread);
+			await this.handleModelText(key, session, text, thread);
 			return;
 		}
 		if (name === "skip") {
@@ -2524,31 +2439,33 @@ export class TelegramBridge {
 				}
 				return;
 			}
-			await this.applyActionFormSkip(key, session as PendingActionFormSession, thread);
+			await this.applyActionFormStep(key, session, applyFormSkip(session), thread);
 			return;
 		}
-		await this.applyActionFormText(key, session as PendingActionFormSession, text, thread);
+		await this.applyActionFormStep(key, session, applyFormText(session, text), thread);
 	}
 
-	private async handleActionModelText(
+	private async handleModelText(
 		sessionKey: string,
-		session: PendingActionModelSession,
+		session: PendingActionModelSession | PendingRecoveryModelSession,
 		text: string,
 		thread: TelegramProcessThread,
 	): Promise<void> {
 		const profile = resolveProfileByTextOrIndex(text.trim(), session.profiles);
-		if (profile) {
+		if (!profile) {
+			await this.sendModelPrompt(thread, session, "Model must match an available profile.\n");
+			return;
+		}
+		if (session.kind === "action_model") {
 			this.sessions.delete(sessionKey);
 			await this.sendActionModelSwitchWarning(session, profile.id, thread);
 			return this.executeActionModelSession(session, thread, {
 				nextTurnModelProfileId: profile.id,
 			});
 		}
-		await this.sendHtml(
-			thread,
-			escapeHtml(`Model must match an available profile.\n${buildActionModelPrompt({ session })}`),
-			this.buildActionModelReplyMarkup(session),
-		);
+		await this.executeRecoveryModelSession(sessionKey, session, thread, {
+			nextTurnModelProfileId: profile.id,
+		});
 	}
 
 	private async maybeSelectRecoveryModel(input: {
@@ -2571,64 +2488,20 @@ export class TelegramBridge {
 				profiles,
 			});
 			this.sessions.set(input.sessionKey, session);
-			await this.sendRecoveryModelPrompt(input.thread, session);
+			await this.sendModelPrompt(input.thread, session);
 		} catch (error) {
 			this.logError(error, "Recovery model selection failed; falling back to direct execution");
 			return input.execute();
 		}
 	}
 
-	private async handleRecoveryModelSelect(
-		sessionKey: string,
-		_sessionId: string,
-		modelProfileId: string,
-		session: PendingRecoveryModelSession,
-		thread: TelegramProcessThread,
-	): Promise<void> {
-		this.sessions.delete(sessionKey);
-		await this.executeRecoveryModelSession(session, thread, {
-			nextTurnModelProfileId: modelProfileId,
-		});
-	}
-
-	private async handleRecoveryModelSkip(
-		sessionKey: string,
-		_sessionId: string,
-		session: PendingRecoveryModelSession,
-		thread: TelegramProcessThread,
-	): Promise<void> {
-		this.sessions.delete(sessionKey);
-		await this.executeRecoveryModelSession(session, thread);
-	}
-
-	private async handleRecoveryModelText(
-		sessionKey: string,
-		session: PendingRecoveryModelSession,
-		text: string,
-		thread: TelegramProcessThread,
-	): Promise<void> {
-		const profile = resolveProfileByTextOrIndex(text.trim(), session.profiles);
-		if (profile) {
-			this.sessions.delete(sessionKey);
-			await this.executeRecoveryModelSession(session, thread, {
-				nextTurnModelProfileId: profile.id,
-			});
-			return;
-		}
-		await this.sendHtml(
-			thread,
-			escapeHtml(
-				`Model must match an available profile.\n${buildRecoveryModelPrompt({ session })}`,
-			),
-			this.buildRecoveryModelReplyMarkup(session),
-		);
-	}
-
 	private async executeRecoveryModelSession(
+		sessionKey: string,
 		session: PendingRecoveryModelSession,
 		thread: TelegramProcessThread,
 		opts?: { nextTurnModelProfileId?: string | null },
 	): Promise<void> {
+		this.sessions.delete(sessionKey);
 		if (session.recoveryKind === "retry") {
 			const retryOpts = {
 				...(opts?.nextTurnModelProfileId !== undefined ? opts : {}),
@@ -2647,36 +2520,6 @@ export class TelegramBridge {
 			this.sessions.set(key, continueSession);
 			await this.sendCurrentSessionPrompt(thread, continueSession);
 		}
-	}
-
-	private async sendRecoveryModelPrompt(
-		thread: TelegramProcessThread,
-		session: PendingRecoveryModelSession,
-	): Promise<void> {
-		await this.sendHtml(
-			thread,
-			escapeHtml(buildRecoveryModelPrompt({ session })),
-			this.buildRecoveryModelReplyMarkup(session),
-		);
-	}
-
-	private buildRecoveryModelReplyMarkup(
-		session: PendingRecoveryModelSession,
-	): TelegramInlineKeyboard | undefined {
-		const buttons: Array<{ text: string; callbackData: string }> = [];
-		let index = 0;
-		for (const profile of session.profiles.slice(0, 20)) {
-			index += 1;
-			buttons.push({
-				text: profile.id,
-				callbackData: `ams:${session.instanceId}:${session.sessionId}:${index}`,
-			});
-		}
-		buttons.push({
-			text: "Keep current",
-			callbackData: `amk:${session.instanceId}:${session.sessionId}`,
-		});
-		return buttons.length ? { inlineKeyboard: rows(buttons, 1) } : undefined;
 	}
 
 	private async executeProcessAction(

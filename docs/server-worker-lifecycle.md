@@ -34,6 +34,8 @@ The supervisor separates durable lease state from physical execution through `Wo
 | **Kubernetes** | Pod per process in dedicated namespace; optional operator-selected RuntimeClass for private Docker | Mounts PVC at `/state` | Production cloud-native |
 | **Local** | Node.js subprocess (no container isolation) | Server directory paths | Local development & testing |
 
+Docker runners use the typed `DockerEngineClient` operations. The HTTP adapter maps each operation directly to its endpoint; transport and JSON decoding errors reject the operation's promise.
+
 Before starting isolated runners (Docker or Kubernetes), the supervisor invokes `ProcessVolume.ensure(instanceId, requirements)` and passes the returned volume reference to `WorkerRunner.start(...)`. Isolated runners must not create process storage implicitly. Kubernetes selects the configured Docker process StorageClass when `requirements.docker` is true.
 
 Launch configuration is immutable for the lifetime of a physical worker. Configuration changes apply only when the server creates a new worker. Operators must explicitly recycle existing workers when a change must take effect immediately.
@@ -157,13 +159,13 @@ PUT /internal/workers/:instanceId/session-snapshot
 Authorization: Bearer <snapshot-token>
 ```
 
-Uploads are mandatory at four key execution points:
-1. Immediately after `worker.ready` (when tree is non-empty).
-2. Prior to emitting `worker.turn_outcome`.
-3. Prior to emitting `worker.turn_failed`.
-4. Prior to emitting `worker.cleanup_completed`.
+Automatic sessions do not upload snapshots. LLM sessions use these rules:
 
-Snapshot upload failures are treated as infrastructure failures, preserving server read-model integrity. A successful upload does not complete the worker lifecycle: the worker keeps the terminal fact pending until the server acknowledges its durable recording.
+- After `worker.ready` and before `worker.failed`: best effort.
+- Before publishing a turn outcome or turn failure: mandatory and correlated to the turn record.
+- Before `worker.cleanup_completed`: mandatory when Pi is available; skipped otherwise.
+
+Mandatory upload failures become infrastructure failures. Best-effort failures allow the pending lifecycle operation to continue. A successful upload does not complete terminal publication: the worker keeps the terminal fact pending until the server acknowledges its durable recording.
 
 ## 7. Launch progress
 

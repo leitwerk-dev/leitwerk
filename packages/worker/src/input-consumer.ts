@@ -20,36 +20,21 @@ export interface InputItem {
 
 export type TargetedInputItem = InputItem & { target: NonNullable<InputItem["target"]> };
 
-export function filterInputsAfterConsumedSequence(
-	inputs: readonly InputItem[],
-	lastSequenceConsumed: number,
-): InputItem[] {
-	return inputs.filter((input) => input.sequence > lastSequenceConsumed);
-}
+type InputDeliverySession = Pick<PiTreeHandle, "prompt" | "steer">;
 
 export function classifyDeliveryMode(
 	input: InputItem,
 	sessionHasActiveTurn: boolean,
 ): InputDeliveryMode {
-	if (input.kind === "system_event") {
-		return "steer";
-	}
-	if (sessionHasActiveTurn) {
-		return "steer";
-	}
-	return "prompt";
+	return input.kind === "system_event" || sessionHasActiveTurn ? "steer" : "prompt";
 }
 
 export async function deliverInput(
-	session: PiTreeHandle,
+	session: InputDeliverySession,
 	input: InputItem,
 	mode: InputDeliveryMode,
 ): Promise<DeliveredInput> {
-	if (mode === "prompt") {
-		await session.prompt(input.bodyMarkdown);
-	} else {
-		await session.steer(input.bodyMarkdown);
-	}
+	await session[mode](input.bodyMarkdown);
 	return {
 		inputId: input.inputId,
 		sequence: input.sequence,
@@ -58,7 +43,7 @@ export async function deliverInput(
 }
 
 export async function deliverBatch(
-	session: PiTreeHandle,
+	session: InputDeliverySession,
 	inputs: InputItem[],
 	hasActiveTurn: boolean,
 ): Promise<DeliveredInput[]> {

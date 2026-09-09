@@ -23,12 +23,6 @@ export interface PiResourceLimits {
 	readonly maxTotalBytes?: number;
 }
 
-interface ResolvedLimits {
-	readonly maxFiles: number;
-	readonly maxFileBytes: number;
-	readonly maxTotalBytes: number;
-}
-
 export interface ResourceOwner {
 	readonly kind: Exclude<PiResourceProvenanceKind, "generated">;
 	readonly ownerExtensionId: string | null;
@@ -46,28 +40,18 @@ export interface PiResourceLayer {
 	readonly owner: ResourceOwner;
 }
 
-function positiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
-	const result = value ?? fallback;
-	if (!Number.isSafeInteger(result) || result < 1) {
-		throw new Error(`${name} must be a positive safe integer`);
-	}
-	return result;
-}
-
-function resolveLimits(input: PiResourceLimits | undefined): ResolvedLimits {
-	return {
-		maxFiles: positiveSafeInteger(input?.maxFiles, DEFAULT_PI_RESOURCE_LIMITS.maxFiles, "maxFiles"),
-		maxFileBytes: positiveSafeInteger(
-			input?.maxFileBytes,
-			DEFAULT_PI_RESOURCE_LIMITS.maxFileBytes,
-			"maxFileBytes",
-		),
-		maxTotalBytes: positiveSafeInteger(
-			input?.maxTotalBytes,
-			DEFAULT_PI_RESOURCE_LIMITS.maxTotalBytes,
-			"maxTotalBytes",
-		),
+function resolveLimits(input?: PiResourceLimits): Required<PiResourceLimits> {
+	const limits = {
+		maxFiles: input?.maxFiles ?? DEFAULT_PI_RESOURCE_LIMITS.maxFiles,
+		maxFileBytes: input?.maxFileBytes ?? DEFAULT_PI_RESOURCE_LIMITS.maxFileBytes,
+		maxTotalBytes: input?.maxTotalBytes ?? DEFAULT_PI_RESOURCE_LIMITS.maxTotalBytes,
 	};
+	for (const [name, value] of Object.entries(limits)) {
+		if (!Number.isSafeInteger(value) || value < 1) {
+			throw new Error(`${name} must be a positive safe integer`);
+		}
+	}
+	return limits;
 }
 
 export function compareResourcePaths(left: string, right: string): number {
@@ -79,7 +63,7 @@ function isWithin(root: string, candidate: string): boolean {
 	return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
 }
 
-function validatePhysicalSourcePath(sourcePath: string): void {
+export function validatePhysicalSourcePath(sourcePath: string): void {
 	if (!path.isAbsolute(sourcePath) || path.normalize(sourcePath) !== sourcePath) {
 		throw new Error(`Pi resource source path must be normalized and absolute: ${sourcePath}`);
 	}
@@ -91,7 +75,7 @@ export class ResourceCollector {
 	private readonly sourceFileIdentities = new Map<string, string>();
 	private readonly sourceFileRealPaths = new Map<string, string>();
 	private readonly sourceRootRealPaths = new Map<string, string>();
-	private readonly limits: ResolvedLimits;
+	private readonly limits: Required<PiResourceLimits>;
 	private totalBytes = 0;
 
 	constructor(limits?: PiResourceLimits) {

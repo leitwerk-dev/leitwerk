@@ -32,8 +32,8 @@ const unknownRecordSchema = v.pipe(
 	v.record(v.string(), v.unknown()),
 );
 
-function readNumber(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function readFiniteNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function normalizeUsageCostSnapshot(value: unknown): UsageCostSnapshot | null {
@@ -42,25 +42,17 @@ function normalizeUsageCostSnapshot(value: unknown): UsageCostSnapshot | null {
 		return null;
 	}
 	const record = parsedValue.output;
-	const input = readNumber(record.input);
-	const output = readNumber(record.output);
-	const cacheRead = readNumber(record.cacheRead);
-	const cacheWrite = readNumber(record.cacheWrite);
-	const total =
-		typeof record.total === "number" && Number.isFinite(record.total)
-			? record.total
-			: input + output + cacheRead + cacheWrite;
+	const input = readFiniteNumber(record.input) ?? 0;
+	const output = readFiniteNumber(record.output) ?? 0;
+	const cacheRead = readFiniteNumber(record.cacheRead) ?? 0;
+	const cacheWrite = readFiniteNumber(record.cacheWrite) ?? 0;
 	return {
 		input,
 		output,
 		cacheRead,
 		cacheWrite,
-		total,
+		total: readFiniteNumber(record.total) ?? input + output + cacheRead + cacheWrite,
 	};
-}
-
-function cloneUsageCostSnapshot(cost: UsageCostSnapshot): UsageCostSnapshot {
-	return { ...cost };
 }
 
 export function cloneUsageSnapshot(usage: UsageSnapshot | null | undefined): UsageSnapshot | null {
@@ -69,7 +61,7 @@ export function cloneUsageSnapshot(usage: UsageSnapshot | null | undefined): Usa
 	}
 	return {
 		...usage,
-		cost: usage.cost ? cloneUsageCostSnapshot(usage.cost) : null,
+		cost: usage.cost ? { ...usage.cost } : null,
 	};
 }
 
@@ -79,39 +71,18 @@ export function normalizeUsageSnapshot(value: unknown): UsageSnapshot | null {
 		return null;
 	}
 	const record = parsedValue.output;
-	const input = readNumber(record.input);
-	const output = readNumber(record.output);
-	const reasoning =
-		typeof record.reasoning === "number" && Number.isFinite(record.reasoning)
-			? record.reasoning
-			: undefined;
-	const cacheRead = readNumber(record.cacheRead);
-	const cacheWrite = readNumber(record.cacheWrite);
-	const totalTokens =
-		typeof record.totalTokens === "number" && Number.isFinite(record.totalTokens)
-			? record.totalTokens
-			: input + output + cacheRead + cacheWrite;
+	const input = readFiniteNumber(record.input) ?? 0;
+	const output = readFiniteNumber(record.output) ?? 0;
+	const reasoning = readFiniteNumber(record.reasoning);
+	const cacheRead = readFiniteNumber(record.cacheRead) ?? 0;
+	const cacheWrite = readFiniteNumber(record.cacheWrite) ?? 0;
 	const cost = normalizeUsageCostSnapshot(record.cost);
-	const requestCount =
-		typeof record.requestCount === "number" && Number.isFinite(record.requestCount)
-			? Math.max(0, Math.floor(record.requestCount))
-			: 1;
-	const maxInputTokens =
-		typeof record.maxInputTokens === "number" && Number.isFinite(record.maxInputTokens)
-			? Math.max(0, record.maxInputTokens)
-			: input;
+	const maxInputTokens = readFiniteNumber(record.maxInputTokens);
 	const hasExplicitUsageTelemetry =
 		["input", "output", "reasoning", "cacheRead", "cacheWrite", "totalTokens"].some(
-			(key) => typeof record[key] === "number" && Number.isFinite(record[key]),
+			(key) => readFiniteNumber(record[key]) !== undefined,
 		) || cost !== null;
-	if (
-		!hasExplicitUsageTelemetry &&
-		input === 0 &&
-		output === 0 &&
-		cacheRead === 0 &&
-		cacheWrite === 0 &&
-		totalTokens === 0
-	) {
+	if (!hasExplicitUsageTelemetry) {
 		return null;
 	}
 	return {
@@ -120,10 +91,10 @@ export function normalizeUsageSnapshot(value: unknown): UsageSnapshot | null {
 		...(reasoning !== undefined ? { reasoning } : {}),
 		cacheRead,
 		cacheWrite,
-		totalTokens,
+		totalTokens: readFiniteNumber(record.totalTokens) ?? input + output + cacheRead + cacheWrite,
 		cost,
-		requestCount,
-		maxInputTokens,
+		requestCount: Math.max(0, Math.floor(readFiniteNumber(record.requestCount) ?? 1)),
+		maxInputTokens: maxInputTokens !== undefined ? Math.max(0, maxInputTokens) : input,
 	};
 }
 
@@ -132,7 +103,7 @@ export function mergeUsageSnapshots(
 	usage: UsageSnapshot | null,
 ): UsageSnapshot | null {
 	if (!usage) {
-		return total ? cloneUsageSnapshot(total) : null;
+		return cloneUsageSnapshot(total);
 	}
 	if (!total) {
 		return cloneUsageSnapshot(usage);

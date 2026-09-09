@@ -3,7 +3,6 @@ import type {
 	ProcessProject,
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTerminalLifecycleStatus,
-	ProcessTurnTransition,
 } from "@leitwerk-dev/domain";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type {
@@ -58,17 +57,14 @@ export type ResolvedTurnScopedAction =
 	| ResolvedUiHumanTurnAction
 	| ResolvedExternalHumanTriggerAction;
 
-export interface ResolvedActionPreview {
-	definition: ProcessActionPreviewDefinition;
+interface ResolvedAction<Definition> {
+	definition: Definition;
 	candidateSelectedTurnId: string | null;
 	lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
 }
 
-export interface ResolvedActionScheduling {
-	definition: ProcessActionSchedulingDefinition;
-	candidateSelectedTurnId: string | null;
-	lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
-}
+export type ResolvedActionPreview = ResolvedAction<ProcessActionPreviewDefinition>;
+export type ResolvedActionScheduling = ResolvedAction<ProcessActionSchedulingDefinition>;
 
 export interface VisibleProcessActionSummary {
 	id: string;
@@ -150,16 +146,6 @@ function resolveProcessContextData(
 	return { params, state };
 }
 
-function getTurnReviewSemanticRef(
-	turnDef: TurnDefinition<unknown, unknown>,
-): ProcessSemanticEntryRefKey | null {
-	return "reviewSemanticRef" in turnDef ? (turnDef.reviewSemanticRef ?? null) : null;
-}
-
-function getProcessTurnBinding(processDef: ExtensionProcessDefinition | undefined, turnId: string) {
-	return processDef?.turns.get(turnId);
-}
-
 function resolveCurrentTurnForProcess(
 	processDef: ExtensionProcessDefinition | undefined,
 	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
@@ -168,7 +154,7 @@ function resolveCurrentTurnForProcess(
 		return null;
 	}
 
-	const selectedTurn = getProcessTurnBinding(processDef, process.selectedTurnId)?.definition;
+	const selectedTurn = processDef.turns.get(process.selectedTurnId)?.definition;
 	if (!selectedTurn) {
 		return null;
 	}
@@ -293,91 +279,35 @@ function buildSelectedTurnSummaryForProcess(
 	};
 }
 
-function resolvePreviewDefinitionForProcess(
+function resolveActionTarget<
+	Definition extends ProcessActionPreviewDefinition | ProcessActionSchedulingDefinition,
+>(
+	definition: Definition | null,
 	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
-	action: ProcessActionDefinition | undefined,
-	actionId: string,
-): ProcessActionPreviewDefinition | null {
-	const visibleAction = resolveCurrentVisibleActionForProcess(processDef, process, actionId);
-	if (visibleAction?.preview) {
-		return visibleAction.preview;
+	process: Pick<ProcessInstance, "selectedTurnId">,
+): ResolvedAction<Definition> | null {
+	if (!definition) return null;
+	const metadata: ProcessActionPreviewDefinition | ProcessActionSchedulingDefinition = definition;
+	const preview = "preview" in metadata ? metadata.preview : metadata;
+	if (preview.kind === "fixed_turn") {
+		return { definition, candidateSelectedTurnId: preview.turnId, lifecycleStatus: null };
 	}
-	if (visibleAction?.scheduling?.preview) {
-		return visibleAction.scheduling.preview;
+	if (preview.kind === "terminal") {
+		return { definition, candidateSelectedTurnId: null, lifecycleStatus: preview.lifecycleStatus };
 	}
-	if (action?.preview) {
-		return action.preview;
-	}
-	return action?.scheduling?.preview ?? null;
-}
-
-function resolveSchedulingDefinitionForProcess(
-	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
-	action: ProcessActionDefinition | undefined,
-	actionId: string,
-): ProcessActionSchedulingDefinition | null {
-	if (action?.executionMode === "side_effect") {
-		return null;
-	}
-	const visibleAction = resolveCurrentVisibleActionForProcess(processDef, process, actionId);
-	if (visibleAction?.scheduling) {
-		return visibleAction.scheduling;
-	}
-	return action?.scheduling ?? null;
-}
-
-function resolveTransitionTarget(
-	transition: Pick<ProcessTurnTransition, "nextTurnId" | "lifecycleStatus">,
-): {
-	candidateSelectedTurnId: string | null;
-	lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
-} {
+	if (!processDef || !process.selectedTurnId) return null;
+	const transitions =
+		toProcessGraphView(processDef).turns.get(process.selectedTurnId)?.transitions ?? [];
+	const matchingTransitions = transitions.filter(
+		(transition) => transition.trigger === preview.trigger,
+	);
+	if (matchingTransitions.length !== 1) return null;
+	const [transition] = matchingTransitions;
 	return {
+		definition,
 		candidateSelectedTurnId: transition.nextTurnId ?? null,
 		lifecycleStatus: transition.lifecycleStatus ?? null,
 	};
-}
-
-function resolvePreviewTargetForProcess(
-	preview: ProcessActionPreviewDefinition,
-	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
-):
-	| {
-			candidateSelectedTurnId: string | null;
-			lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
-	  }
-	| undefined {
-	if (preview.kind === "fixed_turn") {
-		return {
-			candidateSelectedTurnId: preview.turnId,
-			lifecycleStatus: null,
-		};
-	}
-	if (preview.kind === "terminal") {
-		return {
-			candidateSelectedTurnId: null,
-			lifecycleStatus: preview.lifecycleStatus,
-		};
-	}
-	if (!processDef || !process.selectedTurnId) {
-		return undefined;
-	}
-	const transitions: readonly ProcessTurnTransition[] =
-		toProcessGraphView(processDef).turns.get(process.selectedTurnId)?.transitions ?? [];
-	const matchingTransitions = transitions.filter(
-		(transition: ProcessTurnTransition) => transition.trigger === preview.trigger,
-	);
-	if (matchingTransitions.length !== 1) {
-		return undefined;
-	}
-	const [transition] = matchingTransitions;
-	if (!transition) {
-		return undefined;
-	}
-	return resolveTransitionTarget(transition);
 }
 
 function resolveActionPreviewForProcess(
@@ -386,40 +316,14 @@ function resolveActionPreviewForProcess(
 	action: ProcessActionDefinition | undefined,
 	actionId: string,
 ): ResolvedActionPreview | null {
-	const definition = resolvePreviewDefinitionForProcess(processDef, process, action, actionId);
-	if (!definition) {
-		return null;
-	}
-	const target = resolvePreviewTargetForProcess(definition, processDef, process);
-	if (!target) {
-		return null;
-	}
-	return {
-		definition,
-		candidateSelectedTurnId: target.candidateSelectedTurnId,
-		lifecycleStatus: target.lifecycleStatus,
-	};
-}
-
-function resolveActionSchedulingForProcess(
-	processDef: ExtensionProcessDefinition | undefined,
-	process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
-	action: ProcessActionDefinition | undefined,
-	actionId: string,
-): ResolvedActionScheduling | null {
-	const definition = resolveSchedulingDefinitionForProcess(processDef, process, action, actionId);
-	if (!definition) {
-		return null;
-	}
-	const target = resolvePreviewTargetForProcess(definition.preview, processDef, process);
-	if (!target) {
-		return null;
-	}
-	return {
-		definition,
-		candidateSelectedTurnId: target.candidateSelectedTurnId,
-		lifecycleStatus: target.lifecycleStatus,
-	};
+	const visibleAction = resolveCurrentVisibleActionForProcess(processDef, process, actionId);
+	const definition =
+		visibleAction?.preview ??
+		visibleAction?.scheduling?.preview ??
+		action?.preview ??
+		action?.scheduling?.preview ??
+		null;
+	return resolveActionTarget(definition, processDef, process);
 }
 
 function resolveTurnScopedActionForProcess(
@@ -428,57 +332,32 @@ function resolveTurnScopedActionForProcess(
 	actionId: string,
 	source: ProcessActionExecutionSource,
 ): ResolvedTurnScopedAction | null {
-	if (!processDef) {
-		return null;
-	}
 	const currentTurn = resolveCurrentTurnForProcess(processDef, process);
-	if (!currentTurn) {
-		return null;
+	if (!currentTurn || !isHumanTurnDefinition(currentTurn.turnDef)) return null;
+	const view = resolveHumanTurnView({ turnId: currentTurn.turnId, turn: currentTurn.turnDef });
+	const action = view.actions.find((candidate) => candidate.actionId === actionId);
+	if (!action) return null;
+	const common = {
+		turnId: currentTurn.turnId,
+		semanticEntryRefKey: currentTurn.turnDef.reviewSemanticRef ?? null,
+		acceptanceState: action.acceptanceState,
+	};
+	if (source !== "external") {
+		return { ...common, kind: "ui_human_action", turnType: "human" };
 	}
-
-	if (isHumanTurnDefinition(currentTurn.turnDef)) {
-		const view = resolveHumanTurnView({
-			turnId: currentTurn.turnId,
-			turn: currentTurn.turnDef,
-		});
-		if (source !== "external") {
-			const turnAction = view.actions.find((action) => action.actionId === actionId);
-			if (!turnAction) {
-				return null;
-			}
-			return {
-				kind: "ui_human_action",
-				turnId: currentTurn.turnId,
-				turnType: "human",
-				semanticEntryRefKey: getTurnReviewSemanticRef(currentTurn.turnDef),
-				acceptanceState: turnAction.acceptanceState,
-			};
-		}
-
-		const externalTrigger = view.externalTriggers.find((trigger) => trigger.actionId === actionId);
-		if (!externalTrigger) {
-			return null;
-		}
-		const matchingVisibleAction = view.actions.find((action) => action.actionId === actionId);
-		if (!matchingVisibleAction) {
-			return null;
-		}
-		return {
-			kind: "external_human_trigger",
-			turnId: currentTurn.turnId,
-			turnType: "external",
-			semanticEntryRefKey: getTurnReviewSemanticRef(currentTurn.turnDef),
-			acceptanceState: matchingVisibleAction.acceptanceState,
-			externalTrigger: {
-				id: externalTrigger.id,
-				actionId: externalTrigger.actionId,
-				label: externalTrigger.label,
-				description: externalTrigger.description,
-			},
-		};
-	}
-
-	return null;
+	const externalTrigger = view.externalTriggers.find((trigger) => trigger.actionId === actionId);
+	if (!externalTrigger) return null;
+	return {
+		...common,
+		kind: "external_human_trigger",
+		turnType: "external",
+		externalTrigger: {
+			id: externalTrigger.id,
+			actionId: externalTrigger.actionId,
+			label: externalTrigger.label,
+			description: externalTrigger.description,
+		},
+	};
 }
 
 export function buildProcessActionRegistry(
@@ -545,7 +424,7 @@ export function buildProcessActionRegistry(
 			return serverDefs.get(processId);
 		},
 		getTurnDefinition(processId, turnId) {
-			return getProcessTurnBinding(processDefs.get(processId), turnId)?.definition;
+			return processDefs.get(processId)?.turns.get(turnId)?.definition;
 		},
 		getProcessGraph(processId) {
 			return processDefs.get(processId);
@@ -573,11 +452,14 @@ export function buildProcessActionRegistry(
 			);
 		},
 		resolveActionScheduling(processId, process, actionId) {
-			return resolveActionSchedulingForProcess(
-				processDefs.get(processId),
+			const action = serverDefs.get(processId)?.actions.get(actionId);
+			if (action?.executionMode === "side_effect") return null;
+			const processDef = processDefs.get(processId);
+			const visibleAction = resolveCurrentVisibleActionForProcess(processDef, process, actionId);
+			return resolveActionTarget(
+				visibleAction?.scheduling ?? action?.scheduling ?? null,
+				processDef,
 				process,
-				serverDefs.get(processId)?.actions.get(actionId),
-				actionId,
 			);
 		},
 	};

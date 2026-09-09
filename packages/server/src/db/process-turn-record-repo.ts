@@ -8,6 +8,7 @@ import type {
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
 import { asc, desc, eq } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -145,28 +146,25 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 		},
 
 		update(id: string, input: UpdateProcessTurnRecordInput): ProcessTurnRecord | null {
-			const setValues: Record<string, unknown> = {};
-			if (input.turnType !== undefined) setValues.turnType = input.turnType;
-			if (input.status !== undefined) setValues.status = input.status;
-			if (input.attemptNumber !== undefined) setValues.attemptNumber = input.attemptNumber;
-			if (input.parentTurnRecordId !== undefined)
-				setValues.parentTurnRecordId = input.parentTurnRecordId;
-			if (input.turnStartRecordId !== undefined)
-				setValues.turnStartRecordId = input.turnStartRecordId;
-			if (input.acceptedWorkerLeaseId !== undefined)
-				setValues.acceptedWorkerLeaseId = input.acceptedWorkerLeaseId;
-			if (input.forkPiEntryId !== undefined) setValues.forkPiEntryId = input.forkPiEntryId;
-			if (input.resultPiEntryId !== undefined) setValues.resultPiEntryId = input.resultPiEntryId;
-			if (input.modelProfileId !== undefined) setValues.modelProfileId = input.modelProfileId;
+			const setValues: SQLiteUpdateSetSource<typeof s.turnRecords> = {
+				turnType: input.turnType,
+				status: input.status,
+				attemptNumber: input.attemptNumber,
+				parentTurnRecordId: input.parentTurnRecordId,
+				turnStartRecordId: input.turnStartRecordId,
+				acceptedWorkerLeaseId: input.acceptedWorkerLeaseId,
+				forkPiEntryId: input.forkPiEntryId,
+				resultPiEntryId: input.resultPiEntryId,
+				modelProfileId: input.modelProfileId,
+				turnResultMarkdown: input.turnResultMarkdown,
+				errorSummary: input.errorSummary,
+				errorClass: input.errorClass,
+				endedAt: input.endedAt,
+			};
 			if (input.modelSelectionProvenance !== undefined) {
 				setValues.modelSelectionKind = input.modelSelectionProvenance?.kind ?? null;
 				setValues.modelSelectionSource = input.modelSelectionProvenance?.source ?? null;
 			}
-			if (input.turnResultMarkdown !== undefined)
-				setValues.turnResultMarkdown = input.turnResultMarkdown;
-			if (input.errorSummary !== undefined) setValues.errorSummary = input.errorSummary;
-			if (input.errorClass !== undefined) setValues.errorClass = input.errorClass;
-			if (input.endedAt !== undefined) setValues.endedAt = input.endedAt;
 
 			db.update(s.turnRecords).set(setValues).where(eq(s.turnRecords.id, id)).run();
 			return this.getById(id);

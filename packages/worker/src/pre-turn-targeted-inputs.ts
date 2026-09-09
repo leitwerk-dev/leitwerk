@@ -18,6 +18,14 @@ export type PreTurnTargetedInput = Pick<
 	target: NonNullable<InputItem["target"]>;
 };
 
+export type AppliedTargetedInputMetadata = {
+	currentPrimaryPathLeafId?: string | null;
+	rootEntryId?: string | null;
+	targetSemanticRef?: ProcessSemanticEntryRefKey | null;
+	targetProductName?: string | null;
+	targetEntryId?: string | null;
+};
+
 function resolveTargetSemanticRef(
 	target: PreTurnTargetedInput["target"],
 ): ProcessSemanticEntryRefKey | null {
@@ -128,17 +136,7 @@ export async function applyPreTurnTargetedInputs(input: {
 	recoveryBaseEntryId?: string | null;
 	reuseExistingWithoutBranching?: boolean;
 	requireExisting?: boolean;
-	onApplied?(
-		inputId: string,
-		sequence: number,
-		meta?: {
-			currentPrimaryPathLeafId?: string | null;
-			rootEntryId?: string | null;
-			targetSemanticRef?: ProcessSemanticEntryRefKey | null;
-			targetProductName?: string | null;
-			targetEntryId?: string | null;
-		},
-	): void;
+	onApplied?(inputId: string, sequence: number, meta?: AppliedTargetedInputMetadata): void;
 }): Promise<void> {
 	if (input.inputs.length === 0) {
 		return;

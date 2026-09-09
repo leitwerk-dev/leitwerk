@@ -2,8 +2,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
-import { buildWorkspaceSourceAliases } from "./packages/test-support/src/workspace-source-aliases.js";
 import { loadActiveDevelopmentComposition } from "./scripts/development-composition.js";
+import { buildWorkspaceSourceAliases } from "./scripts/workspace-source-aliases.js";
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 // Keep Vitest from resolving bare Node stream built-ins against the worktree root.

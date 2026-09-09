@@ -1,5 +1,24 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 
+/** Forward signals to an attached child and exit with its status. */
+export function forwardChildLifecycle(child: ChildProcess, cleanup: () => void = () => {}): void {
+	for (const signal of ["SIGINT", "SIGTERM"] as const) {
+		process.once(signal, () => {
+			cleanup();
+			child.kill(signal);
+		});
+	}
+	child.once("error", (error) => {
+		cleanup();
+		console.error(error instanceof Error ? error.message : error);
+		process.exit(1);
+	});
+	child.once("exit", (code, signal) => {
+		cleanup();
+		process.exit(signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : (code ?? 1));
+	});
+}
+
 export function spawnManaged(
 	command: string,
 	args: readonly string[],

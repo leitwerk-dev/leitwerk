@@ -112,10 +112,3 @@ export function generateCreateIndexDDL(table: SQLiteTable): string[] {
 		return `CREATE ${unique}INDEX IF NOT EXISTS ${idx.config.name} ON ${cfg.name}(${colNames})${where}`;
 	});
 }
-
-export function generateDDL(tables: SQLiteTable[]): string[] {
-	return tables.flatMap((table) => [
-		generateCreateTableDDL(table),
-		...generateCreateIndexDDL(table),
-	]);
-}

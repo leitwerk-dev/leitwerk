@@ -90,19 +90,28 @@ export function validateProcessActionSchedulingDefinition(
 	return validateProcessActionPreviewDefinition(scheduling?.preview, context);
 }
 
-function hasDuplicateBy<TItem>(
+function findDuplicateBy<TItem>(
 	items: readonly TItem[],
 	selectKey: (item: TItem) => string,
-): boolean {
+): TItem | undefined {
 	const ids = new Set<string>();
 	for (const item of items) {
 		const key = selectKey(item);
 		if (ids.has(key)) {
-			return true;
+			return item;
 		}
 		ids.add(key);
 	}
-	return false;
+	return undefined;
+}
+
+function validateProcessProductName(name: string): string[] {
+	try {
+		assertValidProcessProductName(name);
+		return [];
+	} catch (error) {
+		return [error instanceof Error ? error.message : String(error)];
+	}
 }
 
 function validateOutcomeTurnResultContract<TParams = unknown, TState = unknown>(
@@ -139,11 +148,7 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
 	>) {
 		if (outcomeSpec.publishedProduct) {
-			try {
-				assertValidProcessProductName(outcomeSpec.publishedProduct);
-			} catch (error) {
-				errors.push(error instanceof Error ? error.message : String(error));
-			}
+			errors.push(...validateProcessProductName(outcomeSpec.publishedProduct));
 			const parameterName = outcomeSpec.turnResultMarkdownParameter?.trim() ?? "";
 			if (!parameterName) {
 				errors.push(
@@ -205,11 +210,7 @@ function validateTurnStartSelection(
 		errors.push(`LLM turn '${turnId}' ${context} entry id must be non-empty`);
 	}
 	if (startFrom.kind === "product_ref") {
-		try {
-			assertValidProcessProductName(startFrom.productName);
-		} catch (error) {
-			errors.push(error instanceof Error ? error.message : String(error));
-		}
+		errors.push(...validateProcessProductName(startFrom.productName));
 	}
 	if ("fallback" in startFrom && startFrom.fallback) {
 		errors.push(...validateTurnStartSelection(turnId, startFrom.fallback, `${context} fallback`));
@@ -332,15 +333,10 @@ export function validateAutomaticTurnDefinition<
 	TParams = unknown,
 	TState = unknown,
 >(turnId: string, turnDef: AutomaticTurnDefinition<TOutcome, TParams, TState>): string[] {
-	const errors: string[] = [];
-	const declaredOutcomes = turnDef.outcomes;
-	const declaredTurnEnd = turnDef.turnEnd;
-	errors.push(
-		...validateOutcomeTurnResultContract("Automatic", turnId, declaredOutcomes, declaredTurnEnd),
-	);
-	errors.push(...validateOutcomeToolParameters("Automatic", turnId, declaredOutcomes));
-
-	return errors;
+	return [
+		...validateOutcomeTurnResultContract("Automatic", turnId, turnDef.outcomes, turnDef.turnEnd),
+		...validateOutcomeToolParameters("Automatic", turnId, turnDef.outcomes),
+	];
 }
 
 export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
@@ -355,11 +351,7 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		errors.push(error instanceof Error ? error.message : String(error));
 	}
 	if (turnDef.reviewProduct) {
-		try {
-			assertValidProcessProductName(turnDef.reviewProduct);
-		} catch (error) {
-			errors.push(error instanceof Error ? error.message : String(error));
-		}
+		errors.push(...validateProcessProductName(turnDef.reviewProduct));
 	}
 
 	const actionEntries = Object.entries(turnDef.actions) as Array<
@@ -383,10 +375,10 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 	const externalTriggers = actionEntries.flatMap(([actionId, action]) =>
 		(action.externalTriggers ?? []).map((trigger) => ({ actionId, trigger })),
 	);
-	if (hasDuplicateBy(externalTriggers, ({ trigger }) => trigger.id)) {
+	if (findDuplicateBy(externalTriggers, ({ trigger }) => trigger.id) !== undefined) {
 		errors.push(`Human turn '${turnId}' contains duplicate external trigger ids`);
 	}
-	if (hasDuplicateBy(externalTriggers, ({ actionId }) => actionId)) {
+	if (findDuplicateBy(externalTriggers, ({ actionId }) => actionId) !== undefined) {
 		errors.push(`Human turn '${turnId}' contains duplicate external trigger action ids`);
 	}
 	for (const { actionId, trigger } of externalTriggers) {
@@ -410,11 +402,7 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		}
 	}
 
-	const externalActionEntries = Object.entries(turnDef.externalActions ?? {});
-	if (hasDuplicateBy(externalActionEntries, ([externalActionId]) => externalActionId)) {
-		errors.push(`Human turn '${turnId}' contains duplicate external action ids`);
-	}
-	for (const [externalActionId, externalAction] of externalActionEntries) {
+	for (const [externalActionId, externalAction] of Object.entries(turnDef.externalActions ?? {})) {
 		if (externalActionId.trim() === "") {
 			errors.push(`Human turn '${turnId}' contains an external action with an empty id`);
 		}
@@ -438,11 +426,7 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 			);
 		}
 		if (externalAction.publishInput) {
-			try {
-				assertValidProcessProductName(externalAction.publishInput.productName);
-			} catch (error) {
-				errors.push(error instanceof Error ? error.message : String(error));
-			}
+			errors.push(...validateProcessProductName(externalAction.publishInput.productName));
 			if (externalAction.publishInput.inputField.trim() === "") {
 				errors.push(
 					`Human turn '${turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
@@ -456,16 +440,9 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		}
 	}
 
-	const notesFields = turnDef.notesFields ?? [];
-	if (hasDuplicateBy(notesFields, (field) => field.id)) {
-		const noteIds = new Set<string>();
-		for (const field of notesFields) {
-			if (noteIds.has(field.id)) {
-				errors.push(`Human turn '${turnId}' contains duplicate notes field id '${field.id}'`);
-				break;
-			}
-			noteIds.add(field.id);
-		}
+	const duplicateNote = findDuplicateBy(turnDef.notesFields ?? [], (field) => field.id);
+	if (duplicateNote !== undefined) {
+		errors.push(`Human turn '${turnId}' contains duplicate notes field id '${duplicateNote.id}'`);
 	}
 
 	return errors;

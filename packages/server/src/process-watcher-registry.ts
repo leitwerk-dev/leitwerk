@@ -14,7 +14,7 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import { buildProcessWatchers } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "./config/config-types.js";
-import { buildProcessLaunchPlan } from "./process-launch-plan.js";
+import { buildProcessLaunchPlan, validateLaunchPreparationChecks } from "./process-launch-plan.js";
 import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
 
 export type { ProcessWatcherServiceLike, RegisteredProcessWatcherLike };
@@ -36,12 +36,6 @@ interface ProcessWatcherRegistryOptions {
 	modelProfiles?: readonly LauncherModelProfileSummary[];
 	getModelProfilesForProcess?: (processId: string) => readonly LauncherModelProfileSummary[];
 	processModelPolicy?: ServerProcessModelPolicy;
-}
-
-function collectProcessWatchers(
-	processDef: ExtensionProcessDefinition,
-): ReadonlyMap<string, ProcessWatcherDefinition> {
-	return buildProcessWatchers(processDef)?.watchers ?? new Map();
 }
 
 function buildLaunchPlan(
@@ -80,10 +74,7 @@ function parseConfiguredWatcher(input: {
 		if (presentation.targetSummary.trim() === "") {
 			throw new Error("presentConfig() must return a non-empty targetSummary");
 		}
-		const parsedLaunch = parsed.launchModelConfig ?? {
-			defaultModelProfileId: null,
-			turnConfigs: {},
-		};
+		const parsedLaunch = parsed.launchModelConfig ?? {};
 		const launchModelConfig = {
 			defaultModelProfileId: parsedLaunch.defaultModelProfileId ?? null,
 			turnConfigs: parsedLaunch.turnConfigs ?? {},
@@ -135,10 +126,10 @@ function collectConfiguredProcessWatchers(input: {
 	for (const [processId, processConfig] of Object.entries(input.config.process_configs ?? {})) {
 		const processDef = input.catalog.processes.get(processId);
 		if (!processDef) continue;
-		const definitions = collectProcessWatchers(processDef);
+		const definitions = buildProcessWatchers(processDef)?.watchers;
 		for (const [watcherId, rawConfig] of Object.entries(processConfig.watchers ?? {})) {
 			const configPath = `process_configs.${processId}.watchers.${watcherId}`;
-			const definition = definitions.get(watcherId);
+			const definition = definitions?.get(watcherId);
 			if (!definition) {
 				errors.push(`Unknown watcher '${watcherId}' at ${configPath}`);
 				continue;
@@ -184,15 +175,6 @@ export function buildProcessWatcherRegistry(
 		throw new Error(`Invalid process watcher config:\n${errors.join("\n")}`);
 	}
 
-	const getDefaultModelProfilesForProcess = (
-		processId: string,
-	): readonly LauncherModelProfileSummary[] =>
-		options.getModelProfilesForProcess?.(processId) ?? options.modelProfiles ?? [];
-	const createWatcherContext = (processId: string, ctx: LauncherContext = {}): LauncherContext => ({
-		...ctx,
-		modelProfiles: ctx.modelProfiles ?? getDefaultModelProfilesForProcess(processId),
-	});
-
 	const registrations = watchers
 		.sort((a, b) => {
 			const processCompare = a.processDisplayName.localeCompare(b.processDisplayName);
@@ -202,7 +184,14 @@ export function buildProcessWatcherRegistry(
 		})
 		.map((watcher) => {
 			const resolveLaunchAttempt = async (event: unknown, ctx: LauncherContext = {}) => {
-				const watcherContext = createWatcherContext(watcher.processId, ctx);
+				const watcherContext: LauncherContext = {
+					...ctx,
+					modelProfiles:
+						ctx.modelProfiles ??
+						options.getModelProfilesForProcess?.(watcher.processId) ??
+						options.modelProfiles ??
+						[],
+				};
 				if (
 					watcher.definition.matches &&
 					!(await watcher.definition.matches(event, watcherContext))
@@ -210,23 +199,10 @@ export function buildProcessWatcherRegistry(
 					return null;
 				}
 				const launchConfig = await watcher.definition.resolveLaunchConfig(event, watcherContext);
-				const preparationChecks = [
-					...(watcher.definition.preparationChecks?.(event, launchConfig) ?? []),
-				];
-				const ids = new Set<string>();
-				for (const check of preparationChecks) {
-					if (!check.id.trim() || !check.label.trim()) {
-						throw new Error(
-							`Watcher '${watcher.definition.id}' preparation checks require ids and labels`,
-						);
-					}
-					if (ids.has(check.id)) {
-						throw new Error(
-							`Watcher '${watcher.definition.id}' has duplicate preparation check '${check.id}'`,
-						);
-					}
-					ids.add(check.id);
-				}
+				const preparationChecks = validateLaunchPreparationChecks(
+					watcher.definition.preparationChecks?.(event, launchConfig),
+					`Watcher '${watcher.definition.id}'`,
+				);
 				return {
 					launchConfig,
 					launchPlan: buildLaunchPlan(watcher, launchConfig, config.commit_messages),

@@ -7,7 +7,6 @@ import {
 	type WorkerIntegrationToolCancelPayload,
 	type WorkerIntegrationToolRequestPayload,
 	type WorkerIntegrationToolResultPayload,
-	type WorkerTurnFailedPayload,
 	type WorkerTurnStartAcceptedPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -19,7 +18,10 @@ import type { Broadcaster } from "../ws/broadcast.js";
 import { createWorkerEventIngestor, type WorkerEventLogEntry } from "./worker-event-ingestor.js";
 import { createWorkerInputAckHandler } from "./worker-input-ack-handler.js";
 import { applyWorkerLeaseObservation, resolveActiveWorkerLease } from "./worker-lease-observer.js";
-import { createWorkerTurnIpcRecorder } from "./worker-turn-ipc-recorder.js";
+import {
+	createWorkerTurnIpcRecorder,
+	type WorkerTurnIpcRecorderCallbacks,
+} from "./worker-turn-ipc-recorder.js";
 
 export type { WorkerEventLogEntry } from "./worker-event-ingestor.js";
 export type { IpcEnvelope };
@@ -63,35 +65,10 @@ export interface IpcHandlerDeps
 	) => void;
 }
 
-export interface IpcHandlerCallbacks {
+export interface IpcHandlerCallbacks extends WorkerTurnIpcRecorderCallbacks {
 	onWorkerReady?: (instanceId: string, workerId: string) => void;
 	onWorkerFailed?: (instanceId: string, workerId: string, error: string) => void;
 	onWorkerExited?: (instanceId: string, workerId: string) => void;
-	onTurnOutcomeRecorded?: (
-		instanceId: string,
-		turnId: string,
-		outcome: string,
-		params: Record<string, unknown>,
-	) => void;
-	onTurnTerminalRecorded?: (instanceId: string, workerId: string, turnRecordId: string) => void;
-	onTurnFailedRecorded?: (input: {
-		instanceId: string;
-		workerId: string;
-		turnRecordId: string;
-		turnId: string;
-		turnType: WorkerTurnFailedPayload["turnType"];
-		errorSummary: string;
-		errorClass?: WorkerTurnFailedPayload["errorClass"];
-		failureCode?: WorkerTurnFailedPayload["failureCode"];
-	}) => void;
-	onTurnTerminalRecordingFailed?: (input: {
-		instanceId: string;
-		workerId: string;
-		turnRecordId: string;
-		terminalType: "outcome" | "failure";
-		code: string;
-		message: string;
-	}) => void;
 	onCleanupCompleted?: (instanceId: string, workerId: string) => void;
 	onWorkerTurnStartAccepted?: (
 		instanceId: string,

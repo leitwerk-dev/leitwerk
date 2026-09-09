@@ -28,25 +28,20 @@ export const SESSION_TRANSFER_PHASES = [
 ] as const;
 export type SessionTransferPhase = (typeof SESSION_TRANSFER_PHASES)[number];
 
-const SESSION_TRANSFER_QUEUED_PHASES = new Set<SessionTransferPhase>([
-	"queued",
-	"waiting_for_execution_chain",
-]);
-const SESSION_TRANSFER_EXPORTING_PHASES = new Set<SessionTransferPhase>([
-	"stopping_worker",
-	"starting_exporter",
-	"scanning",
-	"ready_to_stream",
-	"streaming",
-]);
-
 /** Derives the public coarse status from the persisted lifecycle phase. */
 export function sessionTransferAttemptStateForPhase(
 	phase: SessionTransferPhase,
 ): SessionTransferAttemptState {
-	if (SESSION_TRANSFER_QUEUED_PHASES.has(phase)) return "queued";
-	if (SESSION_TRANSFER_EXPORTING_PHASES.has(phase)) return "exporting";
 	switch (phase) {
+		case "queued":
+		case "waiting_for_execution_chain":
+			return "queued";
+		case "stopping_worker":
+		case "starting_exporter":
+		case "scanning":
+		case "ready_to_stream":
+		case "streaming":
+			return "exporting";
 		case "awaiting_ack":
 		case "consumed":
 		case "cancelled":

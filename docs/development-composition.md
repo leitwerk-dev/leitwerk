@@ -97,3 +97,5 @@ Without `--composition`, every Leitwerk command retains its public-only behavior
 Source development watches composed extension sources and private workspace package sources. Runtime changes preflight and restart the backend. Extension UI sources use the existing Vite development lane. Local workers receive the resolved composition roots so they can load extension entries from the sibling workspace. Isolated workers do not receive host development roots.
 
 Composition-aware build and verification include external package builds, TypeScript projects, source aliases, unit and integration tests, private test roots, boundary checks, and dist extension catalog loading. Public publishing and public license staging never include composed packages.
+
+Development, release, boundary checks, and source aliases share workspace discovery. It accepts `workspaces` arrays or `{ "packages": [...] }`, expands literal package paths and trailing `/*` patterns, and deduplicates directories containing `package.json`.

@@ -118,10 +118,13 @@ afterEach(async () => {
 });
 
 describe("internal worker session snapshot routes", () => {
-	it("atomically overwrites the latest snapshot for a snapshot-token-authenticated active worker", async () => {
+	it.each([
+		"\n",
+		"\r\n",
+	])("atomically overwrites snapshots with %j line endings", async (newline) => {
 		const { app, process, sessionSnapshots, token } = await createHarness();
-		const first = `${JSON.stringify({ type: "message", id: "entry-1" })}\n`;
-		const second = `${JSON.stringify({ type: "message", id: "entry-2" })}\n`;
+		const first = `${JSON.stringify({ type: "message", id: "entry-1" })}${newline}`;
+		const second = `${JSON.stringify({ type: "message", id: "entry-🛠" })}${newline}`;
 
 		const firstPut = await app.inject({
 			method: "PUT",

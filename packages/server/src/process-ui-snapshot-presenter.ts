@@ -30,7 +30,6 @@ import {
 	type ProcessExternalTriggerSignal,
 	type ProcessExternalTriggerSummary,
 	type ProcessSelectedTurnSummary,
-	type ProcessStartupSummary,
 	type ProcessTimelineInputSummary,
 	type ProcessTimelineSnapshot,
 	type ProcessTimelineTurnSummary,
@@ -44,6 +43,7 @@ import {
 	timelinePresentationForTurnType,
 } from "@leitwerk-dev/protocol";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
+import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess } from "./process-graph.js";
 import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js";
 import { presentProcessModelConfiguration } from "./process-model-policy-presenter.js";
@@ -122,23 +122,7 @@ export function projectProcessForUiSnapshot(process: ProcessInstance): ProcessUi
 	};
 }
 
-export function resolveCurrentExecutionTurnRecordId(
-	process: ProcessInstance,
-	turnStarts: { getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null },
-): string | null {
-	if (process.currentExecution?.kind !== "worker_start") return null;
-	const start = turnStarts.getById(process.currentExecution.id);
-	return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-}
-
 export { buildStartupRecovery } from "./startup-evidence.js";
-
-/** @deprecated Use the canonical startup-evidence projector directly. */
-export function buildProcessStartupSummary(
-	input: Parameters<typeof buildStartupEvidence>[0],
-): ProcessStartupSummary {
-	return presentProcessStartupSummary(buildStartupEvidence(input));
-}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return typeof value === "object" && value !== null && !Array.isArray(value)

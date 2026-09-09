@@ -41,6 +41,8 @@ describe("process turn trace projection", () => {
 							{ type: "thinking", thinking: "Inspect first.\n" },
 							{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "README.md" } },
 							{ type: "text", text: "Done." },
+							{ type: "thinking", thinking: "Check the result.\n" },
+							{ type: "toolCall", id: "tool-1", name: "duplicate", arguments: { ignored: true } },
 						],
 						usage: { input: 10, output: 5, cacheRead: 1, cacheWrite: 2, totalTokens: 18 },
 					},
@@ -85,7 +87,14 @@ describe("process turn trace projection", () => {
 		expect(trace?.toolCalls).toHaveLength(1);
 		expect(trace?.toolCalls[0]?.status).toBe("completed");
 		expect(trace?.toolCalls[0]).not.toHaveProperty("result");
+		expect(trace?.traceItems.map((item) => item.kind)).toEqual([
+			"thinking",
+			"tool_call",
+			"thinking",
+		]);
 		expect(trace?.toolCalls[0]).toMatchObject({
+			toolName: "read",
+			arguments: { path: "README.md" },
 			startedAt: "2026-01-01T00:00:02.000Z",
 			completedAt: "2026-01-01T00:00:03.000Z",
 			resultText: "file contents",

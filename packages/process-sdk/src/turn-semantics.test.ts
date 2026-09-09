@@ -381,18 +381,19 @@ describe("turn semantics", () => {
 		).toEqual(
 			expect.arrayContaining(["Human turn 'plan_review' contains duplicate external trigger ids"]),
 		);
+	});
 
+	it.each([
+		["message", "message"],
+		["", ""],
+		["second", "first", "second", "first"],
+	])("reports the first duplicate notes field in %j", (...ids) => {
 		expect(
 			validateHumanTurnDefinition(
 				"plan_review",
-				makeHumanTurn({
-					notesFields: [
-						{ id: "message", label: "First" },
-						{ id: "message", label: "Second" },
-					],
-				}),
+				makeHumanTurn({ notesFields: ids.map((id) => ({ id, label: id })) }),
 			),
-		).toContain("Human turn 'plan_review' contains duplicate notes field id 'message'");
+		).toEqual([`Human turn 'plan_review' contains duplicate notes field id '${ids[0]}'`]);
 	});
 
 	it("rejects invalid external turn definitions", () => {
