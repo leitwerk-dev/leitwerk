@@ -77,7 +77,7 @@ workers:
     error_process_retention: 168h
 ```
 
-- `storage.sqlite_path`: Path to SQLite database holding durable process state.
+- `storage.sqlite_path`: Path to SQLite database holding durable process state. Existing ticket-destination history is retained. The `20260823_add_ticket_destination_recents` migration backs up databases that lack the history table before adding it.
 - `session_transfer.max_entries`: Maximum manifest, workspace, and session entries accepted by one transfer.
 - `session_transfer.max_logical_bytes`: Maximum expanded regular-file bytes, enforced during server preflight and local extraction.
 - `session_transfer.max_compressed_bytes`: Maximum compressed bytes, enforced by the server relay and local importer.

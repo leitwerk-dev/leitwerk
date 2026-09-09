@@ -301,6 +301,22 @@ export const launcherRecentValues = sqliteTable(
 	],
 );
 
+export const ticketDestinationRecents = sqliteTable(
+	"ticket_destination_recents",
+	{
+		id: text("id").primaryKey(),
+		actorKey: text("actor_key").notNull(),
+		toolName: text("tool_name").notNull(),
+		destinationId: text("destination_id").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+	},
+	(t) => [
+		index("idx_ticket_destination_recents_actor_tool").on(t.actorKey, t.toolName, t.updatedAt),
+		uniqueIndex("uq_ticket_destination_recent").on(t.actorKey, t.toolName, t.destinationId),
+	],
+);
+
 export const processTitleJobs = sqliteTable(
 	"process_title_jobs",
 	{

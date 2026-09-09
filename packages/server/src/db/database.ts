@@ -49,6 +49,7 @@ const ALL_TABLES = [
 	schema.processHandoffDedupKeys,
 	schema.futureExecutions,
 	schema.launcherRecentValues,
+	schema.ticketDestinationRecents,
 	schema.processTitleJobs,
 	schema.pendingExternalSourceFires,
 	schema.processLeafOutcomeSnapshots,
@@ -323,6 +324,15 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260823_add_ticket_destination_recents",
+		tableNames: ["ticket_destination_recents"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) && existingTableSql(sqlite, "ticket_destination_recents") === null,
+		apply(sqlite) {
+			createTableWithIndexes(sqlite, schema.ticketDestinationRecents);
+		},
+	},
 	{
 		id: "20260908_add_api_tokens",
 		tableNames: ["api_tokens"],
