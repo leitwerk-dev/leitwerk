@@ -23,7 +23,9 @@ LEITWERK_DOCKER_STORAGE_CLASS_NAME=leitwerk-docker-process \
 scripts/docker-runtime/test-kubernetes-runner.sh
 ```
 
-The local check verifies the explicitly selected host context. The isolated checks run the candidate image's trusted entrypoint against a minimal disposable WebSocket endpoint, wait for its private daemon, build and run a nested image, replace the outer container or Pod, and run the prior image with `--pull=never`. The Kubernetes check also verifies `overlay2`, DNS, `hostUsers: false`, and the absence of privileged mode and host paths.
+The local check verifies the explicitly selected host context. The isolated checks run the candidate image's trusted entrypoint against a minimal disposable WebSocket endpoint, wait for its private daemon, verify `overlay2`, build and run a nested image, replace the outer container or Pod, verify `overlay2` again, and run the prior image with `--pull=never`. The Kubernetes check also verifies DNS, `hostUsers: false`, and the absence of privileged mode and host paths.
+
+A passing canary establishes compatibility for the tested worker image, kernel, container runtime, and process volume. Record those inputs with the result; do not infer support for other deployments from the backing filesystem name. For an upgrade, use a disposable copy of an existing `overlay2` store with the candidate image. Do not point a canary at an active process store or a store created by another driver.
 
 The Docker canary removes only resource IDs created by that run. Its default state volume gets a fresh Docker-generated name. Set `LEITWERK_DOCKER_STATE_VOLUME` to reuse a retained volume; cleanup preserves that volume.
 
