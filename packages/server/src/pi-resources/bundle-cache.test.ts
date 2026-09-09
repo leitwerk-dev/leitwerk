@@ -51,6 +51,7 @@ describe("Pi resource bundle cache", () => {
 		cache.put(first);
 		cache.put(second);
 		cache.get(first.digest);
+		expect(cache.unpin(second.digest)).toBe(false);
 		cache.put(third);
 		expect(cache.has(first.digest)).toBe(true);
 		expect(cache.has(second.digest)).toBe(false);
@@ -62,6 +63,22 @@ describe("Pi resource bundle cache", () => {
 		expect(() => pinnedOnly.put(second)).toThrow(/capacity is exhausted by pinned bundles/);
 		expect(pinnedOnly.has(first.digest)).toBe(true);
 		expect(pinnedOnly.has(second.digest)).toBe(false);
+	});
+
+	it("refreshes recency on duplicate puts and successful pin changes", () => {
+		const cache = createPiResourceBundleCache();
+		const first = bundle("first", "1");
+		const second = bundle("second", "2");
+		const third = bundle("third", "3");
+		for (const entry of [first, second, third]) cache.put(entry);
+		cache.pin(first.digest);
+		cache.unpin(first.digest);
+		cache.put(second);
+		expect(cache.gc()).toEqual({
+			removedDigests: [third.digest, first.digest, second.digest],
+			removedBytes: first.bytes.length + second.bytes.length + third.bytes.length,
+		});
+		expect(cache.stats().bytes).toBe(0);
 	});
 
 	it("rejects mismatched digests and bundles larger than the byte bound", () => {

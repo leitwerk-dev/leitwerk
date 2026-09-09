@@ -91,13 +91,16 @@ describe("shouldPreservePersistedLeafForActiveTurnResume", () => {
 		).toBe(false);
 	});
 
-	it("does not preserve the persisted leaf when an explicit continue leaf is present", () => {
+	it.each([
+		"continueFromPiEntryId",
+		"retryForkPiEntryId",
+	])("does not preserve the persisted leaf when %s is present", (key) => {
 		expect(
 			shouldPreservePersistedLeafForActiveTurnResume({
 				processSnapshot: createTestProcessInstance({
 					selectedTurnId: "generate_plan",
 					currentExecution: { kind: "worker_start", id: "start-running" },
-					metadata: { continueFromPiEntryId: "assistant-failed-1" },
+					metadata: { [key]: "assistant-failed-1" },
 				}),
 				payload: { resume: true, turnStart: acceptedTurnStart("trn_running") },
 			}),

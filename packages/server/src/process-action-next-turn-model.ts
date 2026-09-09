@@ -11,10 +11,7 @@ import type {
 	ProcessActionModelResolutionPreview,
 	ProcessActionWarmPromptCacheContext,
 } from "@leitwerk-dev/protocol/http-contracts";
-import type {
-	ProcessTurnRecordLookup,
-	TurnStartRecordLookup,
-} from "./semantic-turn-result-markdown.js";
+import type { ProcessTurnRecordLookup, TurnStartRecordLookup } from "./turn-result-markdown.js";
 
 export type ProcessActionResolvedModelSummary = ProcessActionModelResolutionPreview;
 

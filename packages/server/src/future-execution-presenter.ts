@@ -27,8 +27,10 @@ export interface BuildScheduledActionSummaryDeps extends FutureExecutionPresente
 	) => HttpProcessActionSummary;
 }
 
-function futureState(execution: FutureExecution) {
+function futureSummaryState(execution: FutureExecution) {
 	return {
+		id: execution.id,
+		nextRunAt: execution.nextRunAt,
 		status: execution.blockedReason ? ("blocked" as const) : ("scheduled" as const),
 		modelSelection: execution.modelSelection ?? null,
 		blockedReason: execution.blockedReason ?? null,
@@ -43,6 +45,12 @@ export function buildFutureExecutionListView(
 	deps: FutureExecutionPresenterDeps,
 	execution: FutureExecution,
 ): FutureLaunchSummary | FutureActionSummary | null {
+	const summary = {
+		...futureSummaryState(execution),
+		scheduleKind: execution.scheduleKind,
+		processId: execution.processId,
+		cronExpression: execution.cronExpression,
+	};
 	if (execution.kind === "launch") {
 		const launcher = deps.launcherService
 			.listUiLaunchers()
@@ -51,13 +59,8 @@ export function buildFutureExecutionListView(
 		if (!parsedPayload.ok) {
 			const launcherLabel = launcher?.label ?? execution.launcherId ?? execution.processId;
 			return {
-				...futureState(execution),
-				id: execution.id,
+				...summary,
 				kind: "launch",
-				scheduleKind: execution.scheduleKind,
-				processId: execution.processId,
-				nextRunAt: execution.nextRunAt,
-				cronExpression: execution.cronExpression,
 				title: launcher?.card.title ?? launcherLabel,
 				subtitle: `${launcherLabel} · invalid scheduled start`,
 				launcherId: execution.launcherId ?? execution.processId,
@@ -82,13 +85,8 @@ export function buildFutureExecutionListView(
 				? `${launcher?.label ?? payload.launchPlan.processId} · recurring cron`
 				: `${launcher?.label ?? payload.launchPlan.processId} · scheduled start`;
 		return {
-			...futureState(execution),
-			id: execution.id,
+			...summary,
 			kind: "launch",
-			scheduleKind: execution.scheduleKind,
-			processId: execution.processId,
-			nextRunAt: execution.nextRunAt,
-			cronExpression: execution.cronExpression,
 			title,
 			subtitle,
 			launcherId: execution.launcherId ?? payload.launchPlan.launcherId,
@@ -104,41 +102,17 @@ export function buildFutureExecutionListView(
 	}
 	const process = deps.processes.getById(execution.instanceId);
 	const parsedPayload = parseFutureActionPayloadJson(execution.payloadJson);
-	if (!parsedPayload.ok) {
-		return {
-			...futureState(execution),
-			id: execution.id,
-			kind: "action",
-			scheduleKind: execution.scheduleKind,
-			processId: execution.processId,
-			nextRunAt: execution.nextRunAt,
-			cronExpression: execution.cronExpression,
-			title: process?.title ?? process?.externalId ?? execution.actionId,
-			subtitle: `${execution.actionId} · invalid scheduled action`,
-			instanceId: execution.instanceId,
-			actionId: execution.actionId,
-			actionLabel: execution.actionId,
-			nextTurnModelProfileId: null,
-		};
-	}
-	const payload = parsedPayload.value;
-	const actionLabel = futureActionLabel(payload.actionLabel, execution.actionId);
-	const title = process?.title ?? process?.externalId ?? actionLabel;
-	const subtitle = `${actionLabel} · scheduled action`;
+	const payload = parsedPayload.ok ? parsedPayload.value : null;
+	const actionLabel = futureActionLabel(payload?.actionLabel ?? null, execution.actionId);
 	return {
-		...futureState(execution),
-		id: execution.id,
+		...summary,
 		kind: "action",
-		scheduleKind: execution.scheduleKind,
-		processId: execution.processId,
-		nextRunAt: execution.nextRunAt,
-		cronExpression: execution.cronExpression,
-		title,
-		subtitle,
+		title: process?.title ?? process?.externalId ?? actionLabel,
+		subtitle: `${actionLabel} · ${payload ? "scheduled action" : "invalid scheduled action"}`,
 		instanceId: execution.instanceId,
 		actionId: execution.actionId,
 		actionLabel,
-		nextTurnModelProfileId: payload.nextTurnModelProfileId,
+		nextTurnModelProfileId: payload?.nextTurnModelProfileId ?? null,
 	};
 }
 
@@ -173,9 +147,7 @@ export function getScheduledActionDetailForProcess(
 	const payload = parsedPayload.value;
 	const actionLabel = futureActionLabel(payload.actionLabel, action.label);
 	return {
-		...futureState(scheduledAction),
-		id: scheduledAction.id,
-		nextRunAt: scheduledAction.nextRunAt,
+		...futureSummaryState(scheduledAction),
 		actionId: scheduledAction.actionId,
 		actionLabel,
 		input: payload.input,

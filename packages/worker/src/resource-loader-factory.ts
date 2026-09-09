@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { DefaultResourceLoader, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 
 const AGGREGATED_AGENTS_REL = "AGENTS.md";
 const AGGREGATED_SKILLS_DIR_REL = path.join(".leitwerk", "skills");
@@ -95,21 +95,4 @@ export async function buildLeitwerkResourceLoaderOptions(
 			};
 		},
 	};
-}
-
-export async function createResourceLoader(
-	workspaceRoot: string,
-	settingsManager: SettingsManager,
-	agentDir: string,
-	options: ResourceLoaderOptions = {},
-): Promise<DefaultResourceLoader> {
-	const { DefaultResourceLoader } = await import("@earendil-works/pi-coding-agent");
-	const loader = new DefaultResourceLoader({
-		cwd: workspaceRoot,
-		agentDir,
-		settingsManager,
-		...(await buildLeitwerkResourceLoaderOptions(workspaceRoot, agentDir, options)),
-	});
-	await loader.reload();
-	return loader;
 }

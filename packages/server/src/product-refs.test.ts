@@ -18,7 +18,6 @@ import {
 	deriveTurnOutcomeProductRefPatch,
 	mergeProductRefPatchIntoStateJson,
 } from "./product-ref-state.js";
-import { resolveProductTurnResultMarkdown } from "./product-turn-result-markdown.js";
 import {
 	deriveTurnOutcomeSemanticEntryRefPatch,
 	mergeSemanticEntryRefPatchIntoStateJson,
@@ -30,6 +29,7 @@ import {
 	createProcessGraphRegistry,
 } from "./test-helpers/process-fixtures.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { resolveProductTurnResultMarkdown } from "./turn-result-markdown.js";
 
 const tempDirs: string[] = [];
 

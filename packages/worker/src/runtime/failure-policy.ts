@@ -105,32 +105,8 @@ function errorCode(error: unknown, fallback: string): string {
 	return typeof code === "string" && code.trim() !== "" ? code.trim() : fallback;
 }
 
-function sessionContext(payload: WorkerStartPayload): WorkerFailureSessionContext {
-	return {
-		selectedTurnId: payload.processSnapshot.selectedTurnId ?? null,
-		lifecycleStatus: payload.processSnapshot.lifecycleStatus ?? "running",
-		snapshotSource: failureSnapshotSource(payload),
-	};
-}
-
-function failureSnapshotSource(payload: WorkerStartPayload) {
-	return {
-		kind: payload.bootstrap.kind,
-		treeFile: payload.treePaths.primaryTreeFile,
-	} as const;
-}
-
 /** Pure normalization boundary for every failure owned by the worker runtime. */
 export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDisposition {
-	const session =
-		failure.kind === "bootstrap"
-			? sessionContext(failure.payload)
-			: failure.kind === "dispatch" ||
-					failure.kind === "cleanup" ||
-					failure.kind === "turn" ||
-					failure.kind === "mandatory_snapshot"
-				? (failure.session ?? null)
-				: null;
 	const secrets = extractSecretValuesFromPayload(
 		failure.kind === "bootstrap" ? failure.payload : null,
 	);
@@ -152,11 +128,8 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 		const summary =
 			failure.kind === "mandatory_snapshot"
 				? `Mandatory session snapshot upload failed before ${failure.point}: ${message}`
-				: redactSecrets(turnError?.message ?? message, secrets);
-		const errorClass =
-			failure.kind === "turn"
-				? (turnError?.errorClass ?? classified.errorClass)
-				: classified.errorClass;
+				: (turnError?.message ?? message);
+		const errorClass = turnError?.errorClass ?? classified.errorClass;
 		const payload: WorkerTurnFailedPayload = {
 			turnRecordId: correlation.turnRecordId,
 			turnId: correlation.turnId,
@@ -192,7 +165,7 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 				kind: "turn_failed",
 				payload,
 				park: {
-					selectedTurnId: session?.selectedTurnId ?? correlation.turnId,
+					selectedTurnId: failure.session?.selectedTurnId ?? correlation.turnId,
 					reason: summary,
 					errorClass,
 				},
@@ -210,7 +183,13 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 				errorClass: "infrastructure",
 			},
 			stderrMessage: summary,
-			snapshot: { point: "before_worker_failed", source: failureSnapshotSource(failure.payload) },
+			snapshot: {
+				point: "before_worker_failed",
+				source: {
+					kind: failure.payload.bootstrap.kind,
+					treeFile: failure.payload.treePaths.primaryTreeFile,
+				},
+			},
 			terminal: {
 				kind: "worker_failed",
 				payload: {
@@ -218,21 +197,25 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 					errorCode: errorCode(failure.error, "bootstrap_failed"),
 					message: bounded(summary),
 					errorClass: "infrastructure",
-					selectedTurnId: session?.selectedTurnId ?? null,
+					selectedTurnId: failure.payload.processSnapshot.selectedTurnId ?? null,
 				},
 			},
 			exitCode: 1,
 		};
 	}
 
+	const { session } = failure;
+	const isCleanup = failure.kind === "cleanup";
+	const summary = `${isCleanup ? "Worker cleanup failed" : "Worker dispatch failed"}: ${message}`;
+	const diagnostic: WorkerDiagnosticPayload = {
+		level: "error",
+		code: isCleanup ? "cleanup.failed" : "runtime.dispatch_failed",
+		message: summary,
+		errorClass: classified.errorClass,
+	};
 	if (failure.kind === "dispatch" && session && session.lifecycleStatus !== "error") {
 		return {
-			diagnostic: {
-				level: "error",
-				code: "runtime.dispatch_failed",
-				message: `Worker dispatch failed: ${message}`,
-				errorClass: classified.errorClass,
-			},
+			diagnostic,
 			stderrMessage: message,
 			terminal: {
 				kind: "park",
@@ -245,11 +228,8 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 		};
 	}
 
-	const isCleanup = failure.kind === "cleanup";
-	const code = isCleanup ? "cleanup.failed" : "runtime.dispatch_failed";
-	const summary = `${isCleanup ? "Worker cleanup failed" : "Worker dispatch failed"}: ${message}`;
 	return {
-		diagnostic: { level: "error", code, message: summary, errorClass: classified.errorClass },
+		diagnostic,
 		stderrMessage: summary,
 		...(session
 			? {

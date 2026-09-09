@@ -54,16 +54,12 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 			if (!found) return;
 			let current: FutureExecution = found;
 			let availability = input.availability;
-			const updateCurrent = (
-				id: string,
-				patch: Parameters<typeof input.futureExecutions.update>[1],
-			): FutureExecution | null => {
-				const updated = input.futureExecutions.update(id, patch);
-				if (!updated) return null;
+			const updateCurrent = (patch: Parameters<typeof input.futureExecutions.update>[1]): void => {
+				const updated = input.futureExecutions.update(current.id, patch);
+				if (!updated) return;
 				current = updated;
 				changed += 1;
 				effects.push(buildFutureExecutionUpdatedEffect(updated, "updated"));
-				return updated;
 			};
 			const parkStaleEvaluation = () => {
 				const blockedReason = toFutureExecutionBlockReason(
@@ -77,7 +73,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 					current.blockedReason,
 				);
 				if (sameModelPolicyState(current, { ...current, blockedReason })) return;
-				updateCurrent(current.id, { blockedReason });
+				updateCurrent({ blockedReason });
 			};
 			const evaluateStable = async <T>(
 				evaluate: (snapshot: ModelStatusCacheSnapshot) => T | Promise<T>,
@@ -90,21 +86,21 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				availability = evaluation.availability;
 				return evaluation;
 			};
-			const projectCurrent = async (): Promise<"stale" | "unchanged" | "updated"> => {
+			const projectCurrent = async (): Promise<void> => {
 				const evaluation = await evaluateStable((snapshot) =>
 					projectFutureExecutionModelState({ ...input, availability: snapshot }, current),
 				);
 				if (!evaluation.ok) {
 					parkStaleEvaluation();
-					return "stale";
+					return;
 				}
 				const projected = evaluation.value;
-				if (!projected || sameModelPolicyState(current, projected)) return "unchanged";
-				return updateCurrent(current.id, projected) ? "updated" : "unchanged";
+				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
 			if (!current.modelSelection) {
-				if ((await projectCurrent()) === "stale" || !current.modelSelection) return;
+				await projectCurrent();
+				if (!current.modelSelection) return;
 			}
 
 			const validation = await evaluateStable((snapshot) =>
@@ -130,7 +126,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 			}
 			const blockedReason = toFutureExecutionBlockReason(result, input.asOf, current.blockedReason);
 			if (sameModelPolicyState(current, { ...current, blockedReason })) return;
-			updateCurrent(current.id, { blockedReason });
+			updateCurrent({ blockedReason });
 		});
 	}
 	const reaction = await runFutureExecutionPostCommitEffects(input, effects);

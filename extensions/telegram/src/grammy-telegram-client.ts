@@ -4,7 +4,7 @@ import {
 	BaseTelegramClientEventRegistrar,
 	type TelegramCallbackUpdate,
 	type TelegramClient,
-	type TelegramForumTopicClosedUpdate,
+	type TelegramForumTopicCreatedHandler,
 	type TelegramForumTopicCreatedUpdate,
 	type TelegramReplyMarkup,
 	type TelegramSendFileInput,
@@ -44,11 +44,11 @@ interface GrammyBotLike {
 	on(filter: "message:text", handler: (ctx: GrammyTextContext) => void | Promise<void>): void;
 	on(
 		filter: "message:forum_topic_created",
-		handler: (ctx: GrammyForumTopicCreatedContext) => void | Promise<void>,
+		handler: (ctx: GrammyForumTopicContext) => void | Promise<void>,
 	): void;
 	on(
 		filter: "message:forum_topic_closed",
-		handler: (ctx: GrammyForumTopicClosedContext) => void | Promise<void>,
+		handler: (ctx: GrammyForumTopicContext) => void | Promise<void>,
 	): void;
 	on(
 		filter: "callback_query:data",
@@ -58,34 +58,19 @@ interface GrammyBotLike {
 	stop(): Promise<void>;
 }
 
+interface GrammyMessage {
+	message_id: number;
+	message_thread_id?: number;
+	chat: { id: number | string };
+	from?: { id: number; username?: string };
+}
+
 interface GrammyTextContext {
-	message: {
-		message_id: number;
-		message_thread_id?: number;
-		chat: { id: number | string };
-		from?: { id: number; username?: string };
-		text: string;
-	};
+	message: GrammyMessage & { text: string };
 }
 
-interface GrammyForumTopicCreatedContext {
-	message: {
-		message_id: number;
-		message_thread_id?: number;
-		chat: { id: number | string };
-		from?: { id: number; username?: string };
-		forum_topic_created: unknown;
-	};
-}
-
-interface GrammyForumTopicClosedContext {
-	message: {
-		message_id: number;
-		message_thread_id?: number;
-		chat: { id: number | string };
-		from?: { id: number; username?: string };
-		forum_topic_closed: unknown;
-	};
+interface GrammyForumTopicContext {
+	message: GrammyMessage;
 }
 
 interface GrammyCallbackContext {
@@ -144,8 +129,12 @@ export class GrammyTelegramClient
 		this.bot =
 			input.botFactory?.(input.botToken) ?? (new Bot(input.botToken) as unknown as GrammyBotLike);
 		this.bot.on("message:text", (ctx) => this.dispatchText(ctx));
-		this.bot.on("message:forum_topic_created", (ctx) => this.dispatchForumTopicCreated(ctx));
-		this.bot.on("message:forum_topic_closed", (ctx) => this.dispatchForumTopicClosed(ctx));
+		this.bot.on("message:forum_topic_created", (ctx) =>
+			this.dispatchForumTopic(ctx, this.forumTopicCreatedHandlers),
+		);
+		this.bot.on("message:forum_topic_closed", (ctx) =>
+			this.dispatchForumTopic(ctx, this.forumTopicClosedHandlers),
+		);
 		this.bot.on("callback_query:data", (ctx) => this.dispatchCallback(ctx));
 	}
 
@@ -288,7 +277,10 @@ export class GrammyTelegramClient
 		await Promise.all([...this.textHandlers].map((handler) => handler(update)));
 	}
 
-	private async dispatchForumTopicCreated(ctx: GrammyForumTopicCreatedContext): Promise<void> {
+	private async dispatchForumTopic(
+		ctx: GrammyForumTopicContext,
+		handlers: ReadonlySet<TelegramForumTopicCreatedHandler>,
+	): Promise<void> {
 		const message = ctx.message;
 		if (message.message_thread_id === undefined) return;
 		const update: TelegramForumTopicCreatedUpdate = {
@@ -297,19 +289,7 @@ export class GrammyTelegramClient
 			messageThreadId: message.message_thread_id,
 			from: toUserRef(message.from),
 		};
-		await Promise.all([...this.forumTopicCreatedHandlers].map((handler) => handler(update)));
-	}
-
-	private async dispatchForumTopicClosed(ctx: GrammyForumTopicClosedContext): Promise<void> {
-		const message = ctx.message;
-		if (message.message_thread_id === undefined) return;
-		const update: TelegramForumTopicClosedUpdate = {
-			messageId: message.message_id,
-			chatId: String(message.chat.id),
-			messageThreadId: message.message_thread_id,
-			from: toUserRef(message.from),
-		};
-		await Promise.all([...this.forumTopicClosedHandlers].map((handler) => handler(update)));
+		await Promise.all([...handlers].map((handler) => handler(update)));
 	}
 
 	private async dispatchCallback(ctx: GrammyCallbackContext): Promise<void> {

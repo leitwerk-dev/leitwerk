@@ -11,6 +11,7 @@ import type {
 	ProcessActionRegistry,
 	VisibleProcessActionSummary,
 } from "./process-action-registry.js";
+import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
@@ -177,13 +178,7 @@ function buildErrorAttentionToast(
 	}
 	const processLabel = getProcessAttentionLabel(deps, process);
 	const turnDescription = getSelectedTurnDescription(deps, process);
-	const currentTurnRecordId = (() => {
-		if (process.currentExecution?.kind !== "worker_start") {
-			return null;
-		}
-		const start = deps.turnStarts.getById(process.currentExecution.id);
-		return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-	})();
+	const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, deps.turnStarts);
 	const failedTurnRecord = currentTurnRecordId
 		? deps.turnRecords.getById(currentTurnRecordId)
 		: null;

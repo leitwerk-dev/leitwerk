@@ -53,21 +53,11 @@ const PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPE_SET = new Set<string>(
 	PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
 );
 
-function cloneAssistant(
-	assistant: PrimaryPathStreamingAssistantSnapshot,
-): PrimaryPathStreamingAssistantSnapshot {
-	return { ...assistant };
-}
-
 function cloneToolCall(toolCall: PrimaryPathToolCallSnapshot): PrimaryPathToolCallSnapshot {
 	return {
 		...toolCall,
 		...(toolCall.arguments ? { arguments: { ...toolCall.arguments } } : {}),
 	};
-}
-
-function cloneTraceItem(traceItem: PrimaryPathTraceItemSnapshot): PrimaryPathTraceItemSnapshot {
-	return { ...traceItem };
 }
 
 function readString(value: unknown): string | null {
@@ -327,9 +317,9 @@ export function snapshotLiveTurnProjection(projection: MutableLiveTurnProjection
 	usage: UsageSnapshot | null;
 } {
 	return {
-		assistant: cloneAssistant(projection.assistant),
+		assistant: { ...projection.assistant },
 		toolCalls: projection.toolCalls.map(cloneToolCall),
-		traceItems: projection.traceItems.map(cloneTraceItem),
+		traceItems: projection.traceItems.map((item) => ({ ...item })),
 		usage: cloneUsageSnapshot(projection.usage),
 	};
 }
@@ -342,7 +332,7 @@ export function applyPiEventToLiveTurnProjection(
 		fallbackTimestamp: string;
 	},
 ): AppliedLiveTurnProjectionEvent {
-	const timestamp = readWsEventTimestamp(input.data, input.fallbackTimestamp);
+	let timestamp = readWsEventTimestamp(input.data, input.fallbackTimestamp);
 	if (input.eventType === "pi.stream.delta") {
 		const text = readWsEventStreamText(input.data);
 		if (text) {
@@ -354,114 +344,60 @@ export function applyPiEventToLiveTurnProjection(
 			}
 			projection.assistant.lastUpdatedAt = timestamp;
 		}
-		return {
-			canonicalData: input.data,
-			timestamp,
-			toolCallId: null,
-			toolName: null,
-		};
-	}
-
-	if (input.eventType === "pi.tool.call") {
+	} else if (input.eventType === "pi.tool.call" || input.eventType === "pi.tool.result") {
+		const isResult = input.eventType === "pi.tool.result";
 		const toolName = readWsEventToolName(input.data);
 		const toolCallId = canonicalizeToolCallId({
 			projection,
 			data: input.data,
 			timestamp,
 			toolName,
-			preferOpenCall: false,
+			preferOpenCall: isResult,
 		});
 		const canonicalData =
 			readWsEventToolCallId(input.data) === toolCallId ? input.data : { ...input.data, toolCallId };
 		const existingToolCall = projection.toolCallsById.get(toolCallId);
+		const toolCall: PrimaryPathToolCallSnapshot = existingToolCall ?? {
+			toolCallId,
+			toolName,
+			status: "running",
+			startedAt: timestamp,
+			completedAt: null,
+			arguments: isResult ? null : readWsEventToolArguments(canonicalData),
+			result: null,
+			isError: false,
+		};
 		if (!existingToolCall) {
-			const toolCall: PrimaryPathToolCallSnapshot = {
-				toolCallId,
-				toolName,
-				status: "running",
-				startedAt: timestamp,
-				completedAt: null,
-				arguments: readWsEventToolArguments(canonicalData),
-				result: null,
-				isError: false,
-			};
 			projection.toolCalls.push(toolCall);
 			projection.toolCallsById.set(toolCallId, toolCall);
 		}
-		ensureToolTraceItem(projection, toolCallId);
-		addOpenToolCallId(projection, toolName, toolCallId);
-		return {
-			canonicalData,
-			timestamp,
-			toolCallId,
-			toolName,
-		};
-	}
-
-	if (input.eventType === "pi.tool.result") {
-		const toolName = readWsEventToolName(input.data);
-		const toolCallId = canonicalizeToolCallId({
-			projection,
-			data: input.data,
-			timestamp,
-			toolName,
-			preferOpenCall: true,
-		});
-		const canonicalData =
-			readWsEventToolCallId(input.data) === toolCallId ? input.data : { ...input.data, toolCallId };
-		const existingToolCall = projection.toolCallsById.get(toolCallId);
-		if (existingToolCall) {
-			existingToolCall.status = "completed";
-			existingToolCall.completedAt = timestamp;
-			existingToolCall.result = canonicalData.result ?? null;
-			existingToolCall.isError = canonicalData.isError === true;
-			removeOpenToolCallId(projection, toolCallId);
-		} else {
-			const completedToolCall: PrimaryPathToolCallSnapshot = {
-				toolCallId,
-				toolName,
-				status: "completed",
-				startedAt: timestamp,
-				completedAt: timestamp,
-				arguments: null,
-				result: canonicalData.result ?? null,
-				isError: canonicalData.isError === true,
-			};
-			projection.toolCalls.push(completedToolCall);
-			projection.toolCallsById.set(toolCallId, completedToolCall);
+		if (isResult) {
+			toolCall.status = "completed";
+			toolCall.completedAt = timestamp;
+			toolCall.result = canonicalData.result ?? null;
+			toolCall.isError = canonicalData.isError === true;
+			if (existingToolCall) removeOpenToolCallId(projection, toolCallId);
 		}
 		ensureToolTraceItem(projection, toolCallId);
+		if (!isResult) addOpenToolCallId(projection, toolName, toolCallId);
 		return {
 			canonicalData,
 			timestamp,
 			toolCallId,
 			toolName,
 		};
-	}
-
-	if (input.eventType === "pi.usage") {
+	} else if (input.eventType === "pi.usage") {
 		projection.usage = mergeUsageSnapshots(projection.usage, normalizeUsageSnapshot(input.data));
-		return {
-			canonicalData: input.data,
-			timestamp,
-			toolCallId: null,
-			toolName: null,
-		};
-	}
-
-	const operationalTraceItem = buildPrimaryPathOperationalTraceItem({
-		eventType: input.eventType,
-		data: input.data,
-		fallbackTimestamp: input.fallbackTimestamp,
-	});
-	if (operationalTraceItem) {
-		projection.traceItems.push(operationalTraceItem);
-		return {
-			canonicalData: input.data,
-			timestamp: operationalTraceItem.timestamp,
-			toolCallId: null,
-			toolName: null,
-		};
+	} else {
+		const operationalTraceItem = buildPrimaryPathOperationalTraceItem({
+			eventType: input.eventType,
+			data: input.data,
+			fallbackTimestamp: input.fallbackTimestamp,
+		});
+		if (operationalTraceItem) {
+			projection.traceItems.push(operationalTraceItem);
+			timestamp = operationalTraceItem.timestamp;
+		}
 	}
 
 	return {

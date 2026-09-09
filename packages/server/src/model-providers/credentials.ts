@@ -1,4 +1,3 @@
-import type { ModelProviderDefinition } from "@leitwerk-dev/process-sdk";
 import type {
 	createProviderCredentialRepo,
 	ProviderCredentialRecord,
@@ -118,19 +117,6 @@ function materializeSecrets(
 	return validateSecrets(provider.id, secrets);
 }
 
-function validateStoredCredential(
-	provider: RegisteredModelProvider,
-	record: ProviderCredentialRecord | null,
-): void {
-	if (record) decodeCredential(provider, record);
-}
-
-function credentialDefinition(
-	provider: RegisteredModelProvider,
-): NonNullable<ModelProviderDefinition["credential"]> | null {
-	return provider.definition.credential ?? null;
-}
-
 /**
  * Owns encrypted provider credential reads, startup seed/rotation, short-lived
  * secret projection, and revision compare-and-set. Secret values never enter
@@ -151,10 +137,9 @@ export function createModelProviderCredentialService(input: {
 	return {
 		initialize(): void {
 			for (const provider of input.registry.list()) {
-				const definition = credentialDefinition(provider);
-				if (!definition) continue;
+				if (!provider.definition.credential) continue;
 				const current = input.repo.get(provider.id);
-				validateStoredCredential(provider, current);
+				if (current) decodeCredential(provider, current);
 				// Configured credentials only initialize an empty store. Durable state wins
 				// thereafter; rotation uses the explicit revision-CAS path.
 				if (current || provider.configuredCredential === null) continue;
@@ -168,27 +153,19 @@ export function createModelProviderCredentialService(input: {
 		status,
 		resolve(providerId, options = {}): ResolvedProviderCredential | null {
 			const provider = input.registry.require(providerId);
-			const definition = credentialDefinition(provider);
-			if (!definition) {
-				return {
-					providerId,
-					revision: null,
-					values: materializeSecrets(provider, null, options),
-				};
-			}
-			const record = input.repo.get(providerId);
-			if (!record) return null;
-			const credential = decodeCredential(provider, record);
+			const definition = provider.definition.credential;
+			const record = definition ? input.repo.get(providerId) : null;
+			if (definition && !record) return null;
+			const credential = record ? decodeCredential(provider, record) : null;
 			return {
 				providerId,
-				revision: record.revision,
+				revision: record ? record.revision : null,
 				values: materializeSecrets(provider, credential, options),
 			};
 		},
 		compareAndSet(update): ProviderCredentialUpdateResult {
 			const provider = input.registry.get(update.providerId);
-			const definition = provider ? credentialDefinition(provider) : null;
-			if (!provider || !definition) {
+			if (!provider?.definition.credential) {
 				return {
 					accepted: false,
 					currentRevision: null,

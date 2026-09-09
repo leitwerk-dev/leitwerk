@@ -12,19 +12,6 @@ export interface LauncherRecentValue {
 	updatedAt: string;
 }
 
-function rowToLauncherRecentValue(
-	row: typeof s.launcherRecentValues.$inferSelect,
-): LauncherRecentValue {
-	return {
-		id: row.id,
-		launcherId: row.launcherId,
-		fieldId: row.fieldId,
-		value: row.value,
-		createdAt: row.createdAt,
-		updatedAt: row.updatedAt,
-	};
-}
-
 export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 	return {
 		listByLauncher(launcherId: string): LauncherRecentValue[] {
@@ -33,24 +20,7 @@ export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 				.from(s.launcherRecentValues)
 				.where(eq(s.launcherRecentValues.launcherId, launcherId))
 				.orderBy(desc(s.launcherRecentValues.updatedAt), desc(s.launcherRecentValues.createdAt))
-				.all()
-				.map(rowToLauncherRecentValue);
-		},
-
-		listByField(launcherId: string, fieldId: string, limit = 5): LauncherRecentValue[] {
-			return db
-				.select()
-				.from(s.launcherRecentValues)
-				.where(
-					and(
-						eq(s.launcherRecentValues.launcherId, launcherId),
-						eq(s.launcherRecentValues.fieldId, fieldId),
-					),
-				)
-				.orderBy(desc(s.launcherRecentValues.updatedAt), desc(s.launcherRecentValues.createdAt))
-				.limit(limit)
-				.all()
-				.map(rowToLauncherRecentValue);
+				.all();
 		},
 
 		recordValue(input: {
@@ -59,37 +29,29 @@ export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 			value: string;
 			limit?: number;
 		}): LauncherRecentValue {
-			const existing = db
-				.select()
-				.from(s.launcherRecentValues)
-				.where(
-					and(
-						eq(s.launcherRecentValues.launcherId, input.launcherId),
-						eq(s.launcherRecentValues.fieldId, input.fieldId),
-						eq(s.launcherRecentValues.value, input.value),
-					),
-				)
-				.get();
 			const ts = now();
-			if (existing) {
-				db.update(s.launcherRecentValues)
-					.set({ updatedAt: ts })
-					.where(eq(s.launcherRecentValues.id, existing.id))
-					.run();
-				this.pruneField(input.launcherId, input.fieldId, input.limit ?? 5);
-				return { ...rowToLauncherRecentValue(existing), updatedAt: ts };
-			}
-			const values = {
-				id: generateId("lrv"),
-				launcherId: input.launcherId,
-				fieldId: input.fieldId,
-				value: input.value,
-				createdAt: ts,
-				updatedAt: ts,
-			};
-			db.insert(s.launcherRecentValues).values(values).run();
+			const row = db
+				.insert(s.launcherRecentValues)
+				.values({
+					id: generateId("lrv"),
+					launcherId: input.launcherId,
+					fieldId: input.fieldId,
+					value: input.value,
+					createdAt: ts,
+					updatedAt: ts,
+				})
+				.onConflictDoUpdate({
+					target: [
+						s.launcherRecentValues.launcherId,
+						s.launcherRecentValues.fieldId,
+						s.launcherRecentValues.value,
+					],
+					set: { updatedAt: ts },
+				})
+				.returning()
+				.get();
 			this.pruneField(input.launcherId, input.fieldId, input.limit ?? 5);
-			return rowToLauncherRecentValue(values);
+			return row;
 		},
 
 		pruneField(launcherId: string, fieldId: string, limit = 5): void {

@@ -318,38 +318,22 @@ export function finalizeTurnResultMarkdown(input: {
 	if (!input.behavior || input.behavior.mode === "none") {
 		return { markdown: input.state.markdown ?? null, errorMessage: null };
 	}
-	if (input.behavior.mode === "assistant_output") {
-		const markdown =
-			typeof input.assistantMarkdown === "string" ? input.assistantMarkdown.trim() : "";
-		if (markdown.length > 0) {
-			return { markdown, errorMessage: null };
-		}
-		return input.behavior.required
-			? {
-					markdown: null,
-					errorMessage: "Turn requires non-empty assistant output to publish turn result markdown",
-				}
-			: { markdown: null, errorMessage: null };
+	const markdown =
+		input.behavior.mode === "assistant_output"
+			? typeof input.assistantMarkdown === "string"
+				? input.assistantMarkdown.trim()
+				: null
+			: input.state.markdown;
+	if (markdown || !input.behavior.required) {
+		return { markdown: markdown || null, errorMessage: null };
 	}
-	if (input.behavior.mode === "outcome_tool_argument") {
-		if (input.state.markdown) {
-			return { markdown: input.state.markdown, errorMessage: null };
-		}
-		return input.behavior.required
-			? {
-					markdown: null,
-					errorMessage: `Turn requires a successful outcome tool call with a non-empty '${input.behavior.parameterName}' markdown argument`,
-				}
-			: { markdown: null, errorMessage: null };
-	}
-	if (input.state.markdown) {
-		return { markdown: input.state.markdown, errorMessage: null };
-	}
-	if (input.behavior.required) {
-		return {
-			markdown: null,
-			errorMessage: `Turn requires a successful '${input.behavior.toolName}' tool call to publish turn result markdown`,
-		};
-	}
-	return { markdown: null, errorMessage: null };
+	return {
+		markdown: null,
+		errorMessage:
+			input.behavior.mode === "assistant_output"
+				? "Turn requires non-empty assistant output to publish turn result markdown"
+				: input.behavior.mode === "outcome_tool_argument"
+					? `Turn requires a successful outcome tool call with a non-empty '${input.behavior.parameterName}' markdown argument`
+					: `Turn requires a successful '${input.behavior.toolName}' tool call to publish turn result markdown`,
+	};
 }

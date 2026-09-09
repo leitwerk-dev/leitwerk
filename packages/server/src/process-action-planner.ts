@@ -12,7 +12,7 @@ import {
 } from "./process-engine/writes/build-process-action-writes.js";
 import type { Writes } from "./process-engine/writes/writes.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
-import type { TurnRecordMarkdownLookup } from "./semantic-turn-result-markdown.js";
+import type { TurnRecordMarkdownLookup } from "./turn-result-markdown.js";
 
 export interface PlannedProcessActionSuccess {
 	ok: true;

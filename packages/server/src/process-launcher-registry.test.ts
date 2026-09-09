@@ -143,52 +143,47 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 
 	it("passes configured model profiles into launcher context for defaults and options", async () => {
-		const registry = buildProcessLauncherRegistry(
-			{
-				processes: new Map([
-					[
-						"test_process",
-						makeProcess({
-							launchers(api) {
-								api.launcher({
-									id: "single_prompt_ui",
-									label: "Single Prompt",
-									description: "Run a single prompt",
-									visibility: "ui",
-									ui: {
-										card: {},
-										launchConfigSchema: {
-											id: "single_prompt_form",
-											title: "Single Prompt",
-											fields: [{ id: "modelProfileId", label: "Model", kind: "select" }],
+		const registry = buildRegistry(
+			[
+				makeProcess({
+					launchers(api) {
+						api.launcher({
+							id: "single_prompt_ui",
+							label: "Single Prompt",
+							description: "Run a single prompt",
+							visibility: "ui",
+							ui: {
+								card: {},
+								launchConfigSchema: {
+									id: "single_prompt_form",
+									title: "Single Prompt",
+									fields: [{ id: "modelProfileId", label: "Model", kind: "select" }],
+								},
+								resolveDefaults(ctx) {
+									return { modelProfileId: ctx.modelProfiles?.[0]?.id ?? "" };
+								},
+								resolveOptions(_input, ctx) {
+									return {
+										modelProfileId: (ctx.modelProfiles ?? []).map((profile) => ({
+											value: profile.id,
+											label: `${profile.id} → ${profile.provider}/${profile.modelId}`,
+										})),
+									};
+								},
+								resolveLaunchConfig(input) {
+									return {
+										ok: true,
+										launchConfig: {
+											processId: "test_process",
+											params: { repoPath: String(input.modelProfileId ?? "") },
 										},
-										resolveDefaults(ctx) {
-											return { modelProfileId: ctx.modelProfiles?.[0]?.id ?? "" };
-										},
-										resolveOptions(_input, ctx) {
-											return {
-												modelProfileId: (ctx.modelProfiles ?? []).map((profile) => ({
-													value: profile.id,
-													label: `${profile.id} → ${profile.provider}/${profile.modelId}`,
-												})),
-											};
-										},
-										resolveLaunchConfig(input) {
-											return {
-												ok: true,
-												launchConfig: {
-													processId: "test_process",
-													params: { repoPath: String(input.modelProfileId ?? "") },
-												},
-											};
-										},
-									},
-								});
+									};
+								},
 							},
-						}),
-					],
-				]),
-			},
+						});
+					},
+				}),
+			],
 			{
 				modelProfiles: [
 					{
@@ -215,77 +210,69 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 
 	it("filters launcher model profiles per process when a process-specific callback is provided", async () => {
-		const registry = buildProcessLauncherRegistry(
-			{
-				processes: new Map([
-					[
-						"process_a",
-						makeProcess({
-							id: "process_a",
-							launchers(api) {
-								api.launcher({
-									id: "process_a_launcher",
-									label: "Process A",
-									description: "A",
-									visibility: "ui",
-									ui: {
-										card: {},
-										launchConfigSchema: {
-											id: "process_a_form",
-											title: "Process A",
-											fields: [],
-										},
-										resolveDefaults(ctx) {
-											return {
-												modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
-											};
-										},
-										resolveLaunchConfig() {
-											return {
-												ok: true,
-												launchConfig: { processId: "process_a", params: { repoPath: "/tmp/a" } },
-											};
-										},
-									},
-								});
+		const registry = buildRegistry(
+			[
+				makeProcess({
+					id: "process_a",
+					launchers(api) {
+						api.launcher({
+							id: "process_a_launcher",
+							label: "Process A",
+							description: "A",
+							visibility: "ui",
+							ui: {
+								card: {},
+								launchConfigSchema: {
+									id: "process_a_form",
+									title: "Process A",
+									fields: [],
+								},
+								resolveDefaults(ctx) {
+									return {
+										modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
+									};
+								},
+								resolveLaunchConfig() {
+									return {
+										ok: true,
+										launchConfig: { processId: "process_a", params: { repoPath: "/tmp/a" } },
+									};
+								},
 							},
-						}),
-					],
-					[
-						"process_b",
-						makeProcess({
-							id: "process_b",
-							launchers(api) {
-								api.launcher({
-									id: "process_b_launcher",
-									label: "Process B",
-									description: "B",
-									visibility: "ui",
-									ui: {
-										card: {},
-										launchConfigSchema: {
-											id: "process_b_form",
-											title: "Process B",
-											fields: [],
-										},
-										resolveDefaults(ctx) {
-											return {
-												modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
-											};
-										},
-										resolveLaunchConfig() {
-											return {
-												ok: true,
-												launchConfig: { processId: "process_b", params: { repoPath: "/tmp/b" } },
-											};
-										},
-									},
-								});
+						});
+					},
+				}),
+				makeProcess({
+					id: "process_b",
+					launchers(api) {
+						api.launcher({
+							id: "process_b_launcher",
+							label: "Process B",
+							description: "B",
+							visibility: "ui",
+							ui: {
+								card: {},
+								launchConfigSchema: {
+									id: "process_b_form",
+									title: "Process B",
+									fields: [],
+								},
+								resolveDefaults(ctx) {
+									return {
+										modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
+									};
+								},
+								resolveLaunchConfig() {
+									return {
+										ok: true,
+										launchConfig: { processId: "process_b", params: { repoPath: "/tmp/b" } },
+									};
+								},
 							},
-						}),
-					],
-				]),
-			},
+						});
+					},
+				}),
+			],
 			{
 				modelProfiles: [
 					{
@@ -332,52 +319,47 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 
 	it("returns structured validation errors for invalid UI input", async () => {
-		const registry = buildProcessLauncherRegistry({
-			processes: new Map([
-				[
-					"test_process",
-					makeProcess({
-						launchers(api) {
-							api.launcher({
-								id: "local_repo_ui",
-								label: "Local Repo",
-								description: "Run against a local repository",
-								visibility: "ui",
-								ui: {
-									card: {},
-									launchConfigSchema: {
-										id: "local_repo_form",
-										title: "Local Repo",
-										fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
-									},
-									resolveLaunchConfig(input) {
-										if (typeof input.repoPath !== "string" || !input.repoPath.trim()) {
-											return {
-												ok: false,
-												errors: [
-													{
-														code: "required",
-														fieldId: "repoPath",
-														message: "repoPath is required",
-													},
-												],
-											};
-										}
-										return {
-											ok: true,
-											launchConfig: {
-												processId: "test_process",
-												params: { repoPath: input.repoPath },
+		const registry = buildRegistry([
+			makeProcess({
+				launchers(api) {
+					api.launcher({
+						id: "local_repo_ui",
+						label: "Local Repo",
+						description: "Run against a local repository",
+						visibility: "ui",
+						ui: {
+							card: {},
+							launchConfigSchema: {
+								id: "local_repo_form",
+								title: "Local Repo",
+								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
+							},
+							resolveLaunchConfig(input) {
+								if (typeof input.repoPath !== "string" || !input.repoPath.trim()) {
+									return {
+										ok: false,
+										errors: [
+											{
+												code: "required",
+												fieldId: "repoPath",
+												message: "repoPath is required",
 											},
-										};
+										],
+									};
+								}
+								return {
+									ok: true,
+									launchConfig: {
+										processId: "test_process",
+										params: { repoPath: input.repoPath },
 									},
-								},
-							});
+								};
+							},
 						},
-					}),
-				],
-			]),
-		});
+					});
+				},
+			}),
+		]);
 
 		await expect(registry.resolveUiLauncher("local_repo_ui", {})).resolves.toEqual({
 			ok: false,
@@ -386,42 +368,37 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 
 	it("resolves UI launchers into normalized launch plans", async () => {
-		const registry = buildProcessLauncherRegistry({
-			processes: new Map([
-				[
-					"test_process",
-					makeProcess({
-						launchers(api) {
-							api.launcher({
-								id: "local_repo_ui",
-								label: "Local Repo",
-								description: "Run against a local repository",
-								visibility: "ui",
-								ui: {
-									card: {},
-									launchConfigSchema: {
-										id: "local_repo_form",
-										title: "Local Repo",
-										fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
+		const registry = buildRegistry([
+			makeProcess({
+				launchers(api) {
+					api.launcher({
+						id: "local_repo_ui",
+						label: "Local Repo",
+						description: "Run against a local repository",
+						visibility: "ui",
+						ui: {
+							card: {},
+							launchConfigSchema: {
+								id: "local_repo_form",
+								title: "Local Repo",
+								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
+							},
+							resolveLaunchConfig(input) {
+								return {
+									ok: true,
+									launchConfig: {
+										processId: "test_process",
+										params: { repoPath: String(input.repoPath) },
+										startTurnId: "test_turn",
+										metadata: { requestedBy: "tester" },
 									},
-									resolveLaunchConfig(input) {
-										return {
-											ok: true,
-											launchConfig: {
-												processId: "test_process",
-												params: { repoPath: String(input.repoPath) },
-												startTurnId: "test_turn",
-												metadata: { requestedBy: "tester" },
-											},
-										};
-									},
-								},
-							});
+								};
+							},
 						},
-					}),
-				],
-			]),
-		});
+					});
+				},
+			}),
+		]);
 
 		const resolved = await registry.resolveUiLauncher("local_repo_ui", {
 			repoPath: "/tmp/project",

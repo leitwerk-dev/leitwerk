@@ -6,6 +6,7 @@ import type {
 	FutureExecutionScheduleKind,
 } from "@leitwerk-dev/domain";
 import { and, asc, count, desc, eq, inArray, lte, or, type SQL, sql } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now, sqliteLikePatterns } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -271,10 +272,6 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
-		listDue(asOf: string): FutureExecution[] {
-			return this.listRunnableDue(asOf);
-		},
-
 		listRunnableDue(asOf: string): FutureExecution[] {
 			return db
 				.select()
@@ -337,15 +334,17 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 		},
 
 		update(id: string, input: UpdateFutureExecutionInput): FutureExecution | null {
-			const setValues: Record<string, unknown> = { updatedAt: now() };
-			if (input.scheduleKind !== undefined) setValues.scheduleKind = input.scheduleKind;
-			if (input.processId !== undefined) setValues.processId = input.processId;
-			if (input.instanceId !== undefined) setValues.instanceId = input.instanceId;
-			if (input.launcherId !== undefined) setValues.launcherId = input.launcherId;
-			if (input.actionId !== undefined) setValues.actionId = input.actionId;
-			if (input.payloadJson !== undefined) setValues.payloadJson = input.payloadJson;
-			if (input.cronExpression !== undefined) setValues.cronExpression = input.cronExpression;
-			if (input.nextRunAt !== undefined) setValues.nextRunAt = input.nextRunAt;
+			const setValues: SQLiteUpdateSetSource<typeof s.futureExecutions> = {
+				updatedAt: now(),
+				scheduleKind: input.scheduleKind,
+				processId: input.processId,
+				instanceId: input.instanceId,
+				launcherId: input.launcherId,
+				actionId: input.actionId,
+				payloadJson: input.payloadJson,
+				cronExpression: input.cronExpression,
+				nextRunAt: input.nextRunAt,
+			};
 			if (input.modelSelection !== undefined)
 				Object.assign(setValues, modelSelectionColumns(input.modelSelection));
 			if (input.blockedReason !== undefined)
@@ -360,15 +359,6 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 		delete(id: string): boolean {
 			const result = db.delete(s.futureExecutions).where(eq(s.futureExecutions.id, id)).run();
 			return result.changes > 0;
-		},
-
-		getLatest(): FutureExecution | null {
-			const row = db
-				.select()
-				.from(s.futureExecutions)
-				.orderBy(desc(s.futureExecutions.createdAt))
-				.get();
-			return row ? rowToFutureExecution(row) : null;
 		},
 	};
 }

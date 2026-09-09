@@ -1,9 +1,4 @@
-import type {
-	ProcessInstance,
-	ProcessLeafOutcomeSnapshot,
-	ProcessProject,
-	ProcessTurnRecord,
-} from "@leitwerk-dev/domain";
+import type { ProcessInstance, ProcessProject, ProcessTurnRecord } from "@leitwerk-dev/domain";
 import {
 	normalizeLeafOutcomeCaptureResult,
 	type PiTreeEntry,
@@ -153,11 +148,4 @@ export async function captureLeafOutcomeSnapshot(
 			anchoredAt: options.anchoredAt,
 		});
 	}
-}
-
-export function findLeafOutcomeSnapshot(
-	snapshots: readonly ProcessLeafOutcomeSnapshot[],
-	leafEntryId: string,
-): ProcessLeafOutcomeSnapshot | null {
-	return snapshots.find((snapshot) => snapshot.leafEntryId === leafEntryId) ?? null;
 }

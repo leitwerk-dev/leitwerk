@@ -21,6 +21,9 @@ describe("collectProcessActionPlan", () => {
 			id: "handoff_review",
 			label: "Handoff review",
 			async plan(_input, ctx) {
+				await ctx.transition({ turnId: "discarded" });
+				ctx.applyLifecycleEffects?.({ processPatch: { planRevision: 1 } });
+				ctx.applyLifecycleEffects?.({ processPatch: { planRevision: 2 } });
 				ctx.queueInput({
 					source: "app_steer",
 					kind: "instruction",
@@ -71,7 +74,13 @@ describe("collectProcessActionPlan", () => {
 		expect(planned.processPatch).toMatchObject({
 			selectedTurnId: "run_llm_review",
 			stateJson: JSON.stringify({}),
+			planRevision: 2,
 		});
+		expect(planned.changedFields.filter((field) => field === "planRevision")).toHaveLength(1);
+		expect(planned.events.some((event) => event.eventType === "plan_revision_requested")).toBe(
+			false,
+		);
+		expect(deps.processes.getById(process.id)).toEqual(process);
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
 	});
 
@@ -243,7 +252,10 @@ describe("collectProcessActionPlan", () => {
 		});
 	});
 
-	it("uses the pure plan hook instead of an execute hook when available", async () => {
+	it.each([
+		collectProcessActionPlan,
+		collectPureProcessActionPlan,
+	])("%s prefers the plan hook over execute", async (collect) => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
 			processId: "ticket_issue_process",
@@ -262,7 +274,7 @@ describe("collectProcessActionPlan", () => {
 			},
 		};
 
-		const planned = await collectPureProcessActionPlan({
+		const planned = await collect({
 			process,
 			projects: [],
 			params: {},

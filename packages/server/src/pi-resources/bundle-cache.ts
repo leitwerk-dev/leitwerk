@@ -6,9 +6,7 @@ const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
 interface CacheEntry {
 	readonly digest: string;
 	readonly bytes: Uint8Array;
-	readonly size: number;
 	pins: number;
-	lastAccess: number;
 }
 
 export interface PiResourceBundleCacheOptions {
@@ -46,10 +44,6 @@ function positiveSafeInteger(value: number | undefined, fallback: number, name: 
 	return result;
 }
 
-function copyBundle(entry: CacheEntry): PiResourceBundle {
-	return { digest: entry.digest, bytes: Uint8Array.from(entry.bytes) };
-}
-
 /** In-memory operational cache. Bundles are immutable copies and pins are reference-counted. */
 export function createPiResourceBundleCache(
 	options: PiResourceBundleCacheOptions = {},
@@ -58,26 +52,22 @@ export function createPiResourceBundleCache(
 	const maxBytes = positiveSafeInteger(options.maxBytes, DEFAULT_MAX_BYTES, "maxBytes");
 	const entries = new Map<string, CacheEntry>();
 	let totalBytes = 0;
-	let accessSequence = 0;
+
+	function touch(entry: CacheEntry): void {
+		entries.delete(entry.digest);
+		entries.set(entry.digest, entry);
+	}
 
 	function oldestUnpinned(excluding?: string): CacheEntry | null {
-		let oldest: CacheEntry | null = null;
 		for (const entry of entries.values()) {
-			if (entry.digest === excluding || entry.pins > 0) continue;
-			if (
-				oldest === null ||
-				entry.lastAccess < oldest.lastAccess ||
-				(entry.lastAccess === oldest.lastAccess && entry.digest < oldest.digest)
-			) {
-				oldest = entry;
-			}
+			if (entry.digest !== excluding && entry.pins === 0) return entry;
 		}
-		return oldest;
+		return null;
 	}
 
 	function remove(entry: CacheEntry): void {
 		if (!entries.delete(entry.digest)) return;
-		totalBytes -= entry.size;
+		totalBytes -= entry.bytes.byteLength;
 	}
 
 	function enforceBounds(newDigest: string): void {
@@ -104,27 +94,25 @@ export function createPiResourceBundleCache(
 			}
 			const existing = entries.get(bundle.digest);
 			if (existing) {
-				existing.lastAccess = ++accessSequence;
+				touch(existing);
 				return;
 			}
 			const bytes = Uint8Array.from(bundle.bytes);
 			const entry: CacheEntry = {
 				digest: bundle.digest,
 				bytes,
-				size: bytes.byteLength,
 				pins: 0,
-				lastAccess: ++accessSequence,
 			};
 			entries.set(entry.digest, entry);
-			totalBytes += entry.size;
+			totalBytes += entry.bytes.byteLength;
 			enforceBounds(entry.digest);
 		},
 
 		get(digest: string): PiResourceBundle | null {
 			const entry = entries.get(digest);
 			if (!entry) return null;
-			entry.lastAccess = ++accessSequence;
-			return copyBundle(entry);
+			touch(entry);
+			return { digest: entry.digest, bytes: Uint8Array.from(entry.bytes) };
 		},
 
 		has: (digest: string): boolean => entries.has(digest),
@@ -133,7 +121,7 @@ export function createPiResourceBundleCache(
 			const entry = entries.get(digest);
 			if (!entry) return false;
 			entry.pins += 1;
-			entry.lastAccess = ++accessSequence;
+			touch(entry);
 			return true;
 		},
 
@@ -141,20 +129,15 @@ export function createPiResourceBundleCache(
 			const entry = entries.get(digest);
 			if (!entry || entry.pins === 0) return false;
 			entry.pins -= 1;
-			entry.lastAccess = ++accessSequence;
+			touch(entry);
 			return true;
 		},
 
 		gc(): PiResourceBundleCacheGcResult {
-			const removed = [...entries.values()]
-				.filter((entry) => entry.pins === 0)
-				.sort(
-					(left, right) =>
-						left.lastAccess - right.lastAccess || left.digest.localeCompare(right.digest),
-				);
+			const removed = [...entries.values()].filter((entry) => entry.pins === 0);
 			let removedBytes = 0;
 			for (const entry of removed) {
-				removedBytes += entry.size;
+				removedBytes += entry.bytes.byteLength;
 				remove(entry);
 			}
 			return {

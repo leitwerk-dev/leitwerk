@@ -115,92 +115,63 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	function requireResolvedPlanRef(
 		plan: RepositoryChangeState["semanticEntryRefs"][keyof RepositoryChangeState["semanticEntryRefs"]],
-		usage: "simplification review" | "implementation review",
+		usage: "approval" | "review" | "simplification review" | "implementation review",
 	): asserts plan is { entryId: string; turnRecordId: string } {
 		if (!hasResolvedTurnRecordRef(plan)) {
 			throw new Error(`No plan is available for ${usage}`);
 		}
 	}
 
-	function buildImplementationReviewTurnState(ctx: {
-		state: RepositoryChangeState;
-	}): RepositoryChangeState {
-		return patchRepositoryChangeState(ctx.state, {
+	function clearReviewState(state: RepositoryChangeState): RepositoryChangeState {
+		return patchRepositoryChangeState(state, {
 			clearReviewRefs: true,
 			clearProductRefs: [products.simplificationPlan],
 		});
 	}
 
-	function buildAcceptedReviewFollowUpMessage(input: {
-		reviewedProduct: typeof products.plan | typeof products.implementationSummary;
-		reviewMarkdown: string;
-		adjustment?: string | null;
+	function buildAcceptedFollowUpMessage(input: {
+		kind: "plan_review" | "implementation_review" | "simplification";
+		markdown: unknown;
+		adjustment: unknown;
 	}): string {
-		const adjustment = normalizeMessage(input.adjustment);
-		if (input.reviewedProduct === products.plan) {
-			return [
-				"Revise the plan according to this review:",
-				input.reviewMarkdown,
-				adjustment
-					? ["Also follow this adjustment where it conflicts with the review:", adjustment].join(
-							"\n\n",
-						)
-					: null,
-			]
-				.filter((section): section is string => typeof section === "string" && section !== "")
-				.join("\n\n");
+		const markdown = normalizeOptionalMarkdown(input.markdown);
+		if (!markdown) {
+			throw new Error(
+				input.kind === "simplification"
+					? "No simplification plan markdown is available to accept"
+					: "No review output markdown is available to accept",
+			);
 		}
-		return buildAcceptedImplementationFollowUpMessage({
-			kind: "review",
-			implementationMarkdown: input.reviewMarkdown,
-			adjustment,
-		});
-	}
-
-	function buildAcceptedImplementationFollowUpMessage(input: {
-		kind: "review" | "simplification";
-		implementationMarkdown: string;
-		adjustment?: string | null;
-	}): string {
 		const adjustment = normalizeMessage(input.adjustment);
-		const isSimplification = input.kind === "simplification";
-		const subject = isSimplification ? "simplification plan" : "review";
-
-		return [
-			`Implement according to this ${subject}:`,
-			input.implementationMarkdown,
-			adjustment
-				? [`Also follow this adjustment where it conflicts with the ${subject}:`, adjustment].join(
-						"\n\n",
-					)
-				: null,
-			[
-				"This is now an implementation turn. Ignore earlier review-only or read-only instructions.",
-				"You may change files in the repository workspace.",
-				`Use the available tools (${implementationTurnAvailableTools.join(", ")}) to inspect, edit, build, and test the change.`,
-				"When finished, return an implementation summary.",
-			].join("\n"),
-		]
-			.filter((section): section is string => typeof section === "string" && section !== "")
-			.join("\n\n");
-	}
-
-	function buildAcceptedSimplificationFollowUpMessage(input: {
-		simplificationMarkdown: string;
-		adjustment?: string | null;
-	}): string {
-		return buildAcceptedImplementationFollowUpMessage({
-			kind: "simplification",
-			implementationMarkdown: input.simplificationMarkdown,
-			adjustment: input.adjustment,
-		});
+		const subject = input.kind === "simplification" ? "simplification plan" : "review";
+		const introduction =
+			input.kind === "plan_review"
+				? "Revise the plan according to this review:"
+				: `Implement according to this ${subject}:`;
+		const sections = [introduction, markdown];
+		if (adjustment) {
+			sections.push(
+				`Also follow this adjustment where it conflicts with the ${subject}:`,
+				adjustment,
+			);
+		}
+		if (input.kind !== "plan_review") {
+			sections.push(
+				[
+					"This is now an implementation turn. Ignore earlier review-only or read-only instructions.",
+					"You may change files in the repository workspace.",
+					`Use the available tools (${implementationTurnAvailableTools.join(", ")}) to inspect, edit, build, and test the change.`,
+					"When finished, return an implementation summary.",
+				].join("\n"),
+			);
+		}
+		return sections.join("\n\n");
 	}
 
 	function patchRepositoryChangeState(
 		state: RepositoryChangeState,
 		input: {
 			finalization?: RepositoryChangeState["finalization"];
-			semanticEntryRefs?: RepositoryChangeState["semanticEntryRefs"];
 			clearReviewRefs?: boolean;
 			clearProductRefs?: readonly string[];
 		},
@@ -208,7 +179,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		const nextState: RepositoryChangeState = {
 			...state,
 			...("finalization" in input ? { finalization: input.finalization } : {}),
-			...("semanticEntryRefs" in input ? { semanticEntryRefs: input.semanticEntryRefs } : {}),
 		};
 		const productRefsToClear = new Set(input.clearProductRefs ?? []);
 		if (input.clearReviewRefs) {
@@ -249,15 +219,9 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				acceptanceState: "accepted",
 				to: turnIds.implement,
 				effect: ({ ctx }) => {
-					const plan = ctx.state.semanticEntryRefs.plan;
-					if (!hasResolvedTurnRecordRef(plan)) {
-						throw new Error("No plan is available for approval");
-					}
+					requireResolvedPlanRef(ctx.state.semanticEntryRefs.plan, "approval");
 					return {
-						state: patchRepositoryChangeState(ctx.state, {
-							clearReviewRefs: true,
-							clearProductRefs: [products.simplificationPlan],
-						}),
+						state: clearReviewState(ctx.state),
 						emit: [
 							{
 								type: "plan_approved",
@@ -281,10 +245,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				effect: ({ ctx, input }) => {
 					const message = normalizeMessage(input.message);
 					return {
-						state: patchRepositoryChangeState(ctx.state, {
-							clearReviewRefs: true,
-							clearProductRefs: [products.simplificationPlan],
-						}),
+						state: clearReviewState(ctx.state),
 						emit: [{ type: "plan_revision_requested", data: { message } }],
 					};
 				},
@@ -296,15 +257,9 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				schedulable: true,
 				to: turnIds.reviewPlan,
 				effect: ({ ctx }) => {
-					const plan = ctx.state.semanticEntryRefs.plan;
-					if (!hasResolvedTurnRecordRef(plan)) {
-						throw new Error("No plan is available for review");
-					}
+					requireResolvedPlanRef(ctx.state.semanticEntryRefs.plan, "review");
 					return {
-						state: patchRepositoryChangeState(ctx.state, {
-							clearReviewRefs: true,
-							clearProductRefs: [products.simplificationPlan],
-						}),
+						state: clearReviewState(ctx.state),
 					};
 				},
 			},
@@ -331,19 +286,12 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				acceptanceState: "accepted",
 				form: acceptReviewForm,
 				to: turnIds.generatePlan,
-				resolveBodyMarkdown: ({ ctx, input }) => {
-					const reviewMarkdown = normalizeOptionalMarkdown(
-						ctx.readSemanticTurnResultMarkdown("review"),
-					);
-					if (!reviewMarkdown) {
-						throw new Error("No review output markdown is available to accept");
-					}
-					return buildAcceptedReviewFollowUpMessage({
-						reviewedProduct: products.plan,
-						reviewMarkdown,
-						adjustment: normalizeMessage(input.message),
-					});
-				},
+				resolveBodyMarkdown: ({ ctx, input }) =>
+					buildAcceptedFollowUpMessage({
+						kind: "plan_review",
+						markdown: ctx.readSemanticTurnResultMarkdown("review"),
+						adjustment: input.message,
+					}),
 			}),
 			[codingActionIds.requestReviewChanges]: revisionAction({
 				label: "Request review changes",
@@ -398,10 +346,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				to: turnIds.implement,
 				queueTarget: { semanticRef: "currentPrimaryPathLeaf" },
 				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						clearReviewRefs: true,
-						clearProductRefs: [products.simplificationPlan],
-					}),
+					state: clearReviewState(ctx.state),
 				}),
 			}),
 			[codingActionIds.simplify]: {
@@ -412,7 +357,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				to: turnIds.simplifyImplementation,
 				effect: ({ ctx }) => {
 					requireResolvedPlanRef(ctx.state.semanticEntryRefs.plan, "simplification review");
-					return { state: buildImplementationReviewTurnState(ctx) };
+					return { state: clearReviewState(ctx.state) };
 				},
 			},
 			[codingActionIds.runReview]: {
@@ -422,7 +367,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				to: turnIds.reviewImplementation,
 				effect: ({ ctx }) => {
 					requireResolvedPlanRef(ctx.state.semanticEntryRefs.plan, "implementation review");
-					return { state: buildImplementationReviewTurnState(ctx) };
+					return { state: clearReviewState(ctx.state) };
 				},
 			},
 		},
@@ -449,19 +394,12 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				schedulable: true,
 				to: turnIds.implement,
 				queueTarget: { semanticRef: "review" },
-				resolveBodyMarkdown: ({ ctx, input }) => {
-					const reviewMarkdown = normalizeOptionalMarkdown(
-						ctx.readSemanticTurnResultMarkdown("review"),
-					);
-					if (!reviewMarkdown) {
-						throw new Error("No review output markdown is available to accept");
-					}
-					return buildAcceptedReviewFollowUpMessage({
-						reviewedProduct: products.implementationSummary,
-						reviewMarkdown,
-						adjustment: normalizeMessage(input.message),
-					});
-				},
+				resolveBodyMarkdown: ({ ctx, input }) =>
+					buildAcceptedFollowUpMessage({
+						kind: "implementation_review",
+						markdown: ctx.readSemanticTurnResultMarkdown("review"),
+						adjustment: input.message,
+					}),
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
 						clearProductRefs: [products.simplificationPlan],
@@ -504,18 +442,12 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				schedulable: true,
 				to: turnIds.implement,
 				queueTarget: { productName: products.simplificationPlan },
-				resolveBodyMarkdown: ({ ctx, input }) => {
-					const simplificationMarkdown = normalizeOptionalMarkdown(
-						ctx.readProductTurnResultMarkdown(products.simplificationPlan),
-					);
-					if (!simplificationMarkdown) {
-						throw new Error("No simplification plan markdown is available to accept");
-					}
-					return buildAcceptedSimplificationFollowUpMessage({
-						simplificationMarkdown,
-						adjustment: normalizeMessage(input.message),
-					});
-				},
+				resolveBodyMarkdown: ({ ctx, input }) =>
+					buildAcceptedFollowUpMessage({
+						kind: "simplification",
+						markdown: ctx.readProductTurnResultMarkdown(products.simplificationPlan),
+						adjustment: input.message,
+					}),
 				effect: ({ ctx }) => ({
 					state: patchRepositoryChangeState(ctx.state, {
 						clearReviewRefs: true,
@@ -536,10 +468,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				acceptanceState: "neutral",
 				to: turnIds.implementationDecision,
 				effect: ({ ctx }) => ({
-					state: patchRepositoryChangeState(ctx.state, {
-						clearReviewRefs: true,
-						clearProductRefs: [products.simplificationPlan],
-					}),
+					state: clearReviewState(ctx.state),
 				}),
 			},
 		},
@@ -569,10 +498,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				.to(turnIds.implement)
 				.effect(({ ctx }) => ({
 					processPatch: { planRevision: ctx.process.planRevision + 1 },
-					state: patchRepositoryChangeState(ctx.state, {
-						clearReviewRefs: true,
-						clearProductRefs: [products.simplificationPlan],
-					}),
+					state: clearReviewState(ctx.state),
 				})),
 		);
 
@@ -604,10 +530,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 						: [];
 					const planMarkdown = ctx.output?.content ?? "";
 					return {
-						state: patchRepositoryChangeState(ctx.state, {
-							clearReviewRefs: true,
-							clearProductRefs: [products.simplificationPlan],
-						}),
+						state: clearReviewState(ctx.state),
 						processPatch: { planRevision },
 						broadcasts: [
 							{
@@ -674,12 +597,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.buildPrompt(buildImplementPrompt)
 		.publish(products.implementationSummary)
 		.to(turnIds.implementationDecision)
-		.state(({ ctx }) =>
-			patchRepositoryChangeState(ctx.state, {
-				clearReviewRefs: true,
-				clearProductRefs: [products.simplificationPlan],
-			}),
-		);
+		.state(({ ctx }) => clearReviewState(ctx.state));
 
 	const reviewImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewImplementation)

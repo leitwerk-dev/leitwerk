@@ -1,5 +1,17 @@
-import type { LaunchCommit, LaunchStageFailure } from "./launch-pipeline.js";
+import type { LaunchPreparationCheck } from "@leitwerk-dev/process-sdk";
+import type { LaunchCommit, LaunchPipelineCheck, LaunchStageFailure } from "./launch-pipeline.js";
 import type { ProcessLaunchExecutionResult } from "./process-launch-executor.js";
+
+export function bindLaunchPreparationChecks(
+	checks: readonly LaunchPreparationCheck[],
+	launchConfig: Parameters<LaunchPreparationCheck["run"]>[0]["launchConfig"],
+): LaunchPipelineCheck[] {
+	return checks.map((check) => ({
+		id: check.id,
+		label: check.label,
+		run: ({ signal, logger }) => check.run({ signal, logger, launchConfig }),
+	}));
+}
 
 export function toLaunchPipelineCommit<TFailure, TResult = ProcessLaunchExecutionResult>(
 	created: ProcessLaunchExecutionResult,

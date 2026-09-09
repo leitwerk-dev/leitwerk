@@ -539,5 +539,3 @@ export function createFutureExecutionExecutor(deps: FutureExecutionExecutorDeps)
 		},
 	};
 }
-
-export type FutureExecutionExecutor = ReturnType<typeof createFutureExecutionExecutor>;

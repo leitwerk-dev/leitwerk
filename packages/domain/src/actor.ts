@@ -1,12 +1,9 @@
 import { type Actor, type ActorKind, SYSTEM_ACTOR } from "./domain-model.js";
+import { trimToNull } from "./string-normalize.js";
 
 const ACTOR_KINDS: readonly ActorKind[] = ["user", "channel", "system"];
 function isActorKind(value: unknown): value is ActorKind {
 	return typeof value === "string" && (ACTOR_KINDS as readonly string[]).includes(value);
-}
-
-function normalizeProvider(value: unknown): Actor["provider"] {
-	return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
 /**
@@ -19,12 +16,11 @@ export function normalizeActor(value: unknown): Actor | null {
 		return null;
 	}
 	const candidate = value as Record<string, unknown>;
-	const id = typeof candidate.id === "string" ? candidate.id.trim() : "";
-	if (id === "") {
+	const id = trimToNull(candidate.id);
+	if (!id) {
 		return null;
 	}
 	const kind = isActorKind(candidate.kind) ? candidate.kind : "system";
-	const provider = normalizeProvider(candidate.provider);
 	const displayName =
 		typeof candidate.displayName === "string" && candidate.displayName.trim() !== ""
 			? candidate.displayName
@@ -32,7 +28,7 @@ export function normalizeActor(value: unknown): Actor | null {
 	return {
 		id,
 		kind,
-		provider,
+		provider: trimToNull(candidate.provider),
 		...(displayName !== undefined ? { displayName } : {}),
 	};
 }

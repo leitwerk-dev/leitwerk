@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import path from "node:path";
 import process from "node:process";
+import { forwardChildLifecycle } from "./dev-process.ts";
 
 function stripSourceCondition(nodeOptions: string | undefined): string | undefined {
 	if (!nodeOptions) {
@@ -36,23 +37,7 @@ async function main(): Promise<void> {
 		},
 	);
 
-	process.once("SIGINT", () => child.kill("SIGINT"));
-	process.once("SIGTERM", () => child.kill("SIGTERM"));
-	child.once("error", (error) => {
-		console.error(error instanceof Error ? error.message : error);
-		process.exit(1);
-	});
-	child.once("exit", (code, signal) => {
-		if (signal === "SIGINT") {
-			process.exit(130);
-			return;
-		}
-		if (signal === "SIGTERM") {
-			process.exit(143);
-			return;
-		}
-		process.exit(code ?? 1);
-	});
+	forwardChildLifecycle(child);
 }
 
 void main().catch((error) => {

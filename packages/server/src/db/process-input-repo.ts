@@ -6,7 +6,7 @@ import type {
 	ProcessInputTarget,
 } from "@leitwerk-dev/domain";
 import { parseActorOrSystem, SYSTEM_ACTOR, serializeActor } from "@leitwerk-dev/domain";
-import { and, asc, desc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNull, max } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -49,6 +49,19 @@ function rowToProcessInput(row: typeof s.processInputs.$inferSelect): ProcessInp
 }
 
 export function createProcessInputRepo(db: LeitwerkDb) {
+	const list = (instanceId: string, unconsumed = false): ProcessInput[] =>
+		db
+			.select()
+			.from(s.processInputs)
+			.where(
+				and(
+					eq(s.processInputs.instanceId, instanceId),
+					unconsumed ? isNull(s.processInputs.consumedAt) : undefined,
+				),
+			)
+			.orderBy(asc(s.processInputs.sequence))
+			.all()
+			.map(rowToProcessInput);
 	return {
 		create(input: CreateProcessInputInput): ProcessInput {
 			const id = generateId("inp");
@@ -70,25 +83,8 @@ export function createProcessInputRepo(db: LeitwerkDb) {
 			return rowToProcessInput(values);
 		},
 
-		listByInstance(instanceId: string): ProcessInput[] {
-			return db
-				.select()
-				.from(s.processInputs)
-				.where(eq(s.processInputs.instanceId, instanceId))
-				.orderBy(asc(s.processInputs.sequence))
-				.all()
-				.map(rowToProcessInput);
-		},
-
-		listUnconsumed(instanceId: string): ProcessInput[] {
-			return db
-				.select()
-				.from(s.processInputs)
-				.where(and(eq(s.processInputs.instanceId, instanceId), isNull(s.processInputs.consumedAt)))
-				.orderBy(asc(s.processInputs.sequence))
-				.all()
-				.map(rowToProcessInput);
-		},
+		listByInstance: (instanceId: string) => list(instanceId),
+		listUnconsumed: (instanceId: string) => list(instanceId, true),
 
 		markConsumed(id: string): boolean {
 			const result = db
@@ -106,13 +102,11 @@ export function createProcessInputRepo(db: LeitwerkDb) {
 
 		getMaxSequence(instanceId: string): number {
 			const row = db
-				.select()
+				.select({ sequence: max(s.processInputs.sequence) })
 				.from(s.processInputs)
 				.where(eq(s.processInputs.instanceId, instanceId))
-				.orderBy(desc(s.processInputs.sequence))
-				.limit(1)
 				.get();
-			return row ? row.sequence : 0;
+			return row?.sequence ?? 0;
 		},
 	};
 }

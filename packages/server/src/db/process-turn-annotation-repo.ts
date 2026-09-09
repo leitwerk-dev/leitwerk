@@ -1,6 +1,7 @@
 import type { ProcessTurnAnnotation, TurnAnnotationReference } from "@leitwerk-dev/domain";
 import { parseTurnAnnotationReferences } from "@leitwerk-dev/domain";
 import { and, asc, eq } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -117,11 +118,11 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 		},
 
 		update(id: string, input: UpdateProcessTurnAnnotationInput): ProcessTurnAnnotation | null {
-			const setValues: Record<string, unknown> = {
+			const setValues: SQLiteUpdateSetSource<typeof s.turnAnnotations> = {
 				updatedAt: input.updatedAt ?? now(),
+				annotationType: input.annotationType,
+				annotationKey: input.annotationKey,
 			};
-			if (input.annotationType !== undefined) setValues.annotationType = input.annotationType;
-			if (input.annotationKey !== undefined) setValues.annotationKey = input.annotationKey;
 			if (input.references !== undefined)
 				setValues.referencesJson = JSON.stringify(input.references);
 			if (input.payload !== undefined) setValues.payloadJson = JSON.stringify(input.payload);

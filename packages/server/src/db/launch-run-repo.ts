@@ -4,7 +4,7 @@ import type {
 	LaunchRun,
 	LaunchRunStatus,
 } from "@leitwerk-dev/domain";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -40,6 +40,14 @@ export interface CreateLaunchRunInput {
 }
 
 export function createLaunchRunRepo(db: LeitwerkDb) {
+	const list = (where: SQL): LaunchRun[] =>
+		db
+			.select()
+			.from(s.launchRuns)
+			.where(where)
+			.orderBy(asc(s.launchRuns.createdAt), asc(s.launchRuns.id))
+			.all()
+			.map(toLaunchRun);
 	return {
 		create(input: CreateLaunchRunInput): LaunchRun {
 			const ts = now();
@@ -100,25 +108,8 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 				.run();
 		},
 
-		listByInstance(instanceId: string): LaunchRun[] {
-			return db
-				.select()
-				.from(s.launchRuns)
-				.where(eq(s.launchRuns.instanceId, instanceId))
-				.orderBy(asc(s.launchRuns.createdAt), asc(s.launchRuns.id))
-				.all()
-				.map(toLaunchRun);
-		},
-
-		listIncomplete(): LaunchRun[] {
-			return db
-				.select()
-				.from(s.launchRuns)
-				.where(inArray(s.launchRuns.status, [...ACTIVE_STATUSES]))
-				.orderBy(asc(s.launchRuns.createdAt), asc(s.launchRuns.id))
-				.all()
-				.map(toLaunchRun);
-		},
+		listByInstance: (instanceId: string) => list(eq(s.launchRuns.instanceId, instanceId)),
+		listIncomplete: () => list(inArray(s.launchRuns.status, [...ACTIVE_STATUSES])),
 
 		compareAndSet(next: LaunchRun, expectedRevision: number): LaunchRun | null {
 			const updatedAt = now();

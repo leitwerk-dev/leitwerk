@@ -14,10 +14,7 @@ import {
 	presentModelProfileOption,
 	presentProcessModelPolicyFailure,
 } from "./process-model-policy-presenter.js";
-import type {
-	ProcessTurnRecordLookup,
-	TurnStartRecordLookup,
-} from "./semantic-turn-result-markdown.js";
+import type { ProcessTurnRecordLookup, TurnStartRecordLookup } from "./turn-result-markdown.js";
 
 export interface ProcessModelSelectionDeps {
 	processGraphs: ProcessGraphRegistry;

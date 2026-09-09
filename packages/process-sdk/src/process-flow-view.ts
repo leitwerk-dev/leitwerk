@@ -52,17 +52,13 @@ function computeRoutingAnchors(
 	graph: ProcessGraphView,
 	routingIds: ReadonlySet<TurnId>,
 ): Map<TurnId, TurnId> {
-	const declarationIndex = new Map<TurnId, number>();
-	[...graph.turns.keys()].forEach((turnId, index) => {
-		declarationIndex.set(turnId, index);
-	});
-
-	const happyIndex = new Map<TurnId, number>();
-	(graph.happyPath ?? []).forEach((turnId, index) => {
-		if (!happyIndex.has(turnId)) {
-			happyIndex.set(turnId, index);
-		}
-	});
+	// Happy-path turns come first, then the remaining turns in declaration order.
+	const preferenceIndex = new Map(
+		[...new Set([...(graph.happyPath ?? []), ...graph.turns.keys()])].map((turnId, index) => [
+			turnId,
+			index,
+		]),
+	);
 
 	const workPredecessors = new Map<TurnId, TurnId[]>();
 	const routingPredecessors = new Map<TurnId, TurnId[]>();
@@ -84,22 +80,14 @@ function computeRoutingAnchors(
 		}
 	}
 
-	const preferenceKey = (turnId: TurnId): [number, number] => [
-		happyIndex.get(turnId) ?? Number.POSITIVE_INFINITY,
-		declarationIndex.get(turnId) ?? Number.POSITIVE_INFINITY,
-	];
 	const pickPreferred = (candidates: readonly TurnId[]): TurnId | undefined => {
 		let best: TurnId | undefined;
-		let bestKey: [number, number] | undefined;
+		let bestIndex = Number.POSITIVE_INFINITY;
 		for (const candidate of candidates) {
-			const key = preferenceKey(candidate);
-			if (
-				bestKey === undefined ||
-				key[0] < bestKey[0] ||
-				(key[0] === bestKey[0] && key[1] < bestKey[1])
-			) {
+			const index = preferenceIndex.get(candidate) ?? Number.POSITIVE_INFINITY;
+			if (best === undefined || index < bestIndex) {
 				best = candidate;
-				bestKey = key;
+				bestIndex = index;
 			}
 		}
 		return best;
@@ -264,28 +252,17 @@ export function collapseRoutingTurns(graph: ProcessGraphView): ProcessGraphView 
  * completing path exists.
  */
 function deriveSpine(graph: ProcessGraphView, entry: TurnId): TurnId[] {
-	const turnsWithCompletedTerminal = new Set<TurnId>();
-	for (const [turnId, turn] of graph.turns) {
-		if (turn.transitions.some((transition) => transition.lifecycleStatus === "completed")) {
-			turnsWithCompletedTerminal.add(turnId);
-		}
-	}
-	if (turnsWithCompletedTerminal.size === 0) {
-		return [entry];
-	}
-
 	const predecessor = new Map<TurnId, TurnId | null>([[entry, null]]);
 	const queue: TurnId[] = [entry];
 	let goal: TurnId | null = null;
-	while (queue.length > 0) {
-		const current = queue.shift() as TurnId;
-		if (turnsWithCompletedTerminal.has(current)) {
-			goal = current;
-			break;
-		}
+	for (const current of queue) {
 		const turn = graph.turns.get(current);
 		if (!turn) {
 			continue;
+		}
+		if (turn.transitions.some((transition) => transition.lifecycleStatus === "completed")) {
+			goal = current;
+			break;
 		}
 		for (const transition of turn.transitions) {
 			const next = transition.nextTurnId;
@@ -360,24 +337,6 @@ function transitionLabel(transition: { outcome?: string; trigger?: string }): st
 	return raw === null ? null : humanizeProcessLabel(raw);
 }
 
-function buildNode(input: {
-	turnId: TurnId;
-	turn: ProcessGraphTurnView;
-	spineIndex: number | null;
-	anchorTurnId: TurnId | null;
-	isEntry: boolean;
-}): ProcessFlowNode {
-	return {
-		turnId: input.turnId,
-		description: trimToNull(input.turn.description) ?? input.turnId,
-		turnType: input.turn.turnType,
-		role: input.spineIndex === null ? "branch" : "spine",
-		spineIndex: input.spineIndex,
-		anchorTurnId: input.spineIndex === null ? input.anchorTurnId : null,
-		isEntry: input.isEntry,
-	};
-}
-
 /**
  * Projects a process graph into a spine-first flow view for operator-facing
  * diagrams. The spine is the declared happy path (or a derived best-effort path
@@ -411,15 +370,15 @@ export function buildProcessFlowView(rawGraph: ProcessGraphView): ProcessFlowVie
 	const nodes: ProcessFlowNode[] = [];
 	for (const [turnId, turn] of graph.turns) {
 		const spineIndex = spineIndexByTurn.get(turnId) ?? null;
-		nodes.push(
-			buildNode({
-				turnId,
-				turn,
-				spineIndex,
-				anchorTurnId: anchorByTurn.get(turnId) ?? null,
-				isEntry: entrySet.has(turnId),
-			}),
-		);
+		nodes.push({
+			turnId,
+			description: trimToNull(turn.description) ?? turnId,
+			turnType: turn.turnType,
+			role: spineIndex === null ? "branch" : "spine",
+			spineIndex,
+			anchorTurnId: spineIndex === null ? (anchorByTurn.get(turnId) ?? null) : null,
+			isEntry: entrySet.has(turnId),
+		});
 	}
 
 	const edges: ProcessFlowEdge[] = [];

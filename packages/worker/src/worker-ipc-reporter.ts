@@ -77,24 +77,16 @@ export function createWorkerIpcReporter(options: {
 		options.emitExtensionEvent?.("worker.event", payload);
 		return payload;
 	};
+	const diagnosticReporter =
+		(eventType: "worker.trace" | "worker.error") =>
+		(input: WorkerDiagnosticPayload, selectedTurnId: string | null = null): void => {
+			const payload = workerEvent(eventType, buildWorkerDiagnosticPayload(input), selectedTurnId);
+			options.emitExtensionEvent?.(eventType, payload);
+		};
 	return {
 		project,
 		workerEvent,
-		workerTrace(input, selectedTurnId = null) {
-			const payload = workerEvent(
-				"worker.trace",
-				buildWorkerDiagnosticPayload(input),
-				selectedTurnId,
-			);
-			options.emitExtensionEvent?.("worker.trace", payload);
-		},
-		workerError(input, selectedTurnId = null) {
-			const payload = workerEvent(
-				"worker.error",
-				buildWorkerDiagnosticPayload(input),
-				selectedTurnId,
-			);
-			options.emitExtensionEvent?.("worker.error", payload);
-		},
+		workerTrace: diagnosticReporter("worker.trace"),
+		workerError: diagnosticReporter("worker.error"),
 	};
 }

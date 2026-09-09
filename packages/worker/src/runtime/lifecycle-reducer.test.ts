@@ -212,7 +212,10 @@ describe("worker runtime reducer", () => {
 		expect(protocolTypes(reduced.outputs)).toContain("worker.turn_started");
 	});
 
-	it("drains after a pending ready snapshot completes", () => {
+	it.each([
+		"snapshot_succeeded",
+		"snapshot_failed",
+	] as const)("drains after pending ready %s", (kind) => {
 		const ready = readySnapshotState();
 		const stopped = reduceWorkerRuntime(ready, {
 			kind: "stop_requested",
@@ -220,7 +223,8 @@ describe("worker runtime reducer", () => {
 			exitAfterCleanup: true,
 		});
 		const completed = reduceWorkerRuntime(stopped.state, {
-			kind: "snapshot_succeeded",
+			kind,
+			error: new Error("best effort failed"),
 			point: "after_worker_ready",
 			turnRecordId: null,
 		});
@@ -249,12 +253,19 @@ describe("worker runtime reducer", () => {
 		expect(outputsOfKind(completed.outputs, "upload_snapshot")).toHaveLength(1);
 		expect(protocolTypes(completed.outputs)).not.toContain("worker.turn_outcome");
 
-		const mismatch = reduceWorkerRuntime(completed.state, {
-			kind: "snapshot_succeeded",
-			point: "before_turn_outcome",
-			turnRecordId: "other_record",
-		});
-		expect(mismatch).toEqual({ state: completed.state, outputs: [] });
+		for (const kind of ["snapshot_succeeded", "snapshot_failed"] as const) {
+			for (const correlation of [
+				{ point: "before_turn_outcome", turnRecordId: "other_record" },
+				{ point: "before_turn_failed", turnRecordId: "record_1" },
+			] as const) {
+				const mismatch = reduceWorkerRuntime(completed.state, {
+					kind,
+					...correlation,
+					error: new Error("stale upload failed"),
+				});
+				expect(mismatch).toEqual({ state: completed.state, outputs: [] });
+			}
+		}
 
 		const published = reduceWorkerRuntime(completed.state, {
 			kind: "snapshot_succeeded",
@@ -346,7 +357,10 @@ describe("worker runtime reducer", () => {
 		expect(protocolTypes(acknowledged.outputs)).toContain("worker.cleanup_started");
 	});
 
-	it("continues cleanup after cleanup and fatal snapshot failures", () => {
+	it.each([
+		"snapshot_succeeded",
+		"snapshot_failed",
+	] as const)("continues cleanup after upload failure and fatal %s", (kind) => {
 		const cleanupStarted = reduceWorkerRuntime(drainingLlmState(), {
 			kind: "operator_abort_observed",
 		});
@@ -361,20 +375,20 @@ describe("worker runtime reducer", () => {
 		expect(cleanupSnapshotFailed.state.work.publication.kind).toBe("fatal_snapshot");
 		expect(outputsOfKind(cleanupSnapshotFailed.outputs, "upload_snapshot")).toHaveLength(1);
 
-		const fatalSnapshotFailed = reduceWorkerRuntime(cleanupSnapshotFailed.state, {
-			kind: "snapshot_failed",
+		const fatalSnapshotSettled = reduceWorkerRuntime(cleanupSnapshotFailed.state, {
+			kind,
 			point: "before_worker_failed",
 			turnRecordId: null,
 			error: new Error("best effort failed"),
 		});
-		expect(fatalSnapshotFailed.state.phase).toMatchObject({
+		expect(fatalSnapshotSettled.state.phase).toMatchObject({
 			kind: "cleaning",
 			stage: "resources",
 		});
-		expect(fatalSnapshotFailed.state.work.publication.kind).toBe("fatal_pending_cleanup");
-		expect(outputsOfKind(fatalSnapshotFailed.outputs, "cleanup")).toHaveLength(1);
+		expect(fatalSnapshotSettled.state.work.publication.kind).toBe("fatal_pending_cleanup");
+		expect(outputsOfKind(fatalSnapshotSettled.outputs, "cleanup")).toHaveLength(1);
 
-		const cleaned = reduceWorkerRuntime(fatalSnapshotFailed.state, {
+		const cleaned = reduceWorkerRuntime(fatalSnapshotSettled.state, {
 			kind: "cleanup_succeeded",
 		});
 		expect(cleaned.state.phase.kind).toBe("exited");

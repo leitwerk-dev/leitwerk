@@ -43,8 +43,8 @@ export function createPiResourceBundlePinReconciler(
 				return { missingDigest: next && !deps.bundleCache.has(next) ? next : null };
 			}
 			if (previous) deps.bundleCache.unpin(previous);
+			pinnedByInstance.delete(process.id);
 			if (!next) {
-				pinnedByInstance.delete(process.id);
 				return { missingDigest: null };
 			}
 			if (!deps.bundleCache.pin(next)) {

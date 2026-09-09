@@ -44,10 +44,7 @@ export function mapEngineFailure<T>(
 			if (result.code === "input_dispatch_failed") {
 				return { status: 503, body: { error: result.message } };
 			}
-			return {
-				status: 400,
-				body: { error: result.message, code: result.code },
-			};
+			break;
 		case "abort":
 			if (result.code === "worker_reconcile_failed") {
 				return {
@@ -58,10 +55,7 @@ export function mapEngineFailure<T>(
 					},
 				};
 			}
-			return {
-				status: 400,
-				body: { error: result.message, code: result.code },
-			};
+			break;
 		case "abort-turn":
 			if (result.code === "worker_supervisor_unavailable") {
 				return { status: 503, body: { error: result.message } };
@@ -78,10 +72,7 @@ export function mapEngineFailure<T>(
 					},
 				};
 			}
-			return {
-				status: 400,
-				body: { error: result.message, code: result.code },
-			};
+			break;
 		case "retry":
 		case "continue":
 			if (result.code === "worker_reconcile_failed") {
@@ -93,11 +84,12 @@ export function mapEngineFailure<T>(
 					},
 				};
 			}
-			return {
-				status: 400,
-				body: { error: result.message, code: result.code },
-			};
+			break;
 	}
+	return {
+		status: 400,
+		body: { error: result.message, code: result.code },
+	};
 }
 
 export function sendEngineFailure<T>(

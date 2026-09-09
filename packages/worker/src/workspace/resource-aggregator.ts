@@ -21,23 +21,12 @@ export function aggregateAgentsMd(
 export function collectSkills(
 	sources: Array<{ componentKey: string; skillId: string; content: string }>,
 ): Map<string, { content: string; source: string }> {
-	const byId = new Map<string, Array<{ componentKey: string; skillId: string; content: string }>>();
-	for (const s of sources) {
-		const list = byId.get(s.skillId);
-		if (list) {
-			list.push(s);
-		} else {
-			byId.set(s.skillId, [s]);
-		}
-	}
 	const out = new Map<string, { content: string; source: string }>();
-	for (const [skillId, group] of byId) {
-		group.sort((a, b) => a.componentKey.localeCompare(b.componentKey));
-		const winner = group[0];
-		out.set(skillId, {
-			content: winner.content,
-			source: winner.componentKey,
-		});
+	for (const { skillId, componentKey, content } of sources) {
+		const winner = out.get(skillId);
+		if (!winner || componentKey.localeCompare(winner.source) < 0) {
+			out.set(skillId, { content, source: componentKey });
+		}
 	}
 	return out;
 }

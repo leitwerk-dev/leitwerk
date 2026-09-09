@@ -473,6 +473,39 @@ describe("ExternalSourceService", () => {
 		);
 	});
 
+	it.each([
+		["completed", "review", "external_source_terminal"],
+		["waiting", "draft", "external_source_no_longer_exposed"],
+		["waiting", "review", "external_source_input_missing"],
+	] as const)("drops queued fires for %s/%s with %s", async (lifecycleStatus, selectedTurnId, code) => {
+		const { deps, service } = createHarness();
+		const process = createWaitingProcess(deps);
+		deps.processes.update(process.id, { lifecycleStatus: "active" });
+		for (const path of ["/tmp/first", "/tmp/second"]) {
+			const result = await service.fire({
+				instanceId: process.id,
+				armingId: "review:file_instruction",
+				input: { instruction: "" },
+				event: { path },
+			});
+			expect(result).toMatchObject({ ok: true, data: { queued: true } });
+		}
+		expect(deps.pendingExternalSourceFires.listByInstance(process.id)).toHaveLength(2);
+
+		deps.processes.update(process.id, { lifecycleStatus, selectedTurnId });
+		await service.drainQueued(process.id);
+
+		expect(deps.pendingExternalSourceFires.listByInstance(process.id)).toEqual([]);
+		const dropped = deps.events
+			.listByInstance(process.id, 20)
+			.filter((event) => event.eventType === "external_source_dropped");
+		expect(dropped.map((event) => event.data.path).sort()).toEqual(["/tmp/first", "/tmp/second"]);
+		for (const event of dropped) {
+			expect(event.data).toMatchObject({ armingId: "review:file_instruction", code });
+		}
+		expect(deps.turnRecords.listByInstance(process.id)).toEqual([]);
+	});
+
 	it("queues a competing fire and drains it when the same action is exposed again", async () => {
 		const { deps, service } = createHarness();
 		const process = createWaitingProcess(deps);

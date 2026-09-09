@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { resolveExtensionEntries } from "@leitwerk-dev/extension-runtime";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	builtinPiProvider,
@@ -52,7 +53,10 @@ async function createExtensionWorkspace(): Promise<string> {
 }
 
 describe("createAppContext extension loading", () => {
-	it("resolves configured extension sources relative to the supplied config directory", async () => {
+	it.each([
+		false,
+		true,
+	])("loads configured sources with pre-resolved entries: %s", async (preResolved) => {
 		const workspaceRoot = await createExtensionWorkspace();
 		const nestedCwd = path.join(workspaceRoot, "packages", "server");
 		await mkdir(nestedCwd, { recursive: true });
@@ -62,11 +66,19 @@ describe("createAppContext extension loading", () => {
 		config.storage.sqlite_path = ":memory:";
 		config.extension_loading.sources = ["./extensions/example"];
 		config.server.base_url = "http://127.0.0.1:8080";
+		const resolvedExtensionEntries = preResolved
+			? await resolveExtensionEntries({
+					startDir: workspaceRoot,
+					sources: config.extension_loading.sources,
+				})
+			: undefined;
+		if (preResolved) config.extension_loading.sources = ["./missing-after-resolution"];
 
 		const ctx = await createAppContext({
 			config,
 			logger: false,
 			extensionLoadingStartDir: workspaceRoot,
+			resolvedExtensionEntries,
 		});
 		try {
 			expect(ctx.extensionCatalog.modules.map((module) => module.packageName)).toEqual([

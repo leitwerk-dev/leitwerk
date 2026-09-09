@@ -291,7 +291,8 @@ test.describe("sidebar result reflow", () => {
 		await expect(rendererHost).toHaveAttribute("data-renderer-state", "ready", {
 			timeout: 10_000,
 		});
-		await expect(parentRailItem).toBeVisible();
+		// Navigate away from initial bottom-following before measuring reflow.
+		await parentRailItem.click();
 		await leafOutcomeSection.scrollIntoViewIfNeeded();
 		await expect(parentRailItem).toHaveAttribute("data-active", "true");
 		await expect(leafOutcomeSection).toBeInViewport();

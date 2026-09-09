@@ -196,13 +196,6 @@ type FlowOutcomeStateEffect<TParams, TState, TContext> = (
 	input: FlowOutcomeEffectInput<TParams, TState, TContext>,
 ) => MaybePromise<TState>;
 
-type SnapshotContext<TParams, TState> = {
-	process: ProcessInstance;
-	projects: readonly ProcessProject[];
-	params: TParams;
-	state: TState;
-};
-
 function textField(input: {
 	description: string;
 	requiredErrorCode: string;
@@ -473,37 +466,23 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 	};
 }
 
-function createFlowOutcomeEffectContext<
-	TParams,
-	TState,
-	TContext extends FlowOutcomeEffectContext<TParams, TState>,
->(input: {
-	ctx: SnapshotContext<TParams, TState>;
-	event: ProcessOutcomeExecution<TParams, TState>["event"];
-}): TContext {
-	return {
-		process: input.ctx.process,
-		projects: input.ctx.projects,
-		params: input.ctx.params,
-		state: input.ctx.state,
-		output:
-			typeof input.event.turnResultMarkdown === "string"
-				? { content: input.event.turnResultMarkdown }
-				: null,
-	} as TContext;
-}
-
-function wrapOutcomeEffect<
-	TParams,
-	TState,
-	TContext extends FlowOutcomeEffectContext<TParams, TState>,
->(effect: FlowOutcomeEffect<TParams, TState, TContext>): ProcessOutcomeEffect<TParams, TState> {
+function wrapOutcomeCallback<TParams, TState, TResult>(
+	callback: (
+		input: FlowOutcomeEffectInput<TParams, TState, FlowOutcomeEffectContext<TParams, TState>>,
+	) => TResult,
+): (execution: ProcessOutcomeExecution<TParams, TState>) => TResult {
 	return (execution) =>
-		effect({
-			ctx: createFlowOutcomeEffectContext<TParams, TState, TContext>({
-				ctx: execution.ctx,
-				event: execution.event,
-			}),
+		callback({
+			ctx: {
+				process: execution.ctx.process,
+				projects: execution.ctx.projects,
+				params: execution.ctx.params,
+				state: execution.ctx.state,
+				output:
+					typeof execution.event.turnResultMarkdown === "string"
+						? { content: execution.event.turnResultMarkdown }
+						: null,
+			},
 			event: execution.event,
 			turnId: execution.turnId,
 			outcome: execution.outcome,
@@ -511,20 +490,10 @@ function wrapOutcomeEffect<
 }
 
 class RouteAndEffectBuilder<TParams, TState, TContext> {
-	protected target:
-		| { kind: "to"; turnId: TurnId }
-		| { kind: "complete" }
-		| { kind: "lifecycleStatus"; status: ProcessTurnTerminalLifecycleStatus }
-		| null = null;
+	protected target: FlowTargetSpec = null;
 	protected flowEffect: FlowOutcomeEffect<TParams, TState, TContext> | undefined;
 
-	protected setTarget(
-		next:
-			| { kind: "to"; turnId: TurnId }
-			| { kind: "complete" }
-			| { kind: "lifecycleStatus"; status: ProcessTurnTerminalLifecycleStatus }
-			| null,
-	): this {
+	protected setTarget(next: FlowTargetSpec): this {
 		if (this.target && next) {
 			throw new Error("Flow route already declares a target");
 		}
@@ -800,23 +769,10 @@ export class OutcomeToolBuilder<
 								{ to: turnId },
 							]),
 						),
-						choose: (execution: ProcessOutcomeExecution<TParams, TState>) =>
-							stateRouting.choose({
-								ctx: createFlowOutcomeEffectContext<
-									TParams,
-									TState,
-									FlowLlmOutcomeEffectContext<TParams, TState>
-								>({
-									ctx: execution.ctx,
-									event: execution.event,
-								}),
-								event: execution.event,
-								turnId: execution.turnId,
-								outcome: execution.outcome,
-							}),
+						choose: wrapOutcomeCallback((input) => stateRouting.choose(input)),
 					}
 				: this.buildRouteTarget()),
-			...(this.flowEffect ? { effect: wrapOutcomeEffect(this.flowEffect) } : {}),
+			...(this.flowEffect ? { effect: wrapOutcomeCallback(this.flowEffect) } : {}),
 		};
 	}
 }
@@ -841,7 +797,7 @@ export class AutomaticOutcomeBuilder<
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
 		}
-		const configuredEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
+		const configuredEffect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		const effect = this.waits
 			? async (
 					execution: Parameters<NonNullable<ProcessToolOutcomeSpec<TParams, TState>["effect"]>>[0],
@@ -918,7 +874,7 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 		if (!this.reviewTurnId) {
 			throw new Error("plan result must declare .review(turnId)");
 		}
-		const stateEffect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
+		const stateEffect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		return {
 			description: this.resultDescription,
 			parameters: {
@@ -965,7 +921,7 @@ export class PublishedResultBuilder<TParams = unknown, TState = unknown>
 	}
 
 	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		return {
 			outcome: this.productName,
 			...this.buildRouteTarget(),
@@ -1003,7 +959,7 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
 	}
 
 	build(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapOutcomeEffect(this.flowEffect) : undefined;
+		const effect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		return {
 			outcome: this.outcomeId,
 			...this.buildRouteTarget(),
@@ -1598,10 +1554,6 @@ function formFieldPublishedProductName(field: FormDefinition["fields"][number]):
 	);
 }
 
-function inferActionLabel(actionId: string): string {
-	return humanizeProcessLabel(actionId);
-}
-
 function inferAcceptanceState(actionId: string): ProcessHumanTurnActionSpec["acceptanceState"] {
 	const normalized = actionId.toLowerCase();
 	if (/approve|accept|complete|merged/.test(normalized)) {
@@ -1671,7 +1623,7 @@ export class HumanActionBuilder<TParams = unknown, TState = unknown> {
 	build(): ProcessHumanTurnActionSpec<TParams, TState> {
 		return {
 			label:
-				typeof this.spec.label === "string" ? this.spec.label : inferActionLabel(this.actionId),
+				typeof this.spec.label === "string" ? this.spec.label : humanizeProcessLabel(this.actionId),
 			acceptanceState:
 				(this.spec.acceptanceState as
 					| ProcessHumanTurnActionSpec<TParams, TState>["acceptanceState"]
@@ -1852,11 +1804,7 @@ export class ExternalRouteBuilder<
 > implements FlowExternalTurn<TParams, TState>
 {
 	private externalEffect: ExternalSourceEffect<TParams, TState, TEvent, TInput> | undefined;
-	private target:
-		| { kind: "to"; turnId: TurnId }
-		| { kind: "complete" }
-		| { kind: "lifecycleStatus"; status: ProcessTurnTerminalLifecycleStatus }
-		| null = null;
+	private target: FlowTargetSpec = null;
 	constructor(
 		private readonly parent: ExternalFlowBuilder<TParams, TState>,
 		private readonly source: ExternalActionSource<TParams, TState, TEvent, TInput>,
@@ -1870,12 +1818,7 @@ export class ExternalRouteBuilder<
 		return this.parent.definition;
 	}
 
-	private setTarget(
-		next:
-			| { kind: "to"; turnId: TurnId }
-			| { kind: "complete" }
-			| { kind: "lifecycleStatus"; status: ProcessTurnTerminalLifecycleStatus },
-	): this {
+	private setTarget(next: Exclude<FlowTargetSpec, null>): this {
 		if (this.target) {
 			throw new Error("External source route already declares a target");
 		}
@@ -1919,18 +1862,10 @@ export class ExternalRouteBuilder<
 		return this;
 	}
 
-	private buildRouteTarget(): {
-		to?: TurnId;
-		complete?: boolean;
-		lifecycleStatus?: ProcessTurnTerminalLifecycleStatus;
-	} {
-		return buildRouteTargetSpec(this.target);
-	}
-
 	build() {
 		return {
 			source: this.source,
-			...this.buildRouteTarget(),
+			...buildRouteTargetSpec(this.target),
 			...(this.externalEffect ? { effect: this.externalEffect } : {}),
 		};
 	}

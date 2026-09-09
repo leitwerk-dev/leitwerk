@@ -14,9 +14,7 @@ describe("recovery model request normalization", () => {
 		).toEqual({
 			ok: true,
 			request: {
-				nextTurnModelProfileIdProvided: true,
 				nextTurnModelProfileId: "profile",
-				providerOptionsProvided: true,
 				providerOptions: { preferredAccount: "team-a" },
 			},
 		});
@@ -25,19 +23,28 @@ describe("recovery model request normalization", () => {
 	it("keeps omitted provider options distinct from an explicit empty bag", () => {
 		expect(normalizeRecoveryModelRequest({})).toEqual({
 			ok: true,
-			request: {
-				nextTurnModelProfileIdProvided: false,
-				providerOptionsProvided: false,
-			},
+			request: {},
 		});
 		expect(normalizeRecoveryModelRequest({ providerOptions: {} })).toEqual({
 			ok: true,
 			request: {
-				nextTurnModelProfileIdProvided: false,
-				providerOptionsProvided: true,
 				providerOptions: {},
 			},
 		});
+	});
+
+	it.each([null, undefined, ""])("preserves explicit model reset %j", (value) => {
+		expect(normalizeRecoveryModelRequest({ nextTurnModelProfileId: value })).toEqual({
+			ok: true,
+			request: { nextTurnModelProfileId: null },
+		});
+	});
+
+	it("keeps omitted continuation prompts distinct from an explicit reset", () => {
+		expect(normalizeContinueRequest({})).toEqual({ ok: true, request: {} });
+		for (const prompt of [null, undefined]) {
+			expect(normalizeContinueRequest({ prompt })).toEqual({ ok: true, request: { prompt: null } });
+		}
 	});
 
 	it("rejects malformed provider option values before any mutation", () => {

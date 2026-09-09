@@ -415,46 +415,15 @@ function hasActivePublication(state: WorkerRuntimeStateMachine): boolean {
 	return state.work.publication.kind !== "none";
 }
 
-function requireNoPublication(state: WorkerRuntimeStateMachine): void {
+function beginSnapshot(
+	state: WorkerRuntimeStateMachine,
+	publication: Extract<PublicationState, { snapshot: SnapshotCompletionEvent }>,
+	source: WorkerSnapshotSource,
+	outputs: WorkerRuntimeOutput[],
+): WorkerRuntimeStateMachine {
 	if (hasActivePublication(state)) throw new Error("Snapshot publication is already active");
-}
-
-function beginReadySnapshot(
-	state: WorkerRuntimeStateMachine,
-	source: WorkerSnapshotSource,
-	outputs: WorkerRuntimeOutput[],
-): WorkerRuntimeStateMachine {
-	requireNoPublication(state);
-	const snapshot = {
-		point: "after_worker_ready" as const,
-		turnRecordId: null,
-		required: false as const,
-	};
-	outputs.push({ kind: "upload_snapshot", ...snapshot, source });
-	return {
-		...state,
-		work: { ...state.work, publication: { kind: "ready_snapshot", snapshot } },
-	};
-}
-
-function beginTerminalSnapshot(
-	state: WorkerRuntimeStateMachine,
-	point: "before_turn_outcome" | "before_turn_failed",
-	turnRecordId: string,
-	terminal: PendingTerminal,
-	source: WorkerSnapshotSource,
-	outputs: WorkerRuntimeOutput[],
-): WorkerRuntimeStateMachine {
-	requireNoPublication(state);
-	const snapshot = { point, turnRecordId, required: true as const };
-	outputs.push({ kind: "upload_snapshot", ...snapshot, source });
-	return {
-		...state,
-		work: {
-			...state.work,
-			publication: { kind: "terminal_snapshot", snapshot, terminal },
-		},
-	};
+	outputs.push({ kind: "upload_snapshot", ...publication.snapshot, source });
+	return { ...state, work: { ...state.work, publication } };
 }
 
 const TERMINAL_ACK_RETRY_MS = 5_000;
@@ -479,47 +448,6 @@ function publishTerminalAndAwaitAcknowledgement(
 		TERMINAL_ACK_RETRY_MS,
 		terminal.correlation.turnRecordId,
 	);
-}
-
-function beginCleanupSnapshot(
-	state: WorkerRuntimeStateMachine,
-	source: WorkerSnapshotSource,
-	outputs: WorkerRuntimeOutput[],
-): WorkerRuntimeStateMachine {
-	requireNoPublication(state);
-	const snapshot = {
-		point: "before_cleanup_completed" as const,
-		turnRecordId: null,
-		required: true as const,
-	};
-	outputs.push({ kind: "upload_snapshot", ...snapshot, source });
-	return {
-		...state,
-		work: { ...state.work, publication: { kind: "cleanup_snapshot", snapshot } },
-	};
-}
-
-function beginFatalSnapshot(
-	state: WorkerRuntimeStateMachine,
-	fatal: PendingFatal,
-	source: WorkerSnapshotSource,
-	afterSnapshot: "exit" | "cleanup",
-	outputs: WorkerRuntimeOutput[],
-): WorkerRuntimeStateMachine {
-	requireNoPublication(state);
-	const snapshot = {
-		point: "before_worker_failed" as const,
-		turnRecordId: null,
-		required: false as const,
-	};
-	outputs.push({ kind: "upload_snapshot", ...snapshot, source });
-	return {
-		...state,
-		work: {
-			...state.work,
-			publication: { kind: "fatal_snapshot", snapshot, fatal, afterSnapshot },
-		},
-	};
 }
 
 function finishFatal(
@@ -573,7 +501,17 @@ function failureOutputs(
 					state.phase.kind === "cleaning" && state.phase.stage === "publication"
 						? "cleanup"
 						: "exit";
-				next = beginFatalSnapshot(next, fatal, disposition.snapshot.source, afterSnapshot, outputs);
+				next = beginSnapshot(
+					next,
+					{
+						kind: "fatal_snapshot",
+						snapshot: { point: "before_worker_failed", turnRecordId: null, required: false },
+						fatal,
+						afterSnapshot,
+					},
+					disposition.snapshot.source,
+					outputs,
+				);
 				break;
 			}
 			const finished = finishFatal(next, fatal);
@@ -738,10 +676,14 @@ function advance(
 				)
 			: { upload: false as const };
 		if (cleanupSnapshot.upload && next.session) {
-			next = beginCleanupSnapshot(
+			next = beginSnapshot(
 				{
 					...next,
 					phase: { kind: "cleaning", reason, exitAfterCleanup, stage: "publication" },
+				},
+				{
+					kind: "cleanup_snapshot",
+					snapshot: { point: "before_cleanup_completed", turnRecordId: null, required: true },
 				},
 				sessionSnapshotSource(next.session),
 				outputs,
@@ -1103,7 +1045,15 @@ export function reduceWorkerRuntime(
 				completion.session.piAvailable,
 			);
 			if (readySnapshot.upload)
-				next = beginReadySnapshot(next, sessionSnapshotSource(completion.session), outputs);
+				next = beginSnapshot(
+					next,
+					{
+						kind: "ready_snapshot",
+						snapshot: { point: "after_worker_ready", turnRecordId: null, required: false },
+					},
+					sessionSnapshotSource(completion.session),
+					outputs,
+				);
 			next = armTimer(
 				next,
 				outputs,
@@ -1302,11 +1252,13 @@ export function reduceWorkerRuntime(
 				);
 				if (!snapshotPolicy.upload)
 					throw new Error("LLM terminal snapshot policy unexpectedly skipped upload");
-				next = beginTerminalSnapshot(
+				next = beginSnapshot(
 					next,
-					point,
-					event.turnRecordId,
-					pending,
+					{
+						kind: "terminal_snapshot",
+						snapshot: { point, turnRecordId: event.turnRecordId, required: true },
+						terminal: pending,
+					},
 					sessionSnapshotSource(state.session),
 					outputs,
 				);
@@ -1328,71 +1280,20 @@ export function reduceWorkerRuntime(
 				outputs.push(...failed.outputs);
 			}
 			break;
-		case "snapshot_succeeded": {
-			const publication = state.work.publication;
-			switch (publication.kind) {
-				case "none":
-				case "terminal_pending_ack":
-				case "fatal_pending_cleanup":
-					break;
-				case "ready_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
-					next = { ...state, work: { ...state.work, publication: { kind: "none" } } };
-					break;
-				case "terminal_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
-					next = publishTerminalAndAwaitAcknowledgement(state, publication.terminal, outputs);
-					break;
-				case "cleanup_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
-					if (state.phase.kind !== "cleaning" || state.phase.stage !== "publication")
-						throw new Error("Cleanup snapshot completed outside cleanup publication");
-					outputs.push({ kind: "cleanup" });
-					next = {
-						...state,
-						phase: { ...state.phase, stage: "resources" },
-						work: { ...state.work, publication: { kind: "none" } },
-					};
-					break;
-				case "fatal_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
-					if (publication.afterSnapshot === "exit") {
-						const finished = finishFatal(state, publication.fatal);
-						next = finished.state;
-						outputs.push(...finished.outputs);
-					} else {
-						if (state.phase.kind !== "cleaning" || state.phase.stage !== "publication")
-							throw new Error("Fatal snapshot completed outside cleanup publication");
-						outputs.push({ kind: "cleanup" });
-						next = {
-							...state,
-							phase: { ...state.phase, stage: "resources" },
-							work: {
-								...state.work,
-								publication: {
-									kind: "fatal_pending_cleanup",
-									fatal: publication.fatal,
-								},
-							},
-						};
-					}
-					break;
-			}
-			break;
-		}
+		case "snapshot_succeeded":
 		case "snapshot_failed": {
 			const publication = state.work.publication;
+			if (!("snapshot" in publication) || !snapshotMatches(publication.snapshot, event)) break;
+			const completion = event.kind === "snapshot_succeeded" ? "completed" : "failed";
 			switch (publication.kind) {
-				case "none":
-				case "terminal_pending_ack":
-				case "fatal_pending_cleanup":
-					break;
 				case "ready_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
 					next = { ...state, work: { ...state.work, publication: { kind: "none" } } };
 					break;
 				case "terminal_snapshot": {
-					if (!snapshotMatches(publication.snapshot, event)) break;
+					if (event.kind === "snapshot_succeeded") {
+						next = publishTerminalAndAwaitAcknowledgement(state, publication.terminal, outputs);
+						break;
+					}
 					const cleared = {
 						...state,
 						work: { ...state.work, publication: { kind: "none" } as const },
@@ -1409,41 +1310,41 @@ export function reduceWorkerRuntime(
 					break;
 				}
 				case "cleanup_snapshot": {
-					if (!snapshotMatches(publication.snapshot, event)) break;
 					if (state.phase.kind !== "cleaning" || state.phase.stage !== "publication")
-						throw new Error("Cleanup snapshot failed outside cleanup publication");
+						throw new Error(`Cleanup snapshot ${completion} outside cleanup publication`);
 					const cleared = {
 						...state,
 						work: { ...state.work, publication: { kind: "none" } as const },
 					};
-					const failed = failureOutputs(cleared, {
-						kind: "cleanup",
-						error: event.error,
-						session: failureContext(state),
-					});
-					next = failed.state;
-					outputs.push(...failed.outputs);
+					if (event.kind === "snapshot_succeeded") {
+						outputs.push({ kind: "cleanup" });
+						next = { ...cleared, phase: { ...state.phase, stage: "resources" } };
+					} else {
+						const failed = failureOutputs(cleared, {
+							kind: "cleanup",
+							error: event.error,
+							session: failureContext(state),
+						});
+						next = failed.state;
+						outputs.push(...failed.outputs);
+					}
 					break;
 				}
 				case "fatal_snapshot":
-					if (!snapshotMatches(publication.snapshot, event)) break;
 					if (publication.afterSnapshot === "exit") {
 						const finished = finishFatal(state, publication.fatal);
 						next = finished.state;
 						outputs.push(...finished.outputs);
 					} else {
 						if (state.phase.kind !== "cleaning" || state.phase.stage !== "publication")
-							throw new Error("Fatal snapshot failed outside cleanup publication");
+							throw new Error(`Fatal snapshot ${completion} outside cleanup publication`);
 						outputs.push({ kind: "cleanup" });
 						next = {
 							...state,
 							phase: { ...state.phase, stage: "resources" },
 							work: {
 								...state.work,
-								publication: {
-									kind: "fatal_pending_cleanup",
-									fatal: publication.fatal,
-								},
+								publication: { kind: "fatal_pending_cleanup", fatal: publication.fatal },
 							},
 						};
 					}

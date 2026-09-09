@@ -20,6 +20,7 @@ import {
 	type PiResourceLayer,
 	type PiResourceLimits,
 	ResourceCollector,
+	validatePhysicalSourcePath,
 } from "./resource-collector.js";
 
 export {
@@ -192,12 +193,6 @@ export default async function leitwerkPiExtension(pi) {
 	return output.contents;
 }
 
-function validatePhysicalSourcePath(sourcePath: string): void {
-	if (!path.isAbsolute(sourcePath) || path.normalize(sourcePath) !== sourcePath) {
-		throw new Error(`Pi resource source path must be normalized and absolute: ${sourcePath}`);
-	}
-}
-
 function normalizeCredentialPaths(paths: readonly string[]): readonly string[] {
 	const seen = new Set<string>();
 	const normalized = paths.map((credentialPath) => {
@@ -366,10 +361,8 @@ export async function assemblePiResourceSnapshot(
 	return {
 		bundle,
 		generated,
-		files: resourceFiles.map((file) => ({
-			path: file.path,
-			sha256: sha256Digest(file.content),
-			size: file.content.byteLength,
-		})),
+		files: collector.provenance
+			.map(({ snapshotPath, sha256, size }) => ({ path: snapshotPath, sha256, size }))
+			.sort((left, right) => compareResourcePaths(left.path, right.path)),
 	};
 }

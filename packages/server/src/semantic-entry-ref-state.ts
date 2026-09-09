@@ -1,13 +1,12 @@
-import type {
-	ProcessSemanticEntryRefKey,
-	SemanticEntryRef,
-	TurnOutcomePayload,
+import {
+	type ProcessSemanticEntryRefKey,
+	parseProcessStateJsonStrict,
+	parseSemanticEntryRef,
+	parseSemanticEntryRefsStrict,
+	type SemanticEntryRef,
+	type TurnOutcomePayload,
 } from "@leitwerk-dev/domain";
 import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
-import {
-	parseProcessStateJsonRecord,
-	parseSemanticEntryRefsFromStateRecord,
-} from "./semantic-state-json.js";
 
 export type ProcessSemanticEntryRefPatch = Partial<
 	Record<
@@ -20,31 +19,6 @@ export type ProcessSemanticEntryRefPatch = Partial<
 		| undefined
 	>
 >;
-
-function normalizePatchValue(
-	value: ProcessSemanticEntryRefPatch[ProcessSemanticEntryRefKey],
-): SemanticEntryRef | null | undefined {
-	if (value === undefined) {
-		return undefined;
-	}
-	if (value === null) {
-		return null;
-	}
-	if (typeof value.entryId !== "string") {
-		return null;
-	}
-	const entryId = value.entryId.trim();
-	if (entryId.length === 0) {
-		return null;
-	}
-	return {
-		entryId,
-		turnRecordId:
-			typeof value.turnRecordId === "string" && value.turnRecordId.trim() !== ""
-				? value.turnRecordId.trim()
-				: null,
-	};
-}
 
 function semanticEntryRefsEqual(a: SemanticEntryRef | null, b: SemanticEntryRef | null): boolean {
 	return a?.entryId === b?.entryId && a?.turnRecordId === b?.turnRecordId;
@@ -60,25 +34,22 @@ export function mergeSemanticEntryRefPatchIntoStateJson(
 		return null;
 	}
 
-	const stateRecord = parseProcessStateJsonRecord(stateJson, "stateJson");
-	const fallbackStateRecord = parseProcessStateJsonRecord(
+	const stateRecord = parseProcessStateJsonStrict(stateJson, "stateJson");
+	const fallbackStateRecord = parseProcessStateJsonStrict(
 		options.fallbackStateJson,
 		"fallbackStateJson",
 	);
-	const currentRefs = parseSemanticEntryRefsFromStateRecord(
-		stateRecord.semanticEntryRefs !== undefined ? stateRecord : fallbackStateRecord,
+	const currentRefs = parseSemanticEntryRefsStrict(
+		stateRecord.semanticEntryRefs !== undefined
+			? stateRecord.semanticEntryRefs
+			: fallbackStateRecord.semanticEntryRefs,
 	);
 	const nextRefs = { ...currentRefs };
 	let changed = false;
 
 	for (const [rawKey, rawValue] of entries) {
 		const key = rawKey as ProcessSemanticEntryRefKey;
-		const nextValue = normalizePatchValue(
-			rawValue as ProcessSemanticEntryRefPatch[ProcessSemanticEntryRefKey],
-		);
-		if (nextValue === undefined) {
-			continue;
-		}
+		const nextValue = parseSemanticEntryRef(rawValue);
 		if (!semanticEntryRefsEqual(currentRefs[key], nextValue)) {
 			changed = true;
 		}

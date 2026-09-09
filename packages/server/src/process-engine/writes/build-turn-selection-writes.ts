@@ -10,10 +10,10 @@ import { tryTransition } from "../../domain-logic/process-state-machine.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../../process-graph.js";
 import { selectedTurnRequiresWorker } from "../turn-worker-requirement.js";
 import {
+	appendProcessEvent,
 	applyProcessPatchField,
 	createWrites,
 	type WorkerIntent,
-	type WriteBuildFailure,
 	type WriteBuildResult,
 } from "./writes.js";
 
@@ -26,37 +26,7 @@ export interface TurnSelectionWritesInput {
 	state?: unknown;
 }
 
-function validateTurnSelectionWorkerIntent(
-	processGraphs: ProcessGraphRegistry,
-	process: Pick<ProcessInstance, "processId">,
-	targetTurnId: TurnId | null,
-	targetLifecycleStatus: ProcessLifecycleStatus,
-	workerIntent: WorkerIntent | undefined,
-): WriteBuildFailure | null {
-	switch (workerIntent?.kind) {
-		case "restart_worker":
-			if (
-				!selectedTurnRequiresWorker(processGraphs, {
-					processId: process.processId,
-					selectedTurnId: targetTurnId,
-					lifecycleStatus: targetLifecycleStatus,
-				})
-			) {
-				return {
-					ok: false,
-					code: "invalid_transition",
-					message: "restart_worker requires a target selected turn that uses a worker",
-				};
-			}
-			break;
-		default:
-			break;
-	}
-
-	return null;
-}
-
-export function deriveLifecycleStatusForSelectedTurn(
+function deriveLifecycleStatusForSelectedTurn(
 	processGraphs: ProcessGraphRegistry,
 	processId: string,
 	turnId: TurnId,
@@ -84,15 +54,19 @@ export function buildTurnSelectionWrites(
 			? process.lifecycleStatus
 			: deriveLifecycleStatusForSelectedTurn(processGraphs, process.processId, input.toTurnId));
 
-	const workerIntentValidation = validateTurnSelectionWorkerIntent(
-		processGraphs,
-		process,
-		input.toTurnId,
-		targetLifecycleStatus,
-		input.workerIntent,
-	);
-	if (workerIntentValidation) {
-		return workerIntentValidation;
+	if (
+		input.workerIntent?.kind === "restart_worker" &&
+		!selectedTurnRequiresWorker(processGraphs, {
+			processId: process.processId,
+			selectedTurnId: input.toTurnId,
+			lifecycleStatus: targetLifecycleStatus,
+		})
+	) {
+		return {
+			ok: false,
+			code: "invalid_transition",
+			message: "restart_worker requires a target selected turn that uses a worker",
+		};
 	}
 
 	if (input.toTurnId === null) {
@@ -174,11 +148,14 @@ export function buildTurnSelectionWrites(
 		applyProcessPatchField(writes, process, "currentExecution", null);
 	}
 
-	const selectedTurnChanged = process.selectedTurnId !== input.toTurnId;
-	if (selectedTurnChanged) {
-		writes.events.push({
-			instanceId: process.id,
+	if (process.selectedTurnId !== input.toTurnId) {
+		appendProcessEvent(writes, process, {
 			eventType: "turn_selected",
+			level: "info",
+			message:
+				input.toTurnId === null
+					? `Lifecycle moved to ${targetLifecycleStatus}`
+					: `Selected turn ${input.toTurnId}`,
 			data: {
 				fromTurnId: process.selectedTurnId,
 				toTurnId: input.toTurnId,
@@ -186,18 +163,6 @@ export function buildTurnSelectionWrites(
 				toLifecycleStatus: targetLifecycleStatus,
 				...(input.trigger !== undefined ? { trigger: input.trigger } : {}),
 			},
-		});
-		writes.broadcasts.push({
-			type: "process.event",
-			payload: {
-				eventType: "turn_selected",
-				level: "info",
-				message:
-					input.toTurnId === null
-						? `Lifecycle moved to ${targetLifecycleStatus}`
-						: `Selected turn ${input.toTurnId}`,
-			},
-			instanceId: process.id,
 		});
 	}
 

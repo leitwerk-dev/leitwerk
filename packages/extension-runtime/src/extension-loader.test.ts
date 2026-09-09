@@ -263,7 +263,9 @@ describe("buildExtensionCatalog", () => {
 		const consumer = createLoadedExtensionModuleForTest({
 			manifest: { id: "consumer", version: "1", optional: ["owner"] },
 			setupCatalog(api) {
-				expect(api.get(token)).toBe("available");
+				const { get, require: requireCapability } = api;
+				expect(get(token)).toBe("available");
+				expect(requireCapability(token)).toBe("available");
 			},
 		});
 		const owner = createLoadedExtensionModuleForTest({
@@ -274,6 +276,9 @@ describe("buildExtensionCatalog", () => {
 		});
 
 		const catalog = await buildExtensionCatalog([consumer, owner]);
+		const { get, require: requireCapability } = catalog;
+		expect(get(token)).toBe("available");
+		expect(requireCapability(token)).toBe("available");
 
 		expect(catalog.modules.map((loaded) => loaded.module.manifest.id)).toEqual([
 			"owner",

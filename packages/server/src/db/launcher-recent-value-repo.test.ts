@@ -20,17 +20,17 @@ describe("launcher recent value repository", () => {
 			});
 			vi.advanceTimersByTime(1_000);
 		}
-		repos.launcherRecentValues.recordValue({
+		const original = repos.launcherRecentValues.listByLauncher("launcher-a")[2];
+		const replay = repos.launcherRecentValues.recordValue({
 			launcherId: "launcher-a",
 			fieldId: "repoLocator",
 			value: "/tmp/b",
 			limit: 3,
 		});
+		expect(replay).toEqual({ ...original, updatedAt: new Date().toISOString() });
 
 		expect(
-			repos.launcherRecentValues
-				.listByField("launcher-a", "repoLocator")
-				.map((entry) => entry.value),
+			repos.launcherRecentValues.listByLauncher("launcher-a").map((entry) => entry.value),
 		).toEqual(["/tmp/b", "/tmp/d", "/tmp/c"]);
 	});
 });

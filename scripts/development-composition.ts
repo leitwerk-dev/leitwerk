@@ -1,7 +1,8 @@
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 export const COMPOSITION_ENV = "LEITWERK_COMPOSITION_PATH";
 
@@ -12,10 +13,6 @@ interface CompositionManifest {
 	workspace_root?: unknown;
 	extensions?: unknown;
 	test_roots?: unknown;
-}
-
-interface RootPackageJson {
-	workspaces?: unknown;
 }
 
 export interface ComposedPackage {
@@ -74,27 +71,6 @@ function resolveExtension(baseDir: string, source: string): string {
 		if (existsSync(path.join(candidate, "package.json"))) return realpathSync(candidate);
 	}
 	throw new Error(`Extension package '${source}' is not installed in '${baseDir}'`);
-}
-
-function workspacePatterns(value: unknown): string[] {
-	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
-	if (isRecord(value) && Array.isArray(value.packages)) {
-		return value.packages.filter((item): item is string => typeof item === "string");
-	}
-	return [];
-}
-
-function expandWorkspacePattern(root: string, pattern: string): string[] {
-	if (pattern.endsWith("/*")) {
-		const baseDir = path.resolve(root, pattern.slice(0, -2));
-		if (!existsSync(baseDir)) return [];
-		return readdirSync(baseDir, { withFileTypes: true })
-			.filter((entry) => entry.isDirectory())
-			.map((entry) => path.join(baseDir, entry.name))
-			.filter((dir) => existsSync(path.join(dir, "package.json")));
-	}
-	const dir = path.resolve(root, pattern);
-	return existsSync(path.join(dir, "package.json")) ? [dir] : [];
 }
 
 function readPackage(dir: string): ComposedPackage {
@@ -182,12 +158,7 @@ export function loadDevelopmentComposition(
 		resolveExisting(manifestDir, entry, `Test root '${entry}'`),
 	);
 
-	const rootPackageJson = JSON.parse(
-		readFileSync(path.join(workspaceRoot, "package.json"), "utf8"),
-	) as RootPackageJson;
-	const packageDirs = workspacePatterns(rootPackageJson.workspaces).flatMap((pattern) =>
-		expandWorkspacePattern(workspaceRoot, pattern),
-	);
+	const packageDirs = listWorkspacePackageDirs(workspaceRoot);
 	for (const extensionDir of extensionDirs) packageDirs.push(extensionDir);
 	const byRealPath = new Map<string, ComposedPackage>();
 	for (const packageDir of packageDirs) {

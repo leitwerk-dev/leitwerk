@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import type { PiCustomTool } from "@leitwerk-dev/process-sdk";
 import {
 	buildWorkerResultImageUploadPath,
@@ -33,15 +34,6 @@ function failure(entry: ImageEntry, code: string, message: string): FailedImage 
 function isWithinRoot(rootReal: string, fileReal: string): boolean {
 	const relative = path.relative(rootReal, fileReal);
 	return relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
-}
-
-function isRetryableResponse(response: Response): boolean {
-	return response.status >= 500;
-}
-
-async function sleep(ms: number): Promise<void> {
-	if (ms <= 0) return;
-	await new Promise<void>((resolve) => setTimeout(resolve, ms));
 }
 
 async function readBoundedWorkspaceFile(
@@ -198,32 +190,29 @@ export function createUploadResultImagesTool(input: {
 							if (response.ok) {
 								try {
 									const body = parseWorkerResultImageUploadResponse(await response.json());
-									if (!body)
-										return failure(
-											entry,
-											"upload_invalid_response",
-											"Image upload response was invalid",
-										);
-									return {
-										...entry,
-										status: "uploaded" as const,
-										...body,
-										markdown: `![${entry.alt.replace(/[\\\]]/g, "\\$&")}](${body.url})`,
-									};
+									if (body) {
+										return {
+											...entry,
+											status: "uploaded" as const,
+											...body,
+											markdown: `![${entry.alt.replace(/[\\\]]/g, "\\$&")}](${body.url})`,
+										};
+									}
 								} catch {
-									return failure(
-										entry,
-										"upload_invalid_response",
-										"Image upload response was invalid",
-									);
+									// Malformed JSON and invalid response fields have the same outcome.
 								}
+								return failure(
+									entry,
+									"upload_invalid_response",
+									"Image upload response was invalid",
+								);
 							}
 							finalFailure = failure(
 								entry,
 								`upload_http_${response.status}`,
 								`Image upload was rejected with HTTP ${response.status}`,
 							);
-							if (!isRetryableResponse(response)) return finalFailure;
+							if (response.status < 500) return finalFailure;
 						}
 						if (attempt + 1 < MAX_UPLOAD_ATTEMPTS) {
 							await (input.sleepImpl ?? sleep)(RETRY_DELAY_MS);

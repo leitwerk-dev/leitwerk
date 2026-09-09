@@ -138,6 +138,8 @@ describe("buildWorkerRuntimeDefinition", () => {
 
 	it("builds a resolved worker process with parsed params and state", () => {
 		const runtime = buildWorkerRuntimeDefinition(process, {
+			params: { flag: true },
+			state: { attempts: 0 },
 			paramsJson: JSON.stringify({ flag: false }),
 			stateJson: JSON.stringify({ attempts: 7 }),
 		});
@@ -163,6 +165,13 @@ describe("buildWorkerRuntimeDefinition", () => {
 			state: { attempts: 1 },
 			runtime: { developmentTools: false, docker: false },
 		});
+	});
+
+	it("preserves explicitly supplied undefined params and state", () => {
+		const runtime = buildWorkerRuntimeDefinition(process, { params: undefined, state: undefined });
+		expect(runtime?.params).toBeUndefined();
+		expect(runtime?.state).toBeUndefined();
+		expect(runtime?.processId).toBe(process.id);
 	});
 
 	it("returns undefined when the process has no worker definition", () => {

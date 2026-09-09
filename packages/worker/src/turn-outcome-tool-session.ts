@@ -45,9 +45,7 @@ export type ToolCompletionSnapshot<TOutcome extends string> = {
 };
 
 export interface TurnOutcomeToolSession<TOutcome extends string> {
-	readonly outcomeToolNames: string[];
 	readonly usesOutcomeTools: boolean;
-	readonly requiresMarkdownResultToolCall: boolean;
 	readonly tools: PiCustomTool[];
 	readonly activeTools: readonly string[];
 	addPromptSuffix(promptText: string): string;
@@ -82,15 +80,6 @@ function cloneTurnResultMarkdownState(state: TurnResultMarkdownState): TurnResul
 	return {
 		markdown: state.markdown,
 		publicationCount: state.publicationCount,
-	};
-}
-
-function snapshotToolCompletionState<TOutcome extends string>(
-	value: ToolCompletionSnapshot<TOutcome>,
-): ToolCompletionSnapshot<TOutcome> {
-	return {
-		selectedOutcome: cloneSelectedOutcome(value.selectedOutcome),
-		markdownState: cloneTurnResultMarkdownState(value.markdownState),
 	};
 }
 
@@ -133,7 +122,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			name: outcome,
 			description: spec.description,
 			parameters: {
-				...Object.fromEntries(Object.entries(spec.parameters).map(([key, value]) => [key, value])),
+				...Object.fromEntries(Object.entries(spec.parameters)),
 				...(injectsGlobalMarkdownParameter && outcomeToolMarkdownParameterName
 					? {
 							[outcomeToolMarkdownParameterName]: {
@@ -223,9 +212,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 	} satisfies TurnOutcomeToolSession<TOutcome>["terminalAcknowledgement"];
 
 	return {
-		outcomeToolNames,
 		usesOutcomeTools,
-		requiresMarkdownResultToolCall,
 		tools,
 		activeTools,
 		terminalAcknowledgement: terminalAcknowledgementControl,
@@ -252,10 +239,10 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			);
 		},
 		getCompletionState() {
-			return snapshotToolCompletionState({
-				selectedOutcome,
-				markdownState: turnResultMarkdownStateRef.current,
-			});
+			return {
+				selectedOutcome: cloneSelectedOutcome(selectedOutcome),
+				markdownState: cloneTurnResultMarkdownState(turnResultMarkdownStateRef.current),
+			};
 		},
 		shouldBlockToolCall(toolName) {
 			if (selectedOutcome === null) {
@@ -299,9 +286,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 					: {}),
 			};
 		},
-		describeRecovery(recovery) {
-			return describeMissingTurnToolCallRecovery(recovery);
-		},
+		describeRecovery: describeMissingTurnToolCallRecovery,
 		finalizeMarkdown(completionState, assistantMarkdown) {
 			return finalizeTurnResultMarkdown({
 				behavior: input.turnDef.turnResultMarkdown,

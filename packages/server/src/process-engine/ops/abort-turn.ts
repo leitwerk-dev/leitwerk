@@ -1,4 +1,5 @@
 import { type Actor, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import { resolveCurrentExecutionTurnRecordId } from "../../process-execution.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { appendProcessEvent, createWrites } from "../writes/writes.js";
@@ -26,12 +27,10 @@ export const AbortTurn = defineOperation<"abort_turn", AbortTurnInput, void>({
 				"Only an active process with a running turn can be stopped",
 			);
 		}
-		const currentStart =
-			ctx.process.currentExecution?.kind === "worker_start"
-				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
-				: null;
-		const activeTurnRecordId =
-			currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
+		const activeTurnRecordId = resolveCurrentExecutionTurnRecordId(
+			ctx.process,
+			ctx.deps.turnStarts,
+		);
 		const currentTurnRecord = activeTurnRecordId
 			? ctx.deps.turnRecords.getById(activeTurnRecordId)
 			: null;

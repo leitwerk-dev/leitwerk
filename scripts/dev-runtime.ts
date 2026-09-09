@@ -1,14 +1,11 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { readdir, readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-
-interface RootPackageJson {
-	workspaces?: unknown;
-}
 
 interface WorkspacePackageJson {
 	name?: unknown;
@@ -23,16 +20,6 @@ interface RuntimeBuildTask {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function listWorkspacePatterns(workspaces: unknown): string[] {
-	if (Array.isArray(workspaces)) {
-		return workspaces.filter((value): value is string => typeof value === "string");
-	}
-	if (isRecord(workspaces) && Array.isArray(workspaces.packages)) {
-		return workspaces.packages.filter((value): value is string => typeof value === "string");
-	}
-	return [];
 }
 
 function stringScript(scripts: unknown, scriptName: string): string | null {
@@ -57,47 +44,17 @@ function selectRuntimeBuildScript(packageJson: WorkspacePackageJson): string | n
 	return buildScript?.includes("tsup") ? "build" : null;
 }
 
-async function listRuntimeBuildTasks(workspaceRoot: string): Promise<RuntimeBuildTask[]> {
-	const rootPackageJson = JSON.parse(
-		await readFile(path.join(workspaceRoot, "package.json"), "utf8"),
-	) as RootPackageJson;
+function listRuntimeBuildTasks(workspaceRoot: string): RuntimeBuildTask[] {
 	const tasks = new Map<string, RuntimeBuildTask>();
-
-	for (const pattern of listWorkspacePatterns(rootPackageJson.workspaces)) {
-		if (!pattern.endsWith("/*")) {
-			continue;
-		}
-		const baseDir = path.join(workspaceRoot, pattern.slice(0, -2));
-		const dirents = await readdir(baseDir, { withFileTypes: true }).catch(() => []);
-		for (const dirent of dirents) {
-			if (!dirent.isDirectory()) {
-				continue;
-			}
-			const packageJsonRaw = await readFile(
-				path.join(baseDir, dirent.name, "package.json"),
-				"utf8",
-			).catch((error: unknown) => {
-				if (
-					typeof error === "object" &&
-					error !== null &&
-					"code" in error &&
-					error.code === "ENOENT"
-				) {
-					return null;
-				}
-				throw error;
-			});
-			if (!packageJsonRaw) {
-				continue;
-			}
-			const packageJson = JSON.parse(packageJsonRaw) as WorkspacePackageJson;
-			const scriptName = selectRuntimeBuildScript(packageJson);
-			if (typeof packageJson.name === "string" && scriptName) {
-				tasks.set(packageJson.name, { workspaceName: packageJson.name, scriptName });
-			}
+	for (const dir of listWorkspacePackageDirs(workspaceRoot)) {
+		const packageJson = JSON.parse(
+			readFileSync(path.join(dir, "package.json"), "utf8"),
+		) as WorkspacePackageJson;
+		const scriptName = selectRuntimeBuildScript(packageJson);
+		if (typeof packageJson.name === "string" && scriptName) {
+			tasks.set(packageJson.name, { workspaceName: packageJson.name, scriptName });
 		}
 	}
-
 	return [...tasks.values()].sort((left, right) =>
 		left.workspaceName.localeCompare(right.workspaceName),
 	);
@@ -112,7 +69,7 @@ function spawnNpm(args: string[], env: NodeJS.ProcessEnv): ChildProcess {
 }
 
 async function main(): Promise<void> {
-	const tasks = await listRuntimeBuildTasks(process.cwd());
+	const tasks = listRuntimeBuildTasks(process.cwd());
 	for (const entry of loadActiveDevelopmentComposition(process.cwd())?.externalPackages ?? []) {
 		const scriptName = selectRuntimeBuildScript(entry.packageJson);
 		if (scriptName) tasks.push({ workspaceName: entry.name, scriptName, packageDir: entry.dir });

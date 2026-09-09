@@ -28,14 +28,21 @@ function fixture(models: ReturnType<typeof vi.fn>) {
 }
 
 describe("model status cache", () => {
-	it("publishes bounded statuses with timestamps and a revision", async () => {
+	it.each([
+		false,
+		true,
+	])("publishes statuses and coalesces refreshes (missing model: %s)", async (missing) => {
 		const models = vi.fn(() => [
 			{ modelId: "model-a", availability: "available" as const },
-			{
-				modelId: "model-b",
-				availability: "unavailable" as const,
-				safeReason: "Capacity is unavailable",
-			},
+			...(missing
+				? []
+				: [
+						{
+							modelId: "model-b",
+							availability: "unavailable" as const,
+							safeReason: "  Capacity\nis unavailable  ",
+						},
+					]),
 		]);
 		const { registry, profiles } = fixture(models);
 		const cache = createModelStatusCache({
@@ -46,7 +53,9 @@ describe("model status cache", () => {
 			ttlMs: 1_000,
 		});
 
-		const snapshot = await cache.refresh();
+		const [snapshot, concurrent] = await Promise.all([cache.refresh(), cache.refresh()]);
+		expect(concurrent).toEqual(snapshot);
+		expect(models).toHaveBeenCalledOnce();
 		expect(snapshot.revision).toBe(1);
 		expect(snapshot.profiles).toEqual([
 			expect.objectContaining({
@@ -58,7 +67,9 @@ describe("model status cache", () => {
 			expect.objectContaining({
 				profileId: "slow",
 				availability: "unavailable",
-				safeReason: "Capacity is unavailable",
+				safeReason: missing
+					? "Provider did not report model availability"
+					: "Capacity is unavailable",
 			}),
 		]);
 		expect(models).toHaveBeenCalledWith({
@@ -132,28 +143,32 @@ describe("model status cache", () => {
 		expect(credentialedModels).not.toHaveBeenCalled();
 	});
 
-	it("turns provider failures and timeouts into safe stale states", async () => {
-		const thrown = fixture(vi.fn(() => Promise.reject(new Error("secret token abc"))));
-		const failed = createModelStatusCache({
-			registry: thrown.registry,
-			modelProfiles: thrown.profiles,
-			credentialStatus: () => ({ available: true, revision: 1 }),
-		});
-		expect((await failed.refresh()).profiles[0]).toEqual(
-			expect.objectContaining({
-				availability: "stale",
-				safeReason: "Provider model status refresh failed",
-			}),
-		);
-
-		const timed = fixture(vi.fn(() => new Promise(() => {})));
-		const timeout = createModelStatusCache({
-			registry: timed.registry,
-			modelProfiles: timed.profiles,
+	it.each([
+		["exception", () => Promise.reject(new Error("secret token abc")), "failed"],
+		["timeout", () => new Promise(() => {}), "timed out"],
+		["invalid status", () => [{ modelId: "model-a", availability: "invalid" }], "failed"],
+		[
+			"duplicate status",
+			() => [1, 2].map(() => ({ modelId: "model-a", availability: "available" })),
+			"failed",
+		],
+	] as const)("turns provider %s into safe stale states", async (_case, models, reason) => {
+		const { registry, profiles } = fixture(vi.fn(models));
+		const cache = createModelStatusCache({
+			registry,
+			modelProfiles: profiles,
 			credentialStatus: () => ({ available: true, revision: 1 }),
 			timeoutMs: 2,
 		});
-		expect((await timeout.refresh()).profiles[0]?.safeReason).toMatch(/timed out/);
+		expect((await cache.refresh()).profiles).toEqual(
+			profiles.map((profile) =>
+				expect.objectContaining({
+					profileId: profile.id,
+					availability: "stale",
+					safeReason: `Provider model status refresh ${reason}`,
+				}),
+			),
+		);
 	});
 
 	it("advances revision only for observable changes and reports restoration transitions", async () => {
@@ -201,11 +216,14 @@ describe("model status cache", () => {
 			ttlMs: 100,
 			now: () => new Date(nowMs),
 		});
-		expect((await cache.refresh()).revision).toBe(1);
+		const current = await cache.refresh();
+		expect(current.revision).toBe(1);
 		nowMs += 101;
 		const expired = cache.snapshot();
 		expect(expired.revision).toBe(2);
 		expect(expired.profiles[0]?.availability).toBe("stale");
 		expect(expired.profiles[0]?.safeReason).toBe("Model status expired");
+		expect(current.profiles[0]?.availability).toBe("available");
+		expect(cache.snapshot().revision).toBe(2);
 	});
 });

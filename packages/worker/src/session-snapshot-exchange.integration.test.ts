@@ -10,10 +10,7 @@ import {
 	WORKER_SNAPSHOT_TOKEN_ENV,
 } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-	createWorkerSessionSnapshotExchangeFromEnv,
-	resolveWorkerSessionSnapshotUrl,
-} from "./session-snapshot-exchange.js";
+import { createWorkerSessionSnapshotExchangeFromEnv } from "./session-snapshot-exchange.js";
 
 const tempRoots: string[] = [];
 
@@ -68,25 +65,20 @@ afterEach(async () => {
 });
 
 describe("worker session snapshot exchange", () => {
-	it("resolves the internal snapshot URL from HTTP or WebSocket server URLs", () => {
-		expect(
-			resolveWorkerSessionSnapshotUrl({
-				serverUrl: "wss://leitwerk-server:8080/base",
-				instanceId: "agt_1",
-			}),
-		).toBe("https://leitwerk-server:8080/internal/workers/agt_1/session-snapshot");
-	});
-
-	it("uploads a non-empty local snapshot with worker auth and turn metadata", async () => {
+	it.each([
+		"http:",
+		"ws:",
+	])("uploads a snapshot with worker auth and turn metadata through %s", async (protocol) => {
 		const root = await createTempRoot();
 		const treeFile = path.join(root, "primary.jsonl");
-		const content = `${JSON.stringify({ type: "message", id: "entry-upload" })}\n`;
+		const content = `${JSON.stringify({ type: "message", id: "entry-upload", text: "Grüße 🌍" })}\n`;
 		await writeFile(treeFile, content, "utf8");
 		let uploadedBody = "";
 		let uploadedReason: string | string[] | undefined;
 		let uploadedTurnRecordId: string | string[] | undefined;
 		const server = await listen(async (request, response) => {
 			expect(request.method).toBe("PUT");
+			expect(request.url).toBe("/internal/workers/agt_1/session-snapshot");
 			expect(request.headers.authorization).toBe("Bearer secret-token");
 			expect(request.headers[WORKER_SESSION_SNAPSHOT_WORKER_ID_HEADER]).toBe("wkr_1");
 			uploadedReason = request.headers[WORKER_SESSION_SNAPSHOT_REASON_HEADER];
@@ -97,7 +89,7 @@ describe("worker session snapshot exchange", () => {
 		});
 		try {
 			const exchange = createWorkerSessionSnapshotExchangeFromEnv({
-				env: snapshotEnv(server.url),
+				env: snapshotEnv(server.url.replace("http:", protocol)),
 				instanceId: "agt_1",
 				workerId: "wkr_1",
 			});
@@ -113,6 +105,25 @@ describe("worker session snapshot exchange", () => {
 			expect(uploadedBody).toBe(content);
 			expect(uploadedReason).toBe("before_turn_outcome");
 			expect(uploadedTurnRecordId).toBe("trn_1");
+		} finally {
+			await server.close();
+		}
+	});
+
+	it("times out when the server does not respond", async () => {
+		const treeFile = path.join(await createTempRoot(), "primary.jsonl");
+		await writeFile(treeFile, "snapshot");
+		const server = await listen(() => {});
+		try {
+			const exchange = createWorkerSessionSnapshotExchangeFromEnv({
+				env: snapshotEnv(server.url),
+				instanceId: "agt_1",
+				workerId: "wkr_1",
+				timeoutMs: 50,
+			});
+			await expect(exchange.uploadSnapshot(treeFile, "ready")).rejects.toMatchObject({
+				name: "TimeoutError",
+			});
 		} finally {
 			await server.close();
 		}

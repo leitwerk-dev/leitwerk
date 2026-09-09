@@ -1,16 +1,4 @@
-import type {
-	InputKind,
-	InputSource,
-	ProcessInputTarget,
-	ProcessInstance,
-	ProcessProject,
-	TurnOutcomePayload,
-} from "@leitwerk-dev/domain";
-import type {
-	ProcessLifecycleEffects,
-	ServerProcessContext,
-	ServerTransitionRequest,
-} from "@leitwerk-dev/process-sdk";
+import type { ProcessInstance, ProcessProject, TurnOutcomePayload } from "@leitwerk-dev/domain";
 import {
 	checkTurnOutcomeAvailability,
 	validateTurnOutcome,
@@ -19,19 +7,14 @@ import { findOutcomeTransition } from "../../domain-logic/process-state-machine.
 import type { ProcessActionRegistry } from "../../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../../process-graph.js";
 import { validateQueuedProcessInput } from "../../process-input-dispatch.js";
-import { resolveProductTurnResultMarkdown } from "../../product-turn-result-markdown.js";
-import {
-	resolveSemanticTurnResultMarkdown,
-	type TurnRecordMarkdownLookup,
-} from "../../semantic-turn-result-markdown.js";
+import type { TurnRecordMarkdownLookup } from "../../turn-result-markdown.js";
 import { buildServerTransitionWrites } from "./build-server-transition-writes.js";
 import { buildTurnSelectionWrites } from "./build-turn-selection-writes.js";
-import {
-	createDeferredExtensionEvent,
-	type DeferredProcessExtensionEvent,
-} from "./deferred-extension-events.js";
+import { createDeferredExtensionEvent } from "./deferred-extension-events.js";
 import { appendProcessEffects } from "./process-effects.js";
+import { createProcessPlanCollector } from "./process-plan-collector.js";
 import {
+	appendProcessEvent,
 	applyProcessPatchField,
 	createWrites,
 	isWriteBuildFailure,
@@ -39,10 +22,6 @@ import {
 	type WriteBuildResult,
 	type Writes,
 } from "./writes.js";
-
-function createTurnOutcomeMessage(turnId: string, outcome: string): string {
-	return `Recorded turn outcome ${turnId}.${outcome}`;
-}
 
 function hasExplicitTurnSelectionChange(process: ProcessInstance, writes: Writes): boolean {
 	return (
@@ -63,55 +42,7 @@ async function buildProcessTurnOutcomeEffectWrites(
 	const handlers = serverDef?.turnOutcomeHandlers.get(payload.turnId) ?? [];
 
 	const { params, state } = processActionRegistry.resolveContextData(process.processId, process);
-	const queuedInputs: Array<{
-		source: InputSource;
-		kind: InputKind;
-		target?: ProcessInputTarget | null;
-		bodyMarkdown: string;
-	}> = [];
-	const emittedEvents: DeferredProcessExtensionEvent[] = [];
-	const lifecycleEffects: ProcessLifecycleEffects[] = [];
-	let transitionRequest: ServerTransitionRequest | null = null;
-
-	const ctx: ServerProcessContext = {
-		process,
-		projects,
-		params,
-		state,
-		async transition(next) {
-			transitionRequest = next;
-		},
-		emitEvent(eventType, data) {
-			emittedEvents.push(createDeferredExtensionEvent(process.id, eventType, data));
-		},
-		readSemanticTurnResultMarkdown(ref) {
-			return resolveSemanticTurnResultMarkdown({
-				process,
-				semanticEntryRefKey: ref,
-				turnRecords,
-				required: false,
-			});
-		},
-		readProductTurnResultMarkdown(productName) {
-			return resolveProductTurnResultMarkdown({
-				process,
-				productName,
-				turnRecords,
-				required: false,
-			});
-		},
-		queueInput(input) {
-			queuedInputs.push({
-				source: input.source as InputSource,
-				kind: input.kind as InputKind,
-				target: input.target ?? null,
-				bodyMarkdown: input.bodyMarkdown,
-			});
-		},
-		applyLifecycleEffects(effects) {
-			lifecycleEffects.push(effects);
-		},
-	};
+	const plan = createProcessPlanCollector({ process, projects, params, state, turnRecords });
 
 	for (const handler of handlers) {
 		await handler(
@@ -122,18 +53,19 @@ async function buildProcessTurnOutcomeEffectWrites(
 				params: payload.params ?? {},
 				turnResultMarkdown: payload.turnResultMarkdown ?? null,
 			},
-			ctx,
+			plan.context,
 		);
 	}
 
-	for (const queuedInput of queuedInputs) {
+	for (const queuedInput of plan.queuedInputs) {
 		const validationError = validateQueuedProcessInput(queuedInput);
 		if (validationError) {
 			return { ok: false, code: "invalid_process_state", message: validationError };
 		}
 	}
 
-	const effectWrites = createWrites({ queuedInputs });
+	const effectWrites = createWrites({ queuedInputs: plan.queuedInputs });
+	const transitionRequest = plan.transitionRequest;
 	const transitionWrites = transitionRequest
 		? buildServerTransitionWrites(processGraphs, process, transitionRequest)
 		: createWrites();
@@ -141,10 +73,10 @@ async function buildProcessTurnOutcomeEffectWrites(
 		return transitionWrites;
 	}
 
-	for (const effects of lifecycleEffects) {
+	for (const effects of plan.lifecycleEffects) {
 		appendProcessEffects(effectWrites, { ...process, ...effectWrites.processPatch }, effects);
 	}
-	for (const emitted of emittedEvents) {
+	for (const emitted of plan.emittedEvents) {
 		effectWrites.events.push({
 			instanceId: process.id,
 			eventType: emitted.type,
@@ -190,24 +122,16 @@ export async function buildTurnOutcomeWrites(
 	}
 
 	const baseWrites = createWrites();
-	baseWrites.events.push({
-		instanceId: input.process.id,
+	appendProcessEvent(baseWrites, input.process, {
 		eventType: "turn_outcome_recorded",
+		level: "info",
+		message: `Recorded turn outcome ${input.payload.turnId}.${input.payload.outcome}`,
 		data: {
 			turnRecordId: input.payload.turnRecordId,
 			turnId: input.payload.turnId,
 			outcome: input.payload.outcome,
 			params: input.payload.params,
 		},
-	});
-	baseWrites.broadcasts.push({
-		type: "process.event",
-		payload: {
-			eventType: "turn_outcome_recorded",
-			level: "info",
-			message: createTurnOutcomeMessage(input.payload.turnId, input.payload.outcome),
-		},
-		instanceId: input.process.id,
 	});
 
 	if (input.payload.state !== undefined) {

@@ -1,7 +1,8 @@
 import {
+	buildExtensionCatalog,
 	type DiscoveredExtensionEntry,
 	type ExtensionCatalog,
-	loadExtensionCatalog,
+	importExtensionModules,
 	resolveExtensionEntries,
 } from "@leitwerk-dev/extension-runtime";
 import type { LeitwerkConfig } from "../config/index.js";
@@ -23,12 +24,7 @@ export async function loadServerExtensionCatalog(input: {
 				startDir: extensionLoadingStartDir,
 				sources: input.config.extension_loading.sources,
 			});
-	const extensionCatalog = await Promise.resolve(
-		input.extensionCatalog ??
-			loadExtensionCatalog({
-				startDir: extensionLoadingStartDir,
-				sources: input.config.extension_loading.sources,
-			}),
-	);
+	const extensionCatalog = await (input.extensionCatalog ??
+		buildExtensionCatalog(await importExtensionModules(resolvedExtensionEntries)));
 	return { extensionLoadingStartDir, resolvedExtensionEntries, extensionCatalog };
 }

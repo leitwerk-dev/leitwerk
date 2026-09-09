@@ -179,6 +179,14 @@ export function canSkipActionFormField(field: FormFieldDefinition | null | undef
 	return Boolean(field && !field.required);
 }
 
+function advanceFormField(session: PendingActionFormSession): FormStepResult {
+	session.fieldIndex += 1;
+	const field = currentField(session);
+	return field
+		? { ok: true, done: false, prompt: buildFieldPrompt(field) }
+		: { ok: true, done: true, values: session.values };
+}
+
 export function applyFormSkip(session: PendingActionFormSession): FormStepResult {
 	const field = currentField(session);
 	if (!field) {
@@ -187,12 +195,7 @@ export function applyFormSkip(session: PendingActionFormSession): FormStepResult
 	if (!canSkipActionFormField(field)) {
 		return { ok: false, prompt: `${field.label} is required.\n${buildFieldPrompt(field)}` };
 	}
-	session.fieldIndex += 1;
-	const next = currentField(session);
-	if (!next) {
-		return { ok: true, done: true, values: session.values };
-	}
-	return { ok: true, done: false, prompt: buildFieldPrompt(next) };
+	return advanceFormField(session);
 }
 
 function parseBoolean(value: string): boolean | null {
@@ -238,12 +241,7 @@ export function applyFormText(session: PendingActionFormSession, text: string): 
 		return { ok: false, prompt: `${parsed.error}\n${buildFieldPrompt(field)}` };
 	}
 	session.values[field.id] = parsed.value;
-	session.fieldIndex += 1;
-	const next = currentField(session);
-	if (!next) {
-		return { ok: true, done: true, values: session.values };
-	}
-	return { ok: true, done: false, prompt: buildFieldPrompt(next) };
+	return advanceFormField(session);
 }
 
 export function buildActionModelSession(input: {

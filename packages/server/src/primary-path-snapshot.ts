@@ -22,7 +22,6 @@ import {
 	buildLiveTurnProjectionFromEvents,
 	snapshotLiveTurnProjection,
 } from "./live-turn-projection.js";
-import type { ProcessSessionReader } from "./process-session-store.js";
 
 function buildPrimaryPathEntries(input: {
 	entriesById: ReadonlyMap<string, PrimaryPathEntrySnapshot>;
@@ -355,11 +354,4 @@ export function buildPrimaryPathSnapshotFromTree(
 			activeTurn,
 		},
 	};
-}
-
-export async function buildPrimaryPathSnapshot(
-	input: PrimaryPathSnapshotProjectionInput & { sessionReader: ProcessSessionReader },
-): Promise<PrimaryPathSnapshot> {
-	const tree = await input.sessionReader.readInstanceTree(input.process.id);
-	return buildPrimaryPathSnapshotFromTree({ ...input, tree });
 }

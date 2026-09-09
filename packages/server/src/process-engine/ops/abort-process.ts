@@ -11,6 +11,7 @@ import {
 	stampActorOnEvents,
 	type Writes,
 } from "../../process-engine/writes/writes.js";
+import { resolveCurrentExecutionTurnRecordId } from "../../process-execution.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import type { DecideContext } from "../types.js";
@@ -76,13 +77,10 @@ export const AbortProcess = defineOperation<"abort_process", AbortProcessInput, 
 				"Process cannot be aborted in the current lifecycle status",
 			);
 		}
-		const activeTurnRecordId =
-			ctx.process.currentExecution?.kind === "worker_start"
-				? (() => {
-						const start = ctx.deps.turnStarts.getById(ctx.process.currentExecution.id);
-						return start?.state.kind === "accepted" ? start.state.turnRecordId : null;
-					})()
-				: null;
+		const activeTurnRecordId = resolveCurrentExecutionTurnRecordId(
+			ctx.process,
+			ctx.deps.turnStarts,
+		);
 		const activeTurnRecord = activeTurnRecordId
 			? ctx.deps.turnRecords.getById(activeTurnRecordId)
 			: null;

@@ -288,5 +288,3 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 		},
 	};
 }
-
-export type WorkerAdoptionCoordinator = ReturnType<typeof createWorkerAdoptionCoordinator>;

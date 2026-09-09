@@ -82,7 +82,7 @@ export function createLaunchSession(input: {
 	};
 }
 
-export function buildLaunchInput(session: PendingLaunchSession): Record<string, unknown> {
+export function buildLaunchInput(session: PendingLaunchSession): PendingLaunchSession["values"] {
 	return { ...session.values };
 }
 
@@ -277,7 +277,11 @@ export function applyLaunchModelStepText(
 	if (["inherit", "inherited", "clear", "none"].includes(normalized)) {
 		return applyLaunchModelStepAction(session, schema, { action: "inherit" });
 	}
-	const matched = matchModelProfile(trimmed, schema);
+	const matched = matchByNumberValueOrLabel(
+		trimmed,
+		schema.availableProfiles,
+		(profile) => profile.id,
+	);
 	return matched
 		? applyLaunchModelStepAction(session, schema, { action: "set", value: matched.id })
 		: launchModelStepError(step, schema, session);
@@ -292,13 +296,24 @@ export function applyLaunchModelStepAction(
 	if (!step) return { ok: true, done: true };
 	if (action.action === "skip") return advanceLaunchModelStep(session, schema);
 	if (action.action === "inherit") {
-		clearLaunchModelStepOverride(session, step);
+		setLaunchModelStepOverride(session, step, null);
 		return advanceLaunchModelStep(session, schema);
 	}
 	const matched = schema.availableProfiles.find((profile) => profile.id === action.value);
 	if (!matched) return launchModelStepError(step, schema, session);
 	setLaunchModelStepOverride(session, step, matched.id);
 	return advanceLaunchModelStep(session, schema);
+}
+
+function advanceLaunchField(
+	session: PendingLaunchSession,
+	launcher: UiLauncherSummary,
+): LaunchFieldStepResult {
+	session.fieldIndex += 1;
+	const field = currentLaunchField(session, launcher);
+	return field
+		? { ok: true, done: false, field }
+		: { ok: true, done: true, values: buildLaunchInput(session) };
 }
 
 export function applyLaunchFieldText(
@@ -312,7 +327,7 @@ export function applyLaunchFieldText(
 		return {
 			ok: true,
 			done: true,
-			values: buildLaunchInput(session) as Record<string, LaunchFieldValue>,
+			values: buildLaunchInput(session),
 		};
 	}
 	const options = getLaunchFieldOptions(field, dynamicOptionsById);
@@ -330,15 +345,7 @@ export function applyLaunchFieldText(
 	if (parsed.setValue) {
 		session.values[field.id] = parsed.value;
 	}
-	session.fieldIndex += 1;
-	const next = currentLaunchField(session, launcher);
-	return next
-		? { ok: true, done: false, field: next }
-		: {
-				ok: true,
-				done: true,
-				values: buildLaunchInput(session) as Record<string, LaunchFieldValue>,
-			};
+	return advanceLaunchField(session, launcher);
 }
 
 export function applyLaunchFieldValue(
@@ -352,7 +359,7 @@ export function applyLaunchFieldValue(
 		return {
 			ok: true,
 			done: true,
-			values: buildLaunchInput(session) as Record<string, LaunchFieldValue>,
+			values: buildLaunchInput(session),
 		};
 	}
 	const parsed = normalizeFieldValue(field, value);
@@ -364,15 +371,7 @@ export function applyLaunchFieldValue(
 		};
 	}
 	session.values[field.id] = parsed.value;
-	session.fieldIndex += 1;
-	const next = currentLaunchField(session, launcher);
-	return next
-		? { ok: true, done: false, field: next }
-		: {
-				ok: true,
-				done: true,
-				values: buildLaunchInput(session) as Record<string, LaunchFieldValue>,
-			};
+	return advanceLaunchField(session, launcher);
 }
 
 export function moveLaunchSessionToValidationField(
@@ -427,9 +426,11 @@ function getLaunchModelStepOverride(
 	step: LaunchModelStep,
 ): string | null {
 	const config = buildLaunchModelConfig(session);
-	return step.kind === "default"
-		? (trimToNull(config.defaultModelProfileId) ?? null)
-		: (trimToNull(config.turnConfigs?.[step.turnId]?.modelProfileId) ?? null);
+	return trimToNull(
+		step.kind === "default"
+			? config.defaultModelProfileId
+			: config.turnConfigs?.[step.turnId]?.modelProfileId,
+	);
 }
 
 function getLaunchModelStepPreview(
@@ -454,17 +455,10 @@ function launchModelStepError(
 	};
 }
 
-function matchModelProfile(
-	text: string,
-	schema: LauncherModelConfigSchemaLike,
-): LauncherModelConfigSchemaLike["availableProfiles"][number] | null {
-	return matchByNumberValueOrLabel(text, schema.availableProfiles, (profile) => profile.id);
-}
-
 function setLaunchModelStepOverride(
 	session: PendingLaunchSession,
 	step: LaunchModelStep,
-	modelProfileId: string,
+	modelProfileId: string | null,
 ): void {
 	const current = buildLaunchModelConfig(session);
 	if (step.kind === "default") {
@@ -473,25 +467,13 @@ function setLaunchModelStepOverride(
 			defaultModelProfileId: modelProfileId,
 			turnConfigs: current.turnConfigs ?? {},
 		};
-	} else {
+	} else if (modelProfileId !== null) {
 		session.modelConfig = {
 			...current,
 			turnConfigs: {
 				...(current.turnConfigs ?? {}),
 				[step.turnId]: { modelProfileId },
 			},
-		};
-	}
-	session.modelConfigTouched = true;
-}
-
-function clearLaunchModelStepOverride(session: PendingLaunchSession, step: LaunchModelStep): void {
-	const current = buildLaunchModelConfig(session);
-	if (step.kind === "default") {
-		session.modelConfig = {
-			...current,
-			defaultModelProfileId: null,
-			turnConfigs: current.turnConfigs ?? {},
 		};
 	} else {
 		const turnConfigs = { ...(current.turnConfigs ?? {}) };
@@ -580,7 +562,7 @@ function parseFieldText(
 		return skipField(field, undefined);
 	}
 	if (field.kind === "select") {
-		const matched = matchSelectOption(trimmed, options);
+		const matched = matchByNumberValueOrLabel(trimmed, options, (option) => option.value);
 		if (matched) return { ok: true, setValue: true, value: matched.value };
 		if (options.length > 0) {
 			return { ok: false, error: `${field.label} must match one of the available options.` };
@@ -593,13 +575,6 @@ function parseFieldText(
 		return { ok: false, error: `${field.label} is required.` };
 	}
 	return { ok: true, setValue: true, value: normalized.value };
-}
-
-function matchSelectOption(
-	text: string,
-	options: readonly LauncherFieldOptionDefinition[],
-): LauncherFieldOptionDefinition | null {
-	return matchByNumberValueOrLabel(text, options, (option) => option.value);
 }
 
 function matchByNumberValueOrLabel<T extends { label: string }>(

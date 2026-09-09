@@ -34,11 +34,7 @@ export function parseSchema<TSchema extends v.BaseSchema<unknown, unknown, v.Bas
 	}
 	const issue = parsed.issues?.[0];
 	const target = issue ? [context, v.getDotPath(issue)].filter(Boolean).join(".") : context;
-	return err(
-		issue?.message === "must be an object"
-			? `${target} must be an object`
-			: `${target} ${issue?.message ?? "is invalid"}`,
-	);
+	return err(`${target} ${issue?.message ?? "is invalid"}`);
 }
 
 export function parseLiteral<T extends string>(

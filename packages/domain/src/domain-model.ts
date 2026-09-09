@@ -1,5 +1,6 @@
 import type { RepoLocatorKind } from "./repo-locator.js";
 import type { ProcessSemanticEntryRefKey } from "./semantic-entry-refs.js";
+import { trimToNull } from "./string-normalize.js";
 import type { FailedTurnRecoveryContext } from "./turn-recovery.js";
 import type { ProcessTurnStartTarget } from "./turn-start-resolution.js";
 
@@ -121,10 +122,11 @@ export interface ProcessQuestionRequest {
 }
 
 function requiredTrimmedString(value: unknown, field: string): string {
-	if (typeof value !== "string" || value.trim() === "") {
+	const trimmed = trimToNull(value);
+	if (!trimmed) {
 		throw new Error(`${field} must be a non-empty string`);
 	}
-	return value.trim();
+	return trimmed;
 }
 
 /** Normalize an LLM-authored request into immutable, position-stable identities. */
@@ -166,10 +168,7 @@ export function normalizeAskQuestionsInput(value: unknown): NormalizedQuestion[]
 			return {
 				id: `${questionId}_option_${optionIndex + 1}`,
 				label,
-				details:
-					typeof option.details === "string" && option.details.trim() !== ""
-						? option.details.trim()
-						: null,
+				details: trimToNull(option.details),
 			};
 		});
 		return { id: questionId, question, selection: candidate.selection, options };

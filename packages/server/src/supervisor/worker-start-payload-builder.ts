@@ -26,8 +26,10 @@ import {
 } from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import { toInputDelivery } from "../process-input-dispatch.js";
-import { resolveProductTurnResultMarkdown } from "../product-turn-result-markdown.js";
-import { resolveSemanticTurnResultMarkdown } from "../semantic-turn-result-markdown.js";
+import {
+	resolveProductTurnResultMarkdown,
+	resolveSemanticTurnResultMarkdown,
+} from "../turn-result-markdown.js";
 import { createWorkerStorageLayout, type WorkerStorageLayout } from "./worker-storage-layout.js";
 
 export interface WorkerStartPayloadBuilderDeps

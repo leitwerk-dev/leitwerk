@@ -9,7 +9,7 @@ import type {
 	SkillUsageSummary,
 } from "@leitwerk-dev/protocol";
 import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
-import { and, asc, count, desc, eq, isNotNull, max, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, max, notExists, notInArray, sql } from "drizzle-orm";
 import { explicitSkillReferenceIds, referencedSkillIds } from "../skills/skill-dependencies.js";
 import { isSkillModelInvocable } from "../skills/skill-frontmatter.js";
 import type { ImportedRepositorySkill, ImportedSkill } from "../skills/source-importer.js";
@@ -98,23 +98,6 @@ function usageBySkill(db: LeitwerkDb): Map<string, SkillUsageSummary> {
 	return result;
 }
 
-function candidateSummaries(db: LeitwerkDb) {
-	return db
-		.select({
-			repositoryId: skillCatalogEntries.repositoryId,
-			skillId: skillCatalogEntries.skillId,
-			label: skillCatalogEntries.label,
-			description: skillCatalogEntries.description,
-			sourcePath: skillCatalogEntries.sourcePath,
-			sourceRevision: skillCatalogEntries.sourceRevision,
-			bundleDigest: skillCatalogEntries.bundleDigest,
-			bundleBytes: skillCatalogEntries.bundleBytes,
-			available: skillCatalogEntries.available,
-		})
-		.from(skillCatalogEntries)
-		.all();
-}
-
 function processUsage(db: LeitwerkDb, skillId: string): SkillUsageProcessSummary[] {
 	return db
 		.select({
@@ -153,31 +136,24 @@ function skillMarkdown(skillId: string, bytes: Uint8Array, digest: string): stri
 }
 
 function pruneNeverInstalledCatalogEntries(db: LeitwerkDb): void {
-	for (const candidate of db
-		.select()
-		.from(skillCatalogEntries)
-		.where(eq(skillCatalogEntries.available, false))
-		.all()) {
-		const revision = db
-			.select({ id: skillRevisions.id })
-			.from(skillRevisions)
-			.where(
-				and(
-					eq(skillRevisions.skillId, candidate.skillId),
-					eq(skillRevisions.bundleDigest, candidate.bundleDigest),
+	db.delete(skillCatalogEntries)
+		.where(
+			and(
+				eq(skillCatalogEntries.available, false),
+				notExists(
+					db
+						.select({ id: skillRevisions.id })
+						.from(skillRevisions)
+						.where(
+							and(
+								eq(skillRevisions.skillId, skillCatalogEntries.skillId),
+								eq(skillRevisions.bundleDigest, skillCatalogEntries.bundleDigest),
+							),
+						),
 				),
-			)
-			.get();
-		if (revision) continue;
-		db.delete(skillCatalogEntries)
-			.where(
-				and(
-					eq(skillCatalogEntries.repositoryId, candidate.repositoryId),
-					eq(skillCatalogEntries.skillId, candidate.skillId),
-				),
-			)
-			.run();
-	}
+			),
+		)
+		.run();
 }
 
 function recordRevisionDependencies(db: LeitwerkDb, revisionId: string, markdown: string): void {
@@ -229,7 +205,7 @@ function catalogView(db: LeitwerkDb): {
 	availableSkills: SkillCatalogItem[];
 	installedSkills: InstalledSkillCatalogItem[];
 } {
-	const candidates = candidateSummaries(db);
+	const candidates = db.select().from(skillCatalogEntries).all();
 	const usage = usageBySkill(db);
 	const installedRows = db
 		.select({
@@ -344,15 +320,18 @@ export function createSkillRepo(db: LeitwerkDb) {
 		},
 		reconcile(imported: readonly ImportedSkill[]): void {
 			const timestamp = now();
-			const configured = new Set(imported.map((item) => item.skillId));
-			for (const old of db.select().from(skills).all()) {
-				if (old.registrationKind === "configuration" && !configured.has(old.id)) {
-					db.update(skills)
-						.set({ activeRevisionId: null, updatedAt: timestamp })
-						.where(eq(skills.id, old.id))
-						.run();
-				}
-			}
+			db.update(skills)
+				.set({ activeRevisionId: null, updatedAt: timestamp })
+				.where(
+					and(
+						eq(skills.registrationKind, "configuration"),
+						notInArray(
+							skills.id,
+							imported.map((item) => item.skillId),
+						),
+					),
+				)
+				.run();
 			for (const item of imported) activateSkill(db, item, "configuration", timestamp);
 		},
 		backfillDependencies(): void {
@@ -365,21 +344,10 @@ export function createSkillRepo(db: LeitwerkDb) {
 			}
 		},
 		markUnconfiguredCatalogEntries(configuredRepositoryIds: readonly string[]): void {
-			const configured = new Set(configuredRepositoryIds);
-			const repositoryIds = new Set(
-				db
-					.select({ repositoryId: skillCatalogEntries.repositoryId })
-					.from(skillCatalogEntries)
-					.all()
-					.map((row) => row.repositoryId),
-			);
-			for (const repositoryId of repositoryIds) {
-				if (configured.has(repositoryId)) continue;
-				db.update(skillCatalogEntries)
-					.set({ available: false })
-					.where(eq(skillCatalogEntries.repositoryId, repositoryId))
-					.run();
-			}
+			db.update(skillCatalogEntries)
+				.set({ available: false })
+				.where(notInArray(skillCatalogEntries.repositoryId, [...configuredRepositoryIds]))
+				.run();
 			pruneNeverInstalledCatalogEntries(db);
 		},
 		mergeCatalog(repositoryId: string, imported: readonly ImportedRepositorySkill[]): void {

@@ -1,11 +1,4 @@
-/**
- * Minimal Docker Engine API port used by the Docker {@link WorkerRunner}.
- *
- * This is deliberately a narrow, leitwerk-shaped interface rather than the
- * full dockerode surface so the runner can be unit-tested against a fake engine
- * client with no daemon. A thin real adapter maps dockerode (or any
- * Docker-compatible Engine API: Podman, OrbStack, nerdctl) onto these methods.
- */
+/** Docker Engine operations used by workers and process exporters. */
 
 export interface DockerMountSpec {
 	/** Host path (bind) or named volume identifier. */

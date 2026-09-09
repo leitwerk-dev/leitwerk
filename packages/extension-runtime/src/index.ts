@@ -1,6 +1,6 @@
-import {
-	setupServerExtensions as setupServerExtensionsImpl,
-	setupWorkerExtensions as setupWorkerExtensionsImpl,
+export {
+	setupServerExtensions,
+	setupWorkerExtensions,
 } from "./extension-host-setup.js";
 
 export {
@@ -33,6 +33,3 @@ export {
 	type ResolvedWorkerProcess,
 	type RuntimeProcessDefinitionBuildOptions,
 } from "./runtime-process-definition.js";
-
-export const setupServerExtensions = setupServerExtensionsImpl;
-export const setupWorkerExtensions = setupWorkerExtensionsImpl;

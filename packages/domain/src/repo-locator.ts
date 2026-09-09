@@ -5,10 +5,6 @@ export interface ParsedRepoLocator {
 	value: string;
 }
 
-function trimRepoLocator(value: string): string {
-	return value.trim();
-}
-
 function isFileUrl(value: string): boolean {
 	try {
 		const url = new URL(value);
@@ -63,7 +59,7 @@ function isRemoteGitUrl(value: string): boolean {
 }
 
 export function detectRepoLocatorKind(value: string): RepoLocatorKind | null {
-	const trimmed = trimRepoLocator(value);
+	const trimmed = value.trim();
 	if (trimmed.length === 0) {
 		return null;
 	}
@@ -80,7 +76,7 @@ export function parseRepoLocator(value: unknown): ParsedRepoLocator | null {
 	if (typeof value !== "string") {
 		return null;
 	}
-	const trimmed = trimRepoLocator(value);
+	const trimmed = value.trim();
 	const kind = detectRepoLocatorKind(trimmed);
 	if (!kind) {
 		return null;

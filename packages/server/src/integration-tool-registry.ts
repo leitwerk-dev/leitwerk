@@ -21,6 +21,7 @@ import {
 	type ProcessActionRegistry,
 	resolveTurnIntegrationToolNames,
 } from "./process-action-registry.js";
+import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import type { ToolApprovalGate } from "./tool-approval-gate.js";
 
 type RegisteredIntegrationTool = IntegrationToolDefinition<unknown>;
@@ -434,12 +435,10 @@ export function createIntegrationToolRequestService(input: {
 			if (!process || !turn || turn.instanceId !== instanceId || turn.status !== "running") {
 				return fail("Integration tool call does not belong to the active running turn");
 			}
-			const currentStart =
-				process.currentExecution?.kind === "worker_start"
-					? input.repos.turnStarts.getById(process.currentExecution.id)
-					: null;
-			const expectedTurnRecordId =
-				currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
+			const expectedTurnRecordId = resolveCurrentExecutionTurnRecordId(
+				process,
+				input.repos.turnStarts,
+			);
 			if (expectedTurnRecordId !== payload.turnRecordId) {
 				return fail("Integration tool call targets a stale turn record");
 			}

@@ -79,7 +79,6 @@ describe("resolveRootEntryId", () => {
 
 		expect(
 			resolveRootEntryId({
-				currentLeafId: "turn-2",
 				currentBranch: [root, reviewUser, reviewTurn],
 				topLevelNodes: [
 					rootNode(root, [rootNode(child), rootNode(reviewUser, [rootNode(reviewTurn)])]),
@@ -94,7 +93,6 @@ describe("resolveRootEntryId", () => {
 
 		expect(
 			resolveRootEntryId({
-				currentLeafId: null,
 				currentBranch: [],
 				topLevelNodes: [rootNode(root), rootNode(secondRoot)],
 			}),

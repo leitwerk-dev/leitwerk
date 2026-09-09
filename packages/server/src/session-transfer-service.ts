@@ -43,16 +43,16 @@ interface AttemptAuth {
 	token: string;
 }
 
+function isExportPending(attempt: SessionTransferAttempt): boolean {
+	return attempt.state === "queued" || attempt.state === "exporting";
+}
+
 export function presentSessionTransferOperation(attempt: SessionTransferAttempt | null) {
 	return attempt
 		? {
 				attemptId: attempt.id,
 				phase: attempt.phase,
-				blocksManualTurns:
-					attempt.phase !== "awaiting_ack" &&
-					attempt.phase !== "consumed" &&
-					attempt.phase !== "cancelled" &&
-					attempt.phase !== "failed",
+				blocksManualTurns: isExportPending(attempt),
 			}
 		: null;
 }
@@ -92,10 +92,6 @@ export function createSessionTransferService(deps: {
 	const limits = deps.limits ?? DEFAULT_SESSION_TRANSFER_LIMITS;
 	const runtimes = new Map<string, AttemptRuntime>();
 	let sweepTimer: NodeJS.Timeout | null = null;
-
-	function makeRuntime(): AttemptRuntime {
-		return { controller: new AbortController(), prepared: null, streamClaimed: false };
-	}
 
 	function publish(attempt: SessionTransferAttempt | null): SessionTransferAttempt | null {
 		if (attempt && deps.onUpdated) {
@@ -179,7 +175,11 @@ export function createSessionTransferService(deps: {
 	}
 
 	function launch(attempt: SessionTransferAttempt): void {
-		const runtime = makeRuntime();
+		const runtime: AttemptRuntime = {
+			controller: new AbortController(),
+			prepared: null,
+			streamClaimed: false,
+		};
 		runtimes.set(attempt.id, runtime);
 		void (async () => {
 			updatePhase(attempt.id, "waiting_for_execution_chain");
@@ -227,23 +227,14 @@ export function createSessionTransferService(deps: {
 		})()
 			.catch((error: unknown) => {
 				const current = deps.repos.sessionTransfers.getAttempt(attempt.id);
-				if (
-					current &&
-					current.phase !== "awaiting_ack" &&
-					current.phase !== "consumed" &&
-					current.phase !== "cancelled" &&
-					current.phase !== "failed"
-				) {
+				if (current && isExportPending(current)) {
 					failAttempt(attempt.id, error instanceof Error ? error.message : "export_failed");
 				}
 				deps.logger?.warn({ error, attemptId: attempt.id }, "session transfer export failed");
 			})
 			.finally(() => {
 				const current = deps.repos.sessionTransfers.getAttempt(attempt.id);
-				if (
-					current &&
-					["awaiting_ack", "consumed", "cancelled", "failed"].includes(current.phase)
-				) {
+				if (current && !isExportPending(current)) {
 					runtimes.delete(attempt.id);
 				}
 			});

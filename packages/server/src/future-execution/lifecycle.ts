@@ -340,19 +340,6 @@ export function createFutureExecutionLifecycle(
 	const nowFn = _options.now ?? (() => new Date());
 	const executor = createFutureExecutionExecutor(deps);
 	const launchLifecycle = createFutureLaunchLifecycle(deps, { now: nowFn });
-	const evaluateFutureSelection = (input: {
-		process: ProcessInstance;
-		turnId: string | null;
-		overrideProvided?: boolean;
-		overrideModelProfileId?: string | null;
-		operationTime: Date;
-	}) =>
-		evaluateFutureModelSelection({
-			...input,
-			policy: deps.processModelPolicy,
-			availability: deps.modelStatusCache.snapshot(),
-			detectedAt: input.operationTime.toISOString(),
-		});
 
 	async function upsertScheduledAction(input: {
 		existing?: FutureExecution;
@@ -373,12 +360,14 @@ export function createFutureExecutionLifecycle(
 			typeof input.nextTurnModelProfileId === "string" ? input.nextTurnModelProfileId : undefined,
 		);
 		if (!validation.ok) return validation.outcome;
-		const modelState = evaluateFutureSelection({
+		const modelState = evaluateFutureModelSelection({
 			process: input.process,
 			turnId: validation.candidateSelectedTurnId,
 			overrideProvided: input.overrideProvided,
 			overrideModelProfileId: input.nextTurnModelProfileId,
-			operationTime: input.operationTime,
+			policy: deps.processModelPolicy,
+			availability: deps.modelStatusCache.snapshot(),
+			detectedAt: input.operationTime.toISOString(),
 		});
 		const payloadJson = serializeFutureActionPayload({
 			input: input.actionInput,
@@ -386,21 +375,16 @@ export function createFutureExecutionLifecycle(
 			actionLabel: validation.actionLabel,
 			actor: input.actor,
 		});
+		const values = { payloadJson, nextRunAt: input.nextRunAt, ...modelState };
 		const futureExecution = input.existing
-			? deps.futureExecutions.update(input.existing.id, {
-					payloadJson,
-					nextRunAt: input.nextRunAt,
-					...modelState,
-				})
+			? deps.futureExecutions.update(input.existing.id, values)
 			: deps.futureExecutions.create({
 					kind: "action",
 					scheduleKind: "once",
 					processId: input.process.processId,
 					instanceId: input.process.id,
 					actionId: input.actionId,
-					payloadJson,
-					nextRunAt: input.nextRunAt,
-					...modelState,
+					...values,
 				});
 		if (!futureExecution) {
 			return { kind: "not_found", target: "action" };
@@ -409,21 +393,18 @@ export function createFutureExecutionLifecycle(
 		const reaction = await runFutureExecutionPostCommitEffects(deps, [
 			buildFutureExecutionUpdatedEffect(futureExecution, operation),
 		]);
-		return reaction.ok
-			? {
-					kind: "scheduled",
-					execution: futureExecution,
-					instanceId: input.process.id,
-					operation,
-				}
-			: {
-					kind: "committed_with_reaction_error",
-					execution: futureExecution,
-					instanceId: input.process.id,
-					operation,
-					error: reaction.message,
-					code: reaction.code,
-				};
+		return {
+			execution: futureExecution,
+			instanceId: input.process.id,
+			operation,
+			...(reaction.ok
+				? { kind: "scheduled" as const }
+				: {
+						kind: "committed_with_reaction_error" as const,
+						error: reaction.message,
+						code: reaction.code,
+					}),
+		};
 	}
 
 	async function removeExecution(execution: FutureExecution) {
@@ -571,7 +552,7 @@ export function createFutureExecutionLifecycle(
 							},
 						);
 					}
-					const scheduledResult = await deps.processOperations.runExclusive(
+					return deps.processOperations.runExclusive(
 						existing.instanceId,
 						async (): Promise<ActionMutationOutcome> => {
 							const lockedExisting = deps.futureExecutions.getById(futureExecutionId);
@@ -603,7 +584,6 @@ export function createFutureExecutionLifecycle(
 							});
 						},
 					);
-					return scheduledResult;
 				},
 			);
 		},

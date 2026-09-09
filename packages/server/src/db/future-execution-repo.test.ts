@@ -31,7 +31,7 @@ describe("future execution repo", () => {
 			cronExpression: "0 9 * * 1-5",
 		});
 		expect(repo.listAll()).toHaveLength(1);
-		expect(repo.listDue("2026-04-27T09:00:00.000Z")).toHaveLength(1);
+		expect(repo.listRunnableDue("2026-04-27T09:00:00.000Z")).toHaveLength(1);
 	});
 
 	it("round-trips provenance and keeps blocked one-time rows out of runnable due work", () => {
@@ -59,7 +59,7 @@ describe("future execution repo", () => {
 			blockedReason,
 		});
 		expect(repo.getById(created.id)).toMatchObject({ modelSelection: selection, blockedReason });
-		expect(repo.listDue("2026-04-25T09:00:00.000Z")).toEqual([]);
+		expect(repo.listRunnableDue("2026-04-25T09:00:00.000Z")).toEqual([]);
 		expect(repo.update(created.id, { blockedReason: null })).toMatchObject({
 			blockedReason: null,
 		});

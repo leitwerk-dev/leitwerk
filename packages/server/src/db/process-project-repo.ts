@@ -4,6 +4,7 @@ import {
 	type ProcessProject,
 } from "@leitwerk-dev/domain";
 import { and, eq, inArray } from "drizzle-orm";
+import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -125,36 +126,25 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 			}
 
 			const ts = now();
-			const setValues: Record<string, unknown> = { updatedAt: ts };
+			const setValues: SQLiteUpdateSetSource<typeof s.processProjects> = {
+				updatedAt: ts,
+				workBranch: input.workBranch,
+				externalId: input.externalId,
+				externalUrl: input.externalUrl,
+				pipelineStatus: input.pipelineStatus,
+				baseBranch: input.baseBranch,
+			};
 			if (input.repoLocator !== undefined) {
 				const repoLocator = assertRepoLocator(input.repoLocator);
 				setValues.repoLocator = repoLocator;
 				setValues.repoLocatorKind = detectRepoLocatorKind(repoLocator) ?? "remote_url";
 			}
-			if (input.workBranch !== undefined) setValues.workBranch = input.workBranch;
-			if (input.externalId !== undefined) setValues.externalId = input.externalId;
-			if (input.externalUrl !== undefined) setValues.externalUrl = input.externalUrl;
 			if (input.metadata !== undefined)
 				setValues.metadata = input.metadata ? JSON.stringify(input.metadata) : null;
-			if (input.pipelineStatus !== undefined) setValues.pipelineStatus = input.pipelineStatus;
-			if (input.baseBranch !== undefined) setValues.baseBranch = input.baseBranch;
 
 			db.update(s.processProjects).set(setValues).where(eq(s.processProjects.id, id)).run();
 			const row = db.select().from(s.processProjects).where(eq(s.processProjects.id, id)).get();
-			const project = row ? rowToProcessProject(row) : null;
-			if (!project) {
-				return null;
-			}
-
-			return project;
-		},
-
-		deleteByInstance(instanceId: string): number {
-			const result = db
-				.delete(s.processProjects)
-				.where(eq(s.processProjects.instanceId, instanceId))
-				.run();
-			return Number(result.changes);
+			return row ? rowToProcessProject(row) : null;
 		},
 	};
 }

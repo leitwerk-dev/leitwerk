@@ -70,7 +70,10 @@ describe("worker runtime", () => {
 			payload,
 		});
 		expect(disposition.terminal.kind).toBe("worker_failed");
-		expect(disposition.snapshot?.point).toBe("before_worker_failed");
+		expect(disposition.snapshot).toEqual({
+			point: "before_worker_failed",
+			source: { kind: "llm", treeFile: "/tmp/primary.jsonl" },
+		});
 		expect(
 			JSON.stringify({
 				diagnostic: disposition.diagnostic,
@@ -79,6 +82,7 @@ describe("worker runtime", () => {
 			}),
 		).not.toContain("secret-token");
 		if (disposition.terminal.kind === "worker_failed") {
+			expect(disposition.terminal.payload.selectedTurnId).toBe("implement");
 			expect(disposition.terminal.payload.message.length).toBeLessThanOrEqual(200);
 		}
 	});
@@ -89,9 +93,7 @@ describe("worker runtime", () => {
 			error: new Error("delivery failed"),
 			state: "busy",
 			session: {
-				payload: { bootstrap: { kind: "automatic" } } as Parameters<
-					typeof extractSecretValuesFromPayload
-				>[0],
+				snapshotSource: { kind: "automatic", treeFile: "/tmp/primary.jsonl" },
 				selectedTurnId: "review",
 				lifecycleStatus: "running",
 			},

@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, globSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { listWorkspacePackageDirs } from "./workspace-packages.ts";
 
 const DEPENDENCY_FIELDS = [
 	"dependencies",
@@ -113,29 +114,18 @@ function readJson(filePath) {
 }
 
 function listPublishableWorkspaces(rootDir, rootPackageJson) {
-	return (Array.isArray(rootPackageJson.workspaces) ? rootPackageJson.workspaces : [])
-		.filter((pattern) => typeof pattern === "string" && pattern.endsWith("/*"))
-		.flatMap((pattern) => {
-			const baseDir = path.join(rootDir, pattern.slice(0, -2));
-			if (!existsSync(baseDir)) {
-				return [];
-			}
-			return readdirSync(baseDir, { withFileTypes: true })
-				.filter((entry) => entry.isDirectory())
-				.map((entry) => path.join(baseDir, entry.name, "package.json"))
-				.filter((packageJsonPath) => existsSync(packageJsonPath))
-				.map((packageJsonPath) => {
-					const packageJson = readJson(packageJsonPath);
-					return {
-						name: packageJson.name,
-						dir: path.dirname(packageJsonPath),
-						packageJson,
-						licensePath: "./dist/LICENSE",
-						requiredFiles: requiredPackageFiles(packageJson),
-					};
-				})
-				.filter((workspace) => typeof workspace.name === "string");
+	return listWorkspacePackageDirs(rootDir, rootPackageJson)
+		.map((dir) => {
+			const packageJson = readJson(path.join(dir, "package.json"));
+			return {
+				name: packageJson.name,
+				dir,
+				packageJson,
+				licensePath: "./dist/LICENSE",
+				requiredFiles: requiredPackageFiles(packageJson),
+			};
 		})
+		.filter((workspace) => typeof workspace.name === "string")
 		.sort((left, right) => left.name.localeCompare(right.name));
 }
 
