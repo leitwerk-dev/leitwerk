@@ -2,11 +2,11 @@ import { type ProcessEvent, type ProcessTurnRecord, trimToNull } from "@leitwerk
 import {
 	asWsEventPayloadRecord,
 	buildPrimaryPathOperationalTraceItem,
-	buildTrailingLinePreview,
 	compareTimestampStrings,
 	createTurnContinuationIndex,
 	extractPiSessionMessageText,
 	isPiSessionMessageEntryWithRecord,
+	isToolResultTruncated,
 	mergeUsageSnapshots,
 	normalizeUsageSnapshot,
 	type PiSessionContentBlock,
@@ -16,6 +16,7 @@ import {
 	type PrimaryPathOperationalTraceItemSnapshot,
 	type PrimaryPathStreamingAssistantSnapshot,
 	type PrimaryPathTraceItemSnapshot,
+	reasoningPreviewTail,
 	type TurnPiInputPart,
 	type TurnPiInputSnapshot,
 	type TurnTracePreview,
@@ -28,8 +29,6 @@ import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 const MULTI_PART_PI_INPUT_SEPARATOR =
 	"\n\n--- UI-added separator between Pi input messages ---\n\n";
 const PREVIEW_MAX_LENGTH = 520;
-const THINKING_PREVIEW_LINE_COUNT = 3;
-const THINKING_PREVIEW_MAX_LENGTH = 320;
 const OPERATIONAL_PI_EVENT_TYPE_SET = new Set<string>(PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES);
 
 function buildTurnPiInputSnapshot(parts: readonly TurnPiInputPart[]): TurnPiInputSnapshot | null {
@@ -81,101 +80,8 @@ function extractToolResultValue(message: PiSessionMessageRecord): unknown {
 	return message.content ?? null;
 }
 
-const TOOL_TRUNCATION_BOOLEAN_KEYS = [
-	"truncated",
-	"isTruncated",
-	"wasTruncated",
-	"outputTruncated",
-	"resultTruncated",
-] as const;
-const TOOL_TRUNCATION_TEXT_MARKERS = [
-	"output truncated",
-	"result truncated",
-	"response was too big",
-	"too large to display",
-	"truncated after",
-	"truncated to last",
-	"truncated since",
-] as const;
-
 function readNonBlankString(value: unknown): string | null {
 	return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
-function readTruncationPayload(value: unknown): unknown {
-	const record = asUnknownRecord(value);
-	if (!record) {
-		return null;
-	}
-	if ("truncation" in record) {
-		return record.truncation;
-	}
-	for (const key of TOOL_TRUNCATION_BOOLEAN_KEYS) {
-		if (key in record) {
-			return record[key];
-		}
-	}
-	return null;
-}
-
-function isExplicitFalseTruncationString(value: string): boolean {
-	const normalized = value.trim().toLowerCase();
-	return (
-		normalized === "" ||
-		normalized === "false" ||
-		normalized === "none" ||
-		normalized === "null" ||
-		normalized === "no" ||
-		normalized === "0"
-	);
-}
-
-function isTruthyTruncationValue(value: unknown): boolean {
-	if (value === null || value === undefined) {
-		return false;
-	}
-	if (typeof value === "boolean") {
-		return value;
-	}
-	if (typeof value === "number") {
-		return Number.isFinite(value) && value > 0;
-	}
-	if (typeof value === "string") {
-		return !isExplicitFalseTruncationString(value);
-	}
-	if (Array.isArray(value)) {
-		return value.length > 0;
-	}
-	const record = asUnknownRecord(value);
-	if (!record) {
-		return true;
-	}
-	for (const key of TOOL_TRUNCATION_BOOLEAN_KEYS) {
-		if (record[key] === true) {
-			return true;
-		}
-	}
-	return Object.keys(record).some((key) => {
-		if (
-			TOOL_TRUNCATION_BOOLEAN_KEYS.includes(key as (typeof TOOL_TRUNCATION_BOOLEAN_KEYS)[number])
-		) {
-			return false;
-		}
-		return isTruthyTruncationValue(record[key]);
-	});
-}
-
-function isToolResultTruncated(input: {
-	resultText: string | null;
-	resultDetails: unknown;
-	resultValue: unknown;
-}): boolean {
-	const normalizedText = input.resultText?.toLowerCase() ?? "";
-	return (
-		TOOL_TRUNCATION_TEXT_MARKERS.some((marker) => normalizedText.includes(marker)) ||
-		isTruthyTruncationValue(readTruncationPayload(input.resultDetails)) ||
-		isTruthyTruncationValue(readTruncationPayload(input.resultValue))
-	);
 }
 
 type TraceTurnRecord = Pick<
@@ -486,11 +392,10 @@ export function buildTurnTracePreview(
 	trace: TurnTraceSnapshot | undefined,
 ): TurnTracePreview {
 	const assistantText = truncateTextPreview(trace?.assistant.text.trim() ?? "", PREVIEW_MAX_LENGTH);
-	const thinkingPreview = buildTrailingLinePreview(
-		trace?.assistant.thinking ?? "",
-		THINKING_PREVIEW_LINE_COUNT,
-		THINKING_PREVIEW_MAX_LENGTH,
-	);
+	const thinkingPreview = {
+		text: reasoningPreviewTail(trace?.assistant.thinking ?? ""),
+		truncated: (trace?.assistant.thinking.length ?? 0) > 1024,
+	};
 	const piInput = trace?.piInput ?? null;
 	const userInputPreview = piInput?.fullPrompt
 		? truncateTextPreview(piInput.fullPrompt.trim(), PREVIEW_MAX_LENGTH).text

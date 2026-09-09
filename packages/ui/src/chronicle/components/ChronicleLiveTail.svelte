@@ -2,6 +2,7 @@
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
+import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 
 interface Props {
@@ -50,9 +51,6 @@ const screenReaderStatus = $derived.by(() => {
 	if (liveTail.toolCall) {
 		statusParts.push(`Current action ${formatDefinition(liveTail.toolCall.toolName)}.`);
 	}
-	if (liveTail.eventWindowTruncated) {
-		statusParts.push("Some live activity was missed while reconnecting.");
-	}
 	return statusParts.join(" ");
 });
 </script>
@@ -71,7 +69,6 @@ const screenReaderStatus = $derived.by(() => {
 	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{screenReaderStatus}</p>
 	<div class="live-tail-body">
 		<div class="live-tail-heading">
-			<span class="live-pulse" aria-hidden="true"></span>
 			<div class="live-heading-copy">
 				<p class="live-eyebrow">{openQuestionRequest ? "Operator input needed" : liveTail.stateLabel}</p>
 				<h3>{openQuestionRequest ? "Waiting for your answers" : liveTail.title}</h3>
@@ -101,12 +98,15 @@ const screenReaderStatus = $derived.by(() => {
 			/>
 		{:else}
 			<p class="live-copy">{liveTail.copy}</p>
-		{/if}
-
-		{#if liveTail.eventWindowTruncated}
-			<p class="live-warning">
-				We missed part of the live stream while reconnecting, so this panel shows the newest activity only.
-			</p>
+			{#if liveTail.turnType === "llm"}
+				<ChronicleExpandButton
+					expanded={false}
+					collapsedLabel="Expand reasoning"
+					ariaLabel="Expand reasoning"
+					dataAction="open-reasoning-details"
+					onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)}
+				/>
+			{/if}
 		{/if}
 
 		{#if onAbortTurn}
@@ -210,7 +210,6 @@ const screenReaderStatus = $derived.by(() => {
 	}
 
 	.live-meta,
-	.live-warning,
 	.live-copy {
 		margin: 0;
 		font-size: 13px;
@@ -231,13 +230,6 @@ const screenReaderStatus = $derived.by(() => {
 		padding: 2px 6px;
 		background: color-mix(in srgb, var(--chronicle-panel-muted) 70%, transparent 30%);
 		border-radius: 4px;
-	}
-
-	.live-warning {
-		padding: 10px 12px;
-		border-radius: 12px;
-		background: color-mix(in srgb, white 90%, var(--chronicle-panel-muted) 10%);
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 84%, white 16%);
 	}
 
 	.live-tail-controls {
@@ -342,32 +334,4 @@ const screenReaderStatus = $derived.by(() => {
 		cursor: default;
 	}
 
-	.live-pulse {
-		position: relative;
-		display: inline-flex;
-		width: 12px;
-		height: 12px;
-		margin-top: 7px;
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--chronicle-accent) 72%, white 28%);
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--chronicle-accent) 24%, white 76%);
-		flex-shrink: 0;
-	}
-
-	.live-pulse::after {
-		content: "";
-		position: absolute;
-		inset: -6px;
-		border-radius: inherit;
-		background: color-mix(in srgb, var(--chronicle-accent) 22%, transparent 78%);
-		animation: -global-live-pulse-wave 1.7s var(--ease-out-quint) infinite;
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.live-pulse::after {
-			animation: none;
-			opacity: 0.25;
-			transform: scale(1);
-		}
-	}
 </style>

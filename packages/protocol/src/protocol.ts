@@ -57,6 +57,7 @@ export const WS_PROCESS_TYPES = {
 export const WS_PRIMARY_PATH_TYPES = {
 	TURN_STARTED: "primary_path.turn_started",
 	ASSISTANT_PARTIAL: "primary_path.assistant_partial",
+	SUMMARY_UPDATED: "primary_path.summary_updated",
 	USAGE_UPDATED: "primary_path.usage_updated",
 	ASSISTANT_COMMITTED: "primary_path.assistant_committed",
 	TOOL_CALL_STARTED: "primary_path.tool_call_started",
@@ -77,6 +78,8 @@ export const WS_PI_STREAM_TYPES = {
 	RETRY_START: "pi.retry.start",
 	RETRY_END: "pi.retry.end",
 	USAGE: "pi.usage",
+	COMPACTION_START: "pi.compaction.start",
+	COMPACTION_END: "pi.compaction.end",
 } as const;
 
 type PiPayload<T = Record<string, never>> = {
@@ -151,6 +154,29 @@ const processTurnAnnotationSchema = v.object({
 	updatedAt: v.string(),
 });
 const PRIMARY_PATH_PAYLOAD_SCHEMAS = {
+	[WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED]: v.object({
+		turnRecordId: v.string(),
+		summary: v.object({
+			assistant: v.object({
+				text: v.pipe(v.string(), v.maxLength(1024)),
+				thinking: v.pipe(v.string(), v.maxLength(1024)),
+				lastUpdatedAt: nullableStringSchema,
+			}),
+			currentTool: v.nullable(
+				v.object({
+					toolCallId: v.pipe(v.string(), v.maxLength(256)),
+					toolName: v.pipe(v.string(), v.maxLength(256)),
+					status: v.picklist(["running", "completed"]),
+					isError: v.boolean(),
+				}),
+			),
+			usage: v.nullable(usageSnapshotSchema),
+			toolCallCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+			traceItemCount: v.pipe(v.number(), v.integer(), v.minValue(0)),
+			throughEventSequence: v.pipe(v.number(), v.integer(), v.minValue(0)),
+			lastTraceKind: v.nullable(v.picklist(["thinking", "tool_call", "operational_event"])),
+		}),
+	}),
 	[WS_PRIMARY_PATH_TYPES.TURN_STARTED]: v.object({
 		turnRecord: processTurnRecordSummarySchema,
 	}),
@@ -327,7 +353,10 @@ export type WsPayloadByType = {
 		message?: string;
 	}>;
 	[WS_PI_STREAM_TYPES.USAGE]: PiUsagePayload;
+	[WS_PI_STREAM_TYPES.COMPACTION_START]: PiPayload<Record<string, unknown>>;
+	[WS_PI_STREAM_TYPES.COMPACTION_END]: PiPayload<Record<string, unknown>>;
 	[WS_PRIMARY_PATH_TYPES.TURN_STARTED]: PrimaryPathPayloadByType[typeof WS_PRIMARY_PATH_TYPES.TURN_STARTED];
+	[WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED]: PrimaryPathPayloadByType[typeof WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED];
 	[WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL]: PrimaryPathPayloadByType[typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL];
 	[WS_PRIMARY_PATH_TYPES.USAGE_UPDATED]: PrimaryPathPayloadByType[typeof WS_PRIMARY_PATH_TYPES.USAGE_UPDATED];
 	[WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED]: PrimaryPathPayloadByType[typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED];
@@ -365,8 +394,11 @@ export const WS_FRAME_DURABILITY = {
 	[WS_PI_STREAM_TYPES.RETRY_START]: "ephemeral",
 	[WS_PI_STREAM_TYPES.RETRY_END]: "ephemeral",
 	[WS_PI_STREAM_TYPES.USAGE]: "ephemeral",
+	[WS_PI_STREAM_TYPES.COMPACTION_START]: "ephemeral",
+	[WS_PI_STREAM_TYPES.COMPACTION_END]: "ephemeral",
 	[WS_PRIMARY_PATH_TYPES.TURN_STARTED]: "durable",
 	[WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL]: "ephemeral",
+	[WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED]: "ephemeral",
 	[WS_PRIMARY_PATH_TYPES.USAGE_UPDATED]: "ephemeral",
 	[WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED]: "durable",
 	[WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED]: "ephemeral",
@@ -389,14 +421,25 @@ export type WsFrameOfType<T extends KnownWsFrameType> = {
 	type: T;
 	durability: WsDurabilityByType[T];
 	sentAt: string;
+	eventSequence?: number;
 	instanceId?: string;
 	payload: WsPayloadByType[T];
 };
 export type DurableWsFrameInput = {
-	[K in KnownDurableWsFrameType]: { type: K; instanceId?: string; payload: WsPayloadByType[K] };
+	[K in KnownDurableWsFrameType]: {
+		type: K;
+		instanceId?: string;
+		eventSequence?: number;
+		payload: WsPayloadByType[K];
+	};
 }[KnownDurableWsFrameType];
 export type EphemeralWsFrameInput = {
-	[K in KnownEphemeralWsFrameType]: { type: K; instanceId?: string; payload: WsPayloadByType[K] };
+	[K in KnownEphemeralWsFrameType]: {
+		type: K;
+		instanceId?: string;
+		eventSequence?: number;
+		payload: WsPayloadByType[K];
+	};
 }[KnownEphemeralWsFrameType];
 export type WsFrame = { [K in KnownWsFrameType]: WsFrameOfType<K> }[KnownWsFrameType];
 export type PrimaryPathWsFrameType =
@@ -412,6 +455,7 @@ const WS_FRAME_SCHEMA = v.looseObject({
 	type: v.picklist(KNOWN_WS_FRAME_TYPES),
 	durability: v.picklist(["durable", "ephemeral"] as const),
 	sentAt: v.string(),
+	eventSequence: v.optional(v.pipe(v.number(), v.integer(), v.minValue(1))),
 	instanceId: v.optional(v.string()),
 	payload: unknownRecordSchema,
 });
@@ -451,12 +495,15 @@ export function parseWsFrame(value: unknown): ParseResult<WsFrame> {
 		: ok(frame.value as WsFrame);
 }
 
-export function createDurableWsFrame(input: DurableWsFrameInput & { sentAt?: string }): WsFrame {
+export function createDurableWsFrame(
+	input: DurableWsFrameInput & { sentAt?: string; eventSequence?: number },
+): WsFrame {
 	return {
 		protocol: WS_PROTOCOL_VERSION,
 		type: input.type,
 		durability: "durable",
 		sentAt: input.sentAt ?? new Date().toISOString(),
+		...(input.eventSequence !== undefined ? { eventSequence: input.eventSequence } : {}),
 		...(input.instanceId ? { instanceId: input.instanceId } : {}),
 		payload: input.payload,
 	} as WsFrame;
@@ -467,12 +514,14 @@ export function createEphemeralWsFrame(input: {
 	instanceId?: string;
 	payload: WsPayloadByType[KnownEphemeralWsFrameType];
 	sentAt?: string;
+	eventSequence?: number;
 }): WsFrame {
 	return {
 		protocol: WS_PROTOCOL_VERSION,
 		type: input.type,
 		durability: "ephemeral",
 		sentAt: input.sentAt ?? new Date().toISOString(),
+		...(input.eventSequence !== undefined ? { eventSequence: input.eventSequence } : {}),
 		...(input.instanceId ? { instanceId: input.instanceId } : {}),
 		payload: input.payload,
 	} as WsFrame;
@@ -489,6 +538,8 @@ const WORKER_TO_WS_TYPE: Record<StreamableWorkerEventType, string> = {
 	"pi.retry.start": WS_PI_STREAM_TYPES.RETRY_START,
 	"pi.retry.end": WS_PI_STREAM_TYPES.RETRY_END,
 	"pi.usage": WS_PI_STREAM_TYPES.USAGE,
+	"pi.compaction.start": WS_PI_STREAM_TYPES.COMPACTION_START,
+	"pi.compaction.end": WS_PI_STREAM_TYPES.COMPACTION_END,
 };
 
 export type RawPiDiagnosticWsFrameType =

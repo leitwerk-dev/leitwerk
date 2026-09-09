@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile as writeRawFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
@@ -16,6 +16,13 @@ import {
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { createAllRepos } from "./db/repositories.js";
+import {
+	createFileBackedProcessSessionSnapshotStore,
+	ProcessSessionReader,
+} from "./process-session-store.js";
+import { ProcessUiSnapshotAssembler } from "./process-ui-snapshot-presenter.js";
+import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
 import {
 	createStructuralProcessState,
 	createStructuralStateJson,
@@ -72,6 +79,16 @@ const detailExtension: LeitwerkExtensionModule = {
 
 let harness: IntegrationHarness;
 let tempRoot = "";
+async function writeFile(file: string, content: string, encoding?: "utf8") {
+	await writeRawFile(file, content, encoding);
+	if (file.endsWith(".jsonl")) {
+		const store = createProjectedSessionSnapshotStore(
+			createFileBackedProcessSessionSnapshotStore(harness.config.storage.tree_files_dir),
+			createAllRepos(harness.ctx.db),
+		);
+		await store.writeSnapshotFile(path.basename(file, ".jsonl"), file);
+	}
+}
 
 type TestBrowseItem = Record<string, unknown> & {
 	id?: string;
@@ -655,7 +672,7 @@ describe("process detail HTTP route", () => {
 		const snapshotResponse = await fetch(
 			`${harness.address}/api/processes/${process.id}/ui-snapshot`,
 		);
-		expect(readSessionTreeSpy).toHaveBeenCalledTimes(1);
+		expect(readSessionTreeSpy).not.toHaveBeenCalled();
 		readSessionTreeSpy.mockRestore();
 		expect(snapshotResponse.status).toBe(200);
 		expect(snapshotResponse.headers.get("server-timing")).toContain("ui-snapshot");
@@ -677,6 +694,11 @@ describe("process detail HTTP route", () => {
 		expect(preview.thinkingPreview.length).toBeLessThan(fullThinking.length);
 		expect(preview.toolCallCount).toBe(1);
 
+		harness.ctx.deps.events.create({
+			instanceId: process.id,
+			eventType: "pi.usage",
+			data: { turnRecordId: turnRecord.id, input: 100, output: 25, totalTokens: 125 },
+		});
 		const reasoningResponse = await fetch(
 			`${harness.address}/api/processes/${process.id}/turn-records/${turnRecord.id}/reasoning`,
 		);
@@ -685,6 +707,7 @@ describe("process detail HTTP route", () => {
 		expect(reasoning.reasoning.assistant.text.length).toBe(fullAssistantText.length);
 		expect(reasoning.reasoning.assistant.thinking.length).toBe(fullThinking.length);
 		expect(reasoning.reasoning.toolCalls).toHaveLength(1);
+		expect(reasoning.reasoning.usage.totalTokens).toBe(125);
 		expect(reasoning.reasoning.toolCalls[0]).toMatchObject({
 			startedAt: "2026-04-22T10:00:02.000Z",
 			completedAt: "2026-04-22T10:00:03.000Z",
@@ -786,5 +809,141 @@ describe("process detail HTTP route", () => {
 				status: "in_progress",
 			}),
 		]);
+	});
+});
+
+it("keeps current-turn page reads and bytes bounded with cold and warm readers; expansion returns every recorded event", async () => {
+	const process = harness.ctx.deps.processes.create({
+		processId: "process_detail_session_tree_test",
+		selectedTurnId: "implement",
+		lifecycleStatus: "active",
+		stateJson: createStructuralStateJson(),
+	});
+	const turn = createAcceptedLlmTurnRecord({
+		id: "trn_bounded_history",
+		instanceId: process.id,
+		turnId: "implement",
+		status: "running",
+		current: true,
+		startedAt: "2026-09-09T00:00:00Z",
+	});
+	const events = harness.ctx.deps.events;
+	const append = (text: string) =>
+		events.create({
+			instanceId: process.id,
+			eventType: "pi.stream.delta",
+			data: {
+				turnRecordId: turn.id,
+				streamType: "thinking",
+				text,
+				timestamp: "2026-09-09T00:00:00Z",
+			},
+		});
+	append("initial reasoning");
+	const measure = async () => {
+		const coldReader = new ProcessSessionReader(
+			createFileBackedProcessSessionSnapshotStore(harness.config.storage.tree_files_dir),
+		);
+		const readerSpy = vi.spyOn(coldReader, "readSessionTree");
+		const forbidden = [
+			vi.spyOn(events, "listByTurnRecord"),
+			vi.spyOn(events, "listByInstanceSince"),
+			vi.spyOn(events, "listByInstanceTurnRecordEventTypes"),
+		];
+		const summarySpy = vi.spyOn(harness.ctx.deps.turnSummaries, "listByInstance");
+		const eventRowsSpy = vi.spyOn(events, "listByInstanceEventTypes");
+		const progressSpy = vi.spyOn(events, "latestByTurnRecordEventType");
+		const preparedReadSpy = vi.spyOn(harness.ctx.db.$client, "prepare");
+		const assembler = new ProcessUiSnapshotAssembler({
+			...harness.ctx.deps,
+			sessionReader: coldReader,
+		});
+		const snapshots = [await assembler.assemble(process.id), await assembler.assemble(process.id)];
+		const eventQueries = preparedReadSpy.mock.results.flatMap((result) =>
+			result.type === "return" && result.value.sourceSQL.includes('from "process_events"')
+				? [result.value.expandedSQL]
+				: [],
+		);
+		preparedReadSpy.mockRestore();
+		expect(eventQueries.length).toBeGreaterThan(0);
+		for (const query of eventQueries) {
+			const plan = harness.ctx.db.$client.prepare(`EXPLAIN QUERY PLAN ${query}`).all();
+			const expectedIndex = query.includes('"turn_record_id" =')
+				? "idx_process_events_turn_type_sequence"
+				: query.includes('"event_type" =')
+					? "idx_process_events_instance_type_sequence"
+					: "idx_process_events_instance_sequence";
+			expect(plan).toEqual([
+				expect.objectContaining({ detail: expect.stringContaining(expectedIndex) }),
+			]);
+		}
+		expect(readerSpy).not.toHaveBeenCalled();
+		for (const spy of forbidden) {
+			expect(spy).not.toHaveBeenCalled();
+			spy.mockRestore();
+		}
+		expect(summarySpy).toHaveBeenCalledTimes(2);
+		expect(summarySpy.mock.results.map((result) => Object.keys(result.value))).toEqual([
+			[turn.id],
+			[turn.id],
+		]);
+		expect(eventRowsSpy.mock.results.map((result) => result.value.length)).toEqual([0, 0]);
+		expect(progressSpy.mock.results.map((result) => result.value)).toEqual([null, null]);
+		eventRowsSpy.mockRestore();
+		progressSpy.mockRestore();
+		summarySpy.mockRestore();
+		const snapshot = snapshots[0];
+		if (!snapshot) throw new Error("Expected process snapshot");
+		return snapshot;
+	};
+	const short = await measure();
+	const chunk = "long paragraph of recorded reasoning ".repeat(40);
+	for (let i = 0; i < 2500; i++) append(chunk);
+	events.create({
+		instanceId: process.id,
+		eventType: "pi.tool.call",
+		data: {
+			turnRecordId: turn.id,
+			toolCallId: "read",
+			toolName: "read",
+			arguments: { path: "README.md" },
+		},
+	});
+	events.create({
+		instanceId: process.id,
+		eventType: "pi.tool.result",
+		data: {
+			turnRecordId: turn.id,
+			toolCallId: "read",
+			toolName: "read",
+			result: "complete tool result",
+		},
+	});
+	const last = append("final reasoning");
+	const long = await measure();
+	events.create({
+		instanceId: process.id,
+		eventType: "pi.stream.delta",
+		data: { turnRecordId: "another-turn", streamType: "thinking", text: "WRONG TURN" },
+	});
+	expect(long.primaryPath.turnState.activeTurn?.assistant.thinking.length).toBeLessThanOrEqual(
+		1024,
+	);
+	expect(JSON.stringify(long).length - JSON.stringify(short).length).toBeLessThan(1800);
+	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("traceItems");
+	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("toolCalls");
+	const detail = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assembleReasoningDetail({
+		instanceId: process.id,
+		turnRecordId: turn.id,
+	});
+	expect(detail?.state).toBe("live");
+	expect(detail?.throughEventSequence).toBeGreaterThanOrEqual(last.eventSequence ?? 0);
+	expect(detail?.reasoning.assistant.thinking).toBe(
+		`initial reasoning${chunk.repeat(2500)}final reasoning`,
+	);
+	expect(detail?.reasoning.toolCalls[0]).toMatchObject({
+		arguments: { path: "README.md" },
+		resultText: "complete tool result",
+		status: "completed",
 	});
 });

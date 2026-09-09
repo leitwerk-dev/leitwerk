@@ -226,7 +226,7 @@ describe("process turn trace projection", () => {
 		const trace = {
 			assistant: {
 				text: "A".repeat(2_000),
-				thinking: Array.from({ length: 20 }, (_, index) => `step ${index}`).join("\n"),
+				thinking: Array.from({ length: 200 }, (_, index) => `step ${index}`).join("\n"),
 				lastUpdatedAt: "2026-01-01T00:00:02.000Z",
 			},
 			toolCalls: [],

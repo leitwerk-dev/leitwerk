@@ -19,13 +19,10 @@ import {
 	buildLiveTurnProjectionFromEvents,
 	createMutableLiveTurnProjection,
 	type MutableLiveTurnProjection,
-	snapshotLiveTurnProjection,
 } from "../live-turn-projection.js";
 import { recordTurnPreparation } from "../turn-preparation.js";
 import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
-
-const LIVE_TURN_EVENT_LOOKBACK_LIMIT = 1000;
 
 export interface WorkerEventLogEntry {
 	instanceId: string;
@@ -70,15 +67,7 @@ function hydrateLiveTurnProjection(
 	if (!turnRecord) {
 		return createMutableLiveTurnProjection();
 	}
-	return buildLiveTurnProjectionFromEvents(
-		deps.events
-			.listByInstanceSince(instanceId, turnRecord.startedAt, {
-				limit: LIVE_TURN_EVENT_LOOKBACK_LIMIT,
-				eventTypePrefix: "pi.",
-			})
-			.slice()
-			.reverse(),
-	);
+	return buildLiveTurnProjectionFromEvents(deps.events.listByTurnRecord(instanceId, turnRecordId));
 }
 
 export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
@@ -138,6 +127,8 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					?.id ??
 				null;
 			const data = asWsEventPayloadRecord(payload.data);
+			const suppliedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
+			if (suppliedTurnRecordId && suppliedTurnRecordId !== currentTurnRecordId) return;
 			if (payload.eventType === "turn.progress") {
 				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
 				if (!reportedTurnRecordId || reportedTurnRecordId !== currentTurnRecordId) return;
@@ -177,11 +168,12 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				serverObservedAt,
 			);
 			const eventTurnRecordId = readWsEventNonEmptyString(enrichedData.turnRecordId);
-			deps.events.create({
+			const persistedEvent = deps.events.create({
 				instanceId,
 				eventType: payload.eventType,
 				data: enrichedData,
 			});
+
 			try {
 				deps.workerEventLogger?.({
 					instanceId,
@@ -203,6 +195,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					deps.broadcaster.broadcast(
 						createEphemeralWsFrame({
 							type: wsType,
+							eventSequence: persistedEvent.eventSequence,
 							payload: enrichedData,
 							instanceId,
 						}),
@@ -215,6 +208,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					deps.broadcaster.broadcast(
 						createEphemeralWsFrame({
 							type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
+							eventSequence: persistedEvent.eventSequence,
 							payload: {
 								turnRecordId: currentTurnRecordId,
 								piTurnId: readWsEventPiTurnId(enrichedData),
@@ -227,11 +221,12 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					);
 				}
 			} else if (payload.eventType === "pi.usage") {
-				const usage = snapshotLiveTurnProjection(projection).usage;
+				const usage = projection.usage;
 				if (usage) {
 					deps.broadcaster.broadcast(
 						createEphemeralWsFrame({
 							type: WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
+							eventSequence: persistedEvent.eventSequence,
 							payload: {
 								turnRecordId: currentTurnRecordId,
 								piTurnId: readWsEventPiTurnId(enrichedData),
@@ -246,6 +241,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				deps.broadcaster.broadcast(
 					createEphemeralWsFrame({
 						type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
+						eventSequence: persistedEvent.eventSequence,
 						payload: {
 							turnRecordId: currentTurnRecordId,
 							piTurnId: readWsEventPiTurnId(enrichedData),
@@ -261,6 +257,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				deps.broadcaster.broadcast(
 					createEphemeralWsFrame({
 						type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
+						eventSequence: persistedEvent.eventSequence,
 						payload: {
 							turnRecordId: currentTurnRecordId,
 							piTurnId: readWsEventPiTurnId(enrichedData),
@@ -277,6 +274,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				deps.broadcaster.broadcast(
 					createDurableWsFrame({
 						type: WS_PRIMARY_PATH_TYPES.LABEL_CHANGED,
+						eventSequence: persistedEvent.eventSequence,
 						payload: {
 							turnRecordId: currentTurnRecordId,
 							piTurnId: readWsEventPiTurnId(enrichedData),
@@ -287,6 +285,18 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 						instanceId,
 					}),
 				);
+			}
+			if (eventTurnRecordId) {
+				const summary = deps.events.summary(eventTurnRecordId);
+				if (summary)
+					deps.broadcaster.broadcast(
+						createEphemeralWsFrame({
+							type: WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED,
+							instanceId,
+							eventSequence: persistedEvent.eventSequence,
+							payload: { turnRecordId: eventTurnRecordId, summary },
+						}),
+					);
 			}
 		},
 	};

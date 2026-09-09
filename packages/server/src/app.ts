@@ -110,6 +110,7 @@ import { loadServerExtensionCatalog } from "./server-bootstrap/load-extension-ca
 import { registerHttp } from "./server-bootstrap/register-http.js";
 import { registerWebsocket } from "./server-bootstrap/register-websocket.js";
 import { resolveServerTlsOptions } from "./server-topology.js";
+import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
 import { createSessionTransferHelperRelays } from "./session-transfer-helper-relays.js";
 import { createSessionTransferService } from "./session-transfer-service.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
@@ -461,9 +462,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	// startup adoption has registered their worker ids.
 	workerWebSocketIpc.setUnknownWorkerConnectionsRetryable(true);
 	const serverEpoch = `epoch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-	const sessionSnapshots = createFileBackedProcessSessionSnapshotStore(
-		config.storage.tree_files_dir,
+	const sessionSnapshots = createProjectedSessionSnapshotStore(
+		createFileBackedProcessSessionSnapshotStore(config.storage.tree_files_dir),
+		repos,
 	);
+	for (const process of repos.processes.listAll()) await sessionSnapshots.backfill(process.id);
 	const sessionReader = new ProcessSessionReader(sessionSnapshots);
 	const resultImages = new ResultImageStore({
 		rootDir: path.join(config.storage.tree_files_dir, "result-images"),

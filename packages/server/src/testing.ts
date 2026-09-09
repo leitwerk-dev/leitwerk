@@ -13,6 +13,7 @@ export {
 	buildUsageEstimate,
 	presentProcessTimelineTurns,
 } from "./process-ui-snapshot-presenter.js";
+export { writeProcessSessionSnapshot } from "./test-helpers/session-snapshot-fixtures.js";
 export {
 	prepareSuccessfulLlmTurnStarts,
 	type SuccessfulLlmTurnStartOptions,

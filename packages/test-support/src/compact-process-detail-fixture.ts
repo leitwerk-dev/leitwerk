@@ -10,6 +10,7 @@ import type {
 import {
 	createReadonlyEntryTree,
 	type PiSessionEntry,
+	type PrimaryPathSnapshot,
 	type ProcessDetailUiSnapshotResponseBody,
 	type TurnReasoningDetailResponseBody,
 	type TurnTraceSnapshot,
@@ -20,7 +21,8 @@ import {
 	type ReadonlyPiSessionTree,
 } from "@leitwerk-dev/server/testing";
 
-type LegacyProcessDetailFixture = ProcessDetailUiSnapshotResponseBody & {
+type LegacyProcessDetailFixture = Omit<ProcessDetailUiSnapshotResponseBody, "primaryPath"> & {
+	primaryPath: PrimaryPathSnapshot;
 	process: ProcessInstance;
 	projects: ProcessProject[];
 	inputs: ProcessInput[];
@@ -45,6 +47,7 @@ export function createCompactProcessDetailFixtureFactory() {
 		{
 			signature: string | null;
 			traceIndex: Record<string, TurnTraceSnapshot>;
+			liveTurnRecordId: string | null;
 		}
 	>();
 
@@ -66,6 +69,21 @@ export function createCompactProcessDetailFixtureFactory() {
 			turnRecords: legacy.turnRecords,
 			events: legacy.events,
 		});
+		const active = legacy.primaryPath.turnState.activeTurn;
+		if (active)
+			traceIndex[active.turnRecordId] = {
+				...EMPTY_TRACE,
+				...traceIndex[active.turnRecordId],
+				assistant: active.assistant,
+				traceItems: active.traceItems,
+				usage: active.usage,
+				toolCalls: active.toolCalls.map(({ result, ...tool }) => ({
+					...tool,
+					resultText:
+						typeof result === "string" ? result : result == null ? null : JSON.stringify(result),
+					truncated: false,
+				})),
+			};
 		const signature =
 			sessionEntries.length > 0 ? `test-session:${JSON.stringify(sessionEntries).length}` : null;
 		const projections = buildProcessUiSnapshotProjections({
@@ -98,7 +116,11 @@ export function createCompactProcessDetailFixtureFactory() {
 			session: { signature },
 			sessionTransfer: null,
 		};
-		reasoningSourceByInstanceId.set(projections.process.id, { signature, traceIndex });
+		reasoningSourceByInstanceId.set(projections.process.id, {
+			signature,
+			traceIndex,
+			liveTurnRecordId: active?.turnRecordId ?? null,
+		});
 		return compactDetail;
 	}
 
@@ -110,6 +132,8 @@ export function createCompactProcessDetailFixtureFactory() {
 		return {
 			instanceId,
 			turnRecordId,
+			state: source?.liveTurnRecordId === turnRecordId ? "live" : "committed",
+			throughEventSequence: 0,
 			sessionSignature: source?.signature ?? null,
 			reasoning: source?.traceIndex[turnRecordId] ?? EMPTY_TRACE,
 		};

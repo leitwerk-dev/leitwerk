@@ -46,6 +46,8 @@ const ALL_TABLES = [
 	schema.processProjects,
 	schema.processInputs,
 	schema.processEvents,
+	schema.turnSummaries,
+	schema.sessionSummaries,
 	schema.processHandoffDedupKeys,
 	schema.futureExecutions,
 	schema.launcherRecentValues,
@@ -331,6 +333,40 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			hasExistingSchema(sqlite) && existingTableSql(sqlite, "ticket_destination_recents") === null,
 		apply(sqlite) {
 			createTableWithIndexes(sqlite, schema.ticketDestinationRecents);
+		},
+	},
+	{
+		id: "20260909_add_reasoning_summaries",
+		tableNames: ["process_events", "turn_summaries", "session_summaries"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "process_events") !== null &&
+			!tableHasColumn(sqlite, "process_events", "event_sequence"),
+		validateSource(sqlite, sqlitePath) {
+			assertMigrationSource(
+				sqlite,
+				sqlitePath,
+				"process_events",
+				`CREATE TABLE process_events (
+    id text PRIMARY KEY NOT NULL, instance_id text NOT NULL REFERENCES process_instances(id) ON DELETE CASCADE,
+    event_type text NOT NULL, data text NOT NULL DEFAULT '{}', created_at text NOT NULL
+   )`,
+				[
+					"CREATE INDEX idx_process_events_instance ON process_events(instance_id)",
+					"CREATE INDEX idx_process_events_instance_created ON process_events(instance_id, created_at)",
+					"CREATE INDEX idx_process_events_type ON process_events(event_type)",
+				],
+			);
+		},
+		apply(sqlite) {
+			// rowid preserves ingestion order for legacy events, including equal timestamps.
+			sqlite.exec(`CREATE TEMP TABLE staged_reasoning_events AS SELECT rowid AS event_sequence, * FROM process_events;
+    DROP TABLE process_events;`);
+			createTableWithIndexes(sqlite, schema.processEvents);
+			sqlite.exec(`INSERT INTO process_events (id, instance_id, event_type, data, created_at, event_sequence, turn_record_id)
+    SELECT id, instance_id, event_type, data, created_at, event_sequence, json_extract(data, '$.turnRecordId') FROM staged_reasoning_events;
+    DROP TABLE staged_reasoning_events;`);
+			createTableWithIndexes(sqlite, schema.turnSummaries);
+			createTableWithIndexes(sqlite, schema.sessionSummaries);
 		},
 	},
 	{

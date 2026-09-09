@@ -1,8 +1,10 @@
 import {
+	emptyCompactTurnSummary,
 	type PrimaryPathActiveTurnSnapshot,
 	type PrimaryPathSnapshot,
 	type PrimaryPathToolCallSnapshot,
 	type PrimaryPathTraceItemSnapshot,
+	type PrimaryPathUiSnapshot,
 	type PrimaryPathWsFrame,
 	WS_PRIMARY_PATH_TYPES,
 } from "@leitwerk-dev/protocol";
@@ -115,7 +117,7 @@ function ensureToolTraceItem(
 }
 
 export function getPrimaryPathActiveTurnOutput(
-	activeTurn: PrimaryPathActiveTurnSnapshot | null | undefined,
+	activeTurn: Pick<PrimaryPathActiveTurnSnapshot, "assistant"> | null | undefined,
 ): string {
 	if (!activeTurn) {
 		return "";
@@ -123,7 +125,7 @@ export function getPrimaryPathActiveTurnOutput(
 	return activeTurn.assistant.text.trim();
 }
 
-export function applyPrimaryPathFrame<TSnapshot extends PrimaryPathSnapshot>(
+function applyFullPrimaryPathFrame<TSnapshot extends PrimaryPathSnapshot>(
 	snapshot: TSnapshot,
 	frame: PrimaryPathWsFrame,
 ): TSnapshot {
@@ -307,7 +309,7 @@ export function applyPrimaryPathFrame<TSnapshot extends PrimaryPathSnapshot>(
 	}
 }
 
-export function clonePrimaryPathSnapshot<TSnapshot extends PrimaryPathSnapshot>(
+function cloneFullPrimaryPathSnapshot<TSnapshot extends PrimaryPathSnapshot>(
 	snapshot: TSnapshot,
 ): TSnapshot {
 	return {
@@ -334,4 +336,96 @@ export function clonePrimaryPathSnapshot<TSnapshot extends PrimaryPathSnapshot>(
 				: null,
 		},
 	};
+}
+
+export function applyPrimaryPathFrame<T extends PrimaryPathSnapshot | PrimaryPathUiSnapshot>(
+	snapshot: T,
+	frame: PrimaryPathWsFrame,
+): T {
+	if (!("entriesOmitted" in snapshot))
+		return applyFullPrimaryPathFrame(snapshot as PrimaryPathSnapshot, frame) as T;
+	const compact = snapshot as PrimaryPathUiSnapshot;
+	if (frame.eventSequence !== undefined && frame.eventSequence <= compact.throughEventSequence)
+		return snapshot;
+	if (frame.type === WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED) {
+		const active = compact.turnState.activeTurn;
+		if (
+			!active ||
+			active.turnRecordId !== frame.payload.turnRecordId ||
+			frame.payload.summary.throughEventSequence <= active.throughEventSequence
+		)
+			return snapshot;
+		return {
+			...compact,
+			throughEventSequence: frame.eventSequence ?? compact.throughEventSequence,
+			turnState: {
+				...compact.turnState,
+				activeTurn: { ...active, ...frame.payload.summary, summaryPending: false },
+			},
+		} as T;
+	}
+	if (frame.type === WS_PRIMARY_PATH_TYPES.TURN_STARTED) {
+		const turn = frame.payload.turnRecord;
+		return {
+			...compact,
+			throughEventSequence: frame.eventSequence ?? compact.throughEventSequence,
+			turnState: {
+				...compact.turnState,
+				currentTurnRecordId: turn.id,
+				isStreaming: true,
+				activeTurn: {
+					...emptyCompactTurnSummary(),
+					turnRecordId: turn.id,
+					turnId: turn.turnId,
+					turnType: turn.turnType,
+					pathType: turn.pathType,
+					startedAt: turn.startedAt,
+					summaryPending: true,
+				},
+			},
+		} as T;
+	}
+	if (
+		[
+			WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
+			WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
+			WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
+			WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
+		].includes(frame.type as typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL)
+	)
+		return snapshot;
+	if (
+		frame.type === WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED &&
+		compact.turnState.activeTurn &&
+		compact.turnState.activeTurn.turnRecordId !== frame.payload.turnRecord.id
+	)
+		return snapshot;
+	const metadata = applyFullPrimaryPathFrame(
+		{ ...compact, turnState: { ...compact.turnState, activeTurn: null } },
+		frame,
+	);
+	return {
+		...metadata,
+		throughEventSequence: frame.eventSequence ?? compact.throughEventSequence,
+		turnState:
+			frame.type === WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED
+				? metadata.turnState
+				: compact.turnState,
+	} as T;
+}
+
+export function clonePrimaryPathSnapshot<T extends PrimaryPathSnapshot | PrimaryPathUiSnapshot>(
+	snapshot: T,
+): T {
+	if ("entriesOmitted" in snapshot)
+		return {
+			...snapshot,
+			turnState: {
+				...snapshot.turnState,
+				activeTurn: snapshot.turnState.activeTurn
+					? structuredClone(snapshot.turnState.activeTurn)
+					: null,
+			},
+		};
+	return cloneFullPrimaryPathSnapshot(snapshot as PrimaryPathSnapshot) as T;
 }

@@ -1,3 +1,4 @@
+export * from "./compact-turn-summary.js";
 export * from "./config-snapshot.js";
 export * from "./external-review.js";
 export * from "./form-contract.js";
@@ -15,7 +16,9 @@ export * from "./ticket-creation-contracts.js";
 export * from "./timeline-projection.js";
 export * from "./timestamp-ordering.js";
 export * from "./tool-renderer-contract.js";
+export * from "./tool-result-truncation.js";
 export * from "./turn-continuation.js";
+export * from "./turn-trace-projection.js";
 export * from "./usage-by-turn-record.js";
 export * from "./usage-snapshot.js";
 export * from "./ws-event-payloads.js";

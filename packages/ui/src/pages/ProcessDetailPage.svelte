@@ -4,8 +4,9 @@ import {
 	type ProcessTimelineTurnSummary,
 	type TurnTraceSnapshot,
 } from "@leitwerk-dev/protocol";
-import { onDestroy, tick } from "svelte";
+import { onDestroy, tick, untrack } from "svelte";
 import ChronicleReasoningDetailsOverlay from "../chronicle/components/ChronicleReasoningDetailsOverlay.svelte";
+import type { ChronicleReasoningDetailEntry } from "../chronicle/lib/chronicle-projection.js";
 import {
 	buildChronicleProjection,
 	extractChronicleReasoningDetailEntries,
@@ -24,7 +25,13 @@ import {
 	consumeProcessLaunchNotice,
 } from "../lib/process-launch-notices.svelte";
 import type { ProcessTerminalStatus } from "../lib/process-terminal-display.js";
-import { clearDetail, detailState, loadProcessDetail } from "../lib/processes.svelte";
+import {
+	clearDetail,
+	detailState,
+	loadProcessDetail,
+	subscribeReasoningFrames,
+} from "../lib/processes.svelte";
+import { ReasoningHistory } from "../lib/reasoning-history.js";
 import {
 	buildProcessesPath,
 	buildProcessPath,
@@ -60,6 +67,14 @@ let activeReasoningRequest = $state.raw<{
 	status: "loading" | "error";
 	error: string | null;
 } | null>(null);
+let reasoningHistory: ReasoningHistory | null = null;
+let observedReasoningKey: string | null = null;
+let retainedReasoningEntry = $state.raw<ChronicleReasoningDetailEntry | null>(null);
+const unsubscribeReasoningFrames = subscribeReasoningFrames((frame) => {
+	if (!reasoningHistory) return;
+	const trace = reasoningHistory.push(frame);
+	if (trace) reasoningTraceCache = { [reasoningHistory.turnRecordId]: trace };
+});
 let reasoningRequestGeneration = 0;
 let reasoningRequestAbortController: AbortController | null = null;
 
@@ -109,6 +124,7 @@ $effect(() => {
 });
 
 onDestroy(() => {
+	unsubscribeReasoningFrames();
 	reasoningRequestAbortController?.abort();
 	clearDetail();
 });
@@ -158,18 +174,7 @@ function projectTimelineTurns(detail: ProcessDetailData): ProcessTimelineTurnSum
 }
 
 const turnRecords = $derived($detailState.data ? projectTimelineTurns($detailState.data) : []);
-const turnTraceIndex = $derived.by(() => {
-	const detail = $detailState.data;
-	if (!detail) {
-		return {};
-	}
-	return Object.fromEntries(
-		detail.timeline.turns.flatMap((turn) => {
-			const trace = reasoningTraceCache[reasoningCacheKey(detail.session.signature, turn.id)];
-			return trace ? [[turn.id, trace]] : [];
-		}),
-	);
-});
+const turnTraceIndex = $derived(reasoningTraceCache);
 const toolRendererIndex = $derived(createToolRendererIndex($detailState.data?.toolRenderers ?? []));
 const chroniclePrompt = $derived({
 	text: $detailState.data?.timeline.prompt.text ?? null,
@@ -214,7 +219,9 @@ const activeReasoningDetailIndex = $derived.by(() => {
 });
 const activeReasoningDetail = $derived.by(() => {
 	if (activeReasoningDetailIndex < 0) {
-		return null;
+		return retainedReasoningEntry?.turnRecordId === requestedReasoningDetailTurnRecordId
+			? retainedReasoningEntry
+			: null;
 	}
 	return reasoningDetailEntries[activeReasoningDetailIndex] ?? null;
 });
@@ -226,84 +233,91 @@ const hasBlockingDetailOverlay = $derived(
 	isProcessInfoOverlayOpen || activeReasoningDetail !== null,
 );
 
-function reasoningCacheKey(sessionSignature: string | null, turnRecordId: string): string {
-	return JSON.stringify([sessionSignature, turnRecordId]);
-}
-
-async function loadReasoningDetail(
-	requestInstanceId: string,
-	turnRecordId: string,
-	sessionSignature: string | null,
-) {
-	const key = reasoningCacheKey(sessionSignature, turnRecordId);
+async function loadReasoningDetail(requestInstanceId: string, turnRecordId: string, key: string) {
 	reasoningRequestAbortController?.abort();
 	const controller = new AbortController();
 	reasoningRequestAbortController = controller;
 	const generation = ++reasoningRequestGeneration;
+	if (
+		reasoningHistory?.instanceId !== requestInstanceId ||
+		reasoningHistory.turnRecordId !== turnRecordId
+	) {
+		reasoningHistory = new ReasoningHistory(requestInstanceId, turnRecordId);
+		reasoningTraceCache = {};
+	}
+	const history = reasoningHistory;
+	history.beginRequest();
 	activeReasoningRequest = { key, status: "loading", error: null };
+	// Let a direct link render the shell and controls before starting independent detail I/O.
+	await tick();
+	if (controller.signal.aborted) return;
 	try {
 		const response = await fetchTurnReasoningDetail(
 			requestInstanceId,
 			turnRecordId,
-			sessionSignature,
+			null,
 			controller.signal,
 		);
-		const currentDetail = $detailState.data;
 		if (
 			generation !== reasoningRequestGeneration ||
-			currentDetail?.process.id !== requestInstanceId ||
-			currentDetail.session.signature !== sessionSignature ||
-			requestedReasoningDetailTurnRecordId !== turnRecordId
-		) {
+			requestedReasoningDetailTurnRecordId !== turnRecordId ||
+			instanceId !== requestInstanceId
+		)
 			return;
-		}
-		reasoningTraceCache = { ...reasoningTraceCache, [key]: response.reasoning };
+		reasoningTraceCache = { [turnRecordId]: history.accept(response) };
 		activeReasoningRequest = null;
 	} catch (error) {
-		if (generation !== reasoningRequestGeneration || controller.signal.aborted) {
-			return;
-		}
+		if (generation !== reasoningRequestGeneration || controller.signal.aborted) return;
+		history.failedRequest();
 		activeReasoningRequest = {
 			key,
 			status: "error",
 			error: error instanceof Error ? error.message : "Couldn't load full reasoning details",
 		};
 	} finally {
-		if (reasoningRequestAbortController === controller) {
-			reasoningRequestAbortController = null;
-		}
+		if (reasoningRequestAbortController === controller) reasoningRequestAbortController = null;
 	}
 }
 
 $effect(() => {
 	const detail = $detailState.data;
 	const turnRecordId = requestedReasoningDetailTurnRecordId;
-	if (!detail || !turnRecordId || !activeReasoningDetail || activeReasoningDetail.isLive) {
-		return;
-	}
-	const key = reasoningCacheKey(detail.session.signature, turnRecordId);
-	if (reasoningTraceCache[key] || activeReasoningRequest?.key === key) {
-		return;
-	}
-	void loadReasoningDetail(detail.process.id, turnRecordId, detail.session.signature);
-});
-
-const activeReasoningRequestState = $derived.by(() => {
-	const detail = $detailState.data;
-	if (!detail || !requestedReasoningDetailTurnRecordId) {
-		return null;
-	}
-	const key = reasoningCacheKey(detail.session.signature, requestedReasoningDetailTurnRecordId);
-	return activeReasoningRequest?.key === key ? activeReasoningRequest : null;
-});
-
-function retryReasoningDetail() {
-	const detail = $detailState.data;
-	const turnRecordId = requestedReasoningDetailTurnRecordId;
+	const reconnect = $wsStore.reconnectCount;
 	if (!detail || !turnRecordId) {
+		untrack(() => {
+			observedReasoningKey = null;
+			reasoningRequestGeneration++;
+			reasoningRequestAbortController?.abort();
+			reasoningHistory = null;
+			reasoningTraceCache = {};
+			activeReasoningRequest = null;
+			retainedReasoningEntry = null;
+		});
 		return;
 	}
-	void loadReasoningDetail(detail.process.id, turnRecordId, detail.session.signature);
+	const entry = reasoningDetailEntries.find((entry) => entry.turnRecordId === turnRecordId);
+	if (entry) retainedReasoningEntry = entry;
+	const turn = detail.timeline.turns.find((turn) => turn.id === turnRecordId);
+	const state = turn?.status === "completed" ? "committed" : "live";
+	const key = JSON.stringify([
+		instanceId,
+		turnRecordId,
+		state,
+		reconnect,
+		state === "committed" ? detail.session.signature : null,
+	]);
+	if (observedReasoningKey === key) return;
+	observedReasoningKey = key;
+	untrack(() => {
+		void loadReasoningDetail(instanceId, turnRecordId, key);
+	});
+});
+
+const activeReasoningRequestState = $derived(activeReasoningRequest);
+function retryReasoningDetail() {
+	const turnRecordId = requestedReasoningDetailTurnRecordId;
+	if (turnRecordId && observedReasoningKey)
+		void loadReasoningDetail(instanceId, turnRecordId, observedReasoningKey);
 }
 const scheduledActionDetail = $derived($detailState.data?.scheduledAction ?? null);
 const isTerminalProcess = $derived.by(() => {
@@ -550,7 +564,7 @@ function openNextReasoningDetails() {
 					<button type="button" onclick={retryReasoningDetail}>Retry</button>
 				</div>
 			{:else if activeReasoningRequestState?.status === "loading"}
-				<p class="sr-only" role="status">Loading full reasoning details…</p>
+				<p class="reasoning-load-status" role="status">Loading reasoning…</p>
 			{/if}
 			<ChronicleReasoningDetailsOverlay
 				entry={activeReasoningDetail}
@@ -586,6 +600,13 @@ function openNextReasoningDetails() {
 		width: 100%;
 		height: 100%;
 		min-height: 0;
+	}
+
+	.reasoning-load-status {
+		margin: 0;
+		padding: var(--space-sm) var(--space-md);
+		font-size: var(--type-body-sm);
+		color: var(--chronicle-text-muted);
 	}
 
 	.reasoning-load-error {

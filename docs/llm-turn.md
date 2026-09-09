@@ -99,11 +99,13 @@ The detail view uses:
 
 1. `GET /api/processes/:instanceId/ui-snapshot` for initial and reconnect state;
 2. `primary_path.*` frames for live changes;
-3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` for one expanded completed turn.
+3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` for one expanded running or completed turn.
 
-The compact snapshot includes `rebuiltAt`. After a rebuild, the browser applies only buffered frames with a newer `sentAt`.
+Event ingestion atomically persists the event, its monotonic sequence, and a compact turn summary. The summary contains at most 1,024 characters each of recent reasoning and assistant text, current tool status, counts, usage, and `throughEventSequence`. It contains no trace items, tool arguments, or tool results.
 
-Raw `pi.*` frames are diagnostic compatibility data. The default detail view does not use them as its state model.
+Session-derived previews, prompt and continuation evidence are projected when snapshots are accepted and stored in SQLite. Startup backfills legacy projections outside page requests. A missing projection shows turn status until it is available. Initial page handling uses indexed summary lookups; it never replays live events or parses a session tree. These guarantees also apply after restart.
+
+An expanded live trace reads all recorded activity for the selected `turnRecordId`, including multiple LLM calls and operational events. Detail responses distinguish `live` and `committed` state and capture their event boundary before asynchronous work. The browser buffers `pi.*` frames during recovery and applies only later sequences once. Compact refreshes cannot shorten expanded history.
 
 ## Contract boundaries
 

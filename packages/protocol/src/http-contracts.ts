@@ -27,6 +27,7 @@ import {
 	type WorkerLease,
 } from "@leitwerk-dev/domain";
 import * as v from "valibot";
+import type { CompactActiveTurnSnapshot } from "./compact-turn-summary.js";
 import type {
 	ActionFormDefinition,
 	ActionFormFieldDefinition,
@@ -841,7 +842,11 @@ export interface ProcessUsageEstimateSnapshot {
 	isPartial: boolean;
 }
 
-export interface PrimaryPathUiSnapshot extends PrimaryPathSnapshot {
+export interface PrimaryPathUiSnapshot extends Omit<PrimaryPathSnapshot, "turnState"> {
+	throughEventSequence: number;
+	turnState: Omit<PrimaryPathSnapshot["turnState"], "activeTurn"> & {
+		activeTurn: CompactActiveTurnSnapshot | null;
+	};
 	entryCount: number;
 	entriesOmitted: true;
 }
@@ -928,6 +933,8 @@ export interface ProcessInstanceTreeResponseBody {
 }
 
 export interface TurnReasoningDetailResponseBody {
+	state: "live" | "committed";
+	throughEventSequence: number;
 	instanceId: string;
 	turnRecordId: string;
 	sessionSignature: string | null;

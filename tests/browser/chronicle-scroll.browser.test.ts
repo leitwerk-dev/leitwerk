@@ -1,6 +1,10 @@
 import { loadExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
-import { createDurableWsFrame, WS_PRIMARY_PATH_TYPES } from "@leitwerk-dev/protocol";
+import {
+	createDurableWsFrame,
+	createEphemeralWsFrame,
+	WS_PRIMARY_PATH_TYPES,
+} from "@leitwerk-dev/protocol";
 import type { AppContext } from "@leitwerk-dev/server";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";
@@ -509,17 +513,119 @@ function emitThinkingDelta(instanceId: string, runningTurnId: string, text: stri
 	if (!ctx) {
 		throw new Error("Server context not initialized");
 	}
-	ctx.broadcaster.sendEphemeral(
-		WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-		{
-			turnRecordId: runningTurnId,
-			piTurnId: "turn-reasoning",
-			text,
-			streamType: "thinking",
-			timestamp: new Date().toISOString(),
-		},
-		instanceId,
+	const data = {
+		turnRecordId: runningTurnId,
+		streamType: "thinking",
+		text,
+		timestamp: new Date().toISOString(),
+	};
+	const event = ctx.deps.events.create({ instanceId, eventType: "pi.stream.delta", data });
+	ctx.broadcaster.broadcast(
+		createEphemeralWsFrame({
+			type: "pi.stream.delta",
+			instanceId,
+			eventSequence: event.eventSequence,
+			payload: data,
+		}),
 	);
+	const summary = ctx.deps.turnSummaries.get(runningTurnId);
+	if (!summary) throw new Error("Expected persisted live summary");
+	ctx.broadcaster.broadcast(
+		createEphemeralWsFrame({
+			type: WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED,
+			instanceId,
+			eventSequence: event.eventSequence,
+			payload: { turnRecordId: runningTurnId, summary },
+		}),
+	);
+}
+
+for (const viewport of [
+	{ width: 1280, height: 900 },
+	{ width: 390, height: 844 },
+]) {
+	test(`lazy reasoning keeps four wrapped lines and independent controls at ${viewport.width}px`, async ({
+		page,
+	}) => {
+		await page.setViewportSize(viewport);
+		const { process, runningTurnId } = createReasoningLiveProcess(
+			`Lazy ${viewport.width}`,
+			`Original context.\n\n${"A long paragraph continues with readable reasoning. ".repeat(140)}`,
+		);
+		let detailRequests = 0;
+		page.on("request", (request) => {
+			if (request.url().includes("/reasoning?")) detailRequests++;
+		});
+		await page.goto(`/processes/${process.id}`);
+		const preview = page.locator('[data-section="live-tail"] .thinking-preview-copy');
+		await expect(preview).toBeVisible();
+		const expand = page.locator(
+			'[data-section="live-tail"] [data-action="open-reasoning-details"]',
+		);
+		await expand.hover();
+		expect(detailRequests).toBe(0);
+		const dimensions = await preview.evaluate((element) => {
+			const clip = element.getBoundingClientRect();
+			const tops = new Set<number>();
+			for (const span of element.querySelectorAll(".thinking-line")) {
+				const range = document.createRange();
+				range.selectNodeContents(span);
+				for (const rect of range.getClientRects()) {
+					if (rect.width > 0 && rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1)
+						tops.add(Math.round(rect.top));
+				}
+			}
+			return {
+				height: clip.height,
+				lineHeight: Number.parseFloat(getComputedStyle(element).lineHeight),
+				lines: tops.size,
+				overflow: getComputedStyle(element).overflowY,
+			};
+		});
+		expect(dimensions.lines).toBe(4);
+		expect(Math.abs(dimensions.height - 4 * dimensions.lineHeight)).toBeLessThan(1);
+		expect(dimensions.overflow).toBe("clip");
+		emitThinkingDelta(process.id, runningTurnId, "\n \n\nNew paragraph.");
+		await expect(preview).toContainText("New paragraph.");
+		expect(await preview.evaluate((element) => element.getBoundingClientRect().height)).toBe(
+			dimensions.height,
+		);
+		await preview
+			.locator("..")
+			.screenshot({ path: `/tmp/leitwerk-reasoning-preview-${viewport.width}.png` });
+
+		let release: () => void = () => {};
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let captured = false;
+		await page.route("**/reasoning?*", async (route) => {
+			const response = await route.fetch();
+			captured = true;
+			await gate;
+			await route.fulfill({ response });
+		});
+		await expand.click();
+		await expect(page.getByText("Loading reasoning…", { exact: true })).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Close reasoning details", exact: true }).last(),
+		).toBeEnabled();
+		await expect.poll(() => captured).toBe(true);
+		emitThinkingDelta(process.id, runningTurnId, "\nBuffered while loading.");
+		release();
+		const overlay = page.locator('[data-section="reasoning-details-overlay"]');
+		await expect(overlay).toContainText("Original context.");
+		await expect(overlay).toContainText("Buffered while loading.");
+		expect((await overlay.textContent())?.match(/Buffered while loading\./g)).toHaveLength(1);
+		await overlay.evaluate((element) => {
+			element.scrollTop = 100;
+			element.dispatchEvent(new Event("scroll"));
+		});
+		const readingPosition = await overlay.evaluate((element) => element.scrollTop);
+		emitThinkingDelta(process.id, runningTurnId, "\nFurther output.");
+		await expect(overlay).toContainText("Further output.");
+		expect(await overlay.evaluate((element) => element.scrollTop)).toBe(readingPosition);
+	});
 }
 
 async function getScrollMetrics(locator: Locator) {

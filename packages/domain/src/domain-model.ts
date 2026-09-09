@@ -663,6 +663,8 @@ export interface FutureExecution {
 }
 
 export interface ProcessEvent {
+	/** Persisted ingestion order. Absent only on legacy in-memory fixtures. */
+	eventSequence?: number;
 	id: string;
 	instanceId: string;
 	eventType: string;

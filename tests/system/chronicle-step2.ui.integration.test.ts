@@ -1,6 +1,5 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { describe, expect, it } from "vitest";
 import {
@@ -92,19 +91,6 @@ function setViewportMetric(element: Element, key: "clientHeight" | "scrollHeight
 	});
 }
 
-async function writeTreeFile(
-	treeFilesDir: string,
-	instanceId: string,
-	entries: readonly unknown[],
-) {
-	await mkdir(treeFilesDir, { recursive: true });
-	await writeFile(
-		path.join(treeFilesDir, `${instanceId}.jsonl`),
-		`${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-		"utf8",
-	);
-}
-
 describe("chronicle step 2 experience", () => {
 	it("renders structured chronicle sections and shows operator input without raw tool JSON dumps", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
@@ -146,7 +132,7 @@ describe("chronicle step 2 experience", () => {
 						endedAt: "2026-04-18T10:00:04.000Z",
 					});
 
-					await writeTreeFile(testApp.ctx.config.storage.tree_files_dir, process.id, [
+					await writeProcessSessionSnapshot(testApp.ctx, process.id, [
 						{
 							type: "session",
 							version: 3,

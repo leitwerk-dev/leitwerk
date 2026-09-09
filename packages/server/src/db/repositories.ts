@@ -1,4 +1,5 @@
 import { createApiTokenRepo } from "./api-token-repo.js";
+import { createTurnSummaryRepo } from "./turn-summary-repo.js";
 
 export * from "./api-token-repo.js";
 
@@ -61,6 +62,7 @@ import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 // ── Repository bundle ──
 
 export interface RepositoryBundle {
+	turnSummaries: ReturnType<typeof createTurnSummaryRepo>;
 	processes: ReturnType<typeof createProcessInstanceRepo>;
 	projects: ReturnType<typeof createProcessProjectRepo>;
 	questionRequests: ReturnType<typeof createProcessQuestionRequestRepo>;
@@ -97,6 +99,7 @@ export function createAllRepos(
 ): RepositoryBundle {
 	const credentialCipher = options.credentialCipher ?? createUnavailableCredentialCipher();
 	const bundle: RepositoryBundle = {
+		turnSummaries: createTurnSummaryRepo(db),
 		processes: createProcessInstanceRepo(db),
 		projects: createProcessProjectRepo(db),
 		questionRequests: createProcessQuestionRequestRepo(db),

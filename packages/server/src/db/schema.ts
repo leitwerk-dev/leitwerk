@@ -237,6 +237,8 @@ export const processEvents = sqliteTable(
 	"process_events",
 	{
 		id: text("id").primaryKey(),
+		eventSequence: integer("event_sequence").notNull(),
+		turnRecordId: text("turn_record_id"),
 		instanceId: text("instance_id")
 			.notNull()
 			.references(() => processInstances.id, { onDelete: "cascade" }),
@@ -247,7 +249,21 @@ export const processEvents = sqliteTable(
 	(t) => [
 		index("idx_process_events_instance").on(t.instanceId),
 		index("idx_process_events_instance_created").on(t.instanceId, t.createdAt),
+		index("idx_process_events_instance_sequence").on(t.instanceId, t.eventSequence),
 		index("idx_process_events_type").on(t.eventType),
+		uniqueIndex("uq_process_events_sequence").on(t.eventSequence),
+		index("idx_process_events_turn_sequence").on(t.instanceId, t.turnRecordId, t.eventSequence),
+		index("idx_process_events_turn_type_sequence").on(
+			t.instanceId,
+			t.turnRecordId,
+			t.eventType,
+			t.eventSequence,
+		),
+		index("idx_process_events_instance_type_sequence").on(
+			t.instanceId,
+			t.eventType,
+			t.eventSequence,
+		),
 	],
 );
 
@@ -815,3 +831,22 @@ export const apiTokens = sqliteTable(
 		index("idx_api_tokens_owner").on(t.ownerKind, t.ownerId),
 	],
 );
+
+export const turnSummaries = sqliteTable(
+	"turn_summaries",
+	{
+		turnRecordId: text("turn_record_id").primaryKey(),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		summaryJson: text("summary_json").notNull(),
+	},
+	(t) => [index("idx_turn_summaries_instance").on(t.instanceId)],
+);
+
+export const sessionSummaries = sqliteTable("session_summaries", {
+	instanceId: text("instance_id")
+		.primaryKey()
+		.references(() => processInstances.id, { onDelete: "cascade" }),
+	summaryJson: text("summary_json").notNull(),
+});
