@@ -373,6 +373,7 @@ const chronicleSelectableItems = $derived(
 	buildChronicleSelectableItems({
 		projection: chronicleProjection,
 		pendingRailItem,
+		externalWaitingTurnId: startupRecovery ? null : $detailState.data?.selectedTurn?.turnId,
 	}),
 );
 const terminalSummaryStatus = $derived.by((): ProcessTerminalStatus | null => {

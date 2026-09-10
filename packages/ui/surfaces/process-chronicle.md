@@ -1,6 +1,6 @@
 # Process chronicle surface
 
-Implemented in [ProcessDetailChronicle.svelte](../src/pages/process-detail/ProcessDetailChronicle.svelte) and the [chronicle components](../src/chronicle/components). Mode: Operate, with a Read flow for process history. This brief covers the chronicle and its decision composer. The page shell, navigation, and turn rail retain their existing design.
+Implemented in [ProcessDetailChronicle.svelte](../src/pages/process-detail/ProcessDetailChronicle.svelte) and the [chronicle components](../src/chronicle/components). Mode: Operate, with a Read flow for process history. This brief covers the chronicle, its decision composer, and the associated waiting state in the turn rail. The page shell and global navigation retain their existing design.
 
 ## Job and direction
 
@@ -16,6 +16,7 @@ The shared entry header establishes the sequence: icon, title and recorded metad
 - Completed reasoning shows an Expand reasoning control. Live reasoning can expose a short preview; open questions and their answer forms remain visible. These precede the final footer, where completed and live LLM cards offer Turn details through the existing reasoning overlay. Live stop controls also precede that footer.
 - Completed startup and preparation collapse by default. Startup retains readiness and completed-check counts in its header. Starting and failed startup attempts open their details; incomplete or failed turn progress stays visible. Expanding completed progress restores ordered checklist detail, while created-change links stay visible outside the disclosure.
 - The completed-card footer uses two top-aligned columns. Workspace prepared expands within the left column. Create issue and Turn details remain in the right column without changing position as preparation opens, at both desktop and mobile widths.
+- External waiting without an operator action belongs to the latest matching turn card. Its collapsed disclosure combines the event count and listener failures; expanded rows keep descriptions, status, and polling details together. The desktop rail and mobile Quick nav show one associated turn with Waiting for an event and an amber clock. It stays outside repeated history and navigates to the embedded disclosure. Scrolling through either the turn or its result selects the same rail row. A wait with no recorded turn remains a standalone section and navigation row.
 
 ## Decision composer
 

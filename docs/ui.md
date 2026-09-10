@@ -46,9 +46,15 @@ clock markers. Both keep stronger titles while the operator browses history.
 Future turns use neutral outlines. Failed turns retain an explicit error marker
 and label. Navigation selection is separate from the process's current state.
 
+External waiting belongs to its latest recorded turn in both the Chronicle and
+the rail. That row keeps the turn title and shows Waiting for an event with the
+amber clock. Selecting it reaches the embedded waiting disclosure. Scrolling
+through the turn or its result highlights the same row. A wait without a recorded
+turn keeps its own navigation row.
+
 Consecutive completed cycles fold into **Repeated Turns**, with the sequence,
 turn count, and elapsed time from the first start to the last finish. The latest
-result stays beside its pending decision. Failed and running turns never fold.
+result stays beside its pending decision. Failed, running, and waiting turns never fold.
 Expanding a group reveals ordinary turn rows on the same rail, within a box whose
 width stays fixed. The Chronicle retains the full history. Selecting a hidden
 turn from the Chronicle or its keyboard navigation expands the containing group.

@@ -48,6 +48,14 @@ describe("turn rail history", () => {
 		expect(rows.map((row) => row.kind)).toEqual(["item", "repeated", "item", "item"]);
 		expect(rows[1]).toMatchObject({ sequence: "Implement → Review", items: items.slice(1, 7) });
 	});
+	it("keeps the current waiting turn outside repeated history", () => {
+		const items = history(["Deliver", "Deliver", "Deliver"]);
+		items[2].status = "waiting";
+		const rows = buildChronicleRailRows(items);
+		expect(rows).toHaveLength(2);
+		expect(rows[0]).toMatchObject({ kind: "repeated", items: items.slice(0, 2) });
+		expect(rows[1]).toMatchObject({ kind: "item", item: items[2] });
+	});
 	it("keeps live, failed, and intervening action rows outside groups", () => {
 		const items = history(["Implement", "Review", "Implement", "Review", "Implement"]);
 		items[4].status = "in_progress";

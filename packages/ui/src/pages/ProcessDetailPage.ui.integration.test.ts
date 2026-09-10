@@ -2226,7 +2226,7 @@ describe("ProcessDetailPage", () => {
 		expect(metrics.getScrollTop()).toBe(480);
 	});
 
-	it("keeps external waiting inside its latest owning turn with one collapsed disclosure", async () => {
+	it("joins external waiting to its latest turn in the chronicle and desktop and mobile navigation", async () => {
 		const detail = createProcessDetail();
 		detail.process.selectedTurnId = "deliver_change";
 		detail.process.lifecycleStatus = "waiting";
@@ -2260,8 +2260,57 @@ describe("ProcessDetailPage", () => {
 				},
 			],
 		};
-		const { target } = await mountSubject(detail);
+		const { target, viewport } = await mountSubject(detail);
+		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_400 });
 		await flushUi();
+		installAnchorLayoutMetrics(target, {
+			"chronicle-prompt": { top: 0, height: 180 },
+			"chronicle-turn-trn_previous_delivery": { top: 500, height: 320 },
+			"chronicle-turn-trn_1": { top: 1_500, height: 900 },
+			"chronicle-action-section": { top: 2_300, height: 100 },
+		});
+		const rail = target.querySelector('[data-column="turn-rail"]');
+		const waitingTurn = rail?.querySelector<HTMLButtonElement>('[data-turn-record-id="trn_1"]');
+		expect(rail?.querySelectorAll('[data-turn-id="deliver_change"]')).toHaveLength(2);
+		expect(rail?.querySelector('[data-rail-kind="action"]')).toBeNull();
+		expect(waitingTurn?.dataset.state).toBe("waiting");
+		expect(waitingTurn?.querySelector(".rail-detail")?.textContent).toBe("Waiting for an event");
+		rail?.querySelector<HTMLButtonElement>('[data-rail-anchor-id="chronicle-prompt"]')?.click();
+		await flushUi();
+		expect(metrics.getScrollTop()).toBe(0);
+		waitingTurn?.click();
+		await flushUi();
+		expect(waitingTurn?.getAttribute("aria-current")).toBe("step");
+		expect(metrics.getScrollTop()).toBe(1_500);
+		waitingTurn?.focus();
+		waitingTurn?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+		await flushUi();
+		expect(document.activeElement?.getAttribute("data-turn-record-id")).toBe(
+			"trn_previous_delivery",
+		);
+		document.activeElement?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+		);
+		await flushUi();
+		expect(document.activeElement).toBe(waitingTurn);
+		expect(waitingTurn?.getAttribute("aria-current")).toBe("step");
+
+		const quickNav = target.querySelector<HTMLButtonElement>(
+			'[data-action="open-mobile-quick-nav"]',
+		);
+		quickNav?.click();
+		await flushUi();
+		const sheet = target.querySelector('[data-section="mobile-process-quick-nav"]');
+		expect(sheet?.querySelector('[data-rail-kind="action"]')).toBeNull();
+		const mobileWaitingTurn = sheet?.querySelector<HTMLButtonElement>(
+			'[data-turn-record-id="trn_1"]',
+		);
+		expect(mobileWaitingTurn?.dataset.state).toBe("waiting");
+		mobileWaitingTurn?.click();
+		await flushUi();
+		expect(target.querySelector('[data-section="mobile-process-quick-nav"]')).toBeNull();
+		expect(document.activeElement).toBe(quickNav);
+		expect(metrics.getScrollTop()).toBe(1_500);
 		const waiting = target.querySelector('[data-section="leaf-outcome-actions"]');
 		expect(target.querySelectorAll('[data-section="leaf-outcome-actions"]')).toHaveLength(1);
 		expect(

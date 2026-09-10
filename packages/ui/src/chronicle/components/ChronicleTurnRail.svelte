@@ -116,19 +116,21 @@ function handleGroupKeydown(event: KeyboardEvent, group: ChronicleRepeatedTurns)
 }
 
 function itemState(item: ChronicleSelectableItem): string {
-	if (item.kind === "turn")
+	if (item.kind === "turn") {
+		if (item.status === "waiting") return "waiting";
 		return item.status === "in_progress"
 			? "live"
 			: item.shape === "square"
 				? "failed"
 				: "completed";
+	}
 	if (item.kind === "terminal") return item.terminalStatus;
 	if (item.kind === "action") return item.tone === "error_recovery" ? "failed" : "waiting";
 	return "prompt";
 }
 
 function itemDetail(item: ChronicleSelectableItem): string | null {
-	if (item.kind !== "turn") return item.detail;
+	if (item.kind !== "turn" || item.status === "waiting") return item.detail;
 	const record = records.get(item.turnRecordId);
 	const elapsed = formatRailElapsed(record?.startedAt, record?.endedAt);
 	const state = itemState(item);
