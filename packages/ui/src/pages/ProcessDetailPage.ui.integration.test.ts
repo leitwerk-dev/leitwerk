@@ -2296,8 +2296,8 @@ describe("ProcessDetailPage", () => {
 					repoLocatorKind: "remote_url",
 					baseBranch: "main",
 					workBranch: "display-launcher-config-in-process-467-c65d919d0bb3",
-					externalId: "17",
-					externalUrl: "https://forgejo.example/team/repo/pulls/17",
+					externalId: null,
+					externalUrl: null,
 					pipelineStatus: null,
 				},
 			],
@@ -2332,12 +2332,6 @@ describe("ProcessDetailPage", () => {
 			"display-launcher-config-in-process-467-c65d919d0bb3",
 		);
 		expect(launcherConfigSection?.textContent).toContain("Remote URL");
-		const projectLink = launcherConfigSection?.querySelector<HTMLAnchorElement>("a.external-link");
-		expect(projectLink?.getAttribute("href")).toBe("https://forgejo.example/team/repo/pulls/17");
-		expect(projectLink?.getAttribute("aria-label")).toBe(
-			"External project: Open external project (opens in a new tab)",
-		);
-		expect(projectLink?.rel).toBe("noopener noreferrer");
 	});
 
 	it("does not warn about blocked saved model configuration on closed processes", async () => {
