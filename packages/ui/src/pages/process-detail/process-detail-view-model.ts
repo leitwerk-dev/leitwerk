@@ -114,8 +114,8 @@ export function buildPendingRailItem(input: {
 	if (availableActions.length > 0) {
 		return {
 			label: "Operator decision",
-			title: "Decide what happens next",
-			detail: selectedTurnDescription,
+			title: selectedTurnDescription ?? "Decide what happens next",
+			detail: "Awaiting your decision",
 			tone: "operator_decision",
 		};
 	}

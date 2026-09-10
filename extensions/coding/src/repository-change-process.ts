@@ -201,7 +201,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	}
 
 	const planDecisionSpec = humanTurn<TParams, RepositoryChangeState>({
-		description: "Review plan",
+		description: "Review Plan",
 		reviewSemanticRef: "plan",
 		notesFields: [
 			{
@@ -267,7 +267,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	});
 
 	const planReviewFeedbackSpec = humanTurn<TParams, RepositoryChangeState>({
-		description: "Review plan feedback",
+		description: "Review Plan Feedback",
 		reviewSemanticRef: "review",
 		notesFields: [
 			{
@@ -311,7 +311,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	});
 
 	const implementationDecisionSpec = humanTurn<TParams, RepositoryChangeState>({
-		description: "Review implementation",
+		description: "Review",
 		reviewSemanticRef: "currentPrimaryPathLeaf",
 		notesFields: [
 			{
@@ -504,7 +504,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const generatePlanTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generatePlan)
-		.description("Draft plan")
+		.description("Plan")
 		.tools("read", "bash")
 		.askQuestions()
 		.freshPrimary()
@@ -561,7 +561,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const reviewPlanTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewPlan)
-		.description("Review plan")
+		.description("Assess Plan")
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
@@ -585,7 +585,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const implementTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.implement)
-		.description("Implement change")
+		.description("Implement")
 		.tools(...implementationTurnAvailableTools)
 		.freshSeededPrimary()
 		.continueFromProductBranch(products.simplificationPlan, {
@@ -601,7 +601,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const reviewImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewImplementation)
-		.description("Review implementation")
+		.description("Assess Implementation")
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
@@ -624,7 +624,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const simplifyImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.simplifyImplementation)
-		.description("Simplify implementation")
+		.description("Simplify")
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromProductBranch(products.simplificationPlan)
@@ -634,7 +634,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 
 	const generateCommitMessageTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generateCommitMessage)
-		.description("Generate commit message")
+		.description("Write Commit Message")
 		.modelPurpose("process_title_generation")
 		.rootBranchReview()
 		.startFromRoot()

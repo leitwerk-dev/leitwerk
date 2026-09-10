@@ -53,10 +53,11 @@ import {
 import type { SessionSummary } from "./db/turn-summary-repo.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
-import { buildProcessFlowViewForProcess } from "./process-graph.js";
+import { buildProcessFlowViewForProcess, getProcessGraph } from "./process-graph.js";
 import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js";
 import { presentProcessModelConfiguration } from "./process-model-policy-presenter.js";
 import { getProcessDisplayName } from "./process-operator-attention.js";
+import { presentProcessTurnNavigation } from "./process-turn-navigation.js";
 import {
 	buildCommittedTurnTrace,
 	buildTurnTracePreviewsFromSession,
@@ -1211,9 +1212,17 @@ export class ProcessUiSnapshotAssembler {
 			activeModelProfileId: modelConfiguration.effectiveSelectedTurn?.modelProfileId ?? null,
 		});
 		const runDetails = buildProcessRunDetailsView(this.deps, process, projects);
+		const navigation = presentProcessTurnNavigation({
+			graph: getProcessGraph(this.deps.processGraphs, process.processId),
+			turns: projections.timeline.turns,
+			selectedTurnId: process.selectedTurnId,
+			lifecycleStatus: process.lifecycleStatus,
+		});
 
 		return {
 			...projections,
+			timeline: { ...projections.timeline, turns: navigation.turns },
+			plannedNextTurn: navigation.plannedNextTurn,
 			instanceTree: presentProcessInstanceTree({
 				process,
 				turnRecords,

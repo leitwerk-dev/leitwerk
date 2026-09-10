@@ -28,12 +28,35 @@ The Leitwerk user interface provides real-time visibility and steering control o
 The process detail view is organized into three distinct visual regions:
 
 - **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
-- **Turn Rail:** Right-hand outline listing completed turns, active execution leaves, and declared future turns for jumping directly to specific steps.
+- **Turn Rail:** Vertical navigation beside the Chronicle, listing completed turns, current work, and its next turn on the declared happy path. Narrow viewports open the same rail in the process navigation sheet.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
 
 Turn input details include user messages and Pi custom messages (including
 identified Leitwerk prompts). Custom-message details stay outside the displayed
 input, just as they stay outside model context.
+
+The UI snapshot supplies turn labels from the owning process definition and a
+`plannedNextTurn` from its declared happy path, including human decisions.
+Recorded outcomes retain the action that was taken. Completed human turns show
+the recorded decision, such as Approved or Adjust, beside their elapsed time.
+Turns without a recorded decision use Completed. Completed turns use circular
+check markers. Running turns use filled blue markers; current
+turns awaiting a decision, external update, or scheduled action use filled amber
+clock markers. Both keep stronger titles while the operator browses history.
+Future turns use neutral outlines. Failed turns retain an explicit error marker
+and label. Navigation selection is separate from the process's current state.
+
+Consecutive completed cycles fold into **Repeated Turns**, with the sequence,
+turn count, and elapsed time from the first start to the last finish. The latest
+result stays beside its pending decision. Failed and running turns never fold.
+Expanding a group reveals ordinary turn rows on the same rail, within a box whose
+width stays fixed. The Chronicle retains the full history. Selecting a hidden
+turn from the Chronicle or its keyboard navigation expands the containing group.
+Scrolling or navigating to a turn outside that group collapses it again;
+moving between turns within the group keeps it open. Returning to the group
+reveals its history again.
+Arrow keys move through visible rail controls; Enter or Space toggles a group,
+and Left or Right collapses or expands it.
 
 ### Route scroll ownership
 

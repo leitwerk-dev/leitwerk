@@ -63,3 +63,7 @@ The file provider polls armed file sources. It maps the process definition's def
 ## Browser assets
 
 The source lane loads `src/ui/manifest.json` and lets Vite transform the custom-element sources directly. The dist build publishes the import manifest and bundles under `dist/ui`; run `npm run build:ext-ui` when validating those production assets. Both lanes expose the modules through `/ext-ui/...`.
+
+Turn labels stay concise: Run Prompt for single-prompt work, and Draft Poem,
+Review, Assess Poem, and Review Feedback for the poem process. The human
+review and automated assessment remain distinct; turn ids and routing are unchanged.

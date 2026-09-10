@@ -520,6 +520,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	.desktop-turn-rail {
+		display: flex;
 		min-width: 0;
 		min-height: 0;
 	}
@@ -654,9 +655,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			max-height: min(72svh, 48rem);
 		}
 
-	}
-
-	@media (max-width: 720px) {
 		.ticket-selection-action {
 			left: var(--space-sm);
 			right: var(--space-sm);
@@ -788,7 +786,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 		.mobile-quick-nav-rail :global(.rail-track) {
 			flex-direction: column;
-			gap: 2px;
+			gap: var(--space-2xs);
 			width: 100%;
 			min-width: 0;
 		}
@@ -800,7 +798,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		.mobile-quick-nav-rail :global(.rail-item) {
 			min-width: 0;
 			scroll-snap-align: none;
-			padding: 6px var(--space-xs);
+			padding: var(--space-xs);
 		}
 
 		.mobile-quick-nav-utilities {

@@ -3031,7 +3031,8 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(failedTurnButton).toBeTruthy();
 		expect(recoveryButton).toBeTruthy();
-		expect(failedTurnButton?.querySelector(".rail-marker")?.textContent?.trim()).toBe("2");
+		expect(failedTurnButton?.dataset.state).toBe("failed");
+		expect(failedTurnButton?.querySelector(".rail-detail")?.textContent).toContain("Failed");
 		expect(recoveryButton?.querySelector(".rail-title")?.textContent).toContain("Implement Fix");
 	});
 
