@@ -22,7 +22,7 @@ describe("ChronicleTurnProgress", () => {
 				{
 					id: "pr-12",
 					label: "PR #12",
-					url: "https://forgejo.example/team/repo/pulls/12",
+					url: "https://codehost.example/team/repo/pulls/12",
 					kind: "pull_request",
 				},
 				{

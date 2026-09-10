@@ -18,7 +18,7 @@ describe("external links", () => {
 		["./history", false],
 		["/processes/agt_2", false],
 		["https://leitwerk.example/account", false],
-		["https://forgejo.example/jonas/vocabelle/issues/6", true],
+		["https://codehost.example/jonas/vocabelle/issues/6", true],
 		["mailto:operator@example.com", true],
 	] as const)("classifies %s", (href, expected) => {
 		expect(isExternalHref(href, BASE_URI)).toBe(expected);
@@ -34,7 +34,7 @@ describe("external links", () => {
 
 	it("decorates external anchors idempotently", () => {
 		const link = document.createElement("a");
-		link.href = "https://forgejo.example/pulls/12";
+		link.href = "https://codehost.example/pulls/12";
 		link.textContent = "PR #12";
 
 		decorateExternalLink(link);
