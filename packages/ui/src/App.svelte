@@ -226,6 +226,37 @@ $effect(() => {
 		box-shadow: 0 0 0 4px color-mix(in srgb, var(--chronicle-accent) 16%, transparent 84%);
 	}
 
+	:global(a.external-link) {
+		color: var(--chronicle-link);
+		font-weight: 600;
+		text-decoration-line: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 3px;
+	}
+
+	:global(a.external-link:hover) {
+		text-decoration-thickness: 2px;
+	}
+
+	:global(.external-link-icon) {
+		display: inline-block;
+		margin-inline-start: 0.3em;
+		font-size: 0.9em;
+		line-height: 1;
+	}
+
+	:global(.external-link-a11y) {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
 	:global(::selection) {
 		background: color-mix(in srgb, var(--chronicle-accent) 18%, white 82%);
 	}

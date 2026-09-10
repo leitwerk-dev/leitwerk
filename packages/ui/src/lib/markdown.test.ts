@@ -30,8 +30,10 @@ describe("renderMarkdownToHtml", () => {
 
 		expect(html).toContain("<strong>done</strong>");
 		expect(html).toContain(
-			'<a href="https://example.com" target="_blank" rel="noopener noreferrer">link</a>',
+			'<a href="https://example.com" class="external-link" target="_blank" rel="noopener noreferrer">link',
 		);
+		expect(html).toContain('<span class="external-link-icon" aria-hidden="true">↗</span>');
+		expect(html).toContain("opens in a new tab");
 		expect(html).not.toContain("<script>");
 		expect(html).not.toContain("alert(1)");
 	});
@@ -58,21 +60,22 @@ describe("renderMarkdownToHtml", () => {
 		expect(html).toContain("<code>&lt;br&gt;</code>");
 	});
 
-	it("opens sanitized links to other pages in a new window", () => {
+	it("distinguishes sanitized external links from internal navigation", () => {
 		const html = normalizeHtml(
 			renderMarkdownToHtml(
-				"[safe](https://example.com) [unsafe](javascript:alert(1)) [ftp](ftp://example.com) [rel](./x)",
+				"[safe](https://example.com) [unsafe](javascript:alert(1)) [ftp](ftp://example.com) [rel](./x) [same origin](/processes/agt_2)",
 			),
 		);
 
 		expect(html).toContain(
-			'<a href="https://example.com" target="_blank" rel="noopener noreferrer">safe</a>',
+			'<a href="https://example.com" class="external-link" target="_blank" rel="noopener noreferrer">safe',
 		);
 		expect(html).toContain("[unsafe](javascript:alert(1))");
 		expect(html).toContain(
-			'<a href="ftp://example.com" target="_blank" rel="noopener noreferrer">ftp</a>',
+			'<a href="ftp://example.com" class="external-link" target="_blank" rel="noopener noreferrer">ftp',
 		);
-		expect(html).toContain('<a href="./x" target="_blank" rel="noopener noreferrer">rel</a>');
+		expect(html).toContain('<a href="./x">rel</a>');
+		expect(html).toContain('<a href="/processes/agt_2">same origin</a>');
 		expect(html).not.toContain('href="javascript:alert(1)"');
 	});
 
@@ -87,6 +90,16 @@ describe("renderMarkdownToHtml", () => {
 		expect(html).toContain('<a href="#">Top</a>');
 		expect(html).toContain('<a href="#notes">Notes</a>');
 		expect(html).not.toContain('target="_blank"');
+	});
+
+	it("removes author-supplied new-tab behavior from same-origin links", () => {
+		const html = normalizeHtml(
+			renderMarkdownToHtml(
+				'<a href="/account/api-tokens" target="_blank" rel="noreferrer">Tokens</a>',
+			),
+		);
+		expect(html).toContain('<a href="/account/api-tokens">Tokens</a>');
+		expect(html).not.toContain("external-link");
 	});
 
 	it("strips resource-loading media elements from markdown output", () => {

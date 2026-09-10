@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { ProcessLifecycleStatus } from "@leitwerk-dev/domain";
+import ExternalLink from "../../components/ExternalLink.svelte";
 import PageHeader from "../../components/PageHeader.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type { ProcessDetailData } from "../../lib/api.js";
@@ -24,7 +25,15 @@ const header = $derived.by(() => {
 	const title = detail.process.title ?? detail.process.externalId ?? detail.process.id;
 	const processDisplayName =
 		detail.processDisplayName?.trim() || formatDefinition(detail.process.processId);
-	return { title, processDisplayName: title === processDisplayName ? null : processDisplayName };
+	return {
+		title,
+		processDisplayName: title === processDisplayName ? null : processDisplayName,
+		externalUrl: detail.process.externalUrl,
+		externalLabel:
+			detail.process.externalId && detail.process.externalId !== title
+				? `${title} (${detail.process.externalId})`
+				: title,
+	};
 });
 
 const status = $derived.by(() => {
@@ -50,6 +59,18 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 </script>
 
 <PageHeader title={header.title} {titleId} compactOnMobile={true}>
+	{#snippet titleContent()}
+		{#if header.externalUrl}
+			<ExternalLink
+				href={header.externalUrl}
+				label={header.title}
+				resourceType="issue"
+				accessibleLabel={header.externalLabel}
+			/>
+		{:else}
+			<span>{header.title}</span>
+		{/if}
+	{/snippet}
 	{#snippet titleSuffix()}
 		{#if header.processDisplayName}
 			<span class="page-header-process-name"> · {header.processDisplayName}</span>

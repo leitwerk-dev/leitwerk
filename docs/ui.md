@@ -18,8 +18,12 @@ The process detail view is organized into three distinct visual regions:
 
 Process detail is a workspace route. Its `RouteViewport` remains contained so the Chronicle can own timeline scrolling.
 
-Markdown fragment links such as `#details` navigate within the current page. Links to other pages
-open a new tab with `noopener noreferrer`.
+Fragment, relative, and same-origin links navigate in the current tab. Cross-origin links use the
+shared external-link presentation: a visible external marker, an accessible resource label and
+new-tab announcement, `target="_blank"`, and `rel="noopener noreferrer"`. Resource labels distinguish
+issues, pull requests, merge requests, and other known destinations. Managed result images are an
+intentional same-origin exception: opening the full image uses a secured new tab without marking the
+artifact as external.
 
 ---
 
