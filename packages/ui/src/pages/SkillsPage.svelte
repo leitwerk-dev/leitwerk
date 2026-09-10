@@ -648,14 +648,15 @@ $effect(() => {
 	.repository-modal-header { padding-right: var(--space-2xl); }
 	.repository-modal-header h2 { margin: 0; font-size: var(--type-title-md); }
 	.repository-modal-header p { margin: 4px 0 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); }
-	.repository-modal-list { flex: 1 1 auto; overflow-y: auto; display: grid; gap: var(--space-sm); padding-right: 2px; }
-	.repository-card { display: grid; gap: var(--space-xs); padding: var(--space-md); border: 1px solid var(--chronicle-border); border-radius: var(--radius-md); background: var(--chronicle-panel-muted); }
+	.repository-modal-list { flex: 1 1 auto; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-sm); padding-right: 2px; }
+	.repository-card { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-xs); padding: var(--space-md); border: 1px solid var(--chronicle-border); border-radius: var(--radius-md); background: var(--chronicle-panel-muted); overflow-wrap: anywhere; }
 	.repository-card.error { border-color: var(--chronicle-danger-border); background: var(--chronicle-danger-surface-soft); }
-	.repository-card-header { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
+	.repository-card-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 	.repository-card-header strong { color: var(--chronicle-text); font-size: var(--type-body); font-weight: 650; }
 	.repository-sync-chip { font-size: var(--type-caption); color: var(--chronicle-text-muted); font-weight: 600; }
 	.repository-sync-chip.error-chip { color: var(--chronicle-danger-text); }
-	.repository-card-meta { display: grid; grid-template-columns: 1fr auto auto; gap: var(--space-xs) var(--space-md); margin: 0; }
+	.repository-card-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-xs) var(--space-md); margin: 0; }
+	.repository-card-meta > div:first-child { grid-column: 1 / -1; }
 	.repository-card-meta dt { color: var(--chronicle-text-faint); font-size: var(--type-caption); }
 	.repository-card-meta dd { margin: 2px 0 0; font-size: var(--type-body-sm); color: var(--chronicle-text); }
 	.repository-card-error { margin: 0; color: var(--chronicle-danger-text); font-size: var(--type-body-sm); word-break: break-word; }

@@ -5,6 +5,8 @@ consistent typography, and visible keyboard focus. Confirmation buttons name
 what they do. Process information and reasoning use the same header scale and
 Close control. Modal dialogs retain the user's input after a failed request;
 issue creation explains that it starts a draft for review before publication.
+Reasoning sections and repository details stay within the dialog width. Long
+arguments, error messages, repository URLs, and paths wrap on narrow screens.
 
 Startup history and turn progress use `ProgressChecklist`; the launch checklist
 uses the same `ProgressChecklistRows`. Rows preserve their recorded order,
