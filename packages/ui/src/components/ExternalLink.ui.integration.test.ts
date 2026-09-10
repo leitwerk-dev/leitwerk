@@ -19,7 +19,7 @@ describe("ExternalLink", () => {
 		mounted = mount(ExternalLink, {
 			target: document.body,
 			props: {
-				href: "https://forgejo.example/jonas/vocabelle/issues/6",
+				href: "https://codehost.example/jonas/vocabelle/issues/6",
 				label: "jonas/vocabelle#6",
 				resourceType: "issue",
 			},
