@@ -6,6 +6,7 @@ interface Props {
 	titleId?: string;
 	subtitle?: string | null;
 	actions?: Snippet;
+	titleContent?: Snippet;
 	titleSuffix?: Snippet;
 	compactOnMobile?: boolean;
 }
@@ -15,6 +16,7 @@ let {
 	titleId = undefined,
 	subtitle = null,
 	actions,
+	titleContent,
 	titleSuffix,
 	compactOnMobile = false,
 }: Props = $props();
@@ -28,7 +30,11 @@ let {
 	<div class="page-header-row">
 		<div class="page-header-copy">
 			<h1 id={titleId}>
-				<span>{title}</span>
+				{#if titleContent}
+					{@render titleContent()}
+				{:else}
+					<span>{title}</span>
+				{/if}
 				{#if titleSuffix}
 					{@render titleSuffix()}
 				{/if}

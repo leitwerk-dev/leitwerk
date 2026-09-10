@@ -295,7 +295,7 @@ async function handleAbortAndRetry() {
 
 function handleDownloadSession() {
 	const url = resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/session`);
-	window.open(url, "_blank");
+	window.open(url, "_blank", "noopener,noreferrer");
 	closeMenu();
 }
 </script>

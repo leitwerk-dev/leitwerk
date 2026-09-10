@@ -75,6 +75,8 @@ describe("rich Markdown elements", () => {
 		const image = link?.querySelector<HTMLImageElement>("img");
 		expect(link?.getAttribute("href")).toBe(MANAGED_IMAGE);
 		expect(link?.getAttribute("target")).toBe("_blank");
+		expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+		expect(link?.classList.contains("external-link")).toBe(false);
 		expect(image?.getAttribute("src")).toBe(MANAGED_IMAGE);
 		expect(image?.alt).toBe("Evidence");
 	});
