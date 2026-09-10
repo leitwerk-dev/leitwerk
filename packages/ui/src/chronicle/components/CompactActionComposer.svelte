@@ -5,9 +5,16 @@ import { type ActionSectionController, findQuickActionField } from "../lib/actio
 interface Props {
 	actionSectionController: ActionSectionController;
 	onOpenDetails: (actionId: string) => void;
+	decisionTitle?: string | null;
+	onViewContext?: () => void;
 }
 
-let { actionSectionController: actionBindings, onOpenDetails }: Props = $props();
+let {
+	actionSectionController: actionBindings,
+	onOpenDetails,
+	decisionTitle,
+	onViewContext,
+}: Props = $props();
 
 let fieldError = $state<{
 	actionId: string;
@@ -115,6 +122,10 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 		data-section="compact-action-composer"
 		aria-label="Choose the next action"
 	>
+		<div class="composer-heading">
+			<p><svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2" y="2" width="16" height="16" rx="4" /><path d="M10 5v6m0 3h.01" /></svg><strong>Waiting for your decision</strong>{#if decisionTitle}<span class="decision-title">· {decisionTitle}</span>{/if}</p>
+			{#if onViewContext}<button type="button" class="view-context" onclick={onViewContext}>View context</button>{/if}
+		</div>
 		<form
 			class="composer-form"
 			class:without-options={!hasAdvancedOptions}
@@ -197,11 +208,20 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 	.compact-action-composer {
 		container-type: inline-size;
 		flex: 0 0 auto;
-		padding: var(--space-sm) var(--space-md) max(var(--space-sm), env(safe-area-inset-bottom));
-		border-top: 1px solid var(--chronicle-border);
-		background: var(--chronicle-panel-surface);
+		padding: var(--space-sm) var(--space-sm) max(var(--space-sm), env(safe-area-inset-bottom));
+		border: 1px solid var(--chronicle-border);
+		border-radius: 10px;
+		background: var(--chronicle-card-surface-strong);
 		animation: composer-enter var(--duration-fast) var(--ease-out-quart);
 	}
+
+	.composer-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+	.composer-heading p { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: var(--type-body-sm); line-height: 1.4; color: var(--chronicle-text); }
+	.composer-heading svg { color: var(--chronicle-attention); flex-shrink: 0; }
+	.composer-heading strong { font-weight: 650; }
+	.decision-title { color: var(--chronicle-text-muted); }
+	.view-context { flex-shrink: 0; min-height: 28px; padding: 3px 0; border: 0; border-radius: 4px; background: transparent; color: var(--chronicle-accent); font: inherit; font-size: var(--type-body-sm); cursor: pointer; }
+	.view-context:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 	.composer-form {
 		display: grid;
@@ -223,8 +243,8 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 	.action-picker label,
 	.feedback-field label {
 		color: var(--chronicle-text-muted);
-		font-size: var(--type-body);
-		font-weight: 620;
+		font-size: var(--type-body-sm);
+		font-weight: 400;
 		line-height: 1.2;
 	}
 
@@ -232,8 +252,8 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 	.feedback-field,
 	.action-context {
 		min-height: 48px;
-		border: 1px solid var(--chronicle-border-strong);
-		border-radius: var(--radius-md);
+		border: 1px solid var(--chronicle-border);
+		border-radius: 10px;
 		background: var(--chronicle-panel-surface);
 		color: var(--chronicle-text);
 	}
@@ -323,9 +343,9 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 
 	.options-button,
 	.submit-button {
-		min-height: 44px;
+		min-height: 48px;
 		padding: 0 var(--space-md);
-		border-radius: 999px;
+		border-radius: 10px;
 		font-size: var(--type-body);
 		font-weight: 620;
 		cursor: pointer;
@@ -335,7 +355,7 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 	.options-button {
 		grid-column: 3;
 		grid-row: 1;
-		border: 1px solid var(--chronicle-border-strong);
+		border: 1px solid var(--chronicle-border);
 		background: var(--chronicle-panel-surface);
 		color: var(--chronicle-text-muted);
 	}
@@ -377,7 +397,7 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 
 	@container (min-width: 620px) {
 		.composer-form {
-			grid-template-columns: minmax(136px, 160px) minmax(220px, 1fr) auto auto;
+			grid-template-columns: minmax(100px, 120px) minmax(180px, 1fr) auto auto;
 		}
 
 		.feedback-field,

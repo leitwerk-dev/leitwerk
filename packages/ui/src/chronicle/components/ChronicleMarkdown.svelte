@@ -16,10 +16,10 @@ let { markdown, className = "" }: Props = $props();
 
 <style>
 	.chronicle-markdown {
-		max-width: 58ch;
+		max-width: 72ch;
 		color: var(--chronicle-text);
 		font-size: var(--type-body);
-		line-height: 1.68;
+		line-height: 1.6;
 		overflow-wrap: anywhere;
 	}
 
@@ -52,7 +52,7 @@ let { markdown, className = "" }: Props = $props();
 	.chronicle-markdown :global(ul),
 	.chronicle-markdown :global(ol),
 	.chronicle-markdown :global(blockquote) {
-		max-width: 58ch;
+		max-width: 72ch;
 	}
 
 	.chronicle-markdown :global(p),
@@ -61,7 +61,7 @@ let { markdown, className = "" }: Props = $props();
 	.chronicle-markdown :global(blockquote),
 	.chronicle-markdown :global(pre),
 	.chronicle-markdown :global(table) {
-		margin: 0 0 14px;
+		margin: 0 0 10px;
 	}
 
 	.chronicle-markdown :global(ul),
@@ -70,7 +70,7 @@ let { markdown, className = "" }: Props = $props();
 	}
 
 	.chronicle-markdown :global(li + li) {
-		margin-top: 8px;
+		margin-top: 4px;
 	}
 
 	.chronicle-markdown :global(blockquote) {
@@ -121,7 +121,7 @@ let { markdown, className = "" }: Props = $props();
 
 	.chronicle-markdown :global([data-result-image]) {
 		display: block;
-		margin: 0 0 14px;
+		margin: 0 0 10px;
 	}
 
 	.chronicle-markdown :global([data-result-image] a) {

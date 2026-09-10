@@ -34,6 +34,7 @@ const lines = $derived(splitChronicleLines(text, { trim }));
 	.thinking-copy[data-variant="preview"] {
 		display: grid;
 		gap: 0;
+		line-height: inherit;
 		max-width: 64ch;
 		color: color-mix(in srgb, var(--chronicle-text-muted) 82%, var(--chronicle-text) 18%);
 	}

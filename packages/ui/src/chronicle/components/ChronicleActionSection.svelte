@@ -603,7 +603,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		padding: var(--space-lg) var(--space-xl);
 		margin-inline-start: 0;
 		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 30%, var(--chronicle-border) 70%);
-		border-radius: var(--radius-lg);
+		border-radius: 10px;
 		background: color-mix(in srgb, white 94%, var(--chronicle-accent-soft) 6%);
 		scroll-margin-top: var(--space-xl);
 	}
@@ -643,28 +643,13 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		justify-content: flex-end;
 	}
 
-	.action-status-row {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		width: fit-content;
-		min-height: 28px;
-		padding: 0 10px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 34%, var(--chronicle-border) 66%);
-		border-radius: 999px;
-		background: color-mix(in srgb, white 86%, var(--chronicle-accent-soft) 14%);
-		color: color-mix(in srgb, var(--chronicle-accent) 76%, var(--chronicle-text) 24%);
-		font-size: 12px;
-		font-weight: 780;
-		line-height: 1;
-	}
+	.action-status-row { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--chronicle-attention); font-size: var(--type-body-sm); font-weight: 600; line-height: 1.4; }
 
 	.action-status-dot {
 		width: 8px;
 		height: 8px;
 		border-radius: 999px;
-		background: var(--chronicle-accent);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--chronicle-accent) 14%, transparent 86%);
+		background: var(--chronicle-attention);
 	}
 
 	.action-section[data-action-state="external-trigger"] .action-status-row {
@@ -682,7 +667,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	.action-form-header h4 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 19px;
+		font-size: 16px;
 		line-height: 1.22;
 		font-weight: 720;
 		color: var(--chronicle-text);

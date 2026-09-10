@@ -100,3 +100,29 @@ export function resolveScrollTargetLayout(
 	const anchorLayout = readScrollableElementLayout(viewport, anchorElement);
 	return anchorLayout ? { ...anchorLayout, align: "focus" } : null;
 }
+
+/** Keep the narrow chronicle and its composer inside the visible viewport. */
+export function fitChronicleToViewport(element: HTMLElement) {
+	const resize = () => {
+		if (window.innerWidth > 1024) {
+			element.style.removeProperty("max-height");
+			return;
+		}
+		const viewport = window.visualViewport;
+		const bottom = viewport ? viewport.height + viewport.offsetTop : window.innerHeight;
+		const available = bottom - element.getBoundingClientRect().top - 14;
+		element.style.maxHeight = `${Math.max(240, available)}px`;
+	};
+	const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
+	if (element.parentElement?.parentElement) observer?.observe(element.parentElement.parentElement);
+	window.addEventListener("resize", resize);
+	window.visualViewport?.addEventListener("resize", resize);
+	resize();
+	return {
+		destroy() {
+			observer?.disconnect();
+			window.removeEventListener("resize", resize);
+			window.visualViewport?.removeEventListener("resize", resize);
+		},
+	};
+}

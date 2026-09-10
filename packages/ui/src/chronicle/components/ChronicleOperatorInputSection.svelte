@@ -1,8 +1,7 @@
 <script lang="ts">
-import { formatRelativeTime } from "../../lib/format";
 import type { ChronicleOperatorInputItem } from "../lib/chronicle-projection.js";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
-import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
 
 interface Props {
 	section: ChronicleOperatorInputItem;
@@ -17,25 +16,13 @@ let { section }: Props = $props();
 	data-input-id={section.inputId}
 	data-input-source={section.source}
 >
-	<ChronicleSectionHeader label={section.sourceLabel} meta={formatRelativeTime(section.receivedAt)} />
+	<ChronicleEntryHeader title={section.sourceLabel} kind="operator" timestamp={section.receivedAt} />
 
 	<ChronicleMarkdown markdown={section.bodyMarkdown} className="operator-input-markdown" />
 </section>
 
 <style>
-	.operator-input {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		padding: 14px 0 16px;
-		margin-inline-start: var(--chronicle-secondary-indent, clamp(24px, 4vw, 48px));
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		background: transparent;
-	}
-
-	@media (max-width: 720px) {
-		.operator-input {
-			margin-inline-start: 0;
-		}
-	}
+	.operator-input { display: grid; gap: 6px; padding: 10px 14px; border: 1px solid var(--chronicle-border); border-radius: 10px; background: var(--chronicle-card-surface-strong); scroll-margin-top: var(--space-sm); }
+	.operator-input :global(.chronicle-markdown) { padding-inline-start: 42px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); }
+	@media (max-width: 540px) { .operator-input { padding: 10px; } .operator-input :global(.chronicle-markdown) { padding-inline-start: 32px; } }
 </style>

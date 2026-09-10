@@ -31,6 +31,7 @@ import type {
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";
+import { fitChronicleToViewport } from "./process-detail-chronicle-dom.js";
 import { createProcessDetailChronicleScroll } from "./process-detail-chronicle-scroll.svelte.js";
 import type {
 	CurrentProcessErrorViewModel,
@@ -284,6 +285,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 	<section
 		class="chronicle"
+		use:fitChronicleToViewport
 		data-column="chronicle"
 		aria-labelledby={headingId}
 	>
@@ -383,6 +385,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			<CompactActionComposer
 				actionSectionController={actionsController}
 				onOpenDetails={openDetailedActionForm}
+				decisionTitle={selectedTurn?.description}
+				onViewContext={chronicleScroll.jumpToLatest}
 			/>
 		{:else if chronicleScroll.showJumpToLatest}
 			<button

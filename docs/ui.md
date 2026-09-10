@@ -58,6 +58,44 @@ reveals its history again.
 Arrow keys move through visible rail controls; Enter or Space toggles a group,
 and Left or Right collapses or expands it.
 
+### Chronicle hierarchy
+
+Completed turns use compact cards with the turn title and recorded model profile beneath it.
+LLM cards share one sparkle icon. Reported cost replaces inline token counts; unavailable cost
+is omitted. Timestamp and duration stay together at the right of each header, followed by a
+reserved disclosure slot. **Turn details** opens the full turn details from the right of the
+card footer; chronicle turns do not use overflow menus.
+
+Prompts appear only when recorded, as a subdued row below the header. Selecting the row opens
+the full turn input. Results use a stronger surface and typography. The latest result expands
+in place; earlier results have a preview and an expand/collapse control. Short historical
+outputs without prompts remain plain, complete sentences. Durable results remain visible even
+when their text matches the assistant's final answer. A ready leaf outcome still owns its
+result rendering, so it does not duplicate the turn result.
+
+Completed reasoning stays behind **Expand reasoning**. Missing reasoning adds no empty panel.
+Live reasoning and streamed responses remain visible. Turn questions keep their answer forms
+in the chronicle and their read-only summaries in turn details.
+
+Successful startup attempts collapse to an outcome and completed-check count. Successful
+preparation becomes **Workspace prepared**, with its ordered checks available on disclosure.
+Failed or unfinished checks remain expanded; created-change links remain visible. Operator
+and external events use the same compact header with quieter surfaces.
+Expanding workspace checks leaves the adjacent result actions in their original position.
+
+A failed turn contains its recovery controls in the same card. Its header retains the turn
+icon, recorded metadata, timestamp, and duration, with a failure marker and disclosure.
+The failure message is prominent; technical details and retry model settings are collapsed
+by default. Retry explains that it starts a new attempt. Continuation remains available only
+when saved progress supports it. Collapsing the card or retry options preserves entered
+instructions and settings; navigating to the failed turn reveals its controls again.
+
+**Create issue** is an action on a durable result. Opening ticket creation does not append an
+issue-creation event to the parent history. While browsing away from a pending action, the
+separate bottom composer names the required decision and retains the shared action draft.
+**View context** returns to the current action; **Options** opens its canonical detailed form.
+On narrow viewports, the chronicle reserves visible space for the composer, including Send.
+
 ### Route scroll ownership
 
 `RouteViewport` owns scrolling for every standard route. It provides a contained route scroller in the fixed desktop shell and yields to document scrolling below the mobile shell breakpoint. Route pages must not add competing viewport-level `overflow` or `overscroll-behavior` rules. Nested task surfaces such as the Chronicle, modal lists, and desktop split panes may own bounded scrolling.
@@ -83,7 +121,7 @@ The server resolves that opaque choice into a fresh destination snapshot. The
 external-write approval names the destination separately from the proposed tool
 arguments so the operator can verify both before accepting the write.
 
-Question requests appear inside their turn's reasoning section. Open requests are answered in
+Question requests appear inside their turn's supporting detail section. Open requests are answered in
 the Chronicle; answered and cancelled requests remain visible while follow-up questions are open
 and after the turn ends. The reasoning-details overlay shows read-only question summaries even
 when the turn has no recorded trace, and does not duplicate the answer form. Live question

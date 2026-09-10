@@ -512,6 +512,13 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 			return args.projection.promptItem.anchorId;
 		}
 		const atBottom = isAtChronicleBottom(viewportMetrics, 40);
+		if (viewportMetrics.scrollTop <= 5 && !atBottom) {
+			return resolveChronicleRailAnchorIdFromActiveAnchor(
+				args.projection,
+				args.railItems,
+				nextAnchorLayouts[0]?.anchorId ?? null,
+			);
+		}
 		const pendingRailItem = args.railItems.find(
 			(item) => item.anchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 		);
@@ -626,6 +633,17 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function scrollToAnchor(anchorId: string, behavior: ScrollBehavior = "auto") {
+		const anchor = document.getElementById(anchorId);
+		const collapsedBody =
+			anchor?.closest(".turn-body[hidden]") ?? anchor?.querySelector(".turn-body[hidden]");
+		const failureToggle = collapsedBody?.parentElement?.querySelector<HTMLButtonElement>(
+			'[data-action="toggle-failed-turn"][aria-expanded="false"]',
+		);
+		if (failureToggle) {
+			failureToggle.click();
+			void tick().then(() => scrollToAnchor(anchorId, behavior));
+			return;
+		}
 		const viewport = args.viewport;
 		if (!viewport) {
 			return false;

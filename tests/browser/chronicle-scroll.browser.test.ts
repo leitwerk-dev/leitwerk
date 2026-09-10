@@ -802,7 +802,9 @@ test.describe("rail scroll-anchor behavior", () => {
 		const focusedRailItem = page.locator(".rail-item:focus");
 		await expect(focusedRailItem).toBeVisible();
 
-		await wheelToTop(page, chronicleScroll);
+		// Compact history requires reaching the actual start, not the helper’s 50px tolerance.
+		const returnedViewport = await wheelToTop(page, chronicleScroll, 0);
+		expect(returnedViewport.scrollTop).toBe(0);
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "true");
 		await expect(
 			page.locator('[data-section="repeated-turns"] .rail-item.is-active'),

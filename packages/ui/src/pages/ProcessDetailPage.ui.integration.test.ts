@@ -2286,7 +2286,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		expect(target.textContent).toContain("Prompt");
+		expect(target.textContent).toContain("Initial prompt");
 		expect(target.textContent).toContain("Ship the requested change");
 		expect(target.textContent).toContain("Wait for an external completion trigger");
 		expect(target.textContent).toContain("Configured prompt-complete file");
@@ -3036,7 +3036,7 @@ describe("ProcessDetailPage", () => {
 		expect(recoveryButton?.querySelector(".rail-title")?.textContent).toContain("Implement Fix");
 	});
 
-	it("renders recovery after the latest failed turn even when an older leaf outcome exists", async () => {
+	it("renders recovery inside the latest failed turn even when an older leaf outcome exists", async () => {
 		const { target } = await mountSubject(createContinuableFailedDetailWithHistoricalLeafOutcome());
 		await flushUi();
 
@@ -3056,9 +3056,41 @@ describe("ProcessDetailPage", () => {
 			throw new Error("Expected leaf outcome, failed turn, and recovery section");
 		}
 		expect(leafOutcome.compareDocumentPosition(failedTurn)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-		expect(failedTurn.compareDocumentPosition(recoverySection)).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
+		expect(failedTurn.contains(recoverySection)).toBe(true);
+	});
+
+	it("keeps failure details, retry options, and continuation drafts in the failed card", async () => {
+		const detail = createContinuableFailedDetail();
+		detail.recovery = createFailedTurnRecovery("trn_2", {
+			summary: "An internal error occurred — worker heartbeat stale for wkr_1 after 30000ms",
+			technicalDetail: "Worker heartbeat stale for wkr_1 after 30000ms",
+		});
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const card = target.querySelector<HTMLElement>(
+			'[data-section="chronicle-turn"][data-turn-record-id="trn_2"]',
 		);
+		if (!card) throw new Error("Expected failed turn card");
+		expect(card.querySelectorAll('[data-section="failure-message"]')).toHaveLength(1);
+		expect(card.querySelector('[data-section="failure-message"] p')?.textContent).toBe(
+			"Worker stopped responding. No heartbeat was received for 30 seconds.",
+		);
+		expect(card.querySelector('[data-section="operator-decision"]')).toBeNull();
+		expect(card.querySelector<HTMLDetailsElement>(".failure-detail")?.open).toBe(false);
+		const options = card.querySelector<HTMLElement>(".retry-options");
+		expect(options?.hidden).toBe(true);
+		card.querySelector<HTMLButtonElement>('[data-action="toggle-retry-options"]')?.click();
+		await flushUi();
+		expect(options?.hidden).toBe(false);
+		editContinuePrompt(target, "Resume with the existing notes.");
+		const toggle = card.querySelector<HTMLButtonElement>('[data-action="toggle-failed-turn"]');
+		toggle?.click();
+		await flushUi();
+		expect(card.querySelector<HTMLElement>(".turn-body")?.hidden).toBe(true);
+		toggle?.click();
+		await flushUi();
+		expect(options?.hidden).toBe(false);
+		expect(requireContinuePromptField(target).value).toBe("Resume with the existing notes.");
 	});
 
 	it("opens the latest failed-turn reasoning from the recovery rail item", async () => {
@@ -3155,7 +3187,11 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		target
+			.querySelector<HTMLButtonElement>(
+				'[data-section="live-tail"] [data-action="open-turn-details"]',
+			)
+			?.click();
 		await flushUi();
 
 		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
@@ -4132,9 +4168,9 @@ describe("ProcessDetailPage", () => {
 
 		expect(operatorDecision.querySelector('[data-section="operator-decision"]')).toBeTruthy();
 		expect(operatorDecision.querySelector(".thinking-section .chronicle-expand-button")).toBeNull();
-		expect(operatorDecision.querySelector(".usage-stats")).toBeNull();
+		expect(operatorDecision.querySelector(".entry-metadata")).toBeNull();
 		expect(latestLlmTurn.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
-		expect(latestLlmTurn.querySelector(".usage-stats")).toBeTruthy();
+		expect(latestLlmTurn.querySelector(".entry-metadata")?.textContent).toContain("$0.00");
 	});
 
 	it("does not render a duplicate operator-input card for app actions already represented by an operator decision", async () => {
@@ -5095,15 +5131,18 @@ describe("ProcessDetailPage", () => {
 		const previews = target.querySelectorAll<HTMLElement>('[data-section="thinking-preview"]');
 		expect(previews).toHaveLength(2);
 		expect(previews[0]?.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
-		expect(
-			previews[0]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.traceItemCount,
-		).toBe("2");
-		expect(
-			previews[1]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.truncated,
-		).toBe("true");
-		expect(
-			previews[1]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.traceItemCount,
-		).toBe("20");
+		expect(previews[0]?.querySelector(".thinking-preview-copy")).toBeNull();
+		expect(previews[1]?.querySelector(".thinking-preview-copy")).toBeNull();
+		previews[1]
+			?.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')
+			?.click();
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledWith(
+			"agt_1",
+			"trn_2",
+			null,
+			expect.any(AbortSignal),
+		);
 	});
 
 	it("opens the reasoning details overlay as a flat operational trace with prompt copy and turn navigation", async () => {
@@ -5265,7 +5304,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-turn-details"]',
 		);
 		expect(detailButtons).toHaveLength(2);
 		detailButtons[1]?.click();

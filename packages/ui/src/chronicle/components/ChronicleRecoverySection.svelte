@@ -1,10 +1,12 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary } from "@leitwerk-dev/protocol";
-import ProviderOptionsEditor from "./ProviderOptionsEditor.svelte";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
+import ChronicleFailureMessage from "./ChronicleFailureMessage.svelte";
 import RecoveryModelControl from "./RecoveryModelControl.svelte";
 
 interface Props {
 	anchorId: string;
+	embedded?: boolean;
 	instanceId: string;
 	isFocused: boolean;
 	title: string;
@@ -35,6 +37,7 @@ interface Props {
 
 let {
 	anchorId,
+	embedded = false,
 	instanceId,
 	isFocused,
 	title,
@@ -70,274 +73,103 @@ const selectedModelUsable = $derived(
 		selectedProfile.availability === undefined ||
 		selectedProfile.availability === "available",
 );
+
+let optionsExpanded = $state(false);
 </script>
 
 <section
-	id={anchorId}
-	class="recovery-section chronicle-danger-panel"
-	class:is-focused={isFocused}
-	data-anchor-id={anchorId}
-	data-focused={isFocused ? "true" : "false"}
-	data-section="current-turn-recovery"
-	tabindex="-1"
+ id={anchorId}
+ class="recovery-section"
+ class:is-embedded={embedded}
+ class:is-focused={isFocused}
+ data-anchor-id={anchorId}
+ data-focused={isFocused ? "true" : "false"}
+ data-section="current-turn-recovery"
+ tabindex="-1"
 >
-	<div class="recovery-header">
-		<div class="recovery-copy">
-			<p class="recovery-eyebrow chronicle-danger-eyebrow">Error</p>
-			<h3>{title}</h3>
-			<p class="recovery-summary">{summary}</p>
-			<p class="recovery-guidance">{guidance}</p>
-		</div>
-	</div>
-	{#if technicalDetail}
-		<details class="recovery-detail chronicle-danger-detail">
-			<summary>Technical details</summary>
-			<pre>{technicalDetail}</pre>
-		</details>
-	{/if}
+ {#if !embedded}<ChronicleEntryHeader {title} kind="llm" failed />{/if}
+ <ChronicleFailureMessage {summary} {technicalDetail} />
 
-	<div class="recovery-actions" role="group" aria-label="Recovery actions">
-		{#if supportsModelOverride}
-			<RecoveryModelControl
-				{instanceId}
-				{modelProfiles}
-				defaultModelProfileId={defaultModelProfileId ?? null}
-				initialProviderOptions={defaultProviderOptions}
-				disabled={controlsBusy}
-				selectId={`recovery-model-${turnRecordId}`}
-				selectLabel="Model for the new attempt"
-				selectDataField="recovery-model"
-				onModelChange={(profileId, _usable) => {
-					modelProfileDraft = profileId ?? "";
-				}}
-				onProviderOptionsChange={(values) =>
-					(providerOptionsDraft = values ? { ...values } : undefined)}
-			/>
-		{/if}
-		{#if canContinue}
-			<div class="continue-editor">
-				<label class="continue-label" for={`continue-prompt-${turnRecordId}`}>Message before continuing</label>
-				<textarea
-					id={`continue-prompt-${turnRecordId}`}
-					class="continue-textarea"
-					data-field="continue-prompt"
-					rows="4"
-					bind:value={continuePromptDraft}
-					disabled={controlsBusy}
-				></textarea>
-				<p class="continue-help">
-					Use the suggested message to continue from the saved work, or replace it with a specific instruction for the resumed run.
-				</p>
-				<button
-					type="button"
-					class="recovery-button"
-					data-action="continue-failed-turn"
-					data-turn-record-id={turnRecordId}
-					data-pressable="true"
-					disabled={controlsBusy || !continuePromptValid || !selectedModelUsable}
-					onclick={() =>
-						onContinue(
-							continuePromptDraft,
-							modelProfileDraft || undefined,
-							providerOptionsDraft,
-						)}
-				>
-					{continueBusy ? "Continuing…" : "Continue from saved work"}
-				</button>
-			</div>
-		{:else}
-			<p class="recovery-note" data-section="continue-unavailable">
-				Not enough saved progress is available to continue this attempt.
-			</p>
-		{/if}
+ {#if canContinue}
+  <div class="continue-editor">
+   <label class="continue-label" for={`continue-prompt-${turnRecordId}`}>Message before continuing</label>
+   <textarea id={`continue-prompt-${turnRecordId}`} class="continue-textarea" data-field="continue-prompt" rows="3" bind:value={continuePromptDraft} disabled={controlsBusy}></textarea>
+   <p class="continue-help">Use the suggested message or add instructions for the resumed run.</p>
+   <button type="button" class="recovery-button continue-button" data-action="continue-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !continuePromptValid || !selectedModelUsable} onclick={() => onContinue(continuePromptDraft, modelProfileDraft || undefined, providerOptionsDraft)}>
+    {continueBusy ? "Continuing…" : "Continue from saved work"}
+   </button>
+  </div>
+ {/if}
 
-		<button
-			type="button"
-			class="recovery-button"
-			data-action="retry-failed-turn"
-			data-turn-record-id={turnRecordId}
-			data-pressable="true"
-			disabled={controlsBusy || !selectedModelUsable}
-			onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}
-		>
-			{retryBusy ? "Retrying failed turn…" : "Retry failed turn"}
-		</button>
-	</div>
+ <div class="recovery-footer">
+  <div class="recovery-note">
+   <p>Retry will restart this turn.</p>
+   {#if !canContinue}<p class="recovery-guidance" data-section="continue-unavailable">There isn't enough saved progress to resume from the failure point.</p>
+   {:else}<p class="recovery-guidance">{guidance}</p>{/if}
+  </div>
+  <div class="recovery-actions" role="group" aria-label="Recovery actions">
+   <button type="button" class="recovery-button" data-action="retry-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !selectedModelUsable} onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}>
+    {retryBusy ? "Retrying failed turn…" : "Retry failed turn"}
+   </button>
+   {#if supportsModelOverride}
+    <button type="button" class="recovery-button options-toggle" data-action="toggle-retry-options" aria-expanded={optionsExpanded} aria-controls={`retry-options-${turnRecordId}`} disabled={controlsBusy} onclick={() => optionsExpanded = !optionsExpanded}>
+     Retry options
+     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d={optionsExpanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} /></svg>
+    </button>
+   {/if}
+  </div>
+ </div>
 
-	{#if continueError || retryError}
-		<div class="recovery-errors">
-			{#if continueError}
-				<p class="recovery-error" role="alert">{continueError}</p>
-			{/if}
-			{#if retryError}
-				<p class="recovery-error" role="alert">{retryError}</p>
-			{/if}
-		</div>
-	{/if}
+ {#if supportsModelOverride}
+  <div class="retry-options" id={`retry-options-${turnRecordId}`} hidden={!optionsExpanded}>
+   <RecoveryModelControl
+    {instanceId}
+    {modelProfiles}
+    defaultModelProfileId={defaultModelProfileId ?? null}
+    initialProviderOptions={defaultProviderOptions}
+    disabled={controlsBusy}
+    selectId={`recovery-model-${turnRecordId}`}
+    selectLabel="Model for the new attempt"
+    selectDataField="recovery-model"
+    onModelChange={(profileId, _usable) => { modelProfileDraft = profileId ?? ""; }}
+    onProviderOptionsChange={(values) => (providerOptionsDraft = values ? { ...values } : undefined)}
+   />
+  </div>
+ {/if}
+
+ {#if continueError || retryError}
+  <div class="recovery-errors">
+   {#if continueError}<p class="recovery-error" role="alert">{continueError}</p>{/if}
+   {#if retryError}<p class="recovery-error" role="alert">{retryError}</p>{/if}
+  </div>
+ {/if}
 </section>
 
 <style>
-	.recovery-header,
-	.recovery-copy,
-	.recovery-errors {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-
-	.recovery-copy h3,
-	.recovery-summary,
-	.recovery-guidance,
-	.recovery-note,
-	.recovery-error {
-		margin: 0;
-	}
-
-	.recovery-summary,
-	.recovery-guidance,
-	.continue-help {
-		max-width: 58ch;
-	}
-
-	.recovery-copy h3 {
-		font-size: var(--type-heading-sm);
-		line-height: 1.2;
-		color: var(--chronicle-text);
-	}
-
-	.recovery-summary {
-		font-size: 14px;
-		line-height: 1.5;
-		color: var(--chronicle-text);
-	}
-
-	.recovery-guidance,
-	.recovery-note {
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--chronicle-text-muted);
-	}
-
-	.recovery-detail {
-		font-size: 12px;
-		color: var(--chronicle-text-muted);
-	}
-
-	.recovery-detail > summary {
-		cursor: pointer;
-		font-weight: 600;
-		color: color-mix(in srgb, var(--chronicle-text-muted) 88%, var(--chronicle-text) 12%);
-		user-select: none;
-	}
-
-	.recovery-detail > summary:focus-visible {
-		outline: 2px solid color-mix(in srgb, var(--chronicle-danger) 60%, transparent);
-		outline-offset: 2px;
-		border-radius: 4px;
-	}
-
-	.recovery-actions {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 14px;
-		align-items: end;
-	}
-
-	.continue-editor {
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		min-width: 0;
-		padding: var(--space-md);
-		border: 1px solid color-mix(in srgb, var(--chronicle-danger) 24%, var(--chronicle-border) 76%);
-		border-radius: var(--radius-lg);
-		background: color-mix(in srgb, white 92%, var(--chronicle-danger) 8%);
-	}
-
-	.continue-label {
-		font-size: 13px;
-		font-weight: 750;
-		letter-spacing: 0.01em;
-		color: var(--chronicle-text);
-	}
-
-	.continue-textarea {
-		width: 100%;
-		min-height: 7rem;
-		padding: 12px 14px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border-strong) 76%, white 24%);
-		border-radius: 14px;
-		background: color-mix(in srgb, white 94%, var(--chronicle-card-surface) 6%);
-		color: var(--chronicle-text);
-		font: inherit;
-		line-height: 1.5;
-		resize: vertical;
-	}
-
-	.continue-help {
-		margin: 0;
-		font-size: 12px;
-		line-height: 1.5;
-		color: var(--chronicle-text-muted);
-	}
-
-	.recovery-button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-height: 48px;
-		padding: 8px 16px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-danger-text) 18%, var(--chronicle-border-strong) 82%);
-		border-radius: 999px;
-		background: color-mix(in srgb, white 92%, var(--chronicle-card-surface) 8%);
-		color: var(--chronicle-text);
-		font-size: 14px;
-		font-weight: 680;
-		cursor: pointer;
-		transition:
-			background-color 160ms ease,
-			border-color 160ms ease,
-			transform 160ms ease;
-	}
-
-	.continue-editor .recovery-button {
-		align-self: flex-start;
-		padding-inline: 20px;
-		border-color: color-mix(in srgb, var(--chronicle-danger) 28%, var(--chronicle-text) 72%);
-		background: color-mix(in srgb, var(--chronicle-text) 88%, var(--chronicle-danger) 12%);
-		color: var(--chronicle-text-on-accent);
-	}
-
-	.recovery-button:hover:not(:disabled) {
-		background: color-mix(in srgb, white 82%, var(--chronicle-danger-text) 18%);
-		border-color: color-mix(in srgb, var(--chronicle-danger-text) 28%, var(--chronicle-border-strong) 72%);
-		transform: translateY(-1px);
-	}
-
-	.continue-editor .recovery-button:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--chronicle-text) 82%, var(--chronicle-danger) 18%);
-	}
-
-	.recovery-button:disabled {
-		opacity: 0.62;
-		cursor: default;
-		transform: none;
-	}
-
-	.recovery-error {
-		font-size: 13px;
-		line-height: 1.5;
-		color: var(--chronicle-danger-text);
-	}
-
-	@media (max-width: 720px) {
-		.recovery-actions {
-			grid-template-columns: 1fr;
-		}
-
-		.recovery-button,
-		.continue-editor .recovery-button {
-			width: 100%;
-		}
-	}
+ .recovery-section { display: flex; flex-direction: column; gap: 14px; min-width: 0; padding: 14px; border: 1px solid color-mix(in srgb, var(--chronicle-danger) 50%, var(--chronicle-border)); border-radius: 10px; background: color-mix(in srgb, var(--chronicle-danger) 2%, var(--chronicle-card-surface)); scroll-margin-top: 28px; }
+ .recovery-section.is-embedded { padding: 0; border: 0; background: transparent; }
+ .recovery-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; padding: 0 4px; }
+ .recovery-note { flex: 1 1 260px; min-width: 0; }
+ .recovery-note p { margin: 0; font-size: var(--type-body-sm); line-height: 1.55; color: var(--chronicle-text); }
+ .recovery-note .recovery-guidance { color: var(--chronicle-text-muted); }
+ .recovery-actions { display: flex; align-items: center; gap: 10px; }
+ .recovery-button { display: inline-flex; align-items: center; justify-content: center; gap: 16px; min-height: 44px; padding: 8px 20px; border: 1px solid var(--chronicle-border-strong); border-radius: 999px; background: var(--chronicle-card-surface); color: var(--chronicle-text); font: inherit; font-size: var(--type-body-sm); font-weight: 650; white-space: nowrap; cursor: pointer; }
+ .recovery-button:hover:not(:disabled) { background: var(--chronicle-panel-muted); border-color: var(--chronicle-text-muted); }
+ .recovery-button:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 3px; }
+ .recovery-button:disabled { opacity: .6; cursor: default; }
+ .retry-options { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--chronicle-border); border-radius: 8px; background: var(--chronicle-card-surface); }
+ .retry-options[hidden] { display: none; }
+ .continue-editor { display: grid; gap: 8px; min-width: 0; }
+ .continue-label { font-size: var(--type-body-sm); font-weight: 600; }
+ .continue-textarea { width: 100%; min-height: 84px; padding: 10px 12px; border: 1px solid var(--chronicle-border-strong); border-radius: 8px; background: var(--chronicle-card-surface); color: var(--chronicle-text); font: inherit; font-size: var(--type-body-sm); line-height: 1.5; resize: vertical; }
+ .continue-help { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-caption); line-height: 1.5; }
+ .continue-button { justify-self: start; background: var(--chronicle-text); color: var(--chronicle-text-on-accent); }
+ .continue-button:hover:not(:disabled) { background: color-mix(in srgb, var(--chronicle-text) 85%, var(--chronicle-accent)); }
+ .recovery-error { margin: 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-danger-text); }
+ @media (max-width: 540px) {
+  .recovery-section:not(.is-embedded) { padding: 10px; }
+  .recovery-footer { padding: 0; }
+  .recovery-actions { width: 100%; gap: 8px; }
+  .recovery-button { flex: 1; padding-inline: 12px; gap: 8px; }
+ }
 </style>

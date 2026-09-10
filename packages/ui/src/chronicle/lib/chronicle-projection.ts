@@ -25,7 +25,7 @@ type ChronicleInput = Pick<
 
 import type { ProcessRunDetailsView } from "@leitwerk-dev/protocol/http-contracts";
 import { formatDefinition } from "../../lib/format";
-import { markdownToPlainText, truncateText } from "../../lib/markdown";
+import { truncateText } from "../../lib/markdown";
 import { hasDisplayableText } from "../../lib/pi-stream.js";
 import {
 	getProcessTerminalRailTitle,
@@ -157,6 +157,7 @@ export interface ChronicleTurnClusterItem {
 	triggeringInput: ChronicleTriggeringInputSummary | null;
 	piInput: ChroniclePiInputSummary | null;
 	facts: ChronicleTurnFacts;
+	failure?: { summary: string };
 }
 
 export interface ChroniclePromptItem {
@@ -312,10 +313,6 @@ function buildLeafOutcomeAnchorId(snapshotId: string): string {
 
 function buildTerminalAnchorId(status: ProcessTerminalStatus): string {
 	return `chronicle-terminal-${sanitizeDomToken(status)}`;
-}
-
-function normalizeComparableText(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
 }
 
 function buildReasoningTimelineItems(
@@ -579,25 +576,6 @@ function isStandaloneChronicleOperatorInput(input: ChronicleInput): boolean {
 	return input.source === "app_steer" || input.source === "external_comment";
 }
 
-function hasDistinctTurnResult(
-	turnRecord: TurnRecordView,
-	assistantOutputText: string,
-	assistantOutputTruncated = false,
-): boolean {
-	if (!hasDisplayableText(turnRecord.turnResultMarkdown)) {
-		return false;
-	}
-	const markdownText = normalizeComparableText(markdownToPlainText(turnRecord.turnResultMarkdown));
-	const assistantText = normalizeComparableText(assistantOutputText);
-	if (markdownText.length === 0) {
-		return false;
-	}
-	if (assistantOutputTruncated && assistantText.length > 0) {
-		return !markdownText.startsWith(assistantText);
-	}
-	return markdownText !== assistantText;
-}
-
 function hasRenderableLeafOutcomeForTurn(
 	turnRecordId: string,
 	leafOutcomeSnapshots: readonly ProcessLeafOutcomeSnapshot[],
@@ -665,14 +643,7 @@ function buildTurnClusterItem(input: {
 		});
 	}
 
-	if (
-		!input.hasRenderableLeafOutcome &&
-		hasDistinctTurnResult(
-			turnRecord,
-			assistantText || fallbackText,
-			turnTrace === undefined && turnTracePreview?.assistantTextTruncated === true,
-		)
-	) {
+	if (!input.hasRenderableLeafOutcome && hasDisplayableText(turnRecord.turnResultMarkdown)) {
 		sections.push({
 			kind: "turn_result",
 			markdown: turnRecord.turnResultMarkdown,
@@ -705,6 +676,10 @@ function buildTurnClusterItem(input: {
 			initialUserInputText: input.initialUserInputText,
 		}),
 		facts: input.facts,
+		failure:
+			turnRecord.outcome === "failed"
+				? { summary: turnRecord.output || turnRecord.summary || "This turn failed." }
+				: undefined,
 	};
 }
 

@@ -1,9 +1,8 @@
 <script lang="ts">
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { THINKING_PREVIEW_LINE_COUNT } from "../lib/chronicle-projection.js";
-import { normalizeChronicleText, splitChronicleLines } from "../lib/formatting.js";
+import { splitChronicleLines } from "../lib/formatting.js";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
-import ChronicleLiveChip from "./ChronicleLiveChip.svelte";
 import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
 import ChronicleThinkingText from "./ChronicleThinkingText.svelte";
 
@@ -17,7 +16,6 @@ interface Props {
 	questionRequests?: readonly ProcessQuestionRequest[];
 	onOpenDetails?: (() => void) | null;
 }
-
 let {
 	text,
 	preview,
@@ -28,140 +26,38 @@ let {
 	questionRequests = [],
 	onOpenDetails = null,
 }: Props = $props();
-
-const previewLines = $derived(splitChronicleLines(preview).filter((line) => line.trim() !== ""));
-const fallbackLines = $derived(splitChronicleLines(text).filter((line) => line.trim() !== ""));
-const hasPreview = $derived(previewLines.length > 0);
-const hasText = $derived(normalizeChronicleText(text).length > 0);
-const hasDetails = $derived(Boolean(onOpenDetails));
+const previewLines = $derived(
+	splitChronicleLines(preview || text).filter((line) => line.trim() !== ""),
+);
+const hasDetails = $derived(previewLines.length > 0 || toolCallCount > 0 || traceItemCount > 0);
 </script>
 
-<section
-	class="thinking-section"
-	class:is-live={isLive}
-	data-section="thinking-preview"
-	data-live={isLive ? "true" : "false"}
->
-	<div class="reasoning-header">
-		<div class="reasoning-heading">
-			<p class="reasoning-label">Reasoning</p>
-			{#if isLive}
-				<ChronicleLiveChip label="Live" size="sm" />
-			{/if}
-		</div>
-		{#if hasDetails}
-			<ChronicleExpandButton
-				expanded={false}
-				collapsedLabel="Expand reasoning"
-				class="details-button"
-				dataAction="open-reasoning-details"
-				ariaLabel="Expand reasoning"
-				onClick={() => onOpenDetails?.()}
-			/>
+{#if hasDetails || questionRequests.length > 0}
+	<section class="thinking-section" class:is-live={isLive} data-section="thinking-preview" data-live={isLive ? "true" : "false"}>
+		{#if hasDetails && onOpenDetails}
+			<div class="reasoning-header">
+				{#if isLive}<span class="reasoning-label">Reasoning</span>{/if}
+				<ChronicleExpandButton expanded={false} collapsedLabel="Expand reasoning" dataAction="open-reasoning-details" ariaLabel="Expand reasoning" onClick={() => onOpenDetails?.()} />
+			</div>
 		{/if}
-	</div>
-
-	<div
-		class="thinking-preview-copy"
-		data-line-count={previewLines.length > 0 ? previewLines.length : fallbackLines.length}
-		data-truncated={previewTruncated ? "true" : "false"}
-		data-trace-item-count={traceItemCount}
-		style:--thinking-preview-lines={THINKING_PREVIEW_LINE_COUNT}
-	>
-		{#if hasPreview}
-			<ChronicleThinkingText text={previewLines.join("\n")} variant="preview" />
-		{:else if toolCallCount > 0 || traceItemCount > 0}
-			<p class="empty-copy">Open details to inspect the reasoning trace.</p>
-		{:else if hasText}
-			<ChronicleThinkingText text={fallbackLines.join("\n")} variant="preview" />
-		{:else}
-			<p class="empty-copy">{isLive ? "Waiting for reasoning…" : "No reasoning was recorded."}</p>
+		{#if isLive && previewLines.length > 0}
+			<div class="thinking-preview-copy" data-line-count={previewLines.length} data-truncated={previewTruncated ? "true" : "false"} data-trace-item-count={traceItemCount} style:--thinking-preview-lines={THINKING_PREVIEW_LINE_COUNT}>
+				<ChronicleThinkingText text={previewLines.join("\n")} variant="preview" />
+			</div>
 		{/if}
-	</div>
-
-	{#if questionRequests.length > 0}
-		<div class="reasoning-questions" data-section="reasoning-questions">
-			{#each questionRequests as request (request.id)}
-				<ChronicleQuestionRequest {request} />
-			{/each}
-		</div>
-	{/if}
-</section>
+		{#if questionRequests.length > 0}
+			<div class="reasoning-questions" data-section="reasoning-questions">
+				{#each questionRequests as request (request.id)}<ChronicleQuestionRequest {request} />{/each}
+			</div>
+		{/if}
+	</section>
+{/if}
 
 <style>
-	.thinking-section {
-		display: grid;
-		grid-template-rows: auto minmax(0, 1fr);
-		gap: 12px;
-		padding: 12px 14px;
-		border-radius: 12px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		background: color-mix(in srgb, var(--chronicle-panel-muted) 76%, white 24%);
-		overflow: hidden;
-	}
-
-	.reasoning-header,
-	.reasoning-heading {
-		display: flex;
-		align-items: center;
-		gap: var(--space-xs);
-		min-width: 0;
-	}
-
-	.reasoning-header {
-		justify-content: space-between;
-	}
-
-	.reasoning-heading {
-		flex-wrap: wrap;
-	}
-
-	.reasoning-label {
-		margin: 0;
-		font-size: var(--type-label);
-		font-weight: 700;
-		letter-spacing: var(--tracking-label);
-		line-height: 1.4;
-		text-transform: uppercase;
-		color: var(--chronicle-text-muted);
-	}
-
-	.reasoning-questions {
-		display: grid;
-		gap: var(--space-md);
-		padding-top: var(--space-sm);
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-	}
-
-	.thinking-preview-copy {
-		height: calc(var(--thinking-preview-lines, 4) * 1lh);
-		display: flex;
-		flex-direction: column;
-		justify-content: flex-end;
-		width: min(100%, 64ch);
-		min-width: 0;
-		overflow: clip;
-		font-size: var(--type-body-sm);
-		line-height: 1.72;
-	}
-
-	.thinking-preview-copy > :global(*) {
-		flex: 0 0 auto;
-	}
-
-	.empty-copy {
-		margin: 0;
-		max-width: none;
-		font-family: inherit;
-		font-size: var(--type-body-sm);
-		line-height: 1.72;
-		color: var(--chronicle-text-muted);
-	}
-
-	@media (max-width: 720px) {
-		.reasoning-header {
-			align-items: flex-start;
-			flex-direction: column;
-		}
-	}
+	.thinking-section { display: grid; gap: 8px; min-width: 0; }
+	.reasoning-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+	.reasoning-label { color: var(--chronicle-text-muted); font-size: var(--type-body-sm); font-weight: 600; }
+	.thinking-preview-copy { display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--thinking-preview-lines, 4) * 1lh); max-width: 72ch; overflow: clip; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.6; }
+	.thinking-preview-copy > :global(*) { flex: 0 0 auto; }
+	.reasoning-questions { display: grid; gap: var(--space-sm); }
 </style>
