@@ -82,3 +82,10 @@ executing tool calls. Calls receive their stable tool-call ID, abort signal and
 prompt-guard suspension hook. Aborting or closing the handle cancels delayed
 streams and interactive tools. Scripted behavior can therefore depend on execution
 context and tool contracts without matching prompt prose.
+
+Set `recordSessionTrace: true` to persist SDK-readable session JSONL, including
+scripted `thinkingChunks`, text, and executed tool calls/results. Thinking and text
+emit distinct stream types. Input and partial output are saved before interactive
+tools or failed turns finish. Fresh factories can resume these sessions and older
+stub state files without discarding entries. The option keeps additional trace
+entries out of tests that depend on the minimal stub tree.
