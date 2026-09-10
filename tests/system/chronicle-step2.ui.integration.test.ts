@@ -225,11 +225,11 @@ describe("chronicle step 2 experience", () => {
 					document.querySelector(
 						'[data-section="chronicle-turn"][data-turn-record-id="trn_done"] [data-section="thinking-preview"]',
 					),
-				).not.toBeNull(),
+				).toBeNull(),
 			);
 			const reasoningDetailsButton = await waitFor(() => {
 				const button = document.querySelector(
-					'[data-section="chronicle-turn"][data-turn-record-id="trn_done"] .thinking-section .chronicle-expand-button',
+					'[data-section="chronicle-turn"][data-turn-record-id="trn_done"] .footer-actions [data-action="open-reasoning-details"]',
 				);
 				expect(button).not.toBeNull();
 				return button as HTMLButtonElement;

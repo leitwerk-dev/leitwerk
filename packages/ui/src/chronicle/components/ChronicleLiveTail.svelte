@@ -4,6 +4,7 @@ import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
 import { formatChronicleCost } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
+import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 import ChronicleTurnDetailsButton from "./ChronicleTurnDetailsButton.svelte";
 
@@ -30,6 +31,15 @@ let {
 let confirmingStop = $state(false);
 const openQuestionRequest = $derived(
 	questionRequests.find((request) => request.status === "open") ?? null,
+);
+const hasReasoning = $derived(
+	Boolean(
+		liveTail.reasoningSection &&
+			(liveTail.reasoningSection.text.trim() ||
+				liveTail.reasoningSection.preview.trim() ||
+				liveTail.reasoningSection.toolCallCount ||
+				liveTail.reasoningSection.traceItemCount),
+	),
 );
 
 function requestStop() {
@@ -89,10 +99,8 @@ const screenReaderStatus = $derived.by(() => {
 				text={liveTail.reasoningSection?.text ?? ""}
 				preview={liveTail.reasoningSection?.preview ?? ""}
 				previewTruncated={liveTail.reasoningSection?.previewTruncated ?? false}
-				toolCallCount={liveTail.reasoningSection?.toolCallCount ?? 0}
 				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
 				{questionRequests}
-				onOpenDetails={() => onOpenReasoningDetails(liveTail.turnRecordId)}
 				isLive={true}
 			/>
 		{/if}
@@ -142,7 +150,12 @@ const screenReaderStatus = $derived.by(() => {
 				{/if}
 			</div>
 		{/if}
-		{#if liveTail.turnType === "llm"}<div class="live-footer"><ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} /></div>{/if}
+		{#if liveTail.turnType === "llm" || hasReasoning}
+			<div class="live-footer">
+				{#if hasReasoning}<ChronicleExpandButton expanded={false} collapsedLabel="Expand reasoning" dataAction="open-reasoning-details" ariaLabel="Expand reasoning" onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+				{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+			</div>
+		{/if}
 	</div>
 </section>
 
@@ -150,7 +163,7 @@ const screenReaderStatus = $derived.by(() => {
 	.live-tail { padding: 14px; border: 1px solid color-mix(in srgb, var(--chronicle-accent) 35%, var(--chronicle-border)); border-radius: 10px; background: var(--chronicle-card-surface); scroll-margin-top: var(--space-sm); }
 	.live-tail.is-focused { border-color: var(--chronicle-accent); }
 	.live-tail-body { display: flex; flex-direction: column; gap: 10px; }
-	.live-footer { display: flex; justify-content: flex-end; }
+	.live-footer { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 	.live-copy { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
 
 	.live-result { padding: 10px 12px; border-radius: 6px; background: color-mix(in srgb, var(--chronicle-accent) 6%, var(--chronicle-card-surface)); }

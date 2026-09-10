@@ -162,18 +162,23 @@ function openDetails() {
 		<ChronicleFailureMessage summary={cluster.failure.summary} />
 	{/if}
 
-	{#if hasReasoning || questionRequests.length}
-		<ChronicleThinkingSection text={reasoning?.text ?? ""} preview={reasoning?.preview ?? ""} previewTruncated={reasoning?.previewTruncated} toolCallCount={reasoning?.toolCallCount ?? 0} traceItemCount={reasoning?.traceItemCount ?? 0} {questionRequests} onOpenDetails={openDetails} />
+	{#if questionRequests.length}
+		<ChronicleThinkingSection text="" preview="" traceItemCount={0} {questionRequests} />
 	{/if}
 
 	{@render waitingContent?.()}
 
-	{#if isLlm || (compactResult && onDraftTicket)}
-		<div class="cluster-support">
+	{#if isLlm || hasReasoning || (compactResult && onDraftTicket)}
+		<div class="cluster-support" class:has-reasoning={hasReasoning}>
 			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} compact />{/if}</div>
 			<div class="footer-actions">
 				{#if compactResult && onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
-				{#if isLlm}<ChronicleTurnDetailsButton title={cluster.title} onClick={openDetails} />{/if}
+				{#if isLlm || hasReasoning}
+					<div class="turn-info-actions">
+						{#if hasReasoning}<ChronicleExpandButton expanded={false} collapsedLabel="Expand reasoning" dataAction="open-reasoning-details" ariaLabel="Expand reasoning" onClick={openDetails} />{/if}
+						{#if isLlm}<ChronicleTurnDetailsButton title={cluster.title} onClick={openDetails} />{/if}
+					</div>
+				{/if}
 			</div>
 		</div>
 	{/if}
@@ -206,7 +211,8 @@ function openDetails() {
 	.result-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 	.cluster-support { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; min-width: 0; color: var(--chronicle-text-muted); }
 	.support-progress { min-width: 0; }
-	.footer-actions { display: flex; align-items: start; gap: 14px; }
+	.footer-actions { display: flex; align-items: center; gap: 14px; }
+	.turn-info-actions { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
 	.decision-section { padding-inline-start: 42px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
 	.decision-fields { display: grid; gap: 6px; margin: 0; }
 	.decision-field { display: flex; flex-wrap: wrap; gap: 4px 8px; }
@@ -216,5 +222,9 @@ function openDetails() {
 		.turn-cluster { padding: 10px; }
 		.result-section { padding: 8px 10px; }
 		.result-section.is-compact, .decision-section { padding-inline-start: 32px; }
+		.cluster-support.has-reasoning { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+		.has-reasoning .footer-actions { grid-row: 1; justify-content: flex-end; flex-wrap: wrap; }
+		.has-reasoning .support-progress { grid-row: 2; }
+		.has-reasoning .support-progress:empty { display: none; }
 	}
 </style>

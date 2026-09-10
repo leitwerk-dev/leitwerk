@@ -2854,7 +2854,14 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		const reasoningButton = target.querySelector<HTMLButtonElement>(
+			'[data-section="live-tail"] [data-action="open-reasoning-details"]',
+		);
+		expect(reasoningButton?.closest(".live-footer")).toBeTruthy();
+		expect(reasoningButton?.nextElementSibling?.getAttribute("data-action")).toBe(
+			"open-turn-details",
+		);
+		reasoningButton?.click();
 		await flushUi();
 		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
@@ -3597,7 +3604,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		expect(detailButtons.length).toBeGreaterThan(0);
 		detailButtons[detailButtons.length - 1]?.click();
@@ -4295,9 +4302,9 @@ describe("ProcessDetailPage", () => {
 		}
 
 		expect(operatorDecision.querySelector('[data-section="operator-decision"]')).toBeTruthy();
-		expect(operatorDecision.querySelector(".thinking-section .chronicle-expand-button")).toBeNull();
+		expect(operatorDecision.querySelector('[data-action="open-reasoning-details"]')).toBeNull();
 		expect(operatorDecision.querySelector(".entry-metadata")).toBeNull();
-		expect(latestLlmTurn.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
+		expect(latestLlmTurn.querySelector('[data-action="open-reasoning-details"]')).toBeTruthy();
 		expect(latestLlmTurn.querySelector(".entry-metadata")?.textContent).toContain("$0.00");
 	});
 
@@ -4916,7 +4923,7 @@ describe("ProcessDetailPage", () => {
 		expect((target.querySelector(".page-shell") as HTMLElement | null)?.inert).not.toBe(true);
 		expect(document.activeElement).toBe(processInfoButton);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_1");
 		expect(replaceStateSpy).toHaveBeenCalledWith(
@@ -4970,7 +4977,7 @@ describe("ProcessDetailPage", () => {
 		const pushStateSpy = vi.spyOn(window.history, "pushState");
 		const replaceStateSpy = vi.spyOn(window.history, "replaceState");
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[1]?.click();
 		await flushUi();
@@ -5118,7 +5125,7 @@ describe("ProcessDetailPage", () => {
 		mockFetchTurnReasoningDetail.mockReset();
 		mockFetchTurnReasoningDetail.mockRejectedValue(new Error("Temporary reasoning failure"));
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		await flushUi();
 
@@ -5152,7 +5159,7 @@ describe("ProcessDetailPage", () => {
 				buildMockReasoningResponse(requestInstanceId, turnRecordId),
 		);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 
 		expect(target.querySelector('[data-section="reasoning-load-error"]')?.textContent).toContain(
@@ -5192,7 +5199,7 @@ describe("ProcessDetailPage", () => {
 			},
 		);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 
 		const freshDetail = createReasoningOverlayDetail();
@@ -5256,14 +5263,16 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		const previews = target.querySelectorAll<HTMLElement>('[data-section="thinking-preview"]');
-		expect(previews).toHaveLength(2);
-		expect(previews[0]?.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
-		expect(previews[0]?.querySelector(".thinking-preview-copy")).toBeNull();
-		expect(previews[1]?.querySelector(".thinking-preview-copy")).toBeNull();
-		previews[1]
-			?.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')
-			?.click();
+		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
+			'[data-action="open-reasoning-details"]',
+		);
+		expect(detailButtons).toHaveLength(2);
+		expect(target.querySelector('[data-section="thinking-preview"]')).toBeNull();
+		for (const button of detailButtons) {
+			expect(button.closest(".footer-actions")).toBeTruthy();
+			expect(button.nextElementSibling?.getAttribute("data-action")).toBe("open-turn-details");
+		}
+		detailButtons[1]?.click();
 		await flushUi();
 		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledWith(
 			"agt_1",
@@ -5292,7 +5301,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		expect(detailButtons).toHaveLength(2);
 
@@ -5373,7 +5382,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[0]?.click();
 		await flushUi();
@@ -5467,7 +5476,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[1]?.click();
 		await flushUi();
@@ -5485,7 +5494,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createReasoningOverlayDetail());
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
 

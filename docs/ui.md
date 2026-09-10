@@ -79,15 +79,18 @@ outputs without prompts remain plain, complete sentences. Durable results remain
 when their text matches the assistant's final answer. A ready leaf outcome still owns its
 result rendering, so it does not duplicate the turn result.
 
-Completed reasoning stays behind **Expand reasoning**. Missing reasoning adds no empty panel.
-Live reasoning and streamed responses remain visible. Turn questions keep their answer forms
-in the chronicle and their read-only summaries in turn details.
+**Expand reasoning** sits immediately before **Turn details** in completed and live card
+footers. Missing reasoning adds no empty panel or link. Live reasoning and streamed responses
+remain visible above the footer. Turn questions keep their answer forms in the chronicle
+and their read-only summaries in turn details.
 
 Successful startup attempts collapse to an outcome and completed-check count. Successful
 preparation becomes **Workspace prepared**, with its ordered checks available on disclosure.
 Failed or unfinished checks remain expanded; created-change links remain visible. Operator
 and external events use the same compact header with quieter surfaces.
 Expanding workspace checks leaves the adjacent result actions in their original position.
+On narrow cards with a reasoning link, footer actions occupy the first row and workspace
+checks expand below them. Expand reasoning and Turn details stay together when actions wrap.
 
 When a turn waits for external events and has no operator action, its latest recorded card
 contains the waiting status. A single collapsed disclosure shows the event count and any

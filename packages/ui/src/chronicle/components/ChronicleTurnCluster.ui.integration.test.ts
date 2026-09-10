@@ -99,12 +99,12 @@ describe("chronicle turn disclosure", () => {
 		);
 		expect(target.textContent).not.toContain("Preserve the watering schedule.");
 		expect(target.textContent).not.toContain("Consider the existing schedule first.");
-		const reasoningSection = target.querySelector(".thinking-section");
+		const reasoningButton = target.querySelector('[data-action="open-reasoning-details"]');
 		const turnDetails = target.querySelector('[data-action="open-turn-details"]');
-		if (!reasoningSection || !turnDetails) throw new Error("Expected reasoning and turn details");
-		expect(reasoningSection.compareDocumentPosition(turnDetails)).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
-		);
+		if (!reasoningButton || !turnDetails) throw new Error("Expected reasoning and turn details");
+		expect(reasoningButton.closest(".footer-actions")).toBeTruthy();
+		expect(reasoningButton.nextElementSibling).toBe(turnDetails);
+		expect(target.querySelector(".thinking-section")).toBeNull();
 		const toggle = target.querySelector<HTMLButtonElement>(
 			".result-header-row .chronicle-expand-button",
 		);
