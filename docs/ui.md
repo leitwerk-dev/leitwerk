@@ -113,11 +113,13 @@ Durable leaf-outcome captures reference the same `rendererId`. The UI loads the 
 
 ## 6. Turn progress
 
-Automatic turns and LLM preparation phases may expose a durable ordered progress report in their Chronicle cluster. The
-UI names every step state, highlights the current step, preserves failed steps beside generic
-recovery controls, and lists created pull requests, merge requests, commits, or pipelines under
-**Created changes**. Historical reports remain part of their owning turn attempt. Status text
-and symbols carry the meaning without relying on color.
+Automatic turns and LLM preparation phases may expose a durable ordered progress report in their
+Chronicle cluster. Process startup history uses the same checklist layout, typography, spacing,
+and status treatment as these progress reports. The UI names every step state, highlights the
+current step, preserves failed steps beside generic recovery controls, and lists created pull
+requests, merge requests, commits, or pipelines under **Created changes**. Historical reports
+remain part of their owning turn attempt. Status text and symbols carry the meaning without
+relying on color.
 
 ## 7. Launch checklist
 

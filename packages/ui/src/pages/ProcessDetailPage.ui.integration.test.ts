@@ -2016,12 +2016,63 @@ describe("ProcessDetailPage", () => {
 			startupRecovery: recovery,
 		});
 
-		const { target } = await mountSubject(detail);
+		const detailWithProgress: ProcessDetailData = {
+			...detail,
+			timeline: {
+				...detail.timeline,
+				turns: detail.timeline.turns.map((turn, index) =>
+					index === 0
+						? {
+								...turn,
+								progress: {
+									title: "LLM workspace preparation",
+									steps: [
+										{ id: "checkout", label: "Check out repositories", status: "completed" },
+										{ id: "skills", label: "Prepare skills", status: "in_progress" },
+										{ id: "instructions", label: "Collect instructions", status: "incomplete" },
+									],
+								},
+							}
+						: turn,
+				),
+			},
+		};
+
+		const { target } = await mountSubject(detailWithProgress);
 		await flushUi();
 
-		expect(target.querySelector('[data-section="startup-history"]')?.textContent).toContain(
-			"Process startup failed",
-		);
+		const startupHistory = target.querySelector('[data-section="startup-history"]');
+		expect(startupHistory?.textContent).toContain("Process startup failed");
+		expect(startupHistory?.querySelector('[data-component="chronicle-checklist"]')).not.toBeNull();
+		expect(
+			startupHistory
+				?.querySelector('[data-checklist-step="start_worker"]')
+				?.getAttribute("data-checklist-status"),
+		).toBe("success");
+		expect(
+			startupHistory
+				?.querySelector('[data-checklist-step="prepare_workspace"]')
+				?.getAttribute("data-checklist-status"),
+		).toBe("failed");
+
+		const workspacePreparation = target.querySelector('[data-section="turn-progress"]');
+		expect(workspacePreparation?.textContent).toContain("LLM workspace preparation");
+		expect(workspacePreparation?.getAttribute("data-component")).toBe("chronicle-checklist");
+		expect(
+			workspacePreparation
+				?.querySelector('[data-checklist-step="checkout"]')
+				?.getAttribute("data-checklist-status"),
+		).toBe("success");
+		expect(
+			workspacePreparation
+				?.querySelector('[data-checklist-step="skills"]')
+				?.getAttribute("data-checklist-status"),
+		).toBe("active");
+		expect(
+			workspacePreparation
+				?.querySelector('[data-checklist-step="instructions"]')
+				?.getAttribute("data-checklist-status"),
+		).toBe("pending");
 		expect(target.querySelector('[data-section="startup-recovery"]')?.textContent).toContain(
 			"Retry startup",
 		);
