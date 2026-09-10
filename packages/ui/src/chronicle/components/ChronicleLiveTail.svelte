@@ -4,7 +4,6 @@ import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
 import { formatChronicleCost } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
-import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 import ChronicleTurnDetailsButton from "./ChronicleTurnDetailsButton.svelte";
 
@@ -152,7 +151,7 @@ const screenReaderStatus = $derived.by(() => {
 		{/if}
 		{#if liveTail.turnType === "llm" || hasReasoning}
 			<div class="live-footer">
-				{#if hasReasoning}<ChronicleExpandButton expanded={false} collapsedLabel="Expand reasoning" dataAction="open-reasoning-details" ariaLabel="Expand reasoning" onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+				{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
 				{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
 			</div>
 		{/if}

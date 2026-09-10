@@ -79,8 +79,9 @@ outputs without prompts remain plain, complete sentences. Durable results remain
 when their text matches the assistant's final answer. A ready leaf outcome still owns its
 result rendering, so it does not duplicate the turn result.
 
-**Expand reasoning** sits immediately before **Turn details** in completed and live card
-footers. Missing reasoning adds no empty panel or link. Live reasoning and streamed responses
+**Show reasoning** sits immediately before **Turn details** in completed and live card
+footers. Both use the same muted text-link style, without a disclosure chevron.
+Missing reasoning adds no empty panel or link. Live reasoning and streamed responses
 remain visible above the footer. Turn questions keep their answer forms in the chronicle
 and their read-only summaries in turn details.
 
@@ -90,7 +91,7 @@ Failed or unfinished checks remain expanded; created-change links remain visible
 and external events use the same compact header with quieter surfaces.
 Expanding workspace checks leaves the adjacent result actions in their original position.
 On narrow cards with a reasoning link, footer actions occupy the first row and workspace
-checks expand below them. Expand reasoning and Turn details stay together when actions wrap.
+checks expand below them. Show reasoning and Turn details stay together when actions wrap.
 
 When a turn waits for external events and has no operator action, its latest recorded card
 contains the waiting status. A single collapsed disclosure shows the event count and any
@@ -253,7 +254,7 @@ mode, every visitor shares and manages the same token list.
 
 ## Reasoning preview and expanded history
 
-The inline reasoning preview reserves four wrapped text lines at a fixed height. It shows the newest nonblank lines, retaining preceding paragraph context as new text arrives. Short content uses the same reserved height. Token updates are continuous, with one subdued static live indicator and an Expand reasoning control. The preview has no nested scrollbar, animation, or hidden-history footer. Full reasoning preserves original whitespace.
+The inline reasoning preview reserves four wrapped text lines at a fixed height. It shows the newest nonblank lines, retaining preceding paragraph context as new text arrives. Short content uses the same reserved height. Token updates are continuous, with one subdued static live indicator and an Show reasoning control. The preview has no nested scrollbar, animation, or hidden-history footer. Full reasoning preserves original whitespace.
 
 The initial snapshot carries a compact active-turn type, separate from `TurnTraceSnapshot`. The browser retains bounded inline state while the overlay is closed and never prefetches detail history. Opening the overlay starts an independent request; a slow request cannot block the page shell or controls. Reconnect refreshes full history only while the overlay remains open.
 

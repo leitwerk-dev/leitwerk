@@ -175,7 +175,7 @@ function openDetails() {
 				{#if compactResult && onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
 				{#if isLlm || hasReasoning}
 					<div class="turn-info-actions">
-						{#if hasReasoning}<ChronicleExpandButton expanded={false} collapsedLabel="Expand reasoning" dataAction="open-reasoning-details" ariaLabel="Expand reasoning" onClick={openDetails} />{/if}
+						{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={cluster.title} onClick={openDetails} />{/if}
 						{#if isLlm}<ChronicleTurnDetailsButton title={cluster.title} onClick={openDetails} />{/if}
 					</div>
 				{/if}
