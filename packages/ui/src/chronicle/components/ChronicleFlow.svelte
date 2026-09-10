@@ -159,6 +159,23 @@ const hasEmbeddedRecovery = $derived(
 			),
 	),
 );
+const waitingTurn = $derived.by(() => {
+	if (
+		scheduledAction ||
+		recovery ||
+		startupRecovery ||
+		processError ||
+		actionBindings.actionSectionActions.length > 0 ||
+		externalTriggers.length === 0 ||
+		!selectedTurn
+	)
+		return null;
+	return (
+		projection.timelineItems.findLast(
+			(item) => item.kind === "turn_cluster" && item.turnId === selectedTurn.turnId,
+		) ?? null
+	);
+});
 const hasTrailingProcessSection = $derived(
 	scheduledAction !== null ||
 		recovery !== null ||
@@ -169,12 +186,14 @@ const hasTrailingProcessSection = $derived(
 );
 const shouldRenderInlineTrailingProcessSection = $derived(
 	hasTrailingProcessSection &&
+		waitingTurn === null &&
 		recovery === null &&
 		startupRecovery === null &&
 		projection.timelineItems.length > 0,
 );
 const shouldRenderTrailingAfterFlow = $derived(
 	hasTrailingProcessSection &&
+		waitingTurn === null &&
 		!hasEmbeddedRecovery &&
 		(recovery !== null || startupRecovery !== null || projection.timelineItems.length === 0),
 );
@@ -228,7 +247,11 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 	{@render recoverySection(true)}
 {/snippet}
 
-{#snippet trailingProcessSection()}
+{#snippet embeddedWaiting()}
+	{@render trailingProcessSection(true)}
+{/snippet}
+
+{#snippet trailingProcessSection(embedded: boolean = false)}
 	{#if scheduledAction}
 		<ChronicleScheduledActionSection
 			anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
@@ -262,6 +285,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		/>
 	{:else}
 		<ChronicleActionSection
+			{embedded}
 			anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
 			isFocused={activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID}
 			actionSectionController={actionBindings}
@@ -285,7 +309,8 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 			<ChronicleTurnCluster
 				cluster={item}
                 recoveryContent={recovery?.turnRecordId === item.turnRecordId ? embeddedRecovery : undefined}
-				isFocused={activeAnchorId === item.anchorId}
+				waitingContent={waitingTurn === item ? embeddedWaiting : undefined}
+				isFocused={activeAnchorId === item.anchorId || (waitingTurn === item && activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID)}
 				compressHistory={item !== latestResultItem}
 				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				onOpenReasoningDetails={onOpenReasoningDetails}

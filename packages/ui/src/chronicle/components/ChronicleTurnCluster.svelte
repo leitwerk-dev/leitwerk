@@ -22,6 +22,7 @@ interface Props {
 	onOpenReasoningDetails: (turnRecordId: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 	recoveryContent?: Snippet;
+	waitingContent?: Snippet;
 }
 
 let {
@@ -32,6 +33,7 @@ let {
 	onOpenReasoningDetails,
 	onDraftTicket,
 	recoveryContent,
+	waitingContent,
 }: Props = $props();
 let resultExpanded = $state<boolean | null>(null);
 let failureExpanded = $state(true);
@@ -163,6 +165,8 @@ function openDetails() {
 	{#if hasReasoning || questionRequests.length}
 		<ChronicleThinkingSection text={reasoning?.text ?? ""} preview={reasoning?.preview ?? ""} previewTruncated={reasoning?.previewTruncated} toolCallCount={reasoning?.toolCallCount ?? 0} traceItemCount={reasoning?.traceItemCount ?? 0} {questionRequests} onOpenDetails={openDetails} />
 	{/if}
+
+	{@render waitingContent?.()}
 
 	{#if isLlm || (compactResult && onDraftTicket)}
 		<div class="cluster-support">

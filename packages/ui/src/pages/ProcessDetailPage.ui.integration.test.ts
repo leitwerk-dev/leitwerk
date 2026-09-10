@@ -2226,6 +2226,66 @@ describe("ProcessDetailPage", () => {
 		expect(metrics.getScrollTop()).toBe(480);
 	});
 
+	it("keeps external waiting inside its latest owning turn with one collapsed disclosure", async () => {
+		const detail = createProcessDetail();
+		detail.process.selectedTurnId = "deliver_change";
+		detail.process.lifecycleStatus = "waiting";
+		const deliver = {
+			...detail.turnRecords[0],
+			turnId: "deliver_change",
+			turnType: "automatic" as const,
+			resultPiEntryId: null,
+			turnResultMarkdown: null,
+		};
+		detail.turnRecords = [
+			{
+				...deliver,
+				id: "trn_previous_delivery",
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:30Z",
+			},
+			deliver,
+		];
+		detail.selectedTurn = {
+			turnId: "deliver_change",
+			kind: "automatic",
+			description: "Deliver",
+			commentary: null,
+			externalTriggers: [
+				{
+					id: "merge",
+					kind: "example.pr",
+					label: "Pull request merged",
+					description: "Continue delivery after the pull request merges.",
+				},
+			],
+		};
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const waiting = target.querySelector('[data-section="leaf-outcome-actions"]');
+		expect(target.querySelectorAll('[data-section="leaf-outcome-actions"]')).toHaveLength(1);
+		expect(
+			waiting?.closest('[data-section="chronicle-turn"]')?.getAttribute("data-turn-record-id"),
+		).toBe("trn_1");
+		expect(waiting?.querySelector("h3")).toBeNull();
+		const disclosure = waiting?.querySelector<HTMLDetailsElement>(
+			'[data-section="external-triggers"]',
+		);
+		expect(disclosure?.open).toBe(false);
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("Waiting for an event");
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 event");
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(true);
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("Collapse");
+		expect(disclosure?.querySelector('[data-external-trigger-id="merge"]')?.textContent).toContain(
+			"Continue delivery after the pull request merges.",
+		);
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(false);
+	});
+
 	it("renders the prompt first and exposes process info in the header overlay", async () => {
 		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
 		const detail = createProcessDetail();
@@ -2294,6 +2354,25 @@ describe("ProcessDetailPage", () => {
 		expect(target.textContent).toContain("Listening since 30s ago.");
 		expect(target.textContent).toContain("Watching /tmp/complete-prompt · polling every 50ms.");
 		expect(target.querySelector('[data-section="external-triggers"]')).toBeTruthy();
+		const disclosure = target.querySelector<HTMLDetailsElement>(
+			'[data-section="external-triggers"]',
+		);
+		expect(disclosure?.open).toBe(false);
+		expect(disclosure?.closest('[data-section="chronicle-turn"]')).toBeNull();
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(true);
+		const listener = disclosure?.querySelector(
+			'[data-external-trigger-id="await_external_prompt_completion:example.file.presence:0"]',
+		);
+		expect(listener?.textContent).toContain(
+			"Write any content to the configured prompt-complete trigger file",
+		);
+		expect(listener?.textContent).toContain("polling every 50ms");
+		expect(listener?.textContent).toContain(
+			"Listening since 30s ago. Watching /tmp/complete-prompt",
+		);
+		expect(disclosure?.querySelectorAll("details")).toHaveLength(0);
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Process info",

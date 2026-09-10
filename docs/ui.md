@@ -83,6 +83,12 @@ Failed or unfinished checks remain expanded; created-change links remain visible
 and external events use the same compact header with quieter surfaces.
 Expanding workspace checks leaves the adjacent result actions in their original position.
 
+When a turn waits for external events and has no operator action, its latest recorded card
+contains the waiting status. A single collapsed disclosure shows the event count and any
+failed-listener count. Expanding it shows each event's description, status, and polling
+details together. If the selected turn has no recorded card, the waiting section remains
+at the end of the chronicle. Operator decisions keep their separate action surface.
+
 A failed turn contains its recovery controls in the same card. Its header retains the turn
 icon, recorded metadata, timestamp, and duration, with a failure marker and disclosure.
 The failure message is prominent; technical details and retry model settings are collapsed
