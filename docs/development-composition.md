@@ -99,3 +99,18 @@ Source development watches composed extension sources and private workspace pack
 Composition-aware build and verification include external package builds, TypeScript projects, source aliases, unit and integration tests, private test roots, boundary checks, and dist extension catalog loading. Public publishing and public license staging never include composed packages.
 
 Development, release, boundary checks, and source aliases share workspace discovery. It accepts `workspaces` arrays or `{ "packages": [...] }`, expands literal package paths and trailing `/*` patterns, and deduplicates directories containing `package.json`.
+
+### Development backend composition
+
+The source supervisor accepts `LEITWERK_DEV_BACKEND_ENTRY`, an absolute backend
+entry path, and `LEITWERK_DEV_PREFLIGHT_ENTRY`, a matching preflight entry.
+The defaults remain the normal server and preflight scripts. A custom preflight
+must validate its composition without opening the application's persistent database
+for writing. The supervisor watches the backend entry and configured extension
+sources and retains its normal graceful restart and readiness handling.
+`LEITWERK_DEV_WATCH_PATHS_JSON` adds source paths as a JSON array, allowing a
+development harness outside application packages to participate in backend reloads.
+
+`LEITWERK_UI_HOST` selects the Vite development listener host; it defaults to
+`localhost`. These are development environment variables, not production server
+configuration or extension-discovery overrides.

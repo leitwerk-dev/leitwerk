@@ -72,3 +72,13 @@ Turborepo entry point.
 Structural performance tests compare short and long current turns with fresh and reused readers. Assert bounded summary bytes and indexed records read; inspect SQLite query plans to catch scans hidden by small result sets. Forbid full event-history queries and session parsing in initial page handling. File-backed migration tests preserve events and process state, verify equal-timestamp ingestion order, and reopen storage to verify persisted summaries.
 
 Recovery tests cover more than the former event-window limits, multiple LLM calls, tool results, operational events, duplicate frames, delayed responses, and completion during reconnect. Browser tests verify that details are requested only on expansion, a delayed detail request leaves controls usable, and desktop/mobile previews show four wrapped nonblank lines with stable dimensions and outer scrolling. Rebuild before Vitest and run `npm run test:full` before completion.
+
+### Stateful scripted Pi
+
+`StubPiTreeHandleFactory` accepts asynchronous script resolvers. Each invocation
+includes its instance ID, workspace and session directory, tree file and persisted
+turn sequence. A script may emit text chunks with a controlled delay before
+executing tool calls. Calls receive their stable tool-call ID, abort signal and
+prompt-guard suspension hook. Aborting or closing the handle cancels delayed
+streams and interactive tools. Scripted behavior can therefore depend on execution
+context and tool contracts without matching prompt prose.

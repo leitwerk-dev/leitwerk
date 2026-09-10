@@ -33,16 +33,23 @@ export type StubToolCallScriptItem =
 	| StubToolCallScriptCall
 	| {
 			calls: readonly StubToolCallScriptCall[];
+			textChunks?: readonly string[];
+			chunkDelayMs?: number;
 	  };
 
 export interface StubToolCallScriptResolverContext {
 	promptText: string;
 	tools: readonly PiCustomTool[];
+	instanceId?: string;
+	workspaceRoot?: string;
+	sessionCwd?: string;
+	treeFile: string;
+	turnSequence: number;
 }
 
 export type StubToolCallScriptResolver = (
 	context: StubToolCallScriptResolverContext,
-) => StubToolCallScriptItem | undefined;
+) => StubToolCallScriptItem | undefined | Promise<StubToolCallScriptItem | undefined>;
 
 function stringifyToolResult(result: unknown): string {
 	if (typeof result === "string") {
@@ -145,6 +152,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	) => boolean | undefined | Promise<boolean | undefined>;
 
 	private _closed = false;
+	private turnAbort = new AbortController();
 	private branchDriftPending = false;
 	private readonly handlers = new Set<PiEventHandler>();
 	private readonly diagnosticHandlers = new Set<PiSessionDiagnosticHandler>();
@@ -314,6 +322,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		appendPromptUserMessage: boolean;
 	}): Promise<PiTurnExecutionResult> {
 		this.assertOpen();
+		this.turnAbort = new AbortController();
 		if ((await this.beforeTurn?.(input.kind, input.options, input.promptText)) === false) {
 			input.options = undefined;
 		}
@@ -355,10 +364,35 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		const tools = new Map((input.options?.tools ?? []).map((tool) => [tool.name, tool]));
 		let assistantContent = input.promptText ?? "Continued.";
 		let assistantContentFromScriptedMarkdown = false;
-		const scriptedItem = this.toolCallScriptResolver?.({
+		const scriptedItem = await this.toolCallScriptResolver?.({
+			treeFile: this.treeFile,
+			turnSequence: this.state.turnSeq,
 			promptText: input.promptText ?? "",
 			tools: input.options?.tools ?? [],
 		});
+		if (scriptedItem && "calls" in scriptedItem) {
+			for (const text of scriptedItem.textChunks ?? []) {
+				this.turnAbort.signal.throwIfAborted();
+				this.emitEvent({
+					type: "stream.delta",
+					turnId,
+					data: { text },
+					timestamp: new Date().toISOString(),
+				});
+				if (scriptedItem.chunkDelayMs)
+					await new Promise<void>((resolve, reject) => {
+						const timer = setTimeout(() => {
+							this.turnAbort.signal.removeEventListener("abort", abort);
+							resolve();
+						}, scriptedItem.chunkDelayMs);
+						const abort = () => {
+							clearTimeout(timer);
+							reject(this.turnAbort.signal.reason);
+						};
+						this.turnAbort.signal.addEventListener("abort", abort, { once: true });
+					});
+			}
+		}
 		const scriptedCalls = scriptedItem ? expandStubToolCallScriptItem(scriptedItem) : [];
 		if (scriptedCalls.length > 0) {
 			for (const [callIndex, scriptedCall] of scriptedCalls.entries()) {
@@ -383,7 +417,14 @@ export class StubPiTreeHandle implements PiTreeHandle {
 				}
 				if (tool) {
 					try {
-						const result = await tool.execute(scriptedCall.args);
+						this.turnAbort.signal.throwIfAborted();
+						const blocked = input.options?.shouldBlockToolCall?.(scriptedCall.toolName);
+						if (blocked) throw new Error(blocked);
+						const result = await tool.execute(scriptedCall.args, {
+							toolCallId,
+							signal: this.turnAbort.signal,
+							suspendPromptGuards: input.options?.suspendPromptGuards,
+						});
 						if (!assistantContentFromScriptedMarkdown) {
 							assistantContent = stringifyToolResult(result);
 						}
@@ -544,6 +585,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 
 	async abortTurn(): Promise<void> {
 		this.assertOpen();
+		this.turnAbort.abort(new Error("Scripted turn aborted"));
 	}
 
 	subscribe(handler: PiEventHandler): () => void {
@@ -565,6 +607,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	}
 
 	async close(): Promise<void> {
+		this.turnAbort.abort(new Error("Scripted session closed"));
 		await this.persistState?.();
 		this._closed = true;
 		this.handlers.clear();
@@ -671,7 +714,15 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 			sessionId: `stub-${++this.seq}`,
 			treeFile: opts.treeFile,
 			isResumed: opts.resume,
-			toolCallScriptResolver: this.toolCallScriptResolver,
+			toolCallScriptResolver: this.toolCallScriptResolver
+				? (context) =>
+						this.toolCallScriptResolver?.({
+							...context,
+							instanceId: opts.instanceId,
+							workspaceRoot: opts.workspaceRoot,
+							sessionCwd: opts.sessionCwd,
+						})
+				: undefined,
 			state: treeState,
 			persistState: () => persistState(treeState),
 			runDetails: {

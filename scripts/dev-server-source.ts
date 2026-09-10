@@ -66,7 +66,11 @@ async function waitForBackendReady(child: ChildProcess, startedAt: number): Prom
 
 function runPreflight(env: NodeJS.ProcessEnv): Promise<boolean> {
 	return waitForSuccess(
-		spawnTsx("scripts/dev-preflight.ts", { cwd: repoRoot, env, stdio: "inherit" }),
+		spawnTsx(env.LEITWERK_DEV_PREFLIGHT_ENTRY ?? "scripts/dev-preflight.ts", {
+			cwd: repoRoot,
+			env,
+			stdio: "inherit",
+		}),
 	);
 }
 
@@ -82,7 +86,17 @@ async function main(): Promise<void> {
 			JSON.stringify(["--conditions=source", "--import", "tsx", "../worker/src/worker-entry.ts"]),
 	};
 
-	const watchPaths = new Set<string>();
+	const backendEntry = process.env.LEITWERK_DEV_BACKEND_ENTRY
+		? path.resolve(process.env.LEITWERK_DEV_BACKEND_ENTRY)
+		: path.join(repoRoot, "packages/server/src/main.ts");
+	const watchPaths = new Set<string>([backendEntry]);
+	const extraWatchPaths: unknown = JSON.parse(process.env.LEITWERK_DEV_WATCH_PATHS_JSON ?? "[]");
+	if (
+		!Array.isArray(extraWatchPaths) ||
+		!extraWatchPaths.every((value) => typeof value === "string")
+	)
+		throw new Error("LEITWERK_DEV_WATCH_PATHS_JSON must be an array of paths");
+	for (const watchPath of extraWatchPaths) watchPaths.add(path.resolve(watchPath));
 	for (const packageName of coreRuntimePackages) {
 		watchPaths.add(path.join(repoRoot, "packages", packageName, "src"));
 	}
@@ -115,7 +129,7 @@ async function main(): Promise<void> {
 
 	const spawnBackend = (): ChildProcess => {
 		const startedAt = Date.now();
-		const child = spawnTsx(path.join(repoRoot, "packages/server/src/main.ts"), {
+		const child = spawnTsx(backendEntry, {
 			cwd: repoRoot,
 			env,
 			stdio: "inherit",

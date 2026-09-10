@@ -88,6 +88,7 @@ export default defineConfig({
 		include: ["@dagrejs/dagre", "dompurify", "elkjs/lib/elk-api.js", "markdown-it"],
 	},
 	server: {
+		host: process.env.LEITWERK_UI_HOST ?? "localhost",
 		port: uiDevServer.port,
 		strictPort: uiDevServer.strictPort,
 		fs:
