@@ -4,6 +4,7 @@ export const EXTERNAL_LINK_A11Y_CLASS = "external-link-a11y";
 export const EXTERNAL_LINK_ICON = "↗";
 export const NEW_TAB_ANNOUNCEMENT = "opens in a new tab";
 export const NEW_TAB_REL = "noopener noreferrer";
+export const NEW_TAB_WINDOW_FEATURES = "noopener,noreferrer";
 
 export type ExternalResourceType =
 	| "issue"
@@ -48,11 +49,15 @@ function removeDecoration(link: HTMLAnchorElement): void {
 		});
 }
 
+export function secureAnchorNewTab(link: HTMLAnchorElement): void {
+	link.target = "_blank";
+	link.rel = NEW_TAB_REL;
+}
+
 export function decorateExternalLink(link: HTMLAnchorElement): void {
 	removeDecoration(link);
 	link.classList.add(EXTERNAL_LINK_CLASS);
-	link.target = "_blank";
-	link.rel = NEW_TAB_REL;
+	secureAnchorNewTab(link);
 
 	const icon = document.createElement("span");
 	icon.className = EXTERNAL_LINK_ICON_CLASS;

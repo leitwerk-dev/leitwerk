@@ -5,7 +5,9 @@ import {
 	decorateExternalLink,
 	externalResourceLabel,
 	isExternalHref,
+	NEW_TAB_WINDOW_FEATURES,
 	normalizeLinkNavigation,
+	secureAnchorNewTab,
 } from "./external-links.js";
 
 const BASE_URI = "https://leitwerk.example/processes/agt_1";
@@ -20,6 +22,14 @@ describe("external links", () => {
 		["mailto:operator@example.com", true],
 	] as const)("classifies %s", (href, expected) => {
 		expect(isExternalHref(href, BASE_URI)).toBe(expected);
+	});
+
+	it("centralizes secured new-tab behavior", () => {
+		const link = document.createElement("a");
+		secureAnchorNewTab(link);
+		expect(link.target).toBe("_blank");
+		expect(link.rel).toBe("noopener noreferrer");
+		expect(NEW_TAB_WINDOW_FEATURES).toBe("noopener,noreferrer");
 	});
 
 	it("decorates external anchors idempotently", () => {
