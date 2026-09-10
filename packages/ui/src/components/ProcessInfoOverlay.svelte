@@ -8,6 +8,7 @@ import type { ProcessDetailData } from "../lib/api";
 import { formatRelativeTime, formatStatus } from "../lib/format";
 import ProcessFlowDiagram from "../pages/ProcessFlowDiagram.svelte";
 import ConversationTreeDiagram from "./ConversationTreeDiagram.svelte";
+import ExternalLink from "./ExternalLink.svelte";
 
 interface Props {
 	detail: ProcessDetailData;
@@ -299,7 +300,11 @@ onMount(() => {
 									{/if}
 								</dl>
 								{#if project.externalUrl}
-									<a href={project.externalUrl} target="_blank" rel="noreferrer">Open external project</a>
+									<ExternalLink
+										href={project.externalUrl}
+										label="Open external project"
+										resourceType="project"
+									/>
 								{/if}
 							</section>
 						{/each}
@@ -855,11 +860,9 @@ onMount(() => {
 		color: var(--chronicle-text-muted);
 	}
 
-	.repository-row a {
+	.repository-row :global(a.external-link) {
 		width: fit-content;
 		font-size: 13px;
-		font-weight: 620;
-		color: var(--chronicle-link);
 	}
 
 	.usage-line {

@@ -9,6 +9,7 @@ import {
 	deleteProcess as requestProcessDeletion,
 	type SessionTransferGrantResponse,
 } from "../lib/api.js";
+import { NEW_TAB_WINDOW_FEATURES } from "../lib/external-links.js";
 import { keyboardShortcutHelpOpen } from "../lib/keyboard-shortcuts-help.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildHomePath, navigate } from "../lib/router.svelte.js";
@@ -291,7 +292,7 @@ async function handleAbortAndRetry() {
 
 function handleDownloadSession() {
 	const url = resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/session`);
-	window.open(url, "_blank");
+	window.open(url, "_blank", NEW_TAB_WINDOW_FEATURES);
 	closeMenu();
 }
 </script>

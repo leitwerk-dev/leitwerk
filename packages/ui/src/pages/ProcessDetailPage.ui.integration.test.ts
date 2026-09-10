@@ -2038,6 +2038,24 @@ describe("ProcessDetailPage", () => {
 		expect(target.querySelector(".page-header-process-name")?.textContent).toBe("· Poem Creator");
 	});
 
+	it("renders an issue reference as a shared external link", async () => {
+		const detail = createProcessDetail();
+		detail.process.title = null;
+		detail.process.externalId = "jonas/vocabelle#6";
+		detail.process.externalUrl = "https://codehost.example/jonas/vocabelle/issues/6";
+
+		const { target } = await mountSubject(detail);
+		await flushUi();
+
+		const link = target.querySelector<HTMLAnchorElement>(".page-header h1 a.external-link");
+		expect(link?.textContent).toContain("jonas/vocabelle#6");
+		expect(link?.getAttribute("href")).toBe("https://codehost.example/jonas/vocabelle/issues/6");
+		expect(link?.target).toBe("_blank");
+		expect(link?.rel).toBe("noopener noreferrer");
+		expect(link?.getAttribute("aria-label")).toBe("Issue: jonas/vocabelle#6 (opens in a new tab)");
+		expect(link?.querySelector('.external-link-icon[aria-hidden="true"]')).toBeTruthy();
+	});
+
 	it("refreshes the page header when a late title update arrives over websocket", async () => {
 		const detail = createProcessDetail();
 		detail.process.title = null;

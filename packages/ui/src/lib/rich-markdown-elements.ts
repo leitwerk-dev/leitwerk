@@ -1,5 +1,6 @@
 import { parseManagedResultImagePath } from "@leitwerk-dev/worker-protocol/worker-result-image";
 import createDOMPurify from "dompurify";
+import { secureAnchorNewTab } from "./external-links.js";
 import type { MermaidRenderRequest, MermaidRenderResponse } from "./mermaid-render.worker.js";
 
 const CSS_IMPORT = /@import[^;]+;/gi;
@@ -37,8 +38,7 @@ function renderResultImage(host: HTMLElement): void {
 	if (!parseManagedResultImagePath(src)) return;
 	const link = document.createElement("a");
 	link.href = src;
-	link.target = "_blank";
-	link.rel = "noopener";
+	secureAnchorNewTab(link);
 	link.setAttribute("aria-label", `Open image: ${host.dataset.alt ?? ""}`);
 	const image = document.createElement("img");
 	image.src = src;

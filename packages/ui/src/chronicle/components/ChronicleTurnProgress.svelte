@@ -1,5 +1,11 @@
 <script lang="ts">
-import type { TurnProgressReport, TurnProgressStepStatus } from "@leitwerk-dev/domain";
+import type {
+	TurnProgressLink,
+	TurnProgressReport,
+	TurnProgressStepStatus,
+} from "@leitwerk-dev/domain";
+import ExternalLink from "../../components/ExternalLink.svelte";
+import type { ExternalResourceType } from "../../lib/external-links.js";
 
 interface Props {
 	report: TurnProgressReport;
@@ -18,6 +24,10 @@ const statusMarks: Record<TurnProgressStepStatus, string> = {
 	completed: "✓",
 	failed: "×",
 };
+
+function resourceType(kind: TurnProgressLink["kind"]): ExternalResourceType {
+	return kind && kind !== "other" ? kind : "external_resource";
+}
 </script>
 
 <section class="progress-report" data-section="turn-progress" aria-labelledby="turn-progress-title">
@@ -39,7 +49,13 @@ const statusMarks: Record<TurnProgressStepStatus, string> = {
 			<h5>Created changes</h5>
 			<ul>
 				{#each report.links as link (link.id)}
-					<li><a href={link.url} target="_blank" rel="noreferrer">{link.label}<span class="external" aria-hidden="true">↗</span></a></li>
+					<li>
+						<ExternalLink
+							href={link.url}
+							label={link.label}
+							resourceType={resourceType(link.kind)}
+						/>
+					</li>
 				{/each}
 			</ul>
 		</div>
@@ -63,7 +79,5 @@ ol li { display: grid; grid-template-columns: 1.25rem minmax(0, 1fr) auto; gap: 
 .status-label { white-space: nowrap; }
 .created-changes { display: grid; gap: var(--space-sm); padding-top: var(--space-sm); border-top: 1px solid var(--chronicle-border); }
 .created-changes ul { display: flex; flex-wrap: wrap; }
-a { color: var(--chronicle-link); font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 3px; }
-.external { margin-inline-start: 0.3em; }
 @media (max-width: 600px) { ol li { grid-template-columns: 1.25rem minmax(0, 1fr); } .status-label { grid-column: 2; } }
 </style>
