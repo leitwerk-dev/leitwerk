@@ -640,9 +640,9 @@ onDestroy(() => {
 
 	.overlay-section {
 		display: grid;
+		grid-template-columns: minmax(0, 1fr);
 		min-width: 0;
 		gap: 12px;
-		min-width: 0;
 	}
 
 	.section-heading {
