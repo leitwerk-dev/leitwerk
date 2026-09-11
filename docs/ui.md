@@ -230,6 +230,13 @@ process detail then renders authoritative startup history inside the Chronicle. 
 name every state. The current step uses the operational accent. Failed steps show bounded
 remediation and the existing recovery action. Process detail never selects a Launch Run to infer
 startup: it uses the correlated worker start, lease, readiness observation, and accepted first turn.
+Startup rows retain observed phase durations: Request worker, Start worker (allocation through
+connection), Prepare runtime (workspace, tools and provider), and Start first turn. The active phase
+and overall startup show elapsed time even between server updates. Completed and failed phases
+stop their timers. Missing historical observations show unavailable timing, never a fabricated zero.
+Storage provisioning, scheduling and image startup remain grouped until separately observed.
+Worker-ready duration excludes the subsequent model response wait. The timer text does not trigger
+screen-reader announcements every second; status changes retain their live announcements.
 A failed attempt remains visible after recovery. Terminal launcher runs collapse to an expandable
 summary; failed runs expand again when the operator selects the summary.
 

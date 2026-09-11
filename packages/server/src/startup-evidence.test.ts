@@ -81,6 +81,78 @@ function evidence(
 }
 
 describe("startup evidence", () => {
+	it("stops the last unaccepted startup when its process is aborted", () => {
+		const result = buildStartupEvidence({
+			process: {
+				...process(),
+				lifecycleStatus: "aborted",
+				currentExecution: null,
+				closedAt: "2026-01-01T00:00:12.000Z",
+			},
+			turnStarts: [start()],
+			leases: [lease()],
+			turnRecords: [],
+		});
+		expect(result.currentAttempt?.status).toBe("superseded");
+		expect(result.currentAttempt?.steps[1]).toMatchObject({
+			status: "superseded",
+			endedAt: "2026-01-01T00:00:12.000Z",
+		});
+	});
+
+	it("retains observed phase intervals instead of treating connection as an instant step", () => {
+		const result = evidence({
+			leases: [
+				lease({
+					connectedAt: "2026-01-01T00:00:08.000Z",
+					readyAt: "2026-01-01T00:00:09.000Z",
+				}),
+			],
+		});
+		expect(result.currentAttempt?.steps[1]).toMatchObject({
+			label: "Start worker",
+			startedAt: "2026-01-01T00:00:01.000Z",
+			endedAt: "2026-01-01T00:00:08.000Z",
+		});
+		const launch = projectLaunchRunStartup(run(), result, { status: "skipped" });
+		expect(launch.steps.find((step) => step.id === "connect_worker")).toMatchObject({
+			startedAt: "2026-01-01T00:00:01.000Z",
+			completedAt: "2026-01-01T00:00:08.000Z",
+		});
+	});
+
+	it("does not invent a connection duration from a legacy readiness receipt", () => {
+		const result = evidence({
+			leases: [
+				lease({
+					bootstrapReceipt: { readyAt: "2026-01-01T00:00:09.000Z" } as never,
+				}),
+			],
+		});
+		expect(result.currentAttempt?.steps[1].endedAt).toBeNull();
+		expect(result.currentAttempt?.steps[2].startedAt).toBeNull();
+	});
+
+	it("ends a failed phase at the durable failure time", () => {
+		const result = evidence({
+			starts: [
+				start(
+					{
+						kind: "bootstrap_failed",
+						failedWorkerLeaseId: "wls_1",
+						safeSummary: "Worker did not connect",
+					} as never,
+					{ updatedAt: "2026-01-01T00:00:12.000Z" },
+				),
+			],
+			leases: [lease()],
+		});
+		expect(result.currentAttempt?.steps[1]).toMatchObject({
+			status: "failed",
+			endedAt: "2026-01-01T00:00:12.000Z",
+		});
+	});
+
 	it.each([
 		["no lease", [], ["in_progress", "pending", "pending", "pending"]],
 		[

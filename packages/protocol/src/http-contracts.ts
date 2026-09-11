@@ -805,6 +805,10 @@ export interface StartupRecoverySummary extends CurrentErrorSummary {
 export type StartupAttemptStatus = "starting" | "failed" | "succeeded" | "recovered" | "superseded";
 
 export interface StartupAttemptStepSummary {
+	/** Observed phase interval; absent for older servers or unavailable evidence. */
+	startedAt?: string | null;
+	endedAt?: string | null;
+	detail?: string;
 	id: "start_worker" | "connect_worker" | "prepare_workspace" | "start_first_turn";
 	label: string;
 	status: "pending" | "in_progress" | "completed" | "failed" | "superseded";
