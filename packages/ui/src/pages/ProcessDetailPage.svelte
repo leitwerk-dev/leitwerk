@@ -173,7 +173,17 @@ function projectTimelineTurns(detail: ProcessDetailData): ProcessTimelineTurnSum
 	];
 }
 
-const turnRecords = $derived($detailState.data ? projectTimelineTurns($detailState.data) : []);
+const turnRecords = $derived.by(() => {
+	const detail = $detailState.data;
+	if (!detail) return [];
+	return projectTimelineTurns(detail).map((turn) => ({
+		...turn,
+		displayTurn:
+			turn.status === "in_progress" && detail.selectedTurn?.turnId === turn.turnId
+				? detail.selectedTurn.description
+				: turn.displayTurn,
+	}));
+});
 const turnTraceIndex = $derived(reasoningTraceCache);
 const toolRendererIndex = $derived(createToolRendererIndex($detailState.data?.toolRenderers ?? []));
 const chroniclePrompt = $derived({
@@ -363,6 +373,7 @@ const chronicleSelectableItems = $derived(
 	buildChronicleSelectableItems({
 		projection: chronicleProjection,
 		pendingRailItem,
+		externalWaitingTurnId: startupRecovery ? null : $detailState.data?.selectedTurn?.turnId,
 	}),
 );
 const terminalSummaryStatus = $derived.by((): ProcessTerminalStatus | null => {

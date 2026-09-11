@@ -34,7 +34,7 @@ export interface ChronicleSelectableTurnItem extends ChronicleSelectableBaseItem
 	kind: "turn";
 	turnId: string;
 	turnRecordId: string;
-	status: "completed" | "in_progress";
+	status: "completed" | "in_progress" | "waiting";
 	shape: ChronicleTurnShape;
 }
 
@@ -75,6 +75,7 @@ interface BuildChronicleSelectableItemsInput {
 		"promptItem" | "turnRailItems" | "terminalRailItem" | "timelineItems"
 	>;
 	pendingRailItem: ChroniclePendingRailItem | null;
+	externalWaitingTurnId?: string | null;
 }
 
 function buildPromptItem(
@@ -204,7 +205,20 @@ export function buildChronicleSelectableItems(
 	if (input.projection.terminalRailItem) {
 		items.push(buildTerminalItem(input.projection.terminalRailItem));
 	}
-	if (input.pendingRailItem) {
+	const waitingTurn =
+		input.pendingRailItem?.tone === "external_trigger"
+			? items.findLast(
+					(item): item is ChronicleSelectableTurnItem =>
+						item.kind === "turn" &&
+						item.turnId === input.externalWaitingTurnId &&
+						item.status === "completed",
+				)
+			: undefined;
+	if (waitingTurn) {
+		waitingTurn.status = "waiting";
+		waitingTurn.detail = "Waiting for an event";
+		waitingTurn.anchorId = input.pendingRailItem?.anchorId ?? CHRONICLE_ACTION_SECTION_ANCHOR_ID;
+	} else if (input.pendingRailItem) {
 		items.push({
 			kind: "action",
 			anchorId: input.pendingRailItem.anchorId ?? CHRONICLE_ACTION_SECTION_ANCHOR_ID,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+	formatChronicleCost,
+	formatChronicleDuration,
 	formatCompactTokenCount,
 	normalizeChronicleLineEndings,
 	normalizeChronicleText,
@@ -23,5 +25,20 @@ describe("chronicle formatting helpers", () => {
 	it("formats compact token counts", () => {
 		expect(formatCompactTokenCount(999)).toBe("999");
 		expect(formatCompactTokenCount(1500)).toBe("1.5k");
+	});
+	it("distinguishes sub-cent usage from a free turn", () => {
+		expect(formatChronicleCost(0)).toBe("$0.00");
+		expect(formatChronicleCost(0.0004)).toBe("<$0.01");
+		expect(formatChronicleCost(0.03)).toBe("$0.03");
+	});
+
+	it("uses fractional seconds and omits unknown or invalid duration", () => {
+		expect(formatChronicleDuration("2026-09-10T10:00:00Z", "2026-09-10T10:00:03.400Z")).toBe(
+			"3.4s",
+		);
+		expect(formatChronicleDuration("2026-09-10T10:00:00Z", "2026-09-10T10:01:03Z")).toBe("1m 3s");
+		expect(formatChronicleDuration(null, null)).toBeNull();
+		expect(formatChronicleDuration("bad", "bad")).toBeNull();
+		expect(formatChronicleDuration("2026-09-10T10:01:00Z", "2026-09-10T10:00:00Z")).toBeNull();
 	});
 });

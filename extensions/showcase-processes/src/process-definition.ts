@@ -293,7 +293,7 @@ export const singlePromptProcess = flow
 	.turn(
 		flow
 			.llm<PromptProcessParams, StructuralProcessState>("run_single_prompt")
-			.description("Run a single operator-provided prompt and finish on turn end")
+			.description("Run Prompt")
 			.tools("read", "bash", "edit", "write")
 			.prompt(async (ctx) => buildSinglePromptInstruction(ctx.params.prompt))
 			.end("completed")
@@ -369,7 +369,7 @@ export const singlePromptWithToolProcess = flow
 	.turn(
 		flow
 			.llm<PromptProcessParams, StructuralProcessState>("run_single_prompt_with_tool")
-			.description("Run a single operator-provided prompt and require the done tool")
+			.description("Run Prompt")
 			.tools("read", "bash", "edit", "write")
 			.prompt(async (ctx) => buildSinglePromptWithToolInstruction(ctx.params.prompt))
 			.outcomeTool("done", (tool) =>
@@ -644,7 +644,7 @@ export const singlePromptExternalCompleteProcess = flow
 	.turn(
 		flow
 			.llm<PromptProcessParams, StructuralProcessState>("run_single_prompt")
-			.description("Run a single operator-provided prompt and finish on turn end")
+			.description("Run Prompt")
 			.tools("read", "bash", "edit", "write")
 			.prompt(async (ctx) => buildSinglePromptInstruction(ctx.params.prompt))
 			.end("completed")
@@ -723,7 +723,7 @@ export const singlePromptExternalCompleteProcess = flow
 
 const poemDraftReviewSpec = flow
 	.human<PromptProcessParams, PoemCreatorState>(poemTurnIds.poemReview)
-	.description("Human review of the drafted poem on the primary branch")
+	.description("Review")
 	.reviewProduct("poem-draft")
 	.notesFields([
 		{
@@ -786,7 +786,7 @@ const poemDraftReviewSpec = flow
 
 const poemReviewFeedbackSpec = flow
 	.human<PromptProcessParams, PoemCreatorState>(poemTurnIds.poemReviewFeedback)
-	.description("Human review of the LLM review output")
+	.description("Review Feedback")
 	.reviewProduct("message")
 	.notesFields([
 		{
@@ -850,7 +850,7 @@ export const poemCreatorProcess = flow
 	.turn(
 		flow
 			.llm<PromptProcessParams, PoemCreatorState>(poemTurnIds.draftPoem)
-			.description("Draft poem")
+			.description("Draft Poem")
 			.fullPrimary()
 			.continueFromPrimaryLeaf()
 			.optionalConsume("message")
@@ -875,7 +875,7 @@ export const poemCreatorProcess = flow
 	.turn(
 		flow
 			.llm<PromptProcessParams, PoemCreatorState>(poemTurnIds.reviewPoemDraft)
-			.description("Review poem")
+			.description("Assess Poem")
 			.rootBranchReview()
 			.continueFromReviewBranch()
 			.consume("poem-draft")

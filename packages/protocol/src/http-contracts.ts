@@ -875,6 +875,8 @@ export type ProcessUiSnapshotProcess = Pick<
  */
 export interface ProcessDetailUiSnapshotResponseBody {
 	process: ProcessUiSnapshotProcess;
+	/** Next turn on the declared happy path, including human decisions. */
+	plannedNextTurn?: Pick<ProcessSelectedTurnSummary, "turnId" | "description"> | null;
 	/** Durable requests in Chronicle order; at most one is open for the current turn. */
 	questionRequests: ProcessQuestionRequest[];
 	toolApprovalRequests: ProcessToolApprovalRequest[];

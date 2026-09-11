@@ -24,6 +24,7 @@ interface Props {
 	externalTriggerSignals: readonly ProcessExternalTriggerSignal[];
 	selectedTurn?: ProcessSelectedTurnSummary | null;
 	modelConfiguration: ProcessModelConfigurationView;
+	embedded?: boolean;
 }
 
 let {
@@ -34,11 +35,16 @@ let {
 	externalTriggerSignals = [],
 	selectedTurn = null,
 	modelConfiguration,
+	embedded = false,
 }: Props = $props();
 
 let sectionElement: HTMLElement | null = null;
 let fieldErrors = $state<Record<string, string[]>>({});
 let promptCacheClock = $state(Date.now());
+let eventsExpanded = $state(false);
+const failedListenerCount = $derived(
+	externalTriggers.filter((trigger) => externalTriggerSignalFor(trigger)?.state === "error").length,
+);
 
 const actions = $derived(actionBindings.actionSectionActions);
 const openAction = $derived(
@@ -312,6 +318,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 <section
 	id={anchorId}
 	class="action-section"
+	class:is-embedded={embedded}
 	class:is-focused={isFocused}
 	class:has-open-form={showOpenActionPanel}
 	bind:this={sectionElement}
@@ -323,6 +330,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	aria-label={actions.length > 0 ? "Action required" : "External trigger status"}
 	tabindex="-1"
 >
+	{#if !embedded}
 	<div class="action-header">
 		<div class="action-header-copy">
 			<div class="action-status-row" aria-label={actions.length > 0 ? "Action required" : "External trigger"}>
@@ -346,6 +354,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 			</div>
 		{/if}
 	</div>
+	{/if}
 
 	{#if actions.length > 0}
 		<div class="action-row" role="group" aria-label="Available actions">
@@ -388,10 +397,15 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	{/if}
 
 	{#if externalTriggers.length > 0}
-		<section class="external-trigger-card" data-section="external-triggers">
-			<p class="external-trigger-heading">
-				Events that can continue this process
-			</p>
+		<details class="external-trigger-card" data-section="external-triggers" bind:open={eventsExpanded}>
+			<summary class="external-trigger-heading">
+				<span class="external-trigger-summary-copy">
+					<span class="external-trigger-title">{actions.length > 0 ? "Events that can continue this process" : "Waiting for an event"}</span>
+					<span class="external-trigger-count">{externalTriggers.length} {externalTriggers.length === 1 ? "event" : "events"}</span>
+					{#if failedListenerCount > 0}<span class="external-trigger-error">{failedListenerCount} {failedListenerCount === 1 ? "check failed" : "checks failed"}</span>{/if}
+				</span>
+				<span class="external-trigger-toggle">{eventsExpanded ? "Collapse" : "Expand"}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d={eventsExpanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} /></svg></span>
+			</summary>
 			<ul class="external-trigger-list">
 				{#each externalTriggers as trigger (trigger.id)}
 					{@const signal = externalTriggerSignalFor(trigger)}
@@ -405,28 +419,12 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 						</div>
 						<p class="external-trigger-description">{trigger.description}</p>
 						{#if signal && presentation}
-							{#if signal.state === "error"}
-								<p class="external-trigger-signal-detail">{presentation.detail}</p>
-								{#if signal.secondaryDetail}<p class="external-trigger-signal-secondary">{signal.secondaryDetail}</p>{/if}
-							{/if}
+							<p class="external-trigger-signal-detail" class:is-error={signal.state === "error"}>{presentation.detail}{signal.secondaryDetail ? ` ${signal.secondaryDetail}` : ""}</p>
 						{/if}
 					</li>
 				{/each}
 			</ul>
-			{#if externalTriggerSignals.some((signal) => signal.state !== "error")}
-				<details class="external-trigger-details">
-					<summary>Listener details</summary>
-					<dl>
-						{#each externalTriggers as trigger (trigger.id)}
-							{@const signal = externalTriggerSignalFor(trigger)}
-							{#if signal && signal.state !== "error"}
-								<div><dt>{trigger.label}</dt><dd>{presentExternalTriggerSignal(signal).detail}{#if signal.secondaryDetail} {signal.secondaryDetail}{/if}</dd></div>
-							{/if}
-						{/each}
-					</dl>
-				</details>
-			{/if}
-		</section>
+		</details>
 	{/if}
 
 	{#if actionBindings.actionError}
@@ -603,7 +601,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		padding: var(--space-lg) var(--space-xl);
 		margin-inline-start: 0;
 		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 30%, var(--chronicle-border) 70%);
-		border-radius: var(--radius-lg);
+		border-radius: 10px;
 		background: color-mix(in srgb, white 94%, var(--chronicle-accent-soft) 6%);
 		scroll-margin-top: var(--space-xl);
 	}
@@ -643,28 +641,13 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		justify-content: flex-end;
 	}
 
-	.action-status-row {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		width: fit-content;
-		min-height: 28px;
-		padding: 0 10px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 34%, var(--chronicle-border) 66%);
-		border-radius: 999px;
-		background: color-mix(in srgb, white 86%, var(--chronicle-accent-soft) 14%);
-		color: color-mix(in srgb, var(--chronicle-accent) 76%, var(--chronicle-text) 24%);
-		font-size: 12px;
-		font-weight: 780;
-		line-height: 1;
-	}
+	.action-status-row { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--chronicle-attention); font-size: var(--type-body-sm); font-weight: 600; line-height: 1.4; }
 
 	.action-status-dot {
 		width: 8px;
 		height: 8px;
 		border-radius: 999px;
-		background: var(--chronicle-accent);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--chronicle-accent) 14%, transparent 86%);
+		background: var(--chronicle-attention);
 	}
 
 	.action-section[data-action-state="external-trigger"] .action-status-row {
@@ -682,7 +665,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	.action-form-header h4 {
 		margin: 0;
 		font-family: var(--font-display);
-		font-size: 19px;
+		font-size: 16px;
 		line-height: 1.22;
 		font-weight: 720;
 		color: var(--chronicle-text);
@@ -713,104 +696,26 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		gap: var(--space-sm);
 	}
 
-	.external-trigger-card {
-		display: grid;
-		gap: var(--space-sm);
-		padding-top: var(--space-md);
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-accent) 18%, var(--chronicle-border) 82%);
-	}
-
-	.external-trigger-heading,
-	.external-trigger-label {
-		margin: 0;
-	}
-
-	.external-trigger-heading { font-size: var(--type-body-sm); font-weight: 620; color: var(--chronicle-text-muted); }
-	.external-trigger-details summary { width: fit-content; padding: var(--space-xs) 0; font-size: var(--type-body-sm); color: var(--chronicle-text-muted); cursor: pointer; }
-	.external-trigger-details[open] { padding-bottom: var(--space-xs); }
-	.external-trigger-details dl { display: grid; gap: var(--space-sm); margin: var(--space-xs) 0 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-text-muted); }
-	.external-trigger-details dt { font-weight: 620; }
-	.external-trigger-details dd { margin: 2px 0 0; overflow-wrap: anywhere; }
-
-	.external-trigger-list {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		display: grid;
-		gap: var(--space-sm);
-	}
-
-	.external-trigger-item {
-		display: grid;
-		gap: var(--space-xs);
-		padding: var(--space-sm) 0;
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 74%, white 26%);
-	}
-
-	.external-trigger-item:first-child {
-		padding-top: 0;
-		border-top: 0;
-	}
-
-	.external-trigger-header-row {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: var(--space-sm);
-		flex-wrap: wrap;
-	}
-
-	.external-trigger-label {
-		font-size: 14px;
-		font-weight: 620;
-		color: var(--chronicle-text);
-	}
-
-	.external-trigger-status {
-		display: inline-flex;
-		align-items: center;
-		min-height: 28px;
-		padding: 0 10px;
-		border-radius: 999px;
-		font-size: 12px;
-		font-weight: 700;
-		letter-spacing: 0.02em;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border-strong) 76%, white 24%);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 94%, white 6%);
-		color: var(--chronicle-text);
-	}
-
-	.external-trigger-status.ready {
-		border-color: var(--chronicle-border);
-		background: var(--chronicle-panel-muted);
-		color: var(--chronicle-text-muted);
-	}
-
-	.external-trigger-status.attention {
-		border-color: color-mix(in srgb, var(--chronicle-danger) 28%, var(--chronicle-border) 72%);
-		background: color-mix(in srgb, white 92%, var(--chronicle-danger) 8%);
-		color: var(--chronicle-danger-text);
-	}
-
-	.external-trigger-description,
-	.external-trigger-signal-detail,
-	.external-trigger-signal-secondary {
-		margin: 0;
-		font-size: 14px;
-		line-height: 1.55;
-	}
-
-	.external-trigger-description {
-		color: var(--chronicle-text-muted);
-	}
-
-	.external-trigger-signal-detail {
-		color: var(--chronicle-text);
-	}
-
-	.external-trigger-signal-secondary {
-		color: var(--chronicle-text-muted);
-	}
+	.action-section.is-embedded { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; gap: 0; }
+	.external-trigger-card { border-top: 1px solid var(--chronicle-border); }
+	.external-trigger-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); min-height: 36px; padding: var(--space-2xs) 0; list-style: none; font-size: var(--type-body-sm); color: var(--chronicle-text-muted); cursor: pointer; }
+	.external-trigger-heading::-webkit-details-marker { display: none; }
+	.external-trigger-heading:hover .external-trigger-toggle { color: var(--chronicle-text); }
+	.external-trigger-heading:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; border-radius: 4px; }
+	.external-trigger-summary-copy { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--space-2xs) var(--space-xs); }
+	.external-trigger-title { font-weight: 600; }
+	.action-section[data-action-state="external-trigger"] .external-trigger-title { color: var(--chronicle-attention); }
+	.external-trigger-count { color: var(--chronicle-text-muted); font-variant-numeric: tabular-nums; }
+	.external-trigger-error { color: var(--chronicle-danger-text); }
+	.external-trigger-toggle { display: inline-flex; align-items: center; gap: var(--space-2xs); flex-shrink: 0; }
+	.external-trigger-list { margin: 0; padding: 0; list-style: none; }
+	.external-trigger-item { display: grid; gap: 2px; padding: var(--space-xs) 0; border-top: 1px solid var(--chronicle-border); }
+	.external-trigger-header-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-sm); }
+	.external-trigger-label { margin: 0; font-size: var(--type-body-sm); font-weight: 620; color: var(--chronicle-text); overflow-wrap: anywhere; }
+	.external-trigger-status { flex-shrink: 0; font-size: 12px; color: var(--chronicle-text-muted); }
+	.external-trigger-status.attention, .external-trigger-signal-detail.is-error { color: var(--chronicle-danger-text); }
+	.external-trigger-description { margin: 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-text-muted); overflow-wrap: anywhere; }
+	.external-trigger-signal-detail { margin: 0; font-size: 12px; line-height: 1.5; color: var(--chronicle-text-muted); overflow-wrap: anywhere; }
 
 	.action-row button,
 	.primary-button,
@@ -1032,6 +937,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	}
 
 	@media (max-width: 720px) {
+		.external-trigger-heading { min-height: 44px; }
 		.action-section {
 			padding: var(--space-lg);
 		}

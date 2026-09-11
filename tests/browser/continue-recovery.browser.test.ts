@@ -215,7 +215,7 @@ test.describe("failed-turn continue recovery", () => {
 
 		await expect(recoverySection).toBeVisible();
 		await expect(recoveryRailItem).toBeVisible();
-		await expect(recoveryRailItem).toContainText("Run a single operator-provided prompt");
+		await expect(recoveryRailItem).toContainText("Run Prompt");
 		await expect(continueButton).toBeVisible();
 		await expect(unavailableNote).toHaveCount(0);
 

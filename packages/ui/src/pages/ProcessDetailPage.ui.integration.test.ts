@@ -1913,6 +1913,24 @@ afterEach(() => {
 });
 
 describe("ProcessDetailPage", () => {
+	it("keeps a bounded streamed answer visible alongside preceding reasoning", async () => {
+		const detail = createLiveReasoningTransitionDetail();
+		const activeTurn = detail.primaryPath.turnState.activeTurn;
+		if (!activeTurn) throw new Error("Expected a live turn");
+		activeTurn.assistant.text = `${"Earlier response. ".repeat(100)}Latest response.`;
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const live = target.querySelector('[data-section="live-tail"]');
+		expect(live?.getAttribute("data-live-state")).toBe("thinking");
+		expect(live?.querySelector('[data-section="thinking-preview"]')?.textContent).toContain(
+			"Keep this live reasoning intact.",
+		);
+		const answer = live?.querySelector(".live-result p")?.textContent ?? "";
+		expect(answer).toContain("Latest response.");
+		expect(answer.length).toBeLessThanOrEqual(1024);
+		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+	});
+
 	it("loads live history only on expansion and reconnects only while it stays open", async () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
@@ -2043,7 +2061,7 @@ describe("ProcessDetailPage", () => {
 
 		const startupHistory = target.querySelector('[data-section="startup-history"]');
 		expect(startupHistory?.textContent).toContain("Process startup failed");
-		expect(startupHistory?.querySelector(".progress-checklist")).not.toBeNull();
+		expect(startupHistory?.querySelector(".checklist-rows")).not.toBeNull();
 		expect(
 			startupHistory
 				?.querySelector('[data-progress-step="start_worker"]')
@@ -2226,6 +2244,115 @@ describe("ProcessDetailPage", () => {
 		expect(metrics.getScrollTop()).toBe(480);
 	});
 
+	it("joins external waiting to its latest turn in the chronicle and desktop and mobile navigation", async () => {
+		const detail = createProcessDetail();
+		detail.process.selectedTurnId = "deliver_change";
+		detail.process.lifecycleStatus = "waiting";
+		const deliver = {
+			...detail.turnRecords[0],
+			turnId: "deliver_change",
+			turnType: "automatic" as const,
+			resultPiEntryId: null,
+			turnResultMarkdown: null,
+		};
+		detail.turnRecords = [
+			{
+				...deliver,
+				id: "trn_previous_delivery",
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:30Z",
+			},
+			deliver,
+		];
+		detail.selectedTurn = {
+			turnId: "deliver_change",
+			kind: "automatic",
+			description: "Deliver",
+			commentary: null,
+			externalTriggers: [
+				{
+					id: "merge",
+					kind: "example.pr",
+					label: "Pull request merged",
+					description: "Continue delivery after the pull request merges.",
+				},
+			],
+		};
+		const { target, viewport } = await mountSubject(detail);
+		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_400 });
+		await flushUi();
+		installAnchorLayoutMetrics(target, {
+			"chronicle-prompt": { top: 0, height: 180 },
+			"chronicle-turn-trn_previous_delivery": { top: 500, height: 320 },
+			"chronicle-turn-trn_1": { top: 1_500, height: 900 },
+			"chronicle-action-section": { top: 2_300, height: 100 },
+		});
+		const rail = target.querySelector('[data-column="turn-rail"]');
+		const waitingTurn = rail?.querySelector<HTMLButtonElement>('[data-turn-record-id="trn_1"]');
+		expect(rail?.querySelectorAll('[data-turn-id="deliver_change"]')).toHaveLength(2);
+		expect(rail?.querySelector('[data-rail-kind="action"]')).toBeNull();
+		expect(waitingTurn?.dataset.state).toBe("waiting");
+		expect(waitingTurn?.querySelector(".rail-detail")?.textContent).toBe("Waiting for an event");
+		rail?.querySelector<HTMLButtonElement>('[data-rail-anchor-id="chronicle-prompt"]')?.click();
+		await flushUi();
+		expect(metrics.getScrollTop()).toBe(0);
+		waitingTurn?.click();
+		await flushUi();
+		expect(waitingTurn?.getAttribute("aria-current")).toBe("step");
+		expect(metrics.getScrollTop()).toBe(1_500);
+		waitingTurn?.focus();
+		waitingTurn?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+		await flushUi();
+		expect(document.activeElement?.getAttribute("data-turn-record-id")).toBe(
+			"trn_previous_delivery",
+		);
+		document.activeElement?.dispatchEvent(
+			new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }),
+		);
+		await flushUi();
+		expect(document.activeElement).toBe(waitingTurn);
+		expect(waitingTurn?.getAttribute("aria-current")).toBe("step");
+
+		const quickNav = target.querySelector<HTMLButtonElement>(
+			'[data-action="open-mobile-quick-nav"]',
+		);
+		quickNav?.click();
+		await flushUi();
+		const sheet = target.querySelector('[data-section="mobile-process-quick-nav"]');
+		expect(sheet?.querySelector('[data-rail-kind="action"]')).toBeNull();
+		const mobileWaitingTurn = sheet?.querySelector<HTMLButtonElement>(
+			'[data-turn-record-id="trn_1"]',
+		);
+		expect(mobileWaitingTurn?.dataset.state).toBe("waiting");
+		mobileWaitingTurn?.click();
+		await flushUi();
+		expect(target.querySelector('[data-section="mobile-process-quick-nav"]')).toBeNull();
+		expect(document.activeElement).toBe(quickNav);
+		expect(metrics.getScrollTop()).toBe(1_500);
+		const waiting = target.querySelector('[data-section="leaf-outcome-actions"]');
+		expect(target.querySelectorAll('[data-section="leaf-outcome-actions"]')).toHaveLength(1);
+		expect(
+			waiting?.closest('[data-section="chronicle-turn"]')?.getAttribute("data-turn-record-id"),
+		).toBe("trn_1");
+		expect(waiting?.querySelector("h3")).toBeNull();
+		const disclosure = waiting?.querySelector<HTMLDetailsElement>(
+			'[data-section="external-triggers"]',
+		);
+		expect(disclosure?.open).toBe(false);
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("Waiting for an event");
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 event");
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(true);
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("Collapse");
+		expect(disclosure?.querySelector('[data-external-trigger-id="merge"]')?.textContent).toContain(
+			"Continue delivery after the pull request merges.",
+		);
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(false);
+	});
+
 	it("renders the prompt first and exposes process info in the header overlay", async () => {
 		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
 		const detail = createProcessDetail();
@@ -2286,7 +2413,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		expect(target.textContent).toContain("Prompt");
+		expect(target.textContent).toContain("Initial prompt");
 		expect(target.textContent).toContain("Ship the requested change");
 		expect(target.textContent).toContain("Wait for an external completion trigger");
 		expect(target.textContent).toContain("Configured prompt-complete file");
@@ -2294,6 +2421,25 @@ describe("ProcessDetailPage", () => {
 		expect(target.textContent).toContain("Listening since 30s ago.");
 		expect(target.textContent).toContain("Watching /tmp/complete-prompt · polling every 50ms.");
 		expect(target.querySelector('[data-section="external-triggers"]')).toBeTruthy();
+		const disclosure = target.querySelector<HTMLDetailsElement>(
+			'[data-section="external-triggers"]',
+		);
+		expect(disclosure?.open).toBe(false);
+		expect(disclosure?.closest('[data-section="chronicle-turn"]')).toBeNull();
+		disclosure?.querySelector("summary")?.click();
+		await flushUi();
+		expect(disclosure?.open).toBe(true);
+		const listener = disclosure?.querySelector(
+			'[data-external-trigger-id="await_external_prompt_completion:example.file.presence:0"]',
+		);
+		expect(listener?.textContent).toContain(
+			"Write any content to the configured prompt-complete trigger file",
+		);
+		expect(listener?.textContent).toContain("polling every 50ms");
+		expect(listener?.textContent).toContain(
+			"Listening since 30s ago. Watching /tmp/complete-prompt",
+		);
+		expect(disclosure?.querySelectorAll("details")).toHaveLength(0);
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
 			(button) => button.textContent?.trim() === "Process info",
@@ -2726,7 +2872,14 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		const reasoningButton = target.querySelector<HTMLButtonElement>(
+			'[data-section="live-tail"] [data-action="open-reasoning-details"]',
+		);
+		expect(reasoningButton?.closest(".live-footer")).toBeTruthy();
+		expect(reasoningButton?.nextElementSibling?.getAttribute("data-action")).toBe(
+			"open-turn-details",
+		);
+		reasoningButton?.click();
 		await flushUi();
 		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
@@ -3019,6 +3172,19 @@ describe("ProcessDetailPage", () => {
 		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
 	});
 
+	it("keeps failure-specific guidance visible when no saved progress can continue", async () => {
+		const detail = createContinuableFailedDetail();
+		const guidance = "Wait for provider capacity or switch to a different model before retrying.";
+		detail.recovery = createFailedTurnRecovery("trn_2", { canContinue: false, guidance });
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const recovery = target.querySelector('[data-section="current-turn-recovery"]');
+		expect(recovery?.textContent).toContain(guidance);
+		expect(recovery?.querySelector('[data-section="continue-unavailable"]')).toBeTruthy();
+		expect(queryRecoveryAction(target, "continue-failed-turn")).toBeNull();
+		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
+	});
+
 	it("shows both the failed turn and the recovery rail item", async () => {
 		const { target } = await mountSubject(createContinuableFailedDetail());
 		await flushUi();
@@ -3031,11 +3197,12 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(failedTurnButton).toBeTruthy();
 		expect(recoveryButton).toBeTruthy();
-		expect(failedTurnButton?.querySelector(".rail-marker")?.textContent?.trim()).toBe("2");
+		expect(failedTurnButton?.dataset.state).toBe("failed");
+		expect(failedTurnButton?.querySelector(".rail-detail")?.textContent).toContain("Failed");
 		expect(recoveryButton?.querySelector(".rail-title")?.textContent).toContain("Implement Fix");
 	});
 
-	it("renders recovery after the latest failed turn even when an older leaf outcome exists", async () => {
+	it("renders recovery inside the latest failed turn even when an older leaf outcome exists", async () => {
 		const { target } = await mountSubject(createContinuableFailedDetailWithHistoricalLeafOutcome());
 		await flushUi();
 
@@ -3055,9 +3222,41 @@ describe("ProcessDetailPage", () => {
 			throw new Error("Expected leaf outcome, failed turn, and recovery section");
 		}
 		expect(leafOutcome.compareDocumentPosition(failedTurn)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-		expect(failedTurn.compareDocumentPosition(recoverySection)).toBe(
-			Node.DOCUMENT_POSITION_FOLLOWING,
+		expect(failedTurn.contains(recoverySection)).toBe(true);
+	});
+
+	it("keeps failure details, retry options, and continuation drafts in the failed card", async () => {
+		const detail = createContinuableFailedDetail();
+		detail.recovery = createFailedTurnRecovery("trn_2", {
+			summary: "An internal error occurred — worker heartbeat stale for wkr_1 after 30000ms",
+			technicalDetail: "Worker heartbeat stale for wkr_1 after 30000ms",
+		});
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const card = target.querySelector<HTMLElement>(
+			'[data-section="chronicle-turn"][data-turn-record-id="trn_2"]',
 		);
+		if (!card) throw new Error("Expected failed turn card");
+		expect(card.querySelectorAll('[data-section="failure-message"]')).toHaveLength(1);
+		expect(card.querySelector('[data-section="failure-message"] p')?.textContent).toBe(
+			"Worker stopped responding. No heartbeat was received for 30 seconds.",
+		);
+		expect(card.querySelector('[data-section="operator-decision"]')).toBeNull();
+		expect(card.querySelector<HTMLDetailsElement>(".failure-detail")?.open).toBe(false);
+		const options = card.querySelector<HTMLElement>(".retry-options");
+		expect(options?.hidden).toBe(true);
+		card.querySelector<HTMLButtonElement>('[data-action="toggle-retry-options"]')?.click();
+		await flushUi();
+		expect(options?.hidden).toBe(false);
+		editContinuePrompt(target, "Resume with the existing notes.");
+		const toggle = card.querySelector<HTMLButtonElement>('[data-action="toggle-failed-turn"]');
+		toggle?.click();
+		await flushUi();
+		expect(card.querySelector<HTMLElement>(".turn-body")?.hidden).toBe(true);
+		toggle?.click();
+		await flushUi();
+		expect(options?.hidden).toBe(false);
+		expect(requireContinuePromptField(target).value).toBe("Resume with the existing notes.");
 	});
 
 	it("opens the latest failed-turn reasoning from the recovery rail item", async () => {
@@ -3154,7 +3353,11 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		target
+			.querySelector<HTMLButtonElement>(
+				'[data-section="live-tail"] [data-action="open-turn-details"]',
+			)
+			?.click();
 		await flushUi();
 
 		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
@@ -3432,7 +3635,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		expect(detailButtons.length).toBeGreaterThan(0);
 		detailButtons[detailButtons.length - 1]?.click();
@@ -4130,10 +4333,10 @@ describe("ProcessDetailPage", () => {
 		}
 
 		expect(operatorDecision.querySelector('[data-section="operator-decision"]')).toBeTruthy();
-		expect(operatorDecision.querySelector(".thinking-section .chronicle-expand-button")).toBeNull();
-		expect(operatorDecision.querySelector(".usage-stats")).toBeNull();
-		expect(latestLlmTurn.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
-		expect(latestLlmTurn.querySelector(".usage-stats")).toBeTruthy();
+		expect(operatorDecision.querySelector('[data-action="open-reasoning-details"]')).toBeNull();
+		expect(operatorDecision.querySelector(".entry-metadata")).toBeNull();
+		expect(latestLlmTurn.querySelector('[data-action="open-reasoning-details"]')).toBeTruthy();
+		expect(latestLlmTurn.querySelector(".entry-metadata")?.textContent).toContain("$0.00");
 	});
 
 	it("does not render a duplicate operator-input card for app actions already represented by an operator decision", async () => {
@@ -4751,7 +4954,7 @@ describe("ProcessDetailPage", () => {
 		expect((target.querySelector(".page-shell") as HTMLElement | null)?.inert).not.toBe(true);
 		expect(document.activeElement).toBe(processInfoButton);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_1");
 		expect(replaceStateSpy).toHaveBeenCalledWith(
@@ -4805,7 +5008,7 @@ describe("ProcessDetailPage", () => {
 		const pushStateSpy = vi.spyOn(window.history, "pushState");
 		const replaceStateSpy = vi.spyOn(window.history, "replaceState");
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[1]?.click();
 		await flushUi();
@@ -4953,7 +5156,7 @@ describe("ProcessDetailPage", () => {
 		mockFetchTurnReasoningDetail.mockReset();
 		mockFetchTurnReasoningDetail.mockRejectedValue(new Error("Temporary reasoning failure"));
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		await flushUi();
 
@@ -4987,7 +5190,7 @@ describe("ProcessDetailPage", () => {
 				buildMockReasoningResponse(requestInstanceId, turnRecordId),
 		);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 
 		expect(target.querySelector('[data-section="reasoning-load-error"]')?.textContent).toContain(
@@ -5027,7 +5230,7 @@ describe("ProcessDetailPage", () => {
 			},
 		);
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 
 		const freshDetail = createReasoningOverlayDetail();
@@ -5091,18 +5294,23 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 
-		const previews = target.querySelectorAll<HTMLElement>('[data-section="thinking-preview"]');
-		expect(previews).toHaveLength(2);
-		expect(previews[0]?.querySelector(".thinking-section .chronicle-expand-button")).toBeTruthy();
-		expect(
-			previews[0]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.traceItemCount,
-		).toBe("2");
-		expect(
-			previews[1]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.truncated,
-		).toBe("true");
-		expect(
-			previews[1]?.querySelector<HTMLElement>(".thinking-preview-copy")?.dataset.traceItemCount,
-		).toBe("20");
+		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
+			'[data-action="open-reasoning-details"]',
+		);
+		expect(detailButtons).toHaveLength(2);
+		expect(target.querySelector('[data-section="thinking-preview"]')).toBeNull();
+		for (const button of detailButtons) {
+			expect(button.closest(".footer-actions")).toBeTruthy();
+			expect(button.nextElementSibling?.getAttribute("data-action")).toBe("open-turn-details");
+		}
+		detailButtons[1]?.click();
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledWith(
+			"agt_1",
+			"trn_2",
+			null,
+			expect.any(AbortSignal),
+		);
 	});
 
 	it("opens the reasoning details overlay as a flat operational trace with prompt copy and turn navigation", async () => {
@@ -5124,7 +5332,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		expect(detailButtons).toHaveLength(2);
 
@@ -5205,7 +5413,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[0]?.click();
 		await flushUi();
@@ -5264,7 +5472,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-turn-details"]',
 		);
 		expect(detailButtons).toHaveLength(2);
 		detailButtons[1]?.click();
@@ -5299,7 +5507,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			".thinking-section .chronicle-expand-button",
+			'[data-action="open-reasoning-details"]',
 		);
 		detailButtons[1]?.click();
 		await flushUi();
@@ -5317,7 +5525,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createReasoningOverlayDetail());
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>(".thinking-section .chronicle-expand-button")?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
 

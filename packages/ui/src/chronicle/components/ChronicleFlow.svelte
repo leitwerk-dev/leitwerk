@@ -105,6 +105,14 @@ let {
 }: Props = $props();
 
 const latestTimelineItem = $derived.by(() => projection.timelineItems.at(-1) ?? null);
+const latestResultItem = $derived(
+	projection.timelineItems.findLast(
+		(item) =>
+			item.kind === "leaf_outcome" ||
+			(item.kind === "turn_cluster" &&
+				item.sections.some((section) => section.kind === "turn_result")),
+	),
+);
 const questionRequestsByTurn = $derived.by(() => {
 	const grouped = new SvelteMap<
 		string,
@@ -143,6 +151,31 @@ function chronicleItemKey(item: ChronicleTimelineItem, index: number): string {
 	}
 }
 
+const hasEmbeddedRecovery = $derived(
+	Boolean(
+		recovery &&
+			projection.timelineItems.some(
+				(item) => item.kind === "turn_cluster" && item.turnRecordId === recovery.turnRecordId,
+			),
+	),
+);
+const waitingTurn = $derived.by(() => {
+	if (
+		scheduledAction ||
+		recovery ||
+		startupRecovery ||
+		processError ||
+		actionBindings.actionSectionActions.length > 0 ||
+		externalTriggers.length === 0 ||
+		!selectedTurn
+	)
+		return null;
+	return (
+		projection.timelineItems.findLast(
+			(item) => item.kind === "turn_cluster" && item.turnId === selectedTurn.turnId,
+		) ?? null
+	);
+});
 const hasTrailingProcessSection = $derived(
 	scheduledAction !== null ||
 		recovery !== null ||
@@ -153,12 +186,15 @@ const hasTrailingProcessSection = $derived(
 );
 const shouldRenderInlineTrailingProcessSection = $derived(
 	hasTrailingProcessSection &&
+		waitingTurn === null &&
 		recovery === null &&
 		startupRecovery === null &&
 		projection.timelineItems.length > 0,
 );
 const shouldRenderTrailingAfterFlow = $derived(
 	hasTrailingProcessSection &&
+		waitingTurn === null &&
+		!hasEmbeddedRecovery &&
 		(recovery !== null || startupRecovery !== null || projection.timelineItems.length === 0),
 );
 
@@ -167,20 +203,11 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 }
 </script>
 
-{#snippet trailingProcessSection()}
-	{#if scheduledAction}
-		<ChronicleScheduledActionSection
-			anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
-			isFocused={activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID}
-			scheduledAction={scheduledAction}
-			busy={scheduledActionController.scheduledActionBusy}
-			error={scheduledActionController.scheduledActionError}
-			onEdit={scheduledActionController.editScheduledAction}
-			onCancel={scheduledActionController.cancelScheduledAction}
-		/>
-	{:else if recovery}
+{#snippet recoverySection(embedded: boolean)}
+	{#if recovery}
 		{#key `${recovery.turnRecordId}:${recovery.defaultContinuePrompt}`}
 			<ChronicleRecoverySection
+                {embedded}
 				anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
 				{instanceId}
 				isFocused={activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID}
@@ -213,6 +240,30 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				onRetry={recoveryController.retryFailedTurn}
 			/>
 		{/key}
+	{/if}
+{/snippet}
+
+{#snippet embeddedRecovery()}
+	{@render recoverySection(true)}
+{/snippet}
+
+{#snippet embeddedWaiting()}
+	{@render trailingProcessSection(true)}
+{/snippet}
+
+{#snippet trailingProcessSection(embedded: boolean = false)}
+	{#if scheduledAction}
+		<ChronicleScheduledActionSection
+			anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
+			isFocused={activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID}
+			scheduledAction={scheduledAction}
+			busy={scheduledActionController.scheduledActionBusy}
+			error={scheduledActionController.scheduledActionError}
+			onEdit={scheduledActionController.editScheduledAction}
+			onCancel={scheduledActionController.cancelScheduledAction}
+		/>
+	{:else if recovery}
+		{@render recoverySection(false)}
 	{:else if startupRecovery}
 		<ChronicleStartupRecoverySection
 			{instanceId}
@@ -234,6 +285,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		/>
 	{:else}
 		<ChronicleActionSection
+			{embedded}
 			anchorId={CHRONICLE_ACTION_SECTION_ANCHOR_ID}
 			isFocused={activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID}
 			actionSectionController={actionBindings}
@@ -256,8 +308,10 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		{:else if item.kind === "turn_cluster"}
 			<ChronicleTurnCluster
 				cluster={item}
-				isFocused={activeAnchorId === item.anchorId}
-				compressHistory={item !== latestTimelineItem}
+                recoveryContent={recovery?.turnRecordId === item.turnRecordId ? embeddedRecovery : undefined}
+				waitingContent={waitingTurn === item ? embeddedWaiting : undefined}
+				isFocused={activeAnchorId === item.anchorId || (waitingTurn === item && activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID)}
+				compressHistory={item !== latestResultItem}
 				questionRequests={questionRequestsForTurn(item.turnRecordId)}
 				onOpenReasoningDetails={onOpenReasoningDetails}
 				onDraftTicket={onDraftTicket}
@@ -268,7 +322,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 			<ChronicleLeafOutcomeSection
 				section={item}
 				isFocused={activeAnchorId === item.anchorId}
-				compressHistory={item !== latestTimelineItem}
+				compressHistory={item !== latestResultItem}
 				onDraftTicket={onDraftTicket}
 			/>
 		{:else if item.kind === "leaf_outcome_placeholder"}
@@ -301,7 +355,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		flex-direction: column;
 		justify-content: flex-start;
 		min-height: 100%;
-		gap: clamp(var(--space-md), 2vw, var(--space-lg));
+		gap: 14px;
 		padding-bottom: var(--space-xl);
 	}
 

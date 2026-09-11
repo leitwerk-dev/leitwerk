@@ -2,8 +2,10 @@
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
-import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
+import { formatChronicleCost } from "../lib/formatting.js";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
+import ChronicleTurnDetailsButton from "./ChronicleTurnDetailsButton.svelte";
 
 interface Props {
 	liveTail: ChronicleLiveTailItem;
@@ -28,6 +30,15 @@ let {
 let confirmingStop = $state(false);
 const openQuestionRequest = $derived(
 	questionRequests.find((request) => request.status === "open") ?? null,
+);
+const hasReasoning = $derived(
+	Boolean(
+		liveTail.reasoningSection &&
+			(liveTail.reasoningSection.text.trim() ||
+				liveTail.reasoningSection.preview.trim() ||
+				liveTail.reasoningSection.toolCallCount ||
+				liveTail.reasoningSection.traceItemCount),
+	),
 );
 
 function requestStop() {
@@ -68,45 +79,29 @@ const screenReaderStatus = $derived.by(() => {
 >
 	<p class="sr-only" role="status" aria-live="polite" aria-atomic="true">{screenReaderStatus}</p>
 	<div class="live-tail-body">
-		<div class="live-tail-heading">
-			<div class="live-heading-copy">
-				<p class="live-eyebrow">{openQuestionRequest ? "Operator input needed" : liveTail.stateLabel}</p>
-				<h3>{openQuestionRequest ? "Waiting for your answers" : liveTail.title}</h3>
-				{#if liveTail.pathLabel || liveTail.modelProfileId}
-					<div class="live-meta-row">
-						{#if liveTail.pathLabel}
-							<p class="live-meta">{liveTail.pathLabel}</p>
-						{/if}
-						{#if liveTail.modelProfileId}
-							<span class="model-label">{liveTail.modelProfileId}</span>
-						{/if}
-					</div>
-				{/if}
-			</div>
-		</div>
+		<ChronicleEntryHeader
+			title={liveTail.title}
+			kind={liveTail.turnType === "llm" ? "llm" : "system"}
+			metadata={[liveTail.modelProfileId, liveTail.usage?.cost ? formatChronicleCost(liveTail.usage.cost.total) : null].filter(Boolean).join(" · ")}
+			timestamp={liveTail.facts.startedAt}
+			duration={openQuestionRequest ? "Paused" : "Running"}
+		/>
+		{#if !openQuestionRequest}<p class="live-copy" role="status">{liveTail.stateLabel}{#if liveTail.toolCall} · {formatDefinition(liveTail.toolCall.toolName)}{/if}</p>{/if}
+		{#if liveTail.assistantTextPreview}
+			<div class="live-result"><p>{liveTail.assistantTextPreview}</p></div>
+		{:else if !liveTail.reasoningSection && liveTail.state !== "tool_running"}
+			<p class="live-copy">{liveTail.copy}</p>
+		{/if}
 
 		{#if liveTail.reasoningSection || questionRequests.length > 0}
 			<ChronicleThinkingSection
 				text={liveTail.reasoningSection?.text ?? ""}
 				preview={liveTail.reasoningSection?.preview ?? ""}
 				previewTruncated={liveTail.reasoningSection?.previewTruncated ?? false}
-				toolCallCount={liveTail.reasoningSection?.toolCallCount ?? 0}
 				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
 				{questionRequests}
-				onOpenDetails={() => onOpenReasoningDetails(liveTail.turnRecordId)}
 				isLive={true}
 			/>
-		{:else}
-			<p class="live-copy">{liveTail.copy}</p>
-			{#if liveTail.turnType === "llm"}
-				<ChronicleExpandButton
-					expanded={false}
-					collapsedLabel="Expand reasoning"
-					ariaLabel="Expand reasoning"
-					dataAction="open-reasoning-details"
-					onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)}
-				/>
-			{/if}
 		{/if}
 
 		{#if onAbortTurn}
@@ -154,84 +149,24 @@ const screenReaderStatus = $derived.by(() => {
 				{/if}
 			</div>
 		{/if}
+		{#if liveTail.turnType === "llm" || hasReasoning}
+			<div class="live-footer">
+				{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+				{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+			</div>
+		{/if}
 	</div>
 </section>
 
 <style>
-	.live-tail {
-		padding: 22px 0 8px;
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 80%, white 20%);
-		scroll-margin-top: 28px;
-	}
+	.live-tail { padding: 14px; border: 1px solid color-mix(in srgb, var(--chronicle-accent) 35%, var(--chronicle-border)); border-radius: 10px; background: var(--chronicle-card-surface); scroll-margin-top: var(--space-sm); }
+	.live-tail.is-focused { border-color: var(--chronicle-accent); }
+	.live-tail-body { display: flex; flex-direction: column; gap: 10px; }
+	.live-footer { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+	.live-copy { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
 
-	.live-tail-body {
-		display: flex;
-		flex-direction: column;
-		gap: 14px;
-		padding: 18px 18px 20px;
-		border-radius: 18px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-accent) 20%, var(--chronicle-border) 80%);
-		background: color-mix(in srgb, white 90%, var(--chronicle-accent-soft) 10%);
-		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
-	}
-
-	.live-tail.is-focused .live-tail-body {
-		border-color: color-mix(in srgb, var(--chronicle-accent) 32%, var(--chronicle-border) 68%);
-	}
-
-	.live-tail-heading {
-		display: flex;
-		align-items: start;
-		gap: 12px;
-	}
-
-	.live-heading-copy {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.live-eyebrow {
-		margin: 0;
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: color-mix(in srgb, var(--chronicle-text) 64%, var(--chronicle-accent) 36%);
-	}
-
-	.live-tail h3 {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: 20px;
-		font-weight: 650;
-		line-height: 1.18;
-		color: var(--chronicle-text);
-	}
-
-	.live-meta,
-	.live-copy {
-		margin: 0;
-		font-size: 13px;
-		line-height: 1.55;
-		color: var(--chronicle-text-muted);
-	}
-
-	.live-meta-row {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.model-label {
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--chronicle-text-faint);
-		padding: 2px 6px;
-		background: color-mix(in srgb, var(--chronicle-panel-muted) 70%, transparent 30%);
-		border-radius: 4px;
-	}
-
+	.live-result { padding: 10px 12px; border-radius: 6px; background: color-mix(in srgb, var(--chronicle-accent) 6%, var(--chronicle-card-surface)); }
+	.live-result p { max-width: 72ch; margin: 0; color: var(--chronicle-text); font-size: var(--type-body); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
 	.live-tail-controls {
 		display: flex;
 		flex-direction: column;

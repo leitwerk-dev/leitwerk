@@ -74,11 +74,9 @@ const headingTag = $derived(headingLevel ? (`h${headingLevel}` as const) : null)
 
 	.section-label {
 		margin: 0;
-		font-size: var(--type-label);
+		font-size: var(--type-body);
 		font-weight: 700;
-		letter-spacing: var(--tracking-label);
 		line-height: 1.4;
-		text-transform: uppercase;
 		color: inherit;
 	}
 
@@ -123,7 +121,6 @@ const headingTag = $derived(headingLevel ? (`h${headingLevel}` as const) : null)
 	@media (max-width: 720px) {
 		.chronicle-section-header {
 			align-items: flex-start;
-			flex-direction: column;
 			gap: var(--space-xs);
 		}
 

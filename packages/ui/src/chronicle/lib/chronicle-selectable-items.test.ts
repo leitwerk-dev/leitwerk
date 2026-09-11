@@ -144,6 +144,7 @@ describe("chronicle selectable items", () => {
 		const projection = createProjection();
 		const items = buildChronicleSelectableItems({
 			projection,
+			externalWaitingTurnId: "turn_two",
 			pendingRailItem: {
 				label: "Operator decision",
 				title: "Decide what happens next",
@@ -160,6 +161,71 @@ describe("chronicle selectable items", () => {
 		]);
 		expect(items.some((item) => item.anchorId === "chronicle-leaf-outcome-snp_1")).toBe(false);
 		expect(items.some((item) => item.kind === "leaf_outcome")).toBe(false);
+	});
+
+	it("merges external waiting into the latest matching turn and preserves both navigation anchors", () => {
+		const projection = createProjection();
+		projection.terminalRailItem = null;
+		projection.turnRailItems[1].turnId = "turn_one";
+		projection.turnRailItems[1].title = "Turn One";
+		projection.timelineItems = projection.timelineItems.map((item) =>
+			item.kind === "turn_cluster" && item.turnRecordId === "trn_two"
+				? { ...item, turnId: "turn_one", title: "Turn One" }
+				: item.kind === "leaf_outcome"
+					? { ...item, turnRecordId: "trn_two" }
+					: item,
+		);
+		const items = buildChronicleSelectableItems({
+			projection,
+			externalWaitingTurnId: "turn_one",
+			pendingRailItem: {
+				label: "External trigger",
+				title: "Waiting for an update",
+				tone: "external_trigger",
+			},
+		});
+
+		expect(items).toHaveLength(3);
+		expect(items[1]).toMatchObject({ turnRecordId: "trn_one", status: "completed" });
+		expect(items[2]).toMatchObject({
+			kind: "turn",
+			turnRecordId: "trn_two",
+			title: "Turn One",
+			status: "waiting",
+			detail: "Waiting for an event",
+			anchorId: CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+		});
+		for (const anchorId of ["chronicle-turn-trn_two", "chronicle-leaf-outcome-snp_1"]) {
+			expect(resolveChronicleRailAnchorIdFromActiveAnchor(projection, items, anchorId)).toBe(
+				CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+			);
+		}
+		expect(resolveChronicleTurnRecordIdForAnchor(items, CHRONICLE_ACTION_SECTION_ANCHOR_ID)).toBe(
+			"trn_two",
+		);
+		expect(moveChronicleAnchorByOffset(items, "chronicle-turn-trn_one", 1)).toBe(
+			CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+		);
+		expect(moveChronicleAnchorByOffset(items, CHRONICLE_ACTION_SECTION_ANCHOR_ID, -1)).toBe(
+			"chronicle-turn-trn_one",
+		);
+	});
+
+	it("keeps external waiting separate when its turn has no recorded card", () => {
+		const items = buildChronicleSelectableItems({
+			projection: { ...createProjection(), terminalRailItem: null },
+			externalWaitingTurnId: "unrecorded_turn",
+			pendingRailItem: {
+				label: "External trigger",
+				title: "Waiting for an update",
+				tone: "external_trigger",
+			},
+		});
+		expect(items).toHaveLength(4);
+		expect(
+			items.filter((item) => item.kind === "turn" && item.status === "completed"),
+		).toHaveLength(2);
+		expect(items.at(-1)).toMatchObject({ kind: "action", tone: "external_trigger" });
 	});
 
 	it("collapses adjacent retry-lineage rail items for the same turn id", () => {

@@ -31,6 +31,7 @@ import type {
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";
+import { fitChronicleToViewport } from "./process-detail-chronicle-dom.js";
 import { createProcessDetailChronicleScroll } from "./process-detail-chronicle-scroll.svelte.js";
 import type {
 	CurrentProcessErrorViewModel,
@@ -284,6 +285,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 	<section
 		class="chronicle"
+		use:fitChronicleToViewport
 		data-column="chronicle"
 		aria-labelledby={headingId}
 	>
@@ -383,6 +385,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			<CompactActionComposer
 				actionSectionController={actionsController}
 				onOpenDetails={openDetailedActionForm}
+				decisionTitle={selectedTurn?.description}
+				onViewContext={chronicleScroll.jumpToLatest}
 			/>
 		{:else if chronicleScroll.showJumpToLatest}
 			<button
@@ -520,6 +524,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	}
 
 	.desktop-turn-rail {
+		display: flex;
 		min-width: 0;
 		min-height: 0;
 	}
@@ -654,9 +659,6 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			max-height: min(72svh, 48rem);
 		}
 
-	}
-
-	@media (max-width: 720px) {
 		.ticket-selection-action {
 			left: var(--space-sm);
 			right: var(--space-sm);
@@ -788,7 +790,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 		.mobile-quick-nav-rail :global(.rail-track) {
 			flex-direction: column;
-			gap: 2px;
+			gap: var(--space-2xs);
 			width: 100%;
 			min-width: 0;
 		}
@@ -800,7 +802,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		.mobile-quick-nav-rail :global(.rail-item) {
 			min-width: 0;
 			scroll-snap-align: none;
-			padding: 6px var(--space-xs);
+			padding: var(--space-xs);
 		}
 
 		.mobile-quick-nav-utilities {

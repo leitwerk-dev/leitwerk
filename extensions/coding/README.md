@@ -11,3 +11,8 @@ After final implementation approval, `generate_commit_message` consumes the dura
 Deterministic finalization passes the message directly to Git and disables hooks and signing. Callers may supply a trusted Git identity explicitly; otherwise finalization uses repository/global `user.name` and `user.email`. It fails before staging or a commit-producing merge when Git identity is unavailable. Explicit identity applies only to identity preflight, commits, and commit-producing merges through per-command `-c user.name` and `-c user.email` arguments. Its Chronicle progress report distinguishes checkout validation, base fetch, commit/integration, and publication. Runtime failures mark the active step failed; merge-conflict outcomes identify the integration step.
 
 `commitAndPushWorkBranch()` requires an explicit trusted Git identity, commits dirty workspace files, and pushes only the checked-out feature branch. It rejects invalid Git identity, unresolved conflicts, branch mismatches, and remote heads that do not match the committed HEAD.
+
+Turn labels use short task names: Plan, Review Plan, Implement, and Review.
+Automated assessments use Assess Plan and Assess Implementation so operators can
+distinguish them from their own decisions. Local, remote, and provider-specific
+repository-change processes share these labels; persisted turn ids are unchanged.

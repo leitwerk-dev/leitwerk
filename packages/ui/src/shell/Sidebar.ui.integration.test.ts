@@ -111,6 +111,7 @@ function makeRow(
 		statusLabel,
 		turnLabel: statusCategory === "terminal" ? null : "Run turn",
 		statusLine: `${statusLabel} · Run turn`,
+		updatedAt: "2026-01-01T00:00:00Z",
 		closedAt: statusCategory === "terminal" ? "2026-01-01T00:00:00Z" : null,
 	} as const;
 }
@@ -191,8 +192,7 @@ describe("Sidebar", () => {
 		expect(target.textContent).toContain("Watchers");
 		expect(target.querySelector('[data-action="view-watchers"]')).toBeTruthy();
 		expect(target.textContent).toContain("Future");
-		expect(target.textContent).toContain("Waiting");
-		expect(target.textContent).toContain("Running");
+		expect(target.querySelector(".active-group .group-heading")?.textContent).toBe("Active");
 		expect(target.textContent).toContain("All processes");
 		expect(target.textContent).not.toContain("finished process in archive");
 		expect(target.querySelector('[data-action="view-all-processes"]')).toBeTruthy();
@@ -341,7 +341,7 @@ describe("Sidebar", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const futureRowSecondary = target.querySelector<HTMLElement>(".future-row .row-secondary");
+		const futureRowSecondary = target.querySelector<HTMLElement>(".future-row .row-meta");
 		expect(futureRowSecondary?.textContent).toContain(":");
 		expect(futureRowSecondary?.textContent).not.toMatch(/\b[ap]m\b/i);
 	});
@@ -380,7 +380,7 @@ describe("Sidebar", () => {
 		expect(mocks.navigate).toHaveBeenCalledWith("/future-launches/fut_launch_1");
 	});
 
-	it("shows process cards with a wrapped title and a step-plus-process-name subline", async () => {
+	it("shows compact process rows with a status dot, age, and current turn", async () => {
 		mocks.processRowsStore.set([
 			makeRow(
 				"agt_1",
@@ -398,7 +398,10 @@ describe("Sidebar", () => {
 		expect(row?.querySelector(".row-title")?.textContent).toBe(
 			"Generate Poem: Germany April 2026 or Cloud Software",
 		);
-		expect(row?.querySelector(".row-meta")?.textContent).toBe("Running · Run turn · Poem Creator");
+		expect(row?.querySelector(".row-meta")?.textContent).toBe("Run turn");
+		expect(row?.querySelector(".row-status-dot.running")).toBeTruthy();
+		expect(row?.querySelector("time")?.getAttribute("datetime")).toBeTruthy();
+		expect(row?.getAttribute("title")).toContain("Poem Creator");
 		expect(row?.textContent).not.toContain("preview");
 	});
 

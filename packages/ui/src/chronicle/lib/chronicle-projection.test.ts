@@ -1384,6 +1384,27 @@ describe("buildChronicleProjection", () => {
 		expect(projection.liveTail.reasoningSection.text).toBe(thinkingTrace);
 	});
 
+	it("keeps a durable result visible when it matches the assistant's final text", () => {
+		const projection = buildProjection({
+			turnRecords: [
+				makeTurnRecord({ id: "trn_done", turnResultMarkdown: "The garden notes are ready." }),
+			],
+			turnTraceIndex: {
+				trn_done: makeTrace({
+					assistant: { text: "The garden notes are ready.", thinking: "", lastUpdatedAt: null },
+				}),
+			},
+			inputs: [],
+			leafOutcomeSnapshots: [],
+			definesLeafOutcome: false,
+			activeTurn: null,
+		});
+		const turn = projection.timelineItems.find((item) => item.kind === "turn_cluster");
+		expect(turn?.sections.filter((section) => section.kind === "turn_result")).toEqual([
+			{ kind: "turn_result", markdown: "The garden notes are ready." },
+		]);
+	});
+
 	it("omits the saved-result section when a ready leaf outcome already renders that turn", () => {
 		const completed = makeTurnRecord({
 			id: "trn_done",

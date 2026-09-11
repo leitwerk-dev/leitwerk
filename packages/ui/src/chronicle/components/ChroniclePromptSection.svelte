@@ -1,8 +1,7 @@
 <script lang="ts">
-import { formatRelativeTime } from "../../lib/format";
 import type { ChroniclePromptItem } from "../lib/chronicle-projection.js";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
-import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
 
 interface Props {
 	prompt: ChroniclePromptItem;
@@ -20,10 +19,7 @@ let { prompt, isFocused }: Props = $props();
 	data-focused={isFocused ? "true" : "false"}
 	data-section="chronicle-prompt"
 >
-	<ChronicleSectionHeader
-		label="Prompt"
-		meta={prompt.createdAt ? formatRelativeTime(prompt.createdAt) : null}
-	/>
+	<ChronicleEntryHeader title="Initial prompt" kind="prompt" timestamp={prompt.createdAt} />
 	<ChronicleMarkdown
 		markdown={prompt.text && prompt.text.trim() !== "" ? prompt.text : "No prompt recorded."}
 		className="prompt-markdown"
@@ -31,24 +27,8 @@ let { prompt, isFocused }: Props = $props();
 </section>
 
 <style>
-	.prompt-section {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-		padding: 14px 0 16px;
-		margin-inline-start: var(--chronicle-secondary-indent, clamp(24px, 4vw, 48px));
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		background: transparent;
-		scroll-margin-top: var(--space-lg);
-	}
-
-	.prompt-section.is-focused {
-		border-top-color: color-mix(in srgb, var(--chronicle-accent) 50%, var(--chronicle-border) 50%);
-	}
-
-	@media (max-width: 720px) {
-		.prompt-section {
-			margin-inline-start: 0;
-		}
-	}
+	.prompt-section { display: grid; gap: 6px; padding: 10px 14px; border: 1px solid var(--chronicle-border); border-radius: 10px; background: var(--chronicle-card-surface-strong); scroll-margin-top: var(--space-sm); }
+	.prompt-section.is-focused { border-color: color-mix(in srgb, var(--chronicle-accent) 40%, var(--chronicle-border)); }
+	.prompt-section :global(.chronicle-markdown) { padding-inline-start: 42px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); }
+	@media (max-width: 540px) { .prompt-section { padding: 10px; } .prompt-section :global(.chronicle-markdown) { padding-inline-start: 32px; } }
 </style>

@@ -142,6 +142,8 @@ The palette is restrained: Slate Ink and cool operational neutrals carry most of
 
 **The State-Is-Copy Rule.** Color supports state; copy names state. Error, warning, success, scheduled, and waiting states must include readable text labels, not just colored marks.
 
+Compact sidebar process rows are an exception: they use a status dot to preserve the two-line layout. The row's accessible name and hover title include the status text; process detail views retain visible state labels.
+
 **The White-Is-Work Rule.** White surfaces are where work happens. Gray surfaces group shell/navigation context; tinted state surfaces are temporary, local, and purposeful.
 
 ## 3. Typography
@@ -240,12 +242,17 @@ The account token surface uses the existing Public Sans and chronicle tokens: a 
 
 ### Process Chronicle
 
-The chronicle is the signature component family.
+The chronicle is the signature component family. Its history is dense, with results carrying more visual weight than prompts, preparation, and reasoning. The [process chronicle surface brief](surfaces/process-chronicle.md) records its reading and decision flow.
 
 - **Turn Rail:** A vertical track with compact markers and readable titles. Active items use accent tint and focus state; completed/terminal states remain calm. Completed and aborted processes always end with a final terminal rail stop. On mobile process detail, replace the persistent rail with a compact Quick nav control and present the rail in a bottom sheet. Keep process info and the overflow actions in that sheet so the chronicle retains the viewport.
 - **Timeline Flow:** Prompt, turn cluster, operator input, selected-leaf result, live tail, action, recovery, and terminal summary are distinct section types with shared spacing and borders. The terminal summary should read as a confident endcap, not as weaker metadata below the last turn.
-- **Action Section:** Light accent-tinted surface attached to the latest relevant context. It must show the next action, scheduling/model implications, validation, and error states inline. Preserve the chronicle's dense record-first structure; do not duplicate the action section into a separate header command strip. While a waiting result is being read away from this section, a compact bottom composer may project the same canonical action-form state, including selection, drafts, runtime options, scheduled edit state, and preview input. Scrolling may switch projections but must never initialize or reset that state. The composer consumes space beneath the scroll viewport, uses current runtime options for direct submission, and expands the selected action's canonical form for scheduling, model selection, or complex fields.
-- **Recovery Section:** Danger-tinted but calm. It should explain what failed, what the operator can do, and provide retry/continue controls without panic styling.
+- **Record Surfaces:** History entries use flat bordered surfaces with compact corners (10px), separated by a consistent gap (14px). LLM turns and live work use Canvas White; initial prompts, operator decisions, external events, and automatic work use the stronger cool-gray surface. Typical turn padding is 14px, reducing to 10px below 540px. Result surfaces use a light Operational Blue tint and smaller corners (6px).
+- **Entry Header:** Use the shared icon, title/metadata, timing, and trailing-control grid. All LLM turns use the same blue sprinkle icon; operator, system, document, and external entries retain their own symbols. Titles use the body-large scale (15px, 650 weight), with recorded profile and reported cost below (13px). Omit unavailable metadata and keep token counts out of this summary. Relative timestamp and duration share the right-hand area with tabular numerals; the final slot holds startup or failed-turn disclosure controls when needed. Failed entries add a small danger badge to their usual icon. On narrow screens the icon, spacing, and title shrink while this order stays fixed.
+- **Results and Supporting Detail:** Expand the latest recorded result by default. Earlier rich results show an expandable summary; a short historical single-paragraph result without a recorded turn prompt stays complete as a compact sentence. Place Create issue on its result, beside the result disclosure or in the footer below a compact sentence. Recorded LLM prompts appear only when available, in a muted one-line row that opens turn details. Completed reasoning remains a quiet Show reasoning control; live reasoning may show its bounded preview. Keep questions and their answer forms visible, before the final card footer.
+- **Card Footer:** Completed and live LLM cards end with Show reasoning beside Turn details at the right, opening the existing reasoning overlay. Omit Show reasoning when no details exist. Completed cards use two top-aligned columns: preparation on the left, actions on the right. A compact result also places Create issue in this action group. Narrow cards with reasoning put actions above preparation; keep the two detail links together when actions wrap. Expanding Workspace prepared must not move the footer actions. Keep live reasoning previews, questions, and recovery controls above this footer; the live footer also follows stop controls.
+- **Action Section:** Light accent-tinted surface attached to the latest relevant context. It must show the next action, scheduling/model implications, validation, and error states inline. Preserve the chronicle's dense record-first structure; do not duplicate the action section into a separate header command strip. While a waiting result is being read away from this section, a compact bottom composer projects the same canonical action-form state, including selection, drafts, runtime options, scheduled edit state, and preview input. Scrolling may switch projections but must never initialize or reset that state. The composer consumes space beneath the scroll viewport and names the waiting decision above the action selector and feedback field. View context returns to the action's context; Options opens the canonical form for scheduling or model selection, and complex fields use Open details. Direct submission uses the current runtime options and shows Send for a quick feedback field. Controls occupy one row when the composer is at least 620px wide; narrower composers pair the action with Options and feedback with Send. Open questions suppress this composer so their answer form remains the active control.
+- **Recovery Section:** Embed current failed-turn recovery in its owning turn card, with a danger border, faint danger surface, and the shared Failed message. The header disclosure collapses the body while preserving its continuation draft, model selection, and provider options; rail navigation reopens the failed turn. Technical details start collapsed. Keep the retry footer concise, with Retry failed turn and a collapsed Retry options control for supported model/provider settings. When saved work can resume, show the continuation message and Continue from saved work above that footer. Process and startup errors use the same Failed message with their own guidance and controls. Heartbeat failures show a readable explanation and keep the original technical text available.
+- **External Waiting:** When no operator action is available, attach the wait to its latest recorded turn card. The rail uses one row with the turn title, Waiting for an event, and the existing amber clock. Keep that row outside repeated history; selection reaches its embedded waiting disclosure on desktop and mobile. Keep one collapsed disclosure with an event count and failed-listener count. Expanded rows group each event description with its status and polling details; omit the separate Listener details block. A turn without a recorded card uses a standalone waiting section and rail row.
 - **Reasoning Overlay:** Content-scoped overlay beside the sidebar, with stronger shadow and clear close/copy/navigation controls.
 
 ### Progress checklists
@@ -255,6 +262,16 @@ preparation row treatment: muted surface, 16px padding, 14px text, static 20px
 status marks, and explicit status labels. Use `ProgressChecklist` and
 `ProgressChecklistRows`; preserve step details and order. Status labels wrap
 beneath their step in narrow containers.
+
+In the chronicle, completed startup attempts collapse to a header with readiness
+and completed-check counts; starting and failed attempts open their details by
+default. A turn progress report whose steps are all completed collapses to a
+quiet success disclosure, labeled Workspace prepared in an LLM turn. Expanding
+either restores the shared checklist rows. Incomplete or failed progress remains
+fully visible, and links to created changes remain outside the completed-step
+disclosure. In a completed LLM card, preparation occupies the left footer column;
+Create issue and the detail links stay top-aligned as its details expand. Narrow
+cards with reasoning place these actions in a row above preparation.
 
 ### Toasts
 

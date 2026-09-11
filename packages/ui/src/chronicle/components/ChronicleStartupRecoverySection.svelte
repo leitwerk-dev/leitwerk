@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary, StartupRecoverySummary } from "@leitwerk-dev/protocol";
-import ProviderOptionsEditor from "./ProviderOptionsEditor.svelte";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
+import ChronicleFailureMessage from "./ChronicleFailureMessage.svelte";
 import RecoveryModelControl from "./RecoveryModelControl.svelte";
 
 interface Props {
@@ -40,16 +41,9 @@ const selectedModelUsable = $derived(
 </script>
 
 <section class="startup-recovery" data-section="startup-recovery" tabindex="-1">
-	<p class="eyebrow">Startup error</p>
-	<h3>{recovery.title}</h3>
-	<p>{recovery.summary}</p>
+	<ChronicleEntryHeader title={recovery.title} kind="system" failed />
+	<ChronicleFailureMessage summary={recovery.summary} technicalDetail={recovery.technicalDetail} />
 	{#if recovery.guidance}<p class="guidance">{recovery.guidance}</p>{/if}
-	{#if recovery.technicalDetail}
-		<details>
-			<summary>Technical details</summary>
-			<pre>{recovery.technicalDetail}</pre>
-		</details>
-	{/if}
 	<RecoveryModelControl
 		{instanceId}
 		{modelProfiles}
@@ -86,27 +80,20 @@ const selectedModelUsable = $derived(
 		display: flex;
 		flex-direction: column;
 		gap: 10px;
-		padding: 20px 22px;
+		padding: 14px;
 		border: 1px solid color-mix(in srgb, var(--chronicle-danger) 34%, var(--chronicle-border));
-		border-radius: 20px;
-		background: color-mix(in srgb, var(--chronicle-danger) 6%, var(--chronicle-card-surface));
+		border-radius: 10px;
+		background: color-mix(in srgb, var(--chronicle-danger) 2%, var(--chronicle-card-surface));
 	}
 
-	.eyebrow,
-	h3,
 	p {
 		margin: 0;
 	}
 
-	.eyebrow {
-		font-size: 0.75rem;
-		font-weight: 700;
-		text-transform: uppercase;
-		color: var(--chronicle-danger);
-	}
-
 	.guidance {
-		color: var(--chronicle-muted);
+		font-size: var(--type-body-sm);
+		line-height: 1.55;
+		color: var(--chronicle-text-muted);
 	}
 
 	button {
@@ -128,9 +115,6 @@ const selectedModelUsable = $derived(
 		opacity: 0.58;
 	}
 
-	pre {
-		white-space: pre-wrap;
-	}
 
 	.error {
 		color: var(--chronicle-danger);

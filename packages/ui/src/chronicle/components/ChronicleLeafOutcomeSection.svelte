@@ -1,13 +1,12 @@
 <script lang="ts">
-import { formatRelativeTime } from "../../lib/format";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleLeafOutcomeItem } from "../lib/chronicle-projection.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
 import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
+import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
 import ChronicleLeafOutcomeRendererHost from "./ChronicleLeafOutcomeRendererHost.svelte";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
-import ChronicleSectionHeader from "./ChronicleSectionHeader.svelte";
 
 interface Props {
 	section: ChronicleLeafOutcomeItem;
@@ -17,9 +16,11 @@ interface Props {
 }
 
 let { section, isFocused, compressHistory = false, onDraftTicket }: Props = $props();
-let expandedHistoryOutcome = $state(false);
+let expandedHistoryOutcome = $state<boolean | null>(null);
 
-const shouldCompressOutcome = $derived(compressHistory && !expandedHistoryOutcome);
+const shouldCompressOutcome = $derived(
+	section.status !== "capture_error" && !(expandedHistoryOutcome ?? !compressHistory),
+);
 
 function summarizeLeafOutcome(section: ChronicleLeafOutcomeItem): string {
 	if (section.fallbackMarkdown) {
@@ -37,7 +38,7 @@ function summarizeLeafOutcome(section: ChronicleLeafOutcomeItem): string {
 }
 
 function expandHistoryOutcome() {
-	expandedHistoryOutcome = true;
+	expandedHistoryOutcome = shouldCompressOutcome;
 }
 </script>
 
@@ -55,29 +56,10 @@ function expandHistoryOutcome() {
 	data-snapshot-id={section.snapshotId}
 	data-renderer-mode={section.status === "ready" && section.rendererId ? "runtime" : "fallback"}
 >
-	<div class="leaf-outcome-shell" class:is-compressed={shouldCompressOutcome}>
-		<div class="leaf-outcome-header-row">
-			<ChronicleSectionHeader
-				label="Turn result"
-				meta={`Updated ${formatRelativeTime(section.anchoredAt)}`}
-				tone="accent"
-				headingLevel={3}
-			/>
-			{#if onDraftTicket && section.status === "ready"}
-				<ChronicleCreateIssueButton
-					onDraftTicket={onDraftTicket}
-					artifact={{ kind: "leaf_outcome", leafEntryId: section.leafEntryId }}
-				/>
-			{/if}
-			{#if shouldCompressOutcome}
-				<ChronicleExpandButton
-					expanded={false}
-					collapsedLabel="Expand result"
-					class="expand-outcome-button"
-					dataPressable={true}
-					onClick={expandHistoryOutcome}
-				/>
-			{/if}
+	<div class="leaf-outcome-shell">
+		<ChronicleEntryHeader title="Turn result" kind="result" metadata={section.ownerTurnTitle} timestamp={section.anchoredAt} />
+		<div class="leaf-result-actions">
+			<ChronicleExpandButton expanded={!shouldCompressOutcome} expandedLabel="Collapse result" collapsedLabel="Expand result" class="expand-outcome-button" dataPressable={true} onClick={expandHistoryOutcome} />
 		</div>
 
 		{#if shouldCompressOutcome}
@@ -139,6 +121,9 @@ function expandHistoryOutcome() {
 			<p class="leaf-outcome-empty">This result has no text preview to show here.</p>
 		{/if}
 		</div>
+		{#if onDraftTicket && section.status === "ready"}
+			<div class="leaf-result-actions"><ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "leaf_outcome", leafEntryId: section.leafEntryId }} /></div>
+		{/if}
 	</div>
 </section>
 
@@ -148,31 +133,10 @@ function expandHistoryOutcome() {
 		scroll-margin-top: var(--space-xl);
 	}
 
-	.leaf-outcome-shell {
-		position: relative;
-		display: grid;
-		gap: var(--space-md);
-		padding: var(--space-lg) 0 var(--space-xl);
-		border-top: 1px solid color-mix(in srgb, var(--chronicle-success) 20%, var(--chronicle-border) 80%);
-		background: transparent;
-	}
-
-	.leaf-outcome-shell.is-compressed {
-		gap: var(--space-xs);
-		padding: var(--space-md) 0 var(--space-lg);
-		border-top-color: color-mix(in srgb, var(--chronicle-border) 88%, white 12%);
-	}
-
-	.leaf-outcome-block.is-focused .leaf-outcome-shell {
-		border-top-color: color-mix(in srgb, var(--chronicle-accent) 28%, var(--chronicle-success) 72%);
-	}
-
-	.leaf-outcome-header-row {
-		display: flex;
-		align-items: start;
-		justify-content: space-between;
-		gap: var(--space-sm);
-	}
+	.leaf-outcome-shell { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--chronicle-border); border-radius: 10px; background: var(--chronicle-card-surface); }
+	.leaf-outcome-content, .leaf-outcome-summary { padding: 12px; border-radius: 6px; background: color-mix(in srgb, var(--chronicle-accent) 6%, var(--chronicle-card-surface)); }
+	.leaf-outcome-block.is-focused .leaf-outcome-shell { border-color: color-mix(in srgb, var(--chronicle-accent) 40%, var(--chronicle-border)); }
+	.leaf-result-actions { display: flex; justify-content: flex-end; }
 
 	.leaf-outcome-summary {
 		margin: 0;
@@ -195,10 +159,8 @@ function expandHistoryOutcome() {
 
 	.warning-title {
 		margin: 0;
-		font-size: var(--type-label);
-		font-weight: 700;
-		letter-spacing: var(--tracking-label);
-		text-transform: uppercase;
+		font-size: var(--type-body);
+		font-weight: 650;
 	}
 
 	.warning-copy,
@@ -257,11 +219,6 @@ function expandHistoryOutcome() {
 	}
 
 	@media (max-width: 720px) {
-		.leaf-outcome-header-row {
-			align-items: start;
-			flex-wrap: wrap;
-		}
-
 		.warning-header {
 			flex-direction: column;
 		}

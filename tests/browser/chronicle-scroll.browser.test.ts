@@ -773,6 +773,44 @@ function synthesizeRunningReviewTurn(instanceId: string) {
 }
 
 test.describe("rail scroll-anchor behavior", () => {
+	test("collapses repeated history after scrolling out and reopens it on return", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1440, height: 1000 });
+		const { process, firstTurnRecordId, secondTurnRecordId } = createRailSecondTurnNearTopProcess(
+			"RAIL-REPEATED-SCROLL-001",
+		);
+		await page.goto(`/processes/${process.id}`);
+		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
+		await repeatedTurns.click();
+		const firstTurn = page.locator(`.rail-item[data-turn-record-id="${firstTurnRecordId}"]`);
+		const secondTurn = page.locator(`.rail-item[data-turn-record-id="${secondTurnRecordId}"]`);
+		await firstTurn.click();
+		await expect(firstTurn).toHaveClass(/is-active/);
+		await secondTurn.click();
+		await expect(secondTurn).toHaveClass(/is-active/);
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "true");
+
+		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+		await wheelToBottom(page, chronicleScroll);
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
+		await expect(secondTurn).toHaveCount(0);
+		const currentTurn = page.locator('[data-section="action-required-indicator"]');
+		await expect(currentTurn).toHaveClass(/is-active/);
+		// Collapsing history must not leave keyboard focus on a removed button.
+		const focusedRailItem = page.locator(".rail-item:focus");
+		await expect(focusedRailItem).toBeVisible();
+
+		// Compact history requires reaching the actual start, not the helper’s 50px tolerance.
+		const returnedViewport = await wheelToTop(page, chronicleScroll, 0);
+		expect(returnedViewport.scrollTop).toBe(0);
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "true");
+		await expect(
+			page.locator('[data-section="repeated-turns"] .rail-item.is-active'),
+		).toBeVisible();
+	});
+
 	test("clicking turn button moves the active rail highlight", async ({ page }) => {
 		if (!ctx) {
 			throw new Error("Server context not initialized");
@@ -849,6 +887,9 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="chronicle-flow"]');
 
+		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
+		await repeatedTurns.click();
 		const secondTurnButton = page.locator(
 			`.rail-item[data-turn-record-id="${secondTurnRecordId}"]`,
 		);
@@ -900,6 +941,9 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="leaf-outcome"]');
 
+		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
+		await repeatedTurns.click();
 		const secondTurnButton = page.locator(
 			`.rail-item[data-turn-record-id="${secondTurnRecordId}"]`,
 		);
