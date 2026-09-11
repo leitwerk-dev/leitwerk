@@ -34,6 +34,7 @@ import {
 	type PiBranchOperation,
 	resolveExecutionAnchorEntryId,
 } from "./pi-branch-guard.js";
+import { createRepositoryBashTool } from "./repository-bash-tool.js";
 import { buildLeitwerkResourceLoaderOptions } from "./resource-loader-factory.js";
 
 const LEITWERK_TOOL_BOOTSTRAP_NAME = "__leitwerk_runtime_bootstrap__";
@@ -2175,7 +2176,10 @@ export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 			...(modelSelection.thinkingLevel
 				? { thinkingLevel: modelSelection.thinkingLevel as never }
 				: {}),
-			customTools: [LEITWERK_TOOL_BOOTSTRAP],
+			customTools: [
+				LEITWERK_TOOL_BOOTSTRAP,
+				createRepositoryBashTool(sessionCwd) as ToolDefinition,
+			],
 			noTools: "builtin",
 		});
 		getMutableSession(session)._refreshToolRegistry({ activeToolNames: [] });

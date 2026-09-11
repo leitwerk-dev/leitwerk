@@ -149,6 +149,8 @@ export interface AppOptions {
 	};
 	/** Local runner spawn seam for tests/dev only. */
 	localWorkerSpawnImpl?: typeof spawn;
+	/** Test seam shared by local Docker admission and worker startup. */
+	localWorkerDockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
 	/** Credential-store seam. Declared credential providers default unavailable until it is wired. */
 	modelProviderCredentialStatus?: ModelProviderCredentialStatusResolver;
 }
@@ -195,6 +197,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	provided?: AppOptions["workerRunnerRuntime"];
 	helperRelays: ProcessStateExportHelperRelayProvider;
 	localWorkerSpawnImpl?: AppOptions["localWorkerSpawnImpl"];
+	localWorkerDockerPreflightImpl?: AppOptions["localWorkerDockerPreflightImpl"];
 }): Promise<{
 	runner: WorkerRunner;
 	volume?: ProcessVolume;
@@ -216,6 +219,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			treeFilesDir: input.config.storage.tree_files_dir,
 			allowHostDocker: input.config.local_worker?.allow_host_docker,
 			localWorkerSpawnImpl: input.localWorkerSpawnImpl,
+			dockerPreflightImpl: input.localWorkerDockerPreflightImpl,
 		});
 		return { ...created, webSocketIpc: input.webSocketIpc };
 	}
@@ -858,6 +862,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		provided: opts.workerRunnerRuntime,
 		helperRelays: sessionTransferHelperRelays,
 		localWorkerSpawnImpl: opts.localWorkerSpawnImpl,
+		localWorkerDockerPreflightImpl: opts.localWorkerDockerPreflightImpl,
 	});
 	markStartup("worker_runner");
 	supervisor = createWorkerSupervisor({
@@ -984,7 +989,14 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		repositoryCredentials,
 		getSupervisor: () => supervisor,
 		assertRuntimeAvailable: (processId: string) =>
-			assertProcessRuntimeAvailable({ config, processes: extensionCatalog.processes }, processId),
+			assertProcessRuntimeAvailable(
+				{
+					config,
+					processes: extensionCatalog.processes,
+					dockerInfo: opts.localWorkerDockerPreflightImpl,
+				},
+				processId,
+			),
 	};
 	const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 	futureExecutionLifecycle = createFutureExecutionLifecycle({
@@ -1011,7 +1023,14 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		modelStatusCache,
 		launchPipeline,
 		assertRuntimeAvailable: (processId) =>
-			assertProcessRuntimeAvailable({ config, processes: extensionCatalog.processes }, processId),
+			assertProcessRuntimeAvailable(
+				{
+					config,
+					processes: extensionCatalog.processes,
+					dockerInfo: opts.localWorkerDockerPreflightImpl,
+				},
+				processId,
+			),
 		logger: app.log,
 	});
 	applyGeneratedFutureExecutionTitle = (input) =>

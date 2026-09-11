@@ -25,6 +25,11 @@ The four built-in primitives control workspace access:
 - **`edit`:** Modifies existing files within the workspace repository.
 - **`write`:** Creates new files or overwrites existing files.
 
+Repository shell commands do not inherit the worker service's `NODE_ENV`. This lets tools
+such as Vitest select their normal test mode even when the worker image runs in production.
+Commands can explicitly set `NODE_ENV=production` when needed. Worker IPC credentials and
+internal Git authentication settings are excluded from the shell environment.
+
 ## 2. Integration Tools
 
 Integration extensions define server tools for external services. The example below is an

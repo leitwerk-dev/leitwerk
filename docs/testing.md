@@ -40,6 +40,12 @@ build and run a nested image, replace the outer container or Pod, and verify ret
 `--pull=never`. Blocking tests cover the trusted entrypoint and runner contracts; the live
 canaries do not replace `test:full`.
 
+In-process workflow fixtures for Docker-declaring processes can inject
+`AppOptions.localWorkerDockerPreflightImpl`. This replaces only `docker info` at
+admission and local worker startup; the fixture must still set
+`local_worker.allow_host_docker: true`. Production uses the real preflight when
+the injection is omitted.
+
 Leitwerk's build entry points and hosted workflows opt out of anonymous tooling usage
 reporting. Turborepo telemetry and update checks are disabled explicitly, while
 `DO_NOT_TRACK` and `SCARF_ANALYTICS=false` cover tools and dependency install hooks that

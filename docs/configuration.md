@@ -151,6 +151,10 @@ Worker launch configuration is immutable for a physical worker. Changes affect o
 
 Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. It preserves `DOCKER_CONFIG` for registry credentials. Local workers retain their host Docker configuration.
 
+Private worker Docker daemons use the `overlay2` storage driver. The process volume must support OverlayFS with the selected kernel and container runtime. Before activation, verify image builds, nested container execution, and retained image reuse after worker replacement using the [runtime canaries](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md). A backing filesystem name alone does not establish compatibility.
+
+Before upgrading existing private Docker workers, check their active storage driver with `docker info --format '{{.Driver}}'`. Verify replacement with the candidate image for existing `overlay2` stores. Processes using another driver must finish under the previous image before switching; any data migration requires a separate operation. Retaining the data directory does not make another driver's images and containers usable by `overlay2`.
+
 An early private-daemon exit permits one retry within the same startup deadline. Both attempts use the existing Docker data directory. Startup failure never deletes or resets retained Docker data.
 
 ---

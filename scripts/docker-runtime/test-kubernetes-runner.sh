@@ -65,7 +65,14 @@ spec:
 EOF
   kubectl -n "$namespace" wait --for=condition=Ready "pod/$pod" --timeout=5m >/dev/null
   for _ in $(seq 1 120); do
-    kubectl -n "$namespace" exec "$pod" -c worker -- docker info >/dev/null 2>&1 && return
+    if kubectl -n "$namespace" exec "$pod" -c worker -- docker info >/dev/null 2>&1; then
+      driver="$(kubectl -n "$namespace" exec "$pod" -c worker -- docker info --format '{{.Driver}}')"
+      if [[ "$driver" != overlay2 ]]; then
+        echo "Private Docker daemon must use overlay2; got $driver" >&2
+        exit 1
+      fi
+      return
+    fi
     worker_exit="$(kubectl -n "$namespace" get pod "$pod" -o jsonpath='{.status.containerStatuses[?(@.name=="worker")].state.terminated.reason}')"
     if [[ -n "$worker_exit" ]]; then
       kubectl -n "$namespace" logs --tail=200 "$pod" -c worker >&2 || true
@@ -80,9 +87,7 @@ EOF
 }
 
 start_pod
-# The command expands inside the Pod.
-# shellcheck disable=SC2016
-kubectl -n "$namespace" exec "$pod" -c worker -- sh -ceu 'docker version; dockerd --version; test "$(docker info --format "{{.Driver}}")" = overlay2'
+kubectl -n "$namespace" exec "$pod" -c worker -- sh -ceu 'docker version; dockerd --version'
 printf 'FROM alpine:3.21\nRUN apk add --no-cache bind-tools >/dev/null\nCMD ["sh", "-c", "nslookup example.com >/dev/null"]\n' \
   | kubectl -n "$namespace" exec -i "$pod" -c worker -- docker build -q -t "$tag" - >/dev/null
 kubectl -n "$namespace" exec "$pod" -c worker -- docker run --rm --pull=never "$tag"

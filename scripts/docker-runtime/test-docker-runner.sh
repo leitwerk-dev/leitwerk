@@ -59,7 +59,14 @@ start_outer() {
     "$LEITWERK_WORKER_IMAGE")"
   docker start "$worker_container_id" >/dev/null
   for _ in $(seq 1 120); do
-    docker exec "$worker_container_id" docker info >/dev/null 2>&1 && return
+    if docker exec "$worker_container_id" docker info >/dev/null 2>&1; then
+      driver="$(docker exec "$worker_container_id" docker info --format '{{.Driver}}')"
+      if [[ "$driver" != overlay2 ]]; then
+        echo "Private Docker daemon must use overlay2; got $driver" >&2
+        exit 1
+      fi
+      return
+    fi
     if ! docker inspect -f '{{.State.Running}}' "$worker_container_id" 2>/dev/null | grep -qx true; then
       docker logs --tail 200 "$worker_container_id" >&2 || true
       echo "Worker image exited before its private Docker daemon became ready" >&2
