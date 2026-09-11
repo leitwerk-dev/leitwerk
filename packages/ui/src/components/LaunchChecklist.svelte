@@ -2,6 +2,7 @@
 import type { LaunchRun } from "@leitwerk-dev/domain";
 import { fetchLaunchRun } from "../lib/api.js";
 import { onLaunchUpdated } from "../lib/launch-updates.js";
+import ProgressChecklistRows from "./ProgressChecklistRows.svelte";
 
 interface Props {
 	launchRunId: string;
@@ -121,32 +122,9 @@ $effect(() => {
 		</button>
 
 		{#if expanded}
-			<ol class="steps">
-				{#each run.steps as item (item.id)}
-					<li data-status={item.status}>
-						<span class="step-icon" aria-hidden="true">
-							{#if item.status === "completed"}
-								<svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-9" /></svg>
-							{:else if item.status === "failed"}
-								<svg viewBox="0 0 20 20"><path d="M10 4v7m0 4v.01" /></svg>
-							{:else if item.status === "skipped"}
-								<svg viewBox="0 0 20 20"><path d="M5 10h10" /></svg>
-							{:else}
-								<span class="dot"></span>
-							{/if}
-						</span>
-						<span class="step-copy">
-							<span class="step-label">{item.label}</span>
-							<span class="sr-only">
-								{item.status === "in_progress" ? "In progress" : item.status[0]?.toUpperCase() + item.status.slice(1)}
-							</span>
-							{#if item.safeSummary}
-								<span class="step-summary">{item.safeSummary}</span>
-							{/if}
-						</span>
-					</li>
-				{/each}
-			</ol>
+			<div class="steps">
+				<ProgressChecklistRows steps={run.steps.map((step) => ({ ...step, detail: step.safeSummary }))} />
+			</div>
 			{#if run.status === "failed" && onTryAgain}
 				<button type="button" class="try-again" onclick={onTryAgain}>Try again</button>
 			{/if}
@@ -198,51 +176,9 @@ $effect(() => {
 	.summary-mark[data-status="completed"] { background: var(--chronicle-success); }
 	.summary-mark[data-status="created"] { background: var(--chronicle-text-muted); }
 	.summary-mark[data-status="failed"] { background: var(--chronicle-danger); }
-	.steps {
-		position: relative;
-		display: grid;
-		gap: 0;
-		margin: 0;
-		padding: 0 0 var(--space-md);
-		list-style: none;
-	}
-	.steps::before {
-		position: absolute;
-		top: 13px;
-		bottom: 13px;
-		left: 9px;
-		width: 1px;
-		background: var(--chronicle-border);
-		content: "";
-	}
-	li {
-		position: relative;
-		display: grid;
-		grid-template-columns: 20px 1fr;
-		gap: var(--space-sm);
-		min-height: 36px;
-		color: var(--chronicle-text-faint);
-	}
-	li[data-status="in_progress"] { color: var(--chronicle-accent); font-weight: 650; }
-	li[data-status="completed"] { color: var(--chronicle-text); }
-	li[data-status="failed"] { color: var(--chronicle-danger-text); }
-	.step-icon {
-		position: relative;
-		display: grid;
-		place-items: center;
-		width: 20px;
-		height: 20px;
-		background: var(--chronicle-panel-surface);
-	}
-	.step-icon svg { width: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-	.dot { width: 8px; height: 8px; border: 1.5px solid currentColor; border-radius: 50%; background: var(--chronicle-panel-surface); }
-	li[data-status="in_progress"] .dot { background: currentColor; box-shadow: 0 2px 8px color-mix(in srgb, var(--chronicle-accent) 32%, transparent); }
-	.step-copy { display: grid; gap: 2px; padding-bottom: var(--space-sm); }
-	.step-label { line-height: 20px; }
-	.step-summary { max-width: 65ch; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); font-weight: 400; line-height: 1.45; }
+	.steps { padding-bottom: var(--space-md); }
 	.checklist-message { margin: 0; padding: var(--space-md) 0; color: var(--chronicle-text-muted); }
 	.text-button { padding: 0; border: 0; background: transparent; color: var(--chronicle-link); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 	.try-again { margin: var(--space-xs) 0 var(--space-md) var(--space-xl); padding: 8px 14px; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); font: inherit; font-weight: 650; cursor: pointer; }
-	.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 	@media (prefers-reduced-motion: reduce) { .summary-button svg { transition: none; } }
 </style>

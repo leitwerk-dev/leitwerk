@@ -2016,12 +2016,63 @@ describe("ProcessDetailPage", () => {
 			startupRecovery: recovery,
 		});
 
-		const { target } = await mountSubject(detail);
+		const detailWithProgress: ProcessDetailData = {
+			...detail,
+			timeline: {
+				...detail.timeline,
+				turns: detail.timeline.turns.map((turn, index) =>
+					index === 0
+						? {
+								...turn,
+								progress: {
+									title: "LLM workspace preparation",
+									steps: [
+										{ id: "checkout", label: "Check out repositories", status: "completed" },
+										{ id: "skills", label: "Prepare skills", status: "in_progress" },
+										{ id: "instructions", label: "Collect instructions", status: "incomplete" },
+									],
+								},
+							}
+						: turn,
+				),
+			},
+		};
+
+		const { target } = await mountSubject(detailWithProgress);
 		await flushUi();
 
-		expect(target.querySelector('[data-section="startup-history"]')?.textContent).toContain(
-			"Process startup failed",
-		);
+		const startupHistory = target.querySelector('[data-section="startup-history"]');
+		expect(startupHistory?.textContent).toContain("Process startup failed");
+		expect(startupHistory?.querySelector(".progress-checklist")).not.toBeNull();
+		expect(
+			startupHistory
+				?.querySelector('[data-progress-step="start_worker"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("completed");
+		expect(
+			startupHistory
+				?.querySelector('[data-progress-step="prepare_workspace"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("failed");
+
+		const workspacePreparation = target.querySelector('[data-section="turn-progress"]');
+		expect(workspacePreparation?.textContent).toContain("LLM workspace preparation");
+		expect(workspacePreparation?.classList.contains("progress-checklist")).toBe(true);
+		expect(
+			workspacePreparation
+				?.querySelector('[data-progress-step="checkout"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("completed");
+		expect(
+			workspacePreparation
+				?.querySelector('[data-progress-step="skills"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("in_progress");
+		expect(
+			workspacePreparation
+				?.querySelector('[data-progress-step="instructions"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("incomplete");
 		expect(target.querySelector('[data-section="startup-recovery"]')?.textContent).toContain(
 			"Retry startup",
 		);

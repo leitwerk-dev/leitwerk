@@ -1,5 +1,12 @@
 # UI Architecture & Layout
 
+Startup history and turn progress use `ProgressChecklist`; the launch checklist
+uses the same `ProgressChecklistRows`. Rows preserve their recorded order,
+labels, details, and states. Text and static symbols identify pending, active,
+complete, failed, skipped, and superseded steps. Each startup-history and
+turn-progress checklist is labelled by its own heading. Narrow containers wrap
+status labels below their step text.
+
 The Leitwerk user interface provides real-time visibility and steering control over running AI workflows. This guide explains the three core UI concepts: the Chronicle timeline and Turn Rail layout, live streaming text overlays, and custom extension UI slots.
 
 ---
@@ -113,11 +120,13 @@ Durable leaf-outcome captures reference the same `rendererId`. The UI loads the 
 
 ## 6. Turn progress
 
-Automatic turns and LLM preparation phases may expose a durable ordered progress report in their Chronicle cluster. The
-UI names every step state, highlights the current step, preserves failed steps beside generic
-recovery controls, and lists created pull requests, merge requests, commits, or pipelines under
-**Created changes**. Historical reports remain part of their owning turn attempt. Status text
-and symbols carry the meaning without relying on color.
+Automatic turns and LLM preparation phases may expose a durable ordered progress report in their
+Chronicle cluster. Process startup history uses the same checklist layout, typography, spacing,
+and status treatment as these progress reports. The UI names every step state, highlights the
+current step, preserves failed steps beside generic recovery controls, and lists created pull
+requests, merge requests, commits, or pipelines under **Created changes**. Historical reports
+remain part of their owning turn attempt. Status text and symbols carry the meaning without
+relying on color.
 
 ## 7. Launch checklist
 
