@@ -2290,8 +2290,8 @@ describe("ProcessDetailPage", () => {
 		expect(target.textContent).toContain("Ship the requested change");
 		expect(target.textContent).toContain("Wait for an external completion trigger");
 		expect(target.textContent).toContain("Configured prompt-complete file");
-		expect(target.textContent).toContain("Armed");
-		expect(target.textContent).toContain("Listening for this trigger since 30s ago.");
+		expect(target.textContent).toContain("Listening");
+		expect(target.textContent).toContain("Listening since 30s ago.");
 		expect(target.textContent).toContain("Watching /tmp/complete-prompt · polling every 50ms.");
 		expect(target.querySelector('[data-section="external-triggers"]')).toBeTruthy();
 
@@ -4272,7 +4272,7 @@ describe("ProcessDetailPage", () => {
 		const dialog = target.querySelector<HTMLElement>('[data-section="ticket-composer"]');
 		const description = dialog?.querySelector<HTMLTextAreaElement>("textarea");
 		const submit = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
-			(button) => button.textContent?.trim() === "Create",
+			(button) => button.textContent?.trim() === "Draft issue",
 		);
 		expect(dialog?.querySelector("pre")).toBeNull();
 		expect(description?.getAttribute("placeholder")).toContain("Describe the problem");

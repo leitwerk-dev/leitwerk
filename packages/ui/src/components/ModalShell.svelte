@@ -16,6 +16,7 @@ interface Props {
 	restoreFocusSelector?: string;
 	presentation?: "center" | "bottom-sheet";
 	height?: string;
+	dismissible?: boolean;
 }
 
 let {
@@ -31,14 +32,15 @@ let {
 	initialFocusSelector,
 	restoreFocusSelector,
 	presentation = "center",
-	height = "auto",
+	height = "fit-content",
+	dismissible = true,
 }: Props = $props();
 
 const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 	const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	const handleCancel = (event: Event) => {
 		event.preventDefault();
-		onClose();
+		if (dismissible) onClose();
 	};
 	const handleKeydown = (event: KeyboardEvent) => {
 		if (event.key !== "Tab") return;
@@ -98,11 +100,14 @@ const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 		id={panelId}
 		aria-labelledby={titleId}
 		onclick={(event) => {
-			if (event.target === event.currentTarget) onClose();
+			if (dismissible && event.target === event.currentTarget) {
+				const rect = event.currentTarget.getBoundingClientRect();
+				if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) onClose();
+			}
 		}}
 		style={`--modal-width: ${width}; --modal-height: ${height}; --modal-max-height: ${maxHeight}`}
 	>
-		<button type="button" class="modal-close" aria-label={closeLabel} onclick={onClose} autofocus>
+		<button type="button" class="ui-button modal-close" data-size="icon" aria-label={closeLabel} disabled={!dismissible} onclick={onClose} autofocus>
 			<svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"></path></svg>
 		</button>
 		{@render children()}
@@ -110,11 +115,11 @@ const showModal: Attachment<HTMLDialogElement> = (dialog) => {
 {/if}
 
 <style>
-	.modal-panel { position: fixed; inset: 0; width: var(--modal-width); height: var(--modal-height); max-width: none; max-height: var(--modal-max-height); margin: auto; display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-xl); border: 0; border-radius: var(--radius-lg); background: var(--chronicle-card-surface-strong); box-shadow: var(--chronicle-shadow); color: inherit; overflow: hidden; }
-	.modal-panel::backdrop { background: color-mix(in srgb, var(--chronicle-bg) 45%, transparent 55%); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+	.modal-panel { position: fixed; inset: 0; width: var(--modal-width); height: var(--modal-height); max-width: none; max-height: var(--modal-max-height); margin: auto; display: flex; flex-direction: column; gap: var(--space-md); padding: var(--space-xl); border: 0; border-radius: var(--radius-lg); background: var(--chronicle-card-surface); box-shadow: var(--chronicle-shadow); color: inherit; overflow: hidden; }
+	.modal-panel::backdrop { background: color-mix(in srgb, var(--chronicle-text) 32%, transparent 68%); }
 	.modal-panel[data-presentation="bottom-sheet"] { inset: auto 0 0; gap: 0; margin: 0 auto; padding: 8px 16px max(14px, env(safe-area-inset-bottom)); border: 1px solid var(--chronicle-border-strong); border-bottom: 0; border-radius: 22px 22px 0 0; background: var(--chronicle-card-surface); animation: modal-bottom-sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
 	.modal-panel[data-presentation="bottom-sheet"]::backdrop { background: color-mix(in srgb, var(--chronicle-text) 38%, transparent 62%); backdrop-filter: none; -webkit-backdrop-filter: none; }
-	.modal-close { position: absolute; right: var(--space-md); top: var(--space-md); display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--chronicle-text-muted); cursor: pointer; }
+	.modal-close { position: absolute; right: var(--space-md); top: var(--space-md); color: var(--chronicle-text-muted); }
 	.modal-close:hover { background: var(--chronicle-panel-muted); color: var(--chronicle-text); }
 	.modal-close:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; }
 	.modal-close svg { width: 18px; height: 18px; stroke: currentColor; stroke-width: 1.7; fill: none; }

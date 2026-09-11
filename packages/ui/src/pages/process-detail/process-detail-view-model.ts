@@ -122,7 +122,7 @@ export function buildPendingRailItem(input: {
 	if (visibleExternalTriggers.length > 0) {
 		return {
 			label: "External trigger",
-			title: "Waiting for external trigger",
+			title: "Waiting for an update",
 			detail: selectedTurnDescription,
 			tone: "external_trigger",
 		};

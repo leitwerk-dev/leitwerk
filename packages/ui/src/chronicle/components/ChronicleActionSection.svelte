@@ -52,7 +52,7 @@ const sectionTitle = $derived.by(() => {
 	if (actions.length > 0) {
 		return "Decide what happens next";
 	}
-	return selectedTurn?.description ?? "Waiting for external trigger";
+	return "Waiting for an update";
 });
 const sectionDescription = $derived.by(() => {
 	if (openAction?.description) {
@@ -61,10 +61,11 @@ const sectionDescription = $derived.by(() => {
 	if (selectedTurn?.commentary) {
 		return selectedTurn.commentary;
 	}
+	if (actions.length === 0 && selectedTurn?.description) return selectedTurn.description;
 	if (actions.length > 0) {
-		return "Review the latest process result, then choose the next move.";
+		return "Review the latest result, then choose what happens next.";
 	}
-	return "This process is waiting for an external trigger. The status below shows whether the listener is armed and the latest recorded trigger activity.";
+	return "This process continues when one of the events below occurs.";
 });
 
 $effect(() => {
@@ -284,23 +285,25 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 			return {
 				tone: "attention",
 				label: "Error",
-				detail: `Last trigger attempt failed ${relativeTime}.`,
+				detail: relativeTime ? `Last check failed ${relativeTime}.` : "Last check failed.",
 			};
 		case "armed":
 			return {
 				tone: "ready",
-				label: "Armed",
-				detail: relativeTime
-					? `Listening for this trigger since ${relativeTime}.`
-					: "Listening for this trigger now.",
+				label: "Listening",
+				detail: relativeTime ? `Listening since ${relativeTime}.` : "Listening for this event.",
 			};
 		case "triggered":
-			return { tone: "neutral", label: "Triggered", detail: `Last trigger fired ${relativeTime}.` };
+			return {
+				tone: "neutral",
+				label: "Received",
+				detail: relativeTime ? `Last event received ${relativeTime}.` : "Event received.",
+			};
 		case "waiting":
 			return {
 				tone: "neutral",
 				label: "Waiting",
-				detail: "Waiting for this trigger to become active again.",
+				detail: "Not currently listening for this event.",
 			};
 	}
 }
@@ -324,7 +327,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		<div class="action-header-copy">
 			<div class="action-status-row" aria-label={actions.length > 0 ? "Action required" : "External trigger"}>
 				<span class="action-status-dot" aria-hidden="true"></span>
-				<span>{actions.length > 0 ? "Action required" : "External trigger"}</span>
+				<span>{actions.length > 0 ? "Action required" : "Waiting for an event"}</span>
 			</div>
 			<h3>{sectionTitle}</h3>
 			<p class="action-description">{sectionDescription}</p>
@@ -386,8 +389,8 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 
 	{#if externalTriggers.length > 0}
 		<section class="external-trigger-card" data-section="external-triggers">
-			<p class="external-trigger-eyebrow">
-				{externalTriggers.length === 1 ? "Available external trigger" : "Available external triggers"}
+			<p class="external-trigger-heading">
+				Events that can continue this process
 			</p>
 			<ul class="external-trigger-list">
 				{#each externalTriggers as trigger (trigger.id)}
@@ -402,14 +405,27 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 						</div>
 						<p class="external-trigger-description">{trigger.description}</p>
 						{#if signal && presentation}
-							<p class="external-trigger-signal-detail">{presentation.detail}</p>
-							{#if signal.secondaryDetail}
-								<p class="external-trigger-signal-secondary">{signal.secondaryDetail}</p>
+							{#if signal.state === "error"}
+								<p class="external-trigger-signal-detail">{presentation.detail}</p>
+								{#if signal.secondaryDetail}<p class="external-trigger-signal-secondary">{signal.secondaryDetail}</p>{/if}
 							{/if}
 						{/if}
 					</li>
 				{/each}
 			</ul>
+			{#if externalTriggerSignals.some((signal) => signal.state !== "error")}
+				<details class="external-trigger-details">
+					<summary>Listener details</summary>
+					<dl>
+						{#each externalTriggers as trigger (trigger.id)}
+							{@const signal = externalTriggerSignalFor(trigger)}
+							{#if signal && signal.state !== "error"}
+								<div><dt>{trigger.label}</dt><dd>{presentExternalTriggerSignal(signal).detail}{#if signal.secondaryDetail} {signal.secondaryDetail}{/if}</dd></div>
+							{/if}
+						{/each}
+					</dl>
+				</details>
+			{/if}
 		</section>
 	{/if}
 
@@ -704,18 +720,17 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		border-top: 1px solid color-mix(in srgb, var(--chronicle-accent) 18%, var(--chronicle-border) 82%);
 	}
 
-	.external-trigger-eyebrow,
+	.external-trigger-heading,
 	.external-trigger-label {
 		margin: 0;
 	}
 
-	.external-trigger-eyebrow {
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-		color: var(--chronicle-text-faint);
-	}
+	.external-trigger-heading { font-size: var(--type-body-sm); font-weight: 620; color: var(--chronicle-text-muted); }
+	.external-trigger-details summary { width: fit-content; padding: var(--space-xs) 0; font-size: var(--type-body-sm); color: var(--chronicle-text-muted); cursor: pointer; }
+	.external-trigger-details[open] { padding-bottom: var(--space-xs); }
+	.external-trigger-details dl { display: grid; gap: var(--space-sm); margin: var(--space-xs) 0 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-text-muted); }
+	.external-trigger-details dt { font-weight: 620; }
+	.external-trigger-details dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 
 	.external-trigger-list {
 		margin: 0;
@@ -766,9 +781,9 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	}
 
 	.external-trigger-status.ready {
-		border-color: color-mix(in srgb, var(--chronicle-success) 26%, var(--chronicle-border) 74%);
-		background: color-mix(in srgb, white 90%, var(--chronicle-success) 10%);
-		color: color-mix(in srgb, var(--chronicle-success) 72%, var(--chronicle-text) 28%);
+		border-color: var(--chronicle-border);
+		background: var(--chronicle-panel-muted);
+		color: var(--chronicle-text-muted);
 	}
 
 	.external-trigger-status.attention {

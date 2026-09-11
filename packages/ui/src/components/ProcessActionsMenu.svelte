@@ -92,7 +92,7 @@ const menuId = $derived(`process-actions-menu-${instanceId}${idDisambiguator}`);
 const confirmationView = $derived({
 	message:
 		confirmation === "abort"
-			? `Abort ${actionTarget}? This can’t be undone.`
+			? `Abort ${actionTarget}? Active work will stop. Its history will remain available. This can’t be undone.`
 			: confirmation === "delete"
 				? `Permanently delete ${actionTarget}? ${isFinished ? "" : "Active work will be stopped first. "}History and managed stored artifacts will be permanently removed. This can’t be undone.`
 				: `Abort ${actionTarget}, then prepare a new process with the same setup. Existing history will remain available.`,
@@ -107,8 +107,8 @@ const confirmationView = $derived({
 					? "Deleting…"
 					: "Delete process"
 				: busy
-					? "Working…"
-					: "Abort & retry",
+					? "Preparing new process…"
+					: "Abort and retry",
 	action:
 		confirmation === "abort"
 			? handleAbort
@@ -192,6 +192,10 @@ $effect(() => {
 			document.removeEventListener("keydown", handleKeydown);
 		};
 	}
+});
+
+$effect(() => {
+	if (menuOpen && (confirmation || transferGrant)) void tick().then(focusFirstMenuControl);
 });
 
 async function runBusy(work: () => Promise<void>, fallbackError: string) {
@@ -321,7 +325,7 @@ function handleDownloadSession() {
 		bind:this={triggerRef}
 		id={triggerId}
 		type="button"
-		class="menu-trigger"
+		class="ui-button menu-trigger"
 		data-pressable="true"
 		aria-haspopup="menu"
 		aria-controls={menuOpen ? menuId : undefined}
@@ -331,9 +335,8 @@ function handleDownloadSession() {
 		aria-label={`Open actions for ${actionTarget}`}
 		title={`Actions for ${actionTarget}`}
 	>
-		<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-			<circle cx="12" cy="12" r="3"></circle>
-			<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+		<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+			<circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" />
 		</svg>
 		<span class:sr-only={presentation === "sheet"} class="menu-trigger-label">More actions</span>
 	</button>
@@ -378,8 +381,8 @@ function handleDownloadSession() {
 					/>
 					<p class="transfer-note">Anyone with this link can download this session and workspace.</p>
 					<div class="confirm-actions">
-						<button type="button" class="confirm-cancel" data-pressable="true" onclick={showActions}>Back</button>
-						<button type="button" class="confirm-cancel" data-pressable="true" onclick={handleCopyTransferLink}>
+						<button type="button" class="ui-button confirm-cancel" data-pressable="true" onclick={showActions}>Back</button>
+						<button type="button" class="ui-button confirm-cancel" data-pressable="true" onclick={handleCopyTransferLink}>
 							{copyStatus === "copied" ? "Copied" : "Copy link"}
 						</button>
 					</div>
@@ -393,7 +396,7 @@ function handleDownloadSession() {
 					<div class="confirm-actions">
 						<button
 							type="button"
-							class="confirm-cancel"
+							class="ui-button confirm-cancel"
 							data-pressable="true"
 							disabled={busy}
 							onclick={cancelConfirmation}
@@ -402,7 +405,7 @@ function handleDownloadSession() {
 						</button>
 						<button
 							type="button"
-							class="confirm-danger"
+							class="ui-button confirm-danger" data-variant="danger"
 							data-pressable="true"
 							disabled={busy}
 							onclick={confirmationView.action}
@@ -437,8 +440,8 @@ function handleDownloadSession() {
 	}
 
 	.process-actions-menu[data-presentation="sheet"] .menu-trigger {
-		width: 40px;
-		min-height: 40px;
+		width: 44px;
+		min-height: 44px;
 		padding: 0;
 		border-radius: 10px;
 	}
@@ -456,47 +459,15 @@ function handleDownloadSession() {
 		box-shadow: -6px 0 currentColor, 6px 0 currentColor;
 	}
 
-	.menu-trigger {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 7px;
-		min-height: 38px;
-		padding: 0 12px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 88%, transparent 12%);
-		border-radius: 999px;
-		background: color-mix(in srgb, var(--chronicle-card-surface) 76%, transparent 24%);
-		color: var(--chronicle-text-muted);
-		font: inherit;
-		font-size: var(--type-body-sm, 13px);
-		font-weight: 620;
-		white-space: nowrap;
-		cursor: pointer;
-	}
-
-	.menu-trigger:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--chronicle-panel-muted) 60%, transparent 40%);
-		color: var(--chronicle-text);
-		border-color: var(--chronicle-border);
-	}
-
-	.menu-trigger:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	.menu-trigger[aria-expanded="true"] {
-		background: var(--chronicle-panel-muted);
-		color: var(--chronicle-text);
-		border-color: var(--chronicle-border-strong);
-	}
-
 	.menu-dropdown {
 		position: absolute;
 		top: calc(100% + 6px);
 		right: 0;
 		z-index: 100;
-		min-width: 248px;
+		width: min(360px, calc(100vw - 32px));
+		max-height: min(640px, calc(100dvh - 140px));
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: 8px;
 		border: 1px solid var(--chronicle-border-strong);
 		border-radius: 14px;
@@ -531,7 +502,7 @@ function handleDownloadSession() {
 		color: var(--chronicle-text);
 		font: inherit;
 		font-size: var(--type-body-sm, 13px);
-		font-weight: 750;
+		font-weight: 620;
 		text-align: left;
 		cursor: pointer;
 	}
@@ -572,7 +543,7 @@ function handleDownloadSession() {
 	}
 
 	.transfer-panel {
-		width: min(352px, calc(100vw - 52px));
+		min-width: 0;
 	}
 
 	.transfer-note {
@@ -638,44 +609,8 @@ function handleDownloadSession() {
 	.confirm-actions {
 		display: flex;
 		gap: 8px;
+		flex-wrap: wrap;
 		justify-content: flex-end;
-	}
-
-	.confirm-cancel,
-	.confirm-danger {
-		min-height: 36px;
-		padding: 0 14px;
-		border-radius: 999px;
-		font: inherit;
-		font-size: var(--type-body-sm, 13px);
-		font-weight: 600;
-		cursor: pointer;
-	}
-
-	.confirm-cancel:disabled,
-	.confirm-danger:disabled {
-		opacity: 0.5;
-		cursor: default;
-	}
-
-	.confirm-cancel {
-		border: 1px solid var(--chronicle-border-strong);
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-	}
-
-	.confirm-cancel:hover:not(:disabled) {
-		background: var(--chronicle-panel-muted);
-	}
-
-	.confirm-danger {
-		border: 1px solid var(--chronicle-danger-border);
-		background: var(--chronicle-danger);
-		color: var(--chronicle-text-on-accent);
-	}
-
-	.confirm-danger:hover:not(:disabled) {
-		opacity: 0.9;
 	}
 
 	@media (max-width: 720px) {

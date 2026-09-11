@@ -207,7 +207,7 @@ async function confirmCancel() {
 				{#snippet actions()}
 					<button
 						type="button"
-						class="secondary-button"
+						class="ui-button secondary-button"
 						data-pressable="true"
 						disabled={!launcher}
 						title={launcher ? undefined : "Editing requires this process type to be available"}
@@ -217,7 +217,7 @@ async function confirmCancel() {
 					</button>
 					<button
 						type="button"
-						class="danger-button"
+						class="ui-button danger-button" data-variant="danger-quiet"
 						data-pressable="true"
 						disabled={cancelBusy}
 						onclick={() => (cancelConfirmOpen = true)}
@@ -250,10 +250,10 @@ async function confirmCancel() {
 						{/if}
 					</div>
 					<div class="confirm-actions">
-						<button type="button" class="secondary-button" data-pressable="true" disabled={cancelBusy} onclick={() => (cancelConfirmOpen = false)}>
+						<button type="button" class="ui-button secondary-button" data-pressable="true" disabled={cancelBusy} onclick={() => (cancelConfirmOpen = false)}>
 							Keep scheduled
 						</button>
-						<button type="button" class="danger-button" data-pressable="true" disabled={cancelBusy} onclick={() => void confirmCancel()}>
+						<button type="button" class="ui-button danger-button" data-variant="danger" data-pressable="true" disabled={cancelBusy} onclick={() => void confirmCancel()}>
 							{cancelBusy ? "Canceling…" : "Cancel launch"}
 						</button>
 					</div>
@@ -284,7 +284,7 @@ async function confirmCancel() {
 			/>
 			<div class="missing-state" role="status">
 				<p>Check All processes for any process this schedule may have started.</p>
-				<button type="button" class="secondary-button" onclick={() => navigate(processesPath)}>
+				<button type="button" class="ui-button secondary-button" onclick={() => navigate(processesPath)}>
 					View all processes
 				</button>
 			</div>
@@ -295,7 +295,7 @@ async function confirmCancel() {
 			{#if futureLaunchDetailError}
 				<div class="detail-load-error" role="status">
 					<p class="detail-warning">{futureLaunchDetailError}</p>
-					<button type="button" class="secondary-button" onclick={retryFutureLaunchDetail}>
+					<button type="button" class="ui-button secondary-button" onclick={retryFutureLaunchDetail}>
 						Retry
 					</button>
 				</div>
@@ -348,33 +348,6 @@ async function confirmCancel() {
 		align-items: center;
 		flex-wrap: wrap;
 		justify-content: flex-end;
-	}
-
-	.secondary-button,
-	.danger-button {
-		min-height: 40px;
-		padding: 0 var(--space-md);
-		border-radius: 999px;
-		font-weight: 650;
-		cursor: pointer;
-	}
-
-	.secondary-button {
-		border: 1px solid var(--chronicle-border-strong);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 94%, white 6%);
-		color: var(--chronicle-text);
-	}
-
-	.danger-button {
-		border: 1px solid var(--chronicle-danger-border);
-		background: var(--chronicle-danger-surface-soft);
-		color: var(--chronicle-danger-text-strong);
-	}
-
-	.secondary-button:disabled,
-	.danger-button:disabled {
-		opacity: 0.62;
-		cursor: wait;
 	}
 
 	.detail-warning {

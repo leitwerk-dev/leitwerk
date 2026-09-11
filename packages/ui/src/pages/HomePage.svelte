@@ -239,7 +239,7 @@ function handleScheduled(futureExecution: FutureLaunchSummary) {
 					subtitle={selectedLauncher.card.description ?? selectedLauncher.description}
 				>
 					{#snippet actions()}
-						<button type="button" class="page-header-button" data-pressable="true" onclick={goBackToGallery}>
+						<button type="button" class="ui-button page-header-button" data-pressable="true" onclick={goBackToGallery}>
 							<span aria-hidden="true">←</span>
 							Process types
 						</button>

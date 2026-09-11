@@ -16,6 +16,7 @@ interface Props {
 let { instanceId, draft, onClose }: Props = $props();
 let ticketTools = $state<TicketCreationToolSummary[]>([]);
 let ticketToolsLoading = $state(false);
+let ticketToolLoadRequest = $state(0);
 let selectedTicketTool = $state("");
 let ticketInstructions = $state("");
 let ticketError = $state<string | null>(null);
@@ -35,6 +36,9 @@ const ticketToolField: FormFieldDefinition<"select"> = {
 
 $effect(() => {
 	if (!draft) return;
+	void ticketToolLoadRequest;
+	ticketTools = [];
+	selectedTicketTool = "";
 	let cancelled = false;
 	ticketError = null;
 	ticketToolsLoading = true;
@@ -95,12 +99,18 @@ async function submitTicketDraft() {
 	width="min(100% - 32px, 520px)"
 	maxHeight="min(85dvh, 620px)"
 	initialFocusSelector="textarea"
+	dismissible={!ticketLaunching}
 >
 	<header class="ticket-composer-header">
 		<h2 id="ticket-composer-title">Create issue</h2>
-		<p>Describe the issue to start a focused ticket-creation process.</p>
+		<p>Start an issue draft from this result. You’ll review it before it is published.</p>
 	</header>
 	<div class="ticket-composer-body">
+		{#if draft?.excerpt}
+			<details class="ticket-source"><summary>Selected text</summary><blockquote>{draft.excerpt}</blockquote></details>
+		{:else}
+			<p class="ticket-source-note">The full result will be included as context.</p>
+		{/if}
 		<FormFieldRenderer
 			field={ticketInstructionsField}
 			id="ticket-instructions"
@@ -118,20 +128,27 @@ async function submitTicketDraft() {
 				options={ticketTools.map((tool) => ({ value: tool.name, label: tool.displayName }))}
 				onValueChange={(_, value) => (selectedTicketTool = String(value))}
 			/>
+		{:else if ticketTools.length === 1}
+			<p class="ticket-source-note">Ticket system: {ticketTools[0].displayName}</p>
 		{:else if ticketTools.length === 0 && !ticketError}
-			<p class="ticket-composer-state">No ticket system is configured.</p>
+			<p class="ticket-composer-state">No ticket system is available. Ask your administrator to configure one before creating an issue.</p>
 		{/if}
-		{#if ticketError}<p class="ticket-composer-error" role="alert">{ticketError}</p>{/if}
+		{#if ticketError}
+			<div class="ticket-composer-error" role="alert">
+				<p>{ticketError}</p>
+				{#if ticketTools.length === 0}<button type="button" class="ui-button" onclick={() => ticketToolLoadRequest++}>Try again</button>{/if}
+			</div>
+		{/if}
 	</div>
 	<footer class="ticket-composer-actions">
-		<button type="button" class="ticket-button-secondary" data-pressable="true" onclick={close}>Cancel</button>
+		<button type="button" class="ui-button" data-pressable="true" disabled={ticketLaunching} onclick={close}>Cancel</button>
 		<button
 			type="button"
-			class="ticket-button-primary"
+			class="ui-button" data-variant="primary"
 			data-pressable="true"
 			disabled={!ticketInstructions.trim() || !selectedTicketTool || ticketLaunching || ticketToolsLoading}
 			onclick={submitTicketDraft}
-		>{ticketLaunching ? "Creating…" : "Create"}</button>
+		>{ticketLaunching ? "Starting draft…" : "Draft issue"}</button>
 	</footer>
 </ModalShell>
 
@@ -139,7 +156,7 @@ async function submitTicketDraft() {
 	.ticket-composer-header {
 		display: grid;
 		gap: 6px;
-		padding-right: var(--space-xl);
+		padding-right: var(--space-2xl);
 	}
 
 	.ticket-composer-header h2,
@@ -150,7 +167,7 @@ async function submitTicketDraft() {
 	}
 
 	.ticket-composer-header h2 {
-		font-size: var(--type-title);
+		font-size: var(--type-title-md);
 		line-height: 1.2;
 	}
 
@@ -193,76 +210,10 @@ async function submitTicketDraft() {
 		border-top: 1px solid var(--chronicle-border);
 	}
 
-	.ticket-button-secondary,
-	.ticket-button-primary {
-		min-height: 44px;
-		padding: 0 var(--space-md);
-		border-radius: 999px;
-		font: inherit;
-		font-size: var(--type-body-sm);
-		font-weight: 700;
-		cursor: pointer;
-	}
-
-	.ticket-button-secondary {
-		border: 1px solid var(--chronicle-border-strong);
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-	}
-
-	.ticket-button-primary {
-		border: 1px solid var(--chronicle-text);
-		background: var(--chronicle-text);
-		color: var(--chronicle-card-surface);
-	}
-
-	.ticket-button-secondary:hover:not(:disabled),
-	.ticket-button-primary:hover:not(:disabled) {
-		transform: translateY(-1px);
-	}
-
-	.ticket-button-secondary:hover:not(:disabled) {
-		border-color: var(--chronicle-accent);
-	}
-
-	.ticket-button-primary:hover:not(:disabled) {
-		background: color-mix(in srgb, var(--chronicle-text) 88%, var(--chronicle-accent) 12%);
-	}
-
-	.ticket-button-secondary:focus-visible,
-	.ticket-button-primary:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
-	}
-
-	.ticket-button-primary:disabled {
-		opacity: 0.46;
-		cursor: not-allowed;
-	}
-
-	@media (max-width: 720px) {
-		:global(dialog[data-section="ticket-composer"]) {
-			inset: auto 0 0;
-			width: 100%;
-			max-height: calc(100dvh - max(20px, env(safe-area-inset-top)));
-			margin: 0;
-			padding: var(--space-lg) var(--space-md) max(var(--space-md), env(safe-area-inset-bottom));
-			border-radius: 22px 22px 0 0;
-		}
-
-		.ticket-composer-body {
-			overscroll-behavior: contain;
-		}
-
-		.ticket-composer-actions {
-			position: sticky;
-			bottom: 0;
-			padding-top: var(--space-sm);
-			background: var(--chronicle-card-surface-strong);
-		}
-
-		.ticket-composer-actions button {
-			flex: 1 1 0;
-		}
-	}
+	.ticket-source-note, .ticket-source { margin: 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-text-muted); }
+	.ticket-source summary { padding: var(--space-xs) 0; cursor: pointer; }
+	.ticket-source blockquote { margin: var(--space-xs) 0 0; padding: var(--space-sm); border-radius: var(--radius-sm); background: var(--chronicle-panel-muted); max-height: 140px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+	.ticket-composer-error { display: grid; gap: var(--space-sm); }
+	.ticket-composer-error p { margin: 0; }
+	.ticket-composer-actions { flex-wrap: wrap; flex-shrink: 0; }
 </style>

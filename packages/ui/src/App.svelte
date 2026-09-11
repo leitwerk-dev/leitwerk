@@ -1,4 +1,5 @@
 <script lang="ts">
+import "./styles/controls.css";
 import type { AuthMeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import { onMount } from "svelte";
 import ToastContainer from "./components/ToastContainer.svelte";

@@ -20,7 +20,7 @@ let { open, title, description = null, items, onClose }: Props = $props();
 	{onClose}
 	dataSection="keyboard-shortcuts-overlay"
 	panelId="keyboard-shortcuts-modal"
-	width="min(100% - 32px, 320px)"
+	width="min(100% - 32px, 400px)"
 	maxHeight="calc(100vh - 32px)"
 >
 	<header class="shortcut-header">
@@ -41,7 +41,7 @@ let { open, title, description = null, items, onClose }: Props = $props();
 </ModalShell>
 
 <style>
-	.shortcut-header { display: grid; gap: 8px; margin-right: 34px; }
+	.shortcut-header { display: grid; gap: 8px; margin-right: var(--space-2xl); }
 	.shortcut-header h2 { margin: 0; font-size: var(--type-title-md); line-height: 1.1; }
 	.shortcut-header p { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.55; }
 	.shortcut-list { margin: 0; padding: 0; overflow-y: auto; list-style: none; display: grid; gap: 8px; }
