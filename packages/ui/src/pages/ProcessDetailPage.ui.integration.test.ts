@@ -2043,7 +2043,7 @@ describe("ProcessDetailPage", () => {
 
 		const startupHistory = target.querySelector('[data-section="startup-history"]');
 		expect(startupHistory?.textContent).toContain("Process startup failed");
-		expect(startupHistory?.querySelector(".progress-checklist")).not.toBeNull();
+		expect(startupHistory?.querySelector(".checklist-rows")).not.toBeNull();
 		expect(
 			startupHistory
 				?.querySelector('[data-progress-step="start_worker"]')

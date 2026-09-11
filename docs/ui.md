@@ -8,8 +8,8 @@ issue creation explains that it starts a draft for review before publication.
 Reasoning sections and repository details stay within the dialog width. Long
 arguments, error messages, repository URLs, and paths wrap on narrow screens.
 
-Startup history and turn progress use `ProgressChecklist`; the launch checklist
-uses the same `ProgressChecklistRows`. Rows preserve their recorded order,
+Startup history, turn progress, and launch progress share `ProgressChecklistRows`.
+Expanded turn progress uses the `ProgressChecklist` panel. Rows preserve their recorded order,
 labels, details, and states. Text and static symbols identify pending, active,
 complete, failed, skipped, and superseded steps. Each startup-history and
 turn-progress checklist is labelled by its own heading. Narrow containers wrap
@@ -30,10 +30,6 @@ The process detail view is organized into three distinct visual regions:
 - **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. The expanded pane is 240px wide. Active rows show a status dot, title and relative update time above the current turn; each row is limited to two lines with full details on hover. Scheduled rows use a title and schedule line. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
 - **Turn Rail:** Vertical navigation beside the Chronicle, listing completed turns, current work, and its next turn on the declared happy path. Narrow viewports open the same rail in the process navigation sheet.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
-
-Turn input details include user messages and Pi custom messages (including
-identified Leitwerk prompts). Custom-message details stay outside the displayed
-input, just as they stay outside model context.
 
 The UI snapshot supplies turn labels from the owning process definition and a
 `plannedNextTurn` from its declared happy path, including human decisions.
@@ -73,7 +69,10 @@ reserved disclosure slot. **Turn details** opens the full turn details from the 
 card footer; chronicle turns do not use overflow menus.
 
 Prompts appear only when recorded, as a subdued row below the header. Selecting the row opens
-the full turn input. Results use a stronger surface and typography. The latest result expands
+the full turn input. Input details include user messages and Pi custom messages
+(including identified Leitwerk prompts); custom-message details stay outside the
+displayed input, just as they stay outside model context. Results use a stronger
+surface and typography. The latest result expands
 in place; earlier results have a preview and an expand/collapse control. Short historical
 outputs without prompts remain plain, complete sentences. Durable results remain visible even
 when their text matches the assistant's final answer. A ready leaf outcome still owns its
