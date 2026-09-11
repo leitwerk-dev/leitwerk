@@ -1,8 +1,8 @@
 <script lang="ts">
 import type { ProcessStartupSummary } from "@leitwerk-dev/protocol";
 import ElapsedTime from "../../components/ElapsedTime.svelte";
-import { formatElapsedTime } from "../../lib/elapsed-time.js";
 import ProgressChecklistRows from "../../components/ProgressChecklistRows.svelte";
+import { formatElapsedTime } from "../../lib/elapsed-time.js";
 import { formatChronicleDuration } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 
