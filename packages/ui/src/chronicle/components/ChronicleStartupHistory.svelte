@@ -1,5 +1,7 @@
 <script lang="ts">
 import type { ProcessStartupSummary } from "@leitwerk-dev/protocol";
+import ElapsedTime from "../../components/ElapsedTime.svelte";
+import { formatElapsedTime } from "../../lib/elapsed-time.js";
 import ProgressChecklistRows from "../../components/ProgressChecklistRows.svelte";
 import { formatChronicleDuration } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
@@ -18,7 +20,7 @@ function heading(status: ProcessStartupSummary["attempts"][number]["status"]): s
 	<section class="startup-history" aria-label="Process startup history" data-section="startup-history">
 		{#each startup.attempts as attempt (attempt.startRecordId)}
 			{@const completed = attempt.steps.filter((step) => step.status === "completed").length}
-			{@const ready = attempt.durationMs !== null && attempt.readyAt !== null ? `Worker ready in ${Math.max(0, Math.round(attempt.durationMs / 1000))}s · ` : ""}
+			{@const ready = attempt.durationMs !== null && attempt.readyAt !== null ? `Worker ready in ${formatElapsedTime(attempt.durationMs)} · Model response time is separate · ` : ""}
 			<details class="startup-attempt" data-status={attempt.status} open={attempt.status === "failed" || attempt.status === "starting"}>
 				<summary>
 					<ChronicleEntryHeader title={heading(attempt.status)} metadata={`${ready}${completed}/${attempt.steps.length} checks completed`} timestamp={attempt.startedAt} duration={formatChronicleDuration(attempt.startedAt, attempt.readyAt)}>
@@ -27,7 +29,17 @@ function heading(status: ProcessStartupSummary["attempts"][number]["status"]): s
 				</summary>
 				<div class="startup-details">
 					{#if attempt.summary}<p class="startup-summary">{attempt.summary}</p>{/if}
-					<ProgressChecklistRows steps={attempt.steps} />
+					<ProgressChecklistRows steps={attempt.steps.map((step) => ({
+                        ...step,
+                        timing: {
+                            startedAt: step.startedAt ?? null,
+                            endedAt: step.endedAt ?? null,
+                            running: attempt.status === "starting" && step.status === "in_progress",
+                        },
+                    }))} />
+                    {#if attempt.status === "starting"}
+                        <p class="active-phase">Startup · <ElapsedTime startedAt={attempt.startedAt} running /></p>
+                    {/if}
 				</div>
 			</details>
 		{/each}
@@ -35,6 +47,7 @@ function heading(status: ProcessStartupSummary["attempts"][number]["status"]): s
 {/if}
 
 <style>
+	.active-phase { margin: 0; color: var(--chronicle-accent); font-weight: 600; }
 	.startup-history { display: grid; gap: 10px; }
 	.startup-attempt { border: 1px solid var(--chronicle-border); border-radius: 10px; background: var(--chronicle-card-surface-strong); }
 	summary { padding: 12px 14px; list-style: none; cursor: pointer; }
