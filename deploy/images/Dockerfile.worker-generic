@@ -39,7 +39,8 @@ ARG DOCKER_IO_VERSION=20.10.24+dfsg1-1+deb12u1+b6
 WORKDIR /app
 ENV NODE_ENV=production \
 	PI_CODING_AGENT_DIR=/state/pi-agent \
-	PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+	PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+	NODE_COMPILE_CACHE=/opt/leitwerk/node-compile-cache
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
@@ -88,4 +89,7 @@ LABEL org.opencontainers.image.title="leitwerk-worker-generic" \
 
 VOLUME ["/state"]
 WORKDIR /app/packages/worker
+# Populate V8's cache with this image's Node version and absolute module paths.
+# New process volumes can reuse compiled modules on their first worker start.
+RUN node --input-type=module -e 'await import("./dist/index.js")'
 CMD ["/usr/local/bin/node", "dist/container-entry-main.js"]
