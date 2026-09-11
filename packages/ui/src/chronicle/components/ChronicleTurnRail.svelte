@@ -30,6 +30,7 @@ let {
 let railListElement = $state<HTMLDivElement | null>(null);
 let expandedGroups = $state<Record<string, boolean>>({});
 let previousAnchorId: string | null = null;
+let previousGroupId: string | null = null;
 const rows = $derived(buildChronicleRailRows(railItems));
 const records = $derived(
 	new Map(detail?.timeline.turns.map((record) => [record.id, record]) ?? []),
@@ -40,18 +41,19 @@ const upcomingTurn = $derived(
 		: null,
 );
 
-$effect(() => {
+$effect.pre(() => {
 	const anchorId = activeAnchorId;
-	if (!anchorId || anchorId === previousAnchorId) return;
-	const previousGroup = groupForAnchor(previousAnchorId);
 	const group = groupForAnchor(anchorId);
+	const groupId = group?.id ?? null;
+	if (!anchorId || (anchorId === previousAnchorId && groupId === previousGroupId)) return;
+	const previousGroup = groupForAnchor(previousAnchorId);
+	const focusedAnchorId = railListElement?.querySelector<HTMLElement>("[data-rail-anchor-id]:focus")
+		?.dataset.railAnchorId;
+	let restoreRailFocus = anchorId === focusedAnchorId && groupId !== previousGroupId;
 	previousAnchorId = anchorId;
-	let restoreRailFocus = false;
+	previousGroupId = groupId;
 	if (previousGroup && previousGroup.id !== group?.id) {
-		const focusedAnchorId = railListElement?.querySelector<HTMLElement>(
-			"[data-rail-anchor-id]:focus",
-		)?.dataset.railAnchorId;
-		restoreRailFocus = previousGroup.items.some((item) => item.anchorId === focusedAnchorId);
+		restoreRailFocus ||= previousGroup.items.some((item) => item.anchorId === focusedAnchorId);
 		expandedGroups = { ...expandedGroups, [previousGroup.id]: false };
 	}
 	if (group) expandedGroups = { ...expandedGroups, [group.id]: true };

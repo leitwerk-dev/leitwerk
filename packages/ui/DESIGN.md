@@ -142,6 +142,8 @@ The palette is restrained: Slate Ink and cool operational neutrals carry most of
 
 **The State-Is-Copy Rule.** Color supports state; copy names state. Error, warning, success, scheduled, and waiting states must include readable text labels, not just colored marks.
 
+Compact sidebar process rows are an exception: they use a status dot to preserve the two-line layout. The row's accessible name and hover title include the status text; process detail views retain visible state labels.
+
 **The White-Is-Work Rule.** White surfaces are where work happens. Gray surfaces group shell/navigation context; tinted state surfaces are temporary, local, and purposeful.
 
 ## 3. Typography

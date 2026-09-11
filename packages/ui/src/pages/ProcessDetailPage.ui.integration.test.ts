@@ -1913,6 +1913,24 @@ afterEach(() => {
 });
 
 describe("ProcessDetailPage", () => {
+	it("keeps a bounded streamed answer visible alongside preceding reasoning", async () => {
+		const detail = createLiveReasoningTransitionDetail();
+		const activeTurn = detail.primaryPath.turnState.activeTurn;
+		if (!activeTurn) throw new Error("Expected a live turn");
+		activeTurn.assistant.text = `${"Earlier response. ".repeat(100)}Latest response.`;
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const live = target.querySelector('[data-section="live-tail"]');
+		expect(live?.getAttribute("data-live-state")).toBe("thinking");
+		expect(live?.querySelector('[data-section="thinking-preview"]')?.textContent).toContain(
+			"Keep this live reasoning intact.",
+		);
+		const answer = live?.querySelector(".live-result p")?.textContent ?? "";
+		expect(answer).toContain("Latest response.");
+		expect(answer.length).toBeLessThanOrEqual(1024);
+		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+	});
+
 	it("loads live history only on expansion and reconnects only while it stays open", async () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
@@ -3150,6 +3168,19 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		expect(target.querySelector('[data-section="current-turn-recovery"]')).toBeTruthy();
+		expect(queryRecoveryAction(target, "continue-failed-turn")).toBeNull();
+		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
+	});
+
+	it("keeps failure-specific guidance visible when no saved progress can continue", async () => {
+		const detail = createContinuableFailedDetail();
+		const guidance = "Wait for provider capacity or switch to a different model before retrying.";
+		detail.recovery = createFailedTurnRecovery("trn_2", { canContinue: false, guidance });
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const recovery = target.querySelector('[data-section="current-turn-recovery"]');
+		expect(recovery?.textContent).toContain(guidance);
+		expect(recovery?.querySelector('[data-section="continue-unavailable"]')).toBeTruthy();
 		expect(queryRecoveryAction(target, "continue-failed-turn")).toBeNull();
 		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
 	});

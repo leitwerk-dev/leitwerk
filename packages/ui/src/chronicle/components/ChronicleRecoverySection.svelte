@@ -104,8 +104,8 @@ let optionsExpanded = $state(false);
  <div class="recovery-footer">
   <div class="recovery-note">
    <p>Retry will restart this turn.</p>
-   {#if !canContinue}<p class="recovery-guidance" data-section="continue-unavailable">There isn't enough saved progress to resume from the failure point.</p>
-   {:else}<p class="recovery-guidance">{guidance}</p>{/if}
+   <p class="recovery-guidance">{guidance}</p>
+   {#if !canContinue}<p class="recovery-guidance" data-section="continue-unavailable">There isn't enough saved progress to resume from the failure point.</p>{/if}
   </div>
   <div class="recovery-actions" role="group" aria-label="Recovery actions">
    <button type="button" class="recovery-button" data-action="retry-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !selectedModelUsable} onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}>

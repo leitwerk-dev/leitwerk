@@ -87,8 +87,8 @@ const screenReaderStatus = $derived.by(() => {
 			duration={openQuestionRequest ? "Paused" : "Running"}
 		/>
 		{#if !openQuestionRequest}<p class="live-copy" role="status">{liveTail.stateLabel}{#if liveTail.toolCall} · {formatDefinition(liveTail.toolCall.toolName)}{/if}</p>{/if}
-		{#if liveTail.state === "streaming"}
-			<div class="live-result"><p>{liveTail.copy}</p></div>
+		{#if liveTail.assistantTextPreview}
+			<div class="live-result"><p>{liveTail.assistantTextPreview}</p></div>
 		{:else if !liveTail.reasoningSection && liveTail.state !== "tool_running"}
 			<p class="live-copy">{liveTail.copy}</p>
 		{/if}

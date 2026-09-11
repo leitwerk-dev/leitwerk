@@ -1,5 +1,6 @@
 /// <reference types="svelte" />
 import { mount, tick, unmount } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProcessDetailData } from "../../lib/api.js";
 import type { ChronicleSelectableItem } from "../lib/chronicle-selectable-items.js";
@@ -58,13 +59,28 @@ function setup(
 			})),
 		},
 	} as ProcessDetailData;
+	const state = new SvelteMap<string, ChronicleSelectableItem[]>([["items", railItems]]);
 	apps.push(
 		mount(ChronicleTurnRail, {
 			target,
-			props: { detail, railItems, activeAnchorId, onSelectAnchor, loading: false, error: null },
+			props: {
+				detail,
+				get railItems() {
+					return state.get("items") ?? [];
+				},
+				activeAnchorId,
+				onSelectAnchor,
+				loading: false,
+				error: null,
+			},
 		}),
 	);
-	return { target, onSelectAnchor };
+	return {
+		target,
+		onSelectAnchor,
+		setRailItems: (items: ChronicleSelectableItem[]) => state.set("items", items),
+		railItems,
+	};
 }
 const flush = async () => {
 	await tick();
@@ -72,6 +88,27 @@ const flush = async () => {
 };
 
 describe("turn rail repeated history", () => {
+	it("keeps the selected turn visible and focused when new history groups it", async () => {
+		const { target, railItems, setRailItems, onSelectAnchor } = setup("turn-2");
+		setRailItems(railItems.slice(0, 3));
+		await flush();
+		expect(target.querySelector('[data-section="repeated-turns"]')).toBeNull();
+		const selected = target.querySelector<HTMLButtonElement>('[data-rail-anchor-id="turn-2"]');
+		selected?.focus();
+		setRailItems(railItems);
+		await flush();
+		expect(target.querySelector("[aria-expanded]")?.getAttribute("aria-expanded")).toBe("true");
+		expect(target.querySelector('[aria-current="step"]')?.getAttribute("data-rail-anchor-id")).toBe(
+			"turn-2",
+		);
+		expect(document.activeElement?.getAttribute("data-rail-anchor-id")).toBe("turn-2");
+		expect(onSelectAnchor).not.toHaveBeenCalled();
+		const toggle = target.querySelector<HTMLButtonElement>("[aria-expanded]");
+		toggle?.click();
+		await flush();
+		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+	});
+
 	it("shows recorded decisions and duration in repeated history", async () => {
 		const { target } = setup("turn-1");
 		await flush();

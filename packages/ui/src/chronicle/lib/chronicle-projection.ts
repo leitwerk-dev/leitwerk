@@ -219,6 +219,7 @@ export interface ChronicleLiveTailItem {
 	state: "tool_running" | "thinking" | "streaming" | "waiting";
 	stateLabel: string;
 	copy: string;
+	assistantTextPreview: string;
 	reasoningSection: ChronicleThinkingSection | null;
 	toolCall: PrimaryPathActiveTurnSnapshot["toolCalls"][number] | null;
 	usage: TurnUsageSnapshot | null;
@@ -1035,6 +1036,7 @@ function buildLiveTail(input: {
 		state,
 		stateLabel,
 		copy,
+		assistantTextPreview: reasoningPreviewTail(assistantText),
 		reasoningSection:
 			reasoningSection ??
 			(activeTurn && turnRecord.turnType === "llm" && assistantText.length === 0
