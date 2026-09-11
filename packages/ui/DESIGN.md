@@ -248,6 +248,14 @@ The chronicle is the signature component family.
 - **Recovery Section:** Danger-tinted but calm. It should explain what failed, what the operator can do, and provide retry/continue controls without panic styling.
 - **Reasoning Overlay:** Content-scoped overlay beside the sidebar, with stronger shadow and clear close/copy/navigation controls.
 
+### Progress checklists
+
+Startup, workspace preparation, delivery, and launch progress share the workspace
+preparation row treatment: muted surface, 16px padding, 14px text, static 20px
+status marks, and explicit status labels. Use `ProgressChecklist` and
+`ProgressChecklistRows`; preserve step details and order. Status labels wrap
+beneath their step in narrow containers.
+
 ### Toasts
 
 Toasts are operator-attention signals, not a diagnostics feed.

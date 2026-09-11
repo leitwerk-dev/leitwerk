@@ -262,14 +262,14 @@ function handleWindowKeydown(event: KeyboardEvent) {
 			</p>
 
 			{#if hasActiveFilter}
-				<button type="button" class="reset-view-button" data-pressable="true" onclick={clearFilters}>
+				<button type="button" class="ui-button reset-view-button" data-pressable="true" onclick={clearFilters}>
 					Clear filters
 				</button>
 			{/if}
 
 			<button
 				type="button"
-				class="refresh-button"
+				class="ui-button refresh-button"
 				data-action="refresh-processes"
 				data-pressable="true"
 				disabled={$browseState.loading}
@@ -292,7 +292,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		{#if $browseState.error}
 			<div class="state-banner" role="status" data-state="process-list-error">
 				<p>Process list couldn’t refresh. Existing results may be out of date.</p>
-				<button type="button" data-pressable="true" onclick={refreshProcesses}>Try again</button>
+				<button type="button" class="ui-button" data-pressable="true" onclick={refreshProcesses}>Try again</button>
 			</div>
 		{/if}
 
@@ -315,7 +315,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 				<div class="empty-state" data-state="processes-no-results">
 					<h2>No processes match these filters</h2>
 					<p>Change the search or filters to see more process records.</p>
-					<button type="button" class="clear-button" data-pressable="true" onclick={clearFilters}>
+					<button type="button" class="ui-button clear-button" data-pressable="true" onclick={clearFilters}>
 						Clear search and filters
 					</button>
 				</div>
@@ -383,7 +383,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 
 		{#if hasMore}
 			<div class="pagination-row">
-				<button type="button" class="show-more-button" data-pressable="true" onclick={showMore}>
+				<button type="button" class="ui-button show-more-button" data-pressable="true" onclick={showMore}>
 					Show more
 				</button>
 			</div>
@@ -458,43 +458,8 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		font-family: var(--font-mono);
 		font-size: 1.35rem;
 		line-height: 1;
-		letter-spacing: -0.06em;
+		letter-spacing: normal;
 		color: var(--chronicle-text);
-	}
-
-	.refresh-button,
-	.reset-view-button,
-	.clear-button,
-	.show-more-button,
-	.state-banner button {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-height: 40px;
-		padding: 0 14px;
-		border-radius: 10px;
-		border: 1px solid var(--chronicle-border-strong);
-		background: var(--chronicle-card-surface);
-		color: var(--chronicle-text);
-		font-size: var(--type-body-sm);
-		font-weight: 800;
-		cursor: pointer;
-		white-space: nowrap;
-	}
-
-	.refresh-button:hover:not(:disabled),
-	.reset-view-button:hover,
-	.clear-button:hover,
-	.show-more-button:hover,
-	.state-banner button:hover {
-		border-color: color-mix(in srgb, var(--chronicle-accent) 32%, var(--chronicle-border-strong) 68%);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 84%, var(--chronicle-accent) 16%);
-		transform: translateY(-1px);
-	}
-
-	.refresh-button:disabled {
-		opacity: 0.6;
-		cursor: default;
 	}
 
 	.search-field {
@@ -509,7 +474,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	.search-field input,
 	.type-filter select {
 		width: 100%;
-		min-height: 40px;
+		min-height: 44px;
 		border: 1px solid var(--chronicle-border);
 		border-radius: 10px;
 		background: var(--chronicle-card-surface);

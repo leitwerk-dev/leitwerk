@@ -1,0 +1,87 @@
+.ui-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-xs);
+	flex-shrink: 0;
+	min-height: 44px;
+	padding: 8px var(--space-md);
+	border: 1px solid var(--chronicle-border);
+	border-radius: 999px;
+	background: var(--chronicle-card-surface);
+	color: var(--chronicle-text);
+	font: 620 var(--type-body-sm) / 1.4 var(--font-sans);
+	text-align: center;
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.ui-button:hover:not(:disabled) {
+	border-color: var(--chronicle-border-strong);
+	background: var(--chronicle-panel-muted);
+}
+
+.ui-button:focus-visible {
+	outline: 2px solid var(--chronicle-accent);
+	outline-offset: 3px;
+}
+
+.ui-button:disabled {
+	opacity: 0.55;
+	cursor: default;
+}
+
+.ui-button[aria-expanded="true"] {
+	border-color: var(--chronicle-border-strong);
+	background: var(--chronicle-panel-muted);
+}
+
+.ui-button[data-variant="primary"] {
+	border-color: var(--chronicle-text);
+	background: var(--chronicle-text);
+	color: var(--chronicle-text-on-accent);
+}
+
+.ui-button[data-variant="primary"]:hover:not(:disabled) {
+	background: var(--chronicle-text-muted);
+}
+
+.ui-button[data-variant="danger"] {
+	border-color: var(--chronicle-danger);
+	background: var(--chronicle-danger);
+	color: var(--chronicle-text-on-accent);
+}
+
+.ui-button[data-variant="danger"]:hover:not(:disabled) {
+	background: var(--chronicle-danger-text);
+}
+
+.ui-button[data-size="icon"] {
+	width: 44px;
+	padding: 0;
+	border-radius: var(--radius-sm);
+}
+
+.ui-button svg {
+	flex-shrink: 0;
+	width: 18px;
+	height: 18px;
+}
+
+.ui-button[data-variant="quiet"] {
+	border-color: transparent;
+	background: transparent;
+	color: var(--chronicle-link);
+}
+.ui-button[data-variant="quiet"]:hover:not(:disabled) {
+	background: var(--chronicle-panel-muted);
+	border-color: var(--chronicle-border);
+}
+
+.ui-button[data-variant="danger-quiet"] {
+	color: var(--chronicle-danger-text);
+	border-color: var(--chronicle-danger-border);
+}
+.ui-button[data-variant="danger-quiet"]:hover:not(:disabled) {
+	background: var(--chronicle-danger-surface-soft);
+}

@@ -77,7 +77,7 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 		<div class="desktop-process-controls">
 			<button
 				type="button"
-				class="page-header-button process-info-trigger"
+				class="ui-button page-header-button process-info-trigger"
 				data-pressable="true"
 				onclick={onToggleProcessInfo}
 				aria-expanded={isProcessInfoOpen}

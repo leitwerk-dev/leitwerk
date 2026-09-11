@@ -199,7 +199,7 @@ onMount(() => {
 		<button
 			bind:this={closeButton}
 			type="button"
-			class="overlay-close"
+			class="ui-button overlay-close"
 			data-pressable="true"
 			onclick={() => onClose()}
 			aria-label="Close process info"
@@ -608,7 +608,7 @@ onMount(() => {
 		justify-content: space-between;
 		gap: var(--space-md);
 		align-items: start;
-		padding: var(--space-md) 18px var(--space-sm);
+		padding: var(--space-lg);
 	}
 
 	.overlay-heading-copy {
@@ -628,7 +628,7 @@ onMount(() => {
 	}
 
 	.overlay-header h2 {
-		font-size: var(--type-title-sm);
+		font-size: var(--type-title-md);
 		line-height: 1.2;
 		font-weight: 680;
 	}
@@ -648,19 +648,6 @@ onMount(() => {
 		gap: 4px;
 		font-size: var(--type-body-sm);
 		color: var(--chronicle-text-muted);
-	}
-
-	.overlay-close {
-		min-height: 36px;
-		padding: 0 12px;
-		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		background: color-mix(in srgb, white 90%, var(--chronicle-panel-muted) 10%);
-		font: inherit;
-		font-size: 13px;
-		font-weight: 620;
-		color: var(--chronicle-text);
-		cursor: pointer;
 	}
 
 	.overlay-index {

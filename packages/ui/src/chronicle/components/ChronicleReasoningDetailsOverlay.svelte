@@ -318,9 +318,9 @@ onDestroy(() => {
 >
 		<header class="overlay-header">
 			<div class="overlay-header-copy">
-				<p class="overlay-eyebrow">Reasoning details</p>
+				<h2 id={`reasoning-details-title-${entry.turnRecordId}`}>Reasoning details</h2>
 				<div class="overlay-title-row">
-					<h2 id={`reasoning-details-title-${entry.turnRecordId}`}>{entry.title}</h2>
+					<p class="overlay-turn-title">{entry.title}</p>
 					{#if liveStatusLabel}
 						<ChronicleLiveChip label={liveStatusLabel} size="md" />
 					{/if}
@@ -331,34 +331,34 @@ onDestroy(() => {
 				<div class="nav-group" aria-label="Reasoning turn navigation">
 					<button
 						type="button"
-						class="nav-button"
+						class="ui-button nav-button" data-size="icon"
 						data-action="reasoning-overlay-prev"
 						onclick={onPrevious}
 						disabled={!hasPrevious}
 						aria-label="Previous reasoning turn"
 					>
-						←
+						<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m12 4-6 6 6 6" /></svg>
 					</button>
 					<button
 						type="button"
-						class="nav-button"
+						class="ui-button nav-button" data-size="icon"
 						data-action="reasoning-overlay-next"
 						onclick={onNext}
 						disabled={!hasNext}
 						aria-label="Next reasoning turn"
 					>
-						→
+						<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 4 6 6-6 6" /></svg>
 					</button>
 				</div>
 				<button
 					bind:this={closeButton}
 					type="button"
-					class="close-button"
+					class="ui-button close-button"
 					data-action="close-reasoning-overlay"
 					onclick={() => onClose()}
 					aria-label="Close reasoning details"
 				>
-					×
+					Close
 				</button>
 			</div>
 		</header>
@@ -410,7 +410,7 @@ onDestroy(() => {
 					{#if hasPrompt}
 						<button
 							type="button"
-							class="copy-button"
+							class="ui-button copy-button"
 							data-action="copy-pi-input"
 							onclick={handleCopyPrompt}
 						>
@@ -503,7 +503,7 @@ onDestroy(() => {
 		display: grid;
 		height: 100%;
 		min-height: 0;
-		border-radius: 20px;
+		border-radius: var(--radius-lg);
 		border: 1px solid color-mix(in srgb, var(--chronicle-border-strong) 72%, white 28%);
 		background: color-mix(in srgb, var(--chronicle-card-surface) 98%, white 2%);
 		box-shadow: 0 20px 56px rgba(15, 23, 42, 0.18);
@@ -520,11 +520,9 @@ onDestroy(() => {
 		justify-content: space-between;
 		gap: 18px;
 		align-items: start;
-		padding: 24px 28px 20px;
+		padding: var(--space-lg);
 		border-bottom: 1px solid color-mix(in srgb, var(--chronicle-border) 84%, white 16%);
 		background: color-mix(in srgb, var(--chronicle-card-surface) 92%, white 8%);
-		backdrop-filter: blur(18px);
-		-webkit-backdrop-filter: blur(18px);
 	}
 
 	.overlay-header-copy {
@@ -533,7 +531,6 @@ onDestroy(() => {
 		min-width: 0;
 	}
 
-	.overlay-eyebrow,
 	.section-label,
 	.section-caption,
 	.turn-facts,
@@ -541,7 +538,6 @@ onDestroy(() => {
 		margin: 0;
 	}
 
-	.overlay-eyebrow,
 	.section-label {
 		font-size: var(--type-label);
 		font-weight: 700;
@@ -563,14 +559,8 @@ onDestroy(() => {
 		gap: 12px;
 	}
 
-	.overlay-title-row h2 {
-		margin: 0;
-		font-family: var(--font-display);
-		font-size: clamp(1.35rem, 1.2rem + 0.65vw, 1.9rem);
-		line-height: 1.08;
-		font-weight: 650;
-		color: var(--chronicle-text);
-	}
+	.overlay-header-copy h2 { margin: 0; font-size: var(--type-title-md); line-height: 1.2; font-weight: 680; }
+	.overlay-turn-title { margin: 0; font-size: var(--type-body-sm); line-height: 1.5; color: var(--chronicle-text-muted); }
 
 	.overlay-header-actions,
 	.nav-group,
@@ -584,66 +574,10 @@ onDestroy(() => {
 		flex-shrink: 0;
 	}
 
-	.nav-group {
-		padding: 4px;
-		border-radius: 999px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 84%, white 16%);
-		background: color-mix(in srgb, white 92%, var(--chronicle-panel-muted) 8%);
-	}
-
-	.nav-button,
-	.close-button,
-	.copy-button {
-		min-height: 44px;
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		background: color-mix(in srgb, white 92%, var(--chronicle-panel-muted) 8%);
-		color: var(--chronicle-text);
-		font: inherit;
-		cursor: pointer;
-		transition:
-			transform var(--duration-fast, 140ms) var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)),
-			background var(--duration-fast, 140ms) var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1)),
-			border-color var(--duration-fast, 140ms) var(--ease-out-quart, cubic-bezier(0.25, 1, 0.5, 1));
-	}
-
-	.nav-button,
-	.close-button {
-		width: 44px;
-		border-radius: 999px;
-		font-size: 1rem;
-		font-weight: 620;
-	}
-
-	.copy-button {
-		padding: 0 14px;
-		border-radius: 999px;
-		font-size: 13px;
-		font-weight: 620;
-		white-space: nowrap;
-	}
-
-	.nav-button:hover:not(:disabled),
-	.close-button:hover,
-	.copy-button:hover {
-		transform: translateY(-1px);
-		border-color: color-mix(in srgb, var(--chronicle-accent) 24%, var(--chronicle-border) 76%);
-		background: color-mix(in srgb, white 90%, var(--chronicle-accent-soft) 10%);
-	}
-
-	.nav-button:disabled {
-		cursor: default;
-		opacity: 0.45;
-	}
-
-	.nav-button:focus-visible,
-	.close-button:focus-visible,
-	.copy-button:focus-visible {
-		outline: 2px solid color-mix(in srgb, var(--chronicle-accent) 72%, white 28%);
-		outline-offset: 2px;
-	}
-
 	.overlay-body {
 		display: grid;
+		min-width: 0;
+		overflow-wrap: anywhere;
 		gap: 24px;
 		padding: 18px 28px 30px;
 	}
@@ -706,6 +640,7 @@ onDestroy(() => {
 
 	.overlay-section {
 		display: grid;
+		min-width: 0;
 		gap: 12px;
 		min-width: 0;
 	}
@@ -836,18 +771,18 @@ onDestroy(() => {
 	}
 
 	.operational-event[data-severity="error"] {
-		border-color: color-mix(in srgb, #ef4444 48%, var(--chronicle-border) 52%);
-		background: color-mix(in srgb, #fee2e2 44%, var(--chronicle-panel-muted) 56%);
+		border-color: var(--chronicle-danger-border);
+		background: var(--chronicle-danger-surface-soft);
 	}
 
 	.operational-event[data-severity="warning"] {
-		border-color: color-mix(in srgb, #f59e0b 45%, var(--chronicle-border) 55%);
-		background: color-mix(in srgb, #fef3c7 42%, var(--chronicle-panel-muted) 58%);
+		border-color: color-mix(in srgb, var(--chronicle-attention) 38%, var(--chronicle-border));
+		background: color-mix(in srgb, var(--chronicle-attention) 7%, var(--chronicle-card-surface));
 	}
 
 	.operational-event[data-severity="success"] {
-		border-color: color-mix(in srgb, #22c55e 42%, var(--chronicle-border) 58%);
-		background: color-mix(in srgb, #dcfce7 38%, var(--chronicle-panel-muted) 62%);
+		border-color: color-mix(in srgb, var(--chronicle-success) 38%, var(--chronicle-border));
+		background: var(--chronicle-success-surface);
 	}
 
 	.operational-event-header {
@@ -878,7 +813,7 @@ onDestroy(() => {
 		white-space: pre-wrap;
 		overflow-wrap: anywhere;
 		color: var(--chronicle-text);
-		font-size: var(--type-small);
+		font-size: var(--type-body-sm);
 		line-height: 1.55;
 	}
 
@@ -917,11 +852,4 @@ onDestroy(() => {
 		}
 	}
 
-	@media (prefers-reduced-motion: reduce) {
-		.nav-button,
-		.close-button,
-		.copy-button {
-			transition: none;
-		}
-	}
 </style>

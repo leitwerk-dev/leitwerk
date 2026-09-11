@@ -295,7 +295,7 @@ describe("ProcessActionsMenu", () => {
 			await flush();
 			clickButtonByText(target, "Abort and retry as new process");
 			await flush();
-			clickButtonByText(target, "Abort & retry");
+			clickButtonByText(target, "Abort and retry");
 			await flush();
 
 			expect(callOrder).toEqual(["fetch", "abort"]);
@@ -318,7 +318,7 @@ describe("ProcessActionsMenu", () => {
 			await flush();
 			clickButtonByText(target, "Abort and retry as new process");
 			await flush();
-			clickButtonByText(target, "Abort & retry");
+			clickButtonByText(target, "Abort and retry");
 			await flush();
 
 			expect(fetchProcessRetryConfig).toHaveBeenCalledWith("test-instance-id");

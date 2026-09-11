@@ -53,26 +53,27 @@ $effect(() => {
 	<section class="watchers-shell">
 		<PageHeader
 			title="Watchers"
-			subtitle="Review configured watcher registrations, their triggers, and launch model overrides."
+			subtitle="Watchers start processes when matching events arrive. Review what each watcher listens for."
 		>
 			{#snippet actions()}
-				<button type="button" class="page-header-button" data-pressable="true" onclick={() => void loadWatchers()}>
-					Refresh
+				<button type="button" class="ui-button page-header-button" data-pressable="true" disabled={loading} onclick={() => void loadWatchers()}>
+					{loading ? "Refreshing…" : "Refresh"}
 				</button>
 			{/snippet}
 		</PageHeader>
 
 		{#if loading && watchers.length === 0}
-			<div class="state-card">Loading watcher registrations…</div>
+			<div class="state-card" role="status">Loading watchers…</div>
 		{:else if error && watchers.length === 0}
 			<div class="state-card error" role="alert">
-				<p class="state-title">We couldn't load the watcher registry.</p>
+				<p class="state-title">We couldn't load the watchers.</p>
 				<p>{error}</p>
+				<button type="button" class="ui-button" onclick={() => void loadWatchers()}>Try again</button>
 			</div>
 		{:else if watchers.length === 0}
 			<div class="state-card">
 				<p class="state-title">No watchers are currently registered.</p>
-				<p>Configure process watchers in <code>leitwerk.yaml</code> to see them here.</p>
+				<p>Configured watchers will appear here with the events that start each process.</p>
 			</div>
 		{:else}
 			{#if error}
@@ -85,7 +86,6 @@ $effect(() => {
 					<article class="watcher-card" data-watcher-source={watcher.sourceId}>
 						<header class="watcher-card-header">
 							<div>
-								<p class="watcher-type">{watcher.sourceLabel}</p>
 								<h2>{watcher.label}</h2>
 								<p class="watcher-description">{watcher.description}</p>
 							</div>
@@ -95,36 +95,22 @@ $effect(() => {
 						</header>
 
 						<dl class="watcher-meta">
-							<div>
-								<dt>Process</dt>
-								<dd>{watcher.processDisplayName} <span class="muted">({watcher.processId})</span></dd>
-							</div>
-							<div>
-								<dt>Watcher ID</dt>
-								<dd>{watcher.watcherId}</dd>
-							</div>
-							<div>
-								<dt>Target</dt>
-								<dd>{watcher.targetSummary}</dd>
-							</div>
-							<div>
-								<dt>Config path</dt>
-								<dd><code>{watcher.configPath}</code></dd>
-							</div>
-							<div class="full-width">
-								<dt>Launch model</dt>
-								<dd>{formatLaunchModel(watcher)}</dd>
-							</div>
-
-							{#each watcher.details as detail}
-								<div>
-									<dt>{detail.label}</dt>
-									<dd>
-										{#if detail.format === "code"}<code>{detail.value}</code>{:else}{detail.value}{/if}
-									</dd>
-								</div>
-							{/each}
+							<div><dt>Starts</dt><dd>{watcher.processDisplayName}</dd></div>
+							<div><dt>Listens for</dt><dd>{watcher.targetSummary}</dd></div>
 						</dl>
+						<details class="watcher-configuration">
+							<summary>Configuration details</summary>
+							<dl class="watcher-meta">
+								<div><dt>Source</dt><dd>{watcher.sourceLabel}</dd></div>
+								<div><dt>Watcher ID</dt><dd>{watcher.watcherId}</dd></div>
+								<div><dt>Process ID</dt><dd><code>{watcher.processId}</code></dd></div>
+								<div><dt>Config path</dt><dd><code>{watcher.configPath}</code></dd></div>
+								<div class="full-width"><dt>Launch model</dt><dd>{formatLaunchModel(watcher)}</dd></div>
+								{#each watcher.details as detail}
+									<div><dt>{detail.label}</dt><dd>{#if detail.format === "code"}<code>{detail.value}</code>{:else}{detail.value}{/if}</dd></div>
+								{/each}
+							</dl>
+						</details>
 					</article>
 				{/each}
 			</div>
@@ -201,16 +187,8 @@ $effect(() => {
 		justify-content: space-between;
 		gap: 16px;
 		align-items: flex-start;
+		flex-wrap: wrap;
 		margin-bottom: 14px;
-	}
-
-	.watcher-type {
-		margin: 0 0 6px;
-		text-transform: uppercase;
-		letter-spacing: 0.12em;
-		font-size: 0.75rem;
-		font-weight: 700;
-		color: var(--chronicle-text-faint);
 	}
 
 	.watcher-card h2 {
@@ -255,10 +233,9 @@ $effect(() => {
 
 	.watcher-meta dt {
 		margin: 0 0 4px;
-		font-size: 0.78rem;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--chronicle-text-faint);
+		font-size: var(--type-body-sm);
+		font-weight: 620;
+		color: var(--chronicle-text-muted);
 	}
 
 	.watcher-meta dd {
@@ -271,9 +248,9 @@ $effect(() => {
 		grid-column: 1 / -1;
 	}
 
-	.muted {
-		color: var(--chronicle-text-muted);
-	}
+	.watcher-configuration { margin-top: var(--space-sm); border-top: 1px solid var(--chronicle-border); }
+	.watcher-configuration summary { padding: var(--space-sm) 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); cursor: pointer; }
+	.watcher-meta dd { font-size: var(--type-body); line-height: 1.5; }
 
 	code {
 		font-family: var(--font-mono, "SFMono-Regular", monospace);

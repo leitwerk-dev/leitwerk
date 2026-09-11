@@ -99,38 +99,6 @@ let {
 		flex-wrap: wrap;
 	}
 
-	.page-header-actions :global(.page-header-button) {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		flex-shrink: 0;
-		min-height: 31px;
-		padding: 0 var(--space-sm);
-		border: 1px solid color-mix(in srgb, var(--chronicle-border) 82%, white 18%);
-		border-radius: 999px;
-		background: color-mix(in srgb, white 92%, var(--chronicle-panel-muted) 8%);
-		color: var(--chronicle-text);
-		font: inherit;
-		font-size: var(--type-body-sm);
-		font-weight: 620;
-		line-height: 1;
-		cursor: pointer;
-	}
-
-	.page-header-actions :global(.page-header-button:hover:not(:disabled)),
-	.page-header-actions :global(.page-header-button:focus-visible) {
-		transform: translateY(-1px);
-		border-color: color-mix(in srgb, var(--chronicle-accent) 24%, var(--chronicle-border-strong) 76%);
-		outline: none;
-	}
-
-	.page-header-actions :global(.page-header-button:disabled) {
-		cursor: default;
-		opacity: 0.6;
-		transform: none;
-	}
-
 	.page-header-subtitle {
 		max-width: 68ch;
 		font-size: var(--type-body-sm);

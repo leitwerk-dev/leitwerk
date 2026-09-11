@@ -371,7 +371,7 @@ $effect(() => {
 		>
 			{#snippet actions()}
 				{#if repositories.length > 0}
-					<button class="page-header-button" type="button" onclick={() => (showRepositoriesModal = true)}>
+					<button class="ui-button page-header-button" type="button" onclick={() => (showRepositoriesModal = true)}>
 						Repositories ({repositories.length})
 					</button>
 				{/if}
@@ -422,7 +422,7 @@ $effect(() => {
 		{#if loading}
 			<div class="catalog-state" role="status">Loading the skill catalog…</div>
 		{:else if error && installedSkills.length === 0 && availableSkills.length === 0}
-			<div class="catalog-state error" role="alert"><strong>We couldn't load the skill catalog.</strong><span>{error}</span></div>
+			<div class="catalog-state error" role="alert"><strong>We couldn't load the skill catalog.</strong><span>{error}</span><button type="button" class="ui-button" onclick={() => void loadCatalog()}>Try again</button></div>
 		{:else if activeView === "installed" && installedSkills.length === 0}
 			<div class="catalog-state"><strong>No skills are installed.</strong><span>Open Available remotely to install a skill from a configured repository.</span></div>
 		{:else if activeView === "available" && repositories.length === 0}
@@ -473,16 +473,16 @@ $effect(() => {
 				<header class="detail-header"><div><h2>{detail.value.label}</h2><p>{detail.value.description ?? detail.value.id}</p></div><span class={`status-chip ${detailStatus.className}`}>{detailStatus.label}</span></header>
 				{#if actionSuccess}<div class="status-banner success detail-feedback" role="status">{actionSuccess}</div>{/if}
 				{#if detail.kind === "available"}
-					<div class="detail-actions"><button class="primary-action" type="button" disabled={actionPending || detail.value.stale || detail.value.conflict || (detail.value.registered && !detail.value.updateAvailable)} onclick={() => void activateSkill()}>{actionPending ? "Working…" : detail.value.updateAvailable ? "Update skill" : detail.value.registered ? "Already installed" : "Install skill"}</button></div>
+					<div class="detail-actions"><button class="ui-button primary-action" data-variant="primary" type="button" disabled={actionPending || detail.value.stale || detail.value.conflict || (detail.value.registered && !detail.value.updateAvailable)} onclick={() => void activateSkill()}>{actionPending ? "Working…" : detail.value.updateAvailable ? "Update skill" : detail.value.registered ? "Already installed" : "Install skill"}</button></div>
 					{#if detail.value.stale}<p class="action-note warning">This revision was not found during the latest successful repository refresh. It remains visible for history but cannot be installed or updated.</p>{/if}
 					{#if detail.value.conflict}<p class="action-note warning">This skill ID conflicts with another repository or a configuration-managed skill. Resolve the conflict before installing it.</p>{/if}
 				{:else}
 					<div class="detail-actions">
-						{#if detail.value.updateAvailable && detail.value.sourceRepositoryId}<button class="primary-action" type="button" disabled={actionPending} onclick={() => void activateSkill(detail.value.sourceRepositoryId)}>{actionPending ? "Updating…" : "Update skill"}</button>{/if}
-						{#if detail.value.registrationKind === "catalog"}<button bind:this={removeButtonEl} class="secondary-action danger" type="button" disabled={actionPending} onclick={() => void requestRemove()}>Remove</button>{/if}
+						{#if detail.value.updateAvailable && detail.value.sourceRepositoryId}<button class="ui-button primary-action" data-variant="primary" type="button" disabled={actionPending} onclick={() => void activateSkill(detail.value.sourceRepositoryId)}>{actionPending ? "Updating…" : "Update skill"}</button>{/if}
+						{#if detail.value.registrationKind === "catalog"}<button bind:this={removeButtonEl} class="ui-button secondary-action danger" type="button" disabled={actionPending} onclick={() => void requestRemove()}>Remove</button>{/if}
 					</div>
 					{#if detail.value.registrationKind === "configuration"}<p class="action-note">This skill is managed by <code>leitwerk.yaml</code>. Change configuration to remove or update it.</p>{/if}
-					{#if confirmRemove}<div class="remove-confirmation" role="group" aria-label={`Remove ${detail.value.label}`}><strong>Remove {detail.value.label} from future runs?</strong><p>Existing processes and schedules keep their pinned revision.</p><div><button bind:this={confirmRemoveButtonEl} class="danger-action" type="button" disabled={actionPending} onclick={() => void deactivateSkill()}>{actionPending ? "Removing…" : "Confirm removal"}</button><button class="secondary-action" type="button" disabled={actionPending} onclick={() => void cancelRemove()}>Cancel</button></div></div>{/if}
+					{#if confirmRemove}<div class="remove-confirmation" role="group" aria-label={`Remove ${detail.value.label}`}><strong>Remove {detail.value.label} from future runs?</strong><p>Existing processes and schedules keep their pinned revision.</p><div><button bind:this={confirmRemoveButtonEl} class="ui-button danger-action" data-variant="danger" type="button" disabled={actionPending} onclick={() => void deactivateSkill()}>{actionPending ? "Removing…" : "Confirm removal"}</button><button class="ui-button secondary-action" type="button" disabled={actionPending} onclick={() => void cancelRemove()}>Cancel</button></div></div>{/if}
 				{/if}
 				{#if actionError}<p class="action-note error" role="alert">{actionError} Try again.</p>{/if}
 
@@ -517,7 +517,7 @@ $effect(() => {
 >
 	<header class="repository-modal-header">
 		<h2 id="repository-modal-title">Configured repositories</h2>
-		<p>Skill repositories configured in <code>leitwerk.yaml</code>.</p>
+		<p>Refresh these repositories to discover new skills and available updates.</p>
 	</header>
 
 	{#if actionSuccess}<div class="status-banner success" role="status">{actionSuccess}</div>{/if}
@@ -543,8 +543,8 @@ $effect(() => {
 	</div>
 
 	<footer class="repository-modal-footer">
-		<button class="secondary-action" type="button" disabled={refreshing || repositories.length === 0} onclick={() => void refreshCatalog()}>{refreshing ? "Refreshing…" : "Refresh all"}</button>
-		<button class="primary-action" type="button" onclick={() => (showRepositoriesModal = false)}>Done</button>
+		<button class="ui-button secondary-action" type="button" disabled={refreshing || repositories.length === 0} onclick={() => void refreshCatalog()}>{refreshing ? "Refreshing…" : "Refresh all"}</button>
+		<button class="ui-button primary-action" data-variant="primary" type="button" onclick={() => (showRepositoriesModal = false)}>Done</button>
 	</footer>
 </ModalShell>
 
@@ -615,10 +615,7 @@ $effect(() => {
 	.detail-header h2 { margin: 0; font-size: var(--type-title-md); line-height: 1.2; }
 	.detail-header p { margin: 5px 0 0; color: var(--chronicle-text-muted); }
 	.detail-actions { display: flex; gap: var(--space-xs); margin-top: var(--space-lg); }
-	.primary-action, .secondary-action, .danger-action { min-height: 40px; padding: 0 14px; border-radius: 999px; font-weight: 620; cursor: pointer; }
-	.primary-action { border: 1px solid var(--chronicle-text); background: var(--chronicle-text); color: white; }
-	.secondary-action { border: 1px solid var(--chronicle-border); background: white; color: var(--chronicle-text); }
-	.secondary-action.danger, .danger-action { color: var(--chronicle-danger-text); border-color: var(--chronicle-danger-border); }
+	.secondary-action.danger { color: var(--chronicle-danger-text); border-color: var(--chronicle-danger-border); }
 	.danger-action { background: var(--chronicle-danger); color: white; border: 1px solid var(--chronicle-danger); }
 	button:disabled { cursor: default; opacity: 0.56; }
 	.detail-feedback { margin-top: var(--space-md); }
@@ -648,6 +645,7 @@ $effect(() => {
 	.invocation-count { flex: 0 0 auto; }
 	.detail-state { padding: var(--space-xl); color: var(--chronicle-text-muted); }
 	.detail-state.error { color: var(--chronicle-danger-text); }
+	.repository-modal-header { padding-right: var(--space-2xl); }
 	.repository-modal-header h2 { margin: 0; font-size: var(--type-title-md); }
 	.repository-modal-header p { margin: 4px 0 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); }
 	.repository-modal-list { flex: 1 1 auto; overflow-y: auto; display: grid; gap: var(--space-sm); padding-right: 2px; }
