@@ -149,3 +149,11 @@ The list shows public ID/prefix, name, creation, expiry, last use, and revocatio
 status. Revoke individually or confirm revocation of all current-owner tokens.
 Listing and revocation remain usable when issuance is disabled. In anonymous
 mode, every visitor shares and manages the same token list.
+
+## Reasoning preview and expanded history
+
+The inline reasoning preview reserves four wrapped text lines at a fixed height. It shows the newest nonblank lines, retaining preceding paragraph context as new text arrives. Short content uses the same reserved height. Token updates are continuous, with one subdued static live indicator and an Expand reasoning control. The preview has no nested scrollbar, animation, or hidden-history footer. Full reasoning preserves original whitespace.
+
+The initial snapshot carries a compact active-turn type, separate from `TurnTraceSnapshot`. The browser retains bounded inline state while the overlay is closed and never prefetches detail history. Opening the overlay starts an independent request; a slow request cannot block the page shell or controls. Reconnect refreshes full history only while the overlay remains open.
+
+Expanded history remains visible during recovery and turn completion. A quiet loading status reports recovery; actual failures offer an inline Retry action. The overlay preserves the reader's position and follows new output only while the reader is already at the bottom. Full history means all server-recorded activity for the selected turn record. A finished turn without a session preview uses its persisted compact summary, so a worker crash does not replace recorded reasoning with an empty preview.

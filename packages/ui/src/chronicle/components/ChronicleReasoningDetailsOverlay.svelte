@@ -48,7 +48,7 @@ function isNearPanelBottom(element: HTMLElement, thresholdPx = 32): boolean {
 }
 
 function handlePanelScroll() {
-	if (!panelElement || !entry.isLive) {
+	if (!panelElement) {
 		return;
 	}
 	shouldFollowLiveTimeline = isNearPanelBottom(panelElement);
@@ -279,13 +279,7 @@ function questionsForTool(toolCallId: string): readonly ProcessQuestionRequest[]
 }
 
 $effect(() => {
-	if (!entry.isLive) {
-		shouldFollowLiveTimeline = true;
-	}
-});
-
-$effect(() => {
-	if (!entry.isLive || !panelElement || !shouldFollowLiveTimeline) {
+	if (!panelElement || !shouldFollowLiveTimeline) {
 		return;
 	}
 
@@ -301,7 +295,7 @@ $effect(() => {
 });
 
 onMount(() => {
-	void tick().then(() => closeButton?.focus());
+	void tick().then(() => closeButton?.focus({ preventScroll: true }));
 	window.addEventListener("keydown", handleWindowKeydown);
 });
 
@@ -466,7 +460,7 @@ onDestroy(() => {
 					{#if entry.reasoningSection.items.length > 0}
 						{#each entry.reasoningSection.items as item, index (`reasoning-${entry.turnRecordId}-${index}`)}
 							{#if item.kind === "thinking_chunk"}
-								<ChronicleThinkingText text={item.text} trim={true} />
+								<ChronicleThinkingText text={item.text} />
 							{:else if item.kind === "tool_call"}
 								<ChronicleToolCallItem toolCall={item.toolCall} {toolRendererIndex} />
 								{#each questionsForTool(item.toolCall.toolCallId) as request (request.id)}

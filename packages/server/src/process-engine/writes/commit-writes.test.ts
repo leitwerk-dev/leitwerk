@@ -197,7 +197,14 @@ describe("record writes", () => {
 			annotationType: "turn_milestone",
 			annotationKey: "turn_milestone:trn_existing",
 		});
-		expect(deps.events.listByInstance(process.id, 10)).toHaveLength(1);
+		const events = deps.events.listByInstance(process.id, 10);
+		expect(events.filter((event) => event.eventType !== "turn.lifecycle")).toHaveLength(1);
+		expect(
+			events.filter((event) => event.eventType === "turn.lifecycle").map((event) => event.data),
+		).toEqual([
+			{ turnRecordId: "trn_followup", status: "succeeded" },
+			{ turnRecordId: "trn_existing", status: "succeeded" },
+		]);
 		expect(deps.leafOutcomeSnapshots.listByInstance(process.id)).toEqual([
 			expect.objectContaining({
 				leafEntryId: "assistant-plan",

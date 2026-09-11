@@ -9,21 +9,26 @@ import {
 	type ProcessInstance,
 	type ProcessTurnAnnotation,
 	type ProcessTurnRecord,
+	parseProcessStateJsonLenient,
 	readFailedTurnRecoveryContext,
 	type TurnStartRecord,
 	type WorkerLease,
 } from "@leitwerk-dev/domain";
+import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import {
 	buildActiveTimelineTurnSummary,
+	buildLiveTurnProjectionFromEvents,
 	buildUsageSnapshotsByTurnRecordId,
+	type CompactActiveTurnSnapshot,
+	type CompactTurnSummary,
 	type CurrentProcessErrorSummary,
 	type CurrentTurnRecoverySummary,
+	emptyCompactTurnSummary,
 	extractFirstUserPromptOnBranch,
 	extractInitialPromptFromParamsJson,
 	hasTurnContinuationProgress,
 	mergeUsageSnapshots,
 	type PiSessionEntry,
-	PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
 	type PrimaryPathSnapshot,
 	type PrimaryPathUiSnapshot,
 	type ProcessDetailUiSnapshotResponseBody,
@@ -35,13 +40,17 @@ import {
 	type ProcessTimelineTurnSummary,
 	type ProcessUiSnapshotProcess,
 	type ProcessUsageEstimateSnapshot,
+	REASONING_PREVIEW_MAX_CHARS,
 	type ReadonlyEntryTree,
+	reasoningPreviewTail,
 	resolveTurnContinuationUserPrompt,
+	snapshotTurnTrace,
 	type TurnReasoningDetailResponseBody,
 	type TurnTracePreview,
 	type TurnTraceSnapshot,
 	timelinePresentationForTurnType,
 } from "@leitwerk-dev/protocol";
+import type { SessionSummary } from "./db/turn-summary-repo.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess } from "./process-graph.js";
@@ -49,10 +58,10 @@ import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js
 import { presentProcessModelConfiguration } from "./process-model-policy-presenter.js";
 import { getProcessDisplayName } from "./process-operator-attention.js";
 import {
-	buildTurnTraceFromSession,
+	buildCommittedTurnTrace,
 	buildTurnTracePreviewsFromSession,
 } from "./process-turn-trace.js";
-import { ProcessPrimaryPathAssembler } from "./routes/process-primary-path-assembler.js";
+
 import {
 	buildProcessLaunchConfigurationView,
 	buildProcessRunDetailsView,
@@ -76,8 +85,6 @@ const COMPACT_DETAIL_EVENT_TYPES = [
 	"external_source_failed",
 	"external_trigger_consumed",
 	"external_source_consumed",
-	"pi.usage",
-	...PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
 ] as const;
 
 function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
@@ -87,18 +94,59 @@ function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
 	});
 }
 
-function compactDetailEvents(deps: RouteDeps, instanceId: string): ProcessEvent[] {
+function compactDetailEvents(
+	deps: RouteDeps,
+	instanceId: string,
+	turnRecords: readonly ProcessTurnRecord[],
+): ProcessEvent[] {
 	return sortEventsAscending([
 		...deps.events.listByInstanceEventTypes(instanceId, COMPACT_DETAIL_EVENT_TYPES, 1_000),
-		...deps.events.listByInstanceEventTypes(instanceId, ["turn.progress"], 10_000),
+		...turnRecords.flatMap((turn) => {
+			const event = deps.events.latestByTurnRecordEventType(instanceId, turn.id, "turn.progress");
+			return event ? [event] : [];
+		}),
 	]);
 }
 
-function compactPrimaryPathSnapshot(snapshot: PrimaryPathSnapshot): PrimaryPathUiSnapshot {
+function compactPrimaryPathSnapshot(
+	snapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot,
+): PrimaryPathUiSnapshot {
+	if ("entriesOmitted" in snapshot) return snapshot;
+	const active = snapshot.turnState.activeTurn;
+	const lastTool = active?.toolCalls.at(-1);
+	const activeTurn: CompactActiveTurnSnapshot | null = active
+		? {
+				...emptyCompactTurnSummary(),
+				turnRecordId: active.turnRecordId,
+				turnId: active.turnId,
+				turnType: active.turnType,
+				pathType: active.pathType,
+				startedAt: active.startedAt,
+				assistant: {
+					...active.assistant,
+					text: reasoningPreviewTail(active.assistant.text),
+					thinking: reasoningPreviewTail(active.assistant.thinking),
+				},
+				currentTool: lastTool
+					? {
+							toolCallId: lastTool.toolCallId,
+							toolName: lastTool.toolName,
+							status: lastTool.status,
+							isError: lastTool.isError,
+						}
+					: null,
+				toolCallCount: active.toolCalls.length,
+				traceItemCount: active.traceItems.length,
+				usage: active.usage,
+				summaryPending: false,
+			}
+		: null;
 	return {
 		...snapshot,
 		primaryPathEntries: [],
 		labels: {},
+		throughEventSequence: 0,
+		turnState: { ...snapshot.turnState, activeTurn },
 		entryCount: snapshot.primaryPathEntries.length,
 		entriesOmitted: true,
 	};
@@ -426,7 +474,7 @@ export function presentProcessTimelineTurns(input: {
 	turnRecords: readonly ProcessTurnRecord[];
 	turnAnnotations: readonly ProcessTurnAnnotation[];
 	events: readonly ProcessEvent[];
-	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"];
+	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"] | CompactActiveTurnSnapshot;
 	selectedTurnType: ProcessTurnRecord["turnType"] | null;
 	activeModelProfileId?: string | null;
 }): ProcessTimelineTurnSummary[] {
@@ -799,6 +847,7 @@ export function buildCurrentTurnRecovery(input: {
 	turnRecords: readonly ProcessTurnRecord[];
 	selectedTurnDescription: string | null;
 	piEntries: readonly PiSessionEntry[];
+	continuation?: { hasProgress: boolean; userPrompt: string | null };
 }): CurrentTurnRecoverySummary | null {
 	if (input.process.lifecycleStatus !== "error") {
 		return null;
@@ -824,7 +873,8 @@ export function buildCurrentTurnRecovery(input: {
 	const canContinue =
 		failedTurnRecord.turnType === "llm" &&
 		recoveryContext !== null &&
-		hasTurnContinuationProgress(input.piEntries, failedTurnRecord, continuationBounds);
+		(input.continuation?.hasProgress ??
+			hasTurnContinuationProgress(input.piEntries, failedTurnRecord, continuationBounds));
 	const rawErrorSummary = stringValueOrNull(failedTurnRecord.errorSummary);
 	const presentation = formatProcessErrorPresentation(rawErrorSummary, failedTurnRecord.errorClass);
 	const acceptedStart =
@@ -842,6 +892,7 @@ export function buildCurrentTurnRecovery(input: {
 		guidance: presentation.guidance,
 		technicalDetail: presentation.technicalDetail,
 		defaultContinuePrompt:
+			input.continuation?.userPrompt ??
 			resolveTurnContinuationUserPrompt(input.piEntries, failedTurnRecord, continuationBounds) ??
 			normalizeContinuePrompt(input.process.metadata?.[CONTINUE_PROMPT_METADATA_KEY]) ??
 			recoveryContext?.suggestedContinuePrompt ??
@@ -886,7 +937,7 @@ export function buildCurrentProcessError(input: {
 
 export function buildUsageEstimate(input: {
 	turnRecords: readonly ProcessTurnRecord[];
-	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"];
+	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"] | CompactActiveTurnSnapshot;
 	currentTurnRecordId: string | null;
 	usageByTurnRecordId: Record<string, TurnTraceSnapshot["usage"]>;
 	tracePreviewsByTurnRecordId: Record<string, TurnTracePreview>;
@@ -951,23 +1002,56 @@ export function buildProcessUiSnapshotProjections(input: {
 	events: readonly ProcessEvent[];
 	inputs: readonly ProcessInput[];
 	selectedTurn: ProcessSelectedTurnSummary | null;
-	primaryPathSnapshot: PrimaryPathSnapshot;
-	sessionTree: ReadonlyPiSessionTree;
+	primaryPathSnapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot;
+	sessionTree?: ReadonlyPiSessionTree;
+	sessionSummary?: SessionSummary | null;
+	eventSummariesByTurnRecordId?: Record<string, CompactTurnSummary>;
+	eventUsageByTurnRecordId?: Record<string, TurnTraceSnapshot["usage"]>;
 	activeModelProfileId?: string | null;
 }) {
-	const tracePreviewsByTurnRecordId = buildTurnTracePreviewsFromSession({
-		tree: input.sessionTree,
-		turnRecords: input.turnRecords,
-		events: input.events,
-	});
+	const tracePreviewsByTurnRecordId = {
+		...(input.sessionSummary?.tracePreviewsByTurnRecordId ??
+			(input.sessionTree
+				? buildTurnTracePreviewsFromSession({
+						tree: input.sessionTree,
+						turnRecords: input.turnRecords,
+						events: input.events,
+					})
+				: {})),
+	};
+	for (const turn of input.turnRecords) {
+		const turnRecordId = turn.id;
+		const summary = input.eventSummariesByTurnRecordId?.[turnRecordId];
+		if (turn.status === "running" || !summary || tracePreviewsByTurnRecordId[turnRecordId])
+			continue;
+		tracePreviewsByTurnRecordId[turnRecordId] = {
+			turnRecordId,
+			assistantTextPreview: summary.assistant.text,
+			assistantTextTruncated: summary.assistant.text.length >= REASONING_PREVIEW_MAX_CHARS,
+			thinkingPreview: summary.assistant.thinking,
+			thinkingPreviewTruncated: summary.assistant.thinking.length >= REASONING_PREVIEW_MAX_CHARS,
+			toolCallCount: summary.toolCallCount,
+			traceItemCount: summary.traceItemCount,
+			hasReasoningDetails: Boolean(
+				summary.assistant.thinking || summary.traceItemCount || summary.usage,
+			),
+			usage: summary.usage,
+			piInput: null,
+		};
+	}
 	const currentLeafEntryId =
 		input.primaryPathSnapshot.currentLeaf?.entryId ??
 		input.primaryPathSnapshot.semanticEntryRefs.currentPrimaryPathLeaf?.entryId ??
 		null;
-	const prompt = extractFirstUserPromptOnBranch(
-		input.sessionTree as unknown as ReadonlyEntryTree<PiSessionEntry>,
-		currentLeafEntryId,
-	);
+	const prompt = {
+		...(input.sessionSummary?.prompt ??
+			(input.sessionTree
+				? extractFirstUserPromptOnBranch(
+						input.sessionTree as unknown as ReadonlyEntryTree<PiSessionEntry>,
+						currentLeafEntryId,
+					)
+				: { text: null, createdAt: null })),
+	};
 	prompt.text ??= extractInitialPromptFromParamsJson(input.process.paramsJson);
 	const activeTurn = input.primaryPathSnapshot.turnState.activeTurn;
 	const currentExecutionTurnRecordId = resolveCurrentExecutionTurnRecordId(
@@ -978,7 +1062,9 @@ export function buildProcessUiSnapshotProjections(input: {
 		process: input.process,
 		turnRecords: input.turnRecords,
 		selectedTurnDescription: input.selectedTurn?.description ?? null,
-		piEntries: input.sessionTree.entries as unknown as PiSessionEntry[],
+		piEntries: (input.sessionTree?.entries ?? []) as unknown as PiSessionEntry[],
+		continuation:
+			input.sessionSummary?.continuationByTurnRecordId[currentExecutionTurnRecordId ?? ""],
 		turnStarts: input.turnStarts ?? { getById: () => null },
 	});
 	const startup = presentProcessStartupSummary(
@@ -1027,18 +1113,15 @@ export function buildProcessUiSnapshotProjections(input: {
 			turnRecords: input.turnRecords,
 			activeTurn,
 			currentTurnRecordId: activeTurn?.turnRecordId ?? currentExecutionTurnRecordId,
-			usageByTurnRecordId: buildUsageSnapshotsByTurnRecordId(input.events),
+			usageByTurnRecordId:
+				input.eventUsageByTurnRecordId ?? buildUsageSnapshotsByTurnRecordId(input.events),
 			tracePreviewsByTurnRecordId,
 		}),
 	};
 }
 
 export class ProcessUiSnapshotAssembler {
-	private readonly primaryPathAssembler: ProcessPrimaryPathAssembler;
-
-	constructor(private readonly deps: RouteDeps) {
-		this.primaryPathAssembler = new ProcessPrimaryPathAssembler(deps);
-	}
+	constructor(private readonly deps: RouteDeps) {}
 
 	async assemble(instanceId: string): Promise<ProcessDetailUiSnapshotResponseBody | null> {
 		const process = this.deps.processes.getById(instanceId);
@@ -1048,8 +1131,8 @@ export class ProcessUiSnapshotAssembler {
 		// Capture every synchronous durable read before yielding so one response cannot
 		// combine process/turn state from opposite sides of a concurrent mutation.
 		const projects = this.deps.projects.listByInstance(instanceId);
-		const events = compactDetailEvents(this.deps, instanceId);
 		const turnRecords = this.deps.turnRecords.listByInstance(instanceId);
+		const events = compactDetailEvents(this.deps, instanceId, turnRecords);
 		const turnAnnotations = this.deps.turnAnnotations.listByInstance(instanceId);
 		const inputs = this.deps.inputs.listByInstance(instanceId);
 		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId);
@@ -1059,16 +1142,49 @@ export class ProcessUiSnapshotAssembler {
 		const workerLease = workerLeases.find((lease) => lease.exitedAt === null) ?? null;
 		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId);
 		const selectedTurn = getSelectedTurnSummaryForProcess(this.deps, process);
-		const primaryPathState = this.primaryPathAssembler.capture(instanceId, {
-			process,
-			turnRecords,
-			turnAnnotations,
-			workerLease,
-		});
-		if (!primaryPathState) {
-			return null;
-		}
-		const session = await this.deps.sessionReader.readSessionTree(instanceId);
+		const session = this.deps.turnSummaries.getSession(instanceId);
+		const summaries = this.deps.turnSummaries.listByInstance(instanceId);
+		const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, this.deps.turnStarts);
+		const activeRecord = turnRecords.find(
+			(turn) => turn.id === currentTurnRecordId && turn.status === "running",
+		);
+		const activeTurn = activeRecord
+			? {
+					...(summaries[activeRecord.id] ?? emptyCompactTurnSummary()),
+					turnRecordId: activeRecord.id,
+					turnId: activeRecord.turnId,
+					turnType: activeRecord.turnType,
+					pathType: activeRecord.pathType,
+					startedAt: activeRecord.startedAt,
+					summaryPending: !summaries[activeRecord.id],
+				}
+			: null;
+		const structural = parseStructuralProcessState(parseProcessStateJsonLenient(process.stateJson));
+		const semanticEntryRefs = {
+			...session?.primaryPath.semanticEntryRefs,
+			...structural.semanticEntryRefs,
+		};
+		semanticEntryRefs.rootEntry ??= session?.primaryPath.semanticEntryRefs.rootEntry ?? null;
+		semanticEntryRefs.currentPrimaryPathLeaf ??= session?.primaryPath.currentLeaf ?? null;
+		const primaryPath: PrimaryPathUiSnapshot = {
+			instanceId,
+			rebuiltAt: new Date().toISOString(),
+			throughEventSequence: this.deps.events.latestSequence(instanceId),
+			primaryPathEntries: [],
+			labels: {},
+			entryCount: session?.primaryPath.entryCount ?? 0,
+			entriesOmitted: true,
+			currentLeaf: semanticEntryRefs.currentPrimaryPathLeaf,
+			semanticEntryRefs,
+			turnAnnotations: session?.primaryPath.turnAnnotations ?? [],
+			detailRail: { keyPoints: [], futureTurns: [], currentPosition: null },
+			turnState: {
+				currentTurnRecordId,
+				workerState: workerLease?.state ?? null,
+				isStreaming: activeTurn !== null,
+				activeTurn,
+			},
+		};
 		const modelConfiguration = presentProcessModelConfiguration(
 			this.deps.processModelPolicy.project({
 				kind: "process_configuration",
@@ -1086,8 +1202,12 @@ export class ProcessUiSnapshotAssembler {
 			events,
 			inputs,
 			selectedTurn,
-			primaryPathSnapshot: this.primaryPathAssembler.project(primaryPathState, session),
-			sessionTree: session.piTree,
+			primaryPathSnapshot: primaryPath,
+			sessionSummary: session,
+			eventSummariesByTurnRecordId: summaries,
+			eventUsageByTurnRecordId: Object.fromEntries(
+				Object.entries(summaries).map(([id, summary]) => [id, summary.usage]),
+			),
 			activeModelProfileId: modelConfiguration.effectiveSelectedTurn?.modelProfileId ?? null,
 		});
 		const runDetails = buildProcessRunDetailsView(this.deps, process, projects);
@@ -1099,7 +1219,7 @@ export class ProcessUiSnapshotAssembler {
 				turnRecords,
 				turnAnnotations,
 				turnDetails: runDetails.turns,
-				currentPiEntryId: session.piTree.leafId,
+				currentPiEntryId: session?.leafId ?? null,
 			}),
 			leafOutcomeSnapshots,
 			questionRequests,
@@ -1115,7 +1235,7 @@ export class ProcessUiSnapshotAssembler {
 			actions: listVisibleActionsForProcess(this.deps, process),
 			toolRenderers: [...(this.deps.toolRenderers?.values() ?? [])],
 			persistedModelSelectionWarning: readPersistedModelSelectionWarning(process),
-			session: { signature: session.signature },
+			session: { signature: session?.signature ?? null },
 			sessionTransfer: presentSessionTransferOperation(
 				this.deps.sessionTransferService?.activeForProcess(process.id) ?? null,
 			),
@@ -1134,31 +1254,32 @@ export class ProcessUiSnapshotAssembler {
 		if (!turnRecord || turnRecord.instanceId !== input.instanceId) {
 			return null;
 		}
-		const events = this.deps.events.listByInstanceTurnRecordEventTypes(
-			input.instanceId,
-			input.turnRecordId,
-			["pi.usage", ...PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES],
-		);
+		const throughEventSequence = this.deps.events.latestSequence(input.instanceId);
+		const events = this.deps.events.listByTurnRecord(input.instanceId, input.turnRecordId);
+		if (turnRecord.status === "running") {
+			const trace = snapshotTurnTrace(buildLiveTurnProjectionFromEvents(events));
+			return {
+				instanceId: input.instanceId,
+				turnRecordId: input.turnRecordId,
+				state: "live",
+				throughEventSequence,
+				sessionSignature: this.deps.turnSummaries.getSession(input.instanceId)?.signature ?? null,
+				reasoning: trace,
+			};
+		}
 		const session = await this.deps.sessionReader.readSessionTree(input.instanceId);
-		const trace = buildTurnTraceFromSession({
+		const trace = buildCommittedTurnTrace({
 			tree: session.piTree,
 			turnRecord,
 			events,
-		}) ?? {
-			assistant: { text: "", thinking: "", lastUpdatedAt: null },
-			toolCalls: [],
-			traceItems: [],
-			usage: null,
-			piInput: null,
-		};
-		trace.usage = mergeUsageSnapshots(
-			trace.usage,
-			buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null,
-		);
+		});
+		trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
 		return {
 			instanceId: input.instanceId,
 			turnRecordId: input.turnRecordId,
 			sessionSignature: session.signature,
+			state: "committed",
+			throughEventSequence,
 			reasoning: trace,
 		};
 	}

@@ -1,4 +1,3 @@
-import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { buildFailedTurnRecoveryMetadata } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
@@ -9,6 +8,7 @@ import {
 	defineModelProviders,
 } from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
+import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { expect, test } from "./fixtures.js";
 
@@ -28,19 +28,6 @@ const continueRecoveryExtension = {
 		},
 	]),
 };
-
-async function writeTreeFile(
-	treeFilesDir: string,
-	instanceId: string,
-	entries: readonly Record<string, unknown>[],
-): Promise<void> {
-	await mkdir(treeFilesDir, { recursive: true });
-	await writeFile(
-		path.join(treeFilesDir, `${instanceId}.jsonl`),
-		`${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`,
-		"utf8",
-	);
-}
 
 async function seedRepeatContinueProcess() {
 	if (!ctx) {
@@ -123,7 +110,7 @@ async function seedRepeatContinueProcess() {
 		currentExecution: { kind: "worker_start", id: "tsr_repeat_continue_1" },
 	});
 
-	await writeTreeFile(ctx.config.storage.tree_files_dir, process.id, [
+	await writeProcessSessionSnapshot(ctx, process.id, [
 		{
 			type: "session",
 			version: 3,

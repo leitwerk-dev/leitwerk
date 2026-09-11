@@ -2,6 +2,7 @@ import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtim
 import {
 	createDurableWsFrame,
 	createEphemeralWsFrame,
+	emptyCompactTurnSummary,
 	type PrimaryPathSnapshot,
 	type ProcessDetailUiSnapshotResponseBody,
 	WS_PRIMARY_PATH_TYPES,
@@ -149,6 +150,7 @@ function createStaleUiSnapshot(
 		actions: [],
 		toolRenderers: [],
 		primaryPath: {
+			throughEventSequence: 0,
 			...createStalePrimaryPathSnapshot(instanceId),
 			entryCount: 0,
 			entriesOmitted: true,
@@ -329,14 +331,20 @@ describe("live websocket launch races", () => {
 			);
 			harness.testApp.ctx.broadcaster.broadcast(
 				createEphemeralWsFrame({
-					type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
+					type: WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED,
 					instanceId,
+					eventSequence: 2,
 					payload: {
 						turnRecordId: "trn_buffered_live",
-						piTurnId: "turn-1",
-						text: "buffered live text",
-						streamType: "text",
-						timestamp: "2026-01-01T00:00:03.000Z",
+						summary: {
+							...emptyCompactTurnSummary(),
+							assistant: {
+								text: "buffered live text",
+								thinking: "",
+								lastUpdatedAt: "2026-01-01T00:00:03.000Z",
+							},
+							throughEventSequence: 2,
+						},
 					},
 					sentAt: "2026-01-01T00:00:03.000Z",
 				}),

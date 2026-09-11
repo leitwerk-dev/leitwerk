@@ -1106,7 +1106,9 @@ describe("buildChronicleProjection", () => {
 					: null,
 		});
 
-		expect(extractChronicleReasoningDetailEntries(projection)).toEqual([]);
+		expect(extractChronicleReasoningDetailEntries(projection)).toHaveLength(
+			status === "in_progress" ? 1 : 0,
+		);
 		const entries = extractChronicleReasoningDetailEntries(projection, [
 			createTestQuestionRequest({
 				turnRecordId: "trn_question",
@@ -1294,7 +1296,7 @@ describe("buildChronicleProjection", () => {
 		expect(projection.initialAnchorId).toBeNull();
 	});
 
-	it("uses the latest three thinking lines for previews and live-tail copy", () => {
+	it("keeps bounded text context for the viewport to wrap into four lines", () => {
 		const completed = makeTurnRecord({
 			id: "trn_done",
 			createdAt: "2026-04-18T10:00:00.000Z",
@@ -1340,13 +1342,13 @@ describe("buildChronicleProjection", () => {
 		}
 		expect(projection.timelineItems[0].sections[0]).toMatchObject({
 			kind: "thinking_preview",
-			preview: "… line three\nline four\nline five",
-			previewTruncated: true,
+			preview: thinkingTrace,
+			previewTruncated: false,
 		});
-		expect(projection.liveTail?.copy).toBe("… line three\nline four\nline five");
+		expect(projection.liveTail?.copy).toBe(thinkingTrace);
 	});
 
-	it("honors started blank lines in the live reasoning preview", () => {
+	it("collapses blank lines in the preview while preserving full reasoning whitespace", () => {
 		const active = makeTurnRecord({
 			id: "trn_live",
 			status: "in_progress",
@@ -1372,13 +1374,14 @@ describe("buildChronicleProjection", () => {
 		});
 
 		expect(projection.liveTail?.reasoningSection).toMatchObject({
-			preview: ". <br>\n\n",
+			preview: ". <br>\n",
 			previewTruncated: false,
 		});
 		if (projection.liveTail?.reasoningSection?.kind !== "thinking_preview") {
 			throw new Error("expected a live reasoning section");
 		}
-		expect(projection.liveTail.reasoningSection.preview.split("\n")).toEqual([". <br>", "", ""]);
+		expect(projection.liveTail.reasoningSection.preview.split("\n")).toEqual([". <br>", ""]);
+		expect(projection.liveTail.reasoningSection.text).toBe(thinkingTrace);
 	});
 
 	it("omits the saved-result section when a ready leaf outcome already renders that turn", () => {

@@ -2,6 +2,7 @@ import { createReadonlyEntryTree, type PiSessionEntry } from "@leitwerk-dev/prot
 import { describe, expect, it, vi } from "vitest";
 import { parsePiSessionTreeContent, type ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import {
+	buildCommittedTurnTrace,
 	buildTurnTraceFromSession,
 	buildTurnTracePreview,
 	buildTurnTracePreviewsFromSession,
@@ -12,6 +13,185 @@ function jsonl(...entries: readonly Record<string, unknown>[]): string {
 }
 
 describe("process turn trace projection", () => {
+	it("recovers recorded activity while preserving session prompt, usage, and diagnostic order", () => {
+		const trace = buildCommittedTurnTrace({
+			tree: parsePiSessionTreeContent(
+				"trace-test",
+				jsonl(
+					{
+						type: "message",
+						id: "prompt",
+						parentId: null,
+						timestamp: "2026-01-01T00:00:01Z",
+						message: { role: "user", content: "Keep the prompt" },
+					},
+					{
+						type: "message",
+						id: "error",
+						parentId: "prompt",
+						timestamp: "2026-01-01T00:00:02Z",
+						message: {
+							role: "assistant",
+							content: [],
+							stopReason: "error",
+							errorMessage: "Initial failure",
+							usage: { input: 10, output: 2 },
+						},
+					},
+				),
+			),
+			turnRecord: {
+				id: "turn",
+				turnType: "llm",
+				status: "failed",
+				forkPiEntryId: null,
+				resultPiEntryId: null,
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:05Z",
+			},
+			events: [
+				{
+					id: "evt1",
+					instanceId: "trace-test",
+					eventType: "pi.retry.end",
+					createdAt: "2026-01-01T00:00:03Z",
+					data: { turnRecordId: "turn", success: true },
+				},
+				{
+					id: "evt2",
+					instanceId: "trace-test",
+					eventType: "pi.stream.delta",
+					createdAt: "2026-01-01T00:00:04Z",
+					data: { turnRecordId: "turn", streamType: "thinking", text: "Recovered thinking" },
+				},
+			],
+		});
+		expect(trace.assistant.thinking).toBe("Recovered thinking");
+		expect(trace.piInput?.fullPrompt).toBe("Keep the prompt");
+		expect(trace.usage?.input).toBe(10);
+		expect(
+			trace.traceItems
+				.filter((item) => item.kind === "operational_event")
+				.map((item) => item.eventType),
+		).toEqual(["pi.error", "pi.retry.end"]);
+	});
+
+	it.each([
+		"thinking",
+		"text",
+		"tool call",
+		"tool result",
+		"complete session",
+		"richer tool result",
+	])("uses recorded history only when it adds activity: %s", (kind) => {
+		const input = {
+			tree: parsePiSessionTreeContent(
+				"trace-test",
+				jsonl(
+					{
+						type: "message",
+						id: "prompt",
+						parentId: null,
+						timestamp: "2026-01-01T00:00:01Z",
+						message: { role: "user", content: "Keep the prompt" },
+					},
+					{
+						type: "message",
+						id: "partial",
+						parentId: "prompt",
+						timestamp: "2026-01-01T00:00:02Z",
+						message: {
+							role: "assistant",
+							content: [
+								{ type: "thinking", thinking: "First thought" },
+								{ type: "text", text: "First answer" },
+								{ type: "toolCall", id: "read", name: "read", arguments: { path: "README.md" } },
+							],
+						},
+					},
+					...(kind === "richer tool result"
+						? [
+								{
+									type: "message",
+									id: "result",
+									parentId: "partial",
+									timestamp: "2026-01-01T00:00:04Z",
+									message: {
+										role: "toolResult",
+										toolCallId: "read",
+										toolName: "read",
+										content: [{ type: "text", text: "Complete contents and details" }],
+									},
+								},
+							]
+						: []),
+				),
+			),
+			turnRecord: {
+				id: "turn",
+				turnType: "llm" as const,
+				status: "failed" as const,
+				forkPiEntryId: null,
+				resultPiEntryId: null,
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:05Z",
+			},
+			events: [
+				{ eventType: "pi.stream.delta", data: { streamType: "thinking", text: "First thought" } },
+				{ eventType: "pi.stream.delta", data: { streamType: "text", text: "First answer" } },
+				{
+					eventType: "pi.tool.call",
+					data: { toolCallId: "read", toolName: "read", arguments: { path: "README.md" } },
+				},
+				...(kind === "thinking" || kind === "text"
+					? [{ eventType: "pi.stream.delta", data: { streamType: kind, text: " then more" } }]
+					: []),
+				...(kind === "tool call"
+					? [
+							{
+								eventType: "pi.tool.call",
+								data: { toolCallId: "write", toolName: "write", arguments: {} },
+							},
+						]
+					: []),
+				...(kind === "tool result" || kind === "richer tool result"
+					? [
+							{
+								eventType: "pi.tool.result",
+								data: { toolCallId: "read", toolName: "read", result: "Complete contents" },
+							},
+						]
+					: []),
+			].map((event, index) => ({
+				...event,
+				id: `evt${index}`,
+				instanceId: "trace-test",
+				createdAt: "2026-01-01T00:00:03Z",
+				data: { ...event.data, turnRecordId: "turn" },
+			})),
+		};
+		const trace = buildCommittedTurnTrace(input);
+		expect(trace.piInput?.fullPrompt).toBe("Keep the prompt");
+		expect(trace.assistant.thinking).toBe(
+			kind === "thinking" ? "First thought then more" : "First thought",
+		);
+		expect(trace.assistant.text).toBe(kind === "text" ? "First answer then more" : "First answer");
+		expect(trace.toolCalls.map((tool) => tool.toolCallId)).toEqual(
+			kind === "tool call" ? ["read", "write"] : ["read"],
+		);
+		expect(trace.toolCalls[0]?.resultText).toBe(
+			kind === "richer tool result"
+				? "Complete contents and details"
+				: kind === "tool result"
+					? "Complete contents"
+					: null,
+		);
+		if (kind === "complete session" || kind === "richer tool result") {
+			expect(trace).toEqual(buildTurnTraceFromSession(input));
+			expect(buildCommittedTurnTrace({ ...input, events: [] })).toEqual(trace);
+		}
+	});
+
 	it("projects assistant text, reasoning, usage, Pi input, and tool details from a turn slice", () => {
 		const tree = parsePiSessionTreeContent(
 			"trace-test",
@@ -226,7 +406,7 @@ describe("process turn trace projection", () => {
 		const trace = {
 			assistant: {
 				text: "A".repeat(2_000),
-				thinking: Array.from({ length: 20 }, (_, index) => `step ${index}`).join("\n"),
+				thinking: Array.from({ length: 200 }, (_, index) => `step ${index}`).join("\n"),
 				lastUpdatedAt: "2026-01-01T00:00:02.000Z",
 			},
 			toolCalls: [],

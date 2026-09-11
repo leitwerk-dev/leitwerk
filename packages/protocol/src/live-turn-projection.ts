@@ -409,6 +409,9 @@ export function applyPiEventToLiveTurnProjection(
 }
 
 function compareProcessEventsChronologically(left: ProcessEvent, right: ProcessEvent): number {
+	if (left.eventSequence !== undefined && right.eventSequence !== undefined) {
+		return left.eventSequence - right.eventSequence;
+	}
 	const leftTimestamp = readWsEventTimestamp(asWsEventPayloadRecord(left.data), left.createdAt);
 	const rightTimestamp = readWsEventTimestamp(asWsEventPayloadRecord(right.data), right.createdAt);
 	const timestampComparison = compareTimestampStrings(leftTimestamp, rightTimestamp);

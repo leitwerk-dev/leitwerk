@@ -23,6 +23,7 @@ All server frames follow a unified message envelope:
 
 - `durability`: Classification (`durable` vs `ephemeral`) governing reconnect handling.
 - `instanceId`: Process ID associated with the frame (omitted for global system events).
+- `eventSequence`: Persisted ingestion sequence on live activity frames. It orders events even when timestamps are equal.
 
 ---
 
@@ -33,7 +34,7 @@ Frames are classified into two durability categories:
 | Durability | Purpose | Reconnect Handling |
 |---|---|---|
 | **`durable`** | Process status updates, worker state changes, input acknowledgements. | Invalidates client HTTP read models. HTTP snapshots remain authoritative. |
-| **`ephemeral`** | High-frequency streaming text deltas (`primary_path.delta`), tool updates, liveness probes. | Live-only. Dropped during network disconnections. |
+| **`ephemeral`** | Compact turn summaries, reasoning deltas, tool updates, liveness probes. | Live-only. Dropped during network disconnections. |
 
 ### Reconnect Re-synchronization
 
@@ -41,9 +42,11 @@ When a browser client reconnects after network interruption:
 
 1. Re-establishes WebSocket connection to `/ws`.
 2. Concurrently fetches relevant HTTP snapshots (such as `GET /api/processes/:id/ui-snapshot`).
-3. Buffers incoming streaming frames during the HTTP fetch.
-4. Applies only buffered frames whose `sentAt` timestamp is newer than the snapshot's `rebuiltAt` timestamp.
-5. Resumes normal live frame processing.
+3. Buffers updates during each HTTP fetch. Compact summary frames replace earlier summaries for the same turn; only an open reasoning view retains detail frames.
+4. Applies frames with `eventSequence > throughEventSequence` once, in sequence order. Each boundary is captured alongside synchronous durable reads, before asynchronous session work. Timestamps remain presentation data; unsequenced metadata invalidations use the captured `rebuiltAt` boundary.
+5. Refreshes full reasoning only while the expanded view remains open. It retains visible content during recovery and provides Retry on failure. Requests and frames for another turn are rejected.
+
+The page never fetches reasoning details on load, hover, idle, or reconnect with the overlay closed. A direct reasoning link renders the shell first and starts its detail request independently. Ordinary compact snapshots cannot replace expanded history.
 
 ---
 
@@ -66,6 +69,9 @@ These frames notify clients that durable server state has changed, triggering in
 
 ### Streaming & Interactive Frames
 
-- **`primary_path.delta` (`ephemeral`):** Streaming text chunk emitted during active LLM execution.
-- **`primary_path.tool_call` / `primary_path.tool_result` (`ephemeral`):** Real-time tool execution events.
-- **`primary_path.question_requested` (`durable`):** Pause notification emitted when an agent requests interactive human Q&A (`ask_questions`).
+- **`primary_path.summary_updated` (`ephemeral`):** Complete bounded summary for one `turnRecordId`, with its `throughEventSequence`. Replaces inline live state.
+- **`pi.stream.delta`, `pi.tool.started`, `pi.tool.completed`, `pi.usage`, `pi.error`, `pi.retry.*`, `pi.compaction.*` (`ephemeral`):** Recorded activity for the expanded reasoning view, correlated by `turnRecordId` and `eventSequence`.
+- **`primary_path.assistant_partial`, `primary_path.tool_call_started`, `primary_path.tool_call_completed`, `primary_path.usage_updated`:** Full primary-path compatibility frames. The compact page uses summary frames.
+- **`primary_path.turn_started`, `primary_path.assistant_committed` (`durable`):** Turn lifecycle updates. An open overlay follows the same turn record through completion and loads its committed trace.
+
+`GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` returns `state: "live" | "committed"` and `throughEventSequence`. Live responses replay all recorded events for that exact turn record, without a lookback limit. Committed responses use the retained session tree plus recorded operational events. When recorded events contain assistant text, thinking, tool calls, or tool results missing from the retained tree, the response uses the recorded event history. It preserves the session-derived prompt, missing usage, and diagnostics. A complete session remains authoritative when recorded events add no activity. A worker failure before snapshot upload does not erase recorded history. Ship the protocol, server, migrations, and bundled UI together; no new configuration is required.

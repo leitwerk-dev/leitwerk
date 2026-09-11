@@ -8,9 +8,10 @@ import {
 	trimToNull,
 } from "@leitwerk-dev/domain";
 import {
-	buildTrailingLinePreview,
+	type CompactActiveTurnSnapshot,
 	type PrimaryPathActiveTurnSnapshot,
 	type ProcessTimelineTurnSummary,
+	reasoningPreviewTail,
 	type TurnPiInputPart,
 	type TurnTracePreview,
 	type TurnTraceSnapshot,
@@ -277,7 +278,7 @@ export interface BuildChronicleProjectionInput {
 	inputs: readonly ChronicleInput[];
 	leafOutcomeSnapshots: readonly ProcessLeafOutcomeSnapshot[];
 	definesLeafOutcome: boolean;
-	activeTurn: PrimaryPathActiveTurnSnapshot | null | undefined;
+	activeTurn: PrimaryPathActiveTurnSnapshot | CompactActiveTurnSnapshot | null | undefined;
 	lifecycleStatus?: string | null;
 	selectedTurnId?: string | null;
 	processUpdatedAt?: string | null;
@@ -286,8 +287,8 @@ export interface BuildChronicleProjectionInput {
 }
 
 // Tunable inline reasoning window: keep the preview calm, recent, and line-based.
-export const THINKING_PREVIEW_LINE_COUNT = 3;
-const THINKING_PREVIEW_MAX_LENGTH = 320;
+export const THINKING_PREVIEW_LINE_COUNT = 4;
+const THINKING_PREVIEW_MAX_LENGTH = 1024;
 
 function sanitizeDomToken(value: string): string {
 	return value.replace(/[^a-zA-Z0-9_-]/g, "_");
@@ -413,11 +414,10 @@ function buildReasoningSection(source: TurnTraceProjectionSource): ChronicleThin
 		return null;
 	}
 	const thinkingPreview = source.trace
-		? buildTrailingLinePreview(
-				thinkingText,
-				THINKING_PREVIEW_LINE_COUNT,
-				THINKING_PREVIEW_MAX_LENGTH,
-			)
+		? {
+				text: reasoningPreviewTail(thinkingText),
+				truncated: thinkingText.length > THINKING_PREVIEW_MAX_LENGTH,
+			}
 		: {
 				text: source.preview?.thinkingPreview ?? "",
 				truncated: source.preview?.thinkingPreviewTruncated ?? false,
@@ -543,7 +543,7 @@ function toPiInputSummary(input: {
 function buildTurnFacts(input: {
 	turnId: string;
 	durableTurnRecord: TurnRecordView | undefined;
-	activeTurn?: PrimaryPathActiveTurnSnapshot | null;
+	activeTurn?: PrimaryPathActiveTurnSnapshot | CompactActiveTurnSnapshot | null;
 	triggeringInput: ChronicleTriggeringInputSummary | null;
 	actionSource: ChronicleActionSource | null;
 	runDetails?: ProcessRunDetailsView | null;
@@ -966,7 +966,7 @@ function mergeLiveToolCallsWithSessionDetails(
 
 function buildLiveTail(input: {
 	turnRecord: TurnRecordView | null;
-	activeTurn: PrimaryPathActiveTurnSnapshot | null | undefined;
+	activeTurn: PrimaryPathActiveTurnSnapshot | CompactActiveTurnSnapshot | null | undefined;
 	turnTrace: TurnTraceSnapshot | undefined;
 	turnTracePreview: TurnTracePreview | undefined;
 	triggeringInput: ChronicleTriggeringInputSummary | null;
@@ -979,7 +979,22 @@ function buildLiveTail(input: {
 		return null;
 	}
 	const liveToolCalls = activeTurn
-		? mergeLiveToolCallsWithSessionDetails(activeTurn.toolCalls, turnTrace?.toolCalls)
+		? mergeLiveToolCallsWithSessionDetails(
+				"toolCalls" in activeTurn
+					? activeTurn.toolCalls
+					: activeTurn.currentTool
+						? [
+								{
+									...activeTurn.currentTool,
+									startedAt: activeTurn.startedAt,
+									completedAt: null,
+									arguments: null,
+									result: null,
+								},
+							]
+						: [],
+				turnTrace?.toolCalls,
+			)
 		: [];
 	const runningToolCall = activeTurn
 		? ([...liveToolCalls].reverse().find((toolCall) => toolCall.status === "running") ?? null)
@@ -989,16 +1004,22 @@ function buildLiveTail(input: {
 	const hasThinkingText = thinkingText.trim().length > 0;
 	const reasoningSection = activeTurn
 		? buildReasoningSection({
-				trace: {
+				trace: turnTrace ?? {
 					assistant: activeTurn.assistant,
 					toolCalls: liveToolCalls,
-					traceItems: activeTurn.traceItems,
+					traceItems: "traceItems" in activeTurn ? activeTurn.traceItems : [],
 					usage: activeTurn.usage,
 					piInput: turnTrace?.piInput ?? null,
 				},
 				preview: turnTracePreview,
 			})
 		: null;
+	if (activeTurn && "currentTool" in activeTurn) {
+		if (reasoningSection) {
+			reasoningSection.toolCallCount = activeTurn.toolCallCount;
+			reasoningSection.traceItemCount = activeTurn.traceItemCount;
+		}
+	}
 	const state = runningToolCall
 		? "tool_running"
 		: hasThinkingText
@@ -1006,11 +1027,10 @@ function buildLiveTail(input: {
 			: assistantText.length > 0
 				? "streaming"
 				: "waiting";
-	const thinkingPreview = buildTrailingLinePreview(
-		thinkingText,
-		THINKING_PREVIEW_LINE_COUNT,
-		THINKING_PREVIEW_MAX_LENGTH,
-	);
+	const thinkingPreview = {
+		text: reasoningPreviewTail(thinkingText),
+		truncated: thinkingText.length > THINKING_PREVIEW_MAX_LENGTH,
+	};
 	const copy =
 		state === "tool_running"
 			? `Running ${formatDefinition(runningToolCall?.toolName ?? "tool")}…`
@@ -1040,10 +1060,15 @@ function buildLiveTail(input: {
 		state,
 		stateLabel,
 		copy,
-		reasoningSection,
+		reasoningSection:
+			reasoningSection ??
+			(activeTurn && turnRecord.turnType === "llm" && assistantText.length === 0
+				? buildEmptyReasoningSection({ trace: undefined, preview: turnTracePreview })
+				: null),
 		toolCall: runningToolCall,
 		usage: activeTurn?.usage ?? null,
-		eventWindowTruncated: activeTurn?.eventWindowTruncated ?? false,
+		eventWindowTruncated:
+			activeTurn && "eventWindowTruncated" in activeTurn ? activeTurn.eventWindowTruncated : false,
 		modelProfileId: turnRecord.modelProfileId,
 		triggeringInput,
 		piInput: toPiInputSummary({
@@ -1175,7 +1200,8 @@ export function extractChronicleReasoningDetailEntries(
 			item.kind === "turn_cluster" ? findReasoningSection(item.sections) : item.reasoningSection;
 		const reasoningSection =
 			recordedReasoningSection ??
-			(questionTurnRecordIds.has(item.turnRecordId)
+			(questionTurnRecordIds.has(item.turnRecordId) ||
+			(item.kind === "live_tail" && item.turnType === "llm")
 				? buildEmptyReasoningSection({ trace: undefined, preview: undefined })
 				: null);
 		if (!reasoningSection) {

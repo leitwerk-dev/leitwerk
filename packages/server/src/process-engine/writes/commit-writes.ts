@@ -45,6 +45,7 @@ export interface RecordWritesDeps
 	> {}
 
 export interface RecordCommit {
+	turnEventSequences?: Record<string, number>;
 	instanceId: string;
 	processBefore: ProcessInstance | null;
 	processAfter: ProcessInstance | null;
@@ -103,6 +104,7 @@ function getPrimaryPathRefs(process: ProcessInstance | null) {
 }
 
 function buildPrimaryPathFrames(input: {
+	turnEventSequences?: Record<string, number>;
 	instanceId: string;
 	processBefore: ProcessInstance | null;
 	processAfter: ProcessInstance | null;
@@ -120,6 +122,9 @@ function buildPrimaryPathFrames(input: {
 		if (turnRecord.status === "running") {
 			frames.push({
 				type: WS_PRIMARY_PATH_TYPES.TURN_STARTED,
+				...(input.turnEventSequences?.[turnRecord.id] !== undefined
+					? { eventSequence: input.turnEventSequences[turnRecord.id] }
+					: {}),
 				payload: { turnRecord },
 				instanceId: input.instanceId,
 			});
@@ -135,6 +140,9 @@ function buildPrimaryPathFrames(input: {
 			}
 			frames.push({
 				type: WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED,
+				...(input.turnEventSequences?.[turnRecord.id] !== undefined
+					? { eventSequence: input.turnEventSequences[turnRecord.id] }
+					: {}),
 				payload: {
 					turnRecord,
 					rootEntry: refs.rootEntry,
@@ -259,6 +267,15 @@ export function commitWrites(
 		for (const event of writes.events) {
 			repos.events.create(event);
 		}
+		const turnEventSequences: Record<string, number> = {};
+		for (const turn of committedTurnRecords) {
+			const event = repos.events.create({
+				instanceId,
+				eventType: "turn.lifecycle",
+				data: { turnRecordId: turn.id, status: turn.status },
+			});
+			if (event.eventSequence !== undefined) turnEventSequences[turn.id] = event.eventSequence;
+		}
 		for (const plan of writes.futureExecutionPlans) {
 			applyRequiredFutureExecutionTransitionPlan(repos.futureExecutions, plan);
 		}
@@ -275,6 +292,7 @@ export function commitWrites(
 			processAfter,
 			committedProject,
 			committedTurnRecords,
+			turnEventSequences,
 			committedLeafOutcomeSnapshots,
 			committedAnnotationChanges,
 			persistedInputs,

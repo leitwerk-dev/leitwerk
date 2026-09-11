@@ -472,7 +472,8 @@ function createBasePiSessionEntries() {
 	];
 }
 
-type LegacyProcessDetailTestData = ProcessDetailData & {
+type LegacyProcessDetailTestData = Omit<ProcessDetailData, "primaryPath"> & {
+	primaryPath: import("@leitwerk-dev/protocol").PrimaryPathSnapshot;
 	process: ProcessInstance;
 	projects: ProcessProject[];
 	inputs: ProcessInput[];
@@ -1912,6 +1913,52 @@ afterEach(() => {
 });
 
 describe("ProcessDetailPage", () => {
+	it("loads live history only on expansion and reconnects only while it stays open", async () => {
+		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 1 });
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(1);
+		const restored = buildMockReasoningResponse("agt_1", "trn_live");
+		const pending = createDeferred<typeof restored>();
+		mockFetchTurnReasoningDetail.mockImplementationOnce(() => pending.promise);
+		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 2 });
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		expect(target.textContent).toContain("Keep this live reasoning intact.");
+		expect(target.textContent).toContain("Loading reasoning");
+		target.querySelector<HTMLButtonElement>('[data-action="close-reasoning-overlay"]')?.click();
+		await flushUi();
+		pending.resolve(restored);
+		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 3 });
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+	});
+
+	it("keeps the overlay open when completion overtakes a delayed live recovery response", async () => {
+		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
+		await flushUi();
+		const stale = buildMockReasoningResponse("agt_1", "trn_live");
+		const pending = createDeferred<typeof stale>();
+		mockFetchTurnReasoningDetail.mockImplementationOnce(() => pending.promise);
+		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		await flushUi();
+		const committed = compactTestDetail(createCommittedReasoningTransitionDetail());
+		detailState.set({ data: committed, loading: false, error: null, loadedAtMs: Date.now() });
+		await flushUi();
+		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		stale.reasoning.assistant.thinking = "Stale live response";
+		pending.resolve(stale);
+		await flushUi();
+		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.textContent).toContain("Nothing should disappear after commit.");
+		expect(target.textContent).not.toContain("Stale live response");
+	});
 	it("renders authoritative startup history and remediation inside the Chronicle", async () => {
 		const recovery = {
 			startRecordId: "str_failed",

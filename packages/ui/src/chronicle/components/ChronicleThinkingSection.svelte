@@ -29,18 +29,11 @@ let {
 	onOpenDetails = null,
 }: Props = $props();
 
-const previewLines = $derived(splitChronicleLines(preview));
-const fallbackLines = $derived(splitChronicleLines(text));
+const previewLines = $derived(splitChronicleLines(preview).filter((line) => line.trim() !== ""));
+const fallbackLines = $derived(splitChronicleLines(text).filter((line) => line.trim() !== ""));
 const hasPreview = $derived(previewLines.length > 0);
 const hasText = $derived(normalizeChronicleText(text).length > 0);
 const hasDetails = $derived(Boolean(onOpenDetails));
-const showsReasoningText = $derived(hasPreview || (traceItemCount === 0 && hasText));
-const isCompactReasoning = $derived(!showsReasoningText && !isLive);
-const overflowAffordanceCopy = $derived(
-	hasDetails
-		? "Earlier reasoning hidden · open details for the full trace"
-		: "Earlier reasoning hidden",
-);
 </script>
 
 <section
@@ -73,26 +66,17 @@ const overflowAffordanceCopy = $derived(
 		data-line-count={previewLines.length > 0 ? previewLines.length : fallbackLines.length}
 		data-truncated={previewTruncated ? "true" : "false"}
 		data-trace-item-count={traceItemCount}
-		data-compact={isCompactReasoning ? "true" : undefined}
 		style:--thinking-preview-lines={THINKING_PREVIEW_LINE_COUNT}
 	>
 		{#if hasPreview}
-			<ChronicleThinkingText text={preview} variant="preview" />
+			<ChronicleThinkingText text={previewLines.join("\n")} variant="preview" />
 		{:else if toolCallCount > 0 || traceItemCount > 0}
 			<p class="empty-copy">Open details to inspect the reasoning trace.</p>
 		{:else if hasText}
-			<ChronicleThinkingText text={text} variant="preview" />
+			<ChronicleThinkingText text={fallbackLines.join("\n")} variant="preview" />
 		{:else}
-			<p class="empty-copy">No reasoning was recorded.</p>
+			<p class="empty-copy">{isLive ? "Waiting for reasoning…" : "No reasoning was recorded."}</p>
 		{/if}
-
-		<div
-			class="overflow-affordance"
-			data-visible={previewTruncated ? "true" : "false"}
-			aria-hidden={previewTruncated ? undefined : true}
-		>
-			{previewTruncated ? overflowAffordanceCopy : "\u00a0"}
-		</div>
 	</div>
 
 	{#if questionRequests.length > 0}
@@ -150,46 +134,19 @@ const overflowAffordanceCopy = $derived(
 	}
 
 	.thinking-preview-copy {
-		--thinking-preview-body-height: calc(var(--thinking-preview-lines, 3) * 1lh);
-		display: grid;
-		grid-template-rows: var(--thinking-preview-body-height) 1lh;
-		gap: 8px;
+		height: calc(var(--thinking-preview-lines, 4) * 1lh);
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
 		width: min(100%, 64ch);
 		min-width: 0;
-		align-items: start;
+		overflow: clip;
 		font-size: var(--type-body-sm);
 		line-height: 1.72;
 	}
 
-	.thinking-preview-copy :global(.thinking-copy[data-variant="preview"]),
-	.thinking-preview-copy .empty-copy {
-		min-height: 0;
-		max-height: var(--thinking-preview-body-height);
-		overflow: hidden;
-	}
-
-	.thinking-preview-copy[data-compact="true"] {
-		grid-template-rows: auto;
-	}
-
-	.thinking-preview-copy[data-compact="true"] .empty-copy {
-		max-height: none;
-	}
-
-	.thinking-preview-copy[data-compact="true"] .overflow-affordance {
-		display: none;
-	}
-
-	.overflow-affordance {
-		min-height: 1lh;
-		font-size: 11px;
-		font-weight: 620;
-		letter-spacing: 0.01em;
-		color: color-mix(in srgb, var(--chronicle-text-muted) 86%, var(--chronicle-text) 14%);
-	}
-
-	.overflow-affordance[data-visible="false"] {
-		visibility: hidden;
+	.thinking-preview-copy > :global(*) {
+		flex: 0 0 auto;
 	}
 
 	.empty-copy {

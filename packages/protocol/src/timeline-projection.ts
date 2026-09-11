@@ -13,7 +13,10 @@ export function timelinePresentationForTurnType(
 }
 
 export function buildActiveTimelineTurnSummary(
-	activeTurn: PrimaryPathActiveTurnSnapshot,
+	activeTurn: Pick<
+		PrimaryPathActiveTurnSnapshot,
+		"turnRecordId" | "turnId" | "turnType" | "pathType" | "startedAt" | "assistant"
+	>,
 	input: {
 		summary: string;
 		output: string;

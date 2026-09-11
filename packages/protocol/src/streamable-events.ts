@@ -9,6 +9,8 @@ export const STREAMABLE_WORKER_EVENT_TYPES = [
 	"pi.retry.start",
 	"pi.retry.end",
 	"pi.usage",
+	"pi.compaction.start",
+	"pi.compaction.end",
 ] as const;
 
 export type StreamableWorkerEventType = (typeof STREAMABLE_WORKER_EVENT_TYPES)[number];

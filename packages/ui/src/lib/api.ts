@@ -721,7 +721,7 @@ export async function fetchTurnReasoningDetail(
 	sessionSignature: string | null,
 	signal?: AbortSignal,
 ): Promise<TurnReasoningDetailResponseBody> {
-	const params = new URLSearchParams({ sessionSignature: sessionSignature ?? "" });
+	const params = new URLSearchParams(sessionSignature === null ? {} : { sessionSignature });
 	const res = await getFetchImpl()(
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/reasoning?${params.toString()}`,

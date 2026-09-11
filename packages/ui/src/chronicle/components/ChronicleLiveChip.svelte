@@ -45,8 +45,7 @@ let { label, size = "md" }: Props = $props();
 		position: relative;
 		display: inline-flex;
 		border-radius: 999px;
-		background: color-mix(in srgb, var(--chronicle-accent) 72%, white 28%);
-		box-shadow: 0 0 0 1px color-mix(in srgb, var(--chronicle-accent) 24%, white 76%);
+		background: var(--chronicle-text-muted);
 		flex-shrink: 0;
 	}
 
@@ -60,37 +59,4 @@ let { label, size = "md" }: Props = $props();
 		height: 10px;
 	}
 
-	.live-pulse::after {
-		content: "";
-		position: absolute;
-		inset: -5px;
-		border-radius: inherit;
-		background: color-mix(in srgb, var(--chronicle-accent) 22%, transparent 78%);
-		animation: -global-live-pulse-wave 1.7s var(--ease-out-quint, cubic-bezier(0.22, 1, 0.36, 1)) infinite;
-	}
-
-	@keyframes -global-live-pulse-wave {
-		0% {
-			transform: scale(0.55);
-			opacity: 0.78;
-		}
-
-		70% {
-			transform: scale(1.35);
-			opacity: 0;
-		}
-
-		100% {
-			transform: scale(1.35);
-			opacity: 0;
-		}
-	}
-
-	@media (prefers-reduced-motion: reduce) {
-		.live-pulse::after {
-			animation: none;
-			opacity: 0.25;
-			transform: scale(1);
-		}
-	}
 </style>

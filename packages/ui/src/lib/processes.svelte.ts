@@ -1,4 +1,8 @@
-import { projectFutureExecutionOverview, type WsFrame } from "@leitwerk-dev/protocol";
+import {
+	projectFutureExecutionOverview,
+	WS_PRIMARY_PATH_TYPES,
+	type WsFrame,
+} from "@leitwerk-dev/protocol";
 import { derived, get, writable } from "svelte/store";
 import {
 	type FullFutureExecution,
@@ -104,8 +108,17 @@ function clearPendingPrimaryPathFrames(instanceId?: string) {
 
 function bufferPrimaryPathFrame(action: Extract<WsAction, { kind: "apply_primary_path_frame" }>) {
 	const queuedFrames = pendingPrimaryPathFramesByInstanceId.get(action.instanceId) ?? [];
+	if (action.frame.type === WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED) {
+		// Summaries replace earlier summaries, so buffering a slow page request stays bounded.
+		const id = action.frame.payload.turnRecordId;
+		const prior = queuedFrames.findIndex(
+			(frame) =>
+				frame.type === WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED && frame.payload.turnRecordId === id,
+		);
+		if (prior >= 0) queuedFrames.splice(prior, 1);
+	}
 	queuedFrames.push(action.frame);
-	pendingPrimaryPathFramesByInstanceId.set(action.instanceId, queuedFrames.slice(-500));
+	pendingPrimaryPathFramesByInstanceId.set(action.instanceId, queuedFrames);
 }
 
 function takePendingPrimaryPathFrames(instanceId: string) {
@@ -276,6 +289,8 @@ function scheduleLoadProcessDetail(instanceId: string, delayMs = 120) {
 }
 
 export function clearDetail() {
+	setCurrentDetailInstanceId(null);
+	clearPendingPrimaryPathFrames();
 	clearScheduledDetailReload();
 	detailState.set({
 		data: null,
@@ -286,10 +301,27 @@ export function clearDetail() {
 	detailGuard.invalidate();
 }
 
+const reasoningFrameListeners = new Set<(frame: WsFrame) => void>();
+export function subscribeReasoningFrames(listener: (frame: WsFrame) => void) {
+	reasoningFrameListeners.add(listener);
+	return () => {
+		reasoningFrameListeners.delete(listener);
+	};
+}
+
 function executePrimaryPathFrame(action: WsAction & { kind: "apply_primary_path_frame" }) {
 	const current = get(detailState);
+	if (
+		[
+			WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
+			WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
+			WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
+			WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
+		].includes(action.frame.type as typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL)
+	)
+		return;
+	if (detailInstanceId === action.instanceId && current.loading) bufferPrimaryPathFrame(action);
 	if (detailInstanceId === action.instanceId && current.data?.process.id !== action.instanceId) {
-		bufferPrimaryPathFrame(action);
 		return;
 	}
 	if (current.data?.process.id !== action.instanceId) {
@@ -302,6 +334,7 @@ function executePrimaryPathFrame(action: WsAction & { kind: "apply_primary_path_
 }
 
 export function handleWsEvent(frame: WsFrame) {
+	for (const listener of reasoningFrameListeners) listener(frame);
 	const actions = classifyWsEvent(frame, detailInstanceId);
 
 	for (const action of actions) {
