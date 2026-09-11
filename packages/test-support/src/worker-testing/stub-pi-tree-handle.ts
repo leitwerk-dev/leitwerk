@@ -1,5 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { CURRENT_SESSION_VERSION, type SessionHeader } from "@earendil-works/pi-coding-agent";
 import type {
 	PiCustomMessageInput,
 	PiCustomTool,
@@ -33,16 +35,24 @@ export type StubToolCallScriptItem =
 	| StubToolCallScriptCall
 	| {
 			calls: readonly StubToolCallScriptCall[];
+			textChunks?: readonly string[];
+			thinkingChunks?: readonly string[];
+			chunkDelayMs?: number;
 	  };
 
 export interface StubToolCallScriptResolverContext {
 	promptText: string;
 	tools: readonly PiCustomTool[];
+	instanceId?: string;
+	workspaceRoot?: string;
+	sessionCwd?: string;
+	treeFile: string;
+	turnSequence: number;
 }
 
 export type StubToolCallScriptResolver = (
 	context: StubToolCallScriptResolverContext,
-) => StubToolCallScriptItem | undefined;
+) => StubToolCallScriptItem | undefined | Promise<StubToolCallScriptItem | undefined>;
 
 function stringifyToolResult(result: unknown): string {
 	if (typeof result === "string") {
@@ -73,6 +83,7 @@ function stubToolCallId(turnSeq: number, totalCalls: number, index: number): str
 }
 
 interface StubPiTreeState {
+	header?: SessionHeader;
 	turnSeq: number;
 	currentLeafId: string | null;
 	entries: Map<string, PiTreeEntry>;
@@ -103,7 +114,16 @@ function deriveStubLeafIdFromEntries(state: StubPiTreeState): string | null {
 	return leafId;
 }
 
-function serializeStubPiTreeState(state: StubPiTreeState): string {
+function serializeStubPiTreeState(state: StubPiTreeState, recordSessionTrace: boolean): string {
+	if (recordSessionTrace) {
+		return `${[
+			JSON.stringify({
+				...state.header,
+				stubState: { turnSeq: state.turnSeq, currentLeafId: state.currentLeafId },
+			}),
+			...[...state.entries.values()].map((entry) => JSON.stringify(entry)),
+		].join("\n")}\n`;
+	}
 	const persisted: PersistedStubPiTreeState = {
 		turnSeq: state.turnSeq,
 		currentLeafId: state.currentLeafId,
@@ -117,6 +137,27 @@ function serializeStubPiTreeState(state: StubPiTreeState): string {
 }
 
 function deserializeStubPiTreeState(value: string): StubPiTreeState {
+	const lines = value.trim().split("\n");
+	const header = JSON.parse(lines[0]) as SessionHeader & {
+		stubState?: { turnSeq: number; currentLeafId: string | null };
+	};
+	if (header.type === "session") {
+		const entries = lines
+			.slice(1)
+			.filter(Boolean)
+			.map((line) => JSON.parse(line) as PiTreeEntry);
+		const state = createEmptyStubPiTreeState();
+		state.header = header;
+		state.turnSeq = header.stubState?.turnSeq ?? 0;
+		state.currentLeafId = header.stubState?.currentLeafId ?? null;
+		for (const entry of entries) {
+			state.entries.set(entry.id, entry);
+			const siblings = state.childIdsByParent.get(entry.parentId) ?? [];
+			siblings.push(entry.id);
+			state.childIdsByParent.set(entry.parentId, siblings);
+		}
+		return state;
+	}
 	const parsed = JSON.parse(value) as PersistedStubPiTreeState;
 	return {
 		turnSeq: typeof parsed.turnSeq === "number" ? parsed.turnSeq : 0,
@@ -145,6 +186,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	) => boolean | undefined | Promise<boolean | undefined>;
 
 	private _closed = false;
+	private turnAbort = new AbortController();
 	private branchDriftPending = false;
 	private readonly handlers = new Set<PiEventHandler>();
 	private readonly diagnosticHandlers = new Set<PiSessionDiagnosticHandler>();
@@ -152,6 +194,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	private readonly state: StubPiTreeState;
 	private readonly runDetails: PiRunDetails;
 	private readonly persistState?: (() => Promise<void>) | undefined;
+	private readonly recordSessionTrace: boolean;
 
 	constructor(options: {
 		sessionId: string;
@@ -161,6 +204,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		state?: StubPiTreeState;
 		runDetails?: Partial<PiRunDetails>;
 		persistState?: () => Promise<void>;
+		recordSessionTrace?: boolean;
 	}) {
 		this.sessionId = options.sessionId;
 		this.treeFile = options.treeFile;
@@ -168,6 +212,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		this.toolCallScriptResolver = options.toolCallScriptResolver;
 		this.state = options.state ?? createEmptyStubPiTreeState();
 		this.persistState = options.persistState;
+		this.recordSessionTrace = options.recordSessionTrace ?? false;
 		this.runDetails = {
 			loadedAgentsFiles: options.runDetails?.loadedAgentsFiles?.map((file) => ({ ...file })) ?? [],
 			loadedSkills: options.runDetails?.loadedSkills?.map((skill) => ({ ...skill })) ?? [],
@@ -201,7 +246,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		id: string,
 		parentId: string | null,
 		role: "user" | "assistant",
-		content: string,
+		content: unknown,
 		timestamp: string,
 	): PiTreeEntry {
 		return {
@@ -314,9 +359,12 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		appendPromptUserMessage: boolean;
 	}): Promise<PiTurnExecutionResult> {
 		this.assertOpen();
+		this.turnAbort = new AbortController();
+		const signal = this.turnAbort.signal;
 		if ((await this.beforeTurn?.(input.kind, input.options, input.promptText)) === false) {
 			input.options = undefined;
 		}
+		signal.throwIfAborted();
 		if (this.branchDriftPending) {
 			this.branchDriftPending = false;
 			throw Object.assign(new Error("stubbed Pi branch drift"), {
@@ -350,18 +398,84 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			);
 			createdEntryIds.push(userEntryId);
 		}
+		await this.persistState?.();
+		signal.throwIfAborted();
 		this.emitEvent({ type: "turn.start", turnId, data: {}, timestamp });
 
 		const tools = new Map((input.options?.tools ?? []).map((tool) => [tool.name, tool]));
 		let assistantContent = input.promptText ?? "Continued.";
 		let assistantContentFromScriptedMarkdown = false;
-		const scriptedItem = this.toolCallScriptResolver?.({
+		const scriptedItem = await this.toolCallScriptResolver?.({
+			treeFile: this.treeFile,
+			turnSequence: this.state.turnSeq,
 			promptText: input.promptText ?? "",
 			tools: input.options?.tools ?? [],
 		});
+		signal.throwIfAborted();
+		const hasScriptedChunks = Boolean(
+			scriptedItem &&
+				"calls" in scriptedItem &&
+				(scriptedItem.textChunks?.length ?? 0) + (scriptedItem.thinkingChunks?.length ?? 0),
+		);
+		if (hasScriptedChunks) assistantContent = "";
+		if (scriptedItem && "calls" in scriptedItem) {
+			const streamed = { thinking: "", text: "" };
+			const streamEntryId = `stream-${this.state.turnSeq}`;
+			const streamParentId = this.state.currentLeafId;
+			const chunks = [
+				...(scriptedItem.thinkingChunks ?? []).map((text) => ({
+					text,
+					streamType: "thinking" as const,
+				})),
+				...(scriptedItem.textChunks ?? []).map((text) => ({ text, streamType: "text" as const })),
+			];
+			for (const { text, streamType } of chunks) {
+				signal.throwIfAborted();
+				streamed[streamType] += text;
+				assistantContent = streamed.text;
+				if (this.recordSessionTrace) {
+					const entry = this.createMessageEntry(
+						streamEntryId,
+						streamParentId,
+						"assistant",
+						[
+							...(streamed.thinking ? [{ type: "thinking", thinking: streamed.thinking }] : []),
+							...(streamed.text ? [{ type: "text", text: streamed.text }] : []),
+						],
+						timestamp,
+					);
+					if (this.state.entries.has(streamEntryId)) this.state.entries.set(streamEntryId, entry);
+					else {
+						this.addEntry(entry);
+						createdEntryIds.push(streamEntryId);
+					}
+					await this.persistState?.();
+				}
+				this.emitEvent({
+					type: "stream.delta",
+					turnId,
+					data: { text, streamType },
+					timestamp: new Date().toISOString(),
+				});
+				signal.throwIfAborted();
+				if (scriptedItem.chunkDelayMs)
+					await new Promise<void>((resolve, reject) => {
+						const timer = setTimeout(() => {
+							signal.removeEventListener("abort", abort);
+							resolve();
+						}, scriptedItem.chunkDelayMs);
+						const abort = () => {
+							clearTimeout(timer);
+							reject(signal.reason);
+						};
+						signal.addEventListener("abort", abort, { once: true });
+					});
+			}
+		}
 		const scriptedCalls = scriptedItem ? expandStubToolCallScriptItem(scriptedItem) : [];
 		if (scriptedCalls.length > 0) {
 			for (const [callIndex, scriptedCall] of scriptedCalls.entries()) {
+				signal.throwIfAborted();
 				const toolCallId = stubToolCallId(this.state.turnSeq, scriptedCalls.length, callIndex);
 				this.emitEvent({
 					type: "tool.call",
@@ -382,11 +496,61 @@ export class StubPiTreeHandle implements PiTreeHandle {
 					}
 				}
 				if (tool) {
+					if (this.recordSessionTrace) {
+						const entryId = `call-${toolCallId}`;
+						this.addEntry(
+							this.createMessageEntry(
+								entryId,
+								this.state.currentLeafId,
+								"assistant",
+								[
+									{
+										type: "toolCall",
+										id: toolCallId,
+										name: scriptedCall.toolName,
+										arguments: scriptedCall.args,
+									},
+								],
+								new Date().toISOString(),
+							),
+						);
+						createdEntryIds.push(entryId);
+						await this.persistState?.();
+					}
+					const recordToolResult = async (result: unknown, isError: boolean) => {
+						if (!this.recordSessionTrace) return;
+						const entryId = `result-${toolCallId}`;
+						const entry = {
+							id: entryId,
+							parentId: this.state.currentLeafId,
+							type: "message",
+							timestamp: new Date().toISOString(),
+							message: {
+								role: "toolResult",
+								toolCallId,
+								toolName: scriptedCall.toolName,
+								content: [{ type: "text", text: stringifyToolResult(result) }],
+								isError,
+							},
+						};
+						this.addEntry(entry);
+						createdEntryIds.push(entryId);
+						await this.persistState?.();
+					};
 					try {
-						const result = await tool.execute(scriptedCall.args);
+						signal.throwIfAborted();
+						const blocked = input.options?.shouldBlockToolCall?.(scriptedCall.toolName);
+						if (blocked) throw new Error(blocked);
+						const result = await tool.execute(scriptedCall.args, {
+							toolCallId,
+							signal,
+							suspendPromptGuards: input.options?.suspendPromptGuards,
+						});
+						signal.throwIfAborted();
 						if (!assistantContentFromScriptedMarkdown) {
 							assistantContent = stringifyToolResult(result);
 						}
+						await recordToolResult(result, false);
 						this.emitEvent({
 							type: "tool.result",
 							turnId,
@@ -394,6 +558,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 							timestamp,
 						});
 					} catch (error) {
+						await recordToolResult(error instanceof Error ? error.message : String(error), true);
 						this.emitEvent({
 							type: "error",
 							turnId,
@@ -423,11 +588,11 @@ export class StubPiTreeHandle implements PiTreeHandle {
 					createdEntryIds.push(intermediateEntryId);
 				}
 			}
-		} else if (tools.size > 0) {
+		} else if (tools.size > 0 && !hasScriptedChunks) {
 			throw new Error(
 				`Stub Pi prompt requires a stub tool-call script when tools are provided (${[...tools.keys()].join(", ")})`,
 			);
-		} else if (input.promptText !== undefined) {
+		} else if (input.promptText !== undefined && !hasScriptedChunks) {
 			this.emitEvent({
 				type: "stream.delta",
 				turnId,
@@ -436,17 +601,22 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			});
 		}
 
+		signal.throwIfAborted();
+		// Keep the result entry ID without repeating content already saved in the stream entry.
 		this.addEntry(
 			this.createMessageEntry(
 				turnId,
 				this.state.currentLeafId,
 				"assistant",
-				assistantContent,
+				this.recordSessionTrace && hasScriptedChunks && scriptedCalls.length === 0
+					? []
+					: assistantContent,
 				timestamp,
 			),
 		);
 		createdEntryIds.push(turnId);
 		await this.persistState?.();
+		signal.throwIfAborted();
 		this.emitEvent({ type: "turn.end", turnId, data: {}, timestamp });
 		const resultEntryId = this.state.currentLeafId;
 		if (!resultEntryId) {
@@ -544,6 +714,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 
 	async abortTurn(): Promise<void> {
 		this.assertOpen();
+		this.turnAbort.abort(new Error("Scripted turn aborted"));
 	}
 
 	subscribe(handler: PiEventHandler): () => void {
@@ -565,6 +736,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	}
 
 	async close(): Promise<void> {
+		this.turnAbort.abort(new Error("Scripted session closed"));
 		await this.persistState?.();
 		this._closed = true;
 		this.handlers.clear();
@@ -574,6 +746,8 @@ export class StubPiTreeHandle implements PiTreeHandle {
 
 export interface StubPiTreeHandleFactoryOptions {
 	toolCallScriptResolver?: StubToolCallScriptResolver;
+	/** Persist SDK-readable JSONL with reasoning and tool messages for history/detail tests. */
+	recordSessionTrace?: boolean;
 }
 
 export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
@@ -582,9 +756,11 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 
 	private seq = 0;
 	private readonly treeStateByFile = new Map<string, StubPiTreeState>();
+	private readonly recordSessionTrace: boolean;
 
 	constructor(options: StubPiTreeHandleFactoryOptions = {}) {
 		this.toolCallScriptResolver = options.toolCallScriptResolver;
+		this.recordSessionTrace = options.recordSessionTrace ?? false;
 	}
 
 	async prepareManagedBootstrap(
@@ -632,7 +808,11 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 			this.treeStateByFile.set(opts.treeFile, state);
 			try {
 				mkdirSync(path.dirname(opts.treeFile), { recursive: true });
-				writeFileSync(opts.treeFile, serializeStubPiTreeState(state), "utf8");
+				writeFileSync(
+					opts.treeFile,
+					serializeStubPiTreeState(state, this.recordSessionTrace),
+					"utf8",
+				);
 			} catch (error) {
 				if (
 					typeof error !== "object" ||
@@ -663,6 +843,13 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 			}
 		}
 		treeState ??= createEmptyStubPiTreeState();
+		treeState.header ??= {
+			type: "session",
+			version: CURRENT_SESSION_VERSION,
+			id: randomUUID(),
+			timestamp: new Date().toISOString(),
+			cwd: opts.sessionCwd ?? opts.workspaceRoot ?? path.dirname(opts.treeFile),
+		};
 		if (opts.resume) {
 			treeState.currentLeafId = deriveStubLeafIdFromEntries(treeState);
 		}
@@ -671,9 +858,18 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 			sessionId: `stub-${++this.seq}`,
 			treeFile: opts.treeFile,
 			isResumed: opts.resume,
-			toolCallScriptResolver: this.toolCallScriptResolver,
+			toolCallScriptResolver: this.toolCallScriptResolver
+				? (context) =>
+						this.toolCallScriptResolver?.({
+							...context,
+							instanceId: opts.instanceId,
+							workspaceRoot: opts.workspaceRoot,
+							sessionCwd: opts.sessionCwd,
+						})
+				: undefined,
 			state: treeState,
 			persistState: () => persistState(treeState),
+			recordSessionTrace: this.recordSessionTrace,
 			runDetails: {
 				availableToolNames: opts.piConfig?.availableToolNames ?? [],
 			},

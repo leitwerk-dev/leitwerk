@@ -91,6 +91,21 @@ type TraceTurnRecord = Pick<
 	"id" | "turnType" | "forkPiEntryId" | "resultPiEntryId" | "startedAt" | "endedAt" | "status"
 >;
 
+/** Pi sends custom messages to the model as user input; their details stay out of context. */
+function traceSessionEntries(tree: ReadonlyPiSessionTree): PiSessionEntry[] {
+	return tree.entries.map((entry) =>
+		entry.type === "custom_message"
+			? {
+					id: entry.id,
+					parentId: entry.parentId,
+					timestamp: entry.timestamp,
+					type: "message",
+					message: { role: "user", content: entry.content },
+				}
+			: (entry as unknown as PiSessionEntry),
+	);
+}
+
 function indexEventsByTurnRecordId(
 	events: readonly ProcessEvent[] = [],
 ): Map<string, ProcessEvent[]> {
@@ -377,9 +392,7 @@ export function buildTurnTraceFromSession(input: {
 	if (input.turnRecord.turnType !== "llm") {
 		return undefined;
 	}
-	const continuationIndex = createTurnContinuationIndex(
-		input.tree.entries as unknown as PiSessionEntry[],
-	);
+	const continuationIndex = createTurnContinuationIndex(traceSessionEntries(input.tree));
 	return buildTurnTraceFromSlice({
 		turnRecordId: input.turnRecord.id,
 		turnSlice: continuationIndex.buildSlice(input.turnRecord, {
@@ -478,9 +491,7 @@ function visitTurnTraces(
 	input: TurnTraceCollectionInput,
 	visit: (turnRecordId: string, trace: TurnTraceSnapshot) => void,
 ): void {
-	const continuationIndex = createTurnContinuationIndex(
-		input.tree.entries as unknown as PiSessionEntry[],
-	);
+	const continuationIndex = createTurnContinuationIndex(traceSessionEntries(input.tree));
 	const eventsByTurnRecordId = indexEventsByTurnRecordId(input.events);
 	for (const turnRecord of input.turnRecords) {
 		if (turnRecord.turnType !== "llm") {

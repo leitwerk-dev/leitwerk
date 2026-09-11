@@ -192,6 +192,75 @@ describe("process turn trace projection", () => {
 		}
 	});
 
+	it.each(["succeeded", "failed"])("includes identified Pi inputs in %s turn details", (status) => {
+		const tree = parsePiSessionTreeContent(
+			"identified-input",
+			jsonl(
+				{
+					type: "session",
+					version: 3,
+					id: "session-1",
+					timestamp: "2026-01-01T00:00:00.000Z",
+					cwd: "/tmp",
+				},
+				{
+					type: "custom_message",
+					customType: "leitwerk",
+					id: "prior",
+					parentId: null,
+					timestamp: "2026-01-01T00:00:00.000Z",
+					content: "Previous turn input",
+				},
+				{
+					type: "custom_message",
+					customType: "leitwerk",
+					id: "prompt",
+					parentId: "prior",
+					timestamp: "2026-01-01T00:00:01.000Z",
+					content: "Plan the notebook update",
+					details: { kind: "turn_prompt", startRecordId: "internal-identity" },
+				},
+				{
+					type: "custom",
+					customType: "metadata",
+					id: "metadata",
+					parentId: "prompt",
+					timestamp: "2026-01-01T00:00:01.500Z",
+					data: { text: "Not model input" },
+				},
+				...(status === "succeeded"
+					? [
+							{
+								type: "message",
+								id: "answer",
+								parentId: "metadata",
+								timestamp: "2026-01-01T00:00:02.000Z",
+								message: { role: "assistant", content: "Done" },
+							},
+						]
+					: []),
+			),
+		);
+		const turnRecord = {
+			id: "trn_input",
+			turnType: "llm" as const,
+			forkPiEntryId: "prior",
+			resultPiEntryId: status === "succeeded" ? "answer" : null,
+			startedAt: "2026-01-01T00:00:01.000Z",
+			endedAt: "2026-01-01T00:00:03.000Z",
+			status: status as "succeeded" | "failed",
+		};
+		const trace = buildTurnTraceFromSession({ tree, turnRecord });
+		expect(trace?.piInput?.fullPrompt).toBe("Plan the notebook update");
+		expect(trace?.piInput?.parts).toEqual([
+			{ role: "user", text: "Plan the notebook update", createdAt: "2026-01-01T00:00:01.000Z" },
+		]);
+		expect(
+			buildTurnTracePreviewsFromSession({ tree, turnRecords: [turnRecord] }).trn_input?.piInput
+				?.userInputPreview,
+		).toBe("Plan the notebook update");
+	});
+
 	it("projects assistant text, reasoning, usage, Pi input, and tool details from a turn slice", () => {
 		const tree = parsePiSessionTreeContent(
 			"trace-test",

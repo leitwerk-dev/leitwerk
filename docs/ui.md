@@ -31,6 +31,10 @@ The process detail view is organized into three distinct visual regions:
 - **Turn Rail:** Right-hand outline listing completed turns, active execution leaves, and declared future turns for jumping directly to specific steps.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
 
+Turn input details include user messages and Pi custom messages (including
+identified Leitwerk prompts). Custom-message details stay outside the displayed
+input, just as they stay outside model context.
+
 ### Route scroll ownership
 
 `RouteViewport` owns scrolling for every standard route. It provides a contained route scroller in the fixed desktop shell and yields to document scrolling below the mobile shell breakpoint. Route pages must not add competing viewport-level `overflow` or `overscroll-behavior` rules. Nested task surfaces such as the Chronicle, modal lists, and desktop split panes may own bounded scrolling.
