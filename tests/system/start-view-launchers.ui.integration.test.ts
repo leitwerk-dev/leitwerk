@@ -424,7 +424,7 @@ describe("start view launcher UI", () => {
 				expect(document.querySelector('[data-section="process-gallery"]')).not.toBeNull(),
 			);
 			await waitFor(() => expect(document.body.textContent).toContain("Future"));
-			await waitFor(() => expect(document.body.textContent).toContain("Running"));
+			await waitFor(() => expect(document.body.textContent).toContain("Active"));
 			await waitFor(() => expect(document.body.textContent).toContain("All processes"));
 			await waitFor(() => expect(document.body.textContent).toContain("RUN-101"));
 			expect(document.body.textContent).not.toContain("DONE-101");

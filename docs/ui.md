@@ -27,7 +27,7 @@ The Leitwerk user interface provides real-time visibility and steering control o
 
 The process detail view is organized into three distinct visual regions:
 
-- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
+- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. The expanded pane is 240px wide. Active rows show a status dot, title and relative update time above the current turn; each row is limited to two lines with full details on hover. Scheduled rows use a title and schedule line. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
 - **Turn Rail:** Vertical navigation beside the Chronicle, listing completed turns, current work, and its next turn on the declared happy path. Narrow viewports open the same rail in the process navigation sheet.
 - **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
 

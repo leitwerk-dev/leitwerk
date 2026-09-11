@@ -2,7 +2,11 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { type FutureActionSummary, type FutureExecutionSummary, logout } from "../lib/api.js";
 
-import { formatLocalDateTime, formatLocalDateTime24Hour } from "../lib/format.js";
+import {
+	formatLocalDateTime,
+	formatLocalDateTime24Hour,
+	formatRelativeTime,
+} from "../lib/format.js";
 import { openKeyboardShortcutHelp } from "../lib/keyboard-shortcuts-help.js";
 import type { ProcessRowView } from "../lib/process-row-view.js";
 import {
@@ -243,10 +247,6 @@ function stateKind(row: ProcessRowView): string {
 	}
 }
 
-function metaLine(row: ProcessRowView): string {
-	return row.turnLabel ? `${row.turnLabel} · ${row.processDisplayName}` : row.processDisplayName;
-}
-
 function futurePath(item: FutureExecutionSummary): string {
 	if (item.kind === "action") {
 		return processPath(item.instanceId);
@@ -390,16 +390,17 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				class:is-selected={isSelectedRow(row)}
 				aria-current={isSelectedRow(row) ? "page" : undefined}
 				data-pressable="true"
-				title={`${row.title} — ${row.statusLine}`}
+				title={`${row.title} — ${row.statusLine} · ${row.processDisplayName}`}
+				aria-label={`${row.title} — ${row.statusLine}`}
 				onclick={(event) => openCurrentProcessRow(row, event)}
 			>
+				<span class={`row-status-dot ${stateKind(row)}`} aria-hidden="true"></span>
 				<span class="row-copy">
-					<span class="row-title">{row.title}</span>
-					<span class="row-status-line">
-						<span class="row-meta">
-							<span class={`row-status-text ${stateKind(row)}`}>{row.statusLabel}</span> · {metaLine(row)}
-						</span>
+					<span class="row-heading">
+						<span class="row-title">{row.title}</span>
+						<time class="row-age" datetime={row.updatedAt}>{formatRelativeTime(row.updatedAt)}</time>
 					</span>
+					<span class="row-meta">{row.turnLabel ?? row.processDisplayName}</span>
 				</span>
 			</a>
 		{/each}
@@ -410,24 +411,20 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	<div class="process-list {extraListClass}">
 		{#each items as item (item.id)}
 			{@const href = futurePath(item)}
-			{@const itemMeta = futureRowMeta(item)}
 			<a
 				href={href}
 				class="process-row future-row"
 				class:is-selected={isSelectedFutureItem(item)}
 				aria-current={isSelectedFutureItem(item) ? "page" : undefined}
 				data-pressable="true"
-				title={`${item.title} — ${futureStatusLine(item)}`}
+				title={`${item.title} — ${futureStatusLine(item)} · ${futureRowSecondary(item)}`}
+				aria-label={`${item.title} — ${futureStatusLine(item)} · ${futureRowSecondary(item)}`}
 				onclick={(event) => openFutureItem(item, event)}
 			>
+				<span class={`row-status-dot ${item.status === "blocked" ? "error" : futureStateKind(item)}`} aria-hidden="true"></span>
 				<span class="row-copy">
 					<span class="row-title">{item.title}</span>
-					<span class="row-status-line">
-						<span class="row-meta">
-							<span class={`row-status-text ${futureStateKind(item)}`}>{futureRowStatusLabel(item)}</span>{#if itemMeta} · {itemMeta}{/if}
-						</span>
-					</span>
-					<span class="row-secondary">{futureRowSecondary(item)}</span>
+					<span class="row-meta">{futureRowSecondary(item)}</span>
 				</span>
 			</a>
 		{/each}
@@ -756,35 +753,19 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				{/if}
 			</section>
 
-			<section class="process-group waiting-group" class:is-empty={waitingRows.length === 0}>
+			<section class="process-group active-group" class:is-empty={currentRows.length === 0}>
 				<div class="group-header">
-					<div class="group-heading">Waiting</div>
-					<span class="group-count" aria-label={`${waitingRows.length} waiting process${waitingRows.length === 1 ? "" : "es"}`}>
-						{waitingRows.length}
+					<div class="group-heading">Active</div>
+					<span class="group-count" aria-label={`${currentRows.length} active process${currentRows.length === 1 ? "" : "es"}`}>
+						{currentRows.length}
 					</span>
 				</div>
 				{#if $listState.loading && currentRows.length === 0}
 					<div class="empty-state">Loading active processes…</div>
 				{:else if currentRows.length === 0}
 					<div class="empty-state">No waiting or running processes. Start one above and it will appear here.</div>
-				{:else if waitingRows.length === 0}
-					<div class="empty-state">No waiting processes.</div>
 				{:else}
-					{@render processRowList(waitingRows)}
-				{/if}
-			</section>
-
-			<section class="process-group running-group" class:is-empty={runningRows.length === 0}>
-				<div class="group-header">
-					<div class="group-heading">Running</div>
-					<span class="group-count" aria-label={`${runningRows.length} running process${runningRows.length === 1 ? "" : "es"}`}>
-						{runningRows.length}
-					</span>
-				</div>
-				{#if runningRows.length === 0}
-					<div class="empty-state">No running processes.</div>
-				{:else}
-					{@render processRowList(runningRows)}
+					{@render processRowList(currentRows)}
 				{/if}
 			</section>
 		</div>
@@ -852,14 +833,14 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 
 <style>
 	.sidebar {
-		--sidebar-expanded-width: clamp(260px, 25vw, 300px);
+		--sidebar-expanded-width: 240px;
 		--sidebar-collapsed-width: 64px;
 		display: flex;
 		flex: 0 0 var(--sidebar-expanded-width);
 		flex-direction: column;
 		width: var(--sidebar-expanded-width);
-		min-width: 250px;
-		max-width: 300px;
+		min-width: var(--sidebar-expanded-width);
+		max-width: var(--sidebar-expanded-width);
 		height: 100%;
 		min-height: 0;
 		padding: 16px var(--space-xs) 20px;
@@ -1250,14 +1231,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		min-height: 124px;
 	}
 
-	.waiting-group:not(.is-empty) {
-		flex-grow: 1.06;
-	}
-
-	.running-group:not(.is-empty) {
-		flex-grow: 0.94;
-	}
-
 	.future-group:not(.is-empty) {
 		flex-grow: 0.8;
 	}
@@ -1314,8 +1287,10 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	}
 
 	.process-row {
-		display: block;
-		padding: calc(var(--space-xs) + 1px) var(--process-row-gutter, var(--space-xs));
+		display: grid;
+		grid-template-columns: 12px minmax(0, 1fr);
+		column-gap: 8px;
+		padding: 6px var(--process-row-gutter, var(--space-xs));
 		border-radius: 14px;
 		box-shadow: inset 0 0 0 1px transparent;
 		color: inherit;
@@ -1340,28 +1315,52 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		min-width: 0;
 	}
 
-	.row-status-line {
-		display: block;
+	.row-heading {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
 		min-width: 0;
 	}
 
-	.row-status-text.running,
-	.row-status-text.future-action {
-		color: color-mix(in srgb, var(--chronicle-accent) 76%, var(--chronicle-text) 24%);
+	.row-heading .row-title {
+		flex: 1;
+		min-width: 0;
 	}
 
-	.row-status-text.waiting,
-	.row-status-text.future-once {
-		color: color-mix(in srgb, var(--chronicle-attention) 76%, var(--chronicle-text) 24%);
+	.row-age {
+		flex: none;
+		color: var(--chronicle-text-muted);
+		font-size: 0.75rem;
+		line-height: 1.32;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
 	}
 
-	.row-status-text.error {
-		color: color-mix(in srgb, var(--chronicle-danger) 76%, var(--chronicle-text) 24%);
+	.row-status-dot {
+		width: 10px;
+		height: 10px;
+		margin-top: 5px;
+		border-radius: 50%;
+		background: var(--chronicle-text-muted);
 	}
 
-	.row-status-text.completed,
-	.row-status-text.future-cron {
-		color: color-mix(in srgb, var(--chronicle-success) 70%, var(--chronicle-text) 30%);
+	.row-status-dot.running,
+	.row-status-dot.future-action {
+		background: var(--chronicle-accent);
+	}
+
+	.row-status-dot.waiting,
+	.row-status-dot.future-once {
+		background: var(--chronicle-attention);
+	}
+
+	.row-status-dot.error {
+		background: var(--chronicle-danger);
+	}
+
+	.row-status-dot.completed,
+	.row-status-dot.future-cron {
+		background: var(--chronicle-success);
 	}
 
 	.row-title {
@@ -1369,32 +1368,22 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		line-height: 1.32;
 		font-weight: 620;
 		color: var(--chronicle-text);
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
+		display: block;
 		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.row-meta {
-		font-size: 0.75rem;
-		line-height: 1.32;
-		font-weight: 600;
+		font-size: 0.8125rem;
+		line-height: 1.4;
+		font-weight: 400;
 		font-variant-numeric: tabular-nums;
 		color: var(--chronicle-text-faint);
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
+		display: block;
 		overflow: hidden;
-	}
-
-	.row-secondary {
-		font-size: 0.8125rem;
-		line-height: 1.45;
-		color: var(--chronicle-text-muted);
-		display: -webkit-box;
-		-webkit-line-clamp: 2;
-		-webkit-box-orient: vertical;
-		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 
