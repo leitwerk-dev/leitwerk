@@ -81,6 +81,25 @@ function evidence(
 }
 
 describe("startup evidence", () => {
+	it("stops the last unaccepted startup when its process is aborted", () => {
+		const result = buildStartupEvidence({
+			process: {
+				...process(),
+				lifecycleStatus: "aborted",
+				currentExecution: null,
+				closedAt: "2026-01-01T00:00:12.000Z",
+			},
+			turnStarts: [start()],
+			leases: [lease()],
+			turnRecords: [],
+		});
+		expect(result.currentAttempt?.status).toBe("superseded");
+		expect(result.currentAttempt?.steps[1]).toMatchObject({
+			status: "superseded",
+			endedAt: "2026-01-01T00:00:12.000Z",
+		});
+	});
+
 	it("retains observed phase intervals instead of treating connection as an instant step", () => {
 		const result = evidence({
 			leases: [

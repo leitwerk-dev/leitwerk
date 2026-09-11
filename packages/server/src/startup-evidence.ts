@@ -154,7 +154,10 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			? "succeeded"
 			: failed
 				? "failed"
-				: start.id !== currentStartId && index < startupStarts.length - 1
+				: start.state.kind === "superseded" ||
+						input.process.lifecycleStatus === "aborted" ||
+						input.process.lifecycleStatus === "completed" ||
+						(start.id !== currentStartId && index < startupStarts.length - 1)
 					? "superseded"
 					: "starting";
 		const failedStepId: StartupAttemptStepSummary["id"] = !lease
@@ -180,10 +183,17 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			start_worker: "Resolve the turn and request its worker.",
 			connect_worker: "Allocate storage, schedule and start the worker, then connect.",
 			prepare_workspace: "Prepare the workspace, tools and model provider.",
-			start_first_turn:
-				"Accept the turn and hand it to the worker. Model response time follows separately.",
+			start_first_turn: "Accept the turn and hand it to the worker.",
 		};
-		const stoppedAt = failed || status === "superseded" ? start.updatedAt : null;
+		const stoppedAt =
+			failed || start.state.kind === "superseded"
+				? start.updatedAt
+				: status === "superseded"
+					? (startupStarts[index + 1]?.createdAt ??
+						input.process.closedAt ??
+						input.process.updatedAt ??
+						start.updatedAt)
+					: null;
 		const step = (
 			id: StartupAttemptStepSummary["id"],
 			completed: boolean,
