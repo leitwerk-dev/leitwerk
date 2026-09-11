@@ -217,9 +217,10 @@ Kubernetes sampling runs independently at 250 ms with one cycle per worker and
 1.5-second request cancellation. It stops on lifecycle termination, timeout, two
 seconds after readiness, or complete evidence. Events are paginated and matched
 by pod UID and worker-container field path. Running and terminated starts are
-accepted. A cached-image event is not a pull start. API failures leave gaps and
-emit at most three generic diagnostics per sampler. Adoption resumes collection
-for the original lease; request boundaries are never reconstructed.
+accepted. A cached-image event is not a pull start. PVC and pod collection run
+independently; a PVC read failure does not suppress pod evidence. API failures leave
+gaps and emit at most three generic diagnostics per sampler. Adoption resumes
+collection for the original lease; request boundaries are never reconstructed.
 
 The UI snapshot's optional `startup.workerStarts` contains all physical leases,
 observations and derived intervals. It uses durable timestamps only, without
@@ -227,7 +228,8 @@ bootstrap-receipt fallbacks. Existing attempts, recovery and four UI steps retai
 their behavior. Unknown historical milestones remain missing. Intervals report
 `available`, `missing` or `invalid_order`; only available intervals have durations.
 Server receipt totals and Kubernetes source-time intervals use separate clocks.
-Kubernetes timestamps retain source precision. Storage, scheduling and pulls may
+Kubernetes timestamps retain source precision (seconds, milliseconds or microseconds).
+Derived durations use millisecond resolution. Storage, scheduling and pulls may
 overlap and must not be added into an exclusive breakdown. PVC binding uses a
 last-not-bound/first-bound sampling window, with a missing lower bound when no
 unbound state was observed. The upper bound is not the exact binding time.

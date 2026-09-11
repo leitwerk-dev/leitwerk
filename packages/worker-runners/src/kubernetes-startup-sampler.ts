@@ -59,7 +59,10 @@ export function sampleKubernetesStartup(
 			objectUid,
 			sourceKind,
 			notBefore,
-			metadata,
+			metadata: {
+				...metadata,
+				...(sourceAt !== null ? { precision: sourcePrecision(sourceAt) } : {}),
+			},
 		});
 		seen.add(milestone);
 	};
@@ -67,6 +70,10 @@ export function sampleKubernetesStartup(
 		stopped = true;
 		if (timer) clearTimeout(timer);
 		active?.abort();
+	};
+	const reportFailure = () => {
+		if (!stopped && failures++ < 3)
+			console.warn("Worker startup observation unavailable: Kubernetes collection failed");
 	};
 	const cycle = async () => {
 		if (stopped || observer.shouldStop?.() || Date.now() >= deadline) {
@@ -76,7 +83,7 @@ export function sampleKubernetesStartup(
 		active = new AbortController();
 		const timeout = setTimeout(() => active?.abort(), 1500);
 		const signal = active.signal;
-		try {
+		const collectPvc = async () => {
 			if (!seen.has("pvc_bound") && client.getPersistentVolumeClaim) {
 				const pvc = await client.getPersistentVolumeClaim(pvcName, namespace, { signal });
 				if (pvc?.uid) {
@@ -97,6 +104,8 @@ export function sampleKubernetesStartup(
 					else lastUnbound = new Date().toISOString();
 				}
 			}
+		};
+		const collectPod = async () => {
 			if (pod) {
 				const summary = await client.getPod(pod.name, namespace, { signal });
 				if (!summary) {
@@ -121,7 +130,6 @@ export function sampleKubernetesStartup(
 						namespace,
 						podName: pod.name,
 						...summary.resources,
-						precision: "seconds" as const,
 					};
 					if (summary.createdAt) emit("pod_created", podUid, summary.createdAt, metadata);
 					if (summary.scheduledAt) emit("pod_scheduled", podUid, summary.scheduledAt, metadata);
@@ -147,6 +155,9 @@ export function sampleKubernetesStartup(
 				}
 				if (summary.phase === "Failed" || summary.phase === "Succeeded") stop();
 			}
+		};
+		try {
+			await Promise.all([collectPvc().catch(reportFailure), collectPod().catch(reportFailure)]);
 			if (
 				seen.has("container_started") &&
 				seen.has("pod_scheduled") &&
@@ -155,9 +166,6 @@ export function sampleKubernetesStartup(
 					(seen.has("image_pull_started") && seen.has("image_pull_finished")))
 			)
 				stop();
-		} catch {
-			if (!stopped && failures++ < 3)
-				console.warn("Worker startup observation unavailable: Kubernetes collection failed");
 		} finally {
 			clearTimeout(timeout);
 			active = undefined;
@@ -175,4 +183,9 @@ export function sampleKubernetesStartup(
 			pod = input;
 		},
 	};
+}
+
+function sourcePrecision(timestamp: string): "seconds" | "milliseconds" | "microseconds" {
+	const digits = /\.(\d+)/.exec(timestamp)?.[1].length ?? 0;
+	return digits === 0 ? "seconds" : digits <= 3 ? "milliseconds" : "microseconds";
 }

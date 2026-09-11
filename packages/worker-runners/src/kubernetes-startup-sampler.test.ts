@@ -60,3 +60,45 @@ it("ignores other UIDs and sidecars, accepts terminated start, and does not inve
 		"image_cached",
 	]);
 });
+
+it("retains pod evidence and source precision when PVC reads fail", async () => {
+	vi.useFakeTimers();
+	const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	const client = Object.assign(new FakeKubernetesApiClient(), {
+		getPersistentVolumeClaim: vi.fn().mockRejectedValue(new Error("PVC unavailable")),
+	});
+	vi.spyOn(client, "getPod").mockResolvedValue({
+		name: "pod",
+		namespace: "ns",
+		uid: "uid",
+		labels: buildWorkerUnitLabels({ instanceId: "p", workerId: "w", serverEpoch: "e" }),
+		phase: "Running",
+		createdAt: "2026-09-11T10:00:00Z",
+		scheduledAt: "2026-09-11T10:00:00.123Z",
+		containerStartedAt: "2026-09-11T10:00:02Z",
+	});
+	client.recordPodEvent("pod", "ns", {
+		objectUid: "uid",
+		fieldPath: "spec.containers{worker}",
+		reason: "Pulling",
+		eventTime: "2026-09-11T10:00:01.123456Z",
+	});
+	const observe = vi.fn();
+	const sampler = sampleKubernetesStartup(client, { report() {}, observe }, "ns", "pvc");
+	sampler.attachPod({ name: "pod", instanceId: "p", workerId: "w" });
+	try {
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(
+			observe.mock.calls.map(([o]) => [o.milestone, o.sourceAt, o.metadata.precision]),
+		).toEqual([
+			["pod_created", "2026-09-11T10:00:00Z", "seconds"],
+			["pod_scheduled", "2026-09-11T10:00:00.123Z", "milliseconds"],
+			["container_started", "2026-09-11T10:00:02Z", "seconds"],
+			["image_pull_started", "2026-09-11T10:00:01.123456Z", "microseconds"],
+		]);
+		expect(warn).toHaveBeenCalledTimes(3);
+	} finally {
+		sampler.stop();
+		warn.mockRestore();
+	}
+});

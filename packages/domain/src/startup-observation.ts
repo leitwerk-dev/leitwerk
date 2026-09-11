@@ -32,7 +32,7 @@ export interface StartupObservation {
 		memory?: string;
 		namespace?: string;
 		podName?: string;
-		precision?: "milliseconds" | "seconds" | "sampling_interval";
+		precision?: "milliseconds" | "microseconds" | "seconds" | "sampling_interval";
 	};
 }
 export interface StartupInterval {
