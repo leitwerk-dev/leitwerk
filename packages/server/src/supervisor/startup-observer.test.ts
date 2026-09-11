@@ -53,7 +53,16 @@ it("correlates initial prompt and text, rejects stale workers, thinking, empty o
 		send("pi.stream.delta", { streamType: "text", text: "" });
 		expect(repos.startupObservations.listByLease(lease.id)).toEqual([]);
 		send("worker.trace", { code: "turn.prompt_started" });
-		send("pi.stream.delta", { streamType: "text", text: "hello" });
+		send("pi.stream.delta", { turnRecordId: "stale-turn", streamType: "text", text: "stale" });
+		expect(repos.startupObservations.listByLease(lease.id).map((o) => o.milestone)).toEqual([
+			"prompt_started",
+		]);
+		send("pi.stream.delta", {
+			turnRecordId: undefined,
+			turnId: "turn-1",
+			streamType: "text",
+			text: "hello",
+		});
 		const initial = repos.startupObservations.listByLease(lease.id);
 		expect(initial.map((o) => o.milestone).sort()).toEqual(["first_text", "prompt_started"]);
 		send("worker.trace", { code: "turn.prompt_started" });

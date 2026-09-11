@@ -139,22 +139,29 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 							(readWsEventStreamText(data)?.length ?? 0) > 0
 						? "first_text"
 						: null;
+			// Pi deltas carry a Pi turn id. The server binds them to the accepted
+			// process turn, just as it does for the durable event projection below.
+			const observationTurnRecordId =
+				suppliedTurnRecordId ?? (milestone === "first_text" ? currentTurnRecordId : null);
 			if (
 				milestone &&
-				suppliedTurnRecordId &&
-				suppliedTurnRecordId === currentTurnRecordId &&
-				deps.leases
-			)
+				observationTurnRecordId &&
+				observationTurnRecordId === currentTurnRecordId &&
+				deps.leases &&
+				(!payload.selectedTurnId || payload.selectedTurnId === process.selectedTurnId)
+			) {
 				recordInitialTurnObservation(
 					{ ...deps, leases: deps.leases },
 					{
 						instanceId,
 						workerId,
-						turnRecordId: suppliedTurnRecordId,
+						turnRecordId: observationTurnRecordId,
 						milestone,
 						observedAt: new Date().toISOString(),
 					},
 				);
+			}
+
 			if (suppliedTurnRecordId && suppliedTurnRecordId !== currentTurnRecordId) return;
 			if (payload.eventType === "turn.progress") {
 				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);

@@ -272,4 +272,3 @@ with durable observations, non-secret runtime metadata and clock-labelled
 intervals. Missing endpoints and invalid ordering have null durations. Source
 precision accompanies Kubernetes observations; binding timestamps are sampling
 bounds. This diagnostic collection does not change the four-step startup UI.
-
