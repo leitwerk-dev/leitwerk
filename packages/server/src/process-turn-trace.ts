@@ -389,26 +389,37 @@ export function buildTurnTraceFromSession(input: {
 	});
 }
 
-/** Recover persisted activity when a worker ended before uploading its turn content. */
+function hasAdditionalRecordedActivity(recorded: TurnTraceSnapshot, session: TurnTraceSnapshot) {
+	if (
+		!session.assistant.text.includes(recorded.assistant.text) ||
+		!session.assistant.thinking.includes(recorded.assistant.thinking)
+	)
+		return true;
+	const sessionTools = new Map(session.toolCalls.map((tool) => [tool.toolCallId, tool]));
+	return recorded.toolCalls.some((tool) => {
+		const saved = sessionTools.get(tool.toolCallId);
+		return (
+			!saved ||
+			(tool.status === "completed" && saved.status !== "completed") ||
+			(tool.resultText !== null && !saved.resultText?.includes(tool.resultText))
+		);
+	});
+}
+
+/** Prefer recorded activity when the retained session omits part of the turn. */
 export function buildCommittedTurnTrace(input: {
 	tree: ReadonlyPiSessionTree;
 	turnRecord: TraceTurnRecord;
 	events: readonly ProcessEvent[];
 }): TurnTraceSnapshot {
 	const sessionTrace = buildTurnTraceFromSession(input);
-	if (
-		sessionTrace &&
-		(sessionTrace.assistant.text ||
-			sessionTrace.assistant.thinking ||
-			sessionTrace.toolCalls.length)
-	)
-		return sessionTrace;
 	const trace = snapshotTurnTrace(
 		buildLiveTurnProjectionFromEvents(
 			input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
 		),
 		sessionTrace?.piInput ?? null,
 	);
+	if (sessionTrace && !hasAdditionalRecordedActivity(trace, sessionTrace)) return sessionTrace;
 	trace.usage ??= sessionTrace?.usage ?? null;
 	for (const item of sessionTrace?.traceItems ?? []) {
 		if (item.kind === "operational_event") appendOperationalTraceItem(trace.traceItems, item);
