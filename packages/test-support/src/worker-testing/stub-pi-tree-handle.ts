@@ -360,9 +360,11 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	}): Promise<PiTurnExecutionResult> {
 		this.assertOpen();
 		this.turnAbort = new AbortController();
+		const signal = this.turnAbort.signal;
 		if ((await this.beforeTurn?.(input.kind, input.options, input.promptText)) === false) {
 			input.options = undefined;
 		}
+		signal.throwIfAborted();
 		if (this.branchDriftPending) {
 			this.branchDriftPending = false;
 			throw Object.assign(new Error("stubbed Pi branch drift"), {
@@ -397,6 +399,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			createdEntryIds.push(userEntryId);
 		}
 		await this.persistState?.();
+		signal.throwIfAborted();
 		this.emitEvent({ type: "turn.start", turnId, data: {}, timestamp });
 
 		const tools = new Map((input.options?.tools ?? []).map((tool) => [tool.name, tool]));
@@ -408,6 +411,13 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			promptText: input.promptText ?? "",
 			tools: input.options?.tools ?? [],
 		});
+		signal.throwIfAborted();
+		const hasScriptedChunks = Boolean(
+			scriptedItem &&
+				"calls" in scriptedItem &&
+				(scriptedItem.textChunks?.length ?? 0) + (scriptedItem.thinkingChunks?.length ?? 0),
+		);
+		if (hasScriptedChunks) assistantContent = "";
 		if (scriptedItem && "calls" in scriptedItem) {
 			const streamed = { thinking: "", text: "" };
 			const streamEntryId = `stream-${this.state.turnSeq}`;
@@ -420,8 +430,9 @@ export class StubPiTreeHandle implements PiTreeHandle {
 				...(scriptedItem.textChunks ?? []).map((text) => ({ text, streamType: "text" as const })),
 			];
 			for (const { text, streamType } of chunks) {
-				this.turnAbort.signal.throwIfAborted();
+				signal.throwIfAborted();
 				streamed[streamType] += text;
+				assistantContent = streamed.text;
 				if (this.recordSessionTrace) {
 					const entry = this.createMessageEntry(
 						streamEntryId,
@@ -446,23 +457,25 @@ export class StubPiTreeHandle implements PiTreeHandle {
 					data: { text, streamType },
 					timestamp: new Date().toISOString(),
 				});
+				signal.throwIfAborted();
 				if (scriptedItem.chunkDelayMs)
 					await new Promise<void>((resolve, reject) => {
 						const timer = setTimeout(() => {
-							this.turnAbort.signal.removeEventListener("abort", abort);
+							signal.removeEventListener("abort", abort);
 							resolve();
 						}, scriptedItem.chunkDelayMs);
 						const abort = () => {
 							clearTimeout(timer);
-							reject(this.turnAbort.signal.reason);
+							reject(signal.reason);
 						};
-						this.turnAbort.signal.addEventListener("abort", abort, { once: true });
+						signal.addEventListener("abort", abort, { once: true });
 					});
 			}
 		}
 		const scriptedCalls = scriptedItem ? expandStubToolCallScriptItem(scriptedItem) : [];
 		if (scriptedCalls.length > 0) {
 			for (const [callIndex, scriptedCall] of scriptedCalls.entries()) {
+				signal.throwIfAborted();
 				const toolCallId = stubToolCallId(this.state.turnSeq, scriptedCalls.length, callIndex);
 				this.emitEvent({
 					type: "tool.call",
@@ -525,14 +538,15 @@ export class StubPiTreeHandle implements PiTreeHandle {
 						await this.persistState?.();
 					};
 					try {
-						this.turnAbort.signal.throwIfAborted();
+						signal.throwIfAborted();
 						const blocked = input.options?.shouldBlockToolCall?.(scriptedCall.toolName);
 						if (blocked) throw new Error(blocked);
 						const result = await tool.execute(scriptedCall.args, {
 							toolCallId,
-							signal: this.turnAbort.signal,
+							signal,
 							suspendPromptGuards: input.options?.suspendPromptGuards,
 						});
+						signal.throwIfAborted();
 						if (!assistantContentFromScriptedMarkdown) {
 							assistantContent = stringifyToolResult(result);
 						}
@@ -574,11 +588,11 @@ export class StubPiTreeHandle implements PiTreeHandle {
 					createdEntryIds.push(intermediateEntryId);
 				}
 			}
-		} else if (tools.size > 0) {
+		} else if (tools.size > 0 && !hasScriptedChunks) {
 			throw new Error(
 				`Stub Pi prompt requires a stub tool-call script when tools are provided (${[...tools.keys()].join(", ")})`,
 			);
-		} else if (input.promptText !== undefined) {
+		} else if (input.promptText !== undefined && !hasScriptedChunks) {
 			this.emitEvent({
 				type: "stream.delta",
 				turnId,
@@ -587,17 +601,22 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			});
 		}
 
+		signal.throwIfAborted();
+		// Keep the result entry ID without repeating content already saved in the stream entry.
 		this.addEntry(
 			this.createMessageEntry(
 				turnId,
 				this.state.currentLeafId,
 				"assistant",
-				assistantContent,
+				this.recordSessionTrace && hasScriptedChunks && scriptedCalls.length === 0
+					? []
+					: assistantContent,
 				timestamp,
 			),
 		);
 		createdEntryIds.push(turnId);
 		await this.persistState?.();
+		signal.throwIfAborted();
 		this.emitEvent({ type: "turn.end", turnId, data: {}, timestamp });
 		const resultEntryId = this.state.currentLeafId;
 		if (!resultEntryId) {

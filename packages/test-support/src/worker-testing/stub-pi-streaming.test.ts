@@ -207,3 +207,124 @@ it("aborts an interactive tool using its correlated call context", async () => {
 		await rm(root, { recursive: true, force: true });
 	}
 });
+
+it.each([
+	false,
+	true,
+])("returns streamed-only output once with trace recording=%s", async (recordSessionTrace) => {
+	const root = await mkdtemp(path.join(tmpdir(), "pi-stream-only-test-"));
+	try {
+		const treeFile = path.join(root, "tree.jsonl");
+		const handle = await new StubPiTreeHandleFactory({
+			recordSessionTrace,
+			toolCallScriptResolver: () => ({ calls: [], textChunks: ["Scripted ", "answer"] }),
+		}).createPrimaryTreeHandle({ treeFile, workspaceRoot: root, resume: false });
+		const chunks: string[] = [];
+		handle.subscribe((event) => {
+			if (event.type === "stream.delta") chunks.push(String(event.data.text));
+		});
+		const result = await handle.prompt("Do not echo this prompt");
+		expect(chunks).toEqual(["Scripted ", "answer"]);
+		expect(result.assistantMarkdown).toBe("Scripted answer");
+		const assistantText = handle
+			.getBranch()
+			.flatMap((entry) => {
+				const message = entry.message as
+					| { role?: string; content?: string | Array<{ type: string; text?: string }> }
+					| undefined;
+				if (message?.role !== "assistant") return [];
+				return typeof message.content === "string"
+					? [message.content]
+					: (message.content ?? [])
+							.filter((block) => block.type === "text")
+							.map((block) => block.text ?? "");
+			})
+			.join("");
+		expect(assistantText).toBe("Scripted answer");
+		expect(handle.getLeafId()).toBe(result.resultEntryId);
+		await handle.close();
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+it.each([
+	"abort",
+	"close",
+] as const)("rejects when %s is requested on the final streamed chunk", async (operation) => {
+	const root = await mkdtemp(path.join(tmpdir(), "pi-final-chunk-test-"));
+	try {
+		const handle = await new StubPiTreeHandleFactory({
+			recordSessionTrace: true,
+			toolCallScriptResolver: () => ({ calls: [], textChunks: ["Final chunk"], chunkDelayMs: 1 }),
+		}).createPrimaryTreeHandle({
+			treeFile: path.join(root, "tree.jsonl"),
+			workspaceRoot: root,
+			resume: false,
+		});
+		const events: string[] = [];
+		let stopped: Promise<void> | undefined;
+		handle.subscribe((event) => {
+			events.push(event.type);
+			if (event.type === "stream.delta")
+				stopped = operation === "abort" ? handle.abortTurn() : handle.close();
+		});
+		await expect(handle.prompt("Input")).rejects.toThrow(
+			operation === "abort" ? "aborted" : "closed",
+		);
+		await stopped;
+		expect(events).not.toContain("turn.end");
+		const manager = SessionManager.open(path.join(root, "tree.jsonl"));
+		expect(manager.getEntry("turn-1")).toBeUndefined();
+		expect(manager.getEntries()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					message: expect.objectContaining({ content: [{ type: "text", text: "Final chunk" }] }),
+				}),
+			]),
+		);
+		if (operation === "abort") await handle.close();
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
+
+it("rejects a cancelled turn after its asynchronous resolver returns", async () => {
+	const root = await mkdtemp(path.join(tmpdir(), "pi-resolver-cancel-test-"));
+	try {
+		let entered!: () => void;
+		const started = new Promise<void>((resolve) => {
+			entered = resolve;
+		});
+		let release!: () => void;
+		const pending = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const handle = await new StubPiTreeHandleFactory({
+			async toolCallScriptResolver() {
+				entered();
+				await pending;
+				return { calls: [] };
+			},
+		}).createPrimaryTreeHandle({
+			treeFile: path.join(root, "tree"),
+			workspaceRoot: root,
+			resume: false,
+		});
+		const events: string[] = [];
+		handle.subscribe((event) => {
+			events.push(event.type);
+		});
+		const turn = handle.prompt("Input");
+		const rejected = expect(turn).rejects.toThrow("aborted");
+		await started;
+		await handle.abortTurn();
+		release();
+		await rejected;
+		expect(events).toEqual(["turn.start"]);
+		expect(handle.getEntry("turn-1")).toBeUndefined();
+		await handle.close();
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+});
