@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/coding",
-	"version": "0.1.9",
+	"version": "0.2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -50,8 +50,8 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.1.9",
-		"@leitwerk-dev/process-sdk": "0.1.9"
+		"@leitwerk-dev/domain": "0.2.0",
+		"@leitwerk-dev/process-sdk": "0.2.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.2.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.9...v0.2.0) (2026-09-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ui:** load reasoning history on demand ([#51](https://github.com/leitwerk-dev/leitwerk/issues/51))
+* **runtime:** migrate process execution and harden worker launch ([#34](https://github.com/leitwerk-dev/leitwerk/issues/34))
+
+### Features
+
+* **auth:** add personal and shared anonymous API tokens ([#47](https://github.com/leitwerk-dev/leitwerk/issues/47)) ([1b2d7ea](https://github.com/leitwerk-dev/leitwerk/commit/1b2d7ea154b9f50ae736bbf33f23e49d410ee8a8))
+* **dev:** support installed extensions in development compositions ([#39](https://github.com/leitwerk-dev/leitwerk/issues/39)) ([c3d6a79](https://github.com/leitwerk-dev/leitwerk/commit/c3d6a795f5a416a91284667e8da8e3c34b4b8c6d))
+* **dev:** support local sandboxes and recorded scripted sessions ([#56](https://github.com/leitwerk-dev/leitwerk/issues/56)) ([6632468](https://github.com/leitwerk-dev/leitwerk/commit/6632468b7ed9f064a9edf32709bb930da6a5a2f9))
+* **release:** guard stable publication and add opt-in npm release candidates ([#41](https://github.com/leitwerk-dev/leitwerk/issues/41)) ([214e792](https://github.com/leitwerk-dev/leitwerk/commit/214e792343158ddf7c911f8d98bd2cd46290006f))
+* **session-transfer:** transfer retained sessions to local Pi ([#35](https://github.com/leitwerk-dev/leitwerk/issues/35)) ([cea4811](https://github.com/leitwerk-dev/leitwerk/commit/cea481104785a58d2703fb1b11f6a3fbea5be295))
+* **ui:** add Chronicle turn navigation and compact process views ([#57](https://github.com/leitwerk-dev/leitwerk/issues/57)) ([d725c4f](https://github.com/leitwerk-dev/leitwerk/commit/d725c4f4f8f885d66da62014da7b865d83f17ef0))
+* **ui:** load reasoning history on demand ([#51](https://github.com/leitwerk-dev/leitwerk/issues/51)) ([eab497c](https://github.com/leitwerk-dev/leitwerk/commit/eab497c8a4ccb36bdaf254eedc7dc8cc03f58828))
+* **workers:** support private Docker runtimes ([#36](https://github.com/leitwerk-dev/leitwerk/issues/36)) ([55fb9e2](https://github.com/leitwerk-dev/leitwerk/commit/55fb9e2749b4a64fa877c9c34fae21becd0ec9f5))
+
+
+### Bug Fixes
+
+* **ci:** restore browser installation and package validation ([#42](https://github.com/leitwerk-dev/leitwerk/issues/42)) ([b35dba4](https://github.com/leitwerk-dev/leitwerk/commit/b35dba4d5be5f91600f23a48cf2cad7d834ab55d))
+* **ticket:** retain destination history across upgrades ([#49](https://github.com/leitwerk-dev/leitwerk/issues/49)) ([b6dc378](https://github.com/leitwerk-dev/leitwerk/commit/b6dc378d4b18365422a2a41520520b70a9a1f5b7))
+* **ui:** keep ticket questions in reasoning flow ([#37](https://github.com/leitwerk-dev/leitwerk/issues/37)) ([ce9d9fc](https://github.com/leitwerk-dev/leitwerk/commit/ce9d9fca7cc585cbe7eeaca7dea6408876e189e6))
+* **ui:** unify process controls and dialog presentation ([#55](https://github.com/leitwerk-dev/leitwerk/issues/55)) ([3d0dd9e](https://github.com/leitwerk-dev/leitwerk/commit/3d0dd9e0bccd15eb1e0e28e358016d89fbac4c1c))
+* **worker:** isolate repository commands and enforce Docker runtime contracts ([#52](https://github.com/leitwerk-dev/leitwerk/issues/52)) ([97f0a87](https://github.com/leitwerk-dev/leitwerk/commit/97f0a87b33a8e7317e88ee43d514f2d5395edff7))
+
+
+### Refactoring
+
+* **runtime:** migrate process execution and harden worker launch ([#34](https://github.com/leitwerk-dev/leitwerk/issues/34)) ([fd3337e](https://github.com/leitwerk-dev/leitwerk/commit/fd3337ea7ffa67f592cb219942ddea7a47362ebb))
+
 ## [0.1.9](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.8...v0.1.9) (2026-08-20)
 
 
