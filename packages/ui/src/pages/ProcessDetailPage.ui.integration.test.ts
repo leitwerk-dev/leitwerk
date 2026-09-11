@@ -2043,36 +2043,36 @@ describe("ProcessDetailPage", () => {
 
 		const startupHistory = target.querySelector('[data-section="startup-history"]');
 		expect(startupHistory?.textContent).toContain("Process startup failed");
-		expect(startupHistory?.querySelector('[data-component="chronicle-checklist"]')).not.toBeNull();
+		expect(startupHistory?.querySelector(".progress-checklist")).not.toBeNull();
 		expect(
 			startupHistory
-				?.querySelector('[data-checklist-step="start_worker"]')
-				?.getAttribute("data-checklist-status"),
-		).toBe("success");
+				?.querySelector('[data-progress-step="start_worker"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("completed");
 		expect(
 			startupHistory
-				?.querySelector('[data-checklist-step="prepare_workspace"]')
-				?.getAttribute("data-checklist-status"),
+				?.querySelector('[data-progress-step="prepare_workspace"]')
+				?.getAttribute("data-progress-status"),
 		).toBe("failed");
 
 		const workspacePreparation = target.querySelector('[data-section="turn-progress"]');
 		expect(workspacePreparation?.textContent).toContain("LLM workspace preparation");
-		expect(workspacePreparation?.getAttribute("data-component")).toBe("chronicle-checklist");
+		expect(workspacePreparation?.classList.contains("progress-checklist")).toBe(true);
 		expect(
 			workspacePreparation
-				?.querySelector('[data-checklist-step="checkout"]')
-				?.getAttribute("data-checklist-status"),
-		).toBe("success");
+				?.querySelector('[data-progress-step="checkout"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("completed");
 		expect(
 			workspacePreparation
-				?.querySelector('[data-checklist-step="skills"]')
-				?.getAttribute("data-checklist-status"),
-		).toBe("active");
+				?.querySelector('[data-progress-step="skills"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("in_progress");
 		expect(
 			workspacePreparation
-				?.querySelector('[data-checklist-step="instructions"]')
-				?.getAttribute("data-checklist-status"),
-		).toBe("pending");
+				?.querySelector('[data-progress-step="instructions"]')
+				?.getAttribute("data-progress-status"),
+		).toBe("incomplete");
 		expect(target.querySelector('[data-section="startup-recovery"]')?.textContent).toContain(
 			"Retry startup",
 		);

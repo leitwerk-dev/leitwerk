@@ -1,5 +1,11 @@
 # UI Architecture & Layout
 
+Startup history and turn progress use `ProgressChecklist`; the launch checklist
+uses the same `ProgressChecklistRows`. Rows preserve their recorded order,
+labels, details, and states. Text and static symbols identify pending, active,
+complete, failed, skipped, and superseded steps. Each checklist has a unique
+accessible heading. Narrow containers wrap status labels below their step text.
+
 The Leitwerk user interface provides real-time visibility and steering control over running AI workflows. This guide explains the three core UI concepts: the Chronicle timeline and Turn Rail layout, live streaming text overlays, and custom extension UI slots.
 
 ---
