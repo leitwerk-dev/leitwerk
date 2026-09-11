@@ -113,6 +113,10 @@ export interface KubernetesValidatingAdmissionPolicyBindingManifest {
 }
 
 export interface KubernetesPodEventSummary {
+	objectUid?: string;
+	fieldPath?: string;
+	firstTimestamp?: string;
+	eventTime?: string;
 	type?: string;
 	reason?: string;
 	message?: string;

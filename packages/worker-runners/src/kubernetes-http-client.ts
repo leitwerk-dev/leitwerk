@@ -5,6 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { URL } from "node:url";
 import type {
 	KubernetesApiClient,
+	KubernetesApiRequestOptions,
 	KubernetesNamespaceSummary,
 	KubernetesPodSummary,
 } from "./kubernetes-api-client.js";
@@ -43,21 +44,41 @@ function boundedApiError(text: string): string {
 }
 
 interface KubernetesListResponse<T> {
+	metadata?: { continue?: string };
 	items?: T[];
 }
 
 interface KubernetesObjectResponse {
+	spec?: {
+		nodeName?: string;
+		storageClassName?: string;
+		volumes?: Array<{ persistentVolumeClaim?: { claimName?: string } }>;
+		containers?: Array<{
+			name?: string;
+			resources?: { limits?: { cpu?: string; memory?: string } };
+		}>;
+	};
+	involvedObject?: { uid?: string; fieldPath?: string };
+	firstTimestamp?: string;
+	eventTime?: string;
 	metadata?: {
+		uid?: string;
+		creationTimestamp?: string;
 		name?: string;
 		namespace?: string;
 		labels?: Record<string, string>;
 	};
 	status?: {
+		conditions?: Array<{ type?: string; status?: string; lastTransitionTime?: string }>;
 		phase?: string;
 		reason?: string;
 		containerStatuses?: Array<{
+			name?: string;
+			imageID?: string;
 			state?: {
+				running?: { startedAt?: string };
 				terminated?: {
+					startedAt?: string;
 					exitCode?: number;
 					reason?: string;
 					signal?: number;
@@ -66,6 +87,7 @@ interface KubernetesObjectResponse {
 			};
 			lastState?: {
 				terminated?: {
+					startedAt?: string;
 					exitCode?: number;
 					reason?: string;
 					signal?: number;
@@ -240,6 +262,21 @@ export function createKubernetesHttpApiClient(options: {
 			name,
 			namespace,
 			labels: { ...(item.metadata?.labels ?? {}) },
+			uid: item.metadata?.uid,
+			createdAt: item.metadata?.creationTimestamp,
+			scheduledAt: item.status?.conditions?.find(
+				(c) => c.type === "PodScheduled" && c.status === "True",
+			)?.lastTransitionTime,
+			containerStartedAt:
+				item.status?.containerStatuses?.find((c) => c.name === "worker")?.state?.running
+					?.startedAt ??
+				item.status?.containerStatuses?.find((c) => c.name === "worker")?.state?.terminated
+					?.startedAt,
+			imageId: item.status?.containerStatuses?.find((c) => c.name === "worker")?.imageID,
+			node: item.spec?.nodeName,
+			pvcName: item.spec?.volumes?.find((v) => v.persistentVolumeClaim)?.persistentVolumeClaim
+				?.claimName,
+			resources: item.spec?.containers?.find((c) => c.name === "worker")?.resources?.limits,
 			phase: item.status?.phase,
 		};
 	}
@@ -247,19 +284,32 @@ export function createKubernetesHttpApiClient(options: {
 	async function listPodEvents(
 		name: string,
 		namespace: string,
+		options?: KubernetesApiRequestOptions,
 	): Promise<KubernetesPodEventSummary[]> {
-		const fieldSelector = `involvedObject.kind=Pod,involvedObject.name=${name}`;
-		const result = await request<KubernetesListResponse<KubernetesObjectResponse>>({
-			method: "GET",
-			path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/events?fieldSelector=${encodeURIComponent(fieldSelector)}&limit=10`,
-		});
-		return (result.body?.items ?? []).map((event) => ({
-			type: event.type,
-			reason: event.reason,
-			message: event.message,
-			count: event.count,
-			lastTimestamp: event.lastTimestamp,
-		}));
+		const events: KubernetesPodEventSummary[] = [];
+		let continuation = "";
+		do {
+			const result = await request<KubernetesListResponse<KubernetesObjectResponse>>({
+				method: "GET",
+				signal: options?.signal,
+				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/events?fieldSelector=${encodeURIComponent(`involvedObject.kind=Pod,involvedObject.name=${name}`)}&limit=100${continuation ? `&continue=${encodeURIComponent(continuation)}` : ""}`,
+			});
+			events.push(
+				...(result.body?.items ?? []).map((event) => ({
+					type: event.type,
+					reason: event.reason,
+					message: event.message,
+					count: event.count,
+					lastTimestamp: event.lastTimestamp,
+					firstTimestamp: event.firstTimestamp,
+					eventTime: event.eventTime,
+					objectUid: event.involvedObject?.uid,
+					fieldPath: event.involvedObject?.fieldPath,
+				})),
+			);
+			continuation = result.body?.metadata?.continue ?? "";
+		} while (continuation);
+		return events;
 	}
 
 	function podExitInfo(
@@ -442,6 +492,21 @@ export function createKubernetesHttpApiClient(options: {
 				signal: options?.signal,
 			});
 			return result.status === 404 ? null : podSummary(result.body ?? {});
+		},
+		async getPersistentVolumeClaim(name, namespace, options) {
+			const result = await request<KubernetesObjectResponse>({
+				method: "GET",
+				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/persistentvolumeclaims/${encodeURIComponent(name)}`,
+				signal: options?.signal,
+				ok: [200, 404],
+			});
+			return result.status === 404
+				? null
+				: {
+						uid: result.body?.metadata?.uid,
+						phase: result.body?.status?.phase,
+						storageClass: result.body?.spec?.storageClassName,
+					};
 		},
 		listPodEvents,
 		async listPods(
