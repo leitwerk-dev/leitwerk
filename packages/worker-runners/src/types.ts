@@ -78,7 +78,11 @@ export interface ProcessStateExportHelperRelayProvider {
 
 export interface ProcessVolume {
 	/** Idempotently provisions durable storage for a process instance. */
-	ensure(instanceId: string, requirements?: ProcessVolumeRequirements): Promise<VolumeRef>;
+	ensure(
+		instanceId: string,
+		requirements?: ProcessVolumeRequirements,
+		observer?: WorkerStartObserver,
+	): Promise<VolumeRef>;
 	/** Retention cleanup only. Stopping a worker never calls this. */
 	release(instanceId: string): Promise<void>;
 	/** Permanently deletes every runner-managed resource owned by a deleted process. */
@@ -175,6 +179,13 @@ export interface StopWorkerOptions {
 export type WorkerStartPhase = "preparing_runtime" | "allocating_runtime" | "starting_runtime";
 
 export interface WorkerStartObserver {
+	observe?(
+		observation: Omit<
+			import("@leitwerk-dev/domain").StartupObservation,
+			"workerLeaseId" | "turnRecordId"
+		>,
+	): void;
+	shouldStop?(): boolean;
 	report(phase: WorkerStartPhase): void;
 }
 
@@ -185,5 +196,5 @@ export interface WorkerRunner<TStartInput extends StartWorkerInput = StartWorker
 	/** Adoption scan: lists labelled worker units. */
 	list(): Promise<WorkerUnitDescriptor[]>;
 	/** Reconnects to a live unit discovered by {@link WorkerRunner.list}. */
-	adopt(descriptor: WorkerUnitDescriptor): Promise<WorkerUnit>;
+	adopt(descriptor: WorkerUnitDescriptor, observer?: WorkerStartObserver): Promise<WorkerUnit>;
 }

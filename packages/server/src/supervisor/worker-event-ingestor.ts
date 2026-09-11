@@ -23,6 +23,7 @@ import {
 import { recordTurnPreparation } from "../turn-preparation.js";
 import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+import { recordInitialTurnObservation } from "./startup-observer.js";
 
 export interface WorkerEventLogEntry {
 	instanceId: string;
@@ -38,6 +39,8 @@ export interface WorkerEventLogEntry {
 
 export interface WorkerEventIngestorDeps
 	extends Pick<RepositoryBundle, "processes" | "events" | "turnRecords"> {
+	leases?: RepositoryBundle["leases"];
+	startupObservations?: RepositoryBundle["startupObservations"];
 	broadcaster: Broadcaster;
 	workerEventLogger?: (entry: WorkerEventLogEntry) => void;
 }
@@ -128,6 +131,30 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				null;
 			const data = asWsEventPayloadRecord(payload.data);
 			const suppliedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
+			const milestone =
+				payload.eventType === "worker.trace" && data.code === "turn.prompt_started"
+					? "prompt_started"
+					: payload.eventType === "pi.stream.delta" &&
+							data.streamType === "text" &&
+							(readWsEventStreamText(data)?.length ?? 0) > 0
+						? "first_text"
+						: null;
+			if (
+				milestone &&
+				suppliedTurnRecordId &&
+				suppliedTurnRecordId === currentTurnRecordId &&
+				deps.leases
+			)
+				recordInitialTurnObservation(
+					{ ...deps, leases: deps.leases },
+					{
+						instanceId,
+						workerId,
+						turnRecordId: suppliedTurnRecordId,
+						milestone,
+						observedAt: new Date().toISOString(),
+					},
+				);
 			if (suppliedTurnRecordId && suppliedTurnRecordId !== currentTurnRecordId) return;
 			if (payload.eventType === "turn.progress") {
 				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);

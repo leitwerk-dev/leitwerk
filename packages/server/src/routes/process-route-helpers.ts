@@ -116,6 +116,7 @@ export interface RouteDeps
 		| "externalWrites"
 		| "transaction"
 	> {
+	startupObservations?: RepositoryBundle["startupObservations"];
 	broadcaster: Broadcaster;
 	processOperations: ProcessOperationCoordinator;
 	processQuestions: ProcessQuestionService;

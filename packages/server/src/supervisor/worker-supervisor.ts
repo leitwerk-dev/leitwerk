@@ -46,6 +46,7 @@ import { resolveAcceptedTurnStartReplay } from "./accepted-turn-start-replay.js"
 import { createWorkerAdoptionCoordinator } from "./adoption/worker-adoption-coordinator.js";
 import { decideIdleWorkerStop } from "./idle-worker-ttl.js";
 import type { createIpcHandler } from "./ipc-handler.js";
+import { createStartupObserver } from "./startup-observer.js";
 import { createServerObservedWorkerFailedMessage } from "./synthetic-worker-failure.js";
 import { checkWorkerApiCompatibility } from "./worker-api-compatibility.js";
 import { createWorkerConnectToken, hashWorkerConnectToken } from "./worker-connect-token.js";
@@ -73,6 +74,7 @@ export interface SupervisorDeps
 		RepositoryBundle,
 		"leases" | "processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "events"
 	> {
+	startupObservations?: RepositoryBundle["startupObservations"];
 	config: LeitwerkConfig;
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	processGraphs: ProcessGraphRegistry;
@@ -748,7 +750,13 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			(profile?.resources
 				? { cpu: profile.resources.cpu, memory: profile.resources.memory }
 				: undefined);
-		const volume = await runnerRuntime.volume?.ensure(options.instanceId, { docker });
+		const observer = createStartupObserver(
+			deps,
+			options.instanceId,
+			options.workerId,
+			options.startupDeadlineMs,
+		);
+		const volume = await runnerRuntime.volume?.ensure(options.instanceId, { docker }, observer);
 		const serverUrl = runnerServerUrl();
 		const env: Record<string, string> = {
 			[WORKER_INSTANCE_ID_ENV]: options.instanceId,
@@ -787,7 +795,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				docker,
 				resources: resourceLimits,
 			},
-			{ report() {} },
+			observer,
 		);
 		return createRunnerHandle({
 			unit,
@@ -809,6 +817,14 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	};
 
 	adoptionCoordinator = createWorkerAdoptionCoordinator({
+		startupObserver: (descriptor) =>
+			createStartupObserver(
+				deps,
+				descriptor.instanceId,
+				descriptor.workerId,
+				Date.parse(deps.leases.getByInstance(descriptor.instanceId)?.startedAt ?? "") +
+					startupTimeoutMs,
+			),
 		startupTimeoutMs,
 		serverEpoch,
 		runnerRuntime,

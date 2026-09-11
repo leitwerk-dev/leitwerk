@@ -9,6 +9,9 @@ import type { WorkerWebSocketIpcManager } from "../worker-websocket-ipc.js";
 import { classifyWorkerDescriptor, workerDescriptorKey } from "./adoption-plan.js";
 
 export interface WorkerAdoptionCoordinatorDeps {
+	startupObserver?: (
+		descriptor: WorkerUnitDescriptor,
+	) => import("@leitwerk-dev/worker-runners/types").WorkerStartObserver;
 	startupTimeoutMs: number;
 	serverEpoch: string;
 	adoptionRetry?: {
@@ -19,7 +22,10 @@ export interface WorkerAdoptionCoordinatorDeps {
 	runnerRuntime: {
 		runner: {
 			list(): Promise<WorkerUnitDescriptor[]>;
-			adopt(descriptor: WorkerUnitDescriptor): Promise<WorkerUnit>;
+			adopt(
+				descriptor: WorkerUnitDescriptor,
+				observer?: import("@leitwerk-dev/worker-runners/types").WorkerStartObserver,
+			): Promise<WorkerUnit>;
 		};
 		webSocketIpc: WorkerWebSocketIpcManager;
 	};
@@ -151,7 +157,9 @@ export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorD
 		let lastError: unknown;
 		for (let attempt = 1; attempt <= retryMaxAttempts; attempt += 1) {
 			try {
-				return await deps.runnerRuntime.runner.adopt(descriptor);
+				return await (deps.startupObserver
+					? deps.runnerRuntime.runner.adopt(descriptor, deps.startupObserver(descriptor))
+					: deps.runnerRuntime.runner.adopt(descriptor));
 			} catch (error) {
 				lastError = error;
 				if (attempt < retryMaxAttempts) {
