@@ -829,6 +829,7 @@ export interface StartupAttemptSummary {
 }
 
 export interface ProcessStartupSummary {
+	workerStarts?: import("@leitwerk-dev/domain").PhysicalWorkerStart[];
 	authoritativeAttemptId: string | null;
 	attempts: StartupAttemptSummary[];
 	recovery: StartupRecoverySummary | null;
