@@ -89,3 +89,8 @@ emit distinct stream types. Input and partial output are saved before interactiv
 tools or failed turns finish. Fresh factories can resume these sessions and older
 stub state files without discarding entries. The option keeps additional trace
 entries out of tests that depend on the minimal stub tree.
+
+`createInProcessWorkerSpawn` accepts an optional `startupDelays(instanceId)` resolver
+for development scenes. It delays connection and managed Pi bootstrap without
+replacing lifecycle observations. Delays are canceled when the child exits or is
+killed; callers without a resolver retain immediate startup.

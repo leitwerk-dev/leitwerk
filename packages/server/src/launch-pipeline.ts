@@ -13,9 +13,9 @@ const CORE_STEPS = [
 	["resolve_models_skills", "Resolve models and skills"],
 	["create_process", "Create process"],
 	["choose_title", "Choose process title"],
-	["start_worker", "Start worker"],
-	["connect_worker", "Connect worker"],
-	["prepare_workspace", "Prepare workspace"],
+	["start_worker", "Request worker"],
+	["connect_worker", "Start worker"],
+	["prepare_workspace", "Prepare runtime"],
 	["start_first_turn", "Start first turn"],
 ] as const;
 

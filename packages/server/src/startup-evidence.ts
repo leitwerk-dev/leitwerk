@@ -33,9 +33,9 @@ export type LaunchTitleState =
 	| { status: "failed"; safeSummary?: string };
 
 const STARTUP_STEP_LABELS = {
-	start_worker: "Start worker",
-	connect_worker: "Connect worker",
-	prepare_workspace: "Prepare workspace",
+	start_worker: "Request worker",
+	connect_worker: "Start worker",
+	prepare_workspace: "Prepare runtime",
 	start_first_turn: "Start first turn",
 } as const;
 
@@ -154,7 +154,10 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			? "succeeded"
 			: failed
 				? "failed"
-				: start.id !== currentStartId && index < startupStarts.length - 1
+				: start.state.kind === "superseded" ||
+						input.process.lifecycleStatus === "aborted" ||
+						input.process.lifecycleStatus === "completed" ||
+						(start.id !== currentStartId && index < startupStarts.length - 1)
 					? "superseded"
 					: "starting";
 		const failedStepId: StartupAttemptStepSummary["id"] = !lease
@@ -164,6 +167,33 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 				: !readyAt
 					? "prepare_workspace"
 					: "start_first_turn";
+		const phaseStarts = {
+			start_worker: start.createdAt,
+			connect_worker: lease?.startedAt ?? null,
+			prepare_workspace: lease?.connectedAt ?? null,
+			start_first_turn: readyAt,
+		};
+		const phaseEnds = {
+			start_worker: lease?.startedAt ?? null,
+			connect_worker: lease?.connectedAt ?? null,
+			prepare_workspace: readyAt,
+			start_first_turn: firstTurnAt,
+		};
+		const details = {
+			start_worker: "Resolve the turn and request its worker.",
+			connect_worker: "Allocate storage, schedule and start the worker, then connect.",
+			prepare_workspace: "Prepare the workspace, tools and model provider.",
+			start_first_turn: "Accept the turn and hand it to the worker.",
+		};
+		const stoppedAt =
+			failed || start.state.kind === "superseded"
+				? start.updatedAt
+				: status === "superseded"
+					? (startupStarts[index + 1]?.createdAt ??
+						input.process.closedAt ??
+						input.process.updatedAt ??
+						start.updatedAt)
+					: null;
 		const step = (
 			id: StartupAttemptStepSummary["id"],
 			completed: boolean,
@@ -181,15 +211,18 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 							? "in_progress"
 							: "pending",
 			occurredAt,
+			startedAt: phaseStarts[id],
+			endedAt: phaseEnds[id] ?? (id === failedStepId ? stoppedAt : null),
+			detail: details[id],
 		});
 		return {
 			startRecordId: start.id,
 			workerLeaseId: lease?.id ?? null,
 			status,
-			startedAt: lease?.startedAt ?? start.createdAt,
+			startedAt: start.createdAt,
 			readyAt,
 			durationMs:
-				lease && readyAt ? Math.max(0, Date.parse(readyAt) - Date.parse(lease.startedAt)) : null,
+				lease && readyAt ? Math.max(0, Date.parse(readyAt) - Date.parse(start.createdAt)) : null,
 			summary:
 				start.state.kind === "preparation_failed" || start.state.kind === "bootstrap_failed"
 					? start.state.safeSummary
@@ -309,6 +342,20 @@ export function projectLaunchRunStartup(
 					: undefined,
 			);
 		}
+		next = {
+			...next,
+			steps: next.steps.map((item) => {
+				const phase = attempt?.steps.find((candidate) => candidate.id === item.id);
+				if (!phase) return item;
+				const { startedAt: _start, completedAt: _end, ...rest } = item;
+				return {
+					...rest,
+					label: phase.label,
+					...(phase.startedAt ? { startedAt: phase.startedAt } : {}),
+					...(phase.endedAt ? { completedAt: phase.endedAt } : {}),
+				};
+			}),
+		};
 		const failedStep = attempt?.steps.find((step) => step.status === "failed");
 		if (failedStep) {
 			next = failLaunchRun(

@@ -2,6 +2,7 @@ import type { ChildProcess, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createRequire } from "node:module";
 import { PassThrough } from "node:stream";
+import { setTimeout as delay } from "node:timers/promises";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { PiTreeHandleFactory } from "@leitwerk-dev/worker";
 import { createWorkerEntryRuntime } from "@leitwerk-dev/worker";
@@ -18,6 +19,8 @@ export interface InProcessWorkerSpawnOptions {
 	extensionCatalog?: ExtensionCatalog | Promise<ExtensionCatalog>;
 	piFactory?: PiTreeHandleFactory;
 	toolCallScriptResolver?: StubToolCallScriptResolver;
+	/** Optional delays at real connection and managed-runtime preparation boundaries. */
+	startupDelays?: (instanceId: string) => { connectMs: number; prepareMs: number } | undefined;
 }
 
 /**
@@ -41,11 +44,15 @@ export function createInProcessWorkerSpawn(
 		const child = new EventEmitter() as unknown as ChildProcess;
 		const emitter = child as unknown as EventEmitter;
 		let exited = false;
+		const cancellation = new AbortController();
+		const timing = options.startupDelays?.(spawnOptions?.env?.LEITWERK_INSTANCE_ID ?? "");
+		const pause = (ms: number) => delay(ms, undefined, { signal: cancellation.signal });
 
 		let runtime: ReturnType<typeof createWorkerEntryRuntime> | null = null;
 		const finish = (code: number) => {
 			if (!exited) {
 				exited = true;
+				cancellation.abort();
 				emitter.emit("exit", code, null);
 			}
 		};
@@ -64,7 +71,16 @@ export function createInProcessWorkerSpawn(
 
 		runtime = createWorkerEntryRuntime({
 			extensionCatalog: options.extensionCatalog,
-			piFactory,
+			piFactory: timing
+				? {
+						async prepareManagedBootstrap(input) {
+							await pause(timing.prepareMs);
+							return piFactory.prepareManagedBootstrap(input);
+						},
+						inspectPrimaryTree: (input) => piFactory.inspectPrimaryTree(input),
+						createPrimaryTreeHandle: (input) => piFactory.createPrimaryTreeHandle(input),
+					}
+				: piFactory,
 			stderr,
 			env: spawnOptions?.env ?? process.env,
 			exit: finish,
@@ -73,7 +89,11 @@ export function createInProcessWorkerSpawn(
 		setImmediate(() => {
 			if (exited) return;
 			(globalThis as unknown as { WebSocket?: unknown }).WebSocket = WebSocket;
-			void runtime?.start().catch((error: unknown) => {
+			void (async () => {
+				if (timing) await pause(timing.connectMs);
+				if (!exited) await runtime?.start();
+			})().catch((error: unknown) => {
+				if (exited) return;
 				stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
 				finish(1);
 			});

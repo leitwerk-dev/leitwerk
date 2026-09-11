@@ -5,7 +5,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 it("runs repository commands without the service production mode and allows explicit modes", async () => {
 	vi.stubEnv("NODE_ENV", "production");
-	const tool = createRepositoryBashTool(process.cwd());
+	const tool = await createRepositoryBashTool(process.cwd());
 	const result = await tool.execute(
 		"environment-regression",
 		{

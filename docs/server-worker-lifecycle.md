@@ -201,3 +201,5 @@ process are cancelled during reconciliation and never select the startup shown o
 detail. The latest startup-retry run is authoritative; without a retry, the latest `createdAt` and
 then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
 commits a process, later polls return that attempt instead of creating incomplete launch runs.
+
+Worker entry modules do not synchronously load the Pi SDK. The default Pi factory starts an asynchronous import so module loading can overlap IPC connection and workspace materialization. Managed bootstrap still awaits Pi version validation and SDK preparation before worker readiness. Import failures surface through that bootstrap path.

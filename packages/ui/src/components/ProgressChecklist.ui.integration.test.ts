@@ -1,19 +1,51 @@
 // @vitest-environment jsdom
 
 import type { ProcessStartupSummary } from "@leitwerk-dev/protocol";
-import { mount, unmount } from "svelte";
-import { afterEach, describe, expect, it } from "vitest";
+import { flushSync, mount, unmount } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ChronicleStartupHistory from "../chronicle/components/ChronicleStartupHistory.svelte";
 import ChronicleTurnProgress from "../chronicle/components/ChronicleTurnProgress.svelte";
+import ElapsedTime from "./ElapsedTime.svelte";
 
 const mounted: Array<ReturnType<typeof mount>> = [];
 
 afterEach(async () => {
 	await Promise.all(mounted.splice(0).map((component) => unmount(component)));
 	document.body.innerHTML = "";
+	vi.useRealTimers();
 });
 
 describe("Process checklists", () => {
+	it("updates elapsed time without new server events and freezes completed timing", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-09-11T00:00:07Z"));
+		const target = document.createElement("div");
+		document.body.appendChild(target);
+		mounted.push(
+			mount(ElapsedTime, { target, props: { startedAt: "2026-09-11T00:00:00Z", running: true } }),
+		);
+		mounted.push(
+			mount(ElapsedTime, {
+				target,
+				props: { startedAt: "2026-09-11T00:00:00Z", endedAt: "2026-09-11T00:00:07Z" },
+			}),
+		);
+		flushSync();
+		expect(target.textContent).toContain("7.0s elapsed");
+		await vi.advanceTimersByTimeAsync(2000);
+		flushSync();
+		expect(target.textContent).toContain("9.0s elapsed");
+		expect(target.textContent).toContain("7.0s");
+		expect(target.querySelector('[aria-live="off"]')).not.toBeNull();
+	});
+
+	it("leaves missing historical timing unknown instead of counting forever", () => {
+		const target = document.createElement("div");
+		mounted.push(mount(ElapsedTime, { target, props: { startedAt: "2026-09-11T00:00:00Z" } }));
+		expect(target.textContent).toContain("—");
+		expect(target.querySelector('[title="Timing unavailable"]')).not.toBeNull();
+	});
+
 	it("preserves step order and states with the same rows in startup and workspace preparation", () => {
 		const target = document.createElement("div");
 		document.body.appendChild(target);

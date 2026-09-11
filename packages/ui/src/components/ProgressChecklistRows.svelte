@@ -11,10 +11,12 @@ export interface ChecklistStep {
 		| "superseded"
 		| "skipped";
 	detail?: string | null;
+	timing?: { startedAt: string | null; endedAt: string | null; running: boolean };
 }
 </script>
 
 <script lang="ts">
+import ElapsedTime from "./ElapsedTime.svelte";
 let { steps }: { steps: readonly ChecklistStep[] } = $props();
 const statusLabels: Record<ChecklistStep["status"], string> = {
 	pending: "Pending",
@@ -47,7 +49,10 @@ const statusLabels: Record<ChecklistStep["status"], string> = {
 					<span class="step-label">{step.label}</span>
 					{#if step.detail}<span class="step-detail">{step.detail}</span>{/if}
 				</span>
-				<span class="status-label">{statusLabels[step.status]}</span>
+				<span class="step-status">
+                    <span class="status-label">{statusLabels[step.status]}</span>
+                    {#if step.timing}<ElapsedTime {...step.timing} />{/if}
+                </span>
 			</li>
 		{/each}
 	</ol>
@@ -63,8 +68,9 @@ const statusLabels: Record<ChecklistStep["status"], string> = {
 	[data-progress-status="failed"] .status-mark, [data-progress-status="failed"] .status-label { color: var(--chronicle-danger); }
 	.step-copy { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 	.step-label { color: var(--chronicle-text); font-size: var(--type-body); font-weight: 600; line-height: 1.5; }
+	.step-status { display: grid; justify-items: end; gap: 2px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); }
 	.status-label { white-space: nowrap; }
-	@container (max-width: 420px) { li { grid-template-columns: 20px minmax(0, 1fr); row-gap: 2px; } .status-label { grid-column: 2; } }
+	@container (max-width: 420px) { li { grid-template-columns: 20px minmax(0, 1fr); row-gap: 2px; } .step-status { grid-column: 2; display: flex; gap: var(--space-sm); justify-items: start; } }
 	.step-detail { color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
 	.status-label { color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
 </style>
