@@ -957,4 +957,12 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 	});
 	expect(finished?.state).toBe("committed");
 	expect(finished?.reasoning).toEqual(detail?.reasoning);
+	const failedSnapshot = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assemble(
+		process.id,
+	);
+	expect(failedSnapshot?.timeline.tracePreviewsByTurnRecordId[turn.id]).toMatchObject({
+		hasReasoningDetails: true,
+		toolCallCount: 1,
+		thinkingPreview: long.primaryPath.turnState.activeTurn?.assistant.thinking,
+	});
 });

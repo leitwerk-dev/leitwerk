@@ -20,6 +20,7 @@ import {
 	buildLiveTurnProjectionFromEvents,
 	buildUsageSnapshotsByTurnRecordId,
 	type CompactActiveTurnSnapshot,
+	type CompactTurnSummary,
 	type CurrentProcessErrorSummary,
 	type CurrentTurnRecoverySummary,
 	emptyCompactTurnSummary,
@@ -39,6 +40,7 @@ import {
 	type ProcessTimelineTurnSummary,
 	type ProcessUiSnapshotProcess,
 	type ProcessUsageEstimateSnapshot,
+	REASONING_PREVIEW_MAX_CHARS,
 	type ReadonlyEntryTree,
 	reasoningPreviewTail,
 	resolveTurnContinuationUserPrompt,
@@ -1003,18 +1005,40 @@ export function buildProcessUiSnapshotProjections(input: {
 	primaryPathSnapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot;
 	sessionTree?: ReadonlyPiSessionTree;
 	sessionSummary?: SessionSummary | null;
+	eventSummariesByTurnRecordId?: Record<string, CompactTurnSummary>;
 	eventUsageByTurnRecordId?: Record<string, TurnTraceSnapshot["usage"]>;
 	activeModelProfileId?: string | null;
 }) {
-	const tracePreviewsByTurnRecordId =
-		input.sessionSummary?.tracePreviewsByTurnRecordId ??
-		(input.sessionTree
-			? buildTurnTracePreviewsFromSession({
-					tree: input.sessionTree,
-					turnRecords: input.turnRecords,
-					events: input.events,
-				})
-			: {});
+	const tracePreviewsByTurnRecordId = {
+		...(input.sessionSummary?.tracePreviewsByTurnRecordId ??
+			(input.sessionTree
+				? buildTurnTracePreviewsFromSession({
+						tree: input.sessionTree,
+						turnRecords: input.turnRecords,
+						events: input.events,
+					})
+				: {})),
+	};
+	for (const turn of input.turnRecords) {
+		const turnRecordId = turn.id;
+		const summary = input.eventSummariesByTurnRecordId?.[turnRecordId];
+		if (turn.status === "running" || !summary || tracePreviewsByTurnRecordId[turnRecordId])
+			continue;
+		tracePreviewsByTurnRecordId[turnRecordId] = {
+			turnRecordId,
+			assistantTextPreview: summary.assistant.text,
+			assistantTextTruncated: summary.assistant.text.length >= REASONING_PREVIEW_MAX_CHARS,
+			thinkingPreview: summary.assistant.thinking,
+			thinkingPreviewTruncated: summary.assistant.thinking.length >= REASONING_PREVIEW_MAX_CHARS,
+			toolCallCount: summary.toolCallCount,
+			traceItemCount: summary.traceItemCount,
+			hasReasoningDetails: Boolean(
+				summary.assistant.thinking || summary.traceItemCount || summary.usage,
+			),
+			usage: summary.usage,
+			piInput: null,
+		};
+	}
 	const currentLeafEntryId =
 		input.primaryPathSnapshot.currentLeaf?.entryId ??
 		input.primaryPathSnapshot.semanticEntryRefs.currentPrimaryPathLeaf?.entryId ??
@@ -1180,6 +1204,7 @@ export class ProcessUiSnapshotAssembler {
 			selectedTurn,
 			primaryPathSnapshot: primaryPath,
 			sessionSummary: session,
+			eventSummariesByTurnRecordId: summaries,
 			eventUsageByTurnRecordId: Object.fromEntries(
 				Object.entries(summaries).map(([id, summary]) => [id, summary.usage]),
 			),
