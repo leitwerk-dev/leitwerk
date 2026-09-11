@@ -443,3 +443,27 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(policy)).toContain(".dockerconfigjson");
 	});
 });
+
+describe.skipIf(!helmAvailable())("volume pre-provisioning chart wiring", () => {
+	it.each([false, true])("enables configuration and extra permissions together: %s", (enabled) => {
+		const documents = renderChart(
+			helmJsonValues({
+				"kubernetes.processVolume.preProvision.enabled": enabled,
+				"kubernetes.processVolume.preProvision.count": 3,
+				"kubernetes.processVolume.storageClassName": "csi-storage",
+			}),
+		);
+		const configMap = findConfigMap(documents);
+		const config = parse((configMap.data as Record<string, string>)["leitwerk.yaml"]);
+		expect(config.kubernetes.process_volume.pre_provision).toEqual(
+			enabled ? { count: 3 } : undefined,
+		);
+		const role = findDocumentsByKind(documents, "ClusterRole")[0];
+		const rules = role.rules as Array<{ resources: string[]; verbs: string[] }>;
+		expect(rules.some((rule) => rule.resources.includes("persistentvolumes"))).toBe(enabled);
+		expect(rules.some((rule) => rule.resources.includes("storageclasses"))).toBe(enabled);
+		expect(findDocumentsByKind(documents, "DaemonSet")).toEqual([]);
+		const policy = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
+		expect(JSON.stringify(policy).includes("isPreparation")).toBe(enabled);
+	});
+});

@@ -24,6 +24,7 @@ import {
 	volumeRefFromPvc,
 } from "./kubernetes-manifests.js";
 import { sampleKubernetesStartup, startupReceipt } from "./kubernetes-startup-sampler.js";
+import { createKubernetesVolumePool } from "./kubernetes-volume-pool.js";
 import { UnitExitNotifier } from "./runner-utils.js";
 import {
 	SESSION_TRANSFER_HELPER_ENTRY_PATH,
@@ -66,6 +67,7 @@ function boundedKubernetesStartDiagnostic(
 }
 
 export interface KubernetesWorkerRunnerOptions {
+	preProvision?: { count: number; onError?: () => void };
 	client: KubernetesApiClient;
 	/** Prefix used to derive one Kubernetes namespace per process instance. */
 	processNamespacePrefix: string;
@@ -98,6 +100,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	runner: WorkerRunner<IsolatedStartWorkerInput>;
 	volume: ProcessVolume;
 	exporter: ProcessStateExporter;
+	volumePool?: ReturnType<typeof createKubernetesVolumePool>;
 } {
 	if (!options.serverUrl || !options.exporterImage || !options.helperRelays) {
 		throw new Error("Kubernetes transfer exporter is not configured");
@@ -472,5 +475,28 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 		},
 	});
 
-	return { runner, volume, exporter };
+	let volumePool: ReturnType<typeof createKubernetesVolumePool> | undefined;
+	if (options.preProvision) {
+		if (!client.volumePool || !options.volume.storageClassName || !options.serverNamespace) {
+			throw new Error("Volume pre-provisioning requires an API, namespace and StorageClass");
+		}
+		volumePool = createKubernetesVolumePool({
+			api: client.volumePool,
+			namespace: options.serverNamespace,
+			storageClassName: options.volume.storageClassName,
+			size: options.volume.size,
+			accessModes: options.volume.accessModes,
+			...options.preProvision,
+			image: exporterImage,
+			imagePullPolicy: options.exporterImagePullPolicy,
+			imagePullSecrets: (options.pod?.imagePullSecrets ?? []).map(
+				(name) =>
+					options.imagePullSecretCopies?.find((copy) => copy.targetName === name)?.sourceName ??
+					name,
+			),
+			nodeSelector: options.pod?.nodeSelector,
+			tolerations: options.pod?.tolerations,
+		});
+	}
+	return { runner, volume, exporter, volumePool };
 }

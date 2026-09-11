@@ -18,6 +18,7 @@ import {
 	type KubernetesProcessNamespaceManifest,
 	mapKubernetesPodExit,
 } from "./kubernetes-manifests.js";
+import { createVolumePoolApi } from "./kubernetes-volume-pool-api.js";
 import type { WorkerExitInfo } from "./types.js";
 
 const IN_CLUSTER_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token";
@@ -344,6 +345,7 @@ export function createKubernetesHttpApiClient(options: {
 	}
 
 	return {
+		volumePool: createVolumePoolApi(request),
 		async ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void> {
 			const name = manifest.metadata.name;
 			await upsertResource({

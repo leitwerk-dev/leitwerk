@@ -233,3 +233,12 @@ Derived durations use millisecond resolution. Storage, scheduling and pulls may
 overlap and must not be added into an exclusive breakdown. PVC binding uses a
 last-not-bound/first-bound sampling window, with a missing lower bound when no
 unbound state was observed. The upper bound is not the exact binding time.
+
+Optional Kubernetes volume pre-provisioning runs inside the server's background
+lifecycle. Preparation uses temporary claims and Pods without worker credentials.
+The server retains each fresh PV, waits for its preparation Pod and claim to be
+deleted, then waits for `Available` before publishing it under the process
+StorageClass with its original reclaim policy. UID and resource-version checks
+protect every PV change. A different claim UID permanently ends pool ownership.
+Kubernetes objects record progress across server restarts; filling the pool never
+blocks readiness or normal process allocation. See [configuration](configuration.md#pre-provisioned-kubernetes-volumes).

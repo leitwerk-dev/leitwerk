@@ -365,6 +365,9 @@ const configSchema = v.looseObject({
 			worker_service_account: v.optional(v.string()),
 			process_volume: v.looseObject({
 				storage_class_name: v.optional(v.string()),
+				pre_provision: v.optional(
+					v.strictObject({ count: v.pipe(v.number(), v.integer(), v.minValue(0)) }),
+				),
 				size: v.string(),
 				access_modes: stringArraySchema,
 				mount_path: v.string(),
@@ -721,6 +724,11 @@ function collectKubernetesRunnerConfigErrors(config: LeitwerkConfig): string[] {
 		errors.push(
 			"kubernetes.default_worker_runtime_profile or workers.default_runtime_profile is required when workers.runner is 'kubernetes'",
 		);
+	if (
+		k.process_volume.pre_provision &&
+		!isSafeKubernetesDnsSubdomain(k.process_volume.storage_class_name ?? "")
+	)
+		errors.push("kubernetes.process_volume.pre_provision requires an explicit storage_class_name");
 	if (k.process_volume.access_modes.length === 0)
 		errors.push("kubernetes.process_volume.access_modes must not be empty");
 
