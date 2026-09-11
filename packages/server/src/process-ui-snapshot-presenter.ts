@@ -56,7 +56,7 @@ import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js
 import { presentProcessModelConfiguration } from "./process-model-policy-presenter.js";
 import { getProcessDisplayName } from "./process-operator-attention.js";
 import {
-	buildTurnTraceFromSession,
+	buildCommittedTurnTrace,
 	buildTurnTracePreviewsFromSession,
 } from "./process-turn-trace.js";
 
@@ -1243,17 +1243,11 @@ export class ProcessUiSnapshotAssembler {
 			};
 		}
 		const session = await this.deps.sessionReader.readSessionTree(input.instanceId);
-		const trace = buildTurnTraceFromSession({
+		const trace = buildCommittedTurnTrace({
 			tree: session.piTree,
 			turnRecord,
 			events,
-		}) ?? {
-			assistant: { text: "", thinking: "", lastUpdatedAt: null },
-			toolCalls: [],
-			traceItems: [],
-			usage: null,
-			piInput: null,
-		};
+		});
 		trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
 		return {
 			instanceId: input.instanceId,

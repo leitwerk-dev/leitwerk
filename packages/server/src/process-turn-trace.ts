@@ -1,6 +1,7 @@
 import { type ProcessEvent, type ProcessTurnRecord, trimToNull } from "@leitwerk-dev/domain";
 import {
 	asWsEventPayloadRecord,
+	buildLiveTurnProjectionFromEvents,
 	buildPrimaryPathOperationalTraceItem,
 	compareTimestampStrings,
 	createTurnContinuationIndex,
@@ -17,6 +18,7 @@ import {
 	type PrimaryPathStreamingAssistantSnapshot,
 	type PrimaryPathTraceItemSnapshot,
 	reasoningPreviewTail,
+	snapshotTurnTrace,
 	type TurnPiInputPart,
 	type TurnPiInputSnapshot,
 	type TurnTracePreview,
@@ -385,6 +387,34 @@ export function buildTurnTraceFromSession(input: {
 		}),
 		events: input.events,
 	});
+}
+
+/** Recover persisted activity when a worker ended before uploading its turn content. */
+export function buildCommittedTurnTrace(input: {
+	tree: ReadonlyPiSessionTree;
+	turnRecord: TraceTurnRecord;
+	events: readonly ProcessEvent[];
+}): TurnTraceSnapshot {
+	const sessionTrace = buildTurnTraceFromSession(input);
+	if (
+		sessionTrace &&
+		(sessionTrace.assistant.text ||
+			sessionTrace.assistant.thinking ||
+			sessionTrace.toolCalls.length)
+	)
+		return sessionTrace;
+	const trace = snapshotTurnTrace(
+		buildLiveTurnProjectionFromEvents(
+			input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
+		),
+		sessionTrace?.piInput ?? null,
+	);
+	trace.usage ??= sessionTrace?.usage ?? null;
+	for (const item of sessionTrace?.traceItems ?? []) {
+		if (item.kind === "operational_event") appendOperationalTraceItem(trace.traceItems, item);
+	}
+	trace.traceItems = ensureSortedTraceItems(trace.traceItems);
+	return trace;
 }
 
 export function buildTurnTracePreview(

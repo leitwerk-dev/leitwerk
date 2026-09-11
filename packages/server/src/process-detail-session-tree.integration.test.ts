@@ -946,4 +946,15 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 		resultText: "complete tool result",
 		status: "completed",
 	});
+	harness.ctx.deps.turnRecords.update(turn.id, {
+		status: "failed",
+		endedAt: "2026-09-09T00:01:00Z",
+		errorSummary: "Worker exited before uploading its session snapshot",
+	});
+	const finished = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assembleReasoningDetail({
+		instanceId: process.id,
+		turnRecordId: turn.id,
+	});
+	expect(finished?.state).toBe("committed");
+	expect(finished?.reasoning).toEqual(detail?.reasoning);
 });

@@ -2,6 +2,7 @@ import { createReadonlyEntryTree, type PiSessionEntry } from "@leitwerk-dev/prot
 import { describe, expect, it, vi } from "vitest";
 import { parsePiSessionTreeContent, type ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import {
+	buildCommittedTurnTrace,
 	buildTurnTraceFromSession,
 	buildTurnTracePreview,
 	buildTurnTracePreviewsFromSession,
@@ -12,6 +13,69 @@ function jsonl(...entries: readonly Record<string, unknown>[]): string {
 }
 
 describe("process turn trace projection", () => {
+	it("recovers recorded activity while preserving session prompt, usage, and diagnostic order", () => {
+		const trace = buildCommittedTurnTrace({
+			tree: parsePiSessionTreeContent(
+				"trace-test",
+				jsonl(
+					{
+						type: "message",
+						id: "prompt",
+						parentId: null,
+						timestamp: "2026-01-01T00:00:01Z",
+						message: { role: "user", content: "Keep the prompt" },
+					},
+					{
+						type: "message",
+						id: "error",
+						parentId: "prompt",
+						timestamp: "2026-01-01T00:00:02Z",
+						message: {
+							role: "assistant",
+							content: [],
+							stopReason: "error",
+							errorMessage: "Initial failure",
+							usage: { input: 10, output: 2 },
+						},
+					},
+				),
+			),
+			turnRecord: {
+				id: "turn",
+				turnType: "llm",
+				status: "failed",
+				forkPiEntryId: null,
+				resultPiEntryId: null,
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:05Z",
+			},
+			events: [
+				{
+					id: "evt1",
+					instanceId: "trace-test",
+					eventType: "pi.retry.end",
+					createdAt: "2026-01-01T00:00:03Z",
+					data: { turnRecordId: "turn", success: true },
+				},
+				{
+					id: "evt2",
+					instanceId: "trace-test",
+					eventType: "pi.stream.delta",
+					createdAt: "2026-01-01T00:00:04Z",
+					data: { turnRecordId: "turn", streamType: "thinking", text: "Recovered thinking" },
+				},
+			],
+		});
+		expect(trace.assistant.thinking).toBe("Recovered thinking");
+		expect(trace.piInput?.fullPrompt).toBe("Keep the prompt");
+		expect(trace.usage?.input).toBe(10);
+		expect(
+			trace.traceItems
+				.filter((item) => item.kind === "operational_event")
+				.map((item) => item.eventType),
+		).toEqual(["pi.error", "pi.retry.end"]);
+	});
+
 	it("projects assistant text, reasoning, usage, Pi input, and tool details from a turn slice", () => {
 		const tree = parsePiSessionTreeContent(
 			"trace-test",
