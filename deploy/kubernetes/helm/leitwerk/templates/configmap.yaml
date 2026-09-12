@@ -61,6 +61,10 @@ data:
       default_worker_runtime_profile: {{ .Values.kubernetes.defaultWorkerRuntimeProfile | quote }}
       worker_service_account: {{ include "leitwerk.workerServiceAccountName" . | quote }}
       process_volume:
+        {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+        pre_provision:
+          count: {{ .Values.kubernetes.processVolume.preProvision.count }}
+        {{- end }}
         {{- if .Values.kubernetes.processVolume.storageClassName }}
         storage_class_name: {{ .Values.kubernetes.processVolume.storageClassName | quote }}
         {{- end }}

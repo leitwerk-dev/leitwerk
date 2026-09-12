@@ -7,6 +7,7 @@ import {
 	type KubernetesProcessNamespaceManifest,
 	mapKubernetesPodExit,
 } from "./kubernetes-manifests.js";
+import type { VolumePoolApi } from "./kubernetes-volume-pool-api.js";
 import type { WorkerExitInfo } from "./types.js";
 
 export interface KubernetesPodSummary {
@@ -43,6 +44,7 @@ export interface KubernetesPvcSummary {
 	storageClass?: string;
 }
 export interface KubernetesApiClient {
+	volumePool?: VolumePoolApi;
 	getPersistentVolumeClaim?(
 		name: string,
 		namespace: string,

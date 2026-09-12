@@ -219,3 +219,30 @@ browser metadata listing and revocation. It never removes records or suppresses
 the permanent anonymous-token revocation on authentication-enabled startup.
 See [security](security.md#personal-and-anonymous-api-tokens) for provider binding,
 anonymous ownership, and rollback.
+
+### Pre-provisioned Kubernetes volumes
+
+Set `kubernetes.process_volume.pre_provision: { count: 8 }` to keep fresh volumes
+ready in the named `storage_class_name`. Omit it to disable. With Helm, also set
+`kubernetes.processVolume.preProvision.enabled=true` and its `count`; the chart
+adds the required PV and StorageClass permissions. Existing config Secrets must
+contain the server setting too.
+
+The server uses temporary StorageClasses, PVCs and worker-image Pods to provision
+storage before process launch. The driver must support dynamic filesystem
+provisioning through a copy of its StorageClass and rebinding retained PVs.
+Driver parameters, annotations, topology and PV sources are preserved; no host
+paths or CSI-specific volume handles are constructed by Leitwerk. Preparation
+uses the worker node selector and tolerations, so topology-bound volumes may not
+serve workers scheduled elsewhere. Docker's separate process class is unaffected.
+
+Pool misses use normal dynamic provisioning. Each unused volume consumes the
+storage and billing resources of an ordinary volume. Only fresh preparation
+claims are released into the pool; process volumes are never recycled.
+
+Set `count: 0` to stop replenishment while completing pending preparation. Existing
+volumes drain through normal use; reducing the count never deletes them. Before
+removing the setting or changing class, allow preparation PVCs in the server
+namespace to disappear. Inspect resources labelled `leitwerk.dev/volume-pool` and
+server warnings if preparation stalls. Unrecoverable ownership conflicts require
+operator inspection; do not clear process claim references.

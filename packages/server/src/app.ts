@@ -196,6 +196,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	webSocketIpc: WorkerWebSocketIpcManager;
 	provided?: AppOptions["workerRunnerRuntime"];
 	helperRelays: ProcessStateExportHelperRelayProvider;
+	onVolumePoolError: () => void;
 	localWorkerSpawnImpl?: AppOptions["localWorkerSpawnImpl"];
 	localWorkerDockerPreflightImpl?: AppOptions["localWorkerDockerPreflightImpl"];
 }): Promise<{
@@ -203,6 +204,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	volume?: ProcessVolume;
 	exporter: ProcessStateExporter;
 	webSocketIpc: WorkerWebSocketIpcManager;
+	volumePool?: { start(): void; stop(): Promise<void> };
 }> {
 	if (input.provided) {
 		return {
@@ -238,6 +240,9 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		});
 		const created = createKubernetesWorkerRunner({
 			client: kubernetesClient,
+			preProvision: processVolume?.pre_provision
+				? { ...processVolume.pre_provision, onError: input.onVolumePoolError }
+				: undefined,
 			processNamespacePrefix:
 				input.config.kubernetes?.process_namespace_prefix ?? "leitwerk-process-",
 			volume: {
@@ -862,9 +867,15 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		webSocketIpc: workerWebSocketIpc,
 		provided: opts.workerRunnerRuntime,
 		helperRelays: sessionTransferHelperRelays,
+		onVolumePoolError: () =>
+			app.log.warn("Volume pre-provisioning failed; retrying in the background"),
 		localWorkerSpawnImpl: opts.localWorkerSpawnImpl,
 		localWorkerDockerPreflightImpl: opts.localWorkerDockerPreflightImpl,
 	});
+	if (runnerRuntime.volumePool) {
+		startHooks.push(() => runnerRuntime.volumePool?.start());
+		stopHooks.push(() => runnerRuntime.volumePool?.stop());
+	}
 	markStartup("worker_runner");
 	supervisor = createWorkerSupervisor({
 		startupObservations: baseDeps.startupObservations,

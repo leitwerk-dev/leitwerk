@@ -121,6 +121,8 @@ export interface DockerRunnerConfig {
 }
 
 export interface KubernetesProcessVolumeConfig {
+	/** Optional ready-volume target; zero stops replenishment. */
+	pre_provision?: { count: number };
 	storage_class_name?: string;
 	size: string;
 	access_modes: string[];

@@ -147,6 +147,8 @@ docker:
 #   worker_service_account: leitwerk-worker
 #   process_volume:
 #     storage_class_name: standard
+#     # Optional pool of fresh volumes; omit to disable.
+#     pre_provision: { count: 8 }
 #     size: 20Gi
 #     access_modes: [ReadWriteOnce]
 #     mount_path: /state
