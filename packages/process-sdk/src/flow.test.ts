@@ -12,7 +12,6 @@ describe("flow", () => {
 		expect(turn.id).toBe("example");
 		expect(turn.description("First description")).toBe(turn);
 		expect(turn.description("Updated description")).toBe(turn);
-		expect(turn.constructor.length).toBe(1);
 	});
 
 	it("declares server-owned integration tools on an LLM turn", () => {

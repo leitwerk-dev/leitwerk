@@ -1,23 +1,10 @@
-import {
-	type ProcessSemanticEntryRefKey,
-	parseProcessStateJsonStrict,
-	parseSemanticEntryRef,
-	parseSemanticEntryRefsStrict,
-	areSemanticEntryRefsEqual as semanticEntryRefsEqual,
-	type TurnOutcomePayload,
-} from "@leitwerk-dev/domain";
+import type { ProcessSemanticEntryRefKey, TurnOutcomePayload } from "@leitwerk-dev/domain";
 import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
 
+import { type EntryRefPatch, mergeEntryRefPatchIntoStateJson } from "./entry-ref-patch.js";
+
 export type ProcessSemanticEntryRefPatch = Partial<
-	Record<
-		ProcessSemanticEntryRefKey,
-		| {
-				entryId: string;
-				turnRecordId?: string | null;
-		  }
-		| null
-		| undefined
-	>
+	Record<ProcessSemanticEntryRefKey, EntryRefPatch[string]>
 >;
 
 export function mergeSemanticEntryRefPatchIntoStateJson(
@@ -25,41 +12,7 @@ export function mergeSemanticEntryRefPatchIntoStateJson(
 	patch: ProcessSemanticEntryRefPatch,
 	options: { fallbackStateJson?: string | null | undefined } = {},
 ): string | null {
-	const entries = Object.entries(patch).filter(([, value]) => value !== undefined);
-	if (entries.length === 0) {
-		return null;
-	}
-
-	const stateRecord = parseProcessStateJsonStrict(stateJson, "stateJson");
-	const fallbackStateRecord = parseProcessStateJsonStrict(
-		options.fallbackStateJson,
-		"fallbackStateJson",
-	);
-	const currentRefs = parseSemanticEntryRefsStrict(
-		stateRecord.semanticEntryRefs !== undefined
-			? stateRecord.semanticEntryRefs
-			: fallbackStateRecord.semanticEntryRefs,
-	);
-	const nextRefs = { ...currentRefs };
-	let changed = false;
-
-	for (const [rawKey, rawValue] of entries) {
-		const key = rawKey as ProcessSemanticEntryRefKey;
-		const nextValue = parseSemanticEntryRef(rawValue);
-		if (!semanticEntryRefsEqual(currentRefs[key], nextValue)) {
-			changed = true;
-		}
-		nextRefs[key] = nextValue;
-	}
-
-	if (!changed) {
-		return null;
-	}
-
-	return JSON.stringify({
-		...stateRecord,
-		semanticEntryRefs: nextRefs,
-	});
+	return mergeEntryRefPatchIntoStateJson(stateJson, patch, "semanticEntryRefs", options);
 }
 
 export function deriveTurnOutcomeSemanticEntryRefPatch(

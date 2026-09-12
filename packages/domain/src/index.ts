@@ -220,4 +220,4 @@ export {
 	resolveProcessTurnStartSelection,
 	resolveProcessTurnStartTarget,
 } from "./turn-start-resolution.js";
-export { asUnknownRecord, isUnknownRecord } from "./unknown-record.js";
+export { asUnknownRecord, copiedUnknownRecordSchema, isUnknownRecord } from "./unknown-record.js";

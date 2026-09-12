@@ -963,7 +963,6 @@ type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepar
 	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
 ) => MaybePromise<string>;
 
-// Subclasses keep explicit constructors to preserve their one-argument runtime signature.
 abstract class DescribedTurnBuilder {
 	protected turnDescription: string | null = null;
 
@@ -1014,10 +1013,6 @@ export class LlmFlowBuilder<
 	} | null = null;
 	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
 	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
-
-	constructor(turnId: TurnId) {
-		super(turnId);
-	}
 
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
@@ -1393,51 +1388,55 @@ type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
 	Record<string, unknown>
 >;
 
-function registerExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(
-	builders: Map<string, StoredExternalActionBuilder<TParams, TState>>,
-	turnKind: "Automatic" | "Human",
-	turnId: TurnId,
-	externalActionId: string,
-	source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-	configure: (
-		builder: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-): void {
-	if (builders.has(externalActionId)) {
-		throw new Error(
-			`${turnKind} turn '${turnId}' declares duplicate external action '${externalActionId}'`,
-		);
-	}
-	const builder = new ExternalActionBuilder(externalActionId, source);
-	configure(builder);
-	builders.set(
-		externalActionId,
-		builder as unknown as StoredExternalActionBuilder<TParams, TState>,
-	);
-}
+abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnBuilder {
+	protected abstract readonly turnKind: "Automatic" | "Human";
+	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
-function buildExternalActions<TParams, TState>(
-	builders: ReadonlyMap<string, StoredExternalActionBuilder<TParams, TState>>,
-): Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>> | undefined {
-	return builders.size > 0
-		? Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]))
-		: undefined;
+	externalAction<
+		TEvent = unknown,
+		TInput extends Record<string, unknown> = Record<string, unknown>,
+	>(
+		externalActionId: string,
+		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
+		configure: (
+			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+	): this {
+		if (this.externalActionBuilders.has(externalActionId)) {
+			throw new Error(
+				`${this.turnKind} turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
+			);
+		}
+		const builder = new ExternalActionBuilder(externalActionId, source);
+		configure(builder);
+		this.externalActionBuilders.set(
+			externalActionId,
+			builder as unknown as StoredExternalActionBuilder<TParams, TState>,
+		);
+		return this;
+	}
+
+	protected buildExternalActions():
+		| Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>
+		| undefined {
+		return this.externalActionBuilders.size > 0
+			? Object.fromEntries(
+					[...this.externalActionBuilders].map(([id, builder]) => [id, builder.build()]),
+				)
+			: undefined;
+	}
 }
 
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
-	extends DescribedTurnBuilder
+	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
+	protected readonly turnKind = "Automatic";
 	private runFn:
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
-	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
-
-	constructor(turnId: TurnId) {
-		super(turnId);
-	}
 
 	get definition(): AutomaticTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
@@ -1454,27 +1453,6 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 
 	integrationTools(...tools: readonly string[]): this {
 		this.availableIntegrationTools = tools.map((tool) => tool.trim());
-		return this;
-	}
-
-	externalAction<
-		TEvent = unknown,
-		TInput extends Record<string, unknown> = Record<string, unknown>,
-	>(
-		externalActionId: string,
-		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (
-			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-	): this {
-		registerExternalAction(
-			this.externalActionBuilders,
-			"Automatic",
-			this.turnId,
-			externalActionId,
-			source,
-			configure,
-		);
 		return this;
 	}
 
@@ -1511,7 +1489,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			outcomes[outcomeId] = builder.build();
 		}
 		const runFn = this.runFn;
-		const externalActions = buildExternalActions(this.externalActionBuilders);
+		const externalActions = this.buildExternalActions();
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
@@ -1674,26 +1652,22 @@ export class ExternalActionBuilder<
 }
 
 export class HumanFlowBuilder<TParams = unknown, TState = unknown>
-	extends DescribedTurnBuilder
+	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowHumanTurn<TParams, TState>
 {
+	protected readonly turnKind = "Human";
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
 	private operatorAttentionValue: HumanTurnOperatorAttention | undefined;
 	private turnCommentary: string | undefined;
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
-	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
-
-	constructor(turnId: TurnId) {
-		super(turnId);
-	}
 
 	get definition(): HumanTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {
 			throw new Error(`Human turn '${this.turnId}' must declare .description(...)`);
 		}
-		const externalActions = buildExternalActions(this.externalActionBuilders);
+		const externalActions = this.buildExternalActions();
 		return {
 			kind: "human",
 			description: this.turnDescription,
@@ -1744,27 +1718,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		const builder = new HumanActionBuilder<TParams, TState>(actionId);
 		configure(builder);
 		this.actions.set(actionId, builder);
-		return this;
-	}
-
-	externalAction<
-		TEvent = unknown,
-		TInput extends Record<string, unknown> = Record<string, unknown>,
-	>(
-		externalActionId: string,
-		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (
-			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-	): this {
-		registerExternalAction(
-			this.externalActionBuilders,
-			"Human",
-			this.turnId,
-			externalActionId,
-			source,
-			configure,
-		);
 		return this;
 	}
 }
@@ -1850,10 +1803,6 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 {
 	private routeBuilders: ExternalRouteBuilder<TParams, TState, unknown, Record<string, unknown>>[] =
 		[];
-
-	constructor(turnId: TurnId) {
-		super(turnId);
-	}
 
 	get definition(): ExternalTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {

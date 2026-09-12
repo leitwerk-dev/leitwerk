@@ -4,7 +4,7 @@ import {
 	isPiSessionMessageEntryType,
 	isPiSessionMessageEntryWithRecord,
 } from "./pi-session-message.js";
-import { createReadonlyEntryTree, type ReadonlyEntryTree } from "./session-entry-tree.js";
+import type { ReadonlyEntryTree } from "./session-entry-tree.js";
 import { compareTimestampStrings, happenedOnOrAfterStart } from "./timestamp-ordering.js";
 
 export interface ContinuationTreeEntry {
@@ -219,7 +219,7 @@ export function buildTurnContinuationSlice<TEntry extends ContinuationTreeEntry>
 	turnRecord: ContinuationTurnRecordLike,
 	bounds: ContinuationSliceBounds = {},
 ): TEntry[] {
-	return buildTurnContinuationSliceFromTree(createReadonlyEntryTree(entries), turnRecord, bounds);
+	return createTurnContinuationIndex(entries).buildSlice(turnRecord, bounds);
 }
 
 export interface BranchUserPromptSnapshot {

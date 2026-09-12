@@ -1,15 +1,9 @@
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import type { ErrorResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import * as v from "valibot";
 import { getFetchImpl, resolveApiUrl } from "./runtime-config.js";
 
-export const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
+export { unknownRecordSchema };
 
 export async function tryReadJson(response: Response): Promise<unknown> {
 	try {

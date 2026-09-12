@@ -4,6 +4,7 @@ import {
 	type ProcessInstance,
 	type ProcessProject,
 	redactCredentialBearingAbsoluteUrl,
+	copiedUnknownRecordSchema as unknownRecordSchema,
 } from "@leitwerk-dev/domain";
 import type { ProcessModelSelectionServiceLike } from "@leitwerk-dev/process-sdk";
 import {
@@ -390,15 +391,6 @@ export interface NormalizedRecoveryModelRequest {
 	nextTurnModelProfileId?: string | null;
 	providerOptions?: Record<string, string>;
 }
-
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 
 function normalizeProviderOptions(
 	value: unknown,

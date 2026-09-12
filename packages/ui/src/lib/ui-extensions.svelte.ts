@@ -344,12 +344,8 @@ export function dispatchBrowserUiExtensionShortcut(event: KeyboardEvent): boolea
 
 export function dispatchBrowserUiExtensionWsFrame(frame: WsFrame): boolean {
 	for (const handler of [...frameHandlers]) {
-		try {
-			if (handler(frame) === true) {
-				return true;
-			}
-		} catch (error) {
-			reportBrowserUiExtensionIssue("WebSocket frame handler failed", error);
+		if (handler(frame) === true) {
+			return true;
 		}
 	}
 	return false;
