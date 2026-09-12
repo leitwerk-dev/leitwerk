@@ -79,6 +79,7 @@ function cloneSelectedOutcome<TOutcome extends string>(
 function cloneTurnResultMarkdownState(state: TurnResultMarkdownState): TurnResultMarkdownState {
 	return {
 		markdown: state.markdown,
+		...(state.resultSummary ? { resultSummary: state.resultSummary } : {}),
 		publicationCount: state.publicationCount,
 	};
 }
@@ -123,6 +124,14 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			description: spec.description,
 			parameters: {
 				...Object.fromEntries(Object.entries(spec.parameters)),
+				...(injectsGlobalMarkdownParameter
+					? {
+							resultSummary: {
+								type: "string",
+								description: "Concise result summary for this attempt.",
+							},
+						}
+					: {}),
 				...(injectsGlobalMarkdownParameter && outcomeToolMarkdownParameterName
 					? {
 							[outcomeToolMarkdownParameterName]: {
@@ -141,10 +150,19 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				const acceptsOutcome = selectedOutcome === null;
 				if (acceptsOutcome) {
 					let outcomeParams = args;
+					if (spec.resultSummaryParameter && typeof args[spec.resultSummaryParameter] === "string")
+						turnResultMarkdownStateRef.current.resultSummary = String(
+							args[spec.resultSummaryParameter],
+						).trim();
 					if (markdownParameterName) {
 						const published = publishTurnResultMarkdownValue(
 							turnResultMarkdownStateRef.current,
 							args[markdownParameterName],
+							spec.resultSummaryParameter
+								? args[spec.resultSummaryParameter]
+								: injectsGlobalMarkdownParameter
+									? args.resultSummary
+									: undefined,
 						);
 						if (!published.response.ok) {
 							return published.response;
@@ -153,6 +171,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 						if (injectsGlobalMarkdownParameter) {
 							outcomeParams = { ...args };
 							delete outcomeParams[markdownParameterName];
+							delete outcomeParams.resultSummary;
 						}
 					}
 					selectedOutcome = { outcome: outcome as TOutcome, params: outcomeParams };

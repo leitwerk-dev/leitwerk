@@ -9,7 +9,13 @@ let {
 	report,
 	compact = false,
 	attemptStatus,
-}: { report: TurnProgressReport; compact?: boolean; attemptStatus?: string } = $props();
+	recordedAt,
+}: {
+	report: TurnProgressReport;
+	compact?: boolean;
+	attemptStatus?: string;
+	recordedAt?: string;
+} = $props();
 const ended = $derived(attemptStatus !== undefined && attemptStatus !== "in_progress");
 const steps = $derived<ChecklistStep[]>(
 	report.steps.map((step) =>
@@ -33,6 +39,8 @@ const summary = $derived(compact ? "Workspace prepared" : `${report.title} compl
 		</div>
 	{/if}
 {/snippet}
+
+{#if report.summary}<p>{report.summary}{#if recordedAt} <time datetime={recordedAt}>{new Date(recordedAt).toLocaleString()}</time>{/if}</p>{/if}
 
 {#if succeeded}
 	<div class="progress-summary" data-section="turn-progress">

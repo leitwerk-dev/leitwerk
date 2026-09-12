@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import type { Snippet } from "svelte";
+import { formatTurnId } from "../../lib/format.js";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleTurnClusterItem } from "../lib/chronicle-projection.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
@@ -110,6 +111,9 @@ function openDetails() {
 
 	{#if isFailed && !failureExpanded}<p class="collapsed-failure">Failed</p>{/if}
 	<div class="turn-body" id={`turn-body-${cluster.turnRecordId}`} hidden={isFailed && !failureExpanded}>
+{#each cluster.resources ?? [] as link (link.id)}<a class="reviewed-result" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>{/each}
+	{#if cluster.reviewedTurnRecordId}<a class="reviewed-result" href={`#chronicle-turn-${cluster.reviewedTurnRecordId}`}>Reviewed result</a>{/if}
+ {#if cluster.transition}<p>{cluster.transition.accepted ? "Started" : "Selected"} {formatTurnId(cluster.transition.selectedTurnId)}</p>{/if}
 	{#if prompt}
 		<button class="prompt-row" type="button" data-section="turn-prompt" aria-label={`View prompt for ${cluster.title}`} onclick={openDetails}>
 			<span class="prompt-label">Prompt</span>
@@ -133,10 +137,11 @@ function openDetails() {
 		{/if}
 	{/each}
 
-	{#if progress && !isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} />{/if}
+	{#if progress && !isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} recordedAt={progress.recordedAt} />{/if}
 
 	{#if result}
 		<section class="result-section" class:is-compact={compactResult} class:is-compressed={!expanded && !compactResult} data-section="turn-result" data-ticket-result-artifact={`turn_result:${cluster.turnRecordId}`} data-ticket-result-durable="true" data-compressed={!expanded && !compactResult ? "true" : undefined}>
+			{#if result.resultSummary}<p class="result-summary">{result.resultSummary}</p>{/if}
 			{#if !compactResult}
 				<div class="result-header-row">
 					<h4>Result</h4>
@@ -150,7 +155,7 @@ function openDetails() {
 			{#if expanded || compactResult}
 				<ChronicleMarkdown markdown={result.markdown} className="turn-result-markdown" />
 			{:else}
-				<p class="result-summary">{truncateText(markdownToPlainText(result.markdown), 190)}</p>
+				<p class="result-summary"><span>Preview: </span>{markdownToPlainText(result.markdown.split(/\n\s*\n/).find((paragraph) => paragraph.trim() && !/^\s*#/.test(paragraph)) ?? result.markdown)}</p>
 			{/if}
 			</div>
 		</section>
@@ -170,7 +175,7 @@ function openDetails() {
 
 	{#if isLlm || hasReasoning || (compactResult && onDraftTicket)}
 		<div class="cluster-support" class:has-reasoning={hasReasoning}>
-			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} compact />{/if}</div>
+			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} recordedAt={progress.recordedAt} compact />{/if}</div>
 			<div class="footer-actions">
 				{#if compactResult && onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
 				{#if isLlm || hasReasoning}
@@ -187,6 +192,7 @@ function openDetails() {
 </section>
 
 <style>
+	.reviewed-result { color: var(--chronicle-accent); font-size: var(--type-body-sm); text-underline-offset: 3px; }
 	.turn-cluster { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--chronicle-border); border-radius: 10px; background: var(--chronicle-card-surface); scroll-margin-top: var(--space-sm); }
 	.turn-cluster.is-focused { border-color: color-mix(in srgb, var(--chronicle-accent) 40%, var(--chronicle-border)); }
 	.turn-cluster.is-failed { border-color: color-mix(in srgb, var(--chronicle-danger) 50%, var(--chronicle-border)); background: color-mix(in srgb, var(--chronicle-danger) 2%, var(--chronicle-card-surface)); }

@@ -327,6 +327,15 @@ export const ExecuteAction = defineOperation<
 										: {}),
 								}),
 						actionOrigin,
+						...(() => {
+							const start = writes.turnStartWrites.find((write) => write.kind === "create");
+							return start?.kind === "create"
+								? {
+										targetStartId: start.input.id,
+										targetTurnRecordId: start.input.proposedTurnRecordId,
+									}
+								: {};
+						})(),
 						actor,
 						...(submittedFields.length > 0 ? { submittedFields } : {}),
 					},

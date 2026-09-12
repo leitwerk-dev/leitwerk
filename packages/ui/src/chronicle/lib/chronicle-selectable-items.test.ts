@@ -228,7 +228,7 @@ describe("chronicle selectable items", () => {
 		expect(items.at(-1)).toMatchObject({ kind: "action", tone: "external_trigger" });
 	});
 
-	it("collapses adjacent retry-lineage rail items for the same turn id", () => {
+	it("retains adjacent retry attempts as selectable rail items", () => {
 		const projection = createProjection();
 		const items = buildChronicleSelectableItems({
 			projection: {
@@ -278,7 +278,7 @@ describe("chronicle selectable items", () => {
 			pendingRailItem: null,
 		});
 
-		expect(items.map((item) => item.anchorId)).not.toContain("chronicle-turn-trn_one");
+		expect(items.map((item) => item.anchorId)).toContain("chronicle-turn-trn_one");
 		expect(items.map((item) => item.anchorId)).toContain("chronicle-live-trn_three");
 	});
 
@@ -392,7 +392,7 @@ describe("chronicle selectable items", () => {
 		).toBe("chronicle-turn-trn_two");
 	});
 
-	it("maps collapsed retry-lineage anchors to the latest visible rail item", () => {
+	it("maps historical retry anchors to the selected historical attempt", () => {
 		const projection = {
 			...createProjection(),
 			turnRailItems: [
@@ -445,7 +445,7 @@ describe("chronicle selectable items", () => {
 
 		expect(
 			resolveChronicleRailAnchorIdFromActiveAnchor(projection, items, "chronicle-turn-trn_one"),
-		).toBe("chronicle-live-trn_three");
+		).toBe("chronicle-turn-trn_one");
 	});
 
 	it("resolves associated turn ids for turn and recovery action anchors and skips leaf outcomes", () => {

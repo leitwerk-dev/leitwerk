@@ -122,12 +122,14 @@ export interface ChronicleOperatorDecisionSection {
 export interface ChronicleTurnResultSection {
 	kind: "turn_result";
 	markdown: string;
+	resultSummary?: string;
 }
 
 export interface ChronicleTurnProgressSection {
 	kind: "turn_progress";
 	report: TurnProgressReport;
 	attemptStatus?: string;
+	recordedAt?: string;
 }
 
 export type ChronicleTurnClusterSection =
@@ -138,6 +140,10 @@ export type ChronicleTurnClusterSection =
 
 export interface ChronicleTurnClusterItem {
 	kind: "turn_cluster";
+	parentTurnRecordId?: string | null;
+	reviewedTurnRecordId?: string;
+	resources?: TurnRecordView["resources"];
+	transition?: TurnRecordView["transition"];
 	chronologyAt: string;
 	anchorId: string;
 	turnRecordId: string;
@@ -638,6 +644,7 @@ function buildTurnClusterItem(input: {
 		sections.push({
 			kind: "turn_progress",
 			report: turnRecord.progress,
+			recordedAt: turnRecord.progressRecordedAt,
 			attemptStatus:
 				turnRecord.status === "in_progress"
 					? "in_progress"
@@ -658,11 +665,16 @@ function buildTurnClusterItem(input: {
 		sections.push({
 			kind: "turn_result",
 			markdown: turnRecord.turnResultMarkdown,
+			resultSummary: turnRecord.resultSummary,
 		});
 	}
 
 	return {
 		kind: "turn_cluster",
+		parentTurnRecordId: turnRecord.parentTurnRecordId,
+		reviewedTurnRecordId: turnRecord.reviewedTurnRecordId,
+		resources: turnRecord.resources,
+		transition: turnRecord.transition,
 		chronologyAt: turnRecord.createdAt,
 		anchorId: buildTurnAnchorId(turnRecord.id),
 		turnRecordId: turnRecord.id,

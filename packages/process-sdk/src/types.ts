@@ -104,6 +104,8 @@ export interface OutcomeToolSpec {
 	publishedProduct?: string;
 	/** Outcome parameter whose markdown value is captured as the turn result. */
 	turnResultMarkdownParameter?: string;
+	/** Outcome parameter containing a concise operator-facing summary. */
+	resultSummaryParameter?: string;
 }
 
 export interface ProcessToolResult {

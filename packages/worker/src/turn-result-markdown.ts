@@ -8,6 +8,7 @@ import { readValueAtPath } from "@leitwerk-dev/protocol";
 
 export interface TurnResultMarkdownState {
 	markdown: string | null;
+	resultSummary?: string;
 	publicationCount: number;
 }
 
@@ -74,6 +75,7 @@ export function createTurnResultMarkdownState(): TurnResultMarkdownState {
 export function publishTurnResultMarkdownValue(
 	state: TurnResultMarkdownState,
 	value: unknown,
+	resultSummary?: unknown,
 ): {
 	state: TurnResultMarkdownState;
 	response: TurnResultMarkdownToolResponse;
@@ -92,6 +94,9 @@ export function publishTurnResultMarkdownValue(
 	}
 	const nextState: TurnResultMarkdownState = {
 		markdown: validation.markdown,
+		...(typeof resultSummary === "string" && resultSummary.trim()
+			? { resultSummary: resultSummary.trim() }
+			: {}),
 		publicationCount: state.publicationCount + 1,
 	};
 	return {
@@ -119,6 +124,10 @@ export function createMarkdownResultTool(stateRef: {
 		description:
 			"Publish the operator-facing markdown result for this turn. Pass raw markdown only and do not wrap the entire markdown in triple backticks.",
 		parameters: {
+			resultSummary: {
+				type: "string",
+				description: "Concise summary of this attempt’s result, based on completed work.",
+			},
 			markdown: {
 				type: "string",
 				description:
@@ -126,7 +135,11 @@ export function createMarkdownResultTool(stateRef: {
 			},
 		},
 		execute: async (args: Record<string, unknown>) => {
-			const published = publishTurnResultMarkdownValue(stateRef.current, args.markdown);
+			const published = publishTurnResultMarkdownValue(
+				stateRef.current,
+				args.markdown,
+				args.resultSummary,
+			);
 			stateRef.current = published.state;
 			return published.response;
 		},

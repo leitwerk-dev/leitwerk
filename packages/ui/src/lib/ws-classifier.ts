@@ -43,7 +43,13 @@ export function classifyWsEvent(
 	const { type, instanceId } = frame;
 
 	if (instanceId && instanceId === currentDetailInstanceId && isPrimaryPathFrame(frame)) {
-		return [{ kind: "apply_primary_path_frame", instanceId, frame }];
+		return [
+			{ kind: "apply_primary_path_frame", instanceId, frame },
+			...(frame.type === WS_PRIMARY_PATH_TYPES.TURN_ANNOTATION_CHANGED &&
+			frame.payload.annotation.annotationType === "external_observation"
+				? [{ kind: "reload_detail" as const, instanceId }]
+				: []),
+		];
 	}
 
 	if (type === "process.created") {

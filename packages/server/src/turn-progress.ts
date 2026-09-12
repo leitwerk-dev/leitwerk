@@ -76,7 +76,12 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 		];
 	});
 	if (links.length !== rawLinks.length) return null;
-	return { title, steps, ...(links.length > 0 ? { links } : {}) };
+	return {
+		title,
+		steps,
+		...(text(raw.summary, 2000) ? { summary: text(raw.summary, 2000) } : {}),
+		...(links.length > 0 ? { links } : {}),
+	};
 }
 
 export function recordTurnProgress(

@@ -336,3 +336,15 @@ describe("finalizeTurnResultMarkdown", () => {
 		});
 	});
 });
+
+it("retains a supplied concise summary and clears it on replacement without one", () => {
+	const published = publishTurnResultMarkdownValue(
+		createTurnResultMarkdownState(),
+		"# Full result\n\nDetails",
+		"Published the poem.",
+	);
+	expect(published.state.resultSummary).toBe("Published the poem.");
+	expect(
+		publishTurnResultMarkdownValue(published.state, "Revised result").state.resultSummary,
+	).toBeUndefined();
+});

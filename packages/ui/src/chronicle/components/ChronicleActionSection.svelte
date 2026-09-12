@@ -418,6 +418,12 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 							{/if}
 						</div>
 						<p class="external-trigger-description">{trigger.description}</p>
+ {#if signal?.observation}
+ <p>{signal.observation.summary}</p>
+ <p>Observed <time datetime={signal.observation.observedAt}>{new Date(signal.observation.observedAt).toLocaleString()}</time></p>
+ {#each signal.observation.links ?? [] as link (link.id)}<a href={link.url} target="_blank" rel="noreferrer">{link.label}</a>{/each}
+ {:else}<p>Status not yet observed.</p>{/if}
+ {#if signal?.refreshError}<p>Refresh failed: {signal.refreshError}. Last observed state retained.</p>{/if}
 						{#if signal && presentation}
 							<p class="external-trigger-signal-detail" class:is-error={signal.state === "error"}>{presentation.detail}{signal.secondaryDetail ? ` ${signal.secondaryDetail}` : ""}</p>
 						{/if}

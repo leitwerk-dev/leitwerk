@@ -2085,7 +2085,7 @@ describe("ProcessDetailPage", () => {
 			workspacePreparation
 				?.querySelector('[data-progress-step="skills"]')
 				?.getAttribute("data-progress-status"),
-		).toBe("in_progress");
+		).toBe("unrecorded");
 		expect(
 			workspacePreparation
 				?.querySelector('[data-progress-step="instructions"]')
@@ -2340,7 +2340,7 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(disclosure?.open).toBe(false);
 		expect(disclosure?.querySelector("summary")?.textContent).toContain("Waiting for an event");
-		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 event");
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 monitored event type");
 		disclosure?.querySelector("summary")?.click();
 		await flushUi();
 		expect(disclosure?.open).toBe(true);

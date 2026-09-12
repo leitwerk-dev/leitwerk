@@ -368,3 +368,15 @@ events and stable idempotency through the server-owned launch-run service; they 
 launch-plan or process-executor services. Watcher admission supplies the stable event key and
 source policy. The shared launch pipeline then resolves the event, executes checks, prepares model
 selections, and commits the process with the watcher deduplication key.
+
+Result publication accepts an optional `resultSummary`: `markdown_result`, automatic
+`WorkerCompleteInput`, and outcome declarations using `resultSummaryParameter`.
+Omitting it keeps existing publication valid. The server retains it in the turn
+milestone annotation. `TurnProgressReport.summary` explains the attempt or wait;
+progress is a snapshot, not proof that an operation occurred.
+
+External sources may define a pure `describeEvent(event)` returning `summary`,
+optional `markdown`, and `links`. Consumption persists the returned description.
+Server providers may call `externalSources.observe` with the arming's captured
+`generation`, an observation (`summary`, `links`, `observedAt`, opaque `subject`
+and `revision`), or `refreshError`. Observation writes never fire transitions.

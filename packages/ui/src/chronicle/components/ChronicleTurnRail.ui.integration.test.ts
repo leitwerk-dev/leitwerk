@@ -109,14 +109,14 @@ describe("turn rail repeated history", () => {
 		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
 	});
 
-	it("shows recorded decisions and duration in repeated history", async () => {
+	it("shows recorded decisions without transaction duration in repeated history", async () => {
 		const { target } = setup("turn-1");
 		await flush();
 		const approved = target.querySelector('[data-rail-anchor-id="turn-1"]');
-		expect(approved?.querySelector(".rail-detail")?.textContent).toBe("Approved · 12m 14s");
-		expect(approved?.getAttribute("aria-label")).toContain("Approved · 12m 14s");
+		expect(approved?.querySelector(".rail-detail")?.textContent).toBe("Approved");
+		expect(approved?.getAttribute("aria-label")).toContain("Approved");
 		expect(target.querySelector('[data-rail-anchor-id="turn-3"] .rail-detail')?.textContent).toBe(
-			"Adjust · 12m 14s",
+			"Adjust",
 		);
 		expect(target.querySelector('[data-rail-anchor-id="turn-0"] .rail-detail')?.textContent).toBe(
 			"Completed · 12m 14s",
@@ -129,7 +129,7 @@ describe("turn rail repeated history", () => {
 		for (const anchorId of ["turn-1", "turn-3"]) {
 			expect(
 				target.querySelector(`[data-rail-anchor-id="${anchorId}"] .rail-detail`)?.textContent,
-			).toBe("Completed · 12m 14s");
+			).toBe("Completed");
 		}
 	});
 

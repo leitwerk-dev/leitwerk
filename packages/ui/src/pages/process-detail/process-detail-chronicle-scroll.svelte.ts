@@ -683,6 +683,12 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 		const targetAnchorId = activeItem.anchorId;
 		activeAnchorOverrideId = targetAnchorId;
 		activeAnchorId = targetAnchorId;
+		// Reveal historical attempts before measuring their scroll position.
+		let ancestor = document.getElementById(targetAnchorId)?.parentElement;
+		while (ancestor) {
+			if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+			ancestor = ancestor.parentElement;
+		}
 		scrollToAnchor(targetAnchorId, "auto");
 		syncActiveAnchorFromViewportNow();
 		scheduleActiveAnchorSync({ force: true });

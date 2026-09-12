@@ -546,3 +546,41 @@ describe("ExternalSourceService", () => {
 		);
 	});
 });
+
+it("records observations without transitions, retains facts on refresh failure, and rejects stale generations", async () => {
+	const { deps, service } = createHarness({
+		fileDoneSource: source({ resolve: ({ state }) => state }),
+	});
+	const process = createWaitingProcess(deps);
+	const arming = service.listArmed("example.file.presence")[0];
+	const identity = {
+		instanceId: process.id,
+		armingId: arming.id,
+		generation: arming.generation ?? "missing",
+	};
+	if (!service.observe) throw new Error("Observation service missing");
+	const observation = {
+		summary: "File pending",
+		observedAt: "2026-09-12T00:00:00Z",
+		subject: "file",
+		revision: "a",
+	};
+	expect((await service.observe({ ...identity, observation })).ok).toBe(true);
+	expect((await service.observe({ ...identity, refreshError: "Unavailable" })).ok).toBe(true);
+	expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("waiting");
+	expect(deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+	const annotations = deps.turnAnnotations
+		.listByInstance(process.id)
+		.filter((annotation) => annotation.annotationType === "external_observation");
+	expect(annotations).toHaveLength(1);
+	expect(annotations[0].payload).toMatchObject({ observation, refreshError: "Unavailable" });
+	deps.processes.update(process.id, { stateJson: JSON.stringify({ revision: "b" }) });
+	expect(
+		(await service.observe({ ...identity, observation: { ...observation, summary: "Stale" } })).ok,
+	).toBe(false);
+	expect(
+		deps.turnAnnotations
+			.listByInstance(process.id)
+			.find((annotation) => annotation.id === annotations[0].id)?.payload.observation,
+	).toEqual(observation);
+});

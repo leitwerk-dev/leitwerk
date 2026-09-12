@@ -254,6 +254,7 @@ describe("process UI snapshot presenter", () => {
 					payload: {
 						actionSource: "scheduled",
 						causedSelectedTurnId: "implement",
+						targetTurnRecordId: "trn_implementation",
 						causedSelectedTurnType: "llm",
 					},
 					references: [{ kind: "turn_record", turnRecordId: decision.id }],
@@ -294,5 +295,62 @@ describe("process UI snapshot presenter", () => {
 				modelProfileId: "current_runtime_model",
 			}),
 		]);
+	});
+});
+
+it("uses retained external labels and descriptions without inventing an operator decision", () => {
+	const record = turnRecord({ turnType: "external" });
+	const annotation = {
+		id: "event",
+		instanceId: record.instanceId,
+		annotationType: "external_trigger",
+		annotationKey: "event",
+		references: [{ kind: "turn_record" as const, turnRecordId: record.id, role: "subject" }],
+		payload: { label: "File received", description: "The requested file arrived." },
+		createdAt: record.startedAt,
+		updatedAt: record.startedAt,
+	};
+	const project = (payload: Record<string, unknown>) =>
+		presentProcessTimelineTurns({
+			process: processInstance(),
+			turnRecords: [record],
+			turnAnnotations: [{ ...annotation, payload }],
+			events: [],
+			activeTurn: null,
+			selectedTurnType: null,
+		})[0];
+	expect(project(annotation.payload)).toMatchObject({
+		summary: "File received",
+		output: "The requested file arrived.",
+		createdAt: record.startedAt,
+	});
+	expect(project({}).summary).toBe("External event received");
+	expect(project({}).output).not.toContain("Actor");
+});
+
+it("reads concise results from durable milestones when outcome events are absent", () => {
+	const record = turnRecord({ turnResultMarkdown: "Full result" });
+	const turns = presentProcessTimelineTurns({
+		process: processInstance(),
+		turnRecords: [record],
+		turnAnnotations: [
+			{
+				id: "milestone",
+				instanceId: record.instanceId,
+				annotationType: "turn_milestone",
+				annotationKey: "milestone",
+				references: [{ kind: "turn_record", turnRecordId: record.id, role: "subject" }],
+				payload: { outcome: "done", resultSummary: "Poem revised." },
+				createdAt: record.startedAt,
+				updatedAt: record.startedAt,
+			},
+		],
+		events: [],
+		activeTurn: null,
+		selectedTurnType: null,
+	});
+	expect(turns[0]).toMatchObject({
+		resultSummary: "Poem revised.",
+		turnResultMarkdown: "Full result",
 	});
 });

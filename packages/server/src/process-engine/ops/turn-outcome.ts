@@ -121,7 +121,11 @@ function resolveOutcomePublication(input: {
 	turnId: string;
 	outcome: string;
 	turnPublishedProduct: string | null;
-}): { productName: string | null; markdownParameterName: string | null } {
+}): {
+	productName: string | null;
+	markdownParameterName: string | null;
+	resultSummaryParameter?: string;
+} {
 	const definition = input.processGraphs.get(input.processId)?.turns.get(input.turnId)?.definition;
 	if (!definition || (!isLlmTurnDefinition(definition) && !isAutomaticTurnDefinition(definition))) {
 		return { productName: input.turnPublishedProduct, markdownParameterName: null };
@@ -130,12 +134,17 @@ function resolveOutcomePublication(input: {
 	return {
 		productName: outcome?.publishedProduct ?? input.turnPublishedProduct,
 		markdownParameterName: outcome?.turnResultMarkdownParameter ?? null,
+		resultSummaryParameter: outcome?.resultSummaryParameter,
 	};
 }
 
 function resolveEffectiveOutcomePayload(input: {
 	payload: TurnOutcomePayload;
-	publication: { productName: string | null; markdownParameterName: string | null };
+	publication: {
+		productName: string | null;
+		markdownParameterName: string | null;
+		resultSummaryParameter?: string;
+	};
 }): TurnOutcomePayload {
 	let turnResultMarkdown = input.payload.turnResultMarkdown;
 	if (
@@ -157,6 +166,10 @@ function resolveEffectiveOutcomePayload(input: {
 	}
 	return {
 		...input.payload,
+		...(input.publication.resultSummaryParameter &&
+		typeof input.payload.params[input.publication.resultSummaryParameter] === "string"
+			? { resultSummary: String(input.payload.params[input.publication.resultSummaryParameter]) }
+			: {}),
 		...(turnResultMarkdown !== input.payload.turnResultMarkdown ? { turnResultMarkdown } : {}),
 		...(resultPiEntryId !== input.payload.resultPiEntryId ? { resultPiEntryId } : {}),
 	};
@@ -248,17 +261,22 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 					]
 				: []),
 		];
-		const milestonePayload = {
-			turnId: payload.turnId,
-			turnType: payload.turnType ?? "llm",
-			pathType: payload.pathType ?? "primary",
-			outcome: payload.outcome,
-			...(resultSemanticRef ? { resultSemanticRef } : {}),
-		};
 		const existingMilestone = ctx.deps.turnAnnotations.findByKey(
 			input.instanceId,
 			milestoneAnnotationKey,
 		);
+		const milestonePayload = {
+			...existingMilestone?.payload,
+			turnId: payload.turnId,
+			turnType: payload.turnType ?? "llm",
+			pathType: payload.pathType ?? "primary",
+			outcome: payload.outcome,
+			...(typeof payload.resultSummary === "string" && payload.resultSummary.trim()
+				? { resultSummary: payload.resultSummary.trim() }
+				: {}),
+			...(resultSemanticRef ? { resultSemanticRef } : {}),
+		};
+
 		if (existingMilestone) {
 			baseWrites.turnAnnotationWrites.push({
 				kind: "update",
@@ -368,6 +386,18 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			return reject(outcomeWrites.code, outcomeWrites.message);
 		}
 
+		const targetStart = outcomeWrites.turnStartWrites.find((write) => write.kind === "create");
+		Object.assign(milestonePayload, {
+			...(outcomeWrites.processPatch.selectedTurnId !== undefined
+				? { selectedTurnIdAfter: outcomeWrites.processPatch.selectedTurnId }
+				: {}),
+			...(targetStart?.kind === "create"
+				? {
+						targetStartId: targetStart.input.id,
+						targetTurnRecordId: targetStart.input.proposedTurnRecordId,
+					}
+				: {}),
+		});
 		const mergedWrites = mergeWrites(baseWrites, outcomeWrites);
 		const semanticEntryRefPatch = deriveTurnOutcomeSemanticEntryRefPatch({
 			turnRecordId: payload.turnRecordId,

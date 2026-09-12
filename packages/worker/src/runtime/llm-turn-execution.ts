@@ -705,6 +705,7 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 			forkPiEntryId: treePlan.forkPiEntryId,
 			resultPiEntryId: finalPromptResult.resultEntryId,
 			turnResultMarkdown: finalizedTurnResultMarkdown.markdown,
+			resultSummary: finalCompletionState.markdownState.resultSummary,
 			rootEntryId: rootEntryIdAfterTurn,
 		},
 	};

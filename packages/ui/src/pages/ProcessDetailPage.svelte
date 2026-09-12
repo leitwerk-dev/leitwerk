@@ -517,6 +517,10 @@ function openNextReasoningDetails() {
 			onDeleted={handleProcessDeleted}
 		/>
 
+ {#if $detailState.data?.process.lifecycleStatus === "waiting"}
+ {@const waitingReport = $detailState.data.timeline.turns.findLast((turn) => turn.turnId === $detailState.data?.process.selectedTurnId && turn.progress?.summary)}
+ {#if waitingReport?.progress?.summary}<p class="waiting-explanation">{waitingReport.progress.summary}{#if waitingReport.progressRecordedAt} <time datetime={waitingReport.progressRecordedAt}>{new Date(waitingReport.progressRecordedAt).toLocaleString()}</time>{/if}</p>{/if}
+ {/if}
 		<ProcessDetailChronicle
 			{instanceId}
 			detail={$detailState.data}

@@ -280,3 +280,10 @@ success. Details retain the original report; future steps remain incomplete.
 Operator and external-event entries show their recorded time without transaction
 duration. Missing attribution remains unspecified. Full prompts retain Markdown
 whitespace; only overview previews collapse whitespace.
+
+Adjacent failed attempts form retry history only through explicit parent record
+identifiers. Repeated business turns remain separate from retries. Historical
+results use a labelled paragraph preview; supplied concise summaries remain visible
+in full. The latest full result and current recovery controls remain expanded.
+External observations show their recorded time separately from refresh failures.
+A missing observation reads “Status not yet observed.”

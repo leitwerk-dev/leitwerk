@@ -249,6 +249,8 @@ interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
 	publishedProduct?: string;
 	/** Outcome parameter whose markdown value is captured as the turn result. */
 	turnResultMarkdownParameter?: string;
+	/** Outcome parameter containing a concise operator-facing summary. */
+	resultSummaryParameter?: string;
 	effect?: ProcessOutcomeEffect<TParams, TState>;
 	lifecycleIntent?: ProcessOutcomeLifecycleIntent<TParams, TState>;
 }
