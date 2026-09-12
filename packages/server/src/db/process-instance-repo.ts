@@ -12,7 +12,7 @@ import { and, asc, count, desc, eq, inArray, notInArray, or, type SQL, sql } fro
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import { normalizeProcessTitleInput } from "../launch-title.js";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now, sqliteLikePatterns } from "./repo-helpers.js";
+import { generateId, now, parseMetadata, sqliteLikePatterns } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 export interface ProcessLaunchIntent {
@@ -109,15 +109,6 @@ function overviewPredicates(input: ProcessOverviewQuery): SQL[] {
 function overviewWhere(input: ProcessOverviewQuery): SQL | undefined {
 	const predicates = overviewPredicates(input);
 	return predicates.length ? and(...predicates) : undefined;
-}
-
-function parseMetadata(raw: string | null | undefined): Record<string, unknown> | null {
-	if (!raw) return null;
-	try {
-		return JSON.parse(raw) as Record<string, unknown>;
-	} catch {
-		return null;
-	}
 }
 
 function parseLaunchIntent(raw: string | null): ProcessLaunchIntent | null {

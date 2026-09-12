@@ -1,3 +1,4 @@
+import { toErrorMessage as errorMessage } from "@leitwerk-dev/domain";
 import type { CatalogPiContribution, OwnedModelProviderSet } from "@leitwerk-dev/extension-runtime";
 import type { ModelProviderDefinition, ProviderCredentialStatus } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
@@ -39,10 +40,6 @@ export interface CreateModelProviderRegistryInput {
 	readonly extensionConfig: Readonly<Record<string, unknown>>;
 	readonly modelProfiles: readonly ModelProfileSnapshot[];
 	readonly titleModelProfileId: string | null;
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error && error.message.trim() !== "" ? error.message : String(error);
 }
 
 function contributionByOwner(

@@ -1,5 +1,4 @@
 import {
-	type Actor,
 	normalizeLaunchModelConfigInput,
 	type ProcessEvent,
 	type ProcessInstance,
@@ -38,9 +37,8 @@ import type {
 	ScheduledActionMutationResponseBody,
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyReply } from "fastify";
 import * as v from "valibot";
-import { actorForRequest } from "../auth/fastify-auth.js";
 import { getDefaultConfig } from "../config/config-loader.js";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -361,7 +359,7 @@ export function listVisibleActionsForProcess(deps: RouteDeps, process: ProcessIn
 }
 
 export function processDefinesLeafOutcome(deps: RouteDeps, process: ProcessInstance): boolean {
-	return deps.processUiRegistry?.hasLeafOutcome(process.processId) ?? false;
+	return deps.processUiRegistry?.getLeafOutcomeDefinition(process.processId) != null;
 }
 
 export function getProcessOrReply(
@@ -382,9 +380,7 @@ export function getProcessOrReply(
  * the actor is extracted from the session cookie; when auth is disabled,
  * every web action is attributed to the `admin` actor.
  */
-export function resolveActor(req: FastifyRequest): Actor {
-	return actorForRequest(req);
-}
+export { actorForRequest as resolveActor } from "../auth/fastify-auth.js";
 
 export interface NormalizedContinueRequest extends NormalizedRecoveryModelRequest {
 	prompt?: string | null;

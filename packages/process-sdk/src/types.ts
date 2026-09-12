@@ -7,6 +7,7 @@ import type {
 	ProcessTurnTerminalLifecycleStatus,
 	TurnId,
 } from "@leitwerk-dev/domain";
+import type { UsageCostSnapshot, UsageTokenCounts } from "@leitwerk-dev/protocol";
 
 export interface ProcessContext {
 	readonly process: ProcessInstance;
@@ -201,21 +202,8 @@ export interface PiCustomTool {
 	execute(args: Record<string, unknown>, context?: PiCustomToolExecutionContext): Promise<unknown>;
 }
 
-export interface PiUsageData {
-	input: number;
-	output: number;
-	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
-	reasoning?: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	cost: {
-		input: number;
-		output: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
+export interface PiUsageData extends UsageTokenCounts {
+	cost: UsageCostSnapshot;
 	cacheHitRate: number;
 }
 

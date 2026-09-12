@@ -1,4 +1,5 @@
 import type { Actor, LaunchRun, ProcessInstance } from "@leitwerk-dev/domain";
+import { isUnknownRecord as isMetadataRecord } from "@leitwerk-dev/domain";
 import type {
 	LaunchPreparationCheck,
 	ProcessLauncherService,
@@ -41,10 +42,6 @@ import {
 import { buildStartupEvidence, projectLaunchRunStartup } from "./startup-evidence.js";
 
 const MAX_PROGRAMMATIC_METADATA_BYTES = 16 * 1024;
-
-function isMetadataRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function validateProcessMetadata(patch: Record<string, unknown> | undefined): void {
 	if (!patch) return;

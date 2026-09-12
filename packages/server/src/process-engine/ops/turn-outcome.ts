@@ -2,6 +2,7 @@ import {
 	type ProcessInstance,
 	type ProcessTurnRecord,
 	parseProcessStateJsonLenient,
+	areSemanticEntryRefsEqual as sameEntryRef,
 	type TurnOutcomePayload,
 } from "@leitwerk-dev/domain";
 import {
@@ -21,14 +22,12 @@ import {
 } from "../../process-engine/writes/writes.js";
 import { getProcessTurnGraph } from "../../process-graph.js";
 import {
+	mergeProductRefPatchIntoStateJson as applyProductRefPatch,
 	deriveTurnOutcomeProductRefPatch,
-	mergeProductRefPatchIntoStateJson,
-	type ProcessProductRefPatch,
 } from "../../product-ref-state.js";
 import {
+	mergeSemanticEntryRefPatchIntoStateJson as applySemanticEntryRefPatch,
 	deriveTurnOutcomeSemanticEntryRefPatch,
-	mergeSemanticEntryRefPatchIntoStateJson,
-	type ProcessSemanticEntryRefPatch,
 } from "../../semantic-entry-ref-state.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
@@ -37,32 +36,6 @@ export interface TurnOutcomeInput {
 	instanceId: string;
 	payload: TurnOutcomePayload;
 	onRecorded?: () => void;
-}
-
-function applySemanticEntryRefPatch(
-	baseStateJson: string | null | undefined,
-	patch: ProcessSemanticEntryRefPatch,
-	options: { fallbackStateJson?: string | null | undefined } = {},
-): string | null {
-	return mergeSemanticEntryRefPatchIntoStateJson(baseStateJson, patch, options);
-}
-
-function applyProductRefPatch(
-	baseStateJson: string | null | undefined,
-	patch: ProcessProductRefPatch,
-	options: { fallbackStateJson?: string | null | undefined } = {},
-): string | null {
-	return mergeProductRefPatchIntoStateJson(baseStateJson, patch, options);
-}
-
-function sameEntryRef(
-	left: { entryId: string; turnRecordId: string | null } | null | undefined,
-	right: { entryId: string; turnRecordId: string | null } | null | undefined,
-): boolean {
-	return (
-		(left?.entryId ?? null) === (right?.entryId ?? null) &&
-		(left?.turnRecordId ?? null) === (right?.turnRecordId ?? null)
-	);
 }
 
 function writeBuildFailure(code: string, message: string): WriteBuildFailure {

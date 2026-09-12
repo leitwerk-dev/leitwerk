@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 import { flow } from "./flow.js";
 
 describe("flow", () => {
+	it.each([
+		"llm",
+		"automatic",
+		"human",
+		"external",
+	] as const)("preserves %s builder identity and fluent descriptions", (kind) => {
+		const turn = flow[kind]("example");
+		expect(turn.id).toBe("example");
+		expect(turn.description("First description")).toBe(turn);
+		expect(turn.description("Updated description")).toBe(turn);
+		expect(turn.constructor.length).toBe(1);
+	});
+
 	it("declares server-owned integration tools on an LLM turn", () => {
 		const turn = flow
 			.llm("repair")

@@ -6,6 +6,15 @@ export function parsePersistedJson<T>(value: string, label: string): T {
 	}
 }
 
+export function parseMetadata(raw: string | null | undefined): Record<string, unknown> | null {
+	if (!raw) return null;
+	try {
+		return JSON.parse(raw) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+}
+
 export function generateId(prefix: string): string {
 	const ts = Date.now().toString(36);
 	const rand = Math.random().toString(36).slice(2, 10);

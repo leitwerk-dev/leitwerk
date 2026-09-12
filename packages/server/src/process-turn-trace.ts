@@ -1,4 +1,10 @@
-import { type ProcessEvent, type ProcessTurnRecord, trimToNull } from "@leitwerk-dev/domain";
+import {
+	asUnknownRecord,
+	type ProcessEvent,
+	type ProcessTurnRecord,
+	readNonBlankString,
+	trimToNull,
+} from "@leitwerk-dev/domain";
 import {
 	asWsEventPayloadRecord,
 	buildLiveTurnProjectionFromEvents,
@@ -60,12 +66,6 @@ function normalizeContentBlocks(content: unknown): PiSessionContentBlock[] {
 	return content.filter(isContentBlock);
 }
 
-function asUnknownRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
-
 function normalizeToolArguments(value: unknown): Record<string, unknown> | null {
 	const record = asUnknownRecord(value);
 	return record ? { ...record } : null;
@@ -80,10 +80,6 @@ function extractToolResultValue(message: PiSessionMessageRecord): unknown {
 		return text;
 	}
 	return message.content ?? null;
-}
-
-function readNonBlankString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
 type TraceTurnRecord = Pick<

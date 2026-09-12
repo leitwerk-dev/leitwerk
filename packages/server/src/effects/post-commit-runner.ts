@@ -67,10 +67,7 @@ async function runWorkerEffectExclusive<T>(
 		// useful work for the durable selected turn.
 		supervisor.getWorker(instanceId)?.kill("SIGKILL");
 	}
-	let release!: () => void;
-	const current = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: current, resolve: release } = Promise.withResolvers<void>();
 	tails.set(instanceId, current);
 	await previous;
 	try {
@@ -219,41 +216,30 @@ export async function runPostCommitEffectList(
 				);
 				break;
 			case "worker":
-				try {
-					const supervisor = deps.getSupervisor();
-					const started = await runWorkerEffectExclusive(
-						supervisor,
-						effect.instanceId,
-						{ preemptGracefulStop: effect.effect.kind === "restart_worker" },
-						() => runWorkerEffect(supervisor, effect.instanceId, effect.effect),
-					);
-					if (started) {
-						startedWorkers.add(effect.instanceId);
-					}
-				} catch (error) {
-					logPostCommitEffectError(error, effect, logContext, "worker_reconcile_failed");
-					return {
-						ok: false,
-						code: "worker_reconcile_failed",
-						message:
-							messages.reconcileErrorMessage ??
-							"Failed to reconcile worker for selected-turn change",
-					};
-				}
-				break;
 			case "worker_reconcile":
 				try {
 					const supervisor = deps.getSupervisor();
-					const result = await runWorkerEffectExclusive(supervisor, effect.instanceId, {}, () =>
-						reconcileWorkerForProcessTurnSelection(
+					let started: boolean;
+					if (effect.kind === "worker") {
+						started = await runWorkerEffectExclusive(
 							supervisor,
 							effect.instanceId,
-							effect.processId,
-							deps.processGraphs,
-							effect.change,
-						),
-					);
-					if (result.startedWorker) {
+							{ preemptGracefulStop: effect.effect.kind === "restart_worker" },
+							() => runWorkerEffect(supervisor, effect.instanceId, effect.effect),
+						);
+					} else {
+						const result = await runWorkerEffectExclusive(supervisor, effect.instanceId, {}, () =>
+							reconcileWorkerForProcessTurnSelection(
+								supervisor,
+								effect.instanceId,
+								effect.processId,
+								deps.processGraphs,
+								effect.change,
+							),
+						);
+						started = result.startedWorker;
+					}
+					if (started) {
 						startedWorkers.add(effect.instanceId);
 					}
 				} catch (error) {

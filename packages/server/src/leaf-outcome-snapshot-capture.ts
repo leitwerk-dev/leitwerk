@@ -1,4 +1,5 @@
 import type { ProcessInstance, ProcessProject, ProcessTurnRecord } from "@leitwerk-dev/domain";
+import { toErrorMessage as toWarningMessage } from "@leitwerk-dev/domain";
 import {
 	normalizeLeafOutcomeCaptureResult,
 	type PiTreeEntry,
@@ -15,13 +16,6 @@ interface TurnRecordAccess {
 
 function cloneTreeEntry(entry: PiTreeEntry | null): PiTreeEntry | null {
 	return entry ? { ...entry } : null;
-}
-
-function toWarningMessage(error: unknown): string {
-	if (error instanceof Error && error.message.trim() !== "") {
-		return error.message;
-	}
-	return String(error);
 }
 
 function captureErrorSnapshot(input: {

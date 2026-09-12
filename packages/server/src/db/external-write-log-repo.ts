@@ -1,15 +1,11 @@
 import type { ExternalWriteLog, ExternalWriteType } from "@leitwerk-dev/domain";
+import type { ExternalWriteLogRecordInput } from "@leitwerk-dev/external-writes";
 import { desc, eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
-export interface CreateExternalWriteLogInput {
-	instanceId: string;
-	writeType: ExternalWriteType;
-	dedupKey: string;
-	metadata?: Record<string, unknown>;
-}
+export interface CreateExternalWriteLogInput extends ExternalWriteLogRecordInput {}
 
 function rowToExternalWriteLog(row: typeof s.externalWriteLog.$inferSelect): ExternalWriteLog {
 	return {

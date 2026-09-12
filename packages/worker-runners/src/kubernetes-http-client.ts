@@ -48,6 +48,14 @@ interface KubernetesListResponse<T> {
 	items?: T[];
 }
 
+interface KubernetesTerminationState {
+	startedAt?: string;
+	exitCode?: number;
+	reason?: string;
+	signal?: number;
+	message?: string;
+}
+
 interface KubernetesObjectResponse {
 	spec?: {
 		nodeName?: string;
@@ -77,22 +85,10 @@ interface KubernetesObjectResponse {
 			imageID?: string;
 			state?: {
 				running?: { startedAt?: string };
-				terminated?: {
-					startedAt?: string;
-					exitCode?: number;
-					reason?: string;
-					signal?: number;
-					message?: string;
-				};
+				terminated?: KubernetesTerminationState;
 			};
 			lastState?: {
-				terminated?: {
-					startedAt?: string;
-					exitCode?: number;
-					reason?: string;
-					signal?: number;
-					message?: string;
-				};
+				terminated?: KubernetesTerminationState;
 			};
 		}>;
 	};

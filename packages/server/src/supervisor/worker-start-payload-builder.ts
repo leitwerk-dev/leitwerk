@@ -105,29 +105,19 @@ function buildTurnResultMarkdownBySemanticRef(
 		return undefined;
 	}
 	const bySemanticRef: Partial<Record<ProcessSemanticEntryRefKey, string>> = {};
-	for (const ref of requiredRefs) {
-		const markdown = resolveSemanticTurnResultMarkdown({
-			process,
-			semanticEntryRefKey: ref,
-			turnRecords: deps.turnRecords,
-			required: true,
-		});
-		if (markdown) {
-			bySemanticRef[ref] = markdown;
-		}
-	}
-	for (const ref of optionalRefs) {
-		if (bySemanticRef[ref]) {
-			continue;
-		}
-		const markdown = resolveSemanticTurnResultMarkdown({
-			process,
-			semanticEntryRefKey: ref,
-			turnRecords: deps.turnRecords,
-			required: false,
-		});
-		if (markdown) {
-			bySemanticRef[ref] = markdown;
+	for (const [refs, required] of [
+		[requiredRefs, true],
+		[optionalRefs, false],
+	] as const) {
+		for (const ref of refs) {
+			if (!required && bySemanticRef[ref]) continue;
+			const markdown = resolveSemanticTurnResultMarkdown({
+				process,
+				semanticEntryRefKey: ref,
+				turnRecords: deps.turnRecords,
+				required,
+			});
+			if (markdown) bySemanticRef[ref] = markdown;
 		}
 	}
 	return Object.keys(bySemanticRef).length > 0 ? bySemanticRef : undefined;
@@ -196,31 +186,26 @@ function buildTurnResultMarkdownByProduct(
 		return undefined;
 	}
 	const byProduct: Record<string, string> = {};
-	for (const productName of consumedProducts) {
-		assertFreshTransitionScopedProduct(process, productName, deps);
-		byProduct[productName] =
-			resolveProductTurnResultMarkdown({
+	for (const [products, required] of [
+		[consumedProducts, true],
+		[optionalConsumedProducts, false],
+	] as const) {
+		for (const productName of products) {
+			if (required) {
+				assertFreshTransitionScopedProduct(process, productName, deps);
+			} else if (
+				byProduct[productName] ||
+				!isTransitionScopedProductFresh(process, productName, deps)
+			) {
+				continue;
+			}
+			const markdown = resolveProductTurnResultMarkdown({
 				process,
 				productName,
 				turnRecords: deps.turnRecords,
-				required: true,
-			}) ?? "";
-	}
-	for (const productName of optionalConsumedProducts) {
-		if (byProduct[productName]) {
-			continue;
-		}
-		if (!isTransitionScopedProductFresh(process, productName, deps)) {
-			continue;
-		}
-		const markdown = resolveProductTurnResultMarkdown({
-			process,
-			productName,
-			turnRecords: deps.turnRecords,
-			required: false,
-		});
-		if (markdown) {
-			byProduct[productName] = markdown;
+				required,
+			});
+			if (required || markdown) byProduct[productName] = markdown ?? "";
 		}
 	}
 	return Object.keys(byProduct).length > 0 ? byProduct : undefined;

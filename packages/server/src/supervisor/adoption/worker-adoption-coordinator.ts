@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { InputDelivery, IpcEnvelope } from "@leitwerk-dev/worker-protocol";
 import type { WorkerUnit, WorkerUnitDescriptor } from "@leitwerk-dev/worker-runners/types";
@@ -64,19 +65,12 @@ function parseLastSequenceConsumed(payload: unknown): number | null {
 	return typeof raw === "number" && Number.isInteger(raw) && raw >= 0 ? raw : null;
 }
 
-function defaultSleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		const timer = setTimeout(resolve, ms);
-		timer.unref?.();
-	});
-}
-
 export function createWorkerAdoptionCoordinator(deps: WorkerAdoptionCoordinatorDeps) {
 	const pending = new Set<string>();
 	const timers = new Map<string, ReturnType<typeof setTimeout>>();
 	const retryMaxAttempts = Math.max(1, deps.adoptionRetry?.maxAttempts ?? 3);
 	const retryDelayMs = Math.max(0, deps.adoptionRetry?.delayMs ?? 250);
-	const sleep = deps.adoptionRetry?.sleep ?? defaultSleep;
+	const sleep = deps.adoptionRetry?.sleep ?? ((ms: number) => delay(ms, undefined, { ref: false }));
 
 	function clearTimer(instanceId: string): void {
 		const timer = timers.get(instanceId);

@@ -1,11 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
+	areSemanticEntryRefsEqual,
 	createEmptyProcessSemanticEntryRefs,
 	isProcessSemanticEntryRefKey,
 	PROCESS_SEMANTIC_ENTRY_REF_KEYS,
 	parseProcessSemanticEntryRefs,
 	parseSemanticEntryRef,
 } from "./semantic-entry-refs.js";
+
+describe("areSemanticEntryRefsEqual", () => {
+	const ref = { entryId: "ent_1", turnRecordId: "trn_1" };
+	it.each([
+		[null, undefined, true],
+		[undefined, undefined, true],
+		[ref, { ...ref }, true],
+		[ref, null, false],
+		[null, ref, false],
+		[ref, { ...ref, entryId: "ent_2" }, false],
+		[ref, { ...ref, turnRecordId: "trn_2" }, false],
+		[ref, { ...ref, turnRecordId: null }, false],
+	])("compares entry and turn identity: %j, %j", (left, right, expected) => {
+		expect(areSemanticEntryRefsEqual(left, right)).toBe(expected);
+	});
+});
 
 describe("parseSemanticEntryRef", () => {
 	it("returns null when entryId is missing", () => {

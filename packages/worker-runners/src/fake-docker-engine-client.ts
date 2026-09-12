@@ -48,17 +48,6 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 	const volumesRemoved: string[] = [];
 	const stopCalls: Array<{ id: string; timeoutSeconds: number }> = [];
 	const removeCalls: Array<{ id: string; force?: boolean }> = [];
-	function newExitPromise(): {
-		promise: Promise<DockerContainerExit>;
-		resolve: (exit: DockerContainerExit) => void;
-	} {
-		let resolve!: (exit: DockerContainerExit) => void;
-		const promise = new Promise<DockerContainerExit>((res) => {
-			resolve = res;
-		});
-		return { promise, resolve };
-	}
-
 	return {
 		containers,
 		volumesEnsured,
@@ -68,7 +57,10 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 		async createContainer(spec: DockerContainerSpec) {
 			fakeContainerCounter += 1;
 			const id = `fake_container_${fakeContainerCounter}`;
-			const { promise, resolve } = newExitPromise();
+			let resolve!: (exit: DockerContainerExit) => void;
+			const promise = new Promise<DockerContainerExit>((res) => {
+				resolve = res;
+			});
 			containers.set(id, {
 				id,
 				spec,
@@ -121,10 +113,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			const matchesFilter = (labels: Record<string, string>) =>
 				Object.entries(filter.labels).every(([key, value]) => labels[key] === value);
 			for (const record of containers.values()) {
-				if (!record.running) {
-					continue;
-				}
-				if (!matchesFilter(record.spec.labels)) {
+				if (!record.running || !matchesFilter(record.spec.labels)) {
 					continue;
 				}
 				summaries.push({
@@ -133,13 +122,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 				});
 			}
 			for (const [id, seeded] of seededState.entries()) {
-				if (containers.has(id)) {
-					continue;
-				}
-				if (seeded.state !== "running") {
-					continue;
-				}
-				if (!matchesFilter(seeded.labels)) {
+				if (containers.has(id) || seeded.state !== "running" || !matchesFilter(seeded.labels)) {
 					continue;
 				}
 				summaries.push({ id, labels: seeded.labels });
@@ -167,12 +150,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			record.running = false;
 			record.resolveExit?.(exit);
 		},
-		seedContainer(record: {
-			id: string;
-			labels: Record<string, string>;
-			running?: boolean;
-			state?: string;
-		}) {
+		seedContainer(record) {
 			seededState.set(record.id, {
 				labels: record.labels,
 				state: record.state ?? (record.running ? "running" : "exited"),

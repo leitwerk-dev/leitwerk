@@ -21,7 +21,7 @@ import { generateId, now } from "./db/repo-helpers.js";
 import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositories.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { accept, reject } from "./process-engine/decision.js";
-import { defineOperation } from "./process-engine/operation.js";
+import { defineOperation, type OperationInput } from "./process-engine/operation.js";
 import type { EngineFailure, ProcessEngine } from "./process-engine/types.js";
 import { buildServerTransitionWrites } from "./process-engine/writes/build-server-transition-writes.js";
 import { createDeferredExtensionEvent } from "./process-engine/writes/deferred-extension-events.js";
@@ -997,16 +997,9 @@ export function createExternalSourceService(
 		};
 	}
 
-	async function dropPendingFire(input: {
-		instanceId: string;
-		armingId: string;
-		known: KnownExternalArming;
-		fireInput?: Record<string, unknown>;
-		fireEvent?: Record<string, unknown>;
-		code: string;
-		message: string;
-		pendingFireId?: string;
-	}): Promise<void> {
+	async function dropPendingFire(
+		input: OperationInput<typeof DropExternalSourceFire>,
+	): Promise<void> {
 		await deps.commands.run(DropExternalSourceFire, input);
 	}
 

@@ -1,4 +1,4 @@
-import { normalizeMarkdownText } from "@leitwerk-dev/domain";
+import { normalizeMarkdownText, trimToNull as normalizeOptionalText } from "@leitwerk-dev/domain";
 import type { PiTreeEntry } from "@leitwerk-dev/process-sdk";
 
 export type PoemLeafOutcomeReviewOutcome = "no_issues" | "leave_feedback";
@@ -19,14 +19,6 @@ export interface PoemLeafOutcomePayload extends Record<string, unknown> {
 
 function normalizePoemBody(body: string): string {
 	return body.replace(/<br\s*\/?>/gi, "\n");
-}
-
-function normalizeOptionalText(value: string | null | undefined): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
 }
 
 function normalizeReview(
@@ -50,23 +42,13 @@ function normalizeReview(
 }
 
 function uniqueNonEmptyStrings(values: Array<string | null>): string[] {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const value of values) {
-		if (!value || seen.has(value)) {
-			continue;
-		}
-		seen.add(value);
-		result.push(value);
-	}
-	return result;
+	return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
 export function extractLeafEntryMarkdown(
 	entry: Pick<PiTreeEntry, "message"> | null,
 ): string | null {
-	const content = entry?.message?.content;
-	return typeof content === "string" && content.trim() !== "" ? content.trim() : null;
+	return normalizeOptionalText(entry?.message?.content);
 }
 
 export function resolvePoemLeafMarkdown(input: {

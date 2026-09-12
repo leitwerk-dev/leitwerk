@@ -1,4 +1,5 @@
 import * as v from "valibot";
+import { tryReadJson as parseJsonResponse, unknownRecordSchema } from "../../lib/http-client.js";
 import { getFetchImpl, getModuleImporter, resolveServerUrl } from "../../lib/runtime-config.js";
 
 export interface LeafOutcomeRendererDescriptor {
@@ -12,14 +13,7 @@ export interface LeafOutcomeRendererDescriptor {
 	moduleUrl: string;
 }
 
-interface LeafOutcomeRendererLookupFailure {
-	ok: false;
-	rendererId: string;
-	code: string;
-	message: string;
-}
-
-interface LeafOutcomeRendererLoadFailure {
+interface LeafOutcomeRendererFailure {
 	ok: false;
 	rendererId: string;
 	code: string;
@@ -33,26 +27,29 @@ interface LeafOutcomeRendererLoadSuccess {
 
 export type LeafOutcomeRendererLoadResult =
 	| LeafOutcomeRendererLoadSuccess
-	| LeafOutcomeRendererLoadFailure;
+	| LeafOutcomeRendererFailure;
 
 const LEAF_OUTCOME_RENDERER_API_VERSION = 1;
 
-const descriptorPromiseCache = new Map<
-	string,
-	Promise<LeafOutcomeRendererDescriptor | LeafOutcomeRendererLookupFailure>
->();
-const modulePromiseCache = new Map<string, Promise<void>>();
+function memoizePromise<T>(load: (key: string) => Promise<T>) {
+	const cache = new Map<string, Promise<T>>();
+	return (key: string): Promise<T> => {
+		const cached = cache.get(key);
+		if (cached) {
+			return cached;
+		}
+		const promise = load(key);
+		cache.set(key, promise);
+		return promise;
+	};
+}
 
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
+const getDescriptorPromise = memoizePromise(fetchRendererDescriptor);
+const importRendererModule = memoizePromise(async (moduleUrl: string) => {
+	await getModuleImporter()(moduleUrl);
+});
 
-function isLookupFailure(value: unknown): value is LeafOutcomeRendererLookupFailure {
+function isLookupFailure(value: unknown): value is LeafOutcomeRendererFailure {
 	const parsedValue = v.safeParse(unknownRecordSchema, value);
 	if (!parsedValue.success) {
 		return false;
@@ -84,17 +81,9 @@ function isDescriptor(value: unknown): value is LeafOutcomeRendererDescriptor {
 	);
 }
 
-async function parseJsonResponse(response: Response): Promise<unknown> {
-	try {
-		return await response.json();
-	} catch {
-		return null;
-	}
-}
-
 async function fetchRendererDescriptor(
 	rendererId: string,
-): Promise<LeafOutcomeRendererDescriptor | LeafOutcomeRendererLookupFailure> {
+): Promise<LeafOutcomeRendererDescriptor | LeafOutcomeRendererFailure> {
 	let response: Response;
 	try {
 		response = await getFetchImpl()(
@@ -109,10 +98,7 @@ async function fetchRendererDescriptor(
 		};
 	}
 	const body = await parseJsonResponse(response);
-	if (isDescriptor(body)) {
-		return body;
-	}
-	if (isLookupFailure(body)) {
+	if (isDescriptor(body) || isLookupFailure(body)) {
 		return body;
 	}
 	if (!response.ok) {
@@ -132,34 +118,6 @@ async function fetchRendererDescriptor(
 		code: "invalid_renderer_descriptor",
 		message: "Renderer lookup returned an invalid descriptor payload",
 	};
-}
-
-function getDescriptorPromise(
-	rendererId: string,
-): Promise<LeafOutcomeRendererDescriptor | LeafOutcomeRendererLookupFailure> {
-	const cached = descriptorPromiseCache.get(rendererId);
-	if (cached) {
-		return cached;
-	}
-	const promise = fetchRendererDescriptor(rendererId);
-	descriptorPromiseCache.set(rendererId, promise);
-	return promise;
-}
-
-async function importRendererModule(descriptor: LeafOutcomeRendererDescriptor): Promise<void> {
-	const moduleUrl = resolveServerUrl(descriptor.moduleUrl);
-	await getModuleImporter()(moduleUrl);
-}
-
-function getModuleImportPromise(descriptor: LeafOutcomeRendererDescriptor): Promise<void> {
-	const cacheKey = resolveServerUrl(descriptor.moduleUrl);
-	const cached = modulePromiseCache.get(cacheKey);
-	if (cached) {
-		return cached;
-	}
-	const promise = importRendererModule(descriptor);
-	modulePromiseCache.set(cacheKey, promise);
-	return promise;
 }
 
 export async function loadLeafOutcomeRenderer(
@@ -190,7 +148,7 @@ export async function loadLeafOutcomeRenderer(
 		};
 	}
 	try {
-		await getModuleImportPromise(descriptor);
+		await importRendererModule(resolveServerUrl(descriptor.moduleUrl));
 	} catch (error) {
 		return {
 			ok: false,

@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import type {
 	StopWorkerOptions,
 	WorkerExitInfo,
@@ -19,13 +20,6 @@ export interface WorkerUnitReclaimerDeps {
 		maxDelayMs?: number;
 		sleep?: (ms: number) => Promise<void>;
 	};
-}
-
-function defaultSleep(ms: number): Promise<void> {
-	return new Promise((resolve) => {
-		const timer = setTimeout(resolve, ms);
-		timer.unref?.();
-	});
 }
 
 function descriptorKey(ref: WorkerUnitRef): string {
@@ -52,7 +46,7 @@ export function createWorkerUnitReclaimer(deps: WorkerUnitReclaimerDeps) {
 	const backlog = new Map<string, WorkerUnitRef>();
 	const pendingUnits = new Map<string, WorkerUnitRef>();
 	const notifyAfterReclaim = new Map<string, () => void>();
-	const sleep = deps.retry?.sleep ?? defaultSleep;
+	const sleep = deps.retry?.sleep ?? ((ms: number) => delay(ms, undefined, { ref: false }));
 	const initialDelayMs = Math.max(1, deps.retry?.initialDelayMs ?? 250);
 	const maxDelayMs = Math.max(initialDelayMs, deps.retry?.maxDelayMs ?? 30_000);
 	let retryLoop: Promise<void> | null = null;

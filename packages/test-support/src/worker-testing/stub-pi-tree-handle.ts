@@ -16,6 +16,7 @@ import type {
 	PiTreeNode,
 	PiTurnExecutionResult,
 } from "@leitwerk-dev/process-sdk";
+import { isEnoent } from "@leitwerk-dev/process-sdk";
 import type {
 	PiManagedBootstrapOptions,
 	PiManagedBootstrapResult,
@@ -783,12 +784,7 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 			try {
 				treeState = deserializeStubPiTreeState(readFileSync(opts.treeFile, "utf8"));
 			} catch (error) {
-				if (
-					typeof error === "object" &&
-					error !== null &&
-					"code" in error &&
-					(error as { code?: unknown }).code === "ENOENT"
-				) {
+				if (isEnoent(error)) {
 					return { currentLeafId: null, entries: [] };
 				}
 				throw error;

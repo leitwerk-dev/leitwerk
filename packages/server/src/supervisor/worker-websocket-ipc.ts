@@ -150,24 +150,6 @@ export function createWorkerWebSocketIpcManager(
 		}
 	}
 
-	function putEntry(input: {
-		instanceId: string;
-		workerId: string;
-		callbacks: WorkerWebSocketCallbacks;
-		tokenHash: string;
-	}): void {
-		pending.set(connectionKey(input.instanceId, input.workerId), {
-			instanceId: input.instanceId,
-			workerId: input.workerId,
-			tokenHash: input.tokenHash,
-			callbacks: input.callbacks,
-			socket: null,
-			socketAuthenticated: false,
-			authTimer: null,
-			outbound: [],
-		});
-	}
-
 	return {
 		setUnknownWorkerConnectionsRetryable(enabled: boolean): void {
 			retryUnknownWorkerConnections = enabled;
@@ -195,11 +177,15 @@ export function createWorkerWebSocketIpcManager(
 			callbacks: WorkerWebSocketCallbacks;
 			tokenHash: string;
 		}) {
-			putEntry({
+			pending.set(connectionKey(instanceId, workerId), {
 				instanceId,
 				workerId,
-				callbacks,
 				tokenHash,
+				callbacks,
+				socket: null,
+				socketAuthenticated: false,
+				authTimer: null,
+				outbound: [],
 			});
 		},
 		bindSocket({

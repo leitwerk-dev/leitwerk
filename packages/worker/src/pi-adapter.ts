@@ -8,6 +8,7 @@ import type {
 	ModelRuntime,
 	ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
+import { readFiniteNumber, readNonBlankString as readNonEmptyString } from "@leitwerk-dev/domain";
 import type {
 	PiCustomMessageInput,
 	PiCustomTool,
@@ -22,7 +23,9 @@ import type {
 	PiTreeHandle,
 	PiTreeNode,
 	PiTurnExecutionResult,
+	PiUsageData,
 } from "@leitwerk-dev/process-sdk";
+import { hasErrorCode, isEnoent } from "@leitwerk-dev/process-sdk";
 import { resolvePiAgentDir } from "@leitwerk-dev/process-sdk/pi-config";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
@@ -114,12 +117,7 @@ export async function inspectPiTreeForPlanning(
 	try {
 		await access(input.treeFile);
 	} catch (error) {
-		if (
-			typeof error === "object" &&
-			error !== null &&
-			"code" in error &&
-			(error as { code?: unknown }).code === "ENOENT"
-		) {
+		if (isEnoent(error)) {
 			return { currentLeafId: null, entries: [] };
 		}
 		throw error;
@@ -363,23 +361,6 @@ function updateAgentMessagesForCurrentLeaf(session: AgentSession): void {
 
 function activeTurnId(state: { currentTurnId: string | null; turnSequence: number }): string {
 	return state.currentTurnId ?? `turn-${state.turnSequence}`;
-}
-
-function readNonEmptyString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
-function readFiniteNumber(value: unknown): number | null {
-	if (typeof value === "number" && Number.isFinite(value)) {
-		return value;
-	}
-	if (typeof value === "string" && value.trim() !== "") {
-		const parsed = Number(value);
-		if (Number.isFinite(parsed)) {
-			return parsed;
-		}
-	}
-	return null;
 }
 
 function listRecordKeys(value: Record<string, unknown>): string[] {
@@ -1065,21 +1046,7 @@ export function translateAgentSessionEventEnvelope(
 				provider: string;
 				model: string;
 				timestamp: unknown;
-				usage: {
-					input: number;
-					output: number;
-					reasoning?: number;
-					cacheRead: number;
-					cacheWrite: number;
-					totalTokens: number;
-					cost: {
-						input: number;
-						output: number;
-						cacheRead: number;
-						cacheWrite: number;
-						total: number;
-					};
-				};
+				usage: Omit<PiUsageData, "cacheHitRate">;
 			}>;
 			const timestamp = toIsoTimestamp(assistantMessage.timestamp);
 			const piEvents: PiEvent[] = [];
@@ -2004,15 +1971,6 @@ function resolveModelSelection(
 	};
 }
 
-function isAlreadyExistsError(error: unknown): boolean {
-	return (
-		typeof error === "object" &&
-		error !== null &&
-		"code" in error &&
-		(error as { code?: unknown }).code === "EEXIST"
-	);
-}
-
 async function ensureSessionFileExists(input: {
 	treeFile: string;
 	instanceId: string;
@@ -2030,7 +1988,7 @@ async function ensureSessionFileExists(input: {
 	try {
 		await writeFile(input.treeFile, `${JSON.stringify(header)}\n`, { flag: "wx" });
 	} catch (error) {
-		if (isAlreadyExistsError(error)) {
+		if (hasErrorCode(error, "EEXIST")) {
 			return;
 		}
 		throw error;

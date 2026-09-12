@@ -101,6 +101,7 @@ export {
 	normalizeMarkdownText,
 	normalizeOptionalMarkdown,
 } from "./markdown-normalize.js";
+export { readFiniteNumber } from "./number-normalize.js";
 export type {
 	ProcessFlowEdge,
 	ProcessFlowEdgeKind,
@@ -149,6 +150,7 @@ export {
 	type RepoLocatorKind,
 } from "./repo-locator.js";
 export {
+	areSemanticEntryRefsEqual,
 	assertValidProcessProductName,
 	createEmptyProcessProductRefs,
 	createEmptyProcessSemanticEntryRefs,
@@ -166,8 +168,11 @@ export {
 } from "./semantic-entry-refs.js";
 export * from "./startup-observation.js";
 export {
+	formatProcessIdentifier,
 	humanizeProcessLabel,
 	normalizeStringArray,
+	readNonBlankString,
+	toErrorMessage,
 	trimString,
 	trimToNull,
 } from "./string-normalize.js";
@@ -215,3 +220,4 @@ export {
 	resolveProcessTurnStartSelection,
 	resolveProcessTurnStartTarget,
 } from "./turn-start-resolution.js";
+export { asUnknownRecord, isUnknownRecord } from "./unknown-record.js";

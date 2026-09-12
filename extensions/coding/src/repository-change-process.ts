@@ -1,4 +1,4 @@
-import { normalizeOptionalMarkdown } from "@leitwerk-dev/domain";
+import { trimString as normalizeMessage, normalizeOptionalMarkdown } from "@leitwerk-dev/domain";
 import {
 	acceptedReviewHandoffAction,
 	type Codec,
@@ -92,10 +92,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	} as const;
 
 	const implementationTurnAvailableTools = ["read", "bash", "edit", "write"] as const;
-
-	function normalizeMessage(value: unknown): string {
-		return typeof value === "string" ? value.trim() : "";
-	}
 
 	function resetFinalizationAfterMessage(
 		state: RepositoryChangeState,

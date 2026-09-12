@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { createIpcMessage, type ServerToWorkerMessage } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { ApplyWorkerLeaseObservationResult } from "./worker-lease-observer.js";
 import type { WorkerHandle } from "./worker-supervisor.js";
-
-function sleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function stopPhysicalRuntime(
 	handle: WorkerHandle,
@@ -75,15 +72,8 @@ export function createWorkerShutdownController(input: {
 					exitPromise,
 					sleep(graceMs).then(() => "timeout" as const),
 				]);
-				if (firstResult === "cleanup") {
-					const exitResult = await waitForExit();
-					if (exitResult === "timeout" && input.workers.has(instanceId)) {
-						await stopPhysicalRuntime(handle, "SIGKILL");
-						await exitPromise;
-					}
-					return;
-				}
-				if (firstResult === "timeout" && input.workers.has(instanceId)) {
+				const exitResult = firstResult === "cleanup" ? await waitForExit() : firstResult;
+				if (exitResult === "timeout" && input.workers.has(instanceId)) {
 					await stopPhysicalRuntime(handle, "SIGKILL");
 					await exitPromise;
 				}

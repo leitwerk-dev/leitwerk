@@ -1,4 +1,8 @@
-import type { ProcessEvent } from "@leitwerk-dev/domain";
+import {
+	type ProcessEvent,
+	readFiniteNumber as readNumber,
+	readNonBlankString as readString,
+} from "@leitwerk-dev/domain";
 import type {
 	PrimaryPathOperationalTraceItemSnapshot,
 	PrimaryPathStreamingAssistantSnapshot,
@@ -58,21 +62,6 @@ function cloneToolCall(toolCall: PrimaryPathToolCallSnapshot): PrimaryPathToolCa
 		...toolCall,
 		...(toolCall.arguments ? { arguments: { ...toolCall.arguments } } : {}),
 	};
-}
-
-function readString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
-function readNumber(value: unknown): number | null {
-	if (typeof value === "number" && Number.isFinite(value)) {
-		return value;
-	}
-	if (typeof value === "string" && value.trim() !== "") {
-		const parsed = Number(value);
-		return Number.isFinite(parsed) ? parsed : null;
-	}
-	return null;
 }
 
 function formatReason(value: unknown): string | null {

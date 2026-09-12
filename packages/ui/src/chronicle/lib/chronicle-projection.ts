@@ -775,10 +775,6 @@ function isConsumedTriggeringInputCandidate(input: ChronicleInput): boolean {
 	);
 }
 
-function isReceivedTriggeringInputCandidate(input: ChronicleInput): boolean {
-	return isChronicleTriggeringInput(input);
-}
-
 function toTriggeringInputSummary(
 	input: ChronicleInput,
 	fallbackConsumedAt?: string,
@@ -827,7 +823,7 @@ function buildTriggeringInputIndex(
 		.filter(isConsumedTriggeringInputCandidate)
 		.sort(sortInputsByConsumedAt);
 	const receivedCandidates = input.inputs
-		.filter(isReceivedTriggeringInputCandidate)
+		.filter(isChronicleTriggeringInput)
 		.sort(sortInputsByReceivedAt);
 
 	const turnRecords = [...input.turnRecords].sort(sortTurnRecordsByStartedAt);
@@ -973,7 +969,7 @@ function buildLiveTail(input: {
 			)
 		: [];
 	const runningToolCall = activeTurn
-		? ([...liveToolCalls].reverse().find((toolCall) => toolCall.status === "running") ?? null)
+		? (liveToolCalls.findLast((toolCall) => toolCall.status === "running") ?? null)
 		: null;
 	const thinkingText = activeTurn?.assistant.thinking ?? "";
 	const assistantText = activeTurn?.assistant.text.trim() ?? "";
@@ -1335,12 +1331,10 @@ export function buildChronicleProjection(
 		});
 	}
 
-	const latestAnchorableTimelineItem = [...timelineItems]
-		.reverse()
-		.find(
-			(item): item is Extract<ChronicleTimelineItem, { anchorId: string }> => "anchorId" in item,
-		);
-	const latestFocusedTurnId = [...timelineItems].reverse().find((item) => {
+	const latestAnchorableTimelineItem = timelineItems.findLast(
+		(item): item is Extract<ChronicleTimelineItem, { anchorId: string }> => "anchorId" in item,
+	);
+	const latestFocusedTurnId = timelineItems.findLast((item) => {
 		return (
 			((item.kind === "turn_cluster" || item.kind === "live_tail") &&
 				typeof item.turnRecordId === "string") ||

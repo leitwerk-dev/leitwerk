@@ -14,6 +14,16 @@ export interface SemanticEntryRef {
 	turnRecordId: string | null;
 }
 
+export function areSemanticEntryRefsEqual(
+	left: SemanticEntryRef | null | undefined,
+	right: SemanticEntryRef | null | undefined,
+): boolean {
+	return (
+		(left?.entryId ?? null) === (right?.entryId ?? null) &&
+		(left?.turnRecordId ?? null) === (right?.turnRecordId ?? null)
+	);
+}
+
 export type ProcessProductRef = SemanticEntryRef;
 export type ProcessProductRefs = Record<string, ProcessProductRef>;
 

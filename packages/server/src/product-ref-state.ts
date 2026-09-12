@@ -4,17 +4,11 @@ import {
 	type ProcessProductRefs,
 	parseProcessStateJsonStrict,
 	parseProductRefsStrict,
+	areSemanticEntryRefsEqual as productRefsEqual,
 } from "@leitwerk-dev/domain";
 import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
 
 export type ProcessProductRefPatch = Record<string, ProcessProductRef | null | undefined>;
-
-function productRefsEqual(a: ProcessProductRef | null, b: ProcessProductRef | null): boolean {
-	return (
-		(a?.entryId ?? null) === (b?.entryId ?? null) &&
-		(a?.turnRecordId ?? null) === (b?.turnRecordId ?? null)
-	);
-}
 
 function normalizeProductRef(
 	value: ProcessProductRef | null | undefined,

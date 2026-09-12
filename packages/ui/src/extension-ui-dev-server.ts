@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 
 const EXTENSION_MANIFEST_ID_RE = /^[A-Za-z0-9._-]+$/;
 const DEV_UI_SOURCES_ENV = "LEITWERK_DEV_EXTENSION_UI_SOURCES_JSON";
@@ -14,11 +15,7 @@ export interface ResolvedExtensionUiDevRequest {
 	search: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isWithinDirectory(rootDir: string, targetPath: string): boolean {
+export function isWithinDirectory(rootDir: string, targetPath: string): boolean {
 	const relative = path.relative(rootDir, targetPath);
 	return (
 		relative === "" ||

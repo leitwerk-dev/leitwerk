@@ -1124,7 +1124,13 @@ export function reduceWorkerRuntime(
 				});
 			break;
 		case "activation_failed":
-			if (!matchesActivation(state, event.startRecordId, event.turnRecordId)) break;
+		case "turn_defect":
+			if (
+				event.kind === "activation_failed"
+					? !matchesActivation(state, event.startRecordId, event.turnRecordId)
+					: !matchesTurn(state, event.turnRecordId)
+			)
+				break;
 			if (state.phase.kind === "draining") {
 				next = finishDrainingOperation(state);
 			} else {
@@ -1265,21 +1271,6 @@ export function reduceWorkerRuntime(
 			}
 			break;
 		}
-		case "turn_defect":
-			if (!matchesTurn(state, event.turnRecordId)) break;
-			if (state.phase.kind === "draining") {
-				next = finishDrainingOperation(state);
-			} else {
-				const failed = failureOutputs(next, {
-					kind: "dispatch",
-					error: event.error,
-					state: "busy",
-					session: failureContext(state),
-				});
-				next = failed.state;
-				outputs.push(...failed.outputs);
-			}
-			break;
 		case "snapshot_succeeded":
 		case "snapshot_failed": {
 			const publication = state.work.publication;

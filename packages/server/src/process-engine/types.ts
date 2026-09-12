@@ -16,8 +16,7 @@ import type {
 	DeferredProcessActivationSnapshotQuery,
 	DeferredProcessActivationSnapshotResult,
 	PreparedDeferredProcessActivation,
-	ProcessActionExecutionOrigin,
-	ProcessActionExecutionSource,
+	ProcessActionServiceLike,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -282,13 +281,9 @@ export interface ProcessEngine {
 		instanceId: string,
 		actionId: string,
 		input: Record<string, unknown>,
-		opts?: {
-			nextTurnModelProfileId?: string | null;
-			source?: ProcessActionExecutionSource;
-			origin?: ProcessActionExecutionOrigin;
+		opts?: NonNullable<Parameters<ProcessActionServiceLike["executeAction"]>[3]> & {
 			scheduledExecutionId?: string;
 			consumeScheduledExecutionOnSuccess?: boolean;
-			actor?: Actor;
 		},
 	): Promise<ActionExecutionResult>;
 }

@@ -7,16 +7,9 @@ import {
 	type ProcessTurnTerminalLifecycleStatus,
 	type ProcessTurnTransition,
 	type TurnId,
+	trimToNull,
 } from "@leitwerk-dev/domain";
 import type { ProcessGraphTurnView, ProcessGraphView } from "./process-graph.js";
-
-function trimToNull(value: string | undefined | null): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
-}
 
 /**
  * Human/operator turns are routing decisions: they pick which path the process
@@ -156,18 +149,16 @@ function redirectTransition(
 }
 
 function dedupeTransitions(transitions: readonly ProcessTurnTransition[]): ProcessTurnTransition[] {
-	const seen = new Set<string>();
-	const result: ProcessTurnTransition[] = [];
+	const result = new Map<string, ProcessTurnTransition>();
 	for (const transition of transitions) {
 		const label = trimToNull(transition.outcome) ?? trimToNull(transition.trigger);
 		const key = `${transition.nextTurnId ?? ""}|${transition.lifecycleStatus ?? ""}|${label ?? ""}`;
-		if (seen.has(key)) {
+		if (result.has(key)) {
 			continue;
 		}
-		seen.add(key);
-		result.push(transition);
+		result.set(key, transition);
 	}
-	return result;
+	return [...result.values()];
 }
 
 /**
@@ -185,10 +176,7 @@ export function collapseRoutingTurns(graph: ProcessGraphView): ProcessGraphView 
 			routingIds.add(turnId);
 		}
 	}
-	if (routingIds.size === 0) {
-		return graph;
-	}
-	if (routingIds.size === graph.turns.size) {
+	if (routingIds.size === 0 || routingIds.size === graph.turns.size) {
 		return graph;
 	}
 
@@ -398,12 +386,9 @@ export function buildProcessFlowView(rawGraph: ProcessGraphView): ProcessFlowVie
 				continue;
 			}
 			const next = transition.nextTurnId;
-			if (next === undefined) {
-				continue;
-			}
 			// Skip self-loops: an edge that leaves and re-enters the same box adds
 			// clutter without conveying additional flow.
-			if (next === turnId) {
+			if (next === undefined || next === turnId) {
 				continue;
 			}
 			const fromIndex = spineIndexByTurn.get(turnId);

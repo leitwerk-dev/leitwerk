@@ -1,11 +1,6 @@
 import { createReadStream } from "node:fs";
 import { createInterface } from "node:readline";
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
+import { asUnknownRecord as asRecord } from "@leitwerk-dev/domain";
 
 function skillIdFromManagedPath(
 	value: unknown,

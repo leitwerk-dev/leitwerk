@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
 import {
 	extractInitialPromptFromParamsJson,
 	extractInitialPromptFromValue,
-} from "./process-initial-prompt.js";
+} from "@leitwerk-dev/protocol";
+import { describe, expect, it } from "vitest";
 
 describe("extractInitialPromptFromValue", () => {
 	it("returns null for non-record inputs", () => {

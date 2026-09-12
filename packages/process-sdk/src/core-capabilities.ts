@@ -338,6 +338,7 @@ export interface QueuedProcessInputLike {
 	kind: InputKind;
 	bodyMarkdown: string;
 	target?: ProcessInputTarget | null;
+	/** Stable principal that queued this input. Defaults to SYSTEM_ACTOR at persist time. */
 	actor?: Actor;
 }
 
@@ -406,11 +407,7 @@ export interface RegisteredProcessWatcherLike<TConfig = unknown, TEvent = unknow
 	} | null>;
 }
 
-export interface WatcherLaunchResultLike {
-	launchRunId: string;
-	process: ProcessInstance | null;
-	error: string | null;
-}
+export interface WatcherLaunchResultLike extends ProgrammaticLaunchResultLike {}
 
 export interface ProgrammaticLaunchRequestLike {
 	launcherId: string;

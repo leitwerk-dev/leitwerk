@@ -70,10 +70,16 @@ function happenedOnOrBeforeEnd(entryTimestamp: string, endedAt: string | null): 
 	return compareTimestampStrings(entryTimestamp, endedAt) <= 0;
 }
 
-function isContinuableEntryType(
+function isContinuableEntryWithinBounds(
 	entry: ContinuationTreeEntry | undefined,
+	startedAt: string | null,
+	endedAt: string | null,
 ): entry is ContinuationTreeEntry {
-	return isPiSessionMessageEntryType(entry) || entry?.type === "compaction";
+	return (
+		(isPiSessionMessageEntryType(entry) || entry?.type === "compaction") &&
+		happenedOnOrAfterStart(entry.timestamp, startedAt) &&
+		happenedOnOrBeforeEnd(entry.timestamp, endedAt)
+	);
 }
 
 function isExplicitLeafUsable(
@@ -84,19 +90,10 @@ function isExplicitLeafUsable(
 	endedAt: string | null,
 ): boolean {
 	const leafEntry = entriesById.get(leafId);
-	if (!isContinuableEntryType(leafEntry)) {
+	if (!isContinuableEntryWithinBounds(leafEntry, startedAt, endedAt)) {
 		return false;
 	}
-	if (!happenedOnOrAfterStart(leafEntry.timestamp, startedAt)) {
-		return false;
-	}
-	if (!happenedOnOrBeforeEnd(leafEntry.timestamp, endedAt)) {
-		return false;
-	}
-	if (!forkPiEntryId) {
-		return true;
-	}
-	return branchContainsAncestor(entriesById, leafId, forkPiEntryId);
+	return !forkPiEntryId || branchContainsAncestor(entriesById, leafId, forkPiEntryId);
 }
 
 function findLatestContinuableEntryIdOnBranch(
@@ -106,16 +103,7 @@ function findLatestContinuableEntryIdOnBranch(
 ): string | null {
 	for (let index = entries.length - 1; index >= 0; index -= 1) {
 		const entry = entries[index];
-		if (!entry) {
-			continue;
-		}
-		if (!isContinuableEntryType(entry)) {
-			continue;
-		}
-		if (!happenedOnOrAfterStart(entry.timestamp, options.startedAt)) {
-			continue;
-		}
-		if (!happenedOnOrBeforeEnd(entry.timestamp, options.endedAt)) {
+		if (!isContinuableEntryWithinBounds(entry, options.startedAt, options.endedAt)) {
 			continue;
 		}
 		if (options.ancestorId && !branchContainsAncestor(entriesById, entry.id, options.ancestorId)) {
@@ -124,11 +112,6 @@ function findLatestContinuableEntryIdOnBranch(
 		return entry.id;
 	}
 	return null;
-}
-
-function readMessageRole(entry: ContinuationTreeEntry | undefined): string | null {
-	const role = entry?.message?.role;
-	return typeof role === "string" && role.trim() !== "" ? role : null;
 }
 
 function resolveTurnContinuationLeafEntryIdFromIndex(
@@ -254,7 +237,7 @@ export function extractFirstUserPromptOnBranch<TEntry extends ContinuationTreeEn
 	}
 	const branch = tree.getBranch(resolvedLeafId);
 	for (const entry of branch) {
-		if (!isPiSessionMessageEntryWithRecord(entry) || readMessageRole(entry) !== "user") {
+		if (!isPiSessionMessageEntryWithRecord(entry) || entry.message.role !== "user") {
 			continue;
 		}
 		const text = extractPiSessionMessageText(entry.message.content).trim();
@@ -281,7 +264,7 @@ export function resolveTurnContinuationUserPrompt(
 	const continuationLeaf = createEntriesById(entries).get(continuationLeafId);
 	if (
 		!isPiSessionMessageEntryWithRecord(continuationLeaf) ||
-		readMessageRole(continuationLeaf) !== "user"
+		continuationLeaf.message.role !== "user"
 	) {
 		return null;
 	}

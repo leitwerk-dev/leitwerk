@@ -1,6 +1,8 @@
 import {
+	asUnknownRecord as asRecord,
 	CONTINUE_PROMPT_METADATA_KEY,
 	DEFAULT_CONTINUE_PROMPT,
+	formatProcessIdentifier as formatDefinition,
 	inferTerminalRecordingFailedTurnRecoveryContext,
 	isProcessTurnType,
 	normalizeContinuePrompt,
@@ -11,6 +13,8 @@ import {
 	type ProcessTurnRecord,
 	parseProcessStateJsonLenient,
 	readFailedTurnRecoveryContext,
+	trimString as stringValue,
+	trimToNull as stringValueOrNull,
 	type TurnStartRecord,
 	type WorkerLease,
 } from "@leitwerk-dev/domain";
@@ -174,12 +178,6 @@ export function projectProcessForUiSnapshot(process: ProcessInstance): ProcessUi
 
 export { buildStartupRecovery } from "./startup-evidence.js";
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
-}
-
 function readPersistedModelSelectionWarning(
 	process: Pick<ProcessInstance, "lifecycleStatus" | "metadata">,
 ): string | null {
@@ -187,30 +185,6 @@ function readPersistedModelSelectionWarning(
 	const leitwerkMetadata = asRecord(process.metadata?._leitwerk);
 	const issue = asRecord(leitwerkMetadata?.persistedModelSelectionIssue);
 	return typeof issue?.summary === "string" ? issue.summary : null;
-}
-
-const IDENTIFIER_WORD_LABELS: Record<string, string> = {
-	api: "API",
-	id: "ID",
-	llm: "LLM",
-	mr: "MR",
-	pi: "Pi",
-	ui: "UI",
-};
-
-function formatDefinition(value: string): string {
-	return value
-		.split(/[_-]+/)
-		.filter((part) => part.length > 0)
-		.map((part) => {
-			const normalizedPart = part.toLowerCase();
-			return IDENTIFIER_WORD_LABELS[normalizedPart] ?? part.charAt(0).toUpperCase() + part.slice(1);
-		})
-		.join(" ");
-}
-
-function stringValue(value: unknown): string {
-	return typeof value === "string" ? value.trim() : "";
 }
 
 function paramsRecord(value: unknown): Record<string, unknown> {
@@ -672,10 +646,6 @@ function buildTimelineInputSummary(input: ProcessInput): ProcessTimelineInputSum
 	};
 }
 
-function stringValueOrNull(value: unknown): string | null {
-	return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
-}
-
 function matchesTrigger(trigger: ProcessExternalTriggerSummary, event: ProcessEvent): boolean {
 	const armingId = stringValueOrNull(event.data.armingId);
 	const legacyTriggerId = stringValueOrNull(event.data.trigger);
@@ -716,13 +686,11 @@ export function buildExternalTriggerSignals(args: {
 		const matchingEvents = args.events.filter((event) => matchesTrigger(trigger, event));
 		const latestEvent = matchingEvents.at(-1) ?? null;
 		const latestArmedEvent =
-			[...matchingEvents]
-				.reverse()
-				.find(
-					(event) =>
-						event.eventType === "external_trigger_listener_armed" ||
-						event.eventType === "external_source_armed",
-				) ?? null;
+			matchingEvents.findLast(
+				(event) =>
+					event.eventType === "external_trigger_listener_armed" ||
+					event.eventType === "external_source_armed",
+			) ?? null;
 		const latestConfiguredEvent = latestArmedEvent ?? latestEvent;
 		const configuredDetail = setupDetail(latestConfiguredEvent);
 
@@ -915,9 +883,9 @@ export function buildCurrentProcessError(input: {
 	if (input.process.lifecycleStatus !== "error" || input.currentTurnRecovery) {
 		return null;
 	}
-	const latestErrorEvent = [...input.events]
-		.reverse()
-		.find((event) => event.eventType === "lifecycle_parked" || event.eventType === "worker_failed");
+	const latestErrorEvent = input.events.findLast(
+		(event) => event.eventType === "lifecycle_parked" || event.eventType === "worker_failed",
+	);
 	const eventData = latestErrorEvent?.data ?? null;
 	const rawReason =
 		stringValueOrNull(eventData?.reason) ??

@@ -74,9 +74,13 @@ describe("loadLeafOutcomeRenderer", () => {
 			},
 		});
 
-		const first = await modules.loadLeafOutcomeRenderer("test:cached");
+		const [first, concurrent] = await Promise.all([
+			modules.loadLeafOutcomeRenderer("test:cached"),
+			modules.loadLeafOutcomeRenderer("test:cached"),
+		]);
 		const second = await modules.loadLeafOutcomeRenderer("test:cached");
 
+		expect(concurrent).toMatchObject({ ok: true });
 		expect(first).toMatchObject({ ok: true });
 		expect(second).toMatchObject({ ok: true });
 		expect(fetchCount).toBe(1);

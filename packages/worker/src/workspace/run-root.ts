@@ -1,5 +1,7 @@
 import path from "node:path";
+import { isPathInside } from "@leitwerk-dev/process-sdk";
 import {
+	type ComponentCheckoutPlan,
 	type ComponentManifest,
 	type ComponentManifestEntry,
 	deserializeManifest,
@@ -30,12 +32,7 @@ export type RunRootGitOps = GitOps & {
 export interface RunRootPlan {
 	workspaceRoot: string;
 	instanceId: string;
-	components: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>;
+	components: ComponentCheckoutPlan[];
 }
 
 export interface MaterializeResult {
@@ -69,27 +66,13 @@ const SKILLS_DIR_REL = path.join(".leitwerk", "skills");
 const SKILL_GLOB = "**/.cursor/skills/**/SKILL.md";
 const AGENTS_GLOB = "**/AGENTS.md";
 
-function isPathInside(parent: string, child: string): boolean {
-	const relative = path.relative(parent, child);
-	return (
-		relative !== "" &&
-		relative !== ".." &&
-		!relative.startsWith(`..${path.sep}`) &&
-		!path.isAbsolute(relative)
-	);
-}
-
-function safeJoinInsideWorkspace(workspaceRoot: string, childPath: string): string {
+function componentDir(workspaceRoot: string, childPath: string): string {
 	const root = path.resolve(workspaceRoot);
 	const target = path.resolve(root, childPath);
 	if (!isPathInside(root, target)) {
 		throw new Error(`Component key '${childPath}' resolves outside workspace root '${root}'`);
 	}
 	return target;
-}
-
-function componentDir(workspaceRoot: string, key: string): string {
-	return safeJoinInsideWorkspace(workspaceRoot, key);
 }
 
 function skillIdFromSkillPath(filePath: string): string | null {
@@ -101,12 +84,7 @@ function skillIdFromSkillPath(filePath: string): string | null {
 export function planRunRoot(
 	workspaceRoot: string,
 	instanceId: string,
-	projectSnapshots: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>,
+	projectSnapshots: ComponentCheckoutPlan[],
 ): RunRootPlan {
 	return {
 		workspaceRoot,
@@ -304,12 +282,7 @@ export async function materializeRunRoot(
 
 export async function validateRunRoot(
 	workspaceRoot: string,
-	serverProjects: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>,
+	serverProjects: ComponentCheckoutPlan[],
 	git: GitOps,
 ): Promise<ValidationResult> {
 	const raw = await git.readFile(workspaceRoot, MANIFEST_REL);

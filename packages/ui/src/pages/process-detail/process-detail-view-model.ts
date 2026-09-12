@@ -1,3 +1,7 @@
+import type {
+	CurrentErrorSummary,
+	CurrentTurnRecoverySummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { describeActionPreview } from "../../chronicle/lib/action-preview.js";
 import type {
 	ProcessActionSummary,
@@ -5,25 +9,9 @@ import type {
 	ProcessExternalTriggerSummary,
 } from "../../lib/api.js";
 
-export interface CurrentTurnRecoveryViewModel {
-	turnRecordId: string;
-	title: string;
-	summary: string;
-	guidance?: string;
-	technicalDetail?: string | null;
-	defaultContinuePrompt: string;
-	canContinue: boolean;
-	supportsModelOverride: boolean;
-	defaultModelProfileId: string | null;
-	providerOptions: Record<string, string>;
-}
+export interface CurrentTurnRecoveryViewModel extends CurrentTurnRecoverySummary {}
 
-export interface CurrentProcessErrorViewModel {
-	title: string;
-	summary: string;
-	guidance?: string;
-	technicalDetail?: string | null;
-}
+export interface CurrentProcessErrorViewModel extends CurrentErrorSummary {}
 
 export interface PendingRailItemViewModel {
 	label: string;

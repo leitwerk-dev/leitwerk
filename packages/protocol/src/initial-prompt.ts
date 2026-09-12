@@ -1,3 +1,4 @@
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 import type { FutureExecutionOverviewItem, FutureExecutionSummary } from "./http-contracts.js";
 
 // Best-effort extraction of an operator-facing prompt/command from launch params
@@ -19,10 +20,6 @@ export const INITIAL_PROMPT_FIELD_PRIORITY = [
 	"request",
 	"description",
 ] as const;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function normalizePromptValue(value: string): string | null {
 	const normalized = value.replace(/\s+/g, " ").trim();

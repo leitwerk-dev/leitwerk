@@ -446,16 +446,9 @@ export function credentialBasedModelStatuses(
 	credentialStatus: ProviderCredentialStatus,
 	unavailableReason: string,
 ): readonly ProviderModelStatus[] {
-	const seen = new Set<string>();
-	const statuses: ProviderModelStatus[] = [];
-	for (const configured of configuredModels) {
-		if (seen.has(configured.modelId)) continue;
-		seen.add(configured.modelId);
-		statuses.push({
-			modelId: configured.modelId,
-			availability: credentialStatus.available ? "available" : "unavailable",
-			...(credentialStatus.available ? {} : { safeReason: unavailableReason }),
-		});
-	}
-	return statuses;
+	return [...new Set(configuredModels.map((configured) => configured.modelId))].map((modelId) => ({
+		modelId,
+		availability: credentialStatus.available ? "available" : "unavailable",
+		...(credentialStatus.available ? {} : { safeReason: unavailableReason }),
+	}));
 }

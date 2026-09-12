@@ -52,6 +52,7 @@ import {
 	unknownRecordSchema,
 } from "./protocol.js";
 import type { ToolCallRendererDefinition } from "./tool-renderer-contract.js";
+import type { UsageCostSnapshot, UsageTokenCounts } from "./usage-snapshot.js";
 
 export interface StartLaunchRunResponseBody {
 	launchRunId: string;
@@ -373,21 +374,8 @@ export interface ProcessLaunchConfigurationView {
 	projects: readonly ProcessLaunchConfigurationProjectView[];
 }
 
-export interface PiSessionUsageSnapshot {
-	input: number;
-	output: number;
-	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
-	reasoning?: number;
-	cacheRead: number;
-	cacheWrite: number;
-	totalTokens: number;
-	cost?: {
-		input: number;
-		output: number;
-		cacheRead: number;
-		cacheWrite: number;
-		total: number;
-	};
+export interface PiSessionUsageSnapshot extends UsageTokenCounts {
+	cost?: UsageCostSnapshot;
 }
 
 export type PiSessionTextContentBlock = { type: "text"; text: string };
@@ -625,16 +613,9 @@ export interface ProcessOverviewItem extends ProcessRowSlot {
 	closedAt: string | null;
 }
 
-interface FutureExecutionOverviewItemBase {
-	id: string;
-	scheduleKind: "once" | "cron";
-	processId: string;
-	nextRunAt: string;
-	cronExpression: string | null;
-	title: string;
+interface FutureExecutionOverviewItemBase
+	extends Omit<FutureExecutionBaseSummary, "kind" | "subtitle" | "modelSelection"> {
 	initialPromptPreview: string | null;
-	status?: "scheduled" | "blocked";
-	blockedReason?: FutureExecutionBlockReason | null;
 }
 
 export interface FutureLaunchOverviewItem extends FutureExecutionOverviewItemBase {
@@ -1017,7 +998,7 @@ export type PrimaryPathSnapshotResponseBody = PrimaryPathSnapshot;
 
 export type CronPreviewResponseBody = { nextRunAt: string };
 
-type ParsedLauncherRequestBody = {
+export type ParsedLauncherRequestBody = {
 	title: string | null;
 	titleProvided: boolean;
 	launcherInput: Record<string, unknown>;
@@ -1029,7 +1010,7 @@ type ParsedLauncherRequestBody = {
 	scheduleProvided: boolean;
 };
 
-type ParsedActionRequestBody = {
+export type ParsedActionRequestBody = {
 	input: Record<string, unknown>;
 	inputProvided: boolean;
 	nextTurnModelProfileId?: string | null;

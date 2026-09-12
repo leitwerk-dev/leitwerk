@@ -30,6 +30,14 @@ export async function readJsonObject<T extends object>(
 	return body as T;
 }
 
+export function jsonRequestInit(method: string, body: unknown): RequestInit {
+	return {
+		method,
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	};
+}
+
 export async function requestJson<T extends object>(input: {
 	path: string;
 	init?: RequestInit;

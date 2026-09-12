@@ -8,10 +8,7 @@ export function createProcessOperationCoordinator(): ProcessOperationCoordinator
 	return {
 		async runExclusive<T>(instanceId: string, operation: () => Promise<T> | T): Promise<T> {
 			const previous = tails.get(instanceId) ?? Promise.resolve();
-			let release!: () => void;
-			const current = new Promise<void>((resolve) => {
-				release = resolve;
-			});
+			const { promise: current, resolve: release } = Promise.withResolvers<void>();
 			tails.set(instanceId, current);
 
 			await previous;

@@ -8,7 +8,7 @@ export interface UsageCostSnapshot {
 	total: number;
 }
 
-export interface UsageSnapshot {
+export interface UsageTokenCounts {
 	input: number;
 	output: number;
 	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
@@ -16,6 +16,9 @@ export interface UsageSnapshot {
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
+}
+
+export interface UsageSnapshot extends UsageTokenCounts {
 	cost: UsageCostSnapshot | null;
 	/** Number of model requests represented by this aggregate, when known. */
 	requestCount?: number;

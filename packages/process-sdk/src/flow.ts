@@ -48,6 +48,7 @@ import type {
 	UiProcessAPI,
 	WorkerCompleteInput,
 } from "./extension-api.js";
+import { isPathInside } from "./fs-utils.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -247,16 +248,6 @@ function readInitialPrompt<TParams>(params: TParams): string {
 		}
 	}
 	return "";
-}
-
-function isPathInside(parent: string, child: string): boolean {
-	const relative = path.relative(parent, child);
-	return (
-		relative !== "" &&
-		relative !== ".." &&
-		!relative.startsWith(`..${path.sep}`) &&
-		!path.isAbsolute(relative)
-	);
 }
 
 function safeJoinInside(parent: string, childPath: string, context: string): string {
@@ -972,15 +963,31 @@ type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepar
 	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
 ) => MaybePromise<string>;
 
+// Subclasses keep explicit constructors to preserve their one-argument runtime signature.
+abstract class DescribedTurnBuilder {
+	protected turnDescription: string | null = null;
+
+	constructor(protected readonly turnId: TurnId) {}
+
+	get id(): TurnId {
+		return this.turnId;
+	}
+
+	description(description: string): this {
+		this.turnDescription = description;
+		return this;
+	}
+}
+
 export class LlmFlowBuilder<
-	TParams = unknown,
-	TState = unknown,
-	TConsumedProducts extends string = never,
-	TPrepared = undefined,
-> implements FlowLlmTurn<TParams, TState, string>
+		TParams = unknown,
+		TState = unknown,
+		TConsumedProducts extends string = never,
+		TPrepared = undefined,
+	>
+	extends DescribedTurnBuilder
+	implements FlowLlmTurn<TParams, TState, string>
 {
-	private readonly turnId: TurnId;
-	private turnDescription: string | null = null;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
 	private availableIntegrationTools: readonly string[] = [];
@@ -999,8 +1006,8 @@ export class LlmFlowBuilder<
 	private questionsEnabled = false;
 	private startFrom: LlmTurnDefinition<string, TParams, TState>["startFrom"] | undefined;
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
-	private consumedProductNames: string[] = [];
-	private optionalConsumedProductNames: string[] = [];
+	private readonly consumedProductNames = new Set<string>();
+	private readonly optionalConsumedProductNames = new Set<string>();
 	private publishedResult: {
 		productName: string;
 		builder: PublishedResultBuilder<TParams, TState>;
@@ -1009,20 +1016,11 @@ export class LlmFlowBuilder<
 	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
 
 	constructor(turnId: TurnId) {
-		this.turnId = turnId;
-	}
-
-	get id(): TurnId {
-		return this.turnId;
+		super(turnId);
 	}
 
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	modelPurpose(purpose: LlmModelPurpose): this {
@@ -1150,10 +1148,7 @@ export class LlmFlowBuilder<
 	consume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
-		const normalized = normalizeProductName(productName);
-		if (!this.consumedProductNames.includes(normalized)) {
-			this.consumedProductNames.push(normalized);
-		}
+		this.consumedProductNames.add(normalizeProductName(productName));
 		return this as unknown as LlmFlowBuilder<
 			TParams,
 			TState,
@@ -1165,10 +1160,7 @@ export class LlmFlowBuilder<
 	optionalConsume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
-		const normalized = normalizeProductName(productName);
-		if (!this.optionalConsumedProductNames.includes(normalized)) {
-			this.optionalConsumedProductNames.push(normalized);
-		}
+		this.optionalConsumedProductNames.add(normalizeProductName(productName));
 		return this as unknown as LlmFlowBuilder<
 			TParams,
 			TState,
@@ -1207,11 +1199,9 @@ export class LlmFlowBuilder<
 	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
 		this.promptBuilder = (ctx) =>
 			fn(
-				createFlowPromptContext(
-					ctx,
-					this.consumedProductNames as TConsumedProducts[],
-					this.optionalConsumedProductNames,
-				),
+				createFlowPromptContext(ctx, [...this.consumedProductNames] as TConsumedProducts[], [
+					...this.optionalConsumedProductNames,
+				]),
 			);
 		return this;
 	}
@@ -1386,10 +1376,10 @@ export class LlmFlowBuilder<
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
 			...(resultSemanticRef ? { resultSemanticRef } : {}),
 			...(publishedProduct ? { publishedProduct } : {}),
-			...(this.consumedProductNames.length > 0
+			...(this.consumedProductNames.size > 0
 				? { consumedProducts: [...this.consumedProductNames] }
 				: {}),
-			...(this.optionalConsumedProductNames.length > 0
+			...(this.optionalConsumedProductNames.size > 0
 				? { optionalConsumedProducts: [...this.optionalConsumedProductNames] }
 				: {}),
 		};
@@ -1435,10 +1425,9 @@ function buildExternalActions<TParams, TState>(
 }
 
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
+	extends DescribedTurnBuilder
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
-	private readonly turnId: TurnId;
-	private turnDescription: string | null = null;
 	private runFn:
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
 		| null = null;
@@ -1447,20 +1436,11 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
 	constructor(turnId: TurnId) {
-		this.turnId = turnId;
-	}
-
-	get id(): TurnId {
-		return this.turnId;
+		super(turnId);
 	}
 
 	get definition(): AutomaticTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	run(
@@ -1694,9 +1674,9 @@ export class ExternalActionBuilder<
 }
 
 export class HumanFlowBuilder<TParams = unknown, TState = unknown>
+	extends DescribedTurnBuilder
 	implements FlowHumanTurn<TParams, TState>
 {
-	private turnDescription: string | null = null;
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
 	private operatorAttentionValue: HumanTurnOperatorAttention | undefined;
@@ -1705,10 +1685,8 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
 	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
-	constructor(private readonly turnId: TurnId) {}
-
-	get id(): TurnId {
-		return this.turnId;
+	constructor(turnId: TurnId) {
+		super(turnId);
 	}
 
 	get definition(): HumanTurnDefinition<TParams, TState> {
@@ -1729,11 +1707,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			),
 			...(externalActions ? { externalActions } : {}),
 		};
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	reviewProduct(productName: string): this {
@@ -1872,16 +1845,14 @@ export class ExternalRouteBuilder<
 }
 
 export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
+	extends DescribedTurnBuilder
 	implements FlowExternalTurn<TParams, TState>
 {
-	private turnDescription: string | null = null;
 	private routeBuilders: ExternalRouteBuilder<TParams, TState, unknown, Record<string, unknown>>[] =
 		[];
 
-	constructor(private readonly turnId: TurnId) {}
-
-	get id(): TurnId {
-		return this.turnId;
+	constructor(turnId: TurnId) {
+		super(turnId);
 	}
 
 	get definition(): ExternalTurnDefinition<TParams, TState> {
@@ -1897,11 +1868,6 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 			description: this.turnDescription,
 			transitions: this.routeBuilders.map((builder) => builder.build()),
 		};
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	from<TEvent = unknown, TInput extends Record<string, unknown> = Record<string, unknown>>(

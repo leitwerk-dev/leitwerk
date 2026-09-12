@@ -1,3 +1,4 @@
+import type { WorkerCredentialMaterial } from "@leitwerk-dev/worker-protocol";
 import type {
 	createProviderCredentialRepo,
 	ProviderCredentialRecord,
@@ -15,11 +16,7 @@ const MAX_SECRET_VALUE_LENGTH = 64 * 1024;
 
 type CredentialRepo = ReturnType<typeof createProviderCredentialRepo>;
 
-export interface ResolvedProviderCredential {
-	providerId: string;
-	revision: number | null;
-	values: Record<string, string>;
-}
+export interface ResolvedProviderCredential extends WorkerCredentialMaterial {}
 
 export interface ProviderCredentialUpdateResult {
 	accepted: boolean;

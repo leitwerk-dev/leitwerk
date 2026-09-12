@@ -36,12 +36,7 @@ interface AttemptRuntime {
 	streamClaimed: boolean;
 }
 
-interface AttemptAuth {
-	instanceId: string;
-	grantId: string;
-	attemptId: string;
-	token: string;
-}
+type AttemptAuth = Parameters<RepositoryBundle["sessionTransfers"]["verifyAttempt"]>[0];
 
 function isExportPending(attempt: SessionTransferAttempt): boolean {
 	return attempt.state === "queued" || attempt.state === "exporting";

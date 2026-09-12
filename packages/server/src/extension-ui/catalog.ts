@@ -44,13 +44,7 @@ export interface ExtensionUiRendererDescriptor {
 	extensionManifestId: string;
 }
 
-export interface ExtensionUiRendererLookup {
-	rendererId: string;
-	kind: "custom_element";
-	tagName: string;
-	modulePath: string;
-	rendererApiVersion: number;
-	extensionManifestId: string;
+export interface ExtensionUiRendererLookup extends ExtensionUiRendererDescriptor {
 	moduleUrl: string;
 }
 
@@ -405,10 +399,7 @@ export function resolveExtensionUiAssetPath(
 	requestedPath: string,
 ): string | null {
 	const assetRoot = catalog.getAssetRoot(extensionManifestId);
-	if (!assetRoot) {
-		return null;
-	}
-	if (requestedPath.trim() === "") {
+	if (!assetRoot || requestedPath.trim() === "") {
 		return null;
 	}
 	try {

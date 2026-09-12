@@ -1,8 +1,7 @@
 import {
 	assertValidProcessProductName,
-	type InputKind,
-	type InputSource,
-	type ProcessInputTarget,
+	trimString as normalizeEffectString,
+	normalizeStringArray as normalizeEffectStringArray,
 	type ProcessInstance,
 	type ProcessSemanticEntryRefKey,
 	type ProcessTurnStartSelection,
@@ -12,24 +11,16 @@ import {
 	type TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type {
-	Codec,
 	ExtensionProcessDefinition,
 	ExternalActionSource,
 	ExternalSourceEffect,
 	ExternalSourceResolveContext,
 	FormDefinition,
-	ProcessLauncherAPI,
 	ProcessTurnBinding,
 	ProcessTurnOutcomeEvent,
-	ProcessWatcherAPI,
-	RepositoryCredentialProject,
-	RepositoryCredentialRequirement,
-	ServerProcessAPI,
 	ServerProcessContext,
 	ServerTransitionRequest,
-	UiProcessAPI,
 	WorkerCompleteInput,
-	WorkerProcessAPI,
 	WorkerProcessContext,
 } from "./extension-api.js";
 import {
@@ -47,7 +38,6 @@ import type {
 	PiBuiltInToolName,
 	ProcessActionPreviewDefinition,
 	ProcessActionSchedulingDefinition,
-	ProcessPiConfig,
 	TurnAcceptanceState,
 	TurnBranchType,
 	TurnCompletionMode,
@@ -62,12 +52,7 @@ type ProcessEmittedEvent = {
 	data: unknown;
 };
 
-type ProcessQueuedInput = {
-	source: InputSource;
-	kind: InputKind;
-	bodyMarkdown: string;
-	target?: ProcessInputTarget;
-};
+type ProcessQueuedInput = Parameters<ServerProcessContext["queueInput"]>[0];
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -388,29 +373,16 @@ export type ProcessDefinition<TParams = unknown, TState = unknown> = ExtensionPr
 	TState
 >;
 
-export interface DefinedProcessInput<TParams = unknown, TState = unknown> {
-	id: string;
-	displayName: string;
+export interface DefinedProcessInput<TParams = unknown, TState = unknown>
+	extends Omit<
+		ExtensionProcessDefinition<TParams, TState>,
+		"entryTurnId" | "alternateEntryTurnIds" | "turns"
+	> {
 	/** Primary entry used when a launch does not select a start turn explicitly. */
 	entry: TurnId;
 	/** Additional entry turns that launchers may select explicitly. */
 	alternateEntries?: readonly TurnId[];
-	happyPath?: readonly TurnId[];
-	paramsCodec: Codec<TParams>;
-	stateCodec: Codec<TState>;
-	initialState(params: TParams): TState;
-	runtime?: { readonly developmentTools?: boolean; readonly docker?: boolean };
-	repositoryCredentials?(input: {
-		params: TParams;
-		projects: readonly RepositoryCredentialProject[];
-	}): readonly RepositoryCredentialRequirement[];
-	piConfig?: ProcessPiConfig;
 	turns: TurnDefinitionRecord<TParams, TState>;
-	worker?: (api: WorkerProcessAPI<TParams, TState>) => void;
-	server?: (api: ServerProcessAPI<TParams, TState>) => void;
-	ui?: (api: UiProcessAPI<TParams, TState>) => void;
-	launchers?: (api: ProcessLauncherAPI<TParams>) => void;
-	watchers?: (api: ProcessWatcherAPI<TParams>) => void;
 }
 
 type CompiledActionRouting<TParams, TState> =
@@ -779,18 +751,6 @@ function mergeProcessEffectPlans<TState>(
 			? { queueInput: [...(left.queueInput ?? []), ...(right.queueInput ?? [])] }
 			: {}),
 	};
-}
-
-function normalizeEffectString(value: unknown): string {
-	return typeof value === "string" ? value.trim() : "";
-}
-
-function normalizeEffectStringArray(value: unknown): string[] {
-	return Array.isArray(value)
-		? value
-				.map((entry) => (typeof entry === "string" ? entry.trim() : ""))
-				.filter((entry) => entry !== "")
-		: [];
 }
 
 async function buildSavePlanResultEffect<TParams, TState>(input: {

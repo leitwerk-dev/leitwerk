@@ -64,6 +64,7 @@ import type {
 import * as v from "valibot";
 import { formatDefinition } from "./format.js";
 import {
+	jsonRequestInit,
 	readErrorMessage,
 	readJsonObject,
 	requestJson,
@@ -185,11 +186,7 @@ export async function submitQuestionAnswers(input: {
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(input.instanceId)}/question-requests/${encodeURIComponent(input.requestId)}/answers`,
 		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ draft: input.draft }),
-		},
+		jsonRequestInit("POST", { draft: input.draft }),
 	);
 	if (!response.ok) {
 		const body = await tryReadJson(response);
@@ -244,11 +241,7 @@ export async function resolveToolApproval(input: {
 	return (
 		await requestJson<{ request: ProcessToolApprovalRequest }>({
 			path: `/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
-			init: {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify(input.body),
-			},
+			init: jsonRequestInit("POST", input.body),
 			malformed: "Malformed approval response",
 			error: (response, value) =>
 				new ApiResponseError(
@@ -369,7 +362,7 @@ export type LauncherSubmitResult =
 			error: string;
 	  };
 
-async function requireSuccessfulMutation(response: Response, fallbackError: string): Promise<void> {
+async function requireSuccessfulResponse(response: Response, fallbackError: string): Promise<void> {
 	if (response.ok) return;
 	const body = await tryReadJson(response);
 	throw new Error(readErrorMessage(body) ?? `${fallbackError}: ${response.status}`);
@@ -494,7 +487,7 @@ export async function registerSkill(repositoryId: string, skillId: string): Prom
 		),
 		{ method: "POST" },
 	);
-	await requireSuccessfulMutation(res, "Couldn't register the skill");
+	await requireSuccessfulResponse(res, "Couldn't register the skill");
 }
 
 export async function removeSkill(skillId: string): Promise<void> {
@@ -502,15 +495,12 @@ export async function removeSkill(skillId: string): Promise<void> {
 		resolveApiUrl(`/api/skills/installed/${encodeURIComponent(skillId)}`),
 		{ method: "DELETE" },
 	);
-	await requireSuccessfulMutation(res, "Couldn't remove the skill");
+	await requireSuccessfulResponse(res, "Couldn't remove the skill");
 }
 
-export async function fetchLauncherDefaults(launcherId: string): Promise<{
-	defaults: Record<string, unknown>;
-	title: string | null;
-	modelConfig: LauncherModelConfigDefaults;
-	warnings?: LauncherValidationError[];
-}> {
+export async function fetchLauncherDefaults(
+	launcherId: string,
+): Promise<LauncherDefaultsResponseBody> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/defaults`),
 	);
@@ -538,11 +528,7 @@ export async function fetchLauncherOptions(
 ): Promise<Record<string, readonly LauncherFieldOptionDefinition[]>> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/options`),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ launcherInput }),
-		},
+		jsonRequestInit("POST", { launcherInput }),
 	);
 	if (!res.ok) throw new Error(`Couldn't refresh the available options: ${res.status}`);
 	const body = await readJsonObject<LauncherOptionsResponseBody>(
@@ -559,11 +545,7 @@ export async function fetchLauncherModelConfigPreview(
 ): Promise<LauncherModelConfigPreview> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/model-config-preview`),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ launcherInput, modelConfig }),
-		},
+		jsonRequestInit("POST", { launcherInput, modelConfig }),
 	);
 	if (!res.ok) throw new Error(`Couldn't refresh the model preview: ${res.status}`);
 	const body = await readJsonObject<LauncherModelConfigPreviewResponseBody>(
@@ -660,11 +642,7 @@ export async function launchLauncher(
 	}
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/future-launches`),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ title, launcherInput, modelConfig, schedule, skillIds }),
-		},
+		jsonRequestInit("POST", { title, launcherInput, modelConfig, schedule, skillIds }),
 	);
 	if (!res.ok) {
 		return parseLauncherErrorResponse(res, "Couldn't start this process", await tryReadJson(res));
@@ -762,14 +740,10 @@ export async function postProcessRetry(
 ): Promise<void> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/retry`),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-				...(providerOptions === undefined ? {} : { providerOptions }),
-			}),
-		},
+		jsonRequestInit("POST", {
+			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
+			...(providerOptions === undefined ? {} : { providerOptions }),
+		}),
 	);
 	if (!res.ok) {
 		throw new Error(`Couldn't retry this process: ${res.status}`);
@@ -785,10 +759,7 @@ export async function fetchModelProviderOptions(
 			`/api/processes/${encodeURIComponent(instanceId)}/model-profiles/${encodeURIComponent(modelProfileId)}/provider-options`,
 		),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(readErrorMessage(body) ?? `Couldn't load provider options: ${res.status}`);
-	}
+	await requireSuccessfulResponse(res, "Couldn't load provider options");
 	return (await res.json()) as ModelProviderOptionsResponseBody;
 }
 
@@ -803,20 +774,13 @@ export async function postProcessTurnContinue(
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/continue`,
 		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				...(prompt === undefined ? {} : { prompt }),
-				...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-				...(providerOptions === undefined ? {} : { providerOptions }),
-			}),
-		},
+		jsonRequestInit("POST", {
+			...(prompt === undefined ? {} : { prompt }),
+			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
+			...(providerOptions === undefined ? {} : { providerOptions }),
+		}),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(readErrorMessage(body) ?? `Couldn't continue this failed turn: ${res.status}`);
-	}
+	await requireSuccessfulResponse(res, "Couldn't continue this failed turn");
 }
 
 export async function postProcessStartupRetry(
@@ -829,19 +793,12 @@ export async function postProcessStartupRetry(
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(instanceId)}/turn-starts/${encodeURIComponent(startRecordId)}/retry`,
 		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-				...(providerOptions === undefined ? {} : { providerOptions }),
-			}),
-		},
+		jsonRequestInit("POST", {
+			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
+			...(providerOptions === undefined ? {} : { providerOptions }),
+		}),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(readErrorMessage(body) ?? `Couldn't retry worker startup: ${res.status}`);
-	}
+	await requireSuccessfulResponse(res, "Couldn't retry worker startup");
 }
 
 export interface SessionTransferGrantResponse {
@@ -870,7 +827,7 @@ export async function cancelSessionTransfer(instanceId: string, attemptId: strin
 		),
 		{ method: "POST" },
 	);
-	await requireSuccessfulMutation(response, "Couldn't cancel the local session transfer");
+	await requireSuccessfulResponse(response, "Couldn't cancel the local session transfer");
 }
 
 export async function deleteProcess(instanceId: string): Promise<void> {
@@ -878,7 +835,7 @@ export async function deleteProcess(instanceId: string): Promise<void> {
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}`),
 		{ method: "DELETE" },
 	);
-	await requireSuccessfulMutation(response, "Couldn't delete this process");
+	await requireSuccessfulResponse(response, "Couldn't delete this process");
 }
 
 export async function postProcessAbort(instanceId: string): Promise<void> {
@@ -886,7 +843,7 @@ export async function postProcessAbort(instanceId: string): Promise<void> {
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/abort`),
 		{ method: "POST" },
 	);
-	await requireSuccessfulMutation(response, "Couldn't abort this process");
+	await requireSuccessfulResponse(response, "Couldn't abort this process");
 }
 
 export async function postProcessAbortTurn(instanceId: string): Promise<void> {
@@ -894,7 +851,7 @@ export async function postProcessAbortTurn(instanceId: string): Promise<void> {
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/abort-turn`),
 		{ method: "POST" },
 	);
-	await requireSuccessfulMutation(response, "Couldn't stop this turn");
+	await requireSuccessfulResponse(response, "Couldn't stop this turn");
 }
 
 export async function fetchProcessRetryConfig(instanceId: string): Promise<ProcessRetryConfig> {
@@ -923,18 +880,9 @@ export async function fetchProcessActionModelPreview(
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}/model-preview`,
 		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ input }),
-		},
+		jsonRequestInit("POST", { input }),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(
-			readErrorMessage(body) ?? `Couldn't refresh the action model preview: ${res.status}`,
-		);
-	}
+	await requireSuccessfulResponse(res, "Couldn't refresh the action model preview");
 	const body = await readJsonObject<ProcessActionModelPreviewResponseBody>(
 		res,
 		"Malformed process action model preview response",
@@ -955,24 +903,15 @@ export async function postProcessAction(
 		resolveApiUrl(
 			`/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}`,
 		),
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				input,
-				schedule: opts.schedule ?? { mode: "now" },
-				...(opts.nextTurnModelProfileId !== undefined
-					? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
-					: {}),
-			}),
-		},
+		jsonRequestInit("POST", {
+			input,
+			schedule: opts.schedule ?? { mode: "now" },
+			...(opts.nextTurnModelProfileId !== undefined
+				? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
+				: {}),
+		}),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(
-			readErrorMessage(body) ?? `Couldn't run "${formatDefinition(actionId)}": ${res.status}`,
-		);
-	}
+	await requireSuccessfulResponse(res, `Couldn't run "${formatDefinition(actionId)}"`);
 	const body = await readJsonObject<ScheduledActionMutationResponseBody>(
 		res,
 		"Malformed process action response",
@@ -993,11 +932,7 @@ export async function updateScheduledLaunch(
 ): Promise<LauncherSubmitResult> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}/launch`),
-		{
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ title, launcherInput, modelConfig, schedule, skillIds }),
-		},
+		jsonRequestInit("PUT", { title, launcherInput, modelConfig, schedule, skillIds }),
 	);
 	if (!res.ok) {
 		return parseLauncherErrorResponse(
@@ -1035,24 +970,15 @@ export async function updateScheduledAction(
 ): Promise<ProcessActionSubmitResult> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}/action`),
-		{
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				input,
-				schedule: opts.schedule,
-				...(opts.nextTurnModelProfileId !== undefined
-					? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
-					: {}),
-			}),
-		},
+		jsonRequestInit("PUT", {
+			input,
+			schedule: opts.schedule,
+			...(opts.nextTurnModelProfileId !== undefined
+				? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
+				: {}),
+		}),
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(
-			readErrorMessage(body) ?? `Couldn't update this scheduled action: ${res.status}`,
-		);
-	}
+	await requireSuccessfulResponse(res, "Couldn't update this scheduled action");
 	const body = await readJsonObject<ScheduledActionMutationResponseBody>(
 		res,
 		"Malformed scheduled action update response",
@@ -1068,22 +994,15 @@ export async function deleteFutureExecution(futureExecutionId: string): Promise<
 		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}`),
 		{ method: "DELETE" },
 	);
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(readErrorMessage(body) ?? `Couldn't cancel this scheduled item: ${res.status}`);
-	}
+	await requireSuccessfulResponse(res, "Couldn't cancel this scheduled item");
 }
 
 export async function previewCronExpression(expression: string): Promise<string> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/future-executions/cron-preview"), {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify({ expression }),
-	});
-	if (!res.ok) {
-		const body = await tryReadJson(res);
-		throw new Error(readErrorMessage(body) ?? `Couldn't preview this cron: ${res.status}`);
-	}
+	const res = await getFetchImpl()(
+		resolveApiUrl("/api/future-executions/cron-preview"),
+		jsonRequestInit("POST", { expression }),
+	);
+	await requireSuccessfulResponse(res, "Couldn't preview this cron");
 	const body = await readJsonObject<CronPreviewResponseBody>(
 		res,
 		"Malformed cron preview response",

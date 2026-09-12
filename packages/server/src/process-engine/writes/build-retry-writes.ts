@@ -34,6 +34,10 @@ export function buildRetryWrites(input: RetryWritesInput): Writes {
 	applyProcessPatchField(plan, process, "lifecycleStatus", "active");
 	if (acceptedStart.state.kind !== "accepted") throw new Error("Retry requires an accepted start");
 	const startId = generateId("tsr");
+	const provenance = failedRun.modelSelectionProvenance ?? {
+		kind: "inherited" as const,
+		source: "legacy_persisted" as const,
+	};
 	plan.turnStartWrites.push({
 		kind: "create",
 		input: {
@@ -57,10 +61,7 @@ export function buildRetryWrites(input: RetryWritesInput): Writes {
 									: {},
 							code: "model_required",
 							safeSummary: "Model selection is pending retry preparation",
-							modelSelectionProvenance: failedRun.modelSelectionProvenance ?? {
-								kind: "inherited",
-								source: "legacy_persisted",
-							},
+							modelSelectionProvenance: provenance,
 						},
 		},
 	});
@@ -70,10 +71,6 @@ export function buildRetryWrites(input: RetryWritesInput): Writes {
 	});
 	if (failedRun.modelProfileId !== null) {
 		applyProcessPatchField(plan, process, "selectedTurnModelProfileId", failedRun.modelProfileId);
-		const provenance = failedRun.modelSelectionProvenance ?? {
-			kind: "inherited" as const,
-			source: "legacy_persisted" as const,
-		};
 		applyProcessPatchField(plan, process, "selectedTurnModelKind", provenance.kind);
 		applyProcessPatchField(plan, process, "selectedTurnModelSource", provenance.source);
 	}

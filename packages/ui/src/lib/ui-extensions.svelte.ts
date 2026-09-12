@@ -7,7 +7,7 @@ import type {
 	BrowserUiWsFrameHandler,
 } from "@leitwerk-dev/process-sdk";
 import type { WsFrame } from "@leitwerk-dev/protocol";
-import { derived, get, writable } from "svelte/store";
+import { derived, get, type Writable, writable } from "svelte/store";
 import { getFetchImpl, getModuleImporter, resolveApiUrl, resolveServerUrl } from "./runtime-config";
 
 export interface BrowserUiExtensionDescriptor {
@@ -182,52 +182,34 @@ function createApi(
 		return false;
 	}
 
+	function registerContribution<T extends { id: string; extensionManifestId: string }>(
+		store: Writable<T[]>,
+		label: string,
+		createItem: () => T,
+	): BrowserUiExtensionDisposer {
+		if (!contributionAllowed(label)) return noopDisposer;
+		const item = createItem();
+		const withoutItem = (items: T[]) =>
+			items.filter(
+				(existing) =>
+					existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
+			);
+		store.update((items) => [...withoutItem(items), item]);
+		const unregister = makeSafeDisposer(descriptor, label, () => store.update(withoutItem));
+		options.trackDisposer?.(unregister);
+		return unregister;
+	}
+
 	return {
 		registerShortcut(registration) {
-			if (!contributionAllowed(`Shortcut '${registration.id}'`)) {
-				return noopDisposer;
-			}
-			const item = wrapShortcutRegistration(descriptor, registration);
-			shortcutStore.update((items) => [
-				...items.filter(
-					(existing) =>
-						existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-				),
-				item,
-			]);
-			const unregister = makeSafeDisposer(descriptor, `Shortcut '${registration.id}'`, () => {
-				shortcutStore.update((items) =>
-					items.filter(
-						(existing) =>
-							existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-					),
-				);
-			});
-			options.trackDisposer?.(unregister);
-			return unregister;
+			return registerContribution(shortcutStore, `Shortcut '${registration.id}'`, () =>
+				wrapShortcutRegistration(descriptor, registration),
+			);
 		},
 		registerShellIndicator(registration) {
-			if (!contributionAllowed(`Indicator '${registration.id}'`)) {
-				return noopDisposer;
-			}
-			const item = wrapIndicatorRegistration(descriptor, registration);
-			indicatorStore.update((items) => [
-				...items.filter(
-					(existing) =>
-						existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-				),
-				item,
-			]);
-			const unregister = makeSafeDisposer(descriptor, `Indicator '${registration.id}'`, () => {
-				indicatorStore.update((items) =>
-					items.filter(
-						(existing) =>
-							existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-					),
-				);
-			});
-			options.trackDisposer?.(unregister);
-			return unregister;
+			return registerContribution(indicatorStore, `Indicator '${registration.id}'`, () =>
+				wrapIndicatorRegistration(descriptor, registration),
+			);
 		},
 		onWsFrame(handler) {
 			if (!contributionAllowed("WebSocket frame handler")) {

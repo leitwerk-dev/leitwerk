@@ -321,9 +321,6 @@ function executePrimaryPathFrame(action: WsAction & { kind: "apply_primary_path_
 	)
 		return;
 	if (detailInstanceId === action.instanceId && current.loading) bufferPrimaryPathFrame(action);
-	if (detailInstanceId === action.instanceId && current.data?.process.id !== action.instanceId) {
-		return;
-	}
 	if (current.data?.process.id !== action.instanceId) {
 		return;
 	}
