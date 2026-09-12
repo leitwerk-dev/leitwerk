@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	extractInitialPromptFromParamsJson,
 	extractInitialPromptFromValue,
+	extractInitialPromptPreviewFromParamsJson,
 } from "./process-initial-prompt.js";
 
 describe("extractInitialPromptFromValue", () => {
@@ -33,9 +34,9 @@ describe("extractInitialPromptFromValue", () => {
 		);
 	});
 
-	it("collapses whitespace runs into single spaces", () => {
+	it("preserves whitespace in full prompts", () => {
 		expect(extractInitialPromptFromValue({ prompt: "  build\n\tthe   archive  " })).toBe(
-			"build the archive",
+			"  build\n\tthe   archive  ",
 		);
 	});
 
@@ -76,4 +77,12 @@ describe("extractInitialPromptFromParamsJson", () => {
 			"ship it",
 		);
 	});
+});
+
+it("preserves Markdown structure but compacts overview previews", () => {
+	const prompt = "# Request\n\n- One\n- Two\n\n```sh\necho ok\n```";
+	expect(extractInitialPromptFromParamsJson(JSON.stringify({ prompt }))).toBe(prompt);
+	expect(extractInitialPromptPreviewFromParamsJson(JSON.stringify({ prompt }))).toBe(
+		"# Request - One - Two ```sh echo ok ```",
+	);
 });

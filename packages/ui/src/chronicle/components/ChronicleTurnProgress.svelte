@@ -1,9 +1,24 @@
 <script lang="ts">
 import type { TurnProgressReport } from "@leitwerk-dev/domain";
 import ProgressChecklist from "../../components/ProgressChecklist.svelte";
-import ProgressChecklistRows from "../../components/ProgressChecklistRows.svelte";
+import ProgressChecklistRows, {
+	type ChecklistStep,
+} from "../../components/ProgressChecklistRows.svelte";
 
-let { report, compact = false }: { report: TurnProgressReport; compact?: boolean } = $props();
+let {
+	report,
+	compact = false,
+	attemptStatus,
+}: { report: TurnProgressReport; compact?: boolean; attemptStatus?: string } = $props();
+const ended = $derived(attemptStatus !== undefined && attemptStatus !== "in_progress");
+const steps = $derived<ChecklistStep[]>(
+	report.steps.map((step) =>
+		ended && step.status === "in_progress"
+			? { ...step, status: attemptStatus === "succeeded" ? "unrecorded" : "interrupted" }
+			: step,
+	),
+);
+const hasUnfinished = $derived(ended && report.steps.some((step) => step.status === "in_progress"));
 const succeeded = $derived(
 	report.steps.length > 0 && report.steps.every((step) => step.status === "completed"),
 );
@@ -13,7 +28,7 @@ const summary = $derived(compact ? "Workspace prepared" : `${report.title} compl
 {#snippet createdChanges()}
 	{#if report.links?.length}
 		<div class="created-changes">
-			<h5>Created changes</h5>
+			<h5>Related resources</h5>
 			<ul>{#each report.links as link (link.id)}<li><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>{/each}</ul>
 		</div>
 	{/if}
@@ -27,12 +42,15 @@ const summary = $derived(compact ? "Workspace prepared" : `${report.title} compl
 				<span>{summary}</span>
 				<svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
 			</summary>
-			<div class="progress-details"><ProgressChecklistRows steps={report.steps} /></div>
+			<div class="progress-details"><ProgressChecklistRows {steps} /></div>
 		</details>
 		{@render createdChanges()}
 	</div>
 {:else}
-	<ProgressChecklist title={report.title} steps={report.steps} dataSection="turn-progress">{@render createdChanges()}</ProgressChecklist>
+	<ProgressChecklist title={report.title} {steps} dataSection="turn-progress">{@render createdChanges()}</ProgressChecklist>
+{/if}
+{#if hasUnfinished}
+	<details><summary>Original progress report</summary><ProgressChecklistRows steps={report.steps.map((step) => ({ ...step, status: step.status === "in_progress" ? "incomplete" : step.status, detail: step.status === "in_progress" ? ["Recorded as in progress", step.detail].filter(Boolean).join(" · ") : step.detail }))} /></details>
 {/if}
 
 <style>

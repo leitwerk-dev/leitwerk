@@ -401,8 +401,8 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 			<summary class="external-trigger-heading">
 				<span class="external-trigger-summary-copy">
 					<span class="external-trigger-title">{actions.length > 0 ? "Events that can continue this process" : "Waiting for an event"}</span>
-					<span class="external-trigger-count">{externalTriggers.length} {externalTriggers.length === 1 ? "event" : "events"}</span>
-					{#if failedListenerCount > 0}<span class="external-trigger-error">{failedListenerCount} {failedListenerCount === 1 ? "check failed" : "checks failed"}</span>{/if}
+					<span class="external-trigger-count">{externalTriggers.length} {externalTriggers.length === 1 ? "monitored event type" : "monitored event types"}</span>
+					{#if failedListenerCount > 0}<span class="external-trigger-error">{failedListenerCount} {failedListenerCount === 1 ? "listener error" : "listener errors"}</span>{/if}
 				</span>
 				<span class="external-trigger-toggle">{eventsExpanded ? "Collapse" : "Expand"}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d={eventsExpanded ? "m6 15 6-6 6 6" : "m6 9 6 6 6-6"} /></svg></span>
 			</summary>

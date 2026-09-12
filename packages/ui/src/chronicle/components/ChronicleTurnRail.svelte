@@ -134,7 +134,10 @@ function itemState(item: ChronicleSelectableItem): string {
 function itemDetail(item: ChronicleSelectableItem): string | null {
 	if (item.kind !== "turn" || item.status === "waiting") return item.detail;
 	const record = records.get(item.turnRecordId);
-	const elapsed = formatRailElapsed(record?.startedAt, record?.endedAt);
+	const elapsed =
+		item.tone === "operator_decision" || item.tone === "external_trigger"
+			? null
+			: formatRailElapsed(record?.startedAt, record?.endedAt);
 	const state = itemState(item);
 	const decision = item.tone === "operator_decision" ? record?.outcome?.trim() : null;
 	const completedLabel =

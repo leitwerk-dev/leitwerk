@@ -272,3 +272,11 @@ with durable observations, non-secret runtime metadata and clock-labelled
 intervals. Missing endpoints and invalid ordering have null durations. Source
 precision accompanies Kubernetes observations; binding timestamps are sampling
 bounds. This diagnostic collection does not change the four-step startup UI.
+
+Chronicle progress is a reported snapshot. Related resources do not establish which
+attempt created them. When an attempt ends, an active reported step displays
+“Interrupted” after failure or supersession, or “Final status not recorded” after
+success. Details retain the original report; future steps remain incomplete.
+Operator and external-event entries show their recorded time without transaction
+duration. Missing attribution remains unspecified. Full prompts retain Markdown
+whitespace; only overview previews collapse whitespace.

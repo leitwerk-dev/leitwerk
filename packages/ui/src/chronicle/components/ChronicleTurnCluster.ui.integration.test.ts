@@ -147,3 +147,46 @@ describe("chronicle turn disclosure", () => {
 		);
 	});
 });
+
+describe("ended progress", () => {
+	it.each([
+		["failed", "Interrupted"],
+		["superseded", "Interrupted"],
+		["succeeded", "Final status not recorded"],
+	])("renders %s without active steps", async (attemptStatus, label) => {
+		const target = document.createElement("div");
+		document.body.append(target);
+		mounted.push(
+			mount(ChronicleTurnCluster, {
+				target,
+				props: {
+					cluster: cluster({
+						sections: [
+							{
+								kind: "turn_progress",
+								attemptStatus,
+								report: {
+									title: "Delivery",
+									steps: [
+										{ id: "active", label: "Publish", status: "in_progress" },
+										{ id: "future", label: "Merge", status: "incomplete" },
+									],
+									links: [{ id: "pr", label: "PR #53", url: "https://example.test/pr/53" }],
+								},
+							},
+						],
+					}),
+					isFocused: false,
+					onOpenReasoningDetails,
+				},
+			}),
+		);
+		await tick();
+		expect(target.textContent).toContain(label);
+		expect(target.textContent).toContain("Related resources");
+		expect(target.querySelector('[data-progress-status="in_progress"]')).toBeNull();
+		expect(target.querySelector('[data-progress-step="future"]')?.textContent).toContain(
+			"Incomplete",
+		);
+	});
+});

@@ -98,7 +98,7 @@ function openDetails() {
 	data-turn-record-id={cluster.turnRecordId}
 	data-turn-kind={cluster.turnPresentation}
 >
-	<ChronicleEntryHeader title={cluster.title} {kind} failed={isFailed} metadata={metadata || null} timestamp={cluster.createdAt} duration={formatChronicleDuration(cluster.facts.startedAt, cluster.facts.endedAt)}>
+	<ChronicleEntryHeader title={cluster.title} {kind} failed={isFailed} metadata={metadata || null} timestamp={cluster.createdAt} duration={kind === "operator" || kind === "external" ? null : formatChronicleDuration(cluster.facts.startedAt, cluster.facts.endedAt)}>
 		{#snippet controls()}
 			{#if isFailed}
 				<button class="failure-toggle" type="button" data-action="toggle-failed-turn" aria-label={failureExpanded ? "Collapse failed turn" : "Expand failed turn"} aria-expanded={failureExpanded} aria-controls={`turn-body-${cluster.turnRecordId}`} onclick={() => failureExpanded = !failureExpanded}>
@@ -133,7 +133,7 @@ function openDetails() {
 		{/if}
 	{/each}
 
-	{#if progress && !isLlm}<ChronicleTurnProgress report={progress.report} />{/if}
+	{#if progress && !isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} />{/if}
 
 	{#if result}
 		<section class="result-section" class:is-compact={compactResult} class:is-compressed={!expanded && !compactResult} data-section="turn-result" data-ticket-result-artifact={`turn_result:${cluster.turnRecordId}`} data-ticket-result-durable="true" data-compressed={!expanded && !compactResult ? "true" : undefined}>
@@ -170,7 +170,7 @@ function openDetails() {
 
 	{#if isLlm || hasReasoning || (compactResult && onDraftTicket)}
 		<div class="cluster-support" class:has-reasoning={hasReasoning}>
-			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} compact />{/if}</div>
+			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} compact />{/if}</div>
 			<div class="footer-actions">
 				{#if compactResult && onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
 				{#if isLlm || hasReasoning}

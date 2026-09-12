@@ -320,6 +320,7 @@ function annotationLabel(annotation: ProcessTurnAnnotation): string {
 	return (
 		stringValue(annotation.payload.actionLabel) ||
 		stringValue(annotation.payload.triggerLabel) ||
+		stringValue(annotation.payload.label) ||
 		stringValue(annotation.payload.actionId) ||
 		stringValue(annotation.payload.acceptanceState)
 	);
@@ -329,13 +330,18 @@ function annotationOutput(annotation: ProcessTurnAnnotation): string {
 	const fields = Array.isArray(annotation.payload.submittedFields)
 		? annotation.payload.submittedFields
 		: [];
-	return fields
-		.map((field: unknown) => {
+	const actor = paramsRecord(annotation.payload.actor);
+	const attribution = stringValue(actor.displayName) || stringValue(actor.id);
+	return [
+		stringValue(annotation.payload.triggerDescription),
+		attribution ? `Actor:\n${attribution}` : "",
+		...fields.map((field: unknown) => {
 			const record = paramsRecord(field);
 			const label = stringValue(record.label) || stringValue(record.fieldId);
 			const value = stringValue(record.value);
 			return label && value ? `${label}:\n${value}` : "";
-		})
+		}),
+	]
 		.filter(Boolean)
 		.join("\n\n");
 }
@@ -577,9 +583,13 @@ export function presentProcessTimelineTurns(input: {
 				turnId: turnRecord.turnId,
 				displayTurn: label || turnRecord.turnId,
 				outcome: label || "completed",
-				summary: label || `${formatDefinition(turnRecord.turnId)} reviewed`,
+				summary:
+					label ||
+					(externalTriggerAnnotationsByTurnRecordId.has(turnRecord.id)
+						? "External event received"
+						: "Operator action recorded"),
 				output: annotationOutput(actionAnnotation),
-				createdAt: turnRecord.endedAt ?? actionAnnotation.createdAt ?? turnRecord.startedAt,
+				createdAt: actionAnnotation.createdAt ?? turnRecord.endedAt ?? turnRecord.startedAt,
 			};
 		} else if (milestoneAnnotation) {
 			const turnId = stringValue(milestoneAnnotation.payload.turnId) || turnRecord.turnId || "turn";

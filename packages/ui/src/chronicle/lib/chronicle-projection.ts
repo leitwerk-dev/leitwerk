@@ -127,6 +127,7 @@ export interface ChronicleTurnResultSection {
 export interface ChronicleTurnProgressSection {
 	kind: "turn_progress";
 	report: TurnProgressReport;
+	attemptStatus?: string;
 }
 
 export type ChronicleTurnClusterSection =
@@ -634,7 +635,16 @@ function buildTurnClusterItem(input: {
 			: "";
 
 	if (turnRecord.progress) {
-		sections.push({ kind: "turn_progress", report: turnRecord.progress });
+		sections.push({
+			kind: "turn_progress",
+			report: turnRecord.progress,
+			attemptStatus:
+				turnRecord.status === "in_progress"
+					? "in_progress"
+					: turnRecord.outcome === "failed" || turnRecord.outcome === "superseded"
+						? turnRecord.outcome
+						: "succeeded",
+		});
 	}
 
 	if (assistantText.length === 0 && fallbackText.length > 0) {
