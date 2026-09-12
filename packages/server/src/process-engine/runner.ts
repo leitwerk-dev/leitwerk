@@ -239,51 +239,20 @@ export function createEngineRunner(
 		}
 		try {
 			await deps.afterRecord?.(recorded.process);
-		} catch (error) {
-			logProcessEngineError(deps.logger, {
-				err: error,
-				operationKind: operation.kind,
-				instanceId: input.instanceId,
-				stage: "post_commit",
-				code: "post_commit_failed",
-			});
-			return mapPostCommitFailure(
-				recorded as RecordedDecision<OperationSpec<string, OperationInputBase, OperationData<TOp>>>,
-				{
-					code: "post_commit_failed",
-					message: publicInternalEngineFailureMessage("post_commit_failed", "post_commit"),
-				},
+			const dispatchResult = await dispatchReactions(
+				deps,
+				recorded,
+				resolveMessages(operation, input),
+				{ reportBestEffortFailures: shouldReportBestEffortFailures(operation, input) },
 			);
-		}
-
-		let dispatchResult: Awaited<ReturnType<typeof dispatchReactions>>;
-		try {
-			dispatchResult = await dispatchReactions(deps, recorded, resolveMessages(operation, input), {
-				reportBestEffortFailures: shouldReportBestEffortFailures(operation, input),
-			});
-		} catch (error) {
-			logProcessEngineError(deps.logger, {
-				err: error,
-				operationKind: operation.kind,
-				instanceId: input.instanceId,
-				stage: "post_commit",
-				code: "post_commit_failed",
-			});
-			dispatchResult = {
-				ok: false,
-				code: "post_commit_failed",
-				message: publicInternalEngineFailureMessage("post_commit_failed", "post_commit"),
-			};
-		}
-
-		if (!dispatchResult.ok) {
-			return mapPostCommitFailure(
-				recorded as RecordedDecision<OperationSpec<string, OperationInputBase, OperationData<TOp>>>,
-				dispatchResult,
-			);
-		}
-
-		try {
+			if (!dispatchResult.ok) {
+				return mapPostCommitFailure(
+					recorded as RecordedDecision<
+						OperationSpec<string, OperationInputBase, OperationData<TOp>>
+					>,
+					dispatchResult,
+				);
+			}
 			await options.afterSuccess?.(input.instanceId);
 		} catch (error) {
 			logProcessEngineError(deps.logger, {
