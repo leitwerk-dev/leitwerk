@@ -42,7 +42,7 @@ export async function requestJson<T extends object>(input: {
 	path: string;
 	init?: RequestInit;
 	malformed: string;
-	error?: (response: Response, body: unknown) => Error;
+	error?: string | ((response: Response, body: unknown) => Error);
 	onError?: (response: Response, body: unknown) => T | Promise<T>;
 }): Promise<T> {
 	const fetchImpl = getFetchImpl();
@@ -51,7 +51,9 @@ export async function requestJson<T extends object>(input: {
 	if (!response.ok) {
 		const body = await tryReadJson(response);
 		if (input.onError) return input.onError(response, body);
-		throw input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`);
+		throw typeof input.error === "string"
+			? new Error(readErrorMessage(body) ?? `${input.error}: ${response.status}`)
+			: (input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`));
 	}
 	return readJsonObject<T>(response, input.malformed);
 }

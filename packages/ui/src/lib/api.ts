@@ -345,13 +345,6 @@ export type LauncherSubmitResult =
 			futureExecution: FutureLaunchSummary;
 	  }
 	| {
-			kind: "partial_success";
-			status: number;
-			warning: string;
-			process: ProcessInstance;
-			projects: ProcessProject[];
-	  }
-	| {
 			kind: "validation_error";
 			status: number;
 			errors: LauncherValidationError[];
@@ -366,6 +359,10 @@ async function requireSuccessfulResponse(response: Response, fallbackError: stri
 	if (response.ok) return;
 	const body = await tryReadJson(response);
 	throw new Error(readErrorMessage(body) ?? `${fallbackError}: ${response.status}`);
+}
+
+async function requestMutation(path: string, error: string, init: RequestInit): Promise<void> {
+	await requireSuccessfulResponse(await getFetchImpl()(resolveApiUrl(path), init), error);
 }
 
 function isLauncherValidationError(value: unknown): value is LauncherValidationError {
@@ -481,21 +478,19 @@ export async function fetchInstalledSkillDetail(
 }
 
 export async function registerSkill(repositoryId: string, skillId: string): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/skills/available/${encodeURIComponent(repositoryId)}/${encodeURIComponent(skillId)}/register`,
-		),
+	return requestMutation(
+		`/api/skills/available/${encodeURIComponent(repositoryId)}/${encodeURIComponent(skillId)}/register`,
+		"Couldn't register the skill",
 		{ method: "POST" },
 	);
-	await requireSuccessfulResponse(res, "Couldn't register the skill");
 }
 
 export async function removeSkill(skillId: string): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/skills/installed/${encodeURIComponent(skillId)}`),
+	return requestMutation(
+		`/api/skills/installed/${encodeURIComponent(skillId)}`,
+		"Couldn't remove the skill",
 		{ method: "DELETE" },
 	);
-	await requireSuccessfulResponse(res, "Couldn't remove the skill");
 }
 
 export async function fetchLauncherDefaults(
@@ -740,10 +735,7 @@ export async function postProcessRetry(
 ): Promise<void> {
 	const res = await getFetchImpl()(
 		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/retry`),
-		jsonRequestInit("POST", {
-			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-			...(providerOptions === undefined ? {} : { providerOptions }),
-		}),
+		jsonRequestInit("POST", { nextTurnModelProfileId, providerOptions }),
 	);
 	if (!res.ok) {
 		throw new Error(`Couldn't retry this process: ${res.status}`);
@@ -770,17 +762,11 @@ export async function postProcessTurnContinue(
 	nextTurnModelProfileId?: string | null,
 	providerOptions?: Readonly<Record<string, string>>,
 ): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/continue`,
-		),
-		jsonRequestInit("POST", {
-			...(prompt === undefined ? {} : { prompt }),
-			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-			...(providerOptions === undefined ? {} : { providerOptions }),
-		}),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/continue`,
+		"Couldn't continue this failed turn",
+		jsonRequestInit("POST", { prompt, nextTurnModelProfileId, providerOptions }),
 	);
-	await requireSuccessfulResponse(res, "Couldn't continue this failed turn");
 }
 
 export async function postProcessStartupRetry(
@@ -789,16 +775,11 @@ export async function postProcessStartupRetry(
 	nextTurnModelProfileId?: string | null,
 	providerOptions?: Readonly<Record<string, string>>,
 ): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/turn-starts/${encodeURIComponent(startRecordId)}/retry`,
-		),
-		jsonRequestInit("POST", {
-			...(nextTurnModelProfileId === undefined ? {} : { nextTurnModelProfileId }),
-			...(providerOptions === undefined ? {} : { providerOptions }),
-		}),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/turn-starts/${encodeURIComponent(startRecordId)}/retry`,
+		"Couldn't retry worker startup",
+		jsonRequestInit("POST", { nextTurnModelProfileId, providerOptions }),
 	);
-	await requireSuccessfulResponse(res, "Couldn't retry worker startup");
 }
 
 export interface SessionTransferGrantResponse {
@@ -821,37 +802,35 @@ export async function createSessionTransferGrant(
 }
 
 export async function cancelSessionTransfer(instanceId: string, attemptId: string): Promise<void> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/session-transfers/${encodeURIComponent(attemptId)}/cancel`,
-		),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/session-transfers/${encodeURIComponent(attemptId)}/cancel`,
+		"Couldn't cancel the local session transfer",
 		{ method: "POST" },
 	);
-	await requireSuccessfulResponse(response, "Couldn't cancel the local session transfer");
 }
 
 export async function deleteProcess(instanceId: string): Promise<void> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}`),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}`,
+		"Couldn't delete this process",
 		{ method: "DELETE" },
 	);
-	await requireSuccessfulResponse(response, "Couldn't delete this process");
 }
 
 export async function postProcessAbort(instanceId: string): Promise<void> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/abort`),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/abort`,
+		"Couldn't abort this process",
 		{ method: "POST" },
 	);
-	await requireSuccessfulResponse(response, "Couldn't abort this process");
 }
 
 export async function postProcessAbortTurn(instanceId: string): Promise<void> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/abort-turn`),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/abort-turn`,
+		"Couldn't stop this turn",
 		{ method: "POST" },
 	);
-	await requireSuccessfulResponse(response, "Couldn't stop this turn");
 }
 
 export async function fetchProcessRetryConfig(instanceId: string): Promise<ProcessRetryConfig> {
@@ -876,17 +855,12 @@ export async function fetchProcessActionModelPreview(
 	actionId: string,
 	input: Record<string, unknown> = {},
 ): Promise<ProcessActionModelPreview> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}/model-preview`,
-		),
-		jsonRequestInit("POST", { input }),
-	);
-	await requireSuccessfulResponse(res, "Couldn't refresh the action model preview");
-	const body = await readJsonObject<ProcessActionModelPreviewResponseBody>(
-		res,
-		"Malformed process action model preview response",
-	);
+	const body = await requestJson<ProcessActionModelPreviewResponseBody>({
+		path: `/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}/model-preview`,
+		init: jsonRequestInit("POST", { input }),
+		error: "Couldn't refresh the action model preview",
+		malformed: "Malformed process action model preview response",
+	});
 	return body.preview;
 }
 
@@ -899,23 +873,16 @@ export async function postProcessAction(
 		schedule?: ScheduleConfigInput;
 	} = {},
 ): Promise<ProcessActionSubmitResult> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}`,
-		),
-		jsonRequestInit("POST", {
+	const body = await requestJson<ScheduledActionMutationResponseBody>({
+		path: `/api/processes/${encodeURIComponent(instanceId)}/actions/${encodeURIComponent(actionId)}`,
+		init: jsonRequestInit("POST", {
 			input,
 			schedule: opts.schedule ?? { mode: "now" },
-			...(opts.nextTurnModelProfileId !== undefined
-				? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
-				: {}),
+			nextTurnModelProfileId: opts.nextTurnModelProfileId,
 		}),
-	);
-	await requireSuccessfulResponse(res, `Couldn't run "${formatDefinition(actionId)}"`);
-	const body = await readJsonObject<ScheduledActionMutationResponseBody>(
-		res,
-		"Malformed process action response",
-	);
+		error: `Couldn't run "${formatDefinition(actionId)}"`,
+		malformed: "Malformed process action response",
+	});
 	if (body.scheduledAction) {
 		return { kind: "scheduled", scheduledAction: body.scheduledAction };
 	}
@@ -968,21 +935,16 @@ export async function updateScheduledAction(
 		schedule: ScheduleConfigInput;
 	},
 ): Promise<ProcessActionSubmitResult> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}/action`),
-		jsonRequestInit("PUT", {
+	const body = await requestJson<ScheduledActionMutationResponseBody>({
+		path: `/api/future-executions/${encodeURIComponent(futureExecutionId)}/action`,
+		init: jsonRequestInit("PUT", {
 			input,
 			schedule: opts.schedule,
-			...(opts.nextTurnModelProfileId !== undefined
-				? { nextTurnModelProfileId: opts.nextTurnModelProfileId }
-				: {}),
+			nextTurnModelProfileId: opts.nextTurnModelProfileId,
 		}),
-	);
-	await requireSuccessfulResponse(res, "Couldn't update this scheduled action");
-	const body = await readJsonObject<ScheduledActionMutationResponseBody>(
-		res,
-		"Malformed scheduled action update response",
-	);
+		error: "Couldn't update this scheduled action",
+		malformed: "Malformed scheduled action update response",
+	});
 	if (body.scheduledAction) {
 		return { kind: "scheduled", scheduledAction: body.scheduledAction };
 	}
@@ -990,23 +952,20 @@ export async function updateScheduledAction(
 }
 
 export async function deleteFutureExecution(futureExecutionId: string): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}`),
+	return requestMutation(
+		`/api/future-executions/${encodeURIComponent(futureExecutionId)}`,
+		"Couldn't cancel this scheduled item",
 		{ method: "DELETE" },
 	);
-	await requireSuccessfulResponse(res, "Couldn't cancel this scheduled item");
 }
 
 export async function previewCronExpression(expression: string): Promise<string> {
-	const res = await getFetchImpl()(
-		resolveApiUrl("/api/future-executions/cron-preview"),
-		jsonRequestInit("POST", { expression }),
-	);
-	await requireSuccessfulResponse(res, "Couldn't preview this cron");
-	const body = await readJsonObject<CronPreviewResponseBody>(
-		res,
-		"Malformed cron preview response",
-	);
+	const body = await requestJson<CronPreviewResponseBody>({
+		path: "/api/future-executions/cron-preview",
+		init: jsonRequestInit("POST", { expression }),
+		error: "Couldn't preview this cron",
+		malformed: "Malformed cron preview response",
+	});
 	if (typeof body.nextRunAt !== "string") {
 		throw new Error("Malformed cron preview response: nextRunAt must be a string");
 	}

@@ -3,7 +3,7 @@ import {
 	parseProcessStateJsonStrict,
 	parseSemanticEntryRef,
 	parseSemanticEntryRefsStrict,
-	type SemanticEntryRef,
+	areSemanticEntryRefsEqual as semanticEntryRefsEqual,
 	type TurnOutcomePayload,
 } from "@leitwerk-dev/domain";
 import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
@@ -19,10 +19,6 @@ export type ProcessSemanticEntryRefPatch = Partial<
 		| undefined
 	>
 >;
-
-function semanticEntryRefsEqual(a: SemanticEntryRef | null, b: SemanticEntryRef | null): boolean {
-	return a?.entryId === b?.entryId && a?.turnRecordId === b?.turnRecordId;
-}
 
 export function mergeSemanticEntryRefPatchIntoStateJson(
 	stateJson: string | null | undefined,

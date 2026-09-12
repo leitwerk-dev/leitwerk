@@ -1005,10 +1005,6 @@ async function handleSubmit(event: SubmitEvent) {
 						? `Saved cron schedule. Next run: ${formatLocalDateTime24Hour(result.futureExecution.nextRunAt)}.`
 						: `Scheduled for ${formatLocalDateTime24Hour(result.futureExecution.nextRunAt)}.`;
 				return;
-			case "partial_success":
-				rememberSuccessfulLauncherFieldValues(launcherInput);
-				onLaunched(result.process.id, result.warning);
-				return;
 			case "validation_error":
 				applyValidationErrors(result.errors);
 				return;

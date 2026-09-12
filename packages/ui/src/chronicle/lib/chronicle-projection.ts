@@ -737,30 +737,18 @@ function buildPromptItem(
 function sortInputsByConsumedAt(left: ChronicleInput, right: ChronicleInput): number {
 	const leftTimestamp = left.consumedAt ?? left.receivedAt;
 	const rightTimestamp = right.consumedAt ?? right.receivedAt;
-	const timestampComparison = leftTimestamp.localeCompare(rightTimestamp);
-	if (timestampComparison !== 0) {
-		return timestampComparison;
-	}
-	return left.sequence - right.sequence;
+	return leftTimestamp.localeCompare(rightTimestamp) || left.sequence - right.sequence;
 }
 
 function sortInputsByReceivedAt(left: ChronicleInput, right: ChronicleInput): number {
-	const timestampComparison = left.receivedAt.localeCompare(right.receivedAt);
-	if (timestampComparison !== 0) {
-		return timestampComparison;
-	}
-	return left.sequence - right.sequence;
+	return left.receivedAt.localeCompare(right.receivedAt) || left.sequence - right.sequence;
 }
 
 function sortTurnRecordsByStartedAt(
 	left: Pick<TurnRecordView, "startedAt" | "id">,
 	right: Pick<TurnRecordView, "startedAt" | "id">,
 ): number {
-	const startedAtComparison = left.startedAt.localeCompare(right.startedAt);
-	if (startedAtComparison !== 0) {
-		return startedAtComparison;
-	}
-	return left.id.localeCompare(right.id);
+	return left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id);
 }
 
 function isConsumedTriggeringInputCandidate(input: ChronicleInput): boolean {

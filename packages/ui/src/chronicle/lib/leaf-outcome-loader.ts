@@ -1,5 +1,5 @@
-import * as v from "valibot";
-import { tryReadJson as parseJsonResponse, unknownRecordSchema } from "../../lib/http-client.js";
+import { isUnknownRecord } from "@leitwerk-dev/domain";
+import { tryReadJson as parseJsonResponse } from "../../lib/http-client.js";
 import { getFetchImpl, getModuleImporter, resolveServerUrl } from "../../lib/runtime-config.js";
 
 export interface LeafOutcomeRendererDescriptor {
@@ -50,34 +50,26 @@ const importRendererModule = memoizePromise(async (moduleUrl: string) => {
 });
 
 function isLookupFailure(value: unknown): value is LeafOutcomeRendererFailure {
-	const parsedValue = v.safeParse(unknownRecordSchema, value);
-	if (!parsedValue.success) {
-		return false;
-	}
-	const record = parsedValue.output;
 	return (
-		record.ok === false &&
-		typeof record.rendererId === "string" &&
-		typeof record.code === "string" &&
-		typeof record.message === "string"
+		isUnknownRecord(value) &&
+		value.ok === false &&
+		typeof value.rendererId === "string" &&
+		typeof value.code === "string" &&
+		typeof value.message === "string"
 	);
 }
 
 function isDescriptor(value: unknown): value is LeafOutcomeRendererDescriptor {
-	const parsedValue = v.safeParse(unknownRecordSchema, value);
-	if (!parsedValue.success) {
-		return false;
-	}
-	const record = parsedValue.output;
 	return (
-		record.ok === true &&
-		typeof record.rendererId === "string" &&
-		record.kind === "custom_element" &&
-		typeof record.tagName === "string" &&
-		typeof record.modulePath === "string" &&
-		typeof record.rendererApiVersion === "number" &&
-		typeof record.extensionManifestId === "string" &&
-		typeof record.moduleUrl === "string"
+		isUnknownRecord(value) &&
+		value.ok === true &&
+		typeof value.rendererId === "string" &&
+		value.kind === "custom_element" &&
+		typeof value.tagName === "string" &&
+		typeof value.modulePath === "string" &&
+		typeof value.rendererApiVersion === "number" &&
+		typeof value.extensionManifestId === "string" &&
+		typeof value.moduleUrl === "string"
 	);
 }
 

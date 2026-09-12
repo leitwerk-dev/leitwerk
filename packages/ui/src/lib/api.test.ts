@@ -4,6 +4,7 @@ import {
 	fetchAuthMeWithRetry,
 	fetchFutureExecution,
 	logout,
+	postProcessTurnContinue,
 	registerSkill,
 	submitQuestionAnswers,
 } from "./api.js";
@@ -84,6 +85,39 @@ describe("logout", () => {
 		};
 
 		await expect(logout()).rejects.toMatchObject({ status: 503 });
+	});
+});
+
+describe("recovery mutations", () => {
+	it.each([
+		undefined,
+		null,
+		"profile",
+	])("serializes model selection %s and accepts an empty success", async (model) => {
+		const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = { fetchImpl };
+		await expect(
+			postProcessTurnContinue("process/id", "turn/id", undefined, model),
+		).resolves.toBeUndefined();
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"/api/processes/process%2Fid/turn-records/turn%2Fid/continue",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: model === undefined ? "{}" : JSON.stringify({ nextTurnModelProfileId: model }),
+			},
+		);
+	});
+
+	it.each([
+		['{"error":"Cannot continue"}', "Cannot continue"],
+		['{"message":"Turn changed"}', "Turn changed"],
+		["not json", "Couldn't continue this failed turn: 409"],
+	])("preserves mutation errors from %s", async (body, message) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response(body, { status: 409 }),
+		};
+		await expect(postProcessTurnContinue("process", "turn")).rejects.toThrow(message);
 	});
 });
 

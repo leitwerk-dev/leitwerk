@@ -119,6 +119,27 @@ describe("buildContinueFailedTurnWrites", () => {
 			expect.arrayContaining(["lifecycleStatus", "selectedTurnModelProfileId", "metadata"]),
 		);
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+		expect(planned.turnStartWrites).toEqual([
+			{
+				kind: "create",
+				input: expect.objectContaining({
+					id: planned.processPatch.currentExecution?.id,
+					startKind: "continue",
+					turnType: "llm",
+					continuation: {
+						continueFromPiEntryId: "assistant-aborted-8",
+						continuePrompt: "continue",
+						savedPrimaryLeafEntryId: "primary-leaf-7",
+					},
+					state: expect.objectContaining({
+						kind: "preparation_failed",
+						requestedModelProfileId: "claude_fast",
+						safeSummary: "Model selection is pending continue preparation",
+					}),
+				}),
+			},
+		]);
+		expect(planned.turnRecordWrites).toEqual([]);
 		expect(planned.events).toMatchObject([
 			{
 				instanceId: process.id,
