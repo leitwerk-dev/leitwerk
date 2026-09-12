@@ -201,3 +201,35 @@ process are cancelled during reconciliation and never select the startup shown o
 detail. The latest startup-retry run is authoritative; without a retry, the latest `createdAt` and
 then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
 commits a process, later polls return that attempt instead of creating incomplete launch runs.
+
+Worker entry modules do not synchronously load the Pi SDK. The default Pi factory starts an asynchronous import so module loading can overlap IPC connection and workspace materialization. Managed bootstrap still awaits Pi version validation and SDK preparation before worker readiness. Import failures surface through that bootstrap path.
+
+### Durable startup observations
+
+The server stores the first valid receipt of each startup milestone per physical
+worker lease in `startup_observations`. Replacement leases retain separate history.
+Prompt start uses `turn.prompt_started`; first text requires a nonempty
+`pi.stream.delta` with `streamType: "text"`. Both require the current worker and
+initial accepted turn to match and use server receipt time. Thinking and tool
+output do not qualify. No new worker IPC message is required.
+
+Kubernetes sampling runs independently at 250 ms with one cycle per worker and
+1.5-second request cancellation. It stops on lifecycle termination, timeout, two
+seconds after readiness, or complete evidence. Events are paginated and matched
+by pod UID and worker-container field path. Running and terminated starts are
+accepted. A cached-image event is not a pull start. PVC and pod collection run
+independently; a PVC read failure does not suppress pod evidence. API failures leave
+gaps and emit at most three generic diagnostics per sampler. Adoption resumes
+collection for the original lease; request boundaries are never reconstructed.
+
+The UI snapshot's optional `startup.workerStarts` contains all physical leases,
+observations and derived intervals. It uses durable timestamps only, without
+bootstrap-receipt fallbacks. Existing attempts, recovery and four UI steps retain
+their behavior. Unknown historical milestones remain missing. Intervals report
+`available`, `missing` or `invalid_order`; only available intervals have durations.
+Server receipt totals and Kubernetes source-time intervals use separate clocks.
+Kubernetes timestamps retain source precision (seconds, milliseconds or microseconds).
+Derived durations use millisecond resolution. Storage, scheduling and pulls may
+overlap and must not be added into an exclusive breakdown. PVC binding uses a
+last-not-bound/first-bound sampling window, with a missing lower bound when no
+unbound state was observed. The upper bound is not the exact binding time.
