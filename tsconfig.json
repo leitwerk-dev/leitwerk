@@ -80,6 +80,9 @@
 		},
 		{
 			"path": "packages/dev-sandbox"
+		},
+		{
+			"path": "extensions/ticket-creation"
 		}
 	],
 	"files": []
