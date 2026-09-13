@@ -73,6 +73,14 @@ metadata:
     {{- include "leitwerk.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
 rules:
+  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+  - apiGroups: [""]
+    resources: ["persistentvolumes"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list", "create", "delete"]
+  {{- end }}
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]
