@@ -1,9 +1,11 @@
 <script lang="ts">
-import type { TurnProgressReport } from "@leitwerk-dev/domain";
+import type { TurnProgressLink, TurnProgressReport } from "@leitwerk-dev/domain";
+import ExternalLink from "../../components/ExternalLink.svelte";
 import ProgressChecklist from "../../components/ProgressChecklist.svelte";
 import ProgressChecklistRows, {
 	type ChecklistStep,
 } from "../../components/ProgressChecklistRows.svelte";
+import type { ExternalResourceType } from "../../lib/external-links.js";
 
 let {
 	report,
@@ -29,13 +31,27 @@ const succeeded = $derived(
 	report.steps.length > 0 && report.steps.every((step) => step.status === "completed"),
 );
 const summary = $derived(compact ? "Workspace prepared" : `${report.title} completed`);
+
+function resourceType(kind: TurnProgressLink["kind"]): ExternalResourceType {
+	return kind && kind !== "other" ? kind : "external_resource";
+}
 </script>
 
 {#snippet createdChanges()}
 	{#if report.links?.length}
 		<div class="created-changes">
 			<h5>Related resources</h5>
-			<ul>{#each report.links as link (link.id)}<li><a href={link.url} target="_blank" rel="noreferrer">{link.label}</a></li>{/each}</ul>
+			<ul>
+				{#each report.links as link (link.id)}
+					<li>
+						<ExternalLink
+							href={link.url}
+							label={link.label}
+							resourceType={resourceType(link.kind)}
+						/>
+					</li>
+				{/each}
+			</ul>
 		</div>
 	{/if}
 {/snippet}
@@ -74,5 +90,5 @@ const summary = $derived(compact ? "Workspace prepared" : `${report.title} compl
 	h5 { margin: 0; color: var(--chronicle-text); font-size: var(--type-body-sm); font-weight: 600; }
 	.created-changes { display: grid; gap: 4px; margin-top: 6px; }
 	ul { display: flex; flex-wrap: wrap; gap: var(--space-sm); margin: 0; padding: 0; list-style: none; }
-	a { color: var(--chronicle-accent); font-size: var(--type-body-sm); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+	.created-changes :global(.external-link) { font-size: var(--type-body-sm); }
 </style>

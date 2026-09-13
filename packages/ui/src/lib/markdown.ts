@@ -2,6 +2,7 @@ import { normalizeMarkdownLineEndings } from "@leitwerk-dev/domain";
 import { parseManagedResultImagePath } from "@leitwerk-dev/worker-protocol/worker-result-image";
 import createDOMPurify from "dompurify";
 import MarkdownIt from "markdown-it";
+import { normalizeLinkNavigation } from "./external-links.js";
 
 function createMarkdownRenderer(options: { rich: boolean }): MarkdownIt {
 	const renderer = new MarkdownIt({
@@ -57,13 +58,8 @@ function sanitizeRenderedHtml(renderedHtml: string): string {
 	});
 	const template = globalThis.document.createElement("template");
 	template.innerHTML = sanitizedHtml;
-	for (const link of template.content.querySelectorAll("a[href]")) {
-		if (link.getAttribute("href")?.trim().startsWith("#")) {
-			link.removeAttribute("target");
-			continue;
-		}
-		link.setAttribute("target", "_blank");
-		link.setAttribute("rel", "noopener noreferrer");
+	for (const link of template.content.querySelectorAll<HTMLAnchorElement>("a[href]")) {
+		normalizeLinkNavigation(link);
 	}
 	return template.innerHTML;
 }
