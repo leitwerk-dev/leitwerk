@@ -14,16 +14,54 @@
 	"separate-pull-requests": false,
 	"group-pull-request-title-pattern": "chore(release): release ${branch}",
 	"changelog-sections": [
-		{ "type": "feat", "section": "Features" },
-		{ "type": "fix", "section": "Bug Fixes" },
-		{ "type": "perf", "section": "Performance", "hidden": true },
-		{ "type": "refactor", "section": "Refactoring", "hidden": true },
-		{ "type": "docs", "section": "Documentation", "hidden": true },
-		{ "type": "test", "section": "Tests", "hidden": true },
-		{ "type": "build", "section": "Build", "hidden": true },
-		{ "type": "ci", "section": "Continuous Integration", "hidden": true },
-		{ "type": "chore", "section": "Chores", "hidden": true },
-		{ "type": "revert", "section": "Reverts", "hidden": true }
+		{
+			"type": "feat",
+			"section": "Features"
+		},
+		{
+			"type": "fix",
+			"section": "Bug Fixes"
+		},
+		{
+			"type": "perf",
+			"section": "Performance",
+			"hidden": true
+		},
+		{
+			"type": "refactor",
+			"section": "Refactoring",
+			"hidden": true
+		},
+		{
+			"type": "docs",
+			"section": "Documentation",
+			"hidden": true
+		},
+		{
+			"type": "test",
+			"section": "Tests",
+			"hidden": true
+		},
+		{
+			"type": "build",
+			"section": "Build",
+			"hidden": true
+		},
+		{
+			"type": "ci",
+			"section": "Continuous Integration",
+			"hidden": true
+		},
+		{
+			"type": "chore",
+			"section": "Chores",
+			"hidden": true
+		},
+		{
+			"type": "revert",
+			"section": "Reverts",
+			"hidden": true
+		}
 	],
 	"plugins": [
 		{
@@ -59,7 +97,8 @@
 				"@leitwerk-dev/process-analysis",
 				"@leitwerk-dev/remote-repo-change",
 				"@leitwerk-dev/showcase-processes",
-				"@leitwerk-dev/telegram"
+				"@leitwerk-dev/telegram",
+				"@leitwerk-dev/repository-rebase"
 			]
 		}
 	],
@@ -186,6 +225,11 @@
 		},
 		"extensions/telegram": {
 			"component": "@leitwerk-dev/telegram",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/repository-rebase": {
+			"component": "@leitwerk-dev/repository-rebase",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

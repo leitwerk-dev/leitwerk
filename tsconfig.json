@@ -15,27 +15,72 @@
 		"ignoreDeprecations": "6.0"
 	},
 	"references": [
-		{ "path": "packages/domain" },
-		{ "path": "packages/external-writes" },
-		{ "path": "packages/protocol" },
-		{ "path": "packages/process-sdk" },
-		{ "path": "packages/extension-runtime" },
-		{ "path": "packages/watcher-utils" },
-		{ "path": "packages/session-transfer" },
-		{ "path": "packages/pi-session-transfer" },
-		{ "path": "packages/worker-runners" },
-		{ "path": "packages/server" },
-		{ "path": "packages/worker" },
-		{ "path": "packages/worker-protocol" },
-		{ "path": "packages/test-support" },
-		{ "path": "extensions/showcase-processes" },
-		{ "path": "extensions/coding" },
-		{ "path": "extensions/git-ssh" },
-		{ "path": "extensions/local-repo-change" },
-		{ "path": "extensions/remote-repo-change" },
-		{ "path": "extensions/process-analysis" },
-		{ "path": "extensions/models" },
-		{ "path": "extensions/telegram" }
+		{
+			"path": "packages/domain"
+		},
+		{
+			"path": "packages/external-writes"
+		},
+		{
+			"path": "packages/protocol"
+		},
+		{
+			"path": "packages/process-sdk"
+		},
+		{
+			"path": "packages/extension-runtime"
+		},
+		{
+			"path": "packages/watcher-utils"
+		},
+		{
+			"path": "packages/session-transfer"
+		},
+		{
+			"path": "packages/pi-session-transfer"
+		},
+		{
+			"path": "packages/worker-runners"
+		},
+		{
+			"path": "packages/server"
+		},
+		{
+			"path": "packages/worker"
+		},
+		{
+			"path": "packages/worker-protocol"
+		},
+		{
+			"path": "packages/test-support"
+		},
+		{
+			"path": "extensions/showcase-processes"
+		},
+		{
+			"path": "extensions/coding"
+		},
+		{
+			"path": "extensions/git-ssh"
+		},
+		{
+			"path": "extensions/local-repo-change"
+		},
+		{
+			"path": "extensions/remote-repo-change"
+		},
+		{
+			"path": "extensions/process-analysis"
+		},
+		{
+			"path": "extensions/models"
+		},
+		{
+			"path": "extensions/telegram"
+		},
+		{
+			"path": "packages/repository-rebase"
+		}
 	],
 	"files": []
 }
