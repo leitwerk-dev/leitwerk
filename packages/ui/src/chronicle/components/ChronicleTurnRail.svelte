@@ -4,6 +4,7 @@ import type { ProcessDetailData } from "../../lib/api";
 import {
 	buildChronicleRailRows,
 	type ChronicleRepeatedTurns,
+	describeRailHistory,
 	formatRailElapsed,
 } from "../lib/chronicle-rail-groups.js";
 import type { ChronicleSelectableItem } from "../lib/chronicle-selectable-items.js";
@@ -155,6 +156,7 @@ function itemDetail(item: ChronicleSelectableItem): string | null {
 			? null
 			: formatRailElapsed(record?.startedAt, record?.endedAt);
 	const state = itemState(item);
+	if (item.tone === "external_trigger" && record?.summary?.trim()) return record.summary.trim();
 	const decision = item.tone === "operator_decision" ? record?.outcome?.trim() : null;
 	const completedLabel =
 		decision && !["completed", "succeeded", "superseded"].includes(decision.toLowerCase())
@@ -237,15 +239,18 @@ function groupElapsed(group: ChronicleRepeatedTurns): string | null {
 						{:else}
 							{@const expanded = expandedGroups[row.id] ?? false}
 							{@const elapsed = groupElapsed(row)}
+							{@const reasons = describeRailHistory(row, records)}
 							<div class="repeated-turns" data-section="repeated-turns" data-expanded={expanded}>
 								<button type="button" class="repeat-toggle" data-rail-control aria-expanded={expanded} aria-controls={`${headingId}-${row.id}`} onclick={() => toggleGroup(row)} onkeydown={(event) => handleGroupKeydown(event, row)}>
 									<span class="rail-marker repeat-marker" aria-hidden="true">
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4" /></svg>
 									</span>
 									<span class="rail-copy">
-										<span class="rail-title">{row.retryCount ? "Attempt history" : "Repeated Turns"}</span>
+										<span class="rail-title">{row.retryCount ? "Earlier attempts" : "Earlier updates"}</span>
 										<span class="repeat-sequence">{row.sequence}</span>
-										<span class="repeat-meta"><span>{row.items.length} {row.retryCount ? row.items.length === 1 ? "earlier attempt" : "earlier attempts" : "turns"}</span>{#if elapsed}<span aria-hidden="true">·</span><span>{elapsed}</span>{/if}</span>
+										<span class="repeat-meta"><span>{row.items.length} {row.retryCount ? row.items.length === 1 ? "earlier attempt" : "earlier attempts" : "completed steps"}</span></span>
+										{#each reasons as reason (reason)}<span class="rail-detail">{reason}</span>{/each}
+										{#if elapsed}<span class="repeat-meta">History spans {elapsed}</span>{/if}
 									</span>
 									<svg class="repeat-chevron" class:is-expanded={expanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
 								</button>

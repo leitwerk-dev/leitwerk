@@ -1,4 +1,5 @@
 import type { ProcessTimelineTurnSummary } from "@leitwerk-dev/protocol";
+import { markdownToPlainText } from "../../lib/markdown.js";
 import type {
 	ChronicleSelectableItem,
 	ChronicleSelectableTurnItem,
@@ -118,8 +119,40 @@ export function formatRailElapsed(
 	const seconds = Math.floor(elapsed / 1000);
 	if (seconds === 0) return "<1s";
 	const parts: string[] = [];
+	if (seconds >= 86400) {
+		const days = Math.floor(seconds / 86400);
+		const hours = Math.floor((seconds % 86400) / 3600);
+		return `${days}d${hours ? ` ${hours}h` : ""}`;
+	}
 	if (seconds >= 3600) parts.push(`${Math.floor(seconds / 3600)}h`);
 	if (seconds >= 60) parts.push(`${Math.floor((seconds % 3600) / 60)}m`);
 	parts.push(`${seconds % 60}s`);
 	return parts.join(" ");
+}
+
+/** Summarize recorded decisions and events without guessing why a step repeated. */
+export function describeRailHistory(
+	group: ChronicleRepeatedTurns,
+	records: ReadonlyMap<string, ProcessTimelineTurnSummary>,
+): string[] {
+	if (group.retryCount) {
+		const failures = group.items.filter(
+			(item) => records.get(item.turnRecordId)?.outcome === "failed",
+		).length;
+		return failures ? [`${failures} failed ${failures === 1 ? "attempt" : "attempts"}`] : [];
+	}
+	const reasons = new Map<string, number>();
+	for (const item of group.items) {
+		const record = records.get(item.turnRecordId);
+		const text =
+			item.tone === "external_trigger"
+				? record?.summary
+				: item.tone === "operator_decision"
+					? record?.outcome
+					: null;
+		if (!text || ["completed", "succeeded", "superseded"].includes(text.toLowerCase())) continue;
+		const label = markdownToPlainText(text).replace(/\s+/g, " ").trim();
+		if (label) reasons.set(label, (reasons.get(label) ?? 0) + 1);
+	}
+	return [...reasons].map(([label, count]) => (count > 1 ? `${label} (${count})` : label));
 }

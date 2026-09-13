@@ -139,7 +139,7 @@ describe("turn rail repeated history", () => {
 		const toggle = target.querySelector<HTMLButtonElement>("[aria-expanded]");
 		if (!toggle) throw new Error("Expected the repeated-turn disclosure");
 		expect(toggle.getAttribute("aria-expanded")).toBe("false");
-		expect(toggle.textContent).toContain("4 turns");
+		expect(toggle.textContent).toContain("4 completed steps");
 		expect(toggle.textContent).toContain("12m 14s");
 		expect(target.querySelectorAll("[data-rail-anchor-id]")).toHaveLength(1);
 		expect(target.querySelector('[data-section="upcoming-turn"]')?.textContent).toContain(

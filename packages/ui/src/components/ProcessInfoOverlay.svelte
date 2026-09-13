@@ -13,6 +13,7 @@ interface Props {
 	detail: ProcessDetailData;
 	processUsageEstimate: ProcessUsageEstimateSnapshot | null;
 	onClose: () => void;
+	onShowSummary?: () => void;
 	railItems: readonly ChronicleSelectableItem[];
 }
 
@@ -35,7 +36,7 @@ const tabs: readonly { id: ProcessInfoTab; label: string }[] = [
 	{ id: "conversation-tree", label: "Conversation tree" },
 ];
 
-let { detail, processUsageEstimate, onClose, railItems }: Props = $props();
+let { detail, processUsageEstimate, onClose, railItems, onShowSummary }: Props = $props();
 let closeButton: HTMLButtonElement | null = $state(null);
 let activeTab = $state<ProcessInfoTab>("overview");
 
@@ -240,6 +241,7 @@ onMount(() => {
 					<h3>At a glance</h3>
 					<p>The operational facts for this process run.</p>
 				</div>
+				{#if onShowSummary}<button type="button" class="ui-button" onclick={onShowSummary}>Show process summary</button>{/if}
 				<dl class="fact-grid">
 					<div>
 						<dt>Status</dt>

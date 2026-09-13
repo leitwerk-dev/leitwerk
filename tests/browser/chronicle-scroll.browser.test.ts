@@ -781,7 +781,7 @@ test.describe("rail scroll-anchor behavior", () => {
 			"RAIL-REPEATED-SCROLL-001",
 		);
 		await page.goto(`/processes/${process.id}`);
-		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
 		await repeatedTurns.click();
 		const firstTurn = page.locator(`.rail-item[data-turn-record-id="${firstTurnRecordId}"]`);
@@ -887,7 +887,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="chronicle-flow"]');
 
-		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
 		await repeatedTurns.click();
 		const secondTurnButton = page.locator(
@@ -941,7 +941,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="leaf-outcome"]');
 
-		const repeatedTurns = page.getByRole("button", { name: /Repeated Turns/ });
+		const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
 		await repeatedTurns.click();
 		const secondTurnButton = page.locator(
@@ -1151,7 +1151,7 @@ for (const { width, running } of [
 		await page.keyboard.press("Enter");
 		await expect(history).not.toHaveAttribute("open", "");
 		if (width < 1024) await page.getByRole("button", { name: /^Quick nav/ }).click();
-		const historyToggle = page.getByRole("button", { name: /^Attempt history/ });
+		const historyToggle = page.getByRole("button", { name: /^Earlier attempts/ });
 		if ((await historyToggle.getAttribute("aria-expanded")) !== "true") await historyToggle.click();
 		await page.getByRole("button", { name: /Attempt 3 of 6/ }).click();
 		await expect(history).toHaveAttribute("open", "");

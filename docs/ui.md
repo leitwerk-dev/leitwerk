@@ -42,14 +42,23 @@ clock markers. Both keep stronger titles while the operator browses history.
 Future turns use neutral outlines. Failed turns retain an explicit error marker
 and label. Navigation selection is separate from the process's current state.
 
+The process summary above the Chronicle shows its complete text and update timestamp
+in a compact row that wraps as needed. It has no expand/collapse control or truncation. Dismiss hides the row
+for that process in the current browser, including after reload. **Process info →
+Show process summary** restores it. The preference uses browser storage, never
+process state, and does not hide summaries for other processes or browsers. If
+storage is unavailable, dismissal still works for the current page.
+
 External waiting belongs to its latest recorded turn in both the Chronicle and
 the rail. That row keeps the turn title and shows Waiting for an event with the
 amber clock. Selecting it reaches the embedded waiting disclosure. Scrolling
 through the turn or its result highlights the same row. A wait without a recorded
 turn keeps its own navigation row.
 
-Consecutive completed cycles fold into **Repeated Turns**, with the sequence,
-turn count, and elapsed time from the first start to the last finish. The latest
+Consecutive completed cycles fold into **Earlier updates**, with the sequence,
+completed-step count, and recorded event or decision labels. Repeated labels include
+their count. Missing labels do not imply a cause or a successful repair. **History spans**
+measures the first start to the last finish, including gaps; spans over a day use days and hours. The latest
 result stays beside its pending decision. Failed, running, and waiting turns never fold.
 Expanding a group reveals ordinary turn rows on the same rail, within a box whose
 width stays fixed. The Chronicle retains the full history. Selecting a hidden
@@ -68,7 +77,7 @@ is omitted. Timestamp and duration stay together at the right of each header, fo
 reserved disclosure slot. **Turn details** opens the full turn details from the right of the
 card footer; chronicle turns do not use overflow menus.
 
-Prompts appear only when recorded, as a subdued row below the header. Selecting the row opens
+Prompts appear only when recorded, as a subdued row after the result and any current questions or recovery controls. Selecting the row opens
 the full turn input. Input details include user messages and Pi custom messages
 (including identified Leitwerk prompts); custom-message details stay outside the
 displayed input, just as they stay outside model context. Results use a stronger
@@ -286,7 +295,11 @@ identifiers. Earlier attempts start collapsed. Selecting a historical attempt in
 navigation reveals its history; scrolling alone does not expand it. Users can
 collapse the history even while a historical attempt is selected. Repeated business
 turns remain separate from retries. Historical
-results use a labelled paragraph preview; supplied concise summaries remain visible
-in full. The latest full result and current recovery controls remain expanded.
+results lead with the supplied summary or a bounded paragraph preview. An **In this result**
+outline exposes headings, including validation and limitations, before expansion. Short
+standalone labels before lists are included for older reports. **Read full result** opens
+the original report; **Show summary** returns to its overview. The UI does not infer
+validation verdicts from prose. A summary already at the start of the report is not
+rendered twice. Retry groups show **Earlier attempts** and the recorded failed-attempt count. The latest full result and current recovery controls remain expanded.
 External observations show their recorded time separately from refresh failures.
 A missing observation reads “Status not yet observed.”

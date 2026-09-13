@@ -135,7 +135,7 @@ test("renders real Mermaid success and fallback, then links a managed image", as
 	const turn = page.locator(
 		`[data-section="chronicle-turn"][data-turn-record-id="${turnRecordId}"]`,
 	);
-	await expect(turn.getByRole("button", { name: "Collapse result" })).toBeVisible();
+	await expect(turn.getByRole("button", { name: "Show summary" })).toBeVisible();
 	await expect(turn.locator("[data-mermaid-source]")).toHaveCount(2);
 	const diagrams = turn.locator("[data-mermaid-source]");
 	await expect(diagrams.nth(0).locator("svg")).toBeVisible({ timeout: 15_000 });

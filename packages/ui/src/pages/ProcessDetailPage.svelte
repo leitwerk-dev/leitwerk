@@ -18,6 +18,7 @@ import {
 } from "../chronicle/lib/chronicle-selectable-items.js";
 import ProcessInfoOverlay from "../components/ProcessInfoOverlay.svelte";
 import { fetchTurnReasoningDetail, type ProcessDetailData } from "../lib/api.js";
+import { getBrowserStorage } from "../lib/browser-storage.js";
 import { shouldIgnorePlainShortcut } from "../lib/keyboard.js";
 import { getPrimaryPathActiveTurnOutput } from "../lib/primary-path-detail.js";
 import {
@@ -44,6 +45,7 @@ import { wsStore } from "../lib/ws.svelte";
 import OverlayFrame from "./process-detail/OverlayFrame.svelte";
 import ProcessDetailChronicle from "./process-detail/ProcessDetailChronicle.svelte";
 import ProcessDetailHeader from "./process-detail/ProcessDetailHeader.svelte";
+import ProcessSummary from "./process-detail/ProcessSummary.svelte";
 import { createProcessDetailActions } from "./process-detail/process-detail-actions.svelte.js";
 import {
 	buildJumpToLatestLabel,
@@ -55,6 +57,52 @@ interface Props {
 }
 
 let { instanceId }: Props = $props();
+
+let summaryDismissed = $state(false);
+const summaryStorageKey = $derived(`leitwerk:process-summary:hidden:${instanceId}`);
+const waitingReport = $derived(
+	$detailState.data?.process.lifecycleStatus === "waiting"
+		? $detailState.data.timeline.turns.findLast(
+				(turn) =>
+					turn.turnId === $detailState.data?.process.selectedTurnId &&
+					turn.progress?.summary?.trim(),
+			)
+		: null,
+);
+
+function readSummaryPreference() {
+	try {
+		summaryDismissed = getBrowserStorage()?.getItem(summaryStorageKey) === "true";
+	} catch {
+		summaryDismissed = false;
+	}
+}
+$effect(() => {
+	readSummaryPreference();
+});
+
+function setSummaryDismissed(hidden: boolean) {
+	summaryDismissed = hidden;
+	try {
+		getBrowserStorage()?.setItem(summaryStorageKey, String(hidden));
+	} catch {
+		/* Keep the preference for this page when browser storage is unavailable. */
+	}
+}
+function dismissSummary() {
+	setSummaryDismissed(true);
+	// The dismissed control leaves the DOM; retain a useful keyboard position.
+	const title = document.getElementById(processDetailTitleId);
+	title?.setAttribute("tabindex", "-1");
+	title?.focus();
+}
+function showSummary() {
+	setSummaryDismissed(false);
+	closeProcessInfoOverlay();
+}
+function handleSummaryStorage(event: StorageEvent) {
+	if (event.key === null || event.key === summaryStorageKey) readSummaryPreference();
+}
 
 let launchWarning = $state<string | null>(null);
 let observedInstanceId: string | null = null;
@@ -504,7 +552,7 @@ function openNextReasoningDetails() {
 }
 </script>
 
-<svelte:window onkeydown={handlePageKeydown} />
+<svelte:window onkeydown={handlePageKeydown} onstorage={handleSummaryStorage} />
 
 <div class="process-detail-page" data-page="process-detail">
 	<div class="page-shell" inert={hasBlockingDetailOverlay ? true : undefined}>
@@ -517,10 +565,11 @@ function openNextReasoningDetails() {
 			onDeleted={handleProcessDeleted}
 		/>
 
- {#if $detailState.data?.process.lifecycleStatus === "waiting"}
- {@const waitingReport = $detailState.data.timeline.turns.findLast((turn) => turn.turnId === $detailState.data?.process.selectedTurnId && turn.progress?.summary)}
- {#if waitingReport?.progress?.summary}<p class="waiting-explanation">{waitingReport.progress.summary}{#if waitingReport.progressRecordedAt} <time datetime={waitingReport.progressRecordedAt}>{new Date(waitingReport.progressRecordedAt).toLocaleString()}</time>{/if}</p>{/if}
- {/if}
+
+		{#if waitingReport?.progress?.summary && !summaryDismissed}
+			<ProcessSummary summary={waitingReport.progress.summary} recordedAt={waitingReport.progressRecordedAt} onDismiss={dismissSummary} />
+		{/if}
+
 		<ProcessDetailChronicle
 			{instanceId}
 			detail={$detailState.data}
@@ -565,6 +614,7 @@ function openNextReasoningDetails() {
 				{processUsageEstimate}
 				onClose={() => closeProcessInfoOverlay()}
 				railItems={chronicleSelectableItems}
+				onShowSummary={waitingReport && summaryDismissed ? showSummary : undefined}
 			/>
 		</OverlayFrame>
 	{:else if activeReasoningDetail}

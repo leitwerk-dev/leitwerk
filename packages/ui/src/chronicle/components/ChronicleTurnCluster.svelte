@@ -6,6 +6,7 @@ import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleTurnClusterItem } from "../lib/chronicle-projection.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
 import { formatChronicleCost, formatChronicleDuration } from "../lib/formatting.js";
+import { presentTurnResult } from "../lib/result-presentation.js";
 import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleExpandButton from "./ChronicleExpandButton.svelte";
@@ -63,6 +64,12 @@ const compactResult = $derived(
 	),
 );
 const expanded = $derived(resultExpanded ?? !compressHistory);
+const presentation = $derived(
+	result ? presentTurnResult(result.markdown, result.resultSummary) : null,
+);
+const resultHeadings = $derived(
+	presentation?.headings.filter((heading) => heading !== cluster.title) ?? [],
+);
 const metadata = $derived(
 	[
 		cluster.modelProfileId,
@@ -114,13 +121,6 @@ function openDetails() {
 {#each cluster.resources ?? [] as link (link.id)}<a class="reviewed-result" href={link.url} target="_blank" rel="noreferrer">{link.label}</a>{/each}
 	{#if cluster.reviewedTurnRecordId}<a class="reviewed-result" href={`#chronicle-turn-${cluster.reviewedTurnRecordId}`}>Reviewed result</a>{/if}
  {#if cluster.transition}<p>{cluster.transition.accepted ? "Started" : "Selected"} {formatTurnId(cluster.transition.selectedTurnId)}</p>{/if}
-	{#if prompt}
-		<button class="prompt-row" type="button" data-section="turn-prompt" aria-label={`View prompt for ${cluster.title}`} onclick={openDetails}>
-			<span class="prompt-label">Prompt</span>
-			<span class="prompt-preview">{truncateText(markdownToPlainText(prompt), 240)}</span>
-			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
-		</button>
-	{/if}
 
 	{#each cluster.sections as section, index (`${cluster.turnRecordId}-${index}`)}
 		{#if !isFailed && section.kind === "operator_decision" && section.text && section.text.trim() !== cluster.title.trim()}
@@ -141,21 +141,24 @@ function openDetails() {
 
 	{#if result}
 		<section class="result-section" class:is-compact={compactResult} class:is-compressed={!expanded && !compactResult} data-section="turn-result" data-ticket-result-artifact={`turn_result:${cluster.turnRecordId}`} data-ticket-result-durable="true" data-compressed={!expanded && !compactResult ? "true" : undefined}>
-			{#if result.resultSummary}<p class="result-summary">{result.resultSummary}</p>{/if}
 			{#if !compactResult}
 				<div class="result-header-row">
 					<h4>Result</h4>
 					<div class="result-actions">
 						{#if onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
-						<ChronicleExpandButton expanded={expanded} controls={`result-${cluster.turnRecordId}`} expandedLabel="Collapse result" collapsedLabel="Expand result" onClick={() => resultExpanded = !expanded} />
+						<ChronicleExpandButton expanded={expanded} controls={`result-${cluster.turnRecordId}`} expandedLabel="Show summary" collapsedLabel="Read full result" onClick={() => resultExpanded = !expanded} />
 					</div>
 				</div>
 			{/if}
 			<div id={`result-${cluster.turnRecordId}`}>
 			{#if expanded || compactResult}
+				{#if presentation?.separateSummary}<p class="result-summary">{presentation.separateSummary}</p>{/if}
 				<ChronicleMarkdown markdown={result.markdown} className="turn-result-markdown" />
 			{:else}
-				<p class="result-summary"><span>Preview: </span>{markdownToPlainText(result.markdown.split(/\n\s*\n/).find((paragraph) => paragraph.trim() && !/^\s*#/.test(paragraph)) ?? result.markdown)}</p>
+				<p class="result-summary">{presentation?.preview}</p>
+				{#if resultHeadings.length}
+					<div class="result-outline"><span>In this result</span><ul>{#each resultHeadings as heading (heading)}<li>{heading}</li>{/each}</ul></div>
+				{/if}
 			{/if}
 			</div>
 		</section>
@@ -172,6 +175,14 @@ function openDetails() {
 	{/if}
 
 	{@render waitingContent?.()}
+
+	{#if prompt}
+		<button class="prompt-row" type="button" data-section="turn-prompt" aria-label={`View prompt for ${cluster.title}`} onclick={openDetails}>
+			<span class="prompt-label">Prompt</span>
+			<span class="prompt-preview">{truncateText(markdownToPlainText(prompt), 240)}</span>
+			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+		</button>
+	{/if}
 
 	{#if isLlm || hasReasoning || (compactResult && onDraftTicket)}
 		<div class="cluster-support" class:has-reasoning={hasReasoning}>
@@ -214,6 +225,10 @@ function openDetails() {
 	.result-header-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 	.result-header-row h4 { margin: 0; font-size: var(--type-body); font-weight: 700; color: var(--chronicle-text); }
 	.result-summary { margin: 0; font-size: var(--type-body); line-height: 1.55; color: var(--chronicle-text); overflow-wrap: anywhere; }
+	.result-outline { margin-top: 8px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
+	.result-outline > span { font-weight: 600; }
+	.result-outline ul { margin: 4px 0 0; padding-inline-start: 18px; }
+	.result-outline li { overflow-wrap: anywhere; }
 	.result-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 	.cluster-support { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; min-width: 0; color: var(--chronicle-text-muted); }
 	.support-progress { min-width: 0; }
@@ -227,6 +242,7 @@ function openDetails() {
 	@media (max-width: 540px) {
 		.turn-cluster { padding: 10px; }
 		.result-section { padding: 8px 10px; }
+		.result-header-row, .result-actions { flex-wrap: wrap; }
 		.result-section.is-compact, .decision-section { padding-inline-start: 32px; }
 		.cluster-support.has-reasoning { grid-template-columns: minmax(0, 1fr); gap: 6px; }
 		.has-reasoning .footer-actions { grid-row: 1; justify-content: flex-end; flex-wrap: wrap; }
