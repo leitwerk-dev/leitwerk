@@ -114,6 +114,30 @@ function buildPromptTitleSourceFields(prompt: string, label = "Prompt") {
 	return [{ label, value: prompt }] as const;
 }
 
+function promptLaunchResolution(options: {
+	processId: string;
+	startTurnId: string;
+	defaultPrompt?: () => string;
+	titleLabel?: string;
+}) {
+	return {
+		resolveDefaults: () => ({ prompt: options.defaultPrompt?.() ?? "" }),
+		resolveLaunchConfig(input: Record<string, unknown>) {
+			const validated = validateLaunchInput(input, options.defaultPrompt?.());
+			if (!validated.ok) return validated;
+			return {
+				ok: true as const,
+				launchConfig: {
+					processId: options.processId,
+					params: { prompt: validated.prompt },
+					titleSourceFields: buildPromptTitleSourceFields(validated.prompt, options.titleLabel),
+					startTurnId: options.startTurnId,
+				},
+			};
+		},
+	};
+}
+
 function clearReviewRefs(state: PoemCreatorState["semanticEntryRefs"]) {
 	return {
 		...state,
@@ -333,26 +357,10 @@ export const singlePromptProcess = flow
 				],
 				submitLabel: "Run Prompt",
 			},
-			resolveDefaults() {
-				return {
-					prompt: "",
-				};
-			},
-			resolveLaunchConfig(input) {
-				const validated = validateLaunchInput(input);
-				if (!validated.ok) {
-					return validated;
-				}
-				return {
-					ok: true,
-					launchConfig: {
-						processId: "single_prompt_process",
-						params: { prompt: validated.prompt },
-						titleSourceFields: buildPromptTitleSourceFields(validated.prompt),
-						startTurnId: "run_single_prompt",
-					},
-				};
-			},
+			...promptLaunchResolution({
+				processId: "single_prompt_process",
+				startTurnId: "run_single_prompt",
+			}),
 		},
 	})
 	.define();
@@ -413,26 +421,10 @@ export const singlePromptWithToolProcess = flow
 				],
 				submitLabel: "Run Prompt + Tool",
 			},
-			resolveDefaults() {
-				return {
-					prompt: "",
-				};
-			},
-			resolveLaunchConfig(input) {
-				const validated = validateLaunchInput(input);
-				if (!validated.ok) {
-					return validated;
-				}
-				return {
-					ok: true,
-					launchConfig: {
-						processId: "single_prompt_with_tool_process",
-						params: { prompt: validated.prompt },
-						titleSourceFields: buildPromptTitleSourceFields(validated.prompt),
-						startTurnId: "run_single_prompt_with_tool",
-					},
-				};
-			},
+			...promptLaunchResolution({
+				processId: "single_prompt_with_tool_process",
+				startTurnId: "run_single_prompt_with_tool",
+			}),
 		},
 	})
 	.define();
@@ -697,26 +689,10 @@ export const singlePromptExternalCompleteProcess = flow
 				],
 				submitLabel: "Run Prompt",
 			},
-			resolveDefaults() {
-				return {
-					prompt: "",
-				};
-			},
-			resolveLaunchConfig(input) {
-				const validated = validateLaunchInput(input);
-				if (!validated.ok) {
-					return validated;
-				}
-				return {
-					ok: true,
-					launchConfig: {
-						processId: "single_prompt_external_complete_process",
-						params: { prompt: validated.prompt },
-						titleSourceFields: buildPromptTitleSourceFields(validated.prompt),
-						startTurnId: "run_single_prompt",
-					},
-				};
-			},
+			...promptLaunchResolution({
+				processId: "single_prompt_external_complete_process",
+				startTurnId: "run_single_prompt",
+			}),
 		},
 	})
 	.define();
@@ -966,26 +942,12 @@ export const poemCreatorProcess = flow
 				],
 				submitLabel: "Create Poem",
 			},
-			resolveDefaults() {
-				return {
-					prompt: buildDefaultPoemPrompt(),
-				};
-			},
-			resolveLaunchConfig(input) {
-				const validated = validateLaunchInput(input, buildDefaultPoemPrompt());
-				if (!validated.ok) {
-					return validated;
-				}
-				return {
-					ok: true,
-					launchConfig: {
-						processId: "poem_creator_process",
-						params: { prompt: validated.prompt },
-						titleSourceFields: buildPromptTitleSourceFields(validated.prompt, "Poem Prompt"),
-						startTurnId: poemTurnIds.draftPoem,
-					},
-				};
-			},
+			...promptLaunchResolution({
+				processId: "poem_creator_process",
+				startTurnId: poemTurnIds.draftPoem,
+				defaultPrompt: buildDefaultPoemPrompt,
+				titleLabel: "Poem Prompt",
+			}),
 		},
 	})
 	.watcher({
