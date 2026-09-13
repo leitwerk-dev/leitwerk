@@ -1001,7 +1001,6 @@ export class LlmFlowBuilder<
 		| null = null;
 	private branchType: LlmTurnDefinition<string, TParams, TState>["branchType"] = "primary";
 	private context: LlmTurnDefinition<string, TParams, TState>["context"] = "fresh";
-	private completionMode: LlmTurnDefinition<string, TParams, TState>["completionMode"] = "turn_end";
 	private questionsEnabled = false;
 	private startFrom: LlmTurnDefinition<string, TParams, TState>["startFrom"] | undefined;
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
@@ -1054,7 +1053,6 @@ export class LlmFlowBuilder<
 	freshPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh";
-		this.completionMode = "turn_end";
 		this.startFrom = undefined;
 		this.restorePrimaryLeafAfterTurn = undefined;
 		return this;
@@ -1063,7 +1061,6 @@ export class LlmFlowBuilder<
 	freshSeededPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh_seeded";
-		this.completionMode = "turn_end";
 		this.startFrom = undefined;
 		this.restorePrimaryLeafAfterTurn = undefined;
 		return this;
@@ -1072,14 +1069,12 @@ export class LlmFlowBuilder<
 	fullPrimary(): this {
 		this.branchType = "primary";
 		this.context = "full";
-		this.completionMode = "turn_end";
 		return this;
 	}
 
 	rootBranchReview(): this {
 		this.branchType = "root_branch";
 		this.context = "full";
-		this.completionMode = "turn_end";
 		this.restorePrimaryLeafAfterTurn = true;
 		return this;
 	}
@@ -1257,7 +1252,7 @@ export class LlmFlowBuilder<
 							preparation(createFlowAutomaticRunContext(ctx)),
 					}
 				: {}),
-			completionMode: this.completionMode,
+			completionMode: "turn_end" as const,
 			branchType: this.branchType,
 			context: this.context,
 			...(this.startFrom ? { startFrom: this.startFrom } : {}),

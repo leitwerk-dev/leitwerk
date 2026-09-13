@@ -101,12 +101,10 @@ async function materializeComponentEntry(
 	const dir = componentDir(plan.workspaceRoot, comp.key);
 	await git.clone(comp.repoLocator, dir);
 	await git.checkout(dir, comp.baseBranch);
-	if (await git.branchExists(dir, comp.workBranch)) {
-		await git.checkout(dir, comp.workBranch);
-	} else {
+	if (!(await git.branchExists(dir, comp.workBranch))) {
 		await git.createBranch(dir, comp.workBranch, comp.baseBranch);
-		await git.checkout(dir, comp.workBranch);
 	}
+	await git.checkout(dir, comp.workBranch);
 	return {
 		key: comp.key,
 		repoLocator: comp.repoLocator,
@@ -220,7 +218,7 @@ async function finalizeRunRoot(
 	git: RunRootGitOps,
 	entries: ComponentManifestEntry[],
 	errors: string[],
-) {
+): Promise<MaterializeResult> {
 	const manifest: ComponentManifest = {
 		version: 1,
 		instanceId: plan.instanceId,
@@ -237,15 +235,6 @@ async function finalizeRunRoot(
 		errors.push(`write: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	return { manifest, aggregatedAgentsMdSources, loadedSkills };
-}
-
-function finishRunRoot(
-	plan: RunRootPlan,
-	entries: ComponentManifestEntry[],
-	errors: string[],
-	result: Awaited<ReturnType<typeof finalizeRunRoot>>,
-): MaterializeResult {
 	const expectedKeys = new Set(plan.components.map((component) => component.key));
 	const hasAllExpectedEntries =
 		entries.length === expectedKeys.size &&
@@ -255,7 +244,9 @@ function finishRunRoot(
 	}
 	return {
 		ok: true,
-		...result,
+		manifest,
+		aggregatedAgentsMdSources,
+		loadedSkills,
 		errors,
 	};
 }
@@ -266,18 +257,7 @@ export async function materializeRunRoot(
 ): Promise<MaterializeResult> {
 	const errors: string[] = [];
 	const entries = await collectMaterializedEntries(plan, git, errors);
-	const { manifest, aggregatedAgentsMdSources, loadedSkills } = await finalizeRunRoot(
-		plan,
-		git,
-		entries,
-		errors,
-	);
-
-	return finishRunRoot(plan, entries, errors, {
-		manifest,
-		aggregatedAgentsMdSources,
-		loadedSkills,
-	});
+	return finalizeRunRoot(plan, git, entries, errors);
 }
 
 export async function validateRunRoot(
@@ -286,20 +266,8 @@ export async function validateRunRoot(
 	git: GitOps,
 ): Promise<ValidationResult> {
 	const raw = await git.readFile(workspaceRoot, MANIFEST_REL);
-	if (raw === null) {
-		return {
-			valid: false,
-			diff: {
-				stale: [],
-				missing: serverProjects.map((p) => p.key),
-				extra: [],
-				unchanged: [],
-			},
-			existingManifest: null,
-		};
-	}
-	const parsed = deserializeManifest(raw);
-	if (!parsed.ok) {
+	const parsed = raw === null ? null : deserializeManifest(raw);
+	if (!parsed?.ok) {
 		return {
 			valid: false,
 			diff: {
@@ -338,16 +306,5 @@ export async function repairRunRoot(
 			null,
 	);
 
-	const { manifest, aggregatedAgentsMdSources, loadedSkills } = await finalizeRunRoot(
-		plan,
-		git,
-		manifestEntries,
-		errors,
-	);
-
-	return finishRunRoot(plan, manifestEntries, errors, {
-		manifest,
-		aggregatedAgentsMdSources,
-		loadedSkills,
-	});
+	return finalizeRunRoot(plan, git, manifestEntries, errors);
 }

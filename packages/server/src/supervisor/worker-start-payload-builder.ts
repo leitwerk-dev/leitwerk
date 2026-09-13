@@ -123,17 +123,6 @@ function buildTurnResultMarkdownBySemanticRef(
 	return Object.keys(bySemanticRef).length > 0 ? bySemanticRef : undefined;
 }
 
-function latestSucceededTurnRecord(
-	processId: string,
-	deps: Pick<WorkerStartPayloadBuilderDeps, "turnRecords">,
-) {
-	return (
-		[...deps.turnRecords.listByInstance(processId)]
-			.reverse()
-			.find((record) => record.status === "succeeded") ?? null
-	);
-}
-
 function isTransitionScopedProductFresh(
 	process: Pick<ProcessInstance, "id" | "processId" | "stateJson">,
 	productName: string,
@@ -146,7 +135,10 @@ function isTransitionScopedProductFresh(
 	if (!productRef?.turnRecordId) {
 		return true;
 	}
-	const latestTurnRecord = latestSucceededTurnRecord(process.id, deps);
+	const latestTurnRecord =
+		deps.turnRecords
+			.listByInstance(process.id)
+			.findLast((record) => record.status === "succeeded") ?? null;
 	if (!latestTurnRecord || productRef.turnRecordId === latestTurnRecord.id) {
 		return true;
 	}

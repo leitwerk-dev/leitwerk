@@ -27,19 +27,18 @@ export function mergeEntryRefPatchIntoStateJson(
 		"fallbackStateJson",
 	);
 	const parseRefs = field === "productRefs" ? parseProductRefsStrict : parseSemanticEntryRefsStrict;
-	const currentRefs: Record<string, SemanticEntryRef | null> = {
+	const nextRefs: Record<string, SemanticEntryRef | null> = {
 		...parseRefs(
 			stateRecord[field] !== undefined ? stateRecord[field] : fallbackStateRecord[field],
 		),
 	};
-	const nextRefs = { ...currentRefs };
 	let changed = false;
 	for (const [key, value] of entries) {
 		if (field === "productRefs") assertValidProcessProductName(key);
 		if (value === undefined) continue;
 		const nextValue =
 			field === "productRefs" ? normalizeProductRef(value) : parseSemanticEntryRef(value);
-		if (!areSemanticEntryRefsEqual(currentRefs[key], nextValue)) changed = true;
+		if (!areSemanticEntryRefsEqual(nextRefs[key], nextValue)) changed = true;
 		// Products omit deleted keys; semantic refs retain explicit null slots.
 		if (field === "productRefs" && nextValue === null) delete nextRefs[key];
 		else nextRefs[key] = nextValue;

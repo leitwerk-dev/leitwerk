@@ -37,9 +37,9 @@ export interface TurnContinuationIndex<TEntry extends ContinuationTreeEntry> {
 	buildSlice(turnRecord: ContinuationTurnRecordLike, bounds?: ContinuationSliceBounds): TEntry[];
 }
 
-function createEntriesById(
-	entries: readonly ContinuationTreeEntry[],
-): Map<string, ContinuationTreeEntry> {
+function createEntriesById<TEntry extends ContinuationTreeEntry>(
+	entries: readonly TEntry[],
+): Map<string, TEntry> {
 	return new Map(entries.map((entry) => [entry.id, entry]));
 }
 
@@ -148,14 +148,13 @@ function resolveTurnContinuationLeafEntryIdFromIndex(
 export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry>(
 	entries: readonly TEntry[],
 ): TurnContinuationIndex<TEntry> {
-	const orderedEntries = entries;
-	const entriesById = createEntriesById(orderedEntries);
+	const entriesById = createEntriesById(entries);
 
 	const resolveLeafEntryId = (
 		turnRecord: ContinuationTurnRecordLike,
 		bounds: ContinuationSliceBounds = {},
 	): string | null =>
-		resolveTurnContinuationLeafEntryIdFromIndex(orderedEntries, entriesById, turnRecord, bounds);
+		resolveTurnContinuationLeafEntryIdFromIndex(entries, entriesById, turnRecord, bounds);
 
 	const buildSlice = (
 		turnRecord: ContinuationTurnRecordLike,
@@ -168,7 +167,7 @@ export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry
 		const forkPiEntryId = trimToNull(turnRecord.forkPiEntryId);
 		const reversedSlice: TEntry[] = [];
 		const visited = new Set<string>();
-		let current = entriesById.get(continuationLeafId) as TEntry | undefined;
+		let current = entriesById.get(continuationLeafId);
 		let foundFork = forkPiEntryId === null;
 		while (current && !visited.has(current.id)) {
 			visited.add(current.id);
@@ -177,9 +176,7 @@ export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry
 				break;
 			}
 			reversedSlice.push(current);
-			current = current.parentId
-				? (entriesById.get(current.parentId) as TEntry | undefined)
-				: undefined;
+			current = current.parentId ? entriesById.get(current.parentId) : undefined;
 		}
 		if (!foundFork) {
 			return [];

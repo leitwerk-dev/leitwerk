@@ -184,20 +184,15 @@ export async function runPostCommitEffectList(
 ): Promise<PostCommitEffectResult> {
 	const startedWorkers = new Set<string>();
 	let bestEffortFailure: Exclude<PostCommitEffectResult, { ok: true }> | null = null;
-	const recordBestEffortFailure = (
-		code: PostCommitEffectFailureCode,
-		error: Error | null,
-	): void => {
-		if (options.reportBestEffortFailures && error && !bestEffortFailure) {
-			bestEffortFailure = { ok: false, code, message: error.message };
-		}
-	};
 	const runAndRecordBestEffort = async (
 		effect: PostCommitEffect,
 		code: PostCommitEffectFailureCode,
 		run: () => void | Promise<void>,
 	): Promise<void> => {
-		recordBestEffortFailure(code, await runBestEffortEffect(effect, logContext, code, run));
+		const error = await runBestEffortEffect(effect, logContext, code, run);
+		if (options.reportBestEffortFailures && error && !bestEffortFailure) {
+			bestEffortFailure = { ok: false, code, message: error.message };
+		}
 	};
 	for (const effect of effects) {
 		switch (effect.kind) {
