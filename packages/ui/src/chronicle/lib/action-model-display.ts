@@ -1,10 +1,10 @@
 import { trimToNull } from "@leitwerk-dev/domain";
-import { resolvePromptCacheSwitch } from "@leitwerk-dev/protocol/http-contracts";
 import type {
 	ModelProfileOptionSummary,
 	ProcessActionModelPreview,
 	ProcessActionModelResolutionPreview,
-} from "../../lib/api.js";
+} from "@leitwerk-dev/protocol/http-contracts";
+import { resolvePromptCacheSwitch } from "@leitwerk-dev/protocol/http-contracts";
 
 export interface ActionModelDisplay {
 	blankOptionLabel: string;

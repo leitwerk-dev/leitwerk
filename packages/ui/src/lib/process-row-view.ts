@@ -1,5 +1,5 @@
 import { type ProcessRowSlot, sortProcessRows } from "@leitwerk-dev/domain";
-import type { ProcessOverviewItem } from "./api.js";
+import type { ProcessOverviewItem } from "@leitwerk-dev/protocol/http-contracts";
 import { formatDefinition, formatStatus, formatTurnId } from "./format.js";
 
 export interface ProcessRowView extends ProcessRowSlot {

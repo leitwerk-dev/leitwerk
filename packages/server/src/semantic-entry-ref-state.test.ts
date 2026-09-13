@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mergeProductRefPatchIntoStateJson } from "./product-ref-state.js";
 import {
 	deriveInputConsumedSemanticEntryRefPatch,
 	deriveTurnOutcomeSemanticEntryRefPatch,
@@ -6,6 +7,24 @@ import {
 } from "./semantic-entry-ref-state.js";
 
 describe("semantic-entry-ref-state", () => {
+	it.each([
+		["productRefs", mergeProductRefPatchIntoStateJson, false],
+		["semanticEntryRefs", mergeSemanticEntryRefPatchIntoStateJson, true],
+	] as const)("preserves %s deletion and no-op policies", (field, merge, retainsNull) => {
+		const ref = { entryId: "entry", turnRecordId: "turn" };
+		const state = JSON.stringify({ [field]: { plan: ref } });
+		expect(merge("{", { plan: undefined })).toBeNull();
+		expect(merge(state, { plan: { entryId: " entry ", turnRecordId: " turn " } })).toBeNull();
+		for (const plan of [null, { entryId: " ", turnRecordId: null }]) {
+			const next = JSON.parse(
+				merge('{"other":true}', { plan }, { fallbackStateJson: state }) ?? "null",
+			);
+			expect(next.other).toBe(true);
+			expect(Object.hasOwn(next[field], "plan")).toBe(retainsNull);
+			if (retainsNull) expect(next[field].plan).toBeNull();
+		}
+	});
+
 	it("merges semantic entry refs into stateJson without dropping other state fields", () => {
 		const nextStateJson = mergeSemanticEntryRefPatchIntoStateJson(
 			JSON.stringify({

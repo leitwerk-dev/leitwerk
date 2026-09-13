@@ -34,17 +34,6 @@ function sessionRowToRecord(row: typeof s.authSessions.$inferSelect): AuthSessio
 	};
 }
 
-function flowRowToRecord(row: typeof s.authLoginFlows.$inferSelect): AuthLoginFlowRecord {
-	return {
-		idHash: row.idHash,
-		providerId: row.providerId,
-		state: row.state,
-		pkceVerifier: row.pkceVerifier,
-		createdAt: row.createdAt,
-		expiresAt: row.expiresAt,
-	};
-}
-
 export function createAuthSessionRepo(db: LeitwerkDb) {
 	return {
 		create(input: { idHash: string; actor: Actor; expiresAt: string }): AuthSessionRecord {
@@ -100,7 +89,7 @@ export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 				expiresAt: input.expiresAt,
 			};
 			db.insert(s.authLoginFlows).values(values).run();
-			return flowRowToRecord(values);
+			return values;
 		},
 
 		getValid(idHash: string, atIso: string = now()): AuthLoginFlowRecord | null {
@@ -109,7 +98,7 @@ export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 				.from(s.authLoginFlows)
 				.where(and(eq(s.authLoginFlows.idHash, idHash), gt(s.authLoginFlows.expiresAt, atIso)))
 				.get();
-			return row ? flowRowToRecord(row) : null;
+			return row ?? null;
 		},
 
 		delete(idHash: string): boolean {

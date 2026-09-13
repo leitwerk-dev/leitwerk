@@ -1,3 +1,5 @@
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
+
 export interface TelegramExtensionConfig {
 	enabled: boolean;
 	botToken: string;
@@ -23,10 +25,6 @@ interface RawTelegramConfig {
 	topic_title_template?: unknown;
 	action_model_selection?: unknown;
 	allowed_model_profile_ids?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeUserIds(value: unknown): number[] {

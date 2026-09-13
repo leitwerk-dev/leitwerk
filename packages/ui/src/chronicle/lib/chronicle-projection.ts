@@ -762,37 +762,21 @@ function buildPromptItem(
 	};
 }
 
-function compareChronicleTimestamps(left: string, right: string): number {
-	return left.localeCompare(right);
-}
-
 function sortInputsByConsumedAt(left: ChronicleInput, right: ChronicleInput): number {
 	const leftTimestamp = left.consumedAt ?? left.receivedAt;
 	const rightTimestamp = right.consumedAt ?? right.receivedAt;
-	const timestampComparison = compareChronicleTimestamps(leftTimestamp, rightTimestamp);
-	if (timestampComparison !== 0) {
-		return timestampComparison;
-	}
-	return left.sequence - right.sequence;
+	return leftTimestamp.localeCompare(rightTimestamp) || left.sequence - right.sequence;
 }
 
 function sortInputsByReceivedAt(left: ChronicleInput, right: ChronicleInput): number {
-	const timestampComparison = compareChronicleTimestamps(left.receivedAt, right.receivedAt);
-	if (timestampComparison !== 0) {
-		return timestampComparison;
-	}
-	return left.sequence - right.sequence;
+	return left.receivedAt.localeCompare(right.receivedAt) || left.sequence - right.sequence;
 }
 
 function sortTurnRecordsByStartedAt(
 	left: Pick<TurnRecordView, "startedAt" | "id">,
 	right: Pick<TurnRecordView, "startedAt" | "id">,
 ): number {
-	const startedAtComparison = compareChronicleTimestamps(left.startedAt, right.startedAt);
-	if (startedAtComparison !== 0) {
-		return startedAtComparison;
-	}
-	return left.id.localeCompare(right.id);
+	return left.startedAt.localeCompare(right.startedAt) || left.id.localeCompare(right.id);
 }
 
 function isConsumedTriggeringInputCandidate(input: ChronicleInput): boolean {
@@ -801,10 +785,6 @@ function isConsumedTriggeringInputCandidate(input: ChronicleInput): boolean {
 		typeof input.consumedAt === "string" &&
 		input.consumedAt !== ""
 	);
-}
-
-function isReceivedTriggeringInputCandidate(input: ChronicleInput): boolean {
-	return isChronicleTriggeringInput(input);
 }
 
 function toTriggeringInputSummary(
@@ -855,7 +835,7 @@ function buildTriggeringInputIndex(
 		.filter(isConsumedTriggeringInputCandidate)
 		.sort(sortInputsByConsumedAt);
 	const receivedCandidates = input.inputs
-		.filter(isReceivedTriggeringInputCandidate)
+		.filter(isChronicleTriggeringInput)
 		.sort(sortInputsByReceivedAt);
 
 	const turnRecords = [...input.turnRecords].sort(sortTurnRecordsByStartedAt);
@@ -882,14 +862,11 @@ function buildTriggeringInputIndex(
 				nextConsumedCandidateIndex += 1;
 				continue;
 			}
-			if (
-				windowStartExclusive &&
-				compareChronicleTimestamps(consumedAt, windowStartExclusive) <= 0
-			) {
+			if (windowStartExclusive && consumedAt.localeCompare(windowStartExclusive) <= 0) {
 				nextConsumedCandidateIndex += 1;
 				continue;
 			}
-			if (compareChronicleTimestamps(consumedAt, turnRecord.startedAt) > 0) {
+			if (consumedAt.localeCompare(turnRecord.startedAt) > 0) {
 				break;
 			}
 			const summary = toTriggeringInputSummary(candidate);
@@ -915,13 +892,10 @@ function buildTriggeringInputIndex(
 				if (assignedInputIds.has(candidate.id)) {
 					continue;
 				}
-				if (
-					windowStartExclusive &&
-					compareChronicleTimestamps(candidate.receivedAt, windowStartExclusive) <= 0
-				) {
+				if (windowStartExclusive && candidate.receivedAt.localeCompare(windowStartExclusive) <= 0) {
 					break;
 				}
-				if (compareChronicleTimestamps(candidate.receivedAt, turnRecord.startedAt) > 0) {
+				if (candidate.receivedAt.localeCompare(turnRecord.startedAt) > 0) {
 					continue;
 				}
 				const summary = toTriggeringInputSummary(candidate, candidate.receivedAt);
@@ -1001,7 +975,7 @@ function buildLiveTail(input: {
 			)
 		: [];
 	const runningToolCall = activeTurn
-		? ([...liveToolCalls].reverse().find((toolCall) => toolCall.status === "running") ?? null)
+		? (liveToolCalls.findLast((toolCall) => toolCall.status === "running") ?? null)
 		: null;
 	const thinkingText = activeTurn?.assistant.thinking ?? "";
 	const assistantText = activeTurn?.assistant.text.trim() ?? "";
@@ -1367,12 +1341,10 @@ export function buildChronicleProjection(
 		});
 	}
 
-	const latestAnchorableTimelineItem = [...timelineItems]
-		.reverse()
-		.find(
-			(item): item is Extract<ChronicleTimelineItem, { anchorId: string }> => "anchorId" in item,
-		);
-	const latestFocusedTurnId = [...timelineItems].reverse().find((item) => {
+	const latestAnchorableTimelineItem = timelineItems.findLast(
+		(item): item is Extract<ChronicleTimelineItem, { anchorId: string }> => "anchorId" in item,
+	);
+	const latestFocusedTurnId = timelineItems.findLast((item) => {
 		return (
 			((item.kind === "turn_cluster" || item.kind === "live_tail") &&
 				typeof item.turnRecordId === "string") ||

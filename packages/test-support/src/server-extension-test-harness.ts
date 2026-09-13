@@ -9,7 +9,7 @@ import {
 	type ProvidedCapability,
 	type ServerExtensionEventMap,
 } from "@leitwerk-dev/process-sdk";
-import { flushAsyncWork } from "./worker-testing/ipc-harness.js";
+import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 

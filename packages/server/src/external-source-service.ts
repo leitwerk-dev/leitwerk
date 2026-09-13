@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
-import type { ProcessInstance, ProcessProject, TurnId } from "@leitwerk-dev/domain";
+import {
+	asUnknownRecord,
+	type ProcessInstance,
+	type ProcessProject,
+	readNonBlankString,
+	type TurnId,
+} from "@leitwerk-dev/domain";
 import type {
 	ActionExecutionResultLike,
-	ExternalActionSource,
 	ExternalObservationInput,
 	ExternalSourceArmingLike,
 	ExternalSourceFireInput,
@@ -90,19 +95,7 @@ export interface ExternalSourceService extends ExternalSourceServiceLike {
 const TERMINAL_STATUSES = new Set(["completed", "aborted"]);
 
 function normalizeRecord(value: unknown): Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? { ...(value as Record<string, unknown>) }
-		: {};
-}
-
-function sourceLabel(source: ExternalActionSource): string | null {
-	return typeof source.label === "string" && source.label.trim() !== "" ? source.label : null;
-}
-
-function sourceDescription(source: ExternalActionSource): string | null {
-	return typeof source.description === "string" && source.description.trim() !== ""
-		? source.description
-		: null;
+	return { ...asUnknownRecord(value) };
 }
 
 function isSelectedWaitingTurn(process: ProcessInstance): boolean {
@@ -309,10 +302,12 @@ async function buildExternalSourceEffectWrites(input: {
 	return writes;
 }
 
+const INSTRUCTION_KEYS = ["instruction", "bodyMarkdown", "message", "text", "content"];
+
 function mergeInstructionText(values: readonly Record<string, unknown>[]): string | null {
 	const parts: string[] = [];
 	for (const input of values) {
-		for (const key of ["instruction", "bodyMarkdown", "message", "text", "content"]) {
+		for (const key of INSTRUCTION_KEYS) {
 			const value = input[key];
 			if (typeof value === "string" && value.trim() !== "") {
 				parts.push(value.trim());
@@ -348,17 +343,9 @@ function mergePendingFires(
 	const mergedInput = { ...(first?.input ?? {}) };
 	const instruction = mergeInstructionText(fires.map((fire) => fire.input));
 	if (instruction !== null) {
-		for (const key of ["instruction", "bodyMarkdown", "message", "text", "content"]) {
-			if (Object.hasOwn(mergedInput, key)) {
-				mergedInput[key] = instruction;
-			}
-		}
-		if (
-			!Object.keys(mergedInput).some((key) =>
-				["instruction", "bodyMarkdown", "message", "text", "content"].includes(key),
-			)
-		) {
-			mergedInput.instruction = instruction;
+		const keys = INSTRUCTION_KEYS.filter((key) => Object.hasOwn(mergedInput, key));
+		for (const key of keys.length > 0 ? keys : ["instruction"]) {
+			mergedInput[key] = instruction;
 		}
 	}
 	const providerInputs = fires.flatMap((fire) => providerRecordsFrom(fire.input, "providerInputs"));
@@ -441,8 +428,8 @@ export function createExternalSourceService(
 					resolved: transition.source.resolve?.({ ...context }),
 					transition,
 					transitionTrigger: id,
-					label: sourceLabel(transition.source),
-					description: sourceDescription(transition.source),
+					label: readNonBlankString(transition.source.label),
+					description: readNonBlankString(transition.source.description),
 					...context,
 				});
 			});
@@ -467,8 +454,8 @@ export function createExternalSourceService(
 				resolved: action.source.resolve?.({ ...context }),
 				transition: action,
 				transitionTrigger: getExternalActionTransitionTrigger({ externalActionId }),
-				label: action.label ?? sourceLabel(action.source),
-				description: action.description ?? sourceDescription(action.source),
+				label: action.label ?? readNonBlankString(action.source.label),
+				description: action.description ?? readNonBlankString(action.source.description),
 				...context,
 			});
 		}
@@ -1100,19 +1087,6 @@ export function createExternalSourceService(
 		};
 	}
 
-	async function dropPendingFire(input: {
-		instanceId: string;
-		armingId: string;
-		known: KnownExternalArming;
-		fireInput?: Record<string, unknown>;
-		fireEvent?: Record<string, unknown>;
-		code: string;
-		message: string;
-		pendingFireId?: string;
-	}): Promise<void> {
-		await deps.commands.run(DropExternalSourceFire, input);
-	}
-
 	async function fireImmediate(input: {
 		instanceId: string;
 		armingId: string;
@@ -1167,7 +1141,7 @@ export function createExternalSourceService(
 			};
 		}
 		if (terminal(process)) {
-			await dropPendingFire({
+			await deps.commands.run(DropExternalSourceFire, {
 				instanceId: input.instanceId,
 				armingId: input.armingId,
 				known,
@@ -1200,7 +1174,7 @@ export function createExternalSourceService(
 		message: string,
 	): Promise<void> {
 		for (const fire of fires) {
-			await dropPendingFire({
+			await deps.commands.run(DropExternalSourceFire, {
 				instanceId,
 				armingId: fire.armingId,
 				known: fire,

@@ -15,6 +15,8 @@ import type {
 import {
 	type FutureLaunchPayload,
 	type LauncherModelConfigDefaults,
+	type LauncherValidationError,
+	type ParsedLauncherRequestBody,
 	type ParsedScheduleRequest,
 	parseFutureLaunchPayloadJson,
 	type SkillSelection,
@@ -59,11 +61,7 @@ import {
 } from "./support.js";
 import { planConsumeFutureExecution } from "./transition-planner.js";
 
-export interface FutureExecutionIssue {
-	code: string;
-	message: string;
-	fieldId?: string;
-}
+export interface FutureExecutionIssue extends LauncherValidationError {}
 
 type LaunchFailure =
 	| { kind: "invalid"; issues: readonly FutureExecutionIssue[] }
@@ -96,17 +94,7 @@ export type LaunchMutationOutcome =
 	  }
 	| LaunchFailure;
 
-export interface NormalizedScheduledLaunchInput {
-	title: string | null;
-	titleProvided: boolean;
-	launcherInput: Record<string, unknown>;
-	launcherInputProvided: boolean;
-	skillIds?: string[];
-	modelConfig: LauncherModelConfigDefaults;
-	modelConfigProvided: boolean;
-	schedule: ParsedScheduleRequest;
-	scheduleProvided: boolean;
-}
+export interface NormalizedScheduledLaunchInput extends ParsedLauncherRequestBody {}
 
 export type ValidatedLaunchSchedule =
 	| { mode: "now"; nextRunAt: null; cronExpression: null }

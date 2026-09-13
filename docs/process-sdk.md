@@ -236,6 +236,8 @@ const implement = flow
 - **`.consume("productName")`:** Requires the product to exist before the turn runs, making it accessible via `ctx.input[productName]`.
 - **`.optionalConsume("productName")`:** Consumes the product only if present.
 
+Flow definition and extension loading use the same graph product validation. Both required and optional products must have a declared publisher; LLM and automatic outcomes can publish markdown parameters.
+
 ## Human Review Turns & Actions
 
 A `flow.human` turn pauses execution until an operator acts in the web UI. Review turns identify their artifact directly through `reviewProduct`; there is no separate review classification in process state.

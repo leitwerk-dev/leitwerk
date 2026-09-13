@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
+import type { ProcessFlowView } from "@leitwerk-dev/domain";
 import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
-import type { ProcessFlowView } from "../lib/api.js";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
 const flowView: ProcessFlowView = {

@@ -1,4 +1,3 @@
-import type { Actor } from "@leitwerk-dev/domain";
 import { isProcessTurnType, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import {
 	isLlmTurnDefinition,
@@ -14,6 +13,7 @@ import { presentProcessModelPolicyFailure } from "../../process-model-policy-pre
 import { mergeProductRefPatchIntoStateJson } from "../../product-ref-state.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
+import type { ProcessEngine } from "../types.js";
 import { transitionStartReferences } from "../writes/build-server-transition-writes.js";
 import {
 	appendProcessEvent,
@@ -34,14 +34,7 @@ export interface ExecuteActionInput {
 	instanceId: string;
 	actionId: string;
 	input: Record<string, unknown>;
-	opts?: {
-		nextTurnModelProfileId?: string | null;
-		source?: ProcessActionExecutionSource;
-		origin?: ProcessActionExecutionOrigin;
-		scheduledExecutionId?: string;
-		consumeScheduledExecutionOnSuccess?: boolean;
-		actor?: Actor;
-	};
+	opts?: NonNullable<Parameters<ProcessEngine["executeProcessAction"]>[3]>;
 }
 
 function latestLlmSourceTurnRecordId(

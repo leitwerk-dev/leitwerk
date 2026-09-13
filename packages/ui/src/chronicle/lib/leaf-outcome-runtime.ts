@@ -8,28 +8,16 @@ import { getFetchImpl, resolveApiUrl } from "../../lib/runtime-config.js";
 
 export type { LeafOutcomeRendererMeta, LeafOutcomeRendererRuntime };
 
-function renderMarkdown(markdown: string): string {
-	return renderMarkdownToHtml(markdown);
-}
-
 const runtime: LeafOutcomeRendererRuntime = {
 	apiVersion: 1,
-	markdown: {
-		render(markdown) {
-			return renderMarkdown(markdown);
-		},
-	},
+	markdown: { render: renderMarkdownToHtml },
 	server: {
-		resolveUrl(path) {
-			return resolveApiUrl(path);
-		},
+		resolveUrl: resolveApiUrl,
 		fetch(path, init) {
 			return getFetchImpl()(resolveApiUrl(path), init);
 		},
 	},
-	formatRelativeTime(iso) {
-		return formatRelativeTime(iso);
-	},
+	formatRelativeTime,
 };
 
 export function getLeafOutcomeRendererRuntime(): LeafOutcomeRendererRuntime {

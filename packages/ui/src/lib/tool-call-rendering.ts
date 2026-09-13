@@ -1,5 +1,8 @@
 import { type PrimaryPathToolCallSnapshot, readValueAtPath } from "@leitwerk-dev/protocol";
-import type { ToolCallRendererDefinition, ToolCallRendererFieldDefinition } from "./api";
+import type {
+	ToolCallRendererDefinition,
+	ToolCallRendererFieldDefinition,
+} from "@leitwerk-dev/protocol/tool-renderer-contract";
 
 export interface ResolvedToolCallRendererField {
 	id: string;

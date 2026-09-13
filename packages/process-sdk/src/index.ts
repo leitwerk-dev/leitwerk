@@ -233,7 +233,7 @@ export {
 	PlanResultBuilder,
 	PublishedResultBuilder,
 } from "./flow.js";
-export { atomicWriteUtf8, isEnoent } from "./fs-utils.js";
+export { atomicWriteUtf8, hasErrorCode, isEnoent, isPathInside } from "./fs-utils.js";
 export {
 	type AcceptedReviewHandoffActionSpec,
 	acceptedReviewHandoffAction,

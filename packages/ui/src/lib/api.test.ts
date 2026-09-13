@@ -3,7 +3,10 @@ import {
 	ApiResponseError,
 	fetchAuthMeWithRetry,
 	fetchFutureExecution,
+	fetchSkills,
 	logout,
+	postProcessRetry,
+	postProcessTurnContinue,
 	registerSkill,
 	submitQuestionAnswers,
 } from "./api.js";
@@ -87,7 +90,59 @@ describe("logout", () => {
 	});
 });
 
+describe("recovery mutations", () => {
+	it.each([
+		undefined,
+		null,
+		"profile",
+	])("serializes model selection %s and accepts an empty success", async (model) => {
+		const fetchImpl = vi.fn(async () => new Response(null, { status: 204 }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = { fetchImpl };
+		await expect(
+			postProcessTurnContinue("process/id", "turn/id", undefined, model),
+		).resolves.toBeUndefined();
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"/api/processes/process%2Fid/turn-records/turn%2Fid/continue",
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: model === undefined ? "{}" : JSON.stringify({ nextTurnModelProfileId: model }),
+			},
+		);
+	});
+
+	it.each([
+		['{"error":"Cannot continue"}', "Cannot continue"],
+		['{"message":"Turn changed"}', "Turn changed"],
+		["not json", "Couldn't continue this failed turn: 409"],
+	])("preserves mutation errors from %s", async (body, message) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response(body, { status: 409 }),
+		};
+		await expect(postProcessTurnContinue("process", "turn")).rejects.toThrow(message);
+	});
+});
+
 describe("API errors", () => {
+	it.each([
+		[() => fetchSkills(), "Couldn't load the skill catalog"],
+		[() => postProcessRetry("process"), "Couldn't retry this process"],
+	] as const)("preserves status-only errors for %s", async (request, message) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response('{"error":"server detail"}', { status: 503 }),
+		};
+		await expect(request()).rejects.toThrow(`${message}: 503`);
+	});
+
+	it.each(["null", "[]", "not json"])("rejects malformed JSON objects: %s", async (body) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response(body),
+		};
+		await expect(fetchSkills()).rejects.toThrow(
+			"Malformed skill catalog response: response body must be a JSON object",
+		);
+	});
+
 	it("preserves a skill registration conflict from the server", async () => {
 		const fetchImpl = vi.fn(
 			async () =>

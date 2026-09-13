@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	builtinPiProvider,
 	configuredPiProvider,
+	credentialBasedModelStatuses,
 	defineModelProvider,
 	defineModelProviders,
 	defineProviderOptions,
@@ -11,6 +12,29 @@ import {
 	piWorker,
 	resolveProviderOptions,
 } from "./model-provider.js";
+
+describe("credential-based model status", () => {
+	it.each([
+		true,
+		false,
+	])("deduplicates model IDs in first-seen order (available=%s)", (available) => {
+		const statuses = credentialBasedModelStatuses(
+			[
+				{ profileId: "a", modelId: "second" },
+				{ profileId: "b", modelId: "first" },
+				{ profileId: "c", modelId: "second" },
+			],
+			{ available, revision: null },
+			"Missing credential",
+		);
+		expect(statuses.map((status) => status.modelId)).toEqual(["second", "first"]);
+		for (const status of statuses) {
+			expect(status.availability).toBe(available ? "available" : "unavailable");
+			expect(status.safeReason).toBe(available ? undefined : "Missing credential");
+			expect(Object.hasOwn(status, "safeReason")).toBe(!available);
+		}
+	});
+});
 
 describe("provider option resolution", () => {
 	it("uses explicit, profile, then provider defaults without consulting choices", () => {

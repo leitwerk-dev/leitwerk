@@ -13,6 +13,7 @@ import {
 	type PiSessionEntry,
 	type PrimaryPathSnapshot,
 } from "@leitwerk-dev/protocol";
+import type { ProcessActionModelPreview } from "@leitwerk-dev/protocol/http-contracts";
 import {
 	createCompactProcessDetailFixtureFactory,
 	createTestQuestionRequest,
@@ -20,7 +21,7 @@ import {
 import { mount, unmount } from "svelte";
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProcessActionModelPreview, ProcessDetailData } from "../lib/api.js";
+import type { ProcessDetailData } from "../lib/api.js";
 
 const {
 	mockDeleteFutureExecution,

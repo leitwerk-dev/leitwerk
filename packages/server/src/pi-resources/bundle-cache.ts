@@ -1,4 +1,5 @@
 import { type PiResourceBundle, sha256Digest } from "@leitwerk-dev/worker-protocol";
+import { positiveBound as positiveSafeInteger } from "../model-providers/provider-boundary-utils.js";
 
 const DEFAULT_MAX_ENTRIES = 64;
 const DEFAULT_MAX_BYTES = 256 * 1024 * 1024;
@@ -34,14 +35,6 @@ export interface PiResourceBundleCache {
 	unpin(digest: string): boolean;
 	gc(): PiResourceBundleCacheGcResult;
 	stats(): PiResourceBundleCacheStats;
-}
-
-function positiveSafeInteger(value: number | undefined, fallback: number, name: string): number {
-	const result = value ?? fallback;
-	if (!Number.isSafeInteger(result) || result < 1) {
-		throw new Error(`${name} must be a positive safe integer`);
-	}
-	return result;
 }
 
 /** In-memory operational cache. Bundles are immutable copies and pins are reference-counted. */

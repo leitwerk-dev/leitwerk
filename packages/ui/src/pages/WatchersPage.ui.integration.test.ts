@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
+import type { WatcherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchWatchers, type WatcherSummary } from "../lib/api.js";
+import { fetchWatchers } from "../lib/api.js";
 import WatchersPage from "./WatchersPage.svelte";
 
 vi.mock("../lib/api.js", () => ({

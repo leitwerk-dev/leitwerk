@@ -5,6 +5,7 @@ import type {
 	ProcessTurnRecord,
 	ProcessTurnRecordPathType,
 } from "@leitwerk-dev/domain";
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 import type {
 	CoreServerSetupDeps,
 	FormDefinition,
@@ -19,7 +20,7 @@ import type {
 	ServerExtensionLogger,
 	UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
-import { buildActionKeyboard, continuableFailedTurnRecordId } from "./actions.js";
+import { buildActionKeyboard, continuableFailedTurnRecordId, rows } from "./actions.js";
 import { TELEGRAM_ACTOR } from "./actor.js";
 import type { TelegramExtensionConfig } from "./config.js";
 import {
@@ -159,12 +160,6 @@ function commandArgs(text: string): string {
 		.trim();
 }
 
-function rows<T>(items: readonly T[], size: number): T[][] {
-	return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => [
-		...items.slice(index * size, index * size + size),
-	]);
-}
-
 function messageTarget(chatId: string, messageThreadId: number | undefined) {
 	return { chatId, ...(messageThreadId !== undefined ? { messageThreadId } : {}) };
 }
@@ -279,10 +274,6 @@ function shouldDeferCompletedLifecycleUntilTurnOutcome(input: {
 		input.process.lifecycleStatus === "completed" &&
 		input.changedFields.includes("currentExecution")
 	);
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function readClaimedLaunchThread(

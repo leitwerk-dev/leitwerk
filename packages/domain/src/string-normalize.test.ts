@@ -1,5 +1,45 @@
 import { describe, expect, it } from "vitest";
-import { humanizeProcessLabel } from "./string-normalize.js";
+import {
+	formatProcessIdentifier,
+	humanizeProcessLabel,
+	readNonBlankString,
+	toErrorMessage,
+} from "./string-normalize.js";
+
+it.each([
+	["  text\n", "  text\n"],
+	["", null],
+	[" \t\n", null],
+	[null, null],
+	[undefined, null],
+	[42, null],
+	[{}, null],
+	[[], null],
+])("reads non-blank string %j verbatim", (value, expected) => {
+	expect(readNonBlankString(value)).toBe(expected);
+});
+
+it.each([
+	[new Error("  reason  "), "  reason  "],
+	[new Error(""), "Error"],
+	[new Error("  "), "Error:   "],
+	["", ""],
+	[null, "null"],
+	[undefined, "undefined"],
+	[42, "42"],
+])("formats diagnostic %j without trimming non-empty messages", (value, expected) => {
+	expect(toErrorMessage(value)).toBe(expected);
+});
+
+it.each([
+	["api_id_llm_mr_pi_ui", "API ID LLM MR Pi UI"],
+	["review__MR--status", "Review MR Status"],
+	["camelCase_value", "CamelCase Value"],
+	["already spaced", "Already spaced"],
+	["", ""],
+])("formats identifier %j without changing its spelling", (value, expected) => {
+	expect(formatProcessIdentifier(value)).toBe(expected);
+});
 
 describe("humanizeProcessLabel", () => {
 	it("turns snake_case ids into Title Case", () => {

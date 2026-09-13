@@ -1,5 +1,9 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { DEFAULT_CONTINUE_PROMPT, normalizeContinuePrompt } from "@leitwerk-dev/domain";
+import {
+	DEFAULT_CONTINUE_PROMPT,
+	normalizeContinuePrompt,
+	readNonBlankString,
+} from "@leitwerk-dev/domain";
 import type { PiTreeHandle } from "./pi-adapter.js";
 import type { PreTurnTargetedInput } from "./pre-turn-targeted-inputs.js";
 import { TurnExecutionError } from "./turn-execution-error.js";
@@ -74,14 +78,6 @@ export async function prepareContinuationUserPrompt(input: {
 	return normalizedPrompt;
 }
 
-function readNonEmptyMetadataString(
-	metadata: ProcessInstance["metadata"],
-	key: string,
-): string | null {
-	const value = metadata?.[key];
-	return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
 export function resolveTurnContinuationState(input: {
 	process: Pick<ProcessInstance, "selectedTurnId" | "metadata">;
 	turnId: string;
@@ -94,13 +90,9 @@ export function resolveTurnContinuationState(input: {
 	if (input.process.selectedTurnId !== input.turnId) {
 		return null;
 	}
-	const continueFromPiEntryId = readNonEmptyMetadataString(
-		input.process.metadata,
-		"continueFromPiEntryId",
-	);
-	const continueFromTurnRecordId = readNonEmptyMetadataString(
-		input.process.metadata,
-		"continueFromTurnRecordId",
+	const continueFromPiEntryId = readNonBlankString(input.process.metadata?.continueFromPiEntryId);
+	const continueFromTurnRecordId = readNonBlankString(
+		input.process.metadata?.continueFromTurnRecordId,
 	);
 	if (!continueFromPiEntryId || !continueFromTurnRecordId) {
 		return null;
@@ -110,7 +102,7 @@ export function resolveTurnContinuationState(input: {
 		continuePrompt:
 			normalizeContinuePrompt(input.process.metadata?.continuePrompt) ?? DEFAULT_CONTINUE_PROMPT,
 		savedPrimaryLeafId:
-			readNonEmptyMetadataString(input.process.metadata, "continueSavedPrimaryLeafEntryId") ??
+			readNonBlankString(input.process.metadata?.continueSavedPrimaryLeafEntryId) ??
 			readProcessSemanticEntryRefs(input.state)?.currentPrimaryPathLeaf?.entryId ??
 			null,
 	};

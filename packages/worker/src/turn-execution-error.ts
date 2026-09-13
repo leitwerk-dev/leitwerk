@@ -3,7 +3,7 @@ import type {
 	TurnFailureCode,
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
-import { isWorkerErrorClass } from "@leitwerk-dev/domain";
+import { isWorkerErrorClass, toErrorMessage } from "@leitwerk-dev/domain";
 import { isPiBranchDriftError } from "./pi-branch-guard.js";
 
 export type TurnFailureReportOptions = {
@@ -61,10 +61,7 @@ export function classifyRuntimeError(
 					: String(error),
 		};
 	}
-	if (error instanceof Error && error.message.trim() !== "") {
-		return { errorClass: fallbackErrorClass, message: error.message };
-	}
-	return { errorClass: fallbackErrorClass, message: String(error) };
+	return { errorClass: fallbackErrorClass, message: toErrorMessage(error) };
 }
 
 export function buildTurnFailureReport(
@@ -94,9 +91,4 @@ export function buildTurnFailureReport(
 	};
 }
 
-export function toErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message.trim() !== "") {
-		return error.message;
-	}
-	return String(error);
-}
+export { toErrorMessage } from "@leitwerk-dev/domain";

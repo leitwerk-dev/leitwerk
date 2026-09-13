@@ -55,6 +55,24 @@ describe("buildRetryWrites", () => {
 			expect.arrayContaining(["selectedTurnId", "lifecycleStatus", "metadata"]),
 		);
 		expect(planned.workerIntent).toEqual({ kind: "restart_worker" });
+		expect(planned.turnStartWrites).toEqual([
+			{
+				kind: "create",
+				input: expect.objectContaining({
+					id: planned.processPatch.currentExecution?.id,
+					startKind: "retry",
+					turnType: "llm",
+					recoveryTurnRecordId: failedRun.id,
+					continuation: null,
+					state: expect.objectContaining({
+						kind: "preparation_failed",
+						safeSummary: "Model selection is pending retry preparation",
+						modelSelectionProvenance: { kind: "inherited", source: "legacy_persisted" },
+					}),
+				}),
+			},
+		]);
+		expect(planned.turnRecordWrites).toEqual([]);
 		expect(planned.events).toEqual([
 			{
 				instanceId: process.id,

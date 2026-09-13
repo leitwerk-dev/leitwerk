@@ -43,19 +43,16 @@ export interface TelegramCallbackUpdate {
 	data: string;
 }
 
-export interface TelegramForumTopicCreatedUpdate {
+interface TelegramForumTopicUpdate {
 	messageId: number;
 	chatId: string;
 	messageThreadId: number;
 	from: TelegramUserRef | null;
 }
 
-export interface TelegramForumTopicClosedUpdate {
-	messageId: number;
-	chatId: string;
-	messageThreadId: number;
-	from: TelegramUserRef | null;
-}
+export interface TelegramForumTopicCreatedUpdate extends TelegramForumTopicUpdate {}
+
+export interface TelegramForumTopicClosedUpdate extends TelegramForumTopicUpdate {}
 
 export type TelegramTextHandler = (update: TelegramTextUpdate) => void | Promise<void>;
 export type TelegramCallbackHandler = (update: TelegramCallbackUpdate) => void | Promise<void>;

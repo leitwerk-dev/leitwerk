@@ -12,16 +12,14 @@ import { parseProcessStateJsonLenient } from "@leitwerk-dev/domain";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import {
 	asWsEventPayloadRecord,
+	buildLiveTurnProjectionFromEvents,
 	type PrimaryPathActiveTurnSnapshot,
 	type PrimaryPathEntrySnapshot,
 	type PrimaryPathSnapshot,
 	readWsEventTurnRecordId,
+	snapshotLiveTurnProjection,
 } from "@leitwerk-dev/protocol";
 import type { ParsedInstanceTree } from "./instance-tree.js";
-import {
-	buildLiveTurnProjectionFromEvents,
-	snapshotLiveTurnProjection,
-} from "./live-turn-projection.js";
 
 function buildPrimaryPathEntries(input: {
 	entriesById: ReadonlyMap<string, PrimaryPathEntrySnapshot>;
@@ -66,18 +64,15 @@ function buildPrimaryPathEntries(input: {
 function getLatestSucceededPrimaryTurnRecord(
 	turnRecords: readonly ProcessTurnRecord[],
 ): ProcessTurnRecord | null {
-	for (let index = turnRecords.length - 1; index >= 0; index -= 1) {
-		const turnRecord = turnRecords[index];
-		if (
-			turnRecord?.status === "succeeded" &&
-			turnRecord.pathType === "primary" &&
-			typeof turnRecord.resultPiEntryId === "string" &&
-			turnRecord.resultPiEntryId.trim() !== ""
-		) {
-			return turnRecord;
-		}
-	}
-	return null;
+	return (
+		turnRecords.findLast(
+			(turnRecord) =>
+				turnRecord?.status === "succeeded" &&
+				turnRecord.pathType === "primary" &&
+				typeof turnRecord.resultPiEntryId === "string" &&
+				turnRecord.resultPiEntryId.trim() !== "",
+		) ?? null
+	);
 }
 
 function resolveEntryRefIfPresent(

@@ -149,25 +149,23 @@ function normalizeSourceValue(value: string): string | null {
 export function buildProcessTitleSourceFields(
 	launchPlan: ProcessLaunchPlan,
 ): ProcessTitleSourceField[] {
-	const normalized: ProcessTitleSourceField[] = [];
-	const seen = new Set<string>();
+	const normalized = new Map<string, ProcessTitleSourceField>();
 	for (const field of launchPlan.titleSourceFields ?? []) {
-		if (normalized.length >= MAX_SOURCE_FIELDS) {
+		if (normalized.size >= MAX_SOURCE_FIELDS) {
 			break;
 		}
-		const label = trimToNull(field.label) ?? `Field ${normalized.length + 1}`;
+		const label = trimToNull(field.label) ?? `Field ${normalized.size + 1}`;
 		const value = normalizeSourceValue(field.value);
 		if (!value) {
 			continue;
 		}
 		const dedupeKey = `${label}\n${value}`;
-		if (seen.has(dedupeKey)) {
+		if (normalized.has(dedupeKey)) {
 			continue;
 		}
-		seen.add(dedupeKey);
-		normalized.push({ label, value });
+		normalized.set(dedupeKey, { label, value });
 	}
-	return normalized;
+	return [...normalized.values()];
 }
 
 export function buildProcessTitlePrompt(launchPlan: ProcessLaunchPlan): string | null {
@@ -245,11 +243,9 @@ function formatProcessTitleRuntimeDiagnostics(
 let piAgentDirEnvQueue = Promise.resolve();
 
 async function withPiAgentDirEnv<T>(agentDir: string, work: () => Promise<T>): Promise<T> {
-	let release: () => void = () => {};
+	const { promise, resolve: release } = Promise.withResolvers<void>();
 	const previousWork = piAgentDirEnvQueue;
-	piAgentDirEnvQueue = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	piAgentDirEnvQueue = promise;
 	await previousWork;
 
 	const previous = process.env[PI_AGENT_DIR_ENV];
@@ -641,10 +637,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		const target = getFutureExecutionTitleJobTarget(job);
 		if (!target.ok) return { kind: "failed", error: target.error };
 		const execution = this.repos.futureExecutions.getById(target.futureExecutionId);
-		if (!execution || execution.kind !== "launch") {
-			return { kind: "superseded" };
-		}
-		if (execution.payloadJson !== target.expectedPayloadJson) {
+		if (execution?.kind !== "launch" || execution.payloadJson !== target.expectedPayloadJson) {
 			return { kind: "superseded" };
 		}
 		const parsedPayload = parseFutureLaunchPayloadJson(execution.payloadJson);

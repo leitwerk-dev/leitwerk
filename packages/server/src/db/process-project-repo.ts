@@ -6,19 +6,14 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now } from "./repo-helpers.js";
+import { generateId, now, parseMetadata } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
-export interface CreateProcessProjectInput {
+export interface CreateProcessProjectInput extends UpdateProcessProjectInput {
 	instanceId: string;
 	key: string;
 	repoLocator: string;
 	baseBranch: string;
-	workBranch?: string | null;
-	externalId?: string | null;
-	externalUrl?: string | null;
-	metadata?: Record<string, unknown> | null;
-	pipelineStatus?: string | null;
 }
 
 export interface UpdateProcessProjectInput {
@@ -29,15 +24,6 @@ export interface UpdateProcessProjectInput {
 	metadata?: Record<string, unknown> | null;
 	pipelineStatus?: string | null;
 	baseBranch?: string;
-}
-
-function parseMetadata(raw: string | null | undefined): Record<string, unknown> | null {
-	if (!raw) return null;
-	try {
-		return JSON.parse(raw) as Record<string, unknown>;
-	} catch {
-		return null;
-	}
 }
 
 function rowToProcessProject(row: typeof s.processProjects.$inferSelect): ProcessProject {

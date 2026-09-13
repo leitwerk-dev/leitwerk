@@ -425,22 +425,11 @@ export type WsFrameOfType<T extends KnownWsFrameType> = {
 	instanceId?: string;
 	payload: WsPayloadByType[T];
 };
-export type DurableWsFrameInput = {
-	[K in KnownDurableWsFrameType]: {
-		type: K;
-		instanceId?: string;
-		eventSequence?: number;
-		payload: WsPayloadByType[K];
-	};
-}[KnownDurableWsFrameType];
-export type EphemeralWsFrameInput = {
-	[K in KnownEphemeralWsFrameType]: {
-		type: K;
-		instanceId?: string;
-		eventSequence?: number;
-		payload: WsPayloadByType[K];
-	};
-}[KnownEphemeralWsFrameType];
+type WsFrameInput<T extends KnownWsFrameType> = {
+	[K in T]: Pick<WsFrameOfType<K>, "type" | "instanceId" | "eventSequence" | "payload">;
+}[T];
+export type DurableWsFrameInput = WsFrameInput<KnownDurableWsFrameType>;
+export type EphemeralWsFrameInput = WsFrameInput<KnownEphemeralWsFrameType>;
 export type WsFrame = { [K in KnownWsFrameType]: WsFrameOfType<K> }[KnownWsFrameType];
 export type PrimaryPathWsFrameType =
 	(typeof WS_PRIMARY_PATH_TYPES)[keyof typeof WS_PRIMARY_PATH_TYPES];

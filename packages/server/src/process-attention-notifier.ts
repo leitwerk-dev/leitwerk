@@ -18,10 +18,7 @@ export function maybeBroadcastActionRequiredToast<T>(
 	deps: ProcessEngineDeps,
 	result: EngineResult<T>,
 ): EngineResult<T> {
-	if (!result.process || !result.turnSelectionChange) {
-		return result;
-	}
-	if (result.process.lifecycleStatus !== "waiting") {
+	if (!result.turnSelectionChange || result.process?.lifecycleStatus !== "waiting") {
 		return result;
 	}
 	broadcastProcessAttentionToast(attentionDeps(deps), {
@@ -36,10 +33,7 @@ export function maybeBroadcastErrorAttentionToast<T>(
 	result: EngineResult<T>,
 	input: { errorCode?: string | null } = {},
 ): EngineResult<T> {
-	if (!result.process) {
-		return result;
-	}
-	if (result.process.lifecycleStatus !== "error") {
+	if (result.process?.lifecycleStatus !== "error") {
 		return result;
 	}
 	broadcastProcessAttentionToast(attentionDeps(deps), {

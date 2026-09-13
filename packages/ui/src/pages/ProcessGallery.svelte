@@ -1,6 +1,6 @@
 <script lang="ts">
+import type { UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import PageHeader from "../components/PageHeader.svelte";
-import type { UiLauncherSummary } from "../lib/api.js";
 import ProcessCard from "./ProcessCard.svelte";
 
 interface Props {

@@ -1,6 +1,10 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
-import type { DockerEngineClient, DockerMountSpec } from "./docker-engine-client.js";
+import type {
+	DockerContainerExit,
+	DockerEngineClient,
+	DockerMountSpec,
+} from "./docker-engine-client.js";
 import { isDockerEngineNotFoundError } from "./docker-engine-http-client.js";
 import { createFilesystemProcessStateExporter } from "./filesystem-process-state-exporter.js";
 import {
@@ -124,12 +128,7 @@ function parseMemoryToBytes(memory: string | undefined): number | undefined {
 	return Number.isFinite(bytes) && bytes > 0 ? bytes : undefined;
 }
 
-function mapExit(info: {
-	statusCode: number;
-	oomKilled?: boolean;
-	signal?: string;
-	error?: string;
-}): WorkerExitInfo {
+function mapExit(info: DockerContainerExit): WorkerExitInfo {
 	return {
 		exitCode: Number.isFinite(info.statusCode) ? info.statusCode : null,
 		signal: info.signal ?? null,
@@ -215,6 +214,17 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 		return operation;
 	}
 
+	function applyServerCa(mounts: DockerMountSpec[], env: Record<string, string>): void {
+		if (options.serverCaFile) {
+			mounts.push({
+				source: options.serverCaFile,
+				target: WORKER_SERVER_CA_MOUNT_PATH,
+				readOnly: true,
+			});
+			env.NODE_EXTRA_CA_CERTS = WORKER_SERVER_CA_MOUNT_PATH;
+		}
+	}
+
 	function watchForExit(unitId: string): void {
 		if (watched.has(unitId)) return;
 		watched.add(unitId);
@@ -241,14 +251,7 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 				...input.env,
 				[PROCESS_VOLUME_MOUNT_PATH_ENV]: volume.mountPath,
 			};
-			if (options.serverCaFile) {
-				mounts.push({
-					source: options.serverCaFile,
-					target: WORKER_SERVER_CA_MOUNT_PATH,
-					readOnly: true,
-				});
-				env.NODE_EXTRA_CA_CERTS = WORKER_SERVER_CA_MOUNT_PATH;
-			}
+			applyServerCa(mounts, env);
 			const isolation = input.docker ? options.privateDaemonIsolation : undefined;
 			if (input.docker && !isolation) {
 				throw new Error(
@@ -362,14 +365,7 @@ export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
 							exportId: input.exportId,
 							credential: input.credential,
 						});
-						if (options.serverCaFile) {
-							mounts.push({
-								source: options.serverCaFile,
-								target: WORKER_SERVER_CA_MOUNT_PATH,
-								readOnly: true,
-							});
-							env.NODE_EXTRA_CA_CERTS = WORKER_SERVER_CA_MOUNT_PATH;
-						}
+						applyServerCa(mounts, env);
 						const created = await engine.createContainer({
 							name: sanitizeNameSegment(input.name),
 							image: exporterImage,

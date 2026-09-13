@@ -28,10 +28,7 @@ export function redactCredentialBearingAbsoluteUrl(value: string): string {
 
 export function normalizeLauncherRecentValue(value: unknown): string | null {
 	const normalizedValue = typeof value === "string" ? value.trim() : "";
-	if (!normalizedValue) {
-		return null;
-	}
-	if (hasCredentialBearingAbsoluteUrl(normalizedValue)) {
+	if (!normalizedValue || hasCredentialBearingAbsoluteUrl(normalizedValue)) {
 		return null;
 	}
 	return normalizedValue;
@@ -41,20 +38,18 @@ export function normalizeLauncherRecentValues(
 	values: readonly unknown[],
 	limit = DEFAULT_LAUNCHER_RECENT_VALUE_LIMIT,
 ): string[] {
-	const nextValues: string[] = [];
-	const seen = new Set<string>();
+	const nextValues = new Set<string>();
 	for (const value of values) {
 		const normalizedValue = normalizeLauncherRecentValue(value);
-		if (!normalizedValue || seen.has(normalizedValue)) {
+		if (!normalizedValue || nextValues.has(normalizedValue)) {
 			continue;
 		}
-		seen.add(normalizedValue);
-		nextValues.push(normalizedValue);
-		if (nextValues.length >= limit) {
+		nextValues.add(normalizedValue);
+		if (nextValues.size >= limit) {
 			break;
 		}
 	}
-	return nextValues;
+	return [...nextValues];
 }
 
 export function addLauncherRecentValue(

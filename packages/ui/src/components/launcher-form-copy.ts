@@ -1,4 +1,7 @@
-import type { LauncherFieldDefinition, LauncherValidationError } from "../lib/api.js";
+import type {
+	LauncherFieldDefinition,
+	LauncherValidationError,
+} from "@leitwerk-dev/protocol/launcher-contract";
 
 export interface LauncherDefaultsNotice {
 	tone: "warning";

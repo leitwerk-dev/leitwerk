@@ -1,3 +1,4 @@
+import { readFiniteNumber, readNonBlankString } from "@leitwerk-dev/domain";
 import { translatePiEvent } from "./event-translator.js";
 import type { PiEvent, PiSessionDiagnostic, PiTreeHandle } from "./pi-adapter.js";
 import type { WorkerIpcReporter } from "./worker-ipc-reporter.js";
@@ -15,25 +16,6 @@ export interface PiEventReporterOptions {
 	onLifecycleObservation?(kind: "pi_turn_started" | "pi_turn_ended"): void;
 }
 
-function readPiEventString(data: Record<string, unknown>, key: string): string | null {
-	const value = data[key];
-	return typeof value === "string" && value.trim() !== "" ? value : null;
-}
-
-function readPiEventNumber(data: Record<string, unknown>, key: string): number | null {
-	const value = data[key];
-	if (typeof value === "number" && Number.isFinite(value)) {
-		return value;
-	}
-	if (typeof value === "string" && value.trim() !== "") {
-		const parsed = Number(value);
-		if (Number.isFinite(parsed)) {
-			return parsed;
-		}
-	}
-	return null;
-}
-
 export function createPiEventReporter(options: PiEventReporterOptions): PiEventReporter {
 	let currentPiAttempt = 1;
 	let currentPiMaxAttempts: number | null = null;
@@ -45,14 +27,14 @@ export function createPiEventReporter(options: PiEventReporterOptions): PiEventR
 
 	const reportPiError = (event: PiEvent) => {
 		const message =
-			readPiEventString(event.data, "message") ??
-			readPiEventString(event.data, "errorMessage") ??
+			readNonBlankString(event.data.message) ??
+			readNonBlankString(event.data.errorMessage) ??
 			"Pi reported an error";
-		const toolName = readPiEventString(event.data, "toolName");
-		const source = readPiEventString(event.data, "source");
-		const provider = readPiEventString(event.data, "provider");
-		const model = readPiEventString(event.data, "model");
-		const stopReason = readPiEventString(event.data, "stopReason");
+		const toolName = readNonBlankString(event.data.toolName);
+		const source = readNonBlankString(event.data.source);
+		const provider = readNonBlankString(event.data.provider);
+		const model = readNonBlankString(event.data.model);
+		const stopReason = readNonBlankString(event.data.stopReason);
 		options.reporter.workerError({
 			level: "error",
 			code: toolName || source === "tool" ? "pi.tool_error" : "pi.request_failed",
@@ -73,13 +55,13 @@ export function createPiEventReporter(options: PiEventReporterOptions): PiEventR
 	};
 
 	const reportPiRetryLifecycle = (event: PiEvent) => {
-		const attempt = readPiEventNumber(event.data, "attempt");
-		const maxAttempts = readPiEventNumber(event.data, "maxAttempts");
-		const delayMs = readPiEventNumber(event.data, "delayMs");
-		const errorMessage = readPiEventString(event.data, "errorMessage");
-		const finalError = readPiEventString(event.data, "finalError");
+		const attempt = readFiniteNumber(event.data.attempt);
+		const maxAttempts = readFiniteNumber(event.data.maxAttempts);
+		const delayMs = readFiniteNumber(event.data.delayMs);
+		const errorMessage = readNonBlankString(event.data.errorMessage);
+		const finalError = readNonBlankString(event.data.finalError);
 		const message =
-			readPiEventString(event.data, "message") ??
+			readNonBlankString(event.data.message) ??
 			(event.type === "retry.start"
 				? "Pi scheduled an automatic retry"
 				: event.data.success === true

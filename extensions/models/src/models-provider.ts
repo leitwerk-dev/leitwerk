@@ -1,4 +1,5 @@
 import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 import {
 	builtinPiProvider,
 	configuredPiProvider,
@@ -77,10 +78,6 @@ export interface CustomGatewayConfig {
 	readonly api: string;
 	readonly keyless: boolean;
 	readonly models: CustomModelDefinition[];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function assertKnownFields(

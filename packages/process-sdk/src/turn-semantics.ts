@@ -1,7 +1,5 @@
 import {
 	assertValidProcessProductName,
-	defaultProcessTurnStartSelection,
-	type ProcessTurnStartFallback,
 	type ProcessTurnStartSelection,
 	resolveProcessTurnStartSelection,
 } from "@leitwerk-dev/domain";
@@ -21,7 +19,6 @@ import {
 	type ProcessActionPreviewDefinition,
 	type ProcessActionSchedulingDefinition,
 	RESERVED_INTEGRATION_TOOL_NAMES,
-	type TurnBranchType,
 } from "./types.js";
 
 export function isLlmTurnDefinition<TParams = unknown, TState = unknown>(
@@ -48,9 +45,7 @@ export function isExternalTurnDefinition<TParams = unknown, TState = unknown>(
 	return turnDef.kind === "external";
 }
 
-export function defaultTurnStartSelection(branchType: TurnBranchType): ProcessTurnStartFallback {
-	return defaultProcessTurnStartSelection(branchType);
-}
+export { defaultProcessTurnStartSelection as defaultTurnStartSelection } from "@leitwerk-dev/domain";
 
 export function resolveLlmTurnStartSelection<TOutcome extends string = string>(
 	turnDef: Pick<LlmTurnDefinition<TOutcome>, "branchType" | "startFrom">,
@@ -74,10 +69,7 @@ export function validateProcessActionPreviewDefinition(
 	if (preview.kind === "trigger") {
 		return preview.trigger.trim() ? [] : [`${context} must declare a non-empty trigger preview`];
 	}
-	if (preview.kind === "terminal") {
-		return [];
-	}
-	if (preview.turnId === null || preview.turnId.trim()) {
+	if (preview.kind === "terminal" || preview.turnId === null || preview.turnId.trim()) {
 		return [];
 	}
 	return [`${context} must declare a non-empty fixed turn id when turnId is not null`];
