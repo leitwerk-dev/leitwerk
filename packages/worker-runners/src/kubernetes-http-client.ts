@@ -258,6 +258,7 @@ export function createKubernetesHttpApiClient(options: {
 		const name = item.metadata?.name;
 		const namespace = item.metadata?.namespace;
 		if (!name || !namespace) return null;
+		const worker = item.status?.containerStatuses?.find((container) => container.name === "worker");
 		return {
 			name,
 			namespace,
@@ -267,12 +268,8 @@ export function createKubernetesHttpApiClient(options: {
 			scheduledAt: item.status?.conditions?.find(
 				(c) => c.type === "PodScheduled" && c.status === "True",
 			)?.lastTransitionTime,
-			containerStartedAt:
-				item.status?.containerStatuses?.find((c) => c.name === "worker")?.state?.running
-					?.startedAt ??
-				item.status?.containerStatuses?.find((c) => c.name === "worker")?.state?.terminated
-					?.startedAt,
-			imageId: item.status?.containerStatuses?.find((c) => c.name === "worker")?.imageID,
+			containerStartedAt: worker?.state?.running?.startedAt ?? worker?.state?.terminated?.startedAt,
+			imageId: worker?.imageID,
 			node: item.spec?.nodeName,
 			pvcName: item.spec?.volumes?.find((v) => v.persistentVolumeClaim)?.persistentVolumeClaim
 				?.claimName,
