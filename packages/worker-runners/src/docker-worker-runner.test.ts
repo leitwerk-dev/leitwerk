@@ -133,7 +133,7 @@ describe("Docker named-volume session exporter", () => {
 		);
 		expect(helper?.spec).toMatchObject({
 			image: "ghcr.io/example/worker@sha256:abc",
-			command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
+			command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper-cli.js"],
 			privileged: false,
 		});
 		expect(helper?.spec.mounts).toEqual([
