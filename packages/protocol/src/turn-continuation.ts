@@ -4,7 +4,7 @@ import {
 	isPiSessionMessageEntryType,
 	isPiSessionMessageEntryWithRecord,
 } from "./pi-session-message.js";
-import { createReadonlyEntryTree, type ReadonlyEntryTree } from "./session-entry-tree.js";
+import type { ReadonlyEntryTree } from "./session-entry-tree.js";
 import { compareTimestampStrings, happenedOnOrAfterStart } from "./timestamp-ordering.js";
 
 export interface ContinuationTreeEntry {
@@ -37,12 +37,6 @@ export interface TurnContinuationIndex<TEntry extends ContinuationTreeEntry> {
 	buildSlice(turnRecord: ContinuationTurnRecordLike, bounds?: ContinuationSliceBounds): TEntry[];
 }
 
-function createEntriesById(
-	entries: readonly ContinuationTreeEntry[],
-): Map<string, ContinuationTreeEntry> {
-	return new Map(entries.map((entry) => [entry.id, entry]));
-}
-
 function branchContainsAncestor(
 	entriesById: ReadonlyMap<string, ContinuationTreeEntry>,
 	entryId: string,
@@ -70,10 +64,16 @@ function happenedOnOrBeforeEnd(entryTimestamp: string, endedAt: string | null): 
 	return compareTimestampStrings(entryTimestamp, endedAt) <= 0;
 }
 
-function isContinuableEntryType(
+function isContinuableEntryWithinBounds(
 	entry: ContinuationTreeEntry | undefined,
+	startedAt: string | null,
+	endedAt: string | null,
 ): entry is ContinuationTreeEntry {
-	return isPiSessionMessageEntryType(entry) || entry?.type === "compaction";
+	return (
+		(isPiSessionMessageEntryType(entry) || entry?.type === "compaction") &&
+		happenedOnOrAfterStart(entry.timestamp, startedAt) &&
+		happenedOnOrBeforeEnd(entry.timestamp, endedAt)
+	);
 }
 
 function isExplicitLeafUsable(
@@ -84,19 +84,10 @@ function isExplicitLeafUsable(
 	endedAt: string | null,
 ): boolean {
 	const leafEntry = entriesById.get(leafId);
-	if (!isContinuableEntryType(leafEntry)) {
+	if (!isContinuableEntryWithinBounds(leafEntry, startedAt, endedAt)) {
 		return false;
 	}
-	if (!happenedOnOrAfterStart(leafEntry.timestamp, startedAt)) {
-		return false;
-	}
-	if (!happenedOnOrBeforeEnd(leafEntry.timestamp, endedAt)) {
-		return false;
-	}
-	if (!forkPiEntryId) {
-		return true;
-	}
-	return branchContainsAncestor(entriesById, leafId, forkPiEntryId);
+	return !forkPiEntryId || branchContainsAncestor(entriesById, leafId, forkPiEntryId);
 }
 
 function findLatestContinuableEntryIdOnBranch(
@@ -106,16 +97,7 @@ function findLatestContinuableEntryIdOnBranch(
 ): string | null {
 	for (let index = entries.length - 1; index >= 0; index -= 1) {
 		const entry = entries[index];
-		if (!entry) {
-			continue;
-		}
-		if (!isContinuableEntryType(entry)) {
-			continue;
-		}
-		if (!happenedOnOrAfterStart(entry.timestamp, options.startedAt)) {
-			continue;
-		}
-		if (!happenedOnOrBeforeEnd(entry.timestamp, options.endedAt)) {
+		if (!isContinuableEntryWithinBounds(entry, options.startedAt, options.endedAt)) {
 			continue;
 		}
 		if (options.ancestorId && !branchContainsAncestor(entriesById, entry.id, options.ancestorId)) {
@@ -124,11 +106,6 @@ function findLatestContinuableEntryIdOnBranch(
 		return entry.id;
 	}
 	return null;
-}
-
-function readMessageRole(entry: ContinuationTreeEntry | undefined): string | null {
-	const role = entry?.message?.role;
-	return typeof role === "string" && role.trim() !== "" ? role : null;
 }
 
 function resolveTurnContinuationLeafEntryIdFromIndex(
@@ -165,14 +142,13 @@ function resolveTurnContinuationLeafEntryIdFromIndex(
 export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry>(
 	entries: readonly TEntry[],
 ): TurnContinuationIndex<TEntry> {
-	const orderedEntries = entries;
-	const entriesById = createEntriesById(orderedEntries);
+	const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
 
 	const resolveLeafEntryId = (
 		turnRecord: ContinuationTurnRecordLike,
 		bounds: ContinuationSliceBounds = {},
 	): string | null =>
-		resolveTurnContinuationLeafEntryIdFromIndex(orderedEntries, entriesById, turnRecord, bounds);
+		resolveTurnContinuationLeafEntryIdFromIndex(entries, entriesById, turnRecord, bounds);
 
 	const buildSlice = (
 		turnRecord: ContinuationTurnRecordLike,
@@ -185,7 +161,7 @@ export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry
 		const forkPiEntryId = trimToNull(turnRecord.forkPiEntryId);
 		const reversedSlice: TEntry[] = [];
 		const visited = new Set<string>();
-		let current = entriesById.get(continuationLeafId) as TEntry | undefined;
+		let current = entriesById.get(continuationLeafId);
 		let foundFork = forkPiEntryId === null;
 		while (current && !visited.has(current.id)) {
 			visited.add(current.id);
@@ -194,9 +170,7 @@ export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry
 				break;
 			}
 			reversedSlice.push(current);
-			current = current.parentId
-				? (entriesById.get(current.parentId) as TEntry | undefined)
-				: undefined;
+			current = current.parentId ? entriesById.get(current.parentId) : undefined;
 		}
 		if (!foundFork) {
 			return [];
@@ -236,7 +210,7 @@ export function buildTurnContinuationSlice<TEntry extends ContinuationTreeEntry>
 	turnRecord: ContinuationTurnRecordLike,
 	bounds: ContinuationSliceBounds = {},
 ): TEntry[] {
-	return buildTurnContinuationSliceFromTree(createReadonlyEntryTree(entries), turnRecord, bounds);
+	return createTurnContinuationIndex(entries).buildSlice(turnRecord, bounds);
 }
 
 export interface BranchUserPromptSnapshot {
@@ -254,7 +228,7 @@ export function extractFirstUserPromptOnBranch<TEntry extends ContinuationTreeEn
 	}
 	const branch = tree.getBranch(resolvedLeafId);
 	for (const entry of branch) {
-		if (!isPiSessionMessageEntryWithRecord(entry) || readMessageRole(entry) !== "user") {
+		if (!isPiSessionMessageEntryWithRecord(entry) || entry.message.role !== "user") {
 			continue;
 		}
 		const text = extractPiSessionMessageText(entry.message.content).trim();
@@ -278,10 +252,12 @@ export function resolveTurnContinuationUserPrompt(
 	if (!continuationLeafId) {
 		return null;
 	}
-	const continuationLeaf = createEntriesById(entries).get(continuationLeafId);
+	const continuationLeaf = new Map(entries.map((entry) => [entry.id, entry])).get(
+		continuationLeafId,
+	);
 	if (
 		!isPiSessionMessageEntryWithRecord(continuationLeaf) ||
-		readMessageRole(continuationLeaf) !== "user"
+		continuationLeaf.message.role !== "user"
 	) {
 		return null;
 	}

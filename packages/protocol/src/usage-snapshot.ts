@@ -1,3 +1,4 @@
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import * as v from "valibot";
 
 export interface UsageCostSnapshot {
@@ -8,7 +9,7 @@ export interface UsageCostSnapshot {
 	total: number;
 }
 
-export interface UsageSnapshot {
+export interface UsageTokenCounts {
 	input: number;
 	output: number;
 	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
@@ -16,21 +17,15 @@ export interface UsageSnapshot {
 	cacheRead: number;
 	cacheWrite: number;
 	totalTokens: number;
+}
+
+export interface UsageSnapshot extends UsageTokenCounts {
 	cost: UsageCostSnapshot | null;
 	/** Number of model requests represented by this aggregate, when known. */
 	requestCount?: number;
 	/** Largest input-token count for a single represented model request, when known. */
 	maxInputTokens?: number;
 }
-
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 
 function readFiniteNumber(value: unknown): number | undefined {
 	return typeof value === "number" && Number.isFinite(value) ? value : undefined;

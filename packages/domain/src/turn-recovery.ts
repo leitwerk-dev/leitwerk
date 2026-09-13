@@ -1,4 +1,5 @@
 import { normalizeStringArray, trimToNull } from "./string-normalize.js";
+import { isUnknownRecord as isRecord } from "./unknown-record.js";
 
 export const DEFAULT_CONTINUE_PROMPT = "continue";
 
@@ -34,13 +35,7 @@ function normalizeUniqueStringArray(value: unknown): string[] | undefined {
 	return normalized.length > 0 ? [...new Set(normalized)] : undefined;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function normalizeContinuePrompt(value: unknown): string | null {
-	return trimToNull(value);
-}
+export { trimToNull as normalizeContinuePrompt };
 
 export function createGenericFailedTurnRecoveryContext(
 	overrides: FailedTurnRecoveryOverrides = {},
@@ -98,7 +93,7 @@ export function readFailedTurnRecoveryContext(
 	if (raw.strategy !== "continue") {
 		return null;
 	}
-	const suggestedContinuePrompt = normalizeContinuePrompt(raw.suggestedContinuePrompt);
+	const suggestedContinuePrompt = trimToNull(raw.suggestedContinuePrompt);
 	const failureCode = trimToNull(raw.failureCode);
 	if (!suggestedContinuePrompt || !failureCode || !isFailedTurnRecoveryCode(failureCode)) {
 		return null;

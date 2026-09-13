@@ -1,3 +1,5 @@
+import { asUnknownRecord, trimToNull as readWsEventNonEmptyString } from "@leitwerk-dev/domain";
+
 export interface WsEventPayloadRecord extends Record<string, unknown> {}
 
 export interface ResolveWsEventToolCallIdOptions {
@@ -7,18 +9,10 @@ export interface ResolveWsEventToolCallIdOptions {
 }
 
 export function asWsEventPayloadRecord(value: unknown): WsEventPayloadRecord {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as WsEventPayloadRecord)
-		: {};
+	return asUnknownRecord(value) ?? {};
 }
 
-export function readWsEventNonEmptyString(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
+export { readWsEventNonEmptyString };
 
 export function readWsEventTimestamp(
 	data: WsEventPayloadRecord,
@@ -52,10 +46,7 @@ export function readWsEventToolName(data: WsEventPayloadRecord): string {
 export function readWsEventToolArguments(
 	data: WsEventPayloadRecord,
 ): Record<string, unknown> | null {
-	const value = data.arguments ?? data.args;
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
+	return asUnknownRecord(data.arguments ?? data.args);
 }
 
 export function readWsEventToolCallId(data: WsEventPayloadRecord): string | null {

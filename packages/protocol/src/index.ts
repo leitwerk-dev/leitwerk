@@ -1,5 +1,6 @@
 export * from "./compact-turn-summary.js";
 export * from "./config-snapshot.js";
+export * from "./extension-ui-contracts.js";
 export * from "./external-review.js";
 export * from "./form-contract.js";
 export * from "./http-contracts.js";
