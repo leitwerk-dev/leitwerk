@@ -2085,7 +2085,7 @@ describe("ProcessDetailPage", () => {
 			workspacePreparation
 				?.querySelector('[data-progress-step="skills"]')
 				?.getAttribute("data-progress-status"),
-		).toBe("in_progress");
+		).toBe("unrecorded");
 		expect(
 			workspacePreparation
 				?.querySelector('[data-progress-step="instructions"]')
@@ -2340,7 +2340,7 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(disclosure?.open).toBe(false);
 		expect(disclosure?.querySelector("summary")?.textContent).toContain("Waiting for an event");
-		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 event");
+		expect(disclosure?.querySelector("summary")?.textContent).toContain("1 monitored event type");
 		disclosure?.querySelector("summary")?.click();
 		await flushUi();
 		expect(disclosure?.open).toBe(true);
@@ -3183,6 +3183,58 @@ describe("ProcessDetailPage", () => {
 		expect(recovery?.querySelector('[data-section="continue-unavailable"]')).toBeTruthy();
 		expect(queryRecoveryAction(target, "continue-failed-turn")).toBeNull();
 		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
+	});
+
+	it("keeps five historical failures collapsed until selected and allows closing selected history", async () => {
+		const detail = createContinuableFailedDetail();
+		const failed = detail.turnRecords[1];
+		const history = Array.from({ length: 5 }, (_, index) => ({
+			...failed,
+			id: `trn_retry_${index}`,
+			parentTurnRecordId: index ? `trn_retry_${index - 1}` : null,
+			attemptNumber: index + 1,
+			startedAt: `2026-01-01T00:03:0${index}Z`,
+			endedAt: `2026-01-01T00:03:0${index}Z`,
+		}));
+		detail.turnRecords = [
+			detail.turnRecords[0],
+			...history,
+			{
+				...failed,
+				parentTurnRecordId: "trn_retry_4",
+				attemptNumber: 6,
+			},
+		];
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const disclosure = target.querySelector<HTMLDetailsElement>(
+			"[data-section='chronicle-flow'] > details",
+		);
+		if (!disclosure) throw new Error("Expected retry history");
+		expect(disclosure.querySelector("summary")?.textContent).toContain("5 earlier attempts");
+		expect(disclosure.open).toBe(false);
+		expect(disclosure.contains(queryRecoveryAction(target, "retry-failed-turn"))).toBe(false);
+		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
+		const railToggle = target.querySelector<HTMLButtonElement>(
+			"[data-section='repeated-turns'] button",
+		);
+		railToggle?.click();
+		await flushUi();
+		const historical = target.querySelector<HTMLButtonElement>(
+			"[data-rail-kind='turn'][data-turn-record-id='trn_retry_2']",
+		);
+		if (!historical) throw new Error("Expected historical navigation item");
+		historical.click();
+		await flushUi();
+		expect(disclosure.open).toBe(true);
+		expect(historical.getAttribute("aria-current")).toBe("step");
+		disclosure.open = false;
+		disclosure.dispatchEvent(new Event("toggle"));
+		await flushUi();
+		expect(disclosure.open).toBe(false);
+		historical.click();
+		await flushUi();
+		expect(disclosure.open).toBe(true);
 	});
 
 	it("shows both the failed turn and the recovery rail item", async () => {

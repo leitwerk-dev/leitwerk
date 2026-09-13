@@ -593,6 +593,16 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	protected outcomeDescription: string | null = null;
 	protected parameters: Record<string, OutcomeToolParameterSpec> = {};
 	protected publishedMarkdownParameter: string | null = null;
+	protected summaryParameter: string | null = null;
+
+	/** Optional concise result publication, separate from the full Markdown. */
+	resultSummary(name = "resultSummary"): this {
+		this.summaryParameter = name;
+		return this.parameter(name, {
+			type: "string",
+			description: "Concise summary of this attempt’s outcome.",
+		});
+	}
 
 	description(text: string): this {
 		this.outcomeDescription = text;
@@ -755,6 +765,7 @@ export class OutcomeToolBuilder<
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
+			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
 			...(this.publishedMarkdownParameter
 				? {
 						publishedProduct: this.publishedMarkdownParameter,
@@ -812,6 +823,7 @@ export class AutomaticOutcomeBuilder<
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
+			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
 			...(this.publishedMarkdownParameter
 				? {
 						publishedProduct: this.publishedMarkdownParameter,

@@ -1227,6 +1227,20 @@ describe("buildChronicleProjection", () => {
 		expect(entry?.piInput?.userInput).toBe("operator request");
 	});
 
+	it("preserves leading Markdown indentation in prompts and turn details", () => {
+		const prompt = "    const value = 1;\n\n    return value;\n";
+		const projection = buildProjection({
+			turnRecords: [makeTurnRecord()],
+			initialUserInputText: prompt,
+			turnTraceIndex: { trn_1: makeTrace({ piInput: makePiInput(prompt) }) },
+		});
+		expect(projection.promptItem?.text).toBe(prompt);
+		const [entry] = extractChronicleReasoningDetailEntries(projection);
+		expect(entry.triggeringInput?.bodyMarkdown).toBe(prompt);
+		expect(entry.piInput?.userInput).toBe(prompt);
+		expect(entry.piInput?.fullPrompt).toBe(prompt);
+	});
+
 	it("prepends a prompt item when prompt data is supplied", () => {
 		const projection = buildProjection({
 			turnRecords: [makeTurnRecord()],

@@ -10,6 +10,7 @@ import {
 	mergeWrites,
 	type WorkerIntent,
 	type WriteBuildResult,
+	type Writes,
 } from "./writes.js";
 
 export function buildServerTransitionWrites<TState = unknown>(
@@ -67,4 +68,15 @@ export function buildServerTransitionWrites<TState = unknown>(
 	}
 
 	return stateWrites;
+}
+
+/** Correlate a transition with the worker start it reserves, before worker acceptance. */
+export function transitionStartReferences(writes: Writes): {
+	targetStartId?: string;
+	targetTurnRecordId?: string;
+} {
+	const start = writes.turnStartWrites.find((write) => write.kind === "create");
+	return start
+		? { targetStartId: start.input.id, targetTurnRecordId: start.input.proposedTurnRecordId }
+		: {};
 }

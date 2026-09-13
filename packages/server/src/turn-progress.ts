@@ -27,6 +27,35 @@ function safeExternalUrl(value: unknown): string {
 	}
 }
 
+export function normalizeTurnProgressLinks(
+	value: unknown,
+): NonNullable<TurnProgressReport["links"]> | null {
+	const linkIds = new Set<string>();
+	const rawLinks = value === undefined ? [] : value;
+	if (!Array.isArray(rawLinks) || rawLinks.length > 20) return null;
+	const links = rawLinks.flatMap((value) => {
+		if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+		const link = value as Record<string, unknown>;
+		const id = text(link.id, 80);
+		const label = text(link.label, 240);
+		const url = safeExternalUrl(link.url);
+		const kind = text(link.kind, 40);
+		if (!id || linkIds.has(id) || !label || !url) return [];
+		if (kind && !LINK_KINDS.has(kind)) return [];
+		linkIds.add(id);
+		return [
+			{
+				id,
+				label,
+				url,
+				...(kind ? { kind: kind as NonNullable<TurnProgressReport["links"]>[number]["kind"] } : {}),
+			},
+		];
+	});
+	if (links.length !== rawLinks.length) return null;
+	return links;
+}
+
 export function normalizeTurnProgressReport(value: unknown): TurnProgressReport | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const raw = value as Record<string, unknown>;
@@ -53,30 +82,14 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 		];
 	});
 	if (steps.length !== raw.steps.length || steps.length === 0) return null;
-	const linkIds = new Set<string>();
-	const rawLinks = raw.links === undefined ? [] : raw.links;
-	if (!Array.isArray(rawLinks) || rawLinks.length > 20) return null;
-	const links = rawLinks.flatMap((value) => {
-		if (!value || typeof value !== "object" || Array.isArray(value)) return [];
-		const link = value as Record<string, unknown>;
-		const id = text(link.id, 80);
-		const label = text(link.label, 240);
-		const url = safeExternalUrl(link.url);
-		const kind = text(link.kind, 40);
-		if (!id || linkIds.has(id) || !label || !url) return [];
-		if (kind && !LINK_KINDS.has(kind)) return [];
-		linkIds.add(id);
-		return [
-			{
-				id,
-				label,
-				url,
-				...(kind ? { kind: kind as NonNullable<TurnProgressReport["links"]>[number]["kind"] } : {}),
-			},
-		];
-	});
-	if (links.length !== rawLinks.length) return null;
-	return { title, steps, ...(links.length > 0 ? { links } : {}) };
+	const links = normalizeTurnProgressLinks(raw.links);
+	if (!links) return null;
+	return {
+		title,
+		steps,
+		...(text(raw.summary, 2000) ? { summary: text(raw.summary, 2000) } : {}),
+		...(links.length > 0 ? { links } : {}),
+	};
 }
 
 export function recordTurnProgress(

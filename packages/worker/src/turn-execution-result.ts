@@ -9,6 +9,7 @@ export interface TurnExecutionMeta {
 	forkPiEntryId?: string | null;
 	resultPiEntryId?: string | null;
 	turnResultMarkdown?: string | null;
+	resultSummary?: string;
 	rootEntryId?: string | null;
 }
 

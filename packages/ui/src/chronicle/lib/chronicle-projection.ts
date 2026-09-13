@@ -5,7 +5,6 @@ import {
 	type ProcessQuestionRequest,
 	type ProcessTurnRecord,
 	type TurnProgressReport,
-	trimToNull,
 } from "@leitwerk-dev/domain";
 import {
 	type CompactActiveTurnSnapshot,
@@ -122,11 +121,14 @@ export interface ChronicleOperatorDecisionSection {
 export interface ChronicleTurnResultSection {
 	kind: "turn_result";
 	markdown: string;
+	resultSummary?: string;
 }
 
 export interface ChronicleTurnProgressSection {
 	kind: "turn_progress";
 	report: TurnProgressReport;
+	attemptStatus?: string;
+	recordedAt?: string;
 }
 
 export type ChronicleTurnClusterSection =
@@ -137,6 +139,10 @@ export type ChronicleTurnClusterSection =
 
 export interface ChronicleTurnClusterItem {
 	kind: "turn_cluster";
+	parentTurnRecordId?: string | null;
+	reviewedTurnRecordId?: string;
+	resources?: TurnRecordView["resources"];
+	transition?: TurnRecordView["transition"];
 	chronologyAt: string;
 	anchorId: string;
 	turnRecordId: string;
@@ -208,7 +214,10 @@ export interface ChronicleLeafOutcomePlaceholderItem {
 }
 
 export interface ChronicleLiveTailItem {
+	progress?: TurnRecordView["progress"];
+	progressRecordedAt?: string;
 	kind: "live_tail";
+	parentTurnRecordId?: string | null;
 	anchorId: string;
 	turnRecordId: string;
 	turnId: string;
@@ -532,8 +541,8 @@ function toPiInputSummary(input: {
 		fullPrompt,
 		createdAt: piInput?.createdAt ?? previewInput?.createdAt ?? "",
 		userInput:
-			trimToNull(input.triggeringInput?.bodyMarkdown) ??
-			trimToNull(input.initialUserInputText) ??
+			promptOrNull(input.triggeringInput?.bodyMarkdown) ??
+			promptOrNull(input.initialUserInputText) ??
 			null,
 	};
 }
@@ -634,7 +643,17 @@ function buildTurnClusterItem(input: {
 			: "";
 
 	if (turnRecord.progress) {
-		sections.push({ kind: "turn_progress", report: turnRecord.progress });
+		sections.push({
+			kind: "turn_progress",
+			report: turnRecord.progress,
+			recordedAt: turnRecord.progressRecordedAt,
+			attemptStatus:
+				turnRecord.status === "in_progress"
+					? "in_progress"
+					: turnRecord.outcome === "failed" || turnRecord.outcome === "superseded"
+						? turnRecord.outcome
+						: "succeeded",
+		});
 	}
 
 	if (assistantText.length === 0 && fallbackText.length > 0) {
@@ -648,11 +667,16 @@ function buildTurnClusterItem(input: {
 		sections.push({
 			kind: "turn_result",
 			markdown: turnRecord.turnResultMarkdown,
+			resultSummary: turnRecord.resultSummary,
 		});
 	}
 
 	return {
 		kind: "turn_cluster",
+		parentTurnRecordId: turnRecord.parentTurnRecordId,
+		reviewedTurnRecordId: turnRecord.reviewedTurnRecordId,
+		resources: turnRecord.resources,
+		transition: turnRecord.transition,
 		chronologyAt: turnRecord.createdAt,
 		anchorId: buildTurnAnchorId(turnRecord.id),
 		turnRecordId: turnRecord.id,
@@ -720,11 +744,15 @@ function buildLeafOutcomeItems(
 	}));
 }
 
+function promptOrNull(value: string | null | undefined): string | null {
+	return value?.trim() ? value : null;
+}
+
 function buildPromptItem(
 	text: string | null | undefined,
 	createdAt: string | null | undefined,
 ): ChroniclePromptItem {
-	const resolvedText = typeof text === "string" ? text.trim() : "";
+	const resolvedText = promptOrNull(text) ?? "";
 	return {
 		kind: "prompt",
 		anchorId: buildPromptAnchorId(),
@@ -802,7 +830,7 @@ function buildInitialPromptTriggeringInputSummary(
 	promptCreatedAt: string | null | undefined,
 	fallbackTimestamp: string,
 ): ChronicleTriggeringInputSummary | null {
-	const normalizedPrompt = trimToNull(initialUserInputText) ?? "";
+	const normalizedPrompt = promptOrNull(initialUserInputText) ?? "";
 	if (!hasDisplayableText(normalizedPrompt)) {
 		return null;
 	}
@@ -1026,6 +1054,9 @@ function buildLiveTail(input: {
 
 	return {
 		kind: "live_tail",
+		progress: turnRecord.progress,
+		progressRecordedAt: turnRecord.progressRecordedAt,
+		parentTurnRecordId: turnRecord.parentTurnRecordId,
 		anchorId: buildLiveTailAnchorId(turnRecord.id),
 		turnRecordId: turnRecord.id,
 		turnId: turnRecord.turnId,
@@ -1228,7 +1259,8 @@ export function buildChronicleProjection(
 	const resolvedTerminalStatus: ProcessTerminalStatus | null = isTerminal
 		? (input.lifecycleStatus as ProcessTerminalStatus)
 		: null;
-	const displayPromptText = trimToNull(input.initialUserInputText) ?? trimToNull(input.promptText);
+	const displayPromptText =
+		promptOrNull(input.initialUserInputText) ?? promptOrNull(input.promptText);
 	const promptItem = displayPromptText
 		? buildPromptItem(displayPromptText, input.promptCreatedAt)
 		: null;

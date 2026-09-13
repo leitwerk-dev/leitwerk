@@ -117,6 +117,10 @@ export interface RouteDeps
 		| "transaction"
 	> {
 	startupObservations?: RepositoryBundle["startupObservations"];
+	externalSourceService?: Pick<
+		import("../external-source-service.js").ExternalSourceService,
+		"currentGenerations"
+	>;
 	broadcaster: Broadcaster;
 	processOperations: ProcessOperationCoordinator;
 	processQuestions: ProcessQuestionService;

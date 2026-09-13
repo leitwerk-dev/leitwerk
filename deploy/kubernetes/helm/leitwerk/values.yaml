@@ -160,6 +160,10 @@ kubernetes:
   defaultWorkerRuntimeProfile: generic
   workerServiceAccount: leitwerk-worker
   processVolume:
+    # Optional server-managed pool. Requires an explicit dynamic StorageClass.
+    preProvision:
+      enabled: false
+      count: 8
     storageClassName: ""
     size: 20Gi
     accessModes:

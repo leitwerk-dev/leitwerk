@@ -166,6 +166,42 @@ describe("process UI snapshot presenter", () => {
 			).toMatchObject({ startRecordId: start.id, kind, action, summary: "safe failure" });
 		}
 	});
+	it.each([
+		"running",
+		"succeeded",
+	] as const)("pairs %s progress with its accepted revision timestamp", (status) => {
+		const record = turnRecord({
+			status,
+			endedAt: status === "running" ? null : "2026-01-01T00:01:30Z",
+		});
+		const recordedAt = "2026-01-01T00:01:00Z";
+		const turns = presentProcessTimelineTurns({
+			process: processInstance({ lifecycleStatus: status === "running" ? "active" : "completed" }),
+			turnRecords: [record],
+			turnAnnotations: [],
+			activeTurn: null,
+			selectedTurnType: null,
+			events: [2, 1].map((revision) => ({
+				id: `evt_progress_${revision}`,
+				instanceId: record.instanceId,
+				eventType: "turn.progress",
+				createdAt: revision === 2 ? recordedAt : "2026-01-01T00:01:10Z",
+				data: {
+					turnRecordId: record.id,
+					revision,
+					report: {
+						title: `Revision ${revision}`,
+						steps: [{ id: "check", label: "Check", status: "in_progress" }],
+					},
+				},
+			})),
+		});
+		expect(turns[0]).toMatchObject({
+			progress: { title: "Revision 2" },
+			progressRecordedAt: recordedAt,
+		});
+	});
+
 	it("projects durable outcomes and preserves compact preview metadata fields", () => {
 		const record = turnRecord({ turnResultMarkdown: "## Durable result" });
 		const turns = presentProcessTimelineTurns({
@@ -254,6 +290,7 @@ describe("process UI snapshot presenter", () => {
 					payload: {
 						actionSource: "scheduled",
 						causedSelectedTurnId: "implement",
+						targetTurnRecordId: "trn_implementation",
 						causedSelectedTurnType: "llm",
 					},
 					references: [{ kind: "turn_record", turnRecordId: decision.id }],
@@ -294,5 +331,62 @@ describe("process UI snapshot presenter", () => {
 				modelProfileId: "current_runtime_model",
 			}),
 		]);
+	});
+});
+
+it("uses retained external labels and descriptions without inventing an operator decision", () => {
+	const record = turnRecord({ turnType: "external" });
+	const annotation = {
+		id: "event",
+		instanceId: record.instanceId,
+		annotationType: "external_trigger",
+		annotationKey: "event",
+		references: [{ kind: "turn_record" as const, turnRecordId: record.id, role: "subject" }],
+		payload: { label: "File received", description: "The requested file arrived." },
+		createdAt: record.startedAt,
+		updatedAt: record.startedAt,
+	};
+	const project = (payload: Record<string, unknown>) =>
+		presentProcessTimelineTurns({
+			process: processInstance(),
+			turnRecords: [record],
+			turnAnnotations: [{ ...annotation, payload }],
+			events: [],
+			activeTurn: null,
+			selectedTurnType: null,
+		})[0];
+	expect(project(annotation.payload)).toMatchObject({
+		summary: "File received",
+		output: "The requested file arrived.",
+		createdAt: record.startedAt,
+	});
+	expect(project({}).summary).toBe("External event received");
+	expect(project({}).output).not.toContain("Actor");
+});
+
+it("reads concise results from durable milestones when outcome events are absent", () => {
+	const record = turnRecord({ turnResultMarkdown: "Full result" });
+	const turns = presentProcessTimelineTurns({
+		process: processInstance(),
+		turnRecords: [record],
+		turnAnnotations: [
+			{
+				id: "milestone",
+				instanceId: record.instanceId,
+				annotationType: "turn_milestone",
+				annotationKey: "milestone",
+				references: [{ kind: "turn_record", turnRecordId: record.id, role: "subject" }],
+				payload: { outcome: "done", resultSummary: "Poem revised." },
+				createdAt: record.startedAt,
+				updatedAt: record.startedAt,
+			},
+		],
+		events: [],
+		activeTurn: null,
+		selectedTurnType: null,
+	});
+	expect(turns[0]).toMatchObject({
+		resultSummary: "Poem revised.",
+		turnResultMarkdown: "Full result",
 	});
 });

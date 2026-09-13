@@ -17,6 +17,34 @@ function kubernetesConfig(): ReturnType<typeof getDefaultConfig> {
 }
 
 describe("validateConfig", () => {
+	it.each([-1, 1.5, "8"])("rejects invalid pre-provision count %s", (count) => {
+		const config = kubernetesConfig();
+		const raw = {
+			...config,
+			kubernetes: {
+				...config.kubernetes,
+				process_volume: { ...config.kubernetes?.process_volume, pre_provision: { count } },
+			},
+		};
+		expect(validateConfig(raw).some((error) => error.includes("pre_provision.count"))).toBe(true);
+	});
+
+	it("requires a named StorageClass for pre-provisioning", () => {
+		const config = kubernetesConfig();
+		if (!config.kubernetes) throw new Error("Missing Kubernetes defaults");
+		config.kubernetes.process_volume.pre_provision = { count: 0 };
+		delete config.kubernetes.process_volume.storage_class_name;
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toContain(
+			"kubernetes.process_volume.pre_provision requires an explicit storage_class_name",
+		);
+		config.kubernetes.process_volume.storage_class_name = "csi-storage";
+		expect(
+			validateConfig(config as unknown as Record<string, unknown>).filter((error) =>
+				error.includes("pre_provision"),
+			),
+		).toEqual([]);
+	});
+
 	it("accepts a valid full config", () => {
 		const config = getDefaultConfig();
 		config.server.host = "0.0.0.0";

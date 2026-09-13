@@ -744,6 +744,10 @@ export interface ProcessTimelineTurnSummary {
 	summary: string;
 	output: string;
 	turnResultMarkdown: string;
+	resultSummary?: string;
+	reviewedTurnRecordId?: string;
+	resources?: import("@leitwerk-dev/domain").TurnProgressLink[];
+	transition?: { selectedTurnId: string; targetTurnRecordId?: string; accepted: boolean };
 	pathType: ProcessTurnRecord["pathType"];
 	createdAt: string;
 	presentation: ProcessTimelineTurnPresentation;
@@ -756,6 +760,7 @@ export interface ProcessTimelineTurnSummary {
 	endedAt: string | null;
 	actionSource: "ui" | "external" | "scheduled" | null;
 	progress?: TurnProgressReport | null;
+	progressRecordedAt?: string;
 }
 
 export type ProcessTimelineInputSummary = Pick<
@@ -763,7 +768,18 @@ export type ProcessTimelineInputSummary = Pick<
 	"id" | "sequence" | "source" | "kind" | "bodyMarkdown" | "receivedAt" | "consumedAt"
 >;
 
+export interface ProcessExternalObservation {
+	summary: string;
+	links?: import("@leitwerk-dev/domain").TurnProgressLink[];
+	observedAt: string;
+	subject: string;
+	revision: string;
+}
+
 export interface ProcessExternalTriggerSignal {
+	observation?: ProcessExternalObservation;
+	refreshError?: string | null;
+	refreshedAt?: string;
 	triggerId: string;
 	state: "error" | "armed" | "triggered" | "waiting";
 	occurredAt: string | null;

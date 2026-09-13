@@ -3,6 +3,8 @@ export interface ChecklistStep {
 	id: string;
 	label: string;
 	status:
+		| "interrupted"
+		| "unrecorded"
 		| "pending"
 		| "incomplete"
 		| "in_progress"
@@ -19,6 +21,8 @@ export interface ChecklistStep {
 import ElapsedTime from "./ElapsedTime.svelte";
 let { steps }: { steps: readonly ChecklistStep[] } = $props();
 const statusLabels: Record<ChecklistStep["status"], string> = {
+	interrupted: "Interrupted",
+	unrecorded: "Final status not recorded",
 	pending: "Pending",
 	incomplete: "Incomplete",
 	in_progress: "In progress",

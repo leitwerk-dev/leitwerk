@@ -894,6 +894,7 @@ export const poemCreatorProcess = flow
 			.outcomeTool("no_issues", (tool) =>
 				tool
 					.description("The poem is ready to publish")
+					.resultSummary("summary")
 					.requiredString("summary", "Short confirmation summary")
 					.markdown("review", {
 						description: "Concise review opinion confirming the poem is ready",
@@ -912,6 +913,7 @@ export const poemCreatorProcess = flow
 			.outcomeTool("leave_feedback", (tool) =>
 				tool
 					.description("Leave concise feedback for the human reviewer")
+					.resultSummary("summary")
 					.requiredString("summary", "Short summary of the feedback")
 					.markdown("message", {
 						description: "Concise plain-text feedback describing what to improve",

@@ -67,3 +67,5 @@ The source lane loads `src/ui/manifest.json` and lets Vite transform the custom-
 Turn labels stay concise: Run Prompt for single-prompt work, and Draft Poem,
 Review, Assess Poem, and Review Feedback for the poem process. The human
 review and automated assessment remain distinct; turn ids and routing are unchanged.
+
+Poem review outcomes publish their existing concise summary separately from the full review result. This adds no turn or model call and leaves human review routing unchanged.

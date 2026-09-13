@@ -8,9 +8,9 @@ const heartbeat = $derived(
 const message = $derived(
 	heartbeat
 		? `Worker stopped responding. No heartbeat was received for ${Number(heartbeat[1]) / 1000} seconds.`
-		: summary,
+		: summary.split(/\n\s*\n|\n/)[0].slice(0, 280),
 );
-const detail = $derived(technicalDetail || (heartbeat ? summary : null));
+const detail = $derived(technicalDetail || (heartbeat || message !== summary ? summary : null));
 </script>
 
 <div class="failure-message" data-section="failure-message">

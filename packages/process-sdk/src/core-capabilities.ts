@@ -304,6 +304,20 @@ export interface ProcessActionServiceLike {
 	): Promise<ActionExecutionResultLike>;
 }
 
+export interface ExternalObservationInput {
+	instanceId: string;
+	armingId: string;
+	generation: string;
+	observation?: {
+		summary: string;
+		links?: import("@leitwerk-dev/domain").TurnProgressLink[];
+		observedAt: string;
+		subject: string;
+		revision: string;
+	};
+	refreshError?: string;
+}
+
 export interface ExternalSourceArmingLike {
 	/** Process-local arming id. Durable arming identity is { instanceId, id }. */
 	id: string;
@@ -313,6 +327,8 @@ export interface ExternalSourceArmingLike {
 	externalActionId: string;
 	source: ExternalActionSource;
 	resolved: unknown;
+	/** Opaque identity of this resolved subscription. */
+	generation?: string;
 }
 
 export interface ExternalSourceFireInput {
@@ -326,6 +342,8 @@ export interface ExternalSourceFireInput {
 export interface ExternalSourceServiceLike {
 	listArmed(kind: string): readonly ExternalSourceArmingLike[];
 	fire(input: ExternalSourceFireInput): Promise<ActionExecutionResultLike>;
+	/** Records facts without firing an action or changing lifecycle state. */
+	observe?(input: ExternalObservationInput): Promise<ActionExecutionResultLike>;
 }
 
 export interface LauncherRecentValuesServiceLike {

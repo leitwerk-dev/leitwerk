@@ -7,6 +7,7 @@ import {
 	formatRailElapsed,
 } from "../lib/chronicle-rail-groups.js";
 import type { ChronicleSelectableItem } from "../lib/chronicle-selectable-items.js";
+import { groupRetryChains } from "../lib/retry-groups.js";
 
 interface Props {
 	detail: ProcessDetailData | null;
@@ -31,10 +32,25 @@ let railListElement = $state<HTMLDivElement | null>(null);
 let expandedGroups = $state<Record<string, boolean>>({});
 let previousAnchorId: string | null = null;
 let previousGroupId: string | null = null;
-const rows = $derived(buildChronicleRailRows(railItems));
+const rows = $derived(buildChronicleRailRows(railItems, detail?.timeline.turns));
 const records = $derived(
 	new Map(detail?.timeline.turns.map((record) => [record.id, record]) ?? []),
 );
+const retryMembership = $derived.by(() => {
+	const result = new Map<string, { index: number; total: number }>();
+	for (const group of groupRetryChains(detail?.timeline.turns ?? [], (record) => ({
+		id: record.id,
+		turnId: record.turnId,
+		parentTurnRecordId: record.parentTurnRecordId,
+		failed: record.outcome === "failed",
+	}))) {
+		if (group.length > 1)
+			group.forEach((record, index) => {
+				result.set(record.id, { index: index + 1, total: group.length });
+			});
+	}
+	return result;
+});
 const upcomingTurn = $derived(
 	railItems.some((item) => item.kind === "turn" && item.status === "in_progress")
 		? (detail?.plannedNextTurn ?? null)
@@ -134,7 +150,10 @@ function itemState(item: ChronicleSelectableItem): string {
 function itemDetail(item: ChronicleSelectableItem): string | null {
 	if (item.kind !== "turn" || item.status === "waiting") return item.detail;
 	const record = records.get(item.turnRecordId);
-	const elapsed = formatRailElapsed(record?.startedAt, record?.endedAt);
+	const elapsed =
+		item.tone === "operator_decision" || item.tone === "external_trigger"
+			? null
+			: formatRailElapsed(record?.startedAt, record?.endedAt);
 	const state = itemState(item);
 	const decision = item.tone === "operator_decision" ? record?.outcome?.trim() : null;
 	const completedLabel =
@@ -144,7 +163,10 @@ function itemDetail(item: ChronicleSelectableItem): string | null {
 				: decision
 			: "Completed";
 	const label = state === "live" ? "In progress" : state === "failed" ? "Failed" : completedLabel;
-	return [label, elapsed].filter(Boolean).join(" · ");
+	const retry = retryMembership.get(item.turnRecordId);
+	return [retry ? `Attempt ${retry.index} of ${retry.total}` : null, label, elapsed]
+		.filter(Boolean)
+		.join(" · ");
 }
 
 function groupElapsed(group: ChronicleRepeatedTurns): string | null {
@@ -221,9 +243,9 @@ function groupElapsed(group: ChronicleRepeatedTurns): string | null {
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4" /></svg>
 									</span>
 									<span class="rail-copy">
-										<span class="rail-title">Repeated Turns</span>
+										<span class="rail-title">{row.retryCount ? "Attempt history" : "Repeated Turns"}</span>
 										<span class="repeat-sequence">{row.sequence}</span>
-										<span class="repeat-meta"><span>{row.items.length} turns</span>{#if elapsed}<span aria-hidden="true">·</span><span>{elapsed}</span>{/if}</span>
+										<span class="repeat-meta"><span>{row.items.length} {row.retryCount ? row.items.length === 1 ? "earlier attempt" : "earlier attempts" : "turns"}</span>{#if elapsed}<span aria-hidden="true">·</span><span>{elapsed}</span>{/if}</span>
 									</span>
 									<svg class="repeat-chevron" class:is-expanded={expanded} viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
 								</button>

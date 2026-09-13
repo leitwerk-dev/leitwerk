@@ -271,6 +271,27 @@ test.beforeAll(async ({ leitwerk }) => {
 });
 
 test.describe("sidebar result reflow", () => {
+	test("tracks manual scrolling after a resize that leaves scrollTop unchanged", async ({
+		page,
+	}) => {
+		const { process } = seedSidebarReflowProcess("SIDEBAR-REFLOW-MANUAL");
+		await page.goto(`/processes/${process.id}`);
+		const viewport = page.locator('[data-role="chronicle-scroll"]');
+		await expect(page.locator('[data-renderer-state="ready"]')).toBeVisible();
+		await viewport.hover();
+		await page.mouse.wheel(0, -10000);
+		await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(0);
+		const active = page.locator('[data-rail-anchor-id][data-active="true"]');
+		await expect(active).toHaveCount(1);
+		const before = await active.getAttribute("data-rail-anchor-id");
+		await page.locator('[data-action="toggle-sidebar"]').first().click();
+		await expect(page.locator('[data-sidebar-state="collapsed"]')).toBeVisible();
+		await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(0);
+		await viewport.hover();
+		await page.mouse.wheel(0, 800);
+		await expect(active).not.toHaveAttribute("data-rail-anchor-id", before ?? "missing");
+	});
+
 	test("ready leaf outcome cards resize when the sidebar collapses and expands", async ({
 		page,
 	}) => {

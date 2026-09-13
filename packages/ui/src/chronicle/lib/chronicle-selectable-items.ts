@@ -160,15 +160,6 @@ export function buildChronicleSelectableItems(
 			if (!railItem) {
 				continue;
 			}
-			const nextTurnLikeItem = input.projection.timelineItems
-				.slice(index + 1)
-				.find((item) => item.kind === "turn_cluster" || item.kind === "live_tail");
-			const nextRailItem = nextTurnLikeItem
-				? turnRailItemsByTurnRecordId.get(nextTurnLikeItem.turnRecordId)
-				: undefined;
-			if (nextRailItem && sharesRetryLineage(railItem, nextRailItem)) {
-				continue;
-			}
 			if (railItem.presentation === "llm_turn") {
 				llmTurnCount += 1;
 			}
