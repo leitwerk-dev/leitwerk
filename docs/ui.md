@@ -42,8 +42,8 @@ clock markers. Both keep stronger titles while the operator browses history.
 Future turns use neutral outlines. Failed turns retain an explicit error marker
 and label. Navigation selection is separate from the process's current state.
 
-The process summary above the Chronicle is a compact, expandable line. Expanding
-reveals the complete text and a separate update timestamp. Dismiss hides the row
+The process summary above the Chronicle shows its complete text and update timestamp
+in a compact row that wraps as needed. It has no expand/collapse control or truncation. Dismiss hides the row
 for that process in the current browser, including after reload. **Process info →
 Show process summary** restores it. The preference uses browser storage, never
 process state, and does not hide summaries for other processes or browsers. If

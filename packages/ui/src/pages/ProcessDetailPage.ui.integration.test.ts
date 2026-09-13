@@ -5611,12 +5611,10 @@ describe("browser-local process summary", () => {
 		const detail = summaryDetail();
 		let { target } = await mountSubject(detail);
 		await flushUi();
-		expect(target.querySelector('[data-section="process-summary"] summary')?.textContent).toContain(
+		expect(target.querySelector('[data-section="process-summary"] p')?.textContent).toContain(
 			"Delivery continues after approval.",
 		);
-		expect(
-			target.querySelector('[data-section="process-summary"] details')?.hasAttribute("open"),
-		).toBe(false);
+		expect(target.querySelector('[data-section="process-summary"] details')).toBeNull();
 		target.querySelector<HTMLButtonElement>('[aria-label="Dismiss process summary"]')?.click();
 		await flushUi();
 		expect(target.querySelector('[data-section="process-summary"]')).toBeNull();
