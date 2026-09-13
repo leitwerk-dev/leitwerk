@@ -119,21 +119,6 @@ function logPostCommitEffectError(
 	});
 }
 
-async function runBestEffortEffect(
-	effect: PostCommitEffect,
-	logContext: PostCommitEffectLogContext | undefined,
-	code: PostCommitEffectFailureCode,
-	work: () => void | Promise<void>,
-): Promise<Error | null> {
-	try {
-		await work();
-		return null;
-	} catch (error) {
-		logPostCommitEffectError(error, effect, logContext, code);
-		return error instanceof Error ? error : new Error(String(error));
-	}
-}
-
 async function runWorkerEffect(
 	supervisor: WorkerSupervisor | undefined,
 	instanceId: string,
@@ -189,9 +174,17 @@ export async function runPostCommitEffectList(
 		code: PostCommitEffectFailureCode,
 		run: () => void | Promise<void>,
 	): Promise<void> => {
-		const error = await runBestEffortEffect(effect, logContext, code, run);
-		if (options.reportBestEffortFailures && error && !bestEffortFailure) {
-			bestEffortFailure = { ok: false, code, message: error.message };
+		try {
+			await run();
+		} catch (error) {
+			logPostCommitEffectError(error, effect, logContext, code);
+			if (options.reportBestEffortFailures && !bestEffortFailure) {
+				bestEffortFailure = {
+					ok: false,
+					code,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
 		}
 	};
 	for (const effect of effects) {

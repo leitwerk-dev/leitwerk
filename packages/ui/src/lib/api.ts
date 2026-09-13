@@ -139,16 +139,11 @@ export function launchTicketCreation(
 	instanceId: string,
 	body: LaunchTicketCreationRequestBody,
 ): Promise<LaunchTicketCreationResponseBody> {
+	const init = jsonRequestInit("POST", body);
+	init.headers = { ...init.headers, "idempotency-key": crypto.randomUUID() };
 	return requestJson({
 		path: `/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`,
-		init: {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				"idempotency-key": crypto.randomUUID(),
-			},
-			body: JSON.stringify(body),
-		},
+		init,
 		malformed: "Malformed ticket launch response",
 		error: apiResponseError("Couldn't start ticket creation"),
 	});
@@ -502,22 +497,17 @@ export async function startLaunchRun(
 	modelConfig: LauncherModelConfigDefaults = {},
 	skillIds: readonly string[] = [],
 ): Promise<LauncherSubmitResult> {
+	const init = jsonRequestInit("POST", {
+		title,
+		launcherInput,
+		modelConfig,
+		schedule: { mode: "now" },
+		skillIds,
+	});
+	init.headers = { ...init.headers, "idempotency-key": crypto.randomUUID() };
 	const response = await requestJson<StartLaunchRunResponseBody | LauncherSubmitResult>({
 		path: `/api/launchers/${encodeURIComponent(launcherId)}/launch-runs`,
-		init: {
-			method: "POST",
-			headers: {
-				"content-type": "application/json",
-				"idempotency-key": crypto.randomUUID(),
-			},
-			body: JSON.stringify({
-				title,
-				launcherInput,
-				modelConfig,
-				schedule: { mode: "now" },
-				skillIds,
-			}),
-		},
+		init,
 		malformed: "Malformed launch run response",
 		onError: (response, body) =>
 			parseLauncherErrorResponse(response, "Couldn't start this process", body),
@@ -610,16 +600,11 @@ export async function fetchTurnReasoningDetail(
 export async function fetchFutureExecution(
 	futureExecutionId: string,
 ): Promise<FutureExecutionDetailResponseBody> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/future-executions/${encodeURIComponent(futureExecutionId)}`),
-	);
-	if (!res.ok) {
-		throw new ApiResponseError(`Couldn't load scheduled item: ${res.status}`, res.status);
-	}
-	return readJsonObject<FutureExecutionDetailResponseBody>(
-		res,
-		"Malformed scheduled item response",
-	);
+	return requestJson({
+		path: `/api/future-executions/${encodeURIComponent(futureExecutionId)}`,
+		error: (res) => new ApiResponseError(`Couldn't load scheduled item: ${res.status}`, res.status),
+		malformed: "Malformed scheduled item response",
+	});
 }
 
 export async function postProcessRetry(

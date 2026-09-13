@@ -289,10 +289,12 @@ async function buildExternalSourceEffectWrites(input: {
 	return writes;
 }
 
+const INSTRUCTION_KEYS = ["instruction", "bodyMarkdown", "message", "text", "content"];
+
 function mergeInstructionText(values: readonly Record<string, unknown>[]): string | null {
 	const parts: string[] = [];
 	for (const input of values) {
-		for (const key of ["instruction", "bodyMarkdown", "message", "text", "content"]) {
+		for (const key of INSTRUCTION_KEYS) {
 			const value = input[key];
 			if (typeof value === "string" && value.trim() !== "") {
 				parts.push(value.trim());
@@ -328,17 +330,9 @@ function mergePendingFires(
 	const mergedInput = { ...(first?.input ?? {}) };
 	const instruction = mergeInstructionText(fires.map((fire) => fire.input));
 	if (instruction !== null) {
-		for (const key of ["instruction", "bodyMarkdown", "message", "text", "content"]) {
-			if (Object.hasOwn(mergedInput, key)) {
-				mergedInput[key] = instruction;
-			}
-		}
-		if (
-			!Object.keys(mergedInput).some((key) =>
-				["instruction", "bodyMarkdown", "message", "text", "content"].includes(key),
-			)
-		) {
-			mergedInput.instruction = instruction;
+		const keys = INSTRUCTION_KEYS.filter((key) => Object.hasOwn(mergedInput, key));
+		for (const key of keys.length > 0 ? keys : ["instruction"]) {
+			mergedInput[key] = instruction;
 		}
 	}
 	const providerInputs = fires.flatMap((fire) => providerRecordsFrom(fire.input, "providerInputs"));

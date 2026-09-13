@@ -47,7 +47,7 @@ export const browserUiExtensionShortcutHelpItems = derived(shortcutStore, (items
 );
 export const browserUiExtensionShellIndicators = derived(indicatorStore, (items) => items);
 
-const frameHandlers: BrowserUiWsFrameHandler[] = [];
+const frameHandlers = new Set<BrowserUiWsFrameHandler>();
 let loadPromise: Promise<void> | null = null;
 
 export const BROWSER_UI_EXTENSION_API_VERSION = 1;
@@ -205,12 +205,9 @@ function createApi(
 					() => handler(frame),
 					false,
 				);
-			frameHandlers.push(wrappedHandler);
+			frameHandlers.add(wrappedHandler);
 			const unregister = makeSafeDisposer(descriptor, "WebSocket frame handler", () => {
-				const index = frameHandlers.indexOf(wrappedHandler);
-				if (index >= 0) {
-					frameHandlers.splice(index, 1);
-				}
+				frameHandlers.delete(wrappedHandler);
 			});
 			options.trackDisposer?.(unregister);
 			return unregister;
@@ -330,6 +327,6 @@ export function dispatchBrowserUiExtensionWsFrame(frame: WsFrame): boolean {
 export function resetBrowserUiExtensionsForTest(): void {
 	shortcutStore.set([]);
 	indicatorStore.set([]);
-	frameHandlers.splice(0);
+	frameHandlers.clear();
 	loadPromise = null;
 }

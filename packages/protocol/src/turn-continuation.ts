@@ -37,12 +37,6 @@ export interface TurnContinuationIndex<TEntry extends ContinuationTreeEntry> {
 	buildSlice(turnRecord: ContinuationTurnRecordLike, bounds?: ContinuationSliceBounds): TEntry[];
 }
 
-function createEntriesById<TEntry extends ContinuationTreeEntry>(
-	entries: readonly TEntry[],
-): Map<string, TEntry> {
-	return new Map(entries.map((entry) => [entry.id, entry]));
-}
-
 function branchContainsAncestor(
 	entriesById: ReadonlyMap<string, ContinuationTreeEntry>,
 	entryId: string,
@@ -148,7 +142,7 @@ function resolveTurnContinuationLeafEntryIdFromIndex(
 export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry>(
 	entries: readonly TEntry[],
 ): TurnContinuationIndex<TEntry> {
-	const entriesById = createEntriesById(entries);
+	const entriesById = new Map(entries.map((entry) => [entry.id, entry]));
 
 	const resolveLeafEntryId = (
 		turnRecord: ContinuationTurnRecordLike,
@@ -258,7 +252,9 @@ export function resolveTurnContinuationUserPrompt(
 	if (!continuationLeafId) {
 		return null;
 	}
-	const continuationLeaf = createEntriesById(entries).get(continuationLeafId);
+	const continuationLeaf = new Map(entries.map((entry) => [entry.id, entry])).get(
+		continuationLeafId,
+	);
 	if (
 		!isPiSessionMessageEntryWithRecord(continuationLeaf) ||
 		continuationLeaf.message.role !== "user"

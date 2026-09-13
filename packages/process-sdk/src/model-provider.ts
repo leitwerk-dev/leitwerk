@@ -76,17 +76,11 @@ export function defineProviderOptions<TConfig = unknown>(
 		if (fieldId.trim() === "") {
 			throw new Error("Provider option field ids must not be empty");
 		}
-		if (
-			field.minLength !== undefined &&
-			(!Number.isInteger(field.minLength) || field.minLength < 0)
-		) {
-			throw new Error(`Provider option '${fieldId}' minLength must be a non-negative integer`);
-		}
-		if (
-			field.maxLength !== undefined &&
-			(!Number.isInteger(field.maxLength) || field.maxLength < 0)
-		) {
-			throw new Error(`Provider option '${fieldId}' maxLength must be a non-negative integer`);
+		for (const bound of ["minLength", "maxLength"] as const) {
+			const value = field[bound];
+			if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
+				throw new Error(`Provider option '${fieldId}' ${bound} must be a non-negative integer`);
+			}
 		}
 		if (
 			field.minLength !== undefined &&

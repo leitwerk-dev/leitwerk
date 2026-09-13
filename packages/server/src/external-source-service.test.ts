@@ -425,7 +425,7 @@ describe("ExternalSourceService", () => {
 		const second = await service.fire({
 			instanceId: process.id,
 			armingId: "review:file_instruction",
-			input: { instruction: "Second" },
+			input: { instruction: "Second", text: "Ignored by instruction precedence" },
 			event: { path: "/tmp/second" },
 			mergeKey: "review-file",
 		});
@@ -444,10 +444,10 @@ describe("ExternalSourceService", () => {
 			armingId: "review:file_instruction",
 			mergeKey: "review-file",
 			queuedCount: 2,
-			input: { instruction: "Second\n\nThird" },
+			input: { instruction: "Second\n\nThird", text: "Second\n\nThird" },
 		});
 		expect(pending?.input.providerInputs).toEqual([
-			{ instruction: "Second" },
+			{ instruction: "Second", text: "Ignored by instruction precedence" },
 			{ instruction: "Third" },
 		]);
 		expect(pending?.event.providerEvents).toEqual([

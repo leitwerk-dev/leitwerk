@@ -373,6 +373,18 @@ function createFlowRepoLookup(input: {
 	};
 }
 
+function createFlowContextBase<TParams, TState>(ctx: ProcessRuntimeTurnContext<TParams, TState>) {
+	const { process, projects, params, state, workspaceRoot } = ctx;
+	return {
+		process,
+		projects,
+		params,
+		state,
+		...(workspaceRoot ? { workspaceRoot } : {}),
+		repo: createFlowRepoLookup({ projects, workspaceRoot }),
+	};
+}
+
 export function createFlowPromptContext<
 	TParams,
 	TState,
@@ -403,20 +415,12 @@ export function createFlowPromptContext<
 		}
 	}
 	return {
-		process: ctx.process,
-		projects: ctx.projects,
-		params: ctx.params,
-		state: ctx.state,
-		...(ctx.workspaceRoot ? { workspaceRoot: ctx.workspaceRoot } : {}),
+		...createFlowContextBase(ctx),
 		prompts: {
 			initial: readInitialPrompt(ctx.params),
 		},
 		input: productInput as Partial<Record<TConsumedProducts, string>>,
 		prepared: ctx.prepared as TPrepared,
-		repo: createFlowRepoLookup({
-			projects: ctx.projects,
-			workspaceRoot: ctx.workspaceRoot,
-		}),
 	} as FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>;
 }
 
@@ -424,15 +428,7 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 	ctx: ProcessRuntimeTurnContext<TParams, TState>,
 ): FlowAutomaticRunContext<TParams, TState> {
 	return {
-		process: ctx.process,
-		projects: ctx.projects,
-		params: ctx.params,
-		state: ctx.state,
-		...(ctx.workspaceRoot ? { workspaceRoot: ctx.workspaceRoot } : {}),
-		repo: createFlowRepoLookup({
-			projects: ctx.projects,
-			workspaceRoot: ctx.workspaceRoot,
-		}),
+		...createFlowContextBase(ctx),
 		callIntegrationTool(name, args) {
 			if (!ctx.callIntegrationTool) {
 				throw new Error(`Automatic integration tool '${name}' is unavailable`);
