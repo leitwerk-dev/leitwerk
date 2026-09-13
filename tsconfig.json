@@ -83,6 +83,9 @@
 		},
 		{
 			"path": "extensions/ticket-creation"
+		},
+		{
+			"path": "packages/repository-rebase"
 		}
 	],
 	"files": []

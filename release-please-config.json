@@ -99,7 +99,8 @@
 				"@leitwerk-dev/showcase-processes",
 				"@leitwerk-dev/telegram",
 				"@leitwerk-dev/dev-sandbox",
-				"@leitwerk-dev/ticket-creation"
+				"@leitwerk-dev/ticket-creation",
+				"@leitwerk-dev/repository-rebase"
 			]
 		}
 	],
@@ -236,6 +237,11 @@
 		},
 		"extensions/ticket-creation": {
 			"component": "@leitwerk-dev/ticket-creation",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/repository-rebase": {
+			"component": "@leitwerk-dev/repository-rebase",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}
