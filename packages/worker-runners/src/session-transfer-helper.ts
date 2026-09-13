@@ -1,13 +1,12 @@
 import path from "node:path";
 import { Readable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import {
 	parseSessionTransferHelperSpec,
 	prepareTransferArchive,
 } from "@leitwerk-dev/session-transfer";
 
 export const SESSION_TRANSFER_HELPER_ENTRY_PATH =
-	"/app/packages/worker-runners/dist/session-transfer-helper.js";
+	"/app/packages/worker-runners/dist/session-transfer-helper-cli.js";
 export const SESSION_TRANSFER_HELPER_MOUNT_PATH = "/state";
 
 interface HelperEnvironment {
@@ -102,11 +101,5 @@ export async function runSessionTransferHelper(): Promise<void> {
 		headers: { "Content-Type": "application/vnd.leitwerk.session-transfer+tar+zstd" },
 		body: Readable.toWeb(archive) as ReadableStream,
 		duplex: "half",
-	});
-}
-
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-	runSessionTransferHelper().catch(() => {
-		process.exitCode = 1;
 	});
 }

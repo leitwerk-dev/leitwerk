@@ -10,6 +10,7 @@ export default defineConfig((options) => ({
 		"src/kubernetes-worker-runner.ts",
 		"src/kubernetes-http-client.ts",
 		"src/session-transfer-helper.ts",
+		"src/session-transfer-helper-cli.ts",
 	],
 	format: ["esm"],
 	tsconfig: "tsconfig.tsup.json",

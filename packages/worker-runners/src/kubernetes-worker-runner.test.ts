@@ -200,7 +200,7 @@ describe("Kubernetes PVC session exporter", () => {
 				{
 					name: "session-export-helper",
 					image: "ghcr.io/example/worker@sha256:abc",
-					command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper.js"],
+					command: ["node", "/app/packages/worker-runners/dist/session-transfer-helper-cli.js"],
 				},
 			],
 		});

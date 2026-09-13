@@ -23,7 +23,10 @@ npm run build
 
 The full gate reports the duration of every validation phase. In GitHub Actions it also
 writes the timing table to the job summary. Use those measurements before parallelizing or
-removing a validation phase.
+removing a validation phase. Typechecking emits declarations only, preserving the JavaScript
+bundles produced by the build. Integration tests launch the bundled session exporter CLI as a
+child process to verify startup and failure exits; importing the helper library must not start
+an export.
 
 A development composition applies the same gate to its external packages, extensions, and test roots:
 
