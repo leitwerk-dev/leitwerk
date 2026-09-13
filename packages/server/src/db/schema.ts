@@ -11,6 +11,18 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const startupObservations = sqliteTable(
+	"startup_observations",
+	{
+		workerLeaseId: text("worker_lease_id")
+			.notNull()
+			.references(() => workerLeases.id, { onDelete: "cascade" }),
+		milestone: text("milestone").notNull(),
+		observationJson: text("observation_json").notNull(),
+	},
+	(t) => [uniqueIndex("idx_startup_observations_lease_milestone").on(t.workerLeaseId, t.milestone)],
+);
+
 export const processInstances = sqliteTable(
 	"process_instances",
 	{

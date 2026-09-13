@@ -123,7 +123,7 @@ $effect(() => {
 
 		{#if expanded}
 			<div class="steps">
-				<ProgressChecklistRows steps={run.steps.map((step) => ({ ...step, detail: step.safeSummary }))} />
+				<ProgressChecklistRows steps={run.steps.map((step) => ({ ...step, detail: step.safeSummary, timing: { startedAt: step.startedAt ?? null, endedAt: step.completedAt ?? null, running: !["completed", "failed", "cancelled"].includes(run.status) && step.status === "in_progress" } }))} />
 			</div>
 			{#if run.status === "failed" && onTryAgain}
 				<button type="button" class="try-again" onclick={onTryAgain}>Try again</button>

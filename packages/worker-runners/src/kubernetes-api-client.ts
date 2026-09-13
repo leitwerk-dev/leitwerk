@@ -10,6 +10,14 @@ import {
 import type { WorkerExitInfo } from "./types.js";
 
 export interface KubernetesPodSummary {
+	uid?: string;
+	createdAt?: string;
+	scheduledAt?: string;
+	containerStartedAt?: string;
+	node?: string;
+	imageId?: string;
+	pvcName?: string;
+	resources?: { cpu?: string; memory?: string };
 	name: string;
 	namespace: string;
 	labels: Record<string, string>;
@@ -29,7 +37,17 @@ export interface KubernetesApiRequestOptions {
 	signal?: AbortSignal;
 }
 
+export interface KubernetesPvcSummary {
+	uid?: string;
+	phase?: string;
+	storageClass?: string;
+}
 export interface KubernetesApiClient {
+	getPersistentVolumeClaim?(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPvcSummary | null>;
 	ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void>;
 	deleteNamespace(name: string): Promise<void>;
 	listNamespaces(labels: Record<string, string>): Promise<KubernetesNamespaceSummary[]>;
@@ -54,7 +72,11 @@ export interface KubernetesApiClient {
 		namespace: string,
 		options?: KubernetesApiRequestOptions,
 	): Promise<KubernetesPodSummary | null>;
-	listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]>;
+	listPodEvents(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodEventSummary[]>;
 	listPods(namespace: string, labels: Record<string, string>): Promise<KubernetesPodSummary[]>;
 	onPodExit(
 		name: string,
@@ -185,7 +207,12 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 			: null;
 	}
 
-	async listPodEvents(name: string, namespace: string): Promise<KubernetesPodEventSummary[]> {
+	async listPodEvents(
+		name: string,
+		namespace: string,
+		options?: KubernetesApiRequestOptions,
+	): Promise<KubernetesPodEventSummary[]> {
+		options?.signal?.throwIfAborted();
 		return (this.podEvents.get(key(namespace, name)) ?? []).map((event) => ({ ...event }));
 	}
 

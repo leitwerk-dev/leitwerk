@@ -1,6 +1,5 @@
 import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
-import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import type { ResolvedTurnStart } from "@leitwerk-dev/domain";
 import {
 	canonicalJsonEqual,
@@ -48,7 +47,8 @@ function assertModelMatchesStart(
 	}
 }
 
-function assertCompatibility(manifest: ManagedPiResourceManifest): void {
+async function assertCompatibility(manifest: ManagedPiResourceManifest): Promise<void> {
+	const { VERSION: PI_VERSION } = await import("@earendil-works/pi-coding-agent");
 	if (manifest.compatibility.workerApiVersion !== WORKER_API_VERSION) {
 		fail(
 			`server snapshot worker API version '${manifest.compatibility.workerApiVersion}' does not match local worker API version '${WORKER_API_VERSION}'`,
@@ -88,7 +88,7 @@ export async function readAndValidateManagedPiResourceManifest(input: {
 	}
 	const manifest = parsePiResourceManifest(parsed);
 	assertModelMatchesStart(manifest, input.start);
-	assertCompatibility(manifest);
+	await assertCompatibility(manifest);
 	assertJsonEqual(manifest.providerOptions, input.start.providerOptions, "providerOptions");
 	assertJsonEqual(
 		manifest.providerWorkerConfig,

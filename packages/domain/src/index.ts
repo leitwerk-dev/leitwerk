@@ -164,6 +164,7 @@ export {
 	parseSemanticEntryRef,
 	type SemanticEntryRef,
 } from "./semantic-entry-refs.js";
+export * from "./startup-observation.js";
 export {
 	humanizeProcessLabel,
 	normalizeStringArray,

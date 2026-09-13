@@ -230,6 +230,13 @@ process detail then renders authoritative startup history inside the Chronicle. 
 name every state. The current step uses the operational accent. Failed steps show bounded
 remediation and the existing recovery action. Process detail never selects a Launch Run to infer
 startup: it uses the correlated worker start, lease, readiness observation, and accepted first turn.
+Startup rows retain observed phase durations: Request worker, Start worker (allocation through
+connection), Prepare runtime (workspace, tools and provider), and Start first turn. The active phase
+and overall startup show elapsed time even between server updates. Completed and failed phases
+stop their timers. Missing historical observations show unavailable timing, never a fabricated zero.
+Storage provisioning, scheduling and image startup remain grouped until separately observed.
+Worker-ready duration excludes the subsequent model response wait. The timer text does not trigger
+screen-reader announcements every second; status changes retain their live announcements.
 A failed attempt remains visible after recovery. Terminal launcher runs collapse to an expandable
 summary; failed runs expand again when the operator selects the summary.
 
@@ -258,3 +265,10 @@ The inline reasoning preview reserves four wrapped text lines at a fixed height.
 The initial snapshot carries a compact active-turn type, separate from `TurnTraceSnapshot`. The browser retains bounded inline state while the overlay is closed and never prefetches detail history. Opening the overlay starts an independent request; a slow request cannot block the page shell or controls. Reconnect refreshes full history only while the overlay remains open.
 
 Expanded history remains visible during recovery and turn completion. A quiet loading status reports recovery; actual failures offer an inline Retry action. The overlay preserves the reader's position and follows new output only while the reader is already at the bottom. Full history means all server-recorded activity for the selected turn record. A finished turn without a session preview uses its persisted compact summary, so a worker crash does not replace recorded reasoning with an empty preview.
+
+The process UI snapshot API optionally includes `startup.workerStarts` for timing
+analysis. Each entry identifies a physical lease and its initial accepted turn,
+with durable observations, non-secret runtime metadata and clock-labelled
+intervals. Missing endpoints and invalid ordering have null durations. Source
+precision accompanies Kubernetes observations; binding timestamps are sampling
+bounds. This diagnostic collection does not change the four-step startup UI.

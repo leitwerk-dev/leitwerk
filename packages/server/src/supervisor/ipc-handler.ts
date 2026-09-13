@@ -44,6 +44,7 @@ export interface IpcHandlerDeps
 		RepositoryBundle,
 		"processes" | "projects" | "inputs" | "events" | "leases" | "turnRecords"
 	> {
+	startupObservations?: RepositoryBundle["startupObservations"];
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	processQuestions?: ProcessQuestionService;
 	broadcaster: Broadcaster;

@@ -34,6 +34,7 @@ export class DatabaseSchemaMismatchError extends Error {
 }
 
 const ALL_TABLES = [
+	schema.startupObservations,
 	schema.processInstances,
 	schema.launchRuns,
 	schema.launchRunReplays,
@@ -326,6 +327,15 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260911_add_startup_observations",
+		tableNames: ["startup_observations"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) && existingTableSql(sqlite, "startup_observations") === null,
+		apply(sqlite) {
+			createTableWithIndexes(sqlite, schema.startupObservations);
+		},
+	},
 	{
 		id: "20260823_add_ticket_destination_recents",
 		tableNames: ["ticket_destination_recents"],

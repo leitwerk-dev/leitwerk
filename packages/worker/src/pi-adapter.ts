@@ -1,6 +1,6 @@
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { type AssistantMessage, retryAssistantCall } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type {
 	AgentSession,
 	AgentSessionEvent,
@@ -1532,6 +1532,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		const controller = new AbortController();
 		this.continuationRetryAbortController = controller;
 		try {
+			const { retryAssistantCall } = await import("@earendil-works/pi-ai");
 			await retryAssistantCall(
 				async () => {
 					await this.session.agent.continue();
@@ -2074,6 +2075,12 @@ function managedServicesKey(agentDir: string, sessionCwd: string): string {
 export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 	private readonly preparedServices = new Map<string, AgentSessionServices>();
 
+	constructor() {
+		// Module loading can overlap IPC connection and workspace materialization.
+		// Bootstrap awaits the same module and reports any import failure.
+		void import("@earendil-works/pi-coding-agent").catch(() => undefined);
+	}
+
 	async prepareManagedBootstrap(
 		opts: PiManagedBootstrapOptions,
 	): Promise<PiManagedBootstrapResult> {
@@ -2178,7 +2185,7 @@ export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 				: {}),
 			customTools: [
 				LEITWERK_TOOL_BOOTSTRAP,
-				createRepositoryBashTool(sessionCwd) as ToolDefinition,
+				(await createRepositoryBashTool(sessionCwd)) as ToolDefinition,
 			],
 			noTools: "builtin",
 		});

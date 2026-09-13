@@ -51,6 +51,7 @@ import {
 	timelinePresentationForTurnType,
 } from "@leitwerk-dev/protocol";
 import type { SessionSummary } from "./db/turn-summary-repo.js";
+import { physicalWorkerStarts } from "./physical-worker-starts.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess, getProcessGraph } from "./process-graph.js";
@@ -998,6 +999,7 @@ export function buildProcessUiSnapshotProjections(input: {
 	turnStarts?: { getById(id: string): TurnStartRecord | null };
 	startupTurnStarts?: readonly TurnStartRecord[];
 	workerLeases?: readonly WorkerLease[];
+	startupObservations?: readonly import("@leitwerk-dev/domain").StartupObservation[];
 	turnRecords: readonly ProcessTurnRecord[];
 	turnAnnotations: readonly ProcessTurnAnnotation[];
 	events: readonly ProcessEvent[];
@@ -1076,6 +1078,12 @@ export function buildProcessUiSnapshotProjections(input: {
 			turnRecords: input.turnRecords,
 		}),
 	);
+	startup.workerStarts = physicalWorkerStarts({
+		leases: input.workerLeases ?? [],
+		turnStarts: input.startupTurnStarts ?? [],
+		turnRecords: input.turnRecords,
+		observations: input.startupObservations ?? [],
+	});
 	return {
 		process: projectProcessForUiSnapshot(input.process),
 		primaryPath: compactPrimaryPathSnapshot(input.primaryPathSnapshot),
@@ -1198,6 +1206,9 @@ export class ProcessUiSnapshotAssembler {
 			turnStarts: this.deps.turnStarts,
 			startupTurnStarts,
 			workerLeases,
+			startupObservations: workerLeases.flatMap(
+				(lease) => this.deps.startupObservations?.listByLease(lease.id) ?? [],
+			),
 			turnRecords,
 			turnAnnotations,
 			events,

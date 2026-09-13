@@ -23,6 +23,7 @@ import {
 	redactKubernetesDiagnostic,
 	volumeRefFromPvc,
 } from "./kubernetes-manifests.js";
+import { sampleKubernetesStartup, startupReceipt } from "./kubernetes-startup-sampler.js";
 import { UnitExitNotifier } from "./runner-utils.js";
 import {
 	SESSION_TRANSFER_HELPER_ENTRY_PATH,
@@ -113,8 +114,9 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	const podDisappearanceTimeoutMs = options.podDisappearanceTimeoutMs ?? 30_000;
 	const podDisappearancePollIntervalMs = options.podDisappearancePollIntervalMs ?? 250;
 
+	const samplers = new Map<string, ReturnType<typeof sampleKubernetesStartup>>();
 	const volume: ProcessVolume = {
-		async ensure(instanceId, requirements) {
+		async ensure(instanceId, requirements, observer) {
 			const namespaceManifest = buildKubernetesProcessNamespaceManifest({
 				instanceId,
 				processNamespacePrefix: options.processNamespacePrefix,
@@ -165,7 +167,27 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 							}),
 						]
 					: []),
-				client.ensurePersistentVolumeClaim(manifest),
+				(async () => {
+					startupReceipt(observer, "pvc_requested", {
+						storageClass: manifest.spec.storageClassName,
+					});
+					await client.ensurePersistentVolumeClaim(manifest);
+					startupReceipt(observer, "pvc_acknowledged", {
+						storageClass: manifest.spec.storageClassName,
+					});
+					if (observer?.observe) {
+						samplers.get(instanceId)?.stop();
+						samplers.set(
+							instanceId,
+							sampleKubernetesStartup(
+								client,
+								observer,
+								manifest.metadata.namespace,
+								manifest.metadata.name,
+							),
+						);
+					}
+				})(),
 			]);
 			return volumeRefFromPvc({
 				instanceId,
@@ -181,6 +203,8 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			);
 		},
 		async deleteProcessResources(instanceId) {
+			samplers.get(instanceId)?.stop();
+			samplers.delete(instanceId);
 			await client.deleteNamespace(namespaceForProcess(instanceId));
 		},
 	};
@@ -290,8 +314,20 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			});
 			observer?.report("allocating_runtime");
 			try {
+				startupReceipt(observer, "pod_requested", {
+					image: input.image.reference,
+					...input.resources,
+				});
 				await client.createPod(manifest);
+				startupReceipt(observer, "pod_acknowledged");
+				samplers.get(input.instanceId)?.attachPod({
+					name: manifest.metadata.name,
+					workerId: input.workerId,
+					instanceId: input.instanceId,
+				});
 			} catch (error) {
+				samplers.get(input.instanceId)?.stop();
+				samplers.delete(input.instanceId);
 				throw new WorkerStartDiagnosticError(
 					boundedKubernetesStartDiagnostic(error, Object.values(input.env)),
 					error,
@@ -310,6 +346,8 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			});
 		},
 		async stop(ref: WorkerUnitRef, opts: StopWorkerOptions): Promise<void> {
+			samplers.get(ref.instanceId)?.stop();
+			samplers.delete(ref.instanceId);
 			await deletePodAndWait(
 				ref.unitId,
 				ref.namespace ?? namespaceForProcess(ref.instanceId),
@@ -343,7 +381,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			}
 			return descriptors;
 		},
-		async adopt(descriptor: WorkerUnitDescriptor): Promise<WorkerUnit> {
+		async adopt(descriptor: WorkerUnitDescriptor, observer): Promise<WorkerUnit> {
 			const podNamespace = descriptor.namespace ?? namespaceForProcess(descriptor.instanceId);
 			const pod = await client.getPod(descriptor.unitId, podNamespace);
 			const identity = pod ? parseWorkerUnitIdentity(pod.labels) : null;
@@ -363,6 +401,12 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				unitId: descriptor.unitId,
 				namespace: podNamespace,
 			};
+			if (observer?.observe && pod.pvcName) {
+				samplers.get(descriptor.instanceId)?.stop();
+				const sampler = sampleKubernetesStartup(client, observer, podNamespace, pod.pvcName);
+				sampler.attachPod({ name: ref.unitId, workerId: ref.workerId, instanceId: ref.instanceId });
+				samplers.set(descriptor.instanceId, sampler);
+			}
 			watchPod(ref.unitId, podNamespace);
 			return exitNotifier.wrapUnit(ref, unitKey(podNamespace, ref.unitId), {
 				replacementHandoff: "stop-before-replacement",
