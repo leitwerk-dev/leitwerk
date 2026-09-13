@@ -168,6 +168,58 @@ describe("createWebSocketWorkerIpc", () => {
 		}
 	});
 
+	it("cancels initial backoff on stop and records sanitized connection failures", async () => {
+		vi.useFakeTimers();
+		const diagnostics: string[] = [];
+		const ipc = createWebSocketWorkerIpc({
+			serverUrl: "http://localhost",
+			instanceId: "test",
+			workerId: "test",
+			token: "secret-token",
+			reconnect: true,
+			onDiagnostic: (message) => diagnostics.push(message),
+		});
+		try {
+			ipc.start();
+			FakeWebSocket.instances[0].close(1006, "secret-token");
+			ipc.stop();
+			await vi.runAllTimersAsync();
+			expect(FakeWebSocket.instances).toHaveLength(1);
+			expect(diagnostics).toEqual(["Worker connection initial_connect: attempt=1; close=1006"]);
+		} finally {
+			ipc.stop();
+			vi.useRealTimers();
+		}
+	});
+
+	it("retains only allowlisted error codes and clears diagnostics after recovery", () => {
+		const diagnostics: string[] = [];
+		const ipc = createWebSocketWorkerIpc({
+			serverUrl: "http://localhost",
+			instanceId: "test",
+			workerId: "test",
+			token: "secret-token",
+			reconnect: true,
+			onDiagnostic: (message) => diagnostics.push(message),
+		});
+		try {
+			ipc.start();
+			const socket = FakeWebSocket.instances[0];
+			socket.emit("error", { error: { message: "secret-token", cause: { code: "ECONNREFUSED" } } });
+			socket.emit("error", { error: { code: "secret-token", message: "secret-token" } });
+			socket.open();
+			socket.emit("error", { error: { code: "ECONNRESET" } });
+			expect(diagnostics).toEqual([
+				"Worker connection initial_connect: attempt=1; error=ECONNREFUSED",
+				"Worker connection initial_connect: attempt=1; error=websocket_error",
+				"",
+				"Worker connection reconnecting: attempt=1; error=ECONNRESET",
+			]);
+		} finally {
+			ipc.stop();
+		}
+	});
+
 	it("reports websocket send failures", () => {
 		const errors: Error[] = [];
 		const ipc = createIpc();

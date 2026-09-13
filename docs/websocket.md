@@ -75,3 +75,17 @@ These frames notify clients that durable server state has changed, triggering in
 - **`primary_path.turn_started`, `primary_path.assistant_committed` (`durable`):** Turn lifecycle updates. An open overlay follows the same turn record through completion and loads its committed trace.
 
 `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` returns `state: "live" | "committed"` and `throughEventSequence`. Live responses replay all recorded events for that exact turn record, without a lookback limit. Committed responses use the retained session tree plus recorded operational events. When recorded events contain assistant text, thinking, tool calls, or tool results missing from the retained tree, the response uses the recorded event history. It preserves the session-derived prompt, missing usage, and diagnostics. A complete session remains authoritative when recorded events add no activity. A worker failure before snapshot upload does not erase recorded history. Ship the protocol, server, migrations, and bundled UI together; no new configuration is required.
+
+### Worker connection recovery
+
+Worker reconnect timers keep the process alive, including before the first server
+connection. Explicit transport shutdown cancels pending retries. The server retains
+ownership of the startup deadline.
+
+Connection failures report the initial-connect or reconnect stage, attempt number,
+and an allowlisted transport error code or numeric WebSocket close code. Raw error
+messages, close reasons, URLs, and credentials are omitted. Workers log these
+summaries to stderr and retain the first failure plus latest observation in the
+Kubernetes termination message when available. The runner copies that message into
+the durable failure reason before reclaiming a terminated pod. Successful connection
+clears the retained diagnostic so a later failure does not inherit stale evidence.
