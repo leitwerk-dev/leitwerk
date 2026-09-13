@@ -1,9 +1,10 @@
 import path from "node:path";
-import type {
-	PreparedTurnStart,
-	ProcessInstance,
-	ProcessProject,
-	WorkerBootstrapReceipt,
+import {
+	type PreparedTurnStart,
+	type ProcessInstance,
+	type ProcessProject,
+	readNonBlankString as readNonEmptyString,
+	type WorkerBootstrapReceipt,
 } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import type {
@@ -104,10 +105,6 @@ export interface BootstrapWorkerRuntimeResult {
 		providerId: string;
 		revision: number;
 	};
-}
-
-function readNonEmptyString(value: unknown): string | null {
-	return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
 function withoutCredentialValues(payload: WorkerStartPayload): WorkerStartPayload {

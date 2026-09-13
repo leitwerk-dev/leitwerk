@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import {
 	type CapabilityToken,
 	type CatalogExtensionAPI,
@@ -101,14 +102,6 @@ export const RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV = "LEITWERK_EXTENSION_ALLOWED_R
 
 const jiti = createJiti(import.meta.url);
 
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 const optionalStringArraySchema = v.optional(v.array(v.string()));
 const resolvedExtensionEntrySchema = v.object({
 	packageName: v.string(),

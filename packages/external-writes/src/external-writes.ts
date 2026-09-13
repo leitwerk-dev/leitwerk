@@ -26,22 +26,14 @@ export function createWriteIdentity(writeType: ExternalWriteType, dedupKey: stri
 	return { writeType, dedupKey };
 }
 
-function alreadyWrittenResult(identity: WriteIdentity): EnsureWriteResult {
-	return { performed: false, dedupKey: identity.dedupKey };
-}
-
-function performedWriteResult(identity: WriteIdentity): EnsureWriteResult {
-	return { performed: true, dedupKey: identity.dedupKey };
-}
-
-function recordWrite(
+export function recordWriteIfMissing(
 	repo: ExternalWriteLogRepoLike,
 	instanceId: string,
 	identity: WriteIdentity,
-	metadata: Record<string, unknown>,
+	metadata: Record<string, unknown> = {},
 ): EnsureWriteResult {
 	if (repo.hasDedupKey(identity.dedupKey)) {
-		return alreadyWrittenResult(identity);
+		return { performed: false, dedupKey: identity.dedupKey };
 	}
 
 	try {
@@ -53,21 +45,12 @@ function recordWrite(
 		});
 	} catch (error) {
 		if (repo.hasDedupKey(identity.dedupKey)) {
-			return alreadyWrittenResult(identity);
+			return { performed: false, dedupKey: identity.dedupKey };
 		}
 		throw error;
 	}
 
-	return performedWriteResult(identity);
-}
-
-export function recordWriteIfMissing(
-	repo: ExternalWriteLogRepoLike,
-	instanceId: string,
-	identity: WriteIdentity,
-	metadata: Record<string, unknown> = {},
-): EnsureWriteResult {
-	return recordWrite(repo, instanceId, identity, metadata);
+	return { performed: true, dedupKey: identity.dedupKey };
 }
 
 export async function ensureWrite(
@@ -77,8 +60,8 @@ export async function ensureWrite(
 	execute: () => Promise<Record<string, unknown>>,
 ): Promise<EnsureWriteResult> {
 	if (repo.hasDedupKey(identity.dedupKey)) {
-		return alreadyWrittenResult(identity);
+		return { performed: false, dedupKey: identity.dedupKey };
 	}
 
-	return recordWrite(repo, instanceId, identity, await execute());
+	return recordWriteIfMissing(repo, instanceId, identity, await execute());
 }

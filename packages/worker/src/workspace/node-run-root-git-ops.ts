@@ -21,10 +21,6 @@ import { execa } from "execa";
 import fg from "fast-glob";
 import type { RunRootGitOps } from "./run-root.js";
 
-function toAbsolute(targetPath: string): string {
-	return path.resolve(targetPath);
-}
-
 export class NodeRunRootGitOps implements RunRootGitOps {
 	#credentialDir: string | null = null;
 
@@ -63,7 +59,7 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		projectKey?: string,
 	): Promise<string> {
 		const result = await execa(resolveGitBinary(), repositoryGitArgs(args), {
-			...(cwd ? { cwd: toAbsolute(cwd) } : {}),
+			...(cwd ? { cwd: path.resolve(cwd) } : {}),
 			env: repositoryGitSubprocessEnv(projectKey ?? "", { GIT_TERMINAL_PROMPT: "0" }),
 			extendEnv: false,
 			stdin: "ignore",
@@ -72,13 +68,13 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 	}
 
 	async writeFile(repoDir: string, filePath: string, content: string): Promise<void> {
-		const absolutePath = toAbsolute(path.join(repoDir, filePath));
+		const absolutePath = path.resolve(path.join(repoDir, filePath));
 		mkdirSync(path.dirname(absolutePath), { recursive: true });
 		writeFileSync(absolutePath, content, "utf8");
 	}
 
 	async readFile(repoDir: string, filePath: string): Promise<string | null> {
-		const absolutePath = toAbsolute(path.join(repoDir, filePath));
+		const absolutePath = path.resolve(path.join(repoDir, filePath));
 		if (!existsSync(absolutePath)) {
 			return null;
 		}
@@ -86,7 +82,7 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 	}
 
 	async clone(repoLocator: string, targetDir: string): Promise<void> {
-		const absoluteTargetDir = toAbsolute(targetDir);
+		const absoluteTargetDir = path.resolve(targetDir);
 		rmSync(absoluteTargetDir, { recursive: true, force: true });
 		mkdirSync(path.dirname(absoluteTargetDir), { recursive: true });
 		await this.runGit(
@@ -121,7 +117,7 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 	}
 
 	async listFiles(repoDir: string, pattern: string): Promise<string[]> {
-		const absoluteRoot = toAbsolute(repoDir);
+		const absoluteRoot = path.resolve(repoDir);
 		if (!existsSync(absoluteRoot)) {
 			return [];
 		}

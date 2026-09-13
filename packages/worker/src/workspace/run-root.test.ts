@@ -12,6 +12,16 @@ import {
 } from "./run-root.js";
 
 describe("materializeRunRoot", () => {
+	it("reports artifact write failures as preparation errors", async () => {
+		const git = new FakeGitOps(new Map());
+		git.writeFile = async () => {
+			throw new Error("disk full");
+		};
+		const preparation = materializeRunRoot(planRunRoot("/work/empty", "ag-write", []), git);
+		await expect(preparation).rejects.toBeInstanceOf(RunRootPreparationError);
+		await expect(preparation).rejects.toThrow("Workspace preparation failed: write: disk full");
+	});
+
 	it("rejects component keys that escape the workspace root", async () => {
 		const ws = path.join("/", "work", "space");
 		const git: RunRootGitOps = new FakeGitOps(new Map());
@@ -105,6 +115,16 @@ describe("materializeRunRoot", () => {
 });
 
 describe("validateRunRoot", () => {
+	it.each([null, "", "{", "{}"])("rejects absent or invalid manifest %j", async (raw) => {
+		const git = new FakeGitOps(new Map());
+		if (raw !== null) await git.writeFile("/work/invalid", ".leitwerk/components.json", raw);
+		expect(await validateRunRoot("/work/invalid", [], git)).toEqual({
+			valid: false,
+			diff: { stale: [], missing: [], extra: [], unchanged: [] },
+			existingManifest: null,
+		});
+	});
+
 	it("detects stale, missing, and extra components", async () => {
 		const ws = path.join("/", "v", "ws");
 		const git: RunRootGitOps = new FakeGitOps(new Map());

@@ -1,13 +1,7 @@
 import type { ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
 import {
-	type BuiltProcessLauncherDefinition,
-	type BuiltProcessWatcherDefinition,
 	type BuiltServerProcessDefinition,
-	type BuiltUiProcessDefinition,
 	type BuiltWorkerProcessDefinition,
-	buildProcessLaunchers,
-	buildProcessWatchers,
-	buildUiProcessDefinition,
 	createServerProcessBuilder,
 	createWorkerProcessBuilder,
 	type ExtensionProcessDefinition,
@@ -211,23 +205,11 @@ export function buildServerProcessForTest<TParams = unknown, TState = unknown>(
 	return builder.getDefinition();
 }
 
-export function buildProcessLaunchersForTest<TParams = unknown, TState = unknown>(
-	process: ExtensionProcessDefinition<TParams, TState>,
-): BuiltProcessLauncherDefinition<TParams> | undefined {
-	return buildProcessLaunchers(process);
-}
-
-export function buildProcessWatchersForTest<TParams = unknown, TState = unknown>(
-	process: ExtensionProcessDefinition<TParams, TState>,
-): BuiltProcessWatcherDefinition<TParams> | undefined {
-	return buildProcessWatchers(process);
-}
-
-export function buildUiProcessForTest<TParams = unknown, TState = unknown>(
-	process: ExtensionProcessDefinition<TParams, TState>,
-): BuiltUiProcessDefinition<TParams, TState> | undefined {
-	return buildUiProcessDefinition(process);
-}
+export {
+	buildProcessLaunchers as buildProcessLaunchersForTest,
+	buildProcessWatchers as buildProcessWatchersForTest,
+	buildUiProcessDefinition as buildUiProcessForTest,
+} from "@leitwerk-dev/process-sdk";
 
 export async function runWorkerTurnForTest<TParams = unknown, TState = unknown>(
 	handler: WorkerTurnHandler<TParams, TState>,

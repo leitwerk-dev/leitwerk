@@ -1,8 +1,12 @@
 export {
+	createTestConfigSnapshot as testConfigSnapshot,
+	createTestIpcEnvelopeBase as baseEnvelope,
+	flushAsyncWork,
+} from "@leitwerk-dev/worker-protocol";
+export {
 	createInProcessWorkerSpawn,
 	type InProcessWorkerSpawnOptions,
 } from "../in-process-worker.js";
-export { baseEnvelope, flushAsyncWork, testConfigSnapshot } from "./ipc-harness.js";
 export {
 	createSchemaDrivenStubPiFactory,
 	createSchemaDrivenToolCallScriptResolver,

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 import {
 	buildExtensionCatalog,
 	createCatalogWorkerDefinitionResolver,
@@ -48,10 +49,6 @@ import { NodeRunRootGitOps } from "./workspace/node-run-root-git-ops.js";
 import type { RunRootGitOps } from "./workspace/run-root.js";
 
 let runtimeCatalogPromise: Promise<ExtensionCatalog> | null = null;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function listWorkspacePatterns(workspaces: unknown): string[] {
 	if (Array.isArray(workspaces)) {

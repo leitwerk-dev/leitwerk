@@ -18,6 +18,7 @@ import type { RunRootGitOps } from "../workspace/run-root.js";
 import type { WorkerRuntimeScheduler } from "./adapters.js";
 import {
 	activatePreparedStart,
+	type BootstrapWorkerRuntimeResult,
 	bootstrapWorkerRuntime,
 	type PreparedStartActivation,
 } from "./bootstrap.js";
@@ -57,12 +58,8 @@ export interface PreparedLlmSession extends PreparedSessionBase {
 
 export type PreparedWorkerSession = PreparedAutomaticSession | PreparedLlmSession;
 
-export interface CredentialRefreshDescriptor {
-	agentDir: string;
-	declaredCredentialPaths: readonly string[];
-	providerId: string;
-	revision: number;
-}
+export interface CredentialRefreshDescriptor
+	extends NonNullable<BootstrapWorkerRuntimeResult["credentialRefresh"]> {}
 
 export interface WorkerBootstrapCompletion {
 	session: PreparedWorkerSession;

@@ -1,5 +1,7 @@
 import path from "node:path";
+import { isPathInside } from "@leitwerk-dev/process-sdk";
 import {
+	type ComponentCheckoutPlan,
 	type ComponentManifest,
 	type ComponentManifestEntry,
 	deserializeManifest,
@@ -30,12 +32,7 @@ export type RunRootGitOps = GitOps & {
 export interface RunRootPlan {
 	workspaceRoot: string;
 	instanceId: string;
-	components: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>;
+	components: ComponentCheckoutPlan[];
 }
 
 export interface MaterializeResult {
@@ -69,27 +66,13 @@ const SKILLS_DIR_REL = path.join(".leitwerk", "skills");
 const SKILL_GLOB = "**/.cursor/skills/**/SKILL.md";
 const AGENTS_GLOB = "**/AGENTS.md";
 
-function isPathInside(parent: string, child: string): boolean {
-	const relative = path.relative(parent, child);
-	return (
-		relative !== "" &&
-		relative !== ".." &&
-		!relative.startsWith(`..${path.sep}`) &&
-		!path.isAbsolute(relative)
-	);
-}
-
-function safeJoinInsideWorkspace(workspaceRoot: string, childPath: string): string {
+function componentDir(workspaceRoot: string, childPath: string): string {
 	const root = path.resolve(workspaceRoot);
 	const target = path.resolve(root, childPath);
 	if (!isPathInside(root, target)) {
 		throw new Error(`Component key '${childPath}' resolves outside workspace root '${root}'`);
 	}
 	return target;
-}
-
-function componentDir(workspaceRoot: string, key: string): string {
-	return safeJoinInsideWorkspace(workspaceRoot, key);
 }
 
 function skillIdFromSkillPath(filePath: string): string | null {
@@ -101,12 +84,7 @@ function skillIdFromSkillPath(filePath: string): string | null {
 export function planRunRoot(
 	workspaceRoot: string,
 	instanceId: string,
-	projectSnapshots: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>,
+	projectSnapshots: ComponentCheckoutPlan[],
 ): RunRootPlan {
 	return {
 		workspaceRoot,
@@ -123,12 +101,10 @@ async function materializeComponentEntry(
 	const dir = componentDir(plan.workspaceRoot, comp.key);
 	await git.clone(comp.repoLocator, dir);
 	await git.checkout(dir, comp.baseBranch);
-	if (await git.branchExists(dir, comp.workBranch)) {
-		await git.checkout(dir, comp.workBranch);
-	} else {
+	if (!(await git.branchExists(dir, comp.workBranch))) {
 		await git.createBranch(dir, comp.workBranch, comp.baseBranch);
-		await git.checkout(dir, comp.workBranch);
 	}
+	await git.checkout(dir, comp.workBranch);
 	return {
 		key: comp.key,
 		repoLocator: comp.repoLocator,
@@ -242,7 +218,7 @@ async function finalizeRunRoot(
 	git: RunRootGitOps,
 	entries: ComponentManifestEntry[],
 	errors: string[],
-) {
+): Promise<MaterializeResult> {
 	const manifest: ComponentManifest = {
 		version: 1,
 		instanceId: plan.instanceId,
@@ -259,15 +235,6 @@ async function finalizeRunRoot(
 		errors.push(`write: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	return { manifest, aggregatedAgentsMdSources, loadedSkills };
-}
-
-function finishRunRoot(
-	plan: RunRootPlan,
-	entries: ComponentManifestEntry[],
-	errors: string[],
-	result: Awaited<ReturnType<typeof finalizeRunRoot>>,
-): MaterializeResult {
 	const expectedKeys = new Set(plan.components.map((component) => component.key));
 	const hasAllExpectedEntries =
 		entries.length === expectedKeys.size &&
@@ -277,7 +244,9 @@ function finishRunRoot(
 	}
 	return {
 		ok: true,
-		...result,
+		manifest,
+		aggregatedAgentsMdSources,
+		loadedSkills,
 		errors,
 	};
 }
@@ -288,45 +257,17 @@ export async function materializeRunRoot(
 ): Promise<MaterializeResult> {
 	const errors: string[] = [];
 	const entries = await collectMaterializedEntries(plan, git, errors);
-	const { manifest, aggregatedAgentsMdSources, loadedSkills } = await finalizeRunRoot(
-		plan,
-		git,
-		entries,
-		errors,
-	);
-
-	return finishRunRoot(plan, entries, errors, {
-		manifest,
-		aggregatedAgentsMdSources,
-		loadedSkills,
-	});
+	return finalizeRunRoot(plan, git, entries, errors);
 }
 
 export async function validateRunRoot(
 	workspaceRoot: string,
-	serverProjects: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>,
+	serverProjects: ComponentCheckoutPlan[],
 	git: GitOps,
 ): Promise<ValidationResult> {
 	const raw = await git.readFile(workspaceRoot, MANIFEST_REL);
-	if (raw === null) {
-		return {
-			valid: false,
-			diff: {
-				stale: [],
-				missing: serverProjects.map((p) => p.key),
-				extra: [],
-				unchanged: [],
-			},
-			existingManifest: null,
-		};
-	}
-	const parsed = deserializeManifest(raw);
-	if (!parsed.ok) {
+	const parsed = raw === null ? null : deserializeManifest(raw);
+	if (!parsed?.ok) {
 		return {
 			valid: false,
 			diff: {
@@ -365,16 +306,5 @@ export async function repairRunRoot(
 			null,
 	);
 
-	const { manifest, aggregatedAgentsMdSources, loadedSkills } = await finalizeRunRoot(
-		plan,
-		git,
-		manifestEntries,
-		errors,
-	);
-
-	return finishRunRoot(plan, manifestEntries, errors, {
-		manifest,
-		aggregatedAgentsMdSources,
-		loadedSkills,
-	});
+	return finalizeRunRoot(plan, git, manifestEntries, errors);
 }

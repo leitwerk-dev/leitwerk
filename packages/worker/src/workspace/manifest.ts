@@ -7,11 +7,14 @@ export interface ComponentManifest {
 	components: ComponentManifestEntry[];
 }
 
-export interface ComponentManifestEntry {
+export interface ComponentCheckoutPlan {
 	key: string;
 	repoLocator: string;
 	baseBranch: string;
 	workBranch: string;
+}
+
+export interface ComponentManifestEntry extends ComponentCheckoutPlan {
 	clonedAt: string;
 	headSha: string;
 }
@@ -84,12 +87,7 @@ export function deserializeManifest(
 
 export function diffManifest(
 	existing: ComponentManifest,
-	serverProjects: Array<{
-		key: string;
-		repoLocator: string;
-		baseBranch: string;
-		workBranch: string;
-	}>,
+	serverProjects: ComponentCheckoutPlan[],
 ): ManifestDiff {
 	const stale: string[] = [];
 	const missing: string[] = [];
