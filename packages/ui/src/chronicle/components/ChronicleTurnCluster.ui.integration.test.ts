@@ -115,7 +115,7 @@ describe("chronicle turn disclosure", () => {
 		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1");
 		toggle?.click();
 		await tick();
-		expect(target.querySelector('[data-section="turn-result"] li')).toBeNull();
+		expect(target.querySelector(".turn-result-markdown li")).toBeNull();
 	});
 
 	it("opens the actual prompt independently of the result and shows reported cost without token counters", async () => {
@@ -188,5 +188,62 @@ describe("ended progress", () => {
 		expect(target.querySelector('[data-progress-step="future"]')?.textContent).toContain(
 			"Incomplete",
 		);
+	});
+});
+
+describe("result reading order", () => {
+	it("shows a recorded summary once, ahead of supporting prompt details", async () => {
+		const target = await render(
+			cluster({
+				sections: [
+					{
+						kind: "turn_result",
+						markdown: "PR #53 updated with commit abc123.",
+						resultSummary: "PR #53 updated with commit abc123.",
+					},
+				],
+				piInput: {
+					fullPrompt: "Publish the change.",
+					parts: [],
+					createdAt: "2026-09-10T10:00:00Z",
+					userInput: null,
+				},
+			}),
+		);
+		expect(
+			target.querySelector('[data-section="turn-result"]')?.textContent?.match(/PR #53 updated/g),
+		).toHaveLength(1);
+		const result = target.querySelector('[data-section="turn-result"]');
+		const prompt = target.querySelector('[data-section="turn-prompt"]');
+		if (!result || !prompt) throw new Error("Expected result and prompt");
+		expect(result.compareDocumentPosition(prompt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+	});
+	it("keeps validation limitations discoverable before opening the complete original report", async () => {
+		const target = await render(
+			cluster({
+				sections: [
+					{
+						kind: "turn_result",
+						markdown:
+							"Links implemented.\n\n## What changed\n\nAdded the shared helper.\n\n## Validation limitations\n\nFull validation was not run.",
+					},
+				],
+			}),
+			true,
+		);
+		expect(target.querySelector(".result-summary")?.textContent).toBe("Links implemented.");
+		expect(target.querySelector(".result-outline")?.textContent).toContain(
+			"Validation limitations",
+		);
+		const toggle = target.querySelector<HTMLButtonElement>(
+			".result-header-row .chronicle-expand-button",
+		);
+		expect(toggle?.textContent).toContain("Read full result");
+		toggle?.click();
+		await tick();
+		expect(target.querySelector(".turn-result-markdown")?.textContent).toContain(
+			"Full validation was not run.",
+		);
+		expect(target.querySelector(".result-outline")).toBeNull();
 	});
 });

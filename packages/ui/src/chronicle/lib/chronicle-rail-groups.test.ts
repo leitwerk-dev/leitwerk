@@ -1,5 +1,10 @@
+import type { ProcessTimelineTurnSummary } from "@leitwerk-dev/protocol";
 import { describe, expect, it } from "vitest";
-import { buildChronicleRailRows, formatRailElapsed } from "./chronicle-rail-groups.js";
+import {
+	buildChronicleRailRows,
+	describeRailHistory,
+	formatRailElapsed,
+} from "./chronicle-rail-groups.js";
 import type {
 	ChronicleSelectableItem,
 	ChronicleSelectableTurnItem,
@@ -86,10 +91,36 @@ describe("turn rail history", () => {
 			"Implement → Review",
 		]);
 	});
+	it("explains history with recorded event labels, never a guessed repair outcome", () => {
+		const items = history(["Deliver", "Implement", "Deliver", "Implement"]);
+		items[0].tone = items[2].tone = "external_trigger";
+		const group = buildChronicleRailRows(items)[0];
+		if (group.kind !== "repeated") throw new Error("Expected history");
+		const records = new Map(
+			items.map((item) => [
+				item.turnRecordId,
+				{ summary: "Checks failed" } as ProcessTimelineTurnSummary,
+			]),
+		);
+		expect(describeRailHistory(group, records)).toEqual(["Checks failed (2)"]);
+		expect(describeRailHistory(group, new Map())).toEqual([]);
+		expect(
+			describeRailHistory(
+				{ ...group, retryCount: 5 },
+				new Map(
+					items.map((item) => [
+						item.turnRecordId,
+						{ outcome: "failed" } as ProcessTimelineTurnSummary,
+					]),
+				),
+			),
+		).toEqual(["4 failed attempts"]);
+	});
 	it("uses recorded elapsed time and omits missing or invalid durations", () => {
 		const start = "2026-09-10T12:00:00Z";
 		expect(formatRailElapsed(start, "2026-09-10T12:12:14Z")).toBe("12m 14s");
 		expect(formatRailElapsed(start, "2026-09-10T13:12:14Z")).toBe("1h 12m 14s");
+		expect(formatRailElapsed(start, "2026-09-13T23:13:01Z")).toBe("3d 11h");
 		expect(formatRailElapsed(start, start)).toBe("<1s");
 		expect(formatRailElapsed(start, null)).toBeNull();
 		expect(formatRailElapsed(start, "invalid")).toBeNull();
