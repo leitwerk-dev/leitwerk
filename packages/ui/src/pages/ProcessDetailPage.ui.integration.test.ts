@@ -5588,3 +5588,84 @@ describe("ProcessDetailPage", () => {
 		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
 	});
 });
+
+describe("browser-local process summary", () => {
+	const preferenceKey = "leitwerk:process-summary:hidden:agt_1";
+	function summaryDetail() {
+		const detail = compactTestDetail(createReasoningOverlayDetail());
+		const turn = detail.timeline.turns[0];
+		detail.process.lifecycleStatus = "waiting";
+		detail.process.selectedTurnId = turn.turnId;
+		turn.progress = {
+			title: "Delivery",
+			summary: "Waiting for review. Delivery continues after approval.",
+			steps: [],
+		};
+		turn.progressRecordedAt = "2026-01-01T00:02:00Z";
+		return detail;
+	}
+	beforeEach(() => window.localStorage.removeItem(preferenceKey));
+	afterEach(() => window.localStorage.removeItem(preferenceKey));
+
+	it("dismisses through reload and restores from Process info", async () => {
+		const detail = summaryDetail();
+		let { target } = await mountSubject(detail);
+		await flushUi();
+		expect(target.querySelector('[data-section="process-summary"] summary')?.textContent).toContain(
+			"Delivery continues after approval.",
+		);
+		expect(
+			target.querySelector('[data-section="process-summary"] details')?.hasAttribute("open"),
+		).toBe(false);
+		target.querySelector<HTMLButtonElement>('[aria-label="Dismiss process summary"]')?.click();
+		await flushUi();
+		expect(target.querySelector('[data-section="process-summary"]')).toBeNull();
+		expect(document.activeElement?.id).toBe("process-detail-title");
+		for (const app of mountedApps.splice(0)) await unmount(app);
+		target.remove();
+		({ target } = await mountSubject(detail));
+		await flushUi();
+		expect(target.querySelector('[data-section="process-summary"]')).toBeNull();
+		target.querySelector<HTMLButtonElement>(".process-info-trigger")?.click();
+		await flushUi();
+		const restore = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
+			(button) => button.textContent?.trim() === "Show process summary",
+		);
+		expect(restore).toBeTruthy();
+		restore?.click();
+		await flushUi();
+		expect(target.querySelector('[data-section="process-summary"]')).toBeTruthy();
+		expect(window.localStorage.getItem(preferenceKey)).toBe("false");
+	});
+
+	it("keeps other processes independent and responds to preference changes from another tab", async () => {
+		const otherKey = "leitwerk:process-summary:hidden:another-process";
+		window.localStorage.setItem(otherKey, "true");
+		try {
+			const { target } = await mountSubject(summaryDetail());
+			await flushUi();
+			expect(target.querySelector('[data-section="process-summary"]')).toBeTruthy();
+			window.localStorage.setItem(preferenceKey, "true");
+			window.dispatchEvent(new StorageEvent("storage", { key: preferenceKey, newValue: "true" }));
+			await flushUi();
+			expect(target.querySelector('[data-section="process-summary"]')).toBeNull();
+		} finally {
+			window.localStorage.removeItem(otherKey);
+		}
+	});
+
+	it("still dismisses when the browser rejects preference writes", async () => {
+		const { target } = await mountSubject(summaryDetail());
+		await flushUi();
+		const write = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+			throw new Error("Storage unavailable");
+		});
+		try {
+			target.querySelector<HTMLButtonElement>('[aria-label="Dismiss process summary"]')?.click();
+			await flushUi();
+			expect(target.querySelector('[data-section="process-summary"]')).toBeNull();
+		} finally {
+			write.mockRestore();
+		}
+	});
+});

@@ -42,6 +42,13 @@ clock markers. Both keep stronger titles while the operator browses history.
 Future turns use neutral outlines. Failed turns retain an explicit error marker
 and label. Navigation selection is separate from the process's current state.
 
+The process summary above the Chronicle is a compact, expandable line. Expanding
+reveals the complete text and a separate update timestamp. Dismiss hides the row
+for that process in the current browser, including after reload. **Process info →
+Show process summary** restores it. The preference uses browser storage, never
+process state, and does not hide summaries for other processes or browsers. If
+storage is unavailable, dismissal still works for the current page.
+
 External waiting belongs to its latest recorded turn in both the Chronicle and
 the rail. That row keeps the turn title and shows Waiting for an event with the
 amber clock. Selecting it reaches the embedded waiting disclosure. Scrolling
