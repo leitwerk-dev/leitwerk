@@ -422,6 +422,12 @@ export type ExternalSourceEffect<
 	ctx: ExternalSourceEffectContext<TParams, TState, TEvent, TInput>,
 ) => ProcessEffectPlan<TState> | Promise<ProcessEffectPlan<TState> | undefined> | undefined;
 
+export interface ExternalEventDescription {
+	summary: string;
+	markdown?: string;
+	links?: import("@leitwerk-dev/domain").TurnProgressLink[];
+}
+
 export interface ExternalActionSource<
 	TParams = unknown,
 	TState = unknown,
@@ -431,6 +437,8 @@ export interface ExternalActionSource<
 	kind: string;
 	label?: string;
 	description?: string;
+	/** Pure description captured when the event is consumed. */
+	describeEvent?(event: _TEvent): ExternalEventDescription;
 	/**
 	 * Extension-owned opaque config. Core may persist, hash, and display it, but must not
 	 * interpret provider-specific fields.
@@ -504,6 +512,7 @@ export interface WorkerCompleteInput<TOutcome extends string = string> {
 	outcome: TOutcome;
 	params?: Record<string, unknown>;
 	markdown?: string | null;
+	resultSummary?: string;
 }
 
 export interface WorkerRunHandle<TParams = unknown, TState = unknown> {

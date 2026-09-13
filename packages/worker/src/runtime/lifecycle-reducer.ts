@@ -1208,6 +1208,7 @@ export function reduceWorkerRuntime(
 						forkPiEntryId: event.result.meta.forkPiEntryId ?? null,
 						resultPiEntryId: event.result.meta.resultPiEntryId ?? null,
 						turnResultMarkdown: event.result.meta.turnResultMarkdown ?? null,
+						resultSummary: event.result.meta.resultSummary,
 						rootEntryId: event.result.meta.rootEntryId ?? null,
 					} as never),
 					park: null,

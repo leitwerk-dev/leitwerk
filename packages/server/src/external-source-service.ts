@@ -1,7 +1,9 @@
+import { createHash } from "node:crypto";
 import type { ProcessInstance, ProcessProject, TurnId } from "@leitwerk-dev/domain";
 import type {
 	ActionExecutionResultLike,
 	ExternalActionSource,
+	ExternalObservationInput,
 	ExternalSourceArmingLike,
 	ExternalSourceFireInput,
 	ExternalSourceServiceLike,
@@ -19,11 +21,18 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { generateId, now } from "./db/repo-helpers.js";
 import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositories.js";
+import {
+	normalizeExternalEventDescription,
+	normalizeExternalObservation,
+} from "./external-source-reporting.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { accept, reject } from "./process-engine/decision.js";
 import { defineOperation } from "./process-engine/operation.js";
 import type { EngineFailure, ProcessEngine } from "./process-engine/types.js";
-import { buildServerTransitionWrites } from "./process-engine/writes/build-server-transition-writes.js";
+import {
+	buildServerTransitionWrites,
+	transitionStartReferences,
+} from "./process-engine/writes/build-server-transition-writes.js";
 import { createDeferredExtensionEvent } from "./process-engine/writes/deferred-extension-events.js";
 import { appendProcessEffects } from "./process-engine/writes/process-effects.js";
 import {
@@ -62,12 +71,16 @@ interface KnownExternalArming {
 }
 
 export interface ExternalSourceServiceDeps
-	extends Pick<RepositoryBundle, "processes" | "projects" | "pendingExternalSourceFires"> {
+	extends Pick<
+		RepositoryBundle,
+		"processes" | "projects" | "pendingExternalSourceFires" | "events"
+	> {
 	commands: ProcessEngine;
 	processActionRegistry: ProcessActionRegistry;
 }
 
 export interface ExternalSourceService extends ExternalSourceServiceLike {
+	currentGenerations(instanceId: string): Array<{ id: string; generation: string }>;
 	drainQueued(instanceId: string): Promise<void>;
 	invalidateArmings(instanceId: string): void;
 	reconcileArmings(instanceId: string): Promise<void>;
@@ -489,6 +502,23 @@ export function createExternalSourceService(
 		return [...currentArmingsByInstance.values()].flat();
 	}
 
+	function generationFor(arming: ResolvedExternalSourceArming): string {
+		return createHash("sha256")
+			.update(
+				JSON.stringify({
+					instanceId: arming.instanceId,
+					id: arming.id,
+					revision: arming.process.planRevision,
+					selectionId:
+						deps.events.listByInstanceEventTypes(arming.instanceId, ["turn_selected"], 1)[0]?.id ??
+						null,
+					config: arming.source.config,
+					resolved: arming.resolved,
+				}),
+			)
+			.digest("hex");
+	}
+
 	function resolveArming(
 		instanceId: string,
 		armingId: string,
@@ -721,6 +751,14 @@ export function createExternalSourceService(
 			const publishedInput = readPublishedInput({ arming, fireInput: input.input });
 			if (publishedInput && "ok" in publishedInput) return failedDecision(publishedInput);
 
+			let eventDescription: ReturnType<typeof normalizeExternalEventDescription> = null;
+			try {
+				eventDescription = normalizeExternalEventDescription(
+					arming.source.describeEvent?.(input.event ?? {}),
+				);
+			} catch {
+				// Optional reporting must not change event consumption or process routing.
+			}
 			const recordedAt = now();
 			const turnRecordId = generateId("trn");
 
@@ -761,6 +799,8 @@ export function createExternalSourceService(
 								sourceKind: arming.source.kind,
 								label: arming.label,
 								description: arming.description,
+								...(eventDescription ? { eventDescription } : {}),
+								actionSource: "external",
 								event: input.event,
 								...(publishedInput ? { publishedProduct: publishedInput.productName } : {}),
 							},
@@ -828,6 +868,14 @@ export function createExternalSourceService(
 				return reject(transitionWrites.code, transitionWrites.message);
 			}
 
+			const annotation = externalWrites.turnAnnotationWrites[0];
+			if (annotation?.kind === "create") {
+				annotation.input.payload = {
+					...annotation.input.payload,
+					selectedTurnIdAfter: transitionWrites.processPatch.selectedTurnId ?? null,
+					...transitionStartReferences(transitionWrites),
+				};
+			}
 			return accept({
 				writes: mergeWrites(effectWrites, externalWrites, transitionWrites),
 				data: {
@@ -837,6 +885,61 @@ export function createExternalSourceService(
 					sourceKind: arming.source.kind,
 				},
 			});
+		},
+	});
+
+	const ObserveExternalSource = defineOperation<
+		"observe_external_source",
+		ExternalObservationInput,
+		void
+	>({
+		kind: "observe_external_source",
+		label: "Observe external source",
+		async decide(ctx, input) {
+			const arming = resolveArming(input.instanceId, input.armingId);
+			if (!arming || generationFor(arming) !== input.generation)
+				return reject("external_observation_stale", "Subscription generation is no longer current");
+			if (!input.observation && !input.refreshError)
+				return reject(
+					"external_observation_invalid",
+					"An observation or refresh error is required",
+				);
+			const observation =
+				input.observation === undefined
+					? undefined
+					: normalizeExternalObservation(input.observation);
+			if (observation === null)
+				return reject("external_observation_invalid", "Invalid observation report");
+			const key = `external_observation:${input.armingId}:${input.generation}`;
+			const previous = ctx.deps.turnAnnotations.findByKey(input.instanceId, key);
+			const recordedAt = now();
+			const payload = {
+				...previous?.payload,
+				armingId: input.armingId,
+				generation: input.generation,
+				turnId: arming.turnId,
+				...(observation ? { observation } : {}),
+				refreshError: input.refreshError ?? null,
+				refreshedAt: recordedAt,
+			};
+			const writes = createWrites();
+			writes.turnAnnotationWrites.push(
+				previous
+					? { kind: "update", id: previous.id, input: { payload, updatedAt: recordedAt } }
+					: {
+							kind: "create",
+							input: {
+								instanceId: input.instanceId,
+								annotationType: "external_observation",
+								annotationKey: key,
+								references: [],
+								payload,
+								createdAt: recordedAt,
+								updatedAt: recordedAt,
+							},
+						},
+			);
+			return accept({ writes });
 		},
 	});
 
@@ -1181,6 +1284,13 @@ export function createExternalSourceService(
 	}
 
 	return {
+		currentGenerations(instanceId) {
+			const process = deps.processes.getById(instanceId);
+			return (process ? listArmingsForProcess(process) : []).map((arming) => ({
+				id: arming.id,
+				generation: generationFor(arming),
+			}));
+		},
 		listArmed(kind: string) {
 			const armed = listAllArmed();
 			return armed
@@ -1196,8 +1306,19 @@ export function createExternalSourceService(
 						params: _params,
 						state: _state,
 						...entry
-					}) => entry,
+					}) => ({
+						...entry,
+						generation: generationFor({
+							...entry,
+							process: _process,
+						} as ResolvedExternalSourceArming),
+					}),
 				);
+		},
+		async observe(input: ExternalObservationInput): Promise<ActionExecutionResultLike> {
+			const result = await deps.commands.run(ObserveExternalSource, input);
+			if (!result.ok) return externalSourceFailure(result);
+			return { ok: true, process: result.process };
 		},
 		async fire(input: ExternalSourceFireInput): Promise<ActionExecutionResultLike> {
 			const fire = {

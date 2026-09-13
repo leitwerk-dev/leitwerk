@@ -1073,6 +1073,95 @@ test.describe("rail scroll-anchor behavior", () => {
 	});
 });
 
+for (const { width, running } of [
+	{ width: 390, running: false },
+	{ width: 1440, running: false },
+	{ width: 390, running: true },
+	{ width: 1440, running: true },
+]) {
+	test(`retry history stays collapsible at ${width}px (running: ${running})`, async ({ page }) => {
+		if (!ctx) throw new Error("Server context not initialized");
+		const process = ctx.deps.processes.create({
+			processId: "poem_creator_process",
+			selectedTurnId: running ? "draft_poem" : "review_poem",
+			lifecycleStatus: running ? "active" : "waiting",
+			externalId: `RETRY-COLLAPSE-${width}`,
+		});
+		const ids = Array.from({ length: 6 }, (_, index) => `trn_retry_${process.id}_${index}`);
+		for (const [index, id] of ids.entries()) {
+			createAcceptedLlmTurn({
+				id,
+				instanceId: process.id,
+				turnId: "draft_poem",
+				turnType: "llm",
+				status: index < 5 ? "failed" : running ? "running" : "succeeded",
+				pathType: "primary",
+				parentTurnRecordId: index ? ids[index - 1] : null,
+				forkPiEntryId: null,
+				resultPiEntryId: null,
+				turnResultMarkdown: index < 5 ? null : "A quiet garden grows.",
+				errorSummary: index < 5 ? "Preparation failed: dependency installation failed." : null,
+				startedAt: new Date(Date.now() - (6 - index) * 60_000).toISOString(),
+				endedAt:
+					index === 5 && running
+						? null
+						: new Date(Date.now() - (6 - index) * 60_000 + 1_000).toISOString(),
+			});
+		}
+		let progressAt = "";
+		if (running) {
+			progressAt = ctx.deps.events.create({
+				instanceId: process.id,
+				eventType: "turn.progress",
+				data: {
+					turnRecordId: ids[5],
+					revision: 1,
+					report: {
+						title: "Draft progress",
+						summary: "Reworking the poem",
+						steps: [{ id: "draft", label: "Draft", status: "in_progress" }],
+					},
+				},
+			}).createdAt;
+		}
+
+		await page.setViewportSize({ width, height: 844 });
+		await page.goto(`/processes/${process.id}`);
+		const history = page.locator('[data-section="retry-history"]');
+		const summary = history.locator("summary");
+		await expect(summary).toHaveText("5 earlier attempts");
+		if (running) {
+			await expect(page.locator('[data-section="live-tail"]')).toBeVisible();
+			await expect(page.locator('[data-section="live-tail"]')).toContainText("Reworking the poem");
+			await expect(
+				page.locator(`[data-section="live-tail"] time[datetime="${progressAt}"]`),
+			).toBeVisible();
+			await expect(history.locator('[data-section="live-tail"]')).toHaveCount(0);
+		}
+		await summary.scrollIntoViewIfNeeded();
+		await expect(history).not.toHaveAttribute("open", "");
+		await summary.click();
+		await expect(history).toHaveAttribute("open", "");
+		await expect(history.locator('[data-section="chronicle-turn"]')).toHaveCount(5);
+		await summary.click();
+		await expect(history).not.toHaveAttribute("open", "");
+		await summary.focus();
+		await page.keyboard.press("Enter");
+		await expect(history).toHaveAttribute("open", "");
+		await page.keyboard.press("Enter");
+		await expect(history).not.toHaveAttribute("open", "");
+		if (width < 1024) await page.getByRole("button", { name: /^Quick nav/ }).click();
+		const historyToggle = page.getByRole("button", { name: /^Attempt history/ });
+		if ((await historyToggle.getAttribute("aria-expanded")) !== "true") await historyToggle.click();
+		await page.getByRole("button", { name: /Attempt 3 of 6/ }).click();
+		await expect(history).toHaveAttribute("open", "");
+		await expect(history.locator(`[data-turn-record-id="${ids[2]}"]`)).toBeInViewport();
+		await summary.scrollIntoViewIfNeeded();
+		await summary.click();
+		await expect(history).not.toHaveAttribute("open", "");
+	});
+}
+
 test.describe("chronicle scroll behavior", () => {
 	test("keeps live reasoning in the preview card instead of creating an inline nested scroller", async ({
 		page,

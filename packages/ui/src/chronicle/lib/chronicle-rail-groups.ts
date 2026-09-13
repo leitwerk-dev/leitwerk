@@ -1,10 +1,13 @@
+import type { ProcessTimelineTurnSummary } from "@leitwerk-dev/protocol";
 import type {
 	ChronicleSelectableItem,
 	ChronicleSelectableTurnItem,
 } from "./chronicle-selectable-items.js";
+import { groupRetryChains } from "./retry-groups.js";
 
 export interface ChronicleRepeatedTurns {
 	kind: "repeated";
+	retryCount?: number;
 	id: string;
 	sequence: string;
 	items: ChronicleSelectableTurnItem[];
@@ -21,10 +24,50 @@ function isHistoricalTurn(item: ChronicleSelectableItem): item is ChronicleSelec
 /** Fold consecutive complete cycles; keep the latest result beside its pending decision. */
 export function buildChronicleRailRows(
 	items: readonly ChronicleSelectableItem[],
+	records?: readonly ProcessTimelineTurnSummary[],
 ): ChronicleRailRow[] {
+	if (records) {
+		const byId = new Map(records.map((record) => [record.id, record]));
+		const groups = groupRetryChains(items, (item) => {
+			if (item.kind !== "turn") return null;
+			const record = byId.get(item.turnRecordId);
+			return record
+				? {
+						id: record.id,
+						turnId: record.turnId,
+						parentTurnRecordId: record.parentTurnRecordId,
+						failed: record.outcome === "failed",
+					}
+				: null;
+		});
+		const rows: ChronicleRailRow[] = [];
+		let pending: ChronicleSelectableItem[] = [];
+		for (const group of groups) {
+			if (group.length === 1) {
+				pending.push(group[0]);
+				continue;
+			}
+			rows.push(...buildChronicleRailRows(pending));
+			pending = [];
+			const attempts = group as ChronicleSelectableTurnItem[];
+			rows.push({
+				kind: "repeated",
+				id: attempts[0].anchorId,
+				retryCount: attempts.length,
+				sequence: attempts[0].title,
+				items: attempts.slice(0, -1),
+			});
+			const latest = attempts[attempts.length - 1];
+			rows.push({ kind: "item", id: latest.anchorId, item: latest });
+		}
+		return [...rows, ...buildChronicleRailRows(pending)];
+	}
+
 	const rows: ChronicleRailRow[] = [];
 	const latestResultIndex =
-		items.at(-1)?.kind === "action" ? items.findLastIndex((item) => item.kind === "turn") : -1;
+		items.at(-1)?.kind === "action" || items.at(-1)?.kind === "terminal"
+			? items.findLastIndex((item) => item.kind === "turn")
+			: -1;
 	let index = 0;
 	while (index < items.length) {
 		let end = index;

@@ -272,3 +272,21 @@ with durable observations, non-secret runtime metadata and clock-labelled
 intervals. Missing endpoints and invalid ordering have null durations. Source
 precision accompanies Kubernetes observations; binding timestamps are sampling
 bounds. This diagnostic collection does not change the four-step startup UI.
+
+Chronicle progress is a reported snapshot. Related resources do not establish which
+attempt created them. When an attempt ends, an active reported step displays
+“Interrupted” after failure or supersession, or “Final status not recorded” after
+success. Details retain the original report; future steps remain incomplete.
+Operator and external-event entries show their recorded time without transaction
+duration. Missing attribution remains unspecified. Full prompts retain Markdown
+whitespace; only overview previews collapse whitespace.
+
+Adjacent failed attempts form retry history only through explicit parent record
+identifiers. Earlier attempts start collapsed. Selecting a historical attempt in
+navigation reveals its history; scrolling alone does not expand it. Users can
+collapse the history even while a historical attempt is selected. Repeated business
+turns remain separate from retries. Historical
+results use a labelled paragraph preview; supplied concise summaries remain visible
+in full. The latest full result and current recovery controls remain expanded.
+External observations show their recorded time separately from refresh failures.
+A missing observation reads “Status not yet observed.”

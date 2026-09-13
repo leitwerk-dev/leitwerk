@@ -24,6 +24,7 @@ import {
 	CHRONICLE_PROCESS_ERROR_SECTION_ANCHOR_ID,
 } from "../lib/chronicle-selectable-items.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import { groupRetryChains } from "../lib/retry-groups.js";
 import ChronicleActionSection from "./ChronicleActionSection.svelte";
 import ChronicleLeafOutcomePlaceholder from "./ChronicleLeafOutcomePlaceholder.svelte";
 import ChronicleLeafOutcomeSection from "./ChronicleLeafOutcomeSection.svelte";
@@ -104,6 +105,18 @@ let {
 	hasTerminalSummary = false,
 }: Props = $props();
 
+const retryGroups = $derived(
+	groupRetryChains(projection.timelineItems, (item) =>
+		item.kind === "turn_cluster" || item.kind === "live_tail"
+			? {
+					id: item.turnRecordId,
+					turnId: item.turnId,
+					parentTurnRecordId: item.parentTurnRecordId,
+					failed: item.kind === "turn_cluster" && Boolean(item.failure),
+				}
+			: null,
+	),
+);
 const latestTimelineItem = $derived.by(() => projection.timelineItems.at(-1) ?? null);
 const latestResultItem = $derived(
 	projection.timelineItems.findLast(
@@ -297,17 +310,12 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 	{/if}
 {/snippet}
 
-<div class="chronicle-flow" class:has-terminal-summary={hasTerminalSummary} data-section="chronicle-flow">
-	<ChronicleStartupHistory {startup} />
-	{#each toolApprovalRequests.filter((request) => request.status === "open") as request (request.id)}
-		<ChronicleToolApproval {request} />
-	{/each}
-	{#each projection.timelineItems as item, index (chronicleItemKey(item, index))}
+{#snippet timelineItem(item: ChronicleTimelineItem, retryTotal: number)}
 		{#if item.kind === "prompt"}
 			<ChroniclePromptSection prompt={item} isFocused={activeAnchorId === item.anchorId} />
 		{:else if item.kind === "turn_cluster"}
 			<ChronicleTurnCluster
-				cluster={item}
+				cluster={retryTotal > 1 ? { ...item, title: `${item.title} · ${item.failure ? "Failed" : "Completed"} after ${retryTotal} attempts` } : item}
                 recoveryContent={recovery?.turnRecordId === item.turnRecordId ? embeddedRecovery : undefined}
 				waitingContent={waitingTurn === item ? embeddedWaiting : undefined}
 				isFocused={activeAnchorId === item.anchorId || (waitingTurn === item && activeAnchorId === CHRONICLE_ACTION_SECTION_ANCHOR_ID)}
@@ -341,6 +349,26 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 
 		{#if shouldRenderActionSection(item)}
 			{@render trailingProcessSection()}
+		{/if}
+{/snippet}
+
+<div class="chronicle-flow" class:has-terminal-summary={hasTerminalSummary} data-section="chronicle-flow">
+	<ChronicleStartupHistory {startup} />
+	{#each toolApprovalRequests.filter((request) => request.status === "open") as request (request.id)}
+		<ChronicleToolApproval {request} />
+	{/each}
+	{#each retryGroups as group, groupIndex (chronicleItemKey(group[0], groupIndex))}
+		{#if group.length > 1 && group[0].kind === "turn_cluster"}
+			<details data-section="retry-history">
+				<summary>{group.length - 1} earlier {group.length === 2 ? "attempt" : "attempts"}</summary>
+				{#each group.slice(0, -1) as historical, index (chronicleItemKey(historical, index))}
+					<p>Attempt {index + 1} of {group.length} · Failed</p>
+					{@render timelineItem(historical, 1)}
+				{/each}
+			</details>
+			{@render timelineItem(group[group.length - 1], group.length)}
+		{:else}
+			{@render timelineItem(group[0], 1)}
 		{/if}
 	{/each}
 

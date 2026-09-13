@@ -42,7 +42,7 @@ export function truncatePromptPreview(
 function readStringField(record: Record<string, unknown>, fieldName: string): string | null {
 	const exact = record[fieldName];
 	if (typeof exact === "string") {
-		return normalizePromptValue(exact);
+		return exact.trim() ? exact : null;
 	}
 
 	const normalizedFieldName = fieldName.toLowerCase();
@@ -50,7 +50,7 @@ function readStringField(record: Record<string, unknown>, fieldName: string): st
 		if (key.toLowerCase() !== normalizedFieldName || typeof value !== "string") {
 			continue;
 		}
-		return normalizePromptValue(value);
+		return value.trim() ? value : null;
 	}
 
 	return null;

@@ -1069,6 +1069,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	startHooks.push(() => futureExecutionScheduler.start());
 	stopHooks.push(() => futureExecutionScheduler.stop());
 	const externalSourceService = createExternalSourceService({
+		events: baseDeps.events,
 		processes: baseDeps.processes,
 		projects: baseDeps.projects,
 		pendingExternalSourceFires: baseDeps.pendingExternalSourceFires,
@@ -1210,6 +1211,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	markStartup("server_extensions");
 
 	const deps: RouteDeps = {
+		externalSourceService,
 		...baseDeps,
 		launchCoordinator,
 		processGraphs,

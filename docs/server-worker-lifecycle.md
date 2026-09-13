@@ -242,3 +242,11 @@ StorageClass with its original reclaim policy. UID and resource-version checks
 protect every PV change. A different claim UID permanently ends pool ownership.
 Kubernetes objects record progress across server restarts; filling the pool never
 blocks readiness or normal process allocation. See [configuration](configuration.md#pre-provisioned-kubernetes-volumes).
+
+Outcome and external-action annotations retain selected target and reserved start
+and turn-record identifiers in the transition transaction. A reserved identifier
+does not mean a worker accepted the start. Chronicle provenance follows explicit
+identifiers and retry parents; timestamps do not establish causal links.
+Observation annotations replace one snapshot per resolved subscription generation,
+retain the last successful facts across refresh failures, and reject stale writes.
+These reporting contracts use existing JSON annotations without schema migration.

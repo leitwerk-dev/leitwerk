@@ -277,6 +277,7 @@ export const PROCESS_TURN_TYPES = ["llm", "human", "external", "automatic"] as c
 export type ProcessTurnType = (typeof PROCESS_TURN_TYPES)[number];
 
 export interface TurnOutcomePayload {
+	resultSummary?: string;
 	instanceId: string;
 	turnRecordId: string;
 	turnId: TurnId;
@@ -711,6 +712,8 @@ export interface TurnProgressLink {
 /** A complete operator-facing snapshot. Reporters replace, rather than patch, this value. */
 export interface TurnProgressReport {
 	title: string;
+	/** Attempt-specific progress or waiting explanation; not an operation receipt. */
+	summary?: string;
 	steps: TurnProgressStep[];
 	links?: TurnProgressLink[];
 }

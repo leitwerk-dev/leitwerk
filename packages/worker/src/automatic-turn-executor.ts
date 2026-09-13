@@ -24,6 +24,7 @@ export interface AutomaticTurnExecutor {
 		outcome: TOutcome;
 		params?: Record<string, unknown>;
 		markdown?: string | null;
+		resultSummary?: string;
 	}): Promise<void>;
 	failure(error: unknown): TurnExecutionFailure;
 	assertCompletedUnlessParked(parked: boolean): void;
@@ -84,6 +85,7 @@ export function createAutomaticTurnExecutor(input: {
 					forkPiEntryId: null,
 					resultPiEntryId: null,
 					turnResultMarkdown: completeInput.markdown ?? null,
+					resultSummary: completeInput.resultSummary,
 					rootEntryId: input.piHandle
 						? resolveRootEntryIdFromHandle(input.piHandle)
 						: (readProcessSemanticEntryRefs(input.state)?.rootEntry?.entryId ?? null),

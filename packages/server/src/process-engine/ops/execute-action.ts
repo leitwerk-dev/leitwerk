@@ -14,6 +14,7 @@ import { presentProcessModelPolicyFailure } from "../../process-model-policy-pre
 import { mergeProductRefPatchIntoStateJson } from "../../product-ref-state.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
+import { transitionStartReferences } from "../writes/build-server-transition-writes.js";
 import {
 	appendProcessEvent,
 	applyProcessPatchField,
@@ -327,6 +328,7 @@ export const ExecuteAction = defineOperation<
 										: {}),
 								}),
 						actionOrigin,
+						...transitionStartReferences(writes),
 						actor,
 						...(submittedFields.length > 0 ? { submittedFields } : {}),
 					},
