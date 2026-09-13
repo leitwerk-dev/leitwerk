@@ -2,7 +2,7 @@ import type {
 	ProcessActionFieldDefinition,
 	ProcessActionModelPreview,
 	ProcessActionSummary,
-} from "../../lib/api.js";
+} from "@leitwerk-dev/protocol/http-contracts";
 
 export interface ActionScheduledAtLocalParts {
 	date: string;

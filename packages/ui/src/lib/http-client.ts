@@ -1,15 +1,9 @@
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import type { ErrorResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import * as v from "valibot";
 import { getFetchImpl, resolveApiUrl } from "./runtime-config.js";
 
-export const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
+export { unknownRecordSchema };
 
 export async function tryReadJson(response: Response): Promise<unknown> {
 	try {
@@ -30,21 +24,47 @@ export async function readJsonObject<T extends object>(
 	return body as T;
 }
 
+export function jsonRequestInit(method: string, body: unknown): RequestInit {
+	return {
+		method,
+		headers: { "content-type": "application/json" },
+		body: JSON.stringify(body),
+	};
+}
+
+type ResponseError = string | ((response: Response, body: unknown) => Error);
+
+export async function requireSuccessfulResponse(
+	response: Response,
+	error?: ResponseError,
+): Promise<void> {
+	if (response.ok) return;
+	const body = await tryReadJson(response);
+	throw typeof error === "string"
+		? new Error(readErrorMessage(body) ?? `${error}: ${response.status}`)
+		: (error?.(response, body) ?? new Error(`Request failed: ${response.status}`));
+}
+
+export async function requestMutation(
+	path: string,
+	error: ResponseError,
+	init: RequestInit,
+): Promise<void> {
+	await requireSuccessfulResponse(await getFetchImpl()(resolveApiUrl(path), init), error);
+}
+
 export async function requestJson<T extends object>(input: {
 	path: string;
 	init?: RequestInit;
 	malformed: string;
-	error?: (response: Response, body: unknown) => Error;
+	error?: ResponseError;
 	onError?: (response: Response, body: unknown) => T | Promise<T>;
 }): Promise<T> {
 	const fetchImpl = getFetchImpl();
 	const url = resolveApiUrl(input.path);
 	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		if (input.onError) return input.onError(response, body);
-		throw input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`);
-	}
+	if (!response.ok && input.onError) return input.onError(response, await tryReadJson(response));
+	await requireSuccessfulResponse(response, input.error);
 	return readJsonObject<T>(response, input.malformed);
 }
 

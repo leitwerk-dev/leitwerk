@@ -1,5 +1,8 @@
 <script lang="ts">
-import type { ProcessActionFieldDefinition, ProcessActionSummary } from "../../lib/api.js";
+import type {
+	ProcessActionFieldDefinition,
+	ProcessActionSummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { type ActionSectionController, findQuickActionField } from "../lib/action-bindings.js";
 
 interface Props {

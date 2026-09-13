@@ -1,9 +1,12 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import { createDurableWsFrame } from "@leitwerk-dev/protocol";
-import type { ProcessBrowseResponseBody } from "@leitwerk-dev/protocol/http-contracts";
+import type {
+	ProcessBrowseResponseBody,
+	ProcessOverviewItem,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FutureExecutionSummary, ProcessOverviewItem } from "./api.js";
+import type { FutureExecutionSummary } from "./api.js";
 import { EMPTY_PROCESS_BROWSER_STATUS_COUNTS as EMPTY_STATUS_COUNTS } from "./process-browser.js";
 import {
 	browseItems,

@@ -6,6 +6,7 @@ import type {
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnType,
 } from "@leitwerk-dev/domain";
+import { getProcessTerminalHeading as endNodeTitle } from "./process-terminal-display.js";
 
 export type FlowLayoutNodeKind = "turn" | "end";
 
@@ -86,10 +87,6 @@ const END_NODE_PREFIX = "__end__";
 
 export function endNodeId(status: ProcessTurnTerminalLifecycleStatus): string {
 	return `${END_NODE_PREFIX}${status}`;
-}
-
-function endNodeTitle(status: ProcessTurnTerminalLifecycleStatus): string {
-	return status === "completed" ? "Completed" : "Aborted";
 }
 
 /**

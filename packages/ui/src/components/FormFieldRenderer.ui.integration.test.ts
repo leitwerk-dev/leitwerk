@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
+import type { FormFieldDefinition } from "@leitwerk-dev/protocol/form-contract";
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { FormFieldDefinition } from "../lib/api.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
 
 let mounted: ReturnType<typeof mount> | null = null;

@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
+import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
 import { onDestroy, onMount, tick } from "svelte";
-import type { ToolCallRendererDefinition } from "../../lib/api";
 import type {
 	ChronicleReasoningDetailEntry,
 	ChronicleRunMode,

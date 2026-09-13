@@ -1,4 +1,4 @@
-import type { FutureLaunchSummary, UiLauncherSummary } from "./api.js";
+import type { FutureLaunchSummary, UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { formatDefinition } from "./format.js";
 
 export interface FutureLaunchDetailItem {

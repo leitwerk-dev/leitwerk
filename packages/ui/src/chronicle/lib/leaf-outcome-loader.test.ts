@@ -74,9 +74,13 @@ describe("loadLeafOutcomeRenderer", () => {
 			},
 		});
 
-		const first = await modules.loadLeafOutcomeRenderer("test:cached");
+		const [first, concurrent] = await Promise.all([
+			modules.loadLeafOutcomeRenderer("test:cached"),
+			modules.loadLeafOutcomeRenderer("test:cached"),
+		]);
 		const second = await modules.loadLeafOutcomeRenderer("test:cached");
 
+		expect(concurrent).toMatchObject({ ok: true });
 		expect(first).toMatchObject({ ok: true });
 		expect(second).toMatchObject({ ok: true });
 		expect(fetchCount).toBe(1);
@@ -124,11 +128,15 @@ describe("loadLeafOutcomeRenderer", () => {
 		});
 	});
 
-	it("returns invalid_renderer_descriptor when the descriptor payload is malformed", async () => {
+	it.each([
+		null,
+		[],
+		{ ok: true, rendererId: "test:invalid" },
+	])("rejects malformed descriptor %j", async (body) => {
 		installCustomElementsRegistry();
 		const modules = await loadModules();
 		modules.configureUiRuntimeTransport({
-			fetchImpl: async () => createJsonResponse({ ok: true, rendererId: "test:invalid" }),
+			fetchImpl: async () => createJsonResponse(body),
 		});
 
 		await expect(modules.loadLeafOutcomeRenderer("test:invalid")).resolves.toEqual({

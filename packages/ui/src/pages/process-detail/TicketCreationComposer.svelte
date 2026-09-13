@@ -1,9 +1,9 @@
 <script lang="ts">
 import type { TicketCreationToolSummary } from "@leitwerk-dev/protocol";
+import type { FormFieldDefinition } from "@leitwerk-dev/protocol/form-contract";
 import type { ChronicleTicketDraftArtifact } from "../../chronicle/lib/chronicle-ticket-artifact.js";
 import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
 import ModalShell from "../../components/ModalShell.svelte";
-import type { FormFieldDefinition } from "../../lib/api.js";
 import { fetchTicketCreationTools, launchTicketCreation } from "../../lib/api.js";
 import { buildProcessPath, navigate } from "../../lib/router.svelte.js";
 

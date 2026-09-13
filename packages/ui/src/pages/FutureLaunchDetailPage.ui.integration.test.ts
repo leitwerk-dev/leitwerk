@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 
+import type { FutureLaunchSummary, UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiResponseError, type FutureLaunchSummary, type UiLauncherSummary } from "../lib/api.js";
+import { ApiResponseError } from "../lib/api.js";
 import FutureLaunchDetailPage from "./FutureLaunchDetailPage.svelte";
 
 const mocks = vi.hoisted(() => ({

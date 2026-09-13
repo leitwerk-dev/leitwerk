@@ -1,11 +1,12 @@
 /// <reference types="svelte" />
-import { mount, unmount } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
 import type {
 	ProcessActionModelPreview,
 	ProcessActionSummary,
 	ProcessModelConfigurationView,
-} from "../../lib/api.js";
+} from "@leitwerk-dev/protocol/http-contracts";
+import { mount, unmount } from "svelte";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import ChronicleActionSection from "./ChronicleActionSection.svelte";
 
