@@ -116,28 +116,37 @@ export class LocalTicketAdapter {
 					url: ticket.url,
 					result: ticket,
 				});
-				await ensureWrite(writes, ctx.process.id, identity, async () => {
-					let ticket = find();
-					if (!ticket) {
-						const id = String(this.state.tickets.length + 1);
-						ticket = {
-							id,
-							writeKey: ctx.idempotencyKey,
-							destinationId: destination.id,
-							...args,
-							url: `${this.options.baseUrl}/__local/tickets/${id}`,
-						};
-						this.state.tickets.push(ticket);
-						const fail = this.state.failAfterPersistence;
-						this.state.failAfterPersistence = false;
-						this.save();
-						if (fail)
-							throw new Error(
-								"Local ticket persisted, but its response was lost. Retry to reconcile.",
-							);
-					}
-					return receipt(ticket);
-				});
+				try {
+					await ensureWrite(writes, ctx.process.id, identity, async () => {
+						let ticket = find();
+						if (!ticket) {
+							const id = String(this.state.tickets.length + 1);
+							ticket = {
+								id,
+								writeKey: ctx.idempotencyKey,
+								destinationId: destination.id,
+								...args,
+								url: `${this.options.baseUrl}/__local/tickets/${id}`,
+							};
+							this.state.tickets.push(ticket);
+							const fail = this.state.failAfterPersistence;
+							this.state.failAfterPersistence = false;
+							this.save();
+							if (fail)
+								throw new Error(
+									"Local ticket persisted, but its response was lost. Retry to reconcile.",
+								);
+						}
+						return receipt(ticket);
+					});
+				} catch (error) {
+					if (!find()) throw error;
+					// Reconcile a lost adapter response before recording the durable receipt.
+					const confirmed = find();
+					if (!confirmed) throw error;
+					await ensureWrite(writes, ctx.process.id, identity, async () => receipt(confirmed));
+				}
+
 				const ticket = find();
 				if (!ticket) throw new Error("Local ticket receipt could not be reconciled");
 				return receipt(ticket);

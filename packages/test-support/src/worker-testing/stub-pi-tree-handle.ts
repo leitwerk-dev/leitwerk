@@ -39,6 +39,11 @@ export type StubToolCallScriptItem =
 			textChunks?: readonly string[];
 			thinkingChunks?: readonly string[];
 			chunkDelayMs?: number;
+			/** Optional scripted model reaction to a tool result, within the same turn. */
+			afterToolResult?: (
+				call: StubToolCallScriptCall,
+				result: unknown,
+			) => StubToolCallScriptCall | undefined;
 	  };
 
 export interface StubToolCallScriptResolverContext {
@@ -552,6 +557,11 @@ export class StubPiTreeHandle implements PiTreeHandle {
 							assistantContent = stringifyToolResult(result);
 						}
 						await recordToolResult(result, false);
+						const followUp =
+							scriptedItem && "calls" in scriptedItem
+								? scriptedItem.afterToolResult?.(scriptedCall, result)
+								: undefined;
+						if (followUp) scriptedCalls.push(followUp);
 						this.emitEvent({
 							type: "tool.result",
 							turnId,

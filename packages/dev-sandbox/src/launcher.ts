@@ -120,17 +120,17 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 		LEITWERK_UI_HOST: "127.0.0.1",
 		LEITWERK_UI_PORT: String(uiPort),
 	};
-	writeFileSync(
-		pidFile,
-		JSON.stringify({ pid: process.pid, identity: processIdentity(process.pid) }),
-		{ flag: "wx", mode: 0o600 },
-	);
+	const owner = { pid: process.pid, identity: processIdentity(process.pid) };
+	writeFileSync(pidFile, JSON.stringify(owner), { flag: "wx", mode: 0o600 });
 	console.info(`Local controls: ${input.urls.backend}/__local`);
 	try {
 		await runSupervisor(options.publicRoot, env);
-	} finally {
-		rmSync(pidFile, { force: true });
+	} catch (error) {
+		// A dead supervisor does not prove that its detached children stopped.
+		writeFileSync(pidFile, JSON.stringify({ ...owner, shutdownFailed: true }), { mode: 0o600 });
+		throw error;
 	}
+	rmSync(pidFile, { force: true });
 }
 
 async function runSupervisor(publicRoot: string, env: NodeJS.ProcessEnv): Promise<void> {

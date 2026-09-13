@@ -43,6 +43,10 @@ export async function resetSandbox(
 		assertSandboxPath(workspaceRoot, pidFile);
 		if (!existsSync(pidFile)) continue;
 		const owner = JSON.parse(readFileSync(pidFile, "utf8"));
+		if (owner.shutdownFailed)
+			throw new Error(
+				`Supervisor shutdown was not confirmed; storage was retained. Stop remaining sandbox processes, then remove ${pidFile} before resetting.`,
+			);
 		const identity = processIdentity(owner.pid);
 		if (identity && identity !== owner.identity)
 			throw new Error("Supervisor PID was reused; refusing to signal an unrelated process");

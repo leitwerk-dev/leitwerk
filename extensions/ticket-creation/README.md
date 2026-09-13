@@ -20,7 +20,7 @@ For local development, import `LocalTicketAdapter` from
 notebook destinations, then explicitly register `adapter.extension()` alongside
 this extension. It contributes the normal `local_create_ticket` capability and
 uses the server's durable external-write log with the execution idempotency key.
-`injectLostResponse()` persists one ticket before failing the response. Replaying
-the same key after restarting the adapter reconciles that ticket and records its
-receipt without creating another. Serve the returned local receipt URLs from the
+`injectLostResponse()` persists one ticket before losing the adapter response. The tool reconciles
+that ticket and records its receipt without creating another. If receipt recording
+is interrupted, replay the same execution key after restarting. Serve the returned local receipt URLs from the
 composition's controls. There is no production HTTP fallback.

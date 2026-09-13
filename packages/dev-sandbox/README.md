@@ -8,7 +8,8 @@ factory, initialization, controls, polling and cleanup. Adapters own their stora
 and scenario counters. Use `StubToolCallScriptResolver`,
 `StubPiTreeHandleFactory({ recordSessionTrace: true })`, and ordinary callbacks.
 
-`withSandboxLaunchers` adds normal UI launchers to a copy of a process definition.
+`withSandboxLaunchers` installs normal UI launchers on an SDK-defined process. Use it only in
+a development composition; SDK definition identity and turn semantics are retained.
 The harness admits control-page launches through `/api/launchers/.../launch-runs`
 with the caller's idempotency key. An optional `prepareLaunch` callback may prepare
 adapter input; it must reconcile its own durable writes. Startup delays belong to

@@ -1,12 +1,22 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { getDefaultConfig } from "@leitwerk-dev/server";
 import { StubPiTreeHandleFactory } from "@leitwerk-dev/test-support/worker-testing";
 import { afterEach, expect, test } from "vitest";
+import { sandboxConfig } from "./config.js";
 import type { SandboxCompositionFactory, SandboxInput } from "./index.js";
 import { sandboxEnvironment } from "./launcher.js";
 import { preflightSandbox } from "./preflight.js";
@@ -118,4 +128,51 @@ test("reset retains state when its supervisor does not acknowledge shutdown", as
 		child.kill("SIGKILL");
 		await once(child, "exit");
 	}
+});
+
+test("reset retains both sessions after an unconfirmed supervisor exit", async () => {
+	const directory = root();
+	const sandbox = sandboxDirectory(directory);
+	for (const mode of ["scripted", "real"]) mkdirSync(path.join(sandbox, mode));
+	writeFileSync(
+		path.join(sandbox, "scripted", "supervisor.pid"),
+		JSON.stringify({
+			pid: process.pid,
+			identity: processIdentity(process.pid),
+			shutdownFailed: true,
+		}),
+	);
+	await expect(resetSandbox(directory)).rejects.toThrow(/shutdown was not confirmed/);
+	expect(existsSync(path.join(sandbox, "real"))).toBe(true);
+	expect(existsSync(path.join(sandbox, "scripted"))).toBe(true);
+});
+
+test("real mode requires a dedicated mode-0600 credential file and rejects symlinks", () => {
+	const directory = root();
+	const input: SandboxInput = {
+		paths: { root: directory, directory: path.join(directory, "real"), workspaceRoot: directory },
+		urls: { backend: "http://127.0.0.1:18082", ui: "http://127.0.0.1:5173" },
+		mode: "real",
+		modelProfileId: "sandbox-real",
+	};
+	const file = path.join(directory, "model.json");
+	expect(() => sandboxConfig(input)).toThrow(/dedicated/);
+	writeFileSync(
+		file,
+		JSON.stringify({
+			model_profiles: [
+				{ id: "sandbox-real", provider: "test", model_id: "test", thinking_level: "off" },
+			],
+			providers: { test: { api_key: "synthetic-dedicated-key" } },
+		}),
+	);
+	chmodSync(file, 0o644);
+	expect(() => sandboxConfig(input)).toThrow(/0600/);
+	chmodSync(file, 0o600);
+	expect(sandboxConfig(input).pi.model_profiles[0].id).toBe("sandbox-real");
+	rmSync(file);
+	const outside = path.join(directory, "outside.json");
+	writeFileSync(outside, "{}", { mode: 0o600 });
+	symlinkSync(outside, file);
+	expect(() => sandboxConfig(input)).toThrow(/symlink/);
 });
