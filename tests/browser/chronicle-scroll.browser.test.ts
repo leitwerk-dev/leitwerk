@@ -1073,6 +1073,62 @@ test.describe("rail scroll-anchor behavior", () => {
 	});
 });
 
+for (const width of [390, 1440]) {
+	test(`retry history stays collapsible at ${width}px`, async ({ page }) => {
+		if (!ctx) throw new Error("Server context not initialized");
+		const process = ctx.deps.processes.create({
+			processId: "poem_creator_process",
+			selectedTurnId: "review_poem",
+			lifecycleStatus: "waiting",
+			externalId: `RETRY-COLLAPSE-${width}`,
+		});
+		const ids = Array.from({ length: 6 }, (_, index) => `trn_retry_${process.id}_${index}`);
+		for (const [index, id] of ids.entries()) {
+			createAcceptedLlmTurn({
+				id,
+				instanceId: process.id,
+				turnId: "draft_poem",
+				turnType: "llm",
+				status: index < 5 ? "failed" : "succeeded",
+				pathType: "primary",
+				parentTurnRecordId: index ? ids[index - 1] : null,
+				forkPiEntryId: null,
+				resultPiEntryId: null,
+				turnResultMarkdown: index < 5 ? null : "A quiet garden grows.",
+				errorSummary: index < 5 ? "Preparation failed: dependency installation failed." : null,
+				startedAt: new Date(Date.now() - (6 - index) * 60_000).toISOString(),
+				endedAt: new Date(Date.now() - (6 - index) * 60_000 + 1_000).toISOString(),
+			});
+		}
+		await page.setViewportSize({ width, height: 844 });
+		await page.goto(`/processes/${process.id}`);
+		const history = page.locator('[data-section="retry-history"]');
+		const summary = history.locator("summary");
+		await expect(summary).toHaveText("5 earlier attempts");
+		await summary.scrollIntoViewIfNeeded();
+		await expect(history).not.toHaveAttribute("open", "");
+		await summary.click();
+		await expect(history).toHaveAttribute("open", "");
+		await expect(history.locator('[data-section="chronicle-turn"]')).toHaveCount(5);
+		await summary.click();
+		await expect(history).not.toHaveAttribute("open", "");
+		await summary.focus();
+		await page.keyboard.press("Enter");
+		await expect(history).toHaveAttribute("open", "");
+		await page.keyboard.press("Enter");
+		await expect(history).not.toHaveAttribute("open", "");
+		if (width < 1024) await page.getByRole("button", { name: /^Quick nav/ }).click();
+		const historyToggle = page.getByRole("button", { name: /^Attempt history/ });
+		if ((await historyToggle.getAttribute("aria-expanded")) !== "true") await historyToggle.click();
+		await page.getByRole("button", { name: /Attempt 3 of 6/ }).click();
+		await expect(history).toHaveAttribute("open", "");
+		await expect(history.locator(`[data-turn-record-id="${ids[2]}"]`)).toBeInViewport();
+		await summary.scrollIntoViewIfNeeded();
+		await summary.click();
+		await expect(history).not.toHaveAttribute("open", "");
+	});
+}
+
 test.describe("chronicle scroll behavior", () => {
 	test("keeps live reasoning in the preview card instead of creating an inline nested scroller", async ({
 		page,

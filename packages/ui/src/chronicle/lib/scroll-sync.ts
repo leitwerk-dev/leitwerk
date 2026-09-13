@@ -17,6 +17,7 @@ export function collectAnchorLayouts(
 	selector = "[data-anchor-id]",
 ): ChronicleAnchorLayout[] {
 	return [...container.querySelectorAll<HTMLElement>(selector)]
+		.filter((element) => !element.closest("details:not([open]), [hidden]"))
 		.map((element) => ({
 			anchorId: element.dataset.anchorId ?? element.id,
 			top: element.offsetTop,

@@ -282,7 +282,10 @@ duration. Missing attribution remains unspecified. Full prompts retain Markdown
 whitespace; only overview previews collapse whitespace.
 
 Adjacent failed attempts form retry history only through explicit parent record
-identifiers. Repeated business turns remain separate from retries. Historical
+identifiers. Earlier attempts start collapsed. Selecting a historical attempt in
+navigation reveals its history; scrolling alone does not expand it. Users can
+collapse the history even while a historical attempt is selected. Repeated business
+turns remain separate from retries. Historical
 results use a labelled paragraph preview; supplied concise summaries remain visible
 in full. The latest full result and current recovery controls remain expanded.
 External observations show their recorded time separately from refresh failures.
