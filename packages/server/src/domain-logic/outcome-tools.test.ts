@@ -110,6 +110,38 @@ describe("turn-outcomes", () => {
 			).toBeNull();
 		});
 
+		it.each([
+			["string", "text", 1, "a string", "strings"],
+			["number", 1.5, Infinity, "a finite number", "finite numbers"],
+			["boolean", false, 0, "a boolean", "booleans"],
+			["object", { key: "value" }, [], "an object", "objects"],
+		] as const)("validates %s scalars and array items", (type, valid, invalid, label, plural) => {
+			for (const array of [false, true]) {
+				const turn = createTestLlmTurn("validate", {
+					done: {
+						description: "Done",
+						parameters: {
+							value: { type: array ? "array" : type, items: { type }, description: "Value" },
+						},
+					},
+				});
+				const payload = {
+					instanceId: "agent",
+					turnRecordId: "turn",
+					turnId: "validate",
+					outcome: "done",
+				};
+				const validate = (value: unknown) =>
+					validateTurnOutcome({ ...payload, params: { value: array ? [value] : value } }, turn);
+				expect(validate(valid)).toBeNull();
+				expect(validate(invalid)).toEqual({
+					ok: false,
+					code: "invalid_value",
+					message: `validate.done expects value to be ${array ? `an array of ${plural}` : label}`,
+				});
+			}
+		});
+
 		it("validates array items against the declared item schema", () => {
 			const metricsTurn = createTestLlmTurn("record_metrics", {
 				metrics_recorded: {
@@ -150,6 +182,28 @@ describe("turn-outcomes", () => {
 				metricsTurn,
 			);
 			expect(invalid?.code).toBe("invalid_scores");
+		});
+
+		it.each([
+			[{}, "summary_required"],
+			[{ summary: "" }, "summary_required"],
+			[{ summary: "Done" }, undefined],
+			[{ summary: "Done", changedProjects: undefined }, undefined],
+			[{ summary: "Done", changedProjects: null }, "invalid_changed_projects"],
+			[{ summary: "Done", extra: true }, "unknown_parameter"],
+		] as const)("validates parameter presence and unknown keys: %j", (params, code) => {
+			expect(
+				validateTurnOutcome(
+					{
+						instanceId: "agent",
+						turnRecordId: "turn",
+						turnId: "implement",
+						outcome: "done",
+						params,
+					},
+					createTestLlmTurn("implement", createDoneOutcomeTools({ includeChangedProjects: true })),
+				)?.code,
+			).toBe(code);
 		});
 
 		it("returns error when instanceId is missing", () => {
