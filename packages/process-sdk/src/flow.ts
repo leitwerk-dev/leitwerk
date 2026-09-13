@@ -48,6 +48,12 @@ import type {
 	UiProcessAPI,
 	WorkerCompleteInput,
 } from "./extension-api.js";
+import { isPathInside } from "./fs-utils.js";
+import {
+	type ProcessGraphSource,
+	toProcessGraphView,
+	validateProcessGraphProducts,
+} from "./process-graph.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
 type MaybePromise<T> = T | Promise<T>;
@@ -249,16 +255,6 @@ function readInitialPrompt<TParams>(params: TParams): string {
 	return "";
 }
 
-function isPathInside(parent: string, child: string): boolean {
-	const relative = path.relative(parent, child);
-	return (
-		relative !== "" &&
-		relative !== ".." &&
-		!relative.startsWith(`..${path.sep}`) &&
-		!path.isAbsolute(relative)
-	);
-}
-
 function safeJoinInside(parent: string, childPath: string, context: string): string {
 	const parentPath = path.resolve(parent);
 	const targetPath = path.resolve(parentPath, childPath);
@@ -368,29 +364,24 @@ function createFlowRepoLookup(input: {
 	workspaceRoot?: string;
 }): FlowRepoLookup {
 	return {
-		get: (key) =>
-			resolveRepoByKey({
-				projects: input.projects,
-				workspaceRoot: input.workspaceRoot,
-				key,
-				required: true,
-			}),
-		optional: (key) =>
-			resolveRepoByKey({
-				projects: input.projects,
-				workspaceRoot: input.workspaceRoot,
-				key,
-				required: false,
-			}),
+		get: (key) => resolveRepoByKey({ ...input, key, required: true }),
+		optional: (key) => resolveRepoByKey({ ...input, key, required: false }),
 		all: () =>
 			input.projects.map((project) =>
-				resolveRepoByKey({
-					projects: input.projects,
-					workspaceRoot: input.workspaceRoot,
-					key: project.key,
-					required: true,
-				}),
+				resolveRepoByKey({ ...input, key: project.key, required: true }),
 			),
+	};
+}
+
+function createFlowContextBase<TParams, TState>(ctx: ProcessRuntimeTurnContext<TParams, TState>) {
+	const { process, projects, params, state, workspaceRoot } = ctx;
+	return {
+		process,
+		projects,
+		params,
+		state,
+		...(workspaceRoot ? { workspaceRoot } : {}),
+		repo: createFlowRepoLookup({ projects, workspaceRoot }),
 	};
 }
 
@@ -424,20 +415,12 @@ export function createFlowPromptContext<
 		}
 	}
 	return {
-		process: ctx.process,
-		projects: ctx.projects,
-		params: ctx.params,
-		state: ctx.state,
-		...(ctx.workspaceRoot ? { workspaceRoot: ctx.workspaceRoot } : {}),
+		...createFlowContextBase(ctx),
 		prompts: {
 			initial: readInitialPrompt(ctx.params),
 		},
 		input: productInput as Partial<Record<TConsumedProducts, string>>,
 		prepared: ctx.prepared as TPrepared,
-		repo: createFlowRepoLookup({
-			projects: ctx.projects,
-			workspaceRoot: ctx.workspaceRoot,
-		}),
 	} as FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>;
 }
 
@@ -445,15 +428,7 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 	ctx: ProcessRuntimeTurnContext<TParams, TState>,
 ): FlowAutomaticRunContext<TParams, TState> {
 	return {
-		process: ctx.process,
-		projects: ctx.projects,
-		params: ctx.params,
-		state: ctx.state,
-		...(ctx.workspaceRoot ? { workspaceRoot: ctx.workspaceRoot } : {}),
-		repo: createFlowRepoLookup({
-			projects: ctx.projects,
-			workspaceRoot: ctx.workspaceRoot,
-		}),
+		...createFlowContextBase(ctx),
 		callIntegrationTool(name, args) {
 			if (!ctx.callIntegrationTool) {
 				throw new Error(`Automatic integration tool '${name}' is unavailable`);
@@ -602,6 +577,15 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 			type: "string",
 			description: "Concise summary of this attempt’s outcome.",
 		});
+	}
+
+	protected publishedMarkdownFields() {
+		return this.publishedMarkdownParameter
+			? {
+					publishedProduct: this.publishedMarkdownParameter,
+					turnResultMarkdownParameter: this.publishedMarkdownParameter,
+				}
+			: {};
 	}
 
 	description(text: string): this {
@@ -766,12 +750,7 @@ export class OutcomeToolBuilder<
 			description: this.outcomeDescription,
 			parameters: this.parameters,
 			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
-			...(this.publishedMarkdownParameter
-				? {
-						publishedProduct: this.publishedMarkdownParameter,
-						turnResultMarkdownParameter: this.publishedMarkdownParameter,
-					}
-				: {}),
+			...this.publishedMarkdownFields(),
 			...(stateRouting
 				? {
 						branches: Object.fromEntries(
@@ -824,12 +803,7 @@ export class AutomaticOutcomeBuilder<
 			description: this.outcomeDescription,
 			parameters: this.parameters,
 			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
-			...(this.publishedMarkdownParameter
-				? {
-						publishedProduct: this.publishedMarkdownParameter,
-						turnResultMarkdownParameter: this.publishedMarkdownParameter,
-					}
-				: {}),
+			...this.publishedMarkdownFields(),
 			...this.buildRouteTarget(),
 			...(effect ? { effect } : {}),
 		};
@@ -907,70 +881,33 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 	}
 }
 
-export class PublishedResultBuilder<TParams = unknown, TState = unknown>
+abstract class TurnEndBuilder<TParams, TState>
 	extends RouteAndEffectBuilder<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>
 	implements FlowLlmTurn<TParams, TState, string>
 {
-	constructor(
-		private readonly productName: string,
-		private readonly parent?: FlowLlmTurn<TParams, TState, string>,
-	) {
-		super();
-	}
+	protected abstract readonly builderName: string;
 
-	get id(): TurnId {
-		if (!this.parent) {
-			throw new Error("Published result builder is not attached to a turn");
-		}
-		return this.parent.id;
-	}
-
-	get definition(): LlmTurnDefinition<string, TParams, TState> {
-		if (!this.parent) {
-			throw new Error("Published result builder is not attached to a turn");
-		}
-		return this.parent.definition;
-	}
-
-	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
-		const effect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
-		return {
-			outcome: this.productName,
-			...this.buildRouteTarget(),
-			...(effect ? { effect } : {}),
-		};
-	}
-}
-
-export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
-	extends RouteAndEffectBuilder<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>
-	implements FlowLlmTurn<TParams, TState, string>
-{
 	constructor(
 		private readonly outcomeId: string,
 		private readonly parent?: FlowLlmTurn<TParams, TState, string>,
 	) {
 		super();
-		if (outcomeId.trim() === "") {
-			throw new Error("LLM turn end outcome must be non-empty");
-		}
+	}
+
+	private get turn(): FlowLlmTurn<TParams, TState, string> {
+		if (!this.parent) throw new Error(`${this.builderName} builder is not attached to a turn`);
+		return this.parent;
 	}
 
 	get id(): TurnId {
-		if (!this.parent) {
-			throw new Error("LLM turn end builder is not attached to a turn");
-		}
-		return this.parent.id;
+		return this.turn.id;
 	}
 
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
-		if (!this.parent) {
-			throw new Error("LLM turn end builder is not attached to a turn");
-		}
-		return this.parent.definition;
+		return this.turn.definition;
 	}
 
-	build(): ProcessTurnEndSpec<TParams, TState, string> {
+	protected buildResult(): ProcessTurnEndSpec<TParams, TState, string> {
 		const effect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		return {
 			outcome: this.outcomeId,
@@ -980,19 +917,61 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown>
 	}
 }
 
+export class PublishedResultBuilder<TParams = unknown, TState = unknown> extends TurnEndBuilder<
+	TParams,
+	TState
+> {
+	protected readonly builderName = "Published result";
+
+	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
+		return this.buildResult();
+	}
+}
+
+export class LlmTurnEndBuilder<TParams = unknown, TState = unknown> extends TurnEndBuilder<
+	TParams,
+	TState
+> {
+	protected readonly builderName = "LLM turn end";
+
+	constructor(outcomeId: string, parent?: FlowLlmTurn<TParams, TState, string>) {
+		super(outcomeId, parent);
+		if (outcomeId.trim() === "") throw new Error("LLM turn end outcome must be non-empty");
+	}
+
+	build(): ProcessTurnEndSpec<TParams, TState, string> {
+		return this.buildResult();
+	}
+}
+
 type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepared> = (
 	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
 ) => MaybePromise<string>;
 
+abstract class DescribedTurnBuilder {
+	protected turnDescription: string | null = null;
+
+	constructor(protected readonly turnId: TurnId) {}
+
+	get id(): TurnId {
+		return this.turnId;
+	}
+
+	description(description: string): this {
+		this.turnDescription = description;
+		return this;
+	}
+}
+
 export class LlmFlowBuilder<
-	TParams = unknown,
-	TState = unknown,
-	TConsumedProducts extends string = never,
-	TPrepared = undefined,
-> implements FlowLlmTurn<TParams, TState, string>
+		TParams = unknown,
+		TState = unknown,
+		TConsumedProducts extends string = never,
+		TPrepared = undefined,
+	>
+	extends DescribedTurnBuilder
+	implements FlowLlmTurn<TParams, TState, string>
 {
-	private readonly turnId: TurnId;
-	private turnDescription: string | null = null;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
 	private availableIntegrationTools: readonly string[] = [];
@@ -1007,12 +986,11 @@ export class LlmFlowBuilder<
 		| null = null;
 	private branchType: LlmTurnDefinition<string, TParams, TState>["branchType"] = "primary";
 	private context: LlmTurnDefinition<string, TParams, TState>["context"] = "fresh";
-	private completionMode: LlmTurnDefinition<string, TParams, TState>["completionMode"] = "turn_end";
 	private questionsEnabled = false;
 	private startFrom: LlmTurnDefinition<string, TParams, TState>["startFrom"] | undefined;
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
-	private consumedProductNames: string[] = [];
-	private optionalConsumedProductNames: string[] = [];
+	private readonly consumedProductNames = new Set<string>();
+	private readonly optionalConsumedProductNames = new Set<string>();
 	private publishedResult: {
 		productName: string;
 		builder: PublishedResultBuilder<TParams, TState>;
@@ -1020,21 +998,8 @@ export class LlmFlowBuilder<
 	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
 	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
 
-	constructor(turnId: TurnId) {
-		this.turnId = turnId;
-	}
-
-	get id(): TurnId {
-		return this.turnId;
-	}
-
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	modelPurpose(purpose: LlmModelPurpose): this {
@@ -1073,7 +1038,6 @@ export class LlmFlowBuilder<
 	freshPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh";
-		this.completionMode = "turn_end";
 		this.startFrom = undefined;
 		this.restorePrimaryLeafAfterTurn = undefined;
 		return this;
@@ -1082,7 +1046,6 @@ export class LlmFlowBuilder<
 	freshSeededPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh_seeded";
-		this.completionMode = "turn_end";
 		this.startFrom = undefined;
 		this.restorePrimaryLeafAfterTurn = undefined;
 		return this;
@@ -1091,14 +1054,12 @@ export class LlmFlowBuilder<
 	fullPrimary(): this {
 		this.branchType = "primary";
 		this.context = "full";
-		this.completionMode = "turn_end";
 		return this;
 	}
 
 	rootBranchReview(): this {
 		this.branchType = "root_branch";
 		this.context = "full";
-		this.completionMode = "turn_end";
 		this.restorePrimaryLeafAfterTurn = true;
 		return this;
 	}
@@ -1125,12 +1086,7 @@ export class LlmFlowBuilder<
 		productName: string,
 		fallback: ProcessTurnStartSelection = { kind: "current_leaf" },
 	): this {
-		this.startFrom = {
-			kind: "product_ref",
-			productName: normalizeProductName(productName),
-			fallback,
-		};
-		return this;
+		return this.startFromProductBranch(productName, fallback);
 	}
 
 	startFromReviewBranch(): this {
@@ -1162,10 +1118,7 @@ export class LlmFlowBuilder<
 	consume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
-		const normalized = normalizeProductName(productName);
-		if (!this.consumedProductNames.includes(normalized)) {
-			this.consumedProductNames.push(normalized);
-		}
+		this.consumedProductNames.add(normalizeProductName(productName));
 		return this as unknown as LlmFlowBuilder<
 			TParams,
 			TState,
@@ -1177,10 +1130,7 @@ export class LlmFlowBuilder<
 	optionalConsume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
-		const normalized = normalizeProductName(productName);
-		if (!this.optionalConsumedProductNames.includes(normalized)) {
-			this.optionalConsumedProductNames.push(normalized);
-		}
+		this.optionalConsumedProductNames.add(normalizeProductName(productName));
 		return this as unknown as LlmFlowBuilder<
 			TParams,
 			TState,
@@ -1219,11 +1169,9 @@ export class LlmFlowBuilder<
 	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
 		this.promptBuilder = (ctx) =>
 			fn(
-				createFlowPromptContext(
-					ctx,
-					this.consumedProductNames as TConsumedProducts[],
-					this.optionalConsumedProductNames,
-				),
+				createFlowPromptContext(ctx, [...this.consumedProductNames] as TConsumedProducts[], [
+					...this.optionalConsumedProductNames,
+				]),
 			);
 		return this;
 	}
@@ -1284,7 +1232,7 @@ export class LlmFlowBuilder<
 							preparation(createFlowAutomaticRunContext(ctx)),
 					}
 				: {}),
-			completionMode: this.completionMode,
+			completionMode: "turn_end" as const,
 			branchType: this.branchType,
 			context: this.context,
 			...(this.startFrom ? { startFrom: this.startFrom } : {}),
@@ -1398,10 +1346,10 @@ export class LlmFlowBuilder<
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
 			...(resultSemanticRef ? { resultSemanticRef } : {}),
 			...(publishedProduct ? { publishedProduct } : {}),
-			...(this.consumedProductNames.length > 0
+			...(this.consumedProductNames.size > 0
 				? { consumedProducts: [...this.consumedProductNames] }
 				: {}),
-			...(this.optionalConsumedProductNames.length > 0
+			...(this.optionalConsumedProductNames.size > 0
 				? { optionalConsumedProducts: [...this.optionalConsumedProductNames] }
 				: {}),
 		};
@@ -1415,64 +1363,58 @@ type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
 	Record<string, unknown>
 >;
 
-function registerExternalAction<TParams, TState, TEvent, TInput extends Record<string, unknown>>(
-	builders: Map<string, StoredExternalActionBuilder<TParams, TState>>,
-	turnKind: "Automatic" | "Human",
-	turnId: TurnId,
-	externalActionId: string,
-	source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-	configure: (
-		builder: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-	) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-): void {
-	if (builders.has(externalActionId)) {
-		throw new Error(
-			`${turnKind} turn '${turnId}' declares duplicate external action '${externalActionId}'`,
-		);
-	}
-	const builder = new ExternalActionBuilder(externalActionId, source);
-	configure(builder);
-	builders.set(
-		externalActionId,
-		builder as unknown as StoredExternalActionBuilder<TParams, TState>,
-	);
-}
+abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnBuilder {
+	protected abstract readonly turnKind: "Automatic" | "Human";
+	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
-function buildExternalActions<TParams, TState>(
-	builders: ReadonlyMap<string, StoredExternalActionBuilder<TParams, TState>>,
-): Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>> | undefined {
-	return builders.size > 0
-		? Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]))
-		: undefined;
+	externalAction<
+		TEvent = unknown,
+		TInput extends Record<string, unknown> = Record<string, unknown>,
+	>(
+		externalActionId: string,
+		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
+		configure: (
+			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+	): this {
+		if (this.externalActionBuilders.has(externalActionId)) {
+			throw new Error(
+				`${this.turnKind} turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
+			);
+		}
+		const builder = new ExternalActionBuilder(externalActionId, source);
+		configure(builder);
+		this.externalActionBuilders.set(
+			externalActionId,
+			builder as unknown as StoredExternalActionBuilder<TParams, TState>,
+		);
+		return this;
+	}
+
+	protected buildExternalActions():
+		| Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>
+		| undefined {
+		return this.externalActionBuilders.size > 0
+			? Object.fromEntries(
+					[...this.externalActionBuilders].map(([id, builder]) => [id, builder.build()]),
+				)
+			: undefined;
+	}
 }
 
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
+	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
-	private readonly turnId: TurnId;
-	private turnDescription: string | null = null;
+	protected readonly turnKind = "Automatic";
 	private runFn:
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
-	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
-
-	constructor(turnId: TurnId) {
-		this.turnId = turnId;
-	}
-
-	get id(): TurnId {
-		return this.turnId;
-	}
 
 	get definition(): AutomaticTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	run(
@@ -1486,27 +1428,6 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 
 	integrationTools(...tools: readonly string[]): this {
 		this.availableIntegrationTools = tools.map((tool) => tool.trim());
-		return this;
-	}
-
-	externalAction<
-		TEvent = unknown,
-		TInput extends Record<string, unknown> = Record<string, unknown>,
-	>(
-		externalActionId: string,
-		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (
-			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-	): this {
-		registerExternalAction(
-			this.externalActionBuilders,
-			"Automatic",
-			this.turnId,
-			externalActionId,
-			source,
-			configure,
-		);
 		return this;
 	}
 
@@ -1543,7 +1464,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			outcomes[outcomeId] = builder.build();
 		}
 		const runFn = this.runFn;
-		const externalActions = buildExternalActions(this.externalActionBuilders);
+		const externalActions = this.buildExternalActions();
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
@@ -1555,15 +1476,6 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 			run: (ctx) => runFn(createFlowAutomaticRunContext(ctx)),
 		};
 	}
-}
-
-function formFieldPublishedProductName(field: FormDefinition["fields"][number]): string | null {
-	if (!field.publish) {
-		return null;
-	}
-	return normalizeProductName(
-		typeof field.publish === "object" && field.publish.product ? field.publish.product : field.id,
-	);
 }
 
 function inferAcceptanceState(actionId: string): ProcessHumanTurnActionSpec["acceptanceState"] {
@@ -1706,28 +1618,22 @@ export class ExternalActionBuilder<
 }
 
 export class HumanFlowBuilder<TParams = unknown, TState = unknown>
+	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowHumanTurn<TParams, TState>
 {
-	private turnDescription: string | null = null;
+	protected readonly turnKind = "Human";
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
 	private operatorAttentionValue: HumanTurnOperatorAttention | undefined;
 	private turnCommentary: string | undefined;
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
-	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
-
-	constructor(private readonly turnId: TurnId) {}
-
-	get id(): TurnId {
-		return this.turnId;
-	}
 
 	get definition(): HumanTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {
 			throw new Error(`Human turn '${this.turnId}' must declare .description(...)`);
 		}
-		const externalActions = buildExternalActions(this.externalActionBuilders);
+		const externalActions = this.buildExternalActions();
 		return {
 			kind: "human",
 			description: this.turnDescription,
@@ -1741,11 +1647,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 			),
 			...(externalActions ? { externalActions } : {}),
 		};
-	}
-
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
 	}
 
 	reviewProduct(productName: string): this {
@@ -1783,27 +1684,6 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		const builder = new HumanActionBuilder<TParams, TState>(actionId);
 		configure(builder);
 		this.actions.set(actionId, builder);
-		return this;
-	}
-
-	externalAction<
-		TEvent = unknown,
-		TInput extends Record<string, unknown> = Record<string, unknown>,
-	>(
-		externalActionId: string,
-		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (
-			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-	): this {
-		registerExternalAction(
-			this.externalActionBuilders,
-			"Human",
-			this.turnId,
-			externalActionId,
-			source,
-			configure,
-		);
 		return this;
 	}
 }
@@ -1884,17 +1764,11 @@ export class ExternalRouteBuilder<
 }
 
 export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
+	extends DescribedTurnBuilder
 	implements FlowExternalTurn<TParams, TState>
 {
-	private turnDescription: string | null = null;
 	private routeBuilders: ExternalRouteBuilder<TParams, TState, unknown, Record<string, unknown>>[] =
 		[];
-
-	constructor(private readonly turnId: TurnId) {}
-
-	get id(): TurnId {
-		return this.turnId;
-	}
 
 	get definition(): ExternalTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {
@@ -1911,11 +1785,6 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 		};
 	}
 
-	description(description: string): this {
-		this.turnDescription = description;
-		return this;
-	}
-
 	from<TEvent = unknown, TInput extends Record<string, unknown> = Record<string, unknown>>(
 		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
 	): ExternalRouteBuilder<TParams, TState, TEvent, TInput> {
@@ -1928,6 +1797,12 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 }
 
 type Hook<TApi> = (api: TApi) => void;
+
+function chainHooks<TApi>(hooks: readonly Hook<TApi>[]): Hook<TApi> {
+	return (api) => {
+		for (const hook of hooks) hook(api);
+	};
+}
 
 export abstract class FlowComponentBuilder<TParams = unknown, TState = unknown> {
 	readonly turns: FlowTurn<TParams, TState>[] = [];
@@ -2116,53 +1991,6 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			turns[turn.id] = turn.definition;
 		}
 
-		const publishedProducts = new Set<string>();
-		for (const turnDef of Object.values(turns)) {
-			if (turnDef.kind === "llm") {
-				if (turnDef.publishedProduct) {
-					normalizeProductName(turnDef.publishedProduct);
-					publishedProducts.add(turnDef.publishedProduct);
-				}
-				for (const outcome of Object.values(turnDef.outcomes ?? {})) {
-					if (outcome?.publishedProduct) {
-						normalizeProductName(outcome.publishedProduct);
-						publishedProducts.add(outcome.publishedProduct);
-					}
-				}
-			}
-			if (turnDef.kind === "human") {
-				for (const action of Object.values(turnDef.actions)) {
-					for (const field of action.form?.fields ?? []) {
-						const productName = formFieldPublishedProductName(field);
-						if (productName) {
-							publishedProducts.add(productName);
-						}
-					}
-				}
-				for (const externalAction of Object.values(turnDef.externalActions ?? {})) {
-					if (externalAction.publishInput) {
-						publishedProducts.add(normalizeProductName(externalAction.publishInput.productName));
-					}
-				}
-			}
-		}
-		for (const [turnId, turnDef] of Object.entries(turns)) {
-			if (turnDef.kind !== "llm") {
-				continue;
-			}
-			for (const productName of [
-				...(turnDef.consumedProducts ?? []),
-				...(turnDef.optionalConsumedProducts ?? []),
-			]) {
-				normalizeProductName(productName);
-				if (!publishedProducts.has(productName)) {
-					throw new Error(
-						`Flow process '${this.processId}' turn '${turnId}' consumes product '${productName}' that is never published by this process`,
-					);
-				}
-			}
-		}
-
 		const input: DefinedProcessInput<TParams, TState> = {
 			id: this.processId,
 			displayName: this.processDisplayName,
@@ -2187,44 +2015,18 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 				: {}),
 			...(this.processPiConfig ? { piConfig: this.processPiConfig } : {}),
 			turns,
-			...(this.serverHooks.length > 0
-				? {
-						server: (api) => {
-							for (const hook of this.serverHooks) {
-								hook(api);
-							}
-						},
-					}
-				: {}),
-			...(this.uiHooks.length > 0
-				? {
-						ui: (api) => {
-							for (const hook of this.uiHooks) {
-								hook(api);
-							}
-						},
-					}
-				: {}),
-			...(this.launcherHooks.length > 0
-				? {
-						launchers: (api) => {
-							for (const hook of this.launcherHooks) {
-								hook(api);
-							}
-						},
-					}
-				: {}),
-			...(this.watcherHooks.length > 0
-				? {
-						watchers: (api) => {
-							for (const hook of this.watcherHooks) {
-								hook(api);
-							}
-						},
-					}
-				: {}),
+			...(this.serverHooks.length > 0 ? { server: chainHooks(this.serverHooks) } : {}),
+			...(this.uiHooks.length > 0 ? { ui: chainHooks(this.uiHooks) } : {}),
+			...(this.launcherHooks.length > 0 ? { launchers: chainHooks(this.launcherHooks) } : {}),
+			...(this.watcherHooks.length > 0 ? { watchers: chainHooks(this.watcherHooks) } : {}),
 		};
-		return defineProcess(input);
+		const process = defineProcess(input);
+		const errors = validateProcessGraphProducts(
+			toProcessGraphView(process as unknown as ProcessGraphSource),
+		);
+		if (errors.length > 0)
+			throw new Error(`Flow process '${this.processId}': ${errors.join("; ")}`);
+		return process;
 	}
 }
 

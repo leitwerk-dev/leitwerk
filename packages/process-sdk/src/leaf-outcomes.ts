@@ -1,14 +1,6 @@
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import * as v from "valibot";
 import type { LeafOutcomeCaptureResult, ProcessLeafOutcomeDefinition } from "./extension-api.js";
-
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 
 function isNonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim() !== "";

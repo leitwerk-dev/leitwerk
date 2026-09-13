@@ -233,12 +233,7 @@ export function resolveProcessPiConfig(input: {
 	};
 }
 
-export function resolveTurnActiveToolNames(input: {
-	turnId: string;
-	turnDef: LlmTurnDefinition<string, unknown, unknown>;
-}): string[] {
-	return resolveTurnAvailableToolNames(input);
-}
+export { resolveTurnAvailableToolNames as resolveTurnActiveToolNames };
 
 // Mirror Pi's PI_CODING_AGENT_DIR expansion semantics from
 // pi-mono/packages/coding-agent/src/config.ts.
