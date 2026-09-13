@@ -1,0 +1,5 @@
+{
+	"extends": "../tsconfig.json",
+	"compilerOptions": { "outDir": "../.leitwerk/sandbox-build", "rootDir": "..", "types": ["node"] },
+	"include": ["./**/*.ts", "../scripts/sandbox/**/*.ts", "../tests/e2e/sandbox/**/*.ts"]
+}

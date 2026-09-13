@@ -21,9 +21,13 @@ test("restarts after persistence, reconciles the original write key, and records
 			],
 		};
 		const records: ExternalWriteLogRecordInput[] = [];
+		let writeLogAvailable = false;
 		const writes: ExternalWriteLogRepoLike = {
 			hasDedupKey: (key) => records.some((r) => r.dedupKey === key),
-			record: (record) => records.push(record),
+			record: (record) => {
+				if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
+				records.push(record);
+			},
 		};
 		const adapter = new LocalTicketAdapter(options);
 		const tool = adapter.tool(writes);
@@ -40,11 +44,12 @@ test("restarts after persistence, reconciles the original write key, and records
 		} as IntegrationToolExecutionContext;
 		adapter.injectLostResponse();
 		await expect(tool.execute(ctx, { title: "Review", body: "Review the notes" })).rejects.toThrow(
-			/response was lost/,
+			/Write log unavailable/,
 		);
 		expect(records).toHaveLength(0);
 		expect(JSON.parse(readFileSync(options.file, "utf8")).tickets).toHaveLength(1);
 		const restarted = new LocalTicketAdapter(options);
+		writeLogAvailable = true;
 		const receipt = await restarted
 			.tool(writes)
 			.execute(ctx, { title: "Review", body: "Review the notes" });

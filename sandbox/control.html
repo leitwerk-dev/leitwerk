@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local sandbox · Leitwerk</title>
+<style>
+:root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; color: #25332f; background: #f4f5f1; accent-color: #27634b; }
+* { box-sizing: border-box; }
+body { max-width: 1000px; margin: auto; padding: 24px; }
+header { display: flex; align-items: baseline; justify-content: space-between; gap: 24px; border-bottom: 1px solid #cbd3ca; }
+h1 { font-size: 28px; } h2 { font-size: 20px; margin-top: 32px; }
+p { line-height: 1.6; max-width: 70ch; }
+a { color: #245c47; text-underline-offset: 3px; }
+button, select { font: inherit; color: inherit; min-height: 44px; border: 1px solid #a9b7ac; border-radius: 8px; background: #fff; padding: 10px 14px; }
+button { cursor: pointer; } button:disabled { opacity: .55; cursor: wait; }
+:focus-visible { outline: 2px solid #27634b; outline-offset: 3px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+article { padding: 16px 0; border-top: 1px solid #cbd3ca; display: flex; justify-content: space-between; gap: 16px; }
+#notice { min-height: 24px; color: #854125; }
+small { color: #526157; }
+@media (max-width: 640px) { header, article { flex-direction: column; gap: 8px; } }
+</style>
+</head>
+<body>
+<header><h1>Local sandbox</h1><a id="open-ui">Open Leitwerk</a></header>
+<p>Start a scenario, then answer questions and review changes in Leitwerk. The notebook has real Git history. Approved changes are committed and merged locally.</p>
+<p id="notice" role="status" aria-live="polite"></p>
+<h2>Start a scenario</h2>
+<div class="actions"><label for="scenario">Scenario</label><select id="scenario"></select><button type="button" id="start">Start fresh scenario</button><button type="button" id="refresh">Refresh</button></div>
+<p id="description"></p>
+<div id="processes"></div>
+<h2>Local tickets</h2>
+<p>Create a ticket from a durable result in Leitwerk. Choose the local ticket tool, clarify the destination if needed, and review the draft before approving it.</p>
+<label><input type="checkbox" id="lost-response"> Lose the next ticket response after saving it</label>
+<div id="tickets"></div>
+<script type="module">
+const get = (id) => document.getElementById(id);
+let state;
+async function request(url, body) {
+ const response = await fetch(url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+ const result = await response.json(); if (!response.ok) throw new Error(result.error || response.statusText); return result;
+}
+const text = (tag, value) => { const element = document.createElement(tag); element.textContent = value; return element; };
+const link = (value, url) => { const element = text("a", value); element.href = url; return element; };
+function describe() { get("description").textContent = state.scenarioDescriptions.find((s) => s.name === get("scenario").value)?.description || ""; }
+async function refresh() {
+ state = await request("/__local/state"); get("open-ui").href = state.uiUrl;
+ if (!get("scenario").options.length) for (const scenario of state.scenarioDescriptions) { const option = text("option", scenario.name); option.value = scenario.name; get("scenario").append(option); }
+ describe(); get("processes").replaceChildren(); get("tickets").replaceChildren();
+ for (const process of state.processes) { const row = document.createElement("article"); row.append(link(process.title || process.id, `${state.uiUrl}/processes/${process.id}`), text("small", `${process.selectedTurnId || "Finished"} · ${process.lifecycleStatus}`)); get("processes").append(row); }
+ for (const ticket of state.tickets) { const row = document.createElement("article"); row.append(link(ticket.title, ticket.url), text("small", ticket.destinationId)); get("tickets").append(row); }
+ if (!state.tickets.length) get("tickets").append(text("p", "No local tickets yet."));
+ get("lost-response").checked = state.lostResponseEnabled;
+}
+async function run(action) { try { get("notice").textContent = ""; await action(); } catch (error) { get("notice").textContent = error.message; } }
+get("start").onclick = () => run(async () => { get("start").disabled = true; try { await request("/__local/scenarios", { name: get("scenario").value, requestId: crypto.randomUUID() }); await refresh(); } finally { get("start").disabled = false; } });
+get("refresh").onclick = () => run(refresh);
+get("scenario").onchange = describe;
+get("lost-response").onchange = () => run(async () => { await request("/__local/lost-response", { enabled: get("lost-response").checked }); await refresh(); });
+await run(refresh); setInterval(() => run(refresh), 2000);
+</script>
+</body>
+</html>

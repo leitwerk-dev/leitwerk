@@ -108,9 +108,28 @@ The defaults remain the normal server and preflight scripts. A custom preflight
 must validate its composition without opening the application's persistent database
 for writing. The supervisor watches the backend entry and configured extension
 sources and retains its normal graceful restart and readiness handling.
+Both backend source reload and the outer configuration/metadata reload use the
+same custom preflight entry.
 `LEITWERK_DEV_WATCH_PATHS_JSON` adds source paths as a JSON array, allowing a
 development harness outside application packages to participate in backend reloads.
 
 `LEITWERK_UI_HOST` selects the Vite development listener host; it defaults to
 `localhost`. These are development environment variables, not production server
 configuration or extension-discovery overrides.
+
+### Source sandbox compositions
+
+`npm run dev:sandbox` starts the public notebook composition without provider
+credentials. `@leitwerk-dev/dev-sandbox` supplies `createSandboxApp` and the source
+launcher/reset entrypoints. A `SandboxCompositionFactory` receives isolated paths,
+mode and configured URLs, then supplies process configuration, an explicit catalog,
+scenarios, scripted Pi, controls, polling and cleanup. Adapters own their persisted
+state. Core harness code and tests import no extensions; built-in scenarios live
+in the checkout's `sandbox/` tooling.
+
+Extension workspaces can delegate to the selected public checkout's
+`scripts/sandbox/cli.ts` with their composition entry and workspace root. Keep the
+existing npm release pins until adopting the containing release. This phase
+supports source development only; an installed package does not contain the
+supervisor, UI source or built-in scenarios. See the [sandbox guide](../sandbox/README.md)
+and [harness contract](../packages/dev-sandbox/README.md).

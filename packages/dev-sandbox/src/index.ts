@@ -44,14 +44,13 @@ export interface SandboxComposition {
 }
 export type SandboxCompositionFactory = (input: SandboxInput) => SandboxComposition;
 
-/** Keep normal process semantics; replace only its development launchers. */
+/** Install development launchers on an SDK-defined process, retaining its identity. */
 export function withSandboxLaunchers<T, S>(
 	definition: ExtensionProcessDefinition<T, S>,
 	scenarios: readonly SandboxScenario<T>[],
 ): ExtensionProcessDefinition<T, S> {
-	return {
-		...definition,
-		launchers(api) {
+	return Object.assign(definition, {
+		launchers(api: Parameters<NonNullable<ExtensionProcessDefinition<T, S>["launchers"]>>[0]) {
 			for (const scenario of scenarios)
 				api.launcher({
 					id: `sandbox.${scenario.name}`,
@@ -80,7 +79,7 @@ export function withSandboxLaunchers<T, S>(
 					},
 				});
 		},
-	};
+	});
 }
 
 export async function createSandboxApp(
