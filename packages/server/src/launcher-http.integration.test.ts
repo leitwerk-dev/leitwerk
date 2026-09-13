@@ -1,4 +1,7 @@
-import type { spawn } from "node:child_process";
+import { execFileSync, type spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { LaunchRun } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
@@ -99,7 +102,9 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 	},
 	worker(api) {
 		api.start("launcher_plan_turn");
-		api.turn("launcher_plan_turn", async () => {});
+		api.turn("launcher_plan_turn", async (run) => {
+			await run.turn(launcherPlanTurn);
+		});
 	},
 	launchers(api) {
 		api.launcher({
@@ -2054,13 +2059,32 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("supports launchers that start the new process instance immediately", async () => {
-		const startHarness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
-			inProcessWorkers: true,
-			configOverride: applyLauncherModelConfig,
-		});
-
+		const repoPath = await mkdtemp(join(tmpdir(), "leitwerk-launcher-start-"));
+		let startHarness: IntegrationHarness | undefined;
 		try {
+			execFileSync("git", ["init", "--initial-branch=main", repoPath]);
+			execFileSync("git", [
+				"-C",
+				repoPath,
+				"-c",
+				"core.hooksPath=/dev/null",
+				"-c",
+				"user.name=Launcher Test",
+				"-c",
+				"user.email=launcher@example.invalid",
+				"-c",
+				"commit.gpgsign=false",
+				"commit",
+				"--allow-empty",
+				"-m",
+				"Initial commit",
+			]);
+			startHarness = await createIntegrationHarness({
+				extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
+				inProcessWorkers: true,
+				configOverride: applyLauncherModelConfig,
+			});
+			const { ctx } = startHarness;
 			const response = await testFetch(
 				`${startHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
@@ -2068,7 +2092,7 @@ describe("launcher HTTP routes", () => {
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify({
 						launcherInput: {
-							repoPath: "/tmp/repo-start-now",
+							repoPath,
 							prompt: "Start immediately",
 							startNow: true,
 						},
@@ -2080,17 +2104,27 @@ describe("launcher HTTP routes", () => {
 			expect(response.status).toBe(201);
 			expect(body.process).toMatchObject({
 				processId: "launcher_test_process",
-				selectedTurnId: "launcher_plan_turn",
-				lifecycleStatus: "active",
 			});
 
-			const workerLease = await waitFor(
-				() => startHarness.ctx.deps.leases.getByInstance(body.process.id),
-				(value) => value !== null,
+			// Admission is not startup acceptance. Wait for execution, not a transient
+			// active state or a lease that can exist before workspace preparation fails.
+			const process = await waitFor(
+				() => ctx.deps.processes.getById(body.process.id),
+				(value) => value?.lifecycleStatus === "completed" || value?.lifecycleStatus === "error",
 			);
-			expect(workerLease).not.toBeNull();
+			const detail = await globalThis.fetch(
+				`${startHarness.address}/api/processes/${body.process.id}`,
+			);
+			expect(process, await detail.text()).toMatchObject({ lifecycleStatus: "completed" });
+			expect(ctx.deps.turnRecords.listByInstance(body.process.id)).toEqual([
+				expect.objectContaining({ turnId: "launcher_plan_turn" }),
+			]);
 		} finally {
-			await startHarness.ctx.app.close();
+			try {
+				await startHarness?.ctx.app.close();
+			} finally {
+				await rm(repoPath, { recursive: true, force: true });
+			}
 		}
 	});
 });

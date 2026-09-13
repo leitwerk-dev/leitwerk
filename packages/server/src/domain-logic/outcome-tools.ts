@@ -98,44 +98,25 @@ function minimumParameterError(
 
 type OutcomeParameterSchema = v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>;
 
-const jsonObjectSchema = v.custom<Record<string, unknown>>(isJsonObject, "Expected an object");
+const scalarParameters = {
+	string: { schema: v.string(), label: "a string", plural: "strings" },
+	number: {
+		schema: v.pipe(v.number(), v.finite()),
+		label: "a finite number",
+		plural: "finite numbers",
+	},
+	boolean: { schema: v.boolean(), label: "a boolean", plural: "booleans" },
+	object: {
+		schema: v.custom<Record<string, unknown>>(isJsonObject, "Expected an object"),
+		label: "an object",
+		plural: "objects",
+	},
+};
 
 function compileOutcomeParameterSchema(spec: OutcomeToolParameterSpec): OutcomeParameterSchema {
-	switch (spec.type) {
-		case "string":
-			return v.string();
-		case "number":
-			return v.pipe(v.number(), v.finite());
-		case "boolean":
-			return v.boolean();
-		case "object":
-			return jsonObjectSchema;
-		case "array": {
-			const itemType = spec.items?.type ?? "string";
-			const itemSchema: OutcomeParameterSchema =
-				itemType === "string"
-					? v.string()
-					: itemType === "number"
-						? v.pipe(v.number(), v.finite())
-						: itemType === "boolean"
-							? v.boolean()
-							: jsonObjectSchema;
-			return v.array(itemSchema);
-		}
-	}
-}
-
-function compileOutcomeParametersSchema(
-	parameterSpecs: Record<string, OutcomeToolParameterSpec>,
-): v.ObjectSchema<Record<string, OutcomeParameterSchema>, undefined> {
-	return v.object(
-		Object.fromEntries(
-			Object.entries(parameterSpecs).map(([key, spec]) => {
-				const schema = compileOutcomeParameterSchema(spec);
-				return [key, spec.required ? schema : v.optional(schema)];
-			}),
-		),
-	) as v.ObjectSchema<Record<string, OutcomeParameterSchema>, undefined>;
+	return spec.type === "array"
+		? v.array(scalarParameters[spec.items?.type ?? "string"].schema)
+		: scalarParameters[spec.type].schema;
 }
 
 function effectiveArrayItemCount(
@@ -148,28 +129,9 @@ function effectiveArrayItemCount(
 }
 
 function expectedParameterLabel(spec: OutcomeToolParameterSpec): string {
-	switch (spec.type) {
-		case "string":
-			return "a string";
-		case "number":
-			return "a finite number";
-		case "boolean":
-			return "a boolean";
-		case "object":
-			return "an object";
-		case "array": {
-			const itemType = spec.items?.type ?? "string";
-			return `an array of ${
-				itemType === "number"
-					? "finite numbers"
-					: itemType === "boolean"
-						? "booleans"
-						: itemType === "object"
-							? "objects"
-							: "strings"
-			}`;
-		}
-	}
+	return spec.type === "array"
+		? `an array of ${scalarParameters[spec.items?.type ?? "string"].plural}`
+		: scalarParameters[spec.type].label;
 }
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {
@@ -200,13 +162,20 @@ function jsonValuesEqual(left: unknown, right: unknown): boolean {
 
 function resolveOutcomeValidationContract(
 	turnDefinition: TurnDefinition | undefined,
+	turnId: string,
 	outcome: string,
-): OutcomeValidationContract | null {
-	if (
-		!turnDefinition ||
-		(!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition))
-	) {
-		return null;
+): OutcomeValidationContract | OutcomeValidationFailure {
+	if (!turnDefinition) {
+		return validationFailure(
+			"turn_not_registered",
+			`'${turnId}' is not registered in the loaded turn catalog`,
+		);
+	}
+	if (!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition)) {
+		return validationFailure(
+			"turn_outcome_unsupported",
+			`'${turnId}' does not support turn outcomes`,
+		);
 	}
 
 	const outcomeSpec = turnDefinition.outcomes?.[outcome];
@@ -224,7 +193,10 @@ function resolveOutcomeValidationContract(
 		};
 	}
 
-	return null;
+	return validationFailure(
+		"outcome_not_registered",
+		`'${outcome}' is not registered for turn '${turnId}'`,
+	);
 }
 
 export function isTurnAvailableForSelectedTurn(
@@ -256,28 +228,8 @@ export function checkTurnOutcomeAvailability(
 		);
 	}
 
-	if (!turnDefinition) {
-		return validationFailure(
-			"turn_not_registered",
-			`'${turnId}' is not registered in the loaded turn catalog`,
-		);
-	}
-
-	if (!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition)) {
-		return validationFailure(
-			"turn_outcome_unsupported",
-			`'${turnId}' does not support turn outcomes`,
-		);
-	}
-
-	if (!resolveOutcomeValidationContract(turnDefinition, outcome)) {
-		return validationFailure(
-			"outcome_not_registered",
-			`'${outcome}' is not registered for turn '${turnId}'`,
-		);
-	}
-
-	return null;
+	const contract = resolveOutcomeValidationContract(turnDefinition, turnId, outcome);
+	return "ok" in contract ? contract : null;
 }
 
 export function validateChangedProjects(
@@ -330,7 +282,6 @@ function validateDeclaredOutcomeParameters(
 		);
 	}
 
-	const parsed = v.safeParse(compileOutcomeParametersSchema(parameterSpecs), params);
 	for (const [key, spec] of Object.entries(parameterSpecs)) {
 		const value = params[key];
 		if (value === undefined) {
@@ -367,15 +318,6 @@ function validateDeclaredOutcomeParameters(
 			}
 		}
 	}
-	if (!parsed.success) {
-		const issuePath = parsed.issues[0]?.path?.[0]?.key;
-		const key = typeof issuePath === "string" ? issuePath : Object.keys(parameterSpecs)[0];
-		const spec = key ? parameterSpecs[key] : undefined;
-		if (key && spec) {
-			return invalidParameterError(turnId, outcome, key, spec, expectedParameterLabel(spec));
-		}
-	}
-
 	const projectError = validateChangedProjects(params.changedProjects, knownProjectKeys);
 	if (projectError) {
 		return projectError;
@@ -414,27 +356,8 @@ export function validateTurnOutcome(
 		return validationFailure("invalid_params", "params must be an object");
 	}
 
-	if (!turnDefinition) {
-		return validationFailure(
-			"turn_not_registered",
-			`'${turnId}' is not registered in the loaded turn catalog`,
-		);
-	}
-
-	if (!isLlmTurnDefinition(turnDefinition) && !isAutomaticTurnDefinition(turnDefinition)) {
-		return validationFailure(
-			"turn_outcome_unsupported",
-			`'${turnId}' does not support turn outcomes`,
-		);
-	}
-
-	const contract = resolveOutcomeValidationContract(turnDefinition, outcome);
-	if (!contract) {
-		return validationFailure(
-			"outcome_not_registered",
-			`'${outcome}' is not registered for turn '${turnId}'`,
-		);
-	}
+	const contract = resolveOutcomeValidationContract(turnDefinition, turnId, outcome);
+	if ("ok" in contract) return contract;
 
 	return contract.kind === "turn_end_result"
 		? validateTurnEndResultParams(turnId, outcome, params, contract.expectedParams)
