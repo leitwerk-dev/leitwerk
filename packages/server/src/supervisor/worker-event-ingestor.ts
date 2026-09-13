@@ -1,8 +1,12 @@
 import {
+	applyPiEventToLiveTurnProjection,
 	asWsEventPayloadRecord,
+	buildLiveTurnProjectionFromEvents,
 	createDurableWsFrame,
 	createEphemeralWsFrame,
+	createMutableLiveTurnProjection,
 	isStreamableEvent,
+	type MutableLiveTurnProjection,
 	mapWorkerEventToWsType,
 	readWsEventNonEmptyString,
 	readWsEventPiTurnId,
@@ -14,12 +18,6 @@ import {
 } from "@leitwerk-dev/protocol";
 import type { WorkerEventPayload } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "../db/repositories.js";
-import {
-	applyPiEventToLiveTurnProjection,
-	buildLiveTurnProjectionFromEvents,
-	createMutableLiveTurnProjection,
-	type MutableLiveTurnProjection,
-} from "../live-turn-projection.js";
 import { recordTurnPreparation } from "../turn-preparation.js";
 import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";

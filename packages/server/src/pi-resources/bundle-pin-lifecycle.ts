@@ -14,17 +14,12 @@ function pinnedDigest(
 	if (process.currentExecution?.kind !== "worker_start") return null;
 	const start = turnStarts.getById(process.currentExecution.id);
 	if (!start || start.instanceId !== process.id || start.turnType !== "llm") return null;
-	if (start.state.kind === "starting" && start.state.start.kind === "llm") {
-		return start.state.start.piResourceSnapshotDigest;
-	}
-	if (
-		start.state.kind === "accepted" &&
-		start.state.start.kind === "llm" &&
+	if (start.state.kind !== "starting" && start.state.kind !== "accepted") return null;
+	if (start.state.start.kind !== "llm") return null;
+	return start.state.kind === "starting" ||
 		turnRecords.getById(start.state.turnRecordId)?.status === "running"
-	) {
-		return start.state.start.piResourceSnapshotDigest;
-	}
-	return null;
+		? start.state.start.piResourceSnapshotDigest
+		: null;
 }
 
 /** Keeps only the current live LLM start's resource bundle retained in this server. */

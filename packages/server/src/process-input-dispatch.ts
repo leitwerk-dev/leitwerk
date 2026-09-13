@@ -1,23 +1,13 @@
 import {
-	type Actor,
 	assertValidProcessProductName,
-	type InputKind,
-	type InputSource,
 	isProcessSemanticEntryRefKey,
 	type ProcessInput,
-	type ProcessInputTarget,
 } from "@leitwerk-dev/domain";
+import type { QueuedProcessInputLike } from "@leitwerk-dev/process-sdk";
 import type { InputDelivery } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
-export interface QueuedProcessInput {
-	source: InputSource;
-	kind: InputKind;
-	target?: ProcessInputTarget | null;
-	bodyMarkdown: string;
-	/** Stable principal that queued this input. Defaults to SYSTEM_ACTOR at persist time. */
-	actor?: Actor;
-}
+export interface QueuedProcessInput extends QueuedProcessInputLike {}
 
 export interface ProcessInputDispatchDeps {
 	supervisor?: WorkerSupervisor;

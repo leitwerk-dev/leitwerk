@@ -1,14 +1,10 @@
+import type { HandoffDedupKeyRecordLike } from "@leitwerk-dev/process-sdk";
 import { eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
-export interface ProcessHandoffDedupKeyRecord {
-	key: string;
-	instanceId: string;
-	createdAt: string;
-	metadata: Record<string, unknown>;
-}
+export interface ProcessHandoffDedupKeyRecord extends HandoffDedupKeyRecordLike {}
 
 export interface CreateProcessHandoffDedupKeyInput {
 	key: string;

@@ -5,6 +5,7 @@ import {
 	createCapabilityAccessor,
 	type ExternalSourceServiceLike,
 	type PollingServiceLike,
+	type ProcessActionServiceLike,
 	type ProcessActionSummaryLike,
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionServiceLike,
@@ -68,12 +69,7 @@ export function buildHostCapabilities(input: {
 						instanceId: string,
 						actionId: string,
 						inputValue: Record<string, unknown>,
-						opts?: {
-							source?: "ui" | "external" | "scheduled";
-							origin?: "web_ui" | "external_interface" | "scheduled";
-							nextTurnModelProfileId?: string | null;
-							actor?: import("@leitwerk-dev/domain").Actor;
-						},
+						opts?: NonNullable<Parameters<ProcessActionServiceLike["executeAction"]>[3]>,
 					) {
 						return input.commands.executeProcessAction(instanceId, actionId, inputValue, opts);
 					},

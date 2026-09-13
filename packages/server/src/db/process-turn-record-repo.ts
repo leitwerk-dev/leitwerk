@@ -13,26 +13,12 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
-export interface CreateProcessTurnRecordInput {
+export interface CreateProcessTurnRecordInput extends UpdateProcessTurnRecordInput {
 	id?: string;
 	instanceId: string;
 	turnId: TurnId;
-	turnType?: ProcessTurnType;
-	status?: ProcessTurnRecordStatus;
-	attemptNumber?: number;
-	parentTurnRecordId?: string | null;
-	turnStartRecordId?: string | null;
-	acceptedWorkerLeaseId?: string | null;
 	pathType?: ProcessTurnRecordPathType;
-	forkPiEntryId?: string | null;
-	resultPiEntryId?: string | null;
-	modelProfileId?: string | null;
-	modelSelectionProvenance?: ModelSelectionProvenance | null;
-	turnResultMarkdown?: string | null;
-	errorSummary?: string | null;
-	errorClass?: WorkerErrorClass | null;
 	startedAt?: string;
-	endedAt?: string | null;
 }
 
 export interface UpdateProcessTurnRecordInput {

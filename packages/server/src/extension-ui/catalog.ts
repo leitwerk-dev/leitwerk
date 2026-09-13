@@ -1,10 +1,15 @@
 import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import { copiedUnknownRecordSchema as jsonObjectSchema } from "@leitwerk-dev/domain";
 import {
 	type LeitwerkRuntimeLane,
 	type LoadedExtensionModule,
 	resolveRuntimeLane,
 } from "@leitwerk-dev/extension-runtime";
+import type {
+	BrowserUiExtensionDescriptor,
+	LeafOutcomeRendererDescriptor,
+} from "@leitwerk-dev/protocol";
 import * as v from "valibot";
 
 interface ExtensionPackageJsonRecord {
@@ -35,34 +40,10 @@ interface RawExtensionUiBrowserModuleManifestEntry {
 	browserApiVersion?: unknown;
 }
 
-export interface ExtensionUiRendererDescriptor {
-	rendererId: string;
-	kind: "custom_element";
-	tagName: string;
-	modulePath: string;
-	rendererApiVersion: number;
-	extensionManifestId: string;
-}
-
-export interface ExtensionUiRendererLookup {
-	rendererId: string;
-	kind: "custom_element";
-	tagName: string;
-	modulePath: string;
-	rendererApiVersion: number;
-	extensionManifestId: string;
-	moduleUrl: string;
-}
-
-export interface ExtensionUiBrowserModuleDescriptor {
-	extensionManifestId: string;
-	modulePath: string;
-	browserApiVersion: number;
-}
-
-export interface ExtensionUiBrowserModuleLookup extends ExtensionUiBrowserModuleDescriptor {
-	moduleUrl: string;
-}
+export type ExtensionUiRendererDescriptor = Omit<LeafOutcomeRendererDescriptor, "ok" | "moduleUrl">;
+export type ExtensionUiRendererLookup = Omit<LeafOutcomeRendererDescriptor, "ok">;
+export type ExtensionUiBrowserModuleDescriptor = Omit<BrowserUiExtensionDescriptor, "moduleUrl">;
+export type ExtensionUiBrowserModuleLookup = BrowserUiExtensionDescriptor;
 
 export interface ExtensionUiAssetRoot {
 	extensionManifestId: string;
@@ -78,17 +59,8 @@ export interface ExtensionUiCatalog {
 const CUSTOM_ELEMENT_TAG_RE = /^[a-z](?:[.0-9_a-z]*-)[-.0-9_a-z]*$/;
 const MANIFEST_ID_RE = /^[A-Za-z0-9._-]+$/;
 
-const jsonObjectSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
-
 async function readJsonFile(pathname: string): Promise<unknown> {
-	return v.parse(v.unknown(), JSON.parse(await readFile(pathname, "utf8")));
+	return JSON.parse(await readFile(pathname, "utf8"));
 }
 
 async function pathExists(pathname: string): Promise<boolean> {
@@ -405,10 +377,7 @@ export function resolveExtensionUiAssetPath(
 	requestedPath: string,
 ): string | null {
 	const assetRoot = catalog.getAssetRoot(extensionManifestId);
-	if (!assetRoot) {
-		return null;
-	}
-	if (requestedPath.trim() === "") {
+	if (!assetRoot || requestedPath.trim() === "") {
 		return null;
 	}
 	try {

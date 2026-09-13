@@ -67,10 +67,7 @@ async function runWorkerEffectExclusive<T>(
 		// useful work for the durable selected turn.
 		supervisor.getWorker(instanceId)?.kill("SIGKILL");
 	}
-	let release!: () => void;
-	const current = new Promise<void>((resolve) => {
-		release = resolve;
-	});
+	const { promise: current, resolve: release } = Promise.withResolvers<void>();
 	tails.set(instanceId, current);
 	await previous;
 	try {
@@ -120,21 +117,6 @@ function logPostCommitEffectError(
 		stage: logContext.stage,
 		code,
 	});
-}
-
-async function runBestEffortEffect(
-	effect: PostCommitEffect,
-	logContext: PostCommitEffectLogContext | undefined,
-	code: PostCommitEffectFailureCode,
-	work: () => void | Promise<void>,
-): Promise<Error | null> {
-	try {
-		await work();
-		return null;
-	} catch (error) {
-		logPostCommitEffectError(error, effect, logContext, code);
-		return error instanceof Error ? error : new Error(String(error));
-	}
 }
 
 async function runWorkerEffect(
@@ -187,20 +169,23 @@ export async function runPostCommitEffectList(
 ): Promise<PostCommitEffectResult> {
 	const startedWorkers = new Set<string>();
 	let bestEffortFailure: Exclude<PostCommitEffectResult, { ok: true }> | null = null;
-	const recordBestEffortFailure = (
-		code: PostCommitEffectFailureCode,
-		error: Error | null,
-	): void => {
-		if (options.reportBestEffortFailures && error && !bestEffortFailure) {
-			bestEffortFailure = { ok: false, code, message: error.message };
-		}
-	};
 	const runAndRecordBestEffort = async (
 		effect: PostCommitEffect,
 		code: PostCommitEffectFailureCode,
 		run: () => void | Promise<void>,
 	): Promise<void> => {
-		recordBestEffortFailure(code, await runBestEffortEffect(effect, logContext, code, run));
+		try {
+			await run();
+		} catch (error) {
+			logPostCommitEffectError(error, effect, logContext, code);
+			if (options.reportBestEffortFailures && !bestEffortFailure) {
+				bestEffortFailure = {
+					ok: false,
+					code,
+					message: error instanceof Error ? error.message : String(error),
+				};
+			}
+		}
 	};
 	for (const effect of effects) {
 		switch (effect.kind) {
@@ -219,41 +204,30 @@ export async function runPostCommitEffectList(
 				);
 				break;
 			case "worker":
-				try {
-					const supervisor = deps.getSupervisor();
-					const started = await runWorkerEffectExclusive(
-						supervisor,
-						effect.instanceId,
-						{ preemptGracefulStop: effect.effect.kind === "restart_worker" },
-						() => runWorkerEffect(supervisor, effect.instanceId, effect.effect),
-					);
-					if (started) {
-						startedWorkers.add(effect.instanceId);
-					}
-				} catch (error) {
-					logPostCommitEffectError(error, effect, logContext, "worker_reconcile_failed");
-					return {
-						ok: false,
-						code: "worker_reconcile_failed",
-						message:
-							messages.reconcileErrorMessage ??
-							"Failed to reconcile worker for selected-turn change",
-					};
-				}
-				break;
 			case "worker_reconcile":
 				try {
 					const supervisor = deps.getSupervisor();
-					const result = await runWorkerEffectExclusive(supervisor, effect.instanceId, {}, () =>
-						reconcileWorkerForProcessTurnSelection(
+					let started: boolean;
+					if (effect.kind === "worker") {
+						started = await runWorkerEffectExclusive(
 							supervisor,
 							effect.instanceId,
-							effect.processId,
-							deps.processGraphs,
-							effect.change,
-						),
-					);
-					if (result.startedWorker) {
+							{ preemptGracefulStop: effect.effect.kind === "restart_worker" },
+							() => runWorkerEffect(supervisor, effect.instanceId, effect.effect),
+						);
+					} else {
+						const result = await runWorkerEffectExclusive(supervisor, effect.instanceId, {}, () =>
+							reconcileWorkerForProcessTurnSelection(
+								supervisor,
+								effect.instanceId,
+								effect.processId,
+								deps.processGraphs,
+								effect.change,
+							),
+						);
+						started = result.startedWorker;
+					}
+					if (started) {
 						startedWorkers.add(effect.instanceId);
 					}
 				} catch (error) {

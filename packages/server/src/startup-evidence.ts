@@ -249,9 +249,7 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 				}
 			: attempt;
 	});
-	const authoritative = [...recoveredAttempts]
-		.reverse()
-		.find((attempt) => attempt.status === "succeeded");
+	const authoritative = recoveredAttempts.findLast((attempt) => attempt.status === "succeeded");
 	const currentAttempt =
 		(currentStartId
 			? recoveredAttempts.find((attempt) => attempt.startRecordId === currentStartId)

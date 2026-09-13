@@ -4,35 +4,27 @@ import {
 	type ProcessInstance,
 	SYSTEM_ACTOR,
 } from "@leitwerk-dev/domain";
-import type {
-	ProcessLauncherService,
-	ProcessLaunchPlanServiceLike,
-} from "@leitwerk-dev/process-sdk";
+import type { ProcessLauncherService } from "@leitwerk-dev/process-sdk";
 import {
 	type FutureActionPayload,
+	type ParsedActionRequestBody,
 	type ParsedScheduleRequest,
 	parseFutureActionPayloadJson,
 	serializeFutureActionPayload,
 	validateScheduleRequestInput,
 } from "@leitwerk-dev/protocol";
 import type { RepositoryBundle } from "../db/repositories.js";
-import type { ExtensionHost } from "../extensions/extension-host.js";
 import type { LauncherRecentValuesService } from "../launcher-recent-values-service.js";
-import type {
-	ModelStatusCache,
-	ModelStatusCacheSnapshot,
-} from "../model-providers/model-status-cache.js";
-import type { ProcessActionRegistry } from "../process-action-registry.js";
+import type { ModelStatusCacheSnapshot } from "../model-providers/model-status-cache.js";
 import { isInternalEngineFailureCode } from "../process-engine/internal-failures.js";
-import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types.js";
-import type { ProcessGraphRegistry } from "../process-graph.js";
-import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
+import type { ProcessEngine } from "../process-engine/types.js";
 import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
-import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
-import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import { preflightScheduledActionRequest } from "../scheduled-action-preflight.js";
-import type { Broadcaster } from "../ws/broadcast.js";
-import { createFutureExecutionExecutor, type FutureExecutionItemOutcome } from "./execution.js";
+import {
+	createFutureExecutionExecutor,
+	type FutureExecutionExecutorDeps,
+	type FutureExecutionItemOutcome,
+} from "./execution.js";
 import { createFutureLaunchLifecycle, type FutureExecutionIssue } from "./launch-lifecycle.js";
 import { evaluateFutureModelSelection } from "./model-projection.js";
 import { reconcileFutureExecutionModelBlocks } from "./reconciliation.js";
@@ -51,34 +43,11 @@ export type {
 	PreparedLaunchResult,
 } from "./launch-lifecycle.js";
 
-export interface FutureExecutionLifecycleDeps
-	extends Pick<
-		RepositoryBundle,
-		| "futureExecutions"
-		| "processes"
-		| "projects"
-		| "processRelations"
-		| "handoffDedupKeys"
-		| "turnRecords"
-		| "skills"
-		| "processSkills"
-		| "transaction"
-	> {
-	broadcaster: Broadcaster;
-	commands: ProcessEngine;
-	processOperations: ProcessOperationCoordinator;
+export interface FutureExecutionLifecycleDeps extends FutureExecutionExecutorDeps {
+	turnRecords: RepositoryBundle["turnRecords"];
 	launcherService?: ProcessLauncherService;
 	launcherRecentValues?: LauncherRecentValuesService;
-	launchPlans: ProcessLaunchPlanServiceLike;
-	processTitles?: ProcessTitleGenerator;
-	extensionHost?: ExtensionHost;
-	processGraphs?: ProcessGraphRegistry;
-	processActionRegistry?: ProcessActionRegistry;
-	processModelPolicy: ServerProcessModelPolicy;
-	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
-	launchPipeline: import("../launch-pipeline.js").LaunchPipeline;
 	assertRuntimeAvailable?: (processId: string) => Promise<void>;
-	logger?: ProcessEngineLogger;
 }
 
 export interface FutureExecutionLifecycleOptions {
@@ -142,14 +111,7 @@ export interface FutureExecutionDueBatchOutcome {
 	items: FutureExecutionDueItemOutcome[];
 }
 
-export interface NormalizedScheduledActionInput {
-	input: Record<string, unknown>;
-	inputProvided: boolean;
-	nextTurnModelProfileId?: string | null;
-	nextTurnModelProfileIdProvided: boolean;
-	schedule: ParsedScheduleRequest;
-	scheduleProvided: boolean;
-}
+export interface NormalizedScheduledActionInput extends ParsedActionRequestBody {}
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; issue: FutureExecutionIssue };
 

@@ -29,6 +29,16 @@ export function expectLaunchStep(
 	});
 }
 
+function launchExecutor(processLaunches: Record<string, unknown>): ProcessLaunchPlanExecutor {
+	return (launchPlan, opts) => {
+		const executor = processLaunches.createProcessFromLaunchPlan as
+			| ProcessLaunchPlanExecutor
+			| undefined;
+		if (!executor) throw new Error("createProcessFromLaunchPlan test double is not configured");
+		return executor(launchPlan, opts);
+	};
+}
+
 export function createCoordinatorHarness(
 	input: {
 		resolve?: () => Promise<unknown>;
@@ -65,13 +75,6 @@ export function createCoordinatorHarness(
 			}),
 	);
 	const processLaunches = input.processLaunches ?? {};
-	const createProcessFromLaunchPlan: ProcessLaunchPlanExecutor = (launchPlan, opts) => {
-		const executor = processLaunches.createProcessFromLaunchPlan as
-			| ProcessLaunchPlanExecutor
-			| undefined;
-		if (!executor) throw new Error("createProcessFromLaunchPlan test double is not configured");
-		return executor(launchPlan, opts);
-	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
 		commands: { run: vi.fn() } as never,
@@ -82,7 +85,7 @@ export function createCoordinatorHarness(
 		futureExecutionLifecycle: { prepareLaunch, commitPreparedLaunch } as never,
 		launchPipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
 		launchPlans: {} as never,
-		createProcessFromLaunchPlan,
+		createProcessFromLaunchPlan: launchExecutor(processLaunches),
 	});
 	const request = {
 		launcherId: "demo.ui",
@@ -138,13 +141,6 @@ export function createWatcherHarness(
 	const broadcaster = { sendDurable: vi.fn() } as never;
 	const launchPlans = (overrides.launchPlans ?? {}) as Record<string, unknown>;
 	const processLaunches = (overrides.processLaunches ?? {}) as Record<string, unknown>;
-	const createProcessFromLaunchPlan: ProcessLaunchPlanExecutor = (launchPlan, opts) => {
-		const executor = processLaunches.createProcessFromLaunchPlan as
-			| ProcessLaunchPlanExecutor
-			| undefined;
-		if (!executor) throw new Error("createProcessFromLaunchPlan test double is not configured");
-		return executor(launchPlan, opts);
-	};
 	const coordinator = createLaunchCoordinator({
 		...repos,
 		commands: { run: vi.fn() } as never,
@@ -152,7 +148,7 @@ export function createWatcherHarness(
 		futureExecutionLifecycle: {} as never,
 		launchPipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
 		launchPlans: launchPlans as never,
-		createProcessFromLaunchPlan,
+		createProcessFromLaunchPlan: launchExecutor(processLaunches),
 	});
 	const run = () => repos.launchRuns.getById(created.id) as LaunchRun;
 	return { broadcaster, coordinator, process, repos, run, launchPlans, processLaunches };

@@ -3,7 +3,7 @@ import { parseTurnAnnotationReferences } from "@leitwerk-dev/domain";
 import { and, asc, eq } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now } from "./repo-helpers.js";
+import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 export interface CreateProcessTurnAnnotationInput {
@@ -27,20 +27,6 @@ export interface UpdateProcessTurnAnnotationInput {
 	updatedAt?: string;
 }
 
-function parsePayload(value: string | null | undefined): Record<string, unknown> {
-	if (!value) {
-		return {};
-	}
-	try {
-		const parsed = JSON.parse(value) as unknown;
-		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: {};
-	} catch {
-		return {};
-	}
-}
-
 function parseReferences(value: string): TurnAnnotationReference[] {
 	try {
 		return parseTurnAnnotationReferences(JSON.parse(value));
@@ -58,7 +44,7 @@ function rowToProcessTurnAnnotation(
 		annotationType: row.annotationType,
 		annotationKey: row.annotationKey ?? null,
 		references: parseReferences(row.referencesJson),
-		payload: parsePayload(row.payloadJson),
+		payload: parseJsonRecord(row.payloadJson) ?? {},
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
