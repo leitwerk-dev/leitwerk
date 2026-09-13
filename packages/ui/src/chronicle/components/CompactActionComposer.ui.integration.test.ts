@@ -1,7 +1,8 @@
 /// <reference types="svelte" />
+
+import type { ProcessActionSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, tick, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProcessActionSummary } from "../../lib/api.js";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import CompactActionComposer from "./CompactActionComposer.svelte";
 

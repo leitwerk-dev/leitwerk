@@ -1,4 +1,5 @@
 <script lang="ts">
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import { onDestroy } from "svelte";
 import * as v from "valibot";
 import type { ChronicleLeafOutcomeItem } from "../lib/chronicle-projection.js";
@@ -56,14 +57,6 @@ let mountedElement = $state<LeafOutcomeRendererElement | null>(null);
 
 const readyTimeoutMs = 1_000;
 const runtime = getLeafOutcomeRendererRuntime();
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 const hasValidRendererPayload = $derived(v.safeParse(unknownRecordSchema, props).success);
 
 let readyTimeout: ReturnType<typeof setTimeout> | null = null;

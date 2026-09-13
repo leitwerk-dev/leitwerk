@@ -47,9 +47,7 @@ export function resolveServerUrl(path: string): string {
 	return new URL(path, apiBaseUrl).toString();
 }
 
-export function resolveApiUrl(path: string): string {
-	return resolveServerUrl(path);
-}
+export { resolveServerUrl as resolveApiUrl };
 
 export function resolveWsUrl(): string {
 	const { wsUrl } = getUiRuntimeTransportConfig();

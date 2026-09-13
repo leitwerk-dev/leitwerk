@@ -1,5 +1,8 @@
 <script lang="ts">
-import type { FormFieldDefinition, FormFieldOptionDefinition } from "../lib/api";
+import type {
+	FormFieldDefinition,
+	FormFieldOptionDefinition,
+} from "@leitwerk-dev/protocol/form-contract";
 
 type FieldValue = string | number | boolean;
 type FieldMarker = "launcher" | "action";

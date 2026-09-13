@@ -6,16 +6,16 @@ import type {
 	BrowserUiShortcutRegistration,
 	BrowserUiWsFrameHandler,
 } from "@leitwerk-dev/process-sdk";
-import type { WsFrame } from "@leitwerk-dev/protocol";
-import { derived, get, writable } from "svelte/store";
+import {
+	type BrowserUiExtensionDescriptor,
+	browserUiExtensionDescriptorSchema,
+	type WsFrame,
+} from "@leitwerk-dev/protocol";
+import { derived, get, type Writable, writable } from "svelte/store";
+import * as v from "valibot";
 import { getFetchImpl, getModuleImporter, resolveApiUrl, resolveServerUrl } from "./runtime-config";
 
-export interface BrowserUiExtensionDescriptor {
-	extensionManifestId: string;
-	modulePath: string;
-	moduleUrl: string;
-	browserApiVersion: number;
-}
+export type { BrowserUiExtensionDescriptor } from "@leitwerk-dev/protocol";
 
 interface BrowserUiExtensionsResponse {
 	ok?: unknown;
@@ -47,23 +47,10 @@ export const browserUiExtensionShortcutHelpItems = derived(shortcutStore, (items
 );
 export const browserUiExtensionShellIndicators = derived(indicatorStore, (items) => items);
 
-const frameHandlers: BrowserUiWsFrameHandler[] = [];
+const frameHandlers = new Set<BrowserUiWsFrameHandler>();
 let loadPromise: Promise<void> | null = null;
 
 export const BROWSER_UI_EXTENSION_API_VERSION = 1;
-
-function isDescriptor(value: unknown): value is BrowserUiExtensionDescriptor {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return false;
-	}
-	const descriptor = value as Record<string, unknown>;
-	return (
-		typeof descriptor.extensionManifestId === "string" &&
-		typeof descriptor.modulePath === "string" &&
-		typeof descriptor.moduleUrl === "string" &&
-		typeof descriptor.browserApiVersion === "number"
-	);
-}
 
 function parseExtensionsResponse(value: unknown): BrowserUiExtensionDescriptor[] {
 	const response = value as BrowserUiExtensionsResponse;
@@ -73,7 +60,9 @@ function parseExtensionsResponse(value: unknown): BrowserUiExtensionDescriptor[]
 	if (!Array.isArray(response.extensions)) {
 		return [];
 	}
-	return response.extensions.filter(isDescriptor);
+	return response.extensions.filter((value): value is BrowserUiExtensionDescriptor =>
+		v.is(browserUiExtensionDescriptorSchema, value),
+	);
 }
 
 function describeUnknownError(error: unknown): string {
@@ -102,21 +91,26 @@ function resolveBrowserModule(value: unknown): BrowserUiExtensionModule | null {
 	return null;
 }
 
+function runSafely<T>(message: string, work: () => T, fallback: T): T {
+	try {
+		return work();
+	} catch (error) {
+		reportBrowserUiExtensionIssue(message, error);
+		return fallback;
+	}
+}
+
 function makeSafeDisposer(
 	descriptor: BrowserUiExtensionDescriptor,
 	label: string,
 	disposer: BrowserUiExtensionDisposer,
 ): BrowserUiExtensionDisposer {
-	return () => {
-		try {
-			disposer();
-		} catch (error) {
-			reportBrowserUiExtensionIssue(
-				`${label} cleanup from extension '${descriptor.extensionManifestId}' failed`,
-				error,
-			);
-		}
-	};
+	return () =>
+		runSafely(
+			`${label} cleanup from extension '${descriptor.extensionManifestId}' failed`,
+			disposer,
+			undefined,
+		);
 }
 
 function wrapShortcutRegistration(
@@ -126,17 +120,12 @@ function wrapShortcutRegistration(
 	return {
 		...registration,
 		extensionManifestId: descriptor.extensionManifestId,
-		handle(event) {
-			try {
-				return registration.handle(event);
-			} catch (error) {
-				reportBrowserUiExtensionIssue(
-					`Shortcut '${registration.id}' from extension '${descriptor.extensionManifestId}' failed`,
-					error,
-				);
-				return false;
-			}
-		},
+		handle: (event) =>
+			runSafely(
+				`Shortcut '${registration.id}' from extension '${descriptor.extensionManifestId}' failed`,
+				() => registration.handle(event),
+				false,
+			),
 	};
 }
 
@@ -148,16 +137,11 @@ function wrapIndicatorRegistration(
 		...registration,
 		extensionManifestId: descriptor.extensionManifestId,
 		mount(host) {
-			let cleanup: undefined | (() => void);
-			try {
-				cleanup = registration.mount(host);
-			} catch (error) {
-				reportBrowserUiExtensionIssue(
-					`Indicator '${registration.id}' from extension '${descriptor.extensionManifestId}' failed to mount`,
-					error,
-				);
-				return undefined;
-			}
+			const cleanup = runSafely(
+				`Indicator '${registration.id}' from extension '${descriptor.extensionManifestId}' failed to mount`,
+				() => registration.mount(host),
+				undefined,
+			);
 			if (typeof cleanup !== "function") {
 				return undefined;
 			}
@@ -182,74 +166,48 @@ function createApi(
 		return false;
 	}
 
+	function registerContribution<T extends { id: string; extensionManifestId: string }>(
+		store: Writable<T[]>,
+		label: string,
+		createItem: () => T,
+	): BrowserUiExtensionDisposer {
+		if (!contributionAllowed(label)) return noopDisposer;
+		const item = createItem();
+		const withoutItem = (items: T[]) =>
+			items.filter(
+				(existing) =>
+					existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
+			);
+		store.update((items) => [...withoutItem(items), item]);
+		const unregister = makeSafeDisposer(descriptor, label, () => store.update(withoutItem));
+		options.trackDisposer?.(unregister);
+		return unregister;
+	}
+
 	return {
 		registerShortcut(registration) {
-			if (!contributionAllowed(`Shortcut '${registration.id}'`)) {
-				return noopDisposer;
-			}
-			const item = wrapShortcutRegistration(descriptor, registration);
-			shortcutStore.update((items) => [
-				...items.filter(
-					(existing) =>
-						existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-				),
-				item,
-			]);
-			const unregister = makeSafeDisposer(descriptor, `Shortcut '${registration.id}'`, () => {
-				shortcutStore.update((items) =>
-					items.filter(
-						(existing) =>
-							existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-					),
-				);
-			});
-			options.trackDisposer?.(unregister);
-			return unregister;
+			return registerContribution(shortcutStore, `Shortcut '${registration.id}'`, () =>
+				wrapShortcutRegistration(descriptor, registration),
+			);
 		},
 		registerShellIndicator(registration) {
-			if (!contributionAllowed(`Indicator '${registration.id}'`)) {
-				return noopDisposer;
-			}
-			const item = wrapIndicatorRegistration(descriptor, registration);
-			indicatorStore.update((items) => [
-				...items.filter(
-					(existing) =>
-						existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-				),
-				item,
-			]);
-			const unregister = makeSafeDisposer(descriptor, `Indicator '${registration.id}'`, () => {
-				indicatorStore.update((items) =>
-					items.filter(
-						(existing) =>
-							existing.extensionManifestId !== item.extensionManifestId || existing.id !== item.id,
-					),
-				);
-			});
-			options.trackDisposer?.(unregister);
-			return unregister;
+			return registerContribution(indicatorStore, `Indicator '${registration.id}'`, () =>
+				wrapIndicatorRegistration(descriptor, registration),
+			);
 		},
 		onWsFrame(handler) {
 			if (!contributionAllowed("WebSocket frame handler")) {
 				return noopDisposer;
 			}
-			const wrappedHandler: BrowserUiWsFrameHandler = (frame) => {
-				try {
-					return handler(frame);
-				} catch (error) {
-					reportBrowserUiExtensionIssue(
-						`WebSocket frame handler from extension '${descriptor.extensionManifestId}' failed`,
-						error,
-					);
-					return false;
-				}
-			};
-			frameHandlers.push(wrappedHandler);
+			const wrappedHandler: BrowserUiWsFrameHandler = (frame) =>
+				runSafely(
+					`WebSocket frame handler from extension '${descriptor.extensionManifestId}' failed`,
+					() => handler(frame),
+					false,
+				);
+			frameHandlers.add(wrappedHandler);
 			const unregister = makeSafeDisposer(descriptor, "WebSocket frame handler", () => {
-				const index = frameHandlers.indexOf(wrappedHandler);
-				if (index >= 0) {
-					frameHandlers.splice(index, 1);
-				}
+				frameHandlers.delete(wrappedHandler);
 			});
 			options.trackDisposer?.(unregister);
 			return unregister;
@@ -278,14 +236,11 @@ function rollBackSetupDisposers(
 	disposers: readonly BrowserUiExtensionDisposer[],
 ): void {
 	for (const disposer of [...disposers].reverse()) {
-		try {
-			disposer();
-		} catch (error) {
-			reportBrowserUiExtensionIssue(
-				`Setup rollback for extension '${descriptor.extensionManifestId}' failed`,
-				error,
-			);
-		}
+		runSafely(
+			`Setup rollback for extension '${descriptor.extensionManifestId}' failed`,
+			disposer,
+			undefined,
+		);
 	}
 }
 
@@ -362,12 +317,8 @@ export function dispatchBrowserUiExtensionShortcut(event: KeyboardEvent): boolea
 
 export function dispatchBrowserUiExtensionWsFrame(frame: WsFrame): boolean {
 	for (const handler of [...frameHandlers]) {
-		try {
-			if (handler(frame) === true) {
-				return true;
-			}
-		} catch (error) {
-			reportBrowserUiExtensionIssue("WebSocket frame handler failed", error);
+		if (handler(frame) === true) {
+			return true;
 		}
 	}
 	return false;
@@ -376,6 +327,6 @@ export function dispatchBrowserUiExtensionWsFrame(frame: WsFrame): boolean {
 export function resetBrowserUiExtensionsForTest(): void {
 	shortcutStore.set([]);
 	indicatorStore.set([]);
-	frameHandlers.splice(0);
+	frameHandlers.clear();
 	loadPromise = null;
 }

@@ -4,7 +4,11 @@ import {
 	type ResolveBaseBranchShaInput,
 	resolveBaseBranchSha,
 } from "@leitwerk-dev/coding/auto-work-branch";
-import { trimToNull, type WorkerErrorClass } from "@leitwerk-dev/domain";
+import {
+	asUnknownRecord as asRecord,
+	trimToNull,
+	type WorkerErrorClass,
+} from "@leitwerk-dev/domain";
 import type {
 	DeferredProcessActivationSnapshot,
 	ProcessEngineLike,
@@ -56,12 +60,6 @@ interface AutoWorkBranchMetadata extends Record<string, unknown> {
 	title: string | null;
 	branchSource: AutoWorkBranchSource;
 	reason: AutoWorkBranchTriggerReason;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	return typeof value === "object" && value !== null && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: null;
 }
 
 function readAutoWorkBranchMetadata(

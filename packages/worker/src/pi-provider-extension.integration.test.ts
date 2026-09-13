@@ -3,10 +3,10 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createTestConfigSnapshot as testConfigSnapshot } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ManagedPiResourceManifest } from "./managed-pi-bootstrap.js";
 import { SdkPiTreeHandleFactory } from "./pi-adapter.js";
-import { testConfigSnapshot } from "./test-helpers/ipc-harness.js";
 
 const tempDirs: string[] = [];
 

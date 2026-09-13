@@ -1,4 +1,5 @@
 import { trimToNull } from "./string-normalize.js";
+import { asUnknownRecord, isUnknownRecord } from "./unknown-record.js";
 
 export const PROCESS_SEMANTIC_ENTRY_REF_KEYS = [
 	"plan",
@@ -12,6 +13,16 @@ export type ProcessSemanticEntryRefKey = (typeof PROCESS_SEMANTIC_ENTRY_REF_KEYS
 export interface SemanticEntryRef {
 	entryId: string;
 	turnRecordId: string | null;
+}
+
+export function areSemanticEntryRefsEqual(
+	left: SemanticEntryRef | null | undefined,
+	right: SemanticEntryRef | null | undefined,
+): boolean {
+	return (
+		(left?.entryId ?? null) === (right?.entryId ?? null) &&
+		(left?.turnRecordId ?? null) === (right?.turnRecordId ?? null)
+	);
 }
 
 export type ProcessProductRef = SemanticEntryRef;
@@ -54,17 +65,14 @@ export function isProcessSemanticEntryRefKey(value: string): value is ProcessSem
 }
 
 export function parseSemanticEntryRef(value: unknown): SemanticEntryRef | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return null;
-	}
-	const record = value as Record<string, unknown>;
-	const entryId = trimToNull(record.entryId);
+	const record = asUnknownRecord(value);
+	const entryId = trimToNull(record?.entryId);
 	if (!entryId) {
 		return null;
 	}
 	return {
 		entryId,
-		turnRecordId: trimToNull(record.turnRecordId),
+		turnRecordId: trimToNull(record?.turnRecordId),
 	};
 }
 
@@ -82,11 +90,9 @@ export function createEmptyProcessProductRefs(): ProcessProductRefs {
 }
 
 export function parseProcessProductRefs(value: unknown): ProcessProductRefs {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return createEmptyProcessProductRefs();
-	}
+	if (!isUnknownRecord(value)) return createEmptyProcessProductRefs();
 	const refs: ProcessProductRefs = {};
-	for (const [name, rawRef] of Object.entries(value as Record<string, unknown>)) {
+	for (const [name, rawRef] of Object.entries(value)) {
 		if (!isValidProcessProductName(name)) {
 			continue;
 		}
@@ -99,10 +105,7 @@ export function parseProcessProductRefs(value: unknown): ProcessProductRefs {
 }
 
 export function parseProcessSemanticEntryRefs(value: unknown): ProcessSemanticEntryRefs {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return createEmptyProcessSemanticEntryRefs();
-	}
-	const record = value as Record<string, unknown>;
+	const record = asUnknownRecord(value) ?? {};
 	return {
 		plan: parseSemanticEntryRef(record.plan),
 		review: parseSemanticEntryRef(record.review),

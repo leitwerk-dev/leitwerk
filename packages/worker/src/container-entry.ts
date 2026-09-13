@@ -104,10 +104,7 @@ export async function runWorkerContainerEntrypoint(
 	let worker: ChildProcess | undefined;
 	let terminating = false;
 	const shutdown = new AbortController();
-	let resolveTermination!: () => void;
-	const terminated = new Promise<void>((resolve) => {
-		resolveTermination = resolve;
-	});
+	const { promise: terminated, resolve: resolveTermination } = Promise.withResolvers<void>();
 	const terminate = () => {
 		terminating = true;
 		shutdown.abort();

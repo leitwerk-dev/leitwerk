@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { UiLauncherSummary } from "../lib/api.js";
+import type { UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
 interface Props {

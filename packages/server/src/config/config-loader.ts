@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { isIP } from "node:net";
 import { resolve } from "node:path";
+import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { createDefu } from "defu";
@@ -118,15 +119,6 @@ export function loadConfig(explicitPath?: string): ConfigLoadResult | ConfigLoad
 }
 
 const stringArraySchema = v.array(v.string());
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
-
 const modelTurnConfigSchema = v.looseObject({
 	model_profile: v.optional(v.string()),
 });

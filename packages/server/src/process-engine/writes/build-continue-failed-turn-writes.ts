@@ -1,32 +1,25 @@
-import type { ProcessInstance, ProcessTurnRecord, TurnStartRecord } from "@leitwerk-dev/domain";
 import {
 	CONTINUE_PROMPT_METADATA_KEY,
 	inferTerminalRecordingFailedTurnRecoveryContext,
 	normalizeContinuePrompt,
 	readFailedTurnRecoveryContext,
 } from "@leitwerk-dev/domain";
-import { generateId } from "../../db/repo-helpers.js";
 import { isTurnAvailableForProcessGraph, type ProcessGraphRegistry } from "../../process-graph.js";
 import { readCurrentPrimaryPathLeafEntryId } from "../state-json.js";
 import {
-	appendProcessEvent,
-	applyProcessPatchField,
-	createWrites,
-	updateProcessMetadata,
-	type Writes,
-} from "./writes.js";
+	buildRecoveryStartWrites,
+	type RecoveryStartWritesInput,
+} from "./build-recovery-start-writes.js";
+import { appendProcessEvent, updateProcessMetadata, type Writes } from "./writes.js";
 
-export interface ContinueFailedTurnWritesInput {
+export interface ContinueFailedTurnWritesInput extends RecoveryStartWritesInput {
 	processGraphs: ProcessGraphRegistry;
-	process: ProcessInstance;
-	failedRun: ProcessTurnRecord;
-	acceptedStart: TurnStartRecord;
 	continueFromPiEntryId: string;
 	prompt?: string | null;
 }
 
 export function buildContinueFailedTurnWrites(input: ContinueFailedTurnWritesInput): Writes {
-	const { process, failedRun, continueFromPiEntryId, acceptedStart } = input;
+	const { process, failedRun, continueFromPiEntryId } = input;
 	if (!isTurnAvailableForProcessGraph(input.processGraphs, process.processId, failedRun.turnId)) {
 		throw new Error(
 			`Could not derive a continuable selected turn for '${failedRun.turnId}' on process '${process.processId}'`,
@@ -43,50 +36,15 @@ export function buildContinueFailedTurnWrites(input: ContinueFailedTurnWritesInp
 		normalizeContinuePrompt(process.metadata?.[CONTINUE_PROMPT_METADATA_KEY]) ??
 		failedTurnRecovery.suggestedContinuePrompt;
 	const currentPrimaryPathLeafEntryId = readCurrentPrimaryPathLeafEntryId(process.stateJson);
-	const plan = createWrites({ workerIntent: { kind: "restart_worker" } });
-	applyProcessPatchField(plan, process, "selectedTurnId", failedRun.turnId);
-	applyProcessPatchField(plan, process, "lifecycleStatus", "active");
-	if (acceptedStart.state.kind !== "accepted" || acceptedStart.state.start.kind !== "llm")
-		throw new Error("Continue requires an accepted LLM start");
-	const startId = generateId("tsr");
-	plan.turnStartWrites.push({
-		kind: "create",
-		input: {
-			id: startId,
-			instanceId: process.id,
-			turnId: failedRun.turnId,
-			turnType: "llm",
-			proposedTurnRecordId: generateId("trn"),
-			startKind: "continue",
-			recoveryTurnRecordId: failedRun.id,
-			continuation: {
-				continueFromPiEntryId,
-				continuePrompt: continuePrompt ?? "",
-				savedPrimaryLeafEntryId: currentPrimaryPathLeafEntryId,
-			},
-			state: {
-				kind: "preparation_failed",
-				requestedModelProfileId: failedRun.modelProfileId,
-				providerOptions: { ...acceptedStart.state.start.providerOptions },
-				code: "model_required",
-				safeSummary: "Model selection is pending continue preparation",
-				modelSelectionProvenance: failedRun.modelSelectionProvenance ?? {
-					kind: "inherited",
-					source: "legacy_persisted",
-				},
-			},
+	const plan = buildRecoveryStartWrites(input, {
+		startKind: "continue",
+		turnType: "llm",
+		continuation: {
+			continueFromPiEntryId,
+			continuePrompt: continuePrompt ?? "",
+			savedPrimaryLeafEntryId: currentPrimaryPathLeafEntryId,
 		},
 	});
-	applyProcessPatchField(plan, process, "currentExecution", { kind: "worker_start", id: startId });
-	if (failedRun.modelProfileId !== null) {
-		applyProcessPatchField(plan, process, "selectedTurnModelProfileId", failedRun.modelProfileId);
-		const provenance = failedRun.modelSelectionProvenance ?? {
-			kind: "inherited" as const,
-			source: "legacy_persisted" as const,
-		};
-		applyProcessPatchField(plan, process, "selectedTurnModelKind", provenance.kind);
-		applyProcessPatchField(plan, process, "selectedTurnModelSource", provenance.source);
-	}
 	updateProcessMetadata(plan, process, ["retry"], (metadata) => {
 		metadata.continueFromTurnRecordId = failedRun.id;
 		metadata.continueFromPiEntryId = continueFromPiEntryId;

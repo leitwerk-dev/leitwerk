@@ -32,24 +32,17 @@ export function modelConfigurationFromPersistedInput(
 		};
 		return { kind: "invalid", processId: input.processId, issues: [issue] };
 	}
-	return {
-		kind: "valid",
-		processId: input.processId,
-		defaultProfileId: trimToNull(input.defaultModelProfileId) ?? undefined,
-		turnProfileIds: new Map(
-			Object.entries(parsed.value).flatMap(([turnId, config]) => {
-				const profileId = trimToNull(config.modelProfileId);
-				return profileId ? [[turnId, profileId] as const] : [];
-			}),
-		),
-	};
+	return modelConfigurationFromLaunchInput(input.processId, {
+		defaultModelProfileId: input.defaultModelProfileId,
+		turnConfigs: parsed.value,
+	});
 }
 
 export function modelConfigurationFromProcess(process: ProcessInstance): ModelConfiguration {
 	return modelConfigurationFromPersistedInput(process);
 }
 
-/** Constructs validated configuration from non-persisted launch input. */
+/** Constructs validated configuration from structured model input. */
 export function modelConfigurationFromLaunchInput(
 	processId: string,
 	modelConfig: LaunchModelConfigInput,

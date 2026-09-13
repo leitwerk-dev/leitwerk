@@ -1,6 +1,7 @@
 <script lang="ts">
+import type { WatcherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import PageHeader from "../components/PageHeader.svelte";
-import { fetchWatchers, type WatcherSummary } from "../lib/api.js";
+import { fetchWatchers } from "../lib/api.js";
 
 let watchers = $state<WatcherSummary[]>([]);
 let loading = $state(false);

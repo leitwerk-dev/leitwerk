@@ -1,5 +1,5 @@
+import type { FutureLaunchSummary, UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { describe, expect, it } from "vitest";
-import type { FutureLaunchSummary, UiLauncherSummary } from "./api.js";
 import { buildFutureLaunchDetailSections } from "./future-launch-detail.js";
 
 function createFutureLaunch(overrides: Partial<FutureLaunchSummary> = {}): FutureLaunchSummary {

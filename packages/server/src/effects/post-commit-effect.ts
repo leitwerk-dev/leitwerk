@@ -1,22 +1,18 @@
-import type { FutureExecution, ProcessInput, ProcessLifecycleStatus } from "@leitwerk-dev/domain";
+import type { FutureExecution, ProcessInput } from "@leitwerk-dev/domain";
 import type {
 	ProcessLaunchPlan,
 	ServerExtensionEventName,
 	ServerExtensionEventPayloadInputMap,
 } from "@leitwerk-dev/process-sdk";
 import type { DurableWsFrameInput } from "@leitwerk-dev/protocol";
+import type { ProcessTurnSelectionChange } from "../process-engine/types.js";
 import {
 	createDeferredExtensionEvent,
 	type DeferredProcessExtensionEvent,
 } from "../process-engine/writes/deferred-extension-events.js";
 import type { WorkerIntent } from "../process-engine/writes/writes.js";
 
-export interface WorkerReconcileEffectChange {
-	fromTurnId: string | null;
-	toTurnId: string | null;
-	fromLifecycleStatus: ProcessLifecycleStatus;
-	toLifecycleStatus: ProcessLifecycleStatus;
-}
+export interface WorkerReconcileEffectChange extends ProcessTurnSelectionChange {}
 
 export type FutureExecutionUpdatedOperation = "created" | "updated" | "deleted";
 

@@ -23,9 +23,5 @@ export function cloneMap<TKey, TValue>(registry: ReadonlyMap<TKey, TValue>): Map
 export function cloneArrayValueMap<TKey, TValue>(
 	registry: ReadonlyMap<TKey, readonly TValue[]>,
 ): Map<TKey, readonly TValue[]> {
-	const cloned = new Map<TKey, readonly TValue[]>();
-	for (const [key, values] of registry) {
-		cloned.set(key, [...values]);
-	}
-	return cloned;
+	return new Map(Array.from(registry, ([key, values]) => [key, [...values]]));
 }

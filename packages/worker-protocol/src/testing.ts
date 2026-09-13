@@ -1,4 +1,21 @@
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol/config-snapshot";
+import { IPC_PROTOCOL_VERSION } from "./ipc-codec.js";
+
+export async function flushAsyncWork(iterations = 30): Promise<void> {
+	for (let i = 0; i < iterations; i++) {
+		await new Promise<void>((resolve) => setImmediate(resolve));
+	}
+}
+
+export function createTestIpcEnvelopeBase(instanceId: string, workerId: string, messageId: string) {
+	return {
+		protocol: IPC_PROTOCOL_VERSION as typeof IPC_PROTOCOL_VERSION,
+		messageId,
+		instanceId,
+		workerId,
+		sentAt: new Date().toISOString(),
+	};
+}
 
 export function createTestConfigSnapshot(): ConfigSnapshot {
 	return {

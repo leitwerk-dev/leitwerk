@@ -1,8 +1,8 @@
 import {
-	type Actor,
 	normalizeContinuePrompt,
 	type ProcessTurnRecord,
 	readFailedTurnRecoveryContext,
+	toErrorMessage,
 } from "@leitwerk-dev/domain";
 import {
 	resolveTurnContinuationLeafEntryId,
@@ -12,26 +12,14 @@ import type { ReadonlyPiSessionTree } from "../../pi-session-tree.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { readCurrentPrimaryPathLeafEntryId } from "../state-json.js";
-import type { ProcessEngineDeps } from "../types.js";
+import type { ProcessEngine, ProcessEngineDeps } from "../types.js";
 import { buildContinueFailedTurnWrites } from "../writes/build-continue-failed-turn-writes.js";
 import { stampActorOnEvents } from "../writes/writes.js";
 
 export interface ContinueFailedTurnInput {
 	instanceId: string;
 	turnRecordId: string;
-	options?: {
-		prompt?: string | null;
-		nextTurnModelProfileId?: string | null;
-		providerOptions?: Readonly<Record<string, string>>;
-		actor?: Actor;
-	};
-}
-
-function toErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message.trim() !== "") {
-		return error.message;
-	}
-	return String(error);
+	options?: NonNullable<Parameters<ProcessEngine["continueFailedTurn"]>[2]>;
 }
 
 async function validateContinueFailedTurnPreflight(

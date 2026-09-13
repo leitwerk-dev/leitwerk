@@ -1,4 +1,11 @@
 <script lang="ts">
+import type {
+	InstalledSkillCatalogDetail,
+	InstalledSkillCatalogItem,
+	SkillCatalogDetail,
+	SkillCatalogItem,
+	SkillRepositorySummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { onMount, tick, untrack } from "svelte";
 import ChronicleMarkdown from "../chronicle/components/ChronicleMarkdown.svelte";
 import ModalShell from "../components/ModalShell.svelte";
@@ -7,14 +14,9 @@ import {
 	fetchInstalledSkillDetail,
 	fetchSkillDetail,
 	fetchSkills,
-	type InstalledSkillCatalogDetail,
-	type InstalledSkillCatalogItem,
 	refreshSkills,
 	registerSkill,
 	removeSkill,
-	type SkillCatalogDetail,
-	type SkillCatalogItem,
-	type SkillRepositorySummary,
 } from "../lib/api.js";
 import { formatLocalDateTime } from "../lib/format.js";
 import {

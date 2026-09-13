@@ -1,15 +1,15 @@
 <script lang="ts">
 import type { ProcessExternalTriggerSignal } from "@leitwerk-dev/protocol";
-import { tick } from "svelte";
-import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
-import ScheduleDateTimePicker from "../../components/ScheduleDateTimePicker.svelte";
 import type {
 	ProcessActionFieldDefinition,
 	ProcessActionSummary,
 	ProcessExternalTriggerSummary,
 	ProcessModelConfigurationView,
 	ProcessSelectedTurnSummary,
-} from "../../lib/api";
+} from "@leitwerk-dev/protocol/http-contracts";
+import { tick } from "svelte";
+import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
+import ScheduleDateTimePicker from "../../components/ScheduleDateTimePicker.svelte";
 import { formatRelativeTime } from "../../lib/format.js";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import { buildActionModelDisplay } from "../lib/action-model-display.js";

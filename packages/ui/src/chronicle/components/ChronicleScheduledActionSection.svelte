@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ScheduledActionDetail } from "../../lib/api.js";
+import type { ScheduledActionDetail } from "@leitwerk-dev/protocol/http-contracts";
 import { formatLocalDateTime24Hour, formatUtcDateTime24Hour } from "../../lib/format.js";
 
 interface Props {

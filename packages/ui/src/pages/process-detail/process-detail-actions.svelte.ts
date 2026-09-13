@@ -1,3 +1,7 @@
+import type {
+	ProcessActionModelPreview,
+	ProcessActionSummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { findQuickActionField } from "../../chronicle/lib/action-bindings.js";
 import {
 	buildLauncherScheduleTimeString,
@@ -6,8 +10,6 @@ import {
 import {
 	deleteFutureExecution,
 	fetchProcessActionModelPreview,
-	type ProcessActionModelPreview,
-	type ProcessActionSummary,
 	type ProcessDetailData,
 	postProcessAbortTurn,
 	postProcessAction,

@@ -5,9 +5,8 @@ import type {
 	ProcessInputTarget,
 	ProcessLifecycleStatus,
 	ProcessSemanticEntryRefKey,
-	ProcessTurnRecordPathType,
-	ProcessTurnType,
 	TurnFailedPayload,
+	TurnOutcomePayload,
 	TurnStartRecord,
 	WorkerBootstrapReceipt,
 } from "@leitwerk-dev/domain";
@@ -330,19 +329,8 @@ export interface WorkerCredentialUpdatePayload {
 	values: Record<string, string>;
 }
 
-export interface WorkerTurnOutcomePayload {
-	turnRecordId: string;
-	turnId: string;
-	turnType: ProcessTurnType;
-	outcome: string;
-	params: Record<string, unknown>;
-	pathType?: ProcessTurnRecordPathType;
-	forkPiEntryId?: string | null;
-	resultPiEntryId?: string | null;
-	turnResultMarkdown?: string | null;
-	resultSummary?: string;
-	rootEntryId?: string | null;
-}
+export interface WorkerTurnOutcomePayload
+	extends Omit<TurnOutcomePayload, "instanceId" | "state"> {}
 
 export interface WorkerTurnFailedPayload
 	extends Omit<TurnFailedPayload, "instanceId" | "errorClass"> {

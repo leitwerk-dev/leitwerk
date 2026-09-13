@@ -46,10 +46,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	let draining = false;
 	let started = false;
 	let invariantQueued = false;
-	let resolveClosed!: () => void;
-	const closed = new Promise<void>((resolve) => {
-		resolveClosed = resolve;
-	});
+	const { promise: closed, resolve: resolveClosed } = Promise.withResolvers<void>();
 
 	const reporter = createWorkerIpcReporter({
 		instanceId: config.instanceId,

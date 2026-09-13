@@ -6,7 +6,7 @@ import {
 	type ProcessTurnAnnotation,
 	type ProcessTurnRecord,
 	parseProcessStateJsonLenient,
-	type SemanticEntryRef,
+	areSemanticEntryRefsEqual as sameEntryRef,
 } from "@leitwerk-dev/domain";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { type DurableWsFrameInput, WS_PRIMARY_PATH_TYPES } from "@leitwerk-dev/protocol";
@@ -59,13 +59,6 @@ export interface RecordCommit {
 	persistedInputs: ProcessInput[];
 	extensionEvents: DeferredProcessExtensionEvent[];
 	workerIntent?: WorkerIntent;
-}
-
-function sameEntryRef(a: SemanticEntryRef | null, b: SemanticEntryRef | null): boolean {
-	return (
-		(a?.entryId ?? null) === (b?.entryId ?? null) &&
-		(a?.turnRecordId ?? null) === (b?.turnRecordId ?? null)
-	);
 }
 
 function hasPrimaryPathRefChange(

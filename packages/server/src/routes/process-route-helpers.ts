@@ -1,10 +1,10 @@
 import {
-	type Actor,
 	normalizeLaunchModelConfigInput,
 	type ProcessEvent,
 	type ProcessInstance,
 	type ProcessProject,
 	redactCredentialBearingAbsoluteUrl,
+	copiedUnknownRecordSchema as unknownRecordSchema,
 } from "@leitwerk-dev/domain";
 import type { ProcessModelSelectionServiceLike } from "@leitwerk-dev/process-sdk";
 import {
@@ -38,9 +38,8 @@ import type {
 	ScheduledActionMutationResponseBody,
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
-import type { FastifyReply, FastifyRequest } from "fastify";
+import type { FastifyReply } from "fastify";
 import * as v from "valibot";
-import { actorForRequest } from "../auth/fastify-auth.js";
 import { getDefaultConfig } from "../config/config-loader.js";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -365,7 +364,7 @@ export function listVisibleActionsForProcess(deps: RouteDeps, process: ProcessIn
 }
 
 export function processDefinesLeafOutcome(deps: RouteDeps, process: ProcessInstance): boolean {
-	return deps.processUiRegistry?.hasLeafOutcome(process.processId) ?? false;
+	return deps.processUiRegistry?.getLeafOutcomeDefinition(process.processId) != null;
 }
 
 export function getProcessOrReply(
@@ -386,9 +385,7 @@ export function getProcessOrReply(
  * the actor is extracted from the session cookie; when auth is disabled,
  * every web action is attributed to the `admin` actor.
  */
-export function resolveActor(req: FastifyRequest): Actor {
-	return actorForRequest(req);
-}
+export { actorForRequest as resolveActor } from "../auth/fastify-auth.js";
 
 export interface NormalizedContinueRequest extends NormalizedRecoveryModelRequest {
 	prompt?: string | null;
@@ -398,15 +395,6 @@ export interface NormalizedRecoveryModelRequest {
 	nextTurnModelProfileId?: string | null;
 	providerOptions?: Record<string, string>;
 }
-
-const unknownRecordSchema = v.pipe(
-	v.unknown(),
-	v.check(
-		(value) => typeof value === "object" && value !== null && !Array.isArray(value),
-		"Expected object",
-	),
-	v.record(v.string(), v.unknown()),
-);
 
 function normalizeProviderOptions(
 	value: unknown,

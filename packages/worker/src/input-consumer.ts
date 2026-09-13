@@ -1,4 +1,4 @@
-import type { ProcessInputTarget } from "@leitwerk-dev/domain";
+import type { InputDelivery } from "@leitwerk-dev/worker-protocol";
 import type { PiTreeHandle } from "./pi-adapter.js";
 
 export type InputDeliveryMode = "prompt" | "steer";
@@ -9,14 +9,7 @@ export interface DeliveredInput {
 	deliveryMode: InputDeliveryMode;
 }
 
-export interface InputItem {
-	inputId: string;
-	sequence: number;
-	source: string;
-	kind: string;
-	target: ProcessInputTarget | null;
-	bodyMarkdown: string;
-}
+export interface InputItem extends Omit<InputDelivery, "receivedAt"> {}
 
 export type TargetedInputItem = InputItem & { target: NonNullable<InputItem["target"]> };
 

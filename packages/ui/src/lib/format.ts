@@ -1,4 +1,4 @@
-import type { ProcessLifecycleStatus } from "@leitwerk-dev/domain";
+import { formatProcessIdentifier, type ProcessLifecycleStatus } from "@leitwerk-dev/domain";
 
 const STATUS_LABELS: Record<ProcessLifecycleStatus, string> = {
 	discovered: "Queued",
@@ -9,37 +9,14 @@ const STATUS_LABELS: Record<ProcessLifecycleStatus, string> = {
 	aborted: "Aborted",
 };
 
-const IDENTIFIER_WORD_LABELS: Record<string, string> = {
-	api: "API",
-	id: "ID",
-	llm: "LLM",
-	mr: "MR",
-	pi: "Pi",
-	ui: "UI",
-};
-
-function formatIdentifier(value: string): string {
-	return value
-		.split(/[_-]+/)
-		.filter((part) => part.length > 0)
-		.map((part) => {
-			const normalizedPart = part.toLowerCase();
-			return IDENTIFIER_WORD_LABELS[normalizedPart] ?? part.charAt(0).toUpperCase() + part.slice(1);
-		})
-		.join(" ");
-}
-
+export { formatProcessIdentifier as formatDefinition };
 export function formatStatus(status: ProcessLifecycleStatus): string {
 	return STATUS_LABELS[status] ?? status;
 }
 
 export function formatTurnId(turnId: string | null): string {
 	if (!turnId) return "Unknown";
-	return formatIdentifier(turnId);
-}
-
-export function formatDefinition(id: string): string {
-	return formatIdentifier(id);
+	return formatProcessIdentifier(turnId);
 }
 
 export function formatRelativeTime(iso: string): string {

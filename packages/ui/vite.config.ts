@@ -2,6 +2,7 @@ import path from "node:path";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig, normalizePath, type Plugin, searchForWorkspaceRoot } from "vite";
 import {
+	isWithinDirectory,
 	parseExtensionUiDevSources,
 	resolveExtensionUiDevRequest,
 } from "./src/extension-ui-dev-server.js";
@@ -20,14 +21,6 @@ const extensionUiDevSources =
 	runtimeLane === "source"
 		? parseExtensionUiDevSources(process.env.LEITWERK_DEV_EXTENSION_UI_SOURCES_JSON)
 		: [];
-
-function isWithinDirectory(rootDir: string, targetPath: string): boolean {
-	const relative = path.relative(rootDir, targetPath);
-	return (
-		relative === "" ||
-		(relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
-	);
-}
 
 function extensionUiSourcePlugin(): Plugin {
 	const sourceRoots = extensionUiDevSources.map((source) => source.assetRootDir);

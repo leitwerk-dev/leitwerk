@@ -48,17 +48,13 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 	const volumesRemoved: string[] = [];
 	const stopCalls: Array<{ id: string; timeoutSeconds: number }> = [];
 	const removeCalls: Array<{ id: string; force?: boolean }> = [];
-	function newExitPromise(): {
-		promise: Promise<DockerContainerExit>;
-		resolve: (exit: DockerContainerExit) => void;
-	} {
-		let resolve!: (exit: DockerContainerExit) => void;
-		const promise = new Promise<DockerContainerExit>((res) => {
-			resolve = res;
-		});
-		return { promise, resolve };
+	function requireContainer(id: string): FakeContainerRecord {
+		const record = containers.get(id);
+		if (!record) {
+			throw new Error(`No such container: ${id}`);
+		}
+		return record;
 	}
-
 	return {
 		containers,
 		volumesEnsured,
@@ -68,7 +64,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 		async createContainer(spec: DockerContainerSpec) {
 			fakeContainerCounter += 1;
 			const id = `fake_container_${fakeContainerCounter}`;
-			const { promise, resolve } = newExitPromise();
+			const { promise, resolve } = Promise.withResolvers<DockerContainerExit>();
 			containers.set(id, {
 				id,
 				spec,
@@ -79,10 +75,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			return { id };
 		},
 		async startContainer(id: string) {
-			const record = containers.get(id);
-			if (!record) {
-				throw new Error(`No such container: ${id}`);
-			}
+			const record = requireContainer(id);
 			record.running = true;
 		},
 		async stopContainer(id: string, opts: { timeoutSeconds: number }) {
@@ -121,10 +114,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			const matchesFilter = (labels: Record<string, string>) =>
 				Object.entries(filter.labels).every(([key, value]) => labels[key] === value);
 			for (const record of containers.values()) {
-				if (!record.running) {
-					continue;
-				}
-				if (!matchesFilter(record.spec.labels)) {
+				if (!record.running || !matchesFilter(record.spec.labels)) {
 					continue;
 				}
 				summaries.push({
@@ -133,13 +123,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 				});
 			}
 			for (const [id, seeded] of seededState.entries()) {
-				if (containers.has(id)) {
-					continue;
-				}
-				if (seeded.state !== "running") {
-					continue;
-				}
-				if (!matchesFilter(seeded.labels)) {
+				if (containers.has(id) || seeded.state !== "running" || !matchesFilter(seeded.labels)) {
 					continue;
 				}
 				summaries.push({ id, labels: seeded.labels });
@@ -147,11 +131,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			return summaries;
 		},
 		async waitContainer(id: string): Promise<DockerContainerExit> {
-			const record = containers.get(id);
-			if (!record) {
-				throw new Error(`No such container: ${id}`);
-			}
-			return record.exitPromise;
+			return requireContainer(id).exitPromise;
 		},
 		async ensureVolume(name: string) {
 			volumesEnsured.push(name);
@@ -160,19 +140,11 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 			volumesRemoved.push(name);
 		},
 		simulateExit(id: string, exit: DockerContainerExit) {
-			const record = containers.get(id);
-			if (!record) {
-				throw new Error(`No such container: ${id}`);
-			}
+			const record = requireContainer(id);
 			record.running = false;
 			record.resolveExit?.(exit);
 		},
-		seedContainer(record: {
-			id: string;
-			labels: Record<string, string>;
-			running?: boolean;
-			state?: string;
-		}) {
+		seedContainer(record) {
 			seededState.set(record.id, {
 				labels: record.labels,
 				state: record.state ?? (record.running ? "running" : "exited"),

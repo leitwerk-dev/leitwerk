@@ -1,4 +1,5 @@
 import {
+	asUnknownRecord,
 	createEmptyProcessProductRefs,
 	createEmptyProcessSemanticEntryRefs,
 	type ProcessProductRefs,
@@ -20,10 +21,7 @@ export function createEmptyStructuralProcessState(): StructuralProcessState {
 }
 
 export function parseStructuralProcessState(value: unknown): StructuralProcessState {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return createEmptyStructuralProcessState();
-	}
-	const record = value as Record<string, unknown>;
+	const record = asUnknownRecord(value) ?? {};
 	return {
 		semanticEntryRefs: parseProcessSemanticEntryRefs(record.semanticEntryRefs),
 		productRefs: parseProcessProductRefs(record.productRefs),
