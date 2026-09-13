@@ -131,5 +131,5 @@ Extension workspaces can delegate to the selected public checkout's
 `scripts/sandbox/cli.ts` with their composition entry and workspace root. Keep the
 existing npm release pins until adopting the containing release. This phase
 supports source development only; an installed package does not contain the
-supervisor, UI source or built-in scenarios. See the [sandbox guide](../sandbox/README.md)
-and [harness contract](../packages/dev-sandbox/README.md).
+supervisor, UI source or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
+and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md).

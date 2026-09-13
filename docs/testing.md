@@ -117,4 +117,4 @@ adapter progress across restarts. Launcher tests start the public supervisor wit
 an isolated workspace and environment, check strict ports, exercise the outer
 configuration reload, and verify acknowledged reset. Preflight tests prove that
 application and adapter initialization use disposable storage. See the
-[sandbox guide](../sandbox/README.md).
+[sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
