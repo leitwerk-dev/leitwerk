@@ -69,11 +69,14 @@ async function main(): Promise<void> {
 	const runPreflight = async (): Promise<DevContext | null> => {
 		try {
 			const candidateContext = await loadDevContext();
-			const child = spawnTsx(path.join(repoRoot, "scripts/dev-preflight.ts"), {
-				cwd: repoRoot,
-				env: process.env,
-				stdio: "inherit",
-			});
+			const child = spawnTsx(
+				process.env.LEITWERK_DEV_PREFLIGHT_ENTRY ?? path.join(repoRoot, "scripts/dev-preflight.ts"),
+				{
+					cwd: repoRoot,
+					env: process.env,
+					stdio: "inherit",
+				},
+			);
 			validationChildren.add(child);
 			const valid = await waitForSuccess(child).finally(() => validationChildren.delete(child));
 			return valid ? candidateContext : null;

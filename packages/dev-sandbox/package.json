@@ -1,0 +1,64 @@
+{
+	"name": "@leitwerk-dev/dev-sandbox",
+	"version": "0.1.9",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/dev-sandbox"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./launcher": {
+			"source": "./src/launcher.ts",
+			"import": "./dist/launcher.js",
+			"types": "./dist/launcher.d.ts"
+		},
+		"./storage": {
+			"source": "./src/storage.ts",
+			"import": "./dist/storage.js",
+			"types": "./dist/storage.d.ts"
+		},
+		"./backend": {
+			"source": "./src/backend.ts",
+			"import": "./dist/backend.js",
+			"types": "./dist/backend.d.ts"
+		},
+		"./preflight": {
+			"source": "./src/preflight.ts",
+			"import": "./dist/preflight.js",
+			"types": "./dist/preflight.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
+	},
+	"dependencies": {
+		"@leitwerk-dev/extension-runtime": "0.1.9",
+		"@leitwerk-dev/process-sdk": "0.1.9",
+		"@leitwerk-dev/server": "0.1.9",
+		"@leitwerk-dev/test-support": "0.1.9",
+		"@leitwerk-dev/worker": "0.1.9",
+		"yaml": "^2.8.3"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	]
+}
