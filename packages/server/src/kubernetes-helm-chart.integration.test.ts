@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { buildKubernetesAdmissionPolicyManifests } from "@leitwerk-dev/worker-runners";
 import { describe, expect, it } from "vitest";
 import { parse, parseAllDocuments } from "yaml";
 import { validateConfig } from "./config/config-loader.js";
@@ -174,6 +175,41 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(policies[0])).toContain("leitwerk-process-");
 		expect(JSON.stringify(policies[0])).toContain("process-volume");
 		expect(JSON.stringify(policies[0])).toContain("server-ca");
+	});
+
+	it.each([
+		false,
+		true,
+	])("keeps worker and session exporter admission rules aligned with the runner (pre-provisioning: %s)", (preProvision) => {
+		const documents = renderChart(
+			helmJsonValues({
+				"kubernetes.processVolume.preProvision.enabled": preProvision,
+				"kubernetes.processVolume.storageClassName": "csi-storage",
+				"kubernetes.workerServiceAccount": "custom-worker",
+			}),
+		);
+		const rendered = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
+		const validations = (rendered.spec as JsonObject).validations as Array<{
+			expression: string;
+			message: string;
+		}>;
+		const { policy } = buildKubernetesAdmissionPolicyManifests({
+			name: "leitwerk-server-process-resources",
+			serverNamespace: "leitwerk-k8s-test",
+			serverServiceAccountName: "leitwerk-server",
+			processNamespacePrefix: "leitwerk-process-",
+			allowedWorkerServiceAccount: "custom-worker",
+		});
+		const podRule = (rule: { expression: string }) =>
+			rule.expression.startsWith(
+				"(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod'",
+			);
+		expect(validations.filter(podRule)).toEqual(
+			policy.spec.validations.filter(podRule).map((rule) => ({
+				...rule,
+				expression: rule.expression + (preProvision ? " || variables.isPreparation" : ""),
+			})),
+		);
 	});
 
 	it("templates the Kind overlay with local worker profile images", () => {
