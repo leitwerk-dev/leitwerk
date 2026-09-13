@@ -8,12 +8,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createWebSocketWorkerIpc } from "./ipc.js";
 import { FakeWorkerWebSocket as FakeWebSocket } from "./test-helpers/fake-websocket.js";
 
-function createIpc() {
+function createIpc(overrides: Partial<Parameters<typeof createWebSocketWorkerIpc>[0]> = {}) {
 	return createWebSocketWorkerIpc({
 		serverUrl: "http://127.0.0.1:8080",
 		instanceId: "proc_1",
 		workerId: "wkr_1",
 		token: "secret-token",
+		...overrides,
 	});
 }
 
@@ -77,28 +78,15 @@ describe("createWebSocketWorkerIpc", () => {
 		expect(errors).toEqual([]);
 	});
 
-	it("derives secure websocket URLs from HTTPS base URLs", () => {
-		createWebSocketWorkerIpc({
-			serverUrl: "https://leitwerk-server:8080/base",
-			instanceId: "proc_1",
-			workerId: "wkr_1",
-			token: "secret-token",
-		}).start();
+	it.each([
+		"https://leitwerk-server:8080/base",
+		"wss://leitwerk-server:8080/base",
+	])("uses secure websocket URLs for %s", (serverUrl) => {
+		createIpc({ serverUrl }).start();
 
 		const url = new URL(FakeWebSocket.instances[0].url);
 		expect(url.protocol).toBe("wss:");
 		expect(url.pathname).toBe("/internal/workers/connect");
-	});
-
-	it("preserves explicit secure websocket URLs", () => {
-		createWebSocketWorkerIpc({
-			serverUrl: "wss://leitwerk-server:8080/base",
-			instanceId: "proc_1",
-			workerId: "wkr_1",
-			token: "secret-token",
-		}).start();
-
-		expect(new URL(FakeWebSocket.instances[0].url).protocol).toBe("wss:");
 	});
 
 	it("does not report an error when stopped intentionally", () => {
@@ -128,13 +116,7 @@ describe("createWebSocketWorkerIpc", () => {
 		try {
 			const errors: Error[] = [];
 			const connects: string[] = [];
-			const ipc = createWebSocketWorkerIpc({
-				serverUrl: "http://127.0.0.1:8080",
-				instanceId: "proc_1",
-				workerId: "wkr_1",
-				token: "secret-token",
-				reconnect: true,
-			});
+			const ipc = createIpc({ reconnect: true });
 			ipc.onError((error) => errors.push(error));
 			ipc.onConnect(() => connects.push("connected"));
 			ipc.start();
@@ -165,6 +147,50 @@ describe("createWebSocketWorkerIpc", () => {
 			expect(errors).toEqual([]);
 		} finally {
 			vi.useRealTimers();
+		}
+	});
+
+	it("cancels initial backoff on stop and records sanitized connection failures", async () => {
+		vi.useFakeTimers();
+		const diagnostics: string[] = [];
+		const ipc = createIpc({
+			reconnect: true,
+			onDiagnostic: (message) => diagnostics.push(message),
+		});
+		try {
+			ipc.start();
+			FakeWebSocket.instances[0].close(1006, "secret-token");
+			ipc.stop();
+			await vi.runAllTimersAsync();
+			expect(FakeWebSocket.instances).toHaveLength(1);
+			expect(diagnostics).toEqual(["Worker connection initial_connect: attempt=1; close=1006"]);
+		} finally {
+			ipc.stop();
+			vi.useRealTimers();
+		}
+	});
+
+	it("retains only allowlisted error codes and clears diagnostics after recovery", () => {
+		const diagnostics: string[] = [];
+		const ipc = createIpc({
+			reconnect: true,
+			onDiagnostic: (message) => diagnostics.push(message),
+		});
+		try {
+			ipc.start();
+			const socket = FakeWebSocket.instances[0];
+			socket.emit("error", { error: { message: "secret-token", cause: { code: "ECONNREFUSED" } } });
+			socket.emit("error", { error: { code: "secret-token", message: "secret-token" } });
+			socket.open();
+			socket.emit("error", { error: { code: "ECONNRESET" } });
+			expect(diagnostics).toEqual([
+				"Worker connection initial_connect: attempt=1; error=ECONNREFUSED",
+				"Worker connection initial_connect: attempt=1; error=websocket_error",
+				"",
+				"Worker connection reconnecting: attempt=1; error=ECONNRESET",
+			]);
+		} finally {
+			ipc.stop();
 		}
 	});
 

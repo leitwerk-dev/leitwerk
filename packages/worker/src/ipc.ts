@@ -8,6 +8,7 @@ import {
 	WORKER_IPC_SERVER_URL_ENV,
 	type WorkerToServerMessage,
 } from "@leitwerk-dev/worker-protocol";
+import { createConnectionDiagnosticRecorder } from "./connection-diagnostics.js";
 
 export interface WorkerIpc {
 	send(message: WorkerToServerMessage): void;
@@ -69,12 +70,36 @@ function webSocketDataToText(data: WebSocketMessageEventLike["data"]): string {
 	return data.toString("utf8");
 }
 
+// Only known transport codes are safe to retain: native error messages may contain URLs.
+const connectionErrorCodes = new Set([
+	"ECONNREFUSED",
+	"ECONNRESET",
+	"ENOTFOUND",
+	"EAI_AGAIN",
+	"ETIMEDOUT",
+	"ENETUNREACH",
+	"EHOSTUNREACH",
+	"CERT_HAS_EXPIRED",
+	"DEPTH_ZERO_SELF_SIGNED_CERT",
+]);
+function connectionErrorCode(value: unknown): string {
+	for (let depth = 0; depth < 4 && value && typeof value === "object"; depth += 1) {
+		const error = value as { code?: unknown; error?: unknown; cause?: unknown };
+		if (typeof error.code === "string" && connectionErrorCodes.has(error.code)) {
+			return error.code;
+		}
+		value = error.error ?? error.cause;
+	}
+	return "websocket_error";
+}
+
 export function createWebSocketWorkerIpc(input: {
 	serverUrl: string;
 	instanceId: string;
 	workerId: string;
 	token: string;
 	reconnect?: boolean;
+	onDiagnostic?: (message: string) => void;
 }): WorkerIpc {
 	let messageHandler: ((message: ServerToWorkerMessage) => void) | undefined;
 	let errorHandler: ((error: Error) => void) | undefined;
@@ -89,6 +114,8 @@ export function createWebSocketWorkerIpc(input: {
 
 	const reconnectEnabled = input.reconnect === true;
 	const emitError = (error: unknown) => errorHandler?.(toError(error));
+	const diagnostic = (detail: string) =>
+		`Worker connection ${openedOnce ? "reconnecting" : "initial_connect"}: attempt=${reconnectAttempt + 1}; ${detail}`;
 	const clearReconnectTimer = () => {
 		if (reconnectTimer) {
 			clearTimeout(reconnectTimer);
@@ -147,7 +174,8 @@ export function createWebSocketWorkerIpc(input: {
 			reconnectTimer = null;
 			connect();
 		}, delayMs);
-		reconnectTimer.unref?.();
+		// A pending connection must keep the worker alive, including before bootstrap.
+		// stop() clears this timer; the server owns the startup deadline.
 	};
 
 	return {
@@ -186,12 +214,15 @@ export function createWebSocketWorkerIpc(input: {
 				}
 				socket = new WebSocketImpl(toWebSocketUrl(input));
 				socket.addEventListener("open", () => {
+					input.onDiagnostic?.("");
 					reconnectAttempt = 0;
 					flushOutbound();
 				});
 				socket.addEventListener("message", (event) => deliverText(webSocketDataToText(event.data)));
 				socket.addEventListener("error", (event) => {
-					if (!stopping && !reconnectEnabled) {
+					if (stopping) return;
+					input.onDiagnostic?.(diagnostic(`error=${connectionErrorCode(event)}`));
+					if (!reconnectEnabled) {
 						emitError(event instanceof Error ? event : new Error("Worker WebSocket error"));
 					}
 				});
@@ -199,6 +230,9 @@ export function createWebSocketWorkerIpc(input: {
 					if (stopping) {
 						return;
 					}
+					input.onDiagnostic?.(
+						diagnostic(`close=${Number.isInteger(event?.code) ? event?.code : "unknown"}`),
+					);
 					socket = null;
 					if (reconnectEnabled && event?.code !== 1008) {
 						scheduleReconnect(connect);
@@ -246,5 +280,6 @@ export function createWorkerIpcFromEnvironment(input: {
 		workerId: input.workerId,
 		token,
 		reconnect: env[WORKER_IPC_RECONNECT_ENV] === "1",
+		onDiagnostic: createConnectionDiagnosticRecorder(),
 	});
 }
