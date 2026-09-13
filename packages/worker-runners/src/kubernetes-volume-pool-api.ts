@@ -75,6 +75,27 @@ export function createVolumePoolApi(request: Request): VolumePoolApi {
 		`/api/v1/${namespace ? `namespaces/${encodeURIComponent(namespace)}/` : ""}${kind}${name ? `/${encodeURIComponent(name)}` : ""}`;
 	const bounded = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
 	const classes = "/apis/storage.k8s.io/v1/storageclasses";
+	async function list<T>(collection: string, selector: string, signal: AbortSignal): Promise<T[]> {
+		const items: T[] = [];
+		let cursor = "";
+		do {
+			const query = new URLSearchParams({
+				labelSelector: selector,
+				limit: "100",
+				...(cursor ? { continue: cursor } : {}),
+			});
+			const response = await request<{ items: T[]; metadata?: { continue?: string } }>({
+				method: "GET",
+				path: `${collection}?${query}`,
+				signal: bounded(signal),
+			});
+			if (!response.body) throw new Error("Missing volume-pool list response");
+			items.push(...response.body.items);
+			cursor = response.body.metadata?.continue ?? "";
+		} while (cursor);
+		return items;
+	}
+
 	return {
 		async getStorageClass(name, signal) {
 			const response = await request<PoolStorageClass>({
@@ -85,24 +106,8 @@ export function createVolumePoolApi(request: Request): VolumePoolApi {
 			});
 			return response.status === 404 ? null : response.body;
 		},
-		async listStorageClasses(selector, signal) {
-			const items: PoolStorageClass[] = [];
-			let cursor = "";
-			do {
-				const query = new URLSearchParams({
-					labelSelector: selector,
-					limit: "100",
-					...(cursor ? { continue: cursor } : {}),
-				});
-				const response = await request<{
-					items: PoolStorageClass[];
-					metadata?: { continue?: string };
-				}>({ method: "GET", path: `${classes}?${query}`, signal: bounded(signal) });
-				if (!response.body) throw new Error("Missing StorageClass list response");
-				items.push(...response.body.items);
-				cursor = response.body.metadata?.continue ?? "";
-			} while (cursor);
-			return items;
+		listStorageClasses(selector, signal) {
+			return list<PoolStorageClass>(classes, selector, signal);
 		},
 		async createStorageClass(value, signal) {
 			await request({
@@ -127,25 +132,8 @@ export function createVolumePoolApi(request: Request): VolumePoolApi {
 				signal: bounded(signal),
 			});
 		},
-		async list(kind, namespace, selector, signal) {
-			const items: PoolObject[] = [];
-			let cursor = "";
-			do {
-				const query = new URLSearchParams({
-					labelSelector: selector,
-					limit: "100",
-					...(cursor ? { continue: cursor } : {}),
-				});
-				const result = await request<{ items: PoolObject[]; metadata?: { continue?: string } }>({
-					method: "GET",
-					path: `${path(kind, namespace)}?${query}`,
-					signal: bounded(signal),
-				});
-				if (!result.body) throw new Error("Missing volume-pool list response");
-				items.push(...result.body.items);
-				cursor = result.body.metadata?.continue ?? "";
-			} while (cursor);
-			return items;
+		list(kind, namespace, selector, signal) {
+			return list<PoolObject>(path(kind, namespace), selector, signal);
 		},
 		async get(kind, namespace, name, signal) {
 			const result = await request<PoolObject>({
