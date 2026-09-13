@@ -1,6 +1,7 @@
 import {
 	escapeLeafOutcomeHtml,
 	LeafOutcomeCustomElement,
+	normalizeLeafOutcomeOptionalText as normalizeOptionalString,
 } from "@leitwerk-dev/process-sdk/leaf-outcome-renderer";
 
 /**
@@ -16,14 +17,6 @@ interface LegacyLocalRepoChangeLeafOutcomePayload {
 }
 
 const TAG_NAME = "o2-local-repo-change-legacy-leaf-outcome";
-
-function normalizeOptionalString(value: unknown): string | null {
-	if (typeof value !== "string") {
-		return null;
-	}
-	const trimmed = value.trim();
-	return trimmed === "" ? null : trimmed;
-}
 
 function stringifyPayload(payload: LegacyLocalRepoChangeLeafOutcomePayload | null): string {
 	if (!payload) {

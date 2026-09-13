@@ -11,7 +11,7 @@ const CALLBACKS = {
 	continue: "c",
 } as const;
 
-function rows<T>(items: readonly T[], size: number): T[][] {
+export function rows<T>(items: readonly T[], size: number): T[][] {
 	return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => [
 		...items.slice(index * size, index * size + size),
 	]);
