@@ -32,23 +32,39 @@ export function jsonRequestInit(method: string, body: unknown): RequestInit {
 	};
 }
 
+type ResponseError = string | ((response: Response, body: unknown) => Error);
+
+export async function requireSuccessfulResponse(
+	response: Response,
+	error?: ResponseError,
+): Promise<void> {
+	if (response.ok) return;
+	const body = await tryReadJson(response);
+	throw typeof error === "string"
+		? new Error(readErrorMessage(body) ?? `${error}: ${response.status}`)
+		: (error?.(response, body) ?? new Error(`Request failed: ${response.status}`));
+}
+
+export async function requestMutation(
+	path: string,
+	error: ResponseError,
+	init: RequestInit,
+): Promise<void> {
+	await requireSuccessfulResponse(await getFetchImpl()(resolveApiUrl(path), init), error);
+}
+
 export async function requestJson<T extends object>(input: {
 	path: string;
 	init?: RequestInit;
 	malformed: string;
-	error?: string | ((response: Response, body: unknown) => Error);
+	error?: ResponseError;
 	onError?: (response: Response, body: unknown) => T | Promise<T>;
 }): Promise<T> {
 	const fetchImpl = getFetchImpl();
 	const url = resolveApiUrl(input.path);
 	const response = input.init ? await fetchImpl(url, input.init) : await fetchImpl(url);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		if (input.onError) return input.onError(response, body);
-		throw typeof input.error === "string"
-			? new Error(readErrorMessage(body) ?? `${input.error}: ${response.status}`)
-			: (input.error?.(response, body) ?? new Error(`Request failed: ${response.status}`));
-	}
+	if (!response.ok && input.onError) return input.onError(response, await tryReadJson(response));
+	await requireSuccessfulResponse(response, input.error);
 	return readJsonObject<T>(response, input.malformed);
 }
 

@@ -1,12 +1,12 @@
 <script lang="ts">
+import type {
+	FutureLaunchSummary,
+	ProcessRetryConfig,
+	UiLauncherSummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import GenericLauncher from "../components/GenericLauncher.svelte";
 import PageHeader from "../components/PageHeader.svelte";
-import {
-	type FutureLaunchSummary,
-	fetchLaunchers,
-	type ProcessRetryConfig,
-	type UiLauncherSummary,
-} from "../lib/api.js";
+import { fetchLaunchers } from "../lib/api.js";
 import { isInteractiveTarget, isPlainShortcut, isTextEntryTarget } from "../lib/keyboard.js";
 import { keyboardShortcutHelpOpen } from "../lib/keyboard-shortcuts-help.js";
 import { queueProcessLaunchNotice } from "../lib/process-launch-notices.svelte";

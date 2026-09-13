@@ -369,16 +369,24 @@ describe("flow product publication and consumption", () => {
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.buildPrompt((ctx) => ctx.input.plan);
 
-		expect(() =>
+		const process = flow
+			.process("test_process")
+			.displayName("Test")
+			.entry("consumer")
+			.codecs({ params: emptyParamsCodec, state: stateCodec })
+			.initialState(() => ({}))
+			.turn(consumer);
+		expect(() => process.define()).toThrow(/consumes product 'plan' that is never published/);
+		process.turn(
 			flow
-				.process("test_process")
-				.displayName("Test")
-				.entry("consumer")
-				.codecs({ params: emptyParamsCodec, state: stateCodec })
-				.initialState(() => ({}))
-				.turn(consumer)
-				.define(),
-		).toThrow(/consumes product 'plan' that is never published/);
+				.automatic("publisher")
+				.description("Publish plan")
+				.run(() => ({ outcome: "done", params: { plan: "Plan" } }))
+				.outcome("done", (outcome) =>
+					outcome.description("Done").markdown("plan", { publish: true }).to("consumer"),
+				),
+		);
+		expect(() => process.define()).not.toThrow();
 	});
 
 	it("rejects invalid product names early", () => {

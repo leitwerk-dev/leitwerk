@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, unmount } from "svelte";
 import { get } from "svelte/store";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -10,7 +11,6 @@ import {
 	fetchLaunchers,
 	launchLauncher,
 	previewCronExpression,
-	type UiLauncherSummary,
 	updateScheduledLaunch,
 } from "../lib/api.js";
 import { futureExecutions } from "../lib/processes.svelte.js";

@@ -4,7 +4,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now } from "./repo-helpers.js";
+import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 export interface CreateProcessLeafOutcomeSnapshotInput {
@@ -23,20 +23,6 @@ export interface CreateProcessLeafOutcomeSnapshotInput {
 	createdAt?: string;
 }
 
-function parseProps(raw: string | null | undefined): Record<string, unknown> | null {
-	if (!raw) {
-		return null;
-	}
-	try {
-		const parsed = JSON.parse(raw);
-		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-			? (parsed as Record<string, unknown>)
-			: null;
-	} catch {
-		return null;
-	}
-}
-
 function rowToProcessLeafOutcomeSnapshot(
 	row: typeof s.processLeafOutcomeSnapshots.$inferSelect,
 ): ProcessLeafOutcomeSnapshot {
@@ -47,7 +33,7 @@ function rowToProcessLeafOutcomeSnapshot(
 		turnRecordId: row.turnRecordId ?? null,
 		rendererId: row.rendererId ?? null,
 		schemaVersion: row.schemaVersion ?? null,
-		props: parseProps(row.propsJson),
+		props: parseJsonRecord(row.propsJson),
 		fallbackMarkdown: row.fallbackMarkdown ?? null,
 		status: row.status as ProcessLeafOutcomeSnapshotStatus,
 		warningCode: row.warningCode ?? null,

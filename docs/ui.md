@@ -204,7 +204,7 @@ The manifest lists renderers by stable id. Each entry is a `custom_element` with
 }
 ```
 
-Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. See `extensions/local-repo-change` for a shipped example (legacy leaf-outcome compatibility renderer).
+Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. `protocol` owns renderer and browser-module wire schemas; manifest validation and supported-version checks remain with the catalog and UI host, respectively. See `extensions/local-repo-change` for a shipped example (legacy leaf-outcome compatibility renderer).
 
 - **Bounded Insertion:** Custom renderers stay inside Chronicle leaf-outcome hosts; they do not own global shell navigation.
 

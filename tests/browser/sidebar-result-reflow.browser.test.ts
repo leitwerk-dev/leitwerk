@@ -291,7 +291,8 @@ test.describe("sidebar result reflow", () => {
 		await expect(rendererHost).toHaveAttribute("data-renderer-state", "ready", {
 			timeout: 10_000,
 		});
-		await page.getByRole("button", { name: /Repeated Turns/ }).press("ArrowRight");
+		// Expand repeated history and leave bottom-following before measuring reflow.
+		await page.getByRole("button", { name: /^Repeated Turns/ }).press("ArrowRight");
 		await parentRailItem.click();
 		await leafOutcomeSection.scrollIntoViewIfNeeded();
 		await expect(parentRailItem).toHaveAttribute("data-active", "true");

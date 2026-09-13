@@ -1,4 +1,4 @@
-import type { ProcessRetryConfig } from "./api.js";
+import type { ProcessRetryConfig } from "@leitwerk-dev/protocol/http-contracts";
 
 export type PendingRetryConfig = ProcessRetryConfig;
 

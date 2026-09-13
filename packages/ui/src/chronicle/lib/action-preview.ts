@@ -1,4 +1,4 @@
-import type { ProcessActionSummary } from "../../lib/api.js";
+import type { ProcessActionSummary } from "@leitwerk-dev/protocol/http-contracts";
 
 export function describeActionPreview(
 	action: ProcessActionSummary,

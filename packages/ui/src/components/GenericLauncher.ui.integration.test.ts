@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
 import type { ProcessInstance } from "@leitwerk-dev/domain";
+import type {
+	LauncherModelConfigDefaults,
+	LauncherModelConfigPreview,
+	ScheduleConfigInput,
+	UiLauncherSummary,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -8,12 +14,8 @@ import {
 	fetchLauncherModelConfigPreview,
 	fetchLauncherOptions,
 	fetchLauncherRecentValues,
-	type LauncherModelConfigDefaults,
-	type LauncherModelConfigPreview,
 	launchLauncher,
 	previewCronExpression,
-	type ScheduleConfigInput,
-	type UiLauncherSummary,
 	updateScheduledLaunch,
 } from "../lib/api.js";
 import GenericLauncher from "./GenericLauncher.svelte";

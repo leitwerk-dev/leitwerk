@@ -64,10 +64,7 @@ export function createFakeDockerEngineClient(): FakeDockerEngineClient {
 		async createContainer(spec: DockerContainerSpec) {
 			fakeContainerCounter += 1;
 			const id = `fake_container_${fakeContainerCounter}`;
-			let resolve!: (exit: DockerContainerExit) => void;
-			const promise = new Promise<DockerContainerExit>((res) => {
-				resolve = res;
-			});
+			const { promise, resolve } = Promise.withResolvers<DockerContainerExit>();
 			containers.set(id, {
 				id,
 				spec,

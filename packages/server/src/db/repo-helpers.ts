@@ -1,3 +1,5 @@
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+
 export function parsePersistedJson<T>(value: string, label: string): T {
 	try {
 		return JSON.parse(value) as T;
@@ -13,6 +15,10 @@ export function parseMetadata(raw: string | null | undefined): Record<string, un
 	} catch {
 		return null;
 	}
+}
+
+export function parseJsonRecord(raw: string | null | undefined): Record<string, unknown> | null {
+	return asUnknownRecord(parseMetadata(raw));
 }
 
 export function generateId(prefix: string): string {

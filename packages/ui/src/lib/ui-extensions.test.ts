@@ -38,6 +38,9 @@ describe("browser UI extensions", () => {
 								moduleUrl: "/ext-ui/sample-extension/assets/browser.js",
 								browserApiVersion: 1,
 							},
+							null,
+							[],
+							{ moduleUrl: "/invalid.js", browserApiVersion: 1 },
 						],
 					}),
 				),
@@ -68,7 +71,9 @@ describe("browser UI extensions", () => {
 		await loadBrowserUiExtensions();
 
 		expect(fetchImpl).toHaveBeenCalledWith("/api/ui/extensions");
-		expect(moduleImporter).toHaveBeenCalledWith("/ext-ui/sample-extension/assets/browser.js");
+		expect(moduleImporter).toHaveBeenCalledExactlyOnceWith(
+			"/ext-ui/sample-extension/assets/browser.js",
+		);
 		expect(get(browserUiExtensionShortcutHelpItems)).toEqual([
 			{ keys: ["x"], label: "Toggle sample extension" },
 		]);

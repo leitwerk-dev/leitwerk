@@ -3,7 +3,7 @@ import type {
 	LauncherModelConfigPreview,
 	LauncherTurnModelConfigPreview,
 	ModelProfileOptionSummary,
-} from "../lib/api.js";
+} from "@leitwerk-dev/protocol/http-contracts";
 
 export type LauncherModelCustomizationMode =
 	| "recommended"

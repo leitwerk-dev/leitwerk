@@ -68,6 +68,8 @@ import {
 	readErrorMessage,
 	readJsonObject,
 	requestJson,
+	requestMutation,
+	requireSuccessfulResponse,
 	tryReadJson,
 	unknownRecordSchema,
 } from "./http-client.js";
@@ -83,93 +85,24 @@ export class ApiResponseError extends Error {
 	}
 }
 
-export type {
-	ProcessFlowEdge,
-	ProcessFlowEdgeKind,
-	ProcessFlowEndState,
-	ProcessFlowNode,
-	ProcessFlowNodeRole,
-	ProcessFlowView,
-} from "@leitwerk-dev/domain";
-export type {
-	FormFieldDefinition,
-	FormFieldOptionDefinition,
-} from "@leitwerk-dev/protocol/form-contract";
-export type {
-	FutureExecutionOverviewItem,
-	FutureLaunchSummary,
-	InstalledSkillCatalogDetail,
-	InstalledSkillCatalogItem,
-	InstanceTreeNodeSummary,
-	LauncherDefaultModelPreview,
-	LauncherModelConfigDefaults,
-	LauncherModelConfigPreview,
-	LauncherModelConfigSchema,
-	LauncherTurnModelConfigPreview,
-	ModelProfileOptionSummary,
-	PiSessionContentBlock,
-	PiSessionEntry,
-	PiSessionImageContentBlock,
-	PiSessionMessageRecord,
-	PiSessionTextContentBlock,
-	PiSessionThinkingContentBlock,
-	PiSessionToolCallContentBlock,
-	PiSessionUsageSnapshot,
-	ProcessActionFieldDefinition,
-	ProcessActionFormDefinition,
-	ProcessActionModelPreview,
-	ProcessActionModelResolutionPreview,
-	ProcessActionPreviewSummary,
-	ProcessActionSummary,
-	ProcessBrowseFacets,
-	ProcessBrowseItem,
-	ProcessBrowsePagination,
-	ProcessBrowseResponseBody,
-	ProcessDetailUiSnapshotResponseBody,
-	ProcessDiagnosticsData,
-	ProcessExternalTriggerSummary,
-	ProcessInstanceTreeResponseBody,
-	ProcessLaunchConfigurationParameterView,
-	ProcessLaunchConfigurationProjectView,
-	ProcessLaunchConfigurationView,
-	ProcessListItem,
-	ProcessModelConfigurationView,
-	ProcessOverviewItem,
-	ProcessRetryConfig,
-	ProcessRunDetailsView,
-	ProcessRunToolParameterView,
-	ProcessRunToolView,
-	ProcessRunTurnView,
-	ProcessSelectedTurnSummary,
-	ProcessTurnModelConfigurationView,
-	ScheduleConfigInput,
-	ScheduledActionDetail,
-	ScheduleMode,
-	SkillCatalogDetail,
-	SkillCatalogItem,
-	SkillRepositorySummary,
-	SkillsCatalogResponseBody,
-	SkillUsageProcessSummary,
-	SkillUsageSummary,
-	TurnReasoningDetailResponseBody,
-	TurnTracePreview,
-	TurnTraceSnapshot,
-	UiLauncherSummary,
-	WatcherLaunchModelSummary,
-	WatcherSummary,
-} from "@leitwerk-dev/protocol/http-contracts";
-export type {
-	LauncherCardMetadata,
-	LauncherFieldDefinition,
-	LauncherFieldOptionDefinition,
-	LauncherSchemaDefinition,
-	LauncherValidationError,
-	UiLauncherSummaryBase,
-} from "@leitwerk-dev/protocol/launcher-contract";
-export type {
-	ToolCallRendererDefinition,
-	ToolCallRendererFieldDefinition,
-} from "@leitwerk-dev/protocol/tool-renderer-contract";
+function requestStatusJson<T extends object>(
+	path: string,
+	error: string,
+	malformed: string,
+	init?: RequestInit,
+): Promise<T> {
+	return requestJson({
+		path,
+		init,
+		malformed,
+		error: (response) => new Error(`${error}: ${response.status}`),
+	});
+}
+
+function apiResponseError(message: string) {
+	return (response: Response, body: unknown) =>
+		new ApiResponseError(readErrorMessage(body) ?? message, response.status);
+}
 
 export type ProcessDetailData = ProcessDetailUiSnapshotResponseBody;
 export type FutureExecutionSummary = FutureExecutionOverviewItem;
@@ -182,21 +115,13 @@ export async function submitQuestionAnswers(input: {
 	requestId: string;
 	draft: QuestionAnswerDraft[];
 }): Promise<ProcessQuestionRequest> {
-	const response = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(input.instanceId)}/question-requests/${encodeURIComponent(input.requestId)}/answers`,
-		),
-		jsonRequestInit("POST", { draft: input.draft }),
-	);
-	if (!response.ok) {
-		const body = await tryReadJson(response);
-		throw new ApiResponseError(readErrorMessage(body) ?? "Couldn't send answers", response.status);
-	}
 	return (
-		await readJsonObject<QuestionRequestMutationResponseBody>(
-			response,
-			"Malformed question response",
-		)
+		await requestJson<QuestionRequestMutationResponseBody>({
+			path: `/api/processes/${encodeURIComponent(input.instanceId)}/question-requests/${encodeURIComponent(input.requestId)}/answers`,
+			init: jsonRequestInit("POST", { draft: input.draft }),
+			malformed: "Malformed question response",
+			error: apiResponseError("Couldn't send answers"),
+		})
 	).request;
 }
 
@@ -225,11 +150,7 @@ export function launchTicketCreation(
 			body: JSON.stringify(body),
 		},
 		malformed: "Malformed ticket launch response",
-		error: (response, value) =>
-			new ApiResponseError(
-				readErrorMessage(value) ?? "Couldn't start ticket creation",
-				response.status,
-			),
+		error: apiResponseError("Couldn't start ticket creation"),
 	});
 }
 
@@ -243,11 +164,7 @@ export async function resolveToolApproval(input: {
 			path: `/api/processes/${encodeURIComponent(input.instanceId)}/tool-approval-requests/${encodeURIComponent(input.requestId)}`,
 			init: jsonRequestInit("POST", input.body),
 			malformed: "Malformed approval response",
-			error: (response, value) =>
-				new ApiResponseError(
-					readErrorMessage(value) ?? "Couldn't resolve approval",
-					response.status,
-				),
+			error: apiResponseError("Couldn't resolve approval"),
 		})
 	).request;
 }
@@ -355,16 +272,6 @@ export type LauncherSubmitResult =
 			error: string;
 	  };
 
-async function requireSuccessfulResponse(response: Response, fallbackError: string): Promise<void> {
-	if (response.ok) return;
-	const body = await tryReadJson(response);
-	throw new Error(readErrorMessage(body) ?? `${fallbackError}: ${response.status}`);
-}
-
-async function requestMutation(path: string, error: string, init: RequestInit): Promise<void> {
-	await requireSuccessfulResponse(await getFetchImpl()(resolveApiUrl(path), init), error);
-}
-
 function isLauncherValidationError(value: unknown): value is LauncherValidationError {
 	const parsedValue = v.safeParse(unknownRecordSchema, value);
 	if (!parsedValue.success) {
@@ -390,9 +297,11 @@ export async function fetchProcessesList(): Promise<{
 	processes: ProcessOverviewItem[];
 	futureExecutions: FutureExecutionOverviewItem[];
 }> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/processes/overview"));
-	if (!res.ok) throw new Error(`Couldn't load the process list: ${res.status}`);
-	return readJsonObject<ProcessesOverviewResponseBody>(res, "Malformed process overview response");
+	return requestStatusJson<ProcessesOverviewResponseBody>(
+		"/api/processes/overview",
+		"Couldn't load the process list",
+		"Malformed process overview response",
+	);
 }
 
 export interface ProcessBrowseRequest {
@@ -415,49 +324,55 @@ export async function fetchProcessBrowse(
 		}
 	}
 	const query = params.size > 0 ? `?${params.toString()}` : "";
-	const res = await getFetchImpl()(resolveApiUrl(`/api/processes/browse${query}`));
-	if (!res.ok) throw new Error(`Couldn't browse processes: ${res.status}`);
-	return readJsonObject<ProcessBrowseResponseBody>(res, "Malformed process browse response");
+	return requestStatusJson(
+		`/api/processes/browse${query}`,
+		"Couldn't browse processes",
+		"Malformed process browse response",
+	);
 }
 
 export async function fetchLaunchers(): Promise<UiLauncherSummary[]> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/launchers"));
-	if (!res.ok) throw new Error(`Couldn't load available processes: ${res.status}`);
-	const body = await readJsonObject<LaunchersResponseBody>(res, "Malformed launchers response");
+	const body = await requestStatusJson<LaunchersResponseBody>(
+		"/api/launchers",
+		"Couldn't load available processes",
+		"Malformed launchers response",
+	);
 	return body.launchers;
 }
 
 export async function fetchWatchers(): Promise<WatcherSummary[]> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/watchers"));
-	if (!res.ok) throw new Error(`Couldn't load registered watchers: ${res.status}`);
-	const body = await readJsonObject<WatchersResponseBody>(res, "Malformed watchers response");
+	const body = await requestStatusJson<WatchersResponseBody>(
+		"/api/watchers",
+		"Couldn't load registered watchers",
+		"Malformed watchers response",
+	);
 	return body.watchers;
 }
 
 export async function fetchSkills(): Promise<SkillsCatalogResponseBody> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/skills"));
-	if (!res.ok) throw new Error(`Couldn't load the skill catalog: ${res.status}`);
-	return readJsonObject<SkillsCatalogResponseBody>(res, "Malformed skill catalog response");
+	return requestStatusJson(
+		"/api/skills",
+		"Couldn't load the skill catalog",
+		"Malformed skill catalog response",
+	);
 }
 
 export async function refreshSkills(): Promise<SkillsCatalogResponseBody> {
-	const res = await getFetchImpl()(resolveApiUrl("/api/skills/refresh"), { method: "POST" });
-	if (!res.ok) throw new Error(`Couldn't refresh skill repositories: ${res.status}`);
-	return readJsonObject<SkillsCatalogResponseBody>(res, "Malformed skill catalog response");
+	return requestStatusJson(
+		"/api/skills/refresh",
+		"Couldn't refresh skill repositories",
+		"Malformed skill catalog response",
+		{ method: "POST" },
+	);
 }
 
 export async function fetchSkillDetail(
 	repositoryId: string,
 	skillId: string,
 ): Promise<SkillCatalogDetail> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/skills/available/${encodeURIComponent(repositoryId)}/${encodeURIComponent(skillId)}`,
-		),
-	);
-	if (!res.ok) throw new Error(`Couldn't load skill details: ${res.status}`);
-	const body = await readJsonObject<SkillCatalogDetailResponseBody>(
-		res,
+	const body = await requestStatusJson<SkillCatalogDetailResponseBody>(
+		`/api/skills/available/${encodeURIComponent(repositoryId)}/${encodeURIComponent(skillId)}`,
+		"Couldn't load skill details",
 		"Malformed skill detail response",
 	);
 	return body.skill;
@@ -466,12 +381,9 @@ export async function fetchSkillDetail(
 export async function fetchInstalledSkillDetail(
 	skillId: string,
 ): Promise<InstalledSkillCatalogDetail> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/skills/installed/${encodeURIComponent(skillId)}`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load installed skill details: ${res.status}`);
-	const body = await readJsonObject<InstalledSkillCatalogDetailResponseBody>(
-		res,
+	const body = await requestStatusJson<InstalledSkillCatalogDetailResponseBody>(
+		`/api/skills/installed/${encodeURIComponent(skillId)}`,
+		"Couldn't load installed skill details",
 		"Malformed installed skill detail response",
 	);
 	return body.skill;
@@ -496,22 +408,19 @@ export async function removeSkill(skillId: string): Promise<void> {
 export async function fetchLauncherDefaults(
 	launcherId: string,
 ): Promise<LauncherDefaultsResponseBody> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/defaults`),
+	return requestStatusJson(
+		`/api/launchers/${encodeURIComponent(launcherId)}/defaults`,
+		"Couldn't load default values",
+		"Malformed launcher defaults response",
 	);
-	if (!res.ok) throw new Error(`Couldn't load default values: ${res.status}`);
-	return readJsonObject<LauncherDefaultsResponseBody>(res, "Malformed launcher defaults response");
 }
 
 export async function fetchLauncherRecentValues(
 	launcherId: string,
 ): Promise<Record<string, readonly string[]>> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/recent-values`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load recent launcher values: ${res.status}`);
-	const body = await readJsonObject<LauncherRecentValuesResponseBody>(
-		res,
+	const body = await requestStatusJson<LauncherRecentValuesResponseBody>(
+		`/api/launchers/${encodeURIComponent(launcherId)}/recent-values`,
+		"Couldn't load recent launcher values",
 		"Malformed launcher recent values response",
 	);
 	return body.values;
@@ -521,14 +430,11 @@ export async function fetchLauncherOptions(
 	launcherId: string,
 	launcherInput: Record<string, unknown>,
 ): Promise<Record<string, readonly LauncherFieldOptionDefinition[]>> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/options`),
-		jsonRequestInit("POST", { launcherInput }),
-	);
-	if (!res.ok) throw new Error(`Couldn't refresh the available options: ${res.status}`);
-	const body = await readJsonObject<LauncherOptionsResponseBody>(
-		res,
+	const body = await requestStatusJson<LauncherOptionsResponseBody>(
+		`/api/launchers/${encodeURIComponent(launcherId)}/options`,
+		"Couldn't refresh the available options",
 		"Malformed launcher options response",
+		jsonRequestInit("POST", { launcherInput }),
 	);
 	return body.options;
 }
@@ -538,14 +444,11 @@ export async function fetchLauncherModelConfigPreview(
 	launcherInput: Record<string, unknown>,
 	modelConfig: LauncherModelConfigDefaults = {},
 ): Promise<LauncherModelConfigPreview> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/launchers/${encodeURIComponent(launcherId)}/model-config-preview`),
-		jsonRequestInit("POST", { launcherInput, modelConfig }),
-	);
-	if (!res.ok) throw new Error(`Couldn't refresh the model preview: ${res.status}`);
-	const body = await readJsonObject<LauncherModelConfigPreviewResponseBody>(
-		res,
+	const body = await requestStatusJson<LauncherModelConfigPreviewResponseBody>(
+		`/api/launchers/${encodeURIComponent(launcherId)}/model-config-preview`,
+		"Couldn't refresh the model preview",
 		"Malformed launcher model preview response",
+		jsonRequestInit("POST", { launcherInput, modelConfig }),
 	);
 	return body.preview;
 }
@@ -656,34 +559,25 @@ export async function launchLauncher(
 }
 
 export async function fetchProcessDiagnostics(instanceId: string): Promise<ProcessDiagnosticsData> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/diagnostics`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load this process: ${res.status}`);
-	return readJsonObject<ProcessDiagnosticsResponseBody>(
-		res,
+	return requestStatusJson<ProcessDiagnosticsResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/diagnostics`,
+		"Couldn't load this process",
 		"Malformed process diagnostics response",
 	);
 }
 
 export async function fetchPrimaryPathSnapshot(instanceId: string): Promise<PrimaryPathSnapshot> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/primary-path`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load this process: ${res.status}`);
-	return readJsonObject<PrimaryPathSnapshotResponseBody>(
-		res,
+	return requestStatusJson<PrimaryPathSnapshotResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/primary-path`,
+		"Couldn't load this process",
 		"Malformed primary path snapshot response",
 	);
 }
 
 export async function fetchProcessDetail(instanceId: string): Promise<ProcessDetailData> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/ui-snapshot`),
-	);
-	if (!res.ok) throw new Error(`Couldn't load this process: ${res.status}`);
-	return readJsonObject<ProcessDetailUiSnapshotResponseBody>(
-		res,
+	return requestStatusJson(
+		`/api/processes/${encodeURIComponent(instanceId)}/ui-snapshot`,
+		"Couldn't load this process",
 		"Malformed process UI snapshot response",
 	);
 }
@@ -733,13 +627,11 @@ export async function postProcessRetry(
 	nextTurnModelProfileId?: string | null,
 	providerOptions?: Readonly<Record<string, string>>,
 ): Promise<void> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/retry`),
+	return requestMutation(
+		`/api/processes/${encodeURIComponent(instanceId)}/retry`,
+		(response) => new Error(`Couldn't retry this process: ${response.status}`),
 		jsonRequestInit("POST", { nextTurnModelProfileId, providerOptions }),
 	);
-	if (!res.ok) {
-		throw new Error(`Couldn't retry this process: ${res.status}`);
-	}
 }
 
 export async function fetchModelProviderOptions(
@@ -794,10 +686,7 @@ export async function createSessionTransferGrant(
 		path: `/api/processes/${encodeURIComponent(instanceId)}/session-transfers`,
 		init: { method: "POST" },
 		malformed: "Malformed transfer link response",
-		error: (response, body) =>
-			new Error(
-				readErrorMessage(body) ?? `Couldn't create local transfer link: ${response.status}`,
-			),
+		error: "Couldn't create local transfer link",
 	});
 }
 
@@ -834,14 +723,9 @@ export async function postProcessAbortTurn(instanceId: string): Promise<void> {
 }
 
 export async function fetchProcessRetryConfig(instanceId: string): Promise<ProcessRetryConfig> {
-	const res = await getFetchImpl()(
-		resolveApiUrl(`/api/processes/${encodeURIComponent(instanceId)}/retry-config`),
-	);
-	if (!res.ok) {
-		throw new Error(`Couldn't load retry config: ${res.status}`);
-	}
-	return readJsonObject<ProcessRetryConfigResponseBody>(
-		res,
+	return requestStatusJson<ProcessRetryConfigResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/retry-config`,
+		"Couldn't load retry config",
 		"Malformed process retry config response",
 	);
 }

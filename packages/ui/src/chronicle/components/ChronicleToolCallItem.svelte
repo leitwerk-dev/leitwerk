@@ -3,7 +3,7 @@ import type {
 	PrimaryPathToolCallSnapshot,
 	TurnTraceToolCallSnapshot,
 } from "@leitwerk-dev/protocol";
-import type { ToolCallRendererDefinition } from "../../lib/api";
+import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
 import { formatDefinition } from "../../lib/format";
 import { resolveToolRenderer, resolveToolRendererFields } from "../../lib/tool-call-rendering.js";
 import { formatStructuredValue, summarizeToolPayload } from "../lib/tool-call-summary.js";

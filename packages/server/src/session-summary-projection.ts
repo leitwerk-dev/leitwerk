@@ -9,6 +9,7 @@ import {
 } from "@leitwerk-dev/protocol";
 import type { RepositoryBundle } from "./db/repositories.js";
 import { buildPrimaryPathSnapshotFromTree } from "./primary-path-snapshot.js";
+import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { ProcessSessionReader, type ProcessSessionSnapshotStore } from "./process-session-store.js";
 import { buildTurnTracePreviewsFromSession } from "./process-turn-trace.js";
 
@@ -18,7 +19,7 @@ export function createProjectedSessionSnapshotStore(
 	repos: RepositoryBundle,
 ) {
 	const reader = new ProcessSessionReader(source);
-	const pending = new Map<string, Promise<unknown>>();
+	const { runExclusive: serial } = createProcessOperationCoordinator();
 	async function project(instanceId: string) {
 		const session = await reader.readSessionTree(instanceId);
 		const process = repos.processes.getById(instanceId);
@@ -64,16 +65,6 @@ export function createProjectedSessionSnapshotStore(
 					]),
 			),
 		});
-	}
-	function serial<T>(instanceId: string, operation: () => Promise<T>): Promise<T> {
-		const next = (pending.get(instanceId) ?? Promise.resolve()).catch(() => {}).then(operation);
-		pending.set(instanceId, next);
-		void next
-			.finally(() => {
-				if (pending.get(instanceId) === next) pending.delete(instanceId);
-			})
-			.catch(() => {});
-		return next;
 	}
 	return {
 		...source,

@@ -1,13 +1,12 @@
 <script lang="ts">
+import type { FutureLaunchSummary, UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
 import GenericLauncher from "../components/GenericLauncher.svelte";
 import PageHeader from "../components/PageHeader.svelte";
 import {
 	ApiResponseError,
 	deleteFutureExecution,
-	type FutureLaunchSummary,
 	fetchFutureExecution,
 	fetchLaunchers,
-	type UiLauncherSummary,
 } from "../lib/api.js";
 import { formatLocalDateTime24Hour, formatUtcDateTime24Hour } from "../lib/format.js";
 import { buildFutureLaunchDetailSections } from "../lib/future-launch-detail.js";

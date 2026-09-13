@@ -1,14 +1,14 @@
+import type {
+	ProcessActionFieldDefinition,
+	ProcessActionSummary,
+	ScheduledActionDetail,
+} from "@leitwerk-dev/protocol/http-contracts";
 import type { ActionScheduledAtLocalParts } from "../../chronicle/lib/action-bindings.js";
 import {
 	currentLocalScheduleDateTimeParts,
 	isoToLocalScheduleDateTimeParts,
 	splitLauncherScheduleTimeString,
 } from "../../components/launcher-schedule.js";
-import type {
-	ProcessActionFieldDefinition,
-	ProcessActionSummary,
-	ScheduledActionDetail,
-} from "../../lib/api.js";
 
 interface ActionDraft {
 	fields?: Record<string, string | number | boolean>;

@@ -1,24 +1,14 @@
-import { isUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	type LeafOutcomeRendererDescriptor,
+	type LeafOutcomeRendererFailure,
+	leafOutcomeRendererDescriptorSchema,
+	leafOutcomeRendererFailureSchema,
+} from "@leitwerk-dev/protocol";
+import * as v from "valibot";
 import { tryReadJson as parseJsonResponse } from "../../lib/http-client.js";
 import { getFetchImpl, getModuleImporter, resolveServerUrl } from "../../lib/runtime-config.js";
 
-export interface LeafOutcomeRendererDescriptor {
-	ok: true;
-	rendererId: string;
-	kind: "custom_element";
-	tagName: string;
-	modulePath: string;
-	rendererApiVersion: number;
-	extensionManifestId: string;
-	moduleUrl: string;
-}
-
-interface LeafOutcomeRendererFailure {
-	ok: false;
-	rendererId: string;
-	code: string;
-	message: string;
-}
+export type { LeafOutcomeRendererDescriptor } from "@leitwerk-dev/protocol";
 
 interface LeafOutcomeRendererLoadSuccess {
 	ok: true;
@@ -49,30 +39,6 @@ const importRendererModule = memoizePromise(async (moduleUrl: string) => {
 	await getModuleImporter()(moduleUrl);
 });
 
-function isLookupFailure(value: unknown): value is LeafOutcomeRendererFailure {
-	return (
-		isUnknownRecord(value) &&
-		value.ok === false &&
-		typeof value.rendererId === "string" &&
-		typeof value.code === "string" &&
-		typeof value.message === "string"
-	);
-}
-
-function isDescriptor(value: unknown): value is LeafOutcomeRendererDescriptor {
-	return (
-		isUnknownRecord(value) &&
-		value.ok === true &&
-		typeof value.rendererId === "string" &&
-		value.kind === "custom_element" &&
-		typeof value.tagName === "string" &&
-		typeof value.modulePath === "string" &&
-		typeof value.rendererApiVersion === "number" &&
-		typeof value.extensionManifestId === "string" &&
-		typeof value.moduleUrl === "string"
-	);
-}
-
 async function fetchRendererDescriptor(
 	rendererId: string,
 ): Promise<LeafOutcomeRendererDescriptor | LeafOutcomeRendererFailure> {
@@ -90,7 +56,10 @@ async function fetchRendererDescriptor(
 		};
 	}
 	const body = await parseJsonResponse(response);
-	if (isDescriptor(body) || isLookupFailure(body)) {
+	if (
+		v.is(leafOutcomeRendererDescriptorSchema, body) ||
+		v.is(leafOutcomeRendererFailureSchema, body)
+	) {
 		return body;
 	}
 	if (!response.ok) {

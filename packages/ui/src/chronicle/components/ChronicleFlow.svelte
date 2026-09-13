@@ -5,13 +5,13 @@ import type {
 	ProcessStartupSummary,
 	StartupRecoverySummary,
 } from "@leitwerk-dev/protocol";
-import { SvelteMap } from "svelte/reactivity";
 import type {
 	ProcessExternalTriggerSummary,
 	ProcessModelConfigurationView,
 	ProcessSelectedTurnSummary,
 	ScheduledActionDetail,
-} from "../../lib/api";
+} from "@leitwerk-dev/protocol/http-contracts";
+import { SvelteMap } from "svelte/reactivity";
 import type {
 	ActionSectionController,
 	LiveTailController,

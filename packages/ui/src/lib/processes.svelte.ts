@@ -3,6 +3,12 @@ import {
 	WS_PRIMARY_PATH_TYPES,
 	type WsFrame,
 } from "@leitwerk-dev/protocol";
+import type {
+	ProcessBrowseFacets,
+	ProcessBrowseItem,
+	ProcessBrowsePagination,
+	ProcessOverviewItem,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { derived, get, writable } from "svelte/store";
 import {
 	type FullFutureExecution,
@@ -10,12 +16,8 @@ import {
 	fetchProcessBrowse,
 	fetchProcessDetail,
 	fetchProcessesList,
-	type ProcessBrowseFacets,
-	type ProcessBrowseItem,
-	type ProcessBrowsePagination,
 	type ProcessBrowseRequest,
 	type ProcessDetailData,
-	type ProcessOverviewItem,
 } from "./api";
 import { upsertFutureExecutionSummary } from "./future-executions-logic.js";
 import { applyPrimaryPathFrame } from "./primary-path-detail.js";

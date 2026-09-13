@@ -1,5 +1,10 @@
 <script lang="ts">
 import type { ProcessExternalTriggerSignal } from "@leitwerk-dev/protocol";
+import type {
+	ProcessExternalTriggerSummary,
+	ProcessSelectedTurnSummary,
+	ScheduledActionDetail,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { tick } from "svelte";
 import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
@@ -22,12 +27,7 @@ import type {
 import { readTicketResultSelection } from "../../chronicle/ticket-selection.js";
 import ModalShell from "../../components/ModalShell.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
-import type {
-	ProcessDetailData,
-	ProcessExternalTriggerSummary,
-	ProcessSelectedTurnSummary,
-	ScheduledActionDetail,
-} from "../../lib/api.js";
+import type { ProcessDetailData } from "../../lib/api.js";
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";

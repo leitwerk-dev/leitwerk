@@ -3,7 +3,9 @@ import {
 	ApiResponseError,
 	fetchAuthMeWithRetry,
 	fetchFutureExecution,
+	fetchSkills,
 	logout,
+	postProcessRetry,
 	postProcessTurnContinue,
 	registerSkill,
 	submitQuestionAnswers,
@@ -122,6 +124,25 @@ describe("recovery mutations", () => {
 });
 
 describe("API errors", () => {
+	it.each([
+		[() => fetchSkills(), "Couldn't load the skill catalog"],
+		[() => postProcessRetry("process"), "Couldn't retry this process"],
+	] as const)("preserves status-only errors for %s", async (request, message) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response('{"error":"server detail"}', { status: 503 }),
+		};
+		await expect(request()).rejects.toThrow(`${message}: 503`);
+	});
+
+	it.each(["null", "[]", "not json"])("rejects malformed JSON objects: %s", async (body) => {
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = {
+			fetchImpl: async () => new Response(body),
+		};
+		await expect(fetchSkills()).rejects.toThrow(
+			"Malformed skill catalog response: response body must be a JSON object",
+		);
+	});
+
 	it("preserves a skill registration conflict from the server", async () => {
 		const fetchImpl = vi.fn(
 			async () =>

@@ -1,4 +1,9 @@
-import { normalizeStringArray, type TurnOutcomePayload, trimString } from "@leitwerk-dev/domain";
+import {
+	isUnknownRecord as isJsonObject,
+	normalizeStringArray,
+	type TurnOutcomePayload,
+	trimString,
+} from "@leitwerk-dev/domain";
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
@@ -89,10 +94,6 @@ function minimumParameterError(
 		spec.minimumErrorCode ?? invalidParameterCode(key, spec),
 		`${turnId}.${outcome} expects ${key} to be >= ${spec.minimum ?? 0}`,
 	);
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type OutcomeParameterSchema = v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>;

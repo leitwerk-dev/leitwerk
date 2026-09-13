@@ -128,11 +128,15 @@ describe("loadLeafOutcomeRenderer", () => {
 		});
 	});
 
-	it("returns invalid_renderer_descriptor when the descriptor payload is malformed", async () => {
+	it.each([
+		null,
+		[],
+		{ ok: true, rendererId: "test:invalid" },
+	])("rejects malformed descriptor %j", async (body) => {
 		installCustomElementsRegistry();
 		const modules = await loadModules();
 		modules.configureUiRuntimeTransport({
-			fetchImpl: async () => createJsonResponse({ ok: true, rendererId: "test:invalid" }),
+			fetchImpl: async () => createJsonResponse(body),
 		});
 
 		await expect(modules.loadLeafOutcomeRenderer("test:invalid")).resolves.toEqual({

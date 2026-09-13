@@ -1,13 +1,11 @@
 import type {
 	CurrentErrorSummary,
 	CurrentTurnRecoverySummary,
+	ProcessActionSummary,
+	ProcessExternalTriggerSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
 import { describeActionPreview } from "../../chronicle/lib/action-preview.js";
-import type {
-	ProcessActionSummary,
-	ProcessDetailData,
-	ProcessExternalTriggerSummary,
-} from "../../lib/api.js";
+import type { ProcessDetailData } from "../../lib/api.js";
 
 export interface CurrentTurnRecoveryViewModel extends CurrentTurnRecoverySummary {}
 
