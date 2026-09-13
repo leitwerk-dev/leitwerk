@@ -166,6 +166,42 @@ describe("process UI snapshot presenter", () => {
 			).toMatchObject({ startRecordId: start.id, kind, action, summary: "safe failure" });
 		}
 	});
+	it.each([
+		"running",
+		"succeeded",
+	] as const)("pairs %s progress with its accepted revision timestamp", (status) => {
+		const record = turnRecord({
+			status,
+			endedAt: status === "running" ? null : "2026-01-01T00:01:30Z",
+		});
+		const recordedAt = "2026-01-01T00:01:00Z";
+		const turns = presentProcessTimelineTurns({
+			process: processInstance({ lifecycleStatus: status === "running" ? "active" : "completed" }),
+			turnRecords: [record],
+			turnAnnotations: [],
+			activeTurn: null,
+			selectedTurnType: null,
+			events: [2, 1].map((revision) => ({
+				id: `evt_progress_${revision}`,
+				instanceId: record.instanceId,
+				eventType: "turn.progress",
+				createdAt: revision === 2 ? recordedAt : "2026-01-01T00:01:10Z",
+				data: {
+					turnRecordId: record.id,
+					revision,
+					report: {
+						title: `Revision ${revision}`,
+						steps: [{ id: "check", label: "Check", status: "in_progress" }],
+					},
+				},
+			})),
+		});
+		expect(turns[0]).toMatchObject({
+			progress: { title: "Revision 2" },
+			progressRecordedAt: recordedAt,
+		});
+	});
+
 	it("projects durable outcomes and preserves compact preview metadata fields", () => {
 		const record = turnRecord({ turnResultMarkdown: "## Durable result" });
 		const turns = presentProcessTimelineTurns({

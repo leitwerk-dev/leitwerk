@@ -107,12 +107,12 @@ let {
 
 const retryGroups = $derived(
 	groupRetryChains(projection.timelineItems, (item) =>
-		item.kind === "turn_cluster"
+		item.kind === "turn_cluster" || item.kind === "live_tail"
 			? {
 					id: item.turnRecordId,
 					turnId: item.turnId,
 					parentTurnRecordId: item.parentTurnRecordId,
-					failed: Boolean(item.failure),
+					failed: item.kind === "turn_cluster" && Boolean(item.failure),
 				}
 			: null,
 	),

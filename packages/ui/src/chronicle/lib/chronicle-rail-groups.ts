@@ -65,7 +65,9 @@ export function buildChronicleRailRows(
 
 	const rows: ChronicleRailRow[] = [];
 	const latestResultIndex =
-		items.at(-1)?.kind === "action" ? items.findLastIndex((item) => item.kind === "turn") : -1;
+		items.at(-1)?.kind === "action" || items.at(-1)?.kind === "terminal"
+			? items.findLastIndex((item) => item.kind === "turn")
+			: -1;
 	let index = 0;
 	while (index < items.length) {
 		let end = index;

@@ -584,3 +584,64 @@ it("records observations without transitions, retains facts on refresh failure, 
 			.find((annotation) => annotation.id === annotations[0].id)?.payload.observation,
 	).toEqual(observation);
 });
+
+it.each([
+	{ observedAt: "not a date" },
+	{ links: [{ id: "unsafe", label: "Unsafe", url: "javascript:alert(1)" }] },
+	{ links: [{ id: "private", label: "Private", url: "https://user:secret@example.test/" }] },
+	{
+		links: [
+			{ id: "same", label: "One", url: "https://example.test/1" },
+			{ id: "same", label: "Two", url: "https://example.test/2" },
+		],
+	},
+])("rejects malformed observation reporting without replacing durable facts: %j", async (invalid) => {
+	const { deps, service } = createHarness();
+	const process = createWaitingProcess(deps);
+	const arming = service.listArmed("example.file.presence")[0];
+	const identity = {
+		instanceId: process.id,
+		armingId: arming.id,
+		generation: arming.generation ?? "missing",
+	};
+	const observation = {
+		summary: "Pending",
+		observedAt: "2026-09-12T00:00:00Z",
+		subject: "file",
+		revision: "a",
+	};
+	expect((await service.observe({ ...identity, observation })).ok).toBe(true);
+	expect(
+		(await service.observe({ ...identity, observation: { ...observation, ...invalid } })).ok,
+	).toBe(false);
+	const saved = deps.turnAnnotations
+		.listByInstance(process.id)
+		.find((item) => item.annotationType === "external_observation");
+	expect(saved?.payload.observation).toEqual(observation);
+});
+
+it.each([
+	false,
+	true,
+])("keeps external event consumption independent of invalid reporting (throws: %s)", async (throws) => {
+	const { deps, service } = createHarness({
+		fileDoneSource: source({
+			describeEvent() {
+				if (throws) throw new Error("Description failed");
+				return {
+					summary: "Done",
+					links: [{ id: "bad", label: "Bad", url: "javascript:alert(1)" }],
+				};
+			},
+		}),
+	});
+	const process = createWaitingProcess(deps);
+	expect(
+		(await service.fire({ instanceId: process.id, armingId: "review:file_done", event: {} })).ok,
+	).toBe(true);
+	expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("completed");
+	const recorded = deps.turnAnnotations
+		.listByInstance(process.id)
+		.find((item) => item.annotationType === "external_trigger");
+	expect(recorded?.payload.eventDescription).toBeUndefined();
+});

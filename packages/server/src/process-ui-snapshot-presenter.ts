@@ -50,6 +50,7 @@ import {
 	timelinePresentationForTurnType,
 } from "@leitwerk-dev/protocol";
 import type { SessionSummary } from "./db/turn-summary-repo.js";
+import { normalizeExternalObservation } from "./external-source-reporting.js";
 import { physicalWorkerStarts } from "./physical-worker-starts.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
@@ -62,7 +63,6 @@ import {
 	buildCommittedTurnTrace,
 	buildTurnTracePreviewsFromSession,
 } from "./process-turn-trace.js";
-
 import {
 	buildProcessLaunchConfigurationView,
 	buildProcessRunDetailsView,
@@ -74,7 +74,7 @@ import {
 } from "./routes/process-route-helpers.js";
 import { presentSessionTransferOperation } from "./session-transfer-service.js";
 import { buildStartupEvidence, presentProcessStartupSummary } from "./startup-evidence.js";
-import { normalizeTurnProgressReport } from "./turn-progress.js";
+import { normalizeTurnProgressLinks, normalizeTurnProgressReport } from "./turn-progress.js";
 
 const COMPACT_DETAIL_EVENT_TYPES = [
 	"turn_outcome_recorded",
@@ -351,7 +351,10 @@ function annotationOutput(annotation: ProcessTurnAnnotation): string {
 type TimelineActionSource = ProcessTimelineTurnSummary["actionSource"];
 
 function buildTurnProgressIndex(events: readonly ProcessEvent[]) {
-	const index = new Map<string, NonNullable<ProcessTimelineTurnSummary["progress"]>>();
+	const index = new Map<
+		string,
+		{ progress: NonNullable<ProcessTimelineTurnSummary["progress"]>; progressRecordedAt: string }
+	>();
 	const revisions = new Map<string, number>();
 	for (const event of events) {
 		if (event.eventType !== "turn.progress") continue;
@@ -365,7 +368,7 @@ function buildTurnProgressIndex(events: readonly ProcessEvent[]) {
 			revision >= (revisions.get(turnRecordId) ?? -1)
 		) {
 			revisions.set(turnRecordId, revision);
-			index.set(turnRecordId, report);
+			index.set(turnRecordId, { progress: report, progressRecordedAt: event.createdAt });
 		}
 	}
 	return index;
@@ -536,7 +539,7 @@ export function presentProcessTimelineTurns(input: {
 				status: "in_progress",
 				modelProfileId: turnRecord.modelProfileId ?? null,
 				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
-				progress: progressByTurnRecordId.get(turnRecord.id) ?? null,
+				...progressByTurnRecordId.get(turnRecord.id),
 				...durableTurnLineage(turnRecord),
 			});
 			continue;
@@ -604,12 +607,10 @@ export function presentProcessTimelineTurns(input: {
 			};
 		}
 		turns.push({
-			...(Array.isArray(paramsRecord(actionAnnotation?.payload.eventDescription).links)
-				? {
-						resources: paramsRecord(actionAnnotation?.payload.eventDescription)
-							.links as import("@leitwerk-dev/domain").TurnProgressLink[],
-					}
-				: {}),
+			resources:
+				normalizeTurnProgressLinks(
+					paramsRecord(actionAnnotation?.payload.eventDescription).links,
+				) ?? [],
 			...(stringValue(actionAnnotation?.payload.sourceTurnRecordId)
 				? { reviewedTurnRecordId: stringValue(actionAnnotation?.payload.sourceTurnRecordId) }
 				: {}),
@@ -636,23 +637,9 @@ export function presentProcessTimelineTurns(input: {
 				turnRecord,
 				turnResultMarkdown,
 				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
-				progress: progressByTurnRecordId.get(turnRecord.id) ?? null,
+				progress: progressByTurnRecordId.get(turnRecord.id)?.progress ?? null,
 			}),
-			...(input.events
-				.filter(
-					(event) =>
-						event.eventType === "turn.progress" && event.data.turnRecordId === turnRecord.id,
-				)
-				.at(-1)
-				? {
-						progressRecordedAt: input.events
-							.filter(
-								(event) =>
-									event.eventType === "turn.progress" && event.data.turnRecordId === turnRecord.id,
-							)
-							.at(-1)?.createdAt,
-					}
-				: {}),
+			...progressByTurnRecordId.get(turnRecord.id),
 			...(stringValue(milestoneAnnotation?.payload.resultSummary)
 				? { resultSummary: stringValue(milestoneAnnotation?.payload.resultSummary) }
 				: {}),
@@ -1277,7 +1264,7 @@ export class ProcessUiSnapshotAssembler {
 			);
 			if (signal && annotation)
 				Object.assign(signal, {
-					observation: annotation.payload.observation,
+					observation: normalizeExternalObservation(annotation.payload.observation) ?? undefined,
 					refreshError: annotation.payload.refreshError,
 					refreshedAt: annotation.payload.refreshedAt,
 				});

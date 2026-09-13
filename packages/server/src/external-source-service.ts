@@ -21,11 +21,18 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { generateId, now } from "./db/repo-helpers.js";
 import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositories.js";
+import {
+	normalizeExternalEventDescription,
+	normalizeExternalObservation,
+} from "./external-source-reporting.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { accept, reject } from "./process-engine/decision.js";
 import { defineOperation } from "./process-engine/operation.js";
 import type { EngineFailure, ProcessEngine } from "./process-engine/types.js";
-import { buildServerTransitionWrites } from "./process-engine/writes/build-server-transition-writes.js";
+import {
+	buildServerTransitionWrites,
+	transitionStartReferences,
+} from "./process-engine/writes/build-server-transition-writes.js";
 import { createDeferredExtensionEvent } from "./process-engine/writes/deferred-extension-events.js";
 import { appendProcessEffects } from "./process-engine/writes/process-effects.js";
 import {
@@ -744,7 +751,14 @@ export function createExternalSourceService(
 			const publishedInput = readPublishedInput({ arming, fireInput: input.input });
 			if (publishedInput && "ok" in publishedInput) return failedDecision(publishedInput);
 
-			const eventDescription = arming.source.describeEvent?.(input.event ?? {});
+			let eventDescription: ReturnType<typeof normalizeExternalEventDescription> = null;
+			try {
+				eventDescription = normalizeExternalEventDescription(
+					arming.source.describeEvent?.(input.event ?? {}),
+				);
+			} catch {
+				// Optional reporting must not change event consumption or process routing.
+			}
 			const recordedAt = now();
 			const turnRecordId = generateId("trn");
 
@@ -854,23 +868,16 @@ export function createExternalSourceService(
 				return reject(transitionWrites.code, transitionWrites.message);
 			}
 
+			const annotation = externalWrites.turnAnnotationWrites[0];
+			if (annotation?.kind === "create") {
+				annotation.input.payload = {
+					...annotation.input.payload,
+					selectedTurnIdAfter: transitionWrites.processPatch.selectedTurnId ?? null,
+					...transitionStartReferences(transitionWrites),
+				};
+			}
 			return accept({
-				writes: (() => {
-					const annotation = externalWrites.turnAnnotationWrites[0];
-					const start = transitionWrites.turnStartWrites.find((write) => write.kind === "create");
-					if (annotation?.kind === "create")
-						annotation.input.payload = {
-							...annotation.input.payload,
-							selectedTurnIdAfter: transitionWrites.processPatch.selectedTurnId ?? null,
-							...(start?.kind === "create"
-								? {
-										targetStartId: start.input.id,
-										targetTurnRecordId: start.input.proposedTurnRecordId,
-									}
-								: {}),
-						};
-					return mergeWrites(effectWrites, externalWrites, transitionWrites);
-				})(),
+				writes: mergeWrites(effectWrites, externalWrites, transitionWrites),
 				data: {
 					armingId: arming.id,
 					turnId: arming.turnId,
@@ -897,6 +904,12 @@ export function createExternalSourceService(
 					"external_observation_invalid",
 					"An observation or refresh error is required",
 				);
+			const observation =
+				input.observation === undefined
+					? undefined
+					: normalizeExternalObservation(input.observation);
+			if (observation === null)
+				return reject("external_observation_invalid", "Invalid observation report");
 			const key = `external_observation:${input.armingId}:${input.generation}`;
 			const previous = ctx.deps.turnAnnotations.findByKey(input.instanceId, key);
 			const recordedAt = now();
@@ -905,7 +918,7 @@ export function createExternalSourceService(
 				armingId: input.armingId,
 				generation: input.generation,
 				turnId: arming.turnId,
-				...(input.observation ? { observation: input.observation } : {}),
+				...(observation ? { observation } : {}),
 				refreshError: input.refreshError ?? null,
 				refreshedAt: recordedAt,
 			};

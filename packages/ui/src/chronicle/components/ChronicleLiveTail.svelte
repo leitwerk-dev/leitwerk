@@ -6,6 +6,7 @@ import { formatChronicleCost } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
 import ChronicleTurnDetailsButton from "./ChronicleTurnDetailsButton.svelte";
+import ChronicleTurnProgress from "./ChronicleTurnProgress.svelte";
 
 interface Props {
 	liveTail: ChronicleLiveTailItem;
@@ -91,6 +92,10 @@ const screenReaderStatus = $derived.by(() => {
 			<div class="live-result"><p>{liveTail.assistantTextPreview}</p></div>
 		{:else if !liveTail.reasoningSection && liveTail.state !== "tool_running"}
 			<p class="live-copy">{liveTail.copy}</p>
+		{/if}
+
+		{#if liveTail.progress}
+			<ChronicleTurnProgress report={liveTail.progress} recordedAt={liveTail.progressRecordedAt} attemptStatus="in_progress" />
 		{/if}
 
 		{#if liveTail.reasoningSection || questionRequests.length > 0}

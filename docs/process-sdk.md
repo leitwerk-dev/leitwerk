@@ -380,3 +380,7 @@ optional `markdown`, and `links`. Consumption persists the returned description.
 Server providers may call `externalSources.observe` with the arming's captured
 `generation`, an observation (`summary`, `links`, `observedAt`, opaque `subject`
 and `revision`), or `refreshError`. Observation writes never fire transitions.
+
+External observation reports require a valid observation timestamp and uniquely identified HTTP(S)
+links without embedded credentials. Invalid reports are rejected without replacing the last known
+facts. Invalid or failing optional event descriptions are omitted; they do not block event consumption.

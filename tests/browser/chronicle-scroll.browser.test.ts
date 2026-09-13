@@ -1073,13 +1073,18 @@ test.describe("rail scroll-anchor behavior", () => {
 	});
 });
 
-for (const width of [390, 1440]) {
-	test(`retry history stays collapsible at ${width}px`, async ({ page }) => {
+for (const { width, running } of [
+	{ width: 390, running: false },
+	{ width: 1440, running: false },
+	{ width: 390, running: true },
+	{ width: 1440, running: true },
+]) {
+	test(`retry history stays collapsible at ${width}px (running: ${running})`, async ({ page }) => {
 		if (!ctx) throw new Error("Server context not initialized");
 		const process = ctx.deps.processes.create({
 			processId: "poem_creator_process",
-			selectedTurnId: "review_poem",
-			lifecycleStatus: "waiting",
+			selectedTurnId: running ? "draft_poem" : "review_poem",
+			lifecycleStatus: running ? "active" : "waiting",
 			externalId: `RETRY-COLLAPSE-${width}`,
 		});
 		const ids = Array.from({ length: 6 }, (_, index) => `trn_retry_${process.id}_${index}`);
@@ -1089,7 +1094,7 @@ for (const width of [390, 1440]) {
 				instanceId: process.id,
 				turnId: "draft_poem",
 				turnType: "llm",
-				status: index < 5 ? "failed" : "succeeded",
+				status: index < 5 ? "failed" : running ? "running" : "succeeded",
 				pathType: "primary",
 				parentTurnRecordId: index ? ids[index - 1] : null,
 				forkPiEntryId: null,
@@ -1097,14 +1102,42 @@ for (const width of [390, 1440]) {
 				turnResultMarkdown: index < 5 ? null : "A quiet garden grows.",
 				errorSummary: index < 5 ? "Preparation failed: dependency installation failed." : null,
 				startedAt: new Date(Date.now() - (6 - index) * 60_000).toISOString(),
-				endedAt: new Date(Date.now() - (6 - index) * 60_000 + 1_000).toISOString(),
+				endedAt:
+					index === 5 && running
+						? null
+						: new Date(Date.now() - (6 - index) * 60_000 + 1_000).toISOString(),
 			});
 		}
+		let progressAt = "";
+		if (running) {
+			progressAt = ctx.deps.events.create({
+				instanceId: process.id,
+				eventType: "turn.progress",
+				data: {
+					turnRecordId: ids[5],
+					revision: 1,
+					report: {
+						title: "Draft progress",
+						summary: "Reworking the poem",
+						steps: [{ id: "draft", label: "Draft", status: "in_progress" }],
+					},
+				},
+			}).createdAt;
+		}
+
 		await page.setViewportSize({ width, height: 844 });
 		await page.goto(`/processes/${process.id}`);
 		const history = page.locator('[data-section="retry-history"]');
 		const summary = history.locator("summary");
 		await expect(summary).toHaveText("5 earlier attempts");
+		if (running) {
+			await expect(page.locator('[data-section="live-tail"]')).toBeVisible();
+			await expect(page.locator('[data-section="live-tail"]')).toContainText("Reworking the poem");
+			await expect(
+				page.locator(`[data-section="live-tail"] time[datetime="${progressAt}"]`),
+			).toBeVisible();
+			await expect(history.locator('[data-section="live-tail"]')).toHaveCount(0);
+		}
 		await summary.scrollIntoViewIfNeeded();
 		await expect(history).not.toHaveAttribute("open", "");
 		await summary.click();

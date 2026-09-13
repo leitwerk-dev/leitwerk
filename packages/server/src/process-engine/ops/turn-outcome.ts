@@ -32,6 +32,7 @@ import {
 } from "../../semantic-entry-ref-state.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
+import { transitionStartReferences } from "../writes/build-server-transition-writes.js";
 
 export interface TurnOutcomeInput {
 	instanceId: string;
@@ -386,17 +387,11 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			return reject(outcomeWrites.code, outcomeWrites.message);
 		}
 
-		const targetStart = outcomeWrites.turnStartWrites.find((write) => write.kind === "create");
 		Object.assign(milestonePayload, {
 			...(outcomeWrites.processPatch.selectedTurnId !== undefined
 				? { selectedTurnIdAfter: outcomeWrites.processPatch.selectedTurnId }
 				: {}),
-			...(targetStart?.kind === "create"
-				? {
-						targetStartId: targetStart.input.id,
-						targetTurnRecordId: targetStart.input.proposedTurnRecordId,
-					}
-				: {}),
+			...transitionStartReferences(outcomeWrites),
 		});
 		const mergedWrites = mergeWrites(baseWrites, outcomeWrites);
 		const semanticEntryRefPatch = deriveTurnOutcomeSemanticEntryRefPatch({

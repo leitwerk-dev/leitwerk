@@ -154,6 +154,12 @@ function observeChronicleLayoutInvalidation(
 export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleScrollArgs) {
 	let activeAnchorId = $state<string | null>(null);
 	let activeAnchorOverrideId = $state<string | null>(null);
+	let observedViewportLayout: {
+		viewport: HTMLDivElement;
+		width: number;
+		scrollTop: number;
+	} | null = null;
+	let reflowScrollTop: number | null = null;
 	let isNearBottom = $state(true);
 	let isViewportAboveOpenActionForm = $state(false);
 	let observedProcessId = $state<string | null>(null);
@@ -216,6 +222,8 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 		}
 		if (observedProcessId !== processId) {
 			observedProcessId = processId;
+			observedViewportLayout = null;
+			reflowScrollTop = null;
 			activeAnchorId = null;
 			activeAnchorOverrideId = null;
 			hasObservedManualChronicleScroll = false;
@@ -536,12 +544,34 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 		);
 	}
 
+	function observeViewportLayout(viewport: HTMLDivElement) {
+		const previous = observedViewportLayout;
+		if (
+			previous?.viewport === viewport &&
+			previous.width !== viewport.clientWidth &&
+			!isInitializingToBottom &&
+			!shouldFollowLiveTail
+		) {
+			activeAnchorOverrideId ??= activeAnchorId;
+			// Ignore only the scroll caused by reflow, not the next manual scroll after a resize.
+			reflowScrollTop = previous.scrollTop !== viewport.scrollTop ? viewport.scrollTop : null;
+		} else if (previous?.viewport !== viewport) {
+			reflowScrollTop = null;
+		}
+		observedViewportLayout = {
+			viewport,
+			width: viewport.clientWidth,
+			scrollTop: viewport.scrollTop,
+		};
+	}
+
 	function syncActiveAnchorFromViewportNow() {
 		const viewport = args.viewport;
 		if (!viewport) {
 			activeAnchorId = null;
 			return;
 		}
+		observeViewportLayout(viewport);
 		const viewportMetrics = {
 			scrollTop: viewport.scrollTop,
 			clientHeight: viewport.clientHeight,
@@ -695,13 +725,17 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function handleScroll() {
+		if (args.viewport) observeViewportLayout(args.viewport);
 		const viewportMetrics = getChronicleViewportMetrics(args.viewport);
 		const isProgrammaticScrollAtTarget =
 			isProgrammaticChronicleScroll &&
 			viewportMetrics !== null &&
 			(programmaticChronicleScrollTargetTop === null ||
 				Math.abs(viewportMetrics.scrollTop - programmaticChronicleScrollTargetTop) <= 1);
-		if (!isProgrammaticScrollAtTarget) {
+		const isReflowScroll =
+			reflowScrollTop !== null && viewportMetrics?.scrollTop === reflowScrollTop;
+		reflowScrollTop = null;
+		if (!isProgrammaticScrollAtTarget && !isReflowScroll) {
 			activeAnchorOverrideId = null;
 			hasObservedManualChronicleScroll = true;
 			stopInitialBottomPin();
