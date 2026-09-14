@@ -107,3 +107,20 @@ commit/merge, questions, approvals and ticket reconciliation, restart persistenc
 source reload, strict ports and reset confinement. Sandbox source, scripts and
 workflow fixtures participate in lint, typechecking and tests. This environment
 does not simulate production scheduling or deployment.
+
+## Local integration composition
+
+Run the public-only Forgejo/GitHub/Woodpecker composition with:
+
+```sh
+LEITWERK_SANDBOX_COMPOSITION_ENTRY="$PWD/sandbox/provider-composition.ts" npm run dev:sandbox
+```
+
+It adds local `examples/garden` and `examples/workshop` repositories to the public
+notebook scenarios. Ticket creation can use Forgejo through the normal derived-ticket
+route and approval UI. The adapters register the production tools and polling.
+Provider state persists separately in `forgejo.json`, `github.json`, and
+`woodpecker.json`. Use the integration `/testing` exports to seed repositories,
+add feedback, merge PRs, publish CI results and supply arbitrary release assets.
+The composition needs no provider credentials or private checkout.
+Complete PR-delivery process scenarios are added separately.

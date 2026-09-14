@@ -278,6 +278,18 @@ export class IntegrationToolRegistry {
 		this.tools.set(name, definition as RegisteredIntegrationTool);
 	}
 
+	validateTicketProcesses(
+		processes: ReadonlyMap<string, { turns: ReadonlyMap<string, unknown> }>,
+	): void {
+		for (const tool of this.ticketCatalog()) {
+			const { processId, startTurnId } = tool.capability;
+			if (!processes.get(processId)?.turns.has(startTurnId))
+				throw new Error(
+					`Ticket tool '${tool.name}' requires composed process '${processId}' with entry turn '${startTurnId}'. Load the owning process extension or disable this ticket adapter.`,
+				);
+		}
+	}
+
 	ticketCatalog(): TicketToolCatalogEntry[] {
 		return [...this.tools.values()].filter(isTicketCreationTool).map(projectTicketTool);
 	}

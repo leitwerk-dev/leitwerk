@@ -74,7 +74,10 @@ identity, cancellation, and credential isolation as agent-initiated LLM integrat
 
 A tool marked with `capability.kind: "ticket_creation"` can back the generic derived-ticket
 route. Its extension registers the code-defined `processId` and `startTurnId` on the capability;
-core does not select a fixed process graph. The route admits the child through an idempotent durable
+core does not select a fixed process graph. After server extensions register their
+tools, startup validates that every enabled ticket capability names a composed
+process and an existing entry turn. Missing composition fails startup with the
+tool, process and turn identifiers. Disable an optional ticket adapter to omit it. The route admits the child through an idempotent durable
 launch run and commits the child relation in the same transaction as the process. The tool must return the standard
 `{ externalId, url, result? }` receipt. An optional
 destination provider lists sanitized choices for the derived process. The server adds the

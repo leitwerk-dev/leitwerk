@@ -88,6 +88,7 @@ function pendingTicketRequest() {
 		args: { destinationId: "repo" },
 	};
 	return {
+		registry,
 		service,
 		payload,
 		process,
@@ -512,4 +513,20 @@ describe("integration tool request service", () => {
 		).resolves.toMatchObject({ ok: false, error: expect.stringMatching(/stale turn record/) });
 		expect(execute).not.toHaveBeenCalled();
 	});
+});
+
+it("validates ticket process composition after tool registration", () => {
+	const { registry } = pendingTicketRequest();
+	expect(() => registry.validateTicketProcesses(new Map())).toThrow("ticket_creation_process");
+	expect(() =>
+		registry.validateTicketProcesses(
+			new Map([[ticketProcess.processId, { turns: new Map([["wrong", {}]]) }]]),
+		),
+	).toThrow("create_ticket");
+	expect(() =>
+		registry.validateTicketProcesses(
+			new Map([[ticketProcess.processId, { turns: new Map([[ticketProcess.startTurnId, {}]]) }]]),
+		),
+	).not.toThrow();
+	expect(() => new IntegrationToolRegistry().validateTicketProcesses(new Map())).not.toThrow();
 });

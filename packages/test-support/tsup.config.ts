@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig((options) => ({
 	entry: [
 		"src/index.ts",
+		"src/local-git.ts",
 		"src/fakes/index.ts",
 		"src/fixtures.ts",
 		"src/integration.ts",
