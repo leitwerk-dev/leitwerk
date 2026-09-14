@@ -247,6 +247,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
+export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,
 	LauncherFieldDefinition,
@@ -389,6 +390,7 @@ export {
 	createEmptyStructuralProcessState,
 	parseStructuralProcessState,
 	type StructuralProcessState,
+	structuralStateCodec,
 } from "./state-helpers.js";
 export {
 	type SubprocessEnvInput,

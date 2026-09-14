@@ -4,17 +4,13 @@ import {
 	automaticTurn,
 	defineProcess,
 	type ExtensionProcessDefinition,
+	emptyParamsCodec,
 	type HumanTurnDefinition,
 	humanTurn,
 	type LlmTurnDefinition,
 	llmTurn,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
-
-const emptyCodec = {
-	parse: () => ({}),
-	serialize: (value: Record<string, never>) => value,
-};
 
 export function createFixtureLlmTurn(
 	description: string,
@@ -95,8 +91,8 @@ export function createFixtureProcess(input: {
 		displayName: input.id,
 		entry: input.entry,
 		...(input.alternateEntries ? { alternateEntries: input.alternateEntries } : {}),
-		paramsCodec: emptyCodec,
-		stateCodec: emptyCodec,
+		paramsCodec: emptyParamsCodec,
+		stateCodec: emptyParamsCodec,
 		initialState: () => ({}),
 		turns:
 			Object.keys(turns).length > 0

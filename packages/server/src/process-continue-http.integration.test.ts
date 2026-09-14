@@ -7,30 +7,18 @@ import {
 } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
-	builtinPiProvider,
-	type Codec,
 	createEmptyStructuralProcessState,
-	defineModelProvider,
-	defineModelProviders,
 	defineProcess,
 	emptyParamsCodec,
 	type LeitwerkExtensionModule,
-	parseStructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-const structuralStateCodec: Codec<ReturnType<typeof createEmptyStructuralProcessState>> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
+import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 const continueTurn = {
 	id: "implement",
@@ -62,18 +50,11 @@ const continueProcess = defineProcess<
 
 const continueExtension: LeitwerkExtensionModule = {
 	manifest: { id: "continue-http-test", version: "0.1.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "continue-fixture-provider",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("openai"),
-				models: () => [{ modelId: "fixture-model", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({
+		id: "continue-fixture-provider",
+		modelId: "fixture-model",
+		piProvider: "openai",
+	}),
 	setupCatalog(api) {
 		api.registerProcess(continueProcess);
 	},

@@ -62,7 +62,9 @@
 		"publish:dry-run": "node scripts/publish-workspaces.mjs dry-run",
 		"publish:preflight": "node scripts/publish-workspaces.mjs preflight",
 		"publish:workspaces": "node scripts/publish-workspaces.mjs publish",
-		"publish:verify": "node scripts/publish-workspaces.mjs verify"
+		"publish:verify": "node scripts/publish-workspaces.mjs verify",
+		"dev:sandbox": "node --conditions=source --import tsx scripts/sandbox/cli.ts",
+		"sandbox:reset": "node --conditions=source --import tsx scripts/sandbox/cli.ts reset"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",

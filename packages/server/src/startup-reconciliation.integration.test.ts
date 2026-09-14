@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
-	type Codec,
 	defineProcess,
+	emptyParamsCodec,
 	type LeitwerkExtensionModule,
 	llmTurn,
 } from "@leitwerk-dev/process-sdk";
@@ -21,15 +21,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AppOptions } from "./app.js";
 import { getDefaultConfig, type LeitwerkConfig } from "./config/index.js";
 
-const emptyCodec: Codec<Record<string, never>> = {
-	parse() {
-		return {};
-	},
-	serialize(value) {
-		return value;
-	},
-};
-
 const startupPlanTurn = llmTurn<Record<string, never>, Record<string, never>>({
 	description: "Startup planning turn",
 	availableTools: [],
@@ -45,8 +36,8 @@ const startupTestProcess = defineProcess<Record<string, never>, Record<string, n
 	displayName: "Startup Test Process",
 	entry: "startup_plan_turn",
 	turns: { startup_plan_turn: startupPlanTurn },
-	paramsCodec: emptyCodec,
-	stateCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
+	stateCodec: emptyParamsCodec,
 	initialState() {
 		return {};
 	},

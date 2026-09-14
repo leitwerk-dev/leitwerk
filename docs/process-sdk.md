@@ -89,6 +89,9 @@ Workers receive only public tool declarations
 and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
 to provider calls so stopping the turn cancels in-flight server work.
 
+Use `structuralStateCodec` for state containing only semantic and product refs; it parses with
+`parseStructuralProcessState` and serializes unchanged. Use `emptyParamsCodec` for empty params.
+
 ## Registering the Extension (`src/index.ts`)
 
 Export the extension entrypoint to register your process with Leitwerk:
@@ -181,7 +184,8 @@ ambiguous. Immediately before approval, `resolve()` converts the opaque choice
 into an immutable, JSON-serializable snapshot. The server passes that snapshot
 to the tool as `ctx.ticketDestination`; workers never receive adapter credentials.
 `validate()` remains available for compatible launches that already carry a
-snapshot.
+snapshot. `parseJsonData(value, message?)` validates and detaches JSON data;
+it rejects cycles, non-finite numbers, non-plain objects and symbol-keyed objects.
 
 ```ts
 api.tool({

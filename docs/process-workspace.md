@@ -72,7 +72,7 @@ During worker bootstrap, Leitwerk aggregates instructions and agent capabilities
 
 ## 4. Pi Session Tree (`.jsonl`)
 
-The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<storage.tree_files_dir>/<instanceId>.jsonl`). Workers stream session snapshots to the server via `PUT /session-snapshot` after key turn events so the server can render UI read models.
+The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<storage.tree_files_dir>/<instanceId>.jsonl`). Workers stream session snapshots to the server via `PUT /session-snapshot` after key turn events so the server can render UI read models. Parsed session reads and raw session downloads verify the snapshot generation and retry concurrent replacement up to three total attempts. Other read errors propagate without retry.
 
 ```text
                [Root Entry (parentId: null)]

@@ -21,5 +21,8 @@
 	"extensions/process-analysis": "0.1.9",
 	"extensions/remote-repo-change": "0.1.9",
 	"extensions/showcase-processes": "0.1.9",
-	"extensions/telegram": "0.1.9"
+	"extensions/telegram": "0.1.9",
+	"packages/dev-sandbox": "0.1.9",
+	"extensions/ticket-creation": "0.1.9",
+	"packages/repository-rebase": "0.1.9"
 }

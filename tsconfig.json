@@ -35,7 +35,11 @@
 		{ "path": "extensions/remote-repo-change" },
 		{ "path": "extensions/process-analysis" },
 		{ "path": "extensions/models" },
-		{ "path": "extensions/telegram" }
+		{ "path": "extensions/telegram" },
+		{ "path": "packages/dev-sandbox" },
+		{ "path": "extensions/ticket-creation" },
+		{ "path": "packages/repository-rebase" },
+		{ "path": "sandbox" }
 	],
 	"files": []
 }

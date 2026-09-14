@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	automaticTurn,
-	type Codec,
 	defineProcess,
+	emptyParamsCodec,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
@@ -16,18 +16,13 @@ import {
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const emptyCodec: Codec<Record<string, never>> = {
-	parse: () => ({}),
-	serialize: (value) => value,
-};
-
 const dockerProcess = defineProcess<Record<string, never>, Record<string, never>>({
 	id: "docker_preflight_test",
 	displayName: "Docker preflight test",
 	runtime: { docker: true },
 	entry: "finish",
-	paramsCodec: emptyCodec,
-	stateCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
+	stateCodec: emptyParamsCodec,
 	initialState: () => ({}),
 	turns: {
 		finish: automaticTurn({

@@ -59,7 +59,10 @@
 				"@leitwerk-dev/process-analysis",
 				"@leitwerk-dev/remote-repo-change",
 				"@leitwerk-dev/showcase-processes",
-				"@leitwerk-dev/telegram"
+				"@leitwerk-dev/telegram",
+				"@leitwerk-dev/dev-sandbox",
+				"@leitwerk-dev/ticket-creation",
+				"@leitwerk-dev/repository-rebase"
 			]
 		}
 	],
@@ -186,6 +189,21 @@
 		},
 		"extensions/telegram": {
 			"component": "@leitwerk-dev/telegram",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/dev-sandbox": {
+			"component": "@leitwerk-dev/dev-sandbox",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/ticket-creation": {
+			"component": "@leitwerk-dev/ticket-creation",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/repository-rebase": {
+			"component": "@leitwerk-dev/repository-rebase",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

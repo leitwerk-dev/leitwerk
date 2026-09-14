@@ -3,28 +3,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
-	type Codec,
 	createEmptyStructuralProcessState,
 	defineProcess,
 	emptyParamsCodec,
 	humanTurn,
 	type LeitwerkExtensionModule,
-	parseStructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-const structuralStateCodec: Codec<ReturnType<typeof createEmptyStructuralProcessState>> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
 
 const snapshotProcess = defineProcess<
 	Record<string, never>,

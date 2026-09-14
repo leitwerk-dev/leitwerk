@@ -1,39 +1,23 @@
 import { randomUUID } from "node:crypto";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
-	builtinPiProvider,
-	type Codec,
 	createEmptyStructuralProcessState,
-	defineModelProvider,
-	defineModelProviders,
 	defineProcess,
+	emptyParamsCodec,
 	humanTurn,
 	type LeitwerkExtensionModule,
 	type LlmTurnDefinition,
 	llmTurn,
-	parseStructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
-import { createTestApp, type TestApp } from "@leitwerk-dev/test-support/integration";
+import {
+	createTestApp,
+	type TestApp,
+	waitForValue as waitFor,
+} from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
-const emptyCodec: Codec<Record<string, never>> = {
-	parse() {
-		return {};
-	},
-	serialize(value) {
-		return value;
-	},
-};
-
-const structuralStateCodec: Codec<ReturnType<typeof createEmptyStructuralProcessState>> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
+import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 function createLlmTurn<TOutcome extends string>(
 	id: string,
@@ -204,7 +188,7 @@ const genericPlanReviewProcess = defineProcess<
 		implement: implementTurn,
 		plan_review: planReviewTurn,
 	},
-	paramsCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
 	stateCodec: structuralStateCodec,
 	initialState() {
 		return createEmptyStructuralProcessState();
@@ -222,7 +206,7 @@ const sideEffectExecuteReviewProcess = defineProcess<
 		legacy_plan_review: sideEffectPlanReviewTurn,
 		legacy_implement: sideEffectImplementTurn,
 	},
-	paramsCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
 	stateCodec: structuralStateCodec,
 	initialState() {
 		return createEmptyStructuralProcessState();
@@ -246,28 +230,10 @@ sideEffectExecuteReviewProcess.server = (api) => {
 
 const genericPlanReviewExtension: LeitwerkExtensionModule = {
 	manifest: { id: "generic-plan-review-test", version: "0.1.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "anthropic",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("anthropic"),
-				models: () => [{ modelId: "claude-fast", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-		{
-			definition: defineModelProvider({
-				id: "ollama",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("ollama"),
-				models: () => [{ modelId: "local-qwen", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders(
+		{ id: "anthropic", modelId: "claude-fast" },
+		{ id: "ollama", modelId: "local-qwen" },
+	),
 	setupCatalog(api) {
 		api.registerProcess(genericPlanReviewProcess);
 		api.registerProcess(sideEffectExecuteReviewProcess);
@@ -275,24 +241,6 @@ const genericPlanReviewExtension: LeitwerkExtensionModule = {
 };
 
 let app: TestApp;
-
-async function waitFor<T>(
-	read: () => T,
-	predicate: (value: T) => boolean,
-	timeoutMs = 5_000,
-): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	while (true) {
-		const value = read();
-		if (predicate(value)) {
-			return value;
-		}
-		if (Date.now() >= deadline) {
-			throw new Error("timed out waiting for condition");
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-}
 
 function futureIso(minutesAhead = 24 * 60): string {
 	return new Date(Date.now() + minutesAhead * 60_000).toISOString();

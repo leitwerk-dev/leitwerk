@@ -7,11 +7,17 @@ import {
 	parseProcessProductRefs,
 	parseProcessSemanticEntryRefs,
 } from "@leitwerk-dev/domain";
+import type { Codec } from "./extension-api.js";
 
 export interface StructuralProcessState {
 	semanticEntryRefs: ProcessSemanticEntryRefs;
 	productRefs: ProcessProductRefs;
 }
+
+export const structuralStateCodec: Codec<StructuralProcessState> = {
+	parse: parseStructuralProcessState,
+	serialize: (value) => value,
+};
 
 export function createEmptyStructuralProcessState(): StructuralProcessState {
 	return {

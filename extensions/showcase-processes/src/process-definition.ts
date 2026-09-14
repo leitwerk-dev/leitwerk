@@ -9,6 +9,7 @@ import {
 	type HumanFlowBuilder,
 	parseStructuralProcessState,
 	type StructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import { fileExternal } from "./file-external.js";
 import { filesystemWatcherSource } from "./filesystem-watcher.js";
@@ -52,15 +53,6 @@ const promptProcessParamsCodec: Codec<PromptProcessParams> = {
 					? (record as { prompt: string }).prompt
 					: "",
 		};
-	},
-	serialize(value) {
-		return value;
-	},
-};
-
-const structuralStateCodec: Codec<StructuralProcessState> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
 	},
 	serialize(value) {
 		return value;

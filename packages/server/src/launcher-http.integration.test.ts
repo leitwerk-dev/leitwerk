@@ -4,22 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { LaunchRun } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	type Codec,
-	defineModelProvider,
-	defineModelProviders,
-	defineProcess,
-	type LeitwerkExtensionModule,
-} from "@leitwerk-dev/process-sdk";
+import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { parseFutureLaunchPayloadJson, serializeFutureLaunchPayload } from "@leitwerk-dev/protocol";
 import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
+	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "./launch-title.js";
+import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 function parseFutureLaunchPayloadOrThrow(payloadJson: string) {
 	const parsed = parseFutureLaunchPayloadJson(payloadJson);
@@ -297,28 +292,10 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 
 const launcherTestExtension: LeitwerkExtensionModule = {
 	manifest: { id: "launcher-http-test", version: "0.1.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "anthropic",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("anthropic"),
-				models: () => [{ modelId: "claude-fast", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-		{
-			definition: defineModelProvider({
-				id: "ollama",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("ollama"),
-				models: () => [{ modelId: "local-qwen", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders(
+		{ id: "anthropic", modelId: "claude-fast" },
+		{ id: "ollama", modelId: "local-qwen" },
+	),
 	setupCatalog(api) {
 		api.registerProcess(launcherTestProcess);
 	},
@@ -423,24 +400,6 @@ const fixedModelLauncherExtension: LeitwerkExtensionModule = {
 };
 
 let harness: IntegrationHarness;
-
-async function waitFor<T>(
-	read: () => T,
-	predicate: (value: T) => boolean,
-	timeoutMs = 5_000,
-): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	while (true) {
-		const value = read();
-		if (predicate(value)) {
-			return value;
-		}
-		if (Date.now() >= deadline) {
-			throw new Error("timed out waiting for launcher condition");
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-}
 
 function futureIso(minutesAhead = 24 * 60): string {
 	return new Date(Date.now() + minutesAhead * 60_000).toISOString();

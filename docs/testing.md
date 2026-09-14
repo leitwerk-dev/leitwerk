@@ -86,6 +86,11 @@ prompt-guard suspension hook. Aborting or closing the handle cancels delayed
 streams and interactive tools. Scripted behavior can therefore depend on execution
 context and tool contracts without matching prompt prose.
 
+An optional `afterToolResult(call, result)` callback can return a follow-up call
+in the same scripted turn. Use it to respond to actual tool feedback, such as
+revising a ticket draft after operator feedback. Follow-up calls use the same
+abort and trace handling as the initial calls.
+
 Set `recordSessionTrace: true` to persist SDK-readable session JSONL, including
 scripted `thinkingChunks`, text, and executed tool calls/results. Thinking and text
 emit distinct stream types. Input and partial output are saved before interactive
@@ -97,3 +102,19 @@ entries out of tests that depend on the minimal stub tree.
 for development scenes. It delays connection and managed Pi bootstrap without
 replacing lifecycle observations. Delays are canceled when the child exits or is
 killed; callers without a resolver retain immediate startup.
+
+### Shared development sandbox
+
+Use `@leitwerk-dev/dev-sandbox` for application startup and cleanup with an explicit
+composition. Its package tests use synthetic catalogs to preserve core/extension
+boundaries. Built-in notebook scenarios and their end-to-end tests live in
+`sandbox/` and `tests/e2e/sandbox/`. The sandbox TypeScript project also includes its
+source CLI and workflow fixtures in the full gate.
+
+Run `npm run dev:sandbox` for source UI verification. The public composition uses
+real local Git history and normal process finalization. It retains Pi traces and
+adapter progress across restarts. Launcher tests start the public supervisor with
+an isolated workspace and environment, check strict ports, exercise the outer
+configuration reload, and verify acknowledged reset. Preflight tests prove that
+application and adapter initialization use disposable storage. See the
+[sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
