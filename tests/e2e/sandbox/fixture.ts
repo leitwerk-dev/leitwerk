@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createSandboxApp, type SandboxInput, sandboxConfig } from "@leitwerk-dev/dev-sandbox";
+import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { test as baseTest, expect, type TestContext } from "vitest";
@@ -77,6 +78,21 @@ async function fixture(onTestFinished: TestContext["onTestFinished"]) {
 				timeout,
 			);
 		},
+		async question(id: string) {
+			const question = await waitForValue(
+				() => sandbox.context.deps.questionRequests.listOpen(id)[0],
+				Boolean,
+				12000,
+			);
+			if (!question) throw new Error("Missing question");
+			return question;
+		},
+		answerFirstOption: (question: ProcessQuestionRequest) =>
+			post(`/api/processes/${question.instanceId}/question-requests/${question.id}/answers`, {
+				draft: [
+					{ selectedOptionIds: [question.questions[0].options[0].id], freeText: "", comment: "" },
+				],
+			}),
 		action: (id: string, action: string, input: Record<string, unknown> = {}) =>
 			post(`/api/processes/${id}/actions/${action}`, { input }),
 	};

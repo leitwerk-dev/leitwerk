@@ -60,7 +60,6 @@ test("restarts with an approval, reconciles a lost ticket response, and retains 
 	).toBe(true);
 	await f.wait(id, "create_ticket", "error");
 	await f.post(`/api/processes/${id}/retry`);
-	await approval(f, id);
 	await f.post("/__local/lost-response", { enabled: true });
 	await decide(f, id, "accept");
 	await f.wait(id, null, "completed");
@@ -82,18 +81,9 @@ test("clarifies destinations, refines a draft through feedback, and declines wit
 	f,
 }) => {
 	const { id } = await draft(f, "Clarify the destination before drafting.");
-	const question = await waitForValue(
-		() => f.context.deps.questionRequests.listOpen(id)[0],
-		Boolean,
-		12000,
-	);
-	if (!question) throw new Error("Missing destination clarification");
+	const question = await f.question(id);
 	expect(f.context.deps.toolApprovalRequests.listOpen(id)).toHaveLength(0);
-	await f.post(`/api/processes/${id}/question-requests/${question.id}/answers`, {
-		draft: [
-			{ selectedOptionIds: [question.questions[0].options[0].id], freeText: "", comment: "" },
-		],
-	});
+	await f.answerFirstOption(question);
 	const first = await decide(f, id, "feedback", "Include a daily watering schedule.");
 	const revised = await approval(f, id);
 	expect(revised?.id).not.toBe(first.id);

@@ -78,18 +78,9 @@ test("questions and the fourth planning pass use ordinary question and review AP
 				await f.wait(id, "plan_review_feedback");
 				await f.action(id, "accept_review");
 			}
-		const question = await waitForValue(
-			() => f.context.deps.questionRequests.listOpen(id)[0],
-			Boolean,
-			12000,
-		);
-		if (!question) throw new Error("Missing question");
+		const question = await f.question(id);
 		if (name === "turn-rail") expect(f.context.deps.processes.getById(id)?.planRevision).toBe(3);
-		await f.post(`/api/processes/${id}/question-requests/${question.id}/answers`, {
-			draft: [
-				{ selectedOptionIds: [question.questions[0].options[0].id], freeText: "", comment: "" },
-			],
-		});
+		await f.answerFirstOption(question);
 		await f.wait(id, "plan_decision");
 	}
 }, 60000);

@@ -43,22 +43,19 @@ function fixture(conflicting = true) {
 	git(path, "config", "commit.gpgsign", "false");
 	git(path, "config", "user.name", "Original Author");
 	git(path, "config", "user.email", "author@example.test");
+	function commitFile(file: string, content: string, message: string, ...args: string[]) {
+		writeFileSync(join(path, file), content);
+		git(path, "add", ".");
+		git(path, "commit", "-m", message, ...args);
+		git(path, "push", "origin", "HEAD");
+	}
 	git(path, "checkout", "-b", "main");
-	writeFileSync(join(path, "file"), "original\n");
-	git(path, "add", ".");
-	git(path, "commit", "-m", "initial");
-	git(path, "push", "origin", "main");
+	commitFile("file", "original\n", "initial");
 	git(path, "checkout", "-b", "work");
-	writeFileSync(join(path, "file"), "feature\n");
-	git(path, "add", ".");
-	git(path, "commit", "--signoff", "-m", "feature");
-	git(path, "push", "origin", "work");
+	commitFile("file", "feature\n", "feature", "--signoff");
 	const headSha = git(path, "rev-parse", "HEAD");
 	git(path, "checkout", "main");
-	writeFileSync(join(path, conflicting ? "file" : "other"), "base\n");
-	git(path, "add", ".");
-	git(path, "commit", "-m", "base");
-	git(path, "push", "origin", "main");
+	commitFile(conflicting ? "file" : "other", "base\n", "base");
 	const baseSha = git(path, "rev-parse", "HEAD");
 	git(path, "checkout", "work");
 	const input: RebaseInput = {
@@ -93,20 +90,11 @@ describe("repository rebase with real remotes", () => {
 		git(path, "remote", "set-url", "origin", join(root, "elsewhere.git"));
 		expect(() => startRebase(input)).toThrow("origin changed");
 	});
-	it("rejects a rewritten base before preparation and before publication", () => {
+	it.each([false, true])("rejects a rewritten base (already prepared: %s)", (prepared) => {
 		const { input, path } = fixture(false);
-		prepareRebase(input);
+		if (prepared) prepareRebase(input);
 		git(path, "push", "--force", "origin", `${git(path, "rev-parse", "main^")}:refs/heads/main`);
-		expect(() => startRebase(input)).toThrow();
-		const other = fixture(false);
-		git(
-			other.path,
-			"push",
-			"--force",
-			"origin",
-			`${git(other.path, "rev-parse", "main^")}:refs/heads/main`,
-		);
-		expect(() => prepareRebase(other.input)).toThrow();
+		expect(() => (prepared ? startRebase(input) : prepareRebase(input))).toThrow();
 	});
 	it("rejects changed evidence branches and wrong branches after preparation", () => {
 		const { input, path } = fixture(false);

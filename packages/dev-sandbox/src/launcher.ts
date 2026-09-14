@@ -99,20 +99,16 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 		chmodSync(file, 0o600);
 	}
 	await composition.cleanup?.();
+	const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
+	const entry = (name: string) => fileURLToPath(new URL(`./${name}.${extension}`, import.meta.url));
 	const env: NodeJS.ProcessEnv = {
 		...sandboxEnvironment(input.paths.directory),
 		LEITWERK_COMPOSITION_PATH: compositionPath,
 		LEITWERK_CONFIG_PATH: configPath,
 		LEITWERK_SANDBOX_INPUT: JSON.stringify(input),
 		LEITWERK_SANDBOX_COMPOSITION_ENTRY: options.compositionEntry,
-		LEITWERK_DEV_PREFLIGHT_ENTRY: fileURLToPath(new URL("./preflight.js", import.meta.url)).replace(
-			/\.js$/,
-			import.meta.url.endsWith(".ts") ? ".ts" : ".js",
-		),
-		LEITWERK_DEV_BACKEND_ENTRY: fileURLToPath(new URL("./backend.js", import.meta.url)).replace(
-			/\.js$/,
-			import.meta.url.endsWith(".ts") ? ".ts" : ".js",
-		),
+		LEITWERK_DEV_PREFLIGHT_ENTRY: entry("preflight"),
+		LEITWERK_DEV_BACKEND_ENTRY: entry("backend"),
 		LEITWERK_DEV_WATCH_PATHS_JSON: JSON.stringify([
 			...composition.development.watchPaths,
 			fileURLToPath(new URL(".", import.meta.url)),

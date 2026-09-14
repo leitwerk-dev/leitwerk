@@ -49,9 +49,8 @@ function save(input: RebaseInput, record: RebaseRecord): void {
 	renameSync(`${path}.tmp`, path);
 }
 function read(input: RebaseInput): RebaseRecord | null {
-	return existsSync(recordPath(input))
-		? (JSON.parse(readFileSync(recordPath(input), "utf8")) as RebaseRecord)
-		: null;
+	const file = recordPath(input);
+	return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as RebaseRecord) : null;
 }
 function requireBranch(input: RebaseInput): void {
 	if (git(input, "branch", "--show-current") !== input.workBranch)
