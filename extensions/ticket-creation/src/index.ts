@@ -1,10 +1,9 @@
 import {
-	type Codec,
 	createEmptyStructuralProcessState,
 	flow,
 	type LeitwerkExtensionModule,
-	parseStructuralProcessState,
 	type StructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 
 export {
@@ -14,11 +13,6 @@ export {
 } from "./params.js";
 
 import { type TicketCreationParams, ticketCreationParamsCodec } from "./params.js";
-
-const stateCodec: Codec<StructuralProcessState> = {
-	parse: parseStructuralProcessState,
-	serialize: (value) => value,
-};
 
 function ticketPrompt(params: TicketCreationParams): string {
 	const destinationContext = params.ticketDestination?.agentContext
@@ -38,7 +32,7 @@ export const ticketCreationProcess = flow
 	.process<TicketCreationParams, StructuralProcessState>("ticket_creation_process")
 	.displayName("Ticket creation")
 	.entry("create_ticket")
-	.codecs({ params: ticketCreationParamsCodec, state: stateCodec })
+	.codecs({ params: ticketCreationParamsCodec, state: structuralStateCodec })
 	.initialState(() => createEmptyStructuralProcessState())
 	.turn(
 		flow

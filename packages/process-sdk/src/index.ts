@@ -390,6 +390,7 @@ export {
 	createEmptyStructuralProcessState,
 	parseStructuralProcessState,
 	type StructuralProcessState,
+	structuralStateCodec,
 } from "./state-helpers.js";
 export {
 	type SubprocessEnvInput,

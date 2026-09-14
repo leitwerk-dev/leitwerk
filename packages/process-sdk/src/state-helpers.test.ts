@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyStructuralProcessState, parseStructuralProcessState } from "./state-helpers.js";
+import { createEmptyStructuralProcessState, structuralStateCodec } from "./state-helpers.js";
 
 describe("structural process state", () => {
 	it("creates empty semantic and product refs", () => {
@@ -16,7 +16,7 @@ describe("structural process state", () => {
 
 	it("parses semantic and product refs", () => {
 		expect(
-			parseStructuralProcessState({
+			structuralStateCodec.parse({
 				semanticEntryRefs: {
 					plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
 				},
@@ -32,5 +32,10 @@ describe("structural process state", () => {
 				plan: { entryId: "plan-entry", turnRecordId: "plan-turn" },
 			},
 		});
+	});
+
+	it("serializes state unchanged", () => {
+		const state = createEmptyStructuralProcessState();
+		expect(structuralStateCodec.serialize(state)).toBe(state);
 	});
 });

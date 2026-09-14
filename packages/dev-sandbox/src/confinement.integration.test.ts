@@ -15,22 +15,18 @@ import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { getDefaultConfig } from "@leitwerk-dev/server";
 import { StubPiTreeHandleFactory } from "@leitwerk-dev/test-support/worker-testing";
-import { afterEach, expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 import { sandboxConfig } from "./config.js";
 import type { SandboxCompositionFactory, SandboxInput } from "./index.js";
 import { sandboxEnvironment } from "./launcher.js";
 import { preflightSandbox } from "./preflight.js";
 import { processIdentity, resetSandbox, sandboxDirectory } from "./storage.js";
 
-const roots: string[] = [];
 const root = () => {
 	const directory = mkdtempSync(path.join(tmpdir(), "sandbox-contract-"));
-	roots.push(directory);
+	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
 	return directory;
 };
-afterEach(() => {
-	for (const directory of roots.splice(0)) rmSync(directory, { recursive: true, force: true });
-});
 
 test("excludes ambient provider, Pi, Git and Node overrides", () => {
 	const env = sandboxEnvironment("/local/session", {

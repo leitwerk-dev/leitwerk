@@ -8,29 +8,19 @@ import {
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	builtinPiProvider,
-	type Codec,
 	createEmptyStructuralProcessState,
 	defineModelProvider,
 	defineModelProviders,
 	defineProcess,
 	emptyParamsCodec,
 	type LeitwerkExtensionModule,
-	parseStructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
-const structuralStateCodec: Codec<ReturnType<typeof createEmptyStructuralProcessState>> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
 
 const continueTurn = {
 	id: "implement",

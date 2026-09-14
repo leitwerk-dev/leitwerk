@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	prepareRebase,
 	publishRebase,
@@ -11,10 +11,6 @@ import {
 	verifyRebase,
 } from "./git.js";
 
-const roots: string[] = [];
-afterEach(() => {
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
 function git(path: string, ...args: string[]) {
 	const env = { ...process.env };
 	for (const name of [
@@ -40,7 +36,7 @@ function git(path: string, ...args: string[]) {
 }
 function fixture(conflicting = true) {
 	const root = mkdtempSync(join(tmpdir(), "rebase-test-"));
-	roots.push(root);
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	git(root, "init", "--bare", "remote.git");
 	git(root, "clone", "remote.git", "work");
 	const path = join(root, "work");

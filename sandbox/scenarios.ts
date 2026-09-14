@@ -58,7 +58,13 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 		notebook.save();
 		const names = new Set(input.tools.map((t) => t.name));
 		const call = (toolName: string, args: Record<string, unknown>) => ({ toolName, args });
-		const markdown = (markdown: string) => call("markdown_result", { markdown });
+		const response = (calls: StubToolCallScriptCall[]) => ({
+			calls,
+			thinkingChunks: [
+				"**Preparing the notebook change**\n\nUse the selected turn and its available tools to record the result. The operator reviews each plan and implementation before finalization.\n\n",
+			],
+		});
+		const markdown = (markdown: string) => response([call("markdown_result", { markdown })]);
 		const question = (id: string, question: string) =>
 			call("ask_questions", {
 				questions: [
@@ -101,15 +107,10 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 					};
 				return undefined;
 			};
+			const calls = [ticket];
 			if (progress.step === 1 && /clarify/i.test(params.context?.additionalInstructions ?? ""))
-				return {
-					calls: [
-						question("ticket-destination", "Which notebook should receive this ticket?"),
-						ticket,
-					],
-					afterToolResult,
-				};
-			return { calls: [ticket], afterToolResult };
+				calls.unshift(question("ticket-destination", "Which notebook should receive this ticket?"));
+			return { ...response(calls), afterToolResult };
 		}
 		if (progress.name === "failure" && progress.step === 1)
 			throw new Error("Scripted turn failure. Retry from the ordinary process UI.");
@@ -126,22 +127,24 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 				(progress.name === "question" && process.planRevision === 0) ||
 				(progress.name === "turn-rail" && process.planRevision === 3)
 			)
-				return { calls: [question("notebook", "Which notebook should we update?"), plan] };
+				return response([question("notebook", "Which notebook should we update?"), plan]);
 			if (["streaming", "startup", "startup-cold"].includes(progress.name))
 				return {
+					...response([plan]),
 					textChunks: Array.from(
 						{ length: 80 },
 						(_, i) => `Observation ${i + 1}: planning the weekly garden review.\n`,
 					),
 					chunkDelayMs: 200,
-					calls: [plan],
 				};
-			return plan;
+			return response([plan]);
 		}
 		if (names.has("request_changes"))
-			return call("request_changes", {
-				markdown: "Clarify the watering schedule in the next plan revision.",
-			});
+			return response([
+				call("request_changes", {
+					markdown: "Clarify the watering schedule in the next plan revision.",
+				}),
+			]);
 		if (process.selectedTurnId === "implement") {
 			if (!input.workspaceRoot) throw new Error("Scripted workspace is missing");
 			const directory = path.join(input.workspaceRoot, "repo");
@@ -158,16 +161,6 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 	};
 	return new StubPiTreeHandleFactory({
 		recordSessionTrace: true,
-		async toolCallScriptResolver(input) {
-			const script = await resolve(input);
-			if (!script) return script;
-			const response = "calls" in script ? script : { calls: [script] };
-			return {
-				...response,
-				thinkingChunks: [
-					"**Preparing the notebook change**\n\nUse the selected turn and its available tools to record the result. The operator reviews each plan and implementation before finalization.\n\n",
-				],
-			};
-		},
+		toolCallScriptResolver: resolve,
 	});
 }

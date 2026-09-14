@@ -3,8 +3,8 @@ import { ticketCreationParamsCodec as codec } from "./params.js";
 
 const historical = {
 	parentInstanceId: "parent-1",
-	artifact: { kind: "turn_result", turnRecordId: "turn-1" },
-	focus: { kind: "whole_result" },
+	artifact: { kind: "turn_result", turnRecordId: "turn-1", leafEntryId: "old-leaf" },
+	focus: { kind: "whole_result", excerpt: "Old excerpt" },
 	context: {
 		focusedResult: "Result\n",
 		parentPrompt: "Original prompt",
@@ -54,10 +54,10 @@ describe("stored ticket parameters", () => {
 		expect(
 			codec.parse({
 				...historical,
-				artifact: { kind: "leaf_outcome", leafEntryId: "leaf-1" },
+				artifact: { kind: "leaf_outcome", leafEntryId: "leaf-1", turnRecordId: "old-turn" },
 				focus: { kind: "excerpt", excerpt: "Result" },
 			}).artifact,
-		).toEqual({ kind: "leaf_outcome", leafEntryId: "leaf-1" });
+		).toEqual({ kind: "leaf_outcome", leafEntryId: "leaf-1", turnRecordId: "old-turn" });
 	});
 	it.each([
 		{ context: { ...historical.context, parentPrompt: 5 } },

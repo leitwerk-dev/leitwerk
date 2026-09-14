@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { once } from "node:events";
 import { chmodSync, existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -134,39 +135,32 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 }
 
 async function runSupervisor(publicRoot: string, env: NodeJS.ProcessEnv): Promise<void> {
-	await new Promise<void>((resolve, reject) => {
-		const child = spawn(
-			process.execPath,
-			["--conditions=source", "--import", "tsx", "scripts/dev-supervisor.ts"],
-			{ cwd: publicRoot, env, stdio: "inherit", detached: true },
-		);
-		let timer: NodeJS.Timeout | undefined;
-		const signal = (value: NodeJS.Signals) => {
-			try {
-				if (child.pid) process.kill(-child.pid, value);
-			} catch {
-				/* Already stopped. */
-			}
-		};
-		const stop = () => {
-			signal("SIGTERM");
-			timer ??= setTimeout(() => signal("SIGKILL"), 35_000);
-		};
-		const cleanup = () => {
-			clearTimeout(timer);
-			process.off("SIGINT", stop);
-			process.off("SIGTERM", stop);
-		};
-		process.once("SIGINT", stop);
-		process.once("SIGTERM", stop);
-		child.once("error", (error) => {
-			cleanup();
-			reject(error);
-		});
-		child.once("exit", (code, exitSignal) => {
-			cleanup();
-			if (code === 0 || code === 130 || code === 143) resolve();
-			else reject(new Error(`Sandbox supervisor stopped (${exitSignal ?? code})`));
-		});
-	});
+	const child = spawn(
+		process.execPath,
+		["--conditions=source", "--import", "tsx", "scripts/dev-supervisor.ts"],
+		{ cwd: publicRoot, env, stdio: "inherit", detached: true },
+	);
+	let timer: NodeJS.Timeout | undefined;
+	const signal = (value: NodeJS.Signals) => {
+		try {
+			if (child.pid) process.kill(-child.pid, value);
+		} catch {
+			/* Already stopped. */
+		}
+	};
+	const stop = () => {
+		signal("SIGTERM");
+		timer ??= setTimeout(() => signal("SIGKILL"), 35_000);
+	};
+	process.once("SIGINT", stop);
+	process.once("SIGTERM", stop);
+	try {
+		const [code, exitSignal] = await once(child, "exit");
+		if (code !== 0 && code !== 130 && code !== 143)
+			throw new Error(`Sandbox supervisor stopped (${exitSignal ?? code})`);
+	} finally {
+		clearTimeout(timer);
+		process.off("SIGINT", stop);
+		process.off("SIGTERM", stop);
+	}
 }

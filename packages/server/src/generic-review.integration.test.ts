@@ -2,38 +2,20 @@ import { randomUUID } from "node:crypto";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	builtinPiProvider,
-	type Codec,
 	createEmptyStructuralProcessState,
 	defineModelProvider,
 	defineModelProviders,
 	defineProcess,
+	emptyParamsCodec,
 	humanTurn,
 	type LeitwerkExtensionModule,
 	type LlmTurnDefinition,
 	llmTurn,
-	parseStructuralProcessState,
+	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import { createTestApp, type TestApp } from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-
-const emptyCodec: Codec<Record<string, never>> = {
-	parse() {
-		return {};
-	},
-	serialize(value) {
-		return value;
-	},
-};
-
-const structuralStateCodec: Codec<ReturnType<typeof createEmptyStructuralProcessState>> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
 
 function createLlmTurn<TOutcome extends string>(
 	id: string,
@@ -204,7 +186,7 @@ const genericPlanReviewProcess = defineProcess<
 		implement: implementTurn,
 		plan_review: planReviewTurn,
 	},
-	paramsCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
 	stateCodec: structuralStateCodec,
 	initialState() {
 		return createEmptyStructuralProcessState();
@@ -222,7 +204,7 @@ const sideEffectExecuteReviewProcess = defineProcess<
 		legacy_plan_review: sideEffectPlanReviewTurn,
 		legacy_implement: sideEffectImplementTurn,
 	},
-	paramsCodec: emptyCodec,
+	paramsCodec: emptyParamsCodec,
 	stateCodec: structuralStateCodec,
 	initialState() {
 		return createEmptyStructuralProcessState();

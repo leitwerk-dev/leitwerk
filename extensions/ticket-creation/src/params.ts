@@ -29,24 +29,22 @@ const destinationSchema = v.object({
 });
 const paramsSchema = v.object({
 	parentInstanceId: trimmedString,
-	artifact: v.pipe(
+	artifact: v.variant("kind", [
 		v.object({
-			kind: v.picklist(["turn_result", "leaf_outcome"]),
-			turnRecordId: v.optional(v.string()),
+			kind: v.literal("turn_result"),
+			turnRecordId: nonEmptyString,
 			leafEntryId: v.optional(v.string()),
 		}),
-		v.check(
-			(value) => !!(value.kind === "turn_result" ? value.turnRecordId : value.leafEntryId)?.trim(),
-			"Invalid artifact identifier",
-		),
-	),
-	focus: v.pipe(
-		v.object({ kind: v.picklist(["whole_result", "excerpt"]), excerpt: v.optional(v.string()) }),
-		v.check(
-			(value) => value.kind !== "excerpt" || !!value.excerpt?.trim(),
-			"Invalid focus.excerpt",
-		),
-	),
+		v.object({
+			kind: v.literal("leaf_outcome"),
+			turnRecordId: v.optional(v.string()),
+			leafEntryId: nonEmptyString,
+		}),
+	]),
+	focus: v.variant("kind", [
+		v.object({ kind: v.literal("whole_result"), excerpt: v.optional(v.string()) }),
+		v.object({ kind: v.literal("excerpt"), excerpt: nonEmptyString }),
+	]),
 	context: contextSchema,
 	additionalInstructions: v.optional(v.string(), ""),
 	toolName: trimmedString,
