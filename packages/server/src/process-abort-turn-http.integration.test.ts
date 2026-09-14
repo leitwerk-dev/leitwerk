@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
-	builtinPiProvider,
 	createEmptyStructuralProcessState,
-	defineModelProvider,
-	defineModelProviders,
 	defineProcess,
 	emptyParamsCodec,
 	type LeitwerkExtensionModule,
@@ -17,6 +14,7 @@ import {
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 const abortTurnDef = {
 	id: "implement",
@@ -48,18 +46,11 @@ const abortTurnProcess = defineProcess<
 
 const abortTurnExtension: LeitwerkExtensionModule = {
 	manifest: { id: "abort-turn-http-test", version: "0.1.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "abort-fixture-provider",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("ollama"),
-				models: () => [{ modelId: "fixture-model", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({
+		id: "abort-fixture-provider",
+		modelId: "fixture-model",
+		piProvider: "ollama",
+	}),
 	setupCatalog(api) {
 		api.registerProcess(abortTurnProcess);
 	},

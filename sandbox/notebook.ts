@@ -55,10 +55,8 @@ export class Notebook {
 		assertSandboxPath(this.directory, seed);
 		mkdirSync(seed, { recursive: true });
 		this.git(seed, ["init", "--initial-branch=main"]);
-		for (const repository of [seed, this.repository]) {
-			this.git(repository, ["config", "user.name", "Sandbox Developer"]);
-			this.git(repository, ["config", "user.email", "developer@sandbox.invalid"]);
-		}
+		this.git(this.repository, ["config", "user.name", "Sandbox Developer"]);
+		this.git(this.repository, ["config", "user.email", "developer@sandbox.invalid"]);
 		for (const [name, contents] of Object.entries(this.seed.files)) {
 			const file = path.resolve(seed, name);
 			assertSandboxPath(seed, file);

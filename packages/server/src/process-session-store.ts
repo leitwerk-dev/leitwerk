@@ -161,11 +161,20 @@ export class ProcessSessionReader {
 
 	/** Returns the raw session JSONL, or `null` when no session exists yet. */
 	async readRawContent(instanceId: string): Promise<string | null> {
-		const handle = await this.source.readSnapshotHandle(instanceId);
-		if (!handle) {
-			return null;
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			const handle = await this.source.readSnapshotHandle(instanceId);
+			if (!handle) {
+				return null;
+			}
+			try {
+				return await handle.load();
+			} catch (error) {
+				if (!(error instanceof ProcessSessionSnapshotChangedError) || attempt === 2) {
+					throw error;
+				}
+			}
 		}
-		return handle.load();
+		throw new Error(`Unable to read process session snapshot '${instanceId}'`);
 	}
 }
 

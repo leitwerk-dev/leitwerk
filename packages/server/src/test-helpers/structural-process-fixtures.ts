@@ -1,18 +1,9 @@
 import {
-	type Codec,
 	createEmptyStructuralProcessState,
-	parseStructuralProcessState,
 	type StructuralProcessState,
 } from "@leitwerk-dev/process-sdk";
 
-export const structuralProcessStateCodec: Codec<StructuralProcessState> = {
-	parse(value) {
-		return parseStructuralProcessState(value);
-	},
-	serialize(value) {
-		return value;
-	},
-};
+export { structuralStateCodec as structuralProcessStateCodec } from "@leitwerk-dev/process-sdk";
 
 export function createStructuralProcessState(
 	overrides: Partial<Omit<StructuralProcessState, "semanticEntryRefs">> & {

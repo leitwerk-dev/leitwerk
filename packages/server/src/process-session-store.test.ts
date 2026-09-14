@@ -247,6 +247,58 @@ describe("ProcessSessionReader caching", () => {
 	});
 });
 
+describe("raw session snapshot races", () => {
+	it.each([
+		"replace",
+		"delete",
+		"keep replacing",
+	] as const)("handles a snapshot that changes before loading: %s", async (change) => {
+		const store = createFileBackedProcessSessionSnapshotStore(await createTempRoot());
+		await store.writeSnapshot("agt_1", "original\n");
+		let reads = 0;
+		const reader = new ProcessSessionReader({
+			async readSnapshotHandle(instanceId) {
+				const handle = await store.readSnapshotHandle(instanceId);
+				reads += 1;
+				if (change === "keep replacing" || reads === 1) {
+					if (change === "delete") await store.deleteSnapshot(instanceId);
+					else await store.writeSnapshot(instanceId, `replacement ${reads}\n`);
+				}
+				return handle;
+			},
+		});
+
+		if (change === "keep replacing") {
+			await expect(reader.readRawContent("agt_1")).rejects.toThrow();
+			expect(reads).toBe(3);
+		} else {
+			expect(await reader.readRawContent("agt_1")).toBe(
+				change === "delete" ? null : "replacement 1\n",
+			);
+			expect(reads).toBe(2);
+		}
+	});
+
+	it("propagates load errors other than generation changes without retrying", async () => {
+		const failure = new Error("read failed");
+		let reads = 0;
+		const reader = new ProcessSessionReader({
+			async readSnapshotHandle() {
+				reads += 1;
+				return {
+					signature: "sig-1",
+					async load() {
+						throw failure;
+					},
+				};
+			},
+		});
+
+		await expect(reader.readRawContent("agt_1")).rejects.toBe(failure);
+		expect(reads).toBe(1);
+	});
+});
+
 describe("file-backed process session snapshot store", () => {
 	it("atomically stores and reads the latest raw snapshot", async () => {
 		const root = await createTempRoot();
