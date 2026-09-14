@@ -1,4 +1,5 @@
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import type { GitHubIntegration } from "./capability.js";
 import type { GitHubClient } from "./client.js";
@@ -11,12 +12,7 @@ function providerFixture(
 ) {
 	const observe = vi.fn(async (_input: unknown) => ({ ok: true }));
 	const fire = vi.fn(async () => ({ ok: true }));
-	const deps = {
-		polling: {
-			create: <T>(options: { pollOnce(): Promise<T> }) => ({
-				poll: options.pollOnce,
-			}),
-		},
+	const deps = createTestServerSetupCapability({
 		externalSources: {
 			listArmed: (kind: string) =>
 				kind === GITHUB_PR_STATE_KIND
@@ -41,7 +37,7 @@ function providerFixture(
 			fire,
 			observe,
 		},
-	} as unknown as CoreServerSetupDeps;
+	} as unknown as Partial<CoreServerSetupDeps>);
 	const integration = {
 		client: () => client as GitHubClient,
 	} satisfies GitHubIntegration;

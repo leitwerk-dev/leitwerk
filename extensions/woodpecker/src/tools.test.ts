@@ -55,6 +55,10 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 	await expect(tools.get("woodpecker_restart_pipeline")?.execute(ctx, args)).rejects.toThrow(
 		"diagnosis",
 	);
+	for (const diagnosis of ["", " ", 1])
+		await expect(
+			tools.get("woodpecker_restart_pipeline")?.execute(ctx, { ...args, diagnosis }),
+		).rejects.toThrow("non-empty string");
 	const diagnosed = {
 		...args,
 		diagnosis: "Transient infrastructure",

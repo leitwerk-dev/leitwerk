@@ -1,6 +1,7 @@
 export { parseDurationMs } from "./duration-parse.js";
 export {
 	createPollLoop,
+	createPollSchedule,
 	emptyPollResult,
 	type PollLoop,
 	type PollResult,

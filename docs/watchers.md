@@ -123,7 +123,8 @@ The server starts registered pollers after extension setup and stops them during
 shutdown. Poller IDs must be unique. Scheduled passes do not overlap. A rejected pass
 is logged with the full error. A completed pass with a non-empty `errors` array is logged
 with the complete result. Providers may call `poller.poll()` directly in tests or explicit
-fixtures, but do not own scheduled polling lifecycle.
+fixtures, but do not own scheduled polling lifecycle. `createPollSchedule(now?)` from
+`watcher-utils` reserves per-key deadlines; callers retain ownership of keys and intervals.
 
 ## Idempotency and deduplication
 

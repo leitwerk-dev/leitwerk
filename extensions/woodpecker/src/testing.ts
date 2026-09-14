@@ -1,6 +1,7 @@
-import { LocalGit, readLocalJson, writeLocalJson } from "@leitwerk-dev/test-support/local-git";
+import { LocalProviderStore } from "@leitwerk-dev/test-support/local-git";
 import type { WoodpeckerClientLike } from "./capability.js";
 import type { WoodpeckerPipeline, WoodpeckerRepository } from "./client.js";
+import { boundedLogTail } from "./logs.js";
 
 export interface LocalWoodpeckerRepository {
 	repository: WoodpeckerRepository;
@@ -19,22 +20,16 @@ export interface LocalWoodpeckerOptions {
 }
 
 /** Local CI state is independent of the repository's Git host. */
-export class LocalWoodpeckerAdapter {
-	state: LocalWoodpeckerState;
-	constructor(readonly options: LocalWoodpeckerOptions) {
-		new LocalGit(options.root);
-		this.state = readLocalJson(options.root, "woodpecker.json", {
+export class LocalWoodpeckerAdapter extends LocalProviderStore<
+	LocalWoodpeckerState,
+	LocalWoodpeckerOptions
+> {
+	constructor(options: LocalWoodpeckerOptions) {
+		super(options, "woodpecker.json", {
 			version: 1,
 			sequence: 0,
 			repositories: [],
 		});
-	}
-	save() {
-		writeLocalJson(this.options.root, "woodpecker.json", this.state);
-	}
-	id() {
-		this.state.sequence = Math.max(this.state.sequence + 1, this.options.nextId?.() ?? 0);
-		return this.state.sequence;
 	}
 	seed(fullName: string, id?: number) {
 		const existing = this.state.repositories.find((r) => r.repository.full_name === fullName);
@@ -106,15 +101,7 @@ export class LocalWoodpeckerAdapter {
 			getPipeline: async (id, number) => structuredClone(pipeline(id, number)),
 			getStepLogs: async (id, number, _step, tail = 400, bytes = 262144) => {
 				const original = pipeline(id, number).logs;
-				const lines = original
-					.split("\n")
-					.slice(-Math.min(2000, Math.max(1, tail)))
-					.join("\n");
-				const encoded = Buffer.from(lines),
-					limit = Math.min(1048576, Math.max(1, bytes));
-				let start = Math.max(0, encoded.length - limit);
-				while (start < encoded.length && (encoded[start] & 0xc0) === 0x80) start++;
-				const logs = encoded.subarray(start).toString("utf8");
+				const logs = boundedLogTail(original.split("\n"), tail, bytes);
 				return { logs, truncated: logs !== original };
 			},
 			restartPipeline: async (id, number) => {

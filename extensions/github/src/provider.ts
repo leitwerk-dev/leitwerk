@@ -1,11 +1,15 @@
-import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	type CoreServerSetupDeps,
+	createExternalSourcePollReporter,
+} from "@leitwerk-dev/process-sdk";
 import {
 	conflictEvidence,
 	conflictKey,
 	describeConflict,
 	sameSubscription,
 } from "@leitwerk-dev/repository-rebase";
-import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { GitHubIntegration } from "./capability.js";
 import {
 	describeGitHubEvent,
@@ -14,14 +18,8 @@ import {
 	type GitHubPullRequestSourceConfig,
 } from "./external.js";
 
-function object(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
 function parse(value: unknown): GitHubPullRequestSourceConfig | null {
-	const config = object(value);
+	const config = asUnknownRecord(value) ?? {};
 	if (
 		["profile", "owner", "repo", "headSha"].some(
 			(key) => typeof config[key] !== "string" || !(config[key] as string).trim(),
@@ -58,7 +56,7 @@ export function createGitHubProvider(
 	integration: GitHubIntegration,
 	options: { now?: () => number } = {},
 ) {
-	const dueAt = new Map<string, number>();
+	const due = createPollSchedule();
 	const accepted = new Map<string, string>();
 	return deps.polling.create({
 		id: "github",
@@ -67,6 +65,7 @@ export function createGitHubProvider(
 		defaultIntervalMs: 5_000,
 		async pollOnce() {
 			const result = emptyPollResult();
+			const report = createExternalSourcePollReporter(deps.externalSources, result);
 			for (const armed of deps.externalSources.listArmed(GITHUB_PR_STATE_KIND)) {
 				const config = parse(armed.resolved);
 				if (!config) {
@@ -76,8 +75,7 @@ export function createGitHubProvider(
 				if (config.disabled) continue;
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 				const now = options.now?.() ?? Date.now();
-				if ((dueAt.get(key) ?? 0) > now) continue;
-				dueAt.set(key, now + parseDurationMs(config.pollInterval ?? "30s", 30_000));
+				if (!due(key, config.pollInterval, now)) continue;
 				try {
 					const client = integration.client(config.profile);
 					const pr = await client.getPullRequest(config.owner, config.repo, config.prNumber);
@@ -88,22 +86,18 @@ export function createGitHubProvider(
 							const branch = await client.getCommit(config.owner, config.repo, conflict.baseBranch);
 							conflict.baseSha = branch.sha;
 						}
-						if (deps.externalSources.observe && armed.generation)
-							await deps.externalSources.observe({
-								instanceId: armed.instanceId,
-								armingId: armed.id,
-								generation: armed.generation,
-								observation: {
-									...(conflict
-										? describeConflict({ conflict })
-										: {
-												summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : (pr.mergeable_state ?? String(pr.mergeable))}`,
-											}),
-									observedAt: new Date(now).toISOString(),
-									subject: `${config.owner}/${config.repo}#${pr.number}`,
-									revision: `${pr.head.sha}:${conflict?.baseSha ?? pr.base.sha}`,
-								},
-							});
+						await report.observe(armed, {
+							observation: {
+								...(conflict
+									? describeConflict({ conflict })
+									: {
+											summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : (pr.mergeable_state ?? String(pr.mergeable))}`,
+										}),
+								observedAt: new Date(now).toISOString(),
+								subject: `${config.owner}/${config.repo}#${pr.number}`,
+								revision: `${pr.head.sha}:${conflict?.baseSha ?? pr.base.sha}`,
+							},
+						});
 						if (
 							conflict &&
 							conflictKey(conflict) !== config.lastConflictKey &&
@@ -112,16 +106,14 @@ export function createGitHubProvider(
 								.listArmed(GITHUB_PR_STATE_KIND)
 								.some((current) => sameSubscription(armed, current))
 						) {
-							const fired = await deps.externalSources.fire({
-								instanceId: armed.instanceId,
-								armingId: armed.id,
-								event: { kind: "merge_conflict", conflict },
-								mergeKey: conflictKey(conflict),
-							});
-							if (fired.ok) {
+							if (
+								await report.fire(
+									armed,
+									{ kind: "merge_conflict", conflict },
+									conflictKey(conflict),
+								)
+							)
 								accepted.set(key, conflictKey(conflict));
-								result.created.push(armed.id);
-							} else result.errors.push(`${armed.id}:fire_failed`);
 							continue;
 						}
 						if (config.eventKinds?.length === 1) continue;
@@ -145,14 +137,10 @@ export function createGitHubProvider(
 								? client
 										.getCheckSummary(config.owner, config.repo, config.headSha)
 										.catch(async (error) => {
-											if (deps.externalSources.observe && armed.generation)
-												await deps.externalSources.observe({
-													instanceId: armed.instanceId,
-													armingId: armed.id,
-													generation: armed.generation,
-													refreshError:
-														error instanceof Error ? error.message : "Checks refresh failed",
-												});
+											await report.observe(armed, {
+												refreshError:
+													error instanceof Error ? error.message : "Checks refresh failed",
+											});
 											if (readsChecks) throw error;
 											return null;
 										})
@@ -160,10 +148,7 @@ export function createGitHubProvider(
 						]);
 						if (checks && deps.externalSources.observe && armed.generation) {
 							const description = describeGitHubEvent({ kind: "checks", checks });
-							await deps.externalSources.observe({
-								instanceId: armed.instanceId,
-								armingId: armed.id,
-								generation: armed.generation,
+							await report.observe(armed, {
 								observation: {
 									...description,
 									observedAt: new Date(now).toISOString(),
@@ -203,29 +188,18 @@ export function createGitHubProvider(
 							.some((current) => sameSubscription(armed, current))
 					)
 						continue;
-					const fired = await deps.externalSources.fire({
-						instanceId: armed.instanceId,
-						armingId: armed.id,
-						event,
-						mergeKey,
-					});
-					if (fired.ok) result.created.push(armed.id);
-					else result.errors.push(`${armed.id}:fire_failed`);
+					await report.fire(armed, event, mergeKey);
 				} catch (error) {
-					if (deps.externalSources.observe && armed.generation)
-						await deps.externalSources.observe({
-							instanceId: armed.instanceId,
-							armingId: armed.id,
-							generation: armed.generation,
-							refreshError: error instanceof Error ? error.message : "PR refresh failed",
-						});
+					await report.observe(armed, {
+						refreshError: error instanceof Error ? error.message : "PR refresh failed",
+					});
 					result.errors.push(
 						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,
 					);
 				}
 			}
 			for (const armed of deps.externalSources.listArmed(GITHUB_RELEASE_KIND)) {
-				const config = object(armed.resolved);
+				const config = asUnknownRecord(armed.resolved) ?? {};
 				if (
 					typeof config.profile !== "string" ||
 					typeof config.owner !== "string" ||
@@ -236,15 +210,8 @@ export function createGitHubProvider(
 				if (config.disabled === true) continue;
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 				const now = options.now?.() ?? Date.now();
-				if ((dueAt.get(key) ?? 0) > now) continue;
-				dueAt.set(
-					key,
-					now +
-						parseDurationMs(
-							typeof config.pollInterval === "string" ? config.pollInterval : "30s",
-							30_000,
-						),
-				);
+				if (!due(key, typeof config.pollInterval === "string" ? config.pollInterval : "30s", now))
+					continue;
 				try {
 					const client = integration.client(config.profile);
 					for (const release of await client.listReleases(config.owner, config.repo)) {
@@ -252,14 +219,11 @@ export function createGitHubProvider(
 						const commit = await client.getCommit(config.owner, config.repo, release.tag_name);
 						if (!(await client.isAncestor(config.owner, config.repo, config.mergeSha, commit.sha)))
 							continue;
-						const fired = await deps.externalSources.fire({
-							instanceId: armed.instanceId,
-							armingId: armed.id,
-							event: { release, commitSha: commit.sha },
-							mergeKey: `${release.id}:${commit.sha}`,
-						});
-						if (fired.ok) result.created.push(armed.id);
-						else result.errors.push(`${armed.id}:fire_failed`);
+						await report.fire(
+							armed,
+							{ release, commitSha: commit.sha },
+							`${release.id}:${commit.sha}`,
+						);
 						break;
 					}
 				} catch (error) {

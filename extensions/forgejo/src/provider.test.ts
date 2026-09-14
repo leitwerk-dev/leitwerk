@@ -1,4 +1,5 @@
 import type { CoreServerSetupDeps, WatcherLaunchResultLike } from "@leitwerk-dev/process-sdk";
+import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoClient } from "./client.js";
@@ -26,19 +27,14 @@ function providerFixture(input: {
 	const fire = vi.fn(async () => ({ ok: true }));
 	const listBySource = vi.fn(() => input.watchers ?? []);
 	const startWatcher = vi.fn(async () => watcherLaunchResult());
-	const deps = {
-		polling: {
-			create: <T>(options: { pollOnce(): Promise<T> }) => ({
-				poll: options.pollOnce,
-			}),
-		},
+	const deps = createTestServerSetupCapability({
 		externalSources: {
 			listArmed: (kind: string) => input.armedByKind[kind] ?? [],
 			fire,
 		},
 		processWatchers: { listBySource },
 		launchRuns: { startWatcher },
-	} as unknown as CoreServerSetupDeps;
+	} as unknown as Partial<CoreServerSetupDeps>);
 	const integration = {
 		profiles: () => ["default"],
 		client: () => input.client as ForgejoClient,
@@ -51,35 +47,19 @@ function providerFixture(input: {
 	};
 }
 
-describe("matchesConfiguredRepository", () => {
-	const repository = (full_name: string) => ({ full_name }) as never;
-
-	it("matches only included repositories and always honors exclusions", () => {
-		expect(
-			matchesConfiguredRepository(
-				{ repositories: { include: ["team/notebook"], exclude: [] } },
-				repository("team/notebook"),
-			),
-		).toBe(true);
-		expect(
-			matchesConfiguredRepository(
-				{ repositories: { include: ["team/notebook"], exclude: [] } },
-				repository("team/service"),
-			),
-		).toBe(false);
-		expect(
-			matchesConfiguredRepository(
-				{ repositories: { include: [], exclude: ["team/notebook"] } },
-				repository("team/notebook"),
-			),
-		).toBe(false);
-		expect(
-			matchesConfiguredRepository(
-				{ repositories: { include: [], exclude: ["team/notebook"] } },
-				repository("team/service"),
-			),
-		).toBe(true);
-	});
+it.each([
+	[["team/notebook"], [], "team/notebook", true],
+	[["team/notebook"], [], "team/service", false],
+	[[], ["team/notebook"], "team/notebook", false],
+	[[], ["team/notebook"], "team/service", true],
+	[["team/notebook"], ["team/notebook"], "team/notebook", false],
+] as const)("matches repository filters %j / %j for %s: %s", (include, exclude, full_name, expected) => {
+	expect(
+		matchesConfiguredRepository(
+			{ repositories: { include: [...include], exclude: [...exclude] } },
+			{ full_name } as never,
+		),
+	).toBe(expected);
 });
 
 describe("createForgejoProvider", () => {

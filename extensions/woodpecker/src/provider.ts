@@ -1,15 +1,14 @@
-import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
-import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	type CoreServerSetupDeps,
+	createExternalSourcePollReporter,
+} from "@leitwerk-dev/process-sdk";
+import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { WoodpeckerClientLike, WoodpeckerIntegration } from "./capability.js";
 import { WOODPECKER_PIPELINE_KIND, type WoodpeckerPipelineSourceConfig } from "./external.js";
 
-function object(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
 function parse(value: unknown): WoodpeckerPipelineSourceConfig | null {
-	const config = object(value);
+	const config = asUnknownRecord(value) ?? {};
 	if (
 		["profile", "owner", "repo", "branch", "headSha"].some(
 			(key) => typeof config[key] !== "string" || !(config[key] as string).trim(),
@@ -54,7 +53,7 @@ export function createWoodpeckerProvider(
 	integration: WoodpeckerIntegration,
 	options: { now?: () => number } = {},
 ) {
-	const dueAt = new Map<string, number>();
+	const due = createPollSchedule(options.now);
 	return deps.polling.create({
 		id: "woodpecker",
 		pollInterval: () => "5s",
@@ -62,6 +61,7 @@ export function createWoodpeckerProvider(
 		defaultIntervalMs: 5_000,
 		async pollOnce() {
 			const result = emptyPollResult();
+			const report = createExternalSourcePollReporter(deps.externalSources, result);
 			for (const armed of deps.externalSources.listArmed(WOODPECKER_PIPELINE_KIND)) {
 				const config = parse(armed.resolved);
 				if (!config) {
@@ -70,9 +70,7 @@ export function createWoodpeckerProvider(
 				}
 				if (config.disabled) continue;
 				const key = `${armed.instanceId}:${armed.id}`;
-				const now = options.now?.() ?? Date.now();
-				if ((dueAt.get(key) ?? 0) > now) continue;
-				dueAt.set(key, now + parseDurationMs(config.pollInterval ?? "30s", 30_000));
+				if (!due(key, config.pollInterval)) continue;
 				try {
 					const client = integration.client(config.profile);
 					const repo = await client.lookupRepository(`${config.owner}/${config.repo}`);
@@ -83,14 +81,11 @@ export function createWoodpeckerProvider(
 						(config.statuses && !config.statuses.includes(pipeline.status))
 					)
 						continue;
-					const fired = await deps.externalSources.fire({
-						instanceId: armed.instanceId,
-						armingId: armed.id,
-						event: { repositoryId: repo.id, pipeline },
-						mergeKey: `${pipeline.number}:${pipeline.status}`,
-					});
-					if (fired.ok) result.created.push(armed.id);
-					else result.errors.push(`${armed.id}:fire_failed`);
+					await report.fire(
+						armed,
+						{ repositoryId: repo.id, pipeline },
+						`${pipeline.number}:${pipeline.status}`,
+					);
 				} catch (error) {
 					result.errors.push(
 						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,

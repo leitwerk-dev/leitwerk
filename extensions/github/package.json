@@ -25,6 +25,7 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.9",
 		"@leitwerk-dev/external-writes": "0.1.9",
 		"@leitwerk-dev/process-sdk": "0.1.9",
 		"@leitwerk-dev/watcher-utils": "0.1.9",

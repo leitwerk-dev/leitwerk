@@ -1,11 +1,16 @@
-import type { CoreServerSetupDeps, RegisteredProcessWatcherLike } from "@leitwerk-dev/process-sdk";
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	type CoreServerSetupDeps,
+	createExternalSourcePollReporter,
+	type RegisteredProcessWatcherLike,
+} from "@leitwerk-dev/process-sdk";
 import {
 	conflictEvidence,
 	conflictKey,
 	describeConflict,
 	sameSubscription,
 } from "@leitwerk-dev/repository-rebase";
-import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoIssue, ForgejoRepository } from "./client.js";
 import {
@@ -22,12 +27,6 @@ import {
 	type ForgejoIssueWatcherEvent,
 	forgejoIssueWatcherSource,
 } from "./issue-watcher.js";
-
-function object(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
 
 function hasLabel(issue: ForgejoIssue, label: string): boolean {
 	return issue.labels.some((candidate) => candidate.name === label);
@@ -48,7 +47,7 @@ export function matchesConfiguredRepository(
 }
 
 function parsePrConfig(value: unknown): ForgejoPullRequestSourceConfig | null {
-	const config = object(value);
+	const config = asUnknownRecord(value) ?? {};
 	if (
 		typeof config.profile !== "string" ||
 		typeof config.owner !== "string" ||
@@ -72,7 +71,7 @@ function parsePrConfig(value: unknown): ForgejoPullRequestSourceConfig | null {
 
 function parseFeedbackConfig(value: unknown): ForgejoFeedbackSourceConfig | null {
 	const base = parsePrConfig(value);
-	const config = object(value);
+	const config = asUnknownRecord(value) ?? {};
 	if (!base) return null;
 	return {
 		...base,
@@ -85,7 +84,7 @@ function parseFeedbackConfig(value: unknown): ForgejoFeedbackSourceConfig | null
 }
 
 function parseIssueCancelledConfig(value: unknown): ForgejoIssueCancelledSourceConfig | null {
-	const config = object(value);
+	const config = asUnknownRecord(value) ?? {};
 	if (
 		typeof config.profile !== "string" ||
 		typeof config.owner !== "string" ||
@@ -110,14 +109,8 @@ export function createForgejoProvider(
 	watcherSource = forgejoIssueWatcherSource,
 	options: { now?: () => number } = {},
 ) {
-	const dueAt = new Map<string, number>();
+	const due = createPollSchedule(options.now);
 	const accepted = new Map<string, string>();
-	const due = (key: string, interval: string) => {
-		const now = options.now?.() ?? Date.now();
-		if ((dueAt.get(key) ?? 0) > now) return false;
-		dueAt.set(key, now + parseDurationMs(interval, 30_000));
-		return true;
-	};
 
 	async function discover(
 		watcher: RegisteredProcessWatcherLike<ForgejoIssueWatcherConfig, ForgejoIssueWatcherEvent>,
@@ -156,9 +149,10 @@ export function createForgejoProvider(
 	}
 
 	async function pollExternal(result: ReturnType<typeof emptyPollResult>) {
+		const report = createExternalSourcePollReporter(deps.externalSources, result);
 		for (const armed of deps.externalSources.listArmed(FORGEJO_PR_CONFLICT_KIND)) {
 			const base = parsePrConfig(armed.resolved);
-			const raw = object(armed.resolved);
+			const raw = asUnknownRecord(armed.resolved) ?? {};
 			if (!base || base.disabled || typeof raw.headSha !== "string") continue;
 			const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 			if (!due(key, base.pollInterval ?? "30s")) continue;
@@ -167,22 +161,18 @@ export function createForgejoProvider(
 					.client(base.profile)
 					.getPullRequest(base.owner, base.repo, base.prNumber);
 				const conflict = conflictEvidence({ ...base, headSha: raw.headSha }, pr, "forgejo");
-				if (deps.externalSources.observe && armed.generation)
-					await deps.externalSources.observe({
-						instanceId: armed.instanceId,
-						armingId: armed.id,
-						generation: armed.generation,
-						observation: {
-							...(conflict
-								? describeConflict({ conflict })
-								: {
-										summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : String(pr.mergeable)}`,
-									}),
-							observedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
-							subject: `${base.owner}/${base.repo}#${pr.number}`,
-							revision: `${pr.head.sha}:${pr.base.sha}`,
-						},
-					});
+				await report.observe(armed, {
+					observation: {
+						...(conflict
+							? describeConflict({ conflict })
+							: {
+									summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : String(pr.mergeable)}`,
+								}),
+						observedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+						subject: `${base.owner}/${base.repo}#${pr.number}`,
+						revision: `${pr.head.sha}:${pr.base.sha}`,
+					},
+				});
 				if (
 					!conflict ||
 					conflictKey(conflict) === raw.lastConflictKey ||
@@ -192,26 +182,12 @@ export function createForgejoProvider(
 						.some((current) => sameSubscription(armed, current))
 				)
 					continue;
-				const fired = await deps.externalSources.fire({
-					instanceId: armed.instanceId,
-					armingId: armed.id,
-					event: { kind: "merge_conflict", conflict },
-					mergeKey: conflictKey(conflict),
-				});
-				if (fired.ok) {
+				if (await report.fire(armed, { kind: "merge_conflict", conflict }, conflictKey(conflict)))
 					accepted.set(key, conflictKey(conflict));
-					result.created.push(armed.id);
-				} else result.errors.push(`${armed.id}:fire_failed`);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "PR refresh failed";
 				result.errors.push(`${armed.id}:${message}`);
-				if (deps.externalSources.observe && armed.generation)
-					await deps.externalSources.observe({
-						instanceId: armed.instanceId,
-						armingId: armed.id,
-						generation: armed.generation,
-						refreshError: message,
-					});
+				await report.observe(armed, { refreshError: message });
 			}
 		}
 
@@ -230,14 +206,7 @@ export function createForgejoProvider(
 							? null
 							: "trigger_label_removed";
 				if (!reason) continue;
-				const fired = await deps.externalSources.fire({
-					instanceId: armed.instanceId,
-					armingId: armed.id,
-					event: { issue, reason },
-					mergeKey: `${issue.number}:${reason}`,
-				});
-				if (fired.ok) result.created.push(armed.id);
-				else result.errors.push(`${armed.id}:fire_failed`);
+				await report.fire(armed, { issue, reason }, `${issue.number}:${reason}`);
 			} catch (error) {
 				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
 			}
@@ -254,14 +223,7 @@ export function createForgejoProvider(
 				if (!pr.merged && pr.state !== "closed") continue;
 				const outcome = pr.merged ? "merged" : "closed";
 				if (config.terminalOutcome && config.terminalOutcome !== outcome) continue;
-				const fired = await deps.externalSources.fire({
-					instanceId: armed.instanceId,
-					armingId: armed.id,
-					event: { pullRequest: pr },
-					mergeKey: `${pr.number}:${pr.merged ? "merged" : "closed"}`,
-				});
-				if (fired.ok) result.created.push(armed.id);
-				else result.errors.push(`${armed.id}:fire_failed`);
+				await report.fire(armed, { pullRequest: pr }, `${pr.number}:${outcome}`);
 			} catch (error) {
 				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
 			}
@@ -298,20 +260,14 @@ export function createForgejoProvider(
 						...unseen.filter((item) => item.kind === "inline").map((item) => item.id),
 					),
 				};
-				const fired = await deps.externalSources.fire({
-					instanceId: armed.instanceId,
-					armingId: armed.id,
-					event: {
-						feedbackIds: unseen.map((item) => ({
-							kind: item.kind,
-							id: item.id,
-						})),
+				await report.fire(
+					armed,
+					{
+						feedbackIds: unseen.map(({ kind, id }) => ({ kind, id })),
 						cursors,
 					},
-					mergeKey: `${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
-				});
-				if (fired.ok) result.created.push(armed.id);
-				else result.errors.push(`${armed.id}:fire_failed`);
+					`${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
+				);
 			} catch (error) {
 				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
 			}

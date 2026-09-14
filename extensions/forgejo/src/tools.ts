@@ -2,14 +2,16 @@ import {
 	createWriteIdentity,
 	type ExternalWriteLogRepoLike,
 	ensureWrite,
+	recordWriteIfMissing,
 } from "@leitwerk-dev/external-writes";
-import type {
-	IntegrationToolExecutionContext,
-	ProcessProjectRepoLike,
-	ServerExtensionAPI,
-	TicketCreationCapability,
-	TicketCreationDestinationProvider,
-	TicketCreationDestinationSnapshot,
+import {
+	numberArg,
+	type ProcessProjectRepoLike,
+	projectParameters,
+	type ServerExtensionAPI,
+	stringArg,
+	type TicketCreationDestinationProvider,
+	type TicketCreationDestinationSnapshot,
 } from "@leitwerk-dev/process-sdk";
 import { resolveForgejoProjectBinding } from "./binding.js";
 import type { ForgejoIntegration } from "./capability.js";
@@ -19,20 +21,6 @@ function object(value: unknown): Record<string, unknown> {
 	if (!value || typeof value !== "object" || Array.isArray(value))
 		throw new Error("Tool arguments must be an object");
 	return value as Record<string, unknown>;
-}
-
-function stringArg(args: Record<string, unknown>, name: string): string {
-	const value = args[name];
-	if (typeof value !== "string" || !value.trim())
-		throw new Error(`'${name}' must be a non-empty string`);
-	return value.trim();
-}
-
-function numberArg(args: Record<string, unknown>, name: string): number {
-	const value = args[name];
-	if (typeof value !== "number" || !Number.isInteger(value) || value <= 0)
-		throw new Error(`'${name}' must be a positive integer`);
-	return value;
 }
 
 function stringArrayArg(args: Record<string, unknown>, name: string): string[] {
@@ -103,6 +91,14 @@ function createDestinationProvider(
 	integration: ForgejoIntegration,
 	ticketCreation: ForgejoTicketCreationConfig,
 ): TicketCreationDestinationProvider {
+	const summary = (profile: string, repository: ForgejoRepository, baseUrl: string) => ({
+		id: destinationId({ profile, repositoryId: repository.id }),
+		displayName: repository.full_name,
+		group: destinationGroup(profile, baseUrl),
+		description: ticketCreation.defaultLabels.length
+			? `Default labels: ${ticketCreation.defaultLabels.join(", ")}`
+			: "No default labels",
+	});
 	return {
 		async list() {
 			const results = await Promise.all(
@@ -111,14 +107,9 @@ function createDestinationProvider(
 						const client = integration.client(profile);
 						const repositories = (await client.listRepositories()).filter(availableRepository);
 						return {
-							destinations: repositories.map((repository) => ({
-								id: destinationId({ profile, repositoryId: repository.id }),
-								displayName: repository.full_name,
-								group: destinationGroup(profile, client.profile.baseUrl),
-								description: ticketCreation.defaultLabels.length
-									? `Default labels: ${ticketCreation.defaultLabels.join(", ")}`
-									: "No default labels",
-							})),
+							destinations: repositories.map((repository) =>
+								summary(profile, repository, client.profile.baseUrl),
+							),
 							warnings: [] as string[],
 						};
 					} catch {
@@ -150,14 +141,7 @@ function createDestinationProvider(
 				defaultLabels: [...ticketCreation.defaultLabels],
 			};
 			return {
-				summary: {
-					id: destinationId(data),
-					displayName: repository.full_name,
-					group: destinationGroup(decoded.profile, client.profile.baseUrl),
-					description: ticketCreation.defaultLabels.length
-						? `Default labels: ${ticketCreation.defaultLabels.join(", ")}`
-						: "No default labels",
-				},
+				summary: summary(decoded.profile, repository, client.profile.baseUrl),
 				data,
 				agentContext: `Create the ticket in ${repository.full_name} on ${new URL(client.profile.baseUrl).hostname}. Configured default labels: ${ticketCreation.defaultLabels.join(", ") || "none"}. Existing optional labels: ${
 					labels
@@ -184,17 +168,7 @@ function createDestinationProvider(
 	};
 }
 
-function target(ctx: IntegrationToolExecutionContext, _args: Record<string, unknown>) {
-	return resolveForgejoProjectBinding(ctx);
-}
-
-const projectSchema = {
-	type: "object",
-	properties: {
-		projectKey: { type: "string", description: "Current process project key" },
-	},
-	required: ["projectKey"],
-} as const;
+const target = resolveForgejoProjectBinding;
 
 export function registerForgejoTools(
 	api: ServerExtensionAPI,
@@ -203,20 +177,13 @@ export function registerForgejoTools(
 	ticketCreation: ForgejoTicketCreationConfig = { defaultLabels: ["created-by-leitwerk"] },
 	projects?: ProcessProjectRepoLike,
 ): void {
-	const register = <T extends Record<string, unknown>>(input: {
-		name: string;
-		description: string;
-		parameters: Record<string, unknown>;
-		capability?: TicketCreationCapability;
-		execute(ctx: IntegrationToolExecutionContext, args: T): Promise<unknown>;
-	}) => api.tool(input);
-	register({
+	api.tool<Record<string, unknown>>({
 		name: "forgejo_resolve_git_identity",
 		description: "Resolve and durably pin the authenticated Forgejo Git identity",
-		parameters: projectSchema,
-		async execute(ctx, args) {
+		parameters: projectParameters(),
+		async execute(ctx) {
 			if (!projects) throw new Error("Process project persistence is unavailable");
-			const { profile } = target(ctx, args);
+			const { profile } = target(ctx);
 			const identity = await integration.client(profile).resolveGitIdentity(profile, ctx.signal);
 			if (!ctx.project) throw new Error("A process project is required");
 			const metadata = object(ctx.project.metadata ?? {});
@@ -228,7 +195,7 @@ export function registerForgejoTools(
 		},
 	});
 	if (ticketCreation.enabled !== false)
-		register({
+		api.tool<Record<string, unknown>>({
 			name: "forgejo_create_issue",
 			description: "Create one issue in the operator-selected Forgejo repository",
 			parameters: {
@@ -305,6 +272,7 @@ export function registerForgejoTools(
 					if (!label) throw new Error(`Forgejo label '${name}' is unavailable`);
 					return label.id;
 				});
+				const identity = createWriteIdentity("forgejo.create_issue", ctx.idempotencyKey);
 				const marker = `<!-- leitwerk-ticket-write:${ctx.idempotencyKey} -->`;
 				const markedBody = `${body}\n\n${marker}`;
 				const find = async () =>
@@ -314,20 +282,15 @@ export function registerForgejoTools(
 				let issue = await find();
 				if (!issue) {
 					try {
-						await ensureWrite(
-							externalWrites,
-							ctx.process.id,
-							createWriteIdentity("forgejo.create_issue", ctx.idempotencyKey),
-							async () => {
-								issue = await client.createIssue(
-									target.owner,
-									target.repo,
-									{ title, body: markedBody, labels: labelIds },
-									ctx.signal,
-								);
-								return { number: issue.number, url: issue.html_url };
-							},
-						);
+						await ensureWrite(externalWrites, ctx.process.id, identity, async () => {
+							issue = await client.createIssue(
+								target.owner,
+								target.repo,
+								{ title, body: markedBody, labels: labelIds },
+								ctx.signal,
+							);
+							return { number: issue.number, url: issue.html_url };
+						});
 					} catch (error) {
 						issue = await find();
 						if (!issue) throw error;
@@ -337,13 +300,10 @@ export function registerForgejoTools(
 				if (!issue) throw new Error("Forgejo issue creation could not be reconciled");
 				// A lost response can be reconciled by the provider marker before a write
 				// record exists. Record the confirmed receipt without issuing another POST.
-				const confirmed = issue;
-				await ensureWrite(
-					externalWrites,
-					ctx.process.id,
-					createWriteIdentity("forgejo.create_issue", ctx.idempotencyKey),
-					async () => ({ number: confirmed.number, url: confirmed.html_url }),
-				);
+				recordWriteIfMissing(externalWrites, ctx.process.id, identity, {
+					number: issue.number,
+					url: issue.html_url,
+				});
 				return {
 					externalId: `${target.owner}/${target.repo}#${issue.number}`,
 					url: issue.html_url,
@@ -351,22 +311,17 @@ export function registerForgejoTools(
 				};
 			},
 		});
-	register({
+	api.tool<Record<string, unknown>>({
 		name: "forgejo_ensure_pull_request",
 		description: "Create a Forgejo pull request unless the branch pair already has one",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				title: { type: "string" },
-				body: { type: "string" },
-				head: { type: "string" },
-				base: { type: "string" },
-			},
-			required: ["projectKey", "title", "body", "head", "base"],
-		},
+		parameters: projectParameters({
+			title: { type: "string" },
+			body: { type: "string" },
+			head: { type: "string" },
+			base: { type: "string" },
+		}),
 		async execute(ctx, args) {
-			const t = target(ctx, args);
+			const t = target(ctx);
 			const client = integration.client(t.profile);
 			const head = stringArg(args, "head");
 			const base = stringArg(args, "base");
@@ -394,16 +349,12 @@ export function registerForgejoTools(
 			return created ?? (await find());
 		},
 	});
-	register({
+	api.tool<Record<string, unknown>>({
 		name: "forgejo_ensure_label",
 		description: "Create a Forgejo repository label unless it already exists",
-		parameters: {
-			...projectSchema,
-			properties: { ...projectSchema.properties, name: { type: "string" } },
-			required: ["projectKey", "name"],
-		},
+		parameters: projectParameters({ name: { type: "string" } }),
 		async execute(ctx, args) {
-			const t = target(ctx, args);
+			const t = target(ctx);
 			const client = integration.client(t.profile);
 			const name = stringArg(args, "name");
 			const existing = (await client.listLabels(t.owner, t.repo)).find(
@@ -426,95 +377,55 @@ export function registerForgejoTools(
 		},
 	});
 
-	register({
-		name: "forgejo_get_issue",
-		description: "Read a Forgejo issue in the current process repository",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				issueNumber: { type: "integer" },
-			},
-			required: ["projectKey", "issueNumber"],
-		},
-		async execute(ctx, args) {
-			const t = target(ctx, args);
-			return integration
-				.client(t.profile)
-				.getIssue(t.owner, t.repo, numberArg(args, "issueNumber"), ctx.signal);
-		},
-	});
-	register({
-		name: "forgejo_list_issue_comments",
-		description: "List comments on a Forgejo issue in the current process repository",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				issueNumber: { type: "integer" },
-			},
-			required: ["projectKey", "issueNumber"],
-		},
-		async execute(ctx, args) {
-			const t = target(ctx, args);
-			return integration
-				.client(t.profile)
-				.listIssueComments(t.owner, t.repo, numberArg(args, "issueNumber"), ctx.signal);
-		},
-	});
-	register({
-		name: "forgejo_get_pull_request",
-		description: "Read a Forgejo pull request in the current process repository",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				pullRequestNumber: { type: "integer" },
-			},
-			required: ["projectKey", "pullRequestNumber"],
-		},
-		async execute(ctx, args) {
-			const t = target(ctx, args);
-			return integration
-				.client(t.profile)
-				.getPullRequest(t.owner, t.repo, numberArg(args, "pullRequestNumber"), ctx.signal);
-		},
-	});
-	register({
-		name: "forgejo_list_pull_request_feedback",
-		description:
+	for (const [name, description, numberName, method] of [
+		[
+			"forgejo_get_issue",
+			"Read a Forgejo issue in the current process repository",
+			"issueNumber",
+			"getIssue",
+		],
+		[
+			"forgejo_list_issue_comments",
+			"List comments on a Forgejo issue in the current process repository",
+			"issueNumber",
+			"listIssueComments",
+		],
+		[
+			"forgejo_get_pull_request",
+			"Read a Forgejo pull request in the current process repository",
+			"pullRequestNumber",
+			"getPullRequest",
+		],
+		[
+			"forgejo_list_pull_request_feedback",
 			"List conversation, submitted review, and inline feedback on a Forgejo pull request",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				pullRequestNumber: { type: "integer" },
+			"pullRequestNumber",
+			"listPullRequestFeedback",
+		],
+	] as const) {
+		api.tool<Record<string, unknown>>({
+			name,
+			description,
+			parameters: projectParameters({ [numberName]: { type: "integer" } }),
+			async execute(ctx, args) {
+				const t = target(ctx);
+				return integration
+					.client(t.profile)
+					[method](t.owner, t.repo, numberArg(args, numberName), ctx.signal);
 			},
-			required: ["projectKey", "pullRequestNumber"],
-		},
-		async execute(ctx, args) {
-			const t = target(ctx, args);
-			return integration
-				.client(t.profile)
-				.listPullRequestFeedback(t.owner, t.repo, numberArg(args, "pullRequestNumber"), ctx.signal);
-		},
-	});
-	register({
+		});
+	}
+	api.tool<Record<string, unknown>>({
 		name: "forgejo_add_pull_request_feedback_reaction",
 		description: "Mark a Forgejo pull request conversation or inline comment with eyes",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				pullRequestNumber: { type: "integer" },
-				feedbackKind: { type: "string", enum: ["conversation", "inline"] },
-				feedbackId: { type: "integer" },
-				writeKey: { type: "string" },
-			},
-			required: ["projectKey", "pullRequestNumber", "feedbackKind", "feedbackId", "writeKey"],
-		},
+		parameters: projectParameters({
+			pullRequestNumber: { type: "integer" },
+			feedbackKind: { type: "string", enum: ["conversation", "inline"] },
+			feedbackId: { type: "integer" },
+			writeKey: { type: "string" },
+		}),
 		async execute(ctx, args) {
-			const t = target(ctx, args);
+			const t = target(ctx);
 			const kind = stringArg(args, "feedbackKind");
 			if (kind !== "conversation" && kind !== "inline") {
 				throw new Error("'feedbackKind' must be 'conversation' or 'inline'");
@@ -544,33 +455,21 @@ export function registerForgejoTools(
 			return { ok: true };
 		},
 	});
-	register({
+	api.tool<Record<string, unknown>>({
 		name: "forgejo_reply_to_pull_request_feedback",
 		description: "Resolve Forgejo pull request feedback and post a threaded reply",
-		parameters: {
-			...projectSchema,
-			properties: {
-				...projectSchema.properties,
-				pullRequestNumber: { type: "integer" },
-				feedbackKind: {
-					type: "string",
-					enum: ["conversation", "review", "inline"],
-				},
-				feedbackId: { type: "integer" },
-				body: { type: "string" },
-				writeKey: { type: "string" },
+		parameters: projectParameters({
+			pullRequestNumber: { type: "integer" },
+			feedbackKind: {
+				type: "string",
+				enum: ["conversation", "review", "inline"],
 			},
-			required: [
-				"projectKey",
-				"pullRequestNumber",
-				"feedbackKind",
-				"feedbackId",
-				"body",
-				"writeKey",
-			],
-		},
+			feedbackId: { type: "integer" },
+			body: { type: "string" },
+			writeKey: { type: "string" },
+		}),
 		async execute(ctx, args) {
-			const t = target(ctx, args);
+			const t = target(ctx);
 			const pullRequestNumber = numberArg(args, "pullRequestNumber");
 			const feedbackKind = stringArg(args, "feedbackKind");
 			const feedbackId = numberArg(args, "feedbackId");
@@ -604,31 +503,29 @@ export function registerForgejoTools(
 	});
 
 	for (const definition of [
-		{ name: "forgejo_add_issue_comment", numberName: "issueNumber", pr: false },
+		{ name: "forgejo_add_issue_comment", numberName: "issueNumber", method: "addIssueComment" },
 		{
 			name: "forgejo_add_pull_request_comment",
 			numberName: "pullRequestNumber",
-			pr: true,
+			method: "addPullRequestComment",
 		},
 	] as const) {
-		register({
+		api.tool<Record<string, unknown>>({
 			name: definition.name,
-			description: `Add a comment to a Forgejo ${definition.pr ? "pull request" : "issue"}`,
-			parameters: {
-				...projectSchema,
-				properties: {
-					...projectSchema.properties,
+			description: `Add a comment to a Forgejo ${definition.numberName === "pullRequestNumber" ? "pull request" : "issue"}`,
+			parameters: projectParameters(
+				{
 					[definition.numberName]: { type: "integer" },
 					body: { type: "string" },
 					writeKey: { type: "string" },
 				},
-				required: ["projectKey", definition.numberName, "body"],
-			},
+				[definition.numberName, "body"],
+			),
 			async execute(ctx, args) {
-				const t = target(ctx, args);
+				const t = target(ctx);
 				const number = numberArg(args, definition.numberName);
 				const body = stringArg(args, "body");
-				const result = await ensureWrite(
+				return ensureWrite(
 					externalWrites,
 					ctx.process.id,
 					createWriteIdentity(
@@ -636,44 +533,37 @@ export function registerForgejoTools(
 						typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
 					),
 					async () => {
-						await (definition.pr
-							? integration
-									.client(t.profile)
-									.addPullRequestComment(t.owner, t.repo, number, body, ctx.signal)
-							: integration
-									.client(t.profile)
-									.addIssueComment(t.owner, t.repo, number, body, ctx.signal));
+						await integration
+							.client(t.profile)
+							[definition.method](t.owner, t.repo, number, body, ctx.signal);
 						return { owner: t.owner, repo: t.repo, number };
 					},
 				);
-				return result;
 			},
 		});
 	}
 
 	for (const definition of [
-		{ name: "forgejo_update_issue", numberName: "issueNumber", pr: false },
+		{ name: "forgejo_update_issue", numberName: "issueNumber", method: "updateIssue" },
 		{
 			name: "forgejo_update_pull_request",
 			numberName: "pullRequestNumber",
-			pr: true,
+			method: "updatePullRequest",
 		},
 	] as const) {
-		register({
+		api.tool<Record<string, unknown>>({
 			name: definition.name,
-			description: `Update a Forgejo ${definition.pr ? "pull request" : "issue"}`,
-			parameters: {
-				...projectSchema,
-				properties: {
-					...projectSchema.properties,
+			description: `Update a Forgejo ${definition.numberName === "pullRequestNumber" ? "pull request" : "issue"}`,
+			parameters: projectParameters(
+				{
 					[definition.numberName]: { type: "integer" },
 					patch: { type: "object" },
 					writeKey: { type: "string" },
 				},
-				required: ["projectKey", definition.numberName, "patch"],
-			},
+				[definition.numberName, "patch"],
+			),
 			async execute(ctx, args) {
-				const t = target(ctx, args);
+				const t = target(ctx);
 				const number = numberArg(args, definition.numberName);
 				const patch = object(args.patch);
 				await ensureWrite(
@@ -684,13 +574,9 @@ export function registerForgejoTools(
 						typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
 					),
 					async () => {
-						await (definition.pr
-							? integration
-									.client(t.profile)
-									.updatePullRequest(t.owner, t.repo, number, patch, ctx.signal)
-							: integration
-									.client(t.profile)
-									.updateIssue(t.owner, t.repo, number, patch, ctx.signal));
+						await integration
+							.client(t.profile)
+							[definition.method](t.owner, t.repo, number, patch, ctx.signal);
 						return { owner: t.owner, repo: t.repo, number };
 					},
 				);

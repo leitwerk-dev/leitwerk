@@ -1,4 +1,5 @@
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import type { WoodpeckerIntegration } from "./capability.js";
 import type { WoodpeckerClient } from "./client.js";
@@ -16,12 +17,7 @@ function fixture(
 	resolved: Record<string, unknown> = {},
 ) {
 	const fire = vi.fn(async () => ({ ok: true }));
-	const deps = {
-		polling: {
-			create: <T>(options: { pollOnce(): Promise<T> }) => ({
-				poll: options.pollOnce,
-			}),
-		},
+	const deps = createTestServerSetupCapability({
 		externalSources: {
 			listArmed: (kind: string) =>
 				kind === WOODPECKER_PIPELINE_KIND
@@ -43,7 +39,7 @@ function fixture(
 					: [],
 			fire,
 		},
-	} as unknown as CoreServerSetupDeps;
+	} as unknown as Partial<CoreServerSetupDeps>);
 	const client = {
 		lookupRepository: vi.fn(async () => ({ id: 9, full_name: "team/repo" })),
 		listPipelines: vi.fn(async () => pipelines),

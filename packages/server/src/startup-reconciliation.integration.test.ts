@@ -11,6 +11,7 @@ import {
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
+	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
@@ -60,24 +61,6 @@ const extensionCatalogPromise = buildExtensionCatalogFromModules([startupTestExt
 
 const harnesses: IntegrationHarness[] = [];
 const tempRoots: string[] = [];
-
-async function waitFor<T>(
-	read: () => T,
-	predicate: (value: T) => boolean,
-	timeoutMs = 5_000,
-): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	while (true) {
-		const value = read();
-		if (predicate(value)) {
-			return value;
-		}
-		if (Date.now() >= deadline) {
-			throw new Error("timed out waiting for startup reconciliation condition");
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-}
 
 function createPersistentConfig(
 	tempRoot: string,

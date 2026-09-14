@@ -71,6 +71,31 @@ function issue(body: string): ForgejoIssue {
 }
 
 describe("Forgejo server tools", () => {
+	it.each([
+		["forgejo_get_issue", "issueNumber", "getIssue"],
+		["forgejo_list_issue_comments", "issueNumber", "listIssueComments"],
+		["forgejo_get_pull_request", "pullRequestNumber", "getPullRequest"],
+		["forgejo_list_pull_request_feedback", "pullRequestNumber", "listPullRequestFeedback"],
+	])("routes %s through the authorized project", async (name, numberName, method) => {
+		const read = vi.fn(async () => "result");
+		const { tools } = setup({ [method]: read });
+		const ctx = {
+			...context({}),
+			project: {
+				instanceId: "ticket-1",
+				metadata: { forgejo: { owner: "team", repo: "repo", profile: "primary" } },
+			} as IntegrationToolExecutionContext["project"],
+		};
+		const tool = tools.get(name);
+		expect(tool?.parameters.required).toEqual(["projectKey", numberName]);
+		await expect(tool?.execute(ctx, { [numberName]: 7 })).resolves.toBe("result");
+		expect(read).toHaveBeenCalledWith("team", "repo", 7, ctx.signal);
+		for (const invalid of [0, -1, 1.5, NaN, "7"])
+			await expect(tool?.execute(ctx, { [numberName]: invalid })).rejects.toThrow(
+				"positive integer",
+			);
+	});
+
 	it("resolves and durably pins project Git identity", async () => {
 		const identity = {
 			name: "Leitwerk Bot",

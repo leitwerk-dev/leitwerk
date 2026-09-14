@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createSandboxApp, type SandboxInput, sandboxConfig } from "@leitwerk-dev/dev-sandbox";
@@ -19,7 +20,7 @@ export async function fixture(
 		try {
 			await sandbox?.stop();
 		} finally {
-			rmSync(root, { recursive: true, force: true });
+			await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		}
 	});
 	const input: SandboxInput = {

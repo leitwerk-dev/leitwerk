@@ -47,8 +47,7 @@ describe("WoodpeckerClient", () => {
 
 		const result = await client.getStepLogs(4, 12, 7, 2, 9);
 
-		expect(new TextEncoder().encode(result.logs).byteLength).toBeLessThanOrEqual(9);
-		expect(result.logs).not.toContain("old");
+		expect(result.logs).toBe("🙂🙂");
 		expect(result.truncated).toBe(true);
 	});
 

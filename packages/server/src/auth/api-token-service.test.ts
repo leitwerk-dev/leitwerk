@@ -1,5 +1,5 @@
 import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
 import { resolveApiTokenPolicy, tokenExpiry } from "./api-token-policy.js";
@@ -68,7 +68,9 @@ describe("API token ownership and lifecycle", () => {
 			actor,
 			expiresAt: new Date(Date.now() + 60000).toISOString(),
 		});
-		const owner = service.ownerForActor(auth.resolveSession("legacy-session")!);
+		const sessionActor = auth.resolveSession("legacy-session");
+		assert(sessionActor, "Expected the legacy session to resolve");
+		const owner = service.ownerForActor(sessionActor);
 		const { token, secret } = service.create(owner, "automation", undefined);
 		expect(secret).toMatch(/^lwk_pat_[A-Za-z0-9_-]{43}$/);
 		expect(service.resolve(secret).actor).toEqual(actor);
@@ -120,7 +122,8 @@ describe("API token ownership and lifecycle", () => {
 			"test",
 			null,
 		);
-		config.auth!.providers = [
+		assert(config.auth, "Expected configured authentication");
+		config.auth.providers = [
 			{
 				id: "github",
 				kind: "oauth2",
@@ -153,7 +156,8 @@ describe("API token ownership and lifecycle", () => {
 		harness(testAuthConfig({ auth: { api_tokens: { enabled: false } } }), repos);
 		expect(harness(config, repos).service.resolve(secret).actor).toBeNull();
 		expect(harness(config, repos).service.list(owner)[0].revokedAt).not.toBeNull();
-		const record = repos.apiTokens.findByHash(hashOpaqueToken(secret))!;
+		const record = repos.apiTokens.findByHash(hashOpaqueToken(secret));
+		assert(record, "Expected the revoked token to remain stored");
 		repos.apiTokens.create({
 			...record,
 			id: "boundary",

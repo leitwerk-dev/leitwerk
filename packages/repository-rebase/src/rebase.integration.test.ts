@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	prepareRebase,
@@ -22,7 +23,7 @@ function git(path: string, ...args: string[]) {
 		"GIT_COMMITTER_DATE",
 	])
 		delete env[name];
-	return execFileSync("git", args, {
+	return execFileSync(resolveGitBinary(), args, {
 		cwd: path,
 		encoding: "utf8",
 		env: {
@@ -80,7 +81,9 @@ function resolve(input: RebaseInput) {
 	git(input.path, "add", "file");
 	git(input.path, "rebase", "--continue");
 }
-describe("repository rebase with real remotes", () => {
+// Each scenario runs dozens of real Git subprocesses, including clones, fetches and rebases.
+// Allow slow POSIX runners without raising the budget for ordinary unit tests.
+describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 	it("rejects changed origin and push endpoints after preparation", () => {
 		const { input, path, root } = fixture(false);
 		startRebase(input);

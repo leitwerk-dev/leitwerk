@@ -1,9 +1,4 @@
-import {
-	LocalGit,
-	type LocalRepositorySeed,
-	readLocalJson,
-	writeLocalJson,
-} from "@leitwerk-dev/test-support/local-git";
+import { LocalProviderStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
 import type { GitHubClientLike } from "./capability.js";
 import type {
 	GitHubCheckSummary,
@@ -49,28 +44,15 @@ export interface LocalGitHubOptions {
 }
 
 /** Persistent local GitHub with actual commit ancestry and configurable release assets. */
-export class LocalGitHubAdapter {
-	readonly git: LocalGit;
-	state: LocalGitHubState;
-	constructor(readonly options: LocalGitHubOptions) {
-		this.git = new LocalGit(options.root);
-		this.state = readLocalJson(options.root, "github.json", {
+export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, LocalGitHubOptions> {
+	constructor(options: LocalGitHubOptions) {
+		super(options, "github.json", {
 			version: 1,
 			sequence: 0,
 			repositories: [],
 			failAfterPullRequestWrite: false,
 		});
 		for (const seed of options.seeds ?? []) this.seed(seed);
-	}
-	save() {
-		writeLocalJson(this.options.root, "github.json", this.state);
-	}
-	id() {
-		this.state.sequence = Math.max(this.state.sequence + 1, this.options.nextId?.() ?? 0);
-		return this.state.sequence;
-	}
-	timestamp() {
-		return new Date(this.options.now?.() ?? Date.now()).toISOString();
 	}
 	repo(owner: string, name: string) {
 		const repo = this.state.repositories.find((r) => r.repository.full_name === `${owner}/${name}`);

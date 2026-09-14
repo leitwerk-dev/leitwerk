@@ -61,6 +61,19 @@ authorized names with `.integrationTools(...)`. Workers receive only each tool's
 description, and parameter schema. The server accepts a call only from the current turn
 record and only for a tool authorized by that turn. Provider credentials stay on the server.
 Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
+SDK helpers `stringArg(args, name)` and `numberArg(args, name)` require a nonempty trimmed
+string and a positive integer, respectively. Invalid arguments throw an error naming the field.
+`projectParameters(properties, required?)` adds the required `projectKey` string to an object
+schema. Other properties are required by default; pass their required names to keep some optional.
+
+`resolveRepositoryProjectBinding(ctx, provider, legacyMetadataKey?)` validates project ownership
+and nonempty `owner`, `repo`, and `profile` metadata. Without a legacy key, a missing profile
+uses `${provider}Profile` from process parameters. With a legacy key, only absent provider
+metadata uses that legacy binding and process profile. Explicit malformed metadata is rejected.
+`normalizeRepositoryFeedback(kind, item)` normalizes common forge feedback fields and returns
+`null` for empty bodies or missing identities. Extensions retain provider-specific fields.
+`createExternalSourcePollReporter(sources, result)` records fire results and attaches arming
+identity to observations. Extensions still own scheduling, event selection, and stale-source checks.
 
 Reconnects replay a call with the same idempotency key. Mutating tools must use
 `ensureWrite()` so replay remains safe across server restarts. When a turn stops, the

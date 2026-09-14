@@ -1,3 +1,9 @@
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	normalizeRepositoryFeedback,
+	type RepositoryFeedbackItem,
+} from "@leitwerk-dev/process-sdk";
+
 export interface ForgejoRepository {
 	id: number;
 	name: string;
@@ -35,14 +41,7 @@ export interface ForgejoPullRequest {
 	base: { ref: string; sha: string };
 }
 
-export interface ForgejoFeedbackItem {
-	kind: "conversation" | "review" | "inline";
-	id: number;
-	body: string;
-	createdAt: string;
-	author: string;
-	path?: string;
-	line?: number | null;
+export interface ForgejoFeedbackItem extends RepositoryFeedbackItem {
 	reviewId?: number;
 	position?: number;
 	originalPosition?: number;
@@ -79,14 +78,8 @@ export interface ForgejoTicketCreationConfig {
 	defaultLabels: readonly string[];
 }
 
-function record(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
 export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketCreationConfig {
-	const ticketCreation = record(record(value).ticket_creation);
+	const ticketCreation = asUnknownRecord(asUnknownRecord(value)?.ticket_creation) ?? {};
 	const rawLabels = ticketCreation.default_labels;
 	if (ticketCreation.enabled !== undefined && typeof ticketCreation.enabled !== "boolean")
 		throw new Error("Forgejo ticket_creation.enabled must be a boolean");
@@ -104,8 +97,10 @@ export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketC
 
 export function parseForgejoProfiles(value: unknown): Map<string, ForgejoProfile> {
 	const profiles = new Map<string, ForgejoProfile>();
-	for (const [name, raw] of Object.entries(record(record(value).profiles))) {
-		const config = record(raw);
+	for (const [name, raw] of Object.entries(
+		asUnknownRecord(asUnknownRecord(value)?.profiles) ?? {},
+	)) {
+		const config = asUnknownRecord(raw) ?? {};
 		const baseUrl = typeof config.base_url === "string" ? config.base_url.replace(/\/+$/, "") : "";
 		const token = typeof config.token === "string" ? config.token.trim() : "";
 		const botLogin = typeof config.bot_login === "string" ? config.bot_login.trim() : "leitwerk";
@@ -189,9 +184,7 @@ export class ForgejoClient {
 	}
 
 	listOpenIssues(owner: string, repo: string): Promise<ForgejoIssue[]> {
-		return this.pages(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=open&type=issues`,
-		);
+		return this.listIssues(owner, repo, "open");
 	}
 
 	getIssue(
@@ -218,17 +211,7 @@ export class ForgejoClient {
 		);
 	}
 
-	updateIssue(
-		owner: string,
-		repo: string,
-		number: number,
-		patch: Record<string, unknown>,
-		signal?: AbortSignal,
-	): Promise<ForgejoIssue> {
-		return this.updateIssueParts(owner, repo, number, patch, signal);
-	}
-
-	private async updateIssueParts(
+	async updateIssue(
 		owner: string,
 		repo: string,
 		number: number,
@@ -431,22 +414,10 @@ export class ForgejoClient {
 			kind: ForgejoFeedbackItem["kind"],
 			item: Record<string, unknown>,
 		): ForgejoFeedbackItem | null => {
-			const body = typeof item.body === "string" ? item.body.trim() : "";
-			const user = record(item.user);
-			if (!body || typeof item.id !== "number" || typeof user.login !== "string") return null;
+			const feedback = normalizeRepositoryFeedback(kind, item);
+			if (!feedback) return null;
 			return {
-				kind,
-				id: item.id,
-				body,
-				createdAt:
-					typeof item.submitted_at === "string"
-						? item.submitted_at
-						: typeof item.created_at === "string"
-							? item.created_at
-							: new Date(0).toISOString(),
-				author: user.login,
-				...(typeof item.path === "string" ? { path: item.path } : {}),
-				...(typeof item.line === "number" ? { line: item.line } : {}),
+				...feedback,
 				...(typeof item.reviewId === "number" ? { reviewId: item.reviewId } : {}),
 				...(typeof item.position === "number" ? { position: item.position } : {}),
 				...(typeof item.original_position === "number"

@@ -198,6 +198,7 @@ export type {
 	WorkerTurnHandler,
 } from "./extension-api.js";
 export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
+export { createExternalSourcePollReporter } from "./external-source-poll.js";
 export {
 	AutomaticFlowBuilder,
 	AutomaticOutcomeBuilder,
@@ -354,6 +355,11 @@ export {
 	parseProcessWatcherLaunchModelConfig,
 } from "./process-watcher-source.js";
 export {
+	type RepositoryProjectBinding,
+	resolveRepositoryProjectBinding,
+} from "./project-binding.js";
+export { normalizeRepositoryFeedback, type RepositoryFeedbackItem } from "./repository-feedback.js";
+export {
 	clearRepositoryGitSshWrappers,
 	repositoryGitArgs,
 	repositoryGitSubprocessEnv,
@@ -397,6 +403,7 @@ export {
 	sanitizeWorkerSubprocessEnv,
 	WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS,
 } from "./subprocess-env.js";
+export { numberArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type {
 	ToolCallRendererDefinition,
 	ToolCallRendererFieldDefinition,

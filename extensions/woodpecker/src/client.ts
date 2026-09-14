@@ -1,3 +1,6 @@
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import { boundedLogTail } from "./logs.js";
+
 export interface WoodpeckerProfile {
 	baseUrl: string;
 	token: string;
@@ -21,12 +24,6 @@ interface WoodpeckerLogEntry {
 	data?: number[] | string;
 }
 
-function object(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
 function decodeLogData(data: WoodpeckerLogEntry["data"]): string {
 	if (Array.isArray(data)) {
 		return new TextDecoder("utf-8", { fatal: false }).decode(Uint8Array.from(data));
@@ -47,8 +44,10 @@ function decodeLogData(data: WoodpeckerLogEntry["data"]): string {
 
 export function parseWoodpeckerProfiles(value: unknown): Map<string, WoodpeckerProfile> {
 	const profiles = new Map<string, WoodpeckerProfile>();
-	for (const [name, raw] of Object.entries(object(object(value).profiles))) {
-		const config = object(raw);
+	for (const [name, raw] of Object.entries(
+		asUnknownRecord(asUnknownRecord(value)?.profiles) ?? {},
+	)) {
+		const config = asUnknownRecord(raw) ?? {};
 		const baseUrl = typeof config.base_url === "string" ? config.base_url.replace(/\/+$/, "") : "";
 		const token = typeof config.token === "string" ? config.token.trim() : "";
 		if (!/^https:\/\//.test(baseUrl))
@@ -128,27 +127,17 @@ export class WoodpeckerClient {
 			if (Array.isArray(entries)) {
 				text = entries
 					.map((entry) =>
-						decodeLogData(object(entry).data as WoodpeckerLogEntry["data"]).replace(/\r?\n$/, ""),
+						decodeLogData(asUnknownRecord(entry)?.data as WoodpeckerLogEntry["data"]).replace(
+							/\r?\n$/,
+							"",
+						),
 					)
 					.join("\n");
 			}
 		} catch {
 			// Older adapters may return text directly; retain it as-is.
 		}
-		const lines = text.split(/\r?\n/).slice(-Math.min(Math.max(tailLines, 1), 2_000));
-		let output = lines.join("\n");
-		const cap = Math.min(Math.max(maxBytes, 1), 1_048_576);
-		const encoder = new TextEncoder();
-		const encoded = encoder.encode(output);
-		if (encoded.byteLength > cap) {
-			let start = encoded.byteLength - cap;
-			while (start < encoded.byteLength) {
-				const firstByte = encoded[start];
-				if (firstByte === undefined || (firstByte & 0xc0) !== 0x80) break;
-				start += 1;
-			}
-			output = new TextDecoder("utf-8", { fatal: true }).decode(encoded.slice(start));
-		}
+		const output = boundedLogTail(text.split(/\r?\n/), tailLines, maxBytes);
 		return { logs: output, truncated: output.length < text.length };
 	}
 

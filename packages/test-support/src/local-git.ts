@@ -17,10 +17,14 @@ export interface LocalRepositorySeed {
 	files?: Record<string, string>;
 	/** Retain a pre-existing sandbox checkout layout. */
 	directoryName?: string;
+	commitMessage?: string;
+	signoff?: boolean;
 }
 
 /** Reject escaping paths and symlinks, including a not-yet-created file's parents. */
 export function localPath(root: string, relative: string): string {
+	if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink())
+		throw new Error("Local provider storage must not contain symlinks");
 	const base = realpathSync(root);
 	const target = path.resolve(base, relative);
 	if (!target.startsWith(`${base}${path.sep}`))
@@ -52,6 +56,33 @@ export function writeLocalJson(root: string, file: string, value: unknown): void
 	const temporary = localPath(root, `${file}.tmp`);
 	writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
 	renameSync(temporary, target);
+}
+
+/** Persist local adapter state with a shared clock and monotonically increasing ids. */
+export class LocalProviderStore<
+	S extends { version: number; sequence: number },
+	O extends { root: string; now?: () => number; nextId?: () => number },
+> {
+	readonly git: LocalGit;
+	state: S;
+	constructor(
+		readonly options: O,
+		private readonly file: string,
+		initial: S,
+	) {
+		this.git = new LocalGit(options.root);
+		this.state = readLocalJson(options.root, file, initial);
+	}
+	save() {
+		writeLocalJson(this.options.root, this.file, this.state);
+	}
+	id() {
+		this.state.sequence = Math.max(this.state.sequence + 1, this.options.nextId?.() ?? 0);
+		return this.state.sequence;
+	}
+	timestamp() {
+		return new Date(this.options.now?.() ?? Date.now()).toISOString();
+	}
 }
 
 /** Real Git with file-only transport and no ambient credentials or hooks. */
@@ -182,7 +213,13 @@ export class LocalGit {
 			writeFileSync(target, contents);
 		}
 		this.run(worktree, ["add", "."]);
-		this.run(worktree, ["commit", "--allow-empty", "-m", "chore: seed local repository"]);
+		this.run(worktree, [
+			"commit",
+			"--allow-empty",
+			...(seed.signoff ? ["--signoff"] : []),
+			"-m",
+			seed.commitMessage ?? "chore: seed local repository",
+		]);
 		if (!this.run(worktree, ["remote"]).split("\n").includes("origin"))
 			this.run(worktree, ["remote", "add", "origin", bare]);
 		this.run(worktree, ["push", bare, `HEAD:refs/heads/${branch}`]);

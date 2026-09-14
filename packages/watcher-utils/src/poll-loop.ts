@@ -1,5 +1,15 @@
 import { parseDurationMs } from "./duration-parse.js";
 
+/** Reserve the next poll time for a caller-owned key, before starting its work. */
+export function createPollSchedule(now: () => number = () => Date.now()) {
+	const dueAt = new Map<string, number>();
+	return (key: string, interval = "30s", timestamp = now()): boolean => {
+		if ((dueAt.get(key) ?? 0) > timestamp) return false;
+		dueAt.set(key, timestamp + parseDurationMs(interval, 30_000));
+		return true;
+	};
+}
+
 export interface PollResult {
 	created: string[];
 	aborted: string[];

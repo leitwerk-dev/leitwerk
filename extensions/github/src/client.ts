@@ -1,3 +1,11 @@
+import { asUnknownRecord } from "@leitwerk-dev/domain";
+import {
+	type RepositoryFeedbackItem as GitHubFeedbackItem,
+	normalizeRepositoryFeedback as normalize,
+} from "@leitwerk-dev/process-sdk";
+
+export type { GitHubFeedbackItem };
+
 export interface GitHubProfile {
 	apiBaseUrl: string;
 	token: string;
@@ -29,16 +37,6 @@ export interface GitHubPullRequest {
 	base: { ref: string; sha: string };
 }
 
-export interface GitHubFeedbackItem {
-	kind: "conversation" | "review" | "inline";
-	id: number;
-	body: string;
-	createdAt: string;
-	author: string;
-	path?: string;
-	line?: number | null;
-}
-
 export interface GitHubCheckSummary {
 	headSha: string;
 	status: "pending" | "success" | "failure";
@@ -60,16 +58,12 @@ export interface GitHubRelease {
 	assets: Array<{ name: string; url: string; browser_download_url: string }>;
 }
 
-function record(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
 export function parseGitHubProfiles(value: unknown): Map<string, GitHubProfile> {
 	const profiles = new Map<string, GitHubProfile>();
-	for (const [name, raw] of Object.entries(record(record(value).profiles))) {
-		const config = record(raw);
+	for (const [name, raw] of Object.entries(
+		asUnknownRecord(asUnknownRecord(value)?.profiles) ?? {},
+	)) {
+		const config = asUnknownRecord(raw) ?? {};
 		const apiBaseUrl =
 			typeof config.api_base_url === "string"
 				? config.api_base_url.replace(/\/+$/, "")
@@ -88,7 +82,7 @@ export function parseGitHubProfiles(value: unknown): Map<string, GitHubProfile> 
 export class GitHubClient {
 	constructor(readonly profile: GitHubProfile) {}
 
-	private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+	private async response(path: string, init: RequestInit = {}): Promise<Response> {
 		const response = await fetch(`${this.profile.apiBaseUrl}${path}`, {
 			...init,
 			headers: {
@@ -101,22 +95,12 @@ export class GitHubClient {
 		});
 		if (!response.ok)
 			throw new Error(`GitHub ${init.method ?? "GET"} ${path} failed with ${response.status}`);
-		if (response.status === 204) return undefined as T;
-		return (await response.json()) as T;
+		return response;
 	}
 
-	private async text(path: string, init: RequestInit = {}): Promise<string> {
-		const response = await fetch(`${this.profile.apiBaseUrl}${path}`, {
-			...init,
-			headers: {
-				Accept: "application/octet-stream",
-				Authorization: `Bearer ${this.profile.token}`,
-				"X-GitHub-Api-Version": "2022-11-28",
-				...init.headers,
-			},
-		});
-		if (!response.ok) throw new Error(`GitHub GET ${path} failed with ${response.status}`);
-		return response.text();
+	private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+		const response = await this.response(path, init);
+		return response.status === 204 ? (undefined as T) : response.json();
 	}
 
 	private async pages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
@@ -208,28 +192,6 @@ export class GitHubClient {
 			this.pages<Record<string, unknown>>(`${prefix}/pulls/${number}/reviews`, signal),
 			this.pages<Record<string, unknown>>(`${prefix}/pulls/${number}/comments`, signal),
 		]);
-		const normalize = (
-			kind: GitHubFeedbackItem["kind"],
-			item: Record<string, unknown>,
-		): GitHubFeedbackItem | null => {
-			const body = typeof item.body === "string" ? item.body.trim() : "";
-			const user = record(item.user);
-			if (!body || typeof item.id !== "number" || typeof user.login !== "string") return null;
-			return {
-				kind,
-				id: item.id,
-				body,
-				createdAt:
-					typeof item.submitted_at === "string"
-						? item.submitted_at
-						: typeof item.created_at === "string"
-							? item.created_at
-							: new Date(0).toISOString(),
-				author: user.login,
-				...(typeof item.path === "string" ? { path: item.path } : {}),
-				...(typeof item.line === "number" ? { line: item.line } : {}),
-			};
-		};
 		return [
 			...conversation.map((item) => normalize("conversation", item)),
 			...reviews.map((item) => normalize("review", item)),
@@ -270,6 +232,8 @@ export class GitHubClient {
 		const url = new URL(asset.url);
 		if (`${url.protocol}//${url.host}` !== this.profile.apiBaseUrl)
 			throw new Error("GitHub release asset URL does not match the configured API origin");
-		return this.text(`${url.pathname}${url.search}`);
+		return this.response(`${url.pathname}${url.search}`, {
+			headers: { Accept: "application/octet-stream" },
+		}).then((response) => response.text());
 	}
 }

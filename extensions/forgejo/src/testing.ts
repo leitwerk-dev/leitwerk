@@ -1,9 +1,4 @@
-import {
-	LocalGit,
-	type LocalRepositorySeed,
-	readLocalJson,
-	writeLocalJson,
-} from "@leitwerk-dev/test-support/local-git";
+import { LocalProviderStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
 import type { ForgejoClientLike } from "./capability.js";
 import type {
 	ForgejoFeedbackItem,
@@ -38,30 +33,20 @@ export interface LocalForgejoOptions {
 	seeds?: Array<LocalRepositorySeed & { labels?: string[] }>;
 }
 /** Persistent local Forgejo. Register its client through setupForgejoIntegration. */
-export class LocalForgejoAdapter {
-	readonly git: LocalGit;
+export class LocalForgejoAdapter extends LocalProviderStore<
+	LocalForgejoState,
+	LocalForgejoOptions
+> {
 	readonly baseUrl: string;
-	state: LocalForgejoState;
-	constructor(readonly options: LocalForgejoOptions) {
-		this.git = new LocalGit(options.root);
-		this.baseUrl = options.baseUrl;
-		this.state = readLocalJson(options.root, "forgejo.json", {
+	constructor(options: LocalForgejoOptions) {
+		super(options, "forgejo.json", {
 			version: 1,
 			sequence: 0,
 			repositories: [],
 			failAfterIssueWrite: false,
 		});
+		this.baseUrl = options.baseUrl;
 		for (const seed of options.seeds ?? []) this.seed(seed);
-	}
-	save() {
-		writeLocalJson(this.options.root, "forgejo.json", this.state);
-	}
-	id() {
-		this.state.sequence = Math.max(this.state.sequence + 1, this.options.nextId?.() ?? 0);
-		return this.state.sequence;
-	}
-	timestamp() {
-		return new Date(this.options.now?.() ?? Date.now()).toISOString();
 	}
 	repo(owner: string, name: string) {
 		const repo = this.state.repositories.find((r) => r.repository.full_name === `${owner}/${name}`);
