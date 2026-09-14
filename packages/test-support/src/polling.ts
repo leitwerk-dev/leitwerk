@@ -1,11 +1,11 @@
 export async function waitForValue<T>(
-	read: () => T,
+	read: () => T | Promise<T>,
 	predicate: (value: T) => boolean,
 	timeoutMs = 5_000,
 ): Promise<T> {
 	const deadline = Date.now() + timeoutMs;
 	while (true) {
-		const value = read();
+		const value = await read();
 		if (predicate(value)) {
 			return value;
 		}

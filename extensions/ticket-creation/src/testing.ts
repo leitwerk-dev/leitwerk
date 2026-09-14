@@ -140,7 +140,6 @@ export class LocalTicketAdapter {
 						return receipt(ticket);
 					});
 				} catch (error) {
-					if (!find()) throw error;
 					// Reconcile a lost adapter response before recording the durable receipt.
 					const confirmed = find();
 					if (!confirmed) throw error;

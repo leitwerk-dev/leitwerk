@@ -181,7 +181,8 @@ ambiguous. Immediately before approval, `resolve()` converts the opaque choice
 into an immutable, JSON-serializable snapshot. The server passes that snapshot
 to the tool as `ctx.ticketDestination`; workers never receive adapter credentials.
 `validate()` remains available for compatible launches that already carry a
-snapshot.
+snapshot. `parseJsonData(value, message?)` validates and detaches JSON data;
+it rejects cycles, non-finite numbers, non-plain objects and symbol-keyed objects.
 
 ```ts
 api.tool({

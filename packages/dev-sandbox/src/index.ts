@@ -5,6 +5,8 @@ import { type AppContext, createAppContext, type LeitwerkConfig } from "@leitwer
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { type PiTreeHandleFactory, SdkPiTreeHandleFactory } from "@leitwerk-dev/worker";
 
+export { sandboxConfig } from "./config.js";
+
 export type SandboxMode = "scripted" | "real";
 export interface SandboxPaths {
 	workspaceRoot: string;

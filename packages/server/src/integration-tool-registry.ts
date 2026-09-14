@@ -2,6 +2,7 @@ import type { Actor } from "@leitwerk-dev/domain";
 import {
 	type IntegrationToolDefinition,
 	type IntegrationToolExecutionContext,
+	parseJsonData,
 	RESERVED_INTEGRATION_TOOL_NAMES,
 	type TicketCreationCapability,
 	type TicketCreationDestinationList,
@@ -142,23 +143,6 @@ function parseSchema<T>(
 	return parsed.output;
 }
 
-function assertJsonSerializable(value: unknown, seen = new Set<object>()): void {
-	if (value === null || typeof value === "string" || typeof value === "boolean") return;
-	if (typeof value === "number" && Number.isFinite(value)) return;
-	if (!value || typeof value !== "object" || seen.has(value)) {
-		throw new Error("Ticket destination snapshot must be JSON-serializable");
-	}
-	const prototype = Object.getPrototypeOf(value);
-	if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
-		throw new Error("Ticket destination snapshot must be JSON-serializable");
-	}
-	seen.add(value);
-	for (const entry of Array.isArray(value) ? value : Object.values(value)) {
-		assertJsonSerializable(entry, seen);
-	}
-	seen.delete(value);
-}
-
 function validateDestinationSnapshot(value: unknown): TicketCreationDestinationSnapshot {
 	const snapshot = parseSchema(
 		destinationSnapshotSchema,
@@ -170,8 +154,10 @@ function validateDestinationSnapshot(value: unknown): TicketCreationDestinationS
 		data: snapshot.data,
 		...(snapshot.agentContext !== undefined ? { agentContext: snapshot.agentContext } : {}),
 	};
-	assertJsonSerializable(normalized);
-	return JSON.parse(JSON.stringify(normalized)) as TicketCreationDestinationSnapshot;
+	return parseJsonData(
+		normalized,
+		"Ticket destination snapshot must be JSON-serializable",
+	) as TicketCreationDestinationSnapshot;
 }
 
 export function validateTicketCreationReceipt(value: unknown): TicketCreationReceipt {
@@ -189,7 +175,8 @@ export function validateTicketCreationReceipt(value: unknown): TicketCreationRec
 	if (url.protocol !== "https:" && url.protocol !== "http:") {
 		throw new Error("Ticket receipt url must use http or https");
 	}
-	if (Object.hasOwn(receipt, "result")) assertJsonSerializable(receipt.result);
+	if (Object.hasOwn(receipt, "result"))
+		parseJsonData(receipt.result, "Ticket destination snapshot must be JSON-serializable");
 	return {
 		externalId: receipt.externalId,
 		url: url.toString(),

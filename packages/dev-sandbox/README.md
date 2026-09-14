@@ -16,6 +16,7 @@ adapter input; it must reconcile its own durable writes. Startup delays belong t
 scenario registrations. Controls may emit local events and invoke `/__local/poll`;
 they must not assign process lifecycle state.
 
+`sandboxConfig(input)` builds isolated defaults for launchers and tests.
 `createSandboxApp(config, input, factory)` returns the application context, polling,
 and an idempotent `stop()` that closes workers, the application and the composition.
 Register a composition-owned page at `/__local`. `/__local/state` contains scenario

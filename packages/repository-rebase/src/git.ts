@@ -103,6 +103,12 @@ function verifyCurrentBase(input: RebaseInput, record: RebaseRecord): void {
 	git(input, "merge-base", "--is-ancestor", record.baseSha, currentBase);
 }
 
+function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: string): void {
+	if (input.conflict.reason === "behind")
+		git(input, "merge-base", "--is-ancestor", baseSha, headSha);
+	else git(input, "merge-tree", "--write-tree", headSha, baseSha);
+}
+
 /** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
 	const old = read(input);
@@ -114,8 +120,6 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 	if (active(input)) throw new Error("An unrelated rebase is already in progress");
 	requireBranch(input);
 	requireClean(input);
-	git(input, "check-ref-format", `refs/heads/${input.workBranch}`);
-	git(input, "check-ref-format", `refs/heads/${input.conflict.baseBranch}`);
 	git(
 		input,
 		"fetch",
@@ -154,9 +158,7 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	if (record.status === "rebasing" && git(input, "rev-parse", "HEAD") !== record.originalHead)
 		return record;
 	try {
-		if (input.conflict.reason === "behind")
-			git(input, "merge-base", "--is-ancestor", record.baseSha, record.originalHead);
-		else git(input, "merge-tree", "--write-tree", record.originalHead, record.baseSha);
+		verifyNoRepairNeeded(input, record.originalHead, record.baseSha);
 		record.status = "clean";
 		save(input, record);
 		return record;
@@ -179,12 +181,7 @@ export function verifyRebase(input: RebaseInput): {
 	baseSha: string;
 } {
 	const record = read(input);
-	if (
-		!record ||
-		record.key !== conflictKey(input.conflict) ||
-		record.branch !== input.workBranch ||
-		record.originalHead !== input.conflict.headSha
-	)
+	if (!record || record.key !== conflictKey(input.conflict))
 		throw new Error("Missing matching rebase metadata");
 	requireTarget(input, record);
 	if (active(input)) throw new Error("Rebase is incomplete");
@@ -194,9 +191,7 @@ export function verifyRebase(input: RebaseInput): {
 	if (record.status === "clean") {
 		if (headSha !== record.originalHead)
 			throw new Error("Clean conflict report must not rewrite the branch");
-		if (input.conflict.reason === "behind")
-			git(input, "merge-base", "--is-ancestor", record.baseSha, headSha);
-		else git(input, "merge-tree", "--write-tree", headSha, record.baseSha);
+		verifyNoRepairNeeded(input, headSha, record.baseSha);
 	} else {
 		if (record.status !== "rebasing") throw new Error("Rebase was not started");
 		git(input, "merge-base", "--is-ancestor", record.baseSha, headSha);

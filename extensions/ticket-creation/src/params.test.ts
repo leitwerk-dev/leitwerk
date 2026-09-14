@@ -81,7 +81,9 @@ describe("stored ticket parameters", () => {
 		{
 			ticketDestination: { summary: { id: "one", displayName: "One" }, data: { value: undefined } },
 		},
-		{ ticketDestination: { summary: { id: "one", displayName: "One" }, data: NaN } },
+		...[NaN, Infinity, new Date(), { [Symbol("key")]: 1 }, [undefined]].map((data) => ({
+			ticketDestination: { summary: { id: "one", displayName: "One" }, data },
+		})),
 		{
 			ticketDestination: {
 				summary: { id: "one", displayName: "One" },

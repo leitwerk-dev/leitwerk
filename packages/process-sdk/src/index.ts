@@ -247,6 +247,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
+export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,
 	LauncherFieldDefinition,
