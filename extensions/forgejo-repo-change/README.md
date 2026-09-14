@@ -15,6 +15,25 @@ same admission checks. Configure its profile, trigger/done labels, repositories,
 and polling interval under `process_configs.forgejo_repo_change_process.watchers`.
 See the [Forgejo integration](../forgejo/README.md) for provider configuration.
 
+By default the selected Forgejo profile also names the Woodpecker and Git SSH
+profiles. Override this wiring in non-secret workflow configuration:
+
+```yaml
+extensions:
+  forgejo-repo-change:
+    profile_bindings:
+      forgejo-team:
+        woodpecker_profile: ci-team
+        ssh_credential_ref: repository-writer
+```
+
+Omitted entries and fields use the Forgejo profile name. Present fields must be
+nonempty strings; malformed mappings fail startup. Both launch paths validate all
+three profiles. Launcher input cannot override CI, SSH, or runtime selection.
+New projects record typed `forgejo` and `woodpecker` metadata plus the pinned Git
+identity. Stored parameters retain their resolved profiles after configuration
+changes; mappings affect future launches.
+
 The UI starts without a source issue. Each replay generates a new work branch.
 Issue launches retain their external issue identity and `leitwerk/issue-N` branch.
 Plans and implementations require operator approval. Optional review,
@@ -44,7 +63,16 @@ UI-origin deliveries never require source issue access.
 ## Composition and compatibility
 
 The default extension and `forgejoRepoChangeProcess` require Docker at runtime.
-The server controls runtime admission; repository content and launch parameters
+For a composition without Docker, use:
+
+```ts
+import { createForgejoRepoChange } from "@leitwerk-dev/forgejo-repo-change";
+const { extension, process } = createForgejoRepoChange({ docker: false });
+```
+
+Load exactly one variant per catalog. Each factory call owns a fresh process
+and launcher configuration, cleared when its server stops. Both variants retain
+the same process ID, turns, and state codec. The server controls runtime admission; repository content and launch parameters
 cannot enable Docker. Credentials stay with their owning integrations.
 
 Stored process IDs, turn IDs, state under `extensionState.forgejoRepoChange`,

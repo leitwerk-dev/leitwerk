@@ -41,7 +41,7 @@ import {
 	type WoodpeckerPipeline,
 	type WoodpeckerRepository,
 } from "@leitwerk-dev/woodpecker";
-import forgejoRepoChangeExtension from "../index.js";
+import { createForgejoRepoChange } from "../index.js";
 
 const PROCESS_ID = "forgejo_repo_change_process";
 const MODEL_PROFILE_ID = "remote-change-fixture-model";
@@ -147,13 +147,13 @@ class MockForgejoClient extends ForgejoClient {
 		super({
 			baseUrl: "https://forgejo.example",
 			token: "fixture-token",
-			botLogin: "leitwerk-bot",
+			botLogin: owner.botLogin,
 		});
 	}
 
 	override async getAuthenticatedUser() {
 		this.owner.record("getAuthenticatedUser");
-		return { login: "leitwerk-bot", full_name: "Leitwerk Bot" };
+		return { login: this.owner.botLogin, full_name: "Leitwerk Bot" };
 	}
 
 	override async listRepositories(): Promise<ForgejoRepository[]> {
@@ -287,7 +287,10 @@ export class MockForgejo implements ForgejoIntegration {
 	readonly calls: ForgejoCall[] = [];
 	private readonly mockClient: MockForgejoClient;
 
-	constructor(readonly git: TemporaryGitRemote) {
+	constructor(
+		readonly git: TemporaryGitRemote,
+		readonly botLogin = "leitwerk-bot",
+	) {
 		this.repository = {
 			id: 23,
 			name: REPO,
@@ -725,12 +728,13 @@ async function action(harness: IntegrationHarness, instanceId: string, actionId:
 
 export async function createRemoteRepoChangeFixture(
 	dockerPreflight: (timeoutMs: number) => Promise<void> = async () => {},
+	options: { docker?: boolean; botLogin?: string } = {},
 ): Promise<RemoteRepoChangeFixture> {
 	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
 	let harness: IntegrationHarness | null = null;
 	try {
 		const temporaryGit = await TemporaryGitRemote.create(root);
-		const forgejo = new MockForgejo(temporaryGit);
+		const forgejo = new MockForgejo(temporaryGit, options.botLogin);
 		const woodpecker = new MockWoodpecker();
 		const piTurns: PiTurnRecord[] = [];
 		const piFactory = createPiFactory(piTurns);
@@ -746,7 +750,7 @@ export async function createRemoteRepoChangeFixture(
 			createMockWoodpeckerExtension(woodpecker, (poll) => {
 				woodpeckerPoll = poll;
 			}),
-			forgejoRepoChangeExtension,
+			createForgejoRepoChange({ docker: options.docker ?? true }).extension,
 			fixtureModelProviderExtension,
 		]);
 
@@ -764,7 +768,7 @@ export async function createRemoteRepoChangeFixture(
 			},
 			configOverride(config) {
 				if (!config.local_worker) throw new Error("Fixture requires local worker configuration");
-				config.local_worker.allow_host_docker = true;
+				config.local_worker.allow_host_docker = options.docker ?? true;
 				config.storage.sqlite_path = path.join(root, "storage", "leitwerk.sqlite");
 				config.storage.tree_files_dir = path.join(root, "storage", "trees");
 				config.storage.process_workspaces_dir = path.join(root, "storage", "workspaces");

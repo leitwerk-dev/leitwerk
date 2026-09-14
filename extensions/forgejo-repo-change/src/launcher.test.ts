@@ -33,6 +33,7 @@ function configure(preflight: GitSshIntegration["preflight"] = async () => ({ ok
 				} as ForgejoClient;
 			},
 		} satisfies ForgejoIntegration,
+		woodpecker: { client: () => ({}) as never },
 		gitSsh: { profiles: () => ["team"], preflight },
 	});
 }

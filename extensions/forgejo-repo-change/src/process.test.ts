@@ -69,6 +69,7 @@ describe("forgejoRepoChangeProcess", () => {
 						}),
 					}) as never,
 			},
+			woodpecker: { client: () => ({}) as never },
 			gitSsh: { profiles: () => ["team"], preflight: async () => ({ ok: true }) },
 		});
 		let watcher: ProcessWatcherDefinition | undefined;

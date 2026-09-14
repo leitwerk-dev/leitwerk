@@ -151,6 +151,26 @@ describe("Forgejo repository-change composed integration", () => {
 		expect(fixture.forgejo.issues.size).toBe(0);
 	}, 15_000);
 
+	it("launches without Docker and publishes with a non-default pinned bot identity", async () => {
+		const preflight = vi.fn(async () => {
+			throw new Error("No daemon");
+		});
+		fixture = await createRemoteRepoChangeFixture(preflight, {
+			docker: false,
+			botLogin: "garden-bot",
+		});
+		const id = await fixture.launchTicketlessChange("Update the service image");
+		await fixture.approvePlan(id);
+		await fixture.approveImplementation(id);
+		expect(preflight).not.toHaveBeenCalled();
+		expect(fixture.harness.ctx.deps.projects.listByInstance(id)[0]?.metadata).toMatchObject({
+			"leitwerk.gitIdentity": { login: "garden-bot" },
+		});
+		expect(fixture.forgejo.calls.filter((c) => c.method === "getAuthenticatedUser")).toHaveLength(
+			1,
+		);
+	}, 15000);
+
 	it("rejects a launch before creating a process when Docker is unavailable", async () => {
 		fixture = await createRemoteRepoChangeFixture(async () => {
 			throw new Error("simulated daemon unavailable");
