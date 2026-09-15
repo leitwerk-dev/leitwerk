@@ -64,7 +64,8 @@
 		"publish:workspaces": "node scripts/publish-workspaces.mjs publish",
 		"publish:verify": "node scripts/publish-workspaces.mjs verify",
 		"dev:sandbox": "node --conditions=source --import tsx scripts/sandbox/cli.ts",
-		"sandbox:reset": "node --conditions=source --import tsx scripts/sandbox/cli.ts reset"
+		"sandbox:reset": "node --conditions=source --import tsx scripts/sandbox/cli.ts reset",
+		"benchmark:worker-startup": "node packages/dev-tools/dist/cli.js benchmark:worker-startup"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
