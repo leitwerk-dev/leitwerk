@@ -1,10 +1,31 @@
-import { mkdtemp } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/index.js";
-import { backupProductionDatabase, deploymentPreflightConfig } from "./deployment-preflight.js";
+import { deploymentPreflightConfig } from "./deployment-preflight.js";
+
+const execFileAsync = promisify(execFile);
+
+function backupInQuietProcess(sourcePath: string, destinationPath: string) {
+	// Runner timers can conceal native backup completion stalls. Use a quiet child.
+	const moduleUrl = new URL("./deployment-preflight.ts", import.meta.url).href;
+	return execFileAsync(
+		process.execPath,
+		[
+			"--input-type=module",
+			"--eval",
+			`import { backupProductionDatabase } from ${JSON.stringify(moduleUrl)};
+			await backupProductionDatabase({ sourcePath: process.argv[1], destinationPath: process.argv[2] });`,
+			sourcePath,
+			destinationPath,
+		],
+		{ timeout: 10_000, env: { ...process.env, NODE_OPTIONS: undefined } },
+	);
+}
 
 describe("deployment preflight", () => {
 	it("takes a consistent online backup of a WAL database without changing the source", async () => {
@@ -12,19 +33,43 @@ describe("deployment preflight", () => {
 		const sourcePath = path.join(root, "production.sqlite");
 		const copyPath = path.join(root, "scratch", "copy.sqlite");
 		const source = new DatabaseSync(sourcePath);
-		source.prepare("PRAGMA journal_mode = WAL").get();
-		source.exec(
-			"CREATE TABLE durable (value TEXT NOT NULL); INSERT INTO durable VALUES ('preserved')",
-		);
-		await backupProductionDatabase({ sourcePath, destinationPath: copyPath });
+		try {
+			source.prepare("PRAGMA journal_mode = WAL").get();
+			source.exec(
+				"CREATE TABLE durable (value TEXT NOT NULL); INSERT INTO durable VALUES ('preserved')",
+			);
+			await backupInQuietProcess(sourcePath, copyPath);
 
-		const copy = new DatabaseSync(copyPath, { readOnly: true });
-		expect(copy.prepare("SELECT value FROM durable").get()).toEqual({ value: "preserved" });
-		expect(copy.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
-		copy.close();
-		expect(source.prepare("SELECT value FROM durable").all()).toEqual([{ value: "preserved" }]);
-		expect(source.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
-		source.close();
+			const copy = new DatabaseSync(copyPath, { readOnly: true });
+			try {
+				expect(copy.prepare("SELECT value FROM durable").get()).toEqual({ value: "preserved" });
+				expect(copy.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+			} finally {
+				copy.close();
+			}
+			expect(source.prepare("SELECT value FROM durable").all()).toEqual([{ value: "preserved" }]);
+			expect(source.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+		} finally {
+			source.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects an invalid destination without keeping the backup process alive", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "leitwerk-preflight-failure-"));
+		const sourcePath = path.join(root, "production.sqlite");
+		const source = new DatabaseSync(sourcePath);
+		try {
+			source.exec("CREATE TABLE durable (value TEXT NOT NULL)");
+			await expect(backupInQuietProcess(sourcePath, root)).rejects.toMatchObject({
+				code: 1,
+				killed: false,
+			});
+			expect(source.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+		} finally {
+			source.close();
+			await rm(root, { recursive: true, force: true });
+		}
 	});
 
 	it("redirects every server-owned write path to scratch storage", async () => {
