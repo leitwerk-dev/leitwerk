@@ -87,6 +87,7 @@ export function verifyDockerPod(
 	)
 		throw new Error("Worker must use exactly one process PVC in its namespace");
 	if (
+		claims[0].persistentVolumeClaim?.readOnly ||
 		!worker.volumeMounts?.some(
 			(mount) =>
 				mount.name === claims[0].name &&
