@@ -8,12 +8,20 @@ import {
 } from "@leitwerk-dev/forgejo";
 import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { WOODPECKER_PIPELINE_KIND } from "@leitwerk-dev/woodpecker";
 import { LocalWoodpeckerAdapter } from "@leitwerk-dev/woodpecker/testing";
 import { expect } from "vitest";
 import { providerControls } from "../../../sandbox/provider-controls.js";
 import type { Fixture } from "./fixture.js";
 import { control, publish, remote, repo, revised, source, test } from "./forgejo-fixture.js";
+
+const deliveryKinds = [
+	FORGEJO_PR_FEEDBACK_KIND,
+	FORGEJO_PR_CONFLICT_KIND,
+	FORGEJO_PR_TERMINAL_KIND,
+	WOODPECKER_PIPELINE_KIND,
+];
 
 function subscriptions(f: Fixture, id: string) {
 	const service = f.context.deps.externalSourceService as
@@ -48,6 +56,14 @@ for (const waitingFor of ["feedback", "ci", "conflict", "operator", "terminal"] 
 		if (waitingFor === "operator") {
 			await control(f, "pipeline", { status: "failure" });
 			await f.wait(id, "ci_operator_action");
+		} else {
+			// The selected turn becomes visible before subscription registration finishes.
+			// Take the retained snapshot only after all delivery sources are armed.
+			await waitForValue(
+				() => subscriptions(f, id),
+				(armings) => deliveryKinds.every((kind) => armings.some((a) => a.kind === kind)),
+				12000,
+			);
 		}
 		const deps = f.context.deps;
 		const process = deps.processes.getById(id);
@@ -73,14 +89,7 @@ for (const waitingFor of ["feedback", "ci", "conflict", "operator", "terminal"] 
 		const reasoning = (await f.context.app.inject(reasoningUrl)).json().reasoning;
 		expect(writes.some((w) => w.writeType === "forgejo.ensure_pr")).toBe(true);
 		if (waitingFor !== "operator") {
-			expect(armings.map((a) => a.kind)).toEqual(
-				expect.arrayContaining([
-					FORGEJO_PR_FEEDBACK_KIND,
-					FORGEJO_PR_CONFLICT_KIND,
-					FORGEJO_PR_TERMINAL_KIND,
-					WOODPECKER_PIPELINE_KIND,
-				]),
-			);
+			expect(armings.map((a) => a.kind)).toEqual(expect.arrayContaining(deliveryKinds));
 		}
 		// A configuration reload affects future launches; existing params remain authoritative.
 		f.config.extensions["forgejo-repo-change"] = {
