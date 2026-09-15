@@ -244,18 +244,27 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 					);
 					sample.startup = snapshot.startup;
 					sample.turnRecords = detail.turnRecords;
-					const initial = detail.turnRecords?.[0];
-					if (initial?.status === "succeeded" || initial?.status === "failed") {
-						sample.outcome = initial.status === "succeeded" ? "completed" : "failed";
+					// A later turn may start another generation. Wait for the whole process.
+					if (detail.process.lifecycleStatus === "completed") {
+						sample.outcome = "completed";
 						break;
 					}
-					if (["error", "aborted", "completed"].includes(detail.process.lifecycleStatus)) {
+					if (detail.process.lifecycleStatus === "aborted") {
 						sample.outcome = "failed";
+						break;
+					}
+					if (
+						detail.process.lifecycleStatus === "error" ||
+						detail.turnRecords?.some((record) => record.status === "failed")
+					) {
+						sample.outcome = "failed";
+						stop = true;
 						break;
 					}
 				}
 				if (["failed", "cancelled"].includes(launchRun.status)) {
 					sample.outcome = "failed";
+					stop = !!sample.instanceId;
 					break;
 				}
 				await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())), undefined, {

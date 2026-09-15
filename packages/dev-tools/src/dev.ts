@@ -24,6 +24,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	let watcher: FSWatcher | undefined;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let stopping = false;
+	let shutdownPromise: Promise<void> | undefined;
 	let restarting = false;
 	let pending = false;
 	const settings = () => {
@@ -58,20 +59,24 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		await exit;
 		clearTimeout(timeout);
 	}
-	async function shutdown(code: number) {
-		if (stopping) return;
+	function shutdown(code: number): Promise<void> {
+		if (shutdownPromise) return shutdownPromise;
 		stopping = true;
 		clearTimeout(timer);
 		process.off("SIGINT", interrupt);
 		process.off("SIGTERM", terminate);
-		await watcher?.close();
-		await stopBackend();
-		await ui?.close();
 		process.exitCode = code;
+		shutdownPromise = (async () => {
+			await watcher?.close();
+			await stopBackend();
+			await ui?.close();
+		})();
+		return shutdownPromise;
 	}
 	const interrupt = () => void shutdown(130);
 	const terminate = () => void shutdown(143);
 	async function start(input: ReturnType<typeof settings>) {
+		if (stopping) return;
 		const child = spawn(
 			process.execPath,
 			[fileURLToPath(new URL("./server.js", import.meta.url))],
@@ -117,6 +122,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 			}
 			await delay(100);
 		}
+		if (stopping) return;
 		if (!ready) throw new Error(`Backend did not become ready at ${input.backendUrl}`);
 		ui = await createServer({
 			configFile: false,
@@ -133,7 +139,15 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 				},
 			},
 		});
+		if (stopping) {
+			await ui.close();
+			return;
+		}
 		await ui.listen();
+		if (stopping) {
+			await ui.close();
+			return;
+		}
 		ui.printUrls();
 		await watcher?.add([
 			input.configPath,
@@ -176,6 +190,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	try {
 		const input = settings();
 		await build(root);
+		if (stopping) return;
 		watcher = chokidar.watch(
 			[
 				manifestPath,

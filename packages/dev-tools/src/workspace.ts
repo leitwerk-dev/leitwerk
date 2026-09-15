@@ -56,9 +56,20 @@ export function readJson<T = PackageManifest>(file: string): T {
 	return JSON.parse(readFileSync(file, "utf8"));
 }
 
+function isPackageName(name: unknown): name is string {
+	return (
+		typeof name === "string" &&
+		/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(name) &&
+		name
+			.replace(/^@/, "")
+			.split("/")
+			.every((part) => part !== "." && part !== "..")
+	);
+}
+
 /** Resolve package metadata even when package.json is not exported. */
 export function packageDirectory(name: string, from: string): string {
-	if (!/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/.test(name)) {
+	if (!isPackageName(name)) {
 		throw new Error(`Invalid package name: ${name}`);
 	}
 	const require = createRequire(path.join(from, "package.json"));
@@ -72,8 +83,8 @@ export function packageDirectory(name: string, from: string): string {
 export function workspacePackages(root: string): WorkspacePackage[] {
 	return listWorkspacePackageDirs(root).map((dir) => {
 		const manifest = readJson(path.join(dir, "package.json"));
-		if (typeof manifest.name !== "string" || !manifest.name)
-			throw new Error(`Package at ${dir} needs a name`);
+		if (!isPackageName(manifest.name))
+			throw new Error(`Package at ${dir} needs a valid package name`);
 		return { ...manifest, name: manifest.name, dir: realpathSync(dir) };
 	});
 }

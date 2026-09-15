@@ -15,6 +15,8 @@ async function fixture(
 		lostResponse?: boolean;
 		running?: boolean;
 		failPoll?: boolean;
+		multipleTurns?: boolean;
+		failedTurn?: boolean;
 		abort?: AbortController;
 	} = {},
 ) {
@@ -23,6 +25,7 @@ async function fixture(
 	const calls: { method: string; path: string; key?: string; body?: unknown; auth?: string }[] = [];
 	const launches = new Map<string, string>();
 	let loseResponse = options.lostResponse;
+	const detailReads = new Map<string, number>();
 	const readBody = async (request: IncomingMessage) => {
 		let text = "";
 		for await (const part of request) text += part;
@@ -97,9 +100,18 @@ async function fixture(
 			});
 		if (url.startsWith("/api/processes/")) {
 			options.abort?.abort();
+			const reads = (detailReads.get(url) ?? 0) + 1;
+			detailReads.set(url, reads);
 			return send({
-				process: { lifecycleStatus: options.running ? "active" : "completed" },
-				turnRecords: [{ status: options.running ? "running" : "succeeded" }],
+				process: {
+					lifecycleStatus:
+						options.running || options.failedTurn || (options.multipleTurns && reads < 2)
+							? "active"
+							: "completed",
+				},
+				turnRecords: [
+					{ status: options.failedTurn ? "failed" : options.running ? "running" : "succeeded" },
+				],
 			});
 		}
 		response.statusCode = 404;
@@ -122,6 +134,7 @@ async function fixture(
 		root,
 		calls,
 		launches,
+		detailReads,
 		options: {
 			apiConfig,
 			launcherId: "example.launch",
@@ -223,4 +236,25 @@ it("rejects unavailable launcher/model selections before creating processes", as
 		runWorkerStartupBenchmark({ ...options, modelProfileId: "missing" }),
 	).rejects.toThrow("profile is unavailable");
 	expect(launches.size).toBe(0);
+});
+
+it("waits for process completion after a successful first turn before starting another sample", async () => {
+	const { options, detailReads, calls } = await fixture({ multipleTurns: true });
+	const result = await runWorkerStartupBenchmark(options);
+	expect(result.succeeded).toBe(true);
+	expect([...detailReads.values()]).toEqual([2, 2]);
+	const secondPost = calls.findIndex(
+		(call) => call.method === "POST" && call.key === result.samples[1].idempotencyKey,
+	);
+	expect(
+		calls.slice(0, secondPost).filter((call) => call.path === "/api/processes/run-0"),
+	).toHaveLength(2);
+});
+
+it("retains a failed active process for diagnosis and stops further launches", async () => {
+	const { options, launches } = await fixture({ failedTurn: true });
+	const result = await runWorkerStartupBenchmark(options);
+	expect(result.samples[0].outcome).toBe("failed");
+	expect(result.complete).toBe(false);
+	expect(launches.size).toBe(1);
 });

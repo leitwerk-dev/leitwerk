@@ -76,7 +76,7 @@ export function report(samples: BenchmarkSample[], expectedLaunches = 30): strin
 	const lines = [
 		"# Worker startup benchmark",
 		"",
-		`Measured launches: ${measured.length} / ${expectedLaunches}; warm-ups: ${samples.length - measured.length}; failures/timeouts: ${measured.filter((sample) => sample.outcome !== "completed").length}.`,
+		`Measured launches: ${measured.length} / ${expectedLaunches}; warm-ups: ${samples.length - measured.length}; failures/timeouts: ${measured.filter((sample) => sample.outcome !== "completed").length}; warm-up failures/timeouts: ${samples.filter((sample) => sample.warmup && sample.outcome !== "completed").length}.`,
 		"",
 		"All attempted launches are retained. Missing and invalid intervals are excluded from durations and counted in coverage. Kubernetes intervals may overlap; do not sum them. Prompt-to-first-text includes provider response time.",
 		"",
@@ -106,7 +106,7 @@ export function report(samples: BenchmarkSample[], expectedLaunches = 30): strin
 	}
 	lines.push(
 		"",
-		`Launches with replacements: ${measured.filter((sample) => (sample.startup?.workerStarts?.length ?? 0) > 1).length}. Stage rows describe the initial physical worker; raw results retain all replacements.`,
+		`Launches with multiple physical workers: ${measured.filter((sample) => (sample.startup?.workerStarts?.length ?? 0) > 1).length}. Stage rows describe the initial physical worker; raw results retain all replacements.`,
 		"",
 		"Assess critical-path contribution and coverage before comparing candidates. Binding windows are bounds, not exact storage duration. Container source times and server receipt times use different clocks.",
 	);

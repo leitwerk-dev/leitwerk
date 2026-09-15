@@ -47,5 +47,5 @@ Only core:use-local and core:use-release change dependency selection. Existing c
 	}
 } catch (error) {
 	console.error(error instanceof Error ? error.message : "Development command failed");
-	process.exitCode = 1;
+	if (!process.exitCode) process.exitCode = 1;
 }

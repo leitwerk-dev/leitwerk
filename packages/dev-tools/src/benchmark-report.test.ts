@@ -98,7 +98,7 @@ describe("startup benchmark reports", () => {
 		expect(text).toContain("Measured launches: 2 / 3; warm-ups: 1; failures/timeouts: 1");
 		expect(text).toContain("| all | total | 1 / 2 | 10 | 10 | 10 |");
 		expect(text).toContain("| all | launchToFirstText | 0 / 2 | unavailable |");
-		expect(text).toContain("Launches with replacements: 1");
+		expect(text).toContain("Launches with multiple physical workers: 1");
 		expect(text).not.toContain("replacementOnly");
 	});
 });

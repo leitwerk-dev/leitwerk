@@ -48,6 +48,29 @@ const git = (cwd: string, ...args: string[]) =>
 	execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 
 describe("extension development commands", () => {
+	it.each([
+		".",
+		"..",
+		"@example/..",
+		"@../example",
+		"../outside",
+	])("rejects package name %s before building or changing dependency links", async (name) => {
+		const { root, json, options } = fixture();
+		json("extensions/example/package.json", {
+			name,
+			scripts: { build: "node build.cjs" },
+		});
+		writeFileSync(
+			path.join(root, "extensions/example/build.cjs"),
+			"require('node:fs').writeFileSync('unexpected-build', 'built')",
+		);
+		json("node_modules/retained/package.json", { name: "retained" });
+		await expect(runDevelopment("build", options)).rejects.toThrow("valid package name");
+		expect(existsSync(path.join(root, "extensions/example/unexpected-build"))).toBe(false);
+		expect(existsSync(path.join(root, "node_modules/retained/package.json"))).toBe(true);
+		expect(existsSync(path.join(root, ".leitwerk/development.json"))).toBe(false);
+	});
+
 	it("uses installed packages with an unrelated retained checkout and hidden package metadata", async () => {
 		const { root, json, options } = fixture();
 		json("package.json", {
