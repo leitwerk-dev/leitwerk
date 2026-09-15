@@ -319,3 +319,13 @@ extensions:
       - deepseek-v4-flash
       - deepseek-v4-pro
       - gpt-5.5-xhigh-auto
+
+# Optional GitHub organization boundary (configure an actual token locally):
+# extensions:
+#   github:
+#     profiles:
+#       public:
+#         api_base_url: https://api.github.com
+#         token: YOUR_GITHUB_TOKEN
+#         bot_login: YOUR_BOT_LOGIN
+#         allowed_organization: leitwerk-dev

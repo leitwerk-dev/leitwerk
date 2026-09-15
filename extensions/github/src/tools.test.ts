@@ -33,6 +33,8 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 		process: { id: "p", paramsJson: "{}" },
 		project: {
 			instanceId: "p",
+			workBranch: "feature",
+			baseBranch: "main",
 			metadata: { github: { owner: "team", repo: "one", profile: "first" } },
 		},
 		idempotencyKey: "retained-pr-key",

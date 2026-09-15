@@ -684,6 +684,7 @@ export function createExternalSourceService(
 		{
 			instanceId: string;
 			armingId: string;
+			generation?: string;
 			input: Record<string, unknown>;
 			event: Record<string, unknown>;
 			queuedCount?: number;
@@ -695,6 +696,9 @@ export function createExternalSourceService(
 		label: "Fire external source",
 		async decide(ctx, input) {
 			const arming = resolveArming(input.instanceId, input.armingId);
+			if (input.generation && (!arming || generationFor(arming) !== input.generation)) {
+				return reject("external_source_superseded", "External source subscription was superseded");
+			}
 			if (!arming) {
 				return reject(
 					"external_source_not_armed",
@@ -1090,6 +1094,7 @@ export function createExternalSourceService(
 	async function fireImmediate(input: {
 		instanceId: string;
 		armingId: string;
+		generation?: string;
 		fireInput: Record<string, unknown>;
 		fireEvent: Record<string, unknown>;
 		queuedCount?: number;
@@ -1098,6 +1103,7 @@ export function createExternalSourceService(
 		const result = await deps.commands.run(FireExternalSource, {
 			instanceId: input.instanceId,
 			armingId: input.armingId,
+			generation: input.generation,
 			input: input.fireInput,
 			event: input.fireEvent,
 			queuedCount: input.queuedCount,
@@ -1298,9 +1304,11 @@ export function createExternalSourceService(
 			const fire = {
 				instanceId: input.instanceId,
 				armingId: input.armingId,
+				generation: input.generation,
 				fireInput: normalizeRecord(input.input),
 				fireEvent: normalizeRecord(input.event),
 			};
+			if (input.generation) return fireImmediate(fire);
 			const active = resolveArming(input.instanceId, input.armingId);
 			const result = active ? await fireImmediate(fire) : null;
 			if (
