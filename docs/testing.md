@@ -124,3 +124,16 @@ an isolated workspace and environment, check strict ports, exercise the outer
 configuration reload, and verify acknowledged reset. Preflight tests prove that
 application and adapter initialization use disposable storage. See the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
+
+## Worker startup benchmarks
+
+`@leitwerk-dev/dev-tools` provides a repeatable API benchmark with retained launch
+identities, raw startup observations and coverage-aware median/p90 reports. After
+building this checkout, use `npm run benchmark:worker-startup -- --help`, or invoke
+`leitwerk-dev benchmark:worker-startup` from an installed development-tools package.
+The launcher, model profile, input, candidate label and new output directory are
+explicit. Kubernetes provenance is optional. See the [benchmark command](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#worker-startup-benchmark).
+
+Normal tests use a local HTTP server to cover response loss, idempotent launch
+retries, interruption, timeouts and raw evidence. Running the benchmark against a
+real model or cluster is opt-in and is outside `test:full`.
