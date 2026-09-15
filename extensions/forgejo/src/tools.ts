@@ -6,6 +6,7 @@ import {
 } from "@leitwerk-dev/external-writes";
 import {
 	numberArg,
+	objectArg as object,
 	type ProcessProjectRepoLike,
 	projectParameters,
 	type ServerExtensionAPI,
@@ -15,25 +16,11 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { resolveForgejoProjectBinding } from "./binding.js";
 import type { ForgejoIntegration } from "./capability.js";
-import type { ForgejoRepository, ForgejoTicketCreationConfig } from "./client.js";
-
-function object(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value))
-		throw new Error("Tool arguments must be an object");
-	return value as Record<string, unknown>;
-}
-
-function stringArrayArg(args: Record<string, unknown>, name: string): string[] {
-	const value = args[name];
-	if (value === undefined) return [];
-	if (
-		!Array.isArray(value) ||
-		value.some((entry) => typeof entry !== "string" || entry.trim() === "")
-	) {
-		throw new Error(`'${name}' must be an array of non-empty strings`);
-	}
-	return [...new Set(value.map((entry) => entry.trim()))];
-}
+import {
+	type ForgejoRepository,
+	type ForgejoTicketCreationConfig,
+	parseLabelNames,
+} from "./client.js";
 
 interface ForgejoTicketDestinationData {
 	profile: string;
@@ -62,7 +49,7 @@ function destinationData(
 		repositoryId: numberArg(data, "repositoryId"),
 		owner: stringArg(data, "owner"),
 		repo: stringArg(data, "repo"),
-		defaultLabels: stringArrayArg(data, "defaultLabels"),
+		defaultLabels: parseLabelNames(data.defaultLabels, "'defaultLabels'"),
 	};
 }
 
@@ -226,7 +213,7 @@ export function registerForgejoTools(
 				const client = integration.client(target.profile);
 				const title = stringArg(args, "title");
 				const body = stringArg(args, "body");
-				const requestedLabels = stringArrayArg(args, "labels");
+				const requestedLabels = parseLabelNames(args.labels, "'labels'");
 				let labels = await client.listLabels(target.owner, target.repo, ctx.signal);
 				for (const name of target.defaultLabels) {
 					if (labels.some((label) => label.name === name)) continue;
@@ -258,9 +245,8 @@ export function registerForgejoTools(
 						throw new Error(`Forgejo default label '${name}' could not be reconciled`);
 					}
 				}
-				const unknown = requestedLabels.filter(
-					(name) => !labels.some((label) => label.name === name),
-				);
+				const labelsByName = new Map(labels.map((label) => [label.name, label]));
+				const unknown = requestedLabels.filter((name) => !labelsByName.has(name));
 				if (unknown.length) {
 					throw new Error(
 						`Unknown Forgejo label${unknown.length === 1 ? "" : "s"}: ${unknown.join(", ")}`,
@@ -268,7 +254,7 @@ export function registerForgejoTools(
 				}
 				const labelNames = [...new Set([...target.defaultLabels, ...requestedLabels])];
 				const labelIds = labelNames.map((name) => {
-					const label = labels.find((candidate) => candidate.name === name);
+					const label = labelsByName.get(name);
 					if (!label) throw new Error(`Forgejo label '${name}' is unavailable`);
 					return label.id;
 				});
@@ -502,86 +488,45 @@ export function registerForgejoTools(
 		},
 	});
 
-	for (const definition of [
-		{ name: "forgejo_add_issue_comment", numberName: "issueNumber", method: "addIssueComment" },
-		{
-			name: "forgejo_add_pull_request_comment",
-			numberName: "pullRequestNumber",
-			method: "addPullRequestComment",
-		},
+	for (const [resource, numberName, comment, update] of [
+		["issue", "issueNumber", "addIssueComment", "updateIssue"],
+		["pull_request", "pullRequestNumber", "addPullRequestComment", "updatePullRequest"],
 	] as const) {
-		api.tool<Record<string, unknown>>({
-			name: definition.name,
-			description: `Add a comment to a Forgejo ${definition.numberName === "pullRequestNumber" ? "pull request" : "issue"}`,
-			parameters: projectParameters(
-				{
-					[definition.numberName]: { type: "integer" },
-					body: { type: "string" },
-					writeKey: { type: "string" },
-				},
-				[definition.numberName, "body"],
-			),
-			async execute(ctx, args) {
-				const t = target(ctx);
-				const number = numberArg(args, definition.numberName);
-				const body = stringArg(args, "body");
-				return ensureWrite(
-					externalWrites,
-					ctx.process.id,
-					createWriteIdentity(
-						"forgejo.comment",
-						typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
-					),
-					async () => {
-						await integration
-							.client(t.profile)
-							[definition.method](t.owner, t.repo, number, body, ctx.signal);
-						return { owner: t.owner, repo: t.repo, number };
+		for (const updating of [false, true]) {
+			const payloadName = updating ? "patch" : "body";
+			api.tool<Record<string, unknown>>({
+				name: `forgejo_${updating ? `update_${resource}` : `add_${resource}_comment`}`,
+				description: `${updating ? "Update a" : "Add a comment to a"} Forgejo ${resource.replaceAll("_", " ")}`,
+				parameters: projectParameters(
+					{
+						[numberName]: { type: "integer" },
+						[payloadName]: { type: updating ? "object" : "string" },
+						writeKey: { type: "string" },
 					},
-				);
-			},
-		});
-	}
-
-	for (const definition of [
-		{ name: "forgejo_update_issue", numberName: "issueNumber", method: "updateIssue" },
-		{
-			name: "forgejo_update_pull_request",
-			numberName: "pullRequestNumber",
-			method: "updatePullRequest",
-		},
-	] as const) {
-		api.tool<Record<string, unknown>>({
-			name: definition.name,
-			description: `Update a Forgejo ${definition.numberName === "pullRequestNumber" ? "pull request" : "issue"}`,
-			parameters: projectParameters(
-				{
-					[definition.numberName]: { type: "integer" },
-					patch: { type: "object" },
-					writeKey: { type: "string" },
+					[numberName, payloadName],
+				),
+				async execute(ctx, args) {
+					const t = target(ctx);
+					const number = numberArg(args, numberName);
+					const payload = updating ? object(args.patch) : stringArg(args, "body");
+					const result = await ensureWrite(
+						externalWrites,
+						ctx.process.id,
+						createWriteIdentity(
+							updating ? "forgejo.update" : "forgejo.comment",
+							typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
+						),
+						async () => {
+							const client = integration.client(t.profile);
+							await (typeof payload === "string"
+								? client[comment](t.owner, t.repo, number, payload, ctx.signal)
+								: client[update](t.owner, t.repo, number, payload, ctx.signal));
+							return { owner: t.owner, repo: t.repo, number };
+						},
+					);
+					return updating ? { ok: true } : result;
 				},
-				[definition.numberName, "patch"],
-			),
-			async execute(ctx, args) {
-				const t = target(ctx);
-				const number = numberArg(args, definition.numberName);
-				const patch = object(args.patch);
-				await ensureWrite(
-					externalWrites,
-					ctx.process.id,
-					createWriteIdentity(
-						"forgejo.update",
-						typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
-					),
-					async () => {
-						await integration
-							.client(t.profile)
-							[definition.method](t.owner, t.repo, number, patch, ctx.signal);
-						return { owner: t.owner, repo: t.repo, number };
-					},
-				);
-				return { ok: true };
-			},
-		});
+			});
+		}
 	}
 }

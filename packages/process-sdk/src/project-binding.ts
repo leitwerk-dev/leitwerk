@@ -1,4 +1,5 @@
 import type { IntegrationToolExecutionContext } from "./extension-api.js";
+import { objectArg } from "./tool-arguments.js";
 
 export interface RepositoryProjectBinding {
 	owner: string;
@@ -12,11 +13,7 @@ export function resolveRepositoryProjectBinding(
 	provider: string,
 	legacyMetadataKey?: string,
 ): RepositoryProjectBinding {
-	function object(value: unknown): Record<string, unknown> {
-		if (!value || typeof value !== "object" || Array.isArray(value))
-			throw new Error(`Invalid ${provider} project binding`);
-		return value as Record<string, unknown>;
-	}
+	const object = (value: unknown) => objectArg(value, `Invalid ${provider} project binding`);
 	function text(value: unknown, key: string): string {
 		if (typeof value !== "string" || !value.trim())
 			throw new Error(`${provider} binding ${key} must be a non-empty string`);

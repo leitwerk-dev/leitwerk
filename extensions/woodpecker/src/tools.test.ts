@@ -1,11 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type {
-	IntegrationToolDefinition,
-	IntegrationToolExecutionContext,
-	ServerExtensionAPI,
-} from "@leitwerk-dev/process-sdk";
+import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
+import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { expect, it, vi } from "vitest";
 import { LocalWoodpeckerAdapter } from "./testing.js";
 import { registerWoodpeckerTools } from "./tools.js";
@@ -25,17 +22,17 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 	});
 	const client = adapter.client();
 	const restart = vi.spyOn(client, "restartPipeline");
-	const tools = new Map<string, IntegrationToolDefinition>();
-	const writes = new Set<string>();
+	const { api, tools } = createToolCollector();
+	const writes = createInMemoryExternalWriteLog();
 	registerWoodpeckerTools(
-		{ tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool) } as ServerExtensionAPI,
+		api,
 		{
 			client: (profile) => {
 				expect(profile).toBe("ci-profile");
 				return client;
 			},
 		},
-		{ hasDedupKey: (key) => writes.has(key), record: (write) => writes.add(write.dedupKey) },
+		writes,
 	);
 	const ctx = {
 		process: { id: "p", paramsJson: "{}" },
@@ -67,5 +64,5 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 	await tools.get("woodpecker_restart_pipeline")?.execute(ctx, diagnosed);
 	await tools.get("woodpecker_restart_pipeline")?.execute(ctx, diagnosed);
 	expect(restart).toHaveBeenCalledTimes(1);
-	expect(writes.has("restart-retained")).toBe(true);
+	expect(writes.hasDedupKey("restart-retained")).toBe(true);
 });

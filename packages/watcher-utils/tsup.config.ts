@@ -1,6 +1,5 @@
-import { defineConfig } from "tsup";
-
-export default defineConfig((options) => ({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/duration-parse.ts",
@@ -9,9 +8,4 @@ export default defineConfig((options) => ({
 		"src/process-helpers.ts",
 		"src/watcher-coordinator.ts",
 	],
-	format: ["esm"],
-	tsconfig: "tsconfig.tsup.json",
-	dts: true,
-	clean: !options.watch,
-	sourcemap: true,
-}));
+});

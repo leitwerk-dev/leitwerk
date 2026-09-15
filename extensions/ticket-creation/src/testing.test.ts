@@ -1,12 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type {
-	ExternalWriteLogRecordInput,
-	ExternalWriteLogRepoLike,
-} from "@leitwerk-dev/external-writes";
 import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { expect, onTestFinished, test } from "vitest";
+import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { LocalTicketAdapter } from "./testing.js";
 
 test("restarts after persistence, reconciles the original write key, and records exactly one receipt", async () => {
@@ -20,15 +17,13 @@ test("restarts after persistence, reconciles the original write key, and records
 			{ id: "workshop", displayName: "Workshop" },
 		],
 	};
-	const records: ExternalWriteLogRecordInput[] = [];
+	const writes = createInMemoryExternalWriteLog();
+	const { records, record } = writes;
 	let writeLogAvailable = false;
-	const writes: ExternalWriteLogRepoLike = {
-		hasDedupKey: (key) => records.some((r) => r.dedupKey === key),
-		record: (record) => {
-			if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
-			records.push(record);
-		},
-	};
+	vi.spyOn(writes, "record").mockImplementation((input) => {
+		if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
+		return record(input);
+	});
 	const adapter = new LocalTicketAdapter(options);
 	const tool = adapter.tool(writes);
 	const provider = tool.capability?.destinations;

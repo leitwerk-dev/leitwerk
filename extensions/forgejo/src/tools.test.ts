@@ -1,30 +1,17 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import type {
-	IntegrationToolDefinition,
-	IntegrationToolExecutionContext,
-	ServerExtensionAPI,
-} from "@leitwerk-dev/process-sdk";
+import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
+import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoClient, ForgejoIssue } from "./client.js";
 import { registerForgejoTools } from "./tools.js";
 
 function setup(client: Record<string, unknown>) {
-	const tools = new Map<string, IntegrationToolDefinition>();
-	const api = {
-		tool(definition: IntegrationToolDefinition) {
-			tools.set(definition.name, definition);
-		},
-	} as ServerExtensionAPI;
+	const { api, tools } = createToolCollector();
 	const integration = {
 		profiles: () => ["primary"],
 		client: () => client as unknown as ForgejoClient,
 	} satisfies ForgejoIntegration;
-	const written = new Set<string>();
-	const writes: ExternalWriteLogRepoLike = {
-		hasDedupKey: (key) => written.has(key),
-		record: ({ dedupKey }) => written.add(dedupKey),
-	};
+	const writes = createInMemoryExternalWriteLog();
 	const projects = {
 		update: vi.fn((_id: string, input: Record<string, unknown>) => ({ id: "project-1", ...input })),
 	};
@@ -35,7 +22,7 @@ function setup(client: Record<string, unknown>) {
 		{ defaultLabels: ["created-by-leitwerk"] },
 		projects as never,
 	);
-	return { tools, written, projects };
+	return { tools, written: writes.getDedupKeys(), projects };
 }
 
 function context(destination: Record<string, unknown>): IntegrationToolExecutionContext {
@@ -72,11 +59,25 @@ function issue(body: string): ForgejoIssue {
 
 describe("Forgejo server tools", () => {
 	it.each([
-		["forgejo_get_issue", "issueNumber", "getIssue"],
-		["forgejo_list_issue_comments", "issueNumber", "listIssueComments"],
-		["forgejo_get_pull_request", "pullRequestNumber", "getPullRequest"],
-		["forgejo_list_pull_request_feedback", "pullRequestNumber", "listPullRequestFeedback"],
-	])("routes %s through the authorized project", async (name, numberName, method) => {
+		["forgejo_get_issue", "issueNumber", "getIssue", null],
+		["forgejo_list_issue_comments", "issueNumber", "listIssueComments", null],
+		["forgejo_get_pull_request", "pullRequestNumber", "getPullRequest", null],
+		["forgejo_list_pull_request_feedback", "pullRequestNumber", "listPullRequestFeedback", null],
+		["forgejo_add_issue_comment", "issueNumber", "addIssueComment", { body: "Review" }],
+		[
+			"forgejo_add_pull_request_comment",
+			"pullRequestNumber",
+			"addPullRequestComment",
+			{ body: "Review" },
+		],
+		["forgejo_update_issue", "issueNumber", "updateIssue", { patch: { title: "Updated" } }],
+		[
+			"forgejo_update_pull_request",
+			"pullRequestNumber",
+			"updatePullRequest",
+			{ patch: { title: "Updated" } },
+		],
+	] as const)("routes %s through the authorized project", async (name, numberName, method, payload) => {
 		const read = vi.fn(async () => "result");
 		const { tools } = setup({ [method]: read });
 		const ctx = {
@@ -87,9 +88,31 @@ describe("Forgejo server tools", () => {
 			} as IntegrationToolExecutionContext["project"],
 		};
 		const tool = tools.get(name);
-		expect(tool?.parameters.required).toEqual(["projectKey", numberName]);
-		await expect(tool?.execute(ctx, { [numberName]: 7 })).resolves.toBe("result");
-		expect(read).toHaveBeenCalledWith("team", "repo", 7, ctx.signal);
+		expect(tool?.parameters.required).toEqual([
+			"projectKey",
+			numberName,
+			...Object.keys(payload ?? {}),
+		]);
+		const args = { [numberName]: 7, ...payload };
+		const result = await tool?.execute(ctx, args);
+		expect(result).toEqual(
+			payload
+				? "patch" in payload
+					? { ok: true }
+					: { performed: true, dedupKey: ctx.idempotencyKey }
+				: "result",
+		);
+		expect(read).toHaveBeenCalledWith(
+			"team",
+			"repo",
+			7,
+			...Object.values(payload ?? {}),
+			ctx.signal,
+		);
+		if (payload) {
+			await tool?.execute(ctx, args);
+			expect(read).toHaveBeenCalledTimes(1);
+		}
 		for (const invalid of [0, -1, 1.5, NaN, "7"])
 			await expect(tool?.execute(ctx, { [numberName]: invalid })).rejects.toThrow(
 				"positive integer",
@@ -241,9 +264,9 @@ describe("Forgejo server tools", () => {
 });
 
 it("omits ticket registration when explicitly disabled", () => {
-	const tools = new Map<string, IntegrationToolDefinition>();
+	const { api, tools } = createToolCollector();
 	registerForgejoTools(
-		{ tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool) } as ServerExtensionAPI,
+		api,
 		{
 			profiles: () => [],
 			client: () => {

@@ -112,6 +112,13 @@ function createEmptyStubPiTreeState(): StubPiTreeState {
 	};
 }
 
+function indexStubEntry(state: StubPiTreeState, entry: PiTreeEntry): void {
+	state.entries.set(entry.id, entry);
+	const siblings = state.childIdsByParent.get(entry.parentId) ?? [];
+	siblings.push(entry.id);
+	state.childIdsByParent.set(entry.parentId, siblings);
+}
+
 function deriveStubLeafIdFromEntries(state: StubPiTreeState): string | null {
 	let leafId: string | null = null;
 	for (const entryId of state.entries.keys()) {
@@ -156,12 +163,7 @@ function deserializeStubPiTreeState(value: string): StubPiTreeState {
 		state.header = header;
 		state.turnSeq = header.stubState?.turnSeq ?? 0;
 		state.currentLeafId = header.stubState?.currentLeafId ?? null;
-		for (const entry of entries) {
-			state.entries.set(entry.id, entry);
-			const siblings = state.childIdsByParent.get(entry.parentId) ?? [];
-			siblings.push(entry.id);
-			state.childIdsByParent.set(entry.parentId, siblings);
-		}
+		for (const entry of entries) indexStubEntry(state, entry);
 		return state;
 	}
 	const parsed = JSON.parse(value) as PersistedStubPiTreeState;
@@ -241,10 +243,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	}
 
 	private addEntry(entry: PiTreeEntry): void {
-		this.state.entries.set(entry.id, entry);
-		const siblings = this.state.childIdsByParent.get(entry.parentId) ?? [];
-		siblings.push(entry.id);
-		this.state.childIdsByParent.set(entry.parentId, siblings);
+		indexStubEntry(this.state, entry);
 		this.state.currentLeafId = entry.id;
 	}
 

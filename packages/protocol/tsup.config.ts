@@ -1,6 +1,5 @@
-import { defineConfig } from "tsup";
-
-export default defineConfig((options) => ({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/config-snapshot.ts",
@@ -10,9 +9,4 @@ export default defineConfig((options) => ({
 		"src/protocol.ts",
 		"src/tool-renderer-contract.ts",
 	],
-	format: ["esm"],
-	tsconfig: "tsconfig.tsup.json",
-	dts: true,
-	clean: !options.watch,
-	sourcemap: true,
-}));
+});

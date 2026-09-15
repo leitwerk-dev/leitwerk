@@ -3,7 +3,11 @@ import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoClient } from "./client.js";
-import { FORGEJO_ISSUE_CANCELLED_KIND, FORGEJO_PR_FEEDBACK_KIND } from "./external.js";
+import {
+	FORGEJO_ISSUE_CANCELLED_KIND,
+	FORGEJO_PR_FEEDBACK_KIND,
+	type ForgejoFeedbackSourceConfig,
+} from "./external.js";
 import { forgejoIssueWatcherSource } from "./issue-watcher.js";
 import { createForgejoProvider, matchesConfiguredRepository } from "./provider.js";
 
@@ -63,6 +67,23 @@ it.each([
 });
 
 describe("createForgejoProvider", () => {
+	const profile = { baseUrl: "https://git.example.test", token: "secret", botLogin: "leitwerk" };
+	const feedbackArming = (overrides: Partial<ForgejoFeedbackSourceConfig> = {}) => ({
+		id: "feedback-arm",
+		instanceId: "process-1",
+		resolved: {
+			profile: "primary",
+			owner: "team",
+			repo: "repo",
+			prNumber: 8,
+			conversationCursor: 0,
+			reviewCursor: 0,
+			inlineCursor: 0,
+			quietPeriodMs: 120_000,
+			pollInterval: "1s",
+			...overrides,
+		},
+	});
 	const repository = {
 		id: 1,
 		name: "service",
@@ -138,29 +159,11 @@ describe("createForgejoProvider", () => {
 	it("debounces unseen human feedback, excludes the bot, and advances independent cursors", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-08-10T12:05:00Z"));
-		const armed = {
-			id: "feedback-arm",
-			instanceId: "process-1",
-			resolved: {
-				profile: "primary",
-				owner: "team",
-				repo: "repo",
-				prNumber: 8,
-				conversationCursor: 10,
-				reviewCursor: 20,
-				inlineCursor: 30,
-				quietPeriodMs: 120_000,
-				pollInterval: "1s",
-			},
-		};
+		const armed = feedbackArming({ conversationCursor: 10, reviewCursor: 20, inlineCursor: 30 });
 		const { provider, fire } = providerFixture({
 			armedByKind: { [FORGEJO_PR_FEEDBACK_KIND]: [armed] },
 			client: {
-				profile: {
-					baseUrl: "https://git.example.test",
-					token: "secret",
-					botLogin: "leitwerk",
-				},
+				profile,
 				listPullRequestFeedback: vi.fn(async () => [
 					{
 						kind: "conversation",
@@ -213,31 +216,9 @@ describe("createForgejoProvider", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-08-10T12:05:00Z"));
 		const { provider, fire } = providerFixture({
-			armedByKind: {
-				[FORGEJO_PR_FEEDBACK_KIND]: [
-					{
-						id: "feedback-arm",
-						instanceId: "process-1",
-						resolved: {
-							profile: "primary",
-							owner: "team",
-							repo: "repo",
-							prNumber: 8,
-							conversationCursor: 0,
-							reviewCursor: 0,
-							inlineCursor: 0,
-							quietPeriodMs: 120_000,
-							pollInterval: "1s",
-						},
-					},
-				],
-			},
+			armedByKind: { [FORGEJO_PR_FEEDBACK_KIND]: [feedbackArming()] },
 			client: {
-				profile: {
-					baseUrl: "https://git.example.test",
-					token: "secret",
-					botLogin: "leitwerk",
-				},
+				profile,
 				listPullRequestFeedback: vi.fn(async () => [
 					{
 						kind: "review",

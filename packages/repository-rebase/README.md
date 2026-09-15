@@ -1,9 +1,10 @@
 # Repository rebase
 
 The root export contains `ConflictEvidence`, `conflictEvidence`, `validateConflict`,
-`describeConflict`, `conflictKey`, and `sameSubscription`. Provider polling can
+`describeConflict`, `conflictKey`, `sameSubscription`, and `createConflictReporter`. Provider polling can
 import it without loading Git execution or repair prompts. Evidence shapes and
 deduplication keys remain stable across the package move.
+`createConflictReporter` observes refreshes and deduplicates accepted pairs per live subscription; its result indicates a fire attempt, including rejected attempts that remain retryable.
 
 Import `prepareRebase`, `startRebase`, `verifyRebase`, `publishRebase` and
 `RebaseInput` from `@leitwerk-dev/repository-rebase/git`. Import `rebasePrompt` from

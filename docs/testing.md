@@ -58,6 +58,7 @@ Turborepo entry point.
 ### Core Principles
 
 - **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeLlmProvider` and extension-owned fakes) rather than broad mocks.
+- **Shared fixtures:** System and browser tests use `tests/helpers/accepted-llm-turn.ts` to create accepted starts, leases, and turn records together.
 - **Avoid Change Detector Tests:** Tests verify business behavior, not implementation details. For example, prompt tests assert runtime variable interpolation and sentinel values—never literal prompt prose—so harmless text edits don't break tests.
 
 ---
@@ -115,6 +116,7 @@ Run `npm run dev:sandbox` for source UI verification. The public composition use
 real local Git history and normal process finalization. It retains Pi traces and
 adapter progress across restarts. Local adapters share versioned persistence, clocks, and id
 allocation through `LocalProviderStore` from `@leitwerk-dev/test-support/local-git`.
+`LocalForgeStore` adds shared repository metadata, PR construction, refresh, merge, feedback, and a `pullRequestClient` for reading, listing, and updating PRs.
 Launcher tests start the public supervisor with
 an isolated workspace and environment, check strict ports, exercise the outer
 configuration reload, and verify acknowledged reset. Preflight tests prove that

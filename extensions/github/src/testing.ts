@@ -1,4 +1,4 @@
-import { LocalProviderStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
+import { LocalForgeStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
 import type { GitHubClientLike } from "./capability.js";
 import type {
 	GitHubCheckSummary,
@@ -9,15 +9,7 @@ import type {
 } from "./client.js";
 
 export interface LocalGitHubRepository {
-	repository: {
-		id: number;
-		owner: { login: string };
-		name: string;
-		full_name: string;
-		ssh_url: string;
-		html_url: string;
-		default_branch: string;
-	};
+	repository: ReturnType<LocalGitHubAdapter["newRepository"]>;
 	issues: GitHubIssue[];
 	pulls: GitHubPullRequest[];
 	comments: Record<
@@ -44,7 +36,7 @@ export interface LocalGitHubOptions {
 }
 
 /** Persistent local GitHub with actual commit ancestry and configurable release assets. */
-export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, LocalGitHubOptions> {
+export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalGitHubOptions> {
 	constructor(options: LocalGitHubOptions) {
 		super(options, "github.json", {
 			version: 1,
@@ -64,17 +56,8 @@ export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, Loc
 			(r) => r.repository.full_name === `${seed.owner}/${seed.name}`,
 		);
 		if (existing) return existing;
-		const { bare, branch } = this.git.seed(seed);
 		const repo: LocalGitHubRepository = {
-			repository: {
-				id: this.id(),
-				owner: { login: seed.owner },
-				name: seed.name,
-				full_name: `${seed.owner}/${seed.name}`,
-				ssh_url: bare,
-				html_url: `${this.options.baseUrl}/__local`,
-				default_branch: branch,
-			},
+			repository: this.newRepository(seed),
 			issues: [],
 			pulls: [],
 			comments: {},
@@ -86,41 +69,6 @@ export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, Loc
 		this.state.repositories.push(repo);
 		this.save();
 		return repo;
-	}
-	refresh(repo: LocalGitHubRepository, pr: GitHubPullRequest) {
-		if (pr.state === "open") {
-			const { headSha, baseSha, ...mergeability } = this.git.mergeability(
-				repo.repository.ssh_url,
-				pr.head.ref,
-				pr.base.ref,
-			);
-			pr.head.sha = headSha;
-			pr.base.sha = baseSha;
-			Object.assign(pr, mergeability);
-		}
-		return structuredClone(pr);
-	}
-	merge(repo: LocalGitHubRepository, number: number) {
-		const pr = repo.pulls.find((p) => p.number === number);
-		if (!pr || pr.state !== "open") throw new Error("Pull request is not open");
-		this.refresh(repo, pr);
-		pr.merge_commit_sha = this.git.merge(repo.repository.ssh_url, pr.head.ref, pr.base.ref);
-		pr.merged = true;
-		pr.state = "closed";
-		this.save();
-		return structuredClone(pr);
-	}
-	addFeedback(
-		repo: LocalGitHubRepository,
-		number: number,
-		input: Omit<GitHubFeedbackItem, "id" | "createdAt">,
-	) {
-		if (!repo.pulls.some((p) => p.number === number)) throw new Error("Unknown PR");
-		const value = { ...input, id: this.id(), createdAt: this.timestamp() };
-		repo.feedback[number] ??= [];
-		repo.feedback[number].push(value);
-		this.save();
-		return value;
 	}
 	setChecks(repo: LocalGitHubRepository, summary: GitHubCheckSummary) {
 		this.git.head(repo.repository.ssh_url, summary.headSha);
@@ -160,11 +108,6 @@ export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, Loc
 	}
 	client(): GitHubClientLike {
 		const repo = (owner: string, name: string) => this.repo(owner, name);
-		const pull = (owner: string, name: string, number: number) => {
-			const value = repo(owner, name).pulls.find((p) => p.number === number);
-			if (!value) throw new Error("Unknown local GitHub pull request");
-			return value;
-		};
 		return {
 			profile: { apiBaseUrl: this.options.baseUrl, token: "", botLogin: "leitwerk-bot" },
 			getIssue: async (owner, name, number) => {
@@ -196,18 +139,7 @@ export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, Loc
 			},
 			createPullRequest: async (owner, name, input) => {
 				const r = repo(owner, name);
-				const number = this.id();
-				const pr: GitHubPullRequest = {
-					number,
-					title: input.title,
-					body: input.body,
-					state: "open",
-					merged: false,
-					merge_commit_sha: null,
-					html_url: `${this.options.baseUrl}/__local#pr-${number}`,
-					head: { ref: input.head, sha: this.git.head(r.repository.ssh_url, input.head) },
-					base: { ref: input.base, sha: this.git.head(r.repository.ssh_url, input.base) },
-				};
+				const pr = this.newPullRequest(r, input);
 				r.pulls.push(pr);
 				const fail = this.state.failAfterPullRequestWrite;
 				this.state.failAfterPullRequestWrite = false;
@@ -215,19 +147,7 @@ export class LocalGitHubAdapter extends LocalProviderStore<LocalGitHubState, Loc
 				if (fail) throw new Error("Local GitHub: response lost after PR creation");
 				return this.refresh(r, pr);
 			},
-			getPullRequest: async (owner, name, number) =>
-				this.refresh(repo(owner, name), pull(owner, name, number)),
-			listPullRequests: async (owner, name, state = "open") =>
-				repo(owner, name)
-					.pulls.filter((p) => state === "all" || p.state === state)
-					.map((p) => this.refresh(repo(owner, name), p)),
-			updatePullRequest: async (owner, name, number, patch) => {
-				const value = pull(owner, name, number);
-				for (const key of ["title", "body", "state"] as const)
-					if (typeof patch[key] === "string") value[key] = patch[key];
-				this.save();
-				return this.refresh(repo(owner, name), value);
-			},
+			...this.pullRequestClient(repo, "Unknown local GitHub pull request"),
 			listPullRequestFeedback: async (owner, name, number) =>
 				structuredClone([
 					...(repo(owner, name).feedback[number] ?? []),

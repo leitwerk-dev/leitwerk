@@ -2,20 +2,23 @@ import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import type { WoodpeckerIntegration } from "./capability.js";
-import type { WoodpeckerClient } from "./client.js";
+import type { WoodpeckerClient, WoodpeckerPipeline } from "./client.js";
 import { WOODPECKER_PIPELINE_KIND } from "./external.js";
 import { createWoodpeckerProvider } from "./provider.js";
 
-function fixture(
-	pipelines: Array<{
-		number: number;
-		status: string;
-		event: string;
-		branch: string;
-		commit: string;
-	}>,
-	resolved: Record<string, unknown> = {},
-) {
+type Pipeline = Pick<WoodpeckerPipeline, "number" | "status" | "event" | "branch" | "commit">;
+function pipeline(overrides: Partial<Pipeline> = {}): Pipeline {
+	return {
+		number: 8,
+		status: "failure",
+		event: "push",
+		branch: "feature/change",
+		commit: "abc",
+		...overrides,
+	};
+}
+
+function fixture(pipelines: Pipeline[], resolved: Record<string, unknown> = {}) {
 	const fire = vi.fn(async () => ({ ok: true }));
 	const deps = createTestServerSetupCapability({
 		externalSources: {
@@ -52,27 +55,15 @@ describe("createWoodpeckerProvider", () => {
 	it("fires for a pull-request pipeline whose reported branch is the target branch", async () => {
 		const { provider, fire } = fixture(
 			[
-				{
+				pipeline({
 					number: 6,
 					status: "success",
 					event: "pull_request",
 					branch: "main",
 					commit: "other",
-				},
-				{
-					number: 7,
-					status: "success",
-					event: "manual",
-					branch: "feature/change",
-					commit: "abc",
-				},
-				{
-					number: 8,
-					status: "failure",
-					event: "pull_request",
-					branch: "main",
-					commit: "abc",
-				},
+				}),
+				pipeline({ number: 7, status: "success", event: "manual" }),
+				pipeline({ event: "pull_request", branch: "main" }),
 			],
 			{ afterPipelineNumber: 7 },
 		);
@@ -92,15 +83,7 @@ describe("createWoodpeckerProvider", () => {
 	});
 
 	it("still requires the configured branch for push pipelines", async () => {
-		const { provider, fire } = fixture([
-			{
-				number: 8,
-				status: "failure",
-				event: "push",
-				branch: "main",
-				commit: "abc",
-			},
-		]);
+		const { provider, fire } = fixture([pipeline({ event: "push", branch: "main" })]);
 
 		await provider.poll();
 
@@ -108,22 +91,7 @@ describe("createWoodpeckerProvider", () => {
 	});
 
 	it("waits indefinitely while the newest matching pipeline is running", async () => {
-		const { provider, fire } = fixture([
-			{
-				number: 8,
-				status: "failure",
-				event: "push",
-				branch: "feature/change",
-				commit: "abc",
-			},
-			{
-				number: 9,
-				status: "running",
-				event: "push",
-				branch: "feature/change",
-				commit: "abc",
-			},
-		]);
+		const { provider, fire } = fixture([pipeline(), pipeline({ number: 9, status: "running" })]);
 
 		await provider.poll();
 
@@ -131,18 +99,7 @@ describe("createWoodpeckerProvider", () => {
 	});
 
 	it("does not poll a CI source already satisfied for the current head", async () => {
-		const { provider, fire } = fixture(
-			[
-				{
-					number: 8,
-					status: "success",
-					event: "push",
-					branch: "feature/change",
-					commit: "abc",
-				},
-			],
-			{ disabled: true },
-		);
+		const { provider, fire } = fixture([pipeline({ status: "success" })], { disabled: true });
 
 		await provider.poll();
 

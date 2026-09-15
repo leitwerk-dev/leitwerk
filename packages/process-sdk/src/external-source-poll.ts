@@ -12,6 +12,17 @@ export function createExternalSourcePollReporter(
 	result: { created: string[]; errors: string[] },
 ) {
 	return {
+		async poll(kind: string, read: (armed: ExternalSourceArmingLike) => Promise<void>) {
+			for (const armed of sources.listArmed(kind)) {
+				try {
+					await read(armed);
+				} catch (error) {
+					result.errors.push(
+						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,
+					);
+				}
+			}
+		},
 		async fire(armed: Arming, event: Record<string, unknown>, mergeKey: string): Promise<boolean> {
 			const fired = await sources.fire({
 				instanceId: armed.instanceId,

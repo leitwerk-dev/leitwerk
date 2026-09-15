@@ -2,14 +2,10 @@ import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	type CoreServerSetupDeps,
 	createExternalSourcePollReporter,
+	type ExternalSourceArmingLike,
 	type RegisteredProcessWatcherLike,
 } from "@leitwerk-dev/process-sdk";
-import {
-	conflictEvidence,
-	conflictKey,
-	describeConflict,
-	sameSubscription,
-} from "@leitwerk-dev/repository-rebase";
+import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoIssue, ForgejoRepository } from "./client.js";
@@ -110,7 +106,7 @@ export function createForgejoProvider(
 	options: { now?: () => number } = {},
 ) {
 	const due = createPollSchedule(options.now);
-	const accepted = new Map<string, string>();
+	const reportConflict = createConflictReporter(deps.externalSources, FORGEJO_PR_CONFLICT_KIND);
 
 	async function discover(
 		watcher: RegisteredProcessWatcherLike<ForgejoIssueWatcherConfig, ForgejoIssueWatcherEvent>,
@@ -161,29 +157,12 @@ export function createForgejoProvider(
 					.client(base.profile)
 					.getPullRequest(base.owner, base.repo, base.prNumber);
 				const conflict = conflictEvidence({ ...base, headSha: raw.headSha }, pr, "forgejo");
-				await report.observe(armed, {
-					observation: {
-						...(conflict
-							? describeConflict({ conflict })
-							: {
-									summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : String(pr.mergeable)}`,
-								}),
-						observedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
-						subject: `${base.owner}/${base.repo}#${pr.number}`,
-						revision: `${pr.head.sha}:${pr.base.sha}`,
-					},
+				await reportConflict(report, armed, conflict, raw.lastConflictKey, {
+					summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : String(pr.mergeable)}`,
+					observedAt: new Date(options.now?.() ?? Date.now()).toISOString(),
+					subject: `${base.owner}/${base.repo}#${pr.number}`,
+					revision: `${pr.head.sha}:${pr.base.sha}`,
 				});
-				if (
-					!conflict ||
-					conflictKey(conflict) === raw.lastConflictKey ||
-					accepted.get(key) === conflictKey(conflict) ||
-					!deps.externalSources
-						.listArmed(FORGEJO_PR_CONFLICT_KIND)
-						.some((current) => sameSubscription(armed, current))
-				)
-					continue;
-				if (await report.fire(armed, { kind: "merge_conflict", conflict }, conflictKey(conflict)))
-					accepted.set(key, conflictKey(conflict));
 			} catch (error) {
 				const message = error instanceof Error ? error.message : "PR refresh failed";
 				result.errors.push(`${armed.id}:${message}`);
@@ -191,87 +170,67 @@ export function createForgejoProvider(
 			}
 		}
 
-		for (const armed of deps.externalSources.listArmed(FORGEJO_ISSUE_CANCELLED_KIND)) {
-			const config = parseIssueCancelledConfig(armed.resolved);
-			if (!config || !due(`${armed.instanceId}:${armed.id}`, config.pollInterval ?? "30s"))
-				continue;
-			try {
-				const issue = await integration
-					.client(config.profile)
-					.getIssue(config.owner, config.repo, config.issueNumber);
-				const reason =
-					issue.state === "closed"
-						? "issue_closed"
-						: hasLabel(issue, config.triggerLabel)
-							? null
-							: "trigger_label_removed";
-				if (!reason) continue;
-				await report.fire(armed, { issue, reason }, `${issue.number}:${reason}`);
-			} catch (error) {
-				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
-			}
+		async function poll<C extends { pollInterval?: string; disabled?: boolean }>(
+			kind: string,
+			parse: (value: unknown) => C | null,
+			read: (config: C, armed: ExternalSourceArmingLike) => Promise<void>,
+		) {
+			await report.poll(kind, async (armed) => {
+				const config = parse(armed.resolved);
+				if (!config || !due(`${armed.instanceId}:${armed.id}`, config.pollInterval ?? "30s"))
+					return;
+				if (!config.disabled) await read(config, armed);
+			});
 		}
-		for (const armed of deps.externalSources.listArmed(FORGEJO_PR_TERMINAL_KIND)) {
-			const config = parsePrConfig(armed.resolved);
-			if (!config || !due(`${armed.instanceId}:${armed.id}`, config.pollInterval ?? "30s"))
-				continue;
-			if (config.disabled) continue;
-			try {
-				const pr = await integration
-					.client(config.profile)
-					.getPullRequest(config.owner, config.repo, config.prNumber);
-				if (!pr.merged && pr.state !== "closed") continue;
-				const outcome = pr.merged ? "merged" : "closed";
-				if (config.terminalOutcome && config.terminalOutcome !== outcome) continue;
-				await report.fire(armed, { pullRequest: pr }, `${pr.number}:${outcome}`);
-			} catch (error) {
-				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
+		await poll(FORGEJO_ISSUE_CANCELLED_KIND, parseIssueCancelledConfig, async (config, armed) => {
+			const issue = await integration
+				.client(config.profile)
+				.getIssue(config.owner, config.repo, config.issueNumber);
+			const reason =
+				issue.state === "closed"
+					? "issue_closed"
+					: hasLabel(issue, config.triggerLabel)
+						? null
+						: "trigger_label_removed";
+			if (reason) await report.fire(armed, { issue, reason }, `${issue.number}:${reason}`);
+		});
+		await poll(FORGEJO_PR_TERMINAL_KIND, parsePrConfig, async (config, armed) => {
+			const pr = await integration
+				.client(config.profile)
+				.getPullRequest(config.owner, config.repo, config.prNumber);
+			if (!pr.merged && pr.state !== "closed") return;
+			const outcome = pr.merged ? "merged" : "closed";
+			if (config.terminalOutcome && config.terminalOutcome !== outcome) return;
+			await report.fire(armed, { pullRequest: pr }, `${pr.number}:${outcome}`);
+		});
+		await poll(FORGEJO_PR_FEEDBACK_KIND, parseFeedbackConfig, async (config, armed) => {
+			const client = integration.client(config.profile);
+			const unseen = (
+				await client.listPullRequestFeedback(config.owner, config.repo, config.prNumber)
+			).filter(
+				(item) => item.author !== client.profile.botLogin && item.id > config[`${item.kind}Cursor`],
+			);
+			if (!unseen.length) return;
+			const latest = Math.max(...unseen.map((item) => Date.parse(item.createdAt) || 0));
+			if ((options.now?.() ?? Date.now()) - latest < config.quietPeriodMs) return;
+			const cursors = {
+				conversationCursor: config.conversationCursor,
+				reviewCursor: config.reviewCursor,
+				inlineCursor: config.inlineCursor,
+			};
+			for (const item of unseen) {
+				const key = `${item.kind}Cursor` as const;
+				cursors[key] = Math.max(cursors[key], item.id);
 			}
-		}
-		for (const armed of deps.externalSources.listArmed(FORGEJO_PR_FEEDBACK_KIND)) {
-			const config = parseFeedbackConfig(armed.resolved);
-			if (!config || !due(`${armed.instanceId}:${armed.id}`, config.pollInterval ?? "30s"))
-				continue;
-			if (config.disabled) continue;
-			try {
-				const client = integration.client(config.profile);
-				const unseen = (
-					await client.listPullRequestFeedback(config.owner, config.repo, config.prNumber)
-				).filter((item) => {
-					if (item.author === client.profile.botLogin) return false;
-					if (item.kind === "conversation") return item.id > config.conversationCursor;
-					if (item.kind === "review") return item.id > config.reviewCursor;
-					return item.id > config.inlineCursor;
-				});
-				if (!unseen.length) continue;
-				const latest = Math.max(...unseen.map((item) => Date.parse(item.createdAt) || 0));
-				if ((options.now?.() ?? Date.now()) - latest < config.quietPeriodMs) continue;
-				const cursors = {
-					conversationCursor: Math.max(
-						config.conversationCursor,
-						...unseen.filter((item) => item.kind === "conversation").map((item) => item.id),
-					),
-					reviewCursor: Math.max(
-						config.reviewCursor,
-						...unseen.filter((item) => item.kind === "review").map((item) => item.id),
-					),
-					inlineCursor: Math.max(
-						config.inlineCursor,
-						...unseen.filter((item) => item.kind === "inline").map((item) => item.id),
-					),
-				};
-				await report.fire(
-					armed,
-					{
-						feedbackIds: unseen.map(({ kind, id }) => ({ kind, id })),
-						cursors,
-					},
-					`${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
-				);
-			} catch (error) {
-				result.errors.push(`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`);
-			}
-		}
+			await report.fire(
+				armed,
+				{
+					feedbackIds: unseen.map(({ kind, id }) => ({ kind, id })),
+					cursors,
+				},
+				`${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
+			);
+		});
 	}
 
 	return deps.polling.create({

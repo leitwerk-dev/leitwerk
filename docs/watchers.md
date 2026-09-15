@@ -125,6 +125,7 @@ is logged with the full error. A completed pass with a non-empty `errors` array 
 with the complete result. Providers may call `poller.poll()` directly in tests or explicit
 fixtures, but do not own scheduled polling lifecycle. `createPollSchedule(now?)` from
 `watcher-utils` reserves per-key deadlines; callers retain ownership of keys and intervals.
+`createExternalSourcePollReporter(...).poll(kind, read)` visits armed sources sequentially and collects per-source errors; the callback owns filtering and scheduling.
 
 ## Idempotency and deduplication
 

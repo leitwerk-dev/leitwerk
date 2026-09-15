@@ -248,6 +248,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
+export { IntegrationHttpClient } from "./integration-http.js";
 export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,
@@ -365,6 +366,8 @@ export {
 	repositoryGitSubprocessEnv,
 	setRepositoryGitSshWrapper,
 } from "./repository-git-env.js";
+export { RepositoryHttpClient } from "./repository-http.js";
+export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 export {
 	buildPlanSavedEventPayload,
 	buildReviewCompletedEventPayload,
@@ -403,7 +406,7 @@ export {
 	sanitizeWorkerSubprocessEnv,
 	WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS,
 } from "./subprocess-env.js";
-export { numberArg, projectParameters, stringArg } from "./tool-arguments.js";
+export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type {
 	ToolCallRendererDefinition,
 	ToolCallRendererFieldDefinition,

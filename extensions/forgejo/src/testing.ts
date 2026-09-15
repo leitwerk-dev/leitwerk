@@ -1,4 +1,4 @@
-import { LocalProviderStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
+import { LocalForgeStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
 import type { ForgejoClientLike } from "./capability.js";
 import type {
 	ForgejoFeedbackItem,
@@ -33,10 +33,7 @@ export interface LocalForgejoOptions {
 	seeds?: Array<LocalRepositorySeed & { labels?: string[] }>;
 }
 /** Persistent local Forgejo. Register its client through setupForgejoIntegration. */
-export class LocalForgejoAdapter extends LocalProviderStore<
-	LocalForgejoState,
-	LocalForgejoOptions
-> {
+export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, LocalForgejoOptions> {
 	readonly baseUrl: string;
 	constructor(options: LocalForgejoOptions) {
 		super(options, "forgejo.json", {
@@ -58,18 +55,8 @@ export class LocalForgejoAdapter extends LocalProviderStore<
 			(r) => r.repository.full_name === `${seed.owner}/${seed.name}`,
 		);
 		if (existing) return existing;
-		const { bare, branch } = this.git.seed(seed);
 		const repo: LocalForgejoRepository = {
-			repository: {
-				id: this.id(),
-				owner: { login: seed.owner },
-				name: seed.name,
-				full_name: `${seed.owner}/${seed.name}`,
-				ssh_url: bare,
-				html_url: `${this.baseUrl}/__local`,
-				default_branch: branch,
-				has_issues: true,
-			},
+			repository: { ...this.newRepository(seed), has_issues: true },
 			issues: [],
 			pulls: [],
 			comments: {},
@@ -83,41 +70,6 @@ export class LocalForgejoAdapter extends LocalProviderStore<
 	head(repo: LocalForgejoRepository, ref: string) {
 		return this.git.head(repo.repository.ssh_url, ref);
 	}
-	refresh(repo: LocalForgejoRepository, pr: ForgejoPullRequest) {
-		if (pr.state === "open") {
-			const { headSha, baseSha, ...mergeability } = this.git.mergeability(
-				repo.repository.ssh_url,
-				pr.head.ref,
-				pr.base.ref,
-			);
-			pr.head.sha = headSha;
-			pr.base.sha = baseSha;
-			Object.assign(pr, mergeability);
-		}
-		return structuredClone(pr);
-	}
-	merge(repo: LocalForgejoRepository, number: number) {
-		const pr = repo.pulls.find((p) => p.number === number);
-		if (!pr || pr.state !== "open") throw new Error("Pull request is not open");
-		this.refresh(repo, pr);
-		pr.merge_commit_sha = this.git.merge(repo.repository.ssh_url, pr.head.ref, pr.base.ref);
-		pr.merged = true;
-		pr.state = "closed";
-		this.save();
-		return structuredClone(pr);
-	}
-	addFeedback(
-		repo: LocalForgejoRepository,
-		number: number,
-		input: Omit<ForgejoFeedbackItem, "id" | "createdAt">,
-	) {
-		if (!repo.pulls.some((p) => p.number === number)) throw new Error("Unknown PR");
-		const value = { ...input, id: this.id(), createdAt: this.timestamp() };
-		repo.feedback[number] ??= [];
-		repo.feedback[number].push(value);
-		this.save();
-		return value;
-	}
 	client(): ForgejoClientLike {
 		return forgejoClient(this);
 	}
@@ -127,11 +79,6 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 	const issue = (owner: string, name: string, number: number) => {
 		const value = repo(owner, name).issues.find((i) => i.number === number);
 		if (!value) throw new Error("Unknown local issue");
-		return value;
-	};
-	const pull = (owner: string, name: string, number: number) => {
-		const value = repo(owner, name).pulls.find((i) => i.number === number);
-		if (!value) throw new Error("Unknown local pull request");
 		return value;
 	};
 	const comment = async (owner: string, name: string, number: number, body: string) => {
@@ -229,38 +176,12 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 		addIssueComment: comment,
 		async createPullRequest(owner, name, input) {
 			const r = repo(owner, name);
-			const number = store.id();
-			const value = {
-				number,
-				title: input.title,
-				body: input.body,
-				state: "open",
-				merged: false,
-				merge_commit_sha: null,
-				html_url: `${store.baseUrl}/__local#pr-${number}`,
-				head: { ref: input.head, sha: store.head(r, input.head) },
-				base: { ref: input.base, sha: store.head(r, input.base) },
-			};
+			const value = store.newPullRequest(r, input);
 			r.pulls.push(value);
 			store.save();
 			return structuredClone(value);
 		},
-		async getPullRequest(owner, name, number) {
-			return store.refresh(repo(owner, name), pull(owner, name, number));
-		},
-		async listPullRequests(owner, name, state = "open") {
-			const r = repo(owner, name);
-			return r.pulls
-				.filter((p) => state === "all" || p.state === state)
-				.map((p) => store.refresh(r, p));
-		},
-		async updatePullRequest(owner, name, number, patch) {
-			const value = pull(owner, name, number);
-			for (const key of ["title", "body", "state"] as const)
-				if (typeof patch[key] === "string") value[key] = patch[key];
-			store.save();
-			return store.refresh(repo(owner, name), value);
-		},
+		...store.pullRequestClient(repo),
 		addPullRequestComment: comment,
 		async addPullRequestFeedbackReaction() {
 			return {};

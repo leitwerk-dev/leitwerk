@@ -6,6 +6,31 @@ afterEach(() => {
 });
 
 describe("ForgejoClient", () => {
+	const client = new ForgejoClient({
+		baseUrl: "https://git.example.test",
+		token: "token",
+		botLogin: "leitwerk",
+	});
+	it("retains Forgejo encoding, authentication and cancellation for shared PR endpoints", async () => {
+		const fetch = vi.fn(async () => Response.json({ number: 7 }));
+		vi.stubGlobal("fetch", fetch);
+		const signal = new AbortController().signal;
+		await client.getPullRequest("a/b", "c d", 7, signal);
+		expect(fetch).toHaveBeenCalledWith(
+			"https://git.example.test/api/v1/repos/a%2Fb/c%20d/pulls/7",
+			expect.objectContaining({
+				signal,
+				headers: expect.objectContaining({ Authorization: "token token" }),
+			}),
+		);
+		fetch.mockImplementation(async () => Response.json([]));
+		await client.listPullRequests("a/b", "c d", "open&state=closed");
+		expect(fetch).toHaveBeenLastCalledWith(
+			"https://git.example.test/api/v1/repos/a%2Fb/c%20d/pulls?state=open%26state%3Dclosed&limit=50&page=1",
+			expect.anything(),
+		);
+	});
+
 	it("validates server-owned profiles", () => {
 		const profiles = parseForgejoProfiles({
 			profiles: {
@@ -33,7 +58,7 @@ describe("ForgejoClient", () => {
 		});
 		expect(
 			parseForgejoTicketCreationConfig({
-				ticket_creation: { default_labels: ["bot", "triage", "bot"] },
+				ticket_creation: { default_labels: [" bot ", "triage", "bot"] },
 			}),
 		).toEqual({ defaultLabels: ["bot", "triage"] });
 		expect(() =>
@@ -44,13 +69,7 @@ describe("ForgejoClient", () => {
 	it("resolves the authenticated bot identity from the configured profile", async () => {
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(
-				async () =>
-					new Response(JSON.stringify({ login: "leitwerk-bot", full_name: "Leitwerk Bot" }), {
-						status: 200,
-						headers: { "Content-Type": "application/json" },
-					}),
-			),
+			vi.fn(async () => Response.json({ login: "leitwerk-bot", full_name: "Leitwerk Bot" })),
 		);
 		const client = new ForgejoClient({
 			baseUrl: "https://git.example.test",
@@ -68,76 +87,52 @@ describe("ForgejoClient", () => {
 	});
 
 	it("uses the Forgejo 11 labels endpoint separately from issue edits", async () => {
-		const requests: Array<{ url: string; init: RequestInit }> = [];
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: string, init: RequestInit = {}) => {
-				requests.push({ url, init });
-				return new Response(JSON.stringify({ number: 7, labels: [] }), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				});
-			}),
+		const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+			Response.json({ number: 7, labels: [] }),
 		);
-		const client = new ForgejoClient({
-			baseUrl: "https://git.example.test",
-			token: "token",
-			botLogin: "leitwerk",
-		});
+		vi.stubGlobal("fetch", fetch);
+		const signal = new AbortController().signal;
+		await client.updateIssue("team", "repo", 7, { labels: [2, 3], state: "closed" }, signal);
+		expect(fetch.mock.calls.every(([, init]) => init?.signal === signal)).toBe(true);
 
-		await client.updateIssue("team", "repo", 7, {
-			labels: [2, 3],
-			state: "closed",
-		});
-
-		expect(requests.map((request) => [request.init.method, request.url])).toEqual([
+		expect(fetch.mock.calls.map(([url, init]) => [init?.method, url])).toEqual([
 			["PUT", "https://git.example.test/api/v1/repos/team/repo/issues/7/labels"],
 			["PATCH", "https://git.example.test/api/v1/repos/team/repo/issues/7"],
 		]);
-		expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
 			labels: [2, 3],
 		});
-		expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
+		expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
 			state: "closed",
 		});
 	});
 
 	it("creates issues with Forgejo label ids", async () => {
-		const requests: Array<{ url: string; init: RequestInit }> = [];
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: string, init: RequestInit = {}) => {
-				requests.push({ url, init });
-				return new Response(
-					JSON.stringify({
-						number: 7,
-						title: "Ticket",
-						body: "Description",
-						state: "open",
-						html_url: "https://git.example.test/team/repo/issues/7",
-						updated_at: "2026-08-23T00:00:00Z",
-						user: { login: "leitwerk" },
-						labels: [],
-					}),
-					{ status: 201, headers: { "Content-Type": "application/json" } },
-				);
-			}),
+		const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+			Response.json(
+				{
+					number: 7,
+					title: "Ticket",
+					body: "Description",
+					state: "open",
+					html_url: "https://git.example.test/team/repo/issues/7",
+					updated_at: "2026-08-23T00:00:00Z",
+					user: { login: "leitwerk" },
+					labels: [],
+				},
+				{ status: 201 },
+			),
 		);
-		const client = new ForgejoClient({
-			baseUrl: "https://git.example.test",
-			token: "token",
-			botLogin: "leitwerk",
-		});
-
+		vi.stubGlobal("fetch", fetch);
 		await client.createIssue("team", "repo", {
 			title: "Ticket",
 			body: "Description",
 			labels: [3, 5],
 		});
 
-		expect(requests[0]?.url).toBe("https://git.example.test/api/v1/repos/team/repo/issues");
-		expect(requests[0]?.init.method).toBe("POST");
-		expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
+		expect(fetch.mock.calls[0]?.[0]).toBe("https://git.example.test/api/v1/repos/team/repo/issues");
+		expect(fetch.mock.calls[0]?.[1]?.method).toBe("POST");
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
 			title: "Ticket",
 			body: "Description",
 			labels: [3, 5],
@@ -145,52 +140,39 @@ describe("ForgejoClient", () => {
 	});
 
 	it("normalizes conversation, submitted review, and nested inline feedback", async () => {
-		const urls: string[] = [];
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: string) => {
-				urls.push(url);
-				const body = url.includes("/issues/9/comments")
+		const fetch = vi.fn(async (url: string) => {
+			const body = url.includes("/issues/9/comments")
+				? [
+						{
+							id: 10,
+							body: "Conversation",
+							created_at: "2026-08-10T10:00:00Z",
+							user: { login: "alice" },
+						},
+					]
+				: url.includes("/reviews/20/comments")
 					? [
 							{
-								id: 10,
-								body: "Conversation",
-								created_at: "2026-08-10T10:00:00Z",
-								user: { login: "alice" },
+								id: 30,
+								body: "Inline",
+								created_at: "2026-08-10T10:02:00Z",
+								user: { login: "carol" },
+								path: "src/a.ts",
+								line: 4,
+								position: 4,
 							},
 						]
-					: url.includes("/reviews/20/comments")
-						? [
-								{
-									id: 30,
-									body: "Inline",
-									created_at: "2026-08-10T10:02:00Z",
-									user: { login: "carol" },
-									path: "src/a.ts",
-									line: 4,
-									position: 4,
-								},
-							]
-						: [
-								{
-									id: 20,
-									body: "Review",
-									submitted_at: "2026-08-10T10:01:00Z",
-									user: { login: "bob" },
-								},
-							];
-				return new Response(JSON.stringify(body), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				});
-			}),
-		);
-		const client = new ForgejoClient({
-			baseUrl: "https://git.example.test",
-			token: "token",
-			botLogin: "leitwerk",
+					: [
+							{
+								id: 20,
+								body: "Review",
+								submitted_at: "2026-08-10T10:01:00Z",
+								user: { login: "bob" },
+							},
+						];
+			return Response.json(body);
 		});
-
+		vi.stubGlobal("fetch", fetch);
 		const feedback = await client.listPullRequestFeedback("team", "repo", 9);
 
 		expect(feedback).toMatchObject([
@@ -211,28 +193,15 @@ describe("ForgejoClient", () => {
 				reviewId: 20,
 			},
 		]);
-		expect(urls.some((url) => url.includes("/pulls/9/reviews/20/comments"))).toBe(true);
-		expect(urls.some((url) => url.includes("/pulls/9/comments"))).toBe(false);
+		expect(fetch.mock.calls.some(([url]) => url.includes("/pulls/9/reviews/20/comments"))).toBe(
+			true,
+		);
+		expect(fetch.mock.calls.some(([url]) => url.includes("/pulls/9/comments"))).toBe(false);
 	});
 
 	it("adds eyes and replies in the exact inline review", async () => {
-		const requests: Array<{ url: string; init: RequestInit }> = [];
-		vi.stubGlobal(
-			"fetch",
-			vi.fn(async (url: string, init: RequestInit = {}) => {
-				requests.push({ url, init });
-				return new Response(JSON.stringify({ id: 1 }), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				});
-			}),
-		);
-		const client = new ForgejoClient({
-			baseUrl: "https://git.example.test",
-			token: "token",
-			botLogin: "leitwerk",
-		});
-
+		const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ id: 1 }));
+		vi.stubGlobal("fetch", fetch);
 		const feedback = {
 			kind: "inline" as const,
 			id: 30,
@@ -246,14 +215,14 @@ describe("ForgejoClient", () => {
 		await client.addPullRequestFeedbackReaction("team", "repo", feedback, "eyes");
 		await client.replyToPullRequestFeedback("team", "repo", 9, feedback, "Addressed.");
 
-		expect(requests.map((request) => [request.init.method, request.url])).toEqual([
+		expect(fetch.mock.calls.map(([url, init]) => [init?.method, url])).toEqual([
 			["POST", "https://git.example.test/api/v1/repos/team/repo/issues/comments/30/reactions"],
 			["POST", "https://git.example.test/api/v1/repos/team/repo/pulls/9/reviews/20/comments"],
 		]);
-		expect(JSON.parse(String(requests[0]?.init.body))).toEqual({
+		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
 			content: "eyes",
 		});
-		expect(JSON.parse(String(requests[1]?.init.body))).toEqual({
+		expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
 			body: "Addressed.",
 			path: "README.md",
 			new_position: 4,
@@ -295,18 +264,9 @@ describe("ForgejoClient", () => {
 				} else {
 					throw new Error(`Unexpected request: ${url}`);
 				}
-				return new Response(JSON.stringify(body), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				});
+				return Response.json(body);
 			}),
 		);
-		const client = new ForgejoClient({
-			baseUrl: "https://git.example.test",
-			token: "token",
-			botLogin: "leitwerk",
-		});
-
 		for (const feedback of await client.listPullRequestFeedback("team", "repo", 14)) {
 			await client.replyToPullRequestFeedback("team", "repo", 14, feedback, "Addressed.");
 		}

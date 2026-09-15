@@ -75,6 +75,9 @@ for (const provider of ["forgejo", "github"] as const) {
 	describe(`${provider} conflict polling`, () => {
 		it("fires confirmed conflicts independently of checks and feedback failures, deduplicating head/base pairs", async () => {
 			const f = fixture();
+			f.fire.mockResolvedValueOnce({ ok: false });
+			await f.poll();
+			f.fire.mockClear();
 			await f.poll();
 			await f.poll();
 			expect(f.fire).toHaveBeenCalledTimes(1);

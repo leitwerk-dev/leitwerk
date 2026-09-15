@@ -62,36 +62,30 @@ export function createWoodpeckerProvider(
 		async pollOnce() {
 			const result = emptyPollResult();
 			const report = createExternalSourcePollReporter(deps.externalSources, result);
-			for (const armed of deps.externalSources.listArmed(WOODPECKER_PIPELINE_KIND)) {
+			await report.poll(WOODPECKER_PIPELINE_KIND, async (armed) => {
 				const config = parse(armed.resolved);
 				if (!config) {
 					result.errors.push(`${armed.id}:invalid_config`);
-					continue;
+					return;
 				}
-				if (config.disabled) continue;
+				if (config.disabled) return;
 				const key = `${armed.instanceId}:${armed.id}`;
-				if (!due(key, config.pollInterval)) continue;
-				try {
-					const client = integration.client(config.profile);
-					const repo = await client.lookupRepository(`${config.owner}/${config.repo}`);
-					const pipeline = await findLatestPipeline(client, repo.id, config);
-					if (
-						!pipeline ||
-						!terminal.has(pipeline.status) ||
-						(config.statuses && !config.statuses.includes(pipeline.status))
-					)
-						continue;
-					await report.fire(
-						armed,
-						{ repositoryId: repo.id, pipeline },
-						`${pipeline.number}:${pipeline.status}`,
-					);
-				} catch (error) {
-					result.errors.push(
-						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,
-					);
-				}
-			}
+				if (!due(key, config.pollInterval)) return;
+				const client = integration.client(config.profile);
+				const repo = await client.lookupRepository(`${config.owner}/${config.repo}`);
+				const pipeline = await findLatestPipeline(client, repo.id, config);
+				if (
+					!pipeline ||
+					!terminal.has(pipeline.status) ||
+					(config.statuses && !config.statuses.includes(pipeline.status))
+				)
+					return;
+				await report.fire(
+					armed,
+					{ repositoryId: repo.id, pipeline },
+					`${pipeline.number}:${pipeline.status}`,
+				);
+			});
 			return result;
 		},
 	});

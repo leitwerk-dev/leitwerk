@@ -13,6 +13,14 @@ export function projectParameters(
 	};
 }
 
+export function objectArg(
+	value: unknown,
+	message = "Tool arguments must be an object",
+): Record<string, unknown> {
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(message);
+	return value as Record<string, unknown>;
+}
+
 /** Read required integration-tool arguments at the runtime boundary. */
 export function stringArg(args: Record<string, unknown>, name: string): string {
 	const value = args[name];

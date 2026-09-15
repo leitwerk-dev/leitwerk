@@ -28,16 +28,12 @@ describe("WoodpeckerClient", () => {
 		const encode = (value: string) => btoa(String.fromCharCode(...new TextEncoder().encode(value)));
 		vi.stubGlobal(
 			"fetch",
-			vi.fn(
-				async () =>
-					new Response(
-						JSON.stringify([
-							{ line: 1, data: encode("old") },
-							{ line: 2, data: encode("line") },
-							{ line: 3, data: [...new TextEncoder().encode("🙂🙂🙂")] },
-						]),
-						{ status: 200, headers: { "Content-Type": "application/json" } },
-					),
+			vi.fn(async () =>
+				Response.json([
+					{ line: 1, data: encode("old") },
+					{ line: 2, data: encode("line") },
+					{ line: 3, data: [...new TextEncoder().encode("🙂🙂🙂")] },
+				]),
 			),
 		);
 		const client = new WoodpeckerClient({
@@ -52,13 +48,7 @@ describe("WoodpeckerClient", () => {
 	});
 
 	it("uses the Woodpecker 3 pipeline restart endpoint", async () => {
-		const fetchMock = vi.fn(
-			async () =>
-				new Response(JSON.stringify({ number: 13 }), {
-					status: 200,
-					headers: { "Content-Type": "application/json" },
-				}),
-		);
+		const fetchMock = vi.fn(async () => Response.json({ number: 13 }));
 		vi.stubGlobal("fetch", fetchMock);
 		const client = new WoodpeckerClient({
 			baseUrl: "https://ci.example.test",

@@ -1,5 +1,9 @@
 import { expect, it } from "vitest";
-import { projectParameters } from "./tool-arguments.js";
+import { objectArg, projectParameters } from "./tool-arguments.js";
+
+it.each([null, undefined, [], "text", 1, true])("rejects non-object arguments: %j", (value) => {
+	expect(() => objectArg(value, "Invalid binding")).toThrow("Invalid binding");
+});
 
 it.each([undefined, ["number"], []])("keeps explicit required fields: %j", (required) => {
 	const properties = { number: { type: "integer" }, note: { type: "string" } };

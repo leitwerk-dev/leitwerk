@@ -5,15 +5,26 @@ import {
 	coreHostCapabilities,
 	createCapabilityAccessor,
 	createEventBus,
+	type IntegrationToolDefinition,
 	type LeitwerkExtensionModule,
 	type ProvidedCapability,
+	type ServerExtensionAPI,
 	type ServerExtensionEventMap,
 } from "@leitwerk-dev/process-sdk";
 import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 
+export function createToolCollector() {
+	const tools = new Map<string, IntegrationToolDefinition>();
+	const api = {
+		tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool),
+	} as unknown as ServerExtensionAPI;
+	return { api, tools };
+}
+
 export interface InMemoryExternalWriteLog {
+	records: { dedupKey: string }[];
 	hasDedupKey(key: string): boolean;
 	record(input: { dedupKey: string }): { dedupKey: string };
 	getDedupKeys(): ReadonlySet<string>;
@@ -21,12 +32,15 @@ export interface InMemoryExternalWriteLog {
 
 export function createInMemoryExternalWriteLog(): InMemoryExternalWriteLog {
 	const dedupKeys = new Set<string>();
+	const records: { dedupKey: string }[] = [];
 	return {
+		records,
 		hasDedupKey(key: string) {
 			return dedupKeys.has(key);
 		},
 		record(input: { dedupKey: string }) {
 			dedupKeys.add(input.dedupKey);
+			records.push(input);
 			return input;
 		},
 		getDedupKeys() {

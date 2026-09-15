@@ -1,4 +1,5 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
+import { IntegrationHttpClient } from "@leitwerk-dev/process-sdk";
 import { boundedLogTail } from "./logs.js";
 
 export interface WoodpeckerProfile {
@@ -58,21 +59,12 @@ export function parseWoodpeckerProfiles(value: unknown): Map<string, WoodpeckerP
 	return profiles;
 }
 
-export class WoodpeckerClient {
-	constructor(readonly profile: WoodpeckerProfile) {}
-
-	private async response(path: string, init: RequestInit = {}): Promise<Response> {
-		const response = await fetch(`${this.profile.baseUrl}/api${path}`, {
-			...init,
-			headers: {
-				Authorization: `Bearer ${this.profile.token}`,
-				Accept: "application/json",
-				...init.headers,
-			},
+export class WoodpeckerClient extends IntegrationHttpClient {
+	constructor(readonly profile: WoodpeckerProfile) {
+		super("Woodpecker", `${profile.baseUrl}/api`, {
+			Authorization: `Bearer ${profile.token}`,
+			Accept: "application/json",
 		});
-		if (!response.ok)
-			throw new Error(`Woodpecker ${init.method ?? "GET"} ${path} failed with ${response.status}`);
-		return response;
 	}
 
 	private async json<T>(path: string, init: RequestInit = {}): Promise<T> {

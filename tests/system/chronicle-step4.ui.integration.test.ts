@@ -5,6 +5,7 @@ import { buildExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runtime/testing";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { afterEach, describe, expect, it } from "vitest";
+import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import {
 	type MountedUiHarness,
 	setupMountedUiHarness,
@@ -13,63 +14,6 @@ import {
 } from "../helpers/ui-harness.ts";
 
 const tempDirs: string[] = [];
-type TestApp = NonNullable<MountedUiHarness<Record<string, never>>["testApp"]>;
-type AcceptedLlmTurnFixtureInput = Parameters<
-	TestApp["ctx"]["deps"]["turnRecords"]["create"]
->[0] & { id: string; turnType: "llm" };
-
-function createAcceptedLlmTurn(testApp: TestApp, input: AcceptedLlmTurnFixtureInput) {
-	const running = input.status === "running";
-	const lease = testApp.ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: `wkr_fixture_${input.id}`,
-		state: running ? "busy" : "exited",
-	});
-	const start = testApp.ctx.deps.turnStarts.create({
-		id: `tsr_fixture_${input.id}`,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.id,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: input.modelProfileId ?? "test",
-					providerId: "test",
-					modelId: "test",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "system-fixture-digest",
-				workerRuntimeProfileId: "test",
-				piSettings: {},
-			},
-			turnRecordId: input.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	const turnRecord = testApp.ctx.deps.turnRecords.create({
-		...input,
-		turnStartRecordId: start.id,
-		acceptedWorkerLeaseId: lease.id,
-	});
-	if (running) {
-		testApp.ctx.deps.processes.update(input.instanceId, {
-			currentExecution: { kind: "worker_start", id: start.id },
-		});
-	} else {
-		testApp.ctx.deps.leases.update(lease.id, {
-			exitedAt: input.endedAt ?? input.startedAt ?? new Date().toISOString(),
-		});
-	}
-	return turnRecord;
-}
 
 async function createSinglePromptUiFixture(options: {
 	tagName: string;
@@ -157,7 +101,7 @@ function seedSinglePromptProcess(
 	instanceIdRef.value = process.id;
 
 	for (const snapshot of snapshots) {
-		createAcceptedLlmTurn(testApp, {
+		createAcceptedLlmTurn(testApp.ctx, {
 			id: snapshot.turnRecordId,
 			instanceId: process.id,
 			turnId: "run_single_prompt",

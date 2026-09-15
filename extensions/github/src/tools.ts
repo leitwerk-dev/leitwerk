@@ -6,6 +6,7 @@ import {
 } from "@leitwerk-dev/external-writes";
 import {
 	numberArg,
+	objectArg,
 	projectParameters,
 	type ServerExtensionAPI,
 	stringArg,
@@ -13,11 +14,7 @@ import {
 import { resolveGitHubProjectBinding } from "./binding.js";
 import type { GitHubIntegration } from "./capability.js";
 
-function object(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value))
-		throw new Error("Expected an object");
-	return value as Record<string, unknown>;
-}
+const object = (value: unknown) => objectArg(value, "Expected an object");
 
 const target = resolveGitHubProjectBinding;
 
@@ -26,7 +23,7 @@ export function registerGitHubTools(
 	integration: GitHubIntegration,
 	writes: ExternalWriteLogRepoLike,
 ) {
-	api.tool({
+	api.tool<Record<string, unknown>>({
 		name: "github_ensure_pull_request",
 		description: "Create a GitHub pull request unless the branch pair already has one",
 		parameters: projectParameters({
@@ -35,8 +32,7 @@ export function registerGitHubTools(
 			head: { type: "string" },
 			base: { type: "string" },
 		}),
-		async execute(ctx, args) {
-			const input = object(args);
+		async execute(ctx, input) {
 			const t = target(ctx);
 			const client = integration.client(t.profile);
 			const head = stringArg(input, "head");
@@ -92,12 +88,11 @@ export function registerGitHubTools(
 			"listPullRequestFeedback",
 		],
 	] as const) {
-		api.tool({
+		api.tool<Record<string, unknown>>({
 			name,
 			description,
 			parameters: projectParameters({ [numberName]: { type: "integer" } }),
-			async execute(ctx, args) {
-				const input = object(args);
+			async execute(ctx, input) {
 				const t = target(ctx);
 				return integration
 					.client(t.profile)
@@ -105,12 +100,11 @@ export function registerGitHubTools(
 			},
 		});
 	}
-	api.tool({
+	api.tool<Record<string, unknown>>({
 		name: "github_get_checks",
 		description: "Read GitHub Actions check runs for a commit",
 		parameters: projectParameters({ headSha: { type: "string" } }),
-		async execute(ctx, args) {
-			const input = object(args);
+		async execute(ctx, input) {
 			const t = target(ctx);
 			return integration
 				.client(t.profile)
@@ -121,7 +115,7 @@ export function registerGitHubTools(
 		{ name: "github_add_pull_request_comment", update: false },
 		{ name: "github_update_pull_request", update: true },
 	] as const) {
-		api.tool({
+		api.tool<Record<string, unknown>>({
 			name: definition.name,
 			description: definition.update
 				? "Update a GitHub pull request"
@@ -135,8 +129,7 @@ export function registerGitHubTools(
 				},
 				["pullRequestNumber", definition.update ? "patch" : "body"],
 			),
-			async execute(ctx, args) {
-				const input = object(args);
+			async execute(ctx, input) {
 				const t = target(ctx);
 				const pr = numberArg(input, "pullRequestNumber");
 				return ensureWrite(

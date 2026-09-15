@@ -1,8 +1,13 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
+	type RepositoryIssue as ForgejoIssue,
+	type RepositoryPullRequest as ForgejoPullRequest,
 	normalizeRepositoryFeedback,
 	type RepositoryFeedbackItem,
+	RepositoryHttpClient,
 } from "@leitwerk-dev/process-sdk";
+
+export type { ForgejoIssue, ForgejoPullRequest };
 
 export interface ForgejoRepository {
 	id: number;
@@ -14,31 +19,6 @@ export interface ForgejoRepository {
 	archived?: boolean;
 	has_issues?: boolean;
 	owner: { login: string };
-}
-
-export interface ForgejoIssue {
-	number: number;
-	title: string;
-	body: string | null;
-	state: string;
-	html_url: string;
-	updated_at: string;
-	user: { login: string };
-	labels: Array<{ id: number; name: string }>;
-}
-
-export interface ForgejoPullRequest {
-	number: number;
-	title: string;
-	body: string | null;
-	state: string;
-	merged: boolean;
-	mergeable?: boolean | null;
-	mergeable_state?: string | null;
-	merge_commit_sha: string | null;
-	html_url: string;
-	head: { ref: string; sha: string };
-	base: { ref: string; sha: string };
 }
 
 export interface ForgejoFeedbackItem extends RepositoryFeedbackItem {
@@ -86,13 +66,16 @@ export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketC
 	const enabled = ticketCreation.enabled === undefined ? {} : { enabled: ticketCreation.enabled };
 
 	if (rawLabels === undefined) return { ...enabled, defaultLabels: ["created-by-leitwerk"] };
-	if (
-		!Array.isArray(rawLabels) ||
-		rawLabels.some((label) => typeof label !== "string" || label.trim() === "")
-	) {
-		throw new Error("Forgejo ticket_creation.default_labels must be an array of non-empty strings");
-	}
-	return { ...enabled, defaultLabels: [...new Set(rawLabels.map((label) => label.trim()))] };
+	return {
+		...enabled,
+		defaultLabels: parseLabelNames(rawLabels, "Forgejo ticket_creation.default_labels"),
+	};
+}
+
+export function parseLabelNames(value: unknown = [], name: string): string[] {
+	if (!Array.isArray(value) || value.some((label) => typeof label !== "string" || !label.trim()))
+		throw new Error(`${name} must be an array of non-empty strings`);
+	return [...new Set(value.map((label) => label.trim()))];
 }
 
 export function parseForgejoProfiles(value: unknown): Map<string, ForgejoProfile> {
@@ -113,34 +96,23 @@ export function parseForgejoProfiles(value: unknown): Map<string, ForgejoProfile
 	return profiles;
 }
 
-export class ForgejoClient {
-	constructor(readonly profile: ForgejoProfile) {}
+function repositoryPath(owner: string, repo: string): string {
+	return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+}
 
-	private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-		const response = await fetch(`${this.profile.baseUrl}/api/v1${path}`, {
-			...init,
-			headers: {
+export class ForgejoClient extends RepositoryHttpClient<unknown> {
+	protected override repositoryPath = repositoryPath;
+
+	constructor(readonly profile: ForgejoProfile) {
+		super(
+			"Forgejo",
+			`${profile.baseUrl}/api/v1`,
+			{
 				Accept: "application/json",
-				Authorization: `token ${this.profile.token}`,
-				...(init.body ? { "Content-Type": "application/json" } : {}),
-				...init.headers,
+				Authorization: `token ${profile.token}`,
 			},
-		});
-		if (!response.ok) {
-			throw new Error(`Forgejo ${init.method ?? "GET"} ${path} failed with ${response.status}`);
-		}
-		if (response.status === 204) return undefined as T;
-		return (await response.json()) as T;
-	}
-
-	private async pages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
-		const items: T[] = [];
-		for (let page = 1; ; page++) {
-			const separator = path.includes("?") ? "&" : "?";
-			const batch = await this.request<T[]>(`${path}${separator}limit=50&page=${page}`, { signal });
-			items.push(...batch);
-			if (batch.length < 50) return items;
-		}
+			{ key: "limit", size: 50 },
+		);
 	}
 
 	getAuthenticatedUser(signal?: AbortSignal): Promise<ForgejoAuthenticatedUser> {
@@ -178,37 +150,13 @@ export class ForgejoClient {
 		signal?: AbortSignal,
 	): Promise<ForgejoIssue[]> {
 		return this.pages(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues?state=${encodeURIComponent(state)}&type=issues`,
+			`${repositoryPath(owner, repo)}/issues?state=${encodeURIComponent(state)}&type=issues`,
 			signal,
 		);
 	}
 
 	listOpenIssues(owner: string, repo: string): Promise<ForgejoIssue[]> {
 		return this.listIssues(owner, repo, "open");
-	}
-
-	getIssue(
-		owner: string,
-		repo: string,
-		number: number,
-		signal?: AbortSignal,
-	): Promise<ForgejoIssue> {
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}`,
-			{ signal },
-		);
-	}
-
-	listIssueComments(
-		owner: string,
-		repo: string,
-		number: number,
-		signal?: AbortSignal,
-	): Promise<unknown[]> {
-		return this.pages(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}/comments`,
-			signal,
-		);
 	}
 
 	async updateIssue(
@@ -218,7 +166,7 @@ export class ForgejoClient {
 		patch: Record<string, unknown>,
 		signal?: AbortSignal,
 	): Promise<ForgejoIssue> {
-		const prefix = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}`;
+		const prefix = `${repositoryPath(owner, repo)}/issues/${number}`;
 		const { labels, ...issuePatch } = patch;
 		if (labels !== undefined) {
 			if (
@@ -227,27 +175,16 @@ export class ForgejoClient {
 			) {
 				throw new Error("Forgejo issue labels must be an array of label ids or names");
 			}
-			await this.request(`${prefix}/labels`, {
-				method: "PUT",
-				body: JSON.stringify({ labels }),
-				signal,
-			});
+			await this.writeJson(`${prefix}/labels`, "PUT", { labels }, signal);
 		}
 		if (Object.keys(issuePatch).length > 0) {
-			return this.request(prefix, {
-				method: "PATCH",
-				body: JSON.stringify(issuePatch),
-				signal,
-			});
+			return this.writeJson(prefix, "PATCH", issuePatch, signal);
 		}
 		return this.getIssue(owner, repo, number, signal);
 	}
 
 	listLabels(owner: string, repo: string, signal?: AbortSignal): Promise<ForgejoLabel[]> {
-		return this.pages(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels`,
-			signal,
-		);
+		return this.pages(`${repositoryPath(owner, repo)}/labels`, signal);
 	}
 
 	createLabel(
@@ -257,11 +194,7 @@ export class ForgejoClient {
 		color = "2da44e",
 		signal?: AbortSignal,
 	): Promise<ForgejoLabel> {
-		return this.request(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/labels`, {
-			method: "POST",
-			body: JSON.stringify({ name, color }),
-			signal,
-		});
+		return this.writeJson(`${repositoryPath(owner, repo)}/labels`, "POST", { name, color }, signal);
 	}
 
 	createIssue(
@@ -270,66 +203,7 @@ export class ForgejoClient {
 		input: { title: string; body: string; labels?: readonly number[] },
 		signal?: AbortSignal,
 	): Promise<ForgejoIssue> {
-		return this.request(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues`, {
-			method: "POST",
-			body: JSON.stringify(input),
-			signal,
-		});
-	}
-
-	addIssueComment(
-		owner: string,
-		repo: string,
-		number: number,
-		body: string,
-		signal?: AbortSignal,
-	): Promise<unknown> {
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/${number}/comments`,
-			{ method: "POST", body: JSON.stringify({ body }), signal },
-		);
-	}
-
-	createPullRequest(
-		owner: string,
-		repo: string,
-		input: { title: string; body: string; head: string; base: string },
-	): Promise<ForgejoPullRequest> {
-		return this.request(`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls`, {
-			method: "POST",
-			body: JSON.stringify(input),
-		});
-	}
-
-	getPullRequest(
-		owner: string,
-		repo: string,
-		number: number,
-		signal?: AbortSignal,
-	): Promise<ForgejoPullRequest> {
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`,
-			{ signal },
-		);
-	}
-
-	listPullRequests(owner: string, repo: string, state = "open"): Promise<ForgejoPullRequest[]> {
-		return this.pages(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls?state=${encodeURIComponent(state)}`,
-		);
-	}
-
-	updatePullRequest(
-		owner: string,
-		repo: string,
-		number: number,
-		patch: Record<string, unknown>,
-		signal?: AbortSignal,
-	): Promise<ForgejoPullRequest> {
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`,
-			{ method: "PATCH", body: JSON.stringify(patch), signal },
-		);
+		return this.writeJson(`${repositoryPath(owner, repo)}/issues`, "POST", input, signal);
 	}
 
 	addPullRequestComment(
@@ -352,9 +226,11 @@ export class ForgejoClient {
 		if (feedback.kind === "review") {
 			throw new Error("Forgejo does not expose reactions for submitted reviews");
 		}
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/issues/comments/${feedback.id}/reactions`,
-			{ method: "POST", body: JSON.stringify({ content }), signal },
+		return this.writeJson(
+			`${repositoryPath(owner, repo)}/issues/comments/${feedback.id}/reactions`,
+			"POST",
+			{ content },
+			signal,
 		);
 	}
 
@@ -369,19 +245,17 @@ export class ForgejoClient {
 		if (feedback.kind !== "inline" || !feedback.reviewId || !feedback.path) {
 			return this.addPullRequestComment(owner, repo, pullRequestNumber, body, signal);
 		}
-		return this.request(
-			`/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${pullRequestNumber}/reviews/${feedback.reviewId}/comments`,
+		return this.writeJson(
+			`${repositoryPath(owner, repo)}/pulls/${pullRequestNumber}/reviews/${feedback.reviewId}/comments`,
+			"POST",
 			{
-				method: "POST",
-				body: JSON.stringify({
-					body,
-					path: feedback.path,
-					new_position: feedback.position ?? feedback.line ?? 0,
-					old_position: feedback.originalPosition ?? 0,
-					extra_lines_count: feedback.extraLinesCount ?? 0,
-				}),
-				signal,
+				body,
+				path: feedback.path,
+				new_position: feedback.position ?? feedback.line ?? 0,
+				old_position: feedback.originalPosition ?? 0,
+				extra_lines_count: feedback.extraLinesCount ?? 0,
 			},
+			signal,
 		);
 	}
 
@@ -391,7 +265,7 @@ export class ForgejoClient {
 		number: number,
 		signal?: AbortSignal,
 	): Promise<ForgejoFeedbackItem[]> {
-		const prefix = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+		const prefix = repositoryPath(owner, repo);
 		const [conversation, reviews] = await Promise.all([
 			this.pages<Record<string, unknown>>(`${prefix}/issues/${number}/comments`, signal),
 			this.pages<Record<string, unknown>>(`${prefix}/pulls/${number}/reviews`, signal),

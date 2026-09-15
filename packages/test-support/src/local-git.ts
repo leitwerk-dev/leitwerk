@@ -9,6 +9,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import path from "node:path";
+import type { RepositoryFeedbackItem, RepositoryPullRequest } from "@leitwerk-dev/process-sdk";
 
 export interface LocalRepositorySeed {
 	owner: string;
@@ -82,6 +83,118 @@ export class LocalProviderStore<
 	}
 	timestamp() {
 		return new Date(this.options.now?.() ?? Date.now()).toISOString();
+	}
+}
+
+type LocalPullRequest = Pick<
+	RepositoryPullRequest,
+	"number" | "title" | "body" | "state" | "merged" | "merge_commit_sha" | "head" | "base"
+>;
+interface LocalPullRequestRepository<P extends LocalPullRequest> {
+	repository: { ssh_url: string };
+	pulls: P[];
+}
+
+/** Common PR operations; adapters retain their provider-specific state and clients. */
+export class LocalForgeStore<
+	S extends { version: number; sequence: number },
+	O extends { root: string; baseUrl: string; now?: () => number; nextId?: () => number },
+> extends LocalProviderStore<S, O> {
+	newRepository(seed: LocalRepositorySeed) {
+		const { bare, branch } = this.git.seed(seed);
+		return {
+			id: this.id(),
+			owner: { login: seed.owner },
+			name: seed.name,
+			full_name: `${seed.owner}/${seed.name}`,
+			ssh_url: bare,
+			html_url: `${this.options.baseUrl}/__local`,
+			default_branch: branch,
+		};
+	}
+	pullRequestClient<P extends LocalPullRequest>(
+		repo: (owner: string, name: string) => LocalPullRequestRepository<P>,
+		missing = "Unknown local pull request",
+	) {
+		const pull = (owner: string, name: string, number: number) => {
+			const pr = repo(owner, name).pulls.find((p) => p.number === number);
+			if (!pr) throw new Error(missing);
+			return pr;
+		};
+		return {
+			getPullRequest: async (owner: string, name: string, number: number) =>
+				this.refresh(repo(owner, name), pull(owner, name, number)),
+			listPullRequests: async (owner: string, name: string, state = "open") => {
+				const r = repo(owner, name);
+				return r.pulls
+					.filter((p) => state === "all" || p.state === state)
+					.map((p) => this.refresh(r, p));
+			},
+			updatePullRequest: async (
+				owner: string,
+				name: string,
+				number: number,
+				patch: Record<string, unknown>,
+			) => {
+				const pr = pull(owner, name, number);
+				for (const key of ["title", "body", "state"] as const)
+					if (typeof patch[key] === "string") pr[key] = patch[key];
+				this.save();
+				return this.refresh(repo(owner, name), pr);
+			},
+		};
+	}
+	refresh<P extends LocalPullRequest>(repo: LocalPullRequestRepository<P>, pr: P): P {
+		if (pr.state === "open") {
+			const { headSha, baseSha, ...mergeability } = this.git.mergeability(
+				repo.repository.ssh_url,
+				pr.head.ref,
+				pr.base.ref,
+			);
+			pr.head.sha = headSha;
+			pr.base.sha = baseSha;
+			Object.assign(pr, mergeability);
+		}
+		return structuredClone(pr);
+	}
+	merge<P extends LocalPullRequest>(repo: LocalPullRequestRepository<P>, number: number): P {
+		const pr = repo.pulls.find((p) => p.number === number);
+		if (!pr || pr.state !== "open") throw new Error("Pull request is not open");
+		this.refresh(repo, pr);
+		pr.merge_commit_sha = this.git.merge(repo.repository.ssh_url, pr.head.ref, pr.base.ref);
+		pr.merged = true;
+		pr.state = "closed";
+		this.save();
+		return structuredClone(pr);
+	}
+	addFeedback<F extends RepositoryFeedbackItem>(
+		repo: { pulls: Array<{ number: number }>; feedback: Record<string, F[]> },
+		number: number,
+		input: Omit<F, "id" | "createdAt">,
+	): F {
+		if (!repo.pulls.some((p) => p.number === number)) throw new Error("Unknown PR");
+		const value = { ...input, id: this.id(), createdAt: this.timestamp() } as F;
+		repo.feedback[number] ??= [];
+		repo.feedback[number].push(value);
+		this.save();
+		return value;
+	}
+	newPullRequest(
+		repo: { repository: { ssh_url: string } },
+		input: { title: string; body: string; head: string; base: string },
+	) {
+		const number = this.id();
+		return {
+			number,
+			title: input.title,
+			body: input.body,
+			state: "open",
+			merged: false,
+			merge_commit_sha: null,
+			html_url: `${this.options.baseUrl}/__local#pr-${number}`,
+			head: { ref: input.head, sha: this.git.head(repo.repository.ssh_url, input.head) },
+			base: { ref: input.base, sha: this.git.head(repo.repository.ssh_url, input.base) },
+		};
 	}
 }
 

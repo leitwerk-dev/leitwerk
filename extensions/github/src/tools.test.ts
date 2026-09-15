@@ -1,12 +1,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ExternalWriteLogRecordInput } from "@leitwerk-dev/external-writes";
-import type {
-	IntegrationToolDefinition,
-	IntegrationToolExecutionContext,
-	ServerExtensionAPI,
-} from "@leitwerk-dev/process-sdk";
+import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
+import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { expect, it, vi } from "vitest";
 import { LocalGitHubAdapter } from "./testing.js";
 import { registerGitHubTools } from "./tools.js";
@@ -26,20 +22,13 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 	});
 	const repo = adapter.repo("team", "one");
 	adapter.git.run(repo.repository.ssh_url, ["branch", "feature", "main"]);
-	const tools = new Map<string, IntegrationToolDefinition>();
-	const writes = new Map<string, ExternalWriteLogRecordInput>();
+	const { api, tools } = createToolCollector();
+	const writes = createInMemoryExternalWriteLog();
 	const client = vi.fn((profile: string) => {
 		if (profile !== "first") throw new Error("Wrong profile");
 		return adapter.client();
 	});
-	registerGitHubTools(
-		{ tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool) } as ServerExtensionAPI,
-		{ client },
-		{
-			hasDedupKey: (key) => writes.has(key),
-			record: (write) => writes.set(write.dedupKey, write),
-		},
-	);
+	registerGitHubTools(api, { client }, writes);
 	const ctx = {
 		process: { id: "p", paramsJson: "{}" },
 		project: {
@@ -62,10 +51,13 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 	};
 	adapter.state.failAfterPullRequestWrite = true;
 	await expect(tool?.execute(ctx, args)).resolves.toMatchObject({ number: expect.any(Number) });
-	expect(writes.get("retained-pr-key")).toMatchObject({
-		writeType: "github.ensure_pr",
-		metadata: { number: repo.pulls[0].number },
-	});
+	expect(writes.records).toMatchObject([
+		{
+			dedupKey: "retained-pr-key",
+			writeType: "github.ensure_pr",
+			metadata: { number: repo.pulls[0].number },
+		},
+	]);
 	await tool?.execute(ctx, args);
 	expect(repo.pulls).toHaveLength(1);
 	expect(adapter.repo("team", "two").pulls).toHaveLength(0);

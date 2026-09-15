@@ -7,6 +7,7 @@ import {
 } from "@leitwerk-dev/protocol";
 import type { AppContext } from "@leitwerk-dev/server";
 import type { Locator, Page } from "@playwright/test";
+import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 
 let ctx: AppContext | null = null;
@@ -38,65 +39,8 @@ function buildLongReasoningText(lineCount: number): string {
 	return Array.from({ length: lineCount }, (_, index) => `Thought line ${index + 1}`).join("\n");
 }
 
-type AcceptedLlmTurnFixtureInput = Parameters<AppContext["deps"]["turnRecords"]["create"]>[0] & {
-	id: string;
-	turnType: "llm";
-};
-
-function createAcceptedLlmTurn(input: AcceptedLlmTurnFixtureInput) {
-	if (!ctx) {
-		throw new Error("Server context not initialized");
-	}
-	const running = input.status === "running";
-	const lease = ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: `wkr_fixture_${input.id}`,
-		state: running ? "busy" : "exited",
-	});
-	const start = ctx.deps.turnStarts.create({
-		id: `tsr_fixture_${input.id}`,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.id,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: input.modelProfileId ?? "test",
-					providerId: "test",
-					modelId: "test",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "browser-fixture-digest",
-				workerRuntimeProfileId: "test",
-				piSettings: {},
-			},
-			turnRecordId: input.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	const turnRecord = ctx.deps.turnRecords.create({
-		...input,
-		turnStartRecordId: start.id,
-		acceptedWorkerLeaseId: lease.id,
-	});
-	if (running) {
-		ctx.deps.processes.update(input.instanceId, {
-			currentExecution: { kind: "worker_start", id: start.id },
-		});
-	} else {
-		ctx.deps.leases.update(lease.id, {
-			exitedAt: input.endedAt ?? input.startedAt ?? new Date().toISOString(),
-		});
-	}
-	return turnRecord;
+function createAcceptedLlmTurn(input: Parameters<typeof createFixtureAcceptedLlmTurn>[1]) {
+	return createFixtureAcceptedLlmTurn(ctx, input, "browser-fixture-digest");
 }
 
 function markAcceptedLlmTurnExited(turnRecordId: string, exitedAt: string) {

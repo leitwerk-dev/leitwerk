@@ -1,5 +1,5 @@
-import { defineConfig } from "tsup";
-export default defineConfig({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/auto-work-branch.ts",
@@ -8,9 +8,5 @@ export default defineConfig({
 		"src/repository-change-state.ts",
 		"src/turns/*.ts",
 	],
-	format: ["esm"],
-	dts: true,
 	clean: true,
-	sourcemap: true,
-	tsconfig: "tsconfig.tsup.json",
 });

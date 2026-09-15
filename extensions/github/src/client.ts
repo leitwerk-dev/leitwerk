@@ -1,40 +1,18 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	type RepositoryFeedbackItem as GitHubFeedbackItem,
+	type RepositoryIssue as GitHubIssue,
+	type RepositoryPullRequest as GitHubPullRequest,
 	normalizeRepositoryFeedback as normalize,
+	RepositoryHttpClient,
 } from "@leitwerk-dev/process-sdk";
 
-export type { GitHubFeedbackItem };
+export type { GitHubFeedbackItem, GitHubIssue, GitHubPullRequest };
 
 export interface GitHubProfile {
 	apiBaseUrl: string;
 	token: string;
 	botLogin: string;
-}
-
-export interface GitHubIssue {
-	number: number;
-	title: string;
-	body: string | null;
-	state: string;
-	html_url: string;
-	updated_at: string;
-	user: { login: string };
-	labels: Array<{ id: number; name: string }>;
-}
-
-export interface GitHubPullRequest {
-	number: number;
-	title: string;
-	body: string | null;
-	state: string;
-	merged: boolean;
-	mergeable?: boolean | null;
-	mergeable_state?: string | null;
-	merge_commit_sha: string | null;
-	html_url: string;
-	head: { ref: string; sha: string };
-	base: { ref: string; sha: string };
 }
 
 export interface GitHubCheckSummary {
@@ -79,44 +57,13 @@ export function parseGitHubProfiles(value: unknown): Map<string, GitHubProfile> 
 	return profiles;
 }
 
-export class GitHubClient {
-	constructor(readonly profile: GitHubProfile) {}
-
-	private async response(path: string, init: RequestInit = {}): Promise<Response> {
-		const response = await fetch(`${this.profile.apiBaseUrl}${path}`, {
-			...init,
-			headers: {
-				Accept: "application/vnd.github+json",
-				Authorization: `Bearer ${this.profile.token}`,
-				"X-GitHub-Api-Version": "2022-11-28",
-				...(init.body ? { "Content-Type": "application/json" } : {}),
-				...init.headers,
-			},
+export class GitHubClient extends RepositoryHttpClient {
+	constructor(readonly profile: GitHubProfile) {
+		super("GitHub", profile.apiBaseUrl, {
+			Accept: "application/vnd.github+json",
+			Authorization: `Bearer ${profile.token}`,
+			"X-GitHub-Api-Version": "2022-11-28",
 		});
-		if (!response.ok)
-			throw new Error(`GitHub ${init.method ?? "GET"} ${path} failed with ${response.status}`);
-		return response;
-	}
-
-	private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-		const response = await this.response(path, init);
-		return response.status === 204 ? (undefined as T) : response.json();
-	}
-
-	private async pages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
-		const items: T[] = [];
-		for (let page = 1; ; page++) {
-			const separator = path.includes("?") ? "&" : "?";
-			const batch = await this.request<T[]>(`${path}${separator}per_page=100&page=${page}`, {
-				signal,
-			});
-			items.push(...batch);
-			if (batch.length < 100) return items;
-		}
-	}
-
-	getIssue(owner: string, repo: string, number: number, signal?: AbortSignal) {
-		return this.request<GitHubIssue>(`/repos/${owner}/${repo}/issues/${number}`, { signal });
 	}
 
 	getCommit(owner: string, repo: string, ref: string) {
@@ -130,54 +77,6 @@ export class GitHubClient {
 			`/repos/${owner}/${repo}/compare/${encodeURIComponent(ancestor)}...${encodeURIComponent(descendant)}`,
 		);
 		return comparison.status === "identical" || comparison.status === "ahead";
-	}
-
-	listIssueComments(owner: string, repo: string, number: number, signal?: AbortSignal) {
-		return this.pages<Record<string, unknown>>(
-			`/repos/${owner}/${repo}/issues/${number}/comments`,
-			signal,
-		);
-	}
-
-	addIssueComment(owner: string, repo: string, number: number, body: string, signal?: AbortSignal) {
-		return this.request(`/repos/${owner}/${repo}/issues/${number}/comments`, {
-			method: "POST",
-			body: JSON.stringify({ body }),
-			signal,
-		});
-	}
-
-	createPullRequest(
-		owner: string,
-		repo: string,
-		input: { title: string; body: string; head: string; base: string },
-	) {
-		return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls`, {
-			method: "POST",
-			body: JSON.stringify(input),
-		});
-	}
-
-	getPullRequest(owner: string, repo: string, number: number, signal?: AbortSignal) {
-		return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls/${number}`, { signal });
-	}
-
-	listPullRequests(owner: string, repo: string, state = "open") {
-		return this.pages<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls?state=${state}`);
-	}
-
-	updatePullRequest(
-		owner: string,
-		repo: string,
-		number: number,
-		patch: Record<string, unknown>,
-		signal?: AbortSignal,
-	) {
-		return this.request<GitHubPullRequest>(`/repos/${owner}/${repo}/pulls/${number}`, {
-			method: "PATCH",
-			body: JSON.stringify(patch),
-			signal,
-		});
 	}
 
 	async listPullRequestFeedback(

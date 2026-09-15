@@ -5,8 +5,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import {
 	conflictEvidence,
-	conflictKey,
-	describeConflict,
+	createConflictReporter,
 	sameSubscription,
 } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
@@ -57,7 +56,7 @@ export function createGitHubProvider(
 	options: { now?: () => number } = {},
 ) {
 	const due = createPollSchedule();
-	const accepted = new Map<string, string>();
+	const reportConflict = createConflictReporter(deps.externalSources, GITHUB_PR_STATE_KIND);
 	return deps.polling.create({
 		id: "github",
 		pollInterval: () => "5s",
@@ -86,36 +85,15 @@ export function createGitHubProvider(
 							const branch = await client.getCommit(config.owner, config.repo, conflict.baseBranch);
 							conflict.baseSha = branch.sha;
 						}
-						await report.observe(armed, {
-							observation: {
-								...(conflict
-									? describeConflict({ conflict })
-									: {
-											summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : (pr.mergeable_state ?? String(pr.mergeable))}`,
-										}),
+						if (
+							await reportConflict(report, armed, conflict, config.lastConflictKey, {
+								summary: `PR #${pr.number} mergeability: ${pr.mergeable == null ? "unresolved" : (pr.mergeable_state ?? String(pr.mergeable))}`,
 								observedAt: new Date(now).toISOString(),
 								subject: `${config.owner}/${config.repo}#${pr.number}`,
 								revision: `${pr.head.sha}:${conflict?.baseSha ?? pr.base.sha}`,
-							},
-						});
-						if (
-							conflict &&
-							conflictKey(conflict) !== config.lastConflictKey &&
-							accepted.get(key) !== conflictKey(conflict) &&
-							deps.externalSources
-								.listArmed(GITHUB_PR_STATE_KIND)
-								.some((current) => sameSubscription(armed, current))
-						) {
-							if (
-								await report.fire(
-									armed,
-									{ kind: "merge_conflict", conflict },
-									conflictKey(conflict),
-								)
-							)
-								accepted.set(key, conflictKey(conflict));
+							})
+						)
 							continue;
-						}
 						if (config.eventKinds?.length === 1) continue;
 					}
 					let event: Record<string, unknown> | null = null;
@@ -198,7 +176,7 @@ export function createGitHubProvider(
 					);
 				}
 			}
-			for (const armed of deps.externalSources.listArmed(GITHUB_RELEASE_KIND)) {
+			await report.poll(GITHUB_RELEASE_KIND, async (armed) => {
 				const config = asUnknownRecord(armed.resolved) ?? {};
 				if (
 					typeof config.profile !== "string" ||
@@ -206,32 +184,26 @@ export function createGitHubProvider(
 					typeof config.repo !== "string" ||
 					typeof config.mergeSha !== "string"
 				)
-					continue;
-				if (config.disabled === true) continue;
+					return;
+				if (config.disabled === true) return;
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 				const now = options.now?.() ?? Date.now();
 				if (!due(key, typeof config.pollInterval === "string" ? config.pollInterval : "30s", now))
-					continue;
-				try {
-					const client = integration.client(config.profile);
-					for (const release of await client.listReleases(config.owner, config.repo)) {
-						if (release.draft || release.prerelease) continue;
-						const commit = await client.getCommit(config.owner, config.repo, release.tag_name);
-						if (!(await client.isAncestor(config.owner, config.repo, config.mergeSha, commit.sha)))
-							continue;
-						await report.fire(
-							armed,
-							{ release, commitSha: commit.sha },
-							`${release.id}:${commit.sha}`,
-						);
-						break;
-					}
-				} catch (error) {
-					result.errors.push(
-						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,
+					return;
+				const client = integration.client(config.profile);
+				for (const release of await client.listReleases(config.owner, config.repo)) {
+					if (release.draft || release.prerelease) continue;
+					const commit = await client.getCommit(config.owner, config.repo, release.tag_name);
+					if (!(await client.isAncestor(config.owner, config.repo, config.mergeSha, commit.sha)))
+						continue;
+					await report.fire(
+						armed,
+						{ release, commitSha: commit.sha },
+						`${release.id}:${commit.sha}`,
 					);
+					break;
 				}
-			}
+			});
 			return result;
 		},
 	});

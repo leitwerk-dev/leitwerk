@@ -10,6 +10,7 @@ import {
 import type { AppContext } from "@leitwerk-dev/server";
 import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
+import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 
 let ctx: AppContext | null = null;
@@ -51,63 +52,32 @@ async function seedRepeatContinueProcess() {
 		paramsJson: JSON.stringify({ prompt: "Say hello exactly once." }),
 		stateJson: JSON.stringify(state),
 	});
-	const lease = ctx.deps.leases.create({
-		instanceId: process.id,
-		workerId: "worker_repeat_continue_1",
-		state: "exited",
-	});
-	ctx.deps.leases.update(lease.id, {
-		state: "exited",
-		exitedAt: "2026-05-01T12:00:05.000Z",
-	});
-	ctx.deps.turnStarts.create({
-		id: "tsr_repeat_continue_1",
-		instanceId: process.id,
-		turnId: "run_single_prompt",
-		turnType: "llm",
-		proposedTurnRecordId: "trn_repeat_continue_1",
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: { profileId: "test", providerId: "test", modelId: "test", thinkingLevel: "off" },
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "test-digest",
-				workerRuntimeProfileId: "test",
-				piSettings: {},
-			},
-			turnRecordId: "trn_repeat_continue_1",
-			acceptedWorkerLeaseId: lease.id,
+	const turn = createAcceptedLlmTurn(
+		ctx,
+		{
+			id: "trn_repeat_continue_1",
+			instanceId: process.id,
+			turnId: "run_single_prompt",
+			turnType: "llm",
+			status: "failed",
+			attemptNumber: 1,
+			parentTurnRecordId: null,
+			pathType: "primary",
+			forkPiEntryId: "root-user",
+			resultPiEntryId: "assistant-provider-error",
+			modelProfileId: "test",
+			turnResultMarkdown: null,
+			errorSummary:
+				"Turn 'run_single_prompt' continuation failed: transient provider issue after the first continue",
+			errorClass: "llm_error",
+			startedAt: "2026-05-01T12:00:00.000Z",
+			endedAt: "2026-05-01T12:00:05.000Z",
 		},
-	});
-
-	ctx.deps.turnRecords.create({
-		id: "trn_repeat_continue_1",
-		instanceId: process.id,
-		turnId: "run_single_prompt",
-		turnType: "llm",
-		status: "failed",
-		attemptNumber: 1,
-		turnStartRecordId: "tsr_repeat_continue_1",
-		acceptedWorkerLeaseId: lease.id,
-		parentTurnRecordId: null,
-		pathType: "primary",
-		forkPiEntryId: "root-user",
-		resultPiEntryId: "assistant-provider-error",
-		modelProfileId: "test",
-		turnResultMarkdown: null,
-		errorSummary:
-			"Turn 'run_single_prompt' continuation failed: transient provider issue after the first continue",
-		errorClass: "llm_error",
-		startedAt: "2026-05-01T12:00:00.000Z",
-		endedAt: "2026-05-01T12:00:05.000Z",
-	});
+		"test-digest",
+	);
+	if (!turn.turnStartRecordId) throw new Error("Missing accepted turn start");
 	ctx.deps.processes.update(process.id, {
-		currentExecution: { kind: "worker_start", id: "tsr_repeat_continue_1" },
+		currentExecution: { kind: "worker_start", id: turn.turnStartRecordId },
 	});
 
 	await writeProcessSessionSnapshot(ctx, process.id, [

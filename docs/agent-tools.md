@@ -63,6 +63,7 @@ record and only for a tool authorized by that turn. Provider credentials stay on
 Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
 SDK helpers `stringArg(args, name)` and `numberArg(args, name)` require a nonempty trimmed
 string and a positive integer, respectively. Invalid arguments throw an error naming the field.
+`objectArg(value, message?)` requires a non-null, non-array object and preserves the supplied error message.
 `projectParameters(properties, required?)` adds the required `projectKey` string to an object
 schema. Other properties are required by default; pass their required names to keep some optional.
 
