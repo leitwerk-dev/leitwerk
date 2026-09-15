@@ -107,8 +107,10 @@ leitwerk-dev benchmark:worker-startup \
   --output .leitwerk/benchmarks/candidate-a
 ```
 
-The launcher and model profile are explicit. The input file contains the
-`launcherInput` object, for example `{ "prompt": "Write a short poem about rain." }`.
+The launcher and model profile are explicit. Choose a process that completes
+without human input and includes the model work you want to measure. The input
+file contains the `launcherInput` object, for example
+`{ "prompt": "Write a short poem about rain." }`.
 Defaults are 30 measured launches, no warm-ups, a 180-second per-launch deadline,
 and 500-ms polling. `--samples`, `--warmups`, `--timeout-ms` and
 `--poll-interval-ms` override these values. `--help` lists all options.
@@ -119,8 +121,11 @@ directory mode `0700` and file mode `0600`. Each launch has its own idempotency
 key. Lost launch responses retry that same key. A timeout, interruption or
 uncertain API outcome stops the run before another generation starts. The
 benchmark retains processes, sessions and evidence. Resolve the retained launch
-before starting a new run after an uncertain result. Confirmed failed turns are
-recorded and the next sample may run. Incomplete runs and runs with failures exit
+before starting a new run after an uncertain result. A successful turn inside an
+active process does not start the next sample; the benchmark waits for the whole
+process to complete. A failed turn in an active process stops the run for
+diagnosis. Aborted processes and launch failures before process creation are
+recorded and permit the next sample. Incomplete runs and runs with failures exit
 nonzero.
 
 Reports show median, nearest-rank p90, maximum, and available timing coverage,
