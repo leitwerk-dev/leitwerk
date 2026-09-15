@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { backup, DatabaseSync } from "node:sqlite";
-import { type AppContext, createAppContext } from "./app.js";
+import type { AppContext, createAppContext } from "./app.js";
 import type { LeitwerkConfig } from "./config/index.js";
 
 const DEFAULT_SCRATCH_ROOT = "/tmp/leitwerk-deployment-preflight";
@@ -12,9 +12,13 @@ export async function backupProductionDatabase(input: {
 }): Promise<void> {
 	await mkdir(path.dirname(input.destinationPath), { recursive: true });
 	const source = new DatabaseSync(input.sourcePath, { readOnly: true });
+	// Node 26 can delay native backup promise callbacks until another JS callback runs.
+	// A temporary referenced timer lets an otherwise idle preflight finish and exit.
+	const completionTick = setInterval(() => {}, 10);
 	try {
 		await backup(source, input.destinationPath);
 	} finally {
+		clearInterval(completionTick);
 		source.close();
 	}
 }
@@ -64,7 +68,7 @@ export async function runDeploymentPreflight(input: {
 	const databaseCopyPath = path.join(scratchRoot, "database", "leitwerk.sqlite");
 	await backupProductionDatabase({ sourcePath, destinationPath: databaseCopyPath });
 
-	const createContext = input.createContext ?? createAppContext;
+	const createContext = input.createContext ?? (await import("./app.js")).createAppContext;
 	let ctx: AppContext | null = null;
 	try {
 		ctx = await createContext({

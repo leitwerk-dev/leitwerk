@@ -1,0 +1,63 @@
+{
+	"name": "@leitwerk-dev/dev-tools",
+	"version": "0.1.9",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/dev-tools"
+	},
+	"type": "module",
+	"bin": {
+		"leitwerk-dev": "./dist/cli.js"
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./composition": {
+			"source": "./src/composition.ts",
+			"import": "./dist/composition.js",
+			"types": "./dist/composition.d.ts"
+		},
+		"./workspace": {
+			"source": "./src/workspace.ts",
+			"import": "./dist/workspace.js",
+			"types": "./dist/workspace.d.ts"
+		},
+		"./benchmark": {
+			"source": "./src/benchmark.ts",
+			"import": "./dist/benchmark.js",
+			"types": "./dist/benchmark.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
+	},
+	"dependencies": {
+		"@leitwerk-dev/server": "0.1.9",
+		"@leitwerk-dev/ui": "0.1.9",
+		"chokidar": "4.0.3",
+		"vite": "^8.1.4",
+		"yaml": "^2.8.3",
+		"@leitwerk-dev/domain": "0.1.9",
+		"@leitwerk-dev/protocol": "0.1.9"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	]
+}
