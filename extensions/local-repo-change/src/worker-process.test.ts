@@ -1,5 +1,4 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RepositoryChangeState as LocalRepoChangeState } from "@leitwerk-dev/coding/repository-change-state";
@@ -15,8 +14,8 @@ import {
 	createEmptyStructuralProcessState,
 	createFlowPromptContext,
 } from "@leitwerk-dev/process-sdk";
-import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { localRepoChangeProcess } from "./process-definition.js";
 
 // Real subprocesses (git, worker turns) make these cases slow under the full
@@ -51,58 +50,20 @@ function createPromptContext(input: {
 	});
 }
 
-const tempDirs: string[] = [];
-
-function createTempDir(prefix: string): string {
-	const dir = path.join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-	mkdirSync(dir, { recursive: true });
-	tempDirs.push(dir);
-	return dir;
-}
-
-function git(cwd: string, ...args: string[]): string {
-	return execFileSync(resolveGitBinary(), args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-}
-
-function createBareRemote(): string {
-	const remoteDir = createTempDir("local-repo-change-worker-remote");
-	git(remoteDir, "init", "--bare");
-	return remoteDir;
-}
-
 function createCleanWorkspaceRepo(): string {
-	const workspaceRoot = createTempDir("local-repo-change-worker");
-	const remoteDir = createBareRemote();
-	const seedDir = createTempDir("local-repo-change-worker-seed");
-	git(seedDir, "clone", remoteDir, ".");
-	git(seedDir, "config", "user.email", "test@example.com");
-	git(seedDir, "config", "user.name", "Test User");
-	writeFileSync(path.join(seedDir, "README.md"), "# Example\n", "utf8");
-	git(seedDir, "add", "README.md");
-	git(seedDir, "commit", "-m", "initial");
-	git(seedDir, "branch", "-M", "main");
-	git(seedDir, "push", "origin", "main");
-
+	const root = mkdtempSync(path.join(tmpdir(), "local-repo-change-worker-"));
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+	const git = new LocalGit(root);
+	const { bare } = git.seed({ owner: "test", name: "repo", files: { "README.md": "# Example\n" } });
+	const workspaceRoot = path.join(root, "workspace");
+	mkdirSync(workspaceRoot);
+	git.run(workspaceRoot, ["clone", bare, "repo"]);
 	const repoDir = path.join(workspaceRoot, "repo");
-	git(workspaceRoot, "clone", remoteDir, "repo");
-	git(repoDir, "config", "user.email", "test@example.com");
-	git(repoDir, "config", "user.name", "Test User");
-	git(repoDir, "checkout", "-b", "feature/test", "origin/main");
+	git.run(repoDir, ["config", "user.email", "test@example.com"]);
+	git.run(repoDir, ["config", "user.name", "Test User"]);
+	git.run(repoDir, ["checkout", "-b", "feature/test", "origin/main"]);
 	return workspaceRoot;
 }
-
-afterEach(() => {
-	while (tempDirs.length > 0) {
-		const dir = tempDirs.pop();
-		if (dir) {
-			rmSync(dir, { recursive: true, force: true });
-		}
-	}
-});
 
 describe("localRepoChangeProcess worker turns", () => {
 	it("starts a fresh plan review from the root entry with bash-enabled inspection tools", async () => {

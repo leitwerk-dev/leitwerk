@@ -79,19 +79,23 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 					},
 				],
 			});
-		if (names.has("local_create_ticket")) {
+		if (names.has("local_create_ticket") || names.has("forgejo_create_issue")) {
+			const toolName = names.has("forgejo_create_issue")
+				? "forgejo_create_issue"
+				: "local_create_ticket";
 			const params = JSON.parse(process.paramsJson ?? "{}");
-			const ticket = call("local_create_ticket", {
+			const ticket = call(toolName, {
 				title: `Improve the garden notebook${progress.step > 1 ? ` (revision ${progress.step})` : ""}`,
 				body: "Document the weekly planting review.",
-				destinationId: "garden",
+				destinationId:
+					toolName === "forgejo_create_issue" ? params.ticketDestinations?.[0]?.id : "garden",
 			});
 			const afterToolResult = (
 				call: StubToolCallScriptCall,
 				result: unknown,
 			): StubToolCallScriptCall | undefined => {
 				if (
-					call.toolName === "local_create_ticket" &&
+					call.toolName === toolName &&
 					result &&
 					typeof result === "object" &&
 					"code" in result &&

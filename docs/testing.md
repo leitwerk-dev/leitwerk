@@ -58,6 +58,7 @@ Turborepo entry point.
 ### Core Principles
 
 - **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeLlmProvider` and extension-owned fakes) rather than broad mocks.
+- **Shared fixtures:** System and browser tests use `tests/helpers/accepted-llm-turn.ts` to create accepted starts, leases, and turn records together.
 - **Avoid Change Detector Tests:** Tests verify business behavior, not implementation details. For example, prompt tests assert runtime variable interpolation and sentinel values—never literal prompt prose—so harmless text edits don't break tests.
 
 ---
@@ -65,7 +66,7 @@ Turborepo entry point.
 ## 2. Test Layers
 
 - **Pure Unit Tests:** Test domain rules, state reducers, graph validation, and codecs without booting Fastify servers or workers. Test startup interpretation at the pure `startup-evidence` projector seam. Keep launch-pipeline tests focused on adapter sequencing, preparation-check insertion, active-step failures, and commit semantics rather than retesting worker evidence. HTTP integration setup must admit immediate launches through `/launch-runs` and observe the durable run; `postImmediateLaunch` in test support provides that setup without restoring a blocking production route.
-- **Package Integration Tests:** Test package host behavior using synthetic processes and fakes.
+- **Package Integration Tests:** Test package host behavior using synthetic processes and fakes. Real-Git rebase scenarios also run here, with a suite-local 60-second budget for their many subprocesses; ordinary unit-test timeouts remain unchanged.
 - **Extension Tests:** Test extension catalog registration, custom turns, watchers, outcome tools, and external provider integrations.
 - **Server & Worker System Tests:** Boot Fastify with in-memory SQLite and fake boundaries to test `ProcessEngine` lock coordination, WebSocket IPC streaming, turn correlation, and error recovery.
 - **Session Transfer Tests:** Cover grant expiry and hashing, one-active-attempt exclusion, quiescent snapshot ordering, lease/deadline cancellation, restart reconciliation, archive limits and unsafe paths, stream digest acknowledgement, atomic local import recovery, and Svelte link/cancellation states. Archive tests must use generated fixtures and never real provider or repository credentials.
@@ -113,7 +114,10 @@ source CLI and workflow fixtures in the full gate.
 
 Run `npm run dev:sandbox` for source UI verification. The public composition uses
 real local Git history and normal process finalization. It retains Pi traces and
-adapter progress across restarts. Launcher tests start the public supervisor with
+adapter progress across restarts. Local adapters share versioned persistence, clocks, and id
+allocation through `LocalProviderStore` from `@leitwerk-dev/test-support/local-git`.
+`LocalForgeStore` adds shared repository metadata, PR construction, refresh, merge, feedback, and a `pullRequestClient` for reading, listing, and updating PRs.
+Launcher tests start the public supervisor with
 an isolated workspace and environment, check strict ports, exercise the outer
 configuration reload, and verify acknowledged reset. Preflight tests prove that
 application and adapter initialization use disposable storage. See the

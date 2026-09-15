@@ -91,6 +91,7 @@ npm ci --prefix ../leitwerk
 ```
 
 Without `--composition`, every Leitwerk command retains its public-only behavior.
+In-checkout packages share `scripts/tsup-config.ts` defaults, tracked by Turbo's global cache inputs; workspace configs retain entry points and overrides. External repositories own their build configs.
 
 ## Reload and verification
 

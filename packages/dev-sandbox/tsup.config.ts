@@ -1,5 +1,5 @@
-import { defineConfig } from "tsup";
-export default defineConfig({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/launcher.ts",
@@ -7,9 +7,6 @@ export default defineConfig({
 		"src/backend.ts",
 		"src/preflight.ts",
 	],
-	format: ["esm"],
-	tsconfig: "tsconfig.tsup.json",
 	dts: false,
-	sourcemap: true,
 	clean: true,
 });

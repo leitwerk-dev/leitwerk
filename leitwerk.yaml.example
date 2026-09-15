@@ -270,6 +270,9 @@ extension_loading:
     - ./extensions/showcase-processes
 
 extensions:
+  # forgejo: # Optional extension; see extensions/forgejo/README.md for profiles.
+  #   ticket_creation:
+  #     enabled: false # Enable only with the ticket-creation process extension.
   # models:
   #   openai:
   #     api_key: env:OPENAI_API_KEY # or literal string "sk-..."

@@ -20,6 +20,7 @@ export { waitForValue } from "./polling.js";
 export {
 	createInMemoryExternalWriteLog,
 	createTestServerSetupCapability,
+	createToolCollector,
 	type InMemoryExternalWriteLog,
 	type ServerExtensionTestHarness,
 	setupServerExtensionTest,

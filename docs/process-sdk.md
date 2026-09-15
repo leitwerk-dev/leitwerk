@@ -88,6 +88,9 @@ unavailable requirement before creating durable process state.
 Workers receive only public tool declarations
 and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
 to provider calls so stopping the turn cancels in-flight server work.
+`RepositoryIssue` and `RepositoryPullRequest` describe shared repository response fields; extensions may re-export them under provider-specific names or extend them for provider-specific fields.
+`IntegrationHttpClient` shares authenticated HTTP, JSON/204 handling, `writeJson(path, method, body, signal?)`, and array pagination; extensions supply headers, API prefixes, page sizes, and endpoint methods.
+`RepositoryHttpClient` adds common issue/comment and pull-request endpoints; extensions retain path encoding and provider-specific operations.
 
 Use `structuralStateCodec` for state containing only semantic and product refs; it parses with
 `parseStructuralProcessState` and serializes unchanged. Use `emptyParamsCodec` for empty params.

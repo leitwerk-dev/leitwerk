@@ -15,6 +15,7 @@ import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
+import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import {
 	type MountedUiHarness,
 	setupMountedUiHarness,
@@ -38,63 +39,6 @@ const singlePromptExtensionWithProvider = {
 		},
 	]),
 };
-type TestApp = NonNullable<MountedUiHarness<Record<string, never>>["testApp"]>;
-type AcceptedLlmTurnFixtureInput = Parameters<
-	TestApp["ctx"]["deps"]["turnRecords"]["create"]
->[0] & { id: string; turnType: "llm" };
-
-function createAcceptedLlmTurn(testApp: TestApp, input: AcceptedLlmTurnFixtureInput) {
-	const running = input.status === "running";
-	const lease = testApp.ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: `wkr_fixture_${input.id}`,
-		state: running ? "busy" : "exited",
-	});
-	const start = testApp.ctx.deps.turnStarts.create({
-		id: `tsr_fixture_${input.id}`,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.id,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: input.modelProfileId ?? "test",
-					providerId: "test",
-					modelId: "test",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "system-fixture-digest",
-				workerRuntimeProfileId: "test",
-				piSettings: {},
-			},
-			turnRecordId: input.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	const turnRecord = testApp.ctx.deps.turnRecords.create({
-		...input,
-		turnStartRecordId: start.id,
-		acceptedWorkerLeaseId: lease.id,
-	});
-	if (running) {
-		testApp.ctx.deps.processes.update(input.instanceId, {
-			currentExecution: { kind: "worker_start", id: start.id },
-		});
-	} else {
-		testApp.ctx.deps.leases.update(lease.id, {
-			exitedAt: input.endedAt ?? input.startedAt ?? new Date().toISOString(),
-		});
-	}
-	return turnRecord;
-}
 
 async function createRealSinglePromptCatalog() {
 	return buildExtensionCatalog([
@@ -347,60 +291,27 @@ describe("chronicle step 5 poem outcome renderer", () => {
 							process?.selectedTurnId === "poem_review" && process.lifecycleStatus === "waiting",
 					);
 
-					const lease = testApp.ctx.deps.leases.create({
-						instanceId,
-						workerId: "worker_poem_live_review",
-						state: "busy",
-					});
-					testApp.ctx.deps.turnStarts.create({
-						id: "tsr_poem_live_review",
-						instanceId,
-						turnId: "review_poem_draft",
-						turnType: "llm",
-						proposedTurnRecordId: "trn_poem_live_review",
-						startKind: "selected_turn",
-						recoveryTurnRecordId: null,
-						continuation: null,
-						state: {
-							kind: "accepted",
-							start: {
-								kind: "llm",
-								model: {
-									profileId: "test",
-									providerId: "test",
-									modelId: "test",
-									thinkingLevel: "off",
-								},
-								providerOptions: {},
-								providerWorkerConfig: null,
-								piResourceSnapshotDigest: "test-digest",
-								workerRuntimeProfileId: "test",
-								piSettings: {},
-							},
-							turnRecordId: "trn_poem_live_review",
-							acceptedWorkerLeaseId: lease.id,
+					createAcceptedLlmTurn(
+						testApp.ctx,
+						{
+							id: "trn_poem_live_review",
+							instanceId,
+							turnId: "review_poem_draft",
+							turnType: "llm",
+							status: "running",
+							pathType: "leaf_branch",
+							forkPiEntryId: null,
+							resultPiEntryId: null,
+							turnResultMarkdown: null,
+							errorSummary: null,
+							startedAt: "2026-04-18T15:05:00.000Z",
+							endedAt: null,
 						},
-					});
-					testApp.ctx.deps.turnRecords.create({
-						id: "trn_poem_live_review",
-						instanceId,
-						turnId: "review_poem_draft",
-						turnType: "llm",
-						status: "running",
-						pathType: "leaf_branch",
-						forkPiEntryId: null,
-						resultPiEntryId: null,
-						turnResultMarkdown: null,
-						errorSummary: null,
-						startedAt: "2026-04-18T15:05:00.000Z",
-						endedAt: null,
-						turnStartRecordId: "tsr_poem_live_review",
-						acceptedWorkerLeaseId: lease.id,
-					});
+						"test-digest",
+					);
 					testApp.ctx.deps.processes.update(instanceId, {
 						selectedTurnId: "review_poem_draft",
 						lifecycleStatus: "active",
-						currentExecution: { kind: "worker_start", id: "tsr_poem_live_review" },
 					});
 				},
 			});
@@ -484,7 +395,7 @@ describe("chronicle step 5 poem outcome renderer", () => {
 								"# Brighter Deploys\n\nTin rooftops shimmer<br>Warmer circuits ring\n\nRelease trains brighten<br>With a cleaner spring",
 						},
 					] as const) {
-						createAcceptedLlmTurn(testApp, {
+						createAcceptedLlmTurn(testApp.ctx, {
 							id: snapshot.turnRecordId,
 							instanceId: process.id,
 							turnId: "review_poem_draft",
@@ -599,7 +510,7 @@ describe("chronicle step 5 poem outcome renderer", () => {
 							"# Broken Platform\n\nFallback markdown still survives",
 						],
 					] as const) {
-						createAcceptedLlmTurn(testApp, {
+						createAcceptedLlmTurn(testApp.ctx, {
 							id: turnRecordId,
 							instanceId: process.id,
 							turnId: "draft_poem",

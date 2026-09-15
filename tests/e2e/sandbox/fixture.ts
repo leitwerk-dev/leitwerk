@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createSandboxApp, type SandboxInput, sandboxConfig } from "@leitwerk-dev/dev-sandbox";
@@ -9,14 +10,17 @@ import { test as baseTest, expect, type TestContext } from "vitest";
 import composition from "../../../sandbox/composition.js";
 import { Notebook } from "../../../sandbox/notebook.js";
 
-async function fixture(onTestFinished: TestContext["onTestFinished"]) {
+export async function fixture(
+	onTestFinished: TestContext["onTestFinished"],
+	factory = composition,
+) {
 	const root = mkdtempSync(path.join(tmpdir(), "public-sandbox-test-"));
 	let sandbox: Awaited<ReturnType<typeof createSandboxApp>>;
 	onTestFinished(async () => {
 		try {
 			await sandbox?.stop();
 		} finally {
-			rmSync(root, { recursive: true, force: true });
+			await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		}
 	});
 	const input: SandboxInput = {
@@ -26,8 +30,8 @@ async function fixture(onTestFinished: TestContext["onTestFinished"]) {
 		modelProfileId: "sandbox",
 	};
 	const config = sandboxConfig(input);
-	config.process_configs = composition(input).processConfigs;
-	sandbox = await createSandboxApp(config, input, composition);
+	config.process_configs = factory(input).processConfigs;
+	sandbox = await createSandboxApp(config, input, factory);
 	let url: string;
 	async function start() {
 		await sandbox.context.app.listen({ host: "127.0.0.1", port: 0 });
@@ -57,7 +61,7 @@ async function fixture(onTestFinished: TestContext["onTestFinished"]) {
 		async restart() {
 			await sandbox.stop();
 			input.urls.backend = config.server.base_url;
-			sandbox = await createSandboxApp(config, input, composition);
+			sandbox = await createSandboxApp(config, input, factory);
 			await start();
 		},
 		async launch(name: string) {

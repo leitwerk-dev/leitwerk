@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import { mount, unmount } from "svelte";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, assert, beforeEach, expect, it, vi } from "vitest";
 import { createApiToken, fetchApiTokens, revokeApiToken } from "../lib/api-tokens.js";
 import ApiTokensPage from "./ApiTokensPage.svelte";
 
@@ -34,7 +34,11 @@ async function render() {
 	return target;
 }
 function button(target: HTMLElement, label: string) {
-	return [...target.querySelectorAll("button")].find((b) => b.textContent?.trim() === label)!;
+	const button = [...target.querySelectorAll("button")].find(
+		(b) => b.textContent?.trim() === label,
+	);
+	assert(button, `Expected button '${label}'`);
+	return button;
 }
 beforeEach(() => {
 	vi.mocked(fetchApiTokens).mockResolvedValue(structuredClone(data));
@@ -67,13 +71,14 @@ it("holds the new secret only for once-only display and gives copy success/failu
 	const copy = vi.fn().mockResolvedValue(undefined);
 	Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
 	const target = await render();
-	const input = target.querySelector<HTMLInputElement>("#token-name")!;
+	const input = target.querySelector<HTMLInputElement>("#token-name");
+	assert(input, "Expected the token name input");
 	input.value = "canary";
 	input.dispatchEvent(new Event("input", { bubbles: true }));
 	await flush();
-	target
-		.querySelector("form")!
-		.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+	const form = target.querySelector("form");
+	assert(form, "Expected the token creation form");
+	form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 	await flush();
 	expect(target.querySelector<HTMLTextAreaElement>("#new-token")?.value).toBe("lwk_pat_once_only");
 	button(target, "Copy token").click();

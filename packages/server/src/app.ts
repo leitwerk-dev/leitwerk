@@ -1193,6 +1193,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		},
 		(id: string) => config.extensions?.[id],
 	);
+	integrationTools.validateTicketProcesses(extensionCatalog.processes);
 	startHooks.push(() => polling.start());
 	stopHooks.push(() => polling.stop());
 	for (const process of extensionCatalog.processes.values()) {

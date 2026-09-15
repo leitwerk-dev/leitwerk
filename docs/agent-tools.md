@@ -61,6 +61,20 @@ authorized names with `.integrationTools(...)`. Workers receive only each tool's
 description, and parameter schema. The server accepts a call only from the current turn
 record and only for a tool authorized by that turn. Provider credentials stay on the server.
 Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
+SDK helpers `stringArg(args, name)` and `numberArg(args, name)` require a nonempty trimmed
+string and a positive integer, respectively. Invalid arguments throw an error naming the field.
+`objectArg(value, message?)` requires a non-null, non-array object and preserves the supplied error message.
+`projectParameters(properties, required?)` adds the required `projectKey` string to an object
+schema. Other properties are required by default; pass their required names to keep some optional.
+
+`resolveRepositoryProjectBinding(ctx, provider, legacyMetadataKey?)` validates project ownership
+and nonempty `owner`, `repo`, and `profile` metadata. Without a legacy key, a missing profile
+uses `${provider}Profile` from process parameters. With a legacy key, only absent provider
+metadata uses that legacy binding and process profile. Explicit malformed metadata is rejected.
+`normalizeRepositoryFeedback(kind, item)` normalizes common forge feedback fields and returns
+`null` for empty bodies or missing identities. Extensions retain provider-specific fields.
+`createExternalSourcePollReporter(sources, result)` records fire results and attaches arming
+identity to observations. Extensions still own scheduling, event selection, and stale-source checks.
 
 Reconnects replay a call with the same idempotency key. Mutating tools must use
 `ensureWrite()` so replay remains safe across server restarts. When a turn stops, the
@@ -74,7 +88,10 @@ identity, cancellation, and credential isolation as agent-initiated LLM integrat
 
 A tool marked with `capability.kind: "ticket_creation"` can back the generic derived-ticket
 route. Its extension registers the code-defined `processId` and `startTurnId` on the capability;
-core does not select a fixed process graph. The route admits the child through an idempotent durable
+core does not select a fixed process graph. After server extensions register their
+tools, startup validates that every enabled ticket capability names a composed
+process and an existing entry turn. Missing composition fails startup with the
+tool, process and turn identifiers. Disable an optional ticket adapter to omit it. The route admits the child through an idempotent durable
 launch run and commits the child relation in the same transaction as the process. The tool must return the standard
 `{ externalId, url, result? }` receipt. An optional
 destination provider lists sanitized choices for the derived process. The server adds the

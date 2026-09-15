@@ -1,6 +1,5 @@
-import { defineConfig } from "tsup";
-
-export default defineConfig((options) => ({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/types.ts",
@@ -12,9 +11,4 @@ export default defineConfig((options) => ({
 		"src/session-transfer-helper.ts",
 		"src/session-transfer-helper-cli.ts",
 	],
-	format: ["esm"],
-	tsconfig: "tsconfig.tsup.json",
-	dts: true,
-	clean: !options.watch,
-	sourcemap: true,
-}));
+});

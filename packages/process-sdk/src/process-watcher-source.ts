@@ -1,12 +1,9 @@
 import type { LaunchModelConfigInput } from "@leitwerk-dev/domain";
 import type { ProcessWatcherSource } from "./extension-api.js";
+import { objectArg } from "./tool-arguments.js";
 
-function record(value: unknown, subject: string): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error(`${subject} must be an object`);
-	}
-	return value as Record<string, unknown>;
-}
+const record = (value: unknown, subject: string) =>
+	objectArg(value, `${subject} must be an object`);
 
 function nonEmptyString(value: unknown, path: string): string {
 	if (typeof value !== "string" || value.trim() === "") {

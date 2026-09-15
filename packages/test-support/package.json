@@ -32,6 +32,11 @@
 			"source": "./src/worker-testing/index.ts",
 			"import": "./dist/worker-testing/index.js",
 			"types": "./dist/worker-testing/index.d.ts"
+		},
+		"./local-git": {
+			"source": "./src/local-git.ts",
+			"import": "./dist/local-git.js",
+			"types": "./dist/local-git.d.ts"
 		}
 	},
 	"scripts": {

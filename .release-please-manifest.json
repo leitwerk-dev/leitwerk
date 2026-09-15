@@ -24,5 +24,8 @@
 	"extensions/telegram": "0.1.9",
 	"packages/dev-sandbox": "0.1.9",
 	"extensions/ticket-creation": "0.1.9",
-	"packages/repository-rebase": "0.1.9"
+	"packages/repository-rebase": "0.1.9",
+	"extensions/forgejo": "0.1.9",
+	"extensions/github": "0.1.9",
+	"extensions/woodpecker": "0.1.9"
 }

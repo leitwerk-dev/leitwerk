@@ -1,4 +1,11 @@
-import type { ExternalEventDescription } from "@leitwerk-dev/process-sdk";
+import type {
+	createExternalSourcePollReporter,
+	ExternalEventDescription,
+	ExternalObservationInput,
+	ExternalSourceArmingLike,
+	ExternalSourceServiceLike,
+	RepositoryPullRequest,
+} from "@leitwerk-dev/process-sdk";
 
 export interface ConflictEvidence {
 	reason?: "behind";
@@ -59,16 +66,10 @@ export function describeConflict(event: unknown): ExternalEventDescription {
 }
 export function conflictEvidence(
 	config: { owner: string; repo: string; prNumber: number; headSha: string },
-	pr: {
-		number: number;
-		state: string;
-		merged: boolean;
-		mergeable?: boolean | null;
-		mergeable_state?: string | null;
-		head: { ref: string; sha: string };
-		base: { ref: string; sha: string };
-		html_url: string;
-	},
+	pr: Pick<
+		RepositoryPullRequest,
+		"number" | "state" | "merged" | "mergeable" | "mergeable_state" | "head" | "base" | "html_url"
+	>,
 	provider: "github" | "forgejo",
 ): ConflictEvidence | null {
 	const behind = provider === "github" && pr.mergeable === true && pr.mergeable_state === "behind";
@@ -93,6 +94,34 @@ export function conflictEvidence(
 		headSha: pr.head.sha,
 		baseSha: pr.base.sha,
 		url: pr.html_url,
+	};
+}
+
+/** Observe every refresh; fire each conflict pair once per live subscription. */
+export function createConflictReporter(sources: ExternalSourceServiceLike, kind: string) {
+	const accepted = new Map<string, string>();
+	return async (
+		report: ReturnType<typeof createExternalSourcePollReporter>,
+		armed: ExternalSourceArmingLike,
+		conflict: ConflictEvidence | null,
+		lastKey: unknown,
+		observation: NonNullable<ExternalObservationInput["observation"]>,
+	): Promise<boolean> => {
+		await report.observe(armed, {
+			observation: { ...observation, ...(conflict ? describeConflict({ conflict }) : {}) },
+		});
+		if (!conflict) return false;
+		const pair = conflictKey(conflict);
+		const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
+		if (
+			pair === lastKey ||
+			accepted.get(key) === pair ||
+			!sources.listArmed(kind).some((current) => sameSubscription(armed, current))
+		)
+			return false;
+		if (await report.fire(armed, { kind: "merge_conflict", conflict }, pair))
+			accepted.set(key, pair);
+		return true;
 	};
 }
 

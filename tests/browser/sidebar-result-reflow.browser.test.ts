@@ -5,6 +5,7 @@ import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runt
 import type { AppContext } from "@leitwerk-dev/server";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import type { Locator } from "@playwright/test";
+import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 
 const rendererModuleSource = `
@@ -101,56 +102,8 @@ function buildLongBody(title: string, sentenceCount: number): string {
 	).join(" ");
 }
 
-type AcceptedLlmTurnFixtureInput = Parameters<AppContext["deps"]["turnRecords"]["create"]>[0] & {
-	id: string;
-	turnType: "llm";
-};
-
-function createAcceptedLlmTurn(input: AcceptedLlmTurnFixtureInput) {
-	if (!ctx) throw new Error("Server context not initialized");
-	const lease = ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: `wkr_fixture_${input.id}`,
-		state: "exited",
-	});
-	const start = ctx.deps.turnStarts.create({
-		id: `tsr_fixture_${input.id}`,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.id,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: input.modelProfileId ?? "test",
-					providerId: "test",
-					modelId: "test",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "browser-fixture-digest",
-				workerRuntimeProfileId: "test",
-				piSettings: {},
-			},
-			turnRecordId: input.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	const turnRecord = ctx.deps.turnRecords.create({
-		...input,
-		turnStartRecordId: start.id,
-		acceptedWorkerLeaseId: lease.id,
-	});
-	ctx.deps.leases.update(lease.id, {
-		exitedAt: input.endedAt ?? input.startedAt ?? new Date().toISOString(),
-	});
-	return turnRecord;
+function createAcceptedLlmTurn(input: Parameters<typeof createFixtureAcceptedLlmTurn>[1]) {
+	return createFixtureAcceptedLlmTurn(ctx, input, "browser-fixture-digest");
 }
 
 function seedSidebarReflowProcess(label: string) {

@@ -198,6 +198,7 @@ export type {
 	WorkerTurnHandler,
 } from "./extension-api.js";
 export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
+export { createExternalSourcePollReporter } from "./external-source-poll.js";
 export {
 	AutomaticFlowBuilder,
 	AutomaticOutcomeBuilder,
@@ -247,6 +248,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
+export { IntegrationHttpClient } from "./integration-http.js";
 export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,
@@ -354,11 +356,18 @@ export {
 	parseProcessWatcherLaunchModelConfig,
 } from "./process-watcher-source.js";
 export {
+	type RepositoryProjectBinding,
+	resolveRepositoryProjectBinding,
+} from "./project-binding.js";
+export { normalizeRepositoryFeedback, type RepositoryFeedbackItem } from "./repository-feedback.js";
+export {
 	clearRepositoryGitSshWrappers,
 	repositoryGitArgs,
 	repositoryGitSubprocessEnv,
 	setRepositoryGitSshWrapper,
 } from "./repository-git-env.js";
+export { RepositoryHttpClient } from "./repository-http.js";
+export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 export {
 	buildPlanSavedEventPayload,
 	buildReviewCompletedEventPayload,
@@ -397,6 +406,7 @@ export {
 	sanitizeWorkerSubprocessEnv,
 	WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS,
 } from "./subprocess-env.js";
+export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type {
 	ToolCallRendererDefinition,
 	ToolCallRendererFieldDefinition,

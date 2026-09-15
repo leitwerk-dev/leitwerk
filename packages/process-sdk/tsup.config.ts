@@ -1,6 +1,5 @@
-import { defineConfig } from "tsup";
-
-export default defineConfig((options) => ({
+import { workspaceBuild } from "../../scripts/tsup-config.js";
+export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/git-binary.ts",
@@ -9,9 +8,4 @@ export default defineConfig((options) => ({
 		"src/review-flow.ts",
 		"src/runtime-internals.ts",
 	],
-	format: ["esm"],
-	tsconfig: "tsconfig.tsup.json",
-	dts: true,
-	clean: !options.watch,
-	sourcemap: true,
-}));
+});

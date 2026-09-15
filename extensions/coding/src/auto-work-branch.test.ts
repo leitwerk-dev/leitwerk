@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	buildAutoWorkBranch,
 	resolveBaseBranchSha,
@@ -13,30 +12,6 @@ import {
 // Real git subprocesses make these cases slow under the full parallel suite;
 // raise the timeout so process-spawn contention does not flake them.
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
-
-const tempDirs: string[] = [];
-
-function createTempDir(prefix: string): string {
-	const dir = path.join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-	mkdirSync(dir, { recursive: true });
-	tempDirs.push(dir);
-	return dir;
-}
-
-function git(cwd: string, ...args: string[]): string {
-	return execFileSync(resolveGitBinary(), args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
-	});
-}
-
-afterEach(() => {
-	while (tempDirs.length > 0) {
-		const dir = tempDirs.pop();
-		if (dir) rmSync(dir, { recursive: true, force: true });
-	}
-});
 
 describe("local repo change automatic work branches", () => {
 	it("slugifies the first source words for safe branch names", () => {
@@ -53,15 +28,11 @@ describe("local repo change automatic work branches", () => {
 	});
 
 	it("resolves the configured base branch sha with git metadata", async () => {
-		const repoDir = createTempDir("local-repo-change-auto-branch");
-		git(repoDir, "init");
-		git(repoDir, "config", "user.email", "test@example.com");
-		git(repoDir, "config", "user.name", "Test User");
-		writeFileSync(path.join(repoDir, "README.md"), "# Example\n", "utf8");
-		git(repoDir, "add", "README.md");
-		git(repoDir, "commit", "-m", "initial");
-		git(repoDir, "branch", "-M", "main");
-		const expectedSha = git(repoDir, "rev-parse", "main").trim();
+		const root = mkdtempSync(path.join(tmpdir(), "local-repo-change-auto-branch-"));
+		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+		const git = new LocalGit(root);
+		const { worktree: repoDir } = git.seed({ owner: "test", name: "repo" });
+		const expectedSha = git.head(repoDir, "main");
 
 		await expect(resolveBaseBranchSha({ repoLocator: repoDir, baseBranch: "main" })).resolves.toBe(
 			expectedSha,
