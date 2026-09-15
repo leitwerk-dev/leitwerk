@@ -84,3 +84,12 @@ The separate `remote-repo-change` extension continues direct base-branch deliver
 At operator action, **Retry repair** retains the pending evidence. **Resume waiting**
 dismisses the pending feedback and adjustment, retaining accepted feedback cursors
 and remote delivery state while waiting for new evidence.
+
+## Restart verification
+
+The provider sandbox's file-backed restart fixtures retain legacy issue/UI params,
+Forgejo-only project metadata, completed write receipts and waiting subscriptions.
+They reopen feedback, CI, conflict, operator and terminal deliveries, compare project,
+turn and session identities, and verify that changed profile mappings do not rebind
+existing work. A remote merge while the server is stopped completes after rearming.
+Lost PR responses and publication retries reconcile one PR without duplicate comments.

@@ -58,8 +58,9 @@ export async function fixture(
 		get notebook() {
 			return new Notebook(root);
 		},
-		async restart() {
+		async restart(whileStopped?: () => Promise<void>) {
 			await sandbox.stop();
+			await whileStopped?.();
 			input.urls.backend = config.server.base_url;
 			sandbox = await createSandboxApp(config, input, factory);
 			await start();
