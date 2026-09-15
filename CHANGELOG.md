@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.2.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.9...v0.2.0) (2026-09-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ui:** load reasoning history on demand ([#51](https://github.com/leitwerk-dev/leitwerk/issues/51))
+* **runtime:** migrate process execution and harden worker launch ([#34](https://github.com/leitwerk-dev/leitwerk/issues/34))
+
+### Features
+
+* **auth:** add personal and shared anonymous API tokens ([#47](https://github.com/leitwerk-dev/leitwerk/issues/47)) ([1b2d7ea](https://github.com/leitwerk-dev/leitwerk/commit/1b2d7ea154b9f50ae736bbf33f23e49d410ee8a8))
+* **chronicle:** preserve process history and optional reporting ([#64](https://github.com/leitwerk-dev/leitwerk/issues/64)) ([62cbf6c](https://github.com/leitwerk-dev/leitwerk/commit/62cbf6ca7127d9fcb691efc0ed250d298c1ab92a))
+* **dev:** support installed extensions in development compositions ([#39](https://github.com/leitwerk-dev/leitwerk/issues/39)) ([c3d6a79](https://github.com/leitwerk-dev/leitwerk/commit/c3d6a795f5a416a91284667e8da8e3c34b4b8c6d))
+* **dev:** support local sandboxes and recorded scripted sessions ([#56](https://github.com/leitwerk-dev/leitwerk/issues/56)) ([6632468](https://github.com/leitwerk-dev/leitwerk/commit/6632468b7ed9f064a9edf32709bb930da6a5a2f9))
+* **forgejo-repo-change:** add PR delivery and provider sandbox ([#78](https://github.com/leitwerk-dev/leitwerk/issues/78)) ([f3558a0](https://github.com/leitwerk-dev/leitwerk/commit/f3558a01b5500a2545f88931f4d9300ba64e1252))
+* **gitlab:** add API integration and scoped HTTPS Git credentials ([#79](https://github.com/leitwerk-dev/leitwerk/issues/79)) ([03c0e47](https://github.com/leitwerk-dev/leitwerk/commit/03c0e47b02ece1c0126ca652ac5dbb2cc60cbc96))
+* **integrations:** add Forgejo, GitHub and Woodpecker with local adapters ([#77](https://github.com/leitwerk-dev/leitwerk/issues/77)) ([5dc4834](https://github.com/leitwerk-dev/leitwerk/commit/5dc4834d16d6269f294482da672659593a10a5c1))
+* Introduce a shared helper for consistent external links ([#53](https://github.com/leitwerk-dev/leitwerk/issues/53)) ([1e07fdb](https://github.com/leitwerk-dev/leitwerk/commit/1e07fdb68b1e938e580454d3b183c5cb3824bcc4))
+* **kubernetes:** optionally pre-provision process volumes ([#62](https://github.com/leitwerk-dev/leitwerk/issues/62)) ([fb8fd77](https://github.com/leitwerk-dev/leitwerk/commit/fb8fd774881d8acd096238ce545f4964634e5000))
+* **release:** guard stable publication and add opt-in npm release candidates ([#41](https://github.com/leitwerk-dev/leitwerk/issues/41)) ([214e792](https://github.com/leitwerk-dev/leitwerk/commit/214e792343158ddf7c911f8d98bd2cd46290006f))
+* **sandbox:** add shared harness, ticket creation and rebase support ([#76](https://github.com/leitwerk-dev/leitwerk/issues/76)) ([698547c](https://github.com/leitwerk-dev/leitwerk/commit/698547c8d84433e0675eae67a4f39e4f906f1c78))
+* **session-transfer:** transfer retained sessions to local Pi ([#35](https://github.com/leitwerk-dev/leitwerk/issues/35)) ([cea4811](https://github.com/leitwerk-dev/leitwerk/commit/cea481104785a58d2703fb1b11f6a3fbea5be295))
+* **startup:** preserve startup transparency alongside Chronicle navigation ([#63](https://github.com/leitwerk-dev/leitwerk/issues/63)) ([32f463b](https://github.com/leitwerk-dev/leitwerk/commit/32f463bca15079c4afcddc1cfd411db075d1a4b3))
+* **ui:** add Chronicle turn navigation and compact process views ([#57](https://github.com/leitwerk-dev/leitwerk/issues/57)) ([d725c4f](https://github.com/leitwerk-dev/leitwerk/commit/d725c4f4f8f885d66da62014da7b865d83f17ef0))
+* **ui:** clarify history results and process summaries ([#73](https://github.com/leitwerk-dev/leitwerk/issues/73)) ([6668842](https://github.com/leitwerk-dev/leitwerk/commit/66688422160fbcdb9b7f765e9c989eb6a99fa6f7))
+* **ui:** load reasoning history on demand ([#51](https://github.com/leitwerk-dev/leitwerk/issues/51)) ([eab497c](https://github.com/leitwerk-dev/leitwerk/commit/eab497c8a4ccb36bdaf254eedc7dc8cc03f58828))
+* **workers:** support private Docker runtimes ([#36](https://github.com/leitwerk-dev/leitwerk/issues/36)) ([55fb9e2](https://github.com/leitwerk-dev/leitwerk/commit/55fb9e2749b4a64fa877c9c34fae21becd0ec9f5))
+
+
+### Bug Fixes
+
+* **ci:** restore browser installation and package validation ([#42](https://github.com/leitwerk-dev/leitwerk/issues/42)) ([b35dba4](https://github.com/leitwerk-dev/leitwerk/commit/b35dba4d5be5f91600f23a48cf2cad7d834ab55d))
+* **session-transfer:** admit and execute retained-session exporters ([#72](https://github.com/leitwerk-dev/leitwerk/issues/72)) ([c5aa578](https://github.com/leitwerk-dev/leitwerk/commit/c5aa578db81f86584ae98d6d5b7884077460e1d0))
+* **ticket:** retain destination history across upgrades ([#49](https://github.com/leitwerk-dev/leitwerk/issues/49)) ([b6dc378](https://github.com/leitwerk-dev/leitwerk/commit/b6dc378d4b18365422a2a41520520b70a9a1f5b7))
+* **ui:** keep ticket questions in reasoning flow ([#37](https://github.com/leitwerk-dev/leitwerk/issues/37)) ([ce9d9fc](https://github.com/leitwerk-dev/leitwerk/commit/ce9d9fca7cc585cbe7eeaca7dea6408876e189e6))
+* **ui:** unify process controls and dialog presentation ([#55](https://github.com/leitwerk-dev/leitwerk/issues/55)) ([3d0dd9e](https://github.com/leitwerk-dev/leitwerk/commit/3d0dd9e0bccd15eb1e0e28e358016d89fbac4c1c))
+* **worker:** isolate repository commands and enforce Docker runtime contracts ([#52](https://github.com/leitwerk-dev/leitwerk/issues/52)) ([97f0a87](https://github.com/leitwerk-dev/leitwerk/commit/97f0a87b33a8e7317e88ee43d514f2d5395edff7))
+* **worker:** keep startup reconnects alive and retain diagnostics ([#66](https://github.com/leitwerk-dev/leitwerk/issues/66)) ([84cfa5a](https://github.com/leitwerk-dev/leitwerk/commit/84cfa5ae8dc36d1c45e0fc3479fa5426c5f091be))
+
+
+### Refactoring
+
+* **runtime:** migrate process execution and harden worker launch ([#34](https://github.com/leitwerk-dev/leitwerk/issues/34)) ([fd3337e](https://github.com/leitwerk-dev/leitwerk/commit/fd3337ea7ffa67f592cb219942ddea7a47362ebb))
+
 ## [0.1.9](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.8...v0.1.9) (2026-08-20)
 
 
