@@ -373,7 +373,7 @@ $effect(() => {
 		>
 			{#snippet actions()}
 				{#if repositories.length > 0}
-					<button class="ui-button page-header-button" type="button" onclick={() => (showRepositoriesModal = true)}>
+					<button class="ui-button page-header-button" type="button" data-action="open-skill-repositories" onclick={() => (showRepositoriesModal = true)}>
 						Repositories ({repositories.length})
 					</button>
 				{/if}
@@ -408,7 +408,7 @@ $effect(() => {
 				: "Remote skills must be installed before they can be attached to a process."}
 		</p>
 
-		<div class="catalog-controls">
+		<div class="catalog-controls" class:with-filters={activeView === "available"}>
 			<label class="search-field">
 				<span class="sr-only">Search skills</span>
 				<svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"></circle><path d="m13 13 4 4"></path></svg>
@@ -516,6 +516,7 @@ $effect(() => {
 	closeLabel="Close configured repositories"
 	onClose={() => (showRepositoriesModal = false)}
 	dataSection="repository-modal"
+	restoreFocusSelector="[data-action='open-skill-repositories']"
 >
 	<header class="repository-modal-header">
 		<h2 id="repository-modal-title">Configured repositories</h2>
@@ -572,6 +573,8 @@ $effect(() => {
 	.status-banner.error { background: var(--chronicle-danger-surface-soft); color: var(--chronicle-danger-text); }
 
 	.catalog-controls { display: flex; gap: var(--space-xs); align-items: center; }
+	.with-filters { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(2, minmax(0, 1fr)) auto; }
+	.catalog-controls > label:not(.search-field) { min-width: 0; }
 	.search-field { position: relative; min-width: 220px; flex: 1 1 300px; }
 	.search-field svg { position: absolute; left: 12px; top: 50%; width: 17px; height: 17px; transform: translateY(-50%); stroke: var(--chronicle-text-faint); stroke-width: 1.6; fill: none; pointer-events: none; }
 	input, select { width: 100%; min-height: 40px; border: 1px solid var(--chronicle-border); border-radius: var(--radius-sm); background: var(--chronicle-bg); color: var(--chronicle-text); padding: 8px 12px; }

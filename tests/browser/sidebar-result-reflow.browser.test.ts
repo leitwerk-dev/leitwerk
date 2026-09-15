@@ -232,8 +232,12 @@ test.describe("sidebar result reflow", () => {
 		const viewport = page.locator('[data-role="chronicle-scroll"]');
 		await expect(page.locator('[data-renderer-state="ready"]')).toBeVisible();
 		await viewport.hover();
-		await page.mouse.wheel(0, -10000);
-		await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(0);
+		await expect
+			.poll(async () => {
+				await page.mouse.wheel(0, -10000);
+				return viewport.evaluate((element) => element.scrollTop);
+			})
+			.toBe(0);
 		const active = page.locator('[data-rail-anchor-id][data-active="true"]');
 		await expect(active).toHaveCount(1);
 		const before = await active.getAttribute("data-rail-anchor-id");
