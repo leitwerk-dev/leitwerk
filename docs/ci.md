@@ -12,8 +12,9 @@ Every PR must pass `Full validation` and `Conventional PR title and DCO`. These 
 
 Builds, tests, and browser installation use Node 26. Playwright 1.63 supports
 fresh browser archive extraction on Node 26.8.1, so the older temporary Node 24
-installer workaround is no longer needed. Browser installation retains a
-five-minute timeout.
+installer workaround is no longer needed. Validation installs Chromium, Firefox,
+and WebKit and runs the browser suite in all three engines. Browser installation
+retains a five-minute timeout.
 
 ## Publication safeguards
 

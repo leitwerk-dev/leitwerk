@@ -171,6 +171,19 @@ test.describe("failed-turn continue recovery", () => {
 
 		await page.goto(`/processes/${process.id}`);
 		await page.waitForSelector('[data-page="process-detail"]');
+		await page.setViewportSize({ width: 390, height: 844 });
+		const failureToggle = page.getByRole("button", { name: "Collapse failed turn" });
+		await expect(failureToggle).toBeVisible();
+		const fitsHeader = await failureToggle.evaluate((button) => {
+			const control = button.getBoundingClientRect();
+			const slot = button.parentElement?.getBoundingClientRect();
+			return !!slot && control.left >= slot.left - 1 && control.right <= slot.right + 1;
+		});
+		expect(fitsHeader).toBe(true);
+		await failureToggle.click();
+		await expect(page.getByRole("button", { name: "Expand failed turn" })).toBeVisible();
+		await page.getByRole("button", { name: "Expand failed turn" }).click();
+		await page.setViewportSize({ width: 1440, height: 900 });
 
 		await expect(recoverySection).toBeVisible();
 		await expect(recoveryRailItem).toBeVisible();

@@ -7,7 +7,7 @@ import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helper
 import { expect, test } from "./fixtures.js";
 
 const PNG = Buffer.from(
-	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=",
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
 	"base64",
 );
 let ctx: AppContext | null = null;

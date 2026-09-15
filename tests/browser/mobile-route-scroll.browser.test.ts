@@ -1,10 +1,11 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
-import { devices, type Locator, type Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures.js";
 
 test.use({
-	...devices["Pixel 5"],
+	isMobile: async ({ browserName }, use) => use(browserName === "chromium"),
+	hasTouch: true,
 	viewport: { width: 390, height: 500 },
 	browserServerOptions: {
 		tempPrefix: "leitwerk-mobile-route-scroll-browser-",
@@ -26,7 +27,7 @@ test.use({
 	},
 });
 
-async function expectTouchSwipeToScrollPage(page: Page, surface: Locator) {
+async function expectGestureToScrollPage(page: Page, surface: Locator) {
 	const routeViewport = page.locator('[data-role="route-viewport"]');
 	await expect(routeViewport).toHaveAttribute("data-mode", "page");
 	await expect
@@ -38,10 +39,29 @@ async function expectTouchSwipeToScrollPage(page: Page, surface: Locator) {
 	if (!box) throw new Error("Expected a rendered scroll surface");
 
 	const before = await page.evaluate(() => window.scrollY);
+	const direction = await page.evaluate(() =>
+		window.scrollY >= document.documentElement.scrollHeight - window.innerHeight - 50 ? -1 : 1,
+	);
+	if (page.context().browser()?.browserType().name() !== "chromium") {
+		// Playwright exposes touch swipes only through Chromium's CDP API.
+		await page.mouse.move(
+			box.x + Math.min(box.width / 2, 180),
+			Math.min(Math.max(box.y + 80, 84), 400),
+		);
+		await expect
+			.poll(async () => {
+				await page.mouse.wheel(0, direction * 300);
+				return ((await page.evaluate(() => window.scrollY)) - before) * direction;
+			})
+			.toBeGreaterThan(10);
+		return;
+	}
 	const client = await page.context().newCDPSession(page);
 	const x = box.x + Math.min(box.width / 2, 180);
-	const startY = Math.min(box.y + box.height - 24, 450);
-	const endY = Math.max(box.y + 24, startY - 300);
+	const bottomY = Math.min(box.y + box.height - 24, 450);
+	const topY = Math.max(box.y + 24, bottomY - 300, 84);
+	const startY = direction === 1 ? bottomY : topY;
+	const endY = direction === 1 ? topY : bottomY;
 	await client.send("Input.dispatchTouchEvent", {
 		type: "touchStart",
 		touchPoints: [{ x, y: startY }],
@@ -55,7 +75,9 @@ async function expectTouchSwipeToScrollPage(page: Page, surface: Locator) {
 	await client.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
 	await client.detach();
 
-	await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(before);
+	await expect
+		.poll(async () => ((await page.evaluate(() => window.scrollY)) - before) * direction)
+		.toBeGreaterThan(10);
 }
 
 test("scrolls the process type selection on a mobile viewport", async ({ page, leitwerk }) => {
@@ -64,7 +86,7 @@ test("scrolls the process type selection on a mobile viewport", async ({ page, l
 	const launcherList = page.locator('[data-section="launcher-list"]');
 	await expect.poll(() => launcherList.locator("li").count()).toBeGreaterThan(1);
 
-	await expectTouchSwipeToScrollPage(page, launcherList);
+	await expectGestureToScrollPage(page, launcherList);
 });
 
 test("scrolls launcher setup on a mobile viewport", async ({ page, leitwerk }) => {
@@ -73,7 +95,7 @@ test("scrolls launcher setup on a mobile viewport", async ({ page, leitwerk }) =
 	const launcherForm = page.locator('[data-section="launcher-form"]');
 	await expect(launcherForm).toBeVisible();
 
-	await expectTouchSwipeToScrollPage(page, launcherForm);
+	await expectGestureToScrollPage(page, launcherForm);
 });
 
 test("scrolls the watcher registry on a mobile viewport", async ({ page, leitwerk }) => {
@@ -82,5 +104,5 @@ test("scrolls the watcher registry on a mobile viewport", async ({ page, leitwer
 	const watcherList = page.locator(".watcher-list");
 	await expect(watcherList.locator("article")).toHaveCount(1);
 
-	await expectTouchSwipeToScrollPage(page, watcherList);
+	await expectGestureToScrollPage(page, watcherList);
 });

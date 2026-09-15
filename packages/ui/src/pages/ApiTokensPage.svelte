@@ -189,6 +189,7 @@ section { margin-top: var(--space-xl); padding-top: var(--space-lg); border-top:
 form { display: grid; gap: var(--space-sm); max-width: 480px; }
 label { display: block; font-weight: 600; }
 input, select, textarea { width: 100%; min-width: 0; min-height: 44px; padding: 10px 12px; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); caret-color: var(--chronicle-accent); }
+input { height: calc(1lh + 22px); }
 input::placeholder { color: var(--chronicle-text-muted); }
 button { min-height: 44px; padding: 10px 16px; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); cursor: pointer; }
 button:hover:not(:disabled) { background: var(--chronicle-panel-muted); }
