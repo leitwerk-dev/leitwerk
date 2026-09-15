@@ -52,6 +52,14 @@ describe("Docker worker verification", () => {
 		pod.spec.containers[0].volumeMounts[0].subPath = "other-state";
 		expect(() => verifyDockerPod(pod, pvc, pv, expected)).toThrow("complete writable process PVC");
 	});
+	it("rejects a read-only claim even when its container mount is writable", () => {
+		const { pod, pvc, pv } = fixture();
+		pod.spec.volumes[0].persistentVolumeClaim = {
+			claimName: pvc.metadata.name,
+			readOnly: true,
+		};
+		expect(() => verifyDockerPod(pod, pvc, pv, expected)).toThrow("complete writable process PVC");
+	});
 	it("verifies overlay2, persistent daemon data and listener evidence", () => {
 		const info = {
 			Driver: "overlay2",
