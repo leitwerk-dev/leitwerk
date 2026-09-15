@@ -201,7 +201,10 @@ function groupElapsed(group: ChronicleRepeatedTurns): string | null {
 		data-section={item.kind === "action" ? "action-required-indicator" : item.kind === "terminal" ? "terminal-state-indicator" : undefined}
 		data-terminal-status={item.kind === "terminal" ? item.terminalStatus : undefined}
 		data-pressable="true"
-		onclick={() => onSelectAnchor(item.anchorId)}
+		onclick={(event) => {
+			event.currentTarget.focus({ preventScroll: true });
+			onSelectAnchor(item.anchorId);
+		}}
 		onkeydown={handleRailKeydown}
 	>
 		<span class="rail-marker" aria-hidden="true">
@@ -241,7 +244,7 @@ function groupElapsed(group: ChronicleRepeatedTurns): string | null {
 							{@const elapsed = groupElapsed(row)}
 							{@const reasons = describeRailHistory(row, records)}
 							<div class="repeated-turns" data-section="repeated-turns" data-expanded={expanded}>
-								<button type="button" class="repeat-toggle" data-rail-control aria-expanded={expanded} aria-controls={`${headingId}-${row.id}`} onclick={() => toggleGroup(row)} onkeydown={(event) => handleGroupKeydown(event, row)}>
+								<button type="button" class="repeat-toggle" data-rail-control aria-expanded={expanded} aria-controls={`${headingId}-${row.id}`} onclick={(event) => { event.currentTarget.focus({ preventScroll: true }); toggleGroup(row); }} onkeydown={(event) => handleGroupKeydown(event, row)}>
 									<span class="rail-marker repeat-marker" aria-hidden="true">
 										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4" /></svg>
 									</span>

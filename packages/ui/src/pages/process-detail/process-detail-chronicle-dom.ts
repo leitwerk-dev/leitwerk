@@ -84,6 +84,11 @@ export function resolveScrollTargetLayout(
 	if (!(anchorElement instanceof HTMLElement) || !viewport.contains(anchorElement)) {
 		return null;
 	}
+	const actionForm = anchorElement.querySelector<HTMLElement>("[data-action-form-id]");
+	if (actionForm) {
+		const formLayout = readScrollableElementLayout(viewport, actionForm);
+		if (formLayout) return { ...formLayout, align: "start" };
+	}
 	if (anchorElement.dataset.section === "chronicle-turn") {
 		const turnResultSection = anchorElement.querySelector<HTMLElement>(
 			'[data-section="turn-result"]',

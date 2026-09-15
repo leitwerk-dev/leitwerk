@@ -131,7 +131,7 @@ jobs:
 
       - name: Install Playwright browser dependencies
         timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Install documentation dependencies
         run: python -m pip install -r requirements-docs.txt

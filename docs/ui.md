@@ -8,6 +8,23 @@ issue creation explains that it starts a draft for review before publication.
 Reasoning sections and repository details stay within the dialog width. Long
 arguments, error messages, repository URLs, and paths wrap on narrow screens.
 
+Chrome, Firefox, and Safari share the same layout and control styling, with
+Firefox as the visual reference. Shared CSS removes native button, text-field,
+and single-select chrome. Checkboxes and radio buttons use shared marks and
+dimensions. Single selects reserve space for a consistent chevron
+and honor their authored padding and height; the compact decision selector is
+48px high, including when the chronicle is scrolled to the top. Selects retain
+native keyboard and menu behavior. Forced-color mode restores native controls.
+Date and time fields match adjacent text-field heights while retaining native
+editors. Skill filters use defined grid tracks, so native option sizing cannot
+change the space available for search. Failed-turn toggles fit their header slot
+at mobile widths. Ticket approvals use shared buttons and an authored feedback
+field, including consistent borders, padding, and disabled states.
+Opening an action form focuses its first field without overriding the chronicle's
+chosen scroll position. Navigation to an open action targets the form itself.
+Rail selection survives delayed programmatic scroll events; manual scrolling
+updates the selection when the viewport leaves that target.
+
 Startup history, turn progress, and launch progress share `ProgressChecklistRows`.
 Expanded turn progress uses the `ProgressChecklist` panel. Rows preserve their recorded order,
 labels, details, and states. Text and static symbols identify pending, active,
