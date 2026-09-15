@@ -250,3 +250,7 @@ identifiers and retry parents; timestamps do not establish causal links.
 Observation annotations replace one snapshot per resolved subscription generation,
 retain the last successful facts across refresh failures, and reject stale writes.
 These reporting contracts use existing JSON annotations without schema migration.
+
+## Repository credentials on worker start
+
+Worker API `2026-09-15` adds the `git_https` repository credential variant. Server and worker image compatibility labels use the same version; older workers must be upgraded together with the server. Repository credentials are resolved afresh for each physical worker start and delivered through authenticated IPC, separately from immutable non-secret snapshots. Bootstrap checks project/ref/kind identity and exact HTTPS repository scope. Materialized helpers live outside the checkout and are disposed with the worker; retained process state and runtime payloads contain no secret material. Existing `git_ssh` delivery remains supported.

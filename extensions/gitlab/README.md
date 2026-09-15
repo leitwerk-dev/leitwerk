@@ -1,0 +1,35 @@
+# GitLab
+
+`@leitwerk-dev/gitlab` supplies GitLab v4 API access and repository-scoped HTTPS Git authentication from one server-owned profile. Load this optional extension on the server and worker.
+
+```yaml
+extensions:
+  gitlab:
+    profiles:
+      example:
+        base_url: https://forge.test
+        token: env:GITLAB_TOKEN
+        # Optional, when /user cannot provide a usable commit identity:
+        # git_identity:
+        #   name: Leitwerk Bot
+        #   email: bot@example.net
+```
+
+`base_url` must be an HTTPS origin without credentials, a query or a fragment. Supply a personal, project or group token with `api` and `write_repository` scopes and permission to push the selected source branches. Tokens stay on the server except for the selected repository's authenticated `worker.start` delivery. No separate Git credential configuration is needed. Missing tokens, identity or permissions are configuration errors.
+
+## Public interface
+
+- `GitLabClientLike` defines project/group discovery, MR metadata and paginated changes, branches/commits, pipelines, failed jobs, bounded traces, bot identity and notes. `GitLabClient` implements it using HTTPS, pagination and bounded transient read retries. Errors omit response bodies and credentials. Writes are reconciled by their caller rather than blindly repeated.
+- `gitlabIntegration` exposes `profiles()` and `client(profile)` through the SDK capability registry. `setupGitLabIntegration()` registers an explicit adapter for tools and external observations.
+- `gitlabRepositoryCredentials(profile, projects)` derives internal credential references. The core authorizes their HTTPS origin and exact repository path against the process projects.
+- `selectGitLabProjects()` expands exact includes and groups, including subgroups, then applies exclusions. Includes form a union; stable project IDs remove duplicates. An explicit include or `all_accessible: true` is required.
+- `observeMergeRequest()` selects the newest pipeline associated with the current MR source revision. Synthetic merge commits must contain that head as a parent. With no matching MR pipeline, it falls back to the current source branch's push pipeline. A newer pending result supersedes older terminal results.
+- `gitlabExternal.mergeRequest()` reports MR closure/merge, source-head changes and CI observations. Its `afterKey` is the previous `observationKey()`. An optional `wakeAt` timestamp permits recovery timers without retaining a worker. Poll failures back off from 30 seconds to five minutes and surface diagnostics.
+
+## Project-bound tools
+
+Project metadata binds tools to `{ gitlab: { profile, projectId, iid } }`. Each call requires an authorized process project. Available tools are `gitlab_observe_merge_request`, `gitlab_get_changes`, `gitlab_get_identity`, `gitlab_list_failed_jobs`, `gitlab_get_job_trace`, and `gitlab_comment`. Job and pipeline reads verify membership in the bound MR's current pipeline. Traces cap individual reads at 256 KiB; truncation is explicit.
+
+Comments require a stable business `writeKey`. `ensureGitLabComment()` combines it with the instance, project, MR and process IDs, appends a hidden marker, and uses `ensureWrite()`. It searches remote notes before creating a comment and after an uncertain write. Repeating a call after losing either the response or the local write-log record reuses the same remote comment.
+
+The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.

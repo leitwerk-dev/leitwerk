@@ -24,7 +24,7 @@ export interface GitOps {
 export type RunRootGitOps = GitOps & {
 	writeFile(repoDir: string, filePath: string, content: string): Promise<void>;
 	configureRepositoryCredentials?(
-		credentials: readonly import("@leitwerk-dev/worker-protocol").WorkerGitSshCredential[],
+		credentials: readonly import("@leitwerk-dev/worker-protocol").WorkerRepositoryCredential[],
 	): void;
 	cleanupRepositoryCredentials?(): void;
 };

@@ -101,6 +101,9 @@
 		},
 		{
 			"path": "extensions/forgejo-repo-change"
+		},
+		{
+			"path": "extensions/gitlab"
 		}
 	],
 	"files": []

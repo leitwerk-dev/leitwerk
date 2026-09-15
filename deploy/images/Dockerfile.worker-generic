@@ -84,7 +84,7 @@ COPY --from=build --parents \
 
 LABEL org.opencontainers.image.title="leitwerk-worker-generic" \
 	org.opencontainers.image.description="generic leitwerk worker" \
-	leitwerk.dev/worker-api-version="2026-06-23"
+	leitwerk.dev/worker-api-version="2026-09-15"
 
 VOLUME ["/state"]
 WORKDIR /app/packages/worker

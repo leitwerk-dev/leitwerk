@@ -95,3 +95,16 @@ describe("local Docker preflight", () => {
 		expect(localWorkerSpawnImpl).not.toHaveBeenCalled();
 	});
 });
+
+it("omits inherited server secrets while preserving explicitly supplied worker bootstrap credentials", async () => {
+	const { EventEmitter } = await import("node:events");
+	vi.stubEnv("FORGE_API_TOKEN", "server-secret");
+	const localWorkerSpawnImpl = vi.fn(() =>
+		Object.assign(new EventEmitter(), { pid: 123, kill: () => true }),
+	) as unknown as typeof spawn;
+	const { runner } = createLocalWorkerRunner({ args: ["unused"], localWorkerSpawnImpl });
+	await runner.start({ ...startInput({ WORKER_CONNECT_TOKEN: "worker-scoped" }), docker: false });
+	const env = vi.mocked(localWorkerSpawnImpl).mock.calls[0]?.[2]?.env;
+	expect(env?.FORGE_API_TOKEN).toBeUndefined();
+	expect(env?.WORKER_CONNECT_TOKEN).toBe("worker-scoped");
+});

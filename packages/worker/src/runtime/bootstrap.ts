@@ -11,10 +11,11 @@ import type {
 	RepositoryCredentialRequirement,
 	ResolvedProcessPiConfig,
 } from "@leitwerk-dev/process-sdk";
+import { repositoryHttpsUrl } from "@leitwerk-dev/process-sdk";
 import { createTemplateContext, resolveProcessPiConfig } from "@leitwerk-dev/process-sdk/pi-config";
 import type {
-	WorkerGitSshCredential,
 	WorkerReadyPayload,
+	WorkerRepositoryCredential,
 	WorkerStartPayload,
 } from "@leitwerk-dev/worker-protocol";
 import {
@@ -126,19 +127,37 @@ function withoutCredentialValues(payload: WorkerStartPayload): WorkerStartPayloa
 }
 
 export function validateRepositoryCredentials(input: {
-	credentials: readonly WorkerGitSshCredential[];
+	credentials: readonly WorkerRepositoryCredential[];
 	requirements: readonly RepositoryCredentialRequirement[];
 	projectKeys: ReadonlySet<string>;
+	projects?: readonly { key: string; repoLocator: string }[];
 }): void {
 	const credentialKeys = new Set<string>();
 	for (const credential of input.credentials) {
-		if (!input.projectKeys.has(credential.projectKey) || credential.kind !== "git_ssh") {
+		if (
+			!input.projectKeys.has(credential.projectKey) ||
+			!["git_ssh", "git_https"].includes(credential.kind)
+		) {
 			throw new Error(`Repository credential does not match project '${credential.projectKey}'`);
 		}
 		if (credentialKeys.has(credential.projectKey)) {
 			throw new Error(`Duplicate repository credential for project '${credential.projectKey}'`);
 		}
 		credentialKeys.add(credential.projectKey);
+		if (credential.kind === "git_https") {
+			const project = input.projects?.find((project) => project.key === credential.projectKey);
+			if (
+				!project ||
+				repositoryHttpsUrl(credential.repositoryUrl).href !== project.repoLocator ||
+				!credential.username ||
+				!credential.password ||
+				/[\r\n\0]/.test(credential.username + credential.password)
+			) {
+				throw new Error(
+					`Invalid HTTPS credential scope or material for project '${credential.projectKey}'`,
+				);
+			}
+		}
 	}
 	const identities = (items: readonly RepositoryCredentialRequirement[]) =>
 		new Set(items.map((item) => `${item.projectKey}:${item.kind}:${item.credentialRef}`));
@@ -390,6 +409,7 @@ export async function bootstrapWorkerRuntime(
 		credentials: repositoryCredentials,
 		requirements: declaredRequirements,
 		projectKeys: new Set(projectSnapshots.map((project) => project.key)),
+		projects: projectSnapshots,
 	});
 	deps.gitOps.configureRepositoryCredentials?.(repositoryCredentials);
 	const processSnapshot = buildProcessSnapshotSeed(processId, deps.payload.processSnapshot);

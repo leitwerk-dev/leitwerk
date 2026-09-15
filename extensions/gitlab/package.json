@@ -1,0 +1,56 @@
+{
+	"name": "@leitwerk-dev/gitlab",
+	"version": "0.1.9",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"discover": false
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./testing": {
+			"source": "./src/testing.ts",
+			"import": "./dist/testing.js",
+			"types": "./dist/testing.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.1.9",
+		"@leitwerk-dev/external-writes": "0.1.9",
+		"@leitwerk-dev/process-sdk": "0.1.9",
+		"@leitwerk-dev/watcher-utils": "0.1.9",
+		"@leitwerk-dev/test-support": "0.1.9"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1",
+		"@types/node": "^26.2.0"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/gitlab"
+	}
+}
