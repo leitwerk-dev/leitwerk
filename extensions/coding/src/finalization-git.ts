@@ -245,15 +245,14 @@ function resolveLocalSourceRepo(repoPath: string): LocalSourceRepo | null {
 	};
 }
 
-function workingTreeStatus(repoPath: string): { dirtyFiles: string[] } {
+function workingTreeStatus(repoPath: string): string[] {
 	const rawStatus = gitOrNull(repoPath, "status", "--porcelain");
-	const dirtyFiles = (rawStatus ?? "")
+	return (rawStatus ?? "")
 		.split(/\r?\n/)
 		.map((line) => line.replace(/\s+$/, ""))
 		.filter((line) => line !== "")
 		.map((line) => line.slice(2).trim())
 		.filter((line) => line !== "");
-	return { dirtyFiles };
 }
 
 function conflictedFiles(repoPath: string): string[] {
@@ -319,9 +318,9 @@ function commitDirtyWorktree(
 		identity,
 	);
 	const remaining = workingTreeStatus(repoPath);
-	if (remaining.dirtyFiles.length > 0) {
+	if (remaining.length > 0) {
 		throw new DeterministicGitError(
-			`Deterministic commit left uncommitted changes: ${remaining.dirtyFiles.join(", ")}`,
+			`Deterministic commit left uncommitted changes: ${remaining.join(", ")}`,
 		);
 	}
 	return currentHeadSha(repoPath);
@@ -333,7 +332,7 @@ function commitIfDirty(input: {
 	gitIdentity?: GitIdentity;
 }): string {
 	const status = workingTreeStatus(input.repoPath);
-	return status.dirtyFiles.length > 0
+	return status.length > 0
 		? commitDirtyWorktree(input.repoPath, input.commitMessage, input.gitIdentity)
 		: currentHeadSha(input.repoPath);
 }
@@ -351,9 +350,9 @@ function assertPostConflictCheckpoint(
 		);
 	}
 	const status = workingTreeStatus(repoPath);
-	if (status.dirtyFiles.length > 0) {
+	if (status.length > 0) {
 		throw new DeterministicGitError(
-			`Conflict-resolution helper reported a clean merge, but the repository still has uncommitted changes: ${status.dirtyFiles.join(", ")}`,
+			`Conflict-resolution helper reported a clean merge, but the repository still has uncommitted changes: ${status.join(", ")}`,
 		);
 	}
 }
@@ -524,9 +523,9 @@ function assertLocalBaseRepoReady(
 		);
 	}
 	const status = workingTreeStatus(localBaseRepoPath);
-	if (status.dirtyFiles.length > 0) {
+	if (status.length > 0) {
 		throw new DeterministicGitError(
-			`Local source repo '${localBaseRepoPath}' must be clean before finalization updates '${baseBranch}': ${status.dirtyFiles.join(", ")}`,
+			`Local source repo '${localBaseRepoPath}' must be clean before finalization updates '${baseBranch}': ${status.join(", ")}`,
 		);
 	}
 	const actualBaseSha = currentHeadSha(localBaseRepoPath);

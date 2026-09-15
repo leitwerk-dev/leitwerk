@@ -6,12 +6,8 @@ import { type SandboxCompositionFactory, withSandboxLaunchers } from "@leitwerk-
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import localRepoChange, { localRepoChangeProcess } from "@leitwerk-dev/local-repo-change";
 import models from "@leitwerk-dev/models";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-	type LeitwerkExtensionModule,
-} from "@leitwerk-dev/process-sdk";
+import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import ticketCreation from "@leitwerk-dev/ticket-creation";
 import { LocalTicketAdapter } from "@leitwerk-dev/ticket-creation/testing";
 import { Notebook, type NotebookSeed } from "./notebook.js";
@@ -19,21 +15,12 @@ import { notebookScenarios, notebookScripts } from "./scenarios.js";
 
 const scriptedModel: LeitwerkExtensionModule = {
 	manifest: { id: "sandbox-model", version: "1.0.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "sandbox-model",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("sandbox-model"),
-				server: builtinPiProvider("sandbox-model"),
-				models: () => [{ modelId: "scripted", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({ id: "sandbox-model", modelId: "scripted", server: true }),
 };
-export function createNotebookComposition(seed?: NotebookSeed): SandboxCompositionFactory {
+export function createNotebookComposition(
+	seed?: NotebookSeed,
+	scripts = notebookScripts,
+): SandboxCompositionFactory {
 	return (input) => {
 		const notebook = new Notebook(input.paths.directory, seed);
 		const tickets = new LocalTicketAdapter({
@@ -76,7 +63,7 @@ export function createNotebookComposition(seed?: NotebookSeed): SandboxCompositi
 					ticketCreation,
 					tickets.extension(),
 				]),
-			scriptedPi: (context) => notebookScripts(notebook, context),
+			scriptedPi: (context) => scripts(notebook, context),
 			controlState: () => ({
 				tickets: tickets.state.tickets,
 				lostResponseEnabled: tickets.state.failAfterPersistence,

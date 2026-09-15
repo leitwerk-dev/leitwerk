@@ -5,7 +5,7 @@ import path from "node:path";
 import { createSandboxApp, type SandboxInput, sandboxConfig } from "@leitwerk-dev/dev-sandbox";
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
-import { waitForValue } from "@leitwerk-dev/test-support/integration";
+import { createProcessDriver, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { test as baseTest, expect, type TestContext } from "vitest";
 import composition from "../../../sandbox/composition.js";
 import { Notebook } from "../../../sandbox/notebook.js";
@@ -42,13 +42,9 @@ export async function fixture(
 		await sandbox.context.startBackgroundServices();
 	}
 	await start();
-	async function post(url: string, payload: Record<string, unknown> = {}) {
-		const response = await sandbox.context.app.inject({ method: "POST", url, payload });
-		expect(response.statusCode, response.body).toBe(200);
-		return response;
-	}
+	const driver = createProcessDriver(() => sandbox.context);
 	return {
-		post,
+		...driver,
 		root,
 		input,
 		config,
@@ -58,29 +54,20 @@ export async function fixture(
 		get notebook() {
 			return new Notebook(root);
 		},
-		async restart() {
+		async restart(whileStopped?: () => Promise<void>) {
 			await sandbox.stop();
+			await whileStopped?.();
 			input.urls.backend = config.server.base_url;
 			sandbox = await createSandboxApp(config, input, factory);
 			await start();
 		},
-		async launch(name: string) {
-			const response = await postImmediateLaunch(url, `sandbox.${name}`, { launcherInput: {} });
+		async launch(name: string, launcherInput: Record<string, unknown> = {}, production = false) {
+			const response = await postImmediateLaunch(url, production ? name : `sandbox.${name}`, {
+				launcherInput,
+			});
 			const body = (await response.json()) as { process: { id: string } };
 			expect(response.status, JSON.stringify(body)).toBe(201);
 			return body.process.id;
-		},
-		async wait(id: string, turn: string | null, lifecycle = "waiting", timeout = 12000) {
-			return waitForValue(
-				() => {
-					const p = sandbox.context.deps.processes.getById(id);
-					if (p?.lifecycleStatus === "error" && lifecycle !== "error")
-						throw new Error(JSON.stringify(sandbox.context.deps.turnRecords.listByInstance(id)));
-					return p;
-				},
-				(p) => p?.selectedTurnId === turn && p.lifecycleStatus === lifecycle,
-				timeout,
-			);
 		},
 		async question(id: string) {
 			const question = await waitForValue(
@@ -92,13 +79,14 @@ export async function fixture(
 			return question;
 		},
 		answerFirstOption: (question: ProcessQuestionRequest) =>
-			post(`/api/processes/${question.instanceId}/question-requests/${question.id}/answers`, {
-				draft: [
-					{ selectedOptionIds: [question.questions[0].options[0].id], freeText: "", comment: "" },
-				],
-			}),
-		action: (id: string, action: string, input: Record<string, unknown> = {}) =>
-			post(`/api/processes/${id}/actions/${action}`, { input }),
+			driver.post(
+				`/api/processes/${question.instanceId}/question-requests/${question.id}/answers`,
+				{
+					draft: [
+						{ selectedOptionIds: [question.questions[0].options[0].id], freeText: "", comment: "" },
+					],
+				},
+			),
 	};
 }
 

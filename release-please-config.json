@@ -103,7 +103,8 @@
 				"@leitwerk-dev/repository-rebase",
 				"@leitwerk-dev/forgejo",
 				"@leitwerk-dev/github",
-				"@leitwerk-dev/woodpecker"
+				"@leitwerk-dev/woodpecker",
+				"@leitwerk-dev/forgejo-repo-change"
 			]
 		}
 	],
@@ -260,6 +261,11 @@
 		},
 		"extensions/woodpecker": {
 			"component": "@leitwerk-dev/woodpecker",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/forgejo-repo-change": {
+			"component": "@leitwerk-dev/forgejo-repo-change",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

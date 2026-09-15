@@ -4,6 +4,7 @@ export {
 	type IntegrationHarnessOptions,
 } from "./integration-harness.js";
 export { waitForValue } from "./polling.js";
+export { createProcessDriver } from "./process-driver.js";
 export {
 	createInMemoryExternalWriteLog,
 	createTestServerSetupCapability,

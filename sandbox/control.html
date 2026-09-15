@@ -12,12 +12,20 @@ header { display: flex; align-items: baseline; justify-content: space-between; g
 h1 { font-size: 28px; } h2 { font-size: 20px; margin-top: 32px; }
 p { line-height: 1.6; max-width: 70ch; }
 a { color: #245c47; text-underline-offset: 3px; }
-button, select { font: inherit; color: inherit; min-height: 44px; border: 1px solid #a9b7ac; border-radius: 8px; background: #fff; padding: 10px 14px; }
+button, select, textarea { font: inherit; color: inherit; min-height: 44px; border: 1px solid #a9b7ac; border-radius: 8px; background: #fff; padding: 10px 14px; }
 button { cursor: pointer; } button:disabled { opacity: .55; cursor: wait; }
+button:hover:not(:disabled) { background: #e8eee7; }
+::selection { background: #cbded0; }
+textarea { width: 100%; min-height: 80px; resize: vertical; }
+pre { overflow: auto; background: #e8eee7; padding: 16px; line-height: 1.5; }
+.provider-row { display: block; }
+.provider-row h3 { margin: 8px 0; }
+#provider-actions { margin-top: 16px; }
 :focus-visible { outline: 2px solid #27634b; outline-offset: 3px; }
 .actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+.provider-row .actions { margin: 12px 0; }
 article { padding: 16px 0; border-top: 1px solid #cbd3ca; display: flex; justify-content: space-between; gap: 16px; }
-#notice { min-height: 24px; color: #854125; }
+#notice, .provider-notice { min-height: 24px; color: #854125; }
 small { color: #526157; }
 @media (max-width: 640px) { header, article { flex-direction: column; gap: 8px; } }
 </style>
@@ -30,6 +38,15 @@ small { color: #526157; }
 <div class="actions"><label for="scenario">Scenario</label><select id="scenario"></select><button type="button" id="start">Start fresh scenario</button><button type="button" id="refresh">Refresh</button></div>
 <p id="description"></p>
 <div id="processes"></div>
+<section id="providers" hidden>
+<h2>Forgejo delivery</h2>
+<p>Publish through the Forgejo launcher in Leitwerk, or create a labeled source issue here. Approve the plan and implementation in the process before using these controls.</p>
+<div class="actions"><a id="workflow-launch">Open launchers in Leitwerk</a><label for="repository">Repository</label><select id="repository"></select><button type="button" id="source-issue">Create source issue</button><button type="button" id="poll">Poll providers · +1 minute</button></div>
+<p><label for="feedback-body">Review feedback or pipeline log</label><textarea id="feedback-body" placeholder="Add the watering schedule."></textarea></p>
+<div class="actions"><label><input type="checkbox" id="provider-lost-response"> Lose the next Forgejo ticket response after saving it</label></div>
+<p id="provider-notice" class="provider-notice" role="status" aria-live="polite"></p>
+<div id="provider-actions"></div>
+</section>
 <h2>Local tickets</h2>
 <p>Create a ticket from a durable result in Leitwerk. Choose the local ticket tool, clarify the destination if needed, and review the draft before approving it.</p>
 <label><input type="checkbox" id="lost-response"> Lose the next ticket response after saving it</label>
@@ -37,6 +54,11 @@ small { color: #526157; }
 <script type="module">
 const get = (id) => document.getElementById(id);
 let state;
+let busy = false;
+let providerSignature = "";
+let pendingFocus;
+const providerMessages = new Map();
+const openDisclosures = new Set();
 async function request(url, body) {
  const response = await fetch(url, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
  const result = await response.json(); if (!response.ok) throw new Error(result.error || response.statusText); return result;
@@ -52,8 +74,77 @@ async function refresh() {
  for (const ticket of state.tickets) { const row = document.createElement("article"); row.append(link(ticket.title, ticket.url), text("small", ticket.destinationId)); get("tickets").append(row); }
  if (!state.tickets.length) get("tickets").append(text("p", "No local tickets yet."));
  get("lost-response").checked = state.lostResponseEnabled;
+ renderProviders();
 }
-async function run(action) { try { get("notice").textContent = ""; await action(); } catch (error) { get("notice").textContent = error.message; } }
+function button(label, action) { const element = text("button", label); element.type = "button"; element.dataset.control = label; element.onclick = () => run(async () => { pendingFocus = { row: element.closest("article")?.id, control: element.dataset.control }; busy = true; element.disabled = true; try { await action(); } finally { busy = false; element.disabled = false; } await refresh(); }, element.closest("article")?.querySelector(".provider-notice")?.id || "provider-notice"); return element; }
+function notice(id, message) {
+ providerMessages.set(id, message);
+ const target = get(id); if (target) target.textContent = message;
+}
+function rowNotice(row) {
+ const element = text("p", providerMessages.get(`${row.id}-notice`) || "");
+ element.id = `${row.id}-notice`; element.className = "provider-notice";
+ element.setAttribute("role", "status"); element.setAttribute("aria-live", "polite"); row.append(element);
+}
+async function providerOperation(operation, input = {}) {
+ const repository = state.providers.forgejo.repositories.find(r => r.repository.full_name === get("repository").value);
+ const kind = ["cancel-issue", "remove-trigger"].includes(operation) ? "issue" : "pr";
+ const target = input.number ? `${repository.repository.id}-${kind}-${input.number}-notice` : "provider-notice";
+ try {
+  const result = await request(`${state.backendUrl}/__local/providers/control`, { operation, repository: get("repository").value, body: get("feedback-body").value || undefined, requestId: crypto.randomUUID(), ...input });
+  notice(target, `${operation.replaceAll("-", " ")} recorded. Provider polling complete.`); return result;
+ } catch (error) { notice(target, error.message); }
+}
+function disclosure(key, summary) {
+ const details = document.createElement("details"); details.dataset.disclosure = key;
+ const heading = text("summary", summary); heading.dataset.control = key; details.append(heading);
+ details.open = openDisclosures.has(key); return details;
+}
+function renderProviders() {
+ const provider = state.providers?.forgejo; get("providers").hidden = !provider; if (!provider) return;
+ get("workflow-launch").href = `${state.uiUrl}/`;
+ if (!get("repository").options.length) for (const r of provider.repositories) { const option = text("option", r.repository.full_name); option.value = r.repository.full_name; get("repository").append(option); }
+ get("provider-lost-response").checked = provider.failAfterIssueWrite;
+ const repository = provider.repositories.find(r => r.repository.full_name === get("repository").value);
+ const signature = JSON.stringify([repository, state.providers.woodpecker]);
+ if (busy || signature === providerSignature) return; providerSignature = signature;
+ const container = get("provider-actions");
+ const active = container.contains(document.activeElement) ? document.activeElement : null;
+ const focusedRow = active?.closest("article")?.id || pendingFocus?.row, focusedControl = active?.dataset.control || pendingFocus?.control; pendingFocus = undefined;
+ for (const details of container.querySelectorAll("details")) {
+  if (details.open) openDisclosures.add(details.dataset.disclosure); else openDisclosures.delete(details.dataset.disclosure);
+ }
+ container.replaceChildren();
+ if (!repository) return;
+ for (const issue of repository.issues) {
+  const row = document.createElement("article"); row.className = "provider-row"; row.id = `${repository.repository.id}-issue-${issue.number}`; row.tabIndex = -1;
+  row.append(link(`#${issue.number} ${issue.title}`, issue.html_url), text("small", ` · ${issue.state} · ${issue.labels.map(l => l.name).join(", ") || "No labels"}`));
+  if (issue.state === "open" && issue.labels.some(l => l.name === "use-leitwerk")) { const actions = document.createElement("div"); actions.className = "actions"; actions.append(button("Close source issue", () => providerOperation("cancel-issue", { number: issue.number })), button("Remove trigger label", () => providerOperation("remove-trigger", { number: issue.number }))); row.append(actions); } rowNotice(row); container.append(row);
+ }
+ if (!repository.pulls.length) container.append(text("p", "No pull requests yet. Publish an approved implementation in Leitwerk."));
+ for (const pr of repository.pulls) {
+  const row = document.createElement("article"); row.className = "provider-row"; row.id = `${repository.repository.id}-pr-${pr.number}`; row.tabIndex = -1;
+  row.append(text("h3", `PR #${pr.number} · ${pr.title}`), text("p", `${pr.head.ref} → ${pr.base.ref} · ${pr.merged ? "merged" : pr.state} · ${pr.head.sha.slice(0, 12)}`));
+  const actions = document.createElement("div"); actions.className = "actions";
+  if (pr.state === "open") {
+   for (const [label, operation, extra] of [["Conversation feedback", "feedback", { kind: "conversation" }], ["Inline feedback", "feedback", { kind: "inline" }], ["Submit review", "feedback", { kind: "review" }], ["Run notebook check", "pipeline", {}], ["Report CI failure", "pipeline", { status: "failure" }], ["Report CI success", "pipeline", { status: "success" }], ["Advance base", "advance-base", {}], ["Create base conflict", "conflict", {}], ["Merge pull request", "merge", {}], ["Close pull request", "close", {}]]) actions.append(button(label, () => providerOperation(operation, { number: pr.number, ...extra })));
+  }
+  row.append(actions); rowNotice(row);
+  const ci = state.providers.woodpecker.repositories.find(r => r.repository.full_name === repository.repository.full_name);
+  for (const pipeline of (ci?.pipelines || []).filter(p => p.branch === pr.head.ref).slice(-3)) { const details = disclosure(`${row.id}-pipeline-${pipeline.number}`, `Pipeline #${pipeline.number} · ${pipeline.status} · ${pipeline.commit.slice(0, 12)}`); details.append(text("pre", pipeline.logs)); row.append(details); }
+  const details = disclosure(`${row.id}-diff`, "View published diff"); details.ontoggle = async () => { if (details.open && details.children.length === 1) await run(async () => { const result = await request(`${state.backendUrl}/__local/providers/diff/${repository.repository.id}/${pr.number}`); details.append(text("pre", result.diff || "No changes")); }, `${row.id}-notice`); }; row.append(details); container.append(row);
+ }
+ if (focusedRow) {
+  const row = get(focusedRow);
+  const target = [...(row?.querySelectorAll("[data-control]") || [])].find(e => e.dataset.control === focusedControl) || row;
+  target?.focus({ preventScroll: true });
+ }
+}
+get("repository").onchange = () => { providerSignature = ""; renderProviders(); };
+get("source-issue").onclick = () => run(async () => { get("source-issue").disabled = true; try { await providerOperation("create-issue"); await refresh(); } finally { get("source-issue").disabled = false; } });
+get("poll").onclick = () => run(async () => { await request(`${state.backendUrl}/__local/poll`, {}); await refresh(); });
+get("provider-lost-response").onchange = () => run(async () => { await providerOperation("lost-ticket-response", { enabled: get("provider-lost-response").checked }); await refresh(); });
+async function run(action, target = "notice") { try { await action(); } catch (error) { notice(target, error.message); } }
 get("start").onclick = () => run(async () => { get("start").disabled = true; try { await request("/__local/scenarios", { name: get("scenario").value, requestId: crypto.randomUUID() }); await refresh(); } finally { get("start").disabled = false; } });
 get("refresh").onclick = () => run(refresh);
 get("scenario").onchange = describe;

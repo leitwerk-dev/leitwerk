@@ -5,10 +5,12 @@ import {
 	recordWriteIfMissing,
 } from "@leitwerk-dev/external-writes";
 import {
+	type IntegrationToolExecutionContext,
 	numberArg,
 	objectArg as object,
 	type ProcessProjectRepoLike,
 	projectParameters,
+	type RepositoryProjectBinding,
 	type ServerExtensionAPI,
 	stringArg,
 	type TicketCreationDestinationProvider,
@@ -164,6 +166,38 @@ export function registerForgejoTools(
 	ticketCreation: ForgejoTicketCreationConfig = { defaultLabels: ["created-by-leitwerk"] },
 	projects?: ProcessProjectRepoLike,
 ): void {
+	async function ensureLabel(
+		ctx: IntegrationToolExecutionContext,
+		target: RepositoryProjectBinding,
+		name: string,
+		writeKey = ctx.idempotencyKey,
+	) {
+		const client = integration.client(target.profile);
+		const find = async () =>
+			(await client.listLabels(target.owner, target.repo, ctx.signal)).find(
+				(label) => label.name === name,
+			);
+		const existing = await find();
+		if (existing) return existing;
+		let created = null;
+		try {
+			await ensureWrite(
+				externalWrites,
+				ctx.process.id,
+				createWriteIdentity("forgejo.ensure_label", writeKey),
+				async () => {
+					created = await client.createLabel(target.owner, target.repo, name, "2da44e", ctx.signal);
+					return { id: created.id, name: created.name };
+				},
+			);
+		} catch (error) {
+			const reconciled = await find();
+			if (!reconciled) throw error;
+			return reconciled;
+		}
+		return created ?? (await find());
+	}
+
 	api.tool<Record<string, unknown>>({
 		name: "forgejo_resolve_git_identity",
 		description: "Resolve and durably pin the authenticated Forgejo Git identity",
@@ -217,33 +251,8 @@ export function registerForgejoTools(
 				let labels = await client.listLabels(target.owner, target.repo, ctx.signal);
 				for (const name of target.defaultLabels) {
 					if (labels.some((label) => label.name === name)) continue;
-					try {
-						await ensureWrite(
-							externalWrites,
-							ctx.process.id,
-							createWriteIdentity(
-								"forgejo.ensure_label",
-								`${ctx.idempotencyKey}:default-label:${name}`,
-							),
-							async () => {
-								const created = await client.createLabel(
-									target.owner,
-									target.repo,
-									name,
-									"2da44e",
-									ctx.signal,
-								);
-								return { id: created.id, name: created.name };
-							},
-						);
-					} catch (error) {
-						labels = await client.listLabels(target.owner, target.repo, ctx.signal);
-						if (!labels.some((label) => label.name === name)) throw error;
-					}
+					await ensureLabel(ctx, target, name, `${ctx.idempotencyKey}:default-label:${name}`);
 					labels = await client.listLabels(target.owner, target.repo, ctx.signal);
-					if (!labels.some((label) => label.name === name)) {
-						throw new Error(`Forgejo default label '${name}' could not be reconciled`);
-					}
 				}
 				const labelsByName = new Map(labels.map((label) => [label.name, label]));
 				const unknown = requestedLabels.filter((name) => !labelsByName.has(name));
@@ -339,28 +348,7 @@ export function registerForgejoTools(
 		name: "forgejo_ensure_label",
 		description: "Create a Forgejo repository label unless it already exists",
 		parameters: projectParameters({ name: { type: "string" } }),
-		async execute(ctx, args) {
-			const t = target(ctx);
-			const client = integration.client(t.profile);
-			const name = stringArg(args, "name");
-			const existing = (await client.listLabels(t.owner, t.repo)).find(
-				(label) => label.name === name,
-			);
-			if (existing) return existing;
-			let created = null;
-			await ensureWrite(
-				externalWrites,
-				ctx.process.id,
-				createWriteIdentity("forgejo.ensure_label", ctx.idempotencyKey),
-				async () => {
-					created = await client.createLabel(t.owner, t.repo, name);
-					return { id: created.id, name: created.name };
-				},
-			);
-			return (
-				created ?? (await client.listLabels(t.owner, t.repo)).find((label) => label.name === name)
-			);
-		},
+		execute: (ctx, args) => ensureLabel(ctx, target(ctx), stringArg(args, "name")),
 	});
 
 	for (const [name, description, numberName, method] of [

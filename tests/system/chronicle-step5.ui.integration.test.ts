@@ -1,17 +1,12 @@
 import path from "node:path";
 import { buildExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
 import singlePromptExtension, {
 	buildPoemLeafOutcomeFallbackMarkdown,
 	buildPoemLeafOutcomePayload,
 } from "@leitwerk-dev/showcase-processes";
-import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
+import { fixtureModelProviders, postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
@@ -26,18 +21,7 @@ import {
 const singlePromptPackageDir = path.resolve(process.cwd(), "extensions/showcase-processes");
 const singlePromptExtensionWithProvider = {
 	...singlePromptExtension,
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "anthropic",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("anthropic"),
-				models: () => [{ modelId: "claude-fast", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({ id: "anthropic", modelId: "claude-fast" }),
 };
 
 async function createRealSinglePromptCatalog() {

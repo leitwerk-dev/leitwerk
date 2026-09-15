@@ -5,7 +5,7 @@ import { boundedLogTail } from "./logs.js";
 
 export interface LocalWoodpeckerRepository {
 	repository: WoodpeckerRepository;
-	pipelines: Array<WoodpeckerPipeline & { logs: string }>;
+	pipelines: Array<WoodpeckerPipeline & { logs: string; controlKey?: string }>;
 }
 export interface LocalWoodpeckerState {
 	version: 1;
@@ -42,7 +42,14 @@ export class LocalWoodpeckerAdapter extends LocalProviderStore<
 	}
 	publish(
 		repo: LocalWoodpeckerRepository,
-		input: { branch: string; commit: string; status: string; logs: string; event?: string },
+		input: {
+			branch: string;
+			commit: string;
+			status: string;
+			logs: string;
+			event?: string;
+			controlKey?: string;
+		},
 	) {
 		if (
 			![

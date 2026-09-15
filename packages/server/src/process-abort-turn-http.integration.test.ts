@@ -9,12 +9,12 @@ import {
 	type LeitwerkExtensionModule,
 	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 const abortTurnDef = {
 	id: "implement",

@@ -216,7 +216,10 @@ describe("Forgejo server tools", () => {
 		await expect(tool?.capability?.destinations?.validate(snapshot)).rejects.toThrow(/changed/);
 	});
 
-	it("creates defaults and returns one durable ticket receipt without a process project", async () => {
+	it.each([
+		false,
+		true,
+	])("creates defaults and returns one durable ticket receipt (lost label response: %s)", async (lostLabelResponse) => {
 		let labels: Array<{ id: number; name: string }> = [];
 		let issues: ForgejoIssue[] = [];
 		const client = {
@@ -225,6 +228,7 @@ describe("Forgejo server tools", () => {
 			createLabel: vi.fn(async (_owner, _repo, name: string) => {
 				const created = { id: 5, name };
 				labels = [created];
+				if (lostLabelResponse) throw new Error("Lost label response");
 				return created;
 			}),
 			listIssues: vi.fn(async () => issues),
@@ -255,11 +259,12 @@ describe("Forgejo server tools", () => {
 			ctx.signal,
 		);
 		expect(issues[0]?.body).toContain("<!-- leitwerk-ticket-write:stable-write-key -->");
-		expect(written.size).toBe(2);
+		expect(written.size).toBe(lostLabelResponse ? 1 : 2);
 
 		const replay = await tool?.execute(ctx, { title: "Ticket", body: "Description" });
 		expect(replay).toMatchObject({ externalId: "team/repo#7" });
 		expect(client.createIssue).toHaveBeenCalledTimes(1);
+		expect(client.createLabel).toHaveBeenCalledTimes(1);
 	});
 });
 

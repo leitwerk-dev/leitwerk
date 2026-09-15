@@ -12,10 +12,7 @@ export interface LocalGitHubRepository {
 	repository: ReturnType<LocalGitHubAdapter["newRepository"]>;
 	issues: GitHubIssue[];
 	pulls: GitHubPullRequest[];
-	comments: Record<
-		string,
-		Array<{ id: number; body: string; user: { login: string }; created_at: string }>
-	>;
+	comments: Record<string, Array<ReturnType<LocalGitHubAdapter["newComment"]>>>;
 	feedback: Record<string, GitHubFeedbackItem[]>;
 	checks: Record<string, GitHubCheckSummary>;
 	releases: GitHubRelease[];
@@ -126,12 +123,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				const r = repo(owner, name);
 				if (!r.pulls.some((p) => p.number === number) && !r.issues.some((i) => i.number === number))
 					throw new Error("Unknown local GitHub issue or PR");
-				const value = {
-					id: this.id(),
-					body,
-					user: { login: "leitwerk-bot" },
-					created_at: this.timestamp(),
-				};
+				const value = this.newComment(body);
 				r.comments[number] ??= [];
 				r.comments[number].push(value);
 				this.save();

@@ -12,18 +12,18 @@ export interface LocalForgejoRepository {
 	repository: ForgejoRepository;
 	issues: ForgejoIssue[];
 	pulls: ForgejoPullRequest[];
-	comments: Record<
-		string,
-		Array<{ id: number; body: string; user: { login: string }; created_at: string }>
-	>;
+	comments: Record<string, Array<ReturnType<LocalForgejoAdapter["newComment"]>>>;
 	feedback: Record<string, ForgejoFeedbackItem[]>;
 	labels: ForgejoLabel[];
+	reactions?: Array<{ id: number; feedbackId: number; kind: string; content: string }>;
+	replies?: Array<{ id: number; prNumber: number; feedbackId: number; kind: string }>;
 }
 export interface LocalForgejoState {
 	version: 1;
 	sequence: number;
 	repositories: LocalForgejoRepository[];
 	failAfterIssueWrite: boolean;
+	failAfterPullWrite?: boolean;
 }
 export interface LocalForgejoOptions {
 	root: string;
@@ -43,6 +43,11 @@ export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, Loca
 			failAfterIssueWrite: false,
 		});
 		this.baseUrl = options.baseUrl;
+		for (const repo of this.state.repositories) {
+			repo.reactions ??= [];
+			repo.replies ??= [];
+		}
+		this.state.failAfterPullWrite ??= false;
 		for (const seed of options.seeds ?? []) this.seed(seed);
 	}
 	repo(owner: string, name: string) {
@@ -61,6 +66,8 @@ export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, Loca
 			pulls: [],
 			comments: {},
 			feedback: {},
+			reactions: [],
+			replies: [],
 			labels: (seed.labels ?? []).map((name) => ({ id: this.id(), name })),
 		};
 		this.state.repositories.push(repo);
@@ -82,12 +89,7 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 		return value;
 	};
 	const comment = async (owner: string, name: string, number: number, body: string) => {
-		const value = {
-			id: store.id(),
-			body,
-			user: { login: "leitwerk-bot" },
-			created_at: store.timestamp(),
-		};
+		const value = store.newComment(body);
 		repo(owner, name).comments[number] ??= [];
 		repo(owner, name).comments[number].push(value);
 		store.save();
@@ -178,16 +180,44 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 			const r = repo(owner, name);
 			const value = store.newPullRequest(r, input);
 			r.pulls.push(value);
+			const fail = store.state.failAfterPullWrite;
+			store.state.failAfterPullWrite = false;
 			store.save();
+			if (fail) throw new Error("Sandbox: response lost after pull request creation");
 			return structuredClone(value);
 		},
 		...store.pullRequestClient(repo),
 		addPullRequestComment: comment,
-		async addPullRequestFeedbackReaction() {
-			return {};
+		async addPullRequestFeedbackReaction(owner, name, feedback, content) {
+			const r = repo(owner, name);
+			if (
+				!Object.values(r.feedback)
+					.flat()
+					.some((f) => f.id === feedback.id && f.kind === feedback.kind)
+			)
+				throw new Error("Unknown feedback");
+			r.reactions ??= [];
+			const existing = r.reactions.find(
+				(r) => r.feedbackId === feedback.id && r.kind === feedback.kind && r.content === content,
+			);
+			if (existing) return structuredClone(existing);
+			const reaction = { id: store.id(), feedbackId: feedback.id, kind: feedback.kind, content };
+			r.reactions.push(reaction);
+			store.save();
+			return structuredClone(reaction);
 		},
-		async replyToPullRequestFeedback(owner, name, number, _feedback, body) {
-			return comment(owner, name, number, body);
+		async replyToPullRequestFeedback(owner, name, number, feedback, body) {
+			const r = repo(owner, name);
+			const result = await comment(owner, name, number, body);
+			r.replies ??= [];
+			r.replies.push({
+				id: result.id,
+				prNumber: number,
+				feedbackId: feedback.id,
+				kind: feedback.kind,
+			});
+			store.save();
+			return result;
 		},
 		async listPullRequestFeedback(owner, name, number) {
 			return structuredClone(repo(owner, name).feedback[number] ?? []);

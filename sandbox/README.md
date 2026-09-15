@@ -123,4 +123,44 @@ Provider state persists separately in `forgejo.json`, `github.json`, and
 `woodpecker.json`. Use the integration `/testing` exports to seed repositories,
 add feedback, merge PRs, publish CI results and supply arbitrary release assets.
 The composition needs no provider credentials or private checkout.
-Complete PR-delivery process scenarios are added separately.
+The default notebook composition and its scenario names remain unchanged. This
+explicit provider composition also loads `forgejo-repo-change` with Docker disabled.
+It retains the production UI launcher, its repository/SSH admission checks, and
+adds these scenes:
+
+| Scene | Behavior |
+| --- | --- |
+| `forgejo-change` | Plan, approve, implement, approve, publish, then handle review, CI and PR outcomes. |
+| `forgejo-feedback-no-change` | Diagnose feedback and reply without publishing a new commit. |
+| `forgejo-feedback-operator` | Park review work for operator action. |
+| `forgejo-ci-restart` | Read pipeline/log evidence, explicitly restart, and wait. |
+| `forgejo-ci-operator` | Park CI work for operator action. |
+
+The control page creates labeled source issues through durable provider writes.
+Only the production `use_leitwerk` watcher launches those issues. Use the normal
+parent-result **Create issue** route to derive an additional approved Forgejo ticket.
+The two routes can run together. PR controls add conversation, inline or review
+feedback, run a deterministic notebook check, publish CI outcomes/logs, advance
+or conflict the base, merge, close, and cancel source issues by either signal.
+The actual repository, branch and Git SHA identify all evidence. A failing
+`check.txt` is repaired by the scripted CI turn; `check.mjs` also runs the check
+from the checkout. Conflict repair resolves the text conflict and continues the
+retained Git rebase before the workflow publishes with its original-head lease.
+
+**Poll providers** advances the shared persisted clock by one minute. Adapters and
+polling use that clock, so two-minute feedback quiet periods remain observable.
+Controls invoke polling after provider writes. They never select process turns or
+set delivery/lifecycle state. `POST /__local/providers/control` requires an operation,
+`requestId`, full repository name and relevant PR/issue `number`. Reusing a request
+ID returns its recorded result; changing that request is rejected. Use
+`lost-ticket-response` or `lost-pr-response` with `enabled: true` to exercise writes
+whose provider response is lost.
+
+The new control receipts live in `provider-controls.json`; the clock remains in
+`providers-clock.json`. Existing provider files, notebook/scenario counters,
+database paths and Pi sessions are preserved. Reaction/reply correlation fields
+have legacy defaults. `createProviderComposition(seeds)` accepts configurable public
+repository seeds; file remotes are admitted only for those seeds, through confined
+local read and dry-run write checks. Production keeps real SSH credential bootstrap.
+The provider composition, scripts and controls live here; the sandbox harness
+remains provider independent.

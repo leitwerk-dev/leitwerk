@@ -65,16 +65,16 @@ export function createGitHubProvider(
 		async pollOnce() {
 			const result = emptyPollResult();
 			const report = createExternalSourcePollReporter(deps.externalSources, result);
-			for (const armed of deps.externalSources.listArmed(GITHUB_PR_STATE_KIND)) {
+			await report.poll(GITHUB_PR_STATE_KIND, async (armed) => {
 				const config = parse(armed.resolved);
 				if (!config) {
 					result.errors.push(`${armed.id}:invalid_config`);
-					continue;
+					return;
 				}
-				if (config.disabled) continue;
+				if (config.disabled) return;
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 				const now = options.now?.() ?? Date.now();
-				if (!due(key, config.pollInterval, now)) continue;
+				if (!due(key, config.pollInterval, now)) return;
 				try {
 					const client = integration.client(config.profile);
 					const pr = await client.getPullRequest(config.owner, config.repo, config.prNumber);
@@ -93,8 +93,8 @@ export function createGitHubProvider(
 								revision: `${pr.head.sha}:${conflict?.baseSha ?? pr.base.sha}`,
 							})
 						)
-							continue;
-						if (config.eventKinds?.length === 1) continue;
+							return;
+						if (config.eventKinds?.length === 1) return;
 					}
 					let event: Record<string, unknown> | null = null;
 					let mergeKey = "";
@@ -159,23 +159,21 @@ export function createGitHubProvider(
 								(event.checks as { status: "pending" | "success" | "failure" }).status,
 							))
 					)
-						continue;
+						return;
 					if (
 						!deps.externalSources
 							.listArmed(GITHUB_PR_STATE_KIND)
 							.some((current) => sameSubscription(armed, current))
 					)
-						continue;
+						return;
 					await report.fire(armed, event, mergeKey);
 				} catch (error) {
 					await report.observe(armed, {
 						refreshError: error instanceof Error ? error.message : "PR refresh failed",
 					});
-					result.errors.push(
-						`${armed.id}:${error instanceof Error ? error.message : "poll_failed"}`,
-					);
+					throw error;
 				}
-			}
+			});
 			await report.poll(GITHUB_RELEASE_KIND, async (armed) => {
 				const config = asUnknownRecord(armed.resolved) ?? {};
 				if (

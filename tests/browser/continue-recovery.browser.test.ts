@@ -1,33 +1,22 @@
 import path from "node:path";
 import { buildFailedTurnRecoveryMetadata } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	createEmptyStructuralProcessState,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
+import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
 import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 
 let ctx: AppContext | null = null;
 const continueRecoveryExtension = {
 	...singlePromptExtension,
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "fixture",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("openai"),
-				models: () => [{ modelId: "fixture-model", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({
+		id: "fixture",
+		modelId: "fixture-model",
+		piProvider: "openai",
+	}),
 };
 
 async function seedRepeatContinueProcess() {

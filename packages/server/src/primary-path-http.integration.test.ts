@@ -15,6 +15,10 @@ import {
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+	createAcceptedLlmTurn,
+	createAcceptedLlmTurnStart,
+} from "./test-helpers/accepted-turn-start.js";
 
 const snapshotProcess = defineProcess<
 	Record<string, never>,
@@ -148,57 +152,12 @@ function seedAcceptedWorkerTurn(input: {
 	startedAt: string;
 	workerId: string;
 }) {
-	const lease = harness.ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: input.workerId,
-		state: "busy",
-	});
-	const turnStartRecordId = `tsr_${input.turnRecordId}`;
-	harness.ctx.deps.turnStarts.create({
-		id: turnStartRecordId,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.turnRecordId,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: "fixture-profile",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "fixture-resource-digest",
-				workerRuntimeProfileId: "local",
-				piSettings: {},
-			},
-			turnRecordId: input.turnRecordId,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	harness.ctx.deps.turnRecords.create({
-		id: input.turnRecordId,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		status: "running",
-		attemptNumber: 1,
-		turnStartRecordId,
-		acceptedWorkerLeaseId: lease.id,
-		pathType: input.pathType,
-		...(input.forkPiEntryId ? { forkPiEntryId: input.forkPiEntryId } : {}),
-		startedAt: input.startedAt,
-	});
-	harness.ctx.deps.processes.update(input.instanceId, {
-		currentExecution: { kind: "worker_start", id: turnStartRecordId },
-	});
+	const { turnRecordId, workerId, ...record } = input;
+	createAcceptedLlmTurn(
+		harness.ctx,
+		{ ...record, id: turnRecordId, turnType: "llm", status: "running", attemptNumber: 1 },
+		{ workerId },
+	);
 }
 
 function seedSucceededWorkerTurn(input: {
@@ -216,36 +175,11 @@ function seedSucceededWorkerTurn(input: {
 		workerId: `wkr_${input.turnRecordId}`,
 		state: "busy",
 	});
-	const turnStartRecordId = `tsr_${input.turnRecordId}`;
-	harness.ctx.deps.turnStarts.create({
-		id: turnStartRecordId,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.turnRecordId,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: "fixture-profile",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "fixture-resource-digest",
-				workerRuntimeProfileId: "local",
-				piSettings: {},
-			},
-			turnRecordId: input.turnRecordId,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
+	const { id: turnStartRecordId } = createAcceptedLlmTurnStart(
+		harness.ctx,
+		{ ...input, id: input.turnRecordId },
+		lease.id,
+	);
 	harness.ctx.deps.turnRecords.create({
 		id: input.turnRecordId,
 		instanceId: input.instanceId,

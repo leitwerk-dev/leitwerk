@@ -16,9 +16,11 @@ export {
 	type IntegrationHarness,
 	type IntegrationHarnessOptions,
 } from "./integration-harness.js";
+export { fixtureModelProviders } from "./model-provider-fixtures.js";
 export { waitForValue } from "./polling.js";
 export {
 	createInMemoryExternalWriteLog,
+	createPollingTestExtension,
 	createTestServerSetupCapability,
 	createToolCollector,
 	type InMemoryExternalWriteLog,

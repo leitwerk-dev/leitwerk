@@ -15,6 +15,24 @@ import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 
+/** Register a test provider and expose its poll result without erasing its type. */
+export function createPollingTestExtension<T>(
+	manifest: LeitwerkExtensionModule["manifest"],
+	setup: (api: ServerExtensionAPI) => { poll(): Promise<T> } | undefined,
+) {
+	let provider: ReturnType<typeof setup>;
+	return {
+		manifest,
+		setupServer(api: ServerExtensionAPI) {
+			provider = setup(api);
+		},
+		poll() {
+			if (!provider) throw new Error(`Test provider '${manifest.id}' has not been initialized`);
+			return provider.poll();
+		},
+	};
+}
+
 export function createToolCollector() {
 	const tools = new Map<string, IntegrationToolDefinition>();
 	const api = {
