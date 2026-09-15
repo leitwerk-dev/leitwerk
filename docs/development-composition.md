@@ -6,11 +6,11 @@ A development composition declares an extension workspace and its runtime config
 
 An extension repository should declare only its own packages as npm workspaces and depend on released `@leitwerk-dev/*` packages normally. Build and TypeScript configuration should use package exports, not references into a core checkout. The committed npm lockfile records the released dependency graph.
 
-Keep an optional core clone inside the extension repository, for example `.leitwerk-base/`. A repository-owned `core:use-local` command can clone the matching release on first use, install its dependencies, and link the public packages into the extension workspace. Existing checkouts retain their branch and uncommitted edits. Activate the entire local public package graph consistently for runtime, types, and tests; do not mix registry copies with local SDK packages. Keep selection metadata ignored and leave the committed package manifests and release lock unchanged.
+Keep an optional core clone inside the extension repository, for example `.leitwerk-base/`. `@leitwerk-dev/dev-tools` supplies `leitwerk-dev core:use-local` to clone the matching release on first use, install its dependencies, and link the public packages into the extension workspace. Existing checkouts retain their branch and uncommitted edits. Activate the entire local public package graph consistently for runtime, types, and tests; do not mix registry copies with local SDK packages. Keep selection metadata ignored and leave the committed package manifests and release lock unchanged.
 
 `core:use-release` restores the committed npm installation and retains the checkout. Normal development commands must not clone, fetch, switch branches, or select source mode merely because a checkout exists. Each extension repository owns its own optional checkout and selection.
 
-The runtime and extension APIs are available from installed `@leitwerk-dev/server` and `@leitwerk-dev/extension-runtime` packages. `@leitwerk-dev/ui` includes compiled UI assets. A repository runner can build and watch its extensions, restart the installed server after successful builds, and serve the installed UI with API/WebSocket forwarding. Core source development continues to use this repository's `dev` command.
+The runtime and extension APIs are available from installed `@leitwerk-dev/server` and `@leitwerk-dev/extension-runtime` packages. `@leitwerk-dev/ui` includes compiled UI assets. `leitwerk-dev dev` builds and watches workspace extensions, restarts the installed server after successful builds, and serves the installed UI with API/WebSocket forwarding. See the [development CLI](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md) for commands, dependency selection and repository hooks. Core source development continues to use this repository's `dev` command.
 
 ## Layout
 
@@ -63,32 +63,26 @@ Paths are relative to the manifest. `leitwerk.root` is optional; when present it
 
 ## Commands
 
-The private repository should expose wrappers:
+Install `@leitwerk-dev/dev-tools` in the extension workspace and expose wrappers:
 
 ```json
 {
   "scripts": {
-    "dev": "LEITWERK_COMPOSITION_PATH=$PWD/leitwerk.composition.yaml npm --prefix ../leitwerk run dev",
-    "build": "LEITWERK_COMPOSITION_PATH=$PWD/leitwerk.composition.yaml npm --prefix ../leitwerk run build",
-    "typecheck": "LEITWERK_COMPOSITION_PATH=$PWD/leitwerk.composition.yaml npm --prefix ../leitwerk run typecheck",
-    "test:full": "LEITWERK_COMPOSITION_PATH=$PWD/leitwerk.composition.yaml npm --prefix ../leitwerk run test:full"
+    "dev": "leitwerk-dev dev",
+    "build": "leitwerk-dev build",
+    "typecheck": "leitwerk-dev typecheck",
+    "test:full": "leitwerk-dev test:full",
+    "core:use-local": "leitwerk-dev core:use-local",
+    "core:use-release": "leitwerk-dev core:use-release"
   }
 }
 ```
 
-Run integrated commands from the private root:
-
-```bash
-npm install
-npm run dev
-npm run test:full
-```
-
-Install the public checkout separately after public dependency changes:
-
-```bash
-npm ci --prefix ../leitwerk
-```
+`npm ci` and `npm run dev` use released packages. `npm run core:use-local --
+--revision <commit-or-tag>` explicitly selects source development. Subsequent
+commands delegate to that checkout with the composed manifest. Repository tooling
+checks can use `leitwerk:before-test`; auxiliary type builds can use
+`leitwerk:after-typecheck`. The CLI's full gate includes these hooks in both modes.
 
 Without `--composition`, every Leitwerk command retains its public-only behavior.
 In-checkout packages share `scripts/tsup-config.ts` defaults, tracked by Turbo's global cache inputs; workspace configs retain entry points and overrides. External repositories own their build configs.
