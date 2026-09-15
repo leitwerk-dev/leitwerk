@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
+
+script_dir="$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)"
 
 : "${LEITWERK_WORKER_IMAGE:?Set LEITWERK_WORKER_IMAGE to the candidate worker image}"
 : "${LEITWERK_RUNTIME_CLASS_NAME:?Set LEITWERK_RUNTIME_CLASS_NAME to the prepared runtime class}"
@@ -8,10 +11,22 @@ namespace="${LEITWERK_DOCKER_TEST_NAMESPACE:-leitwerk-docker-canary-$$}"
 pod="docker-canary"
 pvc="docker-state"
 tag="leitwerk-nested-canary:latest"
-cleanup() { kubectl delete namespace "$namespace" --wait=true --ignore-not-found >/dev/null 2>&1 || true; }
+evidence_dir=""
+temporary_evidence=false
+cleanup() {
+  kubectl delete namespace "$namespace" --wait=true --ignore-not-found >/dev/null 2>&1 || true
+  if [[ "$temporary_evidence" == true && -n "$evidence_dir" ]]; then rm -rf -- "$evidence_dir"; fi
+}
 
 kubectl create namespace "$namespace" >/dev/null
 trap cleanup EXIT
+if [[ -n "${LEITWERK_DOCKER_EVIDENCE_DIR:-}" ]]; then
+  evidence_dir="$LEITWERK_DOCKER_EVIDENCE_DIR"
+  mkdir -- "$evidence_dir"
+else
+  evidence_dir="$(mktemp -d)"
+  temporary_evidence=true
+fi
 cat <<EOF | kubectl -n "$namespace" apply -f - >/dev/null
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -86,19 +101,48 @@ EOF
   exit 1
 }
 
+capture_worker() {
+  local phase="$1"
+  local snapshot="$evidence_dir/$phase"
+  local pv_name
+  mkdir -- "$snapshot"
+  kubectl -n "$namespace" get pod "$pod" -o json > "$snapshot/pod.json"
+  kubectl -n "$namespace" get pvc "$pvc" -o json > "$snapshot/pvc.json"
+  pv_name="$(kubectl -n "$namespace" get pvc "$pvc" -o jsonpath='{.spec.volumeName}')"
+  kubectl get pv "$pv_name" -o json > "$snapshot/pv.json"
+  kubectl -n "$namespace" exec "$pod" -c worker -- docker info --format '{{json .}}' > "$snapshot/docker-info.json"
+  kubectl -n "$namespace" exec "$pod" -c worker -- docker image inspect "$tag" --format '{{.Id}}' > "$snapshot/inner-image-id.txt"
+  kubectl -n "$namespace" exec "$pod" -c worker -- cat /state/workspace/.docker-runtime-proof > "$snapshot/workspace-marker.txt"
+  kubectl -n "$namespace" exec "$pod" -c worker -- node --input-type=module -e '
+    import fs from "node:fs";
+    const ports = []; let observed = false;
+    for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+      if (!fs.existsSync(file)) continue;
+      observed = true;
+      for (const line of fs.readFileSync(file, "utf8").trim().split("\n").slice(1)) {
+        const fields = line.trim().split(/\s+/);
+        if (fields[3] === "0A") ports.push(parseInt(fields[1].split(":")[1], 16));
+      }
+    }
+    if (!observed) throw new Error("TCP listener evidence is unavailable");
+    console.log(JSON.stringify(ports));
+  ' > "$snapshot/listeners.json"
+}
+
 start_pod
 kubectl -n "$namespace" exec "$pod" -c worker -- sh -ceu 'docker version; dockerd --version'
 printf 'FROM alpine:3.21\nRUN apk add --no-cache bind-tools >/dev/null\nCMD ["sh", "-c", "nslookup example.com >/dev/null"]\n' \
   | kubectl -n "$namespace" exec -i "$pod" -c worker -- docker build -q -t "$tag" - >/dev/null
 kubectl -n "$namespace" exec "$pod" -c worker -- docker run --rm --pull=never "$tag"
-pod_json="$(kubectl -n "$namespace" get pod "$pod" -o json)"
-printf '%s' "$pod_json" | jq -e --arg runtime "$LEITWERK_RUNTIME_CLASS_NAME" '
-  .spec.runtimeClassName == $runtime and
-  .spec.hostUsers == false and
-  ([.spec.containers[] | .securityContext.privileged // false] | any) == false and
-  ([.spec.volumes[] | has("hostPath")] | any) == false
-' >/dev/null
-kubectl -n "$namespace" delete pod "$pod" --wait=true >/dev/null
+kubectl -n "$namespace" exec "$pod" -c worker -- node --input-type=module -e 'import fs from "node:fs"; import { randomUUID } from "node:crypto"; fs.mkdirSync("/state/workspace", { recursive: true }); fs.writeFileSync("/state/workspace/.docker-runtime-proof", randomUUID());'
+capture_worker before
+node "$script_dir/verify-kubernetes.ts" "$evidence_dir/before"
+kubectl -n "$namespace" delete pod "$pod" --wait=true --timeout=120s >/dev/null
+kubectl -n "$namespace" wait --for=delete "pod/$pod" --timeout=60s >/dev/null
+node -e 'console.log(new Date().toISOString())' > "$evidence_dir/previous-pod-deleted-at.txt"
 start_pod
 kubectl -n "$namespace" exec "$pod" -c worker -- docker run --rm --pull=never "$tag"
+capture_worker after
+node "$script_dir/verify-kubernetes.ts" "$evidence_dir/after" "$evidence_dir/before/evidence.json" "$evidence_dir/previous-pod-deleted-at.txt"
 echo "Kubernetes Docker runtime canary passed with the trusted image entrypoint in $namespace"
+if [[ "$temporary_evidence" == false ]]; then echo "Docker worker evidence: $evidence_dir"; fi
