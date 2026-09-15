@@ -45,7 +45,10 @@ export function notebookScenarios(notebook: Notebook): SandboxScenario<LocalRepo
 	}));
 }
 
-export function notebookScripts(notebook: Notebook, context: () => AppContext) {
+export function notebookScriptResolver(
+	notebook: Notebook,
+	context: () => AppContext,
+): StubToolCallScriptResolver {
 	const resolve: StubToolCallScriptResolver = (input) => {
 		const process = input.instanceId ? context().deps.processes.getById(input.instanceId) : null;
 		if (!process) throw new Error("Unknown scripted process");
@@ -163,8 +166,12 @@ export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 		}
 		return markdown("docs: document weekly garden review");
 	};
+	return resolve;
+}
+
+export function notebookScripts(notebook: Notebook, context: () => AppContext) {
 	return new StubPiTreeHandleFactory({
 		recordSessionTrace: true,
-		toolCallScriptResolver: resolve,
+		toolCallScriptResolver: notebookScriptResolver(notebook, context),
 	});
 }

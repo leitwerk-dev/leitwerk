@@ -851,7 +851,17 @@ export function createForgejoRepoChangeProcess(
 							? "feedback"
 							: "ci",
 				},
-				resume_waiting: { label: "Resume waiting", acceptanceState: "accepted", to: ids.deliver },
+				resume_waiting: {
+					label: "Resume waiting",
+					acceptanceState: "accepted",
+					to: ids.deliver,
+					effect: ({ ctx }) => ({
+						state: patchRemote(ctx.state, {
+							feedbackIds: [],
+							delivery: { ...remote(ctx.state).delivery, adjustment: null },
+						}),
+					}),
+				},
 				abort: { label: "Abort process", acceptanceState: "neutral", lifecycleStatus: "aborted" },
 			},
 		},

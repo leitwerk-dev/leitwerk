@@ -64,8 +64,10 @@ export async function fixture(
 			sandbox = await createSandboxApp(config, input, factory);
 			await start();
 		},
-		async launch(name: string) {
-			const response = await postImmediateLaunch(url, `sandbox.${name}`, { launcherInput: {} });
+		async launch(name: string, launcherInput: Record<string, unknown> = {}, production = false) {
+			const response = await postImmediateLaunch(url, production ? name : `sandbox.${name}`, {
+				launcherInput,
+			});
 			const body = (await response.json()) as { process: { id: string } };
 			expect(response.status, JSON.stringify(body)).toBe(201);
 			return body.process.id;

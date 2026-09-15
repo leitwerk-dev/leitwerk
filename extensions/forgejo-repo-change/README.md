@@ -80,3 +80,7 @@ subscriptions, project metadata, and external-write keys remain compatible with
 existing deliveries. Legacy issue parameters without `origin` remain readable.
 Forgejo and Woodpecker retain their documented persisted protocol identifiers.
 The separate `remote-repo-change` extension continues direct base-branch delivery.
+
+At operator action, **Retry repair** retains the pending evidence. **Resume waiting**
+dismisses the pending feedback and adjustment, retaining accepted feedback cursors
+and remote delivery state while waiting for new evidence.

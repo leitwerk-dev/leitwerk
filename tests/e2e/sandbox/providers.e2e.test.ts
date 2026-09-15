@@ -13,7 +13,19 @@ test("public providers compose with ticket approvals, lost-response reconciliati
 	for (const id of ["forgejo", "github", "woodpecker"])
 		expect(modules.filter((m) => m === id)).toHaveLength(1);
 	expect(modules).not.toContain("leitwerk-self-improvement");
-	const parent = await f.launch("ticket");
+	await f.post("/__local/providers/control", {
+		operation: "create-issue",
+		repository: "examples/garden",
+		requestId: "parallel-source-issue",
+	});
+	const source = await waitForValue(
+		() => f.context.deps.processes.listAll().find((p) => p.externalId?.startsWith("forgejo:")),
+		Boolean,
+		12000,
+	);
+	if (!source) throw new Error("Missing source discovery");
+	await f.wait(source.id, "plan_decision");
+	const parent = source.id;
 	await f.wait(parent, "plan_decision");
 	const turn = f.context.deps.turnRecords
 		.listByInstance(parent)
@@ -32,20 +44,49 @@ test("public providers compose with ticket approvals, lost-response reconciliati
 	const response = await f.context.app.inject(request);
 	expect(response.statusCode, response.body).toBe(200);
 	const id = response.json().childInstanceId;
+	const first = await waitForValue(
+		() => f.context.deps.toolApprovalRequests.listOpen(id)[0],
+		Boolean,
+		12000,
+	);
+	await f.post(`/api/processes/${id}/tool-approval-requests/${first?.id}`, {
+		action: "feedback",
+		feedback: "Include a daily watering schedule.",
+	});
 	const pending = await waitForValue(
 		() => f.context.deps.toolApprovalRequests.listOpen(id)[0],
 		Boolean,
 		12000,
 	);
+	expect(JSON.stringify(pending?.arguments)).toContain("daily watering schedule");
 	expect(pending?.destination).toMatchObject({ displayName: "examples/garden" });
-	await f.post("/__local/providers/lost-ticket-response", { enabled: true });
+	await f.post("/__local/providers/control", {
+		operation: "lost-ticket-response",
+		enabled: true,
+		requestId: "lost-ticket-response",
+	});
 	await f.post(`/api/processes/${id}/tool-approval-requests/${pending?.id}`, { action: "accept" });
 	await f.wait(id, null, "completed");
 	const state = JSON.parse(readFileSync(path.join(f.root, "forgejo.json"), "utf8"));
-	expect(state.repositories[0].issues).toHaveLength(1);
+	expect(state.repositories[0].issues).toHaveLength(2);
 	expect(f.context.deps.externalWrites.listByInstance(id)).toEqual(
 		expect.arrayContaining([expect.objectContaining({ writeType: "forgejo.create_issue" })]),
 	);
+	const declined = await f.context.app.inject({
+		...request,
+		headers: { "idempotency-key": "declined-forgejo-ticket" },
+	});
+	const declinedId = declined.json().childInstanceId;
+	const declineApproval = await waitForValue(
+		() => f.context.deps.toolApprovalRequests.listOpen(declinedId)[0],
+		Boolean,
+		12000,
+	);
+	await f.post(`/api/processes/${declinedId}/tool-approval-requests/${declineApproval?.id}`, {
+		action: "decline",
+	});
+	await f.wait(declinedId, null, "aborted");
+	expect(f.context.deps.externalWrites.listByInstance(declinedId)).toHaveLength(0);
 	await f.restart();
 	expect((await f.context.app.inject(request)).json().childInstanceId).toBe(id);
 	expect(
@@ -54,5 +95,5 @@ test("public providers compose with ticket approvals, lost-response reconciliati
 	).toBe(200);
 	expect(
 		JSON.parse(readFileSync(path.join(f.root, "forgejo.json"), "utf8")).repositories[0].issues,
-	).toHaveLength(1);
+	).toHaveLength(2);
 }, 60000);

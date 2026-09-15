@@ -33,7 +33,10 @@ const scriptedModel: LeitwerkExtensionModule = {
 		},
 	]),
 };
-export function createNotebookComposition(seed?: NotebookSeed): SandboxCompositionFactory {
+export function createNotebookComposition(
+	seed?: NotebookSeed,
+	scripts = notebookScripts,
+): SandboxCompositionFactory {
 	return (input) => {
 		const notebook = new Notebook(input.paths.directory, seed);
 		const tickets = new LocalTicketAdapter({
@@ -76,7 +79,7 @@ export function createNotebookComposition(seed?: NotebookSeed): SandboxCompositi
 					ticketCreation,
 					tickets.extension(),
 				]),
-			scriptedPi: (context) => notebookScripts(notebook, context),
+			scriptedPi: (context) => scripts(notebook, context),
 			controlState: () => ({
 				tickets: tickets.state.tickets,
 				lostResponseEnabled: tickets.state.failAfterPersistence,
