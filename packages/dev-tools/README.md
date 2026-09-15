@@ -1,4 +1,4 @@
-# Extension development tools
+# Development tools
 
 `@leitwerk-dev/dev-tools` provides the `leitwerk-dev` CLI for an extension workspace.
 Install it alongside matching `@leitwerk-dev/server`, `@leitwerk-dev/ui` and SDK
@@ -85,3 +85,62 @@ wrappers. `/composition` and `/workspace` share manifest parsing and package
 discovery with the public source-development commands. The sandbox CLI still
 requires the source supervisor; this package does not provide installed-package
 sandbox startup.
+
+## Worker startup benchmark
+
+`leitwerk-dev benchmark:worker-startup` measures sequential launches through the
+ordinary launcher interface. It needs a reachable Leitwerk API and an available
+model profile. It can run outside a Git checkout and does not require Kubernetes.
+
+Create a client YAML file with `base_url` and `api_token`, and a JSON file containing
+the selected launcher's input. The client file is kept at mode `0600`; its token
+is used only for API requests and is excluded from reports.
+
+```sh
+leitwerk-dev benchmark:worker-startup \
+  --api-config .leitwerk/api/leitwerk.yaml \
+  --launcher poem_creator_process.poem_creator_ui \
+  --model-profile example-model \
+  --input benchmark-input.json \
+  --title 'Startup sample' \
+  --candidate candidate-a \
+  --output .leitwerk/benchmarks/candidate-a
+```
+
+The launcher and model profile are explicit. The input file contains the
+`launcherInput` object, for example `{ "prompt": "Write a short poem about rain." }`.
+Defaults are 30 measured launches, no warm-ups, a 180-second per-launch deadline,
+and 500-ms polling. `--samples`, `--warmups`, `--timeout-ms` and
+`--poll-interval-ms` override these values. `--help` lists all options.
+
+The output directory must be new. It contains `inputs.json`, the pre-request
+`launches.jsonl` journal, complete `results.jsonl` samples and `report.md`, with
+directory mode `0700` and file mode `0600`. Each launch has its own idempotency
+key. Lost launch responses retry that same key. A timeout, interruption or
+uncertain API outcome stops the run before another generation starts. The
+benchmark retains processes, sessions and evidence. Resolve the retained launch
+before starting a new run after an uncertain result. Confirmed failed turns are
+recorded and the next sample may run. Incomplete runs and runs with failures exit
+nonzero.
+
+Reports show median, nearest-rank p90, maximum, and available timing coverage,
+with separate cached, pulled and unknown image groups. Warm-ups are excluded from
+measured statistics. Missing and invalid durations are excluded and counted in
+coverage. Rows describe the first physical worker; raw samples retain replacements.
+Kubernetes intervals may overlap. Launch-to-first-text includes model latency;
+compare candidates with the same launcher input and model profile.
+
+For optional read-only Kubernetes evidence, select the Deployment serving the
+configured API:
+
+```sh
+# Append to the benchmark command:
+--namespace example --deployment example-server --kubeconfig /path/to/config \
+--expected-server-image registry.example/server@sha256:<digest>
+```
+
+The CLI records Deployment images, Leitwerk provenance annotations and selected
+Pod image IDs. `--expected-server-image` optionally requires an exact image
+reference in the Deployment. No local public/private Git layout is assumed.
+The `/benchmark` export provides `runWorkerStartupBenchmark`, report functions
+and their types for repository wrappers.
