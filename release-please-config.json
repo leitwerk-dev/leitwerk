@@ -104,7 +104,8 @@
 				"@leitwerk-dev/forgejo",
 				"@leitwerk-dev/github",
 				"@leitwerk-dev/woodpecker",
-				"@leitwerk-dev/forgejo-repo-change"
+				"@leitwerk-dev/forgejo-repo-change",
+				"@leitwerk-dev/gitlab"
 			]
 		}
 	],
@@ -266,6 +267,11 @@
 		},
 		"extensions/forgejo-repo-change": {
 			"component": "@leitwerk-dev/forgejo-repo-change",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/gitlab": {
+			"component": "@leitwerk-dev/gitlab",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

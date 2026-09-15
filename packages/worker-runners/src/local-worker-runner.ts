@@ -154,7 +154,14 @@ export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
 			const child = localWorkerSpawnImpl(command, args, {
 				cwd,
 				stdio: ["ignore", "inherit", "inherit"],
-				env: { ...process.env, ...input.env },
+				env: {
+					...Object.fromEntries(
+						Object.entries(process.env).filter(
+							([key]) => !/(?:^|_)(?:TOKEN|API_KEY|PASSWORD|SECRET)$/.test(key),
+						),
+					),
+					...input.env,
+				},
 			});
 			const state: LocalWorkerUnitState = {
 				ref,

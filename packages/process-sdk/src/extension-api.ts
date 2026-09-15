@@ -564,7 +564,7 @@ export interface ProcessTurnBinding<TTurn = TurnDefinition> {
 	definition: TTurn;
 }
 
-export type RepositoryCredentialKind = "git_ssh";
+export type RepositoryCredentialKind = "git_ssh" | "git_https";
 
 /** Non-secret, code-defined repository authentication request. */
 export interface RepositoryCredentialRequirement {
@@ -587,10 +587,19 @@ export interface GitSshCredentialMaterial {
 	readonly knownHosts: string;
 }
 
-export interface RepositoryCredentialProvider {
-	readonly kind: RepositoryCredentialKind;
-	resolve(credentialRef: string): GitSshCredentialMaterial | null;
+export interface GitHttpsCredentialMaterial {
+	/** HTTPS origin authorized by the credential-owning extension. */
+	readonly origin: string;
+	readonly username: string;
+	readonly password: string;
 }
+
+export type RepositoryCredentialProvider =
+	| { readonly kind: "git_ssh"; resolve(credentialRef: string): GitSshCredentialMaterial | null }
+	| {
+			readonly kind: "git_https";
+			resolve(credentialRef: string): GitHttpsCredentialMaterial | null;
+	  };
 
 export interface RepositoryCredentialRegistrar {
 	register(provider: RepositoryCredentialProvider): void;

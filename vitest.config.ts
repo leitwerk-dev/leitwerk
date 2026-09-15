@@ -87,7 +87,13 @@ export default defineConfig({
 						"scripts/**/*.test.ts",
 						...externalUnitTests,
 					],
-					exclude: ["**/*.integration.test.ts", "**/*.e2e.test.ts", "**/*.ui.integration.test.ts"],
+					exclude: [
+						"**/*.integration.test.ts",
+						"**/*.e2e.test.ts",
+						"**/*.ui.integration.test.ts",
+						...externalIntegrationTests,
+						...externalUiIntegrationTests,
+					],
 				},
 			},
 			{

@@ -112,3 +112,7 @@ Operators may independently snapshot or back up process volumes and are responsi
 
 - **Retention Thresholds:** Storage is retained after process completion or error according to `workers.cleanup.completed_process_retention` and `workers.cleanup.error_process_retention` before worker volumes are released. Retention controls cleanup timing; it does not create a backup.
 - **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) revokes transfer grants and immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.
+
+### HTTPS clones
+
+Full process clones may use credential-free HTTPS locators. Their owning integration derives a repository credential reference from its API profile; the server resolves and scopes `git_https` material for worker bootstrap. Only trusted Git invocations receive the ephemeral repository-specific helper. Ordinary subprocesses receive sanitized environments, and repository configuration contains no token or helper path. See [Security](security.md#https-repository-authentication).

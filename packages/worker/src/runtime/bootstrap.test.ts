@@ -121,3 +121,36 @@ describe("shouldPreservePersistedLeafForActiveTurnResume", () => {
 });
 
 import type { TurnStartRecord } from "@leitwerk-dev/domain";
+
+it("requires HTTPS credentials to match the authenticated worker project's exact clone URL", () => {
+	const credential = {
+		projectKey: "repo",
+		kind: "git_https" as const,
+		credentialRef: "https:fixture",
+		repositoryUrl: "https://forge.test/a/b.git",
+		username: "oauth2",
+		password: "fixture",
+	};
+	const input = {
+		credentials: [credential],
+		requirements: [credential],
+		projectKeys: new Set(["repo"]),
+		projects: [{ key: "repo", repoLocator: credential.repositoryUrl }],
+	};
+	expect(() => validateRepositoryCredentials(input)).not.toThrow();
+	expect(() =>
+		validateRepositoryCredentials({
+			...input,
+			projects: [{ key: "repo", repoLocator: "https://forge.test/a/c.git" }],
+		}),
+	).toThrow("scope");
+	expect(() =>
+		validateRepositoryCredentials({ ...input, credentials: [credential, credential] }),
+	).toThrow("Duplicate");
+	expect(() =>
+		validateRepositoryCredentials({
+			...input,
+			credentials: [{ ...credential, password: "a\npassword=b" }],
+		}),
+	).toThrow("material");
+});

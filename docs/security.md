@@ -85,3 +85,9 @@ set `auth.api_tokens.enabled: false`. Listing and revocation remain available.
 The old binary rejects the new schema; reverting the binary is not a compatible
 rollback. Do not restore an old database to disable tokens, as that loses later
 process data.
+
+## HTTPS repository authentication
+
+The credential provider authorizes an HTTPS origin; the server narrows it to the process project's exact repository URL. Userinfo, query strings, fragments and ambiguous paths are rejected. Fresh username/password material travels only in authenticated `worker.start`. The worker validates it against both the process declaration and authenticated project snapshots, then removes it from its retained runtime payload.
+
+HTTPS credentials are materialized outside checkouts in a mode-0700 temporary directory. Secret files use 0600. An ephemeral Node Git credential helper answers only `get` requests for the exact HTTPS host, port and repository path. Trusted Git resets credential-helper configuration, enables path matching, disables redirects and disallows other transports. Tokens never appear in clone URLs, argv, Git configuration or ordinary tool environments. Worker cleanup removes the files and internal registrations, including partially materialized batches. As with SSH keys, this is credential routing within a semi-trusted worker, not isolation from code running as the same OS user.

@@ -7,6 +7,7 @@ import {
 export type SubprocessEnvInput = Record<string, string | undefined>;
 
 export const INTERNAL_REPOSITORY_GIT_SSH_ENV_PREFIX = "LEITWERK_INTERNAL_REPOSITORY_GIT_SSH_";
+export const INTERNAL_REPOSITORY_GIT_HTTPS_ENV_PREFIX = "LEITWERK_INTERNAL_REPOSITORY_GIT_HTTPS_";
 
 export const WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS = [
 	WORKER_IPC_CONNECT_TOKEN_ENV,
@@ -20,6 +21,8 @@ const SENSITIVE_ENV_KEYS = new Set<string>([
 	"SSH_AGENT_PID",
 	"GIT_SSH",
 	"GIT_SSH_COMMAND",
+	"GIT_ASKPASS",
+	"SSH_ASKPASS",
 ]);
 
 /**
@@ -38,6 +41,9 @@ export function sanitizeWorkerSubprocessEnv(
 		if (
 			SENSITIVE_ENV_KEYS.has(key) ||
 			key.startsWith(INTERNAL_REPOSITORY_GIT_SSH_ENV_PREFIX) ||
+			key.startsWith(INTERNAL_REPOSITORY_GIT_HTTPS_ENV_PREFIX) ||
+			key.startsWith("GIT_CONFIG_") ||
+			/(?:^|_)(?:TOKEN|API_KEY|PASSWORD|SECRET)$/.test(key) ||
 			value === undefined
 		) {
 			continue;

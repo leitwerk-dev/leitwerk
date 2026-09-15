@@ -393,3 +393,9 @@ and `revision`), or `refreshError`. Observation writes never fire transitions.
 External observation reports require a valid observation timestamp and uniquely identified HTTP(S)
 links without embedded credentials. Invalid reports are rejected without replacing the last known
 facts. Invalid or failing optional event descriptions are omitted; they do not block event consumption.
+
+## Repository HTTPS credentials
+
+`RepositoryCredentialProvider` is a discriminated union of `git_ssh` and `git_https`. HTTPS providers resolve `{ origin, username, password }`; processes declare only `{ projectKey, kind, credentialRef }`. The server verifies the project locator against the provider origin and adds the exact credential-free HTTPS repository URL to `WorkerGitHttpsCredential`. A project has one credential kind. SSH providers retain their private-key and pinned-known-hosts contract.
+
+Trusted Git calls use `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`. Ordinary tool commands use `sanitizeWorkerSubprocessEnv()`, which removes internal helper references, Git credential configuration, askpass/SSH agent variables and server token, API-key, password and secret variables. Credentials must never enter process params, state, projects or session trees.

@@ -83,6 +83,19 @@ export interface WorkerGitSshCredential {
 	knownHosts: string;
 }
 
+export interface WorkerGitHttpsCredential {
+	projectKey: string;
+	kind: "git_https";
+	credentialRef: string;
+	/** Exact non-secret HTTPS clone URL authorized by the server. */
+	repositoryUrl: string;
+	username: string;
+	/** Secret; only delivered through authenticated worker.start. */
+	password: string;
+}
+
+export type WorkerRepositoryCredential = WorkerGitSshCredential | WorkerGitHttpsCredential;
+
 export interface LlmWorkerStartBootstrap {
 	kind: "llm";
 	resourceBundle: {
@@ -132,7 +145,7 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	/** Durable non-secret preparation checkpoint reused by a replacement or Continue start. */
 	llmPreparation?: { sourceTurnRecordId: string; data: unknown };
 	/** Fresh secret material resolved for this physical worker start only. */
-	repositoryCredentials?: WorkerGitSshCredential[];
+	repositoryCredentials?: WorkerRepositoryCredential[];
 	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
 	/** Non-secret mise adapter settings. Ignored unless the process opts in. */

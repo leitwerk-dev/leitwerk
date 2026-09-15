@@ -57,7 +57,7 @@ COPY --from=build --parents \
 
 LABEL org.opencontainers.image.title="leitwerk-server" \
 	org.opencontainers.image.description="leitwerk server" \
-	leitwerk.dev/server-api-version="2026-06-23"
+	leitwerk.dev/server-api-version="2026-09-15"
 
 EXPOSE 8080
 ENV LEITWERK_CONFIG_PATH=/etc/leitwerk/leitwerk.yaml

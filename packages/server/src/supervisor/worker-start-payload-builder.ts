@@ -50,7 +50,7 @@ export interface WorkerStartPayloadBuilderDeps
 	resolveRepositoryCredentials?(input: {
 		process: ProcessInstance;
 		projects: ReturnType<RepositoryBundle["projects"]["listByInstance"]>;
-	}): import("@leitwerk-dev/worker-protocol").WorkerGitSshCredential[];
+	}): import("@leitwerk-dev/worker-protocol").WorkerRepositoryCredential[];
 	resolveCredential?(
 		providerId: string,
 		options: Readonly<Record<string, string>>,

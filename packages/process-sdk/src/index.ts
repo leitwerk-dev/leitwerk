@@ -134,6 +134,7 @@ export type {
 	ExternalSourceResolveContext,
 	FormDefinition,
 	FormFieldDefinition,
+	GitHttpsCredentialMaterial,
 	GitSshCredentialMaterial,
 	IntegrationToolDefinition,
 	IntegrationToolExecutionContext,
@@ -361,12 +362,15 @@ export {
 } from "./project-binding.js";
 export { normalizeRepositoryFeedback, type RepositoryFeedbackItem } from "./repository-feedback.js";
 export {
+	clearRepositoryGitHttpsHelpers,
 	clearRepositoryGitSshWrappers,
 	repositoryGitArgs,
 	repositoryGitSubprocessEnv,
+	setRepositoryGitHttpsHelper,
 	setRepositoryGitSshWrapper,
 } from "./repository-git-env.js";
 export { RepositoryHttpClient } from "./repository-http.js";
+export { repositoryHttpsUrl } from "./repository-https.js";
 export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 export {
 	buildPlanSavedEventPayload,
