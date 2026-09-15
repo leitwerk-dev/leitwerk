@@ -3,13 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
-import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
+import { fixtureModelProviders, postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -18,30 +13,10 @@ import { poemCreatorProcess } from "./process-definition.js";
 
 const fixtureModelProviderExtension = {
 	manifest: { id: "showcase-fixture-providers", version: "1.0.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "anthropic",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("anthropic"),
-				server: builtinPiProvider("anthropic"),
-				models: () => [{ modelId: "claude-sonnet-4-20250514", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-		{
-			definition: defineModelProvider({
-				id: "ollama",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("ollama"),
-				server: builtinPiProvider("ollama"),
-				models: () => [{ modelId: "qwen2.5-coder:14b", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders(
+		{ id: "anthropic", modelId: "claude-sonnet-4-20250514", server: true },
+		{ id: "ollama", modelId: "qwen2.5-coder:14b", server: true },
+	),
 };
 
 const extensionCatalog = buildExtensionCatalogFromModules([

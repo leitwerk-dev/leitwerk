@@ -4,6 +4,7 @@ import {
 	type RepositoryChangeLaunchParams,
 	repositoryChangeParamsRecord,
 } from "@leitwerk-dev/coding/repository-change-launch";
+import { trimString } from "@leitwerk-dev/domain";
 
 interface ForgejoRepoChangeCommonParams {
 	forgejoProfile: string;
@@ -45,16 +46,11 @@ export const forgejoRepoChangeParamsCodec =
 		normalize(value) {
 			const shared = normalizeRepositoryChangeParamsInput(value, "Forgejo Repo Change");
 			const record = repositoryChangeParamsRecord(value, "Forgejo Repo Change");
-			const text = (name: string) =>
-				typeof record[name] === "string" ? (record[name] as string).trim() : "";
-			for (const name of [
-				"forgejoProfile",
-				"woodpeckerProfile",
-				"sshCredentialRef",
-				"owner",
-				"repo",
-			])
-				if (!text(name)) throw new Error(`Forgejo Repo Change requires ${name}`);
+			const text = (name: string) => {
+				const value = trimString(record[name]);
+				if (!value) throw new Error(`Forgejo Repo Change requires ${name}`);
+				return value;
+			};
 
 			const common = {
 				...shared,
@@ -64,7 +60,7 @@ export const forgejoRepoChangeParamsCodec =
 				owner: text("owner"),
 				repo: text("repo"),
 			};
-			const origin = text("origin");
+			const origin = trimString(record.origin);
 			if (origin === "ui") {
 				return {
 					...common,
@@ -85,8 +81,6 @@ export const forgejoRepoChangeParamsCodec =
 				record.issueNumber <= 0
 			)
 				throw new Error("Forgejo Repo Change requires issueNumber");
-			for (const name of ["issueUrl", "triggerLabel", "doneLabel"])
-				if (!text(name)) throw new Error(`Forgejo Repo Change requires ${name}`);
 			return {
 				...common,
 				origin: "issue" as const,

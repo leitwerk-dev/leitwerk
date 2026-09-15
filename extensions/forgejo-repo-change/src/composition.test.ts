@@ -1,91 +1,6 @@
-import { buildProcessLaunchersForTest } from "@leitwerk-dev/extension-runtime/testing";
-import { forgejoIntegration } from "@leitwerk-dev/forgejo";
-import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
-import type { ProcessWatcherDefinition } from "@leitwerk-dev/process-sdk";
-import { woodpeckerIntegration } from "@leitwerk-dev/woodpecker";
-import { describe, expect, it, vi } from "vitest";
-import { createForgejoRepoChange } from "./index.js";
-import { forgejoRepoChangeUiLauncherId, type LauncherDependencies } from "./launcher.js";
+import { describe, expect, it } from "vitest";
 import { parseProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
-
-function setup(profile = "team", config: unknown = {}, docker = false) {
-	const value = createForgejoRepoChange({ docker });
-	const repository = {
-		id: 7,
-		name: "garden",
-		full_name: "examples/garden",
-		owner: { login: "examples" },
-		ssh_url: "ssh://git@forgejo.example/examples/garden.git",
-		default_branch: "main",
-		html_url: "https://forgejo.example/examples/garden",
-	};
-	const preflight = vi.fn<LauncherDependencies["gitSsh"]["preflight"]>(async () => ({ ok: true }));
-	const dependencies: LauncherDependencies = {
-		forgejo: {
-			profiles: () => [profile],
-			client: () =>
-				({
-					listRepositories: async () => [
-						repository,
-						{ ...repository, id: 8, name: "workshop", full_name: "examples/workshop" },
-					],
-					resolveGitIdentity: async () => ({
-						provider: "forgejo",
-						profile,
-						login: "garden-bot",
-						name: "Garden Bot",
-						email: "garden-bot@forgejo.example",
-					}),
-				}) as never,
-		},
-		woodpecker: {
-			client: (name) => {
-				if (![profile, "ci"].includes(name)) throw new Error("unknown");
-				return {} as never;
-			},
-		},
-		gitSsh: { profiles: () => [profile, "writer"], preflight },
-	};
-	const stops: Array<() => void> = [];
-	const api = {
-		require: (token: unknown) =>
-			token === forgejoIntegration
-				? dependencies.forgejo
-				: token === gitSshIntegration
-					? dependencies.gitSsh
-					: token === woodpeckerIntegration
-						? dependencies.woodpecker
-						: undefined,
-		onStop: (stop: () => void) => stops.push(stop),
-	};
-	const configure = (config: unknown) => value.extension.setupServer?.(api as never, config);
-	configure(config);
-	const ui = buildProcessLaunchersForTest(value.process)?.launchers.get(
-		forgejoRepoChangeUiLauncherId,
-	)?.ui;
-	if (!ui) throw new Error("Missing launcher");
-	return {
-		...value,
-		dependencies,
-		preflight,
-		repository,
-		ui,
-		configure,
-		stop: () => {
-			for (const stop of stops) stop();
-		},
-		launch: (input: Record<string, unknown> = {}) =>
-			ui.resolveLaunchConfig(
-				{
-					forgejoProfile: profile,
-					repository: "examples/garden",
-					prompt: "Document watering",
-					...input,
-				},
-				{},
-			),
-	};
-}
+import { launcherFixture as setup } from "./testing/launcher-fixture.js";
 
 describe("server-owned delivery composition", () => {
 	it("uses same-name defaults and rejects malformed mappings", () => {
@@ -143,13 +58,7 @@ describe("server-owned delivery composition", () => {
 				f.process.repositoryCredentials?.({ params: result.launchConfig.params, projects: [] }),
 			).toEqual([{ projectKey: "repo", kind: "git_ssh", credentialRef: "writer" }]);
 		}
-		let watcher: ProcessWatcherDefinition | undefined;
-		f.process.watchers?.({
-			watcher: (value) => {
-				watcher = value as ProcessWatcherDefinition;
-			},
-		});
-		const launch = await watcher?.resolveLaunchConfig({
+		const launch = await f.watcher.resolveLaunchConfig({
 			profile: "team",
 			repository: f.repository,
 			issue: {

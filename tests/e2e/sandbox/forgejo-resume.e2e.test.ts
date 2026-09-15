@@ -10,11 +10,10 @@ import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { WOODPECKER_PIPELINE_KIND } from "@leitwerk-dev/woodpecker";
 import { LocalWoodpeckerAdapter } from "@leitwerk-dev/woodpecker/testing";
-import { expect, test } from "vitest";
-import providerComposition from "../../../sandbox/provider-composition.js";
+import { expect } from "vitest";
 import { providerControls } from "../../../sandbox/provider-controls.js";
-import { type Fixture, fixture } from "./fixture.js";
-import { control, publish, remote, repo, revised, source } from "./forgejo-fixture.js";
+import type { Fixture } from "./fixture.js";
+import { control, publish, remote, repo, revised, source, test } from "./forgejo-fixture.js";
 
 function subscriptions(f: Fixture, id: string) {
 	const service = f.context.deps.externalSourceService as
@@ -39,9 +38,8 @@ function subscriptions(f: Fixture, id: string) {
 // Only legacy field shapes are synthesized; provider controls drive every transition.
 for (const waitingFor of ["feedback", "ci", "conflict", "operator", "terminal"] as const) {
 	test(`retained ${waitingFor} delivery reopens with legacy metadata and original subscription profiles`, async ({
-		onTestFinished,
+		f,
 	}) => {
-		const f = await fixture(onTestFinished, providerComposition);
 		const issueOrigin = ["feedback", "conflict", "terminal"].includes(waitingFor);
 		const id = issueOrigin
 			? (await source(f)).id

@@ -7,6 +7,7 @@ import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtim
 import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { parseFutureLaunchPayloadJson, serializeFutureLaunchPayload } from "@leitwerk-dev/protocol";
 import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
@@ -14,7 +15,6 @@ import {
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "./launch-title.js";
-import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 function parseFutureLaunchPayloadOrThrow(payloadJson: string) {
 	const parsed = parseFutureLaunchPayloadJson(payloadJson);

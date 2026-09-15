@@ -2,16 +2,21 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { expect, test } from "vitest";
-import providerComposition from "../../../sandbox/provider-composition.js";
-import { fixture } from "./fixture.js";
-
-import { control, providers, publish, remote, repo, revised, source } from "./forgejo-fixture.js";
+import { expect } from "vitest";
+import {
+	control,
+	providers,
+	publish,
+	remote,
+	repo,
+	revised,
+	source,
+	test,
+} from "./forgejo-fixture.js";
 
 test("real UI launcher publishes, records sessions, completes, and replays on a new branch", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const input = {
 		forgejoProfile: "local",
 		repository: "examples/garden",
@@ -54,10 +59,7 @@ test("real UI launcher publishes, records sessions, completes, and replays on a 
 	).not.toBe(pr.head.ref);
 }, 60000);
 
-test("source discovery is durable and merge finalizes the issue once", async ({
-	onTestFinished,
-}) => {
-	const f = await fixture(onTestFinished, providerComposition);
+test("source discovery is durable and merge finalizes the issue once", async ({ f }) => {
 	const { id, issue } = await source(f);
 	await publish(f, id);
 	await f.post("/__local/poll");
@@ -77,9 +79,8 @@ test("source discovery is durable and merge finalizes the issue once", async ({
 }, 60000);
 
 test("feedback batches conversation, inline and review evidence, then replies once in a fresh turn", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const id = await f.launch("forgejo-change");
 	const pr = await publish(f, id);
 	for (const kind of ["conversation", "inline", "review"]) await control(f, "feedback", { kind });
@@ -102,8 +103,7 @@ test("feedback batches conversation, inline and review evidence, then replies on
 }, 60000);
 
 for (const scene of ["forgejo-feedback-no-change", "forgejo-feedback-operator"])
-	test(`${scene} routes without publishing an unexplained change`, async ({ onTestFinished }) => {
-		const f = await fixture(onTestFinished, providerComposition);
+	test(`${scene} routes without publishing an unexplained change`, async ({ f }) => {
 		const id = await f.launch(scene),
 			pr = await publish(f, id);
 		await control(f, "feedback");
@@ -124,9 +124,8 @@ for (const scene of ["forgejo-feedback-no-change", "forgejo-feedback-operator"])
 	}, 60000);
 
 test("CI ignores stale branch/head and success, repairs three times, then allows operator recovery", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const id = await f.launch("forgejo-change"),
 		pr = await publish(f, id);
 	await control(f, "pipeline", { branch: "main", status: "failure" });
@@ -150,8 +149,7 @@ test("CI ignores stale branch/head and success, repairs three times, then allows
 	expect(repo(f).pulls).toHaveLength(1);
 }, 60000);
 
-test("CI diagnosis restarts explicitly through a durable write", async ({ onTestFinished }) => {
-	const f = await fixture(onTestFinished, providerComposition);
+test("CI diagnosis restarts explicitly through a durable write", async ({ f }) => {
 	const id = await f.launch("forgejo-ci-restart"),
 		pr = await publish(f, id);
 	await control(f, "pipeline", { status: "failure" });
@@ -173,9 +171,8 @@ test("CI diagnosis restarts explicitly through a durable write", async ({ onTest
 }, 60000);
 
 test("a conflicting base commit is rebased and published with its retained lease", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const id = await f.launch("forgejo-change"),
 		pr = await publish(f, id);
 	const result = await control(f, "conflict");
@@ -203,8 +200,7 @@ test("a conflicting base commit is rebased and published with its retained lease
 }, 60000);
 
 for (const origin of ["ui", "issue"])
-	test(`closing a PR reconciles ${origin} origin once`, async ({ onTestFinished }) => {
-		const f = await fixture(onTestFinished, providerComposition);
+	test(`closing a PR reconciles ${origin} origin once`, async ({ f }) => {
 		const id = origin === "ui" ? await f.launch("forgejo-change") : (await source(f)).id;
 		await publish(f, id);
 		await control(f, "close");
@@ -219,10 +215,7 @@ for (const origin of ["ui", "issue"])
 	}, 60000);
 
 for (const operation of ["cancel-issue", "remove-trigger"])
-	test(`${operation} aborts waiting delivery without another worker turn`, async ({
-		onTestFinished,
-	}) => {
-		const f = await fixture(onTestFinished, providerComposition);
+	test(`${operation} aborts waiting delivery without another worker turn`, async ({ f }) => {
 		const { id, issue } = await source(f);
 		await publish(f, id);
 		const turns = f.context.deps.turnRecords
@@ -236,9 +229,8 @@ for (const operation of ["cancel-issue", "remove-trigger"])
 	}, 60000);
 
 test("provider controls reject escaping repositories, mismatched IDs and nonlocal requests", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	for (const payload of [
 		{ operation: "create-issue", repository: "../outside", requestId: "outside-repository" },
 		{
@@ -268,9 +260,8 @@ test("provider controls reject escaping repositories, mismatched IDs and nonloca
 }, 60000);
 
 test("publication reconciles a lost PR response and concurrent control replays remain idempotent", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const id = await f.launch("forgejo-change");
 	await control(f, "lost-pr-response", { enabled: true });
 	await f.wait(id, "plan_decision");

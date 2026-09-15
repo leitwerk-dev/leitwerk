@@ -1,93 +1,35 @@
-import { buildProcessLaunchersForTest } from "@leitwerk-dev/extension-runtime/testing";
-import type { ForgejoClient, ForgejoIntegration } from "@leitwerk-dev/forgejo";
-import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { configureForgejoRepoChangeLauncher, forgejoRepoChangeUiLauncherId } from "./launcher.js";
-import { forgejoRepoChangeProcess } from "./process.js";
-
-const repository = {
-	id: 23,
-	name: "service",
-	full_name: "team/service",
-	ssh_url: "ssh://git@git.example.test:2222/team/service.git",
-	html_url: "https://git.example.test/team/service",
-	default_branch: "trunk",
-	owner: { login: "team" },
-};
-
-function configure(preflight: GitSshIntegration["preflight"] = async () => ({ ok: true })): void {
-	configureForgejoRepoChangeLauncher({
-		forgejo: {
-			profiles: () => ["team"],
-			client(profile) {
-				if (profile !== "team") throw new Error(`Unexpected profile '${profile}'`);
-				return {
-					listRepositories: async () => [repository],
-					resolveGitIdentity: async () => ({
-						name: "Leitwerk Bot",
-						email: "leitwerk-bot@noreply.git.example.test",
-						provider: "forgejo",
-						profile: "team",
-						login: "leitwerk-bot",
-					}),
-				} as ForgejoClient;
-			},
-		} satisfies ForgejoIntegration,
-		woodpecker: { client: () => ({}) as never },
-		gitSsh: { profiles: () => ["team"], preflight },
-	});
-}
-
-function launcher() {
-	const value = buildProcessLaunchersForTest(forgejoRepoChangeProcess)?.launchers.get(
-		forgejoRepoChangeUiLauncherId,
-	)?.ui;
-	if (!value) throw new Error("expected Forgejo repository-change UI launcher");
-	return value;
-}
-
-async function resolveLaunch(prompt: string) {
-	const input = {
-		forgejoProfile: "team",
-		repository: "team/service",
-		prompt,
-	};
-	const resolved = await launcher().resolveLaunchConfig(input, {});
-	if (!resolved.ok) throw new Error("expected launch resolution");
-	return { input, launchConfig: resolved.launchConfig };
-}
+import { describe, expect, it, vi } from "vitest";
+import { launcherFixture } from "./testing/launcher-fixture.js";
 
 describe("Forgejo repository-change UI launcher", () => {
-	afterEach(() => configureForgejoRepoChangeLauncher(null));
-
 	it("lists server-authorized profiles and repositories", async () => {
-		configure();
-		await expect(Promise.resolve(launcher().resolveDefaults?.({}))).resolves.toEqual({
+		const { ui, repository } = launcherFixture();
+		await expect(Promise.resolve(ui.resolveDefaults?.({}))).resolves.toEqual({
 			forgejoProfile: "team",
 			repository: "",
 			prompt: "",
 		});
-		await expect(launcher().resolveOptions?.({ forgejoProfile: "team" }, {})).resolves.toEqual({
+		await expect(ui.resolveOptions?.({ forgejoProfile: "team" }, {})).resolves.toEqual({
 			forgejoProfile: [{ value: "team", label: "team" }],
-			repository: [
-				{
-					value: "team/service",
-					label: "team/service",
-					description: "https://git.example.test/team/service",
-				},
-			],
+			repository: [repository.full_name, "examples/workshop"].map((name) => ({
+				value: name,
+				label: name,
+				description: repository.html_url,
+			})),
 		});
 	});
 
 	it("builds a ticketless launch from authoritative repository metadata", async () => {
-		configure();
-		const { launchConfig } = await resolveLaunch("Improve the deployment status");
+		const f = launcherFixture();
+		const result = await f.launch({ prompt: "Improve the deployment status" });
+		if (!result.ok) throw new Error("expected launch resolution");
+		const { launchConfig } = result;
 		expect(launchConfig).toMatchObject({
 			processId: "forgejo_repo_change_process",
 			startTurnId: "generate_plan",
 			params: {
 				origin: "ui",
-				repoLocator: repository.ssh_url,
+				repoLocator: f.repository.ssh_url,
 				baseBranch: "trunk",
 				forgejoProfile: "team",
 				woodpeckerProfile: "team",
@@ -97,17 +39,11 @@ describe("Forgejo repository-change UI launcher", () => {
 			projects: [
 				{
 					key: "repo",
-					repoLocator: repository.ssh_url,
+					repoLocator: f.repository.ssh_url,
 					baseBranch: "trunk",
 					metadata: {
-						forgejo: { owner: "team", repo: "service" },
-						"leitwerk.gitIdentity": {
-							name: "Leitwerk Bot",
-							email: "leitwerk-bot@noreply.git.example.test",
-							provider: "forgejo",
-							profile: "team",
-							login: "leitwerk-bot",
-						},
+						forgejo: { owner: "examples", repo: "garden" },
+						"leitwerk.gitIdentity": f.identity,
 					},
 				},
 			],
@@ -118,14 +54,16 @@ describe("Forgejo repository-change UI launcher", () => {
 	});
 
 	it("rejects API-visible repositories without SSH write authorization", async () => {
-		const preflight = vi.fn<GitSshIntegration["preflight"]>(async ({ requireWrite }) =>
+		const f = launcherFixture();
+		f.preflight.mockImplementation(async ({ requireWrite }) =>
 			requireWrite
 				? { ok: false, access: "write", detail: "repository key is read-only" }
 				: { ok: true },
 		);
-		configure(preflight);
-		const { input, launchConfig } = await resolveLaunch("Change it");
-		const checks = launcher().preparationChecks?.(input, launchConfig) ?? [];
+		const result = await f.launch();
+		if (!result.ok) throw new Error("expected launch resolution");
+		const { launchConfig } = result;
+		const checks = f.ui.preparationChecks?.({}, launchConfig) ?? [];
 		expect(checks.map((check) => check.id)).toEqual([
 			"repository_visibility",
 			"ssh_read",
@@ -142,26 +80,18 @@ describe("Forgejo repository-change UI launcher", () => {
 		await expect(checks[2]?.run(context)).rejects.toMatchObject({
 			message: "SSH write access failed: repository key is read-only",
 			safeSummary: expect.stringContaining(
-				"Authorize Git SSH profile 'team' for 'team/service' with read/write access",
+				"Authorize Git SSH profile 'team' for 'examples/garden' with read/write access",
 			),
 		});
 		expect(warn).toHaveBeenCalledWith(
 			"Git SSH write preflight failed: repository key is read-only",
 		);
-		expect(preflight).toHaveBeenNthCalledWith(2, expect.objectContaining({ requireWrite: true }));
+		expect(f.preflight).toHaveBeenNthCalledWith(2, expect.objectContaining({ requireWrite: true }));
 	});
 
 	it("rejects a repository that is not returned by Forgejo", async () => {
-		configure();
 		await expect(
-			launcher().resolveLaunchConfig(
-				{
-					forgejoProfile: "team",
-					repository: "team/hidden",
-					prompt: "Change it",
-				},
-				{},
-			),
+			launcherFixture().launch({ repository: "examples/hidden" }),
 		).resolves.toMatchObject({
 			ok: false,
 			errors: [{ fieldId: "repository", code: "custom_rule" }],

@@ -179,6 +179,14 @@ export class LocalForgeStore<
 		this.save();
 		return value;
 	}
+	newComment(body: string) {
+		return {
+			id: this.id(),
+			body,
+			user: { login: "leitwerk-bot" },
+			created_at: this.timestamp(),
+		};
+	}
 	newPullRequest(
 		repo: { repository: { ssh_url: string } },
 		input: { title: string; body: string; head: string; base: string },

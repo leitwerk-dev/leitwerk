@@ -1,14 +1,8 @@
 import type { spawn } from "node:child_process";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	type Codec,
-	defineModelProvider,
-	defineModelProviders,
-	defineProcess,
-	type LeitwerkExtensionModule,
-} from "@leitwerk-dev/process-sdk";
+import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	type MountedUiHarness,
@@ -259,18 +253,7 @@ const launcherUiTestProcess = defineProcess<LauncherUiTestParams, LauncherUiTest
 
 const launcherUiTestExtension: LeitwerkExtensionModule = {
 	manifest: { id: "launcher-ui-test", version: "0.1.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "anthropic",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("anthropic"),
-				models: () => [{ modelId: "claude-fast", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({ id: "anthropic", modelId: "claude-fast" }),
 	setupCatalog(api) {
 		api.registerProcess(launcherUiTestProcess);
 	},

@@ -5,11 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
@@ -19,19 +15,11 @@ import showcaseProcessesExtension from "./index.js";
 
 const filesystemWatcherFixtureProviderExtension = {
 	manifest: { id: "filesystem-watcher-fixture-provider", version: "1.0.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "filesystem-watcher-fixture-provider",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("filesystem-watcher-fixture-provider"),
-				server: builtinPiProvider("filesystem-watcher-fixture-provider"),
-				models: () => [{ modelId: "fixture-model", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({
+		id: "filesystem-watcher-fixture-provider",
+		modelId: "fixture-model",
+		server: true,
+	}),
 };
 
 const extensionCatalog = buildExtensionCatalogFromModules([

@@ -23,6 +23,7 @@ import {
 } from "./process-session-store.js";
 import { ProcessUiSnapshotAssembler } from "./process-ui-snapshot-presenter.js";
 import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
+import { createAcceptedLlmTurn } from "./test-helpers/accepted-turn-start.js";
 import {
 	createStructuralProcessState,
 	createStructuralStateJson,
@@ -113,69 +114,12 @@ function createAcceptedLlmTurnRecord(input: {
 	turnResultMarkdown?: string;
 	errorSummary?: string;
 }) {
-	const lease = harness.ctx.deps.leases.create({
-		instanceId: input.instanceId,
-		workerId: `wkr_${input.id}`,
-		state: input.current ? (input.status === "failed" ? "failed" : "busy") : "exited",
-	});
-	if (!input.current) {
-		harness.ctx.deps.leases.update(lease.id, {
-			exitedAt: input.endedAt ?? input.startedAt,
-		});
-	}
-	const start = harness.ctx.deps.turnStarts.create({
-		id: `tsr_${input.id}`,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.id,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: "fixture-profile",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: "fixture-resource-digest",
-				workerRuntimeProfileId: "local",
-				piSettings: {},
-			},
-			turnRecordId: input.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
-	});
-	const record = harness.ctx.deps.turnRecords.create({
-		id: input.id,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		status: input.status,
-		pathType: "primary",
-		forkPiEntryId: input.forkPiEntryId ?? null,
-		startedAt: input.startedAt,
-		turnStartRecordId: start.id,
-		acceptedWorkerLeaseId: lease.id,
-		...(input.resultPiEntryId !== undefined ? { resultPiEntryId: input.resultPiEntryId } : {}),
-		...(input.endedAt !== undefined ? { endedAt: input.endedAt } : {}),
-		...(input.turnResultMarkdown !== undefined
-			? { turnResultMarkdown: input.turnResultMarkdown }
-			: {}),
-		...(input.errorSummary !== undefined ? { errorSummary: input.errorSummary } : {}),
-	});
-	if (input.current) {
-		harness.ctx.deps.processes.update(input.instanceId, {
-			currentExecution: { kind: "worker_start", id: start.id },
-		});
-	}
-	return record;
+	const { current = false, ...record } = input;
+	return createAcceptedLlmTurn(
+		harness.ctx,
+		{ ...record, turnType: "llm", pathType: "primary", forkPiEntryId: input.forkPiEntryId ?? null },
+		{ current },
+	);
 }
 
 beforeAll(async () => {

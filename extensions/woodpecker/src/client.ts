@@ -67,12 +67,8 @@ export class WoodpeckerClient extends IntegrationHttpClient {
 		});
 	}
 
-	private async json<T>(path: string, init: RequestInit = {}): Promise<T> {
-		return (await (await this.response(path, init)).json()) as T;
-	}
-
 	lookupRepository(fullName: string, signal?: AbortSignal): Promise<WoodpeckerRepository> {
-		return this.json(`/repos/lookup/${encodeURIComponent(fullName)}`, {
+		return this.request(`/repos/lookup/${encodeURIComponent(fullName)}`, {
 			signal,
 		});
 	}
@@ -91,13 +87,13 @@ export class WoodpeckerClient extends IntegrationHttpClient {
 			perPage > 100
 		)
 			throw new Error("Invalid Woodpecker pipeline pagination");
-		return this.json(`/repos/${repoId}/pipelines?page=${page}&perPage=${perPage}`, {
+		return this.request(`/repos/${repoId}/pipelines?page=${page}&perPage=${perPage}`, {
 			signal,
 		});
 	}
 
 	getPipeline(repoId: number, number: number, signal?: AbortSignal): Promise<WoodpeckerPipeline> {
-		return this.json(`/repos/${repoId}/pipelines/${number}`, { signal });
+		return this.request(`/repos/${repoId}/pipelines/${number}`, { signal });
 	}
 
 	async getStepLogs(
@@ -138,7 +134,7 @@ export class WoodpeckerClient extends IntegrationHttpClient {
 		number: number,
 		signal?: AbortSignal,
 	): Promise<WoodpeckerPipeline> {
-		return this.json(`/repos/${repoId}/pipelines/${number}`, {
+		return this.request(`/repos/${repoId}/pipelines/${number}`, {
 			method: "POST",
 			signal,
 		});

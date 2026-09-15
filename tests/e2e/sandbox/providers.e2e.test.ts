@@ -1,14 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { expect, test } from "vitest";
-import providerComposition from "../../../sandbox/provider-composition.js";
-import { fixture } from "./fixture.js";
+import { expect } from "vitest";
+import { test } from "./forgejo-fixture.js";
 
 test("public providers compose with ticket approvals, lost-response reconciliation and restart", async ({
-	onTestFinished,
+	f,
 }) => {
-	const f = await fixture(onTestFinished, providerComposition);
 	const modules = f.context.extensionCatalog.modules.map((m) => m.module.manifest.id);
 	for (const id of ["forgejo", "github", "woodpecker"])
 		expect(modules.filter((m) => m === id)).toHaveLength(1);

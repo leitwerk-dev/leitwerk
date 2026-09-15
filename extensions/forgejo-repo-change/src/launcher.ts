@@ -1,7 +1,5 @@
-import {
-	buildAutoWorkBranchFromSeed,
-	generateAutoWorkBranchRandomHex,
-} from "@leitwerk-dev/coding/auto-work-branch";
+import { buildAutoWorkBranchFromSeed } from "@leitwerk-dev/coding/auto-work-branch";
+import { trimString } from "@leitwerk-dev/domain";
 import type {
 	ForgejoGitIdentity,
 	ForgejoIntegration,
@@ -16,10 +14,74 @@ import {
 	SafeLaunchPreparationError,
 } from "@leitwerk-dev/process-sdk";
 import type { WoodpeckerIntegration } from "@leitwerk-dev/woodpecker";
-import type { ForgejoRepoChangeParams } from "./params.js";
+import { type ForgejoRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
 
 export const forgejoRepoChangeUiLauncherId = "forgejo_repo_change_process.ui_launcher" as const;
+
+export function forgejoRepoChangeParams(
+	repository: ForgejoRepository,
+	input: {
+		profile: string;
+		woodpeckerProfile: string;
+		sshCredentialRef: string;
+		prompt: string;
+		workBranch: string;
+	},
+): ForgejoRepoChangeParams {
+	return {
+		launchKind: "requested_change",
+		repoLocator: repository.ssh_url,
+		baseBranch: repository.default_branch,
+		workBranch: input.workBranch,
+		prompt: input.prompt,
+		forgejoProfile: input.profile,
+		woodpeckerProfile: input.woodpeckerProfile,
+		sshCredentialRef: input.sshCredentialRef,
+		owner: repository.owner.login,
+		repo: repository.name,
+		origin: "ui",
+		issueNumber: null,
+		issueUrl: null,
+		triggerLabel: null,
+		doneLabel: null,
+	};
+}
+
+export function forgejoRepoChangeLaunchConfig(
+	params: ForgejoRepoChangeParams,
+	title: string,
+	gitIdentity: ForgejoGitIdentity,
+): ProcessLaunchConfig<ForgejoRepoChangeParams> {
+	const { owner, repo, forgejoProfile: profile, woodpeckerProfile } = params;
+	const issue = isIssueOrigin(params);
+	return {
+		processId: "forgejo_repo_change_process",
+		params,
+		title,
+		startTurnId: "generate_plan",
+		...(issue
+			? {
+					externalId: `forgejo:${owner}/${repo}#${params.issueNumber}`,
+					externalUrl: params.issueUrl,
+				}
+			: {}),
+		projects: [
+			{
+				key: "repo",
+				repoLocator: params.repoLocator,
+				baseBranch: params.baseBranch,
+				workBranch: params.workBranch,
+				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
+				metadata: {
+					forgejo: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
+					woodpecker: { owner, repo, profile: woodpeckerProfile },
+					"leitwerk.gitIdentity": gitIdentity,
+				},
+			},
+		],
+	};
+}
 
 export interface LauncherDependencies {
 	forgejo: ForgejoIntegration;
@@ -93,10 +155,6 @@ export function createForgejoRepoChangeLauncher() {
 			sshPreparationCheck("read", params),
 			sshPreparationCheck("write", params),
 		];
-	}
-
-	function text(input: Record<string, unknown>, name: string): string {
-		return typeof input[name] === "string" ? input[name].trim() : "";
 	}
 
 	function validationError(
@@ -180,7 +238,7 @@ export function createForgejoRepoChangeLauncher() {
 			},
 			async resolveOptions(input) {
 				const { forgejo } = requireDependencies();
-				const profile = text(input, "forgejoProfile");
+				const profile = trimString(input.forgejoProfile);
 				return {
 					forgejoProfile: forgejo.profiles().map((value) => ({ value, label: value })),
 					repository: (await repositories(profile)).map((repository) => ({
@@ -193,16 +251,20 @@ export function createForgejoRepoChangeLauncher() {
 			preparationChecks: forgejoRepositoryPreparationChecks,
 			resolveRelaunchInput(previousInput) {
 				return {
-					forgejoProfile: text(previousInput, "forgejoProfile"),
-					repository: text(previousInput, "repository"),
-					prompt: text(previousInput, "prompt"),
+					forgejoProfile: trimString(previousInput.forgejoProfile),
+					repository: trimString(previousInput.repository),
+					prompt: trimString(previousInput.prompt),
 				};
 			},
 			async resolveLaunchConfig(input) {
-				const profile = text(input, "forgejoProfile");
-				const repositoryName = text(input, "repository");
-				const prompt = text(input, "prompt");
+				const profile = trimString(input.forgejoProfile);
+				const repositoryName = trimString(input.repository);
+				const prompt = trimString(input.prompt);
 				const errors: LauncherValidationError[] = [];
+				const invalid = (fieldId: string, message: string) => ({
+					ok: false as const,
+					errors: [validationError(fieldId, message, "custom_rule")],
+				});
 				const { forgejo } = requireDependencies();
 				if (!profile) errors.push(validationError("forgejoProfile", "Forgejo profile is required"));
 				else if (!forgejo.profiles().includes(profile))
@@ -216,74 +278,32 @@ export function createForgejoRepoChangeLauncher() {
 				const repository = (await repositories(profile)).find(
 					(candidate) => candidate.full_name === repositoryName,
 				);
-				if (!repository) {
-					return {
-						ok: false,
-						errors: [
-							validationError(
-								"repository",
-								"Repository is not available to the selected Forgejo profile",
-								"custom_rule",
-							),
-						],
-					};
-				}
+				if (!repository)
+					return invalid(
+						"repository",
+						"Repository is not available to the selected Forgejo profile",
+					);
 
-				const owner = repository.owner.login;
-				const repo = repository.name;
 				let binding: ReturnType<typeof resolveProfiles>;
 				try {
 					binding = resolveProfiles(profile);
 				} catch (error) {
-					return {
-						ok: false,
-						errors: [validationError("forgejoProfile", (error as Error).message, "custom_rule")],
-					};
+					return invalid("forgejoProfile", (error as Error).message);
 				}
 				const gitIdentity = await resolveForgejoGitIdentity(profile);
 				const workBranch = buildAutoWorkBranchFromSeed(
 					prompt,
 					`${repository.ssh_url}:${repository.default_branch}`,
-					generateAutoWorkBranchRandomHex(),
 				);
-				const params: ForgejoRepoChangeParams = {
-					launchKind: "requested_change",
-					repoLocator: repository.ssh_url,
-					baseBranch: repository.default_branch,
-					workBranch,
+				const params = forgejoRepoChangeParams(repository, {
+					...binding,
+					profile,
 					prompt,
-					forgejoProfile: profile,
-					woodpeckerProfile: binding.woodpeckerProfile,
-					sshCredentialRef: binding.sshCredentialRef,
-					owner,
-					repo,
-					origin: "ui",
-					issueNumber: null,
-					issueUrl: null,
-					triggerLabel: null,
-					doneLabel: null,
-				};
+					workBranch,
+				});
 				return {
 					ok: true,
-					launchConfig: {
-						processId: "forgejo_repo_change_process",
-						params,
-						startTurnId: "generate_plan",
-						title: prompt,
-						projects: [
-							{
-								key: "repo",
-								repoLocator: repository.ssh_url,
-								baseBranch: repository.default_branch,
-								workBranch,
-								metadata: {
-									forgejo: { owner, repo, profile },
-									woodpecker: { owner, repo, profile: binding.woodpeckerProfile },
-									"leitwerk.gitIdentity": gitIdentity,
-								},
-							},
-						],
-					},
+					launchConfig: forgejoRepoChangeLaunchConfig(params, prompt, gitIdentity),
 				};
 			},
 		},
@@ -297,10 +317,3 @@ export function createForgejoRepoChangeLauncher() {
 		launcher: forgejoRepoChangeUiLauncher,
 	};
 }
-
-export const defaultForgejoRepoChangeLauncher = createForgejoRepoChangeLauncher();
-export const configureForgejoRepoChangeLauncher = defaultForgejoRepoChangeLauncher.configure;
-export const forgejoRepositoryPreparationChecks =
-	defaultForgejoRepoChangeLauncher.preparationChecks;
-export const resolveForgejoGitIdentity = defaultForgejoRepoChangeLauncher.resolveGitIdentity;
-export const forgejoRepoChangeUiLauncher = defaultForgejoRepoChangeLauncher.launcher;

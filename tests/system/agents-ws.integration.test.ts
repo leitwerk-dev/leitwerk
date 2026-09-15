@@ -1,12 +1,8 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
 import { WS_PRIMARY_PATH_TYPES, WS_PROTOCOL_VERSION } from "@leitwerk-dev/protocol";
 import type { AppContext, WsFrame } from "@leitwerk-dev/server";
 import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -15,19 +11,7 @@ let address: string;
 
 const websocketFixtureProviderExtension = {
 	manifest: { id: "websocket-fixture-provider", version: "1.0.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "openai",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("openai"),
-				server: builtinPiProvider("openai"),
-				models: () => [{ modelId: "gpt-5", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({ id: "openai", modelId: "gpt-5", server: true }),
 };
 
 function wsUrl(): string {

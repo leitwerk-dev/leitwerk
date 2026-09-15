@@ -3,7 +3,12 @@ import path from "node:path";
 import type { LocalForgejoState } from "@leitwerk-dev/forgejo/testing";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import type { LocalWoodpeckerState } from "@leitwerk-dev/woodpecker/testing";
-import type { Fixture } from "./fixture.js";
+import providerComposition from "../../../sandbox/provider-composition.js";
+import { test as baseTest, type Fixture, fixture } from "./fixture.js";
+
+export const test = baseTest.extend<{ f: Fixture }>({
+	f: async ({ onTestFinished }, use) => use(await fixture(onTestFinished, providerComposition)),
+});
 
 export const providers = (f: Fixture) => ({
 	forgejo: JSON.parse(readFileSync(path.join(f.root, "forgejo.json"), "utf8")) as LocalForgejoState,

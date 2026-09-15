@@ -12,10 +12,7 @@ export interface LocalForgejoRepository {
 	repository: ForgejoRepository;
 	issues: ForgejoIssue[];
 	pulls: ForgejoPullRequest[];
-	comments: Record<
-		string,
-		Array<{ id: number; body: string; user: { login: string }; created_at: string }>
-	>;
+	comments: Record<string, Array<ReturnType<LocalForgejoAdapter["newComment"]>>>;
 	feedback: Record<string, ForgejoFeedbackItem[]>;
 	labels: ForgejoLabel[];
 	reactions?: Array<{ id: number; feedbackId: number; kind: string; content: string }>;
@@ -92,12 +89,7 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 		return value;
 	};
 	const comment = async (owner: string, name: string, number: number, body: string) => {
-		const value = {
-			id: store.id(),
-			body,
-			user: { login: "leitwerk-bot" },
-			created_at: store.timestamp(),
-		};
+		const value = store.newComment(body);
 		repo(owner, name).comments[number] ??= [];
 		repo(owner, name).comments[number].push(value);
 		store.save();

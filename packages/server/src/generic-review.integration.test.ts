@@ -10,6 +10,7 @@ import {
 	llmTurn,
 	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createTestApp,
 	type TestApp,
@@ -17,7 +18,6 @@ import {
 } from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { fixtureModelProviders } from "./test-helpers/model-provider-fixtures.js";
 
 function createLlmTurn<TOutcome extends string>(
 	id: string,

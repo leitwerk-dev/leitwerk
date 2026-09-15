@@ -1,11 +1,7 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
 import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -16,18 +12,11 @@ const testExtensionCatalog = buildExtensionCatalogFromModules([
 	showcaseProcessesExtension,
 	{
 		manifest: { id: "agents-http-fixture-provider", version: "1.0.0" },
-		modelProviders: defineModelProviders((rawConfig) => [
-			{
-				definition: defineModelProvider({
-					id: "fixture",
-					parseConfig: () => ({ config: {} }),
-					worker: builtinPiProvider("openai"),
-					models: () => [{ modelId: "fixture-model", availability: "available" }],
-					secrets: () => ({}),
-				}),
-				rawConfig,
-			},
-		]),
+		modelProviders: fixtureModelProviders({
+			id: "fixture",
+			modelId: "fixture-model",
+			piProvider: "openai",
+		}),
 	},
 ]);
 

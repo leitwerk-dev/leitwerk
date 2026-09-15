@@ -111,6 +111,8 @@ composition. Its package tests use synthetic catalogs to preserve core/extension
 boundaries. Built-in notebook scenarios and their end-to-end tests live in
 `sandbox/` and `tests/e2e/sandbox/`. The sandbox TypeScript project also includes its
 source CLI and workflow fixtures in the full gate.
+`createProcessDriver` from `@leitwerk-dev/test-support/integration` shares HTTP actions and process waits; its context callback follows app restarts.
+`createPollingTestExtension` from `@leitwerk-dev/test-support` wraps provider setup as an extension with a typed `poll()` method for fixtures and sandbox compositions.
 
 Run `npm run dev:sandbox` for source UI verification. The public composition uses
 real local Git history and normal process finalization. It retains Pi traces and

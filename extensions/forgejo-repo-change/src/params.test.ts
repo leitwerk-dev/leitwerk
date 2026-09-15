@@ -25,6 +25,10 @@ describe("Forgejo repository-change params", () => {
 		});
 		expect(parsed).toMatchObject({ origin: "issue", issueNumber: 42 });
 		expect(isIssueOrigin(parsed)).toBe(true);
+		for (const field of ["forgejoProfile", "doneLabel"])
+			expect(() => forgejoRepoChangeParamsCodec.parse({ ...parsed, [field]: " " })).toThrow(
+				`Forgejo Repo Change requires ${field}`,
+			);
 	});
 
 	it("round-trips a UI launch without issue metadata", () => {

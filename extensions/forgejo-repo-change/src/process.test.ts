@@ -1,11 +1,7 @@
 import { forgejoIssueWatcherSource } from "@leitwerk-dev/forgejo";
-import type { ProcessWatcherDefinition } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
-import {
-	configureForgejoRepoChangeLauncher,
-	forgejoRepositoryPreparationChecks,
-} from "./launcher.js";
-import { forgejoRepoChangeProcess } from "./process.js";
+import { forgejoRepoChangeProcess } from "./index.js";
+import { launcherFixture } from "./testing/launcher-fixture.js";
 
 describe("forgejoRepoChangeProcess", () => {
 	it("declares Docker independently of the selected runner", () => {
@@ -55,31 +51,8 @@ describe("forgejoRepoChangeProcess", () => {
 	});
 
 	it("launches against the issue repository default branch with stable project metadata", async () => {
-		configureForgejoRepoChangeLauncher({
-			forgejo: {
-				profiles: () => ["team"],
-				client: () =>
-					({
-						resolveGitIdentity: async () => ({
-							name: "Leitwerk Bot",
-							email: "leitwerk-bot@noreply.forgejo.example",
-							provider: "forgejo",
-							profile: "team",
-							login: "leitwerk-bot",
-						}),
-					}) as never,
-			},
-			woodpecker: { client: () => ({}) as never },
-			gitSsh: { profiles: () => ["team"], preflight: async () => ({ ok: true }) },
-		});
-		let watcher: ProcessWatcherDefinition | undefined;
-		forgejoRepoChangeProcess.watchers?.({
-			watcher(definition) {
-				watcher = definition as ProcessWatcherDefinition;
-			},
-		});
-		expect(watcher?.source).toBe(forgejoIssueWatcherSource);
-		if (!watcher) throw new Error("expected Forgejo watcher");
+		const { watcher, ui, identity } = launcherFixture();
+		expect(watcher.source).toBe(forgejoIssueWatcherSource);
 
 		const event = {
 			profile: "team",
@@ -117,19 +90,12 @@ describe("forgejoRepoChangeProcess", () => {
 					workBranch: "leitwerk/issue-42",
 					metadata: {
 						forgejo: { owner: "team", repo: "service", issueNumber: 42 },
-						"leitwerk.gitIdentity": {
-							name: "Leitwerk Bot",
-							email: "leitwerk-bot@noreply.forgejo.example",
-							provider: "forgejo",
-							profile: "team",
-							login: "leitwerk-bot",
-						},
+						"leitwerk.gitIdentity": identity,
 					},
 				},
 			],
 		});
-		expect(watcher.preparationChecks).toBe(forgejoRepositoryPreparationChecks);
-		configureForgejoRepoChangeLauncher(null);
+		expect(watcher.preparationChecks).toBe(ui.preparationChecks);
 	});
 });
 

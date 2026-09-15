@@ -1,11 +1,6 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import {
-	builtinPiProvider,
-	defineModelProvider,
-	defineModelProviders,
-} from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
-import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
+import { fixtureModelProviders, postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
@@ -16,19 +11,11 @@ import singlePromptExtension from "./index.js";
 
 const poemSnapshotFixtureProviderExtension = {
 	manifest: { id: "poem-snapshot-fixture-provider", version: "1.0.0" },
-	modelProviders: defineModelProviders((rawConfig) => [
-		{
-			definition: defineModelProvider({
-				id: "poem-snapshot-fixture-provider",
-				parseConfig: () => ({ config: {} }),
-				worker: builtinPiProvider("poem-snapshot-fixture-provider"),
-				server: builtinPiProvider("poem-snapshot-fixture-provider"),
-				models: () => [{ modelId: "fixture-model", availability: "available" }],
-				secrets: () => ({}),
-			}),
-			rawConfig,
-		},
-	]),
+	modelProviders: fixtureModelProviders({
+		id: "poem-snapshot-fixture-provider",
+		modelId: "fixture-model",
+		server: true,
+	}),
 };
 
 const extensionCatalog = buildExtensionCatalogFromModules([

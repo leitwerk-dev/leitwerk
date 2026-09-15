@@ -8,6 +8,7 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { setupGitHubIntegration } from "@leitwerk-dev/github";
 import { LocalGitHubAdapter } from "@leitwerk-dev/github/testing";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import { createPollingTestExtension } from "@leitwerk-dev/test-support";
 import {
 	type LocalRepositorySeed,
 	readLocalJson,
@@ -70,22 +71,33 @@ export function createProviderComposition(seeds = defaultSeeds): SandboxComposit
 		};
 		workflow.process.repositoryCredentials = () => [];
 		const controls = providerControls(forgejo, woodpecker, poll);
-		const polls: Array<() => Promise<unknown>> = [];
-		const remember = (provider: { poll(): Promise<unknown> } | undefined) => {
-			if (!provider) throw new Error("Local providers require server setup");
-			polls.push(() => provider.poll());
-		};
 		const client =
 			<T>(value: T) =>
 			(profile: string): T => {
 				if (profile !== "local") throw new Error("Unknown local provider profile");
 				return value;
 			};
+		const providers = [
+			createPollingTestExtension({ id: "forgejo", version: "0.1.9" }, (api) =>
+				setupForgejoIntegration(
+					api,
+					{ profiles: () => ["local"], client: client(forgejo.client()) },
+					undefined,
+					pollingOptions,
+				),
+			),
+			createPollingTestExtension({ id: "github", version: "0.1.9" }, (api) =>
+				setupGitHubIntegration(api, { client: client(github.client()) }, pollingOptions),
+			),
+			createPollingTestExtension({ id: "woodpecker", version: "0.1.9" }, (api) =>
+				setupWoodpeckerIntegration(api, { client: client(woodpecker.client()) }, pollingOptions),
+			),
+		];
 		async function poll() {
 			clock.now = Math.max(clock.now, Date.now()) + 60_000;
 			writeLocalJson(input.paths.directory, "providers-clock.json", clock);
 			const results = [];
-			for (const poll of polls) results.push(await poll());
+			for (const provider of providers) results.push(await provider.poll());
 			return results;
 		}
 		const modules: LeitwerkExtensionModule[] = [
@@ -96,42 +108,7 @@ export function createProviderComposition(seeds = defaultSeeds): SandboxComposit
 				},
 			},
 			workflow.extension,
-			{
-				manifest: { id: "forgejo", version: "0.1.9" },
-				setupServer: (api) => {
-					remember(
-						setupForgejoIntegration(
-							api,
-							{
-								profiles: () => ["local"],
-								client: client(forgejo.client()),
-							},
-							undefined,
-							pollingOptions,
-						),
-					);
-				},
-			},
-			{
-				manifest: { id: "github", version: "0.1.9" },
-				setupServer: (api) => {
-					remember(
-						setupGitHubIntegration(api, { client: client(github.client()) }, pollingOptions),
-					);
-				},
-			},
-			{
-				manifest: { id: "woodpecker", version: "0.1.9" },
-				setupServer: (api) => {
-					remember(
-						setupWoodpeckerIntegration(
-							api,
-							{ client: client(woodpecker.client()) },
-							pollingOptions,
-						),
-					);
-				},
-			},
+			...providers,
 		];
 		return {
 			...notebook,

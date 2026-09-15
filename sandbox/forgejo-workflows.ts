@@ -2,7 +2,11 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SandboxScenario } from "@leitwerk-dev/dev-sandbox";
 import type { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
-import type { ForgejoRepoChangeParams } from "@leitwerk-dev/forgejo-repo-change";
+import {
+	type ForgejoRepoChangeParams,
+	forgejoRepoChangeLaunchConfig,
+	forgejoRepoChangeParams,
+} from "@leitwerk-dev/forgejo-repo-change";
 import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { AppContext } from "@leitwerk-dev/server";
 import { localPath } from "@leitwerk-dev/test-support/local-git";
@@ -32,46 +36,20 @@ export function forgejoScenarios(
 				(r) => r.repository.full_name === repository,
 			)?.repository;
 			if (!r) throw new Error("Missing seeded workflow repository");
-			const binding = { owner: r.owner.login, repo: r.name, profile: "local" };
-			return {
-				processId: "forgejo_repo_change_process",
-				params: {
-					launchKind: "requested_change",
-					repoLocator: r.ssh_url,
-					baseBranch: r.default_branch,
-					workBranch,
-					prompt: "Document the weekly garden review in notes.txt.",
-					forgejoProfile: "local",
-					woodpeckerProfile: "local",
-					sshCredentialRef: "local",
-					owner: r.owner.login,
-					repo: r.name,
-					origin: "ui",
-					issueNumber: null,
-					issueUrl: null,
-					triggerLabel: null,
-					doneLabel: null,
-				},
-				projects: [
-					{
-						key: "repo",
-						repoLocator: r.ssh_url,
-						baseBranch: r.default_branch,
-						workBranch,
-						metadata: {
-							forgejo: binding,
-							woodpecker: binding,
-							"leitwerk.gitIdentity": {
-								provider: "forgejo",
-								profile: "local",
-								login: "leitwerk-bot",
-								name: "Sandbox Developer",
-								email: "developer@sandbox.invalid",
-							},
-						},
-					},
-				],
-			};
+			const params = forgejoRepoChangeParams(r, {
+				workBranch,
+				prompt: "Document the weekly garden review in notes.txt.",
+				profile: "local",
+				woodpeckerProfile: "local",
+				sshCredentialRef: "local",
+			});
+			return forgejoRepoChangeLaunchConfig(params, `Local: ${name}`, {
+				provider: "forgejo",
+				profile: "local",
+				login: "leitwerk-bot",
+				name: "Sandbox Developer",
+				email: "developer@sandbox.invalid",
+			});
 		},
 	}));
 }

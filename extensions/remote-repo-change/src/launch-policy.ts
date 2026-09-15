@@ -1,7 +1,4 @@
-import {
-	buildAutoWorkBranchFromSeed,
-	generateAutoWorkBranchRandomHex,
-} from "@leitwerk-dev/coding/auto-work-branch";
+import { buildAutoWorkBranchFromSeed } from "@leitwerk-dev/coding/auto-work-branch";
 import {
 	createRepositoryChangeLaunchPlanner,
 	type RepositoryChangeLaunchPlannerInput,
@@ -75,7 +72,6 @@ export const remoteRepoChangeLaunchPlanner: RemoteRepoChangeLaunchPlanner =
 						workBranch: buildAutoWorkBranchFromSeed(
 							params.prompt,
 							`${params.repoLocator}:${params.baseBranch}`,
-							generateAutoWorkBranchRandomHex(),
 						),
 					},
 	}) satisfies RemoteRepoChangeLaunchPlanner;

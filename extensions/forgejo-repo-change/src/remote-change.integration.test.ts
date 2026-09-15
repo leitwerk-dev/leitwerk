@@ -30,14 +30,15 @@ function assertCompletedRemoteChange(fixture: RemoteRepoChangeFixture, process: 
 	expect(
 		comments.filter(
 			(comment) =>
-				comment === `Merged ${constants.prUrl} at 0123456789abcdef0123456789abcdef01234567.`,
+				comment ===
+				`Merged ${constants.prUrl} at ${fixture.forgejo.pullRequest().merge_commit_sha}.`,
 		),
 	).toHaveLength(1);
 	expect(fixture.forgejo.calls.filter((call) => call.method === "createLabel")).toHaveLength(1);
 	expect(fixture.forgejo.calls.filter((call) => call.method === "createPullRequest")).toHaveLength(
 		1,
 	);
-	expect(fixture.forgejo.pullRequests.size).toBe(1);
+	expect(fixture.forgejo.pullRequests).toHaveLength(1);
 	expect(processInstances(fixture)).toHaveLength(1);
 }
 
@@ -106,50 +107,51 @@ describe("Forgejo repository-change composed integration", () => {
 		fixture = null;
 	});
 
-	it("launches from the UI and completes a pull request without a source issue", async () => {
-		const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});
-		fixture = await createRemoteRepoChangeFixture(dockerPreflight);
-		const instanceId = await fixture.launchTicketlessChange("Update the service image");
-		const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
-		// Admission and actual in-process worker startup both reach the simulated Docker boundary.
-		expect(dockerPreflight.mock.calls.length).toBeGreaterThanOrEqual(2);
-		expect(dockerPreflight.mock.calls.every(([timeoutMs]) => timeoutMs > 0)).toBe(true);
-		const params = JSON.parse(planDecision.paramsJson ?? "{}") as Record<string, unknown>;
-		expect(planDecision).toMatchObject({ externalId: null, externalUrl: null });
-		expect(params).toMatchObject({
-			origin: "ui",
-			issueNumber: null,
-			issueUrl: null,
-			baseBranch: "main",
-			prompt: "Update the service image",
-		});
-		expect(String(params.workBranch)).toMatch(
-			/^update-the-service-image-[0-9a-f]{3}-[0-9a-f]{12}$/,
-		);
+	it.each([
+		["markPullRequestMerged", "completed"],
+		["markPullRequestClosed", "aborted"],
+	] as const)(
+		"reconciles a UI pull request via %s without a source issue",
+		async (terminal, lifecycleStatus) => {
+			const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});
+			fixture = await createRemoteRepoChangeFixture(dockerPreflight);
+			const instanceId = await fixture.launchTicketlessChange("Update the service image");
+			const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
+			// Admission and actual in-process worker startup both reach the simulated Docker boundary.
+			expect(dockerPreflight.mock.calls.length).toBeGreaterThanOrEqual(2);
+			expect(dockerPreflight.mock.calls.every(([timeoutMs]) => timeoutMs > 0)).toBe(true);
+			const params = JSON.parse(planDecision.paramsJson ?? "{}") as Record<string, unknown>;
+			expect(planDecision).toMatchObject({ externalId: null, externalUrl: null });
+			expect(params).toMatchObject({
+				origin: "ui",
+				issueNumber: null,
+				issueUrl: null,
+				baseBranch: "main",
+				prompt: "Update the service image",
+			});
+			expect(String(params.workBranch)).toMatch(
+				/^update-the-service-image-[0-9a-f]{3}-[0-9a-f]{12}$/,
+			);
 
-		await fixture.approvePlan(instanceId);
-		await fixture.approveImplementation(instanceId);
-		await fixture.waitForTurn(instanceId, "deliver_change");
-		expect(fixture.forgejo.pullRequest()).toMatchObject({
-			head: { ref: params.workBranch },
-			base: { ref: "main" },
-		});
-		expect(fixture.forgejo.comments()).toEqual([]);
-		expect(
-			fixture.forgejo.calls.filter((call) =>
-				["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
-			),
-		).toEqual([]);
-
-		await fixture.markPullRequestMerged();
-		const completed = await fixture.waitForCompleted(instanceId);
-		expect(completed).toMatchObject({
-			lifecycleStatus: "completed",
-			selectedTurnId: null,
-		});
-		expect(fixture.forgejo.comments()).toEqual([]);
-		expect(fixture.forgejo.issues.size).toBe(0);
-	}, 15_000);
+			await fixture.approvePlan(instanceId);
+			await fixture.approveImplementation(instanceId);
+			await fixture.waitForTurn(instanceId, "deliver_change");
+			expect(fixture.forgejo.pullRequest()).toMatchObject({
+				head: { ref: params.workBranch },
+				base: { ref: "main" },
+			});
+			await fixture[terminal]();
+			await fixture.waitForTurn(instanceId, null, lifecycleStatus);
+			expect(
+				fixture.forgejo.calls.filter((call) =>
+					["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
+				),
+			).toEqual([]);
+			expect(fixture.forgejo.comments()).toEqual([]);
+			expect(fixture.forgejo.issues).toHaveLength(0);
+		},
+		15_000,
+	);
 
 	it("launches without Docker and publishes with a non-default pinned bot identity", async () => {
 		const preflight = vi.fn(async () => {
@@ -180,25 +182,6 @@ describe("Forgejo repository-change composed integration", () => {
 		);
 		expect(processInstances(fixture)).toEqual([]);
 		expect(fixture.piTurns).toEqual([]);
-	}, 15_000);
-
-	it("aborts a UI launch on a closed pull request without mutating an issue", async () => {
-		fixture = await createRemoteRepoChangeFixture();
-		const instanceId = await fixture.launchTicketlessChange("Update the service image");
-		await fixture.approvePlan(instanceId);
-		await fixture.approveImplementation(instanceId);
-		await fixture.waitForTurn(instanceId, "deliver_change");
-
-		await fixture.markPullRequestClosed();
-		const aborted = await fixture.waitForAborted(instanceId);
-		expect(aborted).toMatchObject({ lifecycleStatus: "aborted", selectedTurnId: null });
-		expect(fixture.forgejo.comments()).toEqual([]);
-		expect(fixture.forgejo.issues.size).toBe(0);
-		expect(
-			fixture.forgejo.calls.filter((call) =>
-				["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
-			),
-		).toEqual([]);
 	}, 15_000);
 
 	it("completes a labeled Forgejo issue after PR merge without reacting to successful CI", async () => {
@@ -242,7 +225,7 @@ describe("Forgejo repository-change composed integration", () => {
 			branch: constants.workBranch,
 			commit: head1,
 			workflows: [{ id: 10, status: "failure" }],
-			stepLogs: new Map([[10, "manifest validation failed: readinessProbe is required"]]),
+			logs: "manifest validation failed: readinessProbe is required",
 		});
 		const head2 = await fixture.waitForHeadChange(instanceId, head1);
 		await fixture.waitForTurn(instanceId, "deliver_change");
@@ -256,7 +239,7 @@ describe("Forgejo repository-change composed integration", () => {
 			number: 7,
 			head: { ref: constants.workBranch, sha: head2 },
 		});
-		expect(fixture.forgejo.pullRequests.size).toBe(1);
+		expect(fixture.forgejo.pullRequests).toHaveLength(1);
 
 		const repairTurn = fixture.piTurns.find((turn) => turn.kind === "ci-repair");
 		expect(repairTurn).toBeDefined();
@@ -276,7 +259,7 @@ describe("Forgejo repository-change composed integration", () => {
 		expect(logReadIndex).toBeGreaterThan(pipelineReadIndex);
 		expect(calls[logReadIndex]).toEqual({
 			method: "getStepLogs",
-			args: [99, 1, 10, 100, 16_384],
+			args: [99, 1, 10, 100, 16_384, expect.any(AbortSignal)],
 		});
 		expect(calls.filter((call) => call.method === "restartPipeline")).toEqual([]);
 		expect(
