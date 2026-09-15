@@ -163,10 +163,8 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 	async ensurePersistentVolumeClaim(
 		manifest: KubernetesPersistentVolumeClaimManifest,
 	): Promise<void> {
-		this.pvcs.set(
-			key(manifest.metadata.namespace, manifest.metadata.name),
-			structuredClone(manifest),
-		);
+		const pvcKey = key(manifest.metadata.namespace, manifest.metadata.name);
+		if (!this.pvcs.has(pvcKey)) this.pvcs.set(pvcKey, structuredClone(manifest));
 	}
 
 	async deletePersistentVolumeClaim(name: string, namespace: string): Promise<void> {

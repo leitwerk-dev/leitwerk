@@ -143,10 +143,13 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			const manifest = buildKubernetesProcessPvcManifest({
 				instanceId,
 				namespace: namespaceManifest.metadata.name,
-				volume:
-					requirements?.docker && options.docker
-						? { ...options.volume, storageClassName: options.docker.processStorageClassName }
-						: options.volume,
+				volume: {
+					...options.volume,
+					size: requirements?.size ?? options.volume.size,
+					...(requirements?.docker && options.docker
+						? { storageClassName: options.docker.processStorageClassName }
+						: {}),
+				},
 			});
 			await Promise.all([
 				...copySecrets,

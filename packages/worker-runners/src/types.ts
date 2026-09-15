@@ -35,6 +35,8 @@ export interface VolumeRef {
 }
 
 export interface ProcessVolumeRequirements {
+	/** New Kubernetes PVC capacity. Existing volumes are unchanged; other runners ignore it. */
+	size?: string;
 	/** Select storage compatible with a private Docker daemon. */
 	docker?: boolean;
 }
