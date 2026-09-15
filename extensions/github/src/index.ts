@@ -41,3 +41,5 @@ export function setupGitHubIntegration(
 }
 
 export * from "./binding.js";
+
+export * from "./issue-watcher.js";

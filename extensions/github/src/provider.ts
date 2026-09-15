@@ -1,8 +1,5 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
-import {
-	type CoreServerSetupDeps,
-	createExternalSourcePollReporter,
-} from "@leitwerk-dev/process-sdk";
+import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import {
 	conflictEvidence,
 	createConflictReporter,
@@ -16,6 +13,8 @@ import {
 	GITHUB_RELEASE_KIND,
 	type GitHubPullRequestSourceConfig,
 } from "./external.js";
+import { createGitHubIssuePolling } from "./issue-provider.js";
+import { githubPollReporter } from "./poll-report.js";
 
 function parse(value: unknown): GitHubPullRequestSourceConfig | null {
 	const config = asUnknownRecord(value) ?? {};
@@ -56,6 +55,7 @@ export function createGitHubProvider(
 	options: { now?: () => number } = {},
 ) {
 	const due = createPollSchedule();
+	const pollIssues = createGitHubIssuePolling(deps, integration, options);
 	const reportConflict = createConflictReporter(deps.externalSources, GITHUB_PR_STATE_KIND);
 	return deps.polling.create({
 		id: "github",
@@ -64,7 +64,8 @@ export function createGitHubProvider(
 		defaultIntervalMs: 5_000,
 		async pollOnce() {
 			const result = emptyPollResult();
-			const report = createExternalSourcePollReporter(deps.externalSources, result);
+			const report = githubPollReporter(deps.externalSources, result);
+			await pollIssues(result);
 			await report.poll(GITHUB_PR_STATE_KIND, async (armed) => {
 				const config = parse(armed.resolved);
 				if (!config) {
@@ -105,11 +106,16 @@ export function createGitHubProvider(
 						};
 						mergeKey = `terminal:${pr.number}:${pr.merged}`;
 					} else {
+						if (pr.head.sha !== config.headSha) return;
 						const readsFeedback = !config.eventKinds || config.eventKinds.includes("feedback");
 						const readsChecks = !config.eventKinds || config.eventKinds.includes("checks");
 						const [feedback, checks] = await Promise.all([
 							readsFeedback
-								? client.listPullRequestFeedback(config.owner, config.repo, config.prNumber)
+								? client.listActionablePullRequestFeedback(
+										config.owner,
+										config.repo,
+										config.prNumber,
+									)
 								: Promise.resolve([]),
 							readsChecks || (deps.externalSources.observe && armed.generation)
 								? client
@@ -124,6 +130,18 @@ export function createGitHubProvider(
 										})
 								: Promise.resolve(null),
 						]);
+						if (checks && checks.headSha !== config.headSha) return;
+						const refreshed = await client.getPullRequest(
+							config.owner,
+							config.repo,
+							config.prNumber,
+						);
+						if (
+							refreshed.state !== "open" ||
+							refreshed.merged ||
+							refreshed.head.sha !== config.headSha
+						)
+							return;
 						if (checks && deps.externalSources.observe && armed.generation) {
 							const description = describeGitHubEvent({ kind: "checks", checks });
 							await report.observe(armed, {

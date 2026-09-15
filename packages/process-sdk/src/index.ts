@@ -249,7 +249,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
-export { IntegrationHttpClient } from "./integration-http.js";
+export { IntegrationHttpClient, IntegrationHttpError } from "./integration-http.js";
 export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,

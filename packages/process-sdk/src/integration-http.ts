@@ -1,3 +1,13 @@
+/** An HTTP failure without provider response bodies or credentials. */
+export class IntegrationHttpError extends Error {
+	constructor(
+		readonly status: number,
+		message: string,
+	) {
+		super(message);
+	}
+}
+
 /** Shared transport; extensions own endpoint paths, credentials, and response types. */
 export class IntegrationHttpClient {
 	constructor(
@@ -17,7 +27,8 @@ export class IntegrationHttpClient {
 			},
 		});
 		if (!response.ok)
-			throw new Error(
+			throw new IntegrationHttpError(
+				response.status,
 				`${this.provider} ${init.method ?? "GET"} ${path} failed with ${response.status}`,
 			);
 		return response;

@@ -36,7 +36,7 @@ export function describeGitHubEvent(event: unknown): ExternalEventDescription {
 			status: string;
 			failed: Array<{ name: string; url: string | null }>;
 		};
-		pullRequest?: { number: number };
+		pullRequest?: { number: number; merged?: boolean; state?: string };
 	};
 	if (value.kind === "merge_conflict") return describeConflict(event);
 	if (value.checks) {
@@ -52,15 +52,104 @@ export function describeGitHubEvent(event: unknown): ExternalEventDescription {
 	}
 	return {
 		summary:
-			value.kind === "merged" || value.kind === "closed"
-				? `PR #${value.pullRequest?.number} ${value.kind}`
+			value.kind === "merged" || value.kind === "closed" || value.pullRequest
+				? `PR #${value.pullRequest?.number} ${value.kind ?? (value.pullRequest?.merged ? "merged" : "closed")}`
 				: value.kind === "feedback"
 					? "Pull request feedback received"
 					: "GitHub event received",
 	};
 }
 
+export const GITHUB_PR_TERMINAL_KIND = "@leitwerk-public/github.pr_terminal";
+export const GITHUB_PR_FEEDBACK_KIND = "@leitwerk-public/github.pr_feedback";
+export const GITHUB_ISSUE_CANCELLED_KIND = "@leitwerk-public/github.issue_cancelled";
+
+export interface GitHubPullRequestTerminalSourceConfig {
+	profile: string;
+	owner: string;
+	repo: string;
+	prNumber: number;
+	pollInterval?: string;
+	terminalOutcome?: "merged" | "closed";
+	disabled?: boolean;
+}
+
+export interface GitHubFeedbackSourceConfig extends GitHubPullRequestTerminalSourceConfig {
+	conversationCursor: number;
+	reviewCursor: number;
+	inlineCursor: number;
+	quietPeriodMs: number;
+}
+
+export interface GitHubIssueCancelledSourceConfig {
+	profile: string;
+	owner: string;
+	repo: string;
+	issueNumber: number;
+	triggerLabel: string;
+	pollInterval?: string;
+}
+
+export const GITHUB_CHECKS_KIND = "@leitwerk-public/github.checks";
+
 export const githubExternal = {
+	checks<TParams, TState>(
+		resolve: (ctx: { params: TParams; state: TState }) => {
+			profile: string;
+			owner: string;
+			repo: string;
+			prNumber: number;
+			headSha: string;
+		},
+	): ExternalActionSource<TParams, TState> {
+		return {
+			kind: GITHUB_CHECKS_KIND,
+			describeEvent: describeGitHubEvent,
+			label: "GitHub Actions failures",
+			config: {},
+			inputMode: "none",
+			resolve,
+		};
+	},
+	issueCancelled<TParams, TState>(
+		resolve: (ctx: { params: TParams; state: TState }) => GitHubIssueCancelledSourceConfig,
+	): ExternalActionSource<TParams, TState> {
+		return {
+			kind: GITHUB_ISSUE_CANCELLED_KIND,
+			describeEvent: () => ({ summary: "Source issue cancelled" }),
+			label: "GitHub source issue cancelled",
+			description: "Fires when the source issue closes or loses its trigger label",
+			config: {},
+			inputMode: "none",
+			resolve,
+		};
+	},
+	pullRequestTerminal<TParams, TState>(
+		resolve: (ctx: { params: TParams; state: TState }) => GitHubPullRequestTerminalSourceConfig,
+	): ExternalActionSource<TParams, TState> {
+		return {
+			kind: GITHUB_PR_TERMINAL_KIND,
+			describeEvent: describeGitHubEvent,
+			label: "GitHub pull request merged or closed",
+			description: "Fires when the tracked pull request reaches a terminal state",
+			config: {},
+			inputMode: "none",
+			resolve,
+		};
+	},
+	pullRequestFeedback<TParams, TState>(
+		resolve: (ctx: { params: TParams; state: TState }) => GitHubFeedbackSourceConfig,
+	): ExternalActionSource<TParams, TState> {
+		return {
+			kind: GITHUB_PR_FEEDBACK_KIND,
+			describeEvent: () => ({ summary: "Pull request feedback received" }),
+			label: "GitHub pull request feedback",
+			description: "Fires after unseen human feedback has been quiet long enough to batch",
+			config: {},
+			inputMode: "none",
+			resolve,
+		};
+	},
 	releaseContaining<TParams, TState>(
 		resolve: (ctx: { params: TParams; state: TState }) => GitHubReleaseSourceConfig,
 	): ExternalActionSource<TParams, TState> {
