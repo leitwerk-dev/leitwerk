@@ -334,6 +334,8 @@ export interface ExternalSourceArmingLike {
 export interface ExternalSourceFireInput {
 	instanceId: string;
 	armingId: string;
+	/** Reject a superseded subscription instead of queuing its event for a later turn. */
+	generation?: string;
 	input?: Record<string, unknown>;
 	event?: Record<string, unknown>;
 	mergeKey?: string | null;
