@@ -17,6 +17,40 @@ function kubernetesConfig(): ReturnType<typeof getDefaultConfig> {
 }
 
 describe("validateConfig", () => {
+	it.each(["128Mi", "1Gi", "50Gi", "1.5Gi"])("accepts process storage_size %s", (size) => {
+		const config = getDefaultConfig();
+		config.process_configs = { test_process: { storage_size: size, turn_configs: {} } };
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it.each([
+		"",
+		"0Gi",
+		"-1Gi",
+		"1GB",
+		"1Gi\n",
+		128,
+		null,
+	])("rejects invalid process storage_size %s", (storage_size) => {
+		const config = { ...getDefaultConfig(), process_configs: { test_process: { storage_size } } };
+		expect(
+			validateConfig(config).some((error) =>
+				error.includes("process_configs.test_process.storage_size"),
+			),
+		).toBe(true);
+	});
+
+	it("validates the global storage size with the same quantity rules", () => {
+		const config = kubernetesConfig();
+		if (!config.kubernetes) throw new Error("Missing Kubernetes defaults");
+		config.kubernetes.process_volume.size = "0Gi";
+		expect(
+			validateConfig(config as unknown as Record<string, unknown>).some((error) =>
+				error.includes("kubernetes.process_volume.size"),
+			),
+		).toBe(true);
+	});
+
 	it.each([-1, 1.5, "8"])("rejects invalid pre-provision count %s", (count) => {
 		const config = kubernetesConfig();
 		const raw = {

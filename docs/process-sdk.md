@@ -95,6 +95,32 @@ to provider calls so stopping the turn cancels in-flight server work.
 Use `structuralStateCodec` for state containing only semantic and product refs; it parses with
 `parseStructuralProcessState` and serializes unchanged. Use `emptyParamsCodec` for empty params.
 
+### Process storage sizing
+
+An extension can derive new Kubernetes process-volume capacity from its own
+server configuration. Register a synchronous resolver with the flow builder:
+
+```ts
+.resolveStorageSize(({ params, projects }) =>
+  serverConfiguration.storageSizeFor(params, projects)
+)
+```
+
+Here `serverConfiguration.storageSizeFor` is extension-owned code, not an SDK
+method. The same `resolveStorageSize` field is available on `defineProcess`.
+The resolver receives codec-validated process params and the instance's persisted
+projects. Return a positive Kubernetes quantity such as `128Mi`, `1Gi`, or `50Gi`,
+or `undefined` to use the global default. The returned size covers the whole process
+volume; core does not sum repository sizes or interpret extension settings.
+
+The server invokes the resolver before provisioning on Kubernetes worker starts,
+after extension server setup. Read validated server configuration through the
+extension's own closure. Keep the resolver side-effect free; it may run again on
+retry or replacement. Exceptions and invalid results fail startup. An explicit
+`process_configs.<processId>.storage_size` bypasses the resolver. Local and Docker
+runners never invoke it. Existing PVCs remain unchanged regardless of later results.
+See [storage configuration](configuration.md#per-process-storage-size).
+
 ## Registering the Extension (`src/index.ts`)
 
 Export the extension entrypoint to register your process with Leitwerk:

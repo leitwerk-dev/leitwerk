@@ -59,6 +59,46 @@ describe("flow process composition", () => {
 		]);
 	});
 
+	it("preserves the server-side storage resolver without invoking it during definition", () => {
+		let calls = 0;
+		const resolver = ({
+			params,
+			projects,
+		}: {
+			params: { large: boolean };
+			projects: readonly unknown[];
+		}) => {
+			calls += 1;
+			expect(projects).toEqual([]);
+			return params.large ? "50Gi" : undefined;
+		};
+		const process = flow
+			.process<{ large: boolean }, Record<string, never>>("storage_process")
+			.displayName("Storage process")
+			.entry("start")
+			.codecs({
+				params: { parse: () => ({ large: false }), serialize: (params) => params },
+				state: stateCodec,
+			})
+			.initialState(() => ({}))
+			.resolveStorageSize(resolver)
+			.turn(
+				flow
+					.automatic<{ large: boolean }, Record<string, never>>("start")
+					.description("Start")
+					.run(async () => ({ outcome: "done", params: {} }))
+					.outcome("done", (outcome) => outcome.description("Done").complete()),
+			)
+			.define();
+
+		expect(calls).toBe(0);
+		expect(process.resolveStorageSize).toBe(resolver);
+		expect(process.resolveStorageSize?.({ params: { large: true }, projects: [] })).toBe("50Gi");
+		expect(
+			process.resolveStorageSize?.({ params: { large: false }, projects: [] }),
+		).toBeUndefined();
+	});
+
 	it("delegates to defineProcess and composes fragment turns", () => {
 		const fragment = flow.fragment("plan").turn(publishingTurn()).turn(consumingTurn());
 

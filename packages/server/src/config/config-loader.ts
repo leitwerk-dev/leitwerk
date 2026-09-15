@@ -9,6 +9,7 @@ import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
 import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
+import { isValidStorageSize } from "../process-storage-size.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
 import type { LeitwerkConfig } from "./config-types.js";
 import { isHttpsOrLoopbackHttpUrl, isValidHttpUrl, parseHttpUrl } from "./url-policy.js";
@@ -17,6 +18,13 @@ const DEFAULT_SEARCH_PATHS = ["./leitwerk.yaml", "~/.leitwerk/leitwerk.yaml"];
 const REDACTED_LOG_VALUE = "<redacted>";
 const SENSITIVE_CONFIG_KEY_PATTERN =
 	/(token|secret|password|passphrase|api[_-]?key|private[_-]?key|known[_-]?hosts|webhook)/i;
+const storageSizeSchema = v.pipe(
+	v.string(),
+	v.check(
+		(value) => isValidStorageSize(value),
+		"Must be a positive storage quantity (for example, 128Mi or 1Gi)",
+	),
+);
 const positiveSafeInteger = v.pipe(
 	v.number(),
 	v.integer(),
@@ -304,6 +312,7 @@ const configSchema = v.looseObject({
 				default_model_profile: v.optional(v.string()),
 				allowed_model_profiles: v.optional(v.pipe(stringArraySchema, v.nonEmpty())),
 				worker_runtime_profile: v.optional(v.string()),
+				storage_size: v.optional(storageSizeSchema),
 				pi: v.optional(
 					v.looseObject({
 						system_prompt_template: v.optional(v.string()),
@@ -360,7 +369,7 @@ const configSchema = v.looseObject({
 				pre_provision: v.optional(
 					v.strictObject({ count: v.pipe(v.number(), v.integer(), v.minValue(0)) }),
 				),
-				size: v.string(),
+				size: storageSizeSchema,
 				access_modes: stringArraySchema,
 				mount_path: v.string(),
 			}),

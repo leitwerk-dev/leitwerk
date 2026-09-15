@@ -44,6 +44,17 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 > [!NOTE]
 > Physical workers upload JSONL session snapshots to the server via `PUT /session-snapshot` so the server can compute browser read models without inspecting Docker volumes or Kubernetes PVCs directly.
 
+### Process volume capacity
+
+New Kubernetes PVCs use `process_configs.<processId>.storage_size`, otherwise the
+extension's server-side `resolveStorageSize({ params, projects })` result, otherwise
+`kubernetes.process_volume.size`. The size covers the whole volume, not each clone.
+Extensions own any repository-specific sizing rules. Existing PVCs are never resized
+or recreated by later configuration or resolver changes. Local and Docker storage
+continues to consume space as written, without a capacity quota.
+See [configuration](configuration.md#per-process-storage-size) for quantities and
+pre-provisioning considerations.
+
 ---
 
 ## 2. Repository Management

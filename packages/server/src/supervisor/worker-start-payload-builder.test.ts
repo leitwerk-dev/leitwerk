@@ -33,6 +33,7 @@ describe("buildWorkerConfigSnapshot", () => {
 			with_pi: {
 				default_model_profile: "generic",
 				worker_runtime_profile: "generic",
+				storage_size: "128Mi",
 				turn_configs: { implement: { model_profile: "generic" } },
 				pi: { append_system_prompt_template: "Extra" },
 			},

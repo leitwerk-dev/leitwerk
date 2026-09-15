@@ -1,6 +1,10 @@
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createKubernetesHttpApiClient } from "./kubernetes-http-client.js";
+import {
+	buildKubernetesProcessPvcManifest,
+	type KubernetesPersistentVolumeClaimManifest,
+} from "./kubernetes-manifests.js";
 import { createKubernetesWorkerRunner } from "./kubernetes-worker-runner.js";
 
 const servers: http.Server[] = [];
@@ -27,6 +31,51 @@ async function listen(handler: http.RequestListener): Promise<string> {
 }
 
 describe("Kubernetes HTTP API client", () => {
+	it("creates the requested PVC once and never resizes or recreates it on later ensures", async () => {
+		const methods: string[] = [];
+		let retained: KubernetesPersistentVolumeClaimManifest | null = null;
+		const apiServerUrl = await listen((request, response) => {
+			methods.push(request.method ?? "");
+			if (request.method === "GET") {
+				response.writeHead(retained ? 200 : 404, { "Content-Type": "application/json" });
+				response.end(JSON.stringify(retained ?? {}));
+				return;
+			}
+			if (request.method !== "POST") {
+				response.writeHead(405);
+				response.end();
+				return;
+			}
+			let body = "";
+			request.setEncoding("utf8");
+			request.on("data", (chunk: string) => {
+				body += chunk;
+			});
+			request.on("end", () => {
+				retained = JSON.parse(body);
+				response.writeHead(201, { "Content-Type": "application/json" });
+				response.end(body);
+			});
+		});
+		const manifest = (size: string) =>
+			buildKubernetesProcessPvcManifest({
+				instanceId: "process",
+				namespace: "process-namespace",
+				volume: { size, accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			});
+		await createKubernetesHttpApiClient({ apiServerUrl }).ensurePersistentVolumeClaim(
+			manifest("50Gi"),
+		);
+		// New clients have no allocation cache; the retained Kubernetes claim is authoritative.
+		for (const size of ["128Mi", "100Gi"]) {
+			await createKubernetesHttpApiClient({ apiServerUrl }).ensurePersistentVolumeClaim(
+				manifest(size),
+			);
+		}
+		expect(retained).toEqual(manifest("50Gi"));
+		expect(methods).toEqual(["GET", "POST", "GET", "GET"]);
+	});
+
 	it.each([
 		"DELETE",
 		"GET",

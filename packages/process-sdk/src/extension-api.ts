@@ -623,6 +623,16 @@ export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown>
 	initialState(params: TParams): TState;
 	/** Process-owned runtime capabilities. All capabilities default to disabled. */
 	runtime?: ProcessRuntimeCapabilities;
+	/**
+	 * Server-only Kubernetes process-volume size, derived from extension configuration.
+	 * Explicit process storage_size wins; undefined uses the runner default.
+	 * Called before provisioning on worker starts. Must be synchronous and side-effect free;
+	 * repeated calls never resize or replace an existing volume.
+	 */
+	resolveStorageSize?(input: {
+		params: TParams;
+		projects: readonly ProcessProject[];
+	}): string | undefined;
 	/** Runtime-only requirements; references are non-secret and remain in opaque params JSON. */
 	repositoryCredentials?(input: {
 		params: TParams;

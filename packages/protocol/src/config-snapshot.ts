@@ -144,6 +144,8 @@ export interface ProcessConfigSnapshot {
 	 * selection. Must reference a configured `worker_runtime_profiles` entry.
 	 */
 	worker_runtime_profile?: string;
+	/** Server-only process-volume capacity override, for example 128Mi or 1Gi. */
+	storage_size?: string;
 	pi?: ProcessPiConfigSnapshot;
 	turn_configs: Record<string, ProcessTurnConfigSnapshot>;
 	/** Extension-owned watcher configuration, keyed by code-defined watcher id. */
