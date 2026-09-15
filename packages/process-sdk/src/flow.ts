@@ -1889,6 +1889,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 				projects: readonly RepositoryCredentialProject[];
 		  }) => readonly RepositoryCredentialRequirement[])
 		| undefined;
+	private storageSizeResolver: ProcessDefinition<TParams, TState>["resolveStorageSize"];
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
 	private docker = false;
@@ -1945,6 +1946,14 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		}) => readonly RepositoryCredentialRequirement[],
 	): this {
 		this.repositoryCredentialsFn = fn;
+		return this;
+	}
+
+	/** Resolve new process-volume capacity on the server; operator configuration wins. */
+	resolveStorageSize(
+		fn: NonNullable<ProcessDefinition<TParams, TState>["resolveStorageSize"]>,
+	): this {
+		this.storageSizeResolver = fn;
 		return this;
 	}
 
@@ -2013,6 +2022,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			...(this.repositoryCredentialsFn
 				? { repositoryCredentials: this.repositoryCredentialsFn }
 				: {}),
+			...(this.storageSizeResolver ? { resolveStorageSize: this.storageSizeResolver } : {}),
 			...(this.processPiConfig ? { piConfig: this.processPiConfig } : {}),
 			turns,
 			...(this.serverHooks.length > 0 ? { server: chainHooks(this.serverHooks) } : {}),

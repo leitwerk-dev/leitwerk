@@ -109,8 +109,8 @@ describe("Kubernetes ProcessVolume", () => {
 			},
 		});
 
-		await volume.ensure("ordinary", { docker: false });
-		await volume.ensure("docker", { docker: true });
+		await volume.ensure("ordinary", { docker: false, size: "128Mi" });
+		await volume.ensure("docker", { docker: true, size: "50Gi" });
 
 		expect(
 			client.pvcs.get("leitwerk-test-process-ordinary/leitwerk-process-ordinary")?.spec,
@@ -118,6 +118,44 @@ describe("Kubernetes ProcessVolume", () => {
 		expect(
 			client.pvcs.get("leitwerk-test-process-docker/leitwerk-process-docker")?.spec,
 		).toHaveProperty("storageClassName", "docker-storage");
+		expect(
+			client.pvcs.get("leitwerk-test-process-ordinary/leitwerk-process-ordinary")?.spec.resources
+				.requests.storage,
+		).toBe("128Mi");
+		expect(
+			client.pvcs.get("leitwerk-test-process-docker/leitwerk-process-docker")?.spec.resources
+				.requests.storage,
+		).toBe("50Gi");
+	});
+
+	it("uses the runner default when no size is supplied", async () => {
+		const { client, volume } = bindRunner();
+		await volume.ensure("proc-1");
+		expect(
+			client.pvcs.get("leitwerk-test-process-proc-1/leitwerk-process-proc-1")?.spec.resources
+				.requests.storage,
+		).toBe("5Gi");
+	});
+
+	it.each([
+		"128Mi",
+		"100Gi",
+	])("preserves an existing PVC when replacement requests %s", async (size) => {
+		const { client, volume } = bindRunner();
+		const first = await volume.ensure("proc-1", { size: "50Gi" });
+		// A new runner models server restart; allocation lives in the existing PVC, not a cache.
+		const replacement = createKubernetesWorkerRunner({
+			client,
+			processNamespacePrefix: "leitwerk-test-process-",
+			volume: { size: "20Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			...unusedExporterOptions,
+		});
+		expect(await replacement.volume.ensure("proc-1", { size })).toEqual(first);
+		expect(
+			client.pvcs.get("leitwerk-test-process-proc-1/leitwerk-process-proc-1")?.spec.resources
+				.requests.storage,
+		).toBe("50Gi");
+		expect(client.deletedPvcs).toEqual([]);
 	});
 
 	it("retention releases only the process PVC", async () => {

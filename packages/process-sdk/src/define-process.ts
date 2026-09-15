@@ -1730,6 +1730,7 @@ export function defineProcess<TParams = unknown, TState = unknown>(
 		stateCodec: input.stateCodec,
 		initialState: input.initialState,
 		...(input.runtime ? { runtime: { ...input.runtime } } : {}),
+		...(input.resolveStorageSize ? { resolveStorageSize: input.resolveStorageSize } : {}),
 		...(input.repositoryCredentials ? { repositoryCredentials: input.repositoryCredentials } : {}),
 		...(input.piConfig ? { piConfig: input.piConfig } : {}),
 		server: compiled.server,

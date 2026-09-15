@@ -37,6 +37,7 @@ import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../process-graph.js";
 import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
+import { resolveProcessStorageSize } from "../process-storage-size.js";
 import {
 	buildRuntimeProfileSelectionInput,
 	selectWorkerRuntimeProfile,
@@ -756,7 +757,19 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			options.workerId,
 			options.startupDeadlineMs,
 		);
-		const volume = await runnerRuntime.volume?.ensure(options.instanceId, { docker }, observer);
+		const volume = await runnerRuntime.volume?.ensure(
+			options.instanceId,
+			{
+				docker,
+				size: resolveProcessStorageSize({
+					config: deps.config,
+					process,
+					definition: deps.processGraphs.get(process.processId),
+					projects: deps.projects.listByInstance(options.instanceId),
+				}),
+			},
+			observer,
+		);
 		const serverUrl = runnerServerUrl();
 		const env: Record<string, string> = {
 			[WORKER_INSTANCE_ID_ENV]: options.instanceId,
