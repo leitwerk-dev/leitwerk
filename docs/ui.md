@@ -66,8 +66,9 @@ Show process summary** restores it. The preference uses browser storage, never
 process state, and does not hide summaries for other processes or browsers. If
 storage is unavailable, dismissal still works for the current page.
 
-External waiting belongs to its latest recorded turn in both the Chronicle and
-the rail. That row keeps the turn title and shows Waiting for an event with the
+External waiting belongs to its recorded turn in both the Chronicle and
+the rail only when that turn is the latest execution. If another turn has run since,
+the current wait appears after it as a separate section and navigation row. That row keeps the turn title and shows Waiting for an event with the
 amber clock. Selecting it reaches the embedded waiting disclosure. Scrolling
 through the turn or its result highlights the same row. A wait without a recorded
 turn keeps its own navigation row.
@@ -118,11 +119,12 @@ Expanding workspace checks leaves the adjacent result actions in their original 
 On narrow cards with a reasoning link, footer actions occupy the first row and workspace
 checks expand below them. Show reasoning and Turn details stay together when actions wrap.
 
-When a turn waits for external events and has no operator action, its latest recorded card
-contains the waiting status. A single collapsed disclosure shows the event count and any
+When a turn waits for external events and has no operator action, its recorded card
+contains the waiting status only if no later turn has run. A single collapsed disclosure shows the event count and any
 failed-listener count. Expanding it shows each event's description, status, and polling
-details together. If the selected turn has no recorded card, the waiting section remains
-at the end of the chronicle. Operator decisions keep their separate action surface.
+details together. If the selected turn has no recorded card or another turn has run since,
+the waiting section remains at the end of the chronicle. Repeated turn definitions do not
+reuse an earlier execution's card for a new wait. Operator decisions keep their separate action surface.
 
 A failed turn contains its recovery controls in the same card. Its header retains the turn
 icon, recorded metadata, timestamp, and duration, with a failure marker and disclosure.
