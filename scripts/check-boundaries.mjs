@@ -94,7 +94,7 @@ function listComposedWorkspaceInfos(composition) {
 	return composition.externalPackages.map((entry) => ({
 		name: entry.name,
 		dir: entry.dir,
-		packageJson: entry.packageJson,
+		packageJson: entry,
 		kind: extensionDirs.has(entry.dir) ? "extension" : "package",
 	}));
 }

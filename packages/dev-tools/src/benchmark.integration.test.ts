@@ -1,9 +1,9 @@
 import { once } from "node:events";
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
+import { testWorkspace } from "../test-workspace.js";
 import { runWorkerStartupBenchmark } from "./benchmark.js";
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -17,13 +17,13 @@ async function fixture(
 		failPoll?: boolean;
 		multipleTurns?: boolean;
 		failedTurn?: boolean;
-		abort?: AbortController;
+		abort?: boolean;
 	} = {},
 ) {
-	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-benchmark-"));
-	cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+	const { root } = testWorkspace();
 	const calls: { method: string; path: string; key?: string; body?: unknown; auth?: string }[] = [];
 	const launches = new Map<string, string>();
+	const controller = options.abort ? new AbortController() : undefined;
 	let loseResponse = options.lostResponse;
 	const detailReads = new Map<string, number>();
 	const readBody = async (request: IncomingMessage) => {
@@ -99,7 +99,7 @@ async function fixture(
 				},
 			});
 		if (url.startsWith("/api/processes/")) {
-			options.abort?.abort();
+			controller?.abort();
 			const reads = (detailReads.get(url) ?? 0) + 1;
 			detailReads.set(url, reads);
 			return send({
@@ -146,6 +146,7 @@ async function fixture(
 			samples: 2,
 			timeoutMs: 1000,
 			pollIntervalMs: 5,
+			signal: controller?.signal,
 		},
 	};
 }
@@ -188,42 +189,27 @@ it("retries lost launch responses with one identity and writes private evidence 
 	expect(launches.size).toBe(3);
 });
 
-it("stops after a timed-out generation and retains its launch and instance IDs", async () => {
-	const { options, launches } = await fixture({ running: true });
-	const result = await runWorkerStartupBenchmark({
-		...options,
-		samples: 3,
-		timeoutMs: 500,
-		pollIntervalMs: 20,
-	});
+it.each([
+	[
+		"a timed-out generation",
+		{ running: true },
+		{ samples: 3, timeoutMs: 500, pollIntervalMs: 20 },
+		{ outcome: "timeout" },
+	],
+	["a polling failure", { failPoll: true }, {}, { outcome: "failed", error: "API HTTP 503" }],
+	["an interrupted launch", { abort: true }, {}, { outcome: "interrupted" }],
+	["a failed active process", { failedTurn: true }, {}, { outcome: "failed" }],
+] as const)("stops after %s and retains its launch and instance IDs", async (_, setup, overrides, expected) => {
+	const { options, launches } = await fixture(setup);
+	const result = await runWorkerStartupBenchmark({ ...options, ...overrides });
 	expect(result.complete).toBe(false);
+	expect(result.succeeded).toBe(false);
 	expect(result.samples).toHaveLength(1);
 	expect(result.samples[0]).toMatchObject({
-		outcome: "timeout",
+		...expected,
 		launchRunId: "run-0",
 		instanceId: "run-0",
 	});
-	expect(launches.size).toBe(1);
-});
-
-it("stops on a polling failure and retains the accepted generation", async () => {
-	const { options, launches } = await fixture({ failPoll: true });
-	const result = await runWorkerStartupBenchmark(options);
-	expect(result.samples[0]).toMatchObject({
-		outcome: "failed",
-		launchRunId: "run-0",
-		error: "API HTTP 503",
-	});
-	expect(result.succeeded).toBe(false);
-	expect(launches.size).toBe(1);
-});
-
-it("records an interrupted accepted launch and starts no further samples", async () => {
-	const controller = new AbortController();
-	const { options, launches } = await fixture({ abort: controller });
-	const result = await runWorkerStartupBenchmark({ ...options, signal: controller.signal });
-	expect(result.samples[0]).toMatchObject({ outcome: "interrupted", launchRunId: "run-0" });
-	expect(result.complete).toBe(false);
 	expect(launches.size).toBe(1);
 });
 
@@ -249,12 +235,4 @@ it("waits for process completion after a successful first turn before starting a
 	expect(
 		calls.slice(0, secondPost).filter((call) => call.path === "/api/processes/run-0"),
 	).toHaveLength(2);
-});
-
-it("retains a failed active process for diagnosis and stops further launches", async () => {
-	const { options, launches } = await fixture({ failedTurn: true });
-	const result = await runWorkerStartupBenchmark(options);
-	expect(result.samples[0].outcome).toBe("failed");
-	expect(result.complete).toBe(false);
-	expect(launches.size).toBe(1);
 });

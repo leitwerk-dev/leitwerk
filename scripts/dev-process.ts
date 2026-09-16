@@ -1,5 +1,10 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 
+import { signalProcessGroup, stopAttached } from "../packages/dev-tools/src/child-process.ts";
+
+export { createCoalescedRunner } from "../packages/dev-tools/src/coalesced-runner.ts";
+export { signalProcessGroup, stopAttached };
+
 /** Forward signals to an attached child and exit with its status. */
 export function forwardChildLifecycle(child: ChildProcess, cleanup: () => void = () => {}): void {
 	for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -81,46 +86,6 @@ export function observeUnexpectedChildFailure(
 	child.once("exit", (code, signal) => report({ code, signal }));
 }
 
-/** Coalesces concurrent requests into at most one follow-up run. */
-export function createCoalescedRunner(
-	task: () => Promise<void>,
-	isStopped: () => boolean,
-): { run(): void; isRunning(): boolean } {
-	let running = false;
-	let queued = false;
-	return {
-		run() {
-			if (running || isStopped()) {
-				queued = true;
-				return;
-			}
-			running = true;
-			void (async () => {
-				try {
-					do {
-						queued = false;
-						await task();
-					} while (queued && !isStopped());
-				} finally {
-					running = false;
-				}
-			})();
-		},
-		isRunning: () => running,
-	};
-}
-
-export function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): void {
-	if (!child.pid) return;
-	try {
-		// A process group can outlive its leader (notably when npm exits before
-		// vite/esbuild). Do not use the ChildProcess exit fields as a guard here.
-		process.kill(-child.pid, signal);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
-	}
-}
-
 export function isProcessGroupAlive(child: ChildProcess): boolean {
 	if (!child.pid) return false;
 	try {
@@ -144,64 +109,16 @@ async function pollProcessGroupUntilGone(child: ChildProcess, timeoutMs: number)
 	return true;
 }
 
-export function stopManagedForExit(
-	child: ChildProcess,
+export function exitStopOptions(
 	exitCode: number,
 	normalGraceMs: number,
 	interruptGraceMs: number,
-): Promise<void> {
+): { signal: NodeJS.Signals; graceMs: number } {
 	const interrupted = exitCode === 130;
-	return stopManaged(child, {
+	return {
 		signal: interrupted ? "SIGINT" : "SIGTERM",
 		graceMs: interrupted ? interruptGraceMs : normalGraceMs,
-	});
-}
-
-export async function stopAttached(
-	child: ChildProcess,
-	options: { signal?: NodeJS.Signals; graceMs?: number } = {},
-): Promise<void> {
-	if (!child.pid) {
-		child.once("error", () => {});
-		return;
-	}
-	if (child.exitCode !== null || child.signalCode !== null) return;
-
-	const signal = options.signal ?? "SIGTERM";
-	const graceMs = options.graceMs ?? 10_000;
-	await new Promise<void>((resolve) => {
-		let settled = false;
-		let forceTimer: NodeJS.Timeout | null = null;
-		const finish = () => {
-			if (settled) return;
-			settled = true;
-			clearTimeout(graceTimer);
-			if (forceTimer) clearTimeout(forceTimer);
-			resolve();
-		};
-		const graceTimer = setTimeout(() => {
-			child.kill("SIGKILL");
-			forceTimer = setTimeout(finish, 1_000);
-		}, graceMs);
-		child.once("exit", finish);
-		child.once("close", finish);
-		child.once("error", finish);
-		child.kill(signal);
-		if (child.exitCode !== null || child.signalCode !== null) finish();
-	});
-}
-
-export function stopAttachedForExit(
-	child: ChildProcess,
-	exitCode: number,
-	normalGraceMs: number,
-	interruptGraceMs: number,
-): Promise<void> {
-	const interrupted = exitCode === 130;
-	return stopAttached(child, {
-		signal: interrupted ? "SIGINT" : "SIGTERM",
-		graceMs: interrupted ? interruptGraceMs : normalGraceMs,
-	});
+	};
 }
 
 export async function stopManaged(

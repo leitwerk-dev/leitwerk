@@ -1,5 +1,6 @@
+import { startupInterval } from "@leitwerk-dev/domain";
 import { expect, it } from "vitest";
-import { physicalWorkerStarts, startupInterval } from "./physical-worker-starts.js";
+import { physicalWorkerStarts } from "./physical-worker-starts.js";
 
 it("keeps missing evidence and clock inversions distinct from measured zero", () => {
 	expect(startupInterval(null, "2026-09-11")).toMatchObject({

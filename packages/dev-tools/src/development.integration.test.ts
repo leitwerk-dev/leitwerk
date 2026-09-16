@@ -1,35 +1,17 @@
 import { execFileSync } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	mkdtempSync,
-	readFileSync,
-	realpathSync,
-	rmSync,
-	symlinkSync,
-	writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { testWorkspace } from "../test-workspace.js";
 import { runDevelopment } from "./index.js";
-import { packageDirectory } from "./workspace.js";
+import { packageDirectory, readJson } from "./workspace.js";
 
-const roots: string[] = [];
 beforeEach(() =>
 	vi.stubEnv("PATH", `${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}`),
 );
-afterEach(() => {
-	vi.unstubAllEnvs();
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(() => vi.unstubAllEnvs());
 function fixture() {
-	const root = realpathSync(mkdtempSync(path.join(tmpdir(), "leitwerk-dev-tools-")));
-	roots.push(root);
-	const json = (file: string, value: unknown) => {
-		mkdirSync(path.dirname(path.join(root, file)), { recursive: true });
-		writeFileSync(path.join(root, file), JSON.stringify(value));
-	};
+	const { root, json } = testWorkspace();
 	json("package.json", {
 		name: "example-workspace",
 		version: "1.0.0",
@@ -130,16 +112,6 @@ describe("extension development commands", () => {
 
 	it("clones an explicit revision, preserves branches and edits on reuse, then restores release dependencies", async () => {
 		const { root, json, options } = fixture();
-		json("package-lock.json", {
-			name: "example-workspace",
-			version: "1.0.0",
-			lockfileVersion: 3,
-			packages: {
-				"": { name: "example-workspace", version: "1.0.0", workspaces: ["extensions/*"] },
-				"extensions/example": { name: "example-extension", version: "1.0.0" },
-				"node_modules/example-extension": { resolved: "extensions/example", link: true },
-			},
-		});
 		json("seed/package.json", {
 			name: "core-fixture",
 			version: "1.0.0",
@@ -148,16 +120,23 @@ describe("extension development commands", () => {
 			scripts: { build: 'node -e ""' },
 		});
 		json("seed/packages/sdk/package.json", { name: "@leitwerk-dev/example-sdk", version: "1.0.0" });
-		json("seed/package-lock.json", {
-			name: "core-fixture",
-			version: "1.0.0",
-			lockfileVersion: 3,
-			packages: {
-				"": { name: "core-fixture", version: "1.0.0", workspaces: ["packages/*"] },
-				"packages/sdk": { name: "@leitwerk-dev/example-sdk", version: "1.0.0" },
-				"node_modules/@leitwerk-dev/example-sdk": { resolved: "packages/sdk", link: true },
-			},
-		});
+		for (const [directory, packageDir] of [
+			[".", "extensions/example"],
+			["seed", "packages/sdk"],
+		]) {
+			const { name, version, workspaces } = readJson(path.join(root, directory, "package.json"));
+			const workspace = readJson(path.join(root, directory, packageDir, "package.json"));
+			json(path.join(directory, "package-lock.json"), {
+				name,
+				version,
+				lockfileVersion: 3,
+				packages: {
+					"": { name, version, workspaces },
+					[packageDir]: { name: workspace.name, version: workspace.version },
+					[`node_modules/${workspace.name}`]: { resolved: packageDir, link: true },
+				},
+			});
+		}
 		const seed = path.join(root, "seed");
 		writeFileSync(path.join(seed, "README.md"), "original\n");
 		git(seed, "init");

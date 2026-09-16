@@ -47,11 +47,6 @@ The benchmark retains processes and raw evidence. A timeout or uncertain API out
 		if (!value?.trim()) throw new Error(`Explicit --${name} is required`);
 		return value;
 	};
-	const launcherId = required("launcher");
-	const modelProfileId = required("model-profile");
-	const title = required("title");
-	const candidate = required("candidate");
-	const output = required("output");
 	const inputPath = required("input");
 	let launcherInput: unknown;
 	try {
@@ -84,11 +79,11 @@ The benchmark retains processes and raw evidence. A timeout or uncertain API out
 	try {
 		const result = await runWorkerStartupBenchmark({
 			apiConfig: values["api-config"],
-			launcherId,
-			modelProfileId,
-			title,
-			candidate,
-			output,
+			launcherId: required("launcher"),
+			modelProfileId: required("model-profile"),
+			title: required("title"),
+			candidate: required("candidate"),
+			output: required("output"),
 			launcherInput: launcherInput as Record<string, unknown>,
 			samples: values.samples === undefined ? undefined : Number(values.samples),
 			warmups: values.warmups === undefined ? undefined : Number(values.warmups),

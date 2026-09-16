@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createCoalescedRunner,
+	exitStopOptions,
 	observeUnexpectedChildFailure,
 	signalProcessGroup,
 	stopAttached,
@@ -16,12 +17,15 @@ function fakeChild(pid = 1234): ChildProcess {
 }
 
 describe("managed development processes", () => {
-	it("signals the complete detached process group", () => {
+	it.each([undefined, "ESRCH", "EPERM"])("signals the detached group (%s)", (code) => {
 		const child = fakeChild();
-		const kill = vi.spyOn(process, "kill").mockReturnValue(true);
-
-		signalProcessGroup(child, "SIGTERM");
-
+		const kill = vi.spyOn(process, "kill").mockImplementation(() => {
+			if (code) throw Object.assign(new Error(code), { code });
+			return true;
+		});
+		const send = () => signalProcessGroup(child, "SIGTERM");
+		if (code === "EPERM") expect(send).toThrow("EPERM");
+		else expect(send).not.toThrow();
 		expect(kill).toHaveBeenCalledWith(-1234, "SIGTERM");
 		kill.mockRestore();
 	});
@@ -79,7 +83,7 @@ describe("managed development processes", () => {
 			return true;
 		});
 		let resolved = false;
-		const stopped = stopManaged(child, { signal: "SIGINT", graceMs: 10_000 }).then(() => {
+		const stopped = stopManaged(child, exitStopOptions(130, 25_000, 10_000)).then(() => {
 			resolved = true;
 		});
 
@@ -97,7 +101,7 @@ describe("managed development processes", () => {
 		const child = fakeChild();
 		const kill = vi.fn(() => true);
 		child.kill = kill;
-		const stopped = stopAttached(child, { signal: "SIGINT", graceMs: 10_000 });
+		const stopped = stopAttached(child, exitStopOptions(130, 25_000, 10_000));
 
 		expect(kill).toHaveBeenCalledWith("SIGINT");
 		child.emit("exit", null, "SIGINT");

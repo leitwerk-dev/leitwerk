@@ -1,7 +1,13 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { isInside, listWorkspacePackageDirs, packageDirectory } from "./workspace.js";
+import {
+	isInside,
+	listWorkspacePackageDirs,
+	packageDirectory,
+	readWorkspacePackage,
+	type WorkspacePackage,
+} from "./workspace.js";
 
 export const COMPOSITION_ENV = "LEITWERK_COMPOSITION_PATH";
 
@@ -14,20 +20,11 @@ interface CompositionManifest {
 	test_roots?: unknown;
 }
 
-export interface ComposedPackage {
-	name: string;
-	dir: string;
-	packageJson: Record<string, unknown>;
-}
+export type ComposedPackage = WorkspacePackage;
 
-export interface DevelopmentComposition {
-	manifestPath: string;
-	manifestDir: string;
+export interface DevelopmentComposition
+	extends Omit<WorkspaceComposition, "packages" | "declaredCoreRoot"> {
 	leitwerkRoot: string;
-	workspaceRoot: string;
-	runtimeConfigPath: string;
-	extensionDirs: string[];
-	testRoots: string[];
 	externalPackages: ComposedPackage[];
 }
 
@@ -60,14 +57,6 @@ function resolveExtension(baseDir: string, source: string): string {
 	return source.startsWith(".") || path.isAbsolute(source)
 		? resolveExisting(baseDir, source, `Extension '${source}'`)
 		: packageDirectory(source, baseDir);
-}
-
-function readPackage(dir: string): ComposedPackage {
-	const packageJson = JSON.parse(readFileSync(path.join(dir, "package.json"), "utf8")) as unknown;
-	if (!isRecord(packageJson) || typeof packageJson.name !== "string") {
-		throw new Error(`Composed package '${dir}' must have a string package.json name`);
-	}
-	return { name: packageJson.name, dir: realpathSync(dir), packageJson };
 }
 
 function manifestArgument(argv: readonly string[]): string | undefined {
@@ -140,25 +129,16 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 		resolveExisting(manifestDir, entry, `Test root '${entry}'`),
 	);
 
-	const packageDirs = listWorkspacePackageDirs(workspaceRoot);
-	for (const extensionDir of extensionDirs) packageDirs.push(extensionDir);
-	const byRealPath = new Map<string, ComposedPackage>();
-	for (const packageDir of packageDirs) {
-		const packageInfo = readPackage(packageDir);
-		byRealPath.set(packageInfo.dir, packageInfo);
-	}
-	const packages = [...byRealPath.values()].sort((left, right) =>
-		left.name.localeCompare(right.name),
-	);
-	const byName = new Map<string, string>();
-	for (const packageInfo of packages) {
-		const previous = byName.get(packageInfo.name);
-		if (previous && previous !== packageInfo.dir) {
+	const byName = new Map<string, ComposedPackage>();
+	for (const dir of [...listWorkspacePackageDirs(workspaceRoot), ...extensionDirs]) {
+		const entry = readWorkspacePackage(dir);
+		const previous = byName.get(entry.name);
+		if (previous && previous.dir !== entry.dir) {
 			throw new Error(
-				`Composition contains duplicate package '${packageInfo.name}' at '${previous}' and '${packageInfo.dir}'`,
+				`Composition contains duplicate package '${entry.name}' at '${previous.dir}' and '${entry.dir}'`,
 			);
 		}
-		byName.set(packageInfo.name, packageInfo.dir);
+		byName.set(entry.name, entry);
 	}
 
 	return {
@@ -169,7 +149,7 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 		runtimeConfigPath,
 		extensionDirs: [...new Set(extensionDirs)].sort(),
 		testRoots: [...new Set(testRoots)].sort(),
-		packages,
+		packages: [...byName.values()].sort((left, right) => left.name.localeCompare(right.name)),
 	};
 }
 

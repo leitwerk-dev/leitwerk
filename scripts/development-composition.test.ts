@@ -1,23 +1,12 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { testWorkspace } from "../packages/dev-tools/test-workspace.ts";
 import { loadDevelopmentComposition } from "./development-composition.js";
-
-const tempDirs: string[] = [];
-
-afterEach(() => {
-	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
-});
-
-function writeJson(filePath: string, value: unknown): void {
-	writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
-}
 
 describe("development composition", () => {
 	it("uses the executing checkout with installed extension package names", () => {
-		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-installed-composition-"));
-		tempDirs.push(root);
+		const { root, json: writeJson } = testWorkspace();
 		const checkout = path.join(root, "core");
 		const extension = path.join(root, "node_modules/@example/extension");
 		mkdirSync(checkout, { recursive: true });
@@ -44,8 +33,7 @@ describe("development composition", () => {
 	});
 
 	it("resolves external workspace packages, extensions, config, and test roots", () => {
-		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-composition-"));
-		tempDirs.push(root);
+		const { root, json: writeJson } = testWorkspace();
 		const leitwerkRoot = path.join(root, "leitwerk");
 		const privateRoot = path.join(root, "private");
 		const extensionDir = path.join(privateRoot, "extensions", "foo");
@@ -62,6 +50,7 @@ describe("development composition", () => {
 		});
 		writeJson(path.join(extensionDir, "package.json"), {
 			name: "@private/foo",
+			scripts: { build: "tsup" },
 			leitwerk: { extension: { source: "./src/index.ts", import: "./dist/index.js" } },
 		});
 		writeJson(path.join(packageDir, "package.json"), { name: "@private/bar" });
@@ -92,11 +81,18 @@ describe("development composition", () => {
 			"@private/bar",
 			"@private/foo",
 		]);
+		expect(composition.externalPackages[1]).toMatchObject({
+			scripts: { build: "tsup" },
+			leitwerk: { extension: { source: "./src/index.ts", import: "./dist/index.js" } },
+		});
+		writeJson(path.join(packageDir, "package.json"), { name: "@private/foo" });
+		expect(() => loadDevelopmentComposition(composition.manifestPath, leitwerkRoot)).toThrow(
+			"duplicate package '@private/foo'",
+		);
 	});
 
 	it("rejects a composition targeting another Leitwerk checkout", () => {
-		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-composition-mismatch-"));
-		tempDirs.push(root);
+		const { root, json: writeJson } = testWorkspace();
 		for (const dir of ["leitwerk-a", "leitwerk-b", "private", "private/tests"]) {
 			mkdirSync(path.join(root, dir), { recursive: true });
 		}

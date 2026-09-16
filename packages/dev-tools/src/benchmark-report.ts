@@ -1,4 +1,9 @@
-import type { LaunchRun, PhysicalWorkerStart, StartupInterval } from "@leitwerk-dev/domain";
+import {
+	type LaunchRun,
+	type PhysicalWorkerStart,
+	type StartupInterval,
+	startupInterval,
+} from "@leitwerk-dev/domain";
 
 export interface BenchmarkSample {
 	index: number;
@@ -44,27 +49,12 @@ export function launchTimings(
 	startup: BenchmarkSample["startup"],
 ): Record<string, StartupInterval> {
 	const initial = startup?.workerStarts?.[0];
-	const interval = (start?: string | null, end?: string | null): StartupInterval => {
-		const delta = start && end ? Date.parse(end) - Date.parse(start) : NaN;
-		return {
-			start: start ?? null,
-			end: end ?? null,
-			durationMs: Number.isFinite(delta) && delta >= 0 ? delta : null,
-			status:
-				!start || !end
-					? "missing"
-					: !Number.isFinite(delta) || delta < 0
-						? "invalid_order"
-						: "available",
-			clock: "server",
-		};
-	};
 	const receipt = (milestone: string) =>
 		initial?.observations?.find((entry) => entry.milestone === milestone)?.observedAt;
 	return {
-		launchToFirstText: interval(launchRun?.createdAt, receipt("first_text")),
-		launchToPrompt: interval(launchRun?.createdAt, receipt("prompt_started")),
-		apiLaunchPreparation: interval(
+		launchToFirstText: startupInterval(launchRun?.createdAt, receipt("first_text")),
+		launchToPrompt: startupInterval(launchRun?.createdAt, receipt("prompt_started")),
+		apiLaunchPreparation: startupInterval(
 			launchRun?.createdAt,
 			initial?.intervals?.requestToConnection?.start,
 		),

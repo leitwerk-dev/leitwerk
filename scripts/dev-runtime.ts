@@ -1,16 +1,9 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import process from "node:process";
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
-import { listWorkspacePackageDirs } from "./workspace-packages.ts";
+import { type WorkspacePackage, workspacePackages } from "./workspace-packages.ts";
 
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-
-interface WorkspacePackageJson {
-	name?: unknown;
-	scripts?: unknown;
-}
 
 interface RuntimeBuildTask {
 	workspaceName: string;
@@ -18,40 +11,28 @@ interface RuntimeBuildTask {
 	packageDir?: string;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function stringScript(scripts: unknown, scriptName: string): string | null {
-	if (!isRecord(scripts)) {
-		return null;
-	}
-	const script = scripts[scriptName];
-	return typeof script === "string" ? script : null;
-}
-
-function selectRuntimeBuildScript(packageJson: WorkspacePackageJson): string | null {
+function selectRuntimeBuildScript(packageJson: WorkspacePackage): string | null {
 	if (
 		packageJson.name === "@leitwerk-dev/ui" ||
 		packageJson.name === "@leitwerk-dev/test-support"
 	) {
 		return null;
 	}
-	if (stringScript(packageJson.scripts, "build:runtime")) {
+	if (
+		typeof packageJson.scripts?.["build:runtime"] === "string" &&
+		packageJson.scripts["build:runtime"]
+	) {
 		return "build:runtime";
 	}
-	const buildScript = stringScript(packageJson.scripts, "build");
-	return buildScript?.includes("tsup") ? "build" : null;
+	const buildScript = packageJson.scripts?.build;
+	return typeof buildScript === "string" && buildScript.includes("tsup") ? "build" : null;
 }
 
 function listRuntimeBuildTasks(workspaceRoot: string): RuntimeBuildTask[] {
 	const tasks = new Map<string, RuntimeBuildTask>();
-	for (const dir of listWorkspacePackageDirs(workspaceRoot)) {
-		const packageJson = JSON.parse(
-			readFileSync(path.join(dir, "package.json"), "utf8"),
-		) as WorkspacePackageJson;
+	for (const packageJson of workspacePackages(workspaceRoot)) {
 		const scriptName = selectRuntimeBuildScript(packageJson);
-		if (typeof packageJson.name === "string" && scriptName) {
+		if (scriptName) {
 			tasks.set(packageJson.name, { workspaceName: packageJson.name, scriptName });
 		}
 	}
@@ -71,7 +52,7 @@ function spawnNpm(args: string[], env: NodeJS.ProcessEnv): ChildProcess {
 async function main(): Promise<void> {
 	const tasks = listRuntimeBuildTasks(process.cwd());
 	for (const entry of loadActiveDevelopmentComposition(process.cwd())?.externalPackages ?? []) {
-		const scriptName = selectRuntimeBuildScript(entry.packageJson);
+		const scriptName = selectRuntimeBuildScript(entry);
 		if (scriptName) tasks.push({ workspaceName: entry.name, scriptName, packageDir: entry.dir });
 	}
 	tasks.sort((left, right) => left.workspaceName.localeCompare(right.workspaceName));

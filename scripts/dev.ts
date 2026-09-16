@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { loadDevContext } from "./dev-context.ts";
-import { spawnTsx, stopManagedForExit } from "./dev-process.ts";
+import { exitStopOptions, spawnTsx, stopManaged } from "./dev-process.ts";
 
 const lockDir = path.join(tmpdir(), "leitwerk-dev-port-locks");
 const MAX_PORT = 65_535;
@@ -195,7 +195,8 @@ async function main(): Promise<void> {
 	const finish = async (exitCode: number) => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		await Promise.all(children.map((child) => stopManagedForExit(child, exitCode, 25_000, 1_500)));
+		const options = exitStopOptions(exitCode, 25_000, 1_500);
+		await Promise.all(children.map((child) => stopManaged(child, options)));
 		await releaseReservation();
 		process.exit(exitCode);
 	};

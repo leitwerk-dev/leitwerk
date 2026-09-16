@@ -34,12 +34,9 @@ export function listWorkspacePackageDirs(
 	return [...new Set(dirs)].sort((left, right) => left.localeCompare(right));
 }
 
-export interface WorkspacePackage {
+export interface WorkspacePackage extends PackageManifest, Record<string, unknown> {
 	name: string;
 	dir: string;
-	scripts?: Record<string, string>;
-	dependencies?: Record<string, string>;
-	devDependencies?: Record<string, string>;
 }
 
 export interface PackageManifest {
@@ -50,6 +47,7 @@ export interface PackageManifest {
 	scripts?: Record<string, string>;
 	dependencies?: Record<string, string>;
 	devDependencies?: Record<string, string>;
+	optionalDependencies?: Record<string, string>;
 }
 
 export function readJson<T = PackageManifest>(file: string): T {
@@ -80,26 +78,32 @@ export function packageDirectory(name: string, from: string): string {
 	throw new Error(`${name} is not installed in ${from}. Run npm ci.`);
 }
 
-export function workspacePackages(root: string): WorkspacePackage[] {
-	return listWorkspacePackageDirs(root).map((dir) => {
-		const manifest = readJson(path.join(dir, "package.json"));
-		if (!isPackageName(manifest.name))
-			throw new Error(`Package at ${dir} needs a valid package name`);
-		return { ...manifest, name: manifest.name, dir: realpathSync(dir) };
-	});
+export function readWorkspacePackage(dir: string): WorkspacePackage {
+	const manifest = readJson(path.join(dir, "package.json"));
+	if (!manifest || !isPackageName(manifest.name))
+		throw new Error(`Package at ${dir} needs a valid package name`);
+	return { ...manifest, name: manifest.name, dir: realpathSync(dir) };
 }
 
-export function orderedPackages(packages: WorkspacePackage[]): WorkspacePackage[] {
+export function workspacePackages(root: string): WorkspacePackage[] {
+	return listWorkspacePackageDirs(root).map(readWorkspacePackage);
+}
+
+export function orderedPackages<T extends WorkspacePackage>(
+	packages: readonly T[],
+	dependencyNames: (entry: T) => string[] = (entry) =>
+		Object.keys({ ...entry.dependencies, ...entry.devDependencies }),
+): T[] {
 	const byName = new Map(packages.map((entry) => [entry.name, entry]));
 	if (byName.size !== packages.length) throw new Error("Duplicate workspace package names");
-	const ordered: WorkspacePackage[] = [];
+	const ordered: T[] = [];
 	const visiting = new Set<string>();
 	const visited = new Set<string>();
-	function visit(entry: WorkspacePackage) {
+	function visit(entry: T) {
 		if (visited.has(entry.name)) return;
 		if (visiting.has(entry.name)) throw new Error(`Circular dependency: ${entry.name}`);
 		visiting.add(entry.name);
-		for (const name of Object.keys({ ...entry.dependencies, ...entry.devDependencies })) {
+		for (const name of dependencyNames(entry)) {
 			const dependency = byName.get(name);
 			if (dependency) visit(dependency);
 		}

@@ -6,23 +6,12 @@ export interface DockerWorkerContract {
 	workerImage: string;
 }
 
-export interface DockerWorkerEvidence {
+export interface DockerWorkerEvidence
+	extends ReturnType<typeof verifyDockerPod>,
+		ReturnType<typeof verifyDockerDaemon> {
 	observedAt: string;
-	pod: string;
-	podUid: string;
-	namespace: string;
-	node: string;
-	pvc: string;
-	pvcUid: string;
-	pv: string;
-	pvUid: string;
-	workerImage: string;
-	workerImageId: string;
 	innerImageId: string;
 	marker: string;
-	driver: string;
-	dockerRootDir: string;
-	dockerVersion: string | null;
 	replacesPodUid?: string;
 	previousPodDeletedAt?: string;
 }

@@ -1,21 +1,14 @@
 import { type SpawnOptions, spawn } from "node:child_process";
+import { signalProcessGroup } from "./child-process.js";
 
 /** Forward cancellation to the whole command group, including npm's children. */
 export function run(command: string, args: string[], options: SpawnOptions): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const child = spawn(command, args, { stdio: "inherit", detached: true, ...options });
 		let killTimer: ReturnType<typeof setTimeout> | undefined;
-		const signalGroup = (signal: NodeJS.Signals) => {
-			if (!child.pid) return;
-			try {
-				process.kill(-child.pid, signal);
-			} catch {
-				/* Already stopped. */
-			}
-		};
 		const signal = (value: NodeJS.Signals) => {
-			signalGroup(value);
-			killTimer ??= setTimeout(() => signalGroup("SIGKILL"), 30_000);
+			signalProcessGroup(child, value);
+			killTimer ??= setTimeout(() => signalProcessGroup(child, "SIGKILL"), 30_000);
 		};
 		const interrupt = () => signal("SIGINT");
 		const terminate = () => signal("SIGTERM");

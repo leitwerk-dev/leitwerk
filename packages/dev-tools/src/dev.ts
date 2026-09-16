@@ -1,12 +1,12 @@
 import { type ChildProcess, spawn } from "node:child_process";
-import { once } from "node:events";
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@leitwerk-dev/server";
 import chokidar, { type FSWatcher } from "chokidar";
 import { createServer, type ViteDevServer } from "vite";
+import { stopAttached, waitForBackendReady } from "./child-process.js";
+import { createCoalescedRunner } from "./coalesced-runner.js";
 import { loadWorkspaceComposition } from "./composition.js";
 import { build } from "./development.js";
 import { compositionPath, type DevelopmentOptions, workspaceRoot } from "./selection.js";
@@ -25,8 +25,6 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let stopping = false;
 	let shutdownPromise: Promise<void> | undefined;
-	let restarting = false;
-	let pending = false;
 	const settings = () => {
 		const input = loadWorkspaceComposition(manifestPath);
 		const configPath = process.env.LEITWERK_CONFIG_PATH ?? input.runtimeConfigPath;
@@ -49,15 +47,18 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 			backendUrl: `http://${proxyHost.includes(":") ? `[${proxyHost}]` : proxyHost}:${port}`,
 		};
 	};
+	const watchPaths = (configPath: string) => [
+		configPath,
+		...workspacePackages(root).flatMap((entry) => [
+			path.join(entry.dir, "src"),
+			path.join(entry.dir, "package.json"),
+		]),
+	];
 	async function stopBackend() {
 		const child = backend;
 		if (!child || child.exitCode !== null || child.signalCode !== null) return;
 		expectedExit = child;
-		const exit = once(child, "exit");
-		child.kill("SIGTERM");
-		const timeout = setTimeout(() => child.kill("SIGKILL"), 25_000);
-		await exit;
-		clearTimeout(timeout);
+		await stopAttached(child, { graceMs: 25_000 });
 	}
 	function shutdown(code: number): Promise<void> {
 		if (shutdownPromise) return shutdownPromise;
@@ -102,26 +103,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		child.once("exit", () => {
 			if (!stopping && expectedExit !== child) void shutdown(1);
 		});
-		const deadline = Date.now() + 30_000;
-		let ready = false;
-		while (
-			!stopping &&
-			child.exitCode === null &&
-			child.signalCode === null &&
-			Date.now() < deadline
-		) {
-			try {
-				if (
-					(await fetch(`${input.backendUrl}/api/ready`, { signal: AbortSignal.timeout(1000) })).ok
-				) {
-					ready = true;
-					break;
-				}
-			} catch {
-				/* Server is starting. */
-			}
-			await delay(100);
-		}
+		const ready = await waitForBackendReady(child, `${input.backendUrl}/api/ready`, () => stopping);
 		if (stopping) return;
 		if (!ready) throw new Error(`Backend did not become ready at ${input.backendUrl}`);
 		ui = await createServer({
@@ -149,42 +131,30 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 			return;
 		}
 		ui.printUrls();
-		await watcher?.add([
-			input.configPath,
-			...workspacePackages(root).flatMap((entry) => [
-				path.join(entry.dir, "src"),
-				path.join(entry.dir, "package.json"),
-			]),
-		]);
+		await watcher?.add(watchPaths(input.configPath));
 	}
-	async function restart() {
-		pending = true;
-		if (restarting || stopping) return;
-		restarting = true;
-		try {
-			while (pending && !stopping) {
-				pending = false;
+	const restart = createCoalescedRunner(
+		async () => {
+			try {
 				let input: ReturnType<typeof settings>;
 				try {
 					input = settings();
 					await build(root);
 				} catch (error) {
 					console.error(error instanceof Error ? error.message : "Build failed");
-					continue;
+					return;
 				}
-				if (stopping) break;
+				if (stopping) return;
 				await stopBackend();
 				await ui?.close();
-				if (stopping) break;
-				await start(input);
+				if (!stopping) await start(input);
+			} catch (error) {
+				console.error(error instanceof Error ? error.message : "Restart failed");
+				await shutdown(1);
 			}
-		} catch (error) {
-			console.error(error instanceof Error ? error.message : "Restart failed");
-			await shutdown(1);
-		} finally {
-			restarting = false;
-		}
-	}
+		},
+		() => stopping,
+	);
 	process.once("SIGINT", interrupt);
 	process.once("SIGTERM", terminate);
 	try {
@@ -192,15 +162,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		await build(root);
 		if (stopping) return;
 		watcher = chokidar.watch(
-			[
-				manifestPath,
-				input.configPath,
-				path.join(root, "package.json"),
-				...workspacePackages(root).flatMap((entry) => [
-					path.join(entry.dir, "src"),
-					path.join(entry.dir, "package.json"),
-				]),
-			],
+			[manifestPath, path.join(root, "package.json"), ...watchPaths(input.configPath)],
 			{
 				ignoreInitial: true,
 				ignored: /(?:^|\/)node_modules\/|\.(?:test|spec)\.[cm]?[jt]s$/,
@@ -209,7 +171,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		);
 		watcher.on("all", () => {
 			clearTimeout(timer);
-			timer = setTimeout(() => void restart(), 200);
+			timer = setTimeout(restart.run, 200);
 		});
 		watcher.on("error", (error) => {
 			console.error(error instanceof Error ? error.message : "Source watcher failed");

@@ -1,17 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
+import { testWorkspace } from "../test-workspace.js";
 import { kubernetesEvidence } from "./benchmark-kubernetes.js";
 
-const roots: string[] = [];
-afterEach(() => {
-	vi.unstubAllEnvs();
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
+afterEach(() => vi.unstubAllEnvs());
 it("captures a selected deployment without local Git and rejects a different image", () => {
-	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-benchmark-kube-"));
-	roots.push(root);
+	const { root } = testWorkspace();
 	mkdirSync(path.join(root, "bin"));
 	const calls = path.join(root, "calls.jsonl");
 	const deployment = {

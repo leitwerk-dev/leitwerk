@@ -2,10 +2,11 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import type { ProcessTurnRecord } from "@leitwerk-dev/domain";
 import type {
+	LaunchersResponseBody,
 	LaunchRunResponseBody,
 	ProcessDetailUiSnapshotResponseBody,
+	ProcessDiagnosticsData,
 	StartLaunchRunResponseBody,
 } from "@leitwerk-dev/protocol";
 import { parse } from "yaml";
@@ -35,13 +36,6 @@ export interface WorkerStartupBenchmarkOptions {
 	pollIntervalMs?: number;
 	kubernetes?: KubernetesEvidenceOptions;
 	signal?: AbortSignal;
-}
-
-interface LauncherCatalog {
-	launchers: {
-		id: string;
-		modelConfigSchema?: { availableProfiles: { id: string; availability: string }[] };
-	}[];
 }
 
 class ApiError extends Error {
@@ -144,7 +138,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 			throw new Error("API returned invalid JSON");
 		}
 	};
-	const catalog = await api<LauncherCatalog>("/api/launchers");
+	const catalog = await api<LaunchersResponseBody>("/api/launchers");
 	const launcher = catalog.launchers?.find((entry) => entry.id === options.launcherId);
 	if (!launcher) throw new Error("Requested launcher is unavailable");
 	const profile = launcher.modelConfigSchema?.availableProfiles?.find(
@@ -233,10 +227,11 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 				sample.launchRun = launchRun;
 				sample.instanceId ??= launchRun.instanceId;
 				if (sample.instanceId) {
-					const detail = await api<{
-						process: { lifecycleStatus: string };
-						turnRecords: ProcessTurnRecord[];
-					}>(`/api/processes/${encodeURIComponent(sample.instanceId)}`, {}, remaining());
+					const detail = await api<ProcessDiagnosticsData>(
+						`/api/processes/${encodeURIComponent(sample.instanceId)}`,
+						{},
+						remaining(),
+					);
 					const snapshot = await api<ProcessDetailUiSnapshotResponseBody>(
 						`/api/processes/${encodeURIComponent(sample.instanceId)}/ui-snapshot`,
 						{},
