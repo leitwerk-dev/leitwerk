@@ -1,10 +1,6 @@
 import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
-import type {
-	ProcessVolumeRequirements,
-	StartWorkerInput,
-	WorkerUnit,
-} from "@leitwerk-dev/worker-runners/types";
-import { describe, expect, it } from "vitest";
+import type { ProcessVolume, WorkerRunner } from "@leitwerk-dev/worker-runners/types";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { closeDatabase } from "../db/database.js";
 import { buildProcessActionRegistry } from "../process-action-registry.js";
@@ -17,19 +13,16 @@ import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { createWorkerSupervisor } from "./worker-supervisor.js";
 import { createWorkerWebSocketIpcManager } from "./worker-websocket-ipc.js";
 
-function storageFixture(override: string | undefined, extensionSize: string | undefined) {
+function storageFixture(extensionSize = "50Gi") {
 	const deps = createTestDeps();
 	const config = getDefaultConfig();
 	config.workers.runner = "kubernetes";
-	config.process_configs = { storage_process: { storage_size: override, turn_configs: {} } };
-	let resolverCalls = 0;
 	const definition: ExtensionProcessDefinition = createFixtureProcess({
 		id: "storage_process",
 		entry: "start",
 		turns: { start: createFixtureAutomaticTurn() },
 	});
 	definition.resolveStorageSize = ({ params, projects }) => {
-		resolverCalls += 1;
 		expect(params).toEqual({});
 		expect(projects.map((project) => project.key)).toEqual(["repo"]);
 		return extensionSize;
@@ -57,8 +50,17 @@ function storageFixture(override: string | undefined, extensionSize: string | un
 		state: { kind: "starting", start: { kind: "automatic" } },
 	});
 	deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
-	const provisions: Array<ProcessVolumeRequirements | undefined> = [];
-	const launches: StartWorkerInput[] = [];
+	const ensure = vi.fn<ProcessVolume["ensure"]>(async (instanceId) => ({
+		instanceId,
+		id: "process-pvc",
+		mountPath: "/state",
+	}));
+	const launch = vi.fn<WorkerRunner["start"]>(async ({ instanceId, workerId }) => ({
+		instanceId,
+		workerId,
+		unitId: "worker-pod",
+		onExit() {},
+	}));
 	const supervisor = createWorkerSupervisor({
 		...deps,
 		config,
@@ -68,23 +70,12 @@ function storageFixture(override: string | undefined, extensionSize: string | un
 		runnerRuntime: {
 			webSocketIpc: createWorkerWebSocketIpcManager(),
 			volume: {
-				async ensure(instanceId, requirements) {
-					provisions.push(requirements);
-					return { instanceId, id: "process-pvc", mountPath: "/state" };
-				},
+				ensure,
 				async release() {},
 				async deleteProcessResources() {},
 			},
 			runner: {
-				async start(input): Promise<WorkerUnit> {
-					launches.push(input);
-					return {
-						instanceId: input.instanceId,
-						workerId: input.workerId,
-						unitId: "worker-pod",
-						onExit() {},
-					};
-				},
+				start: launch,
 				async stop() {},
 				async list() {
 					return [];
@@ -95,57 +86,31 @@ function storageFixture(override: string | undefined, extensionSize: string | un
 			},
 		},
 	});
-	return {
-		process,
-		supervisor,
-		provisions,
-		launches,
-		resolverCalls: () => resolverCalls,
-		async close() {
-			await supervisor.detachAll("test complete");
-			closeDatabase(deps.db);
-		},
-	};
+	onTestFinished(async () => {
+		await supervisor.detachAll("test complete");
+		closeDatabase(deps.db);
+	});
+	return { process, supervisor, ensure, launch };
 }
 
 describe("createWorkerSupervisor", () => {
-	it("requires the shared runner runtime dependency", () => {
-		expect(typeof createWorkerSupervisor).toBe("function");
-		expect(getDefaultConfig().workers.runner).toBe("docker");
-	});
-
-	it.each([
-		{ override: "128Mi", extensionSize: "50Gi", expected: "128Mi", calls: 0 },
-		{ override: undefined, extensionSize: "50Gi", expected: "50Gi", calls: 1 },
-		{ override: undefined, extensionSize: undefined, expected: "20Gi", calls: 1 },
-	])("provisions $expected before starting the worker", async ({
-		override,
-		extensionSize,
-		expected,
-		calls,
-	}) => {
-		const t = storageFixture(override, extensionSize);
-		try {
-			await t.supervisor.spawnWorker(t.process.id);
-			expect(t.provisions).toEqual([{ docker: false, size: expected }]);
-			expect(t.resolverCalls()).toBe(calls);
-			expect(t.launches).toHaveLength(1);
-			expect(t.launches[0]?.volume?.id).toBe("process-pvc");
-		} finally {
-			await t.close();
-		}
+	it("provisions the resolved size before starting the worker", async () => {
+		const t = storageFixture();
+		await t.supervisor.spawnWorker(t.process.id);
+		expect(t.ensure).toHaveBeenCalledExactlyOnceWith(
+			t.process.id,
+			{ docker: false, size: "50Gi" },
+			expect.anything(),
+		);
+		expect(t.launch.mock.calls.map(([input]) => input.volume?.id)).toEqual(["process-pvc"]);
 	});
 
 	it("fails startup before provisioning or launching for an invalid extension size", async () => {
-		const t = storageFixture(undefined, "invalid");
-		try {
-			await expect(t.supervisor.spawnWorker(t.process.id)).rejects.toThrow(
-				"Worker runtime start failed",
-			);
-			expect(t.provisions).toEqual([]);
-			expect(t.launches).toEqual([]);
-		} finally {
-			await t.close();
-		}
+		const t = storageFixture("invalid");
+		await expect(t.supervisor.spawnWorker(t.process.id)).rejects.toThrow(
+			"Worker runtime start failed",
+		);
+		expect(t.ensure).not.toHaveBeenCalled();
+		expect(t.launch).not.toHaveBeenCalled();
 	});
 });

@@ -42,8 +42,6 @@ import type {
 	ProcessLauncherDefinition,
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
-	RepositoryCredentialProject,
-	RepositoryCredentialRequirement,
 	ServerProcessAPI,
 	UiProcessAPI,
 	WorkerCompleteInput,
@@ -1883,12 +1881,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	private paramsCodec: Codec<TParams> | null = null;
 	private stateCodec: Codec<TState> | null = null;
 	private initialStateFn: ((params: TParams) => TState) | null = null;
-	private repositoryCredentialsFn:
-		| ((input: {
-				params: TParams;
-				projects: readonly RepositoryCredentialProject[];
-		  }) => readonly RepositoryCredentialRequirement[])
-		| undefined;
+	private repositoryCredentialsFn: ProcessDefinition<TParams, TState>["repositoryCredentials"];
 	private storageSizeResolver: ProcessDefinition<TParams, TState>["resolveStorageSize"];
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
@@ -1940,10 +1933,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 
 	repositoryCredentials(
-		fn: (input: {
-			params: TParams;
-			projects: readonly RepositoryCredentialProject[];
-		}) => readonly RepositoryCredentialRequirement[],
+		fn: NonNullable<ProcessDefinition<TParams, TState>["repositoryCredentials"]>,
 	): this {
 		this.repositoryCredentialsFn = fn;
 		return this;

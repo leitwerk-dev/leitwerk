@@ -23,8 +23,7 @@ export function resolveProcessStorageSize(input: {
 }): string | undefined {
 	const { config, process, definition, projects } = input;
 	if (config.workers.runner !== "kubernetes") return undefined;
-	const override = config.process_configs?.[process.processId]?.storage_size;
-	let size = override;
+	let size = config.process_configs?.[process.processId]?.storage_size;
 	let source = `process_configs.${process.processId}.storage_size`;
 	if (size === undefined && definition?.resolveStorageSize) {
 		const params = definition.paramsCodec.parse(

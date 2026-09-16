@@ -1,4 +1,5 @@
 import http from "node:http";
+import { text } from "node:stream/consumers";
 import { afterEach, describe, expect, it } from "vitest";
 import { createKubernetesHttpApiClient } from "./kubernetes-http-client.js";
 import {
@@ -34,7 +35,7 @@ describe("Kubernetes HTTP API client", () => {
 	it("creates the requested PVC once and never resizes or recreates it on later ensures", async () => {
 		const methods: string[] = [];
 		let retained: KubernetesPersistentVolumeClaimManifest | null = null;
-		const apiServerUrl = await listen((request, response) => {
+		const apiServerUrl = await listen(async (request, response) => {
 			methods.push(request.method ?? "");
 			if (request.method === "GET") {
 				response.writeHead(retained ? 200 : 404, { "Content-Type": "application/json" });
@@ -46,16 +47,10 @@ describe("Kubernetes HTTP API client", () => {
 				response.end();
 				return;
 			}
-			let body = "";
-			request.setEncoding("utf8");
-			request.on("data", (chunk: string) => {
-				body += chunk;
-			});
-			request.on("end", () => {
-				retained = JSON.parse(body);
-				response.writeHead(201, { "Content-Type": "application/json" });
-				response.end(body);
-			});
+			const body = await text(request);
+			retained = JSON.parse(body);
+			response.writeHead(201, { "Content-Type": "application/json" });
+			response.end(body);
 		});
 		const manifest = (size: string) =>
 			buildKubernetesProcessPvcManifest({
@@ -134,16 +129,11 @@ describe("Kubernetes HTTP API client", () => {
 	it("sends the complete framed DeleteOptions body", async () => {
 		let requestBody = "";
 		let contentLength: string | undefined;
-		const apiServerUrl = await listen((request, response) => {
+		const apiServerUrl = await listen(async (request, response) => {
 			contentLength = request.headers["content-length"];
-			request.setEncoding("utf8");
-			request.on("data", (chunk: string) => {
-				requestBody += chunk;
-			});
-			request.on("end", () => {
-				response.writeHead(200, { "Content-Type": "application/json" });
-				response.end("{}");
-			});
+			requestBody = await text(request);
+			response.writeHead(200, { "Content-Type": "application/json" });
+			response.end("{}");
 		});
 		const client = createKubernetesHttpApiClient({ apiServerUrl });
 

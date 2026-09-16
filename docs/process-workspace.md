@@ -46,14 +46,9 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 
 ### Process volume capacity
 
-New Kubernetes PVCs use `process_configs.<processId>.storage_size`, otherwise the
-extension's server-side `resolveStorageSize({ params, projects })` result, otherwise
-`kubernetes.process_volume.size`. The size covers the whole volume, not each clone.
-Extensions own any repository-specific sizing rules. Existing PVCs are never resized
-or recreated by later configuration or resolver changes. Local and Docker storage
-continues to consume space as written, without a capacity quota.
-See [configuration](configuration.md#per-process-storage-size) for quantities and
-pre-provisioning considerations.
+Capacity covers the whole process volume, not each clone. Existing Kubernetes PVCs
+are never resized or recreated by configuration changes. Local and Docker storage has
+no capacity quota. See [storage configuration](configuration.md#per-process-storage-size).
 
 ---
 

@@ -6,6 +6,7 @@ import codingExtension, { codingActionIds } from "@leitwerk-dev/coding";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
+	FORGEJO_PR_TERMINAL_KIND,
 	ForgejoClient,
 	type ForgejoIssue,
 	type ForgejoPullRequest,
@@ -13,7 +14,7 @@ import {
 } from "@leitwerk-dev/forgejo";
 import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
 import gitSshExtension from "@leitwerk-dev/git-ssh";
-import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import type { CoreServerSetupDeps, LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import {
 	createPollingTestExtension,
 	fixtureModelProviders,
@@ -30,7 +31,11 @@ import {
 	createInProcessWorkerSpawn,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
-import { setupWoodpeckerIntegration, type WoodpeckerPipeline } from "@leitwerk-dev/woodpecker";
+import {
+	setupWoodpeckerIntegration,
+	WOODPECKER_PIPELINE_KIND,
+	type WoodpeckerPipeline,
+} from "@leitwerk-dev/woodpecker";
 import { LocalWoodpeckerAdapter } from "@leitwerk-dev/woodpecker/testing";
 import { createForgejoRepoChange } from "../index.js";
 
@@ -443,7 +448,24 @@ export async function createRemoteRepoChangeFixture(
 		});
 
 		runningHarness = harness;
-		const { action, wait: waitForTurn, waitForProcess } = createProcessDriver(() => harness.ctx);
+		const { action, wait, waitForProcess } = createProcessDriver(() => harness.ctx);
+		const sources = harness.ctx.deps
+			.externalSourceService as CoreServerSetupDeps["externalSources"];
+		const waitForTurn: typeof wait = async (id, turn, ...options) => {
+			const process = await wait(id, turn, ...options);
+			if (turn === "deliver_change" && process.lifecycleStatus === "waiting") {
+				// One-shot provider polls must not race asynchronous subscription arming.
+				await waitForValue(
+					() =>
+						[WOODPECKER_PIPELINE_KIND, FORGEJO_PR_TERMINAL_KIND].every((kind) =>
+							sources.listArmed(kind).some((armed) => armed.instanceId === id),
+						),
+					Boolean,
+					12000,
+				);
+			}
+			return process;
+		};
 		return {
 			harness,
 			forgejo,

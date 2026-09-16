@@ -1,10 +1,8 @@
 import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
-import { closeDatabase } from "./db/database.js";
 import { isValidStorageSize, resolveProcessStorageSize } from "./process-storage-size.js";
 import { createFixtureProcess } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 function setup() {
 	const config = getDefaultConfig();
@@ -72,48 +70,22 @@ describe("resolveProcessStorageSize", () => {
 		expect(resolveProcessStorageSize(input)).toBe("128Mi");
 	});
 
-	it("lets the extension select a size from validated params, projects and its own configuration", () => {
+	it.each([
+		['{"profile":"team"}', { profile: "team" }],
+		[null, undefined],
+	])("passes codec-validated params and projects for stored params %s", (paramsJson, rawParams) => {
 		const input = setup();
-		const deps = createTestDeps();
-		try {
-			const process = deps.processes.create({
-				processId: input.definition.id,
-				paramsJson: '{"profile":"team"}',
-			});
-			deps.projects.create({
-				instanceId: process.id,
-				key: "repo",
-				repoLocator: "ssh://git@example.test/team/repo.git",
-				baseBranch: "main",
-			});
-			const projects = deps.projects.listByInstance(process.id);
-			const repositorySizes = new Map([[projects[0]?.repoLocator, "50Gi"]]);
-			input.definition.paramsCodec.parse = (raw) => {
-				expect(raw).toEqual({ profile: "team" });
-				return { profile: "validated-team" };
-			};
-			input.definition.resolveStorageSize = (context) => {
-				expect(context.params).toEqual({ profile: "validated-team" });
-				expect(context.projects).toEqual(projects);
-				return repositorySizes.get(context.projects[0]?.repoLocator);
-			};
-			expect(resolveProcessStorageSize({ ...input, process, projects })).toBe("50Gi");
-		} finally {
-			closeDatabase(deps.db);
-		}
-	});
-
-	it("lets the params codec supply defaults when no params were stored", () => {
-		const input = setup();
+		const process = { ...input.process, paramsJson };
 		input.definition.paramsCodec.parse = (raw) => {
-			expect(raw).toBeUndefined();
-			return { size: "1Gi" };
+			expect(raw).toEqual(rawParams);
+			return { profile: "validated-team" };
 		};
-		input.definition.resolveStorageSize = ({ params }) => {
-			expect(params).toEqual({ size: "1Gi" });
-			return "1Gi";
+		input.definition.resolveStorageSize = ({ params, projects }) => {
+			expect(params).toEqual({ profile: "validated-team" });
+			expect(projects).toBe(input.projects);
+			return "50Gi";
 		};
-		expect(resolveProcessStorageSize(input)).toBe("1Gi");
+		expect(resolveProcessStorageSize({ ...input, process })).toBe("50Gi");
 	});
 
 	it("falls back to the configured global size when the extension returns undefined", () => {

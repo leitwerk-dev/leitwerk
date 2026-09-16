@@ -11,7 +11,10 @@ import {
 	kubernetesProcessPvcName,
 	kubernetesWorkerPodName,
 } from "./kubernetes-manifests.js";
-import { createKubernetesWorkerRunner } from "./kubernetes-worker-runner.js";
+import {
+	createKubernetesWorkerRunner,
+	type KubernetesWorkerRunnerOptions,
+} from "./kubernetes-worker-runner.js";
 import { createExportTestFixture } from "./session-transfer.test-helper.js";
 import { type StartWorkerInput, type VolumeRef, WorkerStartDiagnosticError } from "./types.js";
 
@@ -25,16 +28,19 @@ const unusedExporterOptions = {
 	},
 };
 
-function bindRunner() {
-	const client = new FakeKubernetesApiClient();
-	const { runner, volume } = createKubernetesWorkerRunner({
+function bindRunner(
+	overrides: Partial<KubernetesWorkerRunnerOptions> = {},
+	client = new FakeKubernetesApiClient(),
+) {
+	const runtime = createKubernetesWorkerRunner({
 		client,
 		processNamespacePrefix: "leitwerk-test-process-",
 		volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
 		pod: { workerServiceAccount: "leitwerk-worker", imagePullSecrets: ["registry"] },
 		...unusedExporterOptions,
+		...overrides,
 	});
-	return { client, runner, volume };
+	return { client, ...runtime };
 }
 
 function startInput(overrides: Partial<StartWorkerInput>, volume: VolumeRef): StartWorkerInput {
@@ -62,14 +68,13 @@ describe("Kubernetes ProcessVolume", () => {
 				dockerConfigJson: "base64-docker-config",
 			}),
 		);
-		const { volume } = createKubernetesWorkerRunner({
+		const { volume } = bindRunner(
+			{
+				serverNamespace: "leitwerk-system",
+				imagePullSecretCopies: [{ sourceName: "registry-source", targetName: "registry-target" }],
+			},
 			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			serverNamespace: "leitwerk-system",
-			imagePullSecretCopies: [{ sourceName: "registry-source", targetName: "registry-target" }],
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
-		});
+		);
 
 		await volume.ensure("proc-1");
 
@@ -91,17 +96,13 @@ describe("Kubernetes ProcessVolume", () => {
 	});
 
 	it("selects the configured StorageClass only for Docker process PVCs", async () => {
-		const client = new FakeKubernetesApiClient();
-		const { volume } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
+		const { client, volume } = bindRunner({
 			volume: {
 				storageClassName: "ordinary-storage",
 				size: "5Gi",
 				accessModes: ["ReadWriteOnce"],
 				mountPath: "/state",
 			},
-			...unusedExporterOptions,
 			docker: {
 				runtimeClassName: "leitwerk-sysbox",
 				hostUsers: false,
@@ -114,18 +115,16 @@ describe("Kubernetes ProcessVolume", () => {
 
 		expect(
 			client.pvcs.get("leitwerk-test-process-ordinary/leitwerk-process-ordinary")?.spec,
-		).toHaveProperty("storageClassName", "ordinary-storage");
+		).toMatchObject({
+			storageClassName: "ordinary-storage",
+			resources: { requests: { storage: "128Mi" } },
+		});
 		expect(
 			client.pvcs.get("leitwerk-test-process-docker/leitwerk-process-docker")?.spec,
-		).toHaveProperty("storageClassName", "docker-storage");
-		expect(
-			client.pvcs.get("leitwerk-test-process-ordinary/leitwerk-process-ordinary")?.spec.resources
-				.requests.storage,
-		).toBe("128Mi");
-		expect(
-			client.pvcs.get("leitwerk-test-process-docker/leitwerk-process-docker")?.spec.resources
-				.requests.storage,
-		).toBe("50Gi");
+		).toMatchObject({
+			storageClassName: "docker-storage",
+			resources: { requests: { storage: "50Gi" } },
+		});
 	});
 
 	it("uses the runner default when no size is supplied", async () => {
@@ -144,12 +143,12 @@ describe("Kubernetes ProcessVolume", () => {
 		const { client, volume } = bindRunner();
 		const first = await volume.ensure("proc-1", { size: "50Gi" });
 		// A new runner models server restart; allocation lives in the existing PVC, not a cache.
-		const replacement = createKubernetesWorkerRunner({
+		const replacement = bindRunner(
+			{
+				volume: { size: "20Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
+			},
 			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "20Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
-		});
+		);
 		expect(await replacement.volume.ensure("proc-1", { size })).toEqual(first);
 		expect(
 			client.pvcs.get("leitwerk-test-process-proc-1/leitwerk-process-proc-1")?.spec.resources
@@ -207,16 +206,12 @@ describe("Kubernetes PVC session exporter", () => {
 	});
 
 	it("mounts only workspace and tree into a non-adoptable helper at its fixed root", async () => {
-		const client = new FakeKubernetesApiClient();
 		const { manifest, relay } = createExportTestFixture();
-		const { exporter, runner } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
+		const { client, exporter, runner } = bindRunner({
 			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/retained/process" },
 			serverUrl: "http://leitwerk-server:8080",
 			exporterImage: "ghcr.io/example/worker@sha256:abc",
 			helperRelays: { create: () => relay },
-			pod: { workerServiceAccount: "leitwerk-worker", imagePullSecrets: ["registry"] },
 		});
 
 		await exporter.prepare({
@@ -294,14 +289,7 @@ describe("KubernetesWorkerRunner", () => {
 		try {
 			const caFile = path.join(dir, "ca.pem");
 			writeFileSync(caFile, "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n");
-			const client = new FakeKubernetesApiClient();
-			const { runner, volume } = createKubernetesWorkerRunner({
-				client,
-				processNamespacePrefix: "leitwerk-test-process-",
-				volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-				serverCaFile: caFile,
-				...unusedExporterOptions,
-			});
+			const { client, runner, volume } = bindRunner({ serverCaFile: caFile });
 			const vol = await volume.ensure("proc-1");
 			await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
 
@@ -358,13 +346,7 @@ describe("KubernetesWorkerRunner", () => {
 			}
 		}
 		const client = new DelayedDeletionClient();
-		const { runner, volume } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
-			delay: async () => undefined,
-		});
+		const { runner, volume } = bindRunner({ delay: async () => undefined }, client);
 		const unit = await runner.start(startInput({}, await volume.ensure("proc-1")));
 
 		await runner.stop(unit, { graceMs: 1000 });
@@ -383,13 +365,7 @@ describe("KubernetesWorkerRunner", () => {
 			}
 		}
 		const client = new StuckDeletionClient();
-		const { runner, volume } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
-			podDisappearanceTimeoutMs: 0,
-		});
+		const { runner, volume } = bindRunner({ podDisappearanceTimeoutMs: 0 }, client);
 		const unit = await runner.start(startInput({}, await volume.ensure("proc-1")));
 
 		await expect(runner.stop(unit, { graceMs: 1000 })).rejects.toThrow(
@@ -494,12 +470,7 @@ describe("KubernetesWorkerRunner", () => {
 			}
 		}
 		const client = new AdmissionFailureClient();
-		const { runner, volume } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
-		});
+		const { runner, volume } = bindRunner({}, client);
 		const vol = await volume.ensure("proc-1");
 
 		const failure = await runner
@@ -524,12 +495,7 @@ describe("KubernetesWorkerRunner", () => {
 	});
 
 	it("creates an unprivileged private-Docker Pod from trusted wiring", async () => {
-		const client = new FakeKubernetesApiClient();
-		const { runner, volume } = createKubernetesWorkerRunner({
-			client,
-			processNamespacePrefix: "leitwerk-test-process-",
-			volume: { size: "5Gi", accessModes: ["ReadWriteOnce"], mountPath: "/state" },
-			...unusedExporterOptions,
+		const { client, runner, volume } = bindRunner({
 			docker: {
 				runtimeClassName: "leitwerk-sysbox",
 				hostUsers: false,

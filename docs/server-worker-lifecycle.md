@@ -37,13 +37,10 @@ The supervisor separates durable lease state from physical execution through `Wo
 Docker runners use the typed `DockerEngineClient` operations. The HTTP adapter maps each operation directly to its endpoint; transport and JSON decoding errors reject the operation's promise.
 
 Before starting isolated runners (Docker or Kubernetes), the supervisor invokes `ProcessVolume.ensure(instanceId, requirements)` and passes the returned volume reference to `WorkerRunner.start(...)`. Isolated runners must not create process storage implicitly. Kubernetes selects the configured Docker process StorageClass when `requirements.docker` is true.
-`requirements.size` supplies new PVC capacity. The server resolves it from an explicit
-process `storage_size`, otherwise the extension's `resolveStorageSize({ params, projects })`,
-otherwise the global Kubernetes size. The resolver is synchronous, server-only, and may
-run again on retries. Invalid results or exceptions fail startup before provisioning.
-Explicit overrides bypass the resolver; local and Docker runners do not invoke it.
-An existing PVC remains authoritative across server restarts and worker replacements;
-ensure never expands, shrinks, or recreates it. No separate allocation cache is required.
+`requirements.size` supplies new PVC capacity, resolved before provisioning; resolution
+failures prevent startup. Existing PVCs remain authoritative across restarts and worker
+replacement. See [storage selection](configuration.md#per-process-storage-size) and the
+[resolver contract](process-sdk.md#process-storage-sizing).
 
 Launch configuration is immutable for the lifetime of a physical worker. Configuration changes apply only when the server creates a new worker. Operators must explicitly recycle existing workers when a change must take effect immediately.
 

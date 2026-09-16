@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import { text as readText } from "node:stream/consumers";
 import { setTimeout as sleep } from "node:timers/promises";
 import { URL } from "node:url";
 import type {
@@ -164,17 +165,10 @@ export function createKubernetesHttpApiClient(options: {
 						...(url.protocol === "https:" && options.ca ? { ca: options.ca } : {}),
 					},
 					(res) => {
-						res.on("error", reject);
-						const chunks: Buffer[] = [];
-						res.on("data", (chunk: Buffer | string) =>
-							chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)),
+						readText(res).then(
+							(text) => resolve({ statusCode: res.statusCode ?? 0, text }),
+							reject,
 						);
-						res.on("end", () => {
-							resolve({
-								statusCode: res.statusCode ?? 0,
-								text: Buffer.concat(chunks).toString("utf8"),
-							});
-						});
 					},
 				);
 				req.on("error", reject);

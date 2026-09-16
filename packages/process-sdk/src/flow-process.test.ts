@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { emptyParamsCodec } from "./codecs.js";
 import { flow } from "./flow.js";
 
@@ -22,31 +22,27 @@ function consumingTurn() {
 		.buildPrompt((ctx) => ctx.input.plan);
 }
 
+function processBuilder() {
+	return flow
+		.process("test_process")
+		.displayName("Test Process")
+		.entry("publish_plan")
+		.codecs({ params: emptyParamsCodec, state: stateCodec })
+		.initialState(() => ({}));
+}
+
 describe("flow process composition", () => {
 	it("fails fast on duplicate fragment turn ids", () => {
 		const fragmentA = flow.fragment("a").turn(publishingTurn());
 		const fragmentB = flow.fragment("b").turn(publishingTurn());
 
-		expect(() =>
-			flow
-				.process("test_process")
-				.displayName("Test")
-				.entry("publish_plan")
-				.codecs({ params: emptyParamsCodec, state: stateCodec })
-				.initialState(() => ({}))
-				.use(fragmentA)
-				.use(fragmentB)
-				.define(),
-		).toThrow(/duplicate turn 'publish_plan'/);
+		expect(() => processBuilder().use(fragmentA).use(fragmentB).define()).toThrow(
+			/duplicate turn 'publish_plan'/,
+		);
 	});
 
 	it("publishes repository credential requirements without post-build mutation", () => {
-		const process = flow
-			.process("credential_process")
-			.displayName("Credential process")
-			.entry("publish_plan")
-			.codecs({ params: emptyParamsCodec, state: stateCodec })
-			.initialState(() => ({}))
+		const process = processBuilder()
 			.repositoryCredentials(() => [
 				{ projectKey: "repo", kind: "git_ssh", credentialRef: "default" },
 			])
@@ -60,56 +56,21 @@ describe("flow process composition", () => {
 	});
 
 	it("preserves the server-side storage resolver without invoking it during definition", () => {
-		let calls = 0;
-		const resolver = ({
-			params,
-			projects,
-		}: {
-			params: { large: boolean };
-			projects: readonly unknown[];
-		}) => {
-			calls += 1;
-			expect(projects).toEqual([]);
-			return params.large ? "50Gi" : undefined;
-		};
-		const process = flow
-			.process<{ large: boolean }, Record<string, never>>("storage_process")
-			.displayName("Storage process")
-			.entry("start")
-			.codecs({
-				params: { parse: () => ({ large: false }), serialize: (params) => params },
-				state: stateCodec,
-			})
-			.initialState(() => ({}))
+		const resolver = vi.fn(() => "50Gi");
+		const process = processBuilder()
 			.resolveStorageSize(resolver)
-			.turn(
-				flow
-					.automatic<{ large: boolean }, Record<string, never>>("start")
-					.description("Start")
-					.run(async () => ({ outcome: "done", params: {} }))
-					.outcome("done", (outcome) => outcome.description("Done").complete()),
-			)
+			.turn(publishingTurn())
+			.turn(consumingTurn())
 			.define();
 
-		expect(calls).toBe(0);
+		expect(resolver).not.toHaveBeenCalled();
 		expect(process.resolveStorageSize).toBe(resolver);
-		expect(process.resolveStorageSize?.({ params: { large: true }, projects: [] })).toBe("50Gi");
-		expect(
-			process.resolveStorageSize?.({ params: { large: false }, projects: [] }),
-		).toBeUndefined();
 	});
 
 	it("delegates to defineProcess and composes fragment turns", () => {
 		const fragment = flow.fragment("plan").turn(publishingTurn()).turn(consumingTurn());
 
-		const process = flow
-			.process("test_process")
-			.displayName("Test Process")
-			.entry("publish_plan")
-			.codecs({ params: emptyParamsCodec, state: stateCodec })
-			.initialState(() => ({}))
-			.use(fragment)
-			.define();
+		const process = processBuilder().use(fragment).define();
 
 		expect(process).toMatchObject({
 			id: "test_process",
@@ -123,13 +84,8 @@ describe("flow process composition", () => {
 	});
 
 	it("declares alternate launch entries without changing the primary entry", () => {
-		const process = flow
-			.process("alternate_entry_process")
-			.displayName("Alternate Entry Process")
-			.entry("publish_plan")
+		const process = processBuilder()
 			.alternateEntry("consume_plan")
-			.codecs({ params: emptyParamsCodec, state: stateCodec })
-			.initialState(() => ({}))
 			.turn(publishingTurn())
 			.turn(consumingTurn())
 			.define();
