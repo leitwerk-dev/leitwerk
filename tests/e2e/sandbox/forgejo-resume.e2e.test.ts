@@ -40,19 +40,6 @@ for (const waitingFor of ["feedback", "ci", "conflict", "operator", "terminal"] 
 				12000,
 			);
 		}
-		if (waitingFor !== "operator") {
-			// Waiting state is persisted before asynchronous subscription reconciliation finishes.
-			await expect
-				.poll(() => subscriptions(f, id).map((a) => a.kind), { timeout: 12000 })
-				.toEqual(
-					expect.arrayContaining([
-						FORGEJO_PR_FEEDBACK_KIND,
-						FORGEJO_PR_CONFLICT_KIND,
-						FORGEJO_PR_TERMINAL_KIND,
-						WOODPECKER_PIPELINE_KIND,
-					]),
-				);
-		}
 		const deps = f.context.deps;
 		const process = deps.processes.getById(id);
 		if (!process) throw new Error("Missing retained delivery");
@@ -76,6 +63,9 @@ for (const waitingFor of ["feedback", "ci", "conflict", "operator", "terminal"] 
 		const reasoningUrl = `/api/processes/${id}/turn-records/${plan.id}/reasoning`;
 		const reasoning = (await f.context.app.inject(reasoningUrl)).json().reasoning;
 		expect(writes.some((w) => w.writeType === "forgejo.ensure_pr")).toBe(true);
+		if (waitingFor !== "operator") {
+			expect(armings.map((a) => a.kind)).toEqual(expect.arrayContaining(deliveryKinds));
+		}
 		// A configuration reload affects future launches; existing params remain authoritative.
 		f.config.extensions["forgejo-repo-change"] = {
 			profile_bindings: {
