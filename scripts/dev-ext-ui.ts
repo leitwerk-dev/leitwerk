@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import process from "node:process";
 import { loadDevContext } from "./dev-context.ts";
-import { spawnManaged, stopManagedForExit } from "./dev-process.ts";
+import { exitStopOptions, spawnManaged, stopManaged } from "./dev-process.ts";
 
 async function main(): Promise<void> {
 	const context = await loadDevContext();
@@ -27,7 +27,8 @@ async function main(): Promise<void> {
 	const finish = async (exitCode: number): Promise<void> => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		await Promise.all(children.map((child) => stopManagedForExit(child, exitCode, 10_000, 1_000)));
+		const options = exitStopOptions(exitCode, 10_000, 1_000);
+		await Promise.all(children.map((child) => stopManaged(child, options)));
 		process.exit(exitCode);
 	};
 	process.once("SIGINT", () => void finish(130));

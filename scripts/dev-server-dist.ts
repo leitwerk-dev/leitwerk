@@ -1,63 +1,33 @@
 import { spawn } from "node:child_process";
-import {
-	existsSync,
-	mkdirSync,
-	readdirSync,
-	readFileSync,
-	rmSync,
-	utimesSync,
-	writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import chokidar from "chokidar";
 import { forwardChildLifecycle } from "./dev-process.ts";
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
-import { listWorkspacePackageDirs } from "./workspace-packages.ts";
-
-interface WorkspacePackageJson {
-	name?: unknown;
-	scripts?: unknown;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readJson<T>(filePath: string): T {
-	return JSON.parse(readFileSync(filePath, "utf8")) as T;
-}
-
-function hasScript(scripts: unknown, scriptName: string): boolean {
-	return isRecord(scripts) && typeof scripts[scriptName] === "string";
-}
+import { workspacePackages } from "./workspace-packages.ts";
 
 function listRuntimeDistWatchPaths(workspaceRoot: string): string[] {
 	const watchPaths = new Set<string>();
-	const addPackageDist = (workspaceDir: string, packageJson: WorkspacePackageJson): void => {
-		if (packageJson.name === "@leitwerk-dev/ui") return;
-		const distDir = path.join(workspaceDir, "dist");
-		if (!existsSync(distDir)) return;
-		if (hasScript(packageJson.scripts, "dev:ext-ui") && existsSync(path.join(distDir, "ui"))) {
+	const composition = loadActiveDevelopmentComposition(workspaceRoot);
+	for (const packageInfo of [
+		...workspacePackages(workspaceRoot),
+		...(composition?.externalPackages ?? []),
+	]) {
+		if (packageInfo.name === "@leitwerk-dev/ui") continue;
+		const distDir = path.join(packageInfo.dir, "dist");
+		if (!existsSync(distDir)) continue;
+		if (
+			typeof packageInfo.scripts?.["dev:ext-ui"] === "string" &&
+			existsSync(path.join(distDir, "ui"))
+		) {
 			for (const distEntry of readdirSync(distDir, { withFileTypes: true })) {
 				if (distEntry.name !== "ui") watchPaths.add(path.join(distDir, distEntry.name));
 			}
-			return;
+			continue;
 		}
 		watchPaths.add(distDir);
-	};
-
-	for (const workspaceDir of listWorkspacePackageDirs(workspaceRoot)) {
-		addPackageDist(
-			workspaceDir,
-			readJson<WorkspacePackageJson>(path.join(workspaceDir, "package.json")),
-		);
-	}
-
-	const composition = loadActiveDevelopmentComposition(workspaceRoot);
-	for (const packageInfo of composition?.externalPackages ?? []) {
-		addPackageDist(packageInfo.dir, packageInfo.packageJson);
 	}
 	for (const configPath of [
 		path.join(workspaceRoot, "leitwerk.yaml"),

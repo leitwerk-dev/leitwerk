@@ -29,5 +29,6 @@
 	"extensions/github": "0.1.9",
 	"extensions/woodpecker": "0.1.9",
 	"extensions/forgejo-repo-change": "0.1.9",
-	"extensions/gitlab": "0.1.9"
+	"extensions/gitlab": "0.1.9",
+	"packages/dev-tools": "0.1.9"
 }

@@ -5,10 +5,10 @@ import chokidar from "chokidar";
 import { type DevContext, loadDevContext } from "./dev-context.ts";
 import {
 	createCoalescedRunner,
+	exitStopOptions,
 	spawnAttachedTsx,
 	spawnTsx,
 	stopAttached,
-	stopAttachedForExit,
 	stopManaged,
 	waitForSuccess,
 } from "./dev-process.ts";
@@ -126,7 +126,7 @@ async function main(): Promise<void> {
 		);
 		// Ctrl+C is an operator-requested stop, not a live-reload handoff. Keep
 		// enough time for nested supervisors to close, then force the dev tree.
-		await stopAttachedForExit(session, exitCode, 27_000, 3_000);
+		await stopAttached(session, exitStopOptions(exitCode, 27_000, 3_000));
 		process.exit(exitCode);
 	};
 

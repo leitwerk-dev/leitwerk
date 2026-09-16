@@ -3,13 +3,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import chokidar from "chokidar";
+import { waitForBackendReady } from "../packages/dev-tools/src/child-process.ts";
 import { loadDevContext } from "./dev-context.ts";
 import {
 	createCoalescedRunner,
+	exitStopOptions,
 	observeUnexpectedChildFailure,
 	spawnTsx,
 	stopManaged,
-	stopManagedForExit,
 	waitForSuccess,
 } from "./dev-process.ts";
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
@@ -42,26 +43,6 @@ function ignoredRuntimePath(candidate: string): boolean {
 function debounceMs(): number {
 	const parsed = Number.parseInt(process.env.LEITWERK_DEV_RELOAD_DEBOUNCE_MS ?? "", 10);
 	return Number.isInteger(parsed) && parsed >= 0 ? parsed : 200;
-}
-
-async function waitForBackendReady(child: ChildProcess, startedAt: number): Promise<boolean> {
-	const baseUrl = process.env.LEITWERK_BASE_URL ?? "http://127.0.0.1:8080";
-	const deadline = Date.now() + 30_000;
-	while (Date.now() < deadline && child.exitCode === null && child.signalCode === null) {
-		try {
-			const response = await fetch(new URL("/api/health", baseUrl));
-			if (response.ok) {
-				console.info(
-					`[dev:server] Backend ready pid=${child.pid} after ${Date.now() - startedAt}ms.`,
-				);
-				return true;
-			}
-		} catch {
-			// The single-writer handoff is still in progress.
-		}
-		await new Promise((resolve) => setTimeout(resolve, 100));
-	}
-	return child.exitCode !== null || child.signalCode !== null;
 }
 
 function runPreflight(env: NodeJS.ProcessEnv): Promise<boolean> {
@@ -122,7 +103,7 @@ async function main(): Promise<void> {
 		await watcher?.close();
 		if (backend) {
 			expectedBackendExits.add(backend);
-			await stopManagedForExit(backend, exitCode, 20_000, 1_000);
+			await stopManaged(backend, exitStopOptions(exitCode, 20_000, 1_000));
 		}
 		process.exit(exitCode);
 	};
@@ -137,19 +118,28 @@ async function main(): Promise<void> {
 		console.info(
 			`[dev:server] Started source backend pid=${child.pid} (${Date.now() - startedAt}ms spawn).`,
 		);
-		void waitForBackendReady(child, startedAt).then((readyOrExited) => {
-			if (
-				!readyOrExited &&
-				!shuttingDown &&
-				backend === child &&
-				!expectedBackendExits.has(child)
-			) {
-				console.error(
-					`[dev:server] Backend pid=${child.pid} did not become ready within 30s; stopping the development session.`,
-				);
-				void shutdown(1);
-			}
-		});
+		const baseUrl = process.env.LEITWERK_BASE_URL ?? "http://127.0.0.1:8080";
+		void waitForBackendReady(child, new URL("/api/health", baseUrl), () => shuttingDown).then(
+			(ready) => {
+				if (ready)
+					console.info(
+						`[dev:server] Backend ready pid=${child.pid} after ${Date.now() - startedAt}ms.`,
+					);
+				if (
+					!ready &&
+					child.exitCode === null &&
+					child.signalCode === null &&
+					!shuttingDown &&
+					backend === child &&
+					!expectedBackendExits.has(child)
+				) {
+					console.error(
+						`[dev:server] Backend pid=${child.pid} did not become ready within 30s; stopping the development session.`,
+					);
+					void shutdown(1);
+				}
+			},
+		);
 		observeUnexpectedChildFailure(
 			child,
 			() => shuttingDown || expectedBackendExits.has(child),

@@ -2,11 +2,20 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { orderedPackages } from "../packages/dev-tools/src/workspace.ts";
 import { listWorkspacePackageDirs } from "./workspace-packages.js";
 
 const tempDirs: string[] = [];
 afterEach(() => {
 	for (const dir of tempDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+});
+
+it("orders caller-supplied dependencies and rejects cycles", () => {
+	const a = { name: "a", dir: "a", requires: ["b"] };
+	const b = { name: "b", dir: "b", requires: [] as string[] };
+	expect(orderedPackages([a, b], (entry) => entry.requires)).toEqual([b, a]);
+	b.requires.push("a");
+	expect(() => orderedPackages([a, b], (entry) => entry.requires)).toThrow("Circular");
 });
 
 describe("workspace discovery", () => {

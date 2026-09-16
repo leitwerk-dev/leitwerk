@@ -1,31 +1,11 @@
-import type {
-	PhysicalWorkerStart,
-	ProcessTurnRecord,
-	StartupInterval,
-	StartupObservation,
-	TurnStartRecord,
-	WorkerLease,
+import {
+	type PhysicalWorkerStart,
+	type ProcessTurnRecord,
+	type StartupObservation,
+	startupInterval,
+	type TurnStartRecord,
+	type WorkerLease,
 } from "@leitwerk-dev/domain";
-export function startupInterval(
-	start: string | null | undefined,
-	end: string | null | undefined,
-	clock: StartupInterval["clock"] = "server",
-): StartupInterval {
-	const delta = start && end ? Date.parse(end) - Date.parse(start) : NaN;
-	const status =
-		!start || !end
-			? "missing"
-			: !Number.isFinite(delta) || delta < 0
-				? "invalid_order"
-				: "available";
-	return {
-		start: start ?? null,
-		end: end ?? null,
-		durationMs: status === "available" ? delta : null,
-		status,
-		clock,
-	};
-}
 export function physicalWorkerStarts(input: {
 	leases: readonly WorkerLease[];
 	turnStarts: readonly TurnStartRecord[];

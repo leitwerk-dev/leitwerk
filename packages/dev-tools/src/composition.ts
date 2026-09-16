@@ -1,0 +1,182 @@
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import path from "node:path";
+import { parse as parseYaml } from "yaml";
+import {
+	isInside,
+	listWorkspacePackageDirs,
+	packageDirectory,
+	readWorkspacePackage,
+	type WorkspacePackage,
+} from "./workspace.js";
+
+export const COMPOSITION_ENV = "LEITWERK_COMPOSITION_PATH";
+
+interface CompositionManifest {
+	version?: unknown;
+	leitwerk?: { root?: unknown };
+	runtime_config?: unknown;
+	workspace_root?: unknown;
+	extensions?: unknown;
+	test_roots?: unknown;
+}
+
+export type ComposedPackage = WorkspacePackage;
+
+export interface DevelopmentComposition
+	extends Omit<WorkspaceComposition, "packages" | "declaredCoreRoot"> {
+	leitwerkRoot: string;
+	externalPackages: ComposedPackage[];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown, label: string): string {
+	if (typeof value !== "string" || value.trim() === "") {
+		throw new Error(`${label} must be a non-empty string`);
+	}
+	return value;
+}
+
+function optionalStringArray(value: unknown, label: string): string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || item === "")) {
+		throw new Error(`${label} must be an array of non-empty strings`);
+	}
+	return value as string[];
+}
+
+function resolveExisting(baseDir: string, declaredPath: string, label: string): string {
+	const resolved = path.resolve(baseDir, declaredPath);
+	if (!existsSync(resolved)) throw new Error(`${label} does not exist at '${resolved}'`);
+	return realpathSync(resolved);
+}
+
+function resolveExtension(baseDir: string, source: string): string {
+	return source.startsWith(".") || path.isAbsolute(source)
+		? resolveExisting(baseDir, source, `Extension '${source}'`)
+		: packageDirectory(source, baseDir);
+}
+
+function manifestArgument(argv: readonly string[]): string | undefined {
+	for (let index = 0; index < argv.length; index += 1) {
+		const value = argv[index];
+		if (value === "--composition") return argv[index + 1];
+		if (value?.startsWith("--composition=")) return value.slice("--composition=".length);
+	}
+	return undefined;
+}
+
+export function activateDevelopmentComposition(
+	leitwerkRoot = process.cwd(),
+	argv: readonly string[] = process.argv.slice(2),
+): DevelopmentComposition | null {
+	const declaredManifest = manifestArgument(argv) ?? process.env[COMPOSITION_ENV];
+	if (!declaredManifest) return null;
+	const manifestPath = realpathSync(path.resolve(process.cwd(), declaredManifest));
+	process.env[COMPOSITION_ENV] = manifestPath;
+	const composition = loadDevelopmentComposition(manifestPath, leitwerkRoot);
+	if (!process.env.LEITWERK_CONFIG_PATH) {
+		process.env.LEITWERK_CONFIG_PATH = composition.runtimeConfigPath;
+	}
+	return composition;
+}
+
+export function loadActiveDevelopmentComposition(
+	leitwerkRoot = process.cwd(),
+): DevelopmentComposition | null {
+	const manifestPath = process.env[COMPOSITION_ENV];
+	return manifestPath ? loadDevelopmentComposition(manifestPath, leitwerkRoot) : null;
+}
+
+export interface WorkspaceComposition {
+	manifestPath: string;
+	manifestDir: string;
+	workspaceRoot: string;
+	runtimeConfigPath: string;
+	extensionDirs: string[];
+	testRoots: string[];
+	packages: ComposedPackage[];
+	declaredCoreRoot?: string;
+}
+
+export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposition {
+	const absoluteManifestPath = realpathSync(path.resolve(manifestPath));
+	const manifestDir = path.dirname(absoluteManifestPath);
+	const parsed = parseYaml(readFileSync(absoluteManifestPath, "utf8")) as unknown;
+	if (!isRecord(parsed)) throw new Error("Development composition must be a YAML object");
+	const manifest = parsed as CompositionManifest;
+	if (manifest.version !== 1) throw new Error("Development composition version must be 1");
+	const declaredCoreRoot =
+		manifest.leitwerk === undefined
+			? undefined
+			: path.resolve(manifestDir, requiredString(manifest.leitwerk?.root, "leitwerk.root"));
+	const workspaceRoot = resolveExisting(
+		manifestDir,
+		typeof manifest.workspace_root === "string" ? manifest.workspace_root : ".",
+		"workspace_root",
+	);
+	const runtimeConfigPath = resolveExisting(
+		manifestDir,
+		requiredString(manifest.runtime_config, "runtime_config"),
+		"runtime_config",
+	);
+	const extensionDirs = optionalStringArray(manifest.extensions, "extensions").map((entry) =>
+		resolveExtension(manifestDir, entry),
+	);
+	const testRoots = optionalStringArray(manifest.test_roots, "test_roots").map((entry) =>
+		resolveExisting(manifestDir, entry, `Test root '${entry}'`),
+	);
+
+	const byName = new Map<string, ComposedPackage>();
+	for (const dir of [...listWorkspacePackageDirs(workspaceRoot), ...extensionDirs]) {
+		const entry = readWorkspacePackage(dir);
+		const previous = byName.get(entry.name);
+		if (previous && previous.dir !== entry.dir) {
+			throw new Error(
+				`Composition contains duplicate package '${entry.name}' at '${previous.dir}' and '${entry.dir}'`,
+			);
+		}
+		byName.set(entry.name, entry);
+	}
+
+	return {
+		manifestPath: absoluteManifestPath,
+		manifestDir,
+		declaredCoreRoot,
+		workspaceRoot,
+		runtimeConfigPath,
+		extensionDirs: [...new Set(extensionDirs)].sort(),
+		testRoots: [...new Set(testRoots)].sort(),
+		packages: [...byName.values()].sort((left, right) => left.name.localeCompare(right.name)),
+	};
+}
+
+export function loadDevelopmentComposition(
+	manifestPath: string,
+	executingLeitwerkRoot: string,
+): DevelopmentComposition {
+	const input = loadWorkspaceComposition(manifestPath);
+	const currentRoot = realpathSync(path.resolve(executingLeitwerkRoot));
+	const leitwerkRoot = input.declaredCoreRoot
+		? resolveExisting(input.manifestDir, input.declaredCoreRoot, "leitwerk.root")
+		: currentRoot;
+	if (leitwerkRoot !== currentRoot) {
+		throw new Error(
+			`Composition targets Leitwerk checkout '${leitwerkRoot}', but the command is running from '${currentRoot}'`,
+		);
+	}
+	const { packages, declaredCoreRoot: _declaredCoreRoot, ...composition } = input;
+	return {
+		...composition,
+		leitwerkRoot,
+		externalPackages: packages.filter((entry) => !isInside(leitwerkRoot, entry.dir)),
+	};
+}
+
+export function externalPackageProjects(composition: DevelopmentComposition): string[] {
+	return composition.externalPackages
+		.map((entry) => path.join(entry.dir, "tsconfig.json"))
+		.filter(existsSync);
+}
