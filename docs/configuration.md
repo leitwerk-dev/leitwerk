@@ -87,6 +87,39 @@ workers:
 
 Retention controls when process volumes are removed. Leitwerk does not back them up or restore them. Its managed disaster-recovery workflow covers server-owned durable state. Operators may independently protect process volumes and are responsible for retention and restore testing; without that protection, volume loss can discard unpushed workspace changes and process-local tooling state.
 
+### Per-process storage size
+
+```yaml
+process_configs:
+  poem_creator_process:
+    storage_size: 128Mi
+  forgejo_repo_change_process:
+    storage_size: 1Gi
+```
+
+`process_configs.<processId>.storage_size` sets the requested capacity of a new
+Kubernetes process PVC. Use a positive Kubernetes quantity such as `128Mi`, `1Gi`,
+or `50Gi`. Invalid quantities fail configuration validation.
+
+Selection order is the explicit process setting, the process definition's
+server-side `resolveStorageSize({ params, projects })`, then
+`kubernetes.process_volume.size` (default `20Gi`). An extension may use its own
+validated repository configuration to return a size, or return `undefined` for the
+global default. Explicit process settings bypass the resolver. Invalid resolver
+results fail worker startup; they do not fall back silently.
+
+Existing PVCs keep their size across retries and server or worker replacement.
+Changing configuration never expands, shrinks, or recreates them. StorageClass
+selection remains independent of size, including Docker-compatible process storage.
+The request covers the whole process volume, including repositories, session trees,
+and tooling. It is not a repository download-size estimate or an application quota.
+Local and Docker runners ignore this setting and do not invoke the resolver; their
+directories and ordinary Docker volumes consume space as written.
+
+A PVC request is a minimum: storage providers and existing available PVs may supply
+more capacity. For minimum allocation with varied process sizes, leave volume
+pre-provisioning disabled; its global-size PVs can otherwise satisfy smaller claims.
+
 Transfer links use `server.base_url` as their fixed origin. Non-loopback deployments must configure an HTTPS URL; request `Host` and forwarding headers cannot change the generated link origin.
 
 ---

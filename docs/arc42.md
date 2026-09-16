@@ -159,6 +159,9 @@ Leitwerk workers can be deployed using three distinct runner adapters:
 - **Kubernetes Runner:** Spawns worker pods in isolated Kubernetes process namespaces (see [Kubernetes](kubernetes-deployment-guide.md)).
 - **Local Runner:** Spawns same-host worker subprocesses (used for local development via `npm run dev`).
 
+Kubernetes volume capacity is selected at creation; existing allocations survive worker
+replacement unchanged. See [storage configuration](configuration.md#per-process-storage-size).
+
 ## 8 Cross-Cutting Concepts
 
 ### 8.1 Error Model & Orthogonal Failure Position

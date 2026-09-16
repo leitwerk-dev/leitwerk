@@ -33,6 +33,7 @@ describe("buildWorkerConfigSnapshot", () => {
 			with_pi: {
 				default_model_profile: "generic",
 				worker_runtime_profile: "generic",
+				storage_size: "128Mi",
 				turn_configs: { implement: { model_profile: "generic" } },
 				pi: { append_system_prompt_template: "Extra" },
 			},
@@ -163,32 +164,40 @@ describe("worker.start Pi resource-bundle delivery", () => {
 		});
 		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		deps.leases.create({ instanceId: process.id, workerId: "wkr_bundle", state: "bootstrapping" });
-		return { bundle, config, deps, process };
+		function makeBuilder(
+			resume = false,
+			resolveResourceBundle: Parameters<
+				typeof createWorkerStartPayloadBuilder
+			>[0]["resolveResourceBundle"] = (digest) => (digest === bundle.digest ? bundle : null),
+		) {
+			return createWorkerStartPayloadBuilder({
+				...deps,
+				config,
+				processGraphs: createDefaultTestProcessGraphRegistry(),
+				processActionRegistry: {
+					getTurnDefinition: () => undefined,
+					resolveContextData: () => ({ params: {}, state: {} }),
+				},
+				storageLayout: () => ({
+					primaryTreeFile: "/tree/primary.jsonl",
+					workspaceRoot: "/workspace",
+					piResourceBundlesDir: "/pi-resource-bundles",
+					resume,
+				}),
+				resolveResourceBundle,
+			});
+		}
+		return { bundle, deps, process, makeBuilder };
 	}
 
 	it("delivers the canonical archive only through the authenticated worker.start payload", () => {
-		const { bundle, config, deps, process } = setup();
+		const { bundle, deps, process, makeBuilder } = setup();
 		deps.processes.update(process.id, {
 			selectedTurnModelProfileId: "mutable-process-selection",
 			selectedTurnModelKind: "explicit",
 			selectedTurnModelSource: "action_override",
 		});
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			storageLayout: () => ({
-				primaryTreeFile: "/tree/primary.jsonl",
-				workspaceRoot: "/workspace",
-				piResourceBundlesDir: "/pi-resource-bundles",
-				resume: false,
-			}),
-			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
-		});
+		const builder = makeBuilder();
 
 		const message = builder.buildStartMessage(process.id, "wkr_bundle");
 
@@ -204,7 +213,7 @@ describe("worker.start Pi resource-bundle delivery", () => {
 	});
 
 	it("rebuilds an accepted running LLM turn with its original prepared start", () => {
-		const { bundle, config, deps, process } = setup();
+		const { deps, process, makeBuilder, bundle } = setup();
 		const originalLease = deps.leases.getByInstance(process.id);
 		if (!originalLease) throw new Error("Expected original worker lease");
 		const originalStart = deps.turnStarts.getById("tsr_bundle");
@@ -263,22 +272,7 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			state: "bootstrapping",
 		});
 
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			storageLayout: () => ({
-				primaryTreeFile: "/tree/primary.jsonl",
-				workspaceRoot: "/workspace",
-				piResourceBundlesDir: "/pi-resource-bundles",
-				resume: true,
-			}),
-			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
-		});
+		const builder = makeBuilder(true);
 
 		const message = builder.buildStartMessage(process.id, "wkr_replacement");
 		expect(message?.type).toBe("worker.start");
@@ -296,23 +290,8 @@ describe("worker.start Pi resource-bundle delivery", () => {
 	});
 
 	it("references the process-volume bundle when the server cache is empty", () => {
-		const { bundle, config, deps, process } = setup();
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			storageLayout: () => ({
-				primaryTreeFile: "/tree/primary.jsonl",
-				workspaceRoot: "/workspace",
-				piResourceBundlesDir: "/pi-resource-bundles",
-				resume: true,
-			}),
-			resolveResourceBundle: () => null,
-		});
+		const { bundle, process, makeBuilder } = setup();
+		const builder = makeBuilder(true, () => null);
 
 		const message = builder.buildStartMessage(process.id, "wkr_bundle");
 		expect(message?.payload.bootstrap).toEqual({
@@ -323,23 +302,8 @@ describe("worker.start Pi resource-bundle delivery", () => {
 	});
 
 	it("rejects a resolver response that is not the requested canonical bundle", () => {
-		const { bundle, config, deps, process } = setup();
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			storageLayout: () => ({
-				primaryTreeFile: "/tree/primary.jsonl",
-				workspaceRoot: "/workspace",
-				piResourceBundlesDir: "/pi-resource-bundles",
-				resume: false,
-			}),
-			resolveResourceBundle: () => ({ ...bundle, digest: "0".repeat(64) }),
-		});
+		const { bundle, process, makeBuilder } = setup();
+		const builder = makeBuilder(false, () => ({ ...bundle, digest: "0".repeat(64) }));
 
 		expect(() => builder.buildStartMessage(process.id, "wkr_bundle")).toThrow(
 			/returned '0{64}' for requested digest/,
@@ -347,25 +311,10 @@ describe("worker.start Pi resource-bundle delivery", () => {
 	});
 
 	it("rejects modified bytes even when an alternate resolver repeats the requested digest", () => {
-		const { bundle, config, deps, process } = setup();
+		const { bundle, process, makeBuilder } = setup();
 		const modified = Uint8Array.from(bundle.bytes);
 		modified[0] ^= 0x01;
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			storageLayout: () => ({
-				primaryTreeFile: "/tree/primary.jsonl",
-				workspaceRoot: "/workspace",
-				piResourceBundlesDir: "/pi-resource-bundles",
-				resume: false,
-			}),
-			resolveResourceBundle: () => ({ digest: bundle.digest, bytes: modified }),
-		});
+		const builder = makeBuilder(false, () => ({ digest: bundle.digest, bytes: modified }));
 
 		expect(() => builder.buildStartMessage(process.id, "wkr_bundle")).toThrow(
 			/content digest mismatch/,

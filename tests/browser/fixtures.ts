@@ -7,7 +7,7 @@ import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { test as base } from "@playwright/test";
 
-const API_PORT = 8181;
+const API_PORT = Number(process.env.LEITWERK_BROWSER_API_PORT);
 
 export interface BrowserServerOptions {
 	tempPrefix: string;
@@ -47,6 +47,7 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 			try {
 				const config = getDefaultConfig();
 				config.workers.shutdown_grace_period = "100ms";
+				config.server.base_url = `http://127.0.0.1:${process.env.LEITWERK_BROWSER_UI_PORT}`;
 				await browserServerOptions.configure?.(config, tempRoot);
 				const extensionCatalog = await browserServerOptions.createExtensionCatalog(
 					config,

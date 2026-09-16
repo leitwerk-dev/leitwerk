@@ -5,9 +5,6 @@ import { expect, test } from "./fixtures.js";
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-api-tokens-browser-",
-		configure(config) {
-			config.server.base_url = "http://localhost:5199";
-		},
 		createExtensionCatalog: () => buildExtensionCatalogFromModules([]),
 	},
 });
@@ -18,6 +15,7 @@ for (const viewport of [
 	test(`${viewport.name}: create a 30-minute token, call the API, dismiss, reload and revoke`, async ({
 		page,
 		playwright,
+		baseURL,
 		leitwerk: _leitwerk,
 	}) => {
 		await page.setViewportSize(viewport);
@@ -33,7 +31,7 @@ for (const viewport of [
 		const secret = await page.getByLabel("New API token", { exact: true }).inputValue();
 		// An isolated client sends no browser session or management cookies.
 		const client = await playwright.request.newContext({
-			baseURL: "http://localhost:5199",
+			baseURL,
 			extraHTTPHeaders: { authorization: `Bearer ${secret}` },
 		});
 		try {

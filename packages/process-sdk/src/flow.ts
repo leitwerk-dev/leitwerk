@@ -42,8 +42,6 @@ import type {
 	ProcessLauncherDefinition,
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
-	RepositoryCredentialProject,
-	RepositoryCredentialRequirement,
 	ServerProcessAPI,
 	UiProcessAPI,
 	WorkerCompleteInput,
@@ -1883,12 +1881,8 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	private paramsCodec: Codec<TParams> | null = null;
 	private stateCodec: Codec<TState> | null = null;
 	private initialStateFn: ((params: TParams) => TState) | null = null;
-	private repositoryCredentialsFn:
-		| ((input: {
-				params: TParams;
-				projects: readonly RepositoryCredentialProject[];
-		  }) => readonly RepositoryCredentialRequirement[])
-		| undefined;
+	private repositoryCredentialsFn: ProcessDefinition<TParams, TState>["repositoryCredentials"];
+	private storageSizeResolver: ProcessDefinition<TParams, TState>["resolveStorageSize"];
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
 	private docker = false;
@@ -1939,12 +1933,17 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 
 	repositoryCredentials(
-		fn: (input: {
-			params: TParams;
-			projects: readonly RepositoryCredentialProject[];
-		}) => readonly RepositoryCredentialRequirement[],
+		fn: NonNullable<ProcessDefinition<TParams, TState>["repositoryCredentials"]>,
 	): this {
 		this.repositoryCredentialsFn = fn;
+		return this;
+	}
+
+	/** Resolve new process-volume capacity on the server; operator configuration wins. */
+	resolveStorageSize(
+		fn: NonNullable<ProcessDefinition<TParams, TState>["resolveStorageSize"]>,
+	): this {
+		this.storageSizeResolver = fn;
 		return this;
 	}
 
@@ -2013,6 +2012,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			...(this.repositoryCredentialsFn
 				? { repositoryCredentials: this.repositoryCredentialsFn }
 				: {}),
+			...(this.storageSizeResolver ? { resolveStorageSize: this.storageSizeResolver } : {}),
 			...(this.processPiConfig ? { piConfig: this.processPiConfig } : {}),
 			turns,
 			...(this.serverHooks.length > 0 ? { server: chainHooks(this.serverHooks) } : {}),

@@ -1,46 +1,21 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import {
-	FORGEJO_ISSUE_CANCELLED_KIND,
-	FORGEJO_PR_CONFLICT_KIND,
-	FORGEJO_PR_FEEDBACK_KIND,
-	FORGEJO_PR_TERMINAL_KIND,
-} from "@leitwerk-dev/forgejo";
 import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
-import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { WOODPECKER_PIPELINE_KIND } from "@leitwerk-dev/woodpecker";
 import { LocalWoodpeckerAdapter } from "@leitwerk-dev/woodpecker/testing";
 import { expect } from "vitest";
 import { providerControls } from "../../../sandbox/provider-controls.js";
-import type { Fixture } from "./fixture.js";
-import { control, publish, remote, repo, revised, source, test } from "./forgejo-fixture.js";
-
-const deliveryKinds = [
-	FORGEJO_PR_FEEDBACK_KIND,
-	FORGEJO_PR_CONFLICT_KIND,
-	FORGEJO_PR_TERMINAL_KIND,
-	WOODPECKER_PIPELINE_KIND,
-];
-
-function subscriptions(f: Fixture, id: string) {
-	const service = f.context.deps.externalSourceService as
-		| CoreServerSetupDeps["externalSources"]
-		| undefined;
-	if (!service) throw new Error("Missing external source service");
-	return [
-		FORGEJO_PR_CONFLICT_KIND,
-		FORGEJO_PR_FEEDBACK_KIND,
-		FORGEJO_PR_TERMINAL_KIND,
-		FORGEJO_ISSUE_CANCELLED_KIND,
-		WOODPECKER_PIPELINE_KIND,
-	].flatMap((kind) =>
-		service
-			.listArmed(kind)
-			.filter((a) => a.instanceId === id)
-			.map((a) => ({ kind, id: a.id, resolved: a.resolved })),
-	);
-}
+import {
+	control,
+	deliveryKinds,
+	publish,
+	remote,
+	repo,
+	revised,
+	source,
+	subscriptions,
+	test,
+} from "./forgejo-fixture.js";
 
 // These fixtures use the real file-backed database, provider files, Git and Pi sessions.
 // Only legacy field shapes are synthesized; provider controls drive every transition.

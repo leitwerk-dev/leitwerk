@@ -227,6 +227,10 @@ pi:
 
 process_configs:
   poem_creator_process:
+    # New Kubernetes PVC capacity; existing volumes are unchanged.
+    # Omit to use the extension's resolveStorageSize(), then the global size.
+    # Local/Docker runners ignore this setting.
+    storage_size: 128Mi
     watchers:
       create_poem:
         enabled: true
