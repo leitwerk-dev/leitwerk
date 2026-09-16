@@ -209,7 +209,7 @@ function openDetails() {
 	.turn-cluster.is-failed { border-color: color-mix(in srgb, var(--chronicle-danger) 50%, var(--chronicle-border)); background: color-mix(in srgb, var(--chronicle-danger) 2%, var(--chronicle-card-surface)); }
 	.turn-body { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 	.turn-body[hidden], .turn-body:empty { display: none; }
-	.failure-toggle { display: grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: 4px; background: transparent; color: var(--chronicle-text-muted); cursor: pointer; }
+	.failure-toggle { display: grid; place-items: center; width: 100%; min-width: 0; height: 28px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--chronicle-text-muted); cursor: pointer; }
 	.failure-toggle:hover { background: var(--chronicle-panel-muted); }
 	.failure-toggle:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; }
 	.collapsed-failure { margin: 0; padding-left: 42px; color: var(--chronicle-danger-text); font-size: var(--type-body-sm); }

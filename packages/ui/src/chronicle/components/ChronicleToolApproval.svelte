@@ -33,8 +33,8 @@ async function resolve(action: "accept" | "feedback" | "decline") {
 	<dl><ReadonlyJsonValue value={request.arguments} /></dl>
 	{#if request.status === "open"}
 		<label>Requested changes<textarea bind:value={feedback} rows="3"></textarea></label>
-		<div class="actions"><button disabled={pending} onclick={() => resolve("accept")}>Accept</button><button disabled={pending || !feedback.trim()} onclick={() => resolve("feedback")}>Request changes</button><button disabled={pending} onclick={() => resolve("decline")}>Decline</button></div>
+		<div class="actions"><button class="ui-button" disabled={pending} onclick={() => resolve("accept")}>Accept</button><button class="ui-button" disabled={pending || !feedback.trim()} onclick={() => resolve("feedback")}>Request changes</button><button class="ui-button" disabled={pending} onclick={() => resolve("decline")}>Decline</button></div>
 	{:else}<p>Review resolved: {request.status}</p>{/if}
 	{#if error}<p role="alert">{error}</p>{/if}
 </section>
-<style>.approval{padding:1rem;border:1px solid var(--chronicle-border);border-radius:var(--radius-sm)}.destination{display:grid;gap:.15rem;padding:.75rem;border-radius:var(--radius-sm);background:var(--chronicle-panel-muted)}.destination span,.destination small{color:var(--chronicle-muted-text);font-size:var(--type-body-sm)}.approval label{display:grid;gap:.25rem}.actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}</style>
+<style>.approval{padding:1rem;border:1px solid var(--chronicle-border);border-radius:var(--radius-sm)}.destination{display:grid;gap:.15rem;padding:.75rem;border-radius:var(--radius-sm);background:var(--chronicle-panel-muted)}.destination span,.destination small{color:var(--chronicle-muted-text);font-size:var(--type-body-sm)}.approval label{display:grid;gap:.25rem}.approval textarea{width:100%;padding:8px 12px;border:1px solid var(--chronicle-border-strong);border-radius:var(--radius-sm);background:var(--chronicle-panel-surface);color:var(--chronicle-text);resize:vertical}.actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}</style>

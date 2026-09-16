@@ -15,7 +15,8 @@ describe("CI browser installation", () => {
 		const workflow = parse(readFileSync(workflowPath, "utf8"));
 		const steps = workflow.jobs[jobName].steps;
 		const installer = steps.findIndex(
-			(step: { run?: string }) => step.run === "npx playwright install --with-deps chromium",
+			(step: { run?: string }) =>
+				step.run === "npx playwright install --with-deps chromium firefox webkit",
 		);
 		expect(installer).toBeGreaterThan(0);
 		const nodeSetups = steps.filter((step: { uses?: string }) =>

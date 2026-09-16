@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
 
 test.use({
 	browserServerOptions: {
@@ -22,6 +22,15 @@ for (const viewport of [
 		await page.goto("/account/api-tokens");
 		await expect(page.getByRole("heading", { name: "API tokens", exact: true })).toBeVisible();
 		await expect(page.getByText("Every visitor shares the anonymous token owner")).toBeVisible();
+		await page.getByLabel("Expiration", { exact: true }).selectOption("date");
+		const customExpiration = page.getByLabel("Expiration date and time (local time)");
+		await expect(customExpiration).toBeVisible();
+		await page.evaluate(() => document.fonts.ready);
+		const nameBox = await box(page.getByLabel("Name", { exact: true }));
+		const dateBox = await box(customExpiration);
+		expect(Math.abs(dateBox.height - nameBox.height)).toBeLessThan(1);
+		await customExpiration.fill("2026-10-01T09:30");
+		await expect(customExpiration).toHaveValue("2026-10-01T09:30");
 		await page.getByLabel("Name", { exact: true }).fill(`${viewport.name} canary`);
 		await page.getByLabel("Expiration", { exact: true }).selectOption("canary");
 		await page.getByRole("button", { name: "Create token", exact: true }).click();

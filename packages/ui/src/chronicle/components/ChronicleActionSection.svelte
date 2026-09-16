@@ -97,7 +97,7 @@ $effect(() => {
 	void tick().then(() => {
 		sectionElement?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
 		const firstField = sectionElement?.querySelector<HTMLElement>("[data-action-form-field]");
-		firstField?.focus?.();
+		firstField?.focus?.({ preventScroll: true });
 	});
 });
 

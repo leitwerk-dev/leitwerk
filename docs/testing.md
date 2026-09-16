@@ -21,6 +21,26 @@ npm run test:e2e
 npm run build
 ```
 
+### Browser layout and behavior
+
+Install the browser engines once with `npx playwright install chromium firefox webkit`
+(`--with-deps` also installs system libraries on Linux). After rebuilding, run
+`npm run test:browser`. The full gate includes this suite in Chromium (Chrome),
+Firefox, and WebKit (Safari), including composed browser tests. Use
+`-- --project=firefox` to select one engine. Each run selects free loopback API
+and UI ports and passes them to its workers and Vite proxy; it never reuses an
+existing UI server. `LEITWERK_BROWSER_API_PORT` and `LEITWERK_BROWSER_UI_PORT`
+carry these ports within the run.
+
+Firefox is the visual reference. At matching viewport sizes, verify shared page
+layouts and form controls, including the waiting-process composer while the
+chronicle is scrolled to the top. Browser layout tests assert control dimensions,
+viewport containment, and draft preservation and attach screenshots for review.
+The route-scroll tests use touch gestures in Chromium and wheel gestures in the
+other engines using narrow desktop viewports. Playwright does not support mobile
+emulation in Firefox or wheel input in mobile WebKit. WebKit exercises Safari's rendering engine;
+native browser chrome and operating-system menus are outside these screenshots.
+
 The full gate reports the duration of every validation phase. In GitHub Actions it also
 writes the timing table to the job summary. Use those measurements before parallelizing or
 removing a validation phase. Typechecking emits declarations only, preserving the JavaScript

@@ -1,6 +1,6 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
 
 const usage = {
 	attachedAllTime: 8,
@@ -19,6 +19,20 @@ const installed = {
 	updateAvailable: false,
 	usage,
 };
+const available = {
+	repositoryId: "shared",
+	id: "planning",
+	label: "Plan repository work",
+	description: "Turn a requested change into an implementation plan",
+	sourcePath: "skills/planning",
+	sourceRevision: "abcdef123456",
+	registered: false,
+	updateAvailable: false,
+	conflict: false,
+	stale: false,
+	modelInvocable: true,
+	usage,
+};
 const catalog = {
 	repositories: [
 		{
@@ -31,7 +45,7 @@ const catalog = {
 			error: null,
 		},
 	],
-	availableSkills: [],
+	availableSkills: [available],
 	installedSkills: Array.from({ length: 6 }, (_, index) => ({
 		...installed,
 		id: index === 0 ? "review" : `skill-${index}`,
@@ -57,6 +71,11 @@ async function mockSkills(page: Page) {
 	await page.route("**/api/skills", (route) => route.fulfill({ json: catalog }));
 	await page.route("**/api/skills/installed/review", (route) =>
 		route.fulfill({ json: { skill: detail } }),
+	);
+	await page.route("**/api/skills/available/shared/planning", (route) =>
+		route.fulfill({
+			json: { skill: { ...available, skillMarkdown: detail.skillMarkdown, processes: [] } },
+		}),
 	);
 }
 
@@ -103,6 +122,28 @@ test.describe("skills responsive and keyboard behavior", () => {
 			await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toHaveCount(0);
 			await page.getByRole("tab", { name: "Instructions" }).click();
 			await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toBeVisible();
+
+			await page.goto("/skills");
+			await page.getByRole("button", { name: "Available remotely 1", exact: true }).click();
+			await page.getByRole("link", { name: /Plan repository work/ }).click();
+			await expect(page.getByRole("button", { name: "Install skill", exact: true })).toBeVisible();
+			if (viewport.name === "desktop") {
+				const repositoryFilter = await box(
+					page.getByRole("combobox", { name: "Repository", exact: true }),
+				);
+				const stateFilter = await box(
+					page.getByRole("combobox", { name: "Remote skill state", exact: true }),
+				);
+				expect(Math.abs(repositoryFilter.width - stateFilter.width)).toBeLessThan(1);
+				expect(
+					await page
+						.locator(".catalog-controls")
+						.evaluate((element) => element.scrollWidth <= element.clientWidth),
+				).toBe(true);
+			}
+			expect(
+				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+			).toBe(true);
 		});
 	}
 

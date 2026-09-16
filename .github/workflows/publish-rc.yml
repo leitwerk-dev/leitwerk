@@ -82,7 +82,7 @@ jobs:
         run: npm ci
       - name: Install Playwright browser dependencies
         timeout-minutes: 5
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium firefox webkit
       - name: Run full candidate test gate
         run: npm run test:full
       - name: Validate package contents before RC versioning

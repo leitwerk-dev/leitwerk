@@ -4,9 +4,8 @@ import { buildExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runtime/testing";
 import type { AppContext } from "@leitwerk-dev/server";
 import singlePromptExtension from "@leitwerk-dev/showcase-processes";
-import type { Locator } from "@playwright/test";
 import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
 
 const rendererModuleSource = `
 const TAG = 'o2-browser-sidebar-reflow-outcome';
@@ -127,11 +126,7 @@ function seedSidebarReflowProcess(label: string) {
 			turnId: "run_single_prompt",
 			turnType: "llm",
 			status: "succeeded",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
 			turnResultMarkdown: `# Historic result ${index + 1}\n\n${buildLongBody(`Historic result ${index + 1}`, 10)}`,
-			errorSummary: null,
 			startedAt: anchoredAt,
 			endedAt: anchoredAt,
 		});
@@ -156,11 +151,8 @@ function seedSidebarReflowProcess(label: string) {
 		turnId: "run_single_prompt",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
 		resultPiEntryId: targetLeafEntryId,
 		turnResultMarkdown: `# Sidebar reflow target\n\n${buildLongBody("Target result", 12)}`,
-		errorSummary: null,
 		startedAt: targetAnchoredAt,
 		endedAt: targetAnchoredAt,
 	});
@@ -196,16 +188,6 @@ function seedSidebarReflowProcess(label: string) {
 	};
 }
 
-async function getBoxMetrics(locator: Locator) {
-	return locator.evaluate((element) => {
-		const rect = element.getBoundingClientRect();
-		return {
-			width: Number(rect.width.toFixed(1)),
-			height: Number(rect.height.toFixed(1)),
-		};
-	});
-}
-
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-sidebar-reflow-browser-",
@@ -232,8 +214,12 @@ test.describe("sidebar result reflow", () => {
 		const viewport = page.locator('[data-role="chronicle-scroll"]');
 		await expect(page.locator('[data-renderer-state="ready"]')).toBeVisible();
 		await viewport.hover();
-		await page.mouse.wheel(0, -10000);
-		await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(0);
+		await expect
+			.poll(async () => {
+				await page.mouse.wheel(0, -10000);
+				return viewport.evaluate((element) => element.scrollTop);
+			})
+			.toBe(0);
 		const active = page.locator('[data-rail-anchor-id][data-active="true"]');
 		await expect(active).toHaveCount(1);
 		const before = await active.getAttribute("data-rail-anchor-id");
@@ -272,15 +258,15 @@ test.describe("sidebar result reflow", () => {
 		await expect(parentRailItem).toHaveAttribute("data-active", "true");
 		await expect(leafOutcomeSection).toBeInViewport();
 
-		const expandedMetrics = await getBoxMetrics(rendererHost);
+		const expandedMetrics = await box(rendererHost);
 		expect(expandedMetrics.height).toBeGreaterThan(140);
 
 		await page.locator('[data-action="toggle-sidebar"]').first().click();
 		await expect(page.locator('[data-sidebar-state="collapsed"]')).toBeVisible();
 		await expect
-			.poll(async () => (await getBoxMetrics(rendererHost)).width)
+			.poll(async () => (await box(rendererHost)).width)
 			.toBeGreaterThan(expandedMetrics.width + 120);
-		const collapsedMetrics = await getBoxMetrics(rendererHost);
+		const collapsedMetrics = await box(rendererHost);
 		expect(collapsedMetrics.height).toBeLessThan(expandedMetrics.height - 40);
 		await expect(parentRailItem).toHaveAttribute("data-active", "true");
 		await expect(leafOutcomeSection).toBeInViewport();
@@ -288,9 +274,9 @@ test.describe("sidebar result reflow", () => {
 		await page.locator('[data-action="toggle-sidebar"]').first().click();
 		await expect(page.locator('[data-sidebar-state="expanded"]')).toBeVisible();
 		await expect
-			.poll(async () => (await getBoxMetrics(rendererHost)).width)
+			.poll(async () => (await box(rendererHost)).width)
 			.toBeLessThan(collapsedMetrics.width - 120);
-		const reexpandedMetrics = await getBoxMetrics(rendererHost);
+		const reexpandedMetrics = await box(rendererHost);
 		expect(Math.abs(reexpandedMetrics.height - expandedMetrics.height)).toBeLessThanOrEqual(30);
 		await expect(parentRailItem).toHaveAttribute("data-active", "true");
 		await expect(leafOutcomeSection).toBeInViewport();

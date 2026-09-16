@@ -37,19 +37,22 @@ export default defineConfig({
 		baseURL,
 		trace: "on-first-retry",
 	},
-	projects: [
-		{
-			name: "chromium",
-			testDir: path.join(repoRoot, "tests/browser"),
-			use: { ...devices["Desktop Chrome"] },
-		},
-		...(composition?.testRoots.map((testRoot, index) => ({
-			name: `chromium-composed-${index + 1}`,
-			testDir: testRoot,
-			testMatch: "**/*.browser.test.ts",
-			use: { ...devices["Desktop Chrome"] },
-		})) ?? []),
-	],
+	projects: (
+		[
+			["chromium", "Desktop Chrome"],
+			["firefox", "Desktop Firefox"],
+			["webkit", "Desktop Safari"],
+		] as const
+	).flatMap(([name, device]) =>
+		[path.join(repoRoot, "tests/browser"), ...(composition?.testRoots ?? [])].map(
+			(testDir, index) => ({
+				name: index === 0 ? name : `${name}-composed-${index}`,
+				testDir,
+				...(index > 0 ? { testMatch: "**/*.browser.test.ts" } : {}),
+				use: { ...devices[device], browserName: name },
+			}),
+		),
+	),
 	webServer: {
 		command: `npm run dev -w @leitwerk-dev/ui -- --host 127.0.0.1 --strictPort --port ${UI_PORT}`,
 		url: baseURL,

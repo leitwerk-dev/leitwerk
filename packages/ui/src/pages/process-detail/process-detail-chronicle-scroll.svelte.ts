@@ -175,10 +175,6 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	let pendingToastFocus = $state<PendingProcessToastFocus | null>(null);
 
 	const activeAnchorSyncScheduler = createTimeoutScheduler(syncActiveAnchorFromViewportNow);
-	const programmaticScrollResetScheduler = createTimeoutScheduler(() => {
-		isProgrammaticChronicleScroll = false;
-		programmaticChronicleScrollTargetTop = null;
-	});
 	const chronicleLayoutScheduler = createFrameScheduler(runChronicleLayoutPass);
 	const initialBottomPinScheduler = createFrameScheduler(() => continueInitialBottomPin());
 
@@ -389,7 +385,6 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	$effect(() => {
 		return () => {
 			activeAnchorSyncScheduler.cancel();
-			programmaticScrollResetScheduler.cancel();
 			chronicleLayoutScheduler.cancel();
 			stopInitialBottomPin();
 		};
@@ -600,7 +595,6 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	function markProgrammaticChronicleScroll(targetTop: number | null = null) {
 		isProgrammaticChronicleScroll = true;
 		programmaticChronicleScrollTargetTop = targetTop;
-		programmaticScrollResetScheduler.schedule({ force: true });
 	}
 
 	function pinChronicleToBottomNow() {
@@ -693,12 +687,11 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 			setViewportScrollTop(viewport, top, behavior);
 			return shouldScroll;
 		}
-		const element = document.getElementById(anchorId);
-		if (!element) {
+		if (!anchor) {
 			return false;
 		}
 		markProgrammaticChronicleScroll();
-		element.scrollIntoView?.({ behavior, block: "end" });
+		anchor.scrollIntoView?.({ behavior, block: "end" });
 		return true;
 	}
 
@@ -736,9 +729,16 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 			reflowScrollTop !== null && viewportMetrics?.scrollTop === reflowScrollTop;
 		reflowScrollTop = null;
 		if (!isProgrammaticScrollAtTarget && !isReflowScroll) {
+			// Scroll events can arrive after a zero-delay timer in Firefox. Keep the
+			// selected rail item until the viewport actually leaves our target.
+			isProgrammaticChronicleScroll = false;
+			programmaticChronicleScrollTargetTop = null;
 			activeAnchorOverrideId = null;
 			hasObservedManualChronicleScroll = true;
 			stopInitialBottomPin();
+		}
+		if (isProgrammaticScrollAtTarget && programmaticChronicleScrollTargetTop === null) {
+			isProgrammaticChronicleScroll = false;
 		}
 		if (viewportMetrics) {
 			isNearBottom = isNearChronicleBottom(viewportMetrics);

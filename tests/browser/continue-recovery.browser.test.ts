@@ -1,23 +1,13 @@
 import path from "node:path";
 import { buildFailedTurnRecoveryMetadata } from "@leitwerk-dev/domain";
-import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
 import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
-import singlePromptExtension from "@leitwerk-dev/showcase-processes";
-import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
+import { createShowcaseModelCatalog, fixtureModelProfile } from "./showcase-model-fixture.js";
 
 let ctx: AppContext | null = null;
-const continueRecoveryExtension = {
-	...singlePromptExtension,
-	modelProviders: fixtureModelProviders({
-		id: "fixture",
-		modelId: "fixture-model",
-		piProvider: "openai",
-	}),
-};
 
 async function seedRepeatContinueProcess() {
 	if (!ctx) {
@@ -51,7 +41,6 @@ async function seedRepeatContinueProcess() {
 			status: "failed",
 			attemptNumber: 1,
 			parentTurnRecordId: null,
-			pathType: "primary",
 			forkPiEntryId: "root-user",
 			resultPiEntryId: "assistant-provider-error",
 			modelProfileId: "test",
@@ -136,17 +125,10 @@ test.use({
 			config.storage.tree_files_dir = path.join(root, "trees");
 			config.storage.process_workspaces_dir = path.join(root, "workspaces");
 			config.pi.agent_dir = path.join(root, "pi-agent");
-			config.pi.model_profiles = [
-				{
-					id: "test",
-					provider: "fixture",
-					model_id: "fixture-model",
-					thinking_level: "off",
-				},
-			];
+			config.pi.model_profiles = [{ ...fixtureModelProfile }];
 			config.workers.runner = "local";
 		},
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([continueRecoveryExtension]),
+		createExtensionCatalog: createShowcaseModelCatalog,
 		useInProcessWorker: true,
 	},
 });
@@ -171,6 +153,19 @@ test.describe("failed-turn continue recovery", () => {
 
 		await page.goto(`/processes/${process.id}`);
 		await page.waitForSelector('[data-page="process-detail"]');
+		await page.setViewportSize({ width: 390, height: 844 });
+		const failureToggle = page.getByRole("button", { name: "Collapse failed turn" });
+		await expect(failureToggle).toBeVisible();
+		const fitsHeader = await failureToggle.evaluate((button) => {
+			const control = button.getBoundingClientRect();
+			const slot = button.parentElement?.getBoundingClientRect();
+			return !!slot && control.left >= slot.left - 1 && control.right <= slot.right + 1;
+		});
+		expect(fitsHeader).toBe(true);
+		await failureToggle.click();
+		await expect(page.getByRole("button", { name: "Expand failed turn" })).toBeVisible();
+		await page.getByRole("button", { name: "Expand failed turn" }).click();
+		await page.setViewportSize({ width: 1440, height: 900 });
 
 		await expect(recoverySection).toBeVisible();
 		await expect(recoveryRailItem).toBeVisible();

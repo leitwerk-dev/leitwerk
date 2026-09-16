@@ -5,7 +5,7 @@ import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { AppContext, LeitwerkConfig } from "@leitwerk-dev/server";
 import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
-import { test as base } from "@playwright/test";
+import { test as base, type Locator } from "@playwright/test";
 
 const API_PORT = Number(process.env.LEITWERK_BROWSER_API_PORT);
 
@@ -79,5 +79,11 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 		{ scope: "worker" },
 	],
 });
+
+export async function box(locator: Locator) {
+	const bounds = await locator.boundingBox();
+	if (!bounds) throw new Error("Expected a visible layout element");
+	return bounds;
+}
 
 export { expect } from "@playwright/test";
