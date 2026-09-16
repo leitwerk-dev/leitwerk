@@ -27,7 +27,10 @@ Install the browser engines once with `npx playwright install chromium firefox w
 (`--with-deps` also installs system libraries on Linux). After rebuilding, run
 `npm run test:browser`. The full gate includes this suite in Chromium (Chrome),
 Firefox, and WebKit (Safari), including composed browser tests. Use
-`-- --project=firefox` to select one engine.
+`-- --project=firefox` to select one engine. Each run selects free loopback API
+and UI ports and passes them to its workers and Vite proxy; it never reuses an
+existing UI server. `LEITWERK_BROWSER_API_PORT` and `LEITWERK_BROWSER_UI_PORT`
+carry these ports within the run.
 
 Firefox is the visual reference. At matching viewport sizes, verify shared page
 layouts and form controls, including the waiting-process composer while the

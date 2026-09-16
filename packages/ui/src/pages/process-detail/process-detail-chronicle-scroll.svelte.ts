@@ -687,12 +687,11 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 			setViewportScrollTop(viewport, top, behavior);
 			return shouldScroll;
 		}
-		const element = document.getElementById(anchorId);
-		if (!element) {
+		if (!anchor) {
 			return false;
 		}
 		markProgrammaticChronicleScroll();
-		element.scrollIntoView?.({ behavior, block: "end" });
+		anchor.scrollIntoView?.({ behavior, block: "end" });
 		return true;
 	}
 

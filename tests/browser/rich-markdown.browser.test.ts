@@ -42,11 +42,7 @@ function seedRichResult() {
 		turnId: "run_single_prompt",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: markdown,
-		errorSummary: null,
 		startedAt: anchoredAt,
 		endedAt: anchoredAt,
 	});

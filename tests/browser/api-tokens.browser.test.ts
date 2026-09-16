@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
 
 test.use({
 	browserServerOptions: {
@@ -26,11 +26,9 @@ for (const viewport of [
 		const customExpiration = page.getByLabel("Expiration date and time (local time)");
 		await expect(customExpiration).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
-		const nameBox = await page.getByLabel("Name", { exact: true }).boundingBox();
-		const dateBox = await customExpiration.boundingBox();
-		expect(nameBox).not.toBeNull();
-		expect(dateBox).not.toBeNull();
-		expect(Math.abs((dateBox?.height ?? 0) - (nameBox?.height ?? 0))).toBeLessThan(1);
+		const nameBox = await box(page.getByLabel("Name", { exact: true }));
+		const dateBox = await box(customExpiration);
+		expect(Math.abs(dateBox.height - nameBox.height)).toBeLessThan(1);
 		await customExpiration.fill("2026-10-01T09:30");
 		await expect(customExpiration).toHaveValue("2026-10-01T09:30");
 		await page.getByLabel("Name", { exact: true }).fill(`${viewport.name} canary`);

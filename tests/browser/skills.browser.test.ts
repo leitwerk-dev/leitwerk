@@ -1,6 +1,6 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { Page } from "@playwright/test";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
 
 const usage = {
 	attachedAllTime: 8,
@@ -19,6 +19,20 @@ const installed = {
 	updateAvailable: false,
 	usage,
 };
+const available = {
+	repositoryId: "shared",
+	id: "planning",
+	label: "Plan repository work",
+	description: "Turn a requested change into an implementation plan",
+	sourcePath: "skills/planning",
+	sourceRevision: "abcdef123456",
+	registered: false,
+	updateAvailable: false,
+	conflict: false,
+	stale: false,
+	modelInvocable: true,
+	usage,
+};
 const catalog = {
 	repositories: [
 		{
@@ -31,7 +45,7 @@ const catalog = {
 			error: null,
 		},
 	],
-	availableSkills: [],
+	availableSkills: [available],
 	installedSkills: Array.from({ length: 6 }, (_, index) => ({
 		...installed,
 		id: index === 0 ? "review" : `skill-${index}`,
@@ -53,25 +67,8 @@ const detail = {
 	],
 };
 
-const available = {
-	repositoryId: "shared",
-	id: "planning",
-	label: "Plan repository work",
-	description: "Turn a requested change into an implementation plan",
-	sourcePath: "skills/planning",
-	sourceRevision: "abcdef123456",
-	registered: false,
-	updateAvailable: false,
-	conflict: false,
-	stale: false,
-	modelInvocable: true,
-	usage,
-};
-
 async function mockSkills(page: Page) {
-	await page.route("**/api/skills", (route) =>
-		route.fulfill({ json: { ...catalog, availableSkills: [available] } }),
-	);
+	await page.route("**/api/skills", (route) => route.fulfill({ json: catalog }));
 	await page.route("**/api/skills/installed/review", (route) =>
 		route.fulfill({ json: { skill: detail } }),
 	);
@@ -131,17 +128,13 @@ test.describe("skills responsive and keyboard behavior", () => {
 			await page.getByRole("link", { name: /Plan repository work/ }).click();
 			await expect(page.getByRole("button", { name: "Install skill", exact: true })).toBeVisible();
 			if (viewport.name === "desktop") {
-				const repositoryFilter = await page
-					.getByRole("combobox", { name: "Repository", exact: true })
-					.boundingBox();
-				const stateFilter = await page
-					.getByRole("combobox", { name: "Remote skill state", exact: true })
-					.boundingBox();
-				expect(repositoryFilter).not.toBeNull();
-				expect(stateFilter).not.toBeNull();
-				expect(Math.abs((repositoryFilter?.width ?? 0) - (stateFilter?.width ?? 0))).toBeLessThan(
-					1,
+				const repositoryFilter = await box(
+					page.getByRole("combobox", { name: "Repository", exact: true }),
 				);
+				const stateFilter = await box(
+					page.getByRole("combobox", { name: "Remote skill state", exact: true }),
+				);
+				expect(Math.abs(repositoryFilter.width - stateFilter.width)).toBeLessThan(1);
 				expect(
 					await page
 						.locator(".catalog-controls")

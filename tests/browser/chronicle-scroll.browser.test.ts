@@ -43,6 +43,54 @@ function createAcceptedLlmTurn(input: Parameters<typeof createFixtureAcceptedLlm
 	return createFixtureAcceptedLlmTurn(ctx, input, "browser-fixture-digest");
 }
 
+function createPoemHistory(instanceId: string, ageOffsetMinutes = 0) {
+	const turnCount = 10;
+	for (let i = 0; i < turnCount; i++) {
+		createAcceptedLlmTurn({
+			id: `trn_history_${instanceId}_${i}`,
+			instanceId,
+			turnId: "draft_poem",
+			turnType: "llm",
+			status: "succeeded",
+			turnResultMarkdown:
+				`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
+					5,
+				) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
+			startedAt: new Date(Date.now() - (turnCount - i + ageOffsetMinutes) * 60000).toISOString(),
+			endedAt: new Date(
+				Date.now() - (turnCount - i + ageOffsetMinutes) * 60000 + 30000,
+			).toISOString(),
+		});
+	}
+}
+
+function createActivePoemProcess(
+	externalId: string,
+	historyAgeMinutes = 0,
+	startedAt = new Date().toISOString(),
+) {
+	if (!ctx) throw new Error("Server context not initialized");
+	const process = ctx.deps.processes.create({
+		processId: "poem_creator_process",
+		selectedTurnId: "draft_poem",
+		lifecycleStatus: "active",
+		externalId,
+	});
+	createPoemHistory(process.id, historyAgeMinutes);
+	const runningTurnId = `trn_running_${process.id}`;
+	createAcceptedLlmTurn({
+		id: runningTurnId,
+		instanceId: process.id,
+		turnId: "draft_poem",
+		turnType: "llm",
+		status: "running",
+		turnResultMarkdown: null,
+		startedAt,
+		endedAt: null,
+	});
+	return { process, runningTurnId };
+}
+
 function markAcceptedLlmTurnExited(turnRecordId: string, exitedAt: string) {
 	if (!ctx) throw new Error("Server context not initialized");
 	const turnRecord = ctx.deps.turnRecords.getById(turnRecordId);
@@ -55,6 +103,32 @@ function markAcceptedLlmTurnExited(turnRecordId: string, exitedAt: string) {
 	});
 }
 
+function completePoemTurn(instanceId: string, runningTurnId: string) {
+	if (!ctx) throw new Error("Server context not initialized");
+	const completedAt = new Date().toISOString();
+	ctx.deps.turnRecords.update(runningTurnId, {
+		status: "succeeded",
+		endedAt: completedAt,
+		turnResultMarkdown: "# Final Draft\n\nThe poem is complete.",
+	});
+	markAcceptedLlmTurnExited(runningTurnId, completedAt);
+	const process = ctx.deps.processes.update(instanceId, {
+		selectedTurnId: "poem_review",
+		lifecycleStatus: "waiting",
+		currentExecution: null,
+	});
+	ctx.broadcaster.broadcast(
+		createDurableWsFrame({
+			type: "process.updated",
+			payload: {
+				process,
+				changedFields: ["selectedTurnId", "lifecycleStatus", "currentExecution"],
+			},
+			instanceId,
+		}),
+	);
+}
+
 function createReasoningLiveProcess(
 	label: string,
 	initialThinking = `${buildLongReasoningText(220)}\n`,
@@ -63,49 +137,8 @@ function createReasoningLiveProcess(
 		throw new Error("Server context not initialized");
 	}
 
-	const process = ctx.deps.processes.create({
-		processId: "poem_creator_process",
-		selectedTurnId: "draft_poem",
-		lifecycleStatus: "active",
-		externalId: label,
-	});
-
-	const turnCount = 10;
-	for (let i = 0; i < turnCount; i++) {
-		createAcceptedLlmTurn({
-			id: `trn_reasoning_history_${process.id}_${i}`,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "succeeded",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
-			turnResultMarkdown:
-				`# Historic Draft ${i + 1}\n\nThis is a detailed historic draft ${i + 1}.\n\n`.repeat(5) +
-				"Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-			errorSummary: null,
-			startedAt: new Date(Date.now() - (turnCount - i + 5) * 60000).toISOString(),
-			endedAt: new Date(Date.now() - (turnCount - i + 5) * 60000 + 30000).toISOString(),
-		});
-	}
-
-	const runningTurnId = `trn_reasoning_running_${process.id}`;
 	const startedAt = new Date(Date.now() - 60_000).toISOString();
-	createAcceptedLlmTurn({
-		id: runningTurnId,
-		instanceId: process.id,
-		turnId: "draft_poem",
-		turnType: "llm",
-		status: "running",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
-		turnResultMarkdown: null,
-		errorSummary: null,
-		startedAt,
-		endedAt: null,
-	});
+	const { process, runningTurnId } = createActivePoemProcess(label, 5, startedAt);
 	ctx.deps.events.create({
 		instanceId: process.id,
 		eventType: "pi.stream.delta",
@@ -136,32 +169,12 @@ function buildLargeRailMarkdown(label: string, sectionCount = 36): string {
 }
 
 function buildLargePlanMarkdown() {
-	const sections = [
-		{
-			title: "Short summary",
-			body: "Simplify the local repo outcome card by keeping repository metadata while leaving deployment, editor launch controls, and preview environments to external systems.",
-		},
-		{
-			title: "What the repo already gives us",
-			body: "The existing process already clones a full workspace, materializes leaf outcomes, and exposes operator actions around the selected turn. That gives us a stable surface for review without adding a deployment plane.",
-		},
-		{
-			title: "Proposed implementation",
-			body: "Remove repo-owned deployment hooks, editor launch links, workspace-path probing, and server-side diff probing from the renderer and process state, then let deterministic finalization complete directly.",
-		},
-		{
-			title: "Docs to keep aligned",
-			body: "Keep process-workspace, configuration, user flows, technical flows, and outcome-tools docs in sync so deployment remains explicitly out of scope while the product remains pre-alpha.",
-		},
-		{
-			title: "Test plan",
-			body: "Cover outcome rendering, finalization completion, and UI regression coverage for live-scroll behavior while the implementation turn is still streaming.",
-		},
-		{
-			title: "Risks / watchpoints",
-			body: "The simplified flow must preserve workspace inspection and review context while avoiding server-side port proxies, background process cleanup, and deployment-specific state.",
-		},
-	];
+	const sections = Array.from({ length: 6 }, (_, index) => ({
+		title: `Plan section ${index + 1}`,
+		body: "Preserve workspace inspection and review context while simplifying the outcome renderer. ".repeat(
+			2,
+		),
+	}));
 
 	return [
 		"# Candidate implementation plan: local repo outcome simplification",
@@ -212,11 +225,7 @@ function createLocalRepoChangePlanThenImplementReasoningProcess(label: string) {
 		turnId: "generate_plan",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: buildLargePlanMarkdown(),
-		errorSummary: null,
 		startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
 		endedAt: new Date(Date.now() - 19 * 60_000).toISOString(),
 	});
@@ -258,11 +267,7 @@ function createLocalRepoChangePlanThenImplementReasoningProcess(label: string) {
 		turnId: "implement",
 		turnType: "llm",
 		status: "running",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: null,
-		errorSummary: null,
 		startedAt,
 		endedAt: null,
 	});
@@ -281,12 +286,9 @@ function createLocalRepoChangePlanThenImplementReasoningProcess(label: string) {
 	return { process, runningTurnId };
 }
 
-function createRailSecondTurnNearTopProcess(label: string) {
-	if (!ctx) {
-		throw new Error("Server context not initialized");
-	}
-
-	const process = ctx.deps.processes.create({
+function createWaitingPoemProcess(label: string) {
+	if (!ctx) throw new Error("Server context not initialized");
+	return ctx.deps.processes.create({
 		processId: "poem_creator_process",
 		selectedTurnId: "poem_review",
 		lifecycleStatus: "waiting",
@@ -298,7 +300,10 @@ function createRailSecondTurnNearTopProcess(label: string) {
 			latestReviewOutcome: null,
 		}),
 	});
+}
 
+function createRailSecondTurnNearTopProcess(label: string) {
+	const process = createWaitingPoemProcess(label);
 	const firstTurnRecordId = `trn_second_click_first_${process.id}`;
 	const secondTurnRecordId = `trn_second_click_target_${process.id}`;
 	const fillerTurnRecordId = `trn_second_click_filler_${process.id}`;
@@ -314,14 +319,10 @@ function createRailSecondTurnNearTopProcess(label: string) {
 			turnId: "draft_poem",
 			turnType: "llm",
 			status: "succeeded",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
 			turnResultMarkdown:
 				turnRecordId === fillerTurnRecordId
 					? buildLargeRailMarkdown("Trailing filler result", 28)
 					: null,
-			errorSummary: null,
 			startedAt: new Date(baseTime + index * 60_000).toISOString(),
 			endedAt: new Date(baseTime + index * 60_000 + 30_000).toISOString(),
 		});
@@ -331,22 +332,8 @@ function createRailSecondTurnNearTopProcess(label: string) {
 }
 
 function createRailDeepShortTurnProcess(label: string) {
-	if (!ctx) {
-		throw new Error("Server context not initialized");
-	}
-
-	const process = ctx.deps.processes.create({
-		processId: "poem_creator_process",
-		selectedTurnId: "poem_review",
-		lifecycleStatus: "waiting",
-		externalId: label,
-		stateJson: JSON.stringify({
-			...createEmptyStructuralProcessState(),
-			latestReviewMarkdown: null,
-			latestReviewSummary: null,
-			latestReviewOutcome: null,
-		}),
-	});
+	if (!ctx) throw new Error("Server context not initialized");
+	const process = createWaitingPoemProcess(label);
 
 	const firstTurnRecordId = `trn_deep_click_first_${process.id}`;
 	const secondTurnRecordId = `trn_deep_click_target_${process.id}`;
@@ -359,11 +346,7 @@ function createRailDeepShortTurnProcess(label: string) {
 		turnId: "draft_poem",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: null,
-		errorSummary: null,
 		startedAt: new Date(baseTime).toISOString(),
 		endedAt: new Date(baseTime + 30_000).toISOString(),
 	});
@@ -386,11 +369,7 @@ function createRailDeepShortTurnProcess(label: string) {
 		turnId: "draft_poem",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: null,
-		errorSummary: null,
 		startedAt: new Date(baseTime + 60_000).toISOString(),
 		endedAt: new Date(baseTime + 90_000).toISOString(),
 	});
@@ -400,11 +379,7 @@ function createRailDeepShortTurnProcess(label: string) {
 		turnId: "draft_poem",
 		turnType: "llm",
 		status: "succeeded",
-		pathType: "primary",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: buildLargeRailMarkdown("Trailing result after target", 24),
-		errorSummary: null,
 		startedAt: new Date(baseTime + 120_000).toISOString(),
 		endedAt: new Date(baseTime + 150_000).toISOString(),
 	});
@@ -413,42 +388,9 @@ function createRailDeepShortTurnProcess(label: string) {
 }
 
 function createPoemReviewWaitingProcess(label: string) {
-	if (!ctx) {
-		throw new Error("Server context not initialized");
-	}
+	const process = createWaitingPoemProcess(label);
 
-	const process = ctx.deps.processes.create({
-		processId: "poem_creator_process",
-		selectedTurnId: "poem_review",
-		lifecycleStatus: "waiting",
-		externalId: label,
-		stateJson: JSON.stringify({
-			...createEmptyStructuralProcessState(),
-			latestReviewMarkdown: null,
-			latestReviewSummary: null,
-			latestReviewOutcome: null,
-		}),
-	});
-
-	for (let i = 0; i < 10; i += 1) {
-		createAcceptedLlmTurn({
-			id: `trn_poem_review_history_${process.id}_${i}`,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "succeeded",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
-			turnResultMarkdown:
-				`# Reviewable Draft ${i + 1}\n\nThis is a detailed poem draft for review ${i + 1}.\n\n`.repeat(
-					5,
-				) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-			errorSummary: null,
-			startedAt: new Date(Date.now() - (15 - i) * 60000).toISOString(),
-			endedAt: new Date(Date.now() - (15 - i) * 60000 + 30000).toISOString(),
-		});
-	}
+	createPoemHistory(process.id, 5);
 
 	return { process };
 }
@@ -572,6 +514,20 @@ for (const viewport of [
 	});
 }
 
+async function relativeBounds(viewport: Locator, selector: string) {
+	return viewport.evaluate((element, selector) => {
+		const target = element.querySelector(selector);
+		if (!target) throw new Error(`Missing scroll target: ${selector}`);
+		const bounds = target.getBoundingClientRect();
+		const top = element.getBoundingClientRect().top;
+		return {
+			top: bounds.top - top,
+			bottom: bounds.bottom - top,
+			clientHeight: element.clientHeight,
+		};
+	}, selector);
+}
+
 async function getScrollMetrics(locator: Locator) {
 	return locator.evaluate((el) => ({
 		scrollTop: el.scrollTop,
@@ -601,36 +557,23 @@ async function wheelAtLocator(
 	await page.mouse.wheel(0, deltaY);
 }
 
-async function wheelToTop(
+async function wheelToBoundary(
 	page: Page,
 	locator: Locator,
+	boundary: "top" | "bottom",
 	thresholdPx = 50,
 	position: "center" | "top" = "center",
 ) {
 	for (let attempt = 0; attempt < 30; attempt += 1) {
 		const metrics = await getScrollMetrics(locator);
-		if (metrics.scrollTop <= thresholdPx) {
+		const remaining =
+			boundary === "top"
+				? metrics.scrollTop
+				: metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
+		if (remaining <= thresholdPx) {
 			return metrics;
 		}
-		await wheelAtLocator(page, locator, -1200, position);
-		await page.waitForTimeout(40);
-	}
-	return getScrollMetrics(locator);
-}
-
-async function wheelToBottom(
-	page: Page,
-	locator: Locator,
-	thresholdPx = 50,
-	position: "center" | "top" = "center",
-) {
-	for (let attempt = 0; attempt < 30; attempt += 1) {
-		const metrics = await getScrollMetrics(locator);
-		const maxScroll = metrics.scrollHeight - metrics.clientHeight;
-		if (metrics.scrollTop >= maxScroll - thresholdPx) {
-			return metrics;
-		}
-		await wheelAtLocator(page, locator, 1200, position);
+		await wheelAtLocator(page, locator, boundary === "top" ? -1200 : 1200, position);
 		await page.waitForTimeout(40);
 	}
 	return getScrollMetrics(locator);
@@ -685,10 +628,7 @@ function synthesizeRunningReviewTurn(instanceId: string) {
 		turnType: "llm",
 		status: "running",
 		pathType: "leaf_branch",
-		forkPiEntryId: null,
-		resultPiEntryId: null,
 		turnResultMarkdown: null,
-		errorSummary: null,
 		startedAt: new Date().toISOString(),
 		endedAt: null,
 	});
@@ -737,7 +677,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "true");
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await wheelToBottom(page, chronicleScroll);
+		await wheelToBoundary(page, chronicleScroll, "bottom");
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
 		await expect(secondTurn).toHaveCount(0);
 		const currentTurn = page.locator('[data-section="action-required-indicator"]');
@@ -747,7 +687,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await expect(focusedRailItem).toBeVisible();
 
 		// Compact history requires reaching the actual start, not the helper’s 50px tolerance.
-		const returnedViewport = await wheelToTop(page, chronicleScroll, 0);
+		const returnedViewport = await wheelToBoundary(page, chronicleScroll, "top", 0);
 		expect(returnedViewport.scrollTop).toBe(0);
 		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "true");
 		await expect(
@@ -769,26 +709,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		});
 
 		// Create multiple completed turn records
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_rail_turn_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
+		createPoemHistory(process.id);
 
 		// Navigate to the process detail page
 		await page.goto(`/processes/${process.id}`);
@@ -843,33 +764,17 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForTimeout(100);
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const positions = await chronicleScroll.evaluate(
-			(element, ids) => {
-				const scrollRect = element.getBoundingClientRect();
-				const firstTurn = element.querySelector<HTMLElement>(
-					`[data-section="chronicle-turn"][data-turn-record-id="${ids.firstTurnRecordId}"]`,
-				);
-				const secondTurn = element.querySelector<HTMLElement>(
-					`[data-section="chronicle-turn"][data-turn-record-id="${ids.secondTurnRecordId}"]`,
-				);
-				if (!firstTurn || !secondTurn) {
-					return null;
-				}
-				const firstRect = firstTurn.getBoundingClientRect();
-				const secondRect = secondTurn.getBoundingClientRect();
-				return {
-					clientHeight: element.clientHeight,
-					firstBottom: firstRect.bottom - scrollRect.top,
-					secondTop: secondRect.top - scrollRect.top,
-				};
-			},
-			{ firstTurnRecordId, secondTurnRecordId },
+		const first = await relativeBounds(
+			chronicleScroll,
+			`[data-section="chronicle-turn"][data-turn-record-id="${firstTurnRecordId}"]`,
 		);
-
-		expect(positions).toBeTruthy();
-		expect(positions?.secondTop).toBeGreaterThanOrEqual(0);
-		expect(positions?.secondTop).toBeLessThanOrEqual(80);
-		expect(positions?.firstBottom).toBeLessThanOrEqual(80);
+		const second = await relativeBounds(
+			chronicleScroll,
+			`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
+		);
+		expect(second.top).toBeGreaterThanOrEqual(0);
+		expect(second.top).toBeLessThanOrEqual(80);
+		expect(first.bottom).toBeLessThanOrEqual(80);
 		await expect(secondTurnButton).toHaveClass(/is-active/);
 	});
 
@@ -897,28 +802,13 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForTimeout(100);
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const position = await chronicleScroll.evaluate((element, turnRecordId) => {
-			const scrollRect = element.getBoundingClientRect();
-			const selectedTurn = element.querySelector<HTMLElement>(
-				`[data-section="chronicle-turn"][data-turn-record-id="${turnRecordId}"]`,
-			);
-			if (!selectedTurn) {
-				return null;
-			}
-			const selectedRect = selectedTurn.getBoundingClientRect();
-			return {
-				clientHeight: element.clientHeight,
-				top: selectedRect.top - scrollRect.top,
-				bottom: selectedRect.bottom - scrollRect.top,
-			};
-		}, secondTurnRecordId);
-
-		expect(position).toBeTruthy();
-		expect(position?.top).toBeGreaterThanOrEqual(0);
-		expect(position?.top).toBeLessThanOrEqual(96);
-		expect(position?.top ?? Number.POSITIVE_INFINITY).toBeLessThan(
-			(position?.clientHeight ?? 0) / 3,
+		const position = await relativeBounds(
+			chronicleScroll,
+			`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
 		);
+		expect(position.top).toBeGreaterThanOrEqual(0);
+		expect(position.top).toBeLessThanOrEqual(96);
+		expect(position.top).toBeLessThan(position.clientHeight / 3);
 		await expect(secondTurnButton).toHaveClass(/is-active/);
 	});
 
@@ -961,26 +851,7 @@ test.describe("rail scroll-anchor behavior", () => {
 			externalId: "RAIL-TURN-RESULT-001",
 		});
 
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_rail_result_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
+		createPoemHistory(process.id);
 
 		await page.goto(`/processes/${process.id}`);
 		await page.waitForSelector('[data-page="process-detail"]');
@@ -996,24 +867,12 @@ test.describe("rail scroll-anchor behavior", () => {
 		await firstTurnButton.click();
 		await page.waitForTimeout(100);
 
-		const resultPosition = await chronicleScroll.evaluate((element, currentTurnRecordId) => {
-			const scrollRect = element.getBoundingClientRect();
-			const turnResult = element.querySelector<HTMLElement>(
-				`[data-section="chronicle-turn"][data-turn-record-id="${currentTurnRecordId}"] [data-section="turn-result"]`,
-			);
-			if (!turnResult) {
-				return null;
-			}
-			const resultRect = turnResult.getBoundingClientRect();
-			return {
-				top: resultRect.top - scrollRect.top,
-				bottom: resultRect.bottom - scrollRect.top,
-				clientHeight: element.clientHeight,
-			};
-		}, turnRecordId);
-		expect(resultPosition).toBeTruthy();
-		expect(resultPosition?.top).toBeGreaterThanOrEqual(0);
-		expect(resultPosition?.top).toBeLessThanOrEqual(80);
+		const resultPosition = await relativeBounds(
+			chronicleScroll,
+			`[data-section="chronicle-turn"][data-turn-record-id="${turnRecordId}"] [data-section="turn-result"]`,
+		);
+		expect(resultPosition.top).toBeGreaterThanOrEqual(0);
+		expect(resultPosition.top).toBeLessThanOrEqual(80);
 	});
 });
 
@@ -1039,10 +898,7 @@ for (const { width, running } of [
 				turnId: "draft_poem",
 				turnType: "llm",
 				status: index < 5 ? "failed" : running ? "running" : "succeeded",
-				pathType: "primary",
 				parentTurnRecordId: index ? ids[index - 1] : null,
-				forkPiEntryId: null,
-				resultPiEntryId: null,
 				turnResultMarkdown: index < 5 ? null : "A quiet garden grows.",
 				errorSummary: index < 5 ? "Preparation failed: dependency installation failed." : null,
 				startedAt: new Date(Date.now() - (6 - index) * 60_000).toISOString(),
@@ -1151,7 +1007,7 @@ test.describe("chronicle scroll behavior", () => {
 		const initialMetrics = await getScrollMetrics(chronicleScroll);
 		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
 
-		await wheelToTop(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(150);
 
 		emitThinkingDelta(process.id, runningTurnId, "More streamed reasoning after page scroll.\n");
@@ -1160,11 +1016,7 @@ test.describe("chronicle scroll behavior", () => {
 			page.locator('[data-section="live-tail"] [data-section="thinking-preview"]'),
 		).toContainText("More streamed reasoning after page scroll.");
 
-		const afterMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const afterMetrics = await getScrollMetrics(chronicleScroll);
 
 		expect(afterMetrics.scrollTop).toBeLessThan(50);
 	});
@@ -1288,12 +1140,12 @@ test.describe("chronicle scroll behavior", () => {
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 		const liveTail = page.locator('[data-section="live-tail"][data-turn-id="review_poem_draft"]');
 		await expect(liveTail).toBeVisible();
-		await wheelToBottom(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
 		await expect(liveTail).toBeInViewport();
 		await expect(
 			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
 		).toHaveCount(0);
-		await wheelToTop(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(150);
 		const waitingScrollMetrics = await getScrollMetrics(chronicleScroll);
 		expect(waitingScrollMetrics.scrollTop).toBeLessThan(50);
@@ -1305,7 +1157,7 @@ test.describe("chronicle scroll behavior", () => {
 		).toHaveCount(0);
 		await page.waitForTimeout(150);
 
-		await wheelToBottom(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
 		await page.waitForTimeout(100);
 		const bottomMetrics = await getScrollMetrics(chronicleScroll);
 		const maxScroll = bottomMetrics.scrollHeight - bottomMetrics.clientHeight;
@@ -1314,339 +1166,72 @@ test.describe("chronicle scroll behavior", () => {
 		emitThinkingDelta(process.id, runningTurnId, "Streaming thought 2 while still running.\n");
 		await page.waitForTimeout(150);
 
-		await wheelToTop(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(150);
 		const finalMetrics = await getScrollMetrics(chronicleScroll);
 		expect(finalMetrics.scrollTop).toBeLessThan(50);
 	});
 
 	test("can scroll up during live render while turn is running", async ({ page }) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
-
-		// Create a process with an ACTIVE turn (live tail visible)
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "draft_poem",
-			lifecycleStatus: "active",
-			externalId: "SCROLL-LIVE-001",
-		});
-
-		// Create multiple completed turn records to generate enough content for scrolling
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_live_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
-
-		// Create a currently running turn record
-		const runningTurnId = `trn_running_live_${process.id}`;
-		createAcceptedLlmTurn({
-			id: runningTurnId,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "running",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
-			turnResultMarkdown: null,
-			errorSummary: null,
-			startedAt: new Date().toISOString(),
-			endedAt: null,
-		});
-
-		// Navigate to the process detail page
+		const { process } = createActivePoemProcess("SCROLL-LIVE-001");
 		await page.goto(`/processes/${process.id}`);
-
-		// Wait for the chronicle to load with the live tail
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="live-tail"]', { timeout: 5000 });
 
-		// Get the chronicle scroll container
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 		await expect(chronicleScroll).toBeVisible();
-
-		// Verify there's enough content to scroll
-		const initialMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const initialMetrics = await getScrollMetrics(chronicleScroll);
 		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
-
-		// The scroll should be at the bottom initially (following live tail)
 		const maxScroll = initialMetrics.scrollHeight - initialMetrics.clientHeight;
 		expect(initialMetrics.scrollTop).toBeGreaterThan(maxScroll - 50);
 
-		// Now try to scroll up while the live tail is still active
-		await wheelToTop(page, chronicleScroll, 50, "top");
-
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(300);
-
-		// Check if we successfully scrolled to the top
 		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
-
-		// The scroll position should be at or near the top (0)
-		// If the bug exists, scrollTop will be snapped back to the bottom
 		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
 	});
 
 	test("action section stays in view when turn completes", async ({ page }) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
-
-		// Create a process with an ACTIVE turn
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "draft_poem",
-			lifecycleStatus: "active",
-			externalId: "SCROLL-FOCUS-001",
-		});
-
-		// Create multiple completed turn records
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_focus_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
-
-		// Create a currently running turn record
-		const runningTurnId = `trn_running_focus_${process.id}`;
-		createAcceptedLlmTurn({
-			id: runningTurnId,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "running",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
-			turnResultMarkdown: null,
-			errorSummary: null,
-			startedAt: new Date().toISOString(),
-			endedAt: null,
-		});
-
-		// Navigate to the process detail page
+		const { process, runningTurnId } = createActivePoemProcess("SCROLL-FOCUS-001");
 		await page.goto(`/processes/${process.id}`);
-
-		// Wait for the live tail to appear
 		await page.waitForSelector('[data-section="live-tail"]', { timeout: 5000 });
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-
-		// Verify scroll is at bottom (following live tail)
-		const beforeMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const beforeMetrics = await getScrollMetrics(chronicleScroll);
 		const maxScrollBefore = beforeMetrics.scrollHeight - beforeMetrics.clientHeight;
 		expect(beforeMetrics.scrollTop).toBeGreaterThan(maxScrollBefore - 50);
 
-		// Now simulate the turn completing
-		const completedAt = new Date().toISOString();
-		ctx.deps.turnRecords.update(runningTurnId, {
-			status: "succeeded",
-			endedAt: completedAt,
-			turnResultMarkdown: "# Final Draft\n\nThe poem is complete.",
-		});
-		markAcceptedLlmTurnExited(runningTurnId, completedAt);
-
-		const updatedProcess = ctx.deps.processes.update(process.id, {
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			currentExecution: null,
-		});
-
-		// Broadcast the process update
-		ctx.broadcaster.broadcast(
-			createDurableWsFrame({
-				type: "process.updated",
-				payload: {
-					process: updatedProcess,
-					changedFields: ["selectedTurnId", "lifecycleStatus", "currentExecution"],
-				},
-				instanceId: process.id,
-			}),
-		);
-
-		// Wait for the action section to appear
+		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-
-		// Give the UI time to settle
 		await page.waitForTimeout(500);
-
-		// The action section should be visible (scroll should be near the bottom)
 		const actionSection = page.locator('[data-section="leaf-outcome-actions"]');
 		await expect(actionSection).toBeInViewport();
-
-		// Verify scroll is still near the bottom (action section in view)
-		const afterMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const afterMetrics = await getScrollMetrics(chronicleScroll);
 		const maxScrollAfter = afterMetrics.scrollHeight - afterMetrics.clientHeight;
-
-		// Scroll should be near the bottom (within 200px of max)
 		expect(afterMetrics.scrollTop).toBeGreaterThan(maxScrollAfter - 200);
 	});
 
 	test("can scroll up when action section appears dynamically after turn completes", async ({
 		page,
 	}) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
-
-		// Create a process with an ACTIVE turn (no action section visible yet)
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "draft_poem",
-			lifecycleStatus: "active",
-			externalId: "SCROLL-DYNAMIC-001",
-		});
-
-		// Create multiple completed turn records to generate enough content for scrolling
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_dynamic_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
-
-		// Create a currently running turn record
-		const runningTurnId = `trn_running_${process.id}`;
-		createAcceptedLlmTurn({
-			id: runningTurnId,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "running",
-			pathType: "primary",
-			forkPiEntryId: null,
-			resultPiEntryId: null,
-			turnResultMarkdown: null,
-			errorSummary: null,
-			startedAt: new Date().toISOString(),
-			endedAt: null,
-		});
-
-		// Navigate to the process detail page
+		const { process, runningTurnId } = createActivePoemProcess("SCROLL-DYNAMIC-001");
 		await page.goto(`/processes/${process.id}`);
-
-		// Wait for the chronicle to load with the live tail (no action section yet)
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="chronicle-flow"]');
-
-		// Verify action section is NOT visible yet (turn is still running)
 		const actionSectionBefore = await page.$('[data-section="leaf-outcome-actions"]');
 		expect(actionSectionBefore).toBeNull();
 
-		// Get the chronicle scroll container
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 		await expect(chronicleScroll).toBeVisible();
-
-		// Verify there's enough content to scroll
-		const initialMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const initialMetrics = await getScrollMetrics(chronicleScroll);
 		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
 
-		// Now simulate the turn completing - update the process state
-		const completedAt = new Date().toISOString();
-		ctx.deps.turnRecords.update(runningTurnId, {
-			status: "succeeded",
-			endedAt: completedAt,
-			turnResultMarkdown: "# Final Draft\n\nThe poem is complete.",
-		});
-		markAcceptedLlmTurnExited(runningTurnId, completedAt);
-
-		const updatedProcess = ctx.deps.processes.update(process.id, {
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			currentExecution: null,
-		});
-
-		// Broadcast the process update to notify the UI
-		ctx.broadcaster.broadcast(
-			createDurableWsFrame({
-				type: "process.updated",
-				payload: {
-					process: updatedProcess,
-					changedFields: ["selectedTurnId", "lifecycleStatus", "currentExecution"],
-				},
-				instanceId: process.id,
-			}),
-		);
-
-		// Wait for the action section to appear dynamically
+		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-
-		// Give the UI a moment to settle after the dynamic update
 		await page.waitForTimeout(500);
-
-		// THIS IS THE BUG: After the action section appears, try to scroll up
-		// The bug is that scrolling up should work but doesn't
-		await wheelToTop(page, chronicleScroll, 50, "top");
-
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(200);
-
-		// Check if we successfully scrolled to the top
 		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
-
-		// The scroll position should be at or near the top (0)
-		// If the bug exists, scrollTop will still be near the bottom
 		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
 	});
 
@@ -1665,26 +1250,7 @@ test.describe("chronicle scroll behavior", () => {
 		});
 
 		// Create multiple completed turn records to generate enough content for scrolling
-		const turnCount = 10;
-		for (let i = 0; i < turnCount; i++) {
-			createAcceptedLlmTurn({
-				id: `trn_scroll_${process.id}_${i}`,
-				instanceId: process.id,
-				turnId: "draft_poem",
-				turnType: "llm",
-				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
-				turnResultMarkdown:
-					`# Poem Draft ${i + 1}\n\nThis is a detailed poem draft for iteration ${i + 1}.\n\n`.repeat(
-						5,
-					) + "Lorem ipsum dolor sit amet, consectetur adipiscing elit. ".repeat(20),
-				errorSummary: null,
-				startedAt: new Date(Date.now() - (turnCount - i) * 60000).toISOString(),
-				endedAt: new Date(Date.now() - (turnCount - i) * 60000 + 30000).toISOString(),
-			});
-		}
+		createPoemHistory(process.id);
 
 		// Navigate to the process detail page
 		await page.goto(`/processes/${process.id}`);
@@ -1701,18 +1267,14 @@ test.describe("chronicle scroll behavior", () => {
 		await expect(chronicleScroll).toBeVisible();
 
 		// Get initial scroll position and dimensions
-		const initialMetrics = await chronicleScroll.evaluate((el) => ({
-			scrollTop: el.scrollTop,
-			scrollHeight: el.scrollHeight,
-			clientHeight: el.clientHeight,
-		}));
+		const initialMetrics = await getScrollMetrics(chronicleScroll);
 
 		// Verify there's enough content to scroll (scrollHeight > clientHeight)
 		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
 
 		// The bug: scroll should not be stuck at the bottom. Aim at the center
 		// so sticky content near the top edge cannot intercept the wheel input.
-		await wheelToTop(page, chronicleScroll, 50);
+		await wheelToBoundary(page, chronicleScroll, "top", 50);
 
 		// Wait a bit for scroll to settle
 		await page.waitForTimeout(100);
@@ -1726,7 +1288,7 @@ test.describe("chronicle scroll behavior", () => {
 
 		// Also verify we can scroll using mouse wheel simulation.
 		// First scroll back to bottom.
-		await wheelToBottom(page, chronicleScroll, 50);
+		await wheelToBoundary(page, chronicleScroll, "bottom", 50);
 		await page.waitForTimeout(100);
 
 		// Now try to scroll up using wheel event
@@ -1772,14 +1334,10 @@ test.describe("chronicle scroll behavior", () => {
 				turnId: "draft_poem",
 				turnType: "llm",
 				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
 				turnResultMarkdown:
 					`## Poem Section ${i + 1}\n\n${"This is paragraph content that takes up space. ".repeat(50)}\n\n`.repeat(
 						3,
 					),
-				errorSummary: null,
 				startedAt: new Date(Date.now() - (5 - i) * 60000).toISOString(),
 				endedAt: new Date(Date.now() - (5 - i) * 60000 + 30000).toISOString(),
 			});
@@ -1797,7 +1355,7 @@ test.describe("chronicle scroll behavior", () => {
 		expect(canScroll).toBe(true);
 
 		// Try to scroll to a middle position using wheel scrolling only
-		await wheelToTop(page, chronicleScroll, 50, "top");
+		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		const topMetrics = await getScrollMetrics(chronicleScroll);
 		const targetScrollTop = (topMetrics.scrollHeight - topMetrics.clientHeight) / 2;
 		const reachedMetrics = await wheelToApproxScrollTop(

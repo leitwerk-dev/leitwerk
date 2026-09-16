@@ -84,26 +84,20 @@ export function resolveScrollTargetLayout(
 	if (!(anchorElement instanceof HTMLElement) || !viewport.contains(anchorElement)) {
 		return null;
 	}
-	const actionForm = anchorElement.querySelector<HTMLElement>("[data-action-form-id]");
-	if (actionForm) {
-		const formLayout = readScrollableElementLayout(viewport, actionForm);
-		if (formLayout) return { ...formLayout, align: "start" };
+	const isTurn = anchorElement.dataset.section === "chronicle-turn";
+	const candidates = [
+		[anchorElement.querySelector<HTMLElement>("[data-action-form-id]"), "start"],
+		[
+			isTurn ? anchorElement.querySelector<HTMLElement>('[data-section="turn-result"]') : null,
+			"start",
+		],
+		[anchorElement, isTurn ? "start" : "focus"],
+	] as const;
+	for (const [element, align] of candidates) {
+		const layout = element ? readScrollableElementLayout(viewport, element) : null;
+		if (layout) return { ...layout, align };
 	}
-	if (anchorElement.dataset.section === "chronicle-turn") {
-		const turnResultSection = anchorElement.querySelector<HTMLElement>(
-			'[data-section="turn-result"]',
-		);
-		const turnResultLayout = turnResultSection
-			? readScrollableElementLayout(viewport, turnResultSection)
-			: null;
-		if (turnResultLayout) {
-			return { ...turnResultLayout, align: "start" };
-		}
-		const turnLayout = readScrollableElementLayout(viewport, anchorElement);
-		return turnLayout ? { ...turnLayout, align: "start" } : null;
-	}
-	const anchorLayout = readScrollableElementLayout(viewport, anchorElement);
-	return anchorLayout ? { ...anchorLayout, align: "focus" } : null;
+	return null;
 }
 
 /** Keep the narrow chronicle and its composer inside the visible viewport. */

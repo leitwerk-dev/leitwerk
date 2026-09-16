@@ -1,9 +1,6 @@
-import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
-import { fixtureModelProviders } from "@leitwerk-dev/test-support";
-import type { Locator } from "@playwright/test";
 import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
-import { expect, test } from "./fixtures.js";
+import { box, expect, test } from "./fixtures.js";
+import { createShowcaseModelCatalog, fixtureModelProfile } from "./showcase-model-fixture.js";
 
 test.use({
 	reducedMotion: "reduce",
@@ -12,33 +9,15 @@ test.use({
 		configure: (config) => {
 			config.pi.model_profiles = [
 				{
+					...fixtureModelProfile,
 					id: "layout-reference-model-with-a-long-name",
-					provider: "fixture",
-					model_id: "fixture-model",
-					thinking_level: "off",
 				},
 			];
 		},
-		createExtensionCatalog: () =>
-			buildExtensionCatalogFromModules([
-				{
-					...showcaseProcessesExtension,
-					modelProviders: fixtureModelProviders({
-						id: "fixture",
-						modelId: "fixture-model",
-						piProvider: "openai",
-					}),
-				},
-			]),
+		createExtensionCatalog: createShowcaseModelCatalog,
 		useInProcessWorker: true,
 	},
 });
-
-async function box(locator: Locator) {
-	const bounds = await locator.boundingBox();
-	if (!bounds) throw new Error("Expected a visible layout element");
-	return bounds;
-}
 
 for (const viewport of [
 	{ width: 1440, height: 900 },
@@ -67,15 +46,11 @@ for (const viewport of [
 				turnId: "draft_poem",
 				turnType: "llm",
 				status: "succeeded",
-				pathType: "primary",
-				forkPiEntryId: null,
-				resultPiEntryId: null,
 				turnResultMarkdown: Array.from(
 					{ length: 24 },
 					(_, index) =>
 						`## Verse ${index + 1}\n\nSeptember light fills the open windows.\n\nClouds drift across the sky.`,
 				).join("\n\n"),
-				errorSummary: null,
 				startedAt: recordedAt,
 				endedAt: recordedAt,
 			},
@@ -98,13 +73,10 @@ for (const viewport of [
 		const feedback = composer.getByRole("textbox", { name: "Revision request" });
 		const options = composer.getByRole("button", { name: "Options" });
 		const send = composer.getByRole("button", { name: "Request revision", exact: true });
-		const choiceBox = await box(choice);
-		const optionsBox = await box(options);
-		const sendBox = await box(send);
-		expect(choiceBox.height).toBeCloseTo(48, 0);
-		expect(Math.abs(choiceBox.y - optionsBox.y)).toBeLessThan(1);
-		expect(optionsBox.height).toBeCloseTo(48, 0);
-		expect(sendBox.height).toBeCloseTo(48, 0);
+		for (const control of [choice, options, send]) {
+			expect((await box(control)).height).toBeCloseTo(48, 0);
+		}
+		expect(Math.abs((await box(choice)).y - (await box(options)).y)).toBeLessThan(1);
 		const composerBox = await box(composer);
 		const scrollBox = await box(scroll);
 		expect(scrollBox.y + scrollBox.height).toBeLessThanOrEqual(composerBox.y + 1);
