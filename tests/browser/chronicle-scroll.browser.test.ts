@@ -579,40 +579,43 @@ async function wheelToBoundary(
 	return getScrollMetrics(locator);
 }
 
+async function waitForScrollToSettle(locator: Locator) {
+	let previous = (await getScrollMetrics(locator)).scrollTop;
+	let stableSamples = 0;
+	await expect
+		.poll(
+			async () => {
+				const current = (await getScrollMetrics(locator)).scrollTop;
+				stableSamples = Math.abs(current - previous) < 1 ? stableSamples + 1 : 0;
+				previous = current;
+				return stableSamples;
+			},
+			{ timeout: 5_000, intervals: [100] },
+		)
+		.toBeGreaterThanOrEqual(3);
+	return getScrollMetrics(locator);
+}
+
 async function wheelToApproxScrollTop(
 	page: Page,
 	locator: Locator,
 	targetScrollTop: number,
 	position: "center" | "top" = "center",
 ) {
-	// Wheel input returns before WebKit finishes scrolling. Observe a stable
-	// position before issuing another delta or recording the reading position.
-	async function settledMetrics() {
-		let previous = await getScrollMetrics(locator);
-		let stableSamples = 0;
-		await expect
-			.poll(
-				async () => {
-					const current = await getScrollMetrics(locator);
-					stableSamples =
-						Math.abs(current.scrollTop - previous.scrollTop) < 1 ? stableSamples + 1 : 0;
-					previous = current;
-					return stableSamples;
-				},
-				{ intervals: [100], timeout: 5000 },
-			)
-			.toBeGreaterThanOrEqual(3);
-		return previous;
-	}
-
-	let metrics = await settledMetrics();
+	let metrics = await waitForScrollToSettle(locator);
 	for (let attempt = 0; attempt < 40; attempt += 1) {
 		const remaining = targetScrollTop - metrics.scrollTop;
 		if (Math.abs(remaining) <= 150) return metrics;
+		// Wheel dispatch does not await scrolling. Avoid queued input and overshoot
+		// by waiting for each movement to settle before choosing the next delta.
 		await wheelAtLocator(page, locator, Math.max(-900, Math.min(900, remaining)), position);
-		metrics = await settledMetrics();
+		await expect
+			.poll(async () => Math.abs((await getScrollMetrics(locator)).scrollTop - metrics.scrollTop))
+			.toBeGreaterThan(1);
+		metrics = await waitForScrollToSettle(locator);
 	}
-	throw new Error(`Wheel scrolling did not reach ${targetScrollTop}: ${metrics.scrollTop}`);
+	expect(Math.abs(metrics.scrollTop - targetScrollTop)).toBeLessThanOrEqual(150);
+	return metrics;
 }
 
 async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutMs = 5_000) {

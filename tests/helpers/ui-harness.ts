@@ -303,7 +303,9 @@ export async function createUiTestApp<
 			try {
 				await ctx.app.close();
 			} finally {
-				await rm(runtimeRoot, { recursive: true, force: true });
+				// In-process workers can finish filesystem writes during shutdown. Retry
+				// transient ENOTEMPTY/EBUSY races, but still fail if cleanup cannot complete.
+				await rm(runtimeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 			}
 		},
 	};

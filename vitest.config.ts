@@ -1,3 +1,4 @@
+import { availableParallelism } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -34,6 +35,12 @@ const composition = loadActiveDevelopmentComposition(repoRoot);
 const externalPackageDirs = composition?.externalPackages.map((entry) => entry.dir) ?? [];
 const workspaceSourceAliases = buildWorkspaceSourceAliases(repoRoot, externalPackageDirs);
 const externalUnitTests = externalPackageDirs.map((dir) => resolve(dir, "src/**/*.test.ts"));
+const isolatedUnitTests = [
+	"packages/server/src/model-providers/builtin-server-adapter.test.ts",
+	"packages/ui/src/chronicle/lib/leaf-outcome-loader.test.ts",
+	"packages/ui/src/lib/ws.svelte.test.ts",
+	"packages/worker/src/runtime/turn-execution-preparation.test.ts",
+];
 const externalIntegrationTests = externalPackageDirs.map((dir) =>
 	resolve(dir, "src/**/*.integration.test.ts"),
 );
@@ -75,22 +82,26 @@ export default defineConfig({
 					name: "unit",
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
-					// Several unit suites bundle temporary Pi resources. More than two workers
-					// starve their budgets on shared CI runners even when the same tests take
-					// only milliseconds in isolation. The full gate also runs inside 1-CPU
-					// delivery workers, where setup can exceed Vitest's 5s default.
+					// Unit files use lightweight thread workers. Scale up on larger hosts while
+					// bounding resource bundling on shared CI runners; retain two workers on a
+					// 1-CPU delivery worker because much of the suite waits on subprocess I/O.
 					testTimeout: 15_000,
-					maxWorkers: 2,
+					maxWorkers: Math.max(2, Math.min(6, availableParallelism())),
+					pool: "threads",
+					// Mocking suites and external composition tests stay in unit-isolated; the
+					// remaining local suites can safely reuse each thread's module environment.
+					isolate: false,
 					include: [
 						"packages/*/src/**/*.test.ts",
 						"extensions/*/src/**/*.test.ts",
 						"scripts/**/*.test.ts",
-						...externalUnitTests,
 					],
 					exclude: [
 						"**/*.integration.test.ts",
 						"**/*.e2e.test.ts",
 						"**/*.ui.integration.test.ts",
+						"packages/server/src/app.extension-loading.test.ts",
+						...isolatedUnitTests,
 						...externalIntegrationTests,
 						...externalUiIntegrationTests,
 					],
@@ -102,20 +113,63 @@ export default defineConfig({
 					alias: [...nodeBuiltinAliases, ...workspaceSourceAliases],
 				},
 				test: {
+					name: "unit-isolated",
+					execArgv: sharedExecArgv,
+					setupFiles: sharedSetupFiles,
+					testTimeout: 15_000,
+					maxWorkers: Math.max(2, Math.min(6, availableParallelism())),
+					pool: "threads",
+					include: [...isolatedUnitTests, ...externalUnitTests],
+				},
+			},
+			{
+				plugins: [nodeBuiltinPlugin],
+				resolve: {
+					alias: [...nodeBuiltinAliases, ...workspaceSourceAliases],
+				},
+				test: {
+					name: "unit-forks",
+					execArgv: sharedExecArgv,
+					setupFiles: sharedSetupFiles,
+					testTimeout: 15_000,
+					maxWorkers: 1,
+					include: ["packages/server/src/app.extension-loading.test.ts"],
+				},
+			},
+			{
+				plugins: [nodeBuiltinPlugin],
+				resolve: {
+					alias: [...nodeBuiltinAliases, ...workspaceSourceAliases],
+				},
+				test: {
 					name: "integration",
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
-					// Integration files start servers, workers, and resource bundlers. Keep
-					// concurrency and timeouts bounded for shared CI and 1-CPU delivery workers.
+					// Integration files start servers, workers, and resource bundlers. Scale to
+					// four workers on larger hosts while retaining two on 1-CPU delivery workers.
 					testTimeout: 15_000,
-					maxWorkers: 2,
+					maxWorkers: Math.max(2, Math.min(4, availableParallelism())),
+					isolate: false,
 					include: [
 						"packages/*/src/**/*.integration.test.ts",
 						"extensions/*/src/**/*.integration.test.ts",
 						"tests/**/*.integration.test.ts",
-						...externalIntegrationTests,
-						...composedIntegrationTests,
 					],
+					exclude: ["**/*.ui.integration.test.ts"],
+				},
+			},
+			{
+				plugins: [nodeBuiltinPlugin],
+				resolve: {
+					alias: [...nodeBuiltinAliases, ...workspaceSourceAliases],
+				},
+				test: {
+					name: "integration-isolated",
+					execArgv: sharedExecArgv,
+					setupFiles: sharedSetupFiles,
+					testTimeout: 15_000,
+					maxWorkers: Math.max(2, Math.min(4, availableParallelism())),
+					include: [...externalIntegrationTests, ...composedIntegrationTests],
 					exclude: ["**/*.ui.integration.test.ts"],
 				},
 			},
@@ -127,8 +181,10 @@ export default defineConfig({
 				test: {
 					name: "e2e",
 					execArgv: sharedExecArgv,
+					// Scale process-heavy files on larger hosts while retaining two workers on
+					// 1-CPU delivery workers.
 					testTimeout: 15_000,
-					maxWorkers: 2,
+					maxWorkers: Math.max(2, Math.min(3, availableParallelism())),
 					setupFiles: sharedSetupFiles,
 					include: ["tests/**/*.e2e.test.ts", ...composedE2eTests],
 				},
@@ -154,10 +210,9 @@ export default defineConfig({
 					// that budget so heavy mounts under concurrent-project load are not
 					// killed by Vitest's 5s default before their own waits can complete.
 					testTimeout: 30_000,
-					// Full-suite jsdom mounts are memory-heavy. Bounding concurrency avoids
-					// event-loop starvation that otherwise turns 1-2s interaction tests into
-					// intermittent 30s timeouts while a dev server is also running.
-					maxWorkers: 2,
+					// Full-suite jsdom mounts are memory-heavy. Scale to five workers on larger
+					// hosts while retaining two on 1-CPU delivery workers to avoid starvation.
+					maxWorkers: Math.max(2, Math.min(5, availableParallelism())),
 					// Provide a concrete origin so jsdom exposes window.localStorage;
 					// the default opaque origin leaves it undefined.
 					environmentOptions: {
