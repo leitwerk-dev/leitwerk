@@ -4,6 +4,22 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 
 describe("CI browser installation", () => {
+	it("keeps artifacts separate for every browser invocation in the full gate", () => {
+		const packageJson = JSON.parse(
+			readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+		);
+		const script: string = packageJson.scripts["test:browser"];
+		const invocations = script.match(/playwright test\b/g) ?? [];
+		const outputs = [...script.matchAll(/--output=([^\s"]+)/g)].map((match) => match[1]);
+		expect(invocations).toHaveLength(4);
+		expect(outputs).toHaveLength(invocations.length);
+		expect(new Set(outputs).size).toBe(outputs.length);
+		// A parent output directory would also delete another invocation's artifacts.
+		for (const output of outputs) {
+			for (const other of outputs) expect(other.startsWith(`${output}/`)).toBe(false);
+		}
+	});
+
 	it.each([
 		["ci.yml", "validate"],
 		["publish.yml", "validate"],

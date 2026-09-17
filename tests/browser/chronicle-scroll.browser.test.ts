@@ -579,21 +579,43 @@ async function wheelToBoundary(
 	return getScrollMetrics(locator);
 }
 
+async function waitForScrollToSettle(locator: Locator) {
+	let previous = (await getScrollMetrics(locator)).scrollTop;
+	let stableSamples = 0;
+	await expect
+		.poll(
+			async () => {
+				const current = (await getScrollMetrics(locator)).scrollTop;
+				stableSamples = Math.abs(current - previous) < 1 ? stableSamples + 1 : 0;
+				previous = current;
+				return stableSamples;
+			},
+			{ timeout: 5_000, intervals: [50] },
+		)
+		.toBeGreaterThanOrEqual(3);
+	return getScrollMetrics(locator);
+}
+
 async function wheelToApproxScrollTop(
 	page: Page,
 	locator: Locator,
 	targetScrollTop: number,
 	position: "center" | "top" = "center",
 ) {
+	let metrics = await waitForScrollToSettle(locator);
 	for (let attempt = 0; attempt < 40; attempt += 1) {
-		const metrics = await getScrollMetrics(locator);
-		if (Math.abs(metrics.scrollTop - targetScrollTop) <= 150) {
-			return metrics;
-		}
-		await wheelAtLocator(page, locator, metrics.scrollTop < targetScrollTop ? 900 : -900, position);
-		await page.waitForTimeout(40);
+		const remaining = targetScrollTop - metrics.scrollTop;
+		if (Math.abs(remaining) <= 150) return metrics;
+		// Wheel dispatch does not await scrolling. Avoid queued input and overshoot
+		// by waiting for each movement to settle before choosing the next delta.
+		await wheelAtLocator(page, locator, Math.max(-900, Math.min(900, remaining)), position);
+		await expect
+			.poll(async () => Math.abs((await getScrollMetrics(locator)).scrollTop - metrics.scrollTop))
+			.toBeGreaterThan(1);
+		metrics = await waitForScrollToSettle(locator);
 	}
-	return getScrollMetrics(locator);
+	expect(Math.abs(metrics.scrollTop - targetScrollTop)).toBeLessThanOrEqual(150);
+	return metrics;
 }
 
 async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutMs = 5_000) {
