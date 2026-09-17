@@ -2372,6 +2372,72 @@ describe("ProcessDetailPage", () => {
 		expect(disclosure?.open).toBe(false);
 	});
 
+	it("keeps Observe → Assess → Observe waiting chronological in the timeline and both navigation views", async () => {
+		const detail = createProcessDetail();
+		detail.process.selectedTurnId = "observe";
+		detail.process.lifecycleStatus = "waiting";
+		const completed = {
+			...detail.turnRecords[0],
+			resultPiEntryId: null,
+			turnResultMarkdown: null,
+		};
+		detail.turnRecords = [
+			{
+				...completed,
+				id: "trn_observe",
+				turnId: "observe",
+				turnType: "external",
+				startedAt: "2026-01-01T00:00:00Z",
+				endedAt: "2026-01-01T00:00:00Z",
+			},
+			{
+				...completed,
+				id: "trn_assess",
+				turnId: "assess",
+				turnType: "automatic",
+				startedAt: "2026-01-01T00:01:00Z",
+				endedAt: "2026-01-01T00:01:10Z",
+				turnResultMarkdown: "CI passed; watching for later failures or comments.",
+			},
+		];
+		detail.selectedTurn = {
+			turnId: "observe",
+			kind: "external",
+			description: "Observe merge request",
+			commentary: null,
+			externalTriggers: [
+				{ id: "observe", kind: "example.pr", label: "MR update", description: "Observe MR state" },
+			],
+		};
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const waiting = target.querySelector('[data-section="leaf-outcome-actions"]');
+		const assess = target.querySelector(
+			'[data-section="chronicle-turn"][data-turn-record-id="trn_assess"]',
+		);
+		if (!waiting || !assess) throw new Error("Expected the Assess card and current wait");
+		expect(waiting.closest('[data-section="chronicle-turn"]')).toBeNull();
+		expect(assess.compareDocumentPosition(waiting) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(target.querySelectorAll('[data-section="leaf-outcome-actions"]')).toHaveLength(1);
+
+		const assertNavigation = (navigation: Element | null) => {
+			if (!navigation) throw new Error("Expected process navigation");
+			const observe = navigation.querySelector('[data-turn-record-id="trn_observe"]');
+			const assess = navigation.querySelector('[data-turn-record-id="trn_assess"]');
+			const action = navigation.querySelector('[data-rail-kind="action"]');
+			expect(observe?.getAttribute("data-state")).toBe("completed");
+			expect(assess?.getAttribute("data-state")).toBe("completed");
+			if (!assess || !action) throw new Error("Expected Assess followed by the current wait");
+			expect(
+				assess.compareDocumentPosition(action) & Node.DOCUMENT_POSITION_FOLLOWING,
+			).toBeTruthy();
+		};
+		assertNavigation(target.querySelector('[data-column="turn-rail"]'));
+		target.querySelector<HTMLButtonElement>('[data-action="open-mobile-quick-nav"]')?.click();
+		await flushUi();
+		assertNavigation(target.querySelector('[data-section="mobile-process-quick-nav"]'));
+	});
+
 	it("renders the prompt first and exposes process info in the header overlay", async () => {
 		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
 		const detail = createProcessDetail();

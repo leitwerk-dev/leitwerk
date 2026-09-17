@@ -183,11 +183,13 @@ const waitingTurn = $derived.by(() => {
 		!selectedTurn
 	)
 		return null;
-	return (
-		projection.timelineItems.findLast(
-			(item) => item.kind === "turn_cluster" && item.turnId === selectedTurn.turnId,
-		) ?? null
+	// A repeated turn definition does not make an earlier execution the current wait.
+	const latestTurn = projection.timelineItems.findLast(
+		(item) => item.kind === "turn_cluster" || item.kind === "live_tail",
 	);
+	return latestTurn?.kind === "turn_cluster" && latestTurn.turnId === selectedTurn.turnId
+		? latestTurn
+		: null;
 });
 const hasTrailingProcessSection = $derived(
 	scheduledAction !== null ||

@@ -196,14 +196,14 @@ export function buildChronicleSelectableItems(
 	if (input.projection.terminalRailItem) {
 		items.push(buildTerminalItem(input.projection.terminalRailItem));
 	}
+	const latestTurn = items.findLast(
+		(item): item is ChronicleSelectableTurnItem => item.kind === "turn",
+	);
 	const waitingTurn =
-		input.pendingRailItem?.tone === "external_trigger"
-			? items.findLast(
-					(item): item is ChronicleSelectableTurnItem =>
-						item.kind === "turn" &&
-						item.turnId === input.externalWaitingTurnId &&
-						item.status === "completed",
-				)
+		input.pendingRailItem?.tone === "external_trigger" &&
+		latestTurn?.turnId === input.externalWaitingTurnId &&
+		latestTurn?.status === "completed"
+			? latestTurn
 			: undefined;
 	if (waitingTurn) {
 		waitingTurn.status = "waiting";

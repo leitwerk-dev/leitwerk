@@ -211,6 +211,34 @@ describe("chronicle selectable items", () => {
 		);
 	});
 
+	it("keeps a repeated external wait after intervening turns without relabeling history", () => {
+		const projection = { ...createProjection(), terminalRailItem: null };
+		const items = buildChronicleSelectableItems({
+			projection,
+			externalWaitingTurnId: "turn_one",
+			pendingRailItem: {
+				label: "External trigger",
+				title: "Waiting for an update",
+				tone: "external_trigger",
+			},
+		});
+		expect(items.map((item) => item.anchorId)).toEqual([
+			"chronicle-prompt",
+			"chronicle-turn-trn_one",
+			"chronicle-turn-trn_two",
+			CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+		]);
+		expect(items[1]).toMatchObject({ turnRecordId: "trn_one", status: "completed" });
+		expect(items[2]).toMatchObject({ turnRecordId: "trn_two", status: "completed" });
+		expect(items[3]).toMatchObject({ kind: "action", tone: "external_trigger" });
+		expect(moveChronicleAnchorByOffset(items, "chronicle-turn-trn_two", 1)).toBe(
+			CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+		);
+		expect(
+			resolveChronicleRailAnchorIdFromActiveAnchor(projection, items, "chronicle-turn-trn_one"),
+		).toBe("chronicle-turn-trn_one");
+	});
+
 	it("keeps external waiting separate when its turn has no recorded card", () => {
 		const items = buildChronicleSelectableItems({
 			projection: { ...createProjection(), terminalRailItem: null },
