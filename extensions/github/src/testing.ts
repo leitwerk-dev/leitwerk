@@ -1,4 +1,5 @@
 import { LocalForgeStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
+import { actionableFeedback, authorizedTrigger } from "./authorization.js";
 import type { GitHubClientLike } from "./capability.js";
 import type {
 	GitHubCheckSummary,
@@ -235,34 +236,8 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 			isOrganizationMember: async (login) =>
 				!profile.allowedOrganization ||
 				this.state.members.some((member) => member.toLowerCase() === login.toLowerCase()),
-			authorizedTrigger: async (owner, name, number, trigger, done) => {
-				if (
-					profile.allowedOrganization &&
-					owner.toLowerCase() !== profile.allowedOrganization.toLowerCase()
-				)
-					return null;
-				const issue = await client.getIssue(owner, name, number);
-				if (
-					issue.state !== "open" ||
-					!issue.labels.some((label) => label.name === trigger) ||
-					issue.labels.some((label) => label.name === done)
-				)
-					return null;
-				const last = (await client.listIssueEvents(owner, name, number))
-					.filter(
-						(event) =>
-							["labeled", "unlabeled"].includes(event.event) && event.label?.name === trigger,
-					)
-					.sort((a, b) => b.id - a.id)[0];
-				if (
-					!last ||
-					last.event !== "labeled" ||
-					!last.actor ||
-					!(await client.isOrganizationMember(last.actor.login))
-				)
-					return null;
-				return { issue, actor: last.actor.login, eventId: last.id };
-			},
+			authorizedTrigger: async (owner, name, number, trigger, done) =>
+				authorizedTrigger(client, owner, name, number, trigger, done),
 			resolveGitIdentity: async (name) => ({
 				provider: "github",
 				profile: name,
@@ -330,15 +305,11 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				this.lostResponse("reply");
 				return structuredClone(value);
 			},
-			listActionablePullRequestFeedback: async (owner, name, number, signal) => {
-				const authorized: GitHubFeedbackItem[] = [];
-				for (const item of await client.listPullRequestFeedback(owner, name, number, signal)) {
-					if (item.author === profile.botLogin || item.body.includes("<!-- leitwerk-write:"))
-						continue;
-					if (await client.isOrganizationMember(item.author)) authorized.push(item);
-				}
-				return authorized;
-			},
+			listActionablePullRequestFeedback: async (owner, name, number, signal) =>
+				actionableFeedback(
+					client,
+					await client.listPullRequestFeedback(owner, name, number, signal),
+				),
 			getIssue: async (owner, name, number) => {
 				const issue = repo(owner, name).issues.find((i) => i.number === number);
 				if (!issue) throw new Error("Unknown local GitHub issue");

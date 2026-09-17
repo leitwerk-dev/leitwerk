@@ -18,8 +18,15 @@ import { assertGitHubRepository } from "./client.js";
 
 const object = (value: unknown) => objectArg(value, "Expected an object");
 
-const string = (value: unknown, name: string) => stringArg({ [name]: value }, name);
-const number = (value: unknown, name: string) => numberArg({ [name]: value }, name);
+async function reconcileComment(
+	comments: Promise<Array<{ body?: unknown }>>,
+	marker: string,
+	body: () => string,
+	post: (body: string) => Promise<unknown>,
+) {
+	const existing = (await comments).find((comment) => String(comment.body).includes(marker));
+	return existing ?? post(`${body()}\n\n${marker}`);
+}
 
 export function registerGitHubTools(
 	api: ServerExtensionAPI,
@@ -78,9 +85,7 @@ export function registerGitHubTools(
 				const t = target(ctx);
 				const client = integration.client(t.profile);
 				const key =
-					typeof input.writeKey === "string"
-						? string(input.writeKey, "writeKey")
-						: ctx.idempotencyKey;
+					typeof input.writeKey === "string" ? stringArg(input, "writeKey") : ctx.idempotencyKey;
 				const marker = `<!-- leitwerk-write:${ctx.process.id}:${key} -->`;
 				let value: unknown;
 				const result = await ensureWrite(
@@ -89,13 +94,10 @@ export function registerGitHubTools(
 					createWriteIdentity(name, key),
 					async () => {
 						if (name === "github_ensure_label")
-							value = await client.ensureLabel(t.owner, t.repo, string(input.name, "name"));
+							value = await client.ensureLabel(t.owner, t.repo, stringArg(input, "name"));
 						else if (name === "github_update_issue") {
-							const current = await client.getIssue(
-								t.owner,
-								t.repo,
-								number(input.issueNumber, "issueNumber"),
-							);
+							const issueNumber = numberArg(input, "issueNumber");
+							const current = await client.getIssue(t.owner, t.repo, issueNumber);
 							const patch = object(input.patch);
 							const same = Object.entries(patch).every(
 								([key, expected]) =>
@@ -110,66 +112,51 @@ export function registerGitHubTools(
 							);
 							value = same
 								? current
-								: await client.updateIssue(
-										t.owner,
-										t.repo,
-										number(input.issueNumber, "issueNumber"),
-										object(input.patch),
-									);
+								: await client.updateIssue(t.owner, t.repo, issueNumber, patch);
 						} else if (name === "github_add_pull_request_feedback_reaction") {
-							const reactions = await client.listFeedbackReactions(
-								t.owner,
-								t.repo,
-								string(input.feedbackKind, "feedbackKind"),
-								number(input.feedbackId, "feedbackId"),
-							);
+							const kind = stringArg(input, "feedbackKind");
+							const id = numberArg(input, "feedbackId");
+							const reactions = await client.listFeedbackReactions(t.owner, t.repo, kind, id);
 							value =
 								reactions.find(
 									(reaction) =>
 										reaction.content === "eyes" &&
 										reaction.user.login.toLowerCase() === client.profile.botLogin.toLowerCase(),
-								) ??
-								(await client.addFeedbackReaction(
-									t.owner,
-									t.repo,
-									string(input.feedbackKind, "feedbackKind"),
-									number(input.feedbackId, "feedbackId"),
-								));
+								) ?? (await client.addFeedbackReaction(t.owner, t.repo, kind, id));
 						} else {
-							const issueNumber = number(
-								input.issueNumber ?? input.pullRequestNumber,
+							const issueNumber = numberArg(
+								{ issueNumber: input.issueNumber ?? input.pullRequestNumber },
 								"issueNumber",
 							);
-							const comments =
+							value = await reconcileComment(
 								name === "github_reply_to_pull_request_feedback"
-									? await client.listFeedbackReplies(
+									? client.listFeedbackReplies(
 											t.owner,
 											t.repo,
 											issueNumber,
-											string(input.feedbackKind, "feedbackKind"),
+											stringArg(input, "feedbackKind"),
 										)
-									: await client.listIssueComments(t.owner, t.repo, issueNumber);
-							value = comments.find((comment) => String(comment.body).includes(marker));
-							if (!value) {
-								const body = `${string(input.body, "body")}\n\n${marker}`;
-								value =
+									: client.listIssueComments(t.owner, t.repo, issueNumber),
+								marker,
+								() => stringArg(input, "body"),
+								(body) =>
 									name === "github_add_issue_comment"
-										? await client.addIssueComment(t.owner, t.repo, issueNumber, body)
-										: await client.replyFeedback(
+										? client.addIssueComment(t.owner, t.repo, issueNumber, body)
+										: client.replyFeedback(
 												t.owner,
 												t.repo,
 												issueNumber,
-												string(input.feedbackKind, "feedbackKind"),
-												number(input.feedbackId, "feedbackId"),
+												stringArg(input, "feedbackKind"),
+												numberArg(input, "feedbackId"),
 												body,
-											);
-							}
+											),
+							);
 						}
 						return { value };
 					},
 				);
 
-				if (name === "github_ensure_label") return { name: string(input.name, "name") };
+				if (name === "github_ensure_label") return { name: stringArg(input, "name") };
 				return value ?? result;
 			},
 		});
@@ -286,15 +273,14 @@ export function registerGitHubTools(
 			async execute(ctx, input) {
 				const t = target(ctx);
 				const pr = numberArg(input, "pullRequestNumber");
+				const key =
+					!definition.update && typeof input.writeKey === "string"
+						? stringArg(input, "writeKey")
+						: ctx.idempotencyKey;
 				return ensureWrite(
 					writes,
 					ctx.process.id,
-					createWriteIdentity(
-						definition.update ? "github.update_pr" : "github.comment",
-						!definition.update && typeof input.writeKey === "string"
-							? stringArg(input, "writeKey")
-							: ctx.idempotencyKey,
-					),
+					createWriteIdentity(definition.update ? "github.update_pr" : "github.comment", key),
 					async () => {
 						if (definition.update)
 							await integration
@@ -302,22 +288,12 @@ export function registerGitHubTools(
 								.updatePullRequest(t.owner, t.repo, pr, object(input.patch), ctx.signal);
 						else {
 							const client = integration.client(t.profile);
-							const key =
-								typeof input.writeKey === "string"
-									? stringArg(input, "writeKey")
-									: ctx.idempotencyKey;
-							const marker = `<!-- leitwerk-write:${ctx.process.id}:${key} -->`;
-							const existing = (
-								await client.listIssueComments(t.owner, t.repo, pr, ctx.signal)
-							).find((comment) => String(comment.body).includes(marker));
-							if (!existing)
-								await client.addIssueComment(
-									t.owner,
-									t.repo,
-									pr,
-									`${stringArg(input, "body")}\n\n${marker}`,
-									ctx.signal,
-								);
+							await reconcileComment(
+								client.listIssueComments(t.owner, t.repo, pr, ctx.signal),
+								`<!-- leitwerk-write:${ctx.process.id}:${key} -->`,
+								() => stringArg(input, "body"),
+								(body) => client.addIssueComment(t.owner, t.repo, pr, body, ctx.signal),
+							);
 						}
 						return { owner: t.owner, repo: t.repo, pullRequestNumber: pr };
 					},

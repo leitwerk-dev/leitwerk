@@ -71,6 +71,7 @@ describe("createForgejoProvider", () => {
 	const feedbackArming = (overrides: Partial<ForgejoFeedbackSourceConfig> = {}) => ({
 		id: "feedback-arm",
 		instanceId: "process-1",
+		generation: "one",
 		resolved: {
 			profile: "primary",
 			owner: "team",
@@ -193,6 +194,7 @@ describe("createForgejoProvider", () => {
 		const result = await provider.poll();
 
 		expect(result.errors).toEqual([]);
+		expect(fire).not.toHaveBeenCalledWith(expect.objectContaining({ generation: "one" }));
 		expect(fire).toHaveBeenCalledWith(
 			expect.objectContaining({
 				instanceId: "process-1",

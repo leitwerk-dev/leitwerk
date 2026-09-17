@@ -1,4 +1,7 @@
-import type { ExternalActionSource, ExternalEventDescription } from "@leitwerk-dev/process-sdk";
+import {
+	defineExternalActionSource,
+	type ExternalEventDescription,
+} from "@leitwerk-dev/process-sdk";
 import { describeConflict } from "@leitwerk-dev/repository-rebase";
 
 export const GITHUB_PR_STATE_KIND = "@leitwerk-private/github.pr_state";
@@ -93,86 +96,44 @@ export interface GitHubIssueCancelledSourceConfig {
 export const GITHUB_CHECKS_KIND = "@leitwerk-public/github.checks";
 
 export const githubExternal = {
-	checks<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => {
-			profile: string;
-			owner: string;
-			repo: string;
-			prNumber: number;
-			headSha: string;
-		},
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_CHECKS_KIND,
-			describeEvent: describeGitHubEvent,
-			label: "GitHub Actions failures",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
-	issueCancelled<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => GitHubIssueCancelledSourceConfig,
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_ISSUE_CANCELLED_KIND,
-			describeEvent: () => ({ summary: "Source issue cancelled" }),
-			label: "GitHub source issue cancelled",
-			description: "Fires when the source issue closes or loses its trigger label",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
-	pullRequestTerminal<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => GitHubPullRequestTerminalSourceConfig,
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_PR_TERMINAL_KIND,
-			describeEvent: describeGitHubEvent,
-			label: "GitHub pull request merged or closed",
-			description: "Fires when the tracked pull request reaches a terminal state",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
-	pullRequestFeedback<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => GitHubFeedbackSourceConfig,
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_PR_FEEDBACK_KIND,
-			describeEvent: () => ({ summary: "Pull request feedback received" }),
-			label: "GitHub pull request feedback",
-			description: "Fires after unseen human feedback has been quiet long enough to batch",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
-	releaseContaining<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => GitHubReleaseSourceConfig,
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_RELEASE_KIND,
-			label: "Published GitHub release",
-			description: "Fires when a published release contains the tracked merge commit",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
-	pullRequestState<TParams, TState>(
-		resolve: (ctx: { params: TParams; state: TState }) => GitHubPullRequestSourceConfig,
-	): ExternalActionSource<TParams, TState> {
-		return {
-			kind: GITHUB_PR_STATE_KIND,
-			describeEvent: describeGitHubEvent,
-			label: "GitHub pull request state",
-			description: "Fires for failed or successful checks, review feedback, and terminal PR state",
-			config: {},
-			inputMode: "none",
-			resolve,
-		};
-	},
+	checks: defineExternalActionSource<{
+		profile: string;
+		owner: string;
+		repo: string;
+		prNumber: number;
+		headSha: string;
+	}>({
+		kind: GITHUB_CHECKS_KIND,
+		describeEvent: describeGitHubEvent,
+		label: "GitHub Actions failures",
+	}),
+	issueCancelled: defineExternalActionSource<GitHubIssueCancelledSourceConfig>({
+		kind: GITHUB_ISSUE_CANCELLED_KIND,
+		describeEvent: () => ({ summary: "Source issue cancelled" }),
+		label: "GitHub source issue cancelled",
+		description: "Fires when the source issue closes or loses its trigger label",
+	}),
+	pullRequestTerminal: defineExternalActionSource<GitHubPullRequestTerminalSourceConfig>({
+		kind: GITHUB_PR_TERMINAL_KIND,
+		describeEvent: describeGitHubEvent,
+		label: "GitHub pull request merged or closed",
+		description: "Fires when the tracked pull request reaches a terminal state",
+	}),
+	pullRequestFeedback: defineExternalActionSource<GitHubFeedbackSourceConfig>({
+		kind: GITHUB_PR_FEEDBACK_KIND,
+		describeEvent: () => ({ summary: "Pull request feedback received" }),
+		label: "GitHub pull request feedback",
+		description: "Fires after unseen human feedback has been quiet long enough to batch",
+	}),
+	releaseContaining: defineExternalActionSource<GitHubReleaseSourceConfig>({
+		kind: GITHUB_RELEASE_KIND,
+		label: "Published GitHub release",
+		description: "Fires when a published release contains the tracked merge commit",
+	}),
+	pullRequestState: defineExternalActionSource<GitHubPullRequestSourceConfig>({
+		kind: GITHUB_PR_STATE_KIND,
+		describeEvent: describeGitHubEvent,
+		label: "GitHub pull request state",
+		description: "Fires for failed or successful checks, review feedback, and terminal PR state",
+	}),
 };

@@ -123,6 +123,12 @@ it("preserves membership, label history and editor authorization across restart"
 		body: "Change notes",
 		author: "member",
 	});
+	adapter.setMembership("leitwerk-bot", true);
+	adapter.addFeedback(repo, pr.number, {
+		kind: "conversation",
+		body: "Bot feedback must be ignored regardless of login casing",
+		author: "LEITWERK-BOT",
+	});
 	adapter.editFeedback(repo, pr.number, "review", feedback.id, "Unauthorized edit", "outsider");
 	adapter = new LocalGitHubAdapter(options);
 	expect(

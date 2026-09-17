@@ -15,6 +15,28 @@ import {
 import { githubIssueWatcherSource } from "./issue-watcher.js";
 import { createGitHubProvider } from "./provider.js";
 
+it("preserves GitHub's distinct-label validation after trimming shared watcher fields", () => {
+	const config = {
+		type: "github_issue",
+		enabled: true,
+		profile: " test ",
+		poll_interval: " 1h ",
+		labels: { trigger: " ready ", done: "ready" },
+	};
+	expect(() => githubIssueWatcherSource.parseConfig(config)).toThrow(
+		"Trigger and done labels must differ",
+	);
+	const parsed = githubIssueWatcherSource.parseConfig({
+		...config,
+		labels: { ...config.labels, done: "done" },
+	});
+	expect(parsed.config).toMatchObject({
+		profile: "test",
+		pollInterval: "1h",
+		labels: { trigger: "ready", done: "done" },
+	});
+});
+
 function fixture() {
 	let now = 180_000;
 	let armings: Array<ExternalSourceArmingLike & { kind: string }> = [];
@@ -232,7 +254,7 @@ it.each([
 	};
 	const deps = createTestServerSetupCapability({
 		processes: { listAll: () => [] },
-		processWatchers: { listAll: () => [watcher] },
+		processWatchers: { listBySource: () => [watcher] },
 		launchRuns: {
 			startWatcher: async (w: RegisteredProcessWatcherLike, event: unknown) => {
 				const attempt = await w.resolveLaunchAttempt(event);

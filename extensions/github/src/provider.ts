@@ -1,10 +1,6 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
-import {
-	conflictEvidence,
-	createConflictReporter,
-	sameSubscription,
-} from "@leitwerk-dev/repository-rebase";
+import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { GitHubIntegration } from "./capability.js";
 import {
@@ -176,12 +172,6 @@ export function createGitHubProvider(
 							!config.checkStatuses.includes(
 								(event.checks as { status: "pending" | "success" | "failure" }).status,
 							))
-					)
-						return;
-					if (
-						!deps.externalSources
-							.listArmed(GITHUB_PR_STATE_KIND)
-							.some((current) => sameSubscription(armed, current))
 					)
 						return;
 					await report.fire(armed, event, mergeKey);

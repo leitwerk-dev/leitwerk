@@ -10,6 +10,7 @@ type Arming = Pick<ExternalSourceArmingLike, "id" | "instanceId" | "generation">
 export function createExternalSourcePollReporter(
 	sources: ExternalSourceServiceLike,
 	result: { created: string[]; errors: string[] },
+	options: { forwardGeneration?: boolean } = {},
 ) {
 	return {
 		async poll(kind: string, read: (armed: ExternalSourceArmingLike) => Promise<void>) {
@@ -27,6 +28,7 @@ export function createExternalSourcePollReporter(
 			const fired = await sources.fire({
 				instanceId: armed.instanceId,
 				armingId: armed.id,
+				...(options.forwardGeneration && armed.generation ? { generation: armed.generation } : {}),
 				event,
 				mergeKey,
 			});

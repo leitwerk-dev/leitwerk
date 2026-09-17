@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GitHubClient, parseGitHubProfiles } from "./client.js";
+import { GitHubClient, type GitHubProfile, parseGitHubProfiles } from "./client.js";
+
+const testClient = (profile: Partial<GitHubProfile> = {}) =>
+	new GitHubClient({
+		apiBaseUrl: "https://api.github.test",
+		token: "secret",
+		botLogin: "bot",
+		...profile,
+	});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -28,11 +36,7 @@ describe("GitHubClient", () => {
 	it("creates pull requests through the shared endpoints with GitHub headers", async () => {
 		const fetch = vi.fn(async () => Response.json({ number: 7 }));
 		vi.stubGlobal("fetch", fetch);
-		const client = new GitHubClient({
-			apiBaseUrl: "https://api.github.test",
-			token: "secret",
-			botLogin: "bot",
-		});
+		const client = testClient();
 		const input = { title: "Change", body: "Review", head: "feature", base: "main" };
 		await expect(client.createPullRequest("team", "repo", input)).resolves.toEqual({ number: 7 });
 		expect(fetch).toHaveBeenCalledWith(
@@ -60,11 +64,7 @@ describe("GitHubClient", () => {
 			}),
 		);
 		vi.stubGlobal("fetch", fetch);
-		const client = new GitHubClient({
-			apiBaseUrl: "https://api.github.test",
-			token: "secret",
-			botLogin: "bot",
-		});
+		const client = testClient();
 		expect(await client.getCheckSummary("leitwerk-dev", "leitwerk", "abc")).toMatchObject({
 			headSha: "abc",
 			status: "failure",
@@ -75,6 +75,8 @@ describe("GitHubClient", () => {
 });
 
 describe("GitHub trigger authorization", () => {
+	const trigger = (api: GitHubClient, owner = "leitwerk-dev") =>
+		api.authorizedTrigger(owner, "test", 1, "use-leitwerk", "leitwerk-done");
 	const issue = { number: 1, state: "open", labels: [{ name: "use-leitwerk" }] };
 	const label = (id: number, login: string, event = "labeled") => ({
 		id,
@@ -92,19 +94,15 @@ describe("GitHub trigger authorization", () => {
 		vi.stubGlobal("fetch", fetch);
 		return {
 			fetch,
-			api: new GitHubClient({
+			api: testClient({
 				apiBaseUrl: "https://api.github.com",
-				token: "secret",
-				botLogin: "bot",
 				allowedOrganization: "leitwerk-dev",
 			}),
 		};
 	}
 	it("checks the latest label actor rather than the issue author", async () => {
 		const f = client([label(1, "member"), label(2, "outsider")], 404);
-		expect(
-			await f.api.authorizedTrigger("leitwerk-dev", "test", 1, "use-leitwerk", "leitwerk-done"),
-		).toBeNull();
+		expect(await trigger(f.api)).toBeNull();
 		expect(f.fetch).toHaveBeenLastCalledWith(
 			expect.stringContaining("/members/outsider"),
 			expect.anything(),
@@ -112,35 +110,15 @@ describe("GitHub trigger authorization", () => {
 	});
 	it("requires a currently active label event", async () => {
 		const f = client([label(1, "member"), label(2, "member", "unlabeled")]);
-		expect(
-			await f.api.authorizedTrigger("leitwerk-dev", "test", 1, "use-leitwerk", "leitwerk-done"),
-		).toBeNull();
+		expect(await trigger(f.api)).toBeNull();
 	});
 	it("fails closed on missing history or GitHub permission errors", async () => {
-		expect(
-			await client([]).api.authorizedTrigger(
-				"leitwerk-dev",
-				"test",
-				1,
-				"use-leitwerk",
-				"leitwerk-done",
-			),
-		).toBeNull();
-		await expect(
-			client([label(1, "member")], 403).api.authorizedTrigger(
-				"leitwerk-dev",
-				"test",
-				1,
-				"use-leitwerk",
-				"leitwerk-done",
-			),
-		).rejects.toThrow("403");
+		expect(await trigger(client([]).api)).toBeNull();
+		await expect(trigger(client([label(1, "member")], 403).api)).rejects.toThrow("403");
 	});
 	it("does not consider repositories outside the organization", async () => {
 		const f = client([label(1, "member")]);
-		expect(
-			await f.api.authorizedTrigger("outsider", "test", 1, "use-leitwerk", "leitwerk-done"),
-		).toBeNull();
+		expect(await trigger(f.api, "outsider")).toBeNull();
 		expect(f.fetch).not.toHaveBeenCalled();
 	});
 });
@@ -190,10 +168,8 @@ describe("GitHub feedback edit provenance", () => {
 			return new Response(JSON.stringify(endpointKind === kind ? [rest] : []));
 		});
 		vi.stubGlobal("fetch", fetch);
-		const client = new GitHubClient({
+		const client = testClient({
 			apiBaseUrl: "https://api.github.com",
-			token: "secret",
-			botLogin: "bot",
 			allowedOrganization: "leitwerk-dev",
 		});
 		return { fetch, read: () => client.listPullRequestFeedback("leitwerk-dev", "test", 1) };

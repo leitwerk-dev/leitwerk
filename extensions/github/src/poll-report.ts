@@ -17,7 +17,7 @@ export function githubPollReporter(
 	sources: ExternalSourceServiceLike,
 	result: { created: string[]; errors: string[] },
 ) {
-	const report = createExternalSourcePollReporter(sources, result);
+	const report = createExternalSourcePollReporter(sources, result, { forwardGeneration: true });
 	const current = (armed: ExternalSourceArmingLike) =>
 		[
 			GITHUB_CHECKS_KIND,
@@ -35,16 +35,7 @@ export function githubPollReporter(
 			mergeKey: string,
 		) {
 			if (!current(armed as ExternalSourceArmingLike)) return false;
-			const fired = await sources.fire({
-				instanceId: armed.instanceId,
-				armingId: armed.id,
-				...(armed.generation ? { generation: armed.generation } : {}),
-				event,
-				mergeKey,
-			});
-			if (fired.ok) result.created.push(armed.id);
-			else result.errors.push(`${armed.id}:fire_failed`);
-			return fired.ok;
+			return report.fire(armed, event, mergeKey);
 		},
 		observe(
 			armed: Parameters<typeof report.observe>[0],

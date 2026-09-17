@@ -28,10 +28,7 @@ run(process.execPath, [
 ]);
 if (mode === "build") run("npm", ["run", "--silent", "stage:licenses"]);
 const packages = orderedPackages(composition?.externalPackages ?? [], (entry) =>
-	["dependencies", "devDependencies", "optionalDependencies"].flatMap((field) => {
-		const dependencies = entry[field];
-		return dependencies && typeof dependencies === "object" ? Object.keys(dependencies) : [];
-	}),
+	Object.keys({ ...entry.dependencies, ...entry.devDependencies, ...entry.optionalDependencies }),
 );
 for (const packageInfo of packages) {
 	if (typeof packageInfo.scripts?.[mode] !== "string") continue;

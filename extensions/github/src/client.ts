@@ -8,6 +8,8 @@ import {
 	RepositoryHttpClient,
 } from "@leitwerk-dev/process-sdk";
 
+import { actionableFeedback, authorizedTrigger } from "./authorization.js";
+
 export type { GitHubFeedbackItem, GitHubIssue, GitHubPullRequest };
 
 export interface GitHubRepository {
@@ -186,34 +188,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		trigger: string,
 		done: string,
 	) {
-		if (
-			this.profile.allowedOrganization &&
-			owner.toLowerCase() !== this.profile.allowedOrganization.toLowerCase()
-		)
-			return null;
-		const issue = (await this.getIssue(owner, repo, number)) as GitHubIssue & {
-			pull_request?: unknown;
-		};
-		if (
-			issue.pull_request ||
-			issue.state !== "open" ||
-			!issue.labels.some((l) => l.name === trigger) ||
-			issue.labels.some((l) => l.name === done)
-		)
-			return null;
-		const events = await this.listIssueEvents(owner, repo, number);
-		const last = events
-			.filter(
-				(e) => (e.event === "labeled" || e.event === "unlabeled") && e.label?.name === trigger,
-			)
-			.sort((a, b) => b.id - a.id)[0];
-		if (
-			last?.event !== "labeled" ||
-			!last.actor?.login ||
-			!(await this.isOrganizationMember(last.actor.login))
-		)
-			return null;
-		return { issue, actor: last.actor.login, eventId: last.id };
+		return authorizedTrigger(this, owner, repo, number, trigger, done);
 	}
 	async resolveGitIdentity(profile: string): Promise<GitHubGitIdentity> {
 		const user = await this.request<{ login: string; name: string | null; id: number }>("/user");
@@ -297,17 +272,7 @@ export class GitHubClient extends RepositoryHttpClient {
 			this.pages<Record<string, unknown>>(`${prefix}/pulls/${number}/comments`, signal),
 		]);
 
-		if (!this.profile.allowedOrganization) {
-			return [
-				...conversation.map((item) => normalize("conversation", item)),
-				...reviews.map((item) => normalize("review", item)),
-				...inline.map((item) => normalize("inline", item)),
-			].filter((item): item is GitHubFeedbackItem => item !== null);
-		}
-		const candidates: Array<{
-			kind: GitHubFeedbackItem["kind"];
-			item: Record<string, unknown>;
-		}> = [
+		const candidates = [
 			...conversation.map((item) => ({ kind: "conversation" as const, item })),
 			...reviews.map((item) => ({ kind: "review" as const, item })),
 			...inline.map((item) => ({ kind: "inline" as const, item })),
@@ -316,12 +281,15 @@ export class GitHubClient extends RepositoryHttpClient {
 		const needsProvenance: typeof candidates = [];
 		for (const candidate of candidates) {
 			const { kind, item } = candidate;
-			if (!normalize(kind, item)) continue;
+			const normalized = normalize(kind, item);
+			if (!normalized) continue;
 			const createdAt = typeof item.created_at === "string" ? Date.parse(item.created_at) : NaN;
 			const updatedAt = typeof item.updated_at === "string" ? Date.parse(item.updated_at) : NaN;
-			if (kind !== "review" && Number.isFinite(createdAt) && createdAt === updatedAt) {
-				const normalized = normalize(kind, item);
-				if (normalized) feedback.push(normalized);
+			if (
+				!this.profile.allowedOrganization ||
+				(kind !== "review" && Number.isFinite(createdAt) && createdAt === updatedAt)
+			) {
+				feedback.push(normalized);
 			} else if (typeof item.node_id === "string" && item.node_id) {
 				// REST attributes edited bodies to their original author. Reviews also
 				// omit edit timestamps, so obtain the body and latest editor together.
@@ -415,17 +383,10 @@ export class GitHubClient extends RepositoryHttpClient {
 		number: number,
 		signal?: AbortSignal,
 	) {
-		const feedback = await this.listPullRequestFeedback(owner, repo, number, signal);
-		const authorized: GitHubFeedbackItem[] = [];
-		for (const item of feedback) {
-			if (
-				item.author.toLowerCase() === this.profile.botLogin.toLowerCase() ||
-				item.body.includes("<!-- leitwerk-write:")
-			)
-				continue;
-			if (await this.isOrganizationMember(item.author)) authorized.push(item);
-		}
-		return authorized;
+		return actionableFeedback(
+			this,
+			await this.listPullRequestFeedback(owner, repo, number, signal),
+		);
 	}
 
 	listFeedbackReplies(owner: string, repo: string, pr: number, kind: string) {
