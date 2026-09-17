@@ -7,7 +7,6 @@ import {
 	type ModelProviderDefinition,
 	type ModelProviderModelsContext,
 	type ModelProviderSetEntry,
-	type ProviderJsonObject,
 	type ProviderModelStatus,
 } from "@leitwerk-dev/process-sdk";
 import * as v from "valibot";
@@ -19,6 +18,7 @@ import {
 
 export interface StandardProviderConfig {
 	readonly baseUrl?: string;
+	readonly models?: ReturnType<typeof normalizeStandardModels>;
 }
 
 export interface ApiKeyCredential {
@@ -31,6 +31,47 @@ const nonEmptyStringSchema = v.pipe(
 	v.minLength(1),
 );
 const positiveIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(1));
+const nonNegativeNumberSchema = v.pipe(v.number(), v.finite(), v.minValue(0));
+const thinkingLevelValueSchema = v.optional(v.nullable(nonEmptyStringSchema));
+const thinkingLevelMapSchema = v.strictObject({
+	off: thinkingLevelValueSchema,
+	minimal: thinkingLevelValueSchema,
+	low: thinkingLevelValueSchema,
+	medium: thinkingLevelValueSchema,
+	high: thinkingLevelValueSchema,
+	xhigh: thinkingLevelValueSchema,
+	max: thinkingLevelValueSchema,
+});
+// Compatibility options use Pi's names so they can be copied from models.json.
+const compatibilitySchema = v.strictObject({
+	supportsStore: v.optional(v.boolean()),
+	supportsDeveloperRole: v.optional(v.boolean()),
+	supportsReasoningEffort: v.optional(v.boolean()),
+	supportsUsageInStreaming: v.optional(v.boolean()),
+	maxTokensField: v.optional(v.picklist(["max_tokens", "max_completion_tokens"])),
+	supportsStrictMode: v.optional(v.boolean()),
+	requiresReasoningContentOnAssistantMessages: v.optional(v.boolean()),
+	thinkingFormat: v.optional(
+		v.picklist([
+			"openai",
+			"openrouter",
+			"deepseek",
+			"together",
+			"zai",
+			"qwen",
+			"chat-template",
+			"qwen-chat-template",
+			"string-thinking",
+			"ant-ling",
+		]),
+	),
+});
+const modelCostSchema = v.strictObject({
+	input: nonNegativeNumberSchema,
+	output: nonNegativeNumberSchema,
+	cacheRead: nonNegativeNumberSchema,
+	cacheWrite: nonNegativeNumberSchema,
+});
 const baseUrlSchema = v.pipe(
 	nonEmptyStringSchema,
 	v.url(),
@@ -46,14 +87,27 @@ const customModelSchema = v.pipe(
 		id: nonEmptyStringSchema,
 		name: v.optional(nonEmptyStringSchema),
 		reasoning: v.optional(v.boolean()),
+		thinking_level_map: v.optional(thinkingLevelMapSchema),
+		input: v.optional(v.pipe(v.array(v.picklist(["text", "image"])), v.minLength(1))),
+		cost: v.optional(modelCostSchema),
+		compat: v.optional(compatibilitySchema),
 		context_window: v.optional(positiveIntegerSchema),
 		max_tokens: v.optional(positiveIntegerSchema),
 	}),
-	v.transform(({ context_window, max_tokens, ...model }) => ({
+	v.transform(({ context_window, max_tokens, thinking_level_map, ...model }) => ({
 		...model,
+		...(thinking_level_map === undefined ? {} : { thinkingLevelMap: thinking_level_map }),
 		...(context_window === undefined ? {} : { contextWindow: context_window }),
 		...(max_tokens === undefined ? {} : { maxTokens: max_tokens }),
 	})),
+);
+const modelDefinitionsSchema = v.pipe(
+	v.array(customModelSchema),
+	v.minLength(1),
+	v.check(
+		(models) => new Set(models.map(({ id }) => id)).size === models.length,
+		"Duplicate model id",
+	),
 );
 const customGatewaySchema = v.strictObject({
 	base_url: baseUrlSchema,
@@ -67,7 +121,8 @@ const customGatewaySchema = v.strictObject({
 		]),
 		"openai-completions",
 	),
-	models: v.pipe(v.array(customModelSchema), v.minLength(1)),
+	compat: v.optional(compatibilitySchema),
+	models: modelDefinitionsSchema,
 });
 
 export type CustomModelDefinition = v.InferOutput<typeof customModelSchema>;
@@ -77,7 +132,33 @@ export interface CustomGatewayConfig {
 	readonly baseUrl: string;
 	readonly api: string;
 	readonly keyless: boolean;
+	readonly compat?: v.InferOutput<typeof compatibilitySchema>;
 	readonly models: CustomModelDefinition[];
+}
+
+function normalizeStandardModels(
+	providerId: string,
+	models: CustomModelDefinition[],
+	baseUrl?: string,
+) {
+	const catalog = getBuiltinModels(providerId as never);
+	return models.map((model) => {
+		const reference = catalog.find(({ id }) => id === model.id) ?? catalog[0];
+		if (!reference) throw new Error(`Provider '${providerId}' has no canonical API definition`);
+		return {
+			...model,
+			provider: providerId,
+			api: reference.api,
+			baseUrl: baseUrl ?? reference.baseUrl,
+			name: model.name ?? model.id,
+			reasoning: model.reasoning ?? false,
+			input: model.input ?? ["text" as const],
+			cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			// Match Pi's defaults for explicitly configured models.
+			contextWindow: model.contextWindow ?? 128_000,
+			maxTokens: model.maxTokens ?? 16_384,
+		};
+	});
 }
 
 function assertKnownFields(
@@ -124,7 +205,7 @@ export function parseStandardProviderConfig(
 		throw new Error("configuration must be an object");
 	}
 	const rawConfig = (raw ?? {}) as Record<string, unknown>;
-	assertKnownFields(rawConfig, ["api_key", "base_url"]);
+	assertKnownFields(rawConfig, ["api_key", "base_url", "models"]);
 	const apiKey =
 		rawConfig.api_key === undefined || rawConfig.api_key === null
 			? getStandardEnvApiKey(providerId)
@@ -134,7 +215,18 @@ export function parseStandardProviderConfig(
 			? undefined
 			: v.parse(baseUrlSchema, resolveSecret(rawConfig.base_url, "base_url"));
 	return {
-		config: { ...(baseUrl ? { baseUrl } : {}) },
+		config: {
+			...(baseUrl ? { baseUrl } : {}),
+			...(rawConfig.models === undefined
+				? {}
+				: {
+						models: normalizeStandardModels(
+							providerId,
+							v.parse(modelDefinitionsSchema, rawConfig.models),
+							baseUrl,
+						),
+					}),
+		},
 		...(apiKey ? { credential: { apiKey } } : {}),
 	};
 }
@@ -157,11 +249,14 @@ function catalogModelStatuses(
 
 export function evaluateStandardModelStatuses(
 	providerId: string,
-	ctx: ModelProviderModelsContext,
+	ctx: ModelProviderModelsContext<StandardProviderConfig>,
 ): readonly ProviderModelStatus[] {
 	return catalogModelStatuses(
 		ctx,
-		new Set(getBuiltinModels(providerId as never).map(({ id }) => id)),
+		new Set([
+			...getBuiltinModels(providerId as never).map(({ id }) => id),
+			...(ctx.config.models ?? []).map(({ id }) => id),
+		]),
 		ctx.credentialStatus.available,
 		(modelId) => `Canonical Pi model '${providerId}/${modelId}' is not found in catalog`,
 		`${providerId} credentials are unavailable (set ${getKnownEnvKeys(providerId).join(" or ")})`,
@@ -176,7 +271,7 @@ export function createStandardModelProvider(
 		id: providerId,
 		parseConfig: (raw) => parseStandardProviderConfig(raw, providerId),
 		worker: configuredPiProvider(providerId, ({ config }) => ({
-			providers: config.baseUrl ? { [providerId]: { baseUrl: config.baseUrl } } : {},
+			providers: config.baseUrl || config.models ? { [providerId]: { ...config } } : {},
 		})),
 		server: reference,
 		models: (ctx) => evaluateStandardModelStatuses(providerId, ctx),
@@ -190,11 +285,6 @@ export function parseCustomGatewayConfig(
 	raw: unknown,
 ): { config: CustomGatewayConfig; credential?: ApiKeyCredential } {
 	const parsed = v.parse(customGatewaySchema, raw);
-	const ids = new Set<string>();
-	for (const model of parsed.models) {
-		if (ids.has(model.id)) throw new Error(`duplicate custom model id '${model.id}'`);
-		ids.add(model.id);
-	}
 	const keyless = parsed.api_key === false;
 	const apiKey =
 		keyless || parsed.api_key === undefined || parsed.api_key === null
@@ -206,36 +296,11 @@ export function parseCustomGatewayConfig(
 			baseUrl: parsed.base_url,
 			api: parsed.api,
 			keyless,
+			...(parsed.compat === undefined ? {} : { compat: parsed.compat }),
 			models: parsed.models,
 		},
 		...(apiKey ? { credential: { apiKey } } : {}),
 	};
-}
-
-function customGatewayPiModels(config: CustomGatewayConfig): ProviderJsonObject {
-	return {
-		providers: {
-			[config.providerId]: {
-				baseUrl: config.baseUrl,
-				api: config.api,
-				models: config.models,
-			},
-		},
-	};
-}
-
-function customGatewayModelStatuses(
-	config: CustomGatewayConfig,
-	ctx: ModelProviderModelsContext<CustomGatewayConfig>,
-): readonly ProviderModelStatus[] {
-	return catalogModelStatuses(
-		ctx,
-		new Set(config.models.map(({ id }) => id)),
-		config.keyless || ctx.credentialStatus.available,
-		(modelId) =>
-			`Canonical model '${config.providerId}/${modelId}' is not found in custom gateway definition`,
-		`Gateway provider '${config.providerId}' credentials are unavailable`,
-	);
 }
 
 export function createCustomGatewayProvider(
@@ -245,8 +310,25 @@ export function createCustomGatewayProvider(
 	return defineModelProvider({
 		id: providerId,
 		parseConfig: (raw) => parseCustomGatewayConfig(providerId, raw),
-		worker: configuredPiProvider(providerId, ({ config }) => customGatewayPiModels(config)),
-		models: (ctx) => customGatewayModelStatuses(ctx.config, ctx),
+		worker: configuredPiProvider(providerId, ({ config }) => ({
+			providers: {
+				[config.providerId]: {
+					baseUrl: config.baseUrl,
+					api: config.api,
+					...(config.compat === undefined ? {} : { compat: config.compat }),
+					models: config.models,
+				},
+			},
+		})),
+		models: (ctx) =>
+			catalogModelStatuses(
+				ctx,
+				new Set(ctx.config.models.map(({ id }) => id)),
+				ctx.config.keyless || ctx.credentialStatus.available,
+				(modelId) =>
+					`Canonical model '${ctx.config.providerId}/${modelId}' is not found in custom gateway definition`,
+				`Gateway provider '${ctx.config.providerId}' credentials are unavailable`,
+			),
 		...(keyless
 			? {}
 			: { credential: { parse: (value: unknown) => parseApiKeyCredential(value, providerId) } }),
