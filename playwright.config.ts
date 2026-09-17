@@ -43,16 +43,21 @@ export default defineConfig({
 			["firefox", "Desktop Firefox"],
 			["webkit", "Desktop Safari"],
 		] as const
-	).flatMap(([name, device]) =>
-		[path.join(repoRoot, "tests/browser"), ...(composition?.testRoots ?? [])].map(
-			(testDir, index) => ({
-				name: index === 0 ? name : `${name}-composed-${index}`,
-				testDir,
-				...(index > 0 ? { testMatch: "**/*.browser.test.ts" } : {}),
-				use: { ...devices[device], browserName: name },
-			}),
+	)
+		.filter(
+			([name]) =>
+				!process.env.LEITWERK_BROWSER_ENGINE || process.env.LEITWERK_BROWSER_ENGINE === name,
+		)
+		.flatMap(([name, device]) =>
+			[path.join(repoRoot, "tests/browser"), ...(composition?.testRoots ?? [])].map(
+				(testDir, index) => ({
+					name: index === 0 ? name : `${name}-composed-${index}`,
+					testDir,
+					...(index > 0 ? { testMatch: "**/*.browser.test.ts" } : {}),
+					use: { ...devices[device], browserName: name },
+				}),
+			),
 		),
-	),
 	webServer: {
 		command: `npm run dev -w @leitwerk-dev/ui -- --host 127.0.0.1 --strictPort --port ${UI_PORT}`,
 		url: baseURL,

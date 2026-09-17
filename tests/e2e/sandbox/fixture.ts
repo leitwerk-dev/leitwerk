@@ -2,7 +2,12 @@ import { mkdtempSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { createSandboxApp, type SandboxInput, sandboxConfig } from "@leitwerk-dev/dev-sandbox";
+import {
+	createSandboxApp,
+	type SandboxCompositionFactory,
+	type SandboxInput,
+	sandboxConfig,
+} from "@leitwerk-dev/dev-sandbox";
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { createProcessDriver, waitForValue } from "@leitwerk-dev/test-support/integration";
@@ -29,9 +34,22 @@ export async function fixture(
 		urls: { backend: "http://127.0.0.1:18082", ui: "http://127.0.0.1:19173" },
 		modelProfileId: "sandbox",
 	};
+	const testFactory: SandboxCompositionFactory = (factoryInput) => {
+		const composition = factory(factoryInput);
+		return {
+			...composition,
+			scenarios: composition.scenarios.map((scenario) => {
+				if (scenario.name === "startup")
+					return { ...scenario, startupDelays: { connectMs: 70, prepareMs: 10 } };
+				if (scenario.name === "startup-cold")
+					return { ...scenario, startupDelays: { connectMs: 108, prepareMs: 10 } };
+				return scenario;
+			}),
+		};
+	};
 	const config = sandboxConfig(input);
-	config.process_configs = factory(input).processConfigs;
-	sandbox = await createSandboxApp(config, input, factory);
+	config.process_configs = testFactory(input).processConfigs;
+	sandbox = await createSandboxApp(config, input, testFactory);
 	let url: string;
 	async function start() {
 		await sandbox.context.app.listen({ host: "127.0.0.1", port: 0 });
@@ -58,7 +76,7 @@ export async function fixture(
 			await sandbox.stop();
 			await whileStopped?.();
 			input.urls.backend = config.server.base_url;
-			sandbox = await createSandboxApp(config, input, factory);
+			sandbox = await createSandboxApp(config, input, testFactory);
 			await start();
 		},
 		async launch(name: string, launcherInput: Record<string, unknown> = {}, production = false) {
