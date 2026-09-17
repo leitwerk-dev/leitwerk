@@ -1,7 +1,7 @@
 import type { ChildProcess } from "node:child_process";
 import process from "node:process";
 import { loadDevContext } from "./dev-context.ts";
-import { exitStopOptions, spawnManaged, stopManaged } from "./dev-process.ts";
+import { exitStopOptions, spawnManaged, stopManaged, watchChildren } from "./dev-process.ts";
 
 async function main(): Promise<void> {
 	const context = await loadDevContext();
@@ -31,14 +31,7 @@ async function main(): Promise<void> {
 		await Promise.all(children.map((child) => stopManaged(child, options)));
 		process.exit(exitCode);
 	};
-	process.once("SIGINT", () => void finish(130));
-	process.once("SIGTERM", () => void finish(143));
-	for (const child of children) {
-		child.once("error", () => void finish(1));
-		child.once("exit", (code, signal) => {
-			if (!shuttingDown) void finish(code ?? (signal === "SIGINT" ? 130 : 1));
-		});
-	}
+	watchChildren(children, finish);
 }
 
 void main().catch((error) => {

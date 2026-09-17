@@ -60,17 +60,12 @@ for (const viewport of [
 		await expect(page.locator('[data-section="leaf-outcome-actions"]')).toBeVisible();
 		await page.evaluate(() => document.fonts.ready);
 		const scroll = page.locator('[data-role="chronicle-scroll"]');
-		await scroll.hover();
-		await expect
-			.poll(
-				async () => {
-					await page.mouse.wheel(0, -10_000);
-					return scroll.evaluate((element) => element.scrollTop);
-				},
-				// Firefox caps each wheel step; keep sending input without polling backoff.
-				{ intervals: [100] },
-			)
-			.toBe(0);
+		// Establish the layout fixture without wheel hit-testing or smooth scrolling.
+		// Native wheel behavior is covered by chronicle-scroll.browser.test.ts.
+		await scroll.evaluate((element) => {
+			element.scrollTo({ top: 0, behavior: "instant" });
+		});
+		await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBe(0);
 		const composer = page.getByRole("region", { name: "Choose the next action" });
 		await expect(composer).toBeInViewport();
 		const choice = composer.getByRole("combobox", { name: "Next action" });

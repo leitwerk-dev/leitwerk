@@ -2,7 +2,7 @@ import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
 import {
 	buildWorkerConfigSnapshot,
 	createWorkerStartPayloadBuilder,
@@ -71,19 +71,13 @@ describe("worker.start runtime settings", () => {
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			id: "tsr_automatic_settings",
 			instanceId: process.id,
 			turnId: "generate_plan",
 			turnType: "automatic",
 			proposedTurnRecordId: "trn_automatic_settings",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: { kind: "starting", start: { kind: "automatic" } },
-		});
-		deps.processes.update(process.id, {
-			currentExecution: { kind: "worker_start", id: start.id },
 		});
 		deps.leases.create({
 			instanceId: process.id,
@@ -162,15 +156,12 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			{ path: "generated.json", content: Buffer.from("{}") },
 			{ path: "settings.json", content: Buffer.from("{}") },
 		]);
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			id: "tsr_bundle",
 			instanceId: process.id,
 			turnId: "generate_plan",
 			turnType: "llm",
 			proposedTurnRecordId: "trn_bundle",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: {
 				kind: "starting",
 				start: {
@@ -189,7 +180,6 @@ describe("worker.start Pi resource-bundle delivery", () => {
 				},
 			},
 		});
-		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		deps.leases.create({ instanceId: process.id, workerId: "wkr_bundle", state: "bootstrapping" });
 		function makeBuilder(
 			resume = false,

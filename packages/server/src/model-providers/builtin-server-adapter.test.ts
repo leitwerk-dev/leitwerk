@@ -59,4 +59,39 @@ describe("built-in Pi server adapter", () => {
 
 		expect(completeSimple).toHaveBeenCalledWith(model, expect.any(Object), expect.any(Object));
 	});
+
+	it("uses an explicitly configured model absent from the built-in catalog", async () => {
+		vi.mocked(getModel).mockReturnValue(undefined as never);
+		const configured = {
+			...model,
+			provider: "openai",
+			id: "new-deployment",
+			api: "openai-responses",
+			name: "New deployment",
+			reasoning: true,
+			thinkingLevelMap: { xhigh: "xhigh" },
+			input: ["text"],
+			contextWindow: 128000,
+			maxTokens: 16384,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		};
+		await createBuiltinPiServerAdapter("openai").generateText({
+			...request,
+			modelId: "new-deployment",
+			thinkingLevel: "xhigh",
+			config: { models: [configured] },
+		});
+		expect(completeSimple).toHaveBeenCalledWith(
+			configured,
+			expect.any(Object),
+			expect.objectContaining({ reasoning: "xhigh" }),
+		);
+		await expect(
+			createBuiltinPiServerAdapter("openai").generateText({
+				...request,
+				modelId: "new-deployment",
+				config: { models: [{ ...configured, provider: "other" }] },
+			}),
+		).rejects.toThrow("unavailable");
+	});
 });

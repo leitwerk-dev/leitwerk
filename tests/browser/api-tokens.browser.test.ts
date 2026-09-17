@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { box, expect, test } from "./fixtures.js";
+import { box, expect, expectNoPageOverflow, test } from "./fixtures.js";
 
 test.use({
 	browserServerOptions: {
@@ -57,9 +57,7 @@ for (const viewport of [
 				page.getByRole("heading", { name: `${viewport.name} canary`, exact: true }),
 			).toBeVisible();
 			await expect(page.getByLabel("New API token", { exact: true })).toHaveCount(0);
-			expect(
-				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-			).toBe(true);
+			await expectNoPageOverflow(page);
 			if (process.env.LEITWERK_TOKEN_UI_REVIEW === "1") {
 				await mkdir(".impeccable/review", { recursive: true });
 				await page.screenshot({ path: `.impeccable/review/${viewport.name}.png`, fullPage: true });

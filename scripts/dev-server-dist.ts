@@ -71,33 +71,11 @@ async function main(): Promise<void> {
 			JSON.stringify(["../worker/dist/worker-entry.js"]),
 	};
 
-	// Restart strategy. `node --watch` pointed at the dist tree restarts on every
-	// raw filesystem event, so a single multi-file rebuild — and its staggered
-	// `.d.ts` tail — produces a cascade of restarts. Worse, at dev startup the
-	// ~17 tsup watchers each re-emit their (already turbo-built) dist, a multi-
-	// second storm with internal gaps of ~2.5s. So responsibilities are split:
-	//
-	//   chokidar     → all change detection over the dist tree
-	//   sentinel     → a single file outside the watched tree
-	//   node --watch → process restart lifecycle, watching ONLY the sentinel
-	//
-	// The server boots immediately. Booting during the startup storm is safe: the
-	// dist is already valid (turbo built it before the watchers spawned), and once
-	// a module is imported, later rewrites of that file do not affect the running
-	// process — only a restart would, and we control restarts via the sentinel.
-	//
-	// chokidar runs a small state machine:
-	//   warmup → swallow the startup storm. The sentinel is never touched. A quiet
-	//            timer (reset on every change) ends warmup once writes have been
-	//            silent for `warmupQuietMs`; a hard cap bounds the worst case.
-	//   live   → each change debounces a single sentinel touch, and `awaitWriteFinish`
-	//            reports each file only once it stops growing, so a real edit yields
-	//            exactly one graceful restart.
-	//
-	// `warmupQuietMs` must exceed the storm's internal gaps (one-time, latency is
-	// irrelevant). `debounceMs` only needs to coalesce a single rebuild's writes,
-	// so it stays short for snappy reloads. Both, plus the file-stability window,
-	// are overridable.
+	// Chokidar detects dist changes; node --watch restarts only when we touch an
+	// external sentinel. Turbo prebuilt dist, so the server can boot immediately.
+	// Warmup swallows the tsup startup storm until a quiet window or hard cap;
+	// live mode debounces stable writes into one sentinel touch per rebuild.
+	// The quiet window must exceed the storm's internal gaps (~2.5s).
 	const stabilityThresholdMs = positiveIntEnv(process.env.LEITWERK_DEV_STABILITY_MS, 400);
 	const debounceMs = positiveIntEnv(process.env.LEITWERK_DEV_RELOAD_DEBOUNCE_MS, 1200);
 	const warmupQuietMs = positiveIntEnv(process.env.LEITWERK_DEV_WARMUP_QUIET_MS, 4000);
@@ -141,9 +119,9 @@ async function main(): Promise<void> {
 	});
 
 	let phase: "warmup" | "live" = "warmup";
-	let warmupQuietTimer: NodeJS.Timeout | null = null;
-	let warmupCapTimer: NodeJS.Timeout | null = null;
-	let debounceTimer: NodeJS.Timeout | null = null;
+	let warmupQuietTimer: NodeJS.Timeout | undefined;
+	let warmupCapTimer: NodeJS.Timeout | undefined;
+	let debounceTimer: NodeJS.Timeout | undefined;
 	let shuttingDown = false;
 
 	const enterLive = (): void => {
@@ -151,14 +129,10 @@ async function main(): Promise<void> {
 			return;
 		}
 		phase = "live";
-		if (warmupQuietTimer) {
-			clearTimeout(warmupQuietTimer);
-			warmupQuietTimer = null;
-		}
-		if (warmupCapTimer) {
-			clearTimeout(warmupCapTimer);
-			warmupCapTimer = null;
-		}
+		clearTimeout(warmupQuietTimer);
+		warmupQuietTimer = undefined;
+		clearTimeout(warmupCapTimer);
+		warmupCapTimer = undefined;
 		console.info("[dev:server:dist] Build outputs settled; live reload armed.");
 	};
 
@@ -182,29 +156,19 @@ async function main(): Promise<void> {
 		if (phase === "warmup") {
 			// Swallow the startup storm: never restart, just keep pushing the quiet
 			// timer out until writes stop.
-			if (warmupQuietTimer) {
-				clearTimeout(warmupQuietTimer);
-			}
+			clearTimeout(warmupQuietTimer);
 			warmupQuietTimer = setTimeout(enterLive, warmupQuietMs);
 			return;
 		}
-		if (debounceTimer) {
-			clearTimeout(debounceTimer);
-		}
+		clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(touchSentinel, debounceMs);
 	};
 
 	watcher.on("all", () => onChange());
 	watcher.on("ready", () => {
-		// Arm ONLY the cap here. Arming the quiet timer at "ready" races the storm's
-		// start: chokidar scans the watched paths and emits "ready" within ~1s, but
-		// the tsup watchers (spawned in parallel) take a few seconds to emit their
-		// first rebuild. A quiet timer armed at "ready" would fire in that gap
-		// before the storm begins, ending warmup early and letting the storm through
-		// as "live" restarts. Instead the quiet timer is armed on the FIRST observed
-		// change (see onChange), so warmup cannot end until the storm has both
-		// started and gone quiet. The cap bounds the case where nothing ever
-		// rebuilds (already-warm dist) so live reload still arms eventually.
+		// Arm only the cap: "ready" can precede tsup's first write by seconds.
+		// Start the quiet timer on the first change to avoid ending warmup early.
+		// The cap also ends warmup when no rebuild occurs.
 		warmupCapTimer = setTimeout(enterLive, maxWarmupMs);
 	});
 	watcher.on("error", (error) => {
@@ -218,15 +182,9 @@ async function main(): Promise<void> {
 			return;
 		}
 		shuttingDown = true;
-		if (warmupQuietTimer) {
-			clearTimeout(warmupQuietTimer);
-		}
-		if (warmupCapTimer) {
-			clearTimeout(warmupCapTimer);
-		}
-		if (debounceTimer) {
-			clearTimeout(debounceTimer);
-		}
+		clearTimeout(warmupQuietTimer);
+		clearTimeout(warmupCapTimer);
+		clearTimeout(debounceTimer);
 		void watcher.close();
 		rmSync(sentinelPath, { force: true });
 	};

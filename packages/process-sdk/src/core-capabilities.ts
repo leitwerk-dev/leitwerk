@@ -334,6 +334,8 @@ export interface ExternalSourceArmingLike {
 export interface ExternalSourceFireInput {
 	instanceId: string;
 	armingId: string;
+	/** Reject a superseded subscription instead of queuing its event for a later turn. */
+	generation?: string;
 	input?: Record<string, unknown>;
 	event?: Record<string, unknown>;
 	mergeKey?: string | null;
@@ -380,6 +382,7 @@ export interface ProcessEngineLike {
 	>;
 	startProcess(instanceId: string, startTurnId: TurnId): Promise<ProcessEngineResultLike>;
 	abortProcess(instanceId: string, opts?: { actor?: Actor }): Promise<ProcessEngineResultLike>;
+	/** Retries the current failed startup or accepted turn; startup retries consume no attempt. */
 	retryProcess(
 		instanceId: string,
 		opts?: { nextTurnModelProfileId?: string | null; actor?: Actor },

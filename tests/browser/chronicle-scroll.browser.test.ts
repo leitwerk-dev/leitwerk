@@ -286,19 +286,41 @@ function createLocalRepoChangePlanThenImplementReasoningProcess(label: string) {
 	return { process, runningTurnId };
 }
 
-function createWaitingPoemProcess(label: string) {
+function createWaitingPoemProcess(label: string, withReviewState = true) {
 	if (!ctx) throw new Error("Server context not initialized");
 	return ctx.deps.processes.create({
 		processId: "poem_creator_process",
 		selectedTurnId: "poem_review",
 		lifecycleStatus: "waiting",
 		externalId: label,
-		stateJson: JSON.stringify({
-			...createEmptyStructuralProcessState(),
-			latestReviewMarkdown: null,
-			latestReviewSummary: null,
-			latestReviewOutcome: null,
-		}),
+		...(withReviewState
+			? {
+					stateJson: JSON.stringify({
+						...createEmptyStructuralProcessState(),
+						latestReviewMarkdown: null,
+						latestReviewSummary: null,
+						latestReviewOutcome: null,
+					}),
+				}
+			: {}),
+	});
+}
+
+function createRailTurn(
+	instanceId: string,
+	id: string,
+	startedAt: number,
+	turnResultMarkdown: string | null = null,
+) {
+	createAcceptedLlmTurn({
+		id,
+		instanceId,
+		turnId: "draft_poem",
+		turnType: "llm",
+		status: "succeeded",
+		turnResultMarkdown,
+		startedAt: new Date(startedAt).toISOString(),
+		endedAt: new Date(startedAt + 30_000).toISOString(),
 	});
 }
 
@@ -313,19 +335,14 @@ function createRailSecondTurnNearTopProcess(label: string) {
 		secondTurnRecordId,
 		fillerTurnRecordId,
 	].entries()) {
-		createAcceptedLlmTurn({
-			id: turnRecordId,
-			instanceId: process.id,
-			turnId: "draft_poem",
-			turnType: "llm",
-			status: "succeeded",
-			turnResultMarkdown:
-				turnRecordId === fillerTurnRecordId
-					? buildLargeRailMarkdown("Trailing filler result", 28)
-					: null,
-			startedAt: new Date(baseTime + index * 60_000).toISOString(),
-			endedAt: new Date(baseTime + index * 60_000 + 30_000).toISOString(),
-		});
+		createRailTurn(
+			process.id,
+			turnRecordId,
+			baseTime + index * 60_000,
+			turnRecordId === fillerTurnRecordId
+				? buildLargeRailMarkdown("Trailing filler result", 28)
+				: null,
+		);
 	}
 
 	return { process, firstTurnRecordId, secondTurnRecordId };
@@ -340,16 +357,7 @@ function createRailDeepShortTurnProcess(label: string) {
 	const trailingTurnRecordId = `trn_deep_click_trailing_${process.id}`;
 	const baseTime = Date.now() - 20 * 60_000;
 
-	createAcceptedLlmTurn({
-		id: firstTurnRecordId,
-		instanceId: process.id,
-		turnId: "draft_poem",
-		turnType: "llm",
-		status: "succeeded",
-		turnResultMarkdown: null,
-		startedAt: new Date(baseTime).toISOString(),
-		endedAt: new Date(baseTime + 30_000).toISOString(),
-	});
+	createRailTurn(process.id, firstTurnRecordId, baseTime);
 	ctx.deps.leafOutcomeSnapshots.create({
 		instanceId: process.id,
 		leafEntryId: `leaf_deep_click_first_${process.id}`,
@@ -363,26 +371,13 @@ function createRailDeepShortTurnProcess(label: string) {
 		warningMessage: null,
 		anchoredAt: new Date(baseTime + 45_000).toISOString(),
 	});
-	createAcceptedLlmTurn({
-		id: secondTurnRecordId,
-		instanceId: process.id,
-		turnId: "draft_poem",
-		turnType: "llm",
-		status: "succeeded",
-		turnResultMarkdown: null,
-		startedAt: new Date(baseTime + 60_000).toISOString(),
-		endedAt: new Date(baseTime + 90_000).toISOString(),
-	});
-	createAcceptedLlmTurn({
-		id: trailingTurnRecordId,
-		instanceId: process.id,
-		turnId: "draft_poem",
-		turnType: "llm",
-		status: "succeeded",
-		turnResultMarkdown: buildLargeRailMarkdown("Trailing result after target", 24),
-		startedAt: new Date(baseTime + 120_000).toISOString(),
-		endedAt: new Date(baseTime + 150_000).toISOString(),
-	});
+	createRailTurn(process.id, secondTurnRecordId, baseTime + 60_000);
+	createRailTurn(
+		process.id,
+		trailingTurnRecordId,
+		baseTime + 120_000,
+		buildLargeRailMarkdown("Trailing result after target", 24),
+	);
 
 	return { process, secondTurnRecordId };
 }
@@ -480,10 +475,7 @@ for (const viewport of [
 			.locator("..")
 			.screenshot({ path: `/tmp/leitwerk-reasoning-preview-${viewport.width}.png` });
 
-		let release: () => void = () => {};
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: gate, resolve: release } = Promise.withResolvers<void>();
 		let captured = false;
 		await page.route("**/reasoning?*", async (route) => {
 			const response = await route.fetch();
@@ -536,6 +528,10 @@ async function getScrollMetrics(locator: Locator) {
 	}));
 }
 
+function bottomGap(metrics: Awaited<ReturnType<typeof getScrollMetrics>>) {
+	return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
+}
+
 async function wheelAtLocator(
 	page: Page,
 	locator: Locator,
@@ -566,10 +562,7 @@ async function wheelToBoundary(
 ) {
 	for (let attempt = 0; attempt < 30; attempt += 1) {
 		const metrics = await getScrollMetrics(locator);
-		const remaining =
-			boundary === "top"
-				? metrics.scrollTop
-				: metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
+		const remaining = boundary === "top" ? metrics.scrollTop : bottomGap(metrics);
 		if (remaining <= thresholdPx) {
 			return metrics;
 		}
@@ -579,21 +572,43 @@ async function wheelToBoundary(
 	return getScrollMetrics(locator);
 }
 
+async function waitForScrollToSettle(locator: Locator) {
+	let previous = (await getScrollMetrics(locator)).scrollTop;
+	let stableSamples = 0;
+	await expect
+		.poll(
+			async () => {
+				const current = (await getScrollMetrics(locator)).scrollTop;
+				stableSamples = Math.abs(current - previous) < 1 ? stableSamples + 1 : 0;
+				previous = current;
+				return stableSamples;
+			},
+			{ timeout: 5_000, intervals: [100] },
+		)
+		.toBeGreaterThanOrEqual(3);
+	return getScrollMetrics(locator);
+}
+
 async function wheelToApproxScrollTop(
 	page: Page,
 	locator: Locator,
 	targetScrollTop: number,
 	position: "center" | "top" = "center",
 ) {
+	let metrics = await waitForScrollToSettle(locator);
 	for (let attempt = 0; attempt < 40; attempt += 1) {
-		const metrics = await getScrollMetrics(locator);
-		if (Math.abs(metrics.scrollTop - targetScrollTop) <= 150) {
-			return metrics;
-		}
-		await wheelAtLocator(page, locator, metrics.scrollTop < targetScrollTop ? 900 : -900, position);
-		await page.waitForTimeout(40);
+		const remaining = targetScrollTop - metrics.scrollTop;
+		if (Math.abs(remaining) <= 150) return metrics;
+		// Wheel dispatch does not await scrolling. Avoid queued input and overshoot
+		// by waiting for each movement to settle before choosing the next delta.
+		await wheelAtLocator(page, locator, Math.max(-900, Math.min(900, remaining)), position);
+		await expect
+			.poll(async () => Math.abs((await getScrollMetrics(locator)).scrollTop - metrics.scrollTop))
+			.toBeGreaterThan(1);
+		metrics = await waitForScrollToSettle(locator);
 	}
-	return getScrollMetrics(locator);
+	expect(Math.abs(metrics.scrollTop - targetScrollTop)).toBeLessThanOrEqual(150);
+	return metrics;
 }
 
 async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutMs = 5_000) {
@@ -656,6 +671,16 @@ function synthesizeRunningReviewTurn(instanceId: string) {
 	return runningTurnId;
 }
 
+async function selectCollapsedRailTurn(page: Page, turnRecordId: string) {
+	const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
+	await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
+	await repeatedTurns.click();
+	const turnButton = page.locator(`.rail-item[data-turn-record-id="${turnRecordId}"]`);
+	await expect(turnButton).toBeVisible();
+	await turnButton.click();
+	return turnButton;
+}
+
 test.describe("rail scroll-anchor behavior", () => {
 	test("collapses repeated history after scrolling out and reopens it on return", async ({
 		page,
@@ -696,43 +721,25 @@ test.describe("rail scroll-anchor behavior", () => {
 	});
 
 	test("clicking turn button moves the active rail highlight", async ({ page }) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
+		const process = createWaitingPoemProcess("RAIL-TURN-CLEAR-001", false);
 
-		// Create a process in waiting state with actions visible
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			externalId: "RAIL-TURN-CLEAR-001",
-		});
-
-		// Create multiple completed turn records
 		createPoemHistory(process.id);
 
-		// Navigate to the process detail page
 		await page.goto(`/processes/${process.id}`);
 
-		// Wait for the page to load with action section visible
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
 
-		// Wait for the rail to render
 		const actionRequiredButton = page.locator('[data-section="action-required-indicator"]');
 		await expect(actionRequiredButton).toBeVisible();
 
-		// Get the first turn button in the rail (not the prompt)
 		const firstTurnButton = page.locator(".rail-item[data-turn-record-id]").first();
 		await expect(firstTurnButton).toBeVisible();
 
-		// Verify the action required button is initially highlighted
 		await expect(actionRequiredButton).toHaveClass(/is-active/);
 
-		// Click the first turn button in the rail
 		await firstTurnButton.click();
 
-		// Wait for the jump to settle
 		await page.waitForTimeout(100);
 
 		// The clicked turn button should now be the only active rail item.
@@ -752,15 +759,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="chronicle-flow"]');
 
-		const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
-		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
-		await repeatedTurns.click();
-		const secondTurnButton = page.locator(
-			`.rail-item[data-turn-record-id="${secondTurnRecordId}"]`,
-		);
-		await expect(secondTurnButton).toBeVisible();
-
-		await secondTurnButton.click();
+		const secondTurnButton = await selectCollapsedRailTurn(page, secondTurnRecordId);
 		await page.waitForTimeout(100);
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
@@ -790,15 +789,7 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="leaf-outcome"]');
 
-		const repeatedTurns = page.getByRole("button", { name: /Earlier updates/ });
-		await expect(repeatedTurns).toHaveAttribute("aria-expanded", "false");
-		await repeatedTurns.click();
-		const secondTurnButton = page.locator(
-			`.rail-item[data-turn-record-id="${secondTurnRecordId}"]`,
-		);
-		await expect(secondTurnButton).toBeVisible();
-
-		await secondTurnButton.click();
+		const secondTurnButton = await selectCollapsedRailTurn(page, secondTurnRecordId);
 		await page.waitForTimeout(100);
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
@@ -840,16 +831,7 @@ test.describe("rail scroll-anchor behavior", () => {
 	test("clicking a completed turn keeps its saved result fully visible near the top", async ({
 		page,
 	}) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
-
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			externalId: "RAIL-TURN-RESULT-001",
-		});
+		const process = createWaitingPoemProcess("RAIL-TURN-RESULT-001", false);
 
 		createPoemHistory(process.id);
 
@@ -962,21 +944,48 @@ for (const { width, running } of [
 	});
 }
 
+async function openReasoningLiveProcess(page: Page, label: string) {
+	const fixture = createReasoningLiveProcess(label);
+	await page.goto(`/processes/${fixture.process.id}`);
+	await page.waitForSelector('[data-section="live-tail"]');
+	await page.waitForSelector('[data-section="live-tail"] [data-section="thinking-preview"]');
+	await expect(
+		page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
+	).toHaveCount(0);
+	const livePreview = page.locator('[data-section="live-tail"] [data-section="thinking-preview"]');
+	return { ...fixture, livePreview };
+}
+
+async function openLocalRepoReasoningProcess(page: Page, label: string) {
+	await page.setViewportSize({ width: 1920, height: 1080 });
+	const fixture = createLocalRepoChangePlanThenImplementReasoningProcess(label);
+	await page.goto(`/processes/${fixture.process.id}`);
+	const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+	const liveTail = page.locator('[data-section="live-tail"]');
+	await expect(chronicleScroll).toBeVisible();
+	await expect(
+		page.locator('[data-section="leaf-outcome"][data-renderer-mode="fallback"]'),
+	).toHaveCount(1);
+	await expect(page.locator('[data-section="leaf-outcome"]')).toContainText(
+		"Candidate implementation plan",
+	);
+	return { ...fixture, chronicleScroll, liveTail };
+}
+
+async function expectChronicleOverflow(chronicleScroll: Locator) {
+	await expect(chronicleScroll).toBeVisible();
+	const metrics = await getScrollMetrics(chronicleScroll);
+	expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
+	return metrics;
+}
+
 test.describe("chronicle scroll behavior", () => {
 	test("keeps live reasoning in the preview card instead of creating an inline nested scroller", async ({
 		page,
 	}) => {
-		const { process, runningTurnId } = createReasoningLiveProcess("SCROLL-REASONING-INNER-001");
-
-		await page.goto(`/processes/${process.id}`);
-		await page.waitForSelector('[data-section="live-tail"]');
-		await page.waitForSelector('[data-section="live-tail"] [data-section="thinking-preview"]');
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
-		).toHaveCount(0);
-
-		const livePreview = page.locator(
-			'[data-section="live-tail"] [data-section="thinking-preview"]',
+		const { process, runningTurnId, livePreview } = await openReasoningLiveProcess(
+			page,
+			"SCROLL-REASONING-INNER-001",
 		);
 		await expect(livePreview).toContainText("Thought line");
 
@@ -992,29 +1001,19 @@ test.describe("chronicle scroll behavior", () => {
 	test("keeps the outer chronicle manually scrollable while live reasoning streams", async ({
 		page,
 	}) => {
-		const { process, runningTurnId } = createReasoningLiveProcess("SCROLL-REASONING-OUTER-001");
-
-		await page.goto(`/processes/${process.id}`);
-		await page.waitForSelector('[data-section="live-tail"]');
-		await page.waitForSelector('[data-section="live-tail"] [data-section="thinking-preview"]');
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
-		).toHaveCount(0);
-
+		const { process, runningTurnId, livePreview } = await openReasoningLiveProcess(
+			page,
+			"SCROLL-REASONING-OUTER-001",
+		);
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expect(chronicleScroll).toBeVisible();
-
-		const initialMetrics = await getScrollMetrics(chronicleScroll);
-		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
+		await expectChronicleOverflow(chronicleScroll);
 
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(150);
 
 		emitThinkingDelta(process.id, runningTurnId, "More streamed reasoning after page scroll.\n");
 		await page.waitForTimeout(300);
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="thinking-preview"]'),
-		).toContainText("More streamed reasoning after page scroll.");
+		await expect(livePreview).toContainText("More streamed reasoning after page scroll.");
 
 		const afterMetrics = await getScrollMetrics(chronicleScroll);
 
@@ -1024,26 +1023,16 @@ test.describe("chronicle scroll behavior", () => {
 	test("keeps a mid-history desktop chronicle position stable while local-repo-change reasoning streams", async ({
 		page,
 	}) => {
-		await page.setViewportSize({ width: 1920, height: 1080 });
-		const { process, runningTurnId } = createLocalRepoChangePlanThenImplementReasoningProcess(
+		const { process, runningTurnId, chronicleScroll } = await openLocalRepoReasoningProcess(
+			page,
 			"SCROLL-DESKTOP-LONG-PLAN-LIVE-IMPLEMENT-001",
 		);
-
-		await page.goto(`/processes/${process.id}`);
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+		await page.waitForSelector('[data-section="live-tail"]');
 		const livePreview = page.locator(
 			'[data-section="live-tail"] [data-section="thinking-preview"]',
 		);
-		await expect(chronicleScroll).toBeVisible();
-		await page.waitForSelector('[data-section="live-tail"]');
 		await expect(livePreview).toContainText(
 			"Start implementing the approved outcome simplification flow.",
-		);
-		await expect(
-			page.locator('[data-section="leaf-outcome"][data-renderer-mode="fallback"]'),
-		).toHaveCount(1);
-		await expect(page.locator('[data-section="leaf-outcome"]')).toContainText(
-			"Candidate implementation plan",
 		);
 		await chronicleScroll.evaluate((element) => {
 			element.scrollTop = Math.max((element.scrollHeight - element.clientHeight) / 2, 0);
@@ -1068,28 +1057,14 @@ test.describe("chronicle scroll behavior", () => {
 	test("keeps a followed live tail pinned to the bottom when earlier result content grows", async ({
 		page,
 	}) => {
-		await page.setViewportSize({ width: 1920, height: 1080 });
-		const { process } = createLocalRepoChangePlanThenImplementReasoningProcess(
+		const { chronicleScroll, liveTail } = await openLocalRepoReasoningProcess(
+			page,
 			"SCROLL-LIVE-TAIL-PRIOR-GROWTH-001",
 		);
-
-		await page.goto(`/processes/${process.id}`);
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const liveTail = page.locator('[data-section="live-tail"]');
-		await expect(chronicleScroll).toBeVisible();
 		await expect(liveTail).toBeVisible();
-		await expect(
-			page.locator('[data-section="leaf-outcome"][data-renderer-mode="fallback"]'),
-		).toHaveCount(1);
-		await expect(page.locator('[data-section="leaf-outcome"]')).toContainText(
-			"Candidate implementation plan",
-		);
 
 		await expect
-			.poll(async () => {
-				const metrics = await getScrollMetrics(chronicleScroll);
-				return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
-			})
+			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
 			.toBeLessThanOrEqual(24);
 		await expect(chronicleScroll).toHaveAttribute("data-layout-observer-ready", "true");
 
@@ -1109,10 +1084,7 @@ test.describe("chronicle scroll behavior", () => {
 		// few frames to fire under load. Poll for the settled bottom gap instead
 		// of asserting after a fixed wait.
 		await expect
-			.poll(async () => {
-				const metrics = await getScrollMetrics(chronicleScroll);
-				return metrics.scrollHeight - metrics.clientHeight - metrics.scrollTop;
-			})
+			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
 			.toBeLessThanOrEqual(80);
 		await expect(liveTail).toBeInViewport();
 		await expect(page.locator('.rail-item[data-turn-status="in_progress"]')).toHaveAttribute(
@@ -1159,9 +1131,7 @@ test.describe("chronicle scroll behavior", () => {
 
 		await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
 		await page.waitForTimeout(100);
-		const bottomMetrics = await getScrollMetrics(chronicleScroll);
-		const maxScroll = bottomMetrics.scrollHeight - bottomMetrics.clientHeight;
-		expect(bottomMetrics.scrollTop).toBeGreaterThan(maxScroll - 100);
+		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(100);
 
 		emitThinkingDelta(process.id, runningTurnId, "Streaming thought 2 while still running.\n");
 		await page.waitForTimeout(150);
@@ -1179,11 +1149,8 @@ test.describe("chronicle scroll behavior", () => {
 		await page.waitForSelector('[data-section="live-tail"]', { timeout: 5000 });
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expect(chronicleScroll).toBeVisible();
-		const initialMetrics = await getScrollMetrics(chronicleScroll);
-		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
-		const maxScroll = initialMetrics.scrollHeight - initialMetrics.clientHeight;
-		expect(initialMetrics.scrollTop).toBeGreaterThan(maxScroll - 50);
+		const initialMetrics = await expectChronicleOverflow(chronicleScroll);
+		expect(bottomGap(initialMetrics)).toBeLessThan(50);
 
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(300);
@@ -1197,18 +1164,14 @@ test.describe("chronicle scroll behavior", () => {
 		await page.waitForSelector('[data-section="live-tail"]', { timeout: 5000 });
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const beforeMetrics = await getScrollMetrics(chronicleScroll);
-		const maxScrollBefore = beforeMetrics.scrollHeight - beforeMetrics.clientHeight;
-		expect(beforeMetrics.scrollTop).toBeGreaterThan(maxScrollBefore - 50);
+		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(50);
 
 		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
 		await page.waitForTimeout(500);
 		const actionSection = page.locator('[data-section="leaf-outcome-actions"]');
 		await expect(actionSection).toBeInViewport();
-		const afterMetrics = await getScrollMetrics(chronicleScroll);
-		const maxScrollAfter = afterMetrics.scrollHeight - afterMetrics.clientHeight;
-		expect(afterMetrics.scrollTop).toBeGreaterThan(maxScrollAfter - 200);
+		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(200);
 	});
 
 	test("can scroll up when action section appears dynamically after turn completes", async ({
@@ -1222,9 +1185,7 @@ test.describe("chronicle scroll behavior", () => {
 		expect(actionSectionBefore).toBeNull();
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expect(chronicleScroll).toBeVisible();
-		const initialMetrics = await getScrollMetrics(chronicleScroll);
-		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
+		await expectChronicleOverflow(chronicleScroll);
 
 		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
@@ -1236,97 +1197,54 @@ test.describe("chronicle scroll behavior", () => {
 	});
 
 	test("can scroll up when action section is visible with enough content", async ({ page }) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
+		const process = createWaitingPoemProcess("SCROLL-TEST-001", false);
 
-		// Use poem_creator_process which has actions defined
-		// Set it to the poem_review turn (human turn) in waiting state
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			externalId: "SCROLL-TEST-001",
-		});
-
-		// Create multiple completed turn records to generate enough content for scrolling
 		createPoemHistory(process.id);
 
-		// Navigate to the process detail page
 		await page.goto(`/processes/${process.id}`);
 
-		// Wait for the chronicle to load
 		await page.waitForSelector('[data-page="process-detail"]');
 		await page.waitForSelector('[data-section="chronicle-flow"]');
 
-		// Wait for the action section to appear (indicates process is in waiting state with actions)
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
 
-		// Get the chronicle scroll container
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expect(chronicleScroll).toBeVisible();
-
-		// Get initial scroll position and dimensions
-		const initialMetrics = await getScrollMetrics(chronicleScroll);
-
-		// Verify there's enough content to scroll (scrollHeight > clientHeight)
-		expect(initialMetrics.scrollHeight).toBeGreaterThan(initialMetrics.clientHeight);
+		await expectChronicleOverflow(chronicleScroll);
 
 		// The bug: scroll should not be stuck at the bottom. Aim at the center
 		// so sticky content near the top edge cannot intercept the wheel input.
 		await wheelToBoundary(page, chronicleScroll, "top", 50);
 
-		// Wait a bit for scroll to settle
 		await page.waitForTimeout(100);
 
-		// Get the new scroll position
 		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
 
-		// The scroll position should be at or near the top (0)
-		// If the bug exists, scrollTop will still be near the bottom
 		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
 
-		// Also verify we can scroll using mouse wheel simulation.
-		// First scroll back to bottom.
 		await wheelToBoundary(page, chronicleScroll, "bottom", 50);
 		await page.waitForTimeout(100);
 
-		// Now try to scroll up using wheel event
 		await chronicleScroll.hover();
 		// Poll until the wheel-up registers; under load a single wheel event plus a
 		// fixed wait can race the scroll handler, so retry until it moves off bottom.
 		let afterWheelMetrics = await getScrollMetrics(chronicleScroll);
 		for (let attempt = 0; attempt < 20; attempt += 1) {
 			afterWheelMetrics = await getScrollMetrics(chronicleScroll);
-			const maxScrollAttempt = afterWheelMetrics.scrollHeight - afterWheelMetrics.clientHeight;
-			if (afterWheelMetrics.scrollTop < maxScrollAttempt - 100) {
+			if (bottomGap(afterWheelMetrics) > 100) {
 				break;
 			}
 			await page.mouse.wheel(0, -500);
 			await page.waitForTimeout(50);
 		}
 
-		// After scrolling up with wheel, scrollTop should be less than max scroll
-		const maxScroll = afterWheelMetrics.scrollHeight - afterWheelMetrics.clientHeight;
-		expect(afterWheelMetrics.scrollTop).toBeLessThan(maxScroll - 100);
+		expect(bottomGap(afterWheelMetrics)).toBeGreaterThan(100);
 	});
 
 	test("scroll position is not locked when action section appears after content", async ({
 		page,
 	}) => {
-		if (!ctx) {
-			throw new Error("Server context not initialized");
-		}
+		const process = createWaitingPoemProcess("SCROLL-TEST-002", false);
 
-		// Use poem_creator_process which has actions defined
-		const process = ctx.deps.processes.create({
-			processId: "poem_creator_process",
-			selectedTurnId: "poem_review",
-			lifecycleStatus: "waiting",
-			externalId: "SCROLL-TEST-002",
-		});
-
-		// Create turn records with long content
 		for (let i = 0; i < 5; i++) {
 			createAcceptedLlmTurn({
 				id: `trn_lock_${process.id}_${i}`,
@@ -1348,7 +1266,6 @@ test.describe("chronicle scroll behavior", () => {
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 
-		// Verify the content is scrollable
 		const canScroll = await chronicleScroll.evaluate((el) => {
 			return el.scrollHeight > el.clientHeight;
 		});

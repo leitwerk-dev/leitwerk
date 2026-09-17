@@ -5,7 +5,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
-import { type GitLabObservation, observeMergeRequest } from "./client.js";
+import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";
 export const GITLAB_MR_KIND = "@leitwerk-dev/gitlab.merge-request";
 export interface GitLabSourceConfig {
 	profile: string;
@@ -15,6 +15,24 @@ export interface GitLabSourceConfig {
 	afterKey?: string;
 	/** Optional timer also wakes retry work when GitLab facts have not changed. */
 	wakeAt?: number;
+	feedback?: { afterId: number; since?: string; quietPeriodMs: number };
+}
+/** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. */
+export function pendingGitLabFeedback(
+	items: GitLabFeedback[],
+	afterId: number,
+	since?: string,
+): GitLabFeedback[] {
+	const start = since ? Date.parse(since) : 0;
+	return items.filter((item) => item.id > afterId && Date.parse(item.createdAt) >= start);
+}
+export function gitLabFeedbackReadyAt(
+	items: GitLabFeedback[],
+	quietPeriodMs: number,
+): number | null {
+	return items.length
+		? Math.max(...items.map((item) => Date.parse(item.createdAt))) + quietPeriodMs
+		: null;
 }
 export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
 	JSON.stringify([
@@ -73,6 +91,19 @@ export function createGitLabProvider(
 						c.iid,
 					);
 					const observedKey = observationKey(observation);
+					const feedback =
+						c.feedback && observation.mr.state === "opened"
+							? pendingGitLabFeedback(
+									await integration.client(c.profile).listMergeRequestFeedback(c.projectId, c.iid),
+									c.feedback.afterId,
+									c.feedback.since,
+								)
+							: [];
+					const feedbackReadyAt = gitLabFeedbackReadyAt(
+						feedback,
+						c.feedback?.quietPeriodMs ?? 120_000,
+					);
+					const feedbackReady = feedbackReadyAt !== null && feedbackReadyAt <= now();
 					await report.observe(armed, {
 						observation: {
 							summary: `${observation.mr.state} · ${observation.pipeline?.status ?? "no current pipeline"}`,
@@ -81,8 +112,16 @@ export function createGitLabProvider(
 							revision: observation.mr.sha,
 						},
 					});
-					if (observedKey !== c.afterKey || (c.wakeAt !== undefined && c.wakeAt <= now()))
-						await report.fire(armed, { ...observation }, `${observedKey}:${c.wakeAt ?? ""}`);
+					if (
+						observedKey !== c.afterKey ||
+						feedbackReady ||
+						(c.wakeAt !== undefined && c.wakeAt <= now())
+					)
+						await report.fire(
+							armed,
+							{ ...observation },
+							`${observedKey}:${c.wakeAt ?? ""}:${feedbackReady ? feedback.map((item) => item.id).join(",") : ""}`,
+						);
 					schedule.set(key, {
 						at: now() + parseDurationMs(c.pollInterval ?? "30s", 30000),
 						failures: 0,

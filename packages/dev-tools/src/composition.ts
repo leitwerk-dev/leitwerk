@@ -11,15 +11,6 @@ import {
 
 export const COMPOSITION_ENV = "LEITWERK_COMPOSITION_PATH";
 
-interface CompositionManifest {
-	version?: unknown;
-	leitwerk?: { root?: unknown };
-	runtime_config?: unknown;
-	workspace_root?: unknown;
-	extensions?: unknown;
-	test_roots?: unknown;
-}
-
 export type ComposedPackage = WorkspacePackage;
 
 export interface DevelopmentComposition
@@ -30,6 +21,10 @@ export interface DevelopmentComposition
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+	return isRecord(value) ? value : null;
 }
 
 function requiredString(value: unknown, label: string): string {
@@ -104,14 +99,16 @@ export interface WorkspaceComposition {
 export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposition {
 	const absoluteManifestPath = realpathSync(path.resolve(manifestPath));
 	const manifestDir = path.dirname(absoluteManifestPath);
-	const parsed = parseYaml(readFileSync(absoluteManifestPath, "utf8")) as unknown;
-	if (!isRecord(parsed)) throw new Error("Development composition must be a YAML object");
-	const manifest = parsed as CompositionManifest;
+	const manifest: unknown = parseYaml(readFileSync(absoluteManifestPath, "utf8"));
+	if (!isRecord(manifest)) throw new Error("Development composition must be a YAML object");
 	if (manifest.version !== 1) throw new Error("Development composition version must be 1");
 	const declaredCoreRoot =
 		manifest.leitwerk === undefined
 			? undefined
-			: path.resolve(manifestDir, requiredString(manifest.leitwerk?.root, "leitwerk.root"));
+			: path.resolve(
+					manifestDir,
+					requiredString(asRecord(manifest.leitwerk)?.root, "leitwerk.root"),
+				);
 	const workspaceRoot = resolveExisting(
 		manifestDir,
 		typeof manifest.workspace_root === "string" ? manifest.workspace_root : ".",

@@ -18,6 +18,26 @@ export interface TestDeps extends RepositoryBundle {
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
 }
 
+/** Select a turn-start fixture without creating a turn record or attempt. */
+export function createSelectedTurnStart(
+	deps: TestDeps,
+	input: Omit<
+		Parameters<TestDeps["turnStarts"]["create"]>[0],
+		"startKind" | "recoveryTurnRecordId" | "continuation"
+	>,
+) {
+	const record = deps.turnStarts.create({
+		...input,
+		startKind: "selected_turn",
+		recoveryTurnRecordId: null,
+		continuation: null,
+	});
+	deps.processes.update(input.instanceId, {
+		currentExecution: { kind: "worker_start", id: record.id },
+	});
+	return record;
+}
+
 export function createTestDeps(options: { sqlitePath?: string } = {}): TestDeps {
 	const db = options.sqlitePath
 		? createDatabase({ sqlitePath: options.sqlitePath, enableWAL: false })

@@ -91,6 +91,13 @@ to provider calls so stopping the turn cancels in-flight server work.
 `RepositoryIssue` and `RepositoryPullRequest` describe shared repository response fields; extensions may re-export them under provider-specific names or extend them for provider-specific fields.
 `IntegrationHttpClient` shares authenticated HTTP, JSON/204 handling, `writeJson(path, method, body, signal?)`, and array pagination; extensions supply headers, API prefixes, page sizes, and endpoint methods.
 `RepositoryHttpClient` adds common issue/comment and pull-request endpoints; extensions retain path encoding and provider-specific operations.
+`parseRepositoryPullRequestConfig`, `parseRepositoryFeedbackConfig`, and `parseRepositoryIssueCancelledConfig` parse shared polling fields, returning `null` for missing or wrongly typed required fields. They default polling to `30s`, feedback cursors to zero, and the quiet period to 120 seconds; extensions retain authorization and event policy.
+
+`repositoryFeedbackBatch(unseen, config, now)` returns feedback IDs, advanced cursors, and their merge key, or `null` while empty or within the quiet period. Callers filter authorization and unseen IDs first.
+`defineExternalActionSource<TConfig>(metadata)` creates a generic resolver-based source factory. Each call retains the metadata and resolver, creates an empty config, and sets `inputMode: "none"`.
+`createExternalSourcePollReporter(sources, result, { forwardGeneration: true })` includes nonempty arming generations in fired events. The default preserves generation-free delivery; freshness checks remain the caller's responsibility.
+
+`parseRepositoryIssueWatcherConfig(raw, legacyType, distinctLabels?)` and `presentRepositoryIssueWatcherConfig` share issue watcher parsing and presentation. Parsing trims strings, validates positive durations and repository filters, and parses launch settings. Distinct trigger/done labels are opt-in; extensions keep their source IDs and event types. `matchesRepository(config, repository)` applies their include/exclude filters; exclusions win.
 
 Use `structuralStateCodec` for state containing only semantic and product refs; it parses with
 `parseStructuralProcessState` and serializes unchanged. Use `emptyParamsCodec` for empty params.
@@ -166,6 +173,12 @@ Every step in a process graph is a **Turn**:
 - **`flow.human` (Human Turn):** Pauses execution and waits for operator actions on the web dashboard.
 
 ### LLM-turn preparation
+
+Server extensions use `commands.retryProcess(instanceId)` to recover the current failed
+startup or accepted turn. A preparation or bootstrap failure replaces the current start
+record without creating a turn attempt. The engine validates its identity and lifecycle
+under the process lock; a concurrent Stop or changed start rejects the stale retry.
+An accepted failed turn retains normal turn-retry behavior.
 
 Use `.prepare(...)` when deterministic mechanics exist only to supply one LLM turn. Preparation
 runs after turn-start acceptance and before Pi receives a prompt. It shares the turn's authorized

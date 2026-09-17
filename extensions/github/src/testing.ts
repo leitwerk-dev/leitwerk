@@ -1,12 +1,16 @@
 import { LocalForgeStore, type LocalRepositorySeed } from "@leitwerk-dev/test-support/local-git";
+import { actionableFeedback, authorizedTrigger } from "./authorization.js";
 import type { GitHubClientLike } from "./capability.js";
 import type {
 	GitHubCheckSummary,
 	GitHubFeedbackItem,
 	GitHubIssue,
+	GitHubLabelEvent,
+	GitHubProfile,
 	GitHubPullRequest,
 	GitHubRelease,
 } from "./client.js";
+import { assertGitHubRepository } from "./client.js";
 
 export interface LocalGitHubRepository {
 	repository: ReturnType<LocalGitHubAdapter["newRepository"]>;
@@ -17,12 +21,18 @@ export interface LocalGitHubRepository {
 	checks: Record<string, GitHubCheckSummary>;
 	releases: GitHubRelease[];
 	assets: Record<string, string>;
+	labels: Array<{ id: number; name: string }>;
+	labelEvents: Record<string, GitHubLabelEvent[]>;
+	reactions: Record<string, Array<{ id: number; content: string; user: { login: string } }>>;
+	feedbackEditors: Record<string, string | null>;
 }
 export interface LocalGitHubState {
 	version: 1;
 	sequence: number;
 	repositories: LocalGitHubRepository[];
 	failAfterPullRequestWrite: boolean;
+	members: string[];
+	failAfterWrite: string | null;
 }
 export interface LocalGitHubOptions {
 	root: string;
@@ -30,6 +40,7 @@ export interface LocalGitHubOptions {
 	now?: () => number;
 	nextId?: () => number;
 	seeds?: LocalRepositorySeed[];
+	allowedOrganization?: string;
 }
 
 /** Persistent local GitHub with actual commit ancestry and configurable release assets. */
@@ -40,7 +51,17 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 			sequence: 0,
 			repositories: [],
 			failAfterPullRequestWrite: false,
+			members: [],
+			failAfterWrite: null,
 		});
+		this.state.members ??= [];
+		this.state.failAfterWrite ??= null;
+		for (const r of this.state.repositories) {
+			r.labels ??= [];
+			r.labelEvents ??= {};
+			r.reactions ??= {};
+			r.feedbackEditors ??= {};
+		}
 		for (const seed of options.seeds ?? []) this.seed(seed);
 	}
 	repo(owner: string, name: string) {
@@ -62,6 +83,10 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 			checks: {},
 			releases: [],
 			assets: {},
+			labels: [],
+			labelEvents: {},
+			reactions: {},
+			feedbackEditors: {},
 		};
 		this.state.repositories.push(repo);
 		this.save();
@@ -103,10 +128,188 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		return release;
 	}
+	override newRepository(seed: LocalRepositorySeed) {
+		return { ...super.newRepository(seed), archived: false, has_issues: true };
+	}
+	setMembership(login: string, member: boolean) {
+		this.state.members = this.state.members.filter(
+			(value) => value.toLowerCase() !== login.toLowerCase(),
+		);
+		if (member) this.state.members.push(login);
+		this.save();
+	}
+	failNextResponse(operation: "comment" | "reply" | "reaction" | "issue" | "label") {
+		this.state.failAfterWrite = operation;
+		this.save();
+	}
+	private lostResponse(operation: string) {
+		if (this.state.failAfterWrite !== operation) return;
+		this.state.failAfterWrite = null;
+		this.save();
+		throw new Error(`Local GitHub: response lost after ${operation} write`);
+	}
+	createIssue(
+		repo: LocalGitHubRepository,
+		input: { title: string; body?: string; author?: string },
+	) {
+		const number = this.id();
+		const issue: GitHubIssue = {
+			number,
+			title: input.title,
+			body: input.body ?? "",
+			state: "open",
+			html_url: `${this.options.baseUrl}/__local#issue-${number}`,
+			updated_at: this.timestamp(),
+			user: { login: input.author ?? "developer" },
+			labels: [],
+		};
+		repo.issues.push(issue);
+		this.save();
+		return issue;
+	}
+	setIssueLabel(
+		repo: LocalGitHubRepository,
+		number: number,
+		name: string,
+		actor: string,
+		present = true,
+	) {
+		const issue = repo.issues.find((value) => value.number === number);
+		if (!issue) throw new Error("Unknown local GitHub issue");
+		issue.labels = issue.labels.filter((label) => label.name !== name);
+		if (present) issue.labels.push({ id: this.id(), name });
+		const event: GitHubLabelEvent = {
+			id: this.id(),
+			event: present ? "labeled" : "unlabeled",
+			label: { name },
+			actor: { login: actor },
+		};
+		repo.labelEvents[number] ??= [];
+		repo.labelEvents[number].push(event);
+		issue.updated_at = this.timestamp();
+		this.save();
+		return event;
+	}
+	editFeedback(
+		repo: LocalGitHubRepository,
+		number: number,
+		kind: GitHubFeedbackItem["kind"],
+		id: number,
+		body: string,
+		editor: string | null,
+	) {
+		const item = repo.feedback[number]?.find((value) => value.kind === kind && value.id === id);
+		if (!item) throw new Error("Unknown local GitHub feedback");
+		item.body = body;
+		item.createdAt = this.timestamp();
+		repo.feedbackEditors[`${kind}:${id}`] = editor;
+		this.save();
+	}
+
 	client(): GitHubClientLike {
-		const repo = (owner: string, name: string) => this.repo(owner, name);
-		return {
-			profile: { apiBaseUrl: this.options.baseUrl, token: "", botLogin: "leitwerk-bot" },
+		const profile: GitHubProfile = {
+			apiBaseUrl: this.options.baseUrl,
+			token: "",
+			botLogin: "leitwerk-bot",
+			...(this.options.allowedOrganization
+				? { allowedOrganization: this.options.allowedOrganization }
+				: {}),
+		};
+		const repo = (owner: string, name: string) => {
+			assertGitHubRepository(profile, owner, name);
+			return this.repo(owner, name);
+		};
+		const client: GitHubClientLike = {
+			profile,
+			listRepositories: async () =>
+				this.state.repositories
+					.map((r) => ({ ...r.repository, archived: false, has_issues: true }))
+					.filter(
+						(r) =>
+							!profile.allowedOrganization ||
+							r.owner.login.toLowerCase() === profile.allowedOrganization.toLowerCase(),
+					),
+			listOpenIssues: async (owner, name) =>
+				structuredClone(repo(owner, name).issues.filter((i) => i.state === "open")),
+			listIssueEvents: async (owner, name, number) =>
+				structuredClone(repo(owner, name).labelEvents[number] ?? []),
+			isOrganizationMember: async (login) =>
+				!profile.allowedOrganization ||
+				this.state.members.some((member) => member.toLowerCase() === login.toLowerCase()),
+			authorizedTrigger: async (owner, name, number, trigger, done) =>
+				authorizedTrigger(client, owner, name, number, trigger, done),
+			resolveGitIdentity: async (name) => ({
+				provider: "github",
+				profile: name,
+				login: profile.botLogin,
+				name: "Sandbox Developer",
+				email: "developer@sandbox.invalid",
+			}),
+			ensureLabel: async (owner, name, labelName) => {
+				const r = repo(owner, name);
+				let label = r.labels.find((value) => value.name === labelName);
+				if (!label) {
+					label = { id: this.id(), name: labelName };
+					r.labels.push(label);
+					this.save();
+					this.lostResponse("label");
+				}
+				return structuredClone(label);
+			},
+			updateIssue: async (owner, name, number, patch) => {
+				const issue = repo(owner, name).issues.find((i) => i.number === number);
+				if (!issue) throw new Error("Unknown local GitHub issue");
+				for (const key of ["title", "body", "state"] as const)
+					if (typeof patch[key] === "string") issue[key] = patch[key];
+				if (Array.isArray(patch.labels))
+					issue.labels = patch.labels.map((value) => ({ id: this.id(), name: String(value) }));
+				issue.updated_at = this.timestamp();
+				this.save();
+				this.lostResponse("issue");
+				return structuredClone(issue);
+			},
+			listFeedbackReactions: async (owner, name, kind, id) =>
+				structuredClone(repo(owner, name).reactions[`${kind}:${id}`] ?? []),
+			addFeedbackReaction: async (owner, name, kind, id) => {
+				if (!["conversation", "inline"].includes(kind))
+					throw new Error("Reviews do not support reactions");
+				const r = repo(owner, name);
+				r.reactions[`${kind}:${id}`] ??= [];
+				const reactions = r.reactions[`${kind}:${id}`];
+				let reaction = reactions.find(
+					(r) => r.content === "eyes" && r.user.login === profile.botLogin,
+				);
+				if (!reaction) {
+					reaction = { id: this.id(), content: "eyes", user: { login: profile.botLogin } };
+					reactions.push(reaction);
+					this.save();
+					this.lostResponse("reaction");
+				}
+				return structuredClone(reaction);
+			},
+			listFeedbackReplies: async (owner, name, number, kind) =>
+				kind === "inline"
+					? structuredClone(
+							(repo(owner, name).feedback[number] ?? [])
+								.filter((f) => f.kind === "inline")
+								.map((f) => ({ ...f })),
+						)
+					: client.listIssueComments(owner, name, number),
+			replyFeedback: async (owner, name, number, kind, _id, body) => {
+				if (kind !== "inline") return client.addIssueComment(owner, name, number, body);
+				const value = this.addFeedback(repo(owner, name), number, {
+					kind: "inline",
+					body,
+					author: profile.botLogin,
+				});
+				this.lostResponse("reply");
+				return structuredClone(value);
+			},
+			listActionablePullRequestFeedback: async (owner, name, number, signal) =>
+				actionableFeedback(
+					client,
+					await client.listPullRequestFeedback(owner, name, number, signal),
+				),
 			getIssue: async (owner, name, number) => {
 				const issue = repo(owner, name).issues.find((i) => i.number === number);
 				if (!issue) throw new Error("Unknown local GitHub issue");
@@ -127,6 +330,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				r.comments[number] ??= [];
 				r.comments[number].push(value);
 				this.save();
+				this.lostResponse("comment");
 				return structuredClone(value);
 			},
 			createPullRequest: async (owner, name, input) => {
@@ -142,7 +346,15 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 			...this.pullRequestClient(repo, "Unknown local GitHub pull request"),
 			listPullRequestFeedback: async (owner, name, number) =>
 				structuredClone([
-					...(repo(owner, name).feedback[number] ?? []),
+					...(repo(owner, name).feedback[number] ?? []).filter((item) => {
+						if (!profile.allowedOrganization) return true;
+						const editor = repo(owner, name).feedbackEditors[`${item.kind}:${item.id}`];
+						return (
+							editor === undefined ||
+							(editor !== null &&
+								this.state.members.some((m) => m.toLowerCase() === editor.toLowerCase()))
+						);
+					}),
 					...(repo(owner, name).comments[number] ?? []).map((c) => ({
 						kind: "conversation" as const,
 						id: c.id,
@@ -167,5 +379,6 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				throw new Error("Unknown local GitHub release asset");
 			},
 		};
+		return client;
 	}
 }
