@@ -585,15 +585,34 @@ async function wheelToApproxScrollTop(
 	targetScrollTop: number,
 	position: "center" | "top" = "center",
 ) {
-	for (let attempt = 0; attempt < 40; attempt += 1) {
-		const metrics = await getScrollMetrics(locator);
-		if (Math.abs(metrics.scrollTop - targetScrollTop) <= 150) {
-			return metrics;
-		}
-		await wheelAtLocator(page, locator, metrics.scrollTop < targetScrollTop ? 900 : -900, position);
-		await page.waitForTimeout(40);
+	// Wheel input returns before WebKit finishes scrolling. Observe a stable
+	// position before issuing another delta or recording the reading position.
+	async function settledMetrics() {
+		let previous = await getScrollMetrics(locator);
+		let stableSamples = 0;
+		await expect
+			.poll(
+				async () => {
+					const current = await getScrollMetrics(locator);
+					stableSamples =
+						Math.abs(current.scrollTop - previous.scrollTop) < 1 ? stableSamples + 1 : 0;
+					previous = current;
+					return stableSamples;
+				},
+				{ intervals: [100], timeout: 5000 },
+			)
+			.toBeGreaterThanOrEqual(3);
+		return previous;
 	}
-	return getScrollMetrics(locator);
+
+	let metrics = await settledMetrics();
+	for (let attempt = 0; attempt < 40; attempt += 1) {
+		const remaining = targetScrollTop - metrics.scrollTop;
+		if (Math.abs(remaining) <= 150) return metrics;
+		await wheelAtLocator(page, locator, Math.max(-900, Math.min(900, remaining)), position);
+		metrics = await settledMetrics();
+	}
+	throw new Error(`Wheel scrolling did not reach ${targetScrollTop}: ${metrics.scrollTop}`);
 }
 
 async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutMs = 5_000) {
