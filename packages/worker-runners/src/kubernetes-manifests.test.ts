@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildKubernetesAdmissionPolicyManifests,
 	buildKubernetesDockerConfigJsonSecretManifest,
 	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
@@ -36,6 +35,7 @@ function startInput(overrides: Partial<StartWorkerInput> = {}): StartWorkerInput
 		volume: { instanceId: "PROC_1", id: "leitwerk-process-proc-1", mountPath: "/state" },
 		docker: false,
 		resources: { cpu: "2", memory: "4Gi" },
+		resourceRequests: { cpu: "1", memory: "2Gi" },
 		...overrides,
 	};
 }
@@ -182,7 +182,10 @@ describe("Kubernetes manifest builders", () => {
 		expect(container.image).toBe("ghcr.io/example/worker:1");
 		expect(container.imagePullPolicy).toBe("IfNotPresent");
 		expect(container.volumeMounts).toEqual([{ name: "process-state", mountPath: "/state" }]);
-		expect(container.resources).toEqual({ limits: { cpu: "2", memory: "4Gi" } });
+		expect(container.resources).toEqual({
+			limits: { cpu: "2", memory: "4Gi" },
+			requests: { cpu: "1", memory: "2Gi" },
+		});
 		expect(container.env).toContainEqual({
 			name: "LEITWERK_WORKER_CONNECT_TOKEN",
 			value: "secret-token",
@@ -292,51 +295,6 @@ describe("Kubernetes manifest builders", () => {
 			{ name: "NODE_EXTRA_CA_CERTS", value: KUBERNETES_WORKER_SERVER_CA_CERT_PATH },
 		]);
 		expect(manifest.spec.automountServiceAccountToken).toBe(false);
-	});
-
-	it("builds admission policy constraints for process resources", () => {
-		const { policy, binding } = buildKubernetesAdmissionPolicyManifests({
-			name: "leitwerk-process-policy",
-			serverNamespace: "leitwerk-system",
-			serverServiceAccountName: "leitwerk-server",
-			processNamespacePrefix: "leitwerk-process-",
-			allowedWorkerServiceAccount: "leitwerk-worker",
-			allowedImagePullSecretNames: ["private-registry"],
-		});
-		const expressions = policy.spec.validations.map((validation) => validation.expression);
-
-		expect(policy.spec.matchConditions?.[0]?.expression).toContain(
-			"system:serviceaccount:leitwerk-system:leitwerk-server",
-		);
-		expect(policy.spec.matchConstraints.resourceRules[0]?.resources).toEqual([
-			"namespaces",
-			"pods",
-			"persistentvolumeclaims",
-			"serviceaccounts",
-			"configmaps",
-			"secrets",
-		]);
-		expect(expressions).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("leitwerk-process-"),
-				expect.stringContaining("process-namespace"),
-				expect.stringContaining("process-volume"),
-				expect.stringContaining("server-ca"),
-				expect.stringContaining("private-registry"),
-				expect.stringContaining("image-pull-secret"),
-				expect.stringContaining(".dockerconfigjson"),
-				expect.stringContaining("worker-service-account"),
-				expect.stringContaining("leitwerk-worker"),
-				expect.stringContaining("leitwerk.dev/worker-id"),
-				expect.stringContaining("leitwerk.dev/server-epoch"),
-				expect.stringContaining("session-export-helper"),
-				expect.stringContaining("leitwerk.dev/export-id"),
-			]),
-		);
-		expect(binding.spec).toEqual({
-			policyName: "leitwerk-process-policy",
-			validationActions: ["Deny"],
-		});
 	});
 
 	it("maps Kubernetes failure observations into worker exits", () => {

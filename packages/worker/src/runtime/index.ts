@@ -9,6 +9,7 @@ import { resolveRootEntryIdFromHandle } from "../turn-tree-strategy.js";
 import { createWorkerIpcReporter } from "../worker-ipc-reporter.js";
 import type { WorkerRuntimeOptions, WorkerRuntimeTimer } from "./adapters.js";
 import { sampleCredentialFiles, WorkerLiveResources } from "./bootstrap-session.js";
+import { extractDockerRegistrySecretValues, redactSecrets } from "./failure-policy.js";
 import {
 	createInitialWorkerRuntimeState,
 	reduceWorkerRuntime,
@@ -40,6 +41,25 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	const { config, adapters } = options;
 	const sampleCredentials = adapters.sampleCredentials ?? sampleCredentialFiles;
 	const ipc: WorkerIpc = adapters.transport;
+	const deliveredSecrets = new Set<string>();
+	const redact = (text: string) =>
+		redactSecrets(
+			text,
+			[...deliveredSecrets].sort((a, b) => b.length - a.length),
+		);
+	function redactValue<T>(value: T): T {
+		if (deliveredSecrets.size === 0) return value;
+		if (typeof value === "string") return redact(value) as T;
+		if (Array.isArray(value)) return value.map(redactValue) as T;
+		if (value && typeof value === "object")
+			return Object.fromEntries(
+				Object.entries(value).map(([key, item]) => [key, redactValue(item)]),
+			) as T;
+		return value;
+	}
+	const emitExtensionEvent = (event: string, payload: unknown) =>
+		adapters.extensionEvents?.emit(event, redactValue(payload));
+	const writeStderr = (text: string) => adapters.stderr?.write(`${redact(text)}\n`);
 	const queue: WorkerRuntimeEvent[] = [];
 	const timers = new Map<WorkerTimerName, WorkerRuntimeTimer>();
 	let state: WorkerRuntimeStateMachine = createInitialWorkerRuntimeState();
@@ -52,8 +72,8 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		instanceId: config.instanceId,
 		workerId: config.workerId,
 		now: () => adapters.scheduler.now(),
-		send: (message) => ipc.send(message),
-		emitExtensionEvent: (event, payload) => adapters.extensionEvents?.emit(event, payload),
+		send: (message) => ipc.send(redactValue(message)),
+		emitExtensionEvent,
 	});
 	const questionBridge = new WorkerQuestionBridge(reporter);
 	const integrationToolBridge = new WorkerIntegrationToolBridge(reporter);
@@ -61,7 +81,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	let dispatch: (event: WorkerRuntimeEvent) => void;
 	const piEvents = createPiEventReporter({
 		reporter,
-		emitExtensionEvent: (event, payload) => adapters.extensionEvents?.emit(event, payload),
+		emitExtensionEvent,
 		getCurrentSelectedTurnId: () => state.session?.selectedTurnId ?? null,
 		getSessionTainted: () => state.sessionTainted,
 		onLifecycleObservation(kind) {
@@ -296,19 +316,16 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 							...(output.payload as object),
 						}
 					: output.payload;
-			adapters.extensionEvents?.emit(output.event, payload);
+			emitExtensionEvent(output.event, payload);
 			return;
 		}
 		if (output.kind === "diagnostic") {
 			reporter.workerTrace(output.payload, state.session?.selectedTurnId ?? null);
-			if (output.stderr) adapters.stderr?.write(`${output.stderr}\n`);
+			if (output.stderr) writeStderr(output.stderr);
 			return;
 		}
-		if (output.kind === "stderr") {
-			adapters.stderr?.write(`${output.message}\n`);
-			return;
-		}
-		launch(output);
+		if (output.kind === "stderr") writeStderr(output.message);
+		else launch(output);
 	};
 
 	function drain(): void {
@@ -348,6 +365,9 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	};
 
 	const receive = (message: ServerToWorkerMessage): void => {
+		if (message.type === "worker.start")
+			for (const secret of extractDockerRegistrySecretValues(message.payload))
+				deliveredSecrets.add(secret);
 		if (message.type === "worker.integration_tool_result") {
 			integrationToolBridge.handle(message);
 			return;

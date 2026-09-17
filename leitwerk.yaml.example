@@ -333,6 +333,23 @@ extensions:
       - deepseek-v4-pro
       - gpt-5.5-xhigh-auto
 
+# Server-only inner Docker authentication, separate from Kubernetes image pulls.
+# Registry-side account permissions remain authoritative.
+# docker_registries:
+#   profiles:
+#     build_registry:
+#       registry: registry.example.com
+#       username: robot
+#       password: replace-with-secret
+#   process_bindings:
+#     docker_enabled_process: [build_registry]
+# Worker profiles also accept resources.requests: {cpu: "1", memory: 2Gi}.
+# kubernetes.docker.network (trusted operator allocation):
+#   bridge_cidr: 192.168.224.1/24
+#   address_pools: [{base: 192.168.232.0/21, size: 24}]
+#   dns: [10.96.0.10]
+# The example network is for disposable canaries; allocate production ranges separately.
+
 # Optional GitHub organization boundary (configure an actual token locally):
 # extensions:
 #   github:

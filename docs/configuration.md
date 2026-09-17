@@ -166,7 +166,7 @@ kubernetes:
 ```
 
 - `workers.runner`: Selects container runner adapter (`docker`, `kubernetes`, or `local`).
-- `workers.max_parallel_processes`: Maximum concurrent worker processes running across the server.
+- `workers.max_parallel_processes`: Maximum concurrent worker processes, including in-flight allocations. Additional starts wait in a FIFO capacity queue and resume automatically when a slot opens. Queue waiting does not consume the worker startup timeout.
 - `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
 - `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
 - `development_tools.install_timeout`: Hard deadline for each opted-in repository's mise preparation. Defaults to `30m`.
@@ -182,7 +182,7 @@ kubernetes:
 
 Worker launch configuration is immutable for a physical worker. Changes affect only newly created workers. Recycle existing workers explicitly when a change must apply immediately. Docker process state lives at `/state/tooling/docker` in the process volume and survives worker replacement. Kubernetes Docker processes use the configured RuntimeClass and Docker process StorageClass; the runner does not preflight cluster runtime infrastructure.
 
-Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. It preserves `DOCKER_CONFIG` for registry credentials. Local workers retain their host Docker configuration.
+Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. The worker bootstrap sets `DOCKER_CONFIG` to its private ephemeral credential directory. Local workers retain their host Docker context; Docker-enabled starts also use the server-delivered credential configuration.
 
 Private worker Docker daemons use the `overlay2` storage driver. The process volume must support OverlayFS with the selected kernel and container runtime. Before activation, verify image builds, nested container execution, and retained image reuse after worker replacement using the [runtime canaries](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md). A backing filesystem name alone does not establish compatibility.
 
@@ -279,3 +279,21 @@ removing the setting or changing class, allow preparation PVCs in the server
 namespace to disappear. Inspect resources labelled `leitwerk.dev/volume-pool` and
 server warnings if preparation stalls. Unrecoverable ownership conflicts require
 operator inspection; do not clear process claim references.
+
+### Docker registry credentials
+
+`docker_registries.profiles` holds server-only registry host, username and password
+records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
+whose code declares `runtime.docker` receive these credentials through authenticated
+`worker.start`; process parameters cannot select profiles. Each physical start
+resolves current configuration anew. Duplicate registry hosts in a binding fail
+validation. Bindings control delivery, not registry-side account permissions.
+
+See [security guarantees](security.md#docker-registry-credentials) and
+[worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).
+
+Worker runtime profiles accept CPU/memory `resources.requests` independently of
+limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
+trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
+selection applies only when creating a claim; existing claims are not migrated.
+**Breaking validation change:** address-pool sizes smaller than their base prefix are rejected at server startup, rather than worker startup. `dockerNetworkArgs()` now rejects unknown network/pool fields instead of ignoring them; valid configurations and public signatures are unchanged.

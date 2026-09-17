@@ -1,7 +1,8 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AppContext, type AppOptions, createAppContext } from "./app.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { type AppContext, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
+import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
 
 let ctx: AppContext | null = null;
 
@@ -25,36 +26,6 @@ async function waitForClose(ws: WebSocket): Promise<{ code: number; reason: stri
 async function connectUnknownWorker(address: string): Promise<{ code: number; reason: string }> {
 	const ws = new WebSocket(workerSocketUrl(address));
 	return await waitForClose(ws);
-}
-
-function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"]> {
-	return {
-		runner: {
-			start: vi.fn(async () => {
-				throw new Error("unexpected worker start");
-			}),
-			stop: vi.fn(async () => {}),
-			list: vi.fn(async () => []),
-			adopt: vi.fn(async () => {
-				throw new Error("unexpected worker adoption");
-			}),
-		},
-		exporter: {
-			prepare: vi.fn(async () => {
-				throw new Error("unexpected process state export");
-			}),
-			reconcile: vi.fn(async () => {}),
-		},
-		volume: {
-			ensure: vi.fn(async (instanceId: string) => ({
-				instanceId,
-				id: `vol-${instanceId}`,
-				mountPath: "/workspace",
-			})),
-			release: vi.fn(async () => {}),
-			deleteProcessResources: vi.fn(async () => {}),
-		},
-	};
 }
 
 afterEach(async () => {

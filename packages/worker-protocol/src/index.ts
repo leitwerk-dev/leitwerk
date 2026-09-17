@@ -1,3 +1,4 @@
+export * from "./docker-config.js";
 export * from "./ipc-codec.js";
 export * from "./ipc-decode.js";
 export * from "./ipc-messages.js";
