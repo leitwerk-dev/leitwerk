@@ -28,7 +28,6 @@ export {
 	type KubernetesPodSummary,
 } from "./kubernetes-api-client.js";
 export {
-	buildKubernetesAdmissionPolicyManifests,
 	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
@@ -40,8 +39,6 @@ export {
 	type KubernetesPodSpecOptions,
 	type KubernetesProcessNamespaceManifest,
 	type KubernetesProcessVolumeSpec,
-	type KubernetesValidatingAdmissionPolicyBindingManifest,
-	type KubernetesValidatingAdmissionPolicyManifest,
 	kubernetesExportHelperPodName,
 	kubernetesProcessNamespaceName,
 	kubernetesProcessPvcName,

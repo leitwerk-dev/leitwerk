@@ -2,49 +2,48 @@ import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtim
 import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
-import { type AppOptions, createAppContext } from "./app.js";
+import { type AppContext, type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import {
 	createFixtureAutomaticTurn,
 	createFixtureProcess,
 } from "./test-helpers/process-fixtures.js";
+import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
 
-function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"]> {
-	return {
-		runner: {
-			start: vi.fn(async () => {
-				throw new Error("unexpected worker start");
-			}),
-			stop: vi.fn(async () => {}),
-			list: vi.fn(async () => []),
-			adopt: vi.fn(async () => {
-				throw new Error("unexpected worker adoption");
-			}),
-		},
-		exporter: {
-			prepare: vi.fn(async () => {
-				throw new Error("unexpected process state export");
-			}),
-			reconcile: vi.fn(async () => {}),
-		},
-		volume: {
-			ensure: vi.fn(async (instanceId: string) => ({
-				instanceId,
-				id: `vol-${instanceId}`,
-				mountPath: "/workspace",
-			})),
-			release: vi.fn(async () => {}),
-			deleteProcessResources: vi.fn(async () => {}),
-		},
-	};
+function createLocalApp(options: Partial<AppOptions> = {}, maxParallelProcesses?: number) {
+	const config = getDefaultConfig();
+	config.storage.sqlite_path = ":memory:";
+	config.workers.runner = "local";
+	if (maxParallelProcesses !== undefined)
+		config.workers.max_parallel_processes = maxParallelProcesses;
+	return createAppContext({
+		config,
+		logger: false,
+		extensionCatalog: buildExtensionCatalogFromModules([]),
+		workerRunnerRuntime: fakeWorkerRunnerRuntime(),
+		...options,
+	});
+}
+
+function prepareAutomaticStart(ctx: AppContext, instanceId: string) {
+	const start = ctx.deps.turnStarts.create({
+		instanceId,
+		turnId: "work",
+		turnType: "automatic",
+		proposedTurnRecordId: `trn_${instanceId}`,
+		startKind: "selected_turn",
+		recoveryTurnRecordId: null,
+		continuation: null,
+		state: { kind: "starting", start: { kind: "automatic" } },
+	});
+	ctx.deps.processes.update(instanceId, {
+		selectedTurnId: "work",
+		currentExecution: { kind: "worker_start", id: start.id },
+	});
 }
 
 describe("createAppContext", () => {
 	it("queues capacity overflow without a lease and starts it after a worker exits", async () => {
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.workers.runner = "local";
-		config.workers.max_parallel_processes = 1;
 		const runtime = fakeWorkerRunnerRuntime();
 		const exits = new Map<string, () => void>();
 		vi.mocked(runtime.runner.start).mockImplementation(async (input) => ({
@@ -60,25 +59,26 @@ describe("createAppContext", () => {
 			exits.delete(ref.instanceId);
 			notify?.();
 		});
-		const ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog: buildExtensionCatalogFromModules([
-				{
-					manifest: { id: "capacity-test", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(
-							createFixtureProcess({
-								id: "test_process",
-								entry: "work",
-								turns: { work: createFixtureAutomaticTurn() },
-							}),
-						);
+		const ctx = await createLocalApp(
+			{
+				extensionCatalog: buildExtensionCatalogFromModules([
+					{
+						manifest: { id: "capacity-test", version: "0.1.0" },
+						setupCatalog(api) {
+							api.registerProcess(
+								createFixtureProcess({
+									id: "test_process",
+									entry: "work",
+									turns: { work: createFixtureAutomaticTurn() },
+								}),
+							);
+						},
 					},
-				},
-			]),
-			workerRunnerRuntime: runtime,
-		});
+				]),
+				workerRunnerRuntime: runtime,
+			},
+			1,
+		);
 		try {
 			const processes = [0, 1, 2].map(() => {
 				const process = ctx.deps.processes.create({
@@ -86,19 +86,7 @@ describe("createAppContext", () => {
 					lifecycleStatus: "active",
 					selectedTurnId: "work",
 				});
-				const start = ctx.deps.turnStarts.create({
-					instanceId: process.id,
-					turnId: "work",
-					turnType: "automatic",
-					proposedTurnRecordId: `trn_${process.id}`,
-					startKind: "selected_turn",
-					recoveryTurnRecordId: null,
-					continuation: null,
-					state: { kind: "starting", start: { kind: "automatic" } },
-				});
-				ctx.deps.processes.update(process.id, {
-					currentExecution: { kind: "worker_start", id: start.id },
-				});
+				prepareAutomaticStart(ctx, process.id);
 				return process;
 			});
 			await ctx.supervisor.spawnWorker(processes[0].id);
@@ -130,36 +118,15 @@ describe("createAppContext", () => {
 	});
 
 	it("blocks replacement of a stale runtime until background cleanup releases its process storage", async () => {
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.workers.runner = "local";
 		const runtime = fakeWorkerRunnerRuntime();
 		const cleanup = Promise.withResolvers<void>();
 		vi.mocked(runtime.runner.stop).mockImplementation(() => cleanup.promise);
-		const ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog: buildExtensionCatalogFromModules([]),
-			workerRunnerRuntime: runtime,
-		});
+		const ctx = await createLocalApp({ workerRunnerRuntime: runtime });
 		try {
 			const process = ctx.deps.processes.create({ processId: "test_process" });
 			const unrelated = ctx.deps.processes.create({ processId: "test_process" });
 			for (const candidate of [process, unrelated]) {
-				const start = ctx.deps.turnStarts.create({
-					instanceId: candidate.id,
-					turnId: "work",
-					turnType: "automatic",
-					proposedTurnRecordId: `trn_${candidate.id}`,
-					startKind: "selected_turn",
-					recoveryTurnRecordId: null,
-					continuation: null,
-					state: { kind: "starting", start: { kind: "automatic" } },
-				});
-				ctx.deps.processes.update(candidate.id, {
-					selectedTurnId: "work",
-					currentExecution: { kind: "worker_start", id: start.id },
-				});
+				prepareAutomaticStart(ctx, candidate.id);
 			}
 			vi.mocked(runtime.runner.list).mockResolvedValue([
 				{ instanceId: process.id, workerId: "stale-worker", unitId: "stale-container" },
@@ -188,13 +155,7 @@ describe("createAppContext", () => {
 	});
 
 	it("keeps raw project repos silent and emits project updates through the mutation service", async () => {
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		const ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog: buildExtensionCatalogFromModules([]),
-		});
+		const ctx = await createLocalApp();
 		try {
 			const frames: Array<Parameters<typeof ctx.broadcaster.broadcast>[0]> = [];
 			ctx.broadcaster.broadcast = (frame) => {
@@ -254,15 +215,9 @@ describe("createAppContext", () => {
 	});
 
 	it("reports readiness only after every start hook succeeds and clears it before stop hooks", async () => {
-		let releaseStart: (() => void) | undefined;
+		const { promise: startGate, resolve: releaseStart } = Promise.withResolvers<void>();
 		let readyDuringStop: boolean | undefined;
-		const startGate = new Promise<void>((resolve) => {
-			releaseStart = resolve;
-		});
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.workers.runner = "local";
-		let ctx: Awaited<ReturnType<typeof createAppContext>>;
+		let ctx: AppContext;
 		const extensionCatalog = await buildExtensionCatalogFromModules([
 			{
 				manifest: { id: "readiness-test", version: "1.0.0" },
@@ -274,12 +229,7 @@ describe("createAppContext", () => {
 				},
 			},
 		]);
-		ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog,
-			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
-		});
+		ctx = await createLocalApp({ extensionCatalog });
 		try {
 			expect((await ctx.app.inject({ url: "/api/health" })).statusCode).toBe(200);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
@@ -287,7 +237,7 @@ describe("createAppContext", () => {
 			const starting = ctx.startBackgroundServices();
 			await Promise.resolve();
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
-			releaseStart?.();
+			releaseStart();
 			await starting;
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(200);
 
@@ -295,16 +245,13 @@ describe("createAppContext", () => {
 			expect(readyDuringStop).toBe(false);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 		} finally {
-			releaseStart?.();
+			releaseStart();
 			await ctx.app.close();
 		}
 	});
 
 	it("starts registered pollers after extension start hooks and stops them with the server", async () => {
 		const events: string[] = [];
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.workers.runner = "local";
 		const extensionCatalog = await buildExtensionCatalogFromModules([
 			{
 				manifest: { id: "polling-lifecycle-test", version: "1.0.0" },
@@ -324,12 +271,7 @@ describe("createAppContext", () => {
 				},
 			},
 		]);
-		const ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog,
-			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
-		});
+		const ctx = await createLocalApp({ extensionCatalog });
 		try {
 			await ctx.startBackgroundServices();
 			await vi.waitFor(() => expect(events).toContain("poll"));
@@ -345,9 +287,6 @@ describe("createAppContext", () => {
 	});
 
 	it("stays unready when a start hook fails", async () => {
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.workers.runner = "local";
 		const extensionCatalog = await buildExtensionCatalogFromModules([
 			{
 				manifest: { id: "failed-start", version: "1.0.0" },
@@ -358,12 +297,7 @@ describe("createAppContext", () => {
 				},
 			},
 		]);
-		const ctx = await createAppContext({
-			config,
-			logger: false,
-			extensionCatalog,
-			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
-		});
+		const ctx = await createLocalApp({ extensionCatalog });
 		try {
 			await expect(ctx.startBackgroundServices()).rejects.toThrow("start rejected");
 			expect(ctx.isReady()).toBe(false);

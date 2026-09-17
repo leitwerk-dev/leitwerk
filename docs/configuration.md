@@ -289,14 +289,11 @@ whose code declares `runtime.docker` receive these credentials through authentic
 resolves current configuration anew. Duplicate registry hosts in a binding fail
 validation. Bindings control delivery, not registry-side account permissions.
 
-Workers materialize Docker `config.json` in a private ephemeral directory (0700;
-file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
-Shutdown and failed bootstrap remove credentials. Credential values and encoded
-auth are redacted from IPC diagnostics; credential payloads are removed from retained
-bootstrap state. Credential directories are outside process volumes and exports.
-Server and worker images must use worker API `2026-09-16` together.
+See [security guarantees](security.md#docker-registry-credentials) and
+[worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).
 
 Worker runtime profiles accept CPU/memory `resources.requests` independently of
 limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
 trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
 selection applies only when creating a claim; existing claims are not migrated.
+**Breaking validation change:** address-pool sizes smaller than their base prefix are rejected at server startup, rather than worker startup. `dockerNetworkArgs()` now rejects unknown network/pool fields instead of ignoring them; valid configurations and public signatures are unchanged.

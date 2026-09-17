@@ -9,6 +9,7 @@ import type {
 	StorageConfigSnapshot,
 	WorkersConfigSnapshot,
 } from "@leitwerk-dev/protocol";
+import type { DockerNetworkConfig } from "@leitwerk-dev/worker-protocol";
 
 export type {
 	ComponentConfigSnapshot as ComponentConfig,
@@ -136,11 +137,7 @@ export interface KubernetesDockerConfig {
 	host_users?: boolean;
 	/** StorageClass selected for the process's single retained PVC. */
 	process_storage_class_name?: string;
-	network?: {
-		bridge_cidr: string;
-		address_pools: Array<{ base: string; size: number }>;
-		dns: string[];
-	};
+	network?: DockerNetworkConfig;
 }
 
 export interface KubernetesHostAliasConfig {

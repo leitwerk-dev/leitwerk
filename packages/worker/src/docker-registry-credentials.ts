@@ -1,11 +1,14 @@
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import type { WorkerDockerRegistryCredential } from "@leitwerk-dev/worker-protocol";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+	dockerRegistryCredentialSchema,
+	type WorkerDockerRegistryCredential,
+} from "@leitwerk-dev/worker-protocol";
+import { is } from "valibot";
 
 /** Credentials live outside every process volume and session export root. */
 export class DockerRegistryCredentials {
 	#directory: string | undefined;
 	#previousConfig: string | undefined;
-	#buildxDirectory: string | undefined;
 	#onExit = () => this.dispose();
 
 	install(credentials: readonly WorkerDockerRegistryCredential[], dockerEnabled: boolean): void {
@@ -17,16 +20,7 @@ export class DockerRegistryCredentials {
 		}
 		const auths: Record<string, { auth: string }> = Object.create(null);
 		for (const credential of credentials) {
-			if (
-				!credential ||
-				typeof credential.registry !== "string" ||
-				!/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/.test(credential.registry) ||
-				typeof credential.username !== "string" ||
-				!credential.username ||
-				/[:\r\n\0]/.test(credential.username) ||
-				typeof credential.password !== "string" ||
-				!credential.password
-			)
+			if (!is(dockerRegistryCredentialSchema, credential))
 				throw new Error("Invalid Docker registry credentials");
 			if (Object.hasOwn(auths, credential.registry))
 				throw new Error("Duplicate Docker registry credentials");
@@ -38,16 +32,16 @@ export class DockerRegistryCredentials {
 			// Do not honor TMPDIR: it can point into retained process storage.
 			this.#directory = mkdtempSync("/tmp/leitwerk-docker-auth-");
 			chmodSync(this.#directory, 0o700);
-			writeFileSync(`${this.#directory}/config.json`, JSON.stringify({ auths }), {
+			mkdirSync(`${this.#directory}/auth`, { mode: 0o700 });
+			writeFileSync(`${this.#directory}/auth/config.json`, JSON.stringify({ auths }), {
 				mode: 0o600,
 				flag: "wx",
 			});
 			this.#previousConfig = process.env.DOCKER_CONFIG;
-			process.env.DOCKER_CONFIG = this.#directory;
+			process.env.DOCKER_CONFIG = `${this.#directory}/auth`;
 			if (!process.env.BUILDX_CONFIG) {
-				this.#buildxDirectory = mkdtempSync("/tmp/leitwerk-buildx-");
-				chmodSync(this.#buildxDirectory, 0o700);
-				process.env.BUILDX_CONFIG = this.#buildxDirectory;
+				mkdirSync(`${this.#directory}/buildx`, { mode: 0o700 });
+				process.env.BUILDX_CONFIG = `${this.#directory}/buildx`;
 			}
 			process.once("exit", this.#onExit);
 		} catch {
@@ -58,13 +52,9 @@ export class DockerRegistryCredentials {
 
 	dispose(): void {
 		process.off("exit", this.#onExit);
-		if (this.#buildxDirectory) {
-			if (process.env.BUILDX_CONFIG === this.#buildxDirectory) delete process.env.BUILDX_CONFIG;
-			rmSync(this.#buildxDirectory, { recursive: true, force: true });
-			this.#buildxDirectory = undefined;
-		}
 		if (!this.#directory) return;
-		if (process.env.DOCKER_CONFIG === this.#directory) {
+		if (process.env.BUILDX_CONFIG === `${this.#directory}/buildx`) delete process.env.BUILDX_CONFIG;
+		if (process.env.DOCKER_CONFIG === `${this.#directory}/auth`) {
 			if (this.#previousConfig === undefined) delete process.env.DOCKER_CONFIG;
 			else process.env.DOCKER_CONFIG = this.#previousConfig;
 		}

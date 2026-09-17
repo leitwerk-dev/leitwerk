@@ -1,5 +1,4 @@
 import { isWorkerErrorClass } from "@leitwerk-dev/domain";
-import { createDurableWsFrame } from "@leitwerk-dev/protocol";
 import {
 	decodeWorkerToServerMessage,
 	type IpcEnvelope,
@@ -15,6 +14,7 @@ import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessEngine } from "../process-engine/types.js";
 import type { ProcessQuestionService } from "../process-question-service.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+import { recordWorkerLifecycleEvent } from "./record-worker-lifecycle-event.js";
 import { createWorkerEventIngestor, type WorkerEventLogEntry } from "./worker-event-ingestor.js";
 import { createWorkerInputAckHandler } from "./worker-input-ack-handler.js";
 import { applyWorkerLeaseObservation, resolveActiveWorkerLease } from "./worker-lease-observer.js";
@@ -304,22 +304,13 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					if (!process) {
 						break;
 					}
-					deps.events.create({
+					recordWorkerLifecycleEvent(deps, {
 						instanceId,
 						eventType: "cleanup_started",
 						data: { reason: msg.payload.reason },
+						level: "info",
+						message: `Worker cleanup started: ${msg.payload.reason || "normal shutdown"}`,
 					});
-					deps.broadcaster.broadcast(
-						createDurableWsFrame({
-							type: "process.event",
-							payload: {
-								eventType: "cleanup_started",
-								level: "info",
-								message: `Worker cleanup started: ${msg.payload.reason || "normal shutdown"}`,
-							},
-							instanceId,
-						}),
-					);
 					break;
 				}
 				case "worker.cleanup_completed": {
@@ -330,25 +321,16 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					}
 					const process = deps.processes.getById(instanceId);
 					if (process) {
-						deps.events.create({
+						recordWorkerLifecycleEvent(deps, {
 							instanceId,
 							eventType: "cleanup_completed",
 							data: {
 								releasedLocks: msg.payload.releasedLocks,
 								removedTransientPaths: msg.payload.removedTransientPaths,
 							},
+							level: "info",
+							message: "Worker cleanup completed",
 						});
-						deps.broadcaster.broadcast(
-							createDurableWsFrame({
-								type: "process.event",
-								payload: {
-									eventType: "cleanup_completed",
-									level: "info",
-									message: "Worker cleanup completed",
-								},
-								instanceId,
-							}),
-						);
 					}
 					callbacks.onCleanupCompleted?.(instanceId, workerId);
 					break;
@@ -361,9 +343,11 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					}
 					const process = deps.processes.getById(instanceId);
 					if (process) {
-						deps.events.create({
+						recordWorkerLifecycleEvent(deps, {
 							instanceId,
 							eventType: "worker_failed",
+							level: "error",
+							message: `Worker failed: ${msg.payload.message}`,
 							data: {
 								message: msg.payload.message,
 								errorCode: msg.payload.errorCode,
@@ -372,17 +356,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 								workerId,
 							},
 						});
-						deps.broadcaster.broadcast(
-							createDurableWsFrame({
-								type: "process.event",
-								payload: {
-									eventType: "worker_failed",
-									level: "error",
-									message: `Worker failed: ${msg.payload.message}`,
-								},
-								instanceId,
-							}),
-						);
+
 						const workerFailureErrorClass = isWorkerErrorClass(msg.payload.errorClass)
 							? msg.payload.errorClass
 							: "infrastructure";

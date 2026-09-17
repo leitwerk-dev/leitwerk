@@ -178,24 +178,21 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 				: !readyAt
 					? "prepare_workspace"
 					: "start_first_turn";
-		const phaseStarts = {
-			start_worker: start.createdAt,
-			connect_worker: lease?.startedAt ?? null,
-			prepare_workspace: lease?.connectedAt ?? null,
-			start_first_turn: readyAt,
-		};
-		const phaseEnds = {
-			start_worker: lease?.startedAt ?? null,
-			connect_worker: lease?.connectedAt ?? null,
-			prepare_workspace: readyAt,
-			start_first_turn: firstTurnAt,
-		};
-		const details = {
-			start_worker: queued ? queueSummary : "Resolve the turn and request its worker.",
-			connect_worker: "Allocate storage, schedule and start the worker, then connect.",
-			prepare_workspace: "Prepare the workspace, tools and model provider.",
-			start_first_turn: "Accept the turn and hand it to the worker.",
-		};
+		const phases = [
+			["start_worker", queued ? queueSummary : "Resolve the turn and request its worker."],
+			["connect_worker", "Allocate storage, schedule and start the worker, then connect."],
+			["prepare_workspace", "Prepare the workspace, tools and model provider."],
+			["start_first_turn", "Accept the turn and hand it to the worker."],
+		] as const;
+		const allocatedAt = lease?.startedAt ?? null;
+		const boundaries = [
+			start.createdAt,
+			allocatedAt,
+			lease?.connectedAt ?? null,
+			readyAt,
+			firstTurnAt,
+		];
+		const observations = [allocatedAt, connectedAt, readyAt, firstTurnAt];
 		const stoppedAt =
 			failed || start.state.kind === "superseded"
 				? start.updatedAt
@@ -205,28 +202,26 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 						input.process.updatedAt ??
 						start.updatedAt)
 					: null;
-		const step = (
-			id: StartupAttemptStepSummary["id"],
-			completed: boolean,
-			occurredAt: string | null,
-		): StartupAttemptStepSummary => ({
-			id,
-			label:
-				queued && id === "start_worker" ? "Waiting for worker capacity" : STARTUP_STEP_LABELS[id],
-			status: completed
-				? "completed"
-				: status === "superseded"
-					? "superseded"
-					: failed && id === failedStepId
-						? "failed"
-						: id === failedStepId && status === "starting"
-							? "in_progress"
-							: "pending",
-			occurredAt,
-			startedAt: phaseStarts[id],
-			endedAt: phaseEnds[id] ?? (id === failedStepId ? stoppedAt : null),
-			detail: details[id],
-		});
+		const steps = phases.map(
+			([id, detail], phase): StartupAttemptStepSummary => ({
+				id,
+				label:
+					queued && id === "start_worker" ? "Waiting for worker capacity" : STARTUP_STEP_LABELS[id],
+				status: (phase === 0 ? Boolean(lease) : Boolean(observations[phase]))
+					? "completed"
+					: status === "superseded"
+						? "superseded"
+						: failed && id === failedStepId
+							? "failed"
+							: id === failedStepId && status === "starting"
+								? "in_progress"
+								: "pending",
+				occurredAt: observations[phase] ?? null,
+				startedAt: boundaries[phase] ?? null,
+				endedAt: boundaries[phase + 1] ?? (id === failedStepId ? stoppedAt : null),
+				detail,
+			}),
+		);
 		return {
 			startRecordId: start.id,
 			workerLeaseId: lease?.id ?? null,
@@ -242,12 +237,7 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 						? queueSummary
 						: null,
 			recoveredByStartRecordId: null,
-			steps: [
-				step("start_worker", Boolean(lease), lease?.startedAt ?? null),
-				step("connect_worker", Boolean(connectedAt), connectedAt),
-				step("prepare_workspace", Boolean(readyAt), readyAt),
-				step("start_first_turn", Boolean(firstTurnAt), firstTurnAt),
-			],
+			steps,
 		};
 	});
 	const recoveredAttempts = attempts.map((attempt, index) => {

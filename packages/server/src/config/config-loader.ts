@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import {
+	dockerNetworkSchema,
+	dockerRegistryCredentialSchema,
+	ipAddressSchema as kubernetesHostAliasIpSchema,
+} from "@leitwerk-dev/worker-protocol";
 import { createDefu } from "defu";
 import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
@@ -177,11 +181,6 @@ const authConfigSchema = v.looseObject({
 });
 
 const safeSkillIdSchema = v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN));
-const kubernetesHostAliasIpSchema = v.pipe(
-	v.string(),
-	v.nonEmpty(),
-	v.check((value) => isIP(value) !== 0, "Expected an IPv4 or IPv6 address"),
-);
 const kubernetesHostnameSchema = v.pipe(
 	v.string(),
 	v.nonEmpty(),
@@ -198,6 +197,8 @@ const skillRepositorySchema = v.strictObject({
 	ref: v.pipe(v.string(), v.nonEmpty()),
 	path: v.optional(v.pipe(v.string(), v.nonEmpty())),
 });
+
+const cpuMemoryEntries = { cpu: v.optional(v.string()), memory: v.optional(v.string()) };
 
 const configSchema = v.looseObject({
 	skill_repositories: v.optional(v.array(skillRepositorySchema)),
@@ -342,14 +343,7 @@ const configSchema = v.looseObject({
 	auth: v.optional(authConfigSchema),
 	docker_registries: v.optional(
 		v.strictObject({
-			profiles: v.record(
-				v.string(),
-				v.strictObject({
-					registry: v.pipe(v.string(), v.regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/)),
-					username: v.pipe(v.string(), v.nonEmpty(), v.regex(/^[^:\r\n\0]+$/)),
-					password: v.pipe(v.string(), v.nonEmpty()),
-				}),
-			),
+			profiles: v.record(v.string(), v.strictObject(dockerRegistryCredentialSchema.entries)),
 			process_bindings: v.record(v.string(), v.array(v.pipe(v.string(), v.nonEmpty()))),
 		}),
 	),
@@ -392,37 +386,7 @@ const configSchema = v.looseObject({
 					runtime_class_name: v.optional(v.string()),
 					host_users: v.optional(v.boolean()),
 					process_storage_class_name: v.optional(v.string()),
-					network: v.optional(
-						v.strictObject({
-							bridge_cidr: v.pipe(
-								v.string(),
-								v.check(
-									(value) =>
-										/^.+\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
-										isIP(value.split("/")[0] ?? "") === 4,
-									"Expected an IPv4 CIDR",
-								),
-							),
-							address_pools: v.pipe(
-								v.array(
-									v.strictObject({
-										base: v.pipe(
-											v.string(),
-											v.check(
-												(value) =>
-													/^.+\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
-													isIP(value.split("/")[0] ?? "") === 4,
-												"Expected an IPv4 CIDR",
-											),
-										),
-										size: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(30)),
-									}),
-								),
-								v.nonEmpty(),
-							),
-							dns: v.pipe(v.array(kubernetesHostAliasIpSchema), v.nonEmpty()),
-						}),
-					),
+					network: v.optional(dockerNetworkSchema),
 				}),
 			),
 			pod: v.optional(
@@ -459,14 +423,9 @@ const configSchema = v.looseObject({
 				image_pull_policy: v.optional(v.string()),
 				resources: v.optional(
 					v.looseObject({
-						cpu: v.optional(v.string()),
-						memory: v.optional(v.string()),
-						requests: v.optional(
-							v.strictObject({ cpu: v.optional(v.string()), memory: v.optional(v.string()) }),
-						),
-						limits: v.optional(
-							v.looseObject({ cpu: v.optional(v.string()), memory: v.optional(v.string()) }),
-						),
+						...cpuMemoryEntries,
+						requests: v.optional(v.strictObject(cpuMemoryEntries)),
+						limits: v.optional(v.looseObject(cpuMemoryEntries)),
 					}),
 				),
 			}),

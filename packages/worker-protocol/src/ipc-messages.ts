@@ -11,6 +11,8 @@ import type {
 	WorkerBootstrapReceipt,
 } from "@leitwerk-dev/domain";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol/config-snapshot";
+import type { InferOutput } from "valibot";
+import type { dockerRegistryCredentialSchema } from "./docker-config.js";
 import { IPC_PROTOCOL_VERSION, type IpcEnvelope } from "./ipc-codec.js";
 
 export interface ProcessInstanceSnapshot {
@@ -97,11 +99,8 @@ export interface WorkerGitHttpsCredential {
 export type WorkerRepositoryCredential = WorkerGitSshCredential | WorkerGitHttpsCredential;
 
 /** Secret material allowed only in authenticated worker.start, never snapshots or exports. */
-export interface WorkerDockerRegistryCredential {
-	registry: string;
-	username: string;
-	password: string;
-}
+export interface WorkerDockerRegistryCredential
+	extends InferOutput<typeof dockerRegistryCredentialSchema> {}
 
 export interface LlmWorkerStartBootstrap {
 	kind: "llm";

@@ -113,21 +113,19 @@ export interface BootstrapWorkerRuntimeResult {
 }
 
 function withoutCredentialValues(payload: WorkerStartPayload): WorkerStartPayload {
-	const withoutRepositoryCredentials = {
+	const withoutCredentials = {
 		...payload,
 		repositoryCredentials: undefined,
 		dockerRegistryCredentials: undefined,
 	} as WorkerStartPayload;
-	if (!isLlmWorkerStartPayload(payload) || !payload.bootstrap.credential) {
-		return withoutRepositoryCredentials;
+	if (!isLlmWorkerStartPayload(withoutCredentials) || !withoutCredentials.bootstrap.credential) {
+		return withoutCredentials;
 	}
 	return {
-		...payload,
-		repositoryCredentials: undefined,
-		dockerRegistryCredentials: undefined,
+		...withoutCredentials,
 		bootstrap: {
-			...payload.bootstrap,
-			credential: { ...payload.bootstrap.credential, values: {} },
+			...withoutCredentials.bootstrap,
+			credential: { ...withoutCredentials.bootstrap.credential, values: {} },
 		},
 	};
 }

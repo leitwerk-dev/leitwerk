@@ -32,19 +32,13 @@ export function createWorkerCapacityQueue<T>(deps: {
 
 	function launch(instanceId: string): Promise<T> {
 		// Reserve before yielding, including while volume/runtime allocation is pending.
-		const { promise, resolve, reject } = Promise.withResolvers<T>();
-		starting.set(instanceId, promise);
-		try {
-			deps.start(instanceId).then(resolve, reject);
-		} catch (error) {
-			reject(error);
-		}
-		void promise
+		const promise = Promise.resolve()
+			.then(() => deps.start(instanceId))
 			.finally(() => {
 				starting.delete(instanceId);
 				wake();
-			})
-			.catch(() => {});
+			});
+		starting.set(instanceId, promise);
 		return promise;
 	}
 

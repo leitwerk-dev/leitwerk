@@ -82,12 +82,16 @@ describe("worker capacity queue", () => {
 		await f.queue.stop();
 	});
 
-	it("releases failed reservations and continues after a queued startup fails", async () => {
+	it.each([false, true])("releases failed reservations (synchronous: %s)", async (sync) => {
 		const f = fixture();
 		await f.request("one");
 		await f.request("broken");
 		await f.request("next");
-		f.start.mockRejectedValueOnce(new Error("allocation failed"));
+		f.start.mockImplementationOnce(() => {
+			const error = new Error("allocation failed");
+			if (sync) throw error;
+			return Promise.reject(error);
+		});
 		f.active.clear();
 		f.queue.wake();
 		await vi.runAllTimersAsync();
@@ -96,11 +100,11 @@ describe("worker capacity queue", () => {
 		await f.queue.stop();
 	});
 
-	it("discards pending work on shutdown and rejects new requests", async () => {
+	it("awaits reserved work on shutdown, discards queued work, and rejects new requests", async () => {
 		const f = fixture();
-		await f.request("one");
-		await f.request("two");
-		await f.queue.stop();
+		const first = f.request("one");
+		void f.request("two");
+		await Promise.all([first, f.queue.stop()]);
 		f.active.clear();
 		f.queue.wake();
 		await vi.runAllTimersAsync();

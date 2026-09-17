@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	buildKubernetesAdmissionPolicyManifests,
 	buildKubernetesDockerConfigJsonSecretManifest,
 	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
@@ -296,51 +295,6 @@ describe("Kubernetes manifest builders", () => {
 			{ name: "NODE_EXTRA_CA_CERTS", value: KUBERNETES_WORKER_SERVER_CA_CERT_PATH },
 		]);
 		expect(manifest.spec.automountServiceAccountToken).toBe(false);
-	});
-
-	it("builds admission policy constraints for process resources", () => {
-		const { policy, binding } = buildKubernetesAdmissionPolicyManifests({
-			name: "leitwerk-process-policy",
-			serverNamespace: "leitwerk-system",
-			serverServiceAccountName: "leitwerk-server",
-			processNamespacePrefix: "leitwerk-process-",
-			allowedWorkerServiceAccount: "leitwerk-worker",
-			allowedImagePullSecretNames: ["private-registry"],
-		});
-		const expressions = policy.spec.validations.map((validation) => validation.expression);
-
-		expect(policy.spec.matchConditions?.[0]?.expression).toContain(
-			"system:serviceaccount:leitwerk-system:leitwerk-server",
-		);
-		expect(policy.spec.matchConstraints.resourceRules[0]?.resources).toEqual([
-			"namespaces",
-			"pods",
-			"persistentvolumeclaims",
-			"serviceaccounts",
-			"configmaps",
-			"secrets",
-		]);
-		expect(expressions).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("leitwerk-process-"),
-				expect.stringContaining("process-namespace"),
-				expect.stringContaining("process-volume"),
-				expect.stringContaining("server-ca"),
-				expect.stringContaining("private-registry"),
-				expect.stringContaining("image-pull-secret"),
-				expect.stringContaining(".dockerconfigjson"),
-				expect.stringContaining("worker-service-account"),
-				expect.stringContaining("leitwerk-worker"),
-				expect.stringContaining("leitwerk.dev/worker-id"),
-				expect.stringContaining("leitwerk.dev/server-epoch"),
-				expect.stringContaining("session-export-helper"),
-				expect.stringContaining("leitwerk.dev/export-id"),
-			]),
-		);
-		expect(binding.spec).toEqual({
-			policyName: "leitwerk-process-policy",
-			validationActions: ["Deny"],
-		});
 	});
 
 	it("maps Kubernetes failure observations into worker exits", () => {

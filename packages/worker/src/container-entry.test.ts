@@ -274,15 +274,12 @@ describe("worker container entrypoint", () => {
 
 describe("trusted Docker networking", () => {
 	it("passes bridge, pool and DNS options without allowing arbitrary daemon flags", () => {
-		expect(
-			dockerNetworkArgs(
-				JSON.stringify({
-					bridge_cidr: "192.168.224.1/24",
-					address_pools: [{ base: "192.168.232.0/21", size: 24 }],
-					dns: ["10.96.0.10"],
-				}),
-			),
-		).toEqual([
+		const network = {
+			bridge_cidr: "192.168.224.1/24",
+			address_pools: [{ base: "192.168.232.0/21", size: 24 }],
+			dns: ["10.96.0.10"],
+		};
+		expect(dockerNetworkArgs(JSON.stringify(network))).toEqual([
 			"--bip",
 			"192.168.224.1/24",
 			"--default-address-pool",
@@ -290,8 +287,11 @@ describe("trusted Docker networking", () => {
 			"--dns",
 			"10.96.0.10",
 		]);
-		expect(() =>
-			dockerNetworkArgs(JSON.stringify({ bridge_cidr: "--host=tcp://0.0.0.0:2375" })),
-		).toThrow("Invalid trusted");
+		for (const invalid of [
+			{ ...network, extra: true },
+			{ ...network, address_pools: [{ ...network.address_pools[0], extra: true }] },
+			{ bridge_cidr: "--host=tcp://0.0.0.0:2375" },
+		])
+			expect(() => dockerNetworkArgs(JSON.stringify(invalid))).toThrow("Invalid trusted");
 	});
 });

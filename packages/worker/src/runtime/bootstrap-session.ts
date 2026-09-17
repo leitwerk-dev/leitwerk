@@ -166,50 +166,44 @@ export class WorkerLiveResources {
 	): Promise<WorkerBootstrapCompletion> {
 		const toolPreparationAbort = new AbortController();
 		this.#toolPreparationAbort = toolPreparationAbort;
-		const bootstrapped = await bootstrapWorkerRuntime({
-			instanceId: this.deps.instanceId,
-			payload,
-			piFactory: this.deps.piFactory,
-			gitOps: this.deps.gitOps,
-			developmentTools: this.deps.developmentTools,
-			configureDockerCredentials: (credentials, enabled) =>
-				this.#dockerCredentials.install(credentials, enabled),
-			toolPreparationSignal: toolPreparationAbort.signal,
-			scheduler: this.deps.scheduler,
-			onToolPreparationProgress: (repositoryKey, phase) =>
-				this.deps.progress({
-					level: "info",
-					code: `development_tools.${phase}`,
-					message: `${phase === "installing" ? "Installing" : "Verifying"} development tools for ${repositoryKey}`,
-					details: { repositoryKey },
-				}),
-			onToolDiagnosticTrace: this.deps.diagnosticTrace,
-			resolveWorkerProcess: this.deps.resolveWorkerProcess,
-		})
-			.catch((error) => {
-				this.#dockerCredentials.dispose();
-				throw error;
-			})
-			.finally(() => {
-				if (this.#toolPreparationAbort === toolPreparationAbort) this.#toolPreparationAbort = null;
-			});
-		let session: PreparedWorkerSession;
 		try {
-			session = validatePreparedSession({ bootstrapped, payload, settings });
+			const bootstrapped = await bootstrapWorkerRuntime({
+				instanceId: this.deps.instanceId,
+				payload,
+				piFactory: this.deps.piFactory,
+				gitOps: this.deps.gitOps,
+				developmentTools: this.deps.developmentTools,
+				configureDockerCredentials: (credentials, enabled) =>
+					this.#dockerCredentials.install(credentials, enabled),
+				toolPreparationSignal: toolPreparationAbort.signal,
+				scheduler: this.deps.scheduler,
+				onToolPreparationProgress: (repositoryKey, phase) =>
+					this.deps.progress({
+						level: "info",
+						code: `development_tools.${phase}`,
+						message: `${phase === "installing" ? "Installing" : "Verifying"} development tools for ${repositoryKey}`,
+						details: { repositoryKey },
+					}),
+				onToolDiagnosticTrace: this.deps.diagnosticTrace,
+				resolveWorkerProcess: this.deps.resolveWorkerProcess,
+			});
+			const session = validatePreparedSession({ bootstrapped, payload, settings });
+			this.#provisional.set(payload.turnStart.id, bootstrapped.activation);
+			return {
+				session,
+				pendingInputs: bootstrapped.pendingInputs,
+				readyPayload: bootstrapped.readyPayload,
+				...(bootstrapped.credentialRefresh
+					? { credentialRefresh: bootstrapped.credentialRefresh }
+					: {}),
+				diagnostics: bootstrapped.diagnostics,
+			};
 		} catch (error) {
 			this.#dockerCredentials.dispose();
 			throw error;
+		} finally {
+			if (this.#toolPreparationAbort === toolPreparationAbort) this.#toolPreparationAbort = null;
 		}
-		this.#provisional.set(payload.turnStart.id, bootstrapped.activation);
-		return {
-			session,
-			pendingInputs: bootstrapped.pendingInputs,
-			readyPayload: bootstrapped.readyPayload,
-			...(bootstrapped.credentialRefresh
-				? { credentialRefresh: bootstrapped.credentialRefresh }
-				: {}),
-			diagnostics: bootstrapped.diagnostics,
-		};
 	}
 
 	async activate(startRecordId: string, turnRecordId: string, session: PreparedWorkerSession) {

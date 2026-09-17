@@ -57,6 +57,9 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 			) as T;
 		return value;
 	}
+	const emitExtensionEvent = (event: string, payload: unknown) =>
+		adapters.extensionEvents?.emit(event, redactValue(payload));
+	const writeStderr = (text: string) => adapters.stderr?.write(`${redact(text)}\n`);
 	const queue: WorkerRuntimeEvent[] = [];
 	const timers = new Map<WorkerTimerName, WorkerRuntimeTimer>();
 	let state: WorkerRuntimeStateMachine = createInitialWorkerRuntimeState();
@@ -70,8 +73,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		workerId: config.workerId,
 		now: () => adapters.scheduler.now(),
 		send: (message) => ipc.send(redactValue(message)),
-		emitExtensionEvent: (event, payload) =>
-			adapters.extensionEvents?.emit(event, redactValue(payload)),
+		emitExtensionEvent,
 	});
 	const questionBridge = new WorkerQuestionBridge(reporter);
 	const integrationToolBridge = new WorkerIntegrationToolBridge(reporter);
@@ -79,8 +81,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	let dispatch: (event: WorkerRuntimeEvent) => void;
 	const piEvents = createPiEventReporter({
 		reporter,
-		emitExtensionEvent: (event, payload) =>
-			adapters.extensionEvents?.emit(event, redactValue(payload)),
+		emitExtensionEvent,
 		getCurrentSelectedTurnId: () => state.session?.selectedTurnId ?? null,
 		getSessionTainted: () => state.sessionTainted,
 		onLifecycleObservation(kind) {
@@ -315,19 +316,16 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 							...(output.payload as object),
 						}
 					: output.payload;
-			adapters.extensionEvents?.emit(output.event, redactValue(payload));
+			emitExtensionEvent(output.event, payload);
 			return;
 		}
 		if (output.kind === "diagnostic") {
 			reporter.workerTrace(output.payload, state.session?.selectedTurnId ?? null);
-			if (output.stderr) adapters.stderr?.write(`${redact(output.stderr)}\n`);
+			if (output.stderr) writeStderr(output.stderr);
 			return;
 		}
-		if (output.kind === "stderr") {
-			adapters.stderr?.write(`${redact(output.message)}\n`);
-			return;
-		}
-		launch(output);
+		if (output.kind === "stderr") writeStderr(output.message);
+		else launch(output);
 	};
 
 	function drain(): void {

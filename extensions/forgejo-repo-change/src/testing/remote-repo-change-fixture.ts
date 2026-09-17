@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { cpSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -56,8 +56,17 @@ export class TemporaryGitRemote {
 	readonly initialSha: string;
 	readonly local: LocalGit;
 
-	constructor(readonly root: string) {
+	constructor(
+		readonly root: string,
+		seed?: TemporaryGitRemote,
+	) {
 		this.local = new LocalGit(root);
+		if (seed) {
+			this.barePath = path.join(realpathSync(root), "repositories", `${OWNER}--${REPO}.git`);
+			cpSync(seed.barePath, this.barePath, { recursive: true });
+			this.initialSha = seed.initialSha;
+			return;
+		}
 		this.barePath = this.local.seed({
 			owner: OWNER,
 			name: REPO,
@@ -358,7 +367,7 @@ export type RemoteRepoChangeFixture = Awaited<ReturnType<typeof createRemoteRepo
 
 export async function createRemoteRepoChangeFixture(
 	dockerPreflight: (timeoutMs: number) => Promise<void> = async () => {},
-	options: { docker?: boolean; botLogin?: string } = {},
+	options: { docker?: boolean; botLogin?: string; seed?: TemporaryGitRemote } = {},
 ) {
 	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
 	let runningHarness: IntegrationHarness | undefined;
@@ -369,7 +378,7 @@ export async function createRemoteRepoChangeFixture(
 		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	}
 	try {
-		const temporaryGit = new TemporaryGitRemote(root);
+		const temporaryGit = new TemporaryGitRemote(root, options.seed);
 		const forgejo = forgejoFixture(temporaryGit, options.botLogin);
 		const woodpecker = woodpeckerFixture(root);
 		const piTurns: PiTurnRecord[] = [];
@@ -409,7 +418,6 @@ export async function createRemoteRepoChangeFixture(
 			configOverride(config) {
 				if (!config.local_worker) throw new Error("Fixture requires local worker configuration");
 				config.local_worker.allow_host_docker = options.docker ?? true;
-				config.storage.sqlite_path = path.join(root, "storage", "leitwerk.sqlite");
 				config.storage.tree_files_dir = path.join(root, "storage", "trees");
 				config.storage.process_workspaces_dir = path.join(root, "storage", "workspaces");
 				config.pi.agent_dir = path.join(root, "storage", "pi-agent");

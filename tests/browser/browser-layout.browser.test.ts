@@ -62,10 +62,14 @@ for (const viewport of [
 		const scroll = page.locator('[data-role="chronicle-scroll"]');
 		await scroll.hover();
 		await expect
-			.poll(async () => {
-				await page.mouse.wheel(0, -10_000);
-				return scroll.evaluate((element) => element.scrollTop);
-			})
+			.poll(
+				async () => {
+					await page.mouse.wheel(0, -10_000);
+					return scroll.evaluate((element) => element.scrollTop);
+				},
+				// Firefox caps each wheel step; keep sending input without polling backoff.
+				{ intervals: [100] },
+			)
 			.toBe(0);
 		const composer = page.getByRole("region", { name: "Choose the next action" });
 		await expect(composer).toBeInViewport();

@@ -1,6 +1,5 @@
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { buildKubernetesAdmissionPolicyManifests } from "@leitwerk-dev/worker-runners";
 import { describe, expect, it } from "vitest";
 import { parse, parseAllDocuments } from "yaml";
 import { validateConfig } from "./config/config-loader.js";
@@ -23,17 +22,22 @@ function helmAvailable(): boolean {
 	}
 }
 
-function helmJsonValues(values: Record<string, unknown>): string[] {
-	return Object.entries(values).flatMap(([key, value]) => [
+function renderChart(values: JsonObject = {}, extraArgs: string[] = []): JsonObject[] {
+	const valueArgs = Object.entries(values).flatMap(([key, value]) => [
 		"--set-json",
 		`${key}=${JSON.stringify(value)}`,
 	]);
-}
-
-function renderChart(extraArgs: string[]): unknown[] {
 	const rendered = execFileSync(
 		"helm",
-		["template", "leitwerk", chartRoot, "--namespace", "leitwerk-k8s-test", ...extraArgs],
+		[
+			"template",
+			"leitwerk",
+			chartRoot,
+			"--namespace",
+			"leitwerk-k8s-test",
+			...valueArgs,
+			...extraArgs,
+		],
 		{ encoding: "utf8", env: helmEnv },
 	);
 	return parseAllDocuments(rendered)
@@ -44,27 +48,11 @@ function renderChart(extraArgs: string[]): unknown[] {
 		);
 }
 
-function findConfigMap(documents: unknown[]): Record<string, unknown> {
-	const configMap = documents.find(
-		(document): document is Record<string, unknown> =>
-			typeof document === "object" &&
-			document !== null &&
-			(document as Record<string, unknown>).kind === "ConfigMap",
-	);
-	if (!configMap) {
-		throw new Error("Rendered chart did not include a ConfigMap");
-	}
-	return configMap;
+function findDocumentsByKind(documents: JsonObject[], kind: string): JsonObject[] {
+	return documents.filter((document) => document.kind === kind);
 }
 
-function findDocumentsByKind(documents: unknown[], kind: string): JsonObject[] {
-	return documents.filter(
-		(document): document is JsonObject =>
-			typeof document === "object" && document !== null && (document as JsonObject).kind === kind,
-	);
-}
-
-function namedDocument(documents: unknown[], kind: string, name: string): JsonObject {
+function namedDocument(documents: JsonObject[], kind: string, name: string): JsonObject {
 	const document = findDocumentsByKind(documents, kind).find(
 		(candidate) => (candidate.metadata as JsonObject)?.name === name,
 	);
@@ -76,24 +64,17 @@ function podSpec(document: JsonObject): JsonObject {
 	return ((document.spec as JsonObject).template as JsonObject).spec as JsonObject;
 }
 
-function renderedLeitwerkConfig(documents: unknown[]): Record<string, unknown> {
-	const configMap = findConfigMap(documents);
-	const data = configMap.data;
-	if (typeof data !== "object" || data === null || Array.isArray(data)) {
-		throw new Error("Rendered ConfigMap data must be an object");
-	}
-	const configText = (data as Record<string, unknown>)["leitwerk.yaml"];
-	if (typeof configText !== "string") {
-		throw new Error("Rendered ConfigMap must include leitwerk.yaml");
-	}
-	return parse(configText) as Record<string, unknown>;
+function renderedLeitwerkConfig(documents: JsonObject[]): Record<string, unknown> {
+	const configMap = namedDocument(documents, "ConfigMap", "leitwerk-server-config");
+	expect(configMap.data).toMatchObject({ "leitwerk.yaml": expect.any(String) });
+	return parse((configMap.data as Record<string, string>)["leitwerk.yaml"]) as JsonObject;
 }
 
 const describeIfHelm = helmAvailable() ? describe : describe.skip;
 
 describeIfHelm("Kubernetes Helm chart rendering", () => {
 	it("templates a default Kubernetes-mode config accepted by the server validator", () => {
-		const documents = renderChart([]);
+		const documents = renderChart();
 		const config = renderedLeitwerkConfig(documents);
 
 		expect(validateConfig(config)).toEqual([]);
@@ -108,20 +89,16 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("templates trusted Kubernetes Docker wiring only when enabled", () => {
-		const defaultConfig = renderedLeitwerkConfig(renderChart([]));
+		const defaultConfig = renderedLeitwerkConfig(renderChart());
 		expect((defaultConfig.kubernetes as JsonObject).docker).toBeUndefined();
 
 		const config = renderedLeitwerkConfig(
-			renderChart([
-				"--set",
-				"kubernetes.docker.enabled=true",
-				"--set",
-				"kubernetes.docker.runtimeClassName=leitwerk-sysbox",
-				"--set",
-				"kubernetes.docker.hostUsers=false",
-				"--set",
-				"kubernetes.docker.processStorageClassName=leitwerk-docker-process",
-			]),
+			renderChart({
+				"kubernetes.docker.enabled": true,
+				"kubernetes.docker.runtimeClassName": "leitwerk-sysbox",
+				"kubernetes.docker.hostUsers": false,
+				"kubernetes.docker.processStorageClassName": "leitwerk-docker-process",
+			}),
 		);
 
 		expect(validateConfig(config)).toEqual([]);
@@ -137,12 +114,10 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("templates internal TLS config and Kubernetes worker CA wiring when enabled", () => {
-		const documents = renderChart([
-			"--set",
-			"internalTls.enabled=true",
-			"--set",
-			"internalTls.secretName=leitwerk-internal-tls",
-		]);
+		const documents = renderChart({
+			"internalTls.enabled": true,
+			"internalTls.secretName": "leitwerk-internal-tls",
+		});
 		const config = renderedLeitwerkConfig(documents);
 
 		expect(validateConfig(config)).toEqual([]);
@@ -160,7 +135,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("templates cluster-scoped RBAC and admission policy for per-process namespaces", () => {
-		const documents = renderChart([]);
+		const documents = renderChart();
 		const clusterRoles = findDocumentsByKind(documents, "ClusterRole");
 		const clusterRoleBindings = findDocumentsByKind(documents, "ClusterRoleBinding");
 		const policies = findDocumentsByKind(documents, "ValidatingAdmissionPolicy");
@@ -180,28 +155,92 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	it.each([
 		false,
 		true,
-	])("keeps worker and session exporter admission rules aligned with the runner (pre-provisioning: %s)", (preProvision) => {
-		const documents = renderChart(
-			helmJsonValues({
-				"kubernetes.processVolume.preProvision.enabled": preProvision,
-				"kubernetes.processVolume.storageClassName": "csi-storage",
-				"kubernetes.workerServiceAccount": "custom-worker",
-			}),
-		);
-		const rendered = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
-		const { policy } = buildKubernetesAdmissionPolicyManifests({
-			name: "leitwerk-server-process-resources",
-			serverNamespace: "leitwerk-k8s-test",
-			serverServiceAccountName: "leitwerk-server",
-			processNamespacePrefix: "leitwerk-process-",
-			allowedWorkerServiceAccount: "custom-worker",
-			allowVolumePreparation: preProvision,
+	])("restricts process resources and scopes preparation exceptions (pre-provisioning: %s)", (preProvision) => {
+		const documents = renderChart({
+			"kubernetes.processVolume.preProvision.enabled": preProvision,
+			"kubernetes.processVolume.storageClassName": "csi-storage",
+			"kubernetes.workerServiceAccount": "custom-worker",
 		});
-		expect(rendered.spec).toEqual(policy.spec);
+		const rendered = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
+		const spec = rendered.spec as JsonObject;
+		expect(spec.failurePolicy).toBe("Fail");
+		expect(JSON.stringify(spec.matchConditions)).toContain(
+			"system:serviceaccount:leitwerk-k8s-test:leitwerk-server",
+		);
+		expect(spec.matchConstraints).toEqual({
+			resourceRules: [
+				{
+					apiGroups: [""],
+					apiVersions: ["v1"],
+					operations: ["CREATE", "UPDATE", "DELETE"],
+					resources: [
+						"namespaces",
+						"pods",
+						"persistentvolumeclaims",
+						"serviceaccounts",
+						"configmaps",
+						"secrets",
+					],
+				},
+			],
+		});
+		const rules = spec.validations as Array<{ expression: string; message: string }>;
+		expect(rules).toHaveLength(preProvision ? 19 : 18);
+		for (const fragment of [
+			"process-namespace",
+			"process-volume",
+			"server-ca",
+			"worker-service-account",
+			"custom-worker",
+			"leitwerk.dev/instance-id",
+			"leitwerk.dev/worker-id",
+			"leitwerk.dev/server-epoch",
+			"session-export-helper",
+			"leitwerk.dev/export-id",
+			"image-pull-secret",
+			".dockerconfigjson",
+		]) {
+			expect(
+				rules.some((rule) => rule.expression.includes(fragment)),
+				fragment,
+			).toBe(true);
+		}
+		const exceptions = rules.filter((rule) =>
+			rule.expression.endsWith(" || variables.isPreparation"),
+		);
+		expect(exceptions.map((rule) => rule.message)).toEqual(
+			preProvision
+				? [
+						"leitwerk process resources must be created in process namespaces",
+						"leitwerk PVCs must carry process-volume component label",
+						"leitwerk pods must carry worker or session-export-helper component label",
+						"leitwerk worker pods must use the configured worker ServiceAccount",
+						"leitwerk worker pods must carry instance-id label",
+						"leitwerk worker pods must carry worker-id label",
+						"leitwerk worker pods must carry server-epoch label",
+						"leitwerk session export helper pods must carry export-id label",
+					]
+				: [],
+		);
+		if (preProvision) {
+			expect(JSON.stringify(spec.variables)).toContain(
+				"variables.resource.metadata.namespace == 'leitwerk-k8s-test'",
+			);
+			expect(rules[0].expression).toContain(
+				"variables.resource.spec.serviceAccountName == 'default'",
+			);
+			expect(rules[0].expression).toContain(
+				"!variables.resource.spec.automountServiceAccountToken",
+			);
+		} else expect(JSON.stringify(spec)).not.toContain("isPreparation");
+		expect(findDocumentsByKind(documents, "ValidatingAdmissionPolicyBinding")[0].spec).toEqual({
+			policyName: "leitwerk-server-process-resources",
+			validationActions: ["Deny"],
+		});
 	});
 
 	it("templates the Kind overlay with local worker profile images", () => {
-		const documents = renderChart(["-f", `${chartRoot}/values-kind.yaml`]);
+		const documents = renderChart({}, ["-f", `${chartRoot}/values-kind.yaml`]);
 		const config = renderedLeitwerkConfig(documents);
 
 		expect(validateConfig(config)).toEqual([]);
@@ -216,16 +255,12 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("mounts external config and credential Secrets without rendering their contents", () => {
-		const documents = renderChart([
-			"--set",
-			"server.existingConfigSecret=leitwerk-runtime-config",
-			"--set",
-			"server.credentialEncryption.existingSecret=leitwerk-credentials",
-			"--set",
-			"gateway.enabled=true",
-			"--set",
-			"server.storage.retain=true",
-		]);
+		const documents = renderChart({
+			"server.existingConfigSecret": "leitwerk-runtime-config",
+			"server.credentialEncryption.existingSecret": "leitwerk-credentials",
+			"gateway.enabled": true,
+			"server.storage.retain": true,
+		});
 		const rendered = JSON.stringify(documents);
 		const configMaps = findDocumentsByKind(documents, "ConfigMap");
 
@@ -239,7 +274,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("mounts an external server PVC without rendering a chart-owned PVC", () => {
-		const documents = renderChart(["--set", "server.storage.existingClaim=leitwerk-server-data"]);
+		const documents = renderChart({ "server.storage.existingClaim": "leitwerk-server-data" });
 		const pvcs = findDocumentsByKind(documents, "PersistentVolumeClaim");
 		const deployment = findDocumentsByKind(documents, "Deployment")[0];
 
@@ -248,128 +283,88 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("schedules the gateway with its configured selector, affinity, and tolerations", () => {
-		const documents = renderChart([
-			"--set",
-			"gateway.enabled=true",
-			"--set",
-			"gateway.nodeSelector.example\\.com/node-role=workload",
-			"--set",
-			"gateway.tolerations[0].key=example.com/dedicated",
-			"--set",
-			"gateway.tolerations[0].operator=Equal",
-			"--set",
-			"gateway.tolerations[0].value=true",
-			"--set",
-			"gateway.tolerations[0].effect=NoSchedule",
-			"--set",
-			"gateway.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution[0].weight=1",
-		]);
-		const gateway = findDocumentsByKind(documents, "Deployment").find(
-			(document) => (document.metadata as Record<string, unknown>)?.name === "leitwerk-gateway",
-		);
-		const podSpec = ((
-			(gateway?.spec as Record<string, unknown>).template as Record<string, unknown>
-		).spec ?? {}) as Record<string, unknown>;
+		const values = {
+			"gateway.enabled": true,
+			"gateway.nodeSelector": { "example.com/node-role": "workload" },
+			"gateway.tolerations": [
+				{ key: "example.com/dedicated", operator: "Equal", value: true, effect: "NoSchedule" },
+			],
+			"gateway.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution": [
+				{ weight: 1 },
+			],
+		};
+		const documents = renderChart(values);
+		const gatewayPod = podSpec(namedDocument(documents, "Deployment", "leitwerk-gateway"));
 
-		expect(podSpec.nodeSelector).toEqual({ "example.com/node-role": "workload" });
-		expect(podSpec.tolerations).toEqual([
-			{
-				key: "example.com/dedicated",
-				operator: "Equal",
-				value: true,
-				effect: "NoSchedule",
-			},
-		]);
-		expect(podSpec.affinity).toBeDefined();
+		expect(gatewayPod.nodeSelector).toEqual(values["gateway.nodeSelector"]);
+		expect(gatewayPod.tolerations).toEqual(values["gateway.tolerations"]);
+		expect(gatewayPod.affinity).toBeDefined();
 	});
 
 	it("renders host aliases, restricted security contexts, and additional environment wiring", () => {
-		const documents = renderChart(
-			helmJsonValues({
-				"gateway.enabled": true,
-				"server.hostAliases": [{ ip: "192.0.2.10", hostnames: ["model-api.example.test"] }],
-				"kubernetes.pod.hostAliases": [
-					{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] },
-				],
-				"server.podSecurityContext": {
-					runAsNonRoot: true,
-					fsGroup: 1000,
-					seccompProfile: { type: "RuntimeDefault" },
-				},
-				"server.containerSecurityContext": {
-					allowPrivilegeEscalation: false,
-					capabilities: { drop: ["ALL"] },
-				},
-				"server.extraEnvFrom": [{ secretRef: { name: "model-provider-env" } }],
-				"gateway.podSecurityContext": {
-					runAsNonRoot: true,
-					seccompProfile: { type: "RuntimeDefault" },
-				},
-				"gateway.initContainerSecurityContext": {
-					allowPrivilegeEscalation: false,
-					capabilities: { drop: ["ALL"] },
-				},
-				"gateway.containerSecurityContext": {
-					allowPrivilegeEscalation: false,
-					capabilities: { add: ["NET_BIND_SERVICE"], drop: ["ALL"] },
-				},
-				"gateway.extraEnv": [{ name: "XDG_DATA_HOME", value: "/tmp/caddy/data" }],
-			}),
-		);
+		const values = {
+			"gateway.enabled": true,
+			"server.hostAliases": [{ ip: "192.0.2.10", hostnames: ["model-api.example.test"] }],
+			"kubernetes.pod.hostAliases": [
+				{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] },
+			],
+			"server.podSecurityContext": {
+				runAsNonRoot: true,
+				fsGroup: 1000,
+				seccompProfile: { type: "RuntimeDefault" },
+			},
+			"server.containerSecurityContext": {
+				allowPrivilegeEscalation: false,
+				capabilities: { drop: ["ALL"] },
+			},
+			"server.extraEnvFrom": [{ secretRef: { name: "model-provider-env" } }],
+			"gateway.podSecurityContext": {
+				runAsNonRoot: true,
+				seccompProfile: { type: "RuntimeDefault" },
+			},
+			"gateway.initContainerSecurityContext": {
+				allowPrivilegeEscalation: false,
+				capabilities: { drop: ["ALL"] },
+			},
+			"gateway.containerSecurityContext": {
+				allowPrivilegeEscalation: false,
+				capabilities: { add: ["NET_BIND_SERVICE"], drop: ["ALL"] },
+			},
+			"gateway.extraEnv": [{ name: "XDG_DATA_HOME", value: "/tmp/caddy/data" }],
+		};
+		const documents = renderChart(values);
 		const config = renderedLeitwerkConfig(documents);
 		const serverPod = podSpec(namedDocument(documents, "Deployment", "leitwerk-server"));
 		const gatewayPod = podSpec(namedDocument(documents, "Deployment", "leitwerk-gateway"));
 
 		expect(validateConfig(config)).toEqual([]);
 		expect(config.kubernetes).toMatchObject({
-			pod: {
-				host_aliases: [{ ip: "2001:db8::10", hostnames: ["model-api-v6.example.test"] }],
-			},
+			pod: { host_aliases: values["kubernetes.pod.hostAliases"] },
 		});
 		expect(serverPod).toMatchObject({
-			hostAliases: [{ ip: "192.0.2.10", hostnames: ["model-api.example.test"] }],
-			securityContext: {
-				runAsNonRoot: true,
-				fsGroup: 1000,
-				seccompProfile: { type: "RuntimeDefault" },
-			},
+			hostAliases: values["server.hostAliases"],
+			securityContext: values["server.podSecurityContext"],
 			containers: [
 				{
-					securityContext: {
-						allowPrivilegeEscalation: false,
-						capabilities: { drop: ["ALL"] },
-					},
-					envFrom: [{ secretRef: { name: "model-provider-env" } }],
+					securityContext: values["server.containerSecurityContext"],
+					envFrom: values["server.extraEnvFrom"],
 				},
 			],
 		});
 		expect(gatewayPod).toMatchObject({
-			securityContext: {
-				runAsNonRoot: true,
-				seccompProfile: { type: "RuntimeDefault" },
-			},
-			initContainers: [
-				{
-					securityContext: {
-						allowPrivilegeEscalation: false,
-						capabilities: { drop: ["ALL"] },
-					},
-				},
-			],
+			securityContext: values["gateway.podSecurityContext"],
+			initContainers: [{ securityContext: values["gateway.initContainerSecurityContext"] }],
 			containers: [
 				{
-					securityContext: {
-						allowPrivilegeEscalation: false,
-						capabilities: { add: ["NET_BIND_SERVICE"], drop: ["ALL"] },
-					},
-					env: [{ name: "XDG_DATA_HOME", value: "/tmp/caddy/data" }],
+					securityContext: values["gateway.containerSecurityContext"],
+					env: values["gateway.extraEnv"],
 				},
 			],
 		});
 	});
 
 	it("omits optional Pod customizations from default chart output", () => {
-		const documents = renderChart([]);
+		const documents = renderChart();
 		const pod = podSpec(namedDocument(documents, "Deployment", "leitwerk-server"));
 		const container = (pod.containers as Array<Record<string, unknown>>)[0];
 
@@ -380,16 +375,14 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("renders an opt-in pre-upgrade preflight and lifecycle-aware server probes", () => {
-		const documents = renderChart(
-			helmJsonValues({
-				"server.preflight.enabled": true,
-				"server.storage.existingClaim": "leitwerk-server-data",
-				"server.existingConfigSecret": "leitwerk-runtime-config",
-				"server.podSecurityContext": { runAsNonRoot: true },
-				"server.containerSecurityContext": { allowPrivilegeEscalation: false },
-				"server.extraEnvFrom": [{ secretRef: { name: "model-provider-env" } }],
-			}),
-		);
+		const documents = renderChart({
+			"server.preflight.enabled": true,
+			"server.storage.existingClaim": "leitwerk-server-data",
+			"server.existingConfigSecret": "leitwerk-runtime-config",
+			"server.podSecurityContext": { runAsNonRoot: true },
+			"server.containerSecurityContext": { allowPrivilegeEscalation: false },
+			"server.extraEnvFrom": [{ secretRef: { name: "model-provider-env" } }],
+		});
 		const job = namedDocument(documents, "Job", "leitwerk-server-preflight");
 		const deployment = namedDocument(documents, "Deployment", "leitwerk-server");
 		const renderedJob = JSON.stringify(job);
@@ -427,14 +420,12 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("renders least-privilege pull-Secret copying RBAC and admission constraints", () => {
-		const documents = renderChart([
-			"--set",
-			"kubernetes.imagePullSecrets[0]=git-nifto-eu-pull",
-			"--set",
-			"kubernetes.imagePullSecretCopies[0].sourceName=git-nifto-eu-pull",
-			"--set",
-			"kubernetes.imagePullSecretCopies[0].targetName=git-nifto-eu-pull",
-		]);
+		const documents = renderChart({
+			"kubernetes.imagePullSecrets": ["git-nifto-eu-pull"],
+			"kubernetes.imagePullSecretCopies": [
+				{ sourceName: "git-nifto-eu-pull", targetName: "git-nifto-eu-pull" },
+			],
+		});
 		const config = renderedLeitwerkConfig(documents);
 		const roles = findDocumentsByKind(documents, "Role");
 		const clusterRole = findDocumentsByKind(documents, "ClusterRole")[0];
@@ -466,20 +457,15 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(policy)).toContain("image-pull-secret");
 		expect(JSON.stringify(policy)).toContain(".dockerconfigjson");
 	});
-});
 
-describe.skipIf(!helmAvailable())("volume pre-provisioning chart wiring", () => {
-	it.each([false, true])("enables configuration and extra permissions together: %s", (enabled) => {
-		const documents = renderChart(
-			helmJsonValues({
-				"kubernetes.processVolume.preProvision.enabled": enabled,
-				"kubernetes.processVolume.preProvision.count": 3,
-				"kubernetes.processVolume.storageClassName": "csi-storage",
-			}),
-		);
-		const configMap = findConfigMap(documents);
-		const config = parse((configMap.data as Record<string, string>)["leitwerk.yaml"]);
-		expect(config.kubernetes.process_volume.pre_provision).toEqual(
+	it.each([false, true])("wires volume pre-provisioning config and permissions: %s", (enabled) => {
+		const documents = renderChart({
+			"kubernetes.processVolume.preProvision.enabled": enabled,
+			"kubernetes.processVolume.preProvision.count": 3,
+			"kubernetes.processVolume.storageClassName": "csi-storage",
+		});
+		const config = renderedLeitwerkConfig(documents);
+		expect(((config.kubernetes as JsonObject).process_volume as JsonObject).pre_provision).toEqual(
 			enabled ? { count: 3 } : undefined,
 		);
 		const role = findDocumentsByKind(documents, "ClusterRole")[0];

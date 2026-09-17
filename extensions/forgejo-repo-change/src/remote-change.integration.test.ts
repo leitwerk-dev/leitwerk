@@ -1,10 +1,14 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	remoteRepoChangeFixtureConstants as constants,
 	createRemoteRepoChangeFixture,
 	type RemoteRepoChangeFixture,
 	remoteState,
+	TemporaryGitRemote,
 } from "./testing/remote-repo-change-fixture.js";
 
 function processInstances(fixture: RemoteRepoChangeFixture): ProcessInstance[] {
@@ -102,9 +106,46 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 
 describe("Forgejo repository-change composed integration", () => {
 	let fixture: RemoteRepoChangeFixture | null = null;
-	afterEach(async () => {
-		await fixture?.close();
-		fixture = null;
+	let seed: TemporaryGitRemote;
+	let seedRoot: string;
+	beforeAll(async () => {
+		seedRoot = await mkdtemp(path.join(tmpdir(), "leitwerk-forgejo-seed-"));
+		seed = new TemporaryGitRemote(seedRoot);
+	});
+	afterAll(async () => {
+		try {
+			if (!seed) return;
+			expect(seed.branches()).toEqual(["main"]);
+			expect(seed.head("main")).toBe(seed.initialSha);
+		} finally {
+			if (seedRoot) await rm(seedRoot, { recursive: true, force: true });
+		}
+	});
+	const createFixture: typeof createRemoteRepoChangeFixture = (preflight, options) =>
+		createRemoteRepoChangeFixture(preflight, { ...options, seed });
+	afterEach(async ({ task }) => {
+		try {
+			if (fixture && task.result?.state === "fail") {
+				console.error(
+					"Remote-change state at failure",
+					JSON.stringify({
+						processes: processInstances(fixture).map(({ id, selectedTurnId, lifecycleStatus }) => ({
+							id,
+							selectedTurnId,
+							lifecycleStatus,
+							turns: fixture?.harness.ctx.deps.turnRecords
+								.listByInstance(id)
+								.slice(-10)
+								.map(({ turnId, status }) => ({ turnId, status })),
+						})),
+						piTurns: fixture.piTurns.slice(-10).map(({ kind }) => kind),
+					}),
+				);
+			}
+		} finally {
+			await fixture?.close();
+			fixture = null;
+		}
 	});
 
 	it.each([
@@ -114,7 +155,7 @@ describe("Forgejo repository-change composed integration", () => {
 		"reconciles a UI pull request via %s without a source issue",
 		async (terminal, lifecycleStatus) => {
 			const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});
-			fixture = await createRemoteRepoChangeFixture(dockerPreflight);
+			fixture = await createFixture(dockerPreflight);
 			const instanceId = await fixture.launchTicketlessChange("Update the service image");
 			const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
 			// Admission and actual in-process worker startup both reach the simulated Docker boundary.
@@ -157,7 +198,7 @@ describe("Forgejo repository-change composed integration", () => {
 		const preflight = vi.fn(async () => {
 			throw new Error("No daemon");
 		});
-		fixture = await createRemoteRepoChangeFixture(preflight, {
+		fixture = await createFixture(preflight, {
 			docker: false,
 			botLogin: "garden-bot",
 		});
@@ -174,7 +215,7 @@ describe("Forgejo repository-change composed integration", () => {
 	}, 15000);
 
 	it("rejects a launch before creating a process when Docker is unavailable", async () => {
-		fixture = await createRemoteRepoChangeFixture(async () => {
+		fixture = await createFixture(async () => {
 			throw new Error("simulated daemon unavailable");
 		});
 		await expect(fixture.launchTicketlessChange("Update the service image")).rejects.toThrow(
@@ -185,7 +226,7 @@ describe("Forgejo repository-change composed integration", () => {
 	}, 15_000);
 
 	it("completes a labeled Forgejo issue after PR merge without reacting to successful CI", async () => {
-		fixture = await createRemoteRepoChangeFixture();
+		fixture = await createFixture();
 		const { instanceId, head1 } = await driveToPublishedPullRequest(fixture);
 
 		await fixture.publishPipeline({
@@ -212,7 +253,7 @@ describe("Forgejo repository-change composed integration", () => {
 	}, 15_000);
 
 	it("repairs failed exact-SHA CI in a fresh turn and waits for the repaired SHA", async () => {
-		fixture = await createRemoteRepoChangeFixture();
+		fixture = await createFixture();
 		const { instanceId, head1 } = await driveToPublishedPullRequest(fixture);
 		const implementationTurn = fixture.piTurns.find((turn) => turn.kind === "implementation");
 		expect(implementationTurn).toBeDefined();

@@ -15,6 +15,7 @@ This document defines security boundaries, authentication models, and credential
 ## 2. Secrets & Container Isolation
 
 - **SQLite Secret Encryption:** Provider credentials stored in SQLite are encrypted using a 32-byte application key (`LEITWERK_CREDENTIAL_ENCRYPTION_KEY`). Raw secrets never appear in logs, process state, or session tree files.
+- **Admission policy:** The Helm chart owns Kubernetes admission-policy generation. See the [breaking API migration](kubernetes-deployment-guide.md#admission-policy-api-migration-breaking) for external deployment tools.
 - **Container Isolation:** Docker and Kubernetes container runtimes provide the production security boundary. Workers operate in isolated environments without direct database access. Kubernetes private-Docker Pods use only the operator-configured RuntimeClass and `hostUsers`; Leitwerk does not add privileged mode, host paths, host namespaces, capabilities, a node runtime socket, or a TCP Docker listener.
 - **Transfer Scope:** Export preflight is root-confined and accepts only regular files, directories, and relative symlinks that remain inside the workspace. Archives exclude provider, repository, Pi-agent, and runner credentials. Both peers enforce entry, logical-byte, and compressed-byte limits; local Pi verifies the final compressed SHA-256 before committing.
 - **Isolated Export Helpers:** Docker named-volume and Kubernetes PVC helpers receive only non-secret manifest and limit data plus one random export credential. The server keeps its SHA-256 hash, binds it to one live attempt, accepts one stream, and rechecks lease and deadline state on every helper request. Helpers mount only the process volume's `workspace/` and `tree/` directories read-only, plus an optional read-only server CA certificate. Pi-agent state and other process-volume directories are not mounted. Helpers receive no worker connection, model, provider, Forgejo, repository, Docker, or Kubernetes API credential, and wait for an active client stream before uploading. Docker named-volume exports require Engine 26.0 or newer (API 1.45+) for scoped volume mounts; unsupported APIs fail without a full-volume fallback.
@@ -94,21 +95,13 @@ HTTPS credentials are materialized outside checkouts in a mode-0700 temporary di
 
 ### Docker registry credentials
 
-`docker_registries.profiles` holds server-only registry host, username and password
-records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
-whose code declares `runtime.docker` receive these credentials through authenticated
-`worker.start`; process parameters cannot select profiles. Each physical start
-resolves current configuration anew. Duplicate registry hosts in a binding fail
-validation. Bindings control delivery, not registry-side account permissions.
+[Operator-owned bindings](configuration.md#docker-registry-credentials) select
+credentials for Docker-enabled processes, never process parameters. Bindings control
+delivery, not registry-side account permissions.
 
 Workers materialize Docker `config.json` in a private ephemeral directory (0700;
 file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
 Shutdown and failed bootstrap remove credentials. Credential values and encoded
 auth are redacted from IPC diagnostics; credential payloads are removed from retained
 bootstrap state. Credential directories are outside process volumes and exports.
-Server and worker images must use worker API `2026-09-16` together.
-
-Worker runtime profiles accept CPU/memory `resources.requests` independently of
-limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
-trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
-selection applies only when creating a claim; existing claims are not migrated.
+See [worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).

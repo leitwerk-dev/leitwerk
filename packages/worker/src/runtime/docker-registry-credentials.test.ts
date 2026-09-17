@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import type { WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
@@ -34,12 +35,12 @@ describe("ephemeral Docker credentials", () => {
 			`${credential.username}:${credential.password}`,
 		);
 		store.install([{ ...credential, password: "changed" }], true);
-		expect(existsSync(first)).toBe(false);
+		expect(existsSync(dirname(first))).toBe(false);
 		const second = process.env.DOCKER_CONFIG ?? "";
 		expect(second).not.toBe(first);
 		expect(readFileSync(`${second}/config.json`, "utf8")).not.toContain(auth);
 		store.dispose();
-		expect(existsSync(second)).toBe(false);
+		expect(existsSync(dirname(second))).toBe(false);
 		expect(process.env.DOCKER_CONFIG).toBe(previous);
 	});
 	it("rejects unsolicited or duplicate credentials without retaining files", () => {

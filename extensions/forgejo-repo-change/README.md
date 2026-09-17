@@ -85,6 +85,13 @@ At operator action, **Retry repair** retains the pending evidence. **Resume wait
 dismisses the pending feedback and adjustment, retaining accepted feedback cursors
 and remote delivery state while waiting for new evidence.
 
+## Integration tests
+
+The composed workflow tests copy a pristine Git seed into an independent repository
+per scenario and use in-memory SQLite. They retain real Git, HTTP actions and worker
+IPC without repeating repository initialization. Failures report process and turn
+state before cleanup. File-backed persistence is covered separately below.
+
 ## Restart verification
 
 The provider sandbox's file-backed restart fixtures retain legacy issue/UI params,

@@ -4,7 +4,6 @@ import {
 	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
 	RUNTIME_EXTENSION_ENTRIES_ENV,
 } from "@leitwerk-dev/extension-runtime";
-import { createDurableWsFrame } from "@leitwerk-dev/protocol";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { PiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import {
@@ -48,6 +47,7 @@ import { resolveAcceptedTurnStartReplay } from "./accepted-turn-start-replay.js"
 import { createWorkerAdoptionCoordinator } from "./adoption/worker-adoption-coordinator.js";
 import { decideIdleWorkerStop } from "./idle-worker-ttl.js";
 import type { createIpcHandler } from "./ipc-handler.js";
+import { recordWorkerLifecycleEvent } from "./record-worker-lifecycle-event.js";
 import { createStartupObserver } from "./startup-observer.js";
 import { createServerObservedWorkerFailedMessage } from "./synthetic-worker-failure.js";
 import { checkWorkerApiCompatibility } from "./worker-api-compatibility.js";
@@ -980,20 +980,37 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			const eventType = "worker_capacity_queued";
 			const message =
 				"Waiting for worker capacity; this process will start automatically when a slot is available.";
-			deps.events.create({ instanceId, eventType, data: { startRecordId: startId, message } });
-			deps.broadcaster.broadcast(
-				createDurableWsFrame({
-					type: "process.event",
-					instanceId,
-					payload: { eventType, level: "info", message },
-				}),
-			);
+			recordWorkerLifecycleEvent(deps, {
+				instanceId,
+				eventType,
+				data: { startRecordId: startId, message },
+				level: "info",
+				message,
+			});
 			deps.getLaunchCoordinator?.()?.refresh(instanceId);
 		},
 		onFailure(instanceId, error) {
 			deps.logger?.warn?.({ instanceId, err: error }, "Queued worker startup failed");
 		},
 	});
+
+	async function finishWorkers(reason: string, mode: "detach" | "shutdown"): Promise<void> {
+		await capacityQueue.stop();
+		for (const id of [...workers.keys()]) {
+			clearStartupTimer(id);
+			clearIdleStopTimer(id);
+			const handle = workers.get(id);
+			if (mode === "detach") {
+				adoptionCoordinator.clear(id);
+				workers.delete(id);
+				handle?.detach?.(reason);
+			} else if (deps.config.workers.runner === "local" && reason === "server_shutdown") {
+				handle?.kill("SIGKILL");
+			} else {
+				await shutdownController.stopWorker(id, reason);
+			}
+		}
+	}
 
 	return {
 		async spawnWorker(instanceId: string): Promise<WorkerHandle | undefined> {
@@ -1085,32 +1102,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			await adoptionCoordinator.adoptRegisteredWorkers();
 		},
 
-		async detachAll(reason: string): Promise<void> {
-			await capacityQueue.stop();
-			const ids = [...workers.keys()];
-			for (const id of ids) {
-				clearStartupTimer(id);
-				clearIdleStopTimer(id);
-				adoptionCoordinator.clear(id);
-				const handle = workers.get(id);
-				workers.delete(id);
-				handle?.detach?.(reason);
-			}
-		},
-
-		async shutdownAll(reason: string): Promise<void> {
-			await capacityQueue.stop();
-			const ids = [...workers.keys()];
-			for (const id of ids) {
-				clearStartupTimer(id);
-				clearIdleStopTimer(id);
-				if (deps.config.workers.runner === "local" && reason === "server_shutdown") {
-					const handle = workers.get(id);
-					handle?.kill("SIGKILL");
-					continue;
-				}
-				await shutdownController.stopWorker(id, reason);
-			}
-		},
+		detachAll: (reason) => finishWorkers(reason, "detach"),
+		shutdownAll: (reason) => finishWorkers(reason, "shutdown"),
 	};
 }

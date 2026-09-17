@@ -261,30 +261,19 @@ Worker API `2026-09-15` adds the `git_https` repository credential variant. Serv
 
 ### Docker registry credentials
 
-`docker_registries.profiles` holds server-only registry host, username and password
-records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
-whose code declares `runtime.docker` receive these credentials through authenticated
-`worker.start`; process parameters cannot select profiles. Each physical start
-resolves current configuration anew. Duplicate registry hosts in a binding fail
-validation. Bindings control delivery, not registry-side account permissions.
-
-Workers materialize Docker `config.json` in a private ephemeral directory (0700;
-file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
-Shutdown and failed bootstrap remove credentials. Credential values and encoded
-auth are redacted from IPC diagnostics; credential payloads are removed from retained
-bootstrap state. Credential directories are outside process volumes and exports.
+Each physical start resolves current [registry bindings](configuration.md#docker-registry-credentials)
+and delivers credentials through authenticated `worker.start` only to processes
+whose code declares `runtime.docker`. See [credential cleanup and security](security.md#docker-registry-credentials).
 Server and worker images must use worker API `2026-09-16` together.
-
-Worker runtime profiles accept CPU/memory `resources.requests` independently of
-limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
-trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
-selection applies only when creating a claim; existing claims are not migrated.
 
 ## Worker capacity admission
 
 `max_parallel_processes` counts allocated workers and in-flight allocations. When
 all slots are occupied, worker requests enter a FIFO queue and return immediately;
-launching does not fail and does not hold the process operation open. Startup
+launching does not fail and does not hold the process operation open. **Breaking change:**
+`WorkerSupervisor.spawnWorker()` now returns `Promise<WorkerHandle | undefined>`;
+callers must handle `undefined` as queued admission rather than expecting a capacity
+error or an immediate handle. Startup
 evidence shows “Waiting for worker capacity.” A queued request creates neither a
 worker lease nor a turn attempt. The worker startup timeout begins at admission,
 not while waiting for capacity.

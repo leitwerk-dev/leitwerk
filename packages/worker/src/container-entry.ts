@@ -1,8 +1,9 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
-import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { dockerNetworkSchema } from "@leitwerk-dev/worker-protocol";
+import { parse } from "valibot";
 
 const PRIVATE_DOCKER_ENV = "LEITWERK_PRIVATE_DOCKER";
 const DEFAULT_PROCESS_VOLUME_MOUNT_PATH = "/state";
@@ -30,35 +31,16 @@ function privateDockerEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 export function dockerNetworkArgs(value: string | undefined): string[] {
 	if (!value) return [];
 	try {
-		const network = JSON.parse(value);
-		const cidr = (value: unknown) =>
-			typeof value === "string" &&
-			/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
-			isIP(value.split("/")[0] ?? "") === 4;
-		if (
-			!cidr(network.bridge_cidr) ||
-			!Array.isArray(network.address_pools) ||
-			!network.address_pools.length ||
-			!Array.isArray(network.dns) ||
-			!network.dns.length
-		)
-			throw new Error();
-		const args = ["--bip", network.bridge_cidr];
-		for (const pool of network.address_pools) {
-			if (
-				!cidr(pool.base) ||
-				!Number.isInteger(pool.size) ||
-				pool.size < Number(pool.base.split("/")[1]) ||
-				pool.size > 30
-			)
-				throw new Error();
-			args.push("--default-address-pool", `base=${pool.base},size=${pool.size}`);
-		}
-		for (const dns of network.dns) {
-			if (typeof dns !== "string" || !isIP(dns)) throw new Error();
-			args.push("--dns", dns);
-		}
-		return args;
+		const network = parse(dockerNetworkSchema, JSON.parse(value));
+		return [
+			"--bip",
+			network.bridge_cidr,
+			...network.address_pools.flatMap((pool) => [
+				"--default-address-pool",
+				`base=${pool.base},size=${pool.size}`,
+			]),
+			...network.dns.flatMap((dns) => ["--dns", dns]),
+		];
 	} catch {
 		throw new Error("Invalid trusted Docker network configuration");
 	}
@@ -140,11 +122,9 @@ export async function runWorkerContainerEntrypoint(
 ): Promise<number> {
 	let daemon: ChildProcess | undefined;
 	let worker: ChildProcess | undefined;
-	let terminating = false;
 	const shutdown = new AbortController();
 	const { promise: terminated, resolve: resolveTermination } = Promise.withResolvers<void>();
 	const terminate = () => {
-		terminating = true;
 		shutdown.abort();
 		resolveTermination();
 		void Promise.all([stop(worker), stop(daemon)]);
@@ -157,7 +137,7 @@ export async function runWorkerContainerEntrypoint(
 			worker = deps.spawn(process.execPath, [workerEntryPath()], { stdio: "inherit", env });
 			const exit = await waitForExit(worker);
 			requireStarted(exit, process.execPath);
-			return exit.code ?? (terminating ? 0 : 1);
+			return exit.code ?? (shutdown.signal.aborted ? 0 : 1);
 		}
 		const privateEnv = privateDockerEnvironment(env);
 		privateEnv.BUILDX_CONFIG = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/buildx`;
@@ -165,19 +145,18 @@ export async function runWorkerContainerEntrypoint(
 
 		const dockerDataRoot = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/docker`;
 		await deps.mkdir(dockerDataRoot, { recursive: true });
-		if (terminating) return 0;
+		if (shutdown.signal.aborted) return 0;
 		await deps.mkdir("/var/run", { recursive: true });
-		if (terminating) return 0;
+		if (shutdown.signal.aborted) return 0;
 		const timeoutMs = Number.parseInt(env.LEITWERK_WORKER_STARTUP_TIMEOUT_MS ?? "60000", 10);
 		const configuredDeadlineMs = Number.parseInt(env.LEITWERK_WORKER_STARTUP_DEADLINE_MS ?? "", 10);
 		const startupDeadlineMs = Number.isFinite(configuredDeadlineMs)
 			? configuredDeadlineMs
 			: deps.now() + (Number.isFinite(timeoutMs) ? timeoutMs : 60_000);
-		let recovered = false;
 		let firstSummary = "";
 
 		for (let attempt = 0; attempt < 2; attempt += 1) {
-			if (terminating) return 0;
+			if (shutdown.signal.aborted) return 0;
 			let diagnostic = "";
 			daemon = deps.spawn(
 				"dockerd",
@@ -194,18 +173,17 @@ export async function runWorkerContainerEntrypoint(
 				],
 				{ stdio: ["ignore", "pipe", "pipe"], env: privateEnv },
 			);
-			daemon.stdout?.on("data", (chunk) => {
-				diagnostic = boundedAppend(diagnostic, chunk);
-			});
-			daemon.stderr?.on("data", (chunk) => {
-				diagnostic = boundedAppend(diagnostic, chunk);
-			});
+			for (const stream of [daemon.stdout, daemon.stderr]) {
+				stream?.on("data", (chunk) => {
+					diagnostic = boundedAppend(diagnostic, chunk);
+				});
+			}
 			let exited = false;
 			const daemonExit = waitForExit(daemon).then((value) => {
 				exited = true;
 				return value;
 			});
-			while (!terminating && !exited && deps.now() < startupDeadlineMs) {
+			while (!shutdown.signal.aborted && !exited && deps.now() < startupDeadlineMs) {
 				try {
 					await Promise.race([
 						deps.dockerInfo(privateEnv, shutdown.signal),
@@ -213,13 +191,13 @@ export async function runWorkerContainerEntrypoint(
 						daemonExit,
 					]);
 				} catch {
-					if (terminating) return 0;
+					if (shutdown.signal.aborted) return 0;
 					await deps.delay(250);
 					continue;
 				}
-				if (terminating) return 0;
+				if (shutdown.signal.aborted) return 0;
 				if (exited) break;
-				if (recovered) {
+				if (attempt > 0) {
 					deps.warn(
 						`Private Docker daemon recovered after retrying with retained data: ${firstSummary}`,
 					);
@@ -233,12 +211,12 @@ export async function runWorkerContainerEntrypoint(
 					daemonExit.then((exit) => ({ source: "daemon" as const, exit })),
 				]);
 				requireStarted(winner.exit, winner.source === "worker" ? process.execPath : "dockerd");
-				if (!terminating) {
+				if (!shutdown.signal.aborted) {
 					await stop(winner.source === "worker" ? daemon : worker);
 				}
-				return winner.exit.code ?? (terminating ? 0 : 1);
+				return winner.exit.code ?? (shutdown.signal.aborted ? 0 : 1);
 			}
-			if (terminating) return 0;
+			if (shutdown.signal.aborted) return 0;
 			if (!exited) {
 				await stop(daemon, 0);
 				daemon = undefined;
@@ -247,12 +225,11 @@ export async function runWorkerContainerEntrypoint(
 				);
 			}
 			const exit = await daemonExit;
-			if (terminating) return 0;
+			if (shutdown.signal.aborted) return 0;
 			requireStarted(exit, "dockerd");
 			const summary = `exit=${exit.code ?? exit.signal ?? "unknown"}; ${diagnostic || "no diagnostic"}`;
 			if (attempt === 0) {
 				firstSummary = summary;
-				recovered = true;
 				continue;
 			}
 			throw new Error(
