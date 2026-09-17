@@ -100,6 +100,8 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 	return { instanceId, head1, pr };
 }
 
+// Workflow cases allow 30s for Git clones and several worker turns under shared
+// CI load. Individual driver waits remain bounded.
 describe("Forgejo repository-change composed integration", () => {
 	let fixture: RemoteRepoChangeFixture | null = null;
 	afterEach(async () => {
@@ -150,7 +152,7 @@ describe("Forgejo repository-change composed integration", () => {
 			expect(fixture.forgejo.comments()).toEqual([]);
 			expect(fixture.forgejo.issues).toHaveLength(0);
 		},
-		15_000,
+		30_000,
 	);
 
 	it("launches without Docker and publishes with a non-default pinned bot identity", async () => {
@@ -171,7 +173,7 @@ describe("Forgejo repository-change composed integration", () => {
 		expect(fixture.forgejo.calls.filter((c) => c.method === "getAuthenticatedUser")).toHaveLength(
 			1,
 		);
-	}, 15000);
+	}, 30_000);
 
 	it("rejects a launch before creating a process when Docker is unavailable", async () => {
 		fixture = await createRemoteRepoChangeFixture(async () => {
@@ -209,7 +211,7 @@ describe("Forgejo repository-change composed integration", () => {
 		await fixture.markPullRequestMerged();
 		const completed = await fixture.waitForCompleted(instanceId);
 		assertCompletedRemoteChange(fixture, completed);
-	}, 15_000);
+	}, 30_000);
 
 	it("repairs failed exact-SHA CI in a fresh turn and waits for the repaired SHA", async () => {
 		fixture = await createRemoteRepoChangeFixture();
@@ -286,5 +288,5 @@ describe("Forgejo repository-change composed integration", () => {
 		await fixture.markPullRequestMerged();
 		const completed = await fixture.waitForCompleted(instanceId);
 		assertCompletedRemoteChange(fixture, completed);
-	}, 15_000);
+	}, 30_000);
 });

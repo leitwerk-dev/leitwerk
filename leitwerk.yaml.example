@@ -285,14 +285,23 @@ extensions:
   #   azure-openai-responses:
   #     api_key: env:AZURE_OPENAI_API_KEY
   #     base_url: env:AZURE_OPENAI_ENDPOINT # optional non-secret HTTP(S) endpoint
+  #     models: # Optional deployment IDs absent from the bundled catalog.
+  #       - id: private-reasoner
+  #         reasoning: true
+  #         thinking_level_map: {low: low, medium: medium, xhigh: xhigh}
   #   custom_gateways:
   #     internal-gateway:
   #       base_url: https://llm-gateway.example.com/v1
   #       api_key: false # set to false for unauthenticated endpoints, or use env:VAR
   #       api: openai-completions
+  #       compat: {supportsStore: false, thinkingFormat: deepseek}
   #       models:
   #         - id: gemma-4-31b-it
   #           name: Gemma 4 31B IT
+  #           reasoning: true
+  #           thinking_level_map: {off: null, xhigh: high}
+  #           input: [text]
+  #           cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
   # git-ssh:
   #   credentials:
   #     default:

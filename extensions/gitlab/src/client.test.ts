@@ -3,29 +3,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	GitLabClient,
 	type GitLabClientLike,
-	type GitLabMergeRequest,
 	type GitLabPipeline,
 	observeMergeRequest,
 	parseGitLabProfiles,
 } from "./client.js";
+import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
-import { ensureGitLabComment } from "./tools.js";
+import { ensureGitLabComment, ensureGitLabSeenReaction } from "./tools.js";
 
 const profile = { baseUrl: "https://forge.test", token: "secret-token" };
-const mr: GitLabMergeRequest = {
-	iid: 1,
-	project_id: 7,
-	source_project_id: 7,
-	target_project_id: 7,
-	title: "Upgrade",
-	description: null,
-	state: "opened",
-	labels: ["renovate"],
-	sha: "head",
-	source_branch: "renovate/dependency",
-	target_branch: "main",
-	web_url: "https://forge.test/a/-/merge_requests/1",
-};
 const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => ({
 	id,
 	status,
@@ -36,6 +22,125 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it("adds its own eyes reaction once despite another user's reaction and a lost write response", async () => {
+		const reactions = [{ id: 1, name: "eyes", user: { username: "reviewer" } }];
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
+			const u = new URL(String(url));
+			if (u.pathname.endsWith("/user"))
+				return Response.json({ username: "bot", name: "Bot", email: "bot@test" });
+			expect(u.pathname).toBe("/api/v4/projects/7/merge_requests/1/notes/42/award_emoji");
+			if (options?.method === "POST") {
+				expect(JSON.parse(String(options.body))).toEqual({ name: "eyes" });
+				posts++;
+				reactions.push({ id: 2, name: "eyes", user: { username: "bot" } });
+				throw new Error("Response lost after write");
+			}
+			return Response.json(reactions);
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			writes: createInMemoryExternalWriteLog(),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			noteId: 42,
+		};
+		await ensureGitLabSeenReaction(input);
+		const reads = request.mock.calls.length;
+		await ensureGitLabSeenReaction(input);
+		expect(request).toHaveBeenCalledTimes(reads);
+		await ensureGitLabSeenReaction({ ...input, writes: createInMemoryExternalWriteLog() });
+		expect(posts).toBe(1);
+		expect(reactions).toHaveLength(2);
+	});
+	it.each([
+		undefined,
+		"inline/thread",
+	])("reconciles a lost comment/reply response and write-log loss (discussion: %s)", async (discussionId) => {
+		const notes: { id: number; body: string }[] = [];
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
+			const u = new URL(String(url));
+			const target = `/api/v4/projects/7/merge_requests/1${discussionId ? "/discussions/inline%2Fthread" : ""}`;
+			if (options?.method === "POST") {
+				expect(u.pathname).toBe(`${target}/notes`);
+				posts++;
+				notes.push({ id: posts, body: JSON.parse(String(options.body)).body });
+				if (!discussionId) throw new Error("lost response");
+				return new Response("write completed, response unavailable", { status: 503 });
+			}
+			expect(u.pathname).toBe(discussionId ? target : `${target}/notes`);
+			return Response.json(discussionId ? { id: discussionId, notes } : notes);
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			writes: createInMemoryExternalWriteLog(),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			discussionId,
+			writeKey: "feedback:42",
+			body: "Addressed in commit abc; CI passed.",
+		};
+		const first = await ensureGitLabComment(input);
+		expect(notes[0]?.body).toContain(first.marker);
+		await ensureGitLabComment(input);
+		await ensureGitLabComment({ ...input, writes: createInMemoryExternalWriteLog() });
+		expect(posts).toBe(1);
+	});
+	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {
+		const note = (id: number, extra = {}) => ({
+			id,
+			body: `comment ${id}`,
+			created_at: "2026-09-16T10:00:00Z",
+			system: false,
+			author: { username: "reviewer" },
+			...extra,
+		});
+		const request = vi.fn(async (url: URL | Request | string) => {
+			const u = new URL(String(url));
+			if (u.pathname.endsWith("/user"))
+				return Response.json({ username: "leitwerk", name: "Bot", email: "bot@test" });
+			expect(u.pathname).toBe("/api/v4/projects/7/merge_requests/1/discussions");
+			if (u.searchParams.get("page") === "2")
+				return Response.json([
+					{
+						id: "inline",
+						notes: [
+							note(7, { position: { new_path: "settings.gradle.kts", new_line: 1 } }),
+							note(8),
+						],
+					},
+				]);
+			return Response.json(
+				[
+					{
+						id: "general",
+						notes: [
+							note(1),
+							note(2, { system: true }),
+							note(3, { author: { username: "leitwerk" } }),
+							note(4, { author: { username: "automation", bot: true } }),
+							note(5, { resolved: true }),
+							note(6, { created_at: "invalid" }),
+						],
+					},
+				],
+				{ headers: { "x-next-page": "2" } },
+			);
+		});
+		const feedback = await new GitLabClient(profile, {
+			fetch: request as typeof fetch,
+		}).listMergeRequestFeedback(7, 1);
+		expect(feedback.map((item) => item.id)).toEqual([1, 7, 8]);
+		expect(feedback[2]).toMatchObject({
+			discussionId: "inline",
+			path: "settings.gradle.kts",
+			line: 1,
+			author: "reviewer",
+		});
+	});
 	it("encodes nested project/group paths, follows pagination and keeps the token in the request header", async () => {
 		const calls: string[] = [];
 		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
@@ -147,30 +252,5 @@ describe("GitLab boundary", () => {
 		});
 		expect((await selectGitLabProjects(client, union)).map((p) => p.id)).toEqual([1]);
 		expect(() => parseGitLabSelection({})).toThrow("explicit");
-	});
-	it("reconciles a comment after a lost response and after local write-log loss", async () => {
-		const notes: { id: number; body: string }[] = [];
-		let writes = 0;
-		const client = {
-			baseUrl: profile.baseUrl,
-			listNotes: async () => notes,
-			addNote: async (_id: number, _iid: number, body: string) => {
-				notes.push({ id: ++writes, body });
-				throw new Error("lost response");
-			},
-		} as unknown as GitLabClientLike;
-		const input = {
-			client,
-			writes: createInMemoryExternalWriteLog(),
-			instanceId: "process",
-			projectId: 7,
-			iid: 1,
-			writeKey: "cycle:1",
-			body: "Giving up",
-		};
-		const first = await ensureGitLabComment(input);
-		expect(notes[0]?.body).toContain(first.marker);
-		await ensureGitLabComment({ ...input, writes: createInMemoryExternalWriteLog() });
-		expect(writes).toBe(1);
 	});
 });

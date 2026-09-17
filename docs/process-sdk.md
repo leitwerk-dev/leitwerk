@@ -174,6 +174,12 @@ Every step in a process graph is a **Turn**:
 
 ### LLM-turn preparation
 
+Server extensions use `commands.retryProcess(instanceId)` to recover the current failed
+startup or accepted turn. A preparation or bootstrap failure replaces the current start
+record without creating a turn attempt. The engine validates its identity and lifecycle
+under the process lock; a concurrent Stop or changed start rejects the stale retry.
+An accepted failed turn retains normal turn-retry behavior.
+
 Use `.prepare(...)` when deterministic mechanics exist only to supply one LLM turn. Preparation
 runs after turn-start acceptance and before Pi receives a prompt. It shares the turn's authorized
 integration tools, may publish a progress report, and returns bounded JSON data through

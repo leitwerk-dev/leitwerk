@@ -47,17 +47,14 @@ describe("Docker worker verification", () => {
 		pvc.metadata.uid = "replacement-pvc";
 		expect(() => verifyDockerPod(pod, pvc, pv, expected)).toThrow("PV claim identity");
 	});
-	it("requires the bound claim to mount the entire writable /state directory", () => {
+	it.each(["subpath", "read-only claim"])("rejects a %s for /state", (kind) => {
 		const { pod, pvc, pv } = fixture();
-		pod.spec.containers[0].volumeMounts[0].subPath = "other-state";
-		expect(() => verifyDockerPod(pod, pvc, pv, expected)).toThrow("complete writable process PVC");
-	});
-	it("rejects a read-only claim even when its container mount is writable", () => {
-		const { pod, pvc, pv } = fixture();
-		pod.spec.volumes[0].persistentVolumeClaim = {
-			claimName: pvc.metadata.name,
-			readOnly: true,
-		};
+		if (kind === "subpath") pod.spec.containers[0].volumeMounts[0].subPath = "other-state";
+		else
+			pod.spec.volumes[0].persistentVolumeClaim = {
+				claimName: pvc.metadata.name,
+				readOnly: true,
+			};
 		expect(() => verifyDockerPod(pod, pvc, pv, expected)).toThrow("complete writable process PVC");
 	});
 	it("verifies overlay2, persistent daemon data and listener evidence", () => {

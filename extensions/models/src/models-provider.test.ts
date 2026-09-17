@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ModelProviderWorker } from "@leitwerk-dev/process-sdk";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import modelsExtension, {
 	createCustomGatewayProvider,
 	createStandardModelProvider,
@@ -11,6 +12,11 @@ import modelsExtension, {
 } from "./index.js";
 
 afterEach(() => vi.unstubAllEnvs());
+
+function resolveModels<T>(worker: ModelProviderWorker<T>, config: T) {
+	assert(worker.kind === "configured_pi_provider", "Expected a configured Pi provider");
+	return worker.resolveModels({ config });
+}
 
 const customGateway = {
 	base_url: "https://llm-gateway.example.com/v1",
@@ -91,10 +97,8 @@ describe("models extension", () => {
 
 	it("projects a configured standard-provider base URL into Pi models", () => {
 		const provider = createStandardModelProvider("azure-openai-responses");
-		expect(provider.worker.kind).toBe("configured_pi_provider");
-		if (provider.worker.kind !== "configured_pi_provider") throw new Error("unexpected worker");
 		expect(
-			provider.worker.resolveModels({ config: { baseUrl: "https://resource.openai.azure.com" } }),
+			resolveModels(provider.worker, { baseUrl: "https://resource.openai.azure.com" }),
 		).toEqual({
 			providers: {
 				"azure-openai-responses": { baseUrl: "https://resource.openai.azure.com" },
@@ -138,9 +142,7 @@ describe("models extension", () => {
 				],
 			},
 		});
-		expect(provider.worker.kind).toBe("configured_pi_provider");
-		if (provider.worker.kind !== "configured_pi_provider") throw new Error("unexpected worker");
-		expect(provider.worker.resolveModels({ config: parsed.config })).toEqual({
+		expect(resolveModels(provider.worker, parsed.config)).toEqual({
 			providers: {
 				"internal-gateway": {
 					baseUrl: "https://llm-gateway.example.com/v1",
@@ -180,11 +182,125 @@ describe("models extension", () => {
 		]);
 	});
 
+	it("preserves compatibility, thinking levels, input and cost without projecting credentials", () => {
+		const compat = {
+			supportsStore: false,
+			supportsDeveloperRole: false,
+			supportsReasoningEffort: true,
+			supportsUsageInStreaming: true,
+			maxTokensField: "max_tokens",
+			supportsStrictMode: false,
+			thinkingFormat: "deepseek",
+			requiresReasoningContentOnAssistantMessages: true,
+		};
+		const thinkingLevelMap = {
+			off: null,
+			minimal: "low",
+			low: "low",
+			medium: "medium",
+			high: "high",
+			xhigh: "high",
+		};
+		const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+		const parsed = parseCustomGatewayConfig("local", {
+			base_url: "http://localhost:1234/v1",
+			api_key: "fixture-secret",
+			compat,
+			models: [
+				{
+					id: "reasoner",
+					reasoning: true,
+					thinking_level_map: thinkingLevelMap,
+					input: ["text"],
+					context_window: 262144,
+					max_tokens: 65536,
+					cost,
+				},
+			],
+		});
+		const provider = createCustomGatewayProvider("local", false);
+		const projected = resolveModels(provider.worker, parsed.config);
+		expect(projected).toEqual({
+			providers: {
+				local: {
+					baseUrl: "http://localhost:1234/v1",
+					api: "openai-completions",
+					compat,
+					models: [
+						{
+							id: "reasoner",
+							reasoning: true,
+							thinkingLevelMap,
+							input: ["text"],
+							contextWindow: 262144,
+							maxTokens: 65536,
+							cost,
+						},
+					],
+				},
+			},
+		});
+		expect(JSON.stringify(projected)).not.toContain("fixture-secret");
+	});
+
+	it("registers explicit standard-provider models alongside the built-in catalog", () => {
+		const provider = createStandardModelProvider("azure-openai-responses");
+		const parsed = parseStandardProviderConfig(
+			{
+				api_key: "fixture-secret",
+				base_url: "https://azure.example/openai/v1",
+				models: [{ id: "new-deployment", reasoning: true, thinking_level_map: { xhigh: "xhigh" } }],
+			},
+			"azure-openai-responses",
+		);
+		const configuredModels = [
+			{ profileId: "new", modelId: "new-deployment" },
+			{ profileId: "existing", modelId: "gpt-5.6-luna" },
+		];
+		expect(
+			provider.models({
+				config: parsed.config,
+				configuredModels,
+				credentialStatus: { available: true, revision: 1 },
+			}),
+		).toEqual(configuredModels.map(({ modelId }) => ({ modelId, availability: "available" })));
+		expect(
+			provider.models({
+				config: parsed.config,
+				configuredModels,
+				credentialStatus: { available: false, revision: null },
+			}),
+		).toEqual(
+			configuredModels.map(({ modelId }) =>
+				expect.objectContaining({ modelId, availability: "unavailable" }),
+			),
+		);
+		const projected = resolveModels(provider.worker, parsed.config);
+		expect(projected).toEqual({ providers: { "azure-openai-responses": parsed.config } });
+		expect(parsed.config.models?.[0]).toMatchObject({
+			id: "new-deployment",
+			api: "azure-openai-responses",
+			provider: "azure-openai-responses",
+			baseUrl: "https://azure.example/openai/v1",
+			reasoning: true,
+			thinkingLevelMap: { xhigh: "xhigh" },
+		});
+		expect(JSON.stringify(projected)).not.toContain("fixture-secret");
+	});
+
+	it.each([
+		{ models: [{ id: "duplicate" }, { id: "duplicate" }] },
+		{ models: [{ id: "model", thinking_level_map: { typo: "high" } }] },
+		{ models: [{ id: "model", cost: { input: -1, output: 0, cacheRead: 0, cacheWrite: 0 } }] },
+		{ compat: { supportsStore: "false" } },
+		{ compat: { apiKey: "not-a-compatibility-setting" } },
+	])("rejects malformed model metadata and compatibility settings", (override) => {
+		expect(() => parseCustomGatewayConfig("test", { ...customGateway, ...override })).toThrow();
+	});
+
 	it("creates configured worker and built-in server references for standard providers", () => {
 		const provider = createStandardModelProvider("openai");
-		expect(provider.worker.kind).toBe("configured_pi_provider");
-		if (provider.worker.kind !== "configured_pi_provider") throw new Error("unexpected worker");
-		expect(provider.worker.resolveModels({ config: {} })).toEqual({ providers: {} });
+		expect(resolveModels(provider.worker, {})).toEqual({ providers: {} });
 		expect(provider.server).toEqual({ kind: "builtin_pi_provider", providerId: "openai" });
 	});
 });

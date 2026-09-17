@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { parseArgs } from "node:util";
+import { isUnknownRecord } from "@leitwerk-dev/domain";
 import { runWorkerStartupBenchmark } from "./benchmark.js";
 
 export async function runBenchmarkCli(args: string[]): Promise<void> {
@@ -54,8 +55,7 @@ The benchmark retains processes and raw evidence. A timeout or uncertain API out
 	} catch {
 		throw new Error("Cannot read launcher input as JSON");
 	}
-	if (!launcherInput || typeof launcherInput !== "object" || Array.isArray(launcherInput))
-		throw new Error("Launcher input must be a JSON object");
+	if (!isUnknownRecord(launcherInput)) throw new Error("Launcher input must be a JSON object");
 	const withKubernetes = !!(
 		values.namespace ||
 		values.deployment ||
@@ -84,7 +84,7 @@ The benchmark retains processes and raw evidence. A timeout or uncertain API out
 			title: required("title"),
 			candidate: required("candidate"),
 			output: required("output"),
-			launcherInput: launcherInput as Record<string, unknown>,
+			launcherInput,
 			samples: values.samples === undefined ? undefined : Number(values.samples),
 			warmups: values.warmups === undefined ? undefined : Number(values.warmups),
 			timeoutMs: values["timeout-ms"] === undefined ? undefined : Number(values["timeout-ms"]),

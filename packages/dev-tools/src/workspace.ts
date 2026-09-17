@@ -5,9 +5,7 @@ import path from "node:path";
 /** Expand literal package paths and trailing /* workspace patterns. */
 export function listWorkspacePackageDirs(
 	rootDir: string,
-	manifest: { workspaces?: unknown } = JSON.parse(
-		readFileSync(path.join(rootDir, "package.json"), "utf8"),
-	),
+	manifest: { workspaces?: unknown } = readJson(path.join(rootDir, "package.json")),
 ): string[] {
 	const workspaces = manifest.workspaces;
 	const patterns = Array.isArray(workspaces)
