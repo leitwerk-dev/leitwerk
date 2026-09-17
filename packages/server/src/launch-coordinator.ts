@@ -86,41 +86,91 @@ function mergeProcessMetadata(
 	return merge(base ?? {}, patch);
 }
 
+/** @internal */
 export interface StartLaunchRequest {
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	idempotencyKey?: string | null;
+	/** @internal */
 	request: NormalizedScheduledLaunchInput;
+	/** @internal */
 	actor: Actor;
+	/** @internal */
 	processMetadata?: Record<string, unknown>;
 }
 
+/** @internal */
 export interface PreparedPlanLaunchRequest {
+	/** @internal */
 	launchPlan: ProcessLaunchPlan;
+	/** @internal */
 	idempotencyKey: string;
+	/** @internal */
 	actor: Actor;
+	/** @internal */
 	origin: LaunchRun["origin"];
+	/** @internal */
 	relation?: ProcessLaunchRelationInput;
 }
 
+/** @internal */
 export interface LaunchCoordinator {
-	start(request: StartLaunchRequest): Promise<{ launchRunId: string }>;
-	startPreparedPlan(request: PreparedPlanLaunchRequest): Promise<{
+	/** @internal */
+	start(request: StartLaunchRequest): Promise<{
+		/** @internal */
 		launchRunId: string;
+	}>;
+	/** @internal */
+	startPreparedPlan(request: PreparedPlanLaunchRequest): Promise<{
+		/** @internal */
+		launchRunId: string;
+		/** @internal */
 		process: ProcessInstance | null;
+		/** @internal */
 		error: string | null;
 	}>;
+	/** @internal */
 	startProgrammatic(
 		request: ProgrammaticLaunchRequestLike,
-		opts: { idempotencyKey: string; actor: Actor },
+		opts: {
+			/** @internal */
+			idempotencyKey: string;
+			/** @internal */
+			actor: Actor;
+		},
 	): Promise<ProgrammaticLaunchResultLike>;
+	/** @internal */
 	startWatcher<TConfig, TEvent>(
 		watcher: RegisteredProcessWatcherLike<TConfig, TEvent>,
 		event: TEvent,
-		request: { idempotencyKey: string; actor: Actor },
-	): Promise<{ launchRunId: string; process: ProcessInstance | null; error: string | null }>;
-	retryStartup(instanceId: string, actor: Actor): Promise<{ launchRunId: string }>;
+		request: {
+			/** @internal */
+			idempotencyKey: string;
+			/** @internal */
+			actor: Actor;
+		},
+	): Promise<{
+		/** @internal */
+		launchRunId: string;
+		/** @internal */
+		process: ProcessInstance | null;
+		/** @internal */
+		error: string | null;
+	}>;
+	/** @internal */
+	retryStartup(
+		instanceId: string,
+		actor: Actor,
+	): Promise<{
+		/** @internal */
+		launchRunId: string;
+	}>;
+	/** @internal */
 	get(launchRunId: string): LaunchRun | null;
+	/** @internal */
 	refresh(instanceId: string): LaunchRun | null;
+	/** @internal */
 	reconcileIncomplete(): Promise<void>;
 }
 

@@ -8,8 +8,11 @@ import {
 	parseSemanticEntryRef,
 } from "./semantic-entry-refs.js";
 
+/** @internal */
 export interface ProcessStateJsonParseContext {
+	/** @internal */
 	label?: string;
+	/** @internal */
 	processId?: string;
 }
 
@@ -24,6 +27,7 @@ function formatMalformedSubject(
 	return context?.processId ? `${label} for process '${context.processId}'` : label;
 }
 
+/** @internal */
 export function parseProcessStateJsonStrict(
 	stateJson: string | null | undefined,
 	context?: string | ProcessStateJsonParseContext,
@@ -46,6 +50,7 @@ export function parseProcessStateJsonStrict(
 	return parsed as Record<string, unknown>;
 }
 
+/** @internal */
 export function parseProcessStateJsonLenient(
 	stateJson: string | null | undefined,
 ): Record<string, unknown> {
@@ -56,6 +61,7 @@ export function parseProcessStateJsonLenient(
 	}
 }
 
+/** @internal */
 export function parseSemanticEntryRefsStrict(
 	value: unknown,
 	context?: ProcessStateJsonParseContext,
@@ -74,6 +80,7 @@ export function parseSemanticEntryRefsStrict(
 	return parseProcessSemanticEntryRefs(value);
 }
 
+/** @internal */
 export function parseSemanticEntryRefsLenient(value: unknown): ProcessSemanticEntryRefs {
 	try {
 		return parseSemanticEntryRefsStrict(value);
@@ -82,6 +89,7 @@ export function parseSemanticEntryRefsLenient(value: unknown): ProcessSemanticEn
 	}
 }
 
+/** @internal */
 export function parseProductRefsStrict(
 	value: unknown,
 	context?: ProcessStateJsonParseContext,
@@ -110,6 +118,7 @@ export function parseProductRefsStrict(
 	return refs;
 }
 
+/** @internal */
 export function parseProductRefsLenient(value: unknown): ProcessProductRefs {
 	try {
 		return parseProductRefsStrict(value);
@@ -118,6 +127,7 @@ export function parseProductRefsLenient(value: unknown): ProcessProductRefs {
 	}
 }
 
+/** @internal */
 export function parseSemanticEntryRefsFromStateJsonStrict(
 	stateJson: string | null | undefined,
 	context?: string | ProcessStateJsonParseContext,
@@ -129,6 +139,7 @@ export function parseSemanticEntryRefsFromStateJsonStrict(
 	);
 }
 
+/** @internal */
 export function parseSemanticEntryRefsFromStateJsonLenient(
 	stateJson: string | null | undefined,
 ): ProcessSemanticEntryRefs {
@@ -136,6 +147,7 @@ export function parseSemanticEntryRefsFromStateJsonLenient(
 	return parseSemanticEntryRefsLenient(stateRecord.semanticEntryRefs);
 }
 
+/** @internal */
 export function parseProductRefsFromStateJsonStrict(
 	stateJson: string | null | undefined,
 	context?: string | ProcessStateJsonParseContext,
@@ -147,6 +159,7 @@ export function parseProductRefsFromStateJsonStrict(
 	);
 }
 
+/** @internal */
 export function parseProductRefsFromStateJsonLenient(
 	stateJson: string | null | undefined,
 ): ProcessProductRefs {

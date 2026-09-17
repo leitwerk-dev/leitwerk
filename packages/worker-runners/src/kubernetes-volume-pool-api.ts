@@ -1,63 +1,118 @@
 /** Kubernetes objects used for native PVC provisioning and safe PV rebinding. */
+/** @internal */
 export interface PoolObject {
+	/** @internal */
 	apiVersion?: string;
+	/** @internal */
 	kind?: string;
+	/** @internal */
 	metadata: {
+		/** @internal */
 		name: string;
+		/** @internal */
 		namespace?: string;
+		/** @internal */
 		uid?: string;
+		/** @internal */
 		resourceVersion?: string;
+		/** @internal */
 		deletionTimestamp?: string;
+		/** @internal */
 		labels?: Record<string, string>;
+		/** @internal */
 		annotations?: Record<string, string>;
-		ownerReferences?: Array<{ uid: string; [key: string]: unknown }>;
+		/** @internal */
+		ownerReferences?: Array<{
+			/** @internal */
+			uid: string;
+			/** @internal */
+			[key: string]: unknown;
+		}>;
 	};
+	/** @internal */
 	spec: {
+		/** @internal */
 		volumeName?: string;
+		/** @internal */
 		storageClassName?: string;
-		claimRef?: { uid?: string; name?: string; namespace?: string };
+		/** @internal */
+		claimRef?: {
+			/** @internal */
+			uid?: string;
+			/** @internal */
+			name?: string;
+			/** @internal */
+			namespace?: string;
+		};
+		/** @internal */
 		persistentVolumeReclaimPolicy?: string;
+		/** @internal */
 		[key: string]: unknown;
 	};
-	status?: { phase?: string };
+	/** @internal */
+	status?: {
+		/** @internal */
+		phase?: string;
+	};
 }
 
+/** @internal */
 export interface PoolStorageClass {
+	/** @internal */
 	apiVersion?: string;
+	/** @internal */
 	kind?: string;
+	/** @internal */
 	metadata: PoolObject["metadata"];
+	/** @internal */
 	provisioner: string;
+	/** @internal */
 	parameters?: Record<string, string>;
+	/** @internal */
 	reclaimPolicy?: string;
+	/** @internal */
 	mountOptions?: string[];
+	/** @internal */
 	allowVolumeExpansion?: boolean;
+	/** @internal */
 	volumeBindingMode?: string;
+	/** @internal */
 	allowedTopologies?: unknown[];
 }
 
+/** @internal */
 export interface VolumePoolApi {
+	/** @internal */
 	getStorageClass(name: string, signal: AbortSignal): Promise<PoolStorageClass | null>;
+	/** @internal */
 	listStorageClasses(selector: string, signal: AbortSignal): Promise<PoolStorageClass[]>;
+	/** @internal */
 	createStorageClass(value: PoolStorageClass, signal: AbortSignal): Promise<void>;
+	/** @internal */
 	deleteStorageClass(value: PoolStorageClass, signal: AbortSignal): Promise<void>;
+	/** @internal */
 	list(
 		kind: "persistentvolumes" | "persistentvolumeclaims",
 		namespace: string,
 		selector: string,
 		signal: AbortSignal,
 	): Promise<PoolObject[]>;
+	/** @internal */
 	get(
 		kind: string,
 		namespace: string,
 		name: string,
 		signal: AbortSignal,
 	): Promise<PoolObject | null>;
+	/** @internal */
 	create(kind: string, namespace: string, object: PoolObject, signal: AbortSignal): Promise<void>;
+	/** @internal */
 	patchVolume(
 		volume: PoolObject,
 		operations: Array<Record<string, unknown>>,
 		signal: AbortSignal,
 	): Promise<void>;
+	/** @internal */
 	delete(kind: string, namespace: string, object: PoolObject, signal: AbortSignal): Promise<void>;
 }
 

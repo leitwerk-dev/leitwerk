@@ -27,65 +27,134 @@ import type { FutureExecutionTransitionPlan } from "../../future-execution/trans
 import type { QueuedProcessInput } from "../../process-input-dispatch.js";
 import type { DeferredProcessExtensionEvent } from "./deferred-extension-events.js";
 
+/** @internal */
 export type DurableBroadcast = DurableWsFrameInput;
 
+/** @internal */
 export type TurnRecordWrite =
 	| {
+			/** @internal */
 			kind: "create";
+			/** @internal */
 			input: CreateProcessTurnRecordInput;
 	  }
 	| {
+			/** @internal */
 			kind: "update";
+			/** @internal */
 			id: string;
+			/** @internal */
 			input: UpdateProcessTurnRecordInput;
 	  };
 
+/** @internal */
 export type TurnStartWrite =
 	| {
+			/** @internal */
 			kind: "create";
-			input: Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & { id?: string };
+			/** @internal */
+			input: Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & {
+				/** @internal */
+				id?: string;
+			};
 	  }
 	| {
+			/** @internal */
 			kind: "cas_state";
+			/** @internal */
 			id: string;
+			/** @internal */
 			expectedKind: TurnStartRecord["state"]["kind"];
+			/** @internal */
 			state: TurnStartRecord["state"];
 	  };
 
+/** @internal */
 export type TurnAnnotationWrite =
 	| {
+			/** @internal */
 			kind: "create";
+			/** @internal */
 			input: CreateProcessTurnAnnotationInput;
 	  }
 	| {
+			/** @internal */
 			kind: "update";
+			/** @internal */
 			id: string;
+			/** @internal */
 			input: UpdateProcessTurnAnnotationInput;
 	  }
 	| {
+			/** @internal */
 			kind: "delete";
+			/** @internal */
 			id: string;
 	  };
 
+/** @internal */
 export type LeafOutcomeSnapshotWrite = {
+	/** @internal */
 	kind: "create";
+	/** @internal */
 	input: CreateProcessLeafOutcomeSnapshotInput;
 };
 
+/** @internal */
 export type WorkerIntent =
-	| { kind: "reconcile" }
-	| { kind: "restart_worker" }
-	| { kind: "start_if_needed" }
-	| { kind: "abort_turn"; reason: string }
-	| { kind: "stop_with_reason"; reason: string };
+	| {
+			/** @internal */
+			kind: "reconcile";
+	  }
+	| {
+			/** @internal */
+			kind: "restart_worker";
+	  }
+	| {
+			/** @internal */
+			kind: "start_if_needed";
+	  }
+	| {
+			/** @internal */
+			kind: "abort_turn";
+			/** @internal */
+			reason: string;
+	  }
+	| {
+			/** @internal */
+			kind: "stop_with_reason";
+			/** @internal */
+			reason: string;
+	  };
 
+/** @internal */
 export type PendingExternalSourceFireWrite =
-	| { kind: "create"; input: CreatePendingExternalSourceFireInput }
-	| { kind: "update"; id: string; input: UpdatePendingExternalSourceFireInput }
-	| { kind: "delete"; id: string };
+	| {
+			/** @internal */
+			kind: "create";
+			/** @internal */
+			input: CreatePendingExternalSourceFireInput;
+	  }
+	| {
+			/** @internal */
+			kind: "update";
+			/** @internal */
+			id: string;
+			/** @internal */
+			input: UpdatePendingExternalSourceFireInput;
+	  }
+	| {
+			/** @internal */
+			kind: "delete";
+			/** @internal */
+			id: string;
+	  };
 
+/** @internal */
 export interface DecisionMetadata {
+	/** @internal */
 	nextTurnModelProfileId?: string | null;
+	/** @internal */
 	providerOptions?: Readonly<Record<string, string>>;
 }
 
@@ -100,29 +169,54 @@ const METADATA_KEY_GROUPS = {
 	],
 } as const;
 
+/** @internal */
 export interface Writes {
+	/** @internal */
 	processPatch: UpdateProcessInstanceInput;
+	/** @internal */
 	changedFields: string[];
-	projectWrite?: { id: string; input: UpdateProcessProjectInput };
+	/** @internal */
+	projectWrite?: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		input: UpdateProcessProjectInput;
+	};
+	/** @internal */
 	turnRecordWrites: TurnRecordWrite[];
+	/** @internal */
 	turnStartWrites: TurnStartWrite[];
+	/** @internal */
 	turnAnnotationWrites: TurnAnnotationWrite[];
+	/** @internal */
 	leafOutcomeSnapshotWrites: LeafOutcomeSnapshotWrite[];
+	/** @internal */
 	events: CreateProcessEventInput[];
+	/** @internal */
 	broadcasts: DurableBroadcast[];
+	/** @internal */
 	queuedInputs: QueuedProcessInput[];
+	/** @internal */
 	extensionEvents: DeferredProcessExtensionEvent[];
+	/** @internal */
 	futureExecutionPlans: FutureExecutionTransitionPlan[];
+	/** @internal */
 	pendingExternalSourceFireWrites: PendingExternalSourceFireWrite[];
+	/** @internal */
 	workerIntent?: WorkerIntent;
 }
 
+/** @internal */
 export interface WriteBuildFailure {
+	/** @internal */
 	ok: false;
+	/** @internal */
 	code: string;
+	/** @internal */
 	message: string;
 }
 
+/** @internal */
 export type WriteBuildResult = Writes | WriteBuildFailure;
 
 export function createWrites(init: Partial<Writes> = {}): Writes {

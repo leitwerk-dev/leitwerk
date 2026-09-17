@@ -60,3 +60,25 @@ Pull request titles use Conventional Commits syntax because GitHub uses the titl
 `feat` and `fix` contribute release notes. Add `!` or a `BREAKING CHANGE:` footer for a breaking change. `docs`, `test`, `ci`, `build`, and `chore` do not request a release by themselves.
 
 Merging an ordinary pull request never publishes. It updates the reviewable Release Please pull request. Maintainers publish by merging that generated pull request. See [docs/ci.md](docs/ci.md) for version rules and artifact coordinates.
+
+## API classification
+
+Annotate every exposed declaration and member with `@public` or `@internal`.
+Both categories stay exported and fully typed; do not enable `stripInternal`.
+Members are classified individually, including members of public interfaces
+and capability objects. Public signatures must use public supporting types.
+Re-exports preserve the original classification.
+
+The initial baseline comes from actual usage in the three consumer working
+trees, including tests and uncommitted sources. The checked-in
+[API reports](api-reports/README.md) record that evidence. Documentation and
+usage inside Leitwerk alone do not qualify an API. New public commitments need
+consumer evidence and review; absence of later usage never silently demotes an
+existing public API.
+
+Breaking public APIs, including removing support, requires release notes and a
+minor bump during `0.x`, or a major bump from `1.0`. Use a breaking Conventional
+Commit as described above. Review the signature and classification diff before
+running `npm run api:check -- --update`, and commit the updated interface reports.
+`npm run test:full` checks these reports without sibling repositories. External
+extension authors can run `leitwerk-dev api:check --workspace PATH`.

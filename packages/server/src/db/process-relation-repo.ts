@@ -15,10 +15,15 @@ function map(row: typeof s.processRelations.$inferSelect): ProcessRelation {
 	};
 }
 
+/** @internal */
 export function createProcessRelationRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(
-			input: Omit<ProcessRelation, "kind" | "createdAt"> & { createdAt?: string },
+			input: Omit<ProcessRelation, "kind" | "createdAt"> & {
+				/** @internal */
+				createdAt?: string;
+			},
 		): ProcessRelation {
 			const row = db
 				.insert(s.processRelations)
@@ -34,6 +39,7 @@ export function createProcessRelationRepo(db: LeitwerkDb) {
 				.get();
 			return map(row);
 		},
+		/** @internal */
 		getByChild(childInstanceId: string): ProcessRelation | null {
 			const row = db
 				.select()
@@ -42,6 +48,7 @@ export function createProcessRelationRepo(db: LeitwerkDb) {
 				.get();
 			return row ? map(row) : null;
 		},
+		/** @internal */
 		listByParent(parentInstanceId: string): ProcessRelation[] {
 			return db
 				.select()

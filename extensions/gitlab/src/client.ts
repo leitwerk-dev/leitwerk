@@ -1,96 +1,191 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { repositoryHttpsUrl } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export interface GitLabProfile {
+	/** @internal */
 	baseUrl: string;
+	/** @internal */
 	token: string;
-	gitIdentity?: { name: string; email: string };
-}
-export interface GitLabProject {
-	id: number;
-	path_with_namespace: string;
-	http_url_to_repo: string;
-	web_url: string;
-	default_branch: string;
-	archived?: boolean;
-	permissions?: {
-		project_access?: { access_level: number } | null;
-		group_access?: { access_level: number } | null;
+	/** @internal */
+	gitIdentity?: {
+		/** @internal */
+		name: string;
+		/** @internal */
+		email: string;
 	};
 }
-export interface GitLabGroup {
+/** @public */
+export interface GitLabProject {
+	/** @public */
 	id: number;
+	/** @public */
+	path_with_namespace: string;
+	/** @public */
+	http_url_to_repo: string;
+	/** @public */
+	web_url: string;
+	/** @internal */
+	default_branch: string;
+	/** @public */
+	archived?: boolean;
+	/** @internal */
+	permissions?: {
+		/** @internal */
+		project_access?: {
+			/** @internal */
+			access_level: number;
+		} | null;
+		/** @internal */
+		group_access?: {
+			/** @internal */
+			access_level: number;
+		} | null;
+	};
+}
+/** @internal */
+export interface GitLabGroup {
+	/** @internal */
+	id: number;
+	/** @internal */
 	full_path: string;
 }
+/** @public */
 export interface GitLabMergeRequest {
+	/** @public */
 	iid: number;
+	/** @public */
 	project_id: number;
+	/** @public */
 	source_project_id: number;
+	/** @public */
 	target_project_id: number;
+	/** @public */
 	title: string;
+	/** @public */
 	description: string | null;
+	/** @public */
 	state: string;
+	/** @public */
 	labels: string[];
+	/** @public */
 	sha: string;
+	/** @public */
 	source_branch: string;
+	/** @public */
 	target_branch: string;
+	/** @public */
 	web_url: string;
+	/** @internal */
 	merge_commit_sha?: string | null;
-	diff_refs?: { base_sha: string; head_sha: string; start_sha: string };
+	/** @internal */
+	diff_refs?: {
+		/** @internal */
+		base_sha: string;
+		/** @internal */
+		head_sha: string;
+		/** @internal */
+		start_sha: string;
+	};
 }
+/** @public */
 export interface GitLabCommit {
+	/** @public */
 	id: string;
+	/** @internal */
 	parent_ids: string[];
+	/** @internal */
 	message: string;
+	/** @internal */
 	web_url?: string;
 }
+/** @public */
 export interface GitLabBranch {
+	/** @internal */
 	name: string;
+	/** @public */
 	can_push: boolean;
+	/** @internal */
 	protected: boolean;
+	/** @public */
 	commit: GitLabCommit;
 }
+/** @public */
 export interface GitLabPipeline {
+	/** @public */
 	id: number;
+	/** @public */
 	project_id: number;
+	/** @public */
 	sha: string;
+	/** @public */
 	ref: string;
+	/** @public */
 	status: string;
+	/** @internal */
 	source?: string;
+	/** @public */
 	web_url: string;
 }
+/** @public */
 export interface GitLabJob {
+	/** @public */
 	id: number;
+	/** @public */
 	name: string;
+	/** @internal */
 	status: string;
+	/** @public */
 	web_url: string;
+	/** @public */
 	failure_reason?: string;
 }
+/** @public */
 export interface GitLabDiff {
+	/** @public */
 	old_path: string;
+	/** @public */
 	new_path: string;
+	/** @public */
 	diff: string;
+	/** @public */
 	new_file: boolean;
+	/** @public */
 	deleted_file: boolean;
+	/** @public */
 	renamed_file: boolean;
 }
+/** @public */
 export interface GitLabNote {
+	/** @internal */
 	id: number;
+	/** @internal */
 	body: string;
 }
+/** @public */
 export interface GitLabIdentity {
+	/** @public */
 	name: string;
+	/** @public */
 	email: string;
+	/** @public */
 	username: string;
 }
+/** @public */
 export interface GitLabObservation {
+	/** @public */
 	mr: GitLabMergeRequest;
+	/** @public */
 	pipeline: GitLabPipeline | null;
 }
 
+/** @internal */
 export class GitLabError extends Error {
+	/** @internal */
 	constructor(
+		/** @internal */
 		readonly status: number,
+		/** @internal */
 		readonly retryable: boolean,
 	) {
 		super(
@@ -98,6 +193,7 @@ export class GitLabError extends Error {
 		);
 	}
 }
+/** @internal */
 export function parseGitLabProfiles(raw: unknown): Map<string, GitLabProfile> {
 	const profiles = new Map<string, GitLabProfile>();
 	for (const [name, value] of Object.entries(
@@ -136,14 +232,22 @@ const projectPath = (id: number | string) => `/projects/${encodeURIComponent(id)
 const mrPath = (id: number, iid: number) => `${projectPath(id)}/merge_requests/${iid}`;
 
 /** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. */
+/** @public */
 export class GitLabClient {
+	/** @public */
 	readonly baseUrl: string;
 	readonly #profile: GitLabProfile;
 	readonly #fetch: typeof fetch;
 	readonly #sleep: (ms: number) => Promise<unknown>;
+	/** @internal */
 	constructor(
 		profile: GitLabProfile,
-		options: { fetch?: typeof fetch; sleep?: (ms: number) => Promise<unknown> } = {},
+		options: {
+			/** @internal */
+			fetch?: typeof fetch;
+			/** @internal */
+			sleep?: (ms: number) => Promise<unknown>;
+		} = {},
 	) {
 		if (repositoryHttpsUrl(`${profile.baseUrl}/repository`).origin !== profile.baseUrl)
 			throw new Error("GitLab requires an HTTPS origin baseUrl");
@@ -217,21 +321,26 @@ export class GitLabClient {
 		}
 		throw new Error("GitLab pagination limit exceeded; discovery incomplete");
 	}
+	/** @public */
 	getProject(id: number | string, signal?: AbortSignal): Promise<GitLabProject> {
 		return this.request(projectPath(id), signal);
 	}
+	/** @internal */
 	listProjects(signal?: AbortSignal): Promise<GitLabProject[]> {
 		return this.pages("/projects?archived=false", signal);
 	}
+	/** @internal */
 	getGroup(id: number | string, signal?: AbortSignal): Promise<GitLabGroup> {
 		return this.request(`/groups/${encodeURIComponent(id)}`, signal);
 	}
+	/** @internal */
 	listGroupProjects(id: number | string, signal?: AbortSignal): Promise<GitLabProject[]> {
 		return this.pages(
 			`/groups/${encodeURIComponent(id)}/projects?include_subgroups=true&with_shared=false&archived=false`,
 			signal,
 		);
 	}
+	/** @public */
 	listMergeRequests(
 		id: number,
 		label: string,
@@ -242,21 +351,26 @@ export class GitLabClient {
 			signal,
 		);
 	}
+	/** @internal */
 	getMergeRequest(id: number, iid: number, signal?: AbortSignal): Promise<GitLabMergeRequest> {
 		return this.request(mrPath(id, iid), signal);
 	}
+	/** @public */
 	getChanges(id: number, iid: number, signal?: AbortSignal): Promise<GitLabDiff[]> {
 		return this.pages(`${mrPath(id, iid)}/diffs`, signal);
 	}
+	/** @public */
 	getBranch(id: number, branch: string, signal?: AbortSignal): Promise<GitLabBranch> {
 		return this.request(
 			`${projectPath(id)}/repository/branches/${encodeURIComponent(branch)}`,
 			signal,
 		);
 	}
+	/** @internal */
 	getCommit(id: number, sha: string, signal?: AbortSignal): Promise<GitLabCommit> {
 		return this.request(`${projectPath(id)}/repository/commits/${encodeURIComponent(sha)}`, signal);
 	}
+	/** @internal */
 	listMergeRequestPipelines(
 		id: number,
 		iid: number,
@@ -264,6 +378,7 @@ export class GitLabClient {
 	): Promise<GitLabPipeline[]> {
 		return this.pages(`${mrPath(id, iid)}/pipelines`, signal);
 	}
+	/** @internal */
 	listBranchPipelines(
 		id: number,
 		branch: string,
@@ -275,21 +390,26 @@ export class GitLabClient {
 			signal,
 		);
 	}
+	/** @internal */
 	getPipeline(id: number, pipeline: number, signal?: AbortSignal): Promise<GitLabPipeline> {
 		return this.request(`${projectPath(id)}/pipelines/${pipeline}`, signal);
 	}
+	/** @public */
 	listFailedJobs(id: number, pipeline: number, signal?: AbortSignal): Promise<GitLabJob[]> {
 		return this.pages(
 			`${projectPath(id)}/pipelines/${pipeline}/jobs?scope[]=failed&include_retried=false`,
 			signal,
 		);
 	}
+	/** @internal */
 	listNotes(id: number, iid: number, signal?: AbortSignal): Promise<GitLabNote[]> {
 		return this.pages(`${mrPath(id, iid)}/notes`, signal);
 	}
+	/** @internal */
 	addNote(id: number, iid: number, body: string, signal?: AbortSignal): Promise<GitLabNote> {
 		return this.request(`${mrPath(id, iid)}/notes`, signal, { body });
 	}
+	/** @public */
 	async resolveGitIdentity(signal?: AbortSignal): Promise<GitLabIdentity> {
 		const user = await this.request<{
 			name?: string;
@@ -305,12 +425,18 @@ export class GitLabClient {
 			);
 		return { name, email, username: user.username };
 	}
+	/** @public */
 	async getJobTrace(
 		id: number,
 		job: number,
 		maxBytes = 65_536,
 		signal?: AbortSignal,
-	): Promise<{ text: string; truncated: boolean }> {
+	): Promise<{
+		/** @internal */
+		text: string;
+		/** @internal */
+		truncated: boolean;
+	}> {
 		const limit = Math.min(262_144, Math.max(1, Math.floor(maxBytes) || 65_536));
 		const response = await this.response(`${projectPath(id)}/jobs/${job}/trace`, signal);
 		const reader = response.body?.getReader();
@@ -336,9 +462,11 @@ export class GitLabClient {
 		return { text: Buffer.concat(chunks).toString("utf8"), truncated };
 	}
 }
+/** @public */
 export type GitLabClientLike = Pick<GitLabClient, keyof GitLabClient>;
 
 /** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
+/** @public */
 export async function observeMergeRequest(
 	client: GitLabClientLike,
 	projectId: number,

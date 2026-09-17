@@ -111,3 +111,15 @@ retrying it. Release-lock selection stays outside this integration.
 The local adapter supports `createIssue`, `setIssueLabel`, `setMembership`,
 `editFeedback` and `failNextResponse`. Membership, label events, feedback edits,
 write outcomes and Git history survive restart.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubClient`, `GitHubClientLike`, `GitHubFeedbackItem`, `GitHubFeedbackSourceConfig`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubIssueCancelledSourceConfig`, `GitHubIssueWatcherConfig`, `GitHubIssueWatcherEvent`, `GitHubLabelEvent`, `GitHubProjectBinding`, `GitHubPullRequest`, `GitHubPullRequestSourceConfig`, `GitHubPullRequestTerminalSourceConfig`, `GitHubRelease`, `GitHubRepository`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `manifest`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
+- `@leitwerk-dev/github/testing`: `LocalGitHubAdapter`, `LocalGitHubOptions`, `LocalGitHubRepository`, `LocalGitHubState`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. See the
+[interface report](../../api-reports/leitwerk-dev--github.api.md) for exact member tags
+and signatures, and the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).

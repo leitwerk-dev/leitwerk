@@ -62,3 +62,15 @@ A newest pending match continues waiting even if an older match is terminal.
 An inconclusive scan reports a lookup-window error; inspect repository history
 and adjust the watched pipeline floor before retrying. No match within exhausted
 history is an ordinary wait for a future pipeline.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/woodpecker`: `WoodpeckerClient`, `WoodpeckerClientLike`, `WoodpeckerIntegration`, `WoodpeckerPipeline`, `WoodpeckerProjectBinding`, `WoodpeckerRepository`, `default`, `setupWoodpeckerIntegration`.
+- `@leitwerk-dev/woodpecker/testing`: `LocalWoodpeckerAdapter`, `LocalWoodpeckerOptions`, `LocalWoodpeckerRepository`, `LocalWoodpeckerState`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. See the
+[interface report](../../api-reports/leitwerk-dev--woodpecker.api.md) for exact member tags
+and signatures, and the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).

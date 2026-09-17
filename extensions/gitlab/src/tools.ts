@@ -13,9 +13,17 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabClientLike, observeMergeRequest } from "./client.js";
+/** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-): { profile: string; projectId: number; iid: number } {
+): {
+	/** @public */
+	profile: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+} {
 	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
 		throw new Error("An authorized GitLab process project is required");
 	const binding = ctx.project.metadata?.gitlab as
@@ -30,16 +38,28 @@ export function resolveGitLabBinding(
 		throw new Error("Invalid GitLab project binding");
 	return { profile: binding.profile, projectId: binding.projectId, iid: binding.iid };
 }
+/** @internal */
 export async function ensureGitLabComment(input: {
+	/** @internal */
 	client: GitLabClientLike;
+	/** @internal */
 	writes: ExternalWriteLogRepoLike;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	projectId: number;
+	/** @internal */
 	iid: number;
+	/** @internal */
 	writeKey: string;
+	/** @internal */
 	body: string;
+	/** @internal */
 	signal?: AbortSignal;
-}): Promise<{ marker: string }> {
+}): Promise<{
+	/** @internal */
+	marker: string;
+}> {
 	const { client, writes, instanceId, projectId, iid, writeKey, signal } = input;
 	const digest = createHash("sha256")
 		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, writeKey]))
@@ -61,6 +81,7 @@ export async function ensureGitLabComment(input: {
 	});
 	return { marker };
 }
+/** @internal */
 export function registerGitLabTools(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,

@@ -38,3 +38,14 @@ The analysis LLM turn has only `read` and `bash`. It runs in the absolute direct
 ## Follow-up
 
 From the decision turn, the operator can complete the analysis, ask follow-up questions, refine the analysis, or refresh the snapshot. Refresh routes back to `analyze_process`; its preparation phase replaces the snapshot before the next prompt. Completion retains the latest analysis product. Process Analysis does not launch repository-change processes or create tracker tickets.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/process-analysis`: `default`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. See the
+[interface report](../../api-reports/leitwerk-dev--process-analysis.api.md) for exact member tags
+and signatures, and the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).

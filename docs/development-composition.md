@@ -12,6 +12,11 @@ Keep an optional core clone inside the extension repository, for example `.leitw
 
 The runtime and extension APIs are available from installed `@leitwerk-dev/server` and `@leitwerk-dev/extension-runtime` packages. `@leitwerk-dev/ui` includes compiled UI assets. `leitwerk-dev dev` builds and watches workspace extensions, restarts the installed server after successful builds, and serves the installed UI with API/WebSocket forwarding. See the [development CLI](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md) for commands, dependency selection and repository hooks. Core source development continues to use this repository's `dev` command.
 
+Run `leitwerk-dev api:check --workspace PATH` to check the workspace's API
+classifications and committed interface reports without a core checkout.
+`@public` and `@internal` both remain usable; the tags state the
+[SDK compatibility contract](process-sdk.md#api-compatibility).
+
 ## Layout
 
 Keep the public and private repositories as siblings:

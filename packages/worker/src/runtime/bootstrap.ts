@@ -80,30 +80,56 @@ export interface AcceptedStartActivationResult {
 	diagnostics: string[];
 }
 
+/** @internal */
 export interface PreparedStartActivation {
+	/** @internal */
 	startPayload: WorkerStartPayload;
+	/** @internal */
 	managedAgentDir: string | null;
+	/** @internal */
 	managedModelProfileId: string | null;
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	sessionCwd: string;
+	/** @internal */
 	processSnapshot: ProcessInstance;
+	/** @internal */
 	resolvedPiConfig: ResolvedProcessPiConfig;
 }
 
+/** @internal */
 export interface BootstrapWorkerRuntimeResult {
+	/** @internal */
 	startPayload: WorkerStartPayload;
+	/** @internal */
 	resolvedWorkerProcess?: ResolvedWorkerProcess;
+	/** @internal */
 	projectSnapshots: ProcessProject[];
+	/** @internal */
 	processSnapshot: ProcessInstance;
+	/** @internal */
 	activation: PreparedStartActivation;
+	/** @internal */
 	resolvedPiConfig: ResolvedProcessPiConfig;
+	/** @internal */
 	diagnostics: string[];
-	readyPayload: WorkerReadyPayload & { rootEntryId: string | null };
+	/** @internal */
+	readyPayload: WorkerReadyPayload & {
+		/** @internal */
+		rootEntryId: string | null;
+	};
+	/** @internal */
 	pendingInputs: InputItem[];
+	/** @internal */
 	credentialRefresh?: {
+		/** @internal */
 		agentDir: string;
+		/** @internal */
 		declaredCredentialPaths: readonly string[];
+		/** @internal */
 		providerId: string;
+		/** @internal */
 		revision: number;
 	};
 }

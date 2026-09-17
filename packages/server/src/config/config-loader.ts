@@ -32,14 +32,21 @@ const positiveSafeInteger = v.pipe(
 	v.maxValue(Number.MAX_SAFE_INTEGER),
 );
 
+/** @public */
 export interface ConfigLoadResult {
+	/** @public */
 	ok: true;
+	/** @public */
 	config: LeitwerkConfig;
+	/** @internal */
 	filePath: string;
 }
 
+/** @public */
 export interface ConfigLoadError {
+	/** @public */
 	ok: false;
+	/** @public */
 	error: string;
 }
 
@@ -74,6 +81,7 @@ const mergeConfigDefaults = createDefu((object, key, value) => {
 	return false;
 });
 
+/** @internal */
 export function applyConfigDefaults(raw: Record<string, unknown>): LeitwerkConfig {
 	const merged = mergeConfigDefaults(structuredClone(raw), getDefaultConfig()) as LeitwerkConfig;
 	if (Object.hasOwn(raw, "worker_runtime_profiles")) {
@@ -118,6 +126,7 @@ export function loadConfigFromFile(filePath: string): ConfigLoadResult | ConfigL
 	}
 }
 
+/** @public */
 export function loadConfig(explicitPath?: string): ConfigLoadResult | ConfigLoadError {
 	const filePath = resolveConfigPath(explicitPath);
 	if (!filePath) {
@@ -927,6 +936,7 @@ function shouldRedactForLogging(path: readonly string[], key: string): boolean {
 	);
 }
 
+/** @internal */
 export function sanitizeConfigForLogging(value: unknown, path: readonly string[] = []): unknown {
 	if (Array.isArray(value)) {
 		return value.map((entry, index) => sanitizeConfigForLogging(entry, [...path, String(index)]));
@@ -947,6 +957,7 @@ export function sanitizeConfigForLogging(value: unknown, path: readonly string[]
 	return sanitized;
 }
 
+/** @public */
 export function getDefaultConfig(): LeitwerkConfig {
 	return {
 		skill_repositories: [],

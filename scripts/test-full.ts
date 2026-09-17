@@ -13,6 +13,7 @@ const phases = [
 	"check:boundaries",
 	"release:check",
 	"typecheck",
+	"api:check",
 	"test:parity:built",
 	"test:unit",
 	"test:integration",

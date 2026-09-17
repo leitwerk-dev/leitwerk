@@ -6,11 +6,15 @@ import {
 	resolveExtensionUiAssetPath,
 } from "../extension-ui/catalog.js";
 
+/** @internal */
 export interface UiRouteDeps {
+	/** @internal */
 	extensionUiCatalog: ExtensionUiCatalog;
+	/** @internal */
 	extensionUiAssetCacheControl?: string;
 }
 
+/** @internal */
 export function registerUiRendererRoutes(app: FastifyInstance, deps: UiRouteDeps): void {
 	app.get("/api/ui/extensions", async () => ({
 		ok: true,

@@ -16,3 +16,18 @@ Turn labels use short task names: Plan, Review Plan, Implement, and Review.
 Automated assessments use Assess Plan and Assess Implementation so operators can
 distinguish them from their own decisions. Local, remote, and provider-specific
 repository-change processes share these labels; persisted turn ids are unchanged.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/coding`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParams`, `RepositoryChangeParamsBase`, `RepositoryChangeProcessConfig`, `codingActionIds`, `createRepositoryChangeParamsCodec`, `createRepositoryChangeProcess`, `default`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/auto-work-branch`: `buildAutoWorkBranchFromSeed`, `generateAutoWorkBranchRandomHex`.
+- `@leitwerk-dev/coding/finalization-git`: `GitIdentity`, `commitAndPushWorkBranch`.
+- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeFinalizationState`, `RepositoryChangeState`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. See the
+[interface report](../../api-reports/leitwerk-dev--coding.api.md) for exact member tags
+and signatures, and the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).

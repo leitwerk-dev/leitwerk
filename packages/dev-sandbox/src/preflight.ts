@@ -7,6 +7,7 @@ import { configureSandboxStorage } from "./config.js";
 import { createSandboxApp, type SandboxCompositionFactory, type SandboxInput } from "./index.js";
 import { loadSandboxRuntime } from "./runtime.js";
 
+/** @internal */
 export async function preflightSandbox(
 	config: LeitwerkConfig,
 	input: SandboxInput,

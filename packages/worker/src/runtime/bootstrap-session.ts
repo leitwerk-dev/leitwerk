@@ -58,6 +58,7 @@ export interface PreparedLlmSession extends PreparedSessionBase {
 
 export type PreparedWorkerSession = PreparedAutomaticSession | PreparedLlmSession;
 
+/** @internal */
 export interface CredentialRefreshDescriptor
 	extends NonNullable<BootstrapWorkerRuntimeResult["credentialRefresh"]> {}
 

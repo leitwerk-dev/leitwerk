@@ -11,18 +11,27 @@ import {
 import path from "node:path";
 import type { RepositoryFeedbackItem, RepositoryPullRequest } from "@leitwerk-dev/process-sdk";
 
+/** @public */
 export interface LocalRepositorySeed {
+	/** @public */
 	owner: string;
+	/** @public */
 	name: string;
+	/** @internal */
 	defaultBranch?: string;
+	/** @public */
 	files?: Record<string, string>;
 	/** Retain a pre-existing sandbox checkout layout. */
+	/** @internal */
 	directoryName?: string;
+	/** @internal */
 	commitMessage?: string;
+	/** @internal */
 	signoff?: boolean;
 }
 
 /** Reject escaping paths and symlinks, including a not-yet-created file's parents. */
+/** @public */
 export function localPath(root: string, relative: string): string {
 	if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink())
 		throw new Error("Local provider storage must not contain symlinks");
@@ -39,11 +48,13 @@ export function localPath(root: string, relative: string): string {
 	return target;
 }
 
-export function readLocalJson<T extends { version: number }>(
-	root: string,
-	file: string,
-	initial: T,
-): T {
+/** @public */
+export function readLocalJson<
+	T extends {
+		/** @internal */
+		version: number;
+	},
+>(root: string, file: string, initial: T): T {
 	const target = localPath(root, file);
 	if (!existsSync(target)) return structuredClone(initial);
 	const value = JSON.parse(readFileSync(target, "utf8")) as T;
@@ -52,6 +63,7 @@ export function readLocalJson<T extends { version: number }>(
 	return value;
 }
 
+/** @public */
 export function writeLocalJson(root: string, file: string, value: unknown): void {
 	const target = localPath(root, file);
 	const temporary = localPath(root, `${file}.tmp`);
@@ -60,13 +72,30 @@ export function writeLocalJson(root: string, file: string, value: unknown): void
 }
 
 /** Persist local adapter state with a shared clock and monotonically increasing ids. */
+/** @public */
 export class LocalProviderStore<
-	S extends { version: number; sequence: number },
-	O extends { root: string; now?: () => number; nextId?: () => number },
+	S extends {
+		/** @internal */
+		version: number;
+		/** @internal */
+		sequence: number;
+	},
+	O extends {
+		/** @internal */
+		root: string;
+		/** @internal */
+		now?: () => number;
+		/** @internal */
+		nextId?: () => number;
+	},
 > {
+	/** @public */
 	readonly git: LocalGit;
+	/** @public */
 	state: S;
+	/** @public */
 	constructor(
+		/** @public */
 		readonly options: O,
 		private readonly file: string,
 		initial: S,
@@ -74,44 +103,81 @@ export class LocalProviderStore<
 		this.git = new LocalGit(options.root);
 		this.state = readLocalJson(options.root, file, initial);
 	}
+	/** @public */
 	save() {
 		writeLocalJson(this.options.root, this.file, this.state);
 	}
+	/** @internal */
 	id() {
 		this.state.sequence = Math.max(this.state.sequence + 1, this.options.nextId?.() ?? 0);
 		return this.state.sequence;
 	}
+	/** @internal */
 	timestamp() {
 		return new Date(this.options.now?.() ?? Date.now()).toISOString();
 	}
 }
 
+/** @public */
 type LocalPullRequest = Pick<
 	RepositoryPullRequest,
 	"number" | "title" | "body" | "state" | "merged" | "merge_commit_sha" | "head" | "base"
 >;
+/** @public */
 interface LocalPullRequestRepository<P extends LocalPullRequest> {
-	repository: { ssh_url: string };
+	/** @public */
+	repository: {
+		/** @internal */
+		ssh_url: string;
+	};
+	/** @public */
 	pulls: P[];
 }
 
 /** Common PR operations; adapters retain their provider-specific state and clients. */
+/** @public */
 export class LocalForgeStore<
-	S extends { version: number; sequence: number },
-	O extends { root: string; baseUrl: string; now?: () => number; nextId?: () => number },
+	S extends {
+		/** @internal */
+		version: number;
+		/** @internal */
+		sequence: number;
+	},
+	O extends {
+		/** @internal */
+		root: string;
+		/** @internal */
+		baseUrl: string;
+		/** @internal */
+		now?: () => number;
+		/** @internal */
+		nextId?: () => number;
+	},
 > extends LocalProviderStore<S, O> {
+	/** @public */
 	newRepository(seed: LocalRepositorySeed) {
 		const { bare, branch } = this.git.seed(seed);
 		return {
+			/** @public */
 			id: this.id(),
-			owner: { login: seed.owner },
+			/** @public */
+			owner: {
+				/** @internal */
+				login: seed.owner,
+			},
+			/** @public */
 			name: seed.name,
+			/** @public */
 			full_name: `${seed.owner}/${seed.name}`,
+			/** @public */
 			ssh_url: bare,
+			/** @public */
 			html_url: `${this.options.baseUrl}/__local`,
+			/** @public */
 			default_branch: branch,
 		};
 	}
+	/** @internal */
 	pullRequestClient<P extends LocalPullRequest>(
 		repo: (owner: string, name: string) => LocalPullRequestRepository<P>,
 		missing = "Unknown local pull request",
@@ -122,14 +188,17 @@ export class LocalForgeStore<
 			return pr;
 		};
 		return {
+			/** @internal */
 			getPullRequest: async (owner: string, name: string, number: number) =>
 				this.refresh(repo(owner, name), pull(owner, name, number)),
+			/** @internal */
 			listPullRequests: async (owner: string, name: string, state = "open") => {
 				const r = repo(owner, name);
 				return r.pulls
 					.filter((p) => state === "all" || p.state === state)
 					.map((p) => this.refresh(r, p));
 			},
+			/** @internal */
 			updatePullRequest: async (
 				owner: string,
 				name: string,
@@ -144,6 +213,7 @@ export class LocalForgeStore<
 			},
 		};
 	}
+	/** @public */
 	refresh<P extends LocalPullRequest>(repo: LocalPullRequestRepository<P>, pr: P): P {
 		if (pr.state === "open") {
 			const { headSha, baseSha, ...mergeability } = this.git.mergeability(
@@ -157,6 +227,7 @@ export class LocalForgeStore<
 		}
 		return structuredClone(pr);
 	}
+	/** @public */
 	merge<P extends LocalPullRequest>(repo: LocalPullRequestRepository<P>, number: number): P {
 		const pr = repo.pulls.find((p) => p.number === number);
 		if (!pr || pr.state !== "open") throw new Error("Pull request is not open");
@@ -167,8 +238,17 @@ export class LocalForgeStore<
 		this.save();
 		return structuredClone(pr);
 	}
+	/** @public */
 	addFeedback<F extends RepositoryFeedbackItem>(
-		repo: { pulls: Array<{ number: number }>; feedback: Record<string, F[]> },
+		repo: {
+			/** @public */
+			pulls: Array<{
+				/** @internal */
+				number: number;
+			}>;
+			/** @public */
+			feedback: Record<string, F[]>;
+		},
 		number: number,
 		input: Omit<F, "id" | "createdAt">,
 	): F {
@@ -179,40 +259,89 @@ export class LocalForgeStore<
 		this.save();
 		return value;
 	}
+	/** @public */
 	newComment(body: string) {
 		return {
+			/** @internal */
 			id: this.id(),
+			/** @internal */
 			body,
-			user: { login: "leitwerk-bot" },
+			/** @public */
+			user: {
+				/** @public */
+				login: "leitwerk-bot",
+			},
+			/** @internal */
 			created_at: this.timestamp(),
 		};
 	}
+	/** @internal */
 	newPullRequest(
-		repo: { repository: { ssh_url: string } },
-		input: { title: string; body: string; head: string; base: string },
+		repo: {
+			/** @internal */
+			repository: {
+				/** @internal */
+				ssh_url: string;
+			};
+		},
+		input: {
+			/** @internal */
+			title: string;
+			/** @internal */
+			body: string;
+			/** @internal */
+			head: string;
+			/** @internal */
+			base: string;
+		},
 	) {
 		const number = this.id();
 		return {
+			/** @internal */
 			number,
+			/** @internal */
 			title: input.title,
+			/** @internal */
 			body: input.body,
+			/** @internal */
 			state: "open",
+			/** @internal */
 			merged: false,
+			/** @internal */
 			merge_commit_sha: null,
+			/** @internal */
 			html_url: `${this.options.baseUrl}/__local#pr-${number}`,
-			head: { ref: input.head, sha: this.git.head(repo.repository.ssh_url, input.head) },
-			base: { ref: input.base, sha: this.git.head(repo.repository.ssh_url, input.base) },
+			/** @internal */
+			head: {
+				/** @internal */
+				ref: input.head,
+				/** @internal */
+				sha: this.git.head(repo.repository.ssh_url, input.head),
+			},
+			/** @internal */
+			base: {
+				/** @internal */
+				ref: input.base,
+				/** @internal */
+				sha: this.git.head(repo.repository.ssh_url, input.base),
+			},
 		};
 	}
 }
 
 /** Real Git with file-only transport and no ambient credentials or hooks. */
+/** @public */
 export class LocalGit {
-	constructor(readonly root: string) {
+	/** @public */
+	constructor(
+		/** @internal */
+		readonly root: string,
+	) {
 		if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink())
 			throw new Error("Local Git root must not be a symlink");
 		mkdirSync(root, { recursive: true, mode: 0o700 });
 	}
+	/** @public */
 	run(directory: string, args: string[]): string {
 		const base = realpathSync(this.root);
 		const directoryPath = path.resolve(directory);
@@ -243,10 +372,12 @@ export class LocalGit {
 			},
 		).trim();
 	}
+	/** @public */
 	head(directory: string, ref: string): string {
 		if (!/^[a-zA-Z0-9_./-]+$/.test(ref) || ref.startsWith("-")) throw new Error("Invalid Git ref");
 		return this.run(directory, ["rev-parse", "--verify", `${ref}^{commit}`]);
 	}
+	/** @internal */
 	isAncestor(directory: string, ancestor: string, descendant: string): boolean {
 		return this.isAncestorCommit(
 			directory,
@@ -264,11 +395,21 @@ export class LocalGit {
 			throw error;
 		}
 	}
+	/** @internal */
 	mergeability(
 		directory: string,
 		head: string,
 		base: string,
-	): { headSha: string; baseSha: string; mergeable: boolean; mergeable_state: string } {
+	): {
+		/** @internal */
+		headSha: string;
+		/** @internal */
+		baseSha: string;
+		/** @internal */
+		mergeable: boolean;
+		/** @internal */
+		mergeable_state: string;
+	} {
 		const headSha = this.head(directory, head),
 			baseSha = this.head(directory, base);
 		const revisions = { headSha, baseSha };
@@ -283,6 +424,7 @@ export class LocalGit {
 		}
 		return { ...revisions, mergeable: true, mergeable_state: "behind" };
 	}
+	/** @internal */
 	merge(directory: string, head: string, base: string): string {
 		const h = this.head(directory, head),
 			b = this.head(directory, base);
@@ -303,7 +445,15 @@ export class LocalGit {
 		this.run(directory, ["update-ref", `refs/heads/${base}`, commit, b]);
 		return commit;
 	}
-	seed(seed: LocalRepositorySeed): { bare: string; worktree: string; branch: string } {
+	/** @internal */
+	seed(seed: LocalRepositorySeed): {
+		/** @internal */
+		bare: string;
+		/** @internal */
+		worktree: string;
+		/** @internal */
+		branch: string;
+	} {
 		for (const value of [seed.owner, seed.name, seed.directoryName ?? seed.name])
 			if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(value))
 				throw new Error("Invalid local repository name");

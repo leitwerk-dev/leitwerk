@@ -12,10 +12,14 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
+/** @internal */
 export type DeterministicFinalizationMergeMode = "noop" | "fast_forward" | "merge_commit";
 
+/** @public */
 export interface GitIdentity {
+	/** @public */
 	name: string;
+	/** @public */
 	email: string;
 }
 
@@ -30,29 +34,45 @@ interface DeterministicFinalizationInput {
 	gitIdentity?: GitIdentity;
 }
 
+/** @internal */
 export type DeterministicFinalizationResult =
 	| {
+			/** @internal */
 			outcome: "merge_conflict";
+			/** @internal */
 			params: {
+				/** @internal */
 				headSha: string;
+				/** @internal */
 				conflictedFiles: string[];
+				/** @internal */
 				fetchedBaseSha: string | null;
 			};
 	  }
 	| {
+			/** @internal */
 			outcome: "finalized";
+			/** @internal */
 			params: {
+				/** @internal */
 				headSha: string;
+				/** @internal */
 				mergeMode: DeterministicFinalizationMergeMode;
+				/** @internal */
 				pushTarget: string;
+				/** @internal */
 				usedConflictResolution: boolean;
 			};
+			/** @internal */
 			markdown: string;
 	  };
 
+/** @internal */
 export class DeterministicGitError extends Error {
+	/** @internal */
 	readonly errorClass: WorkerErrorClass = "git_error";
 
+	/** @internal */
 	constructor(message: string) {
 		super(message);
 		this.name = "DeterministicGitError";
@@ -617,19 +637,29 @@ function buildFinalizationMarkdown(input: {
 	return lines.join("\n");
 }
 
+/** @internal */
 export interface RepositoryChangeFinalizationContextState extends StructuralProcessState {
+	/** @internal */
 	finalization: {
+		/** @internal */
 		expectedPostConflictHeadSha: string | null;
+		/** @internal */
 		usedConflictResolution: boolean;
+		/** @internal */
 		generatedCommitMessage: string | null;
 	};
 }
 
 /** Commit the current workspace change and non-force push only the feature branch. */
+/** @public */
 export function commitAndPushWorkBranch(input: {
+	/** @public */
 	repoPath: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	commitMessage: string;
+	/** @public */
 	gitIdentity: GitIdentity;
 }) {
 	const repoPath = path.resolve(input.repoPath);
@@ -651,9 +681,15 @@ export function commitAndPushWorkBranch(input: {
 		gitIdentity: input.gitIdentity,
 	});
 	const pushTarget = pushAndVerify(repoPath, input.workBranch, headSha);
-	return { headSha, pushTarget };
+	return {
+		/** @public */
+		headSha,
+		/** @internal */
+		pushTarget,
+	};
 }
 
+/** @internal */
 export function runDeterministicFinalization<
 	TParams,
 	TState extends RepositoryChangeFinalizationContextState,
@@ -819,6 +855,7 @@ export function runDeterministicFinalization<
 	};
 }
 
+/** @internal */
 export function readMergeMessage(repoPath: string): string | null {
 	const messagePath = path.resolve(repoPath, git(repoPath, "rev-parse", "--git-dir"), "MERGE_MSG");
 	if (!existsSync(messagePath)) {

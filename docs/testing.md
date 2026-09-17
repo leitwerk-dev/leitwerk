@@ -21,6 +21,14 @@ npm run test:e2e
 npm run build
 ```
 
+The full gate runs `api:check` after building. It checks release tags and
+signature dependencies, compares interface reports, and verifies that public
+and internal declarations survive the build. Usage-analysis tests cover
+capabilities, callbacks, supplied contracts, type-only and indexed access,
+inheritance, private package identity, dynamic imports, composition manifests,
+embedded programs, and unresolved references. They use local fixtures; sibling
+consumer repositories are not required.
+
 ### Browser layout and behavior
 
 Install the browser engines once with `npx playwright install chromium firefox webkit`

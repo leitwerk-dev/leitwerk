@@ -1,8 +1,12 @@
 /** Server-owned, non-secret wiring for future launches. */
+/** @internal */
 export interface ProfileBinding {
+	/** @internal */
 	woodpeckerProfile: string;
+	/** @internal */
 	sshCredentialRef: string;
 }
+/** @internal */
 export type ProfileBindings = Readonly<Record<string, Readonly<ProfileBinding>>>;
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -16,6 +20,7 @@ function field(value: unknown, fallback: string, label: string): string {
 		throw new Error(`${label} must be a non-empty string`);
 	return value.trim();
 }
+/** @internal */
 export function parseProfileBindings(raw: unknown): ProfileBindings {
 	const config = raw === undefined ? {} : record(raw, "forgejo-repo-change configuration");
 	if (config.profile_bindings === undefined) return Object.freeze({});
@@ -47,6 +52,7 @@ export function parseProfileBindings(raw: unknown): ProfileBindings {
 	});
 	return Object.freeze(Object.fromEntries(entries));
 }
+/** @internal */
 export function resolveProfileBinding(bindings: ProfileBindings, profile: string): ProfileBinding {
 	return Object.hasOwn(bindings, profile)
 		? { ...bindings[profile] }

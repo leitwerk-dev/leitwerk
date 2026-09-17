@@ -82,6 +82,7 @@ function extractToolResultValue(message: PiSessionMessageRecord): unknown {
 	return message.content ?? null;
 }
 
+/** @internal */
 type TraceTurnRecord = Pick<
 	ProcessTurnRecord,
 	"id" | "turnType" | "forkPiEntryId" | "resultPiEntryId" | "startedAt" | "endedAt" | "status"
@@ -437,6 +438,7 @@ export function buildCommittedTurnTrace(input: {
 	return trace;
 }
 
+/** @internal */
 export function buildTurnTracePreview(
 	turnRecordId: string,
 	trace: TurnTraceSnapshot | undefined,
@@ -477,9 +479,13 @@ export function buildTurnTracePreview(
 	};
 }
 
+/** @internal */
 interface TurnTraceCollectionInput {
+	/** @internal */
 	tree: ReadonlyPiSessionTree;
+	/** @internal */
 	turnRecords: readonly TraceTurnRecord[];
+	/** @internal */
 	events?: readonly ProcessEvent[];
 }
 
@@ -514,6 +520,7 @@ export function buildTurnTracePreviewsFromSession(
 	return previews;
 }
 
+/** @internal */
 export function buildTurnTraceIndexFromSession(
 	input: TurnTraceCollectionInput,
 ): Record<string, TurnTraceSnapshot> {

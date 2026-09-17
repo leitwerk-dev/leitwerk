@@ -8,23 +8,36 @@ import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 import type { ProcessEngine } from "./types.js";
 
+/** @internal */
 interface LoggerLike {
+	/** @internal */
 	info?: (...args: unknown[]) => void;
+	/** @internal */
 	warn?: (...args: unknown[]) => void;
+	/** @internal */
 	error?: (...args: unknown[]) => void;
 }
 
+/** @internal */
 export interface StartupReconciliationDeps
 	extends Pick<RepositoryBundle, "processes" | "leases" | "turnStarts" | "turnRecords"> {
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	supervisor: WorkerSupervisor;
+	/** @internal */
 	commands: Partial<Pick<ProcessEngine, "recordWorkerFailure">>;
+	/** @internal */
 	bundlePins?: PiResourceBundlePinReconciler;
+	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
+	/** @internal */
 	logger?: LoggerLike;
 }
 
+/** @internal */
 export function shouldResumeProcessOnStartup(
 	process: Pick<ProcessInstance, "selectedTurnId" | "lifecycleStatus" | "currentExecution">,
 	config: Pick<LeitwerkConfig, "workers">,
@@ -74,6 +87,7 @@ function reclaimPersistedLease(
 	);
 }
 
+/** @internal */
 export async function reconcileProcessesOnStartup(deps: StartupReconciliationDeps): Promise<void> {
 	const processes = deps.processes.listAll();
 	const staleLeases = deps.leases.listActive();

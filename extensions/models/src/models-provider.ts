@@ -17,11 +17,15 @@ import {
 	getSupportedStandardProviders,
 } from "./provider-auth.js";
 
+/** @internal */
 export interface StandardProviderConfig {
+	/** @internal */
 	readonly baseUrl?: string;
 }
 
+/** @internal */
 export interface ApiKeyCredential {
+	/** @internal */
 	readonly apiKey: string;
 }
 
@@ -41,18 +45,34 @@ const baseUrlSchema = v.pipe(
 		return url.toString().replace(/\/$/u, "");
 	}),
 );
+/** @internal */
 const customModelSchema = v.pipe(
 	v.strictObject({
+		/** @internal */
 		id: nonEmptyStringSchema,
+		/** @internal */
 		name: v.optional(nonEmptyStringSchema),
+		/** @internal */
 		reasoning: v.optional(v.boolean()),
+		/** @internal */
 		context_window: v.optional(positiveIntegerSchema),
+		/** @internal */
 		max_tokens: v.optional(positiveIntegerSchema),
 	}),
 	v.transform(({ context_window, max_tokens, ...model }) => ({
 		...model,
-		...(context_window === undefined ? {} : { contextWindow: context_window }),
-		...(max_tokens === undefined ? {} : { maxTokens: max_tokens }),
+		...(context_window === undefined
+			? {}
+			: {
+					/** @internal */
+					contextWindow: context_window,
+				}),
+		...(max_tokens === undefined
+			? {}
+			: {
+					/** @internal */
+					maxTokens: max_tokens,
+				}),
 	})),
 );
 const customGatewaySchema = v.strictObject({
@@ -70,13 +90,20 @@ const customGatewaySchema = v.strictObject({
 	models: v.pipe(v.array(customModelSchema), v.minLength(1)),
 });
 
+/** @internal */
 export type CustomModelDefinition = v.InferOutput<typeof customModelSchema>;
 
+/** @internal */
 export interface CustomGatewayConfig {
+	/** @internal */
 	readonly providerId: string;
+	/** @internal */
 	readonly baseUrl: string;
+	/** @internal */
 	readonly api: string;
+	/** @internal */
 	readonly keyless: boolean;
+	/** @internal */
 	readonly models: CustomModelDefinition[];
 }
 
@@ -106,6 +133,7 @@ function resolveSecret(value: unknown, location: string): string {
 	return resolved;
 }
 
+/** @internal */
 export function parseApiKeyCredential(value: unknown, providerId: string): ApiKeyCredential {
 	if (!isRecord(value)) throw new Error(`${providerId} credential must be an object`);
 	assertKnownFields(value, ["apiKey"], `${providerId} credential`);
@@ -116,10 +144,16 @@ function apiKeySecrets(credential: ApiKeyCredential | null): Readonly<Record<str
 	return credential ? { apiKey: credential.apiKey } : {};
 }
 
+/** @internal */
 export function parseStandardProviderConfig(
 	raw: unknown,
 	providerId: string,
-): { config: StandardProviderConfig; credential?: ApiKeyCredential } {
+): {
+	/** @internal */
+	config: StandardProviderConfig;
+	/** @internal */
+	credential?: ApiKeyCredential;
+} {
 	if (raw !== undefined && raw !== null && !isRecord(raw)) {
 		throw new Error("configuration must be an object");
 	}
@@ -155,6 +189,7 @@ function catalogModelStatuses(
 	);
 }
 
+/** @internal */
 export function evaluateStandardModelStatuses(
 	providerId: string,
 	ctx: ModelProviderModelsContext,
@@ -168,6 +203,7 @@ export function evaluateStandardModelStatuses(
 	);
 }
 
+/** @internal */
 export function createStandardModelProvider(
 	providerId: string,
 ): ModelProviderDefinition<StandardProviderConfig, ApiKeyCredential> {
@@ -185,10 +221,16 @@ export function createStandardModelProvider(
 	});
 }
 
+/** @internal */
 export function parseCustomGatewayConfig(
 	providerId: string,
 	raw: unknown,
-): { config: CustomGatewayConfig; credential?: ApiKeyCredential } {
+): {
+	/** @internal */
+	config: CustomGatewayConfig;
+	/** @internal */
+	credential?: ApiKeyCredential;
+} {
 	const parsed = v.parse(customGatewaySchema, raw);
 	const ids = new Set<string>();
 	for (const model of parsed.models) {
@@ -238,6 +280,7 @@ function customGatewayModelStatuses(
 	);
 }
 
+/** @internal */
 export function createCustomGatewayProvider(
 	providerId: string,
 	keyless: boolean,
@@ -255,6 +298,7 @@ export function createCustomGatewayProvider(
 	});
 }
 
+/** @internal */
 export function resolveModelProviders(raw: unknown): readonly ModelProviderSetEntry[] {
 	if (raw !== undefined && raw !== null && !isRecord(raw)) {
 		throw new Error("configuration must be an object");

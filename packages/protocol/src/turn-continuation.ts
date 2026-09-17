@@ -7,33 +7,51 @@ import {
 import type { ReadonlyEntryTree } from "./session-entry-tree.js";
 import { compareTimestampStrings, happenedOnOrAfterStart } from "./timestamp-ordering.js";
 
+/** @internal */
 export interface ContinuationTreeEntry {
+	/** @internal */
 	id: string;
+	/** @internal */
 	parentId: string | null;
+	/** @internal */
 	timestamp: string;
+	/** @internal */
 	type: string;
+	/** @internal */
 	message?: {
+		/** @internal */
 		role?: string;
+		/** @internal */
 		content?: unknown;
 	};
 }
 
+/** @internal */
 export interface ContinuationTurnRecordLike {
+	/** @internal */
 	forkPiEntryId?: string | null;
+	/** @internal */
 	resultPiEntryId?: string | null;
+	/** @internal */
 	startedAt?: string | null;
+	/** @internal */
 	status?: string | null;
 }
 
+/** @internal */
 export interface ContinuationSliceBounds {
+	/** @internal */
 	endedAt?: string | null;
 }
 
+/** @internal */
 export interface TurnContinuationIndex<TEntry extends ContinuationTreeEntry> {
+	/** @internal */
 	resolveLeafEntryId(
 		turnRecord: ContinuationTurnRecordLike,
 		bounds?: ContinuationSliceBounds,
 	): string | null;
+	/** @internal */
 	buildSlice(turnRecord: ContinuationTurnRecordLike, bounds?: ContinuationSliceBounds): TEntry[];
 }
 
@@ -139,6 +157,7 @@ function resolveTurnContinuationLeafEntryIdFromIndex(
 	});
 }
 
+/** @internal */
 export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry>(
 	entries: readonly TEntry[],
 ): TurnContinuationIndex<TEntry> {
@@ -189,6 +208,7 @@ export function createTurnContinuationIndex<TEntry extends ContinuationTreeEntry
 	return { resolveLeafEntryId, buildSlice };
 }
 
+/** @internal */
 export function resolveTurnContinuationLeafEntryId(
 	entries: readonly ContinuationTreeEntry[],
 	turnRecord: ContinuationTurnRecordLike,
@@ -197,6 +217,7 @@ export function resolveTurnContinuationLeafEntryId(
 	return createTurnContinuationIndex(entries).resolveLeafEntryId(turnRecord, bounds);
 }
 
+/** @internal */
 export function buildTurnContinuationSliceFromTree<TEntry extends ContinuationTreeEntry>(
 	tree: ReadonlyEntryTree<TEntry>,
 	turnRecord: ContinuationTurnRecordLike,
@@ -205,6 +226,7 @@ export function buildTurnContinuationSliceFromTree<TEntry extends ContinuationTr
 	return createTurnContinuationIndex(tree.entries).buildSlice(turnRecord, bounds);
 }
 
+/** @internal */
 export function buildTurnContinuationSlice<TEntry extends ContinuationTreeEntry>(
 	entries: readonly TEntry[],
 	turnRecord: ContinuationTurnRecordLike,
@@ -213,11 +235,15 @@ export function buildTurnContinuationSlice<TEntry extends ContinuationTreeEntry>
 	return createTurnContinuationIndex(entries).buildSlice(turnRecord, bounds);
 }
 
+/** @internal */
 export interface BranchUserPromptSnapshot {
+	/** @internal */
 	text: string | null;
+	/** @internal */
 	createdAt: string | null;
 }
 
+/** @internal */
 export function extractFirstUserPromptOnBranch<TEntry extends ContinuationTreeEntry>(
 	tree: ReadonlyEntryTree<TEntry>,
 	leafId: string | null | undefined,
@@ -243,6 +269,7 @@ export function extractFirstUserPromptOnBranch<TEntry extends ContinuationTreeEn
 	return { text: null, createdAt: null };
 }
 
+/** @internal */
 export function resolveTurnContinuationUserPrompt(
 	entries: readonly ContinuationTreeEntry[],
 	turnRecord: ContinuationTurnRecordLike,
@@ -265,6 +292,7 @@ export function resolveTurnContinuationUserPrompt(
 	return promptText !== "" ? promptText : null;
 }
 
+/** @internal */
 export function hasTurnContinuationProgress(
 	entries: readonly ContinuationTreeEntry[],
 	turnRecord: ContinuationTurnRecordLike,

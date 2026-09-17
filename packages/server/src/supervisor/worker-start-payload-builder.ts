@@ -32,33 +32,48 @@ import {
 } from "../turn-result-markdown.js";
 import { createWorkerStorageLayout, type WorkerStorageLayout } from "./worker-storage-layout.js";
 
+/** @internal */
 export interface WorkerStartPayloadBuilderDeps
 	extends Pick<
 		RepositoryBundle,
 		"processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "leases" | "events"
 	> {
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition" | "resolveContextData">;
+	/** @internal */
 	storageLayout?: WorkerStorageLayout;
 	/**
 	 * The sole server-side resource-bundle seam. The resulting canonical bytes are
 	 * delivered only in the authenticated `worker.start` message, irrespective of
 	 * whether the physical worker is local, Docker, or Kubernetes.
 	 */
+	/** @internal */
 	resolveResourceBundle?(digest: string): PiResourceBundle | null;
+	/** @internal */
 	resolveRepositoryCredentials?(input: {
+		/** @internal */
 		process: ProcessInstance;
+		/** @internal */
 		projects: ReturnType<RepositoryBundle["projects"]["listByInstance"]>;
 	}): import("@leitwerk-dev/worker-protocol").WorkerRepositoryCredential[];
+	/** @internal */
 	resolveCredential?(
 		providerId: string,
 		options: Readonly<Record<string, string>>,
 	): Pick<ResolvedProviderCredential, "revision" | "values"> | null;
+	/** @internal */
 	integrationTools?: {
+		/** @internal */
 		declarations(
 			names: readonly string[],
-			context?: { paramsJson: string | null },
+			context?: {
+				/** @internal */
+				paramsJson: string | null;
+			},
 		): import("@leitwerk-dev/worker-protocol").IntegrationToolDeclaration[];
 	};
 }

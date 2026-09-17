@@ -30,12 +30,16 @@ export {
 	type WorkerRuntimeScheduler,
 } from "./adapters.js";
 
+/** @internal */
 export interface WorkerRuntime {
+	/** @internal */
 	start(): Promise<void>;
+	/** @internal */
 	stop(reason: string): Promise<void>;
 }
 
 /** One non-reentrant driver around the pure runtime reducer. */
+/** @internal */
 export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntime {
 	const { config, adapters } = options;
 	const sampleCredentials = adapters.sampleCredentials ?? sampleCredentialFiles;

@@ -39,48 +39,77 @@ function mapWorkerStateToObservation(value: string): WorkerLeaseObservation | nu
 	}
 }
 
+/** @internal */
 export interface IpcHandlerDeps
 	extends Pick<
 		RepositoryBundle,
 		"processes" | "projects" | "inputs" | "events" | "leases" | "turnRecords"
 	> {
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
+	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
+	/** @internal */
 	processQuestions?: ProcessQuestionService;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	commands: ProcessEngine;
+	/** @internal */
 	workerEventLogger?: (entry: WorkerEventLogEntry) => void;
+	/** @internal */
 	appendDiagnosticTrace?: (instanceId: string, text: string) => void;
+	/** @internal */
 	updateCredential?: (input: {
+		/** @internal */
 		providerId: string;
+		/** @internal */
 		expectedRevision: number;
+		/** @internal */
 		values: Record<string, string>;
-	}) => { accepted: boolean; currentRevision: number | null; safeReason?: string };
+	}) => {
+		/** @internal */
+		accepted: boolean;
+		/** @internal */
+		currentRevision: number | null;
+		/** @internal */
+		safeReason?: string;
+	};
+	/** @internal */
 	handleIntegrationToolRequest?: (
 		instanceId: string,
 		payload: WorkerIntegrationToolRequestPayload,
 	) => Promise<WorkerIntegrationToolResultPayload>;
+	/** @internal */
 	handleIntegrationToolCancel?: (
 		instanceId: string,
 		payload: WorkerIntegrationToolCancelPayload,
 	) => void;
 }
 
+/** @internal */
 export interface IpcHandlerCallbacks extends WorkerTurnIpcRecorderCallbacks {
+	/** @internal */
 	onWorkerReady?: (instanceId: string, workerId: string) => void;
+	/** @internal */
 	onWorkerFailed?: (instanceId: string, workerId: string, error: string) => void;
+	/** @internal */
 	onWorkerExited?: (instanceId: string, workerId: string) => void;
+	/** @internal */
 	onCleanupCompleted?: (instanceId: string, workerId: string) => void;
+	/** @internal */
 	onWorkerTurnStartAccepted?: (
 		instanceId: string,
 		workerId: string,
 		payload: WorkerTurnStartAcceptedPayload,
 	) => void;
+	/** @internal */
 	onCredentialUpdateResult?: (
 		instanceId: string,
 		workerId: string,
 		payload: WorkerCredentialUpdateResultPayload,
 	) => void;
+	/** @internal */
 	onIntegrationToolResult?: (
 		instanceId: string,
 		workerId: string,
@@ -88,6 +117,7 @@ export interface IpcHandlerCallbacks extends WorkerTurnIpcRecorderCallbacks {
 	) => void;
 }
 
+/** @internal */
 export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCallbacks) {
 	const eventIngestor = createWorkerEventIngestor(deps);
 	const inputAckHandler = createWorkerInputAckHandler(deps);
@@ -107,6 +137,7 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 	);
 
 	return {
+		/** @internal */
 		handleMessage(envelope: IpcEnvelope): void {
 			const decoded = decodeWorkerToServerMessage(envelope);
 			if (!decoded.ok) {
@@ -407,4 +438,5 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 	};
 }
 
+/** @internal */
 export type IpcHandler = ReturnType<typeof createIpcHandler>;

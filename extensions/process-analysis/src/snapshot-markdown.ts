@@ -4,13 +4,18 @@ function fence(value: string, language = "json"): string {
 	return `${marker}${language}\n${value.endsWith("\n") ? value : `${value}\n`}${marker}`;
 }
 
+/** @internal */
 export function jsonMarkdown(title: string, value: unknown): string {
 	return `# ${title}\n\n${fence(JSON.stringify(value, null, 2))}\n`;
 }
 
+/** @internal */
 export function buildSummaryMarkdown(input: {
+	/** @internal */
 	detail: unknown;
+	/** @internal */
 	primaryPath: unknown;
+	/** @internal */
 	sourceUrl: string;
 }): string {
 	const detail = input.detail as Record<string, unknown>;
@@ -28,6 +33,7 @@ export function buildSummaryMarkdown(input: {
 	].join("\n");
 }
 
+/** @internal */
 export function buildRecordsMarkdown(title: string, value: unknown): string {
 	if (Array.isArray(value))
 		return [

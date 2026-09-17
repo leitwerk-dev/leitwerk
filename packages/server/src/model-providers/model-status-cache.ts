@@ -12,43 +12,72 @@ const DEFAULT_STATUS_TIMEOUT_MS = 5_000;
 const DEFAULT_MAX_STATUS_PROFILES = 512;
 const MAX_SAFE_REASON_LENGTH = 500;
 
+/** @internal */
 export interface CachedModelProfileStatus {
+	/** @internal */
 	readonly profileId: string;
+	/** @internal */
 	readonly providerId: string;
+	/** @internal */
 	readonly modelId: string;
+	/** @internal */
 	readonly availability: ProviderAvailability;
+	/** @internal */
 	readonly safeReason?: string;
+	/** @internal */
 	readonly checkedAt: string | null;
+	/** @internal */
 	readonly expiresAt: string | null;
 }
 
+/** @internal */
 export interface ModelAvailabilityTransition {
+	/** @internal */
 	readonly profileId: string;
+	/** @internal */
 	readonly from: ProviderAvailability;
+	/** @internal */
 	readonly to: ProviderAvailability;
 }
 
+/** @internal */
 export interface ModelStatusCacheSnapshot {
+	/** @internal */
 	readonly revision: number;
+	/** @internal */
 	readonly capturedAt: string;
+	/** @internal */
 	readonly profiles: readonly CachedModelProfileStatus[];
 	/** Present only on the refresh result that observed the transition. */
+	/** @internal */
 	readonly availabilityTransitions: readonly ModelAvailabilityTransition[];
 }
 
+/** @internal */
 export interface ModelStatusCache {
+	/** @internal */
 	refresh(): Promise<ModelStatusCacheSnapshot>;
+	/** @internal */
 	snapshot(): ModelStatusCacheSnapshot;
+	/** @internal */
 	get(profileId: string): CachedModelProfileStatus | null;
 }
 
+/** @internal */
 export interface CreateModelStatusCacheInput {
+	/** @internal */
 	readonly registry: ModelProviderRegistry;
+	/** @internal */
 	readonly modelProfiles: readonly ModelProfileSnapshot[];
+	/** @internal */
 	readonly credentialStatus: ModelProviderCredentialStatusResolver;
+	/** @internal */
 	readonly ttlMs?: number;
+	/** @internal */
 	readonly timeoutMs?: number;
+	/** @internal */
 	readonly maxProfiles?: number;
+	/** @internal */
 	readonly now?: () => Date;
 }
 
@@ -96,6 +125,7 @@ function validateProviderStatuses(
  * Keep a fixed, configured-profile status catalog. Refresh failures are safe,
  * bounded stale states; they never remove a configured profile from the UI.
  */
+/** @internal */
 export function createModelStatusCache(input: CreateModelStatusCacheInput): ModelStatusCache {
 	const ttlMs = positiveBound(input.ttlMs, DEFAULT_STATUS_TTL_MS, "Model status TTL");
 	const timeoutMs = positiveBound(

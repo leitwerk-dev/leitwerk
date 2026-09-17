@@ -16,27 +16,38 @@ import type {
 	WorkerUnitRef,
 } from "./types.js";
 
+/** @internal */
 export const DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER = "@leitwerk-dev/worker/worker-entry";
 
+/** @internal */
 export interface LocalWorkerRunnerOptions {
 	/** Command used to launch the worker. Defaults to `node`. */
+	/** @internal */
 	command?: string;
 	/** Worker entry args. The default package subpath is resolved to the installed entry file. */
+	/** @internal */
 	args?: readonly string[];
 	/** Working directory for the spawned worker. Defaults to the installed server package dir. */
+	/** @internal */
 	cwd?: string;
 	/** Process storage roots used by the read-only session exporter. */
+	/** @internal */
 	processWorkspacesDir?: string;
+	/** @internal */
 	treeFilesDir?: string;
 	/** Explicit acknowledgement that Docker processes inherit host Docker authority. */
+	/** @internal */
 	allowHostDocker?: boolean;
 	/** Test seam. Production uses node's spawn directly. */
+	/** @internal */
 	localWorkerSpawnImpl?: typeof spawn;
 	/** Test seam for the shared host-Docker preflight. */
+	/** @internal */
 	dockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
 }
 
 /** Verifies that the inherited Docker CLI context can reach its daemon. */
+/** @internal */
 export async function preflightHostDocker(timeoutMs: number): Promise<void> {
 	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
 		throw new Error("Docker preflight requires a positive startup timeout");
@@ -83,6 +94,7 @@ function resolveDefaultWorkerEntryPath(): string {
 	return fileURLToPath(import.meta.resolve(DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER));
 }
 
+/** @internal */
 export function resolveLocalWorkerSpawnArgs(args: readonly string[]): string[] {
 	return args[0] === DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER
 		? [resolveDefaultWorkerEntryPath(), ...args.slice(1)]
@@ -101,8 +113,11 @@ function exitInfo(code: number | null, signal: NodeJS.Signals | null): WorkerExi
  * boundary, has no restart adoption, and ignores image/resource profile semantics.
  * Docker and Kubernetes remain the contract-defining production runners.
  */
+/** @internal */
 export function createLocalWorkerRunner(options: LocalWorkerRunnerOptions): {
+	/** @internal */
 	runner: WorkerRunner<LocalStartWorkerInput>;
+	/** @internal */
 	exporter: ProcessStateExporter;
 } {
 	const command = options.command ?? "node";

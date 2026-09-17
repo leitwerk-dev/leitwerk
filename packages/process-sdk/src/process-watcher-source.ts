@@ -13,9 +13,11 @@ function nonEmptyString(value: unknown, path: string): string {
 }
 
 /** Parse the shared launch-model fragment nested inside extension-owned watcher config. */
-export function parseProcessWatcherLaunchModelConfig(
-	value: unknown,
-): LaunchModelConfigInput & { skillIds: string[] } {
+/** @public */
+export function parseProcessWatcherLaunchModelConfig(value: unknown): LaunchModelConfigInput & {
+	/** @internal */
+	skillIds: string[];
+} {
 	if (value === undefined) return { defaultModelProfileId: null, turnConfigs: {}, skillIds: [] };
 	const launch = record(value, "launch");
 	const rawSkills = launch.skills === undefined ? [] : launch.skills;
@@ -48,6 +50,7 @@ export function parseProcessWatcherLaunchModelConfig(
 	};
 }
 
+/** @public */
 export function defineProcessWatcherSource<TConfig, TEvent = unknown>(
 	source: ProcessWatcherSource<TConfig, TEvent>,
 ): ProcessWatcherSource<TConfig, TEvent> {

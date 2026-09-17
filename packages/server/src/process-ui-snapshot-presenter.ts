@@ -443,14 +443,23 @@ function createCompletedTurnRecord(args: {
 	};
 }
 
+/** @internal */
 export function presentProcessTimelineTurns(input: {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	currentExecutionTurnRecordId?: string | null;
+	/** @internal */
 	turnRecords: readonly ProcessTurnRecord[];
+	/** @internal */
 	turnAnnotations: readonly ProcessTurnAnnotation[];
+	/** @internal */
 	events: readonly ProcessEvent[];
+	/** @internal */
 	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"] | CompactActiveTurnSnapshot;
+	/** @internal */
 	selectedTurnType: ProcessTurnRecord["turnType"] | null;
+	/** @internal */
 	activeModelProfileId?: string | null;
 }): ProcessTimelineTurnSummary[] {
 	const outcomeEventsByTurnRecordId = createTurnOutcomeEventMap(input.events);
@@ -709,9 +718,13 @@ function joinDetails(...parts: Array<string | null>): string | null {
 	return joined.length > 0 ? joined : null;
 }
 
+/** @internal */
 export function buildExternalTriggerSignals(args: {
+	/** @internal */
 	externalTriggers: readonly ProcessExternalTriggerSummary[];
+	/** @internal */
 	events: readonly ProcessEvent[];
+	/** @internal */
 	isWaitingForSelectedTurn: boolean;
 }): ProcessExternalTriggerSignal[] {
 	return args.externalTriggers.map((trigger) => {
@@ -843,13 +856,28 @@ export function formatProcessErrorPresentation(
 	};
 }
 
+/** @internal */
 export function buildCurrentTurnRecovery(input: {
+	/** @internal */
 	process: ProcessInstance;
-	turnStarts: { getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null };
+	/** @internal */
+	turnStarts: {
+		/** @internal */
+		getById(id: string): import("@leitwerk-dev/domain").TurnStartRecord | null;
+	};
+	/** @internal */
 	turnRecords: readonly ProcessTurnRecord[];
+	/** @internal */
 	selectedTurnDescription: string | null;
+	/** @internal */
 	piEntries: readonly PiSessionEntry[];
-	continuation?: { hasProgress: boolean; userPrompt: string | null };
+	/** @internal */
+	continuation?: {
+		/** @internal */
+		hasProgress: boolean;
+		/** @internal */
+		userPrompt: string | null;
+	};
 }): CurrentTurnRecoverySummary | null {
 	if (input.process.lifecycleStatus !== "error") {
 		return null;
@@ -906,10 +934,15 @@ export function buildCurrentTurnRecovery(input: {
 	};
 }
 
+/** @internal */
 export function buildCurrentProcessError(input: {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	events: readonly ProcessEvent[];
+	/** @internal */
 	selectedTurnDescription: string | null;
+	/** @internal */
 	currentTurnRecovery: CurrentTurnRecoverySummary | null;
 }): CurrentProcessErrorSummary | null {
 	if (input.process.lifecycleStatus !== "error" || input.currentTurnRecovery) {
@@ -937,11 +970,17 @@ export function buildCurrentProcessError(input: {
 	};
 }
 
+/** @internal */
 export function buildUsageEstimate(input: {
+	/** @internal */
 	turnRecords: readonly ProcessTurnRecord[];
+	/** @internal */
 	activeTurn: PrimaryPathSnapshot["turnState"]["activeTurn"] | CompactActiveTurnSnapshot;
+	/** @internal */
 	currentTurnRecordId: string | null;
+	/** @internal */
 	usageByTurnRecordId: Record<string, TurnTraceSnapshot["usage"]>;
+	/** @internal */
 	tracePreviewsByTurnRecordId: Record<string, TurnTracePreview>;
 }): ProcessUsageEstimateSnapshot | null {
 	let usage: TurnTraceSnapshot["usage"] = null;
@@ -994,22 +1033,42 @@ export function buildUsageEstimate(input: {
 	};
 }
 
+/** @internal */
 export function buildProcessUiSnapshotProjections(input: {
+	/** @internal */
 	process: ProcessInstance;
-	turnStarts?: { getById(id: string): TurnStartRecord | null };
+	/** @internal */
+	turnStarts?: {
+		/** @internal */
+		getById(id: string): TurnStartRecord | null;
+	};
+	/** @internal */
 	startupTurnStarts?: readonly TurnStartRecord[];
+	/** @internal */
 	workerLeases?: readonly WorkerLease[];
+	/** @internal */
 	startupObservations?: readonly import("@leitwerk-dev/domain").StartupObservation[];
+	/** @internal */
 	turnRecords: readonly ProcessTurnRecord[];
+	/** @internal */
 	turnAnnotations: readonly ProcessTurnAnnotation[];
+	/** @internal */
 	events: readonly ProcessEvent[];
+	/** @internal */
 	inputs: readonly ProcessInput[];
+	/** @internal */
 	selectedTurn: ProcessSelectedTurnSummary | null;
+	/** @internal */
 	primaryPathSnapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot;
+	/** @internal */
 	sessionTree?: ReadonlyPiSessionTree;
+	/** @internal */
 	sessionSummary?: SessionSummary | null;
+	/** @internal */
 	eventSummariesByTurnRecordId?: Record<string, CompactTurnSummary>;
+	/** @internal */
 	eventUsageByTurnRecordId?: Record<string, TurnTraceSnapshot["usage"]>;
+	/** @internal */
 	activeModelProfileId?: string | null;
 }) {
 	const tracePreviewsByTurnRecordId = {
@@ -1085,10 +1144,15 @@ export function buildProcessUiSnapshotProjections(input: {
 		observations: input.startupObservations ?? [],
 	});
 	return {
+		/** @internal */
 		process: projectProcessForUiSnapshot(input.process),
+		/** @internal */
 		primaryPath: compactPrimaryPathSnapshot(input.primaryPathSnapshot),
+		/** @internal */
 		timeline: {
+			/** @internal */
 			prompt,
+			/** @internal */
 			turns: presentProcessTimelineTurns({
 				process: input.process,
 				turnRecords: input.turnRecords,
@@ -1099,8 +1163,11 @@ export function buildProcessUiSnapshotProjections(input: {
 				selectedTurnType: input.selectedTurn?.kind ?? null,
 				activeModelProfileId: input.activeModelProfileId,
 			}),
+			/** @internal */
 			tracePreviewsByTurnRecordId,
+			/** @internal */
 			inputs: input.inputs.map(buildTimelineInputSummary),
+			/** @internal */
 			externalTriggerSignals: buildExternalTriggerSignals({
 				externalTriggers: input.selectedTurn?.externalTriggers ?? [],
 				events: input.events,
@@ -1109,15 +1176,20 @@ export function buildProcessUiSnapshotProjections(input: {
 					(input.selectedTurn?.turnId ?? null) === (input.process.selectedTurnId ?? null),
 			}),
 		} satisfies ProcessTimelineSnapshot,
+		/** @internal */
 		recovery,
+		/** @internal */
 		startup,
+		/** @internal */
 		startupRecovery: startup.recovery,
+		/** @internal */
 		processError: buildCurrentProcessError({
 			process: input.process,
 			events: input.events,
 			selectedTurnDescription: input.selectedTurn?.description ?? null,
 			currentTurnRecovery: recovery,
 		}),
+		/** @internal */
 		usageEstimate: buildUsageEstimate({
 			turnRecords: input.turnRecords,
 			activeTurn,

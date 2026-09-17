@@ -5,6 +5,7 @@ import {
 	type FlowPromptContext,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export function normalizeGeneratedCommitMessage(value: unknown): string {
 	if (typeof value !== "string" || value.includes("\0")) {
 		throw new Error("Generated commit message must be plain text without NUL characters");
@@ -20,6 +21,7 @@ export function normalizeGeneratedCommitMessage(value: unknown): string {
 	return normalized;
 }
 
+/** @internal */
 export function buildGenerateCommitMessagePrompt<TParams, TState>(
 	ctx: FlowPromptContext<TParams, TState, "plan">,
 ): string {

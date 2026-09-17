@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+/** @internal */
 export async function atomicWriteUtf8(filePath: string, content: string): Promise<void> {
 	const dir = path.dirname(filePath);
 	await mkdir(dir, { recursive: true });
@@ -19,6 +20,7 @@ export async function atomicWriteUtf8(filePath: string, content: string): Promis
 }
 
 // The parent itself is not inside: callers require a strict descendant.
+/** @internal */
 export function isPathInside(parent: string, child: string): boolean {
 	const relative = path.relative(parent, child);
 	return (
@@ -29,6 +31,7 @@ export function isPathInside(parent: string, child: string): boolean {
 	);
 }
 
+/** @internal */
 export function hasErrorCode(error: unknown, code: string): boolean {
 	return (
 		typeof error === "object" &&
@@ -38,6 +41,7 @@ export function hasErrorCode(error: unknown, code: string): boolean {
 	);
 }
 
+/** @internal */
 export function isEnoent(error: unknown): boolean {
 	return hasErrorCode(error, "ENOENT");
 }

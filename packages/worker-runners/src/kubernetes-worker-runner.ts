@@ -66,40 +66,75 @@ function boundedKubernetesStartDiagnostic(
 	);
 }
 
+/** @internal */
 export interface KubernetesWorkerRunnerOptions {
-	preProvision?: { count: number; onError?: () => void };
+	/** @internal */
+	preProvision?: {
+		/** @internal */
+		count: number;
+		/** @internal */
+		onError?: () => void;
+	};
+	/** @internal */
 	client: KubernetesApiClient;
 	/** Prefix used to derive one Kubernetes namespace per process instance. */
+	/** @internal */
 	processNamespacePrefix: string;
+	/** @internal */
 	volume: KubernetesProcessVolumeSpec;
 	/** Storage and Pod wiring for process definitions that require private Docker. */
-	docker?: KubernetesDockerPodSpecOptions & { processStorageClassName: string };
+	/** @internal */
+	docker?: KubernetesDockerPodSpecOptions & {
+		/** @internal */
+		processStorageClassName: string;
+	};
 	/** Maximum wait after deletion before replacement is rejected. */
+	/** @internal */
 	podDisappearanceTimeoutMs?: number;
+	/** @internal */
 	podDisappearancePollIntervalMs?: number;
 	/** Test seam for bounded disappearance polling. */
+	/** @internal */
 	delay?: (ms: number) => Promise<void>;
 	/** Server-local CA bundle copied into each process namespace for worker TLS trust. */
+	/** @internal */
 	serverCaFile?: string;
 	/** Namespace containing operator-managed source image-pull Secrets. */
+	/** @internal */
 	serverNamespace?: string;
 	/** Docker registry Secrets copied into every process namespace. */
-	imagePullSecretCopies?: Array<{ sourceName: string; targetName: string }>;
+	/** @internal */
+	imagePullSecretCopies?: Array<{
+		/** @internal */
+		sourceName: string;
+		/** @internal */
+		targetName: string;
+	}>;
+	/** @internal */
 	pod?: Omit<KubernetesPodSpecOptions, "namespace">;
 	/** Stable internal URL used by PVC export helpers. */
+	/** @internal */
 	serverUrl?: string;
 	/** Trusted image containing the bundled session-transfer helper entrypoint. */
+	/** @internal */
 	exporterImage?: string;
 	/** Pull policy for the trusted helper image. */
+	/** @internal */
 	exporterImagePullPolicy?: string;
 	/** Server-owned relay registry used by PVC export helpers. */
+	/** @internal */
 	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 
+/** @internal */
 export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOptions): {
+	/** @internal */
 	runner: WorkerRunner<IsolatedStartWorkerInput>;
+	/** @internal */
 	volume: ProcessVolume;
+	/** @internal */
 	exporter: ProcessStateExporter;
+	/** @internal */
 	volumePool?: ReturnType<typeof createKubernetesVolumePool>;
 } {
 	if (!options.serverUrl || !options.exporterImage || !options.helperRelays) {

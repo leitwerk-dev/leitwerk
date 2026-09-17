@@ -23,15 +23,25 @@ import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 import { recordInitialTurnObservation } from "./startup-observer.js";
 
+/** @internal */
 export interface WorkerEventLogEntry {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	workerId: string;
+	/** @internal */
 	eventType: string;
+	/** @internal */
 	selectedTurnId: string | null;
+	/** @internal */
 	timestamp: string;
+	/** @internal */
 	serverObservedAt: string;
+	/** @internal */
 	serverObservedLatencyMs: number | null;
+	/** @internal */
 	turnRecordId: string | null;
+	/** @internal */
 	data: Record<string, unknown>;
 }
 

@@ -1,31 +1,38 @@
 import path from "node:path";
 
+/** @internal */
 export type RepoTemplate = Record<string, string>;
 
 /**
  * Structurally compatible with RunRootGitOps — call sites annotate
  * `const git: RunRootGitOps = new FakeGitOps(...)` so TS catches drift.
  */
+/** @internal */
 export class FakeGitOps {
+	/** @internal */
 	readonly operations: string[] = [];
 	private readonly files = new Map<string, string>();
 	private readonly repoState = new Map<string, { currentBranch: string; branches: Set<string> }>();
 
+	/** @internal */
 	constructor(private readonly templates: Map<string, RepoTemplate>) {}
 
 	private abs(repoDir: string, filePath: string): string {
 		return path.normalize(path.join(repoDir, filePath));
 	}
 
+	/** @internal */
 	async writeFile(repoDir: string, filePath: string, content: string): Promise<void> {
 		this.operations.push(`writeFile:${filePath}`);
 		this.files.set(this.abs(repoDir, filePath), content);
 	}
 
+	/** @internal */
 	async readFile(repoDir: string, filePath: string): Promise<string | null> {
 		return this.files.get(this.abs(repoDir, filePath)) ?? null;
 	}
 
+	/** @internal */
 	async clone(repoLocator: string, targetDir: string): Promise<void> {
 		this.operations.push(`clone:${path.basename(targetDir)}`);
 		const n = path.normalize(targetDir);
@@ -48,6 +55,7 @@ export class FakeGitOps {
 		});
 	}
 
+	/** @internal */
 	async checkout(repoDir: string, branch: string): Promise<void> {
 		const st = this.repoState.get(path.normalize(repoDir));
 		if (!st) {
@@ -57,6 +65,7 @@ export class FakeGitOps {
 		st.currentBranch = branch;
 	}
 
+	/** @internal */
 	async createBranch(repoDir: string, branchName: string, _startPoint: string): Promise<void> {
 		const st = this.repoState.get(path.normalize(repoDir));
 		if (!st) {
@@ -65,11 +74,13 @@ export class FakeGitOps {
 		st.branches.add(branchName);
 	}
 
+	/** @internal */
 	async branchExists(repoDir: string, branchName: string): Promise<boolean> {
 		const st = this.repoState.get(path.normalize(repoDir));
 		return st?.branches.has(branchName) ?? false;
 	}
 
+	/** @internal */
 	async getHeadSha(repoDir: string): Promise<string> {
 		const st = this.repoState.get(path.normalize(repoDir));
 		if (!st) {
@@ -81,6 +92,7 @@ export class FakeGitOps {
 			.padEnd(40, "0");
 	}
 
+	/** @internal */
 	async listFiles(repoDir: string, pattern: string): Promise<string[]> {
 		const normRoot = path.normalize(repoDir);
 		const prefix = normRoot + path.sep;

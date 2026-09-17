@@ -42,16 +42,23 @@ import type {
 } from "./operation.js";
 import type { Writes } from "./writes/writes.js";
 
+/** @internal */
 export interface ParkProcessLifecyclePayload {
+	/** @internal */
 	selectedTurnId?: string | null;
+	/** @internal */
 	reason?: string;
+	/** @internal */
 	errorClass?: WorkerErrorClass;
 }
 
+/** @internal */
 export interface ProcessEngineLogger {
+	/** @internal */
 	error(payload: Record<string, unknown>, message?: string): void;
 }
 
+/** @internal */
 export interface ProcessEngineDeps
 	extends Pick<
 		RepositoryBundle,
@@ -69,44 +76,84 @@ export interface ProcessEngineDeps
 		| "turnAnnotations"
 		| "transaction"
 	> {
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	config?: LeitwerkConfig;
+	/** @internal */
 	toastTtlMs?: number;
+	/** @internal */
 	getSupervisor: () => WorkerSupervisor | undefined;
+	/** @internal */
 	extensionHost?: ExtensionHost;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	sessionReader?: ProcessSessionReader;
+	/** @internal */
 	getProcessActionRegistry?: () => ProcessActionRegistry | undefined;
+	/** @internal */
 	getProcessUiRegistry?: () => ProcessUiRegistry | undefined;
+	/** @internal */
 	logger?: ProcessEngineLogger;
 	/** Required by the server-owned engine; embedded callers adapt at construction. */
+	/** @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
+	/** @internal */
 	afterRecord?: (process: ProcessInstance) => void | Promise<void>;
+	/** @internal */
 	afterSuccessHooks?: Set<(instanceId: string) => void | Promise<void>>;
+	/** @internal */
 	isNewTurnBlocked?: (instanceId: string) => boolean;
+	/** @internal */
 	prepareTurnStarts?: (
 		process: ProcessInstance,
 		writes: Writes,
 		providerOptions?: Readonly<Record<string, string>>,
 		availabilitySnapshot?: ModelStatusCacheSnapshot,
-	) => Promise<{ ok: true } | { ok: false; code: string; message: string }>;
+	) => Promise<
+		| {
+				/** @internal */
+				ok: true;
+		  }
+		| {
+				/** @internal */
+				ok: false;
+				/** @internal */
+				code: string;
+				/** @internal */
+				message: string;
+		  }
+	>;
 }
 
+/** @internal */
 export interface DecideContext {
+	/** @internal */
 	deps: ProcessEngineDeps;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	process: ProcessInstance;
 }
 
+/** @internal */
 export interface ProcessTurnSelectionChange {
+	/** @internal */
 	fromTurnId: string | null;
+	/** @internal */
 	toTurnId: string | null;
+	/** @internal */
 	fromLifecycleStatus: ProcessLifecycleStatus;
+	/** @internal */
 	toLifecycleStatus: ProcessLifecycleStatus;
 }
 
+/** @internal */
 export type EngineErrorCode =
 	| "process_not_found"
 	| "operation_failed"
@@ -119,28 +166,44 @@ export type EngineErrorCode =
 	| "retry_target_missing"
 	| (string & {});
 
+/** @internal */
 export type EngineFailureStage = "pre_commit" | "post_commit";
 
+/** @internal */
 export interface EngineSuccess<T> {
+	/** @internal */
 	ok: true;
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	data: T;
+	/** @internal */
 	turnSelectionChange?: ProcessTurnSelectionChange;
 }
 
+/** @internal */
 export interface EngineFailure<T> {
+	/** @internal */
 	ok: false;
+	/** @internal */
 	code: EngineErrorCode;
+	/** @internal */
 	message: string;
+	/** @internal */
 	process?: ProcessInstance | null;
+	/** @internal */
 	data?: T;
+	/** @internal */
 	turnSelectionChange?: ProcessTurnSelectionChange;
+	/** @internal */
 	stage?: EngineFailureStage;
 }
 
+/** @internal */
 export type EngineResult<T = undefined> = EngineSuccess<T> | EngineFailure<T>;
 
 export type ActionExecutionFailureStage = ActionExecutionFailureStageLike;
+/** @internal */
 export type ActionExecutionResult = ActionExecutionResultLike;
 
 export interface RecordedDecision<
@@ -175,114 +238,214 @@ export type RecordResult<TOp extends OperationSpec<string, OperationInputBase, u
 			recorded: RecordedDecision<TOp>;
 	  };
 
+/** @internal */
 export interface ProcessEngine {
+	/** @internal */
 	getDeferredProcessActivationSnapshots(
 		query: DeferredProcessActivationSnapshotQuery,
 	): DeferredProcessActivationSnapshotResult;
+	/** @internal */
 	activateDeferredProcess(
 		instanceId: string,
 		prepared: PreparedDeferredProcessActivation,
-	): Promise<EngineResult<{ outcome: DeferredProcessActivationOutcome }>>;
+	): Promise<
+		EngineResult<{
+			/** @internal */
+			outcome: DeferredProcessActivationOutcome;
+		}>
+	>;
+	/** @internal */
 	parkDeferredProcessActivationFailure(
 		instanceId: string,
 		failure: DeferredProcessActivationFailure,
 	): Promise<
-		EngineResult<{ outcome: "parked" | "stale" | "not_applicable" | "project_not_found" }>
+		EngineResult<{
+			/** @internal */
+			outcome: "parked" | "stale" | "not_applicable" | "project_not_found";
+		}>
 	>;
+	/** @internal */
 	run<TOp extends OperationSpec<string, OperationInputBase, unknown>>(
 		operation: TOp,
 		input: OperationInput<TOp>,
 	): Promise<EngineResult<OperationData<TOp>>>;
 
+	/** @internal */
 	startProcess(
 		instanceId: string,
 		startTurnId: TurnId,
-		opts?: { actor?: Actor },
-	): Promise<EngineResult<void>>;
-	abortProcess(
-		instanceId: string,
-		opts?: { actor?: Actor; expectedTurnRecordId?: string },
-	): Promise<EngineResult<void>>;
-	abortTurn(
-		instanceId: string,
-		opts?: { reason?: string; actor?: Actor },
-	): Promise<EngineResult<void>>;
-	retryProcess(
-		instanceId: string,
 		opts?: {
-			nextTurnModelProfileId?: string | null;
-			providerOptions?: Readonly<Record<string, string>>;
+			/** @internal */
 			actor?: Actor;
 		},
 	): Promise<EngineResult<void>>;
+	/** @internal */
+	abortProcess(
+		instanceId: string,
+		opts?: {
+			/** @internal */
+			actor?: Actor;
+			/** @internal */
+			expectedTurnRecordId?: string;
+		},
+	): Promise<EngineResult<void>>;
+	/** @internal */
+	abortTurn(
+		instanceId: string,
+		opts?: {
+			/** @internal */
+			reason?: string;
+			/** @internal */
+			actor?: Actor;
+		},
+	): Promise<EngineResult<void>>;
+	/** @internal */
+	retryProcess(
+		instanceId: string,
+		opts?: {
+			/** @internal */
+			nextTurnModelProfileId?: string | null;
+			/** @internal */
+			providerOptions?: Readonly<Record<string, string>>;
+			/** @internal */
+			actor?: Actor;
+		},
+	): Promise<EngineResult<void>>;
+	/** @internal */
 	retryStartup(
 		instanceId: string,
 		startRecordId: string,
 		opts?: {
+			/** @internal */
 			nextTurnModelProfileId?: string | null;
+			/** @internal */
 			providerOptions?: Readonly<Record<string, string>>;
 		},
-	): Promise<EngineResult<{ startRecordId: string }>>;
+	): Promise<
+		EngineResult<{
+			/** @internal */
+			startRecordId: string;
+		}>
+	>;
+	/** @internal */
 	continueFailedTurn(
 		instanceId: string,
 		turnRecordId: string,
 		options?: {
+			/** @internal */
 			prompt?: string | null;
+			/** @internal */
 			nextTurnModelProfileId?: string | null;
+			/** @internal */
 			providerOptions?: Readonly<Record<string, string>>;
+			/** @internal */
 			actor?: Actor;
 		},
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	parkProcessLifecycle(
 		instanceId: string,
 		payload: ParkProcessLifecyclePayload,
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	recordWorkerFailure(
 		instanceId: string,
 		payload: {
+			/** @internal */
 			errorCode: string;
+			/** @internal */
 			message: string;
+			/** @internal */
 			errorClass?: WorkerErrorClass;
+			/** @internal */
 			workerLeaseId?: string | null;
+			/** @internal */
 			resultPiEntryId?: string | null;
+			/** @internal */
 			recoveryContext?: TurnFailedPayload["recoveryContext"];
 		},
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	acceptWorkerTurnStart(
 		instanceId: string,
-		input: { startRecordId: string; proposedTurnRecordId: string; workerLeaseId: string },
-	): Promise<EngineResult<{ turnRecordId: string }>>;
+		input: {
+			/** @internal */
+			startRecordId: string;
+			/** @internal */
+			proposedTurnRecordId: string;
+			/** @internal */
+			workerLeaseId: string;
+		},
+	): Promise<
+		EngineResult<{
+			/** @internal */
+			turnRecordId: string;
+		}>
+	>;
+	/** @internal */
 	recordTurnOutcome(
 		instanceId: string,
 		payload: TurnOutcomePayload,
-		options?: { onRecorded?: () => void },
+		options?: {
+			/** @internal */
+			onRecorded?: () => void;
+		},
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	recordTurnFailed(
 		instanceId: string,
 		payload: TurnFailedPayload,
-		options?: { onRecorded?: () => void },
+		options?: {
+			/** @internal */
+			onRecorded?: () => void;
+		},
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	updateSemanticEntryRefs(
 		instanceId: string,
 		patch: ProcessSemanticEntryRefPatch,
 	): Promise<EngineResult<void>>;
+	/** @internal */
 	updateProductRefs(instanceId: string, patch: ProcessProductRefPatch): Promise<EngineResult<void>>;
+	/** @internal */
 	queueInputs(
 		instanceId: string,
 		queued: QueuedProcessInput[],
-		opts?: { dispatchErrorMessage?: string; actor?: Actor },
+		opts?: {
+			/** @internal */
+			dispatchErrorMessage?: string;
+			/** @internal */
+			actor?: Actor;
+		},
 	): Promise<EngineResult<ProcessInput[]>>;
+	/** @internal */
 	dispatchExternalTurnTrigger(
 		instanceId: string,
 		actionId: string,
 		input: Record<string, unknown>,
-	): Promise<ActionExecutionResult | { ok: true; process: null; data: { ignored: true } }>;
+	): Promise<
+		| ActionExecutionResult
+		| {
+				/** @internal */
+				ok: true;
+				/** @internal */
+				process: null;
+				/** @internal */
+				data: {
+					/** @internal */
+					ignored: true;
+				};
+		  }
+	>;
+	/** @internal */
 	executeProcessAction(
 		instanceId: string,
 		actionId: string,
 		input: Record<string, unknown>,
 		opts?: NonNullable<Parameters<ProcessActionServiceLike["executeAction"]>[3]> & {
+			/** @internal */
 			scheduledExecutionId?: string;
+			/** @internal */
 			consumeScheduledExecutionOnSuccess?: boolean;
 		},
 	): Promise<ActionExecutionResult>;

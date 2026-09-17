@@ -1,18 +1,27 @@
 import type { Codec, StructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export interface ProcessAnalysisSnapshotState {
+	/** @internal */
 	sourceProcessId: string;
+	/** @internal */
 	apiUrl: string;
+	/** @internal */
 	snapshotDir: string;
+	/** @internal */
 	primaryPath?: unknown;
+	/** @internal */
 	downloadedAt: string;
 }
 
+/** @internal */
 export interface ProcessAnalysisState extends StructuralProcessState {
+	/** @internal */
 	snapshot: ProcessAnalysisSnapshotState | null;
 }
 
+/** @internal */
 export function parseProcessAnalysisSnapshotState(
 	value: unknown,
 ): ProcessAnalysisSnapshotState | null {
@@ -28,6 +37,7 @@ export function parseProcessAnalysisSnapshotState(
 	};
 }
 
+/** @internal */
 export const processAnalysisStateCodec: Codec<ProcessAnalysisState> = {
 	parse(value) {
 		const r = (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;

@@ -7,20 +7,42 @@ import { eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { sessionSummaries, turnSummaries } from "./schema.js";
 
+/** @internal */
 export interface SessionSummary {
+	/** @internal */
 	signature: string | null;
+	/** @internal */
 	leafId: string | null;
+	/** @internal */
 	primaryPath: Pick<
 		PrimaryPathUiSnapshot,
 		"currentLeaf" | "semanticEntryRefs" | "entryCount" | "turnAnnotations"
 	>;
-	prompt: { text: string | null; createdAt: string | null };
+	/** @internal */
+	prompt: {
+		/** @internal */
+		text: string | null;
+		/** @internal */
+		createdAt: string | null;
+	};
+	/** @internal */
 	tracePreviewsByTurnRecordId: Record<string, TurnTracePreview>;
-	continuationByTurnRecordId: Record<string, { hasProgress: boolean; userPrompt: string | null }>;
+	/** @internal */
+	continuationByTurnRecordId: Record<
+		string,
+		{
+			/** @internal */
+			hasProgress: boolean;
+			/** @internal */
+			userPrompt: string | null;
+		}
+	>;
 }
 
+/** @internal */
 export function createTurnSummaryRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		get(turnRecordId: string): CompactTurnSummary | null {
 			const row = db
 				.select()
@@ -29,6 +51,7 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 				.get();
 			return row ? (JSON.parse(row.summaryJson) as CompactTurnSummary) : null;
 		},
+		/** @internal */
 		put(instanceId: string, turnRecordId: string, summary: CompactTurnSummary) {
 			const summaryJson = JSON.stringify(summary);
 			db.insert(turnSummaries)
@@ -36,6 +59,7 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 				.onConflictDoUpdate({ target: turnSummaries.turnRecordId, set: { summaryJson } })
 				.run();
 		},
+		/** @internal */
 		listByInstance(instanceId: string): Record<string, CompactTurnSummary> {
 			return Object.fromEntries(
 				db
@@ -46,6 +70,7 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 					.map((row) => [row.turnRecordId, JSON.parse(row.summaryJson) as CompactTurnSummary]),
 			);
 		},
+		/** @internal */
 		getSession(instanceId: string): SessionSummary | null {
 			const row = db
 				.select()
@@ -54,6 +79,7 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 				.get();
 			return row ? (JSON.parse(row.summaryJson) as SessionSummary) : null;
 		},
+		/** @internal */
 		putSession(instanceId: string, summary: SessionSummary) {
 			const summaryJson = JSON.stringify(summary);
 			db.insert(sessionSummaries)
@@ -61,6 +87,7 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 				.onConflictDoUpdate({ target: sessionSummaries.instanceId, set: { summaryJson } })
 				.run();
 		},
+		/** @internal */
 		deleteSession(instanceId: string) {
 			db.delete(sessionSummaries).where(eq(sessionSummaries.instanceId, instanceId)).run();
 		},

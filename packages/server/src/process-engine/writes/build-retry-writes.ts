@@ -5,10 +5,13 @@ import {
 } from "./build-recovery-start-writes.js";
 import { appendProcessEvent, updateProcessMetadata, type Writes } from "./writes.js";
 
+/** @internal */
 export interface RetryWritesInput extends RecoveryStartWritesInput {
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
 }
 
+/** @internal */
 export function buildRetryWrites(input: RetryWritesInput): Writes {
 	const { process, failedRun } = input;
 	const retryTurn = getProcessTurnGraph(input.processGraphs, process.processId, failedRun.turnId);

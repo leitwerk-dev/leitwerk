@@ -17,15 +17,22 @@ import type { WoodpeckerIntegration } from "@leitwerk-dev/woodpecker";
 import { type ForgejoRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
 
+/** @internal */
 export const forgejoRepoChangeUiLauncherId = "forgejo_repo_change_process.ui_launcher" as const;
 
+/** @internal */
 export function forgejoRepoChangeParams(
 	repository: ForgejoRepository,
 	input: {
+		/** @internal */
 		profile: string;
+		/** @internal */
 		woodpeckerProfile: string;
+		/** @internal */
 		sshCredentialRef: string;
+		/** @internal */
 		prompt: string;
+		/** @internal */
 		workBranch: string;
 	},
 ): ForgejoRepoChangeParams {
@@ -48,6 +55,7 @@ export function forgejoRepoChangeParams(
 	};
 }
 
+/** @internal */
 export function forgejoRepoChangeLaunchConfig(
 	params: ForgejoRepoChangeParams,
 	title: string,
@@ -83,16 +91,23 @@ export function forgejoRepoChangeLaunchConfig(
 	};
 }
 
+/** @internal */
 export interface LauncherDependencies {
+	/** @internal */
 	forgejo: ForgejoIntegration;
+	/** @internal */
 	gitSsh: GitSshIntegration;
+	/** @internal */
 	woodpecker: WoodpeckerIntegration;
+	/** @internal */
 	profileBindings?: ProfileBindings;
 }
 
+/** @internal */
 export function createForgejoRepoChangeLauncher() {
 	let dependencies: LauncherDependencies | null = null;
 
+	/** @internal */
 	function configureForgejoRepoChangeLauncher(value: LauncherDependencies | null): void {
 		dependencies = value;
 	}
@@ -129,6 +144,7 @@ export function createForgejoRepoChangeLauncher() {
 		};
 	}
 
+	/** @internal */
 	function forgejoRepositoryPreparationChecks(
 		_input: unknown,
 		{ params }: ProcessLaunchConfig<ForgejoRepoChangeParams>,
@@ -165,6 +181,7 @@ export function createForgejoRepoChangeLauncher() {
 		return { code, fieldId, message };
 	}
 
+	/** @internal */
 	function resolveProfiles(profile: string) {
 		const { forgejo, woodpecker, gitSsh, profileBindings = {} } = requireDependencies();
 		if (!forgejo.profiles().includes(profile)) throw new Error("Forgejo profile is not available");
@@ -179,6 +196,7 @@ export function createForgejoRepoChangeLauncher() {
 		return binding;
 	}
 
+	/** @internal */
 	async function resolveForgejoGitIdentity(profile: string): Promise<ForgejoGitIdentity> {
 		if (!profile) throw new Error("A Forgejo profile is required to resolve Git identity");
 		return requireDependencies().forgejo.client(profile).resolveGitIdentity(profile);
@@ -310,10 +328,15 @@ export function createForgejoRepoChangeLauncher() {
 	};
 
 	return {
+		/** @internal */
 		configure: configureForgejoRepoChangeLauncher,
+		/** @internal */
 		preparationChecks: forgejoRepositoryPreparationChecks,
+		/** @internal */
 		resolveProfiles,
+		/** @internal */
 		resolveGitIdentity: resolveForgejoGitIdentity,
+		/** @internal */
 		launcher: forgejoRepoChangeUiLauncher,
 	};
 }

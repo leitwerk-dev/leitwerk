@@ -1,3 +1,4 @@
+/** @internal */
 export const DEFAULT_LAUNCHER_RECENT_VALUE_LIMIT = 5;
 
 function hasCredentialBearingAbsoluteUrl(value: string): boolean {
@@ -16,6 +17,7 @@ function hasCredentialBearingAbsoluteUrl(value: string): boolean {
  * Strip any embedded credentials (`user:pass@`) from an absolute non-`file:` URL,
  * returning the value unchanged when it is not such a URL.
  */
+/** @internal */
 export function redactCredentialBearingAbsoluteUrl(value: string): string {
 	if (!hasCredentialBearingAbsoluteUrl(value)) {
 		return value;
@@ -26,6 +28,7 @@ export function redactCredentialBearingAbsoluteUrl(value: string): string {
 	return url.toString();
 }
 
+/** @internal */
 export function normalizeLauncherRecentValue(value: unknown): string | null {
 	const normalizedValue = typeof value === "string" ? value.trim() : "";
 	if (!normalizedValue || hasCredentialBearingAbsoluteUrl(normalizedValue)) {
@@ -34,6 +37,7 @@ export function normalizeLauncherRecentValue(value: unknown): string | null {
 	return normalizedValue;
 }
 
+/** @internal */
 export function normalizeLauncherRecentValues(
 	values: readonly unknown[],
 	limit = DEFAULT_LAUNCHER_RECENT_VALUE_LIMIT,
@@ -52,6 +56,7 @@ export function normalizeLauncherRecentValues(
 	return [...nextValues];
 }
 
+/** @internal */
 export function addLauncherRecentValue(
 	existingValues: readonly string[],
 	value: string,

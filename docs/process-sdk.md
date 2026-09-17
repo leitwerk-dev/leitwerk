@@ -2,6 +2,40 @@
 
 The **Process SDK** (`@leitwerk-dev/process-sdk`) is the TypeScript framework for building custom processes, turn graphs, launchers, and UI extensions in Leitwerk. This guide walks through packaging an extension, defining turn graphs with the `flow` builder, routing state with products, and exposing launchers to the operator dashboard.
 
+## API compatibility
+
+Published declarations use `@public` for supported APIs and `@internal` for
+implementation APIs. Both remain importable, callable, and fully typed. These
+tags describe compatibility; they do not restrict access. Each exposed member
+has its own tag. A public interface, class, or capability does not make all of
+its members public. Re-exports retain the declaration's classification.
+
+Breaking a public API requires release notes and a minor version bump during
+`0.x`, or a major bump from `1.0`. Removing a public API's tag is also a breaking
+change. Later disappearance of consumer usage does not withdraw this promise.
+Internal APIs can change without that compatibility promise.
+
+The initial classification uses actual code in the current `leitwerk-private`,
+`leitwerk-public`, and `leitwerk-rsnc` working trees: runtime code, tests, type
+references, supplied contracts, development scripts, and extension composition
+loading. Named supporting types are public where needed by public signatures.
+Documentation and Leitwerk's own calls do not independently establish support.
+Generated files, dependencies, and vendored core checkouts are excluded.
+
+For example, `ServerExtensionAPI.get`, `require`, `provide`, `tool`, and `onStop`
+are public; `onStart` is internal. `PiPromptOptions.tools` is public, while
+`shouldBlockToolCall`, `suspendPromptGuards`, and `terminalAcknowledgement` are
+internal. Forwarding an options object does not consume all its members.
+
+Run `leitwerk-dev api:check --workspace PATH` from an installed
+`@leitwerk-dev/dev-tools` package to check an extension workspace. It verifies
+classification completeness, conflicting tags, public signature dependencies,
+and interface report drift. Internal API calls are allowed. Use `--update` to
+write reports after reviewing changes. The core repository runs this check in
+`npm run test:full`; it needs no consumer checkout. See the
+[API reports](https://github.com/leitwerk-dev/leitwerk/tree/main/api-reports) for
+the recorded baseline and unresolved consumer dependencies.
+
 ## Extension Package
 
 Every extension is a TypeScript package that points to its source and build files in `package.json`:

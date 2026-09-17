@@ -85,6 +85,7 @@ async function switchImportedSession(
 	}
 }
 
+/** @internal */
 export default async function leitwerkSessionTransfer(pi: ExtensionAPI) {
 	const state = new LocalTransferState(getAgentDir());
 	await state.reconcile();

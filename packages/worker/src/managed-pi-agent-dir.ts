@@ -10,9 +10,13 @@ function safeSegment(value: string, name: string): string {
 	return value;
 }
 
+/** @internal */
 export function resolveManagedPiAgentDir(input: {
+	/** @internal */
 	agentDirRoot: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	startOrLeaseId: string;
 }): string {
 	const root = path.resolve(input.agentDirRoot);
@@ -51,12 +55,16 @@ async function assertNoSymlinkParents(root: string, target: string): Promise<voi
 	}
 }
 
+/** @internal */
 export interface DeclaredCredentialFile {
+	/** @internal */
 	path: string;
+	/** @internal */
 	content: string | Uint8Array;
 }
 
 /** Atomically writes declared credential files inside an existing managed directory. */
+/** @internal */
 export async function writeManagedPiCredentialFiles(
 	agentDir: string,
 	files: readonly DeclaredCredentialFile[],

@@ -80,9 +80,13 @@ function isTruthyTruncationValue(value: unknown): boolean {
 	});
 }
 
+/** @internal */
 export function isToolResultTruncated(input: {
+	/** @internal */
 	resultText: string | null;
+	/** @internal */
 	resultDetails: unknown;
+	/** @internal */
 	resultValue: unknown;
 }): boolean {
 	const normalizedText = input.resultText?.toLowerCase() ?? "";

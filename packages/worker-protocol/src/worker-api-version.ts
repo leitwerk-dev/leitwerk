@@ -5,4 +5,5 @@
  * Workers also report it in `worker.hello` so the server can fail fast when a
  * pod image is from an incompatible leitwerk build line.
  */
+/** @public */
 export const WORKER_API_VERSION = "2026-09-15";

@@ -1,18 +1,38 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 
+/** @internal */
 export interface ProcessEventRepoLike {
-	create(input: { instanceId: string; eventType: string; data?: Record<string, unknown> }): unknown;
-	listByInstance(instanceId: string, limit?: number): Array<{ eventType: string }>;
+	/** @internal */
+	create(input: {
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		eventType: string;
+		/** @internal */
+		data?: Record<string, unknown>;
+	}): unknown;
+	/** @internal */
+	listByInstance(
+		instanceId: string,
+		limit?: number,
+	): Array<{
+		/** @internal */
+		eventType: string;
+	}>;
 }
 
+/** @internal */
 export interface WorkerSupervisorLike {
+	/** @internal */
 	spawnWorker(instanceId: string): Promise<unknown>;
+	/** @internal */
 	getWorker(instanceId: string): unknown | undefined;
 }
 
 /**
  * Check whether a process already has an event of the given type.
  */
+/** @internal */
 export function hasProcessEvent(
 	events: ProcessEventRepoLike,
 	instanceId: string,
@@ -21,6 +41,7 @@ export function hasProcessEvent(
 	return events.listByInstance(instanceId, 200).some((event) => event.eventType === eventType);
 }
 
+/** @internal */
 export function processNeedsWorker(
 	process: Pick<ProcessInstance, "selectedTurnId" | "lifecycleStatus">,
 ): boolean {
@@ -32,8 +53,14 @@ export function processNeedsWorker(
  * no running worker. No-ops when the process is not worker-runnable or already
  * has a worker.
  */
+/** @internal */
 export async function ensureWorkerForActiveAgent(
-	deps: { events: ProcessEventRepoLike; supervisor: WorkerSupervisorLike },
+	deps: {
+		/** @internal */
+		events: ProcessEventRepoLike;
+		/** @internal */
+		supervisor: WorkerSupervisorLike;
+	},
 	process: ProcessInstance,
 ): Promise<void> {
 	if (!processNeedsWorker(process) || deps.supervisor.getWorker(process.id)) {

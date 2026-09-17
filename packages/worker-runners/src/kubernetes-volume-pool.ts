@@ -11,22 +11,36 @@ const STATE = "leitwerk.dev/volume-pool-state";
 const SIZE = "leitwerk.dev/preparation-size";
 const MODES = "leitwerk.dev/preparation-access-modes";
 
+/** @internal */
 export interface VolumePoolOptions {
+	/** @internal */
 	api: VolumePoolApi;
+	/** @internal */
 	namespace: string;
+	/** @internal */
 	count: number;
+	/** @internal */
 	storageClassName: string;
+	/** @internal */
 	size: string;
+	/** @internal */
 	accessModes: string[];
+	/** @internal */
 	image: string;
+	/** @internal */
 	imagePullPolicy?: string;
+	/** @internal */
 	imagePullSecrets?: string[];
+	/** @internal */
 	nodeSelector?: Record<string, string>;
+	/** @internal */
 	tolerations?: unknown[];
+	/** @internal */
 	onError?: () => void;
 }
 
 /** Only the staging claim's UID authorizes rebinding; process claims are never recycled. */
+/** @internal */
 export function createKubernetesVolumePool(options: VolumePoolOptions) {
 	const { api, namespace } = options;
 	if (!Number.isSafeInteger(options.count) || options.count < 0)
@@ -173,6 +187,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 		);
 	}
 
+	/** @internal */
 	async function reconcile(signal: AbortSignal) {
 		const volumes = await api.list("persistentvolumes", "", selector, signal);
 		const classes = await api.listStorageClasses(selector, signal);
@@ -325,8 +340,11 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 	}
 
 	return {
+		/** @internal */
 		poolId,
+		/** @internal */
 		reconcile,
+		/** @internal */
 		start() {
 			if (controller) return;
 			controller = new AbortController();
@@ -348,6 +366,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 				}
 			})();
 		},
+		/** @internal */
 		async stop() {
 			controller?.abort();
 			await running;

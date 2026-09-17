@@ -2,22 +2,37 @@ import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { IntegrationHttpClient } from "@leitwerk-dev/process-sdk";
 import { boundedLogTail } from "./logs.js";
 
+/** @internal */
 export interface WoodpeckerProfile {
+	/** @internal */
 	baseUrl: string;
+	/** @internal */
 	token: string;
 }
+/** @public */
 export interface WoodpeckerRepository {
+	/** @public */
 	id: number;
+	/** @public */
 	full_name: string;
 }
+/** @public */
 export interface WoodpeckerPipeline {
+	/** @internal */
 	id: number;
+	/** @internal */
 	number: number;
+	/** @internal */
 	status: string;
+	/** @internal */
 	event: string;
+	/** @internal */
 	branch: string;
+	/** @internal */
 	commit: string;
+	/** @internal */
 	created_at?: number;
+	/** @internal */
 	workflows?: unknown[];
 }
 
@@ -43,6 +58,7 @@ function decodeLogData(data: WoodpeckerLogEntry["data"]): string {
 	return data;
 }
 
+/** @internal */
 export function parseWoodpeckerProfiles(value: unknown): Map<string, WoodpeckerProfile> {
 	const profiles = new Map<string, WoodpeckerProfile>();
 	for (const [name, raw] of Object.entries(
@@ -59,24 +75,36 @@ export function parseWoodpeckerProfiles(value: unknown): Map<string, WoodpeckerP
 	return profiles;
 }
 
+/** @public */
 export class WoodpeckerClient extends IntegrationHttpClient {
-	constructor(readonly profile: WoodpeckerProfile) {
+	/** @internal */
+	constructor(
+		/** @internal */
+		readonly profile: WoodpeckerProfile,
+	) {
 		super("Woodpecker", `${profile.baseUrl}/api`, {
 			Authorization: `Bearer ${profile.token}`,
 			Accept: "application/json",
 		});
 	}
 
+	/** @internal */
 	lookupRepository(fullName: string, signal?: AbortSignal): Promise<WoodpeckerRepository> {
 		return this.request(`/repos/lookup/${encodeURIComponent(fullName)}`, {
 			signal,
 		});
 	}
 
+	/** @internal */
 	listPipelines(
 		repoId: number,
 		signal?: AbortSignal,
-		pagination: { page: number; perPage?: number } = { page: 1 },
+		pagination: {
+			/** @internal */
+			page: number;
+			/** @internal */
+			perPage?: number;
+		} = { page: 1 },
 	): Promise<WoodpeckerPipeline[]> {
 		const { page, perPage = 100 } = pagination;
 		if (
@@ -92,10 +120,12 @@ export class WoodpeckerClient extends IntegrationHttpClient {
 		});
 	}
 
+	/** @internal */
 	getPipeline(repoId: number, number: number, signal?: AbortSignal): Promise<WoodpeckerPipeline> {
 		return this.request(`/repos/${repoId}/pipelines/${number}`, { signal });
 	}
 
+	/** @public */
 	async getStepLogs(
 		repoId: number,
 		number: number,
@@ -126,9 +156,15 @@ export class WoodpeckerClient extends IntegrationHttpClient {
 			// Older adapters may return text directly; retain it as-is.
 		}
 		const output = boundedLogTail(text.split(/\r?\n/), tailLines, maxBytes);
-		return { logs: output, truncated: output.length < text.length };
+		return {
+			/** @public */
+			logs: output,
+			/** @internal */
+			truncated: output.length < text.length,
+		};
 	}
 
+	/** @internal */
 	restartPipeline(
 		repoId: number,
 		number: number,

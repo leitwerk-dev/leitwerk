@@ -70,44 +70,74 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./worker-websocket-ipc.js";
 
+/** @internal */
 export interface SupervisorDeps
 	extends Pick<
 		RepositoryBundle,
 		"leases" | "processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "events"
 	> {
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
+	/** @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	ipcHandler: ReturnType<typeof createIpcHandler>;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	runnerRuntime: {
+		/** @internal */
 		runner: WorkerRunner;
+		/** @internal */
 		volume?: ProcessVolume;
+		/** @internal */
 		webSocketIpc: WorkerWebSocketIpcManager;
 	};
+	/** @internal */
 	resolvedExtensionEntriesJson?: string;
+	/** @internal */
 	serverEpoch?: string;
+	/** @internal */
 	logger?: WorkerUnitCleanupLogger;
+	/** @internal */
 	resolveResourceBundle?: (digest: string) => PiResourceBundle | null;
+	/** @internal */
 	resolveRepositoryCredentials?: WorkerStartPayloadBuilderDeps["resolveRepositoryCredentials"];
+	/** @internal */
 	integrationTools?: WorkerStartPayloadBuilderDeps["integrationTools"];
+	/** @internal */
 	resolveCredential?: WorkerStartPayloadBuilderDeps["resolveCredential"];
 }
 
+/** @public */
 export interface WorkerHandle {
+	/** @internal */
 	workerId: string;
+	/** @internal */
 	instanceId: string;
 	/** Runtime-specific handle id when known; used to distinguish duplicate units during adoption scans. */
+	/** @internal */
 	unitId?: string;
+	/** @internal */
 	namespace?: string;
+	/** @internal */
 	send(message: ServerToWorkerMessage): void;
+	/** @internal */
 	kill(signal?: NodeJS.Signals | number): void;
 	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. */
+	/** @internal */
 	killAndWait?(signal?: NodeJS.Signals | number): Promise<void>;
+	/** @internal */
 	detach(reason: string): void;
+	/** @internal */
 	onceExit(listener: () => void): void;
 }
 
@@ -127,42 +157,58 @@ type ServerToWorkerMessageBody<T = ServerToWorkerMessage> = T extends ServerToWo
 	? Pick<T, "type" | "payload">
 	: never;
 
+/** @public */
 export interface WorkerSupervisor {
+	/** @internal */
 	spawnWorker(instanceId: string): Promise<WorkerHandle>;
+	/** @internal */
 	stopWorker(instanceId: string, reason: string): Promise<void>;
+	/** @internal */
 	abortTurn(instanceId: string, reason: string): void;
+	/** @internal */
 	deliverInputs(instanceId: string, inputs: InputDelivery[]): void;
+	/** @internal */
 	acceptTurnStart(
 		instanceId: string,
 		workerId: string,
 		startRecordId: string,
 		turnRecordId: string,
 	): void;
+	/** @internal */
 	reconcileAcceptedTurnStart(instanceId: string, workerId: string): boolean;
+	/** @internal */
 	acknowledgeTurnTerminal(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerTurnTerminalRecordedPayload,
 	): void;
+	/** @internal */
 	questionResponse(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerQuestionResponsePayload,
 	): void;
+	/** @internal */
 	credentialUpdateResult(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerCredentialUpdateResultPayload,
 	): void;
+	/** @internal */
 	integrationToolResult(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerIntegrationToolResultPayload,
 	): void;
+	/** @public */
 	getWorker(instanceId: string): WorkerHandle | undefined;
+	/** @internal */
 	isAdoptionPending(instanceId: string): boolean;
+	/** @internal */
 	adoptRegisteredWorkers(): Promise<void>;
+	/** @internal */
 	detachAll(reason: string): Promise<void>;
+	/** @public */
 	shutdownAll(reason: string): Promise<void>;
 }
 
@@ -172,6 +218,7 @@ function generateWorkerId(): string {
 	return `wkr_${ts}${rand}`;
 }
 
+/** @internal */
 export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	const workers = new Map<string, WorkerHandle>();
 	const startupTimers = new Map<string, ReturnType<typeof setTimeout>>();

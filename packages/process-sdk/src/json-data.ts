@@ -1,4 +1,5 @@
 /** Validate and detach JSON data without silently dropping unsupported values. */
+/** @internal */
 export function parseJsonData(
 	value: unknown,
 	message = "Value must be JSON-serializable",

@@ -1,3 +1,4 @@
+/** @internal */
 export function compareTimestampStrings(left: string, right: string): number {
 	const leftMs = Date.parse(left);
 	const rightMs = Date.parse(right);
@@ -7,6 +8,7 @@ export function compareTimestampStrings(left: string, right: string): number {
 	return left.localeCompare(right);
 }
 
+/** @internal */
 export function happenedOnOrAfterStart(entryTimestamp: string, startedAt: string | null): boolean {
 	if (!startedAt) {
 		return true;

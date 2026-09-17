@@ -88,15 +88,23 @@ async function buildProcessTurnOutcomeEffectWrites(
 	return mergeWrites(effectWrites, transitionWrites);
 }
 
+/** @internal */
 export interface TurnOutcomePlanningInput {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	projects: readonly ProcessProject[];
+	/** @internal */
 	payload: TurnOutcomePayload;
+	/** @internal */
 	turnRecords: TurnRecordMarkdownLookup;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
 }
 
+/** @internal */
 export async function buildTurnOutcomeWrites(
 	input: TurnOutcomePlanningInput,
 ): Promise<WriteBuildResult> {

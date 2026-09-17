@@ -42,3 +42,14 @@ pi:
 The extension uses a code-defined standard-provider list with explicit environment-variable mappings. Pi upgrades do not implicitly enable new providers. Providers with ambient or OAuth-only authentication, including Bedrock and OpenAI Codex, require dedicated extensions.
 
 Custom gateways support `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. They support worker LLM turns. Because they do not declare a server adapter, they cannot be selected for process-title generation.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/models`: `default`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. See the
+[interface report](../../api-reports/leitwerk-dev--models.api.md) for exact member tags
+and signatures, and the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).

@@ -8,13 +8,18 @@ import { normalizeTelegramConfig } from "./config.js";
 import { GrammyTelegramClient } from "./grammy-telegram-client.js";
 import type { TelegramClient } from "./types.js";
 
+/** @internal */
 export const telegramClientToken = createCapabilityToken<TelegramClient>("telegram:client");
 
+/** @internal */
 export const manifest = {
+	/** @internal */
 	id: "telegram",
+	/** @internal */
 	version: "0.1.0",
 } as const;
 
+/** @public */
 const telegramExtension: LeitwerkExtensionModule = {
 	manifest,
 	setupServer(api, rawConfig) {

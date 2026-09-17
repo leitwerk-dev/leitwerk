@@ -9,7 +9,9 @@ import {
 	type TurnStartRecord,
 } from "@leitwerk-dev/domain";
 
+/** @internal */
 export interface TurnRecordMarkdownLookup {
+	/** @internal */
 	getById(
 		id: string,
 	): Pick<ProcessTurnRecord, "instanceId" | "resultPiEntryId" | "turnResultMarkdown"> | null;
