@@ -590,7 +590,7 @@ async function waitForScrollToSettle(locator: Locator) {
 				previous = current;
 				return stableSamples;
 			},
-			{ timeout: 5_000, intervals: [50] },
+			{ timeout: 5_000, intervals: [100] },
 		)
 		.toBeGreaterThanOrEqual(3);
 	return getScrollMetrics(locator);

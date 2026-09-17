@@ -199,6 +199,7 @@ export type {
 	WorkerTurnHandler,
 } from "./extension-api.js";
 export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
+export { defineExternalActionSource } from "./external-action-source.js";
 export { createExternalSourcePollReporter } from "./external-source-poll.js";
 export {
 	AutomaticFlowBuilder,
@@ -249,7 +250,7 @@ export {
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
-export { IntegrationHttpClient } from "./integration-http.js";
+export { IntegrationHttpClient, IntegrationHttpError } from "./integration-http.js";
 export { parseJsonData } from "./json-data.js";
 export type {
 	LauncherCardMetadata,
@@ -360,7 +361,11 @@ export {
 	type RepositoryProjectBinding,
 	resolveRepositoryProjectBinding,
 } from "./project-binding.js";
-export { normalizeRepositoryFeedback, type RepositoryFeedbackItem } from "./repository-feedback.js";
+export {
+	normalizeRepositoryFeedback,
+	type RepositoryFeedbackItem,
+	repositoryFeedbackBatch,
+} from "./repository-feedback.js";
 export {
 	clearRepositoryGitHttpsHelpers,
 	clearRepositoryGitSshWrappers,
@@ -371,6 +376,17 @@ export {
 } from "./repository-git-env.js";
 export { RepositoryHttpClient } from "./repository-http.js";
 export { repositoryHttpsUrl } from "./repository-https.js";
+export {
+	matchesRepository,
+	parseRepositoryIssueWatcherConfig,
+	presentRepositoryIssueWatcherConfig,
+	type RepositoryIssueWatcherConfig,
+} from "./repository-issue-watcher.js";
+export {
+	parseRepositoryFeedbackConfig,
+	parseRepositoryIssueCancelledConfig,
+	parseRepositoryPullRequestConfig,
+} from "./repository-source-config.js";
 export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 export {
 	buildPlanSavedEventPayload,

@@ -645,3 +645,33 @@ it.each([
 		.find((item) => item.annotationType === "external_trigger");
 	expect(recorded?.payload.eventDescription).toBeUndefined();
 });
+
+it("rejects a captured event after its subscription changes without queuing it", async () => {
+	const { deps, service } = createHarness({
+		fileDoneSource: source({ resolve: ({ state }) => state }),
+	});
+	const process = createWaitingProcess(deps);
+	const arming = service.listArmed("example.file.presence")[0];
+	deps.processes.update(process.id, { stateJson: JSON.stringify({ revision: "new" }) });
+	const result = await service.fire({
+		instanceId: process.id,
+		armingId: arming.id,
+		generation: arming.generation,
+		event: { revision: "old" },
+	});
+	expect(result).toMatchObject({ ok: false, code: "external_source_superseded" });
+	expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("waiting");
+	expect(deps.pendingExternalSourceFires.listByInstance(process.id)).toHaveLength(0);
+	expect(deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+	const current = service.listArmed("example.file.presence")[0];
+	expect(
+		(
+			await service.fire({
+				instanceId: process.id,
+				armingId: current.id,
+				generation: current.generation,
+				event: { revision: "new" },
+			})
+		).ok,
+	).toBe(true);
+});
