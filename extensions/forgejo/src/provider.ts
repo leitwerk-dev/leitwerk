@@ -3,7 +3,12 @@ import {
 	type CoreServerSetupDeps,
 	createExternalSourcePollReporter,
 	type ExternalSourceArmingLike,
+	matchesRepository as matchesConfiguredRepository,
+	parseRepositoryFeedbackConfig as parseFeedbackConfig,
+	parseRepositoryIssueCancelledConfig as parseIssueCancelledConfig,
+	parseRepositoryPullRequestConfig as parsePrConfig,
 	type RegisteredProcessWatcherLike,
+	repositoryFeedbackBatch,
 } from "@leitwerk-dev/process-sdk";
 import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
@@ -14,9 +19,6 @@ import {
 	FORGEJO_PR_CONFLICT_KIND,
 	FORGEJO_PR_FEEDBACK_KIND,
 	FORGEJO_PR_TERMINAL_KIND,
-	type ForgejoFeedbackSourceConfig,
-	type ForgejoIssueCancelledSourceConfig,
-	type ForgejoPullRequestSourceConfig,
 } from "./external.js";
 import {
 	type ForgejoIssueWatcherConfig,
@@ -32,72 +34,7 @@ function externalId(repo: ForgejoRepository, issue: ForgejoIssue): string {
 	return `forgejo:${repo.full_name}#${issue.number}`;
 }
 
-export function matchesConfiguredRepository(
-	config: Pick<ForgejoIssueWatcherConfig, "repositories">,
-	repository: ForgejoRepository,
-): boolean {
-	const fullName = repository.full_name;
-	const { include = [], exclude = [] } = config.repositories ?? {};
-	if (exclude.includes(fullName)) return false;
-	return include.length === 0 || include.includes(fullName);
-}
-
-function parsePrConfig(value: unknown): ForgejoPullRequestSourceConfig | null {
-	const config = asUnknownRecord(value) ?? {};
-	if (
-		typeof config.profile !== "string" ||
-		typeof config.owner !== "string" ||
-		typeof config.repo !== "string" ||
-		typeof config.prNumber !== "number"
-	)
-		return null;
-	return {
-		profile: config.profile,
-		owner: config.owner,
-		repo: config.repo,
-		prNumber: config.prNumber,
-		pollInterval: typeof config.pollInterval === "string" ? config.pollInterval : "30s",
-		terminalOutcome:
-			config.terminalOutcome === "merged" || config.terminalOutcome === "closed"
-				? config.terminalOutcome
-				: undefined,
-		disabled: config.disabled === true,
-	};
-}
-
-function parseFeedbackConfig(value: unknown): ForgejoFeedbackSourceConfig | null {
-	const base = parsePrConfig(value);
-	const config = asUnknownRecord(value) ?? {};
-	if (!base) return null;
-	return {
-		...base,
-		conversationCursor:
-			typeof config.conversationCursor === "number" ? config.conversationCursor : 0,
-		reviewCursor: typeof config.reviewCursor === "number" ? config.reviewCursor : 0,
-		inlineCursor: typeof config.inlineCursor === "number" ? config.inlineCursor : 0,
-		quietPeriodMs: typeof config.quietPeriodMs === "number" ? config.quietPeriodMs : 120_000,
-	};
-}
-
-function parseIssueCancelledConfig(value: unknown): ForgejoIssueCancelledSourceConfig | null {
-	const config = asUnknownRecord(value) ?? {};
-	if (
-		typeof config.profile !== "string" ||
-		typeof config.owner !== "string" ||
-		typeof config.repo !== "string" ||
-		typeof config.issueNumber !== "number" ||
-		typeof config.triggerLabel !== "string"
-	)
-		return null;
-	return {
-		profile: config.profile,
-		owner: config.owner,
-		repo: config.repo,
-		issueNumber: config.issueNumber,
-		triggerLabel: config.triggerLabel,
-		pollInterval: typeof config.pollInterval === "string" ? config.pollInterval : "30s",
-	};
-}
+export { matchesConfiguredRepository };
 
 export function createForgejoProvider(
 	deps: CoreServerSetupDeps,
@@ -210,26 +147,8 @@ export function createForgejoProvider(
 			).filter(
 				(item) => item.author !== client.profile.botLogin && item.id > config[`${item.kind}Cursor`],
 			);
-			if (!unseen.length) return;
-			const latest = Math.max(...unseen.map((item) => Date.parse(item.createdAt) || 0));
-			if ((options.now?.() ?? Date.now()) - latest < config.quietPeriodMs) return;
-			const cursors = {
-				conversationCursor: config.conversationCursor,
-				reviewCursor: config.reviewCursor,
-				inlineCursor: config.inlineCursor,
-			};
-			for (const item of unseen) {
-				const key = `${item.kind}Cursor` as const;
-				cursors[key] = Math.max(cursors[key], item.id);
-			}
-			await report.fire(
-				armed,
-				{
-					feedbackIds: unseen.map(({ kind, id }) => ({ kind, id })),
-					cursors,
-				},
-				`${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
-			);
+			const batch = repositoryFeedbackBatch(unseen, config, options.now?.() ?? Date.now());
+			if (batch) await report.fire(armed, batch.event, batch.mergeKey);
 		});
 	}
 

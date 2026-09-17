@@ -79,6 +79,7 @@ describe("createGitHubProvider", () => {
 		expect(fire).toHaveBeenCalledWith({
 			instanceId: "process-1",
 			armingId: "github-merged",
+			generation: "initial",
 			event: {
 				kind: "merged",
 				pullRequest,

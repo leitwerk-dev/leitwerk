@@ -10,6 +10,7 @@
 	"references": [
 		{ "path": "../domain" },
 		{ "path": "../protocol" },
-		{ "path": "../worker-protocol" }
+		{ "path": "../worker-protocol" },
+		{ "path": "../watcher-utils" }
 	]
 }

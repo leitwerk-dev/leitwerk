@@ -79,3 +79,35 @@ an asset-name/content map; it verifies real ancestry through Git. Set
 
 The integration exposes general release, asset and ancestry operations through
 its server-owned client. Applications own asset selection and release-lock policy.
+
+## Organization issue workflows
+
+Set optional `allowed_organization: leitwerk-dev` on a profile to confine all
+repository tools and client operations to that organization. Omitted restrictions
+retain unrestricted profiles. Restricted tokens also need organization membership
+read access. Discovery lists enabled organization repositories and checks the
+latest trigger-label actor's current membership. A launch preparation check
+rechecks the actor and label event after repository/identity preparation.
+
+`githubIssueWatcherSource` retains `@leitwerk-public/github.issue`.
+`githubExternal.checks`, `pullRequestFeedback`, `pullRequestTerminal` and
+`issueCancelled` retain their separate `@leitwerk-public/github.*` contracts.
+Feedback has independent conversation, review and inline cursors and a two-minute
+default quiet period. Restricted actionable feedback requires a current member
+author; edited bodies also require verified current editor membership from the
+same GraphQL snapshot as the body. Bot delivery markers are excluded.
+
+Terminal PR reconciliation takes precedence over source issue cancellation.
+Checks correlate the captured head with a refreshed PR. Both observations and
+events reject superseded subscriptions; generation-bound events are never queued
+for a later subscription. The existing combined PR-state interface remains available.
+
+Delivery tools preserve write identities and reconciliation markers across
+restarts. Comment/reply reconciliation uses unfiltered receipt reads, so
+membership changes cannot conceal a completed write. Reactions reconcile the bot's
+existing eyes reaction. Issue finalization reconciles the desired patch before
+retrying it. Release-lock selection stays outside this integration.
+
+The local adapter supports `createIssue`, `setIssueLabel`, `setMembership`,
+`editFeedback` and `failNextResponse`. Membership, label events, feedback edits,
+write outcomes and Git history survive restart.

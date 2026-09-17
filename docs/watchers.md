@@ -134,3 +134,11 @@ Provider adapters should use stable external identifiers so repeated polls do no
 External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
 
 If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.
+
+### Subscription generations
+
+Providers can pass the captured `generation` from `listArmed` to `fire`.
+The server checks it under the process operation lock. A superseded subscription
+returns `external_source_superseded` without recording a turn or queuing an
+event. Calls that omit a generation retain the existing queueing contract.
+Observations require their captured generation and never change process state.
