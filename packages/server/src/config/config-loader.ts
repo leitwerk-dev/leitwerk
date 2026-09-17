@@ -9,6 +9,7 @@ import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
 import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
+import { resolveDockerRegistryCredentials } from "../docker-registry-credentials.js";
 import { isValidStorageSize } from "../process-storage-size.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
 import type { LeitwerkConfig } from "./config-types.js";
@@ -339,6 +340,19 @@ const configSchema = v.looseObject({
 		sources: stringArraySchema,
 	}),
 	auth: v.optional(authConfigSchema),
+	docker_registries: v.optional(
+		v.strictObject({
+			profiles: v.record(
+				v.string(),
+				v.strictObject({
+					registry: v.pipe(v.string(), v.regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?$/)),
+					username: v.pipe(v.string(), v.nonEmpty(), v.regex(/^[^:\r\n\0]+$/)),
+					password: v.pipe(v.string(), v.nonEmpty()),
+				}),
+			),
+			process_bindings: v.record(v.string(), v.array(v.pipe(v.string(), v.nonEmpty()))),
+		}),
+	),
 	docker: v.optional(
 		v.looseObject({
 			socket: v.string(),
@@ -378,6 +392,37 @@ const configSchema = v.looseObject({
 					runtime_class_name: v.optional(v.string()),
 					host_users: v.optional(v.boolean()),
 					process_storage_class_name: v.optional(v.string()),
+					network: v.optional(
+						v.strictObject({
+							bridge_cidr: v.pipe(
+								v.string(),
+								v.check(
+									(value) =>
+										/^.+\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
+										isIP(value.split("/")[0] ?? "") === 4,
+									"Expected an IPv4 CIDR",
+								),
+							),
+							address_pools: v.pipe(
+								v.array(
+									v.strictObject({
+										base: v.pipe(
+											v.string(),
+											v.check(
+												(value) =>
+													/^.+\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
+													isIP(value.split("/")[0] ?? "") === 4,
+												"Expected an IPv4 CIDR",
+											),
+										),
+										size: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(30)),
+									}),
+								),
+								v.nonEmpty(),
+							),
+							dns: v.pipe(v.array(kubernetesHostAliasIpSchema), v.nonEmpty()),
+						}),
+					),
 				}),
 			),
 			pod: v.optional(
@@ -416,6 +461,9 @@ const configSchema = v.looseObject({
 					v.looseObject({
 						cpu: v.optional(v.string()),
 						memory: v.optional(v.string()),
+						requests: v.optional(
+							v.strictObject({ cpu: v.optional(v.string()), memory: v.optional(v.string()) }),
+						),
 						limits: v.optional(
 							v.looseObject({ cpu: v.optional(v.string()), memory: v.optional(v.string()) }),
 						),
@@ -892,6 +940,15 @@ function validateResolvedConfig(config: Record<string, unknown>): string[] {
 	}
 	const resolvedConfig = config as unknown as LeitwerkConfig;
 	const skillErrors: string[] = [];
+	for (const processId of Object.keys(resolvedConfig.docker_registries?.process_bindings ?? {})) {
+		try {
+			resolveDockerRegistryCredentials(resolvedConfig, processId, true);
+		} catch {
+			skillErrors.push(
+				"docker_registries.process_bindings contains an unknown profile or duplicate registry",
+			);
+		}
+	}
 	const repositoryIds = new Set<string>();
 	for (const repository of resolvedConfig.skill_repositories ?? []) {
 		if (repositoryIds.has(repository.id)) {

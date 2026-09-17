@@ -76,6 +76,19 @@ function reclaimPersistedLease(
 
 export async function reconcileProcessesOnStartup(deps: StartupReconciliationDeps): Promise<void> {
 	const processes = deps.processes.listAll();
+	const startOrder = new Map(
+		processes.map((process) => [
+			process.id,
+			process.currentExecution?.kind === "worker_start"
+				? (deps.turnStarts.getById(process.currentExecution.id)?.createdAt ?? process.createdAt)
+				: process.createdAt,
+		]),
+	);
+	processes.sort(
+		(left, right) =>
+			(startOrder.get(left.id) ?? "").localeCompare(startOrder.get(right.id) ?? "") ||
+			left.id.localeCompare(right.id),
+	);
 	const staleLeases = deps.leases.listActive();
 	const missingLocalBundleProcesses = new Set<string>();
 	for (const process of processes) {

@@ -1,5 +1,6 @@
 import { type ChildProcess, execFile, spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
+import { isIP } from "node:net";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
@@ -24,6 +25,43 @@ function privateDockerEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 	delete result.DOCKER_TLS_VERIFY;
 	delete result.DOCKER_CERT_PATH;
 	return result;
+}
+
+export function dockerNetworkArgs(value: string | undefined): string[] {
+	if (!value) return [];
+	try {
+		const network = JSON.parse(value);
+		const cidr = (value: unknown) =>
+			typeof value === "string" &&
+			/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}\/(?:[1-9]|[12][0-9]|30)$/.test(value) &&
+			isIP(value.split("/")[0] ?? "") === 4;
+		if (
+			!cidr(network.bridge_cidr) ||
+			!Array.isArray(network.address_pools) ||
+			!network.address_pools.length ||
+			!Array.isArray(network.dns) ||
+			!network.dns.length
+		)
+			throw new Error();
+		const args = ["--bip", network.bridge_cidr];
+		for (const pool of network.address_pools) {
+			if (
+				!cidr(pool.base) ||
+				!Number.isInteger(pool.size) ||
+				pool.size < Number(pool.base.split("/")[1]) ||
+				pool.size > 30
+			)
+				throw new Error();
+			args.push("--default-address-pool", `base=${pool.base},size=${pool.size}`);
+		}
+		for (const dns of network.dns) {
+			if (typeof dns !== "string" || !isIP(dns)) throw new Error();
+			args.push("--dns", dns);
+		}
+		return args;
+	} catch {
+		throw new Error("Invalid trusted Docker network configuration");
+	}
 }
 
 function boundedAppend(current: string, chunk: Buffer | string): string {
@@ -122,6 +160,8 @@ export async function runWorkerContainerEntrypoint(
 			return exit.code ?? (terminating ? 0 : 1);
 		}
 		const privateEnv = privateDockerEnvironment(env);
+		privateEnv.BUILDX_CONFIG = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/buildx`;
+		const networkArgs = dockerNetworkArgs(env.LEITWERK_DOCKER_NETWORK);
 
 		const dockerDataRoot = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/docker`;
 		await deps.mkdir(dockerDataRoot, { recursive: true });
@@ -142,6 +182,7 @@ export async function runWorkerContainerEntrypoint(
 			daemon = deps.spawn(
 				"dockerd",
 				[
+					...networkArgs,
 					"--data-root",
 					dockerDataRoot,
 					"--storage-driver",

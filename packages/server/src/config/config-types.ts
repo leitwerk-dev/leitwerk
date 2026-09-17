@@ -136,6 +136,11 @@ export interface KubernetesDockerConfig {
 	host_users?: boolean;
 	/** StorageClass selected for the process's single retained PVC. */
 	process_storage_class_name?: string;
+	network?: {
+		bridge_cidr: string;
+		address_pools: Array<{ base: string; size: number }>;
+		dns: string[];
+	};
 }
 
 export interface KubernetesHostAliasConfig {
@@ -193,7 +198,14 @@ export interface WorkerRuntimeProfileCpuMemoryConfig {
 	memory?: string;
 }
 
+export interface DockerRegistryConfig {
+	/** Actual registry permissions are enforced by the registry, not this binding. */
+	profiles: Record<string, { registry: string; username: string; password: string }>;
+	process_bindings: Record<string, string[]>;
+}
+
 export interface WorkerRuntimeProfileResourcesConfig {
+	requests?: WorkerRuntimeProfileCpuMemoryConfig;
 	limits?: WorkerRuntimeProfileCpuMemoryConfig;
 	/** Back-compat shorthand interpreted as limits by Docker and manifest builders. */
 	cpu?: string;
@@ -273,6 +285,8 @@ export interface LeitwerkConfig extends ConfigSnapshot {
 	auth?: AuthConfig;
 	/** Server-only Docker run-mode wiring; stripped from the worker snapshot. */
 	docker?: DockerRunnerConfig;
+	/** Server-only credentials delivered exclusively through authenticated worker.start. */
+	docker_registries?: DockerRegistryConfig;
 	/** Server-only Kubernetes run-mode wiring; stripped from the worker snapshot. */
 	kubernetes?: KubernetesRunnerConfig;
 	/** Server-only best-effort local dev/test runner wiring; stripped from the worker snapshot. */

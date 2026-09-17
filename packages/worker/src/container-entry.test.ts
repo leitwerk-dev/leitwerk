@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, it, vi } from "vitest";
-import { runWorkerContainerEntrypoint } from "./container-entry.js";
+import { dockerNetworkArgs, runWorkerContainerEntrypoint } from "./container-entry.js";
 
 function child() {
 	const value = new EventEmitter() as ChildProcess;
@@ -81,6 +81,7 @@ describe("worker container entrypoint", () => {
 			PATH: "/worker/bin:/usr/bin",
 		};
 		const privateEnv = {
+			BUILDX_CONFIG: "/state/tooling/buildx",
 			LEITWERK_PRIVATE_DOCKER: "1",
 			DOCKER_HOST: "unix:///var/run/docker.sock",
 			DOCKER_CONFIG: "/registry-auth",
@@ -268,5 +269,29 @@ describe("worker container entrypoint", () => {
 			),
 		).rejects.toThrow(/readiness timed out/);
 		expect(dockerInfo).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("trusted Docker networking", () => {
+	it("passes bridge, pool and DNS options without allowing arbitrary daemon flags", () => {
+		expect(
+			dockerNetworkArgs(
+				JSON.stringify({
+					bridge_cidr: "192.168.224.1/24",
+					address_pools: [{ base: "192.168.232.0/21", size: 24 }],
+					dns: ["10.96.0.10"],
+				}),
+			),
+		).toEqual([
+			"--bip",
+			"192.168.224.1/24",
+			"--default-address-pool",
+			"base=192.168.232.0/21,size=24",
+			"--dns",
+			"10.96.0.10",
+		]);
+		expect(() =>
+			dockerNetworkArgs(JSON.stringify({ bridge_cidr: "--host=tcp://0.0.0.0:2375" })),
+		).toThrow("Invalid trusted");
 	});
 });

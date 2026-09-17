@@ -36,6 +36,7 @@ function startInput(overrides: Partial<StartWorkerInput> = {}): StartWorkerInput
 		volume: { instanceId: "PROC_1", id: "leitwerk-process-proc-1", mountPath: "/state" },
 		docker: false,
 		resources: { cpu: "2", memory: "4Gi" },
+		resourceRequests: { cpu: "1", memory: "2Gi" },
 		...overrides,
 	};
 }
@@ -182,7 +183,10 @@ describe("Kubernetes manifest builders", () => {
 		expect(container.image).toBe("ghcr.io/example/worker:1");
 		expect(container.imagePullPolicy).toBe("IfNotPresent");
 		expect(container.volumeMounts).toEqual([{ name: "process-state", mountPath: "/state" }]);
-		expect(container.resources).toEqual({ limits: { cpu: "2", memory: "4Gi" } });
+		expect(container.resources).toEqual({
+			limits: { cpu: "2", memory: "4Gi" },
+			requests: { cpu: "1", memory: "2Gi" },
+		});
 		expect(container.env).toContainEqual({
 			name: "LEITWERK_WORKER_CONNECT_TOKEN",
 			value: "secret-token",

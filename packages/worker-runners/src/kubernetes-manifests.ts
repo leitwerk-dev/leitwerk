@@ -42,6 +42,11 @@ export interface KubernetesWorkerServerCaConfigMapSpec {
 export interface KubernetesDockerPodSpecOptions {
 	runtimeClassName: string;
 	hostUsers: boolean;
+	network?: {
+		bridge_cidr: string;
+		address_pools: Array<{ base: string; size: number }>;
+		dns: string[];
+	};
 }
 
 export interface KubernetesPodSpecOptions {
@@ -89,6 +94,8 @@ export interface KubernetesValidatingAdmissionPolicyManifest {
 	kind: "ValidatingAdmissionPolicy";
 	metadata: { name: string; labels?: Record<string, string> };
 	spec: {
+		failurePolicy: "Fail";
+		variables: Array<{ name: string; expression: string }>;
 		matchConditions?: Array<{ name: string; expression: string }>;
 		matchConstraints: {
 			resourceRules: Array<{
@@ -337,7 +344,15 @@ function resources(
 	const limits: Record<string, string> = {};
 	if (input.resources?.cpu) limits.cpu = input.resources.cpu;
 	if (input.resources?.memory) limits.memory = input.resources.memory;
-	return Object.keys(limits).length > 0 ? { limits } : undefined;
+	const requests = Object.fromEntries(
+		Object.entries(input.resourceRequests ?? {}).filter(([, value]) => value),
+	);
+	return Object.keys(limits).length || Object.keys(requests).length
+		? {
+				...(Object.keys(limits).length ? { limits } : {}),
+				...(Object.keys(requests).length ? { requests } : {}),
+			}
+		: undefined;
 }
 
 function podMetadata(
@@ -479,6 +494,9 @@ export function buildKubernetesWorkerPodManifest(
 				DOCKER_HOST: "unix:///var/run/docker.sock",
 				LEITWERK_PRIVATE_DOCKER: "1",
 				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
+				...(options.docker?.network
+					? { LEITWERK_DOCKER_NETWORK: JSON.stringify(options.docker.network) }
+					: {}),
 			}
 		: input.env;
 	const containerEnv = caCertPath
@@ -613,16 +631,25 @@ interface AdmissionRule {
 }
 
 function admissionObjectExpression(): string {
-	return "(request.operation == 'DELETE' ? oldObject : object)";
+	return "variables.resource";
 }
 
 function toAdmissionObjectCondition(condition: string): string {
 	return condition.replaceAll("object.", `${admissionObjectExpression()}.`);
 }
 
-function toCelExpression(rule: AdmissionRule): string {
+function toCelExpression(rule: AdmissionRule, allowPreparation = false): string {
 	const obj = admissionObjectExpression();
-	const condition = toAdmissionObjectCondition(rule.condition);
+	const guarded = rule.condition
+		.replaceAll("object.metadata.labels", "variables.labels")
+		.replaceAll(`variables.labels['${WORKER_LABEL_COMPONENT}']`, "variables.component")
+		.replaceAll(`variables.labels['${WORKER_LABEL_MANAGED_BY}']`, "variables.managedBy");
+	const preparationException =
+		allowPreparation &&
+		(rule.scope === "Pod" ||
+			rule.scope === "PersistentVolumeClaim" ||
+			rule.message === "leitwerk process resources must be created in process namespaces");
+	const condition = `(${toAdmissionObjectCondition(guarded)})${preparationException ? " || variables.isPreparation" : ""}`;
 	if (rule.scope === "Namespace") return `${obj}.kind != 'Namespace' || ${condition}`;
 	if (rule.scope === "!Namespace") return `${obj}.kind == 'Namespace' || ${condition}`;
 	return `${obj}.kind != '${rule.scope}' || ${condition}`;
@@ -635,6 +662,7 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 	processNamespacePrefix: string;
 	allowedWorkerServiceAccount?: string;
 	allowedImagePullSecretNames?: string[];
+	allowVolumePreparation?: boolean;
 	labels?: Record<string, string>;
 }): {
 	policy: KubernetesValidatingAdmissionPolicyManifest;
@@ -671,7 +699,7 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 		},
 		{
 			scope: "!Namespace",
-			condition: `object.metadata.namespace.startsWith('${p}')`,
+			condition: `has(object.metadata.namespace) && object.metadata.namespace.startsWith('${p}')`,
 			message: "leitwerk process resources must be created in process namespaces",
 		},
 		{
@@ -714,17 +742,18 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 		},
 		{
 			scope: "Secret",
-			condition: "object.type == 'kubernetes.io/dockerconfigjson'",
+			condition: "has(object.type) && object.type == 'kubernetes.io/dockerconfigjson'",
 			message: "leitwerk image-pull Secrets must use dockerconfigjson type",
 		},
 		{
 			scope: "Secret",
-			condition: "object.data.size() == 1 && '.dockerconfigjson' in object.data",
+			condition:
+				"has(object.data) && object.data.size() == 1 && '.dockerconfigjson' in object.data",
 			message: "leitwerk image-pull Secrets may contain only .dockerconfigjson",
 		},
 		{
 			scope: "Pod",
-			condition: `object.spec.serviceAccountName == '${sa}'`,
+			condition: `has(object.spec) && has(object.spec.serviceAccountName) && object.spec.serviceAccountName == '${sa}'`,
 			message: "leitwerk worker pods must use the configured worker ServiceAccount",
 		},
 		{
@@ -757,10 +786,37 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 			kind: "ValidatingAdmissionPolicy",
 			metadata: meta,
 			spec: {
+				failurePolicy: "Fail",
+				variables: [
+					{ name: "resource", expression: "request.operation == 'DELETE' ? oldObject : object" },
+					{
+						name: "labels",
+						expression:
+							"has(variables.resource.metadata.labels) ? variables.resource.metadata.labels : {}",
+					},
+					{
+						name: "component",
+						expression:
+							"'leitwerk.dev/component' in variables.labels ? variables.labels['leitwerk.dev/component'] : ''",
+					},
+					{
+						name: "managedBy",
+						expression:
+							"'leitwerk.dev/managed-by' in variables.labels ? variables.labels['leitwerk.dev/managed-by'] : ''",
+					},
+					...(args.allowVolumePreparation
+						? [
+								{
+									name: "isPreparation",
+									expression: `variables.resource.kind in ['Pod', 'PersistentVolumeClaim'] && has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace == '${args.serverNamespace}' && 'leitwerk.dev/volume-pool' in variables.labels && variables.component == 'volume-preparation'`,
+								},
+							]
+						: []),
+				],
 				matchConditions: [
 					{
 						name: "leitwerk-server-service-account",
-						expression: `request.userInfo.username == 'system:serviceaccount:${args.serverNamespace}:${args.serverServiceAccountName}'`,
+						expression: `has(request.userInfo) && has(request.userInfo.username) && request.userInfo.username == 'system:serviceaccount:${args.serverNamespace}:${args.serverServiceAccountName}'`,
 					},
 				],
 				matchConstraints: {
@@ -780,7 +836,21 @@ export function buildKubernetesAdmissionPolicyManifests(args: {
 						},
 					],
 				},
-				validations: rules.map((r) => ({ expression: toCelExpression(r), message: r.message })),
+				validations: [
+					...(args.allowVolumePreparation
+						? [
+								{
+									expression:
+										"!variables.isPreparation || variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == 'default' && has(variables.resource.spec.automountServiceAccountToken) && !variables.resource.spec.automountServiceAccountToken)",
+									message: "preparation Pods must use the default ServiceAccount without its token",
+								},
+							]
+						: []),
+					...rules.map((r) => ({
+						expression: toCelExpression(r, args.allowVolumePreparation),
+						message: r.message,
+					})),
+				],
 			},
 		},
 		binding: {

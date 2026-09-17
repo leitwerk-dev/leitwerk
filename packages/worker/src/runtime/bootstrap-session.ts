@@ -10,6 +10,7 @@ import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import type { WorkerReadyPayload, WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
 import type { DevelopmentToolEnvironment } from "../development-tool-environment.js";
 import type { WorkerDiagnosticPayload } from "../diagnostics.js";
+import { DockerRegistryCredentials } from "../docker-registry-credentials.js";
 import type { InputItem } from "../input-consumer.js";
 import type { PiTreeHandle, PiTreeHandleFactory } from "../pi-adapter.js";
 import type { WorkerSessionSnapshotExchange } from "../session-snapshot-exchange.js";
@@ -148,6 +149,7 @@ type WorkerLiveResourcesDeps = {
 /** Private concrete holder for provisional and active live resources. */
 export class WorkerLiveResources {
 	#piHandle: PiTreeHandle | null = null;
+	#dockerCredentials = new DockerRegistryCredentials();
 	#activeTurnAbort: AbortController | null = null;
 	#toolPreparationAbort: AbortController | null = null;
 	#provisional = new Map<string, PreparedStartActivation>();
@@ -170,6 +172,8 @@ export class WorkerLiveResources {
 			piFactory: this.deps.piFactory,
 			gitOps: this.deps.gitOps,
 			developmentTools: this.deps.developmentTools,
+			configureDockerCredentials: (credentials, enabled) =>
+				this.#dockerCredentials.install(credentials, enabled),
 			toolPreparationSignal: toolPreparationAbort.signal,
 			scheduler: this.deps.scheduler,
 			onToolPreparationProgress: (repositoryKey, phase) =>
@@ -181,12 +185,24 @@ export class WorkerLiveResources {
 				}),
 			onToolDiagnosticTrace: this.deps.diagnosticTrace,
 			resolveWorkerProcess: this.deps.resolveWorkerProcess,
-		}).finally(() => {
-			if (this.#toolPreparationAbort === toolPreparationAbort) this.#toolPreparationAbort = null;
-		});
+		})
+			.catch((error) => {
+				this.#dockerCredentials.dispose();
+				throw error;
+			})
+			.finally(() => {
+				if (this.#toolPreparationAbort === toolPreparationAbort) this.#toolPreparationAbort = null;
+			});
+		let session: PreparedWorkerSession;
+		try {
+			session = validatePreparedSession({ bootstrapped, payload, settings });
+		} catch (error) {
+			this.#dockerCredentials.dispose();
+			throw error;
+		}
 		this.#provisional.set(payload.turnStart.id, bootstrapped.activation);
 		return {
-			session: validatePreparedSession({ bootstrapped, payload, settings }),
+			session,
 			pendingInputs: bootstrapped.pendingInputs,
 			readyPayload: bootstrapped.readyPayload,
 			...(bootstrapped.credentialRefresh
@@ -273,6 +289,7 @@ export class WorkerLiveResources {
 	}
 
 	async cleanup(): Promise<void> {
+		this.#dockerCredentials.dispose();
 		this.#provisional.clear();
 		await this.#piHandle?.close();
 		this.#piHandle = null;

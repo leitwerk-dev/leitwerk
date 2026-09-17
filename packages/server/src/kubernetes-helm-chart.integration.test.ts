@@ -189,27 +189,15 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 			}),
 		);
 		const rendered = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
-		const validations = (rendered.spec as JsonObject).validations as Array<{
-			expression: string;
-			message: string;
-		}>;
 		const { policy } = buildKubernetesAdmissionPolicyManifests({
 			name: "leitwerk-server-process-resources",
 			serverNamespace: "leitwerk-k8s-test",
 			serverServiceAccountName: "leitwerk-server",
 			processNamespacePrefix: "leitwerk-process-",
 			allowedWorkerServiceAccount: "custom-worker",
+			allowVolumePreparation: preProvision,
 		});
-		const podRule = (rule: { expression: string }) =>
-			rule.expression.startsWith(
-				"(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod'",
-			);
-		expect(validations.filter(podRule)).toEqual(
-			policy.spec.validations.filter(podRule).map((rule) => ({
-				...rule,
-				expression: rule.expression + (preProvision ? " || variables.isPreparation" : ""),
-			})),
-		);
+		expect(rendered.spec).toEqual(policy.spec);
 	});
 
 	it("templates the Kind overlay with local worker profile images", () => {

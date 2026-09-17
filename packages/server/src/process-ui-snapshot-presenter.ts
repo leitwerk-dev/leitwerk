@@ -81,6 +81,7 @@ import { buildStartupEvidence, presentProcessStartupSummary } from "./startup-ev
 import { normalizeTurnProgressLinks, normalizeTurnProgressReport } from "./turn-progress.js";
 
 const COMPACT_DETAIL_EVENT_TYPES = [
+	"worker_capacity_queued",
 	"turn_outcome_recorded",
 	"lifecycle_parked",
 	"worker_failed",
@@ -1072,6 +1073,7 @@ export function buildProcessUiSnapshotProjections(input: {
 	});
 	const startup = presentProcessStartupSummary(
 		buildStartupEvidence({
+			events: input.events,
 			process: input.process,
 			turnStarts: input.startupTurnStarts ?? [],
 			leases: input.workerLeases ?? [],

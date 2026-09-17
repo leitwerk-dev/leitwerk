@@ -96,6 +96,13 @@ export interface WorkerGitHttpsCredential {
 
 export type WorkerRepositoryCredential = WorkerGitSshCredential | WorkerGitHttpsCredential;
 
+/** Secret material allowed only in authenticated worker.start, never snapshots or exports. */
+export interface WorkerDockerRegistryCredential {
+	registry: string;
+	username: string;
+	password: string;
+}
+
 export interface LlmWorkerStartBootstrap {
 	kind: "llm";
 	resourceBundle: {
@@ -146,6 +153,7 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	llmPreparation?: { sourceTurnRecordId: string; data: unknown };
 	/** Fresh secret material resolved for this physical worker start only. */
 	repositoryCredentials?: WorkerRepositoryCredential[];
+	dockerRegistryCredentials?: WorkerDockerRegistryCredential[];
 	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
 	/** Non-secret mise adapter settings. Ignored unless the process opts in. */

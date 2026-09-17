@@ -4,6 +4,10 @@ import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
 import { type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
+import {
+	createFixtureAutomaticTurn,
+	createFixtureProcess,
+} from "./test-helpers/process-fixtures.js";
 
 function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"]> {
 	return {
@@ -36,6 +40,95 @@ function fakeWorkerRunnerRuntime(): NonNullable<AppOptions["workerRunnerRuntime"
 }
 
 describe("createAppContext", () => {
+	it("queues capacity overflow without a lease and starts it after a worker exits", async () => {
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
+		config.workers.max_parallel_processes = 1;
+		const runtime = fakeWorkerRunnerRuntime();
+		const exits = new Map<string, () => void>();
+		vi.mocked(runtime.runner.start).mockImplementation(async (input) => ({
+			instanceId: input.instanceId,
+			workerId: input.workerId,
+			unitId: input.workerId,
+			onExit(listener) {
+				exits.set(input.instanceId, () => listener({ exitCode: 0, signal: null }));
+			},
+		}));
+		vi.mocked(runtime.runner.stop).mockImplementation(async (ref) => {
+			const notify = exits.get(ref.instanceId);
+			exits.delete(ref.instanceId);
+			notify?.();
+		});
+		const ctx = await createAppContext({
+			config,
+			logger: false,
+			extensionCatalog: buildExtensionCatalogFromModules([
+				{
+					manifest: { id: "capacity-test", version: "0.1.0" },
+					setupCatalog(api) {
+						api.registerProcess(
+							createFixtureProcess({
+								id: "test_process",
+								entry: "work",
+								turns: { work: createFixtureAutomaticTurn() },
+							}),
+						);
+					},
+				},
+			]),
+			workerRunnerRuntime: runtime,
+		});
+		try {
+			const processes = [0, 1, 2].map(() => {
+				const process = ctx.deps.processes.create({
+					processId: "test_process",
+					lifecycleStatus: "active",
+					selectedTurnId: "work",
+				});
+				const start = ctx.deps.turnStarts.create({
+					instanceId: process.id,
+					turnId: "work",
+					turnType: "automatic",
+					proposedTurnRecordId: `trn_${process.id}`,
+					startKind: "selected_turn",
+					recoveryTurnRecordId: null,
+					continuation: null,
+					state: { kind: "starting", start: { kind: "automatic" } },
+				});
+				ctx.deps.processes.update(process.id, {
+					currentExecution: { kind: "worker_start", id: start.id },
+				});
+				return process;
+			});
+			await ctx.supervisor.spawnWorker(processes[0].id);
+			expect(await ctx.supervisor.spawnWorker(processes[1].id)).toBeUndefined();
+			await ctx.supervisor.spawnWorker(processes[2].id);
+			expect(ctx.deps.leases.getByInstance(processes[1].id)).toBeNull();
+			expect(ctx.deps.events.listByInstance(processes[1].id)).toContainEqual(
+				expect.objectContaining({ eventType: "worker_capacity_queued" }),
+			);
+			expect(ctx.deps.turnRecords.listByInstance(processes[1].id)).toEqual([]);
+			const snapshot = await ctx.app.inject({
+				method: "GET",
+				url: `/api/processes/${processes[1].id}/ui-snapshot`,
+			});
+			expect(snapshot.statusCode, snapshot.body).toBe(200);
+			expect(snapshot.json().startup.attempts[0].steps[0].label).toBe(
+				"Waiting for worker capacity",
+			);
+			// Cancellation remains possible while the queue is full.
+			ctx.deps.processes.update(processes[1].id, { lifecycleStatus: "aborted" });
+			await ctx.supervisor.stopWorker(processes[1].id, "operator");
+			await ctx.supervisor.stopWorker(processes[0].id, "test_release");
+			await vi.waitFor(() => expect(ctx.supervisor.getWorker(processes[2].id)).toBeDefined());
+			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+			expect(ctx.deps.leases.getByInstance(processes[1].id)).toBeNull();
+		} finally {
+			await ctx.app.close();
+		}
+	});
+
 	it("blocks replacement of a stale runtime until background cleanup releases its process storage", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";

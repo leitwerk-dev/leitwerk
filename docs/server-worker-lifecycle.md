@@ -258,3 +258,40 @@ These reporting contracts use existing JSON annotations without schema migration
 ## Repository credentials on worker start
 
 Worker API `2026-09-15` adds the `git_https` repository credential variant. Server and worker image compatibility labels use the same version; older workers must be upgraded together with the server. Repository credentials are resolved afresh for each physical worker start and delivered through authenticated IPC, separately from immutable non-secret snapshots. Bootstrap checks project/ref/kind identity and exact HTTPS repository scope. Materialized helpers live outside the checkout and are disposed with the worker; retained process state and runtime payloads contain no secret material. Existing `git_ssh` delivery remains supported.
+
+### Docker registry credentials
+
+`docker_registries.profiles` holds server-only registry host, username and password
+records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
+whose code declares `runtime.docker` receive these credentials through authenticated
+`worker.start`; process parameters cannot select profiles. Each physical start
+resolves current configuration anew. Duplicate registry hosts in a binding fail
+validation. Bindings control delivery, not registry-side account permissions.
+
+Workers materialize Docker `config.json` in a private ephemeral directory (0700;
+file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
+Shutdown and failed bootstrap remove credentials. Credential values and encoded
+auth are redacted from IPC diagnostics; credential payloads are removed from retained
+bootstrap state. Credential directories are outside process volumes and exports.
+Server and worker images must use worker API `2026-09-16` together.
+
+Worker runtime profiles accept CPU/memory `resources.requests` independently of
+limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
+trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
+selection applies only when creating a claim; existing claims are not migrated.
+
+## Worker capacity admission
+
+`max_parallel_processes` counts allocated workers and in-flight allocations. When
+all slots are occupied, worker requests enter a FIFO queue and return immediately;
+launching does not fail and does not hold the process operation open. Startup
+evidence shows “Waiting for worker capacity.” A queued request creates neither a
+worker lease nor a turn attempt. The worker startup timeout begins at admission,
+not while waiting for capacity.
+
+Worker exit and allocation failure wake the queue. Admission rechecks the current
+start identity and active lifecycle, so stopped or superseded starts cannot run.
+Stopping a process cancels its pending admission. Server shutdown clears the
+in-memory queue; with `resume_on_boot`, persisted active worker starts rebuild it
+during startup reconciliation. Runtime startup failures after admission retain the
+normal durable error and retry behavior.

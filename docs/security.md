@@ -91,3 +91,24 @@ process data.
 The credential provider authorizes an HTTPS origin; the server narrows it to the process project's exact repository URL. Userinfo, query strings, fragments and ambiguous paths are rejected. Fresh username/password material travels only in authenticated `worker.start`. The worker validates it against both the process declaration and authenticated project snapshots, then removes it from its retained runtime payload.
 
 HTTPS credentials are materialized outside checkouts in a mode-0700 temporary directory. Secret files use 0600. An ephemeral Node Git credential helper answers only `get` requests for the exact HTTPS host, port and repository path. Trusted Git resets credential-helper configuration, enables path matching, disables redirects and disallows other transports. Tokens never appear in clone URLs, argv, Git configuration or ordinary tool environments. Worker cleanup removes the files and internal registrations, including partially materialized batches. As with SSH keys, this is credential routing within a semi-trusted worker, not isolation from code running as the same OS user.
+
+### Docker registry credentials
+
+`docker_registries.profiles` holds server-only registry host, username and password
+records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
+whose code declares `runtime.docker` receive these credentials through authenticated
+`worker.start`; process parameters cannot select profiles. Each physical start
+resolves current configuration anew. Duplicate registry hosts in a binding fail
+validation. Bindings control delivery, not registry-side account permissions.
+
+Workers materialize Docker `config.json` in a private ephemeral directory (0700;
+file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
+Shutdown and failed bootstrap remove credentials. Credential values and encoded
+auth are redacted from IPC diagnostics; credential payloads are removed from retained
+bootstrap state. Credential directories are outside process volumes and exports.
+Server and worker images must use worker API `2026-09-16` together.
+
+Worker runtime profiles accept CPU/memory `resources.requests` independently of
+limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
+trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
+selection applies only when creating a claim; existing claims are not migrated.

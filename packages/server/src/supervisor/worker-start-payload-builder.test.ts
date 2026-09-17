@@ -90,10 +90,24 @@ describe("worker.start runtime settings", () => {
 			workerId: "wkr_automatic_settings",
 			state: "bootstrapping",
 		});
+		const processGraphs = createDefaultTestProcessGraphRegistry();
+		const graph = processGraphs.get(process.processId);
+		if (!graph) throw new Error("Missing fixture graph");
+		processGraphs.set(process.processId, { ...graph, runtime: { docker: true } });
+		config.docker_registries = {
+			profiles: {
+				bound: { registry: "registry.example", username: "devuser", password: "initial" },
+				unbound: { registry: "admin.example", username: "admin", password: "forbidden" },
+			},
+			process_bindings: { [process.processId]: ["bound"] },
+		};
+		deps.processes.update(process.id, {
+			paramsJson: JSON.stringify({ dockerRegistryProfile: "unbound" }),
+		});
 		const builder = createWorkerStartPayloadBuilder({
 			...deps,
 			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
+			processGraphs,
 			processActionRegistry: {
 				getTurnDefinition: () => undefined,
 				resolveContextData: () => ({ params: {}, state: {} }),
@@ -108,6 +122,19 @@ describe("worker.start runtime settings", () => {
 
 		const message = builder.buildStartMessage(process.id, "wkr_automatic_settings");
 
+		expect(message?.payload.dockerRegistryCredentials).toEqual([
+			config.docker_registries.profiles.bound,
+		]);
+		expect(builder.buildStartMessage(process.id, "unauthenticated-worker")).toBeNull();
+		const bound = config.docker_registries.profiles.bound;
+		if (!bound) throw new Error("Missing fixture credential");
+		bound.password = "rotated";
+		expect(
+			builder.buildStartMessage(process.id, "wkr_automatic_settings")?.payload
+				.dockerRegistryCredentials?.[0]?.password,
+		).toBe("rotated");
+		expect(message?.payload.dockerRegistryCredentials?.[0]?.password).toBe("initial");
+		expect(JSON.stringify(message)).not.toContain("forbidden");
 		expect(message?.payload.bootstrap).toEqual({ kind: "automatic" });
 		expect(message?.payload.workerRuntimeSettings).toEqual({
 			heartbeat_interval: "5s",

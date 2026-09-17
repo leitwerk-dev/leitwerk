@@ -4,6 +4,7 @@ import {
 	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
 	RUNTIME_EXTENSION_ENTRIES_ENV,
 } from "@leitwerk-dev/extension-runtime";
+import { createDurableWsFrame } from "@leitwerk-dev/protocol";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { PiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import {
@@ -50,6 +51,7 @@ import type { createIpcHandler } from "./ipc-handler.js";
 import { createStartupObserver } from "./startup-observer.js";
 import { createServerObservedWorkerFailedMessage } from "./synthetic-worker-failure.js";
 import { checkWorkerApiCompatibility } from "./worker-api-compatibility.js";
+import { createWorkerCapacityQueue } from "./worker-capacity-queue.js";
 import { createWorkerConnectToken, hashWorkerConnectToken } from "./worker-connect-token.js";
 import {
 	type ApplyWorkerLeaseObservationResult,
@@ -128,7 +130,8 @@ type ServerToWorkerMessageBody<T = ServerToWorkerMessage> = T extends ServerToWo
 	: never;
 
 export interface WorkerSupervisor {
-	spawnWorker(instanceId: string): Promise<WorkerHandle>;
+	/** Returns undefined when accepted into the capacity queue. */
+	spawnWorker(instanceId: string): Promise<WorkerHandle | undefined>;
 	stopWorker(instanceId: string, reason: string): Promise<void>;
 	abortTurn(instanceId: string, reason: string): void;
 	deliverInputs(instanceId: string, inputs: InputDelivery[]): void;
@@ -628,6 +631,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		}
 		workers.delete(instanceId);
 		finalizeLeaseExit(instanceId, workerId);
+		capacityQueue.wake();
 	}
 
 	function createRunnerHandle(input: {
@@ -807,6 +811,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 					: { runnerKind: "local" as const }),
 				docker,
 				resources: resourceLimits,
+				resourceRequests: profile?.resources?.requests,
 			},
 			observer,
 		);
@@ -856,107 +861,154 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		sendInputBatch,
 	});
 
-	return {
-		async spawnWorker(instanceId: string): Promise<WorkerHandle> {
-			unitReclaimer.assertProcessReclaimed(instanceId);
-			clearIdleStopTimer(instanceId);
-			if (workers.has(instanceId)) {
-				throw new Error(`worker already running for process ${instanceId}`);
-			}
-			if (workers.size >= deps.config.workers.max_parallel_processes) {
-				throw new Error("max_parallel_processes reached");
-			}
-			const workerId = generateWorkerId();
-			const connectToken = createWorkerConnectToken();
-			const connectTokenHash = hashWorkerConnectToken(connectToken);
-			const snapshotToken = createWorkerConnectToken();
-			requireAppliedWorkerLeaseObservation(
+	async function spawnWorkerNow(instanceId: string): Promise<WorkerHandle> {
+		unitReclaimer.assertProcessReclaimed(instanceId);
+		clearIdleStopTimer(instanceId);
+		if (workers.has(instanceId)) {
+			throw new Error(`worker already running for process ${instanceId}`);
+		}
+		const workerId = generateWorkerId();
+		const connectToken = createWorkerConnectToken();
+		const connectTokenHash = hashWorkerConnectToken(connectToken);
+		const snapshotToken = createWorkerConnectToken();
+		requireAppliedWorkerLeaseObservation(
+			instanceId,
+			workerId,
+			"spawn_requested",
+			"spawn_requested",
+		);
+		const lease = deps.leases.getByInstance(instanceId);
+		if (lease?.workerId === workerId) {
+			const process = deps.processes.getById(instanceId);
+			deps.leases.update(lease.id, {
+				serverEpoch,
+				connectTokenHash,
+				snapshotTokenHash: hashWorkerConnectToken(snapshotToken),
+				modelPolicyFingerprint: process ? modelPolicyFingerprintForProcess(process) : null,
+			});
+		}
+
+		let handle: WorkerHandle;
+		const startupDeadlineMs = Date.now() + startupTimeoutMs;
+		let processExitedBeforeRegistration = false;
+		let unregisterStartRegistration: (() => void) | undefined;
+		const earlyEnvelopes: IpcEnvelope[] = [];
+		try {
+			const startOptions: RunnerWorkerStartOptions = {
 				instanceId,
 				workerId,
-				"spawn_requested",
-				"spawn_requested",
+				startupDeadlineMs,
+				resolvedExtensionEntriesJson: deps.resolvedExtensionEntriesJson,
+				onEnvelope: (envelope) => {
+					if (workers.has(instanceId)) {
+						routeEnvelope(envelope, instanceId);
+					} else {
+						earlyEnvelopes.push(envelope);
+					}
+				},
+				onInvalidMessage: () => {
+					emitServerObservedWorkerFailure(instanceId, workerId, {
+						errorCode: "invalid_worker_websocket_ipc",
+						message: "Worker emitted invalid WebSocket IPC message",
+						errorClass: "infrastructure",
+					});
+				},
+				onRuntimeError: (error) => handleProcessError(instanceId, workerId, error),
+				snapshotToken,
+				onRuntimeExit: () => {
+					processExitedBeforeRegistration = !workers.has(instanceId);
+				},
+			};
+			const connect = registerRunnerWebSocket({
+				instanceId,
+				workerId,
+				tokenHash: connectTokenHash,
+				onEnvelope: startOptions.onEnvelope,
+				onInvalidMessage: startOptions.onInvalidMessage,
+				onRuntimeError: startOptions.onRuntimeError,
+			});
+			unregisterStartRegistration = () => connect.unregister("start_failed");
+			handle = await startRunnerWorker(startOptions, {
+				token: connectToken,
+				unregister: connect.unregister,
+			});
+			unregisterStartRegistration = undefined;
+		} catch (error) {
+			unregisterStartRegistration?.();
+			const diagnostic =
+				error instanceof WorkerStartDiagnosticError ? ` ${error.publicDiagnostic}` : "";
+			emitServerObservedWorkerFailure(instanceId, workerId, {
+				errorCode: "worker_spawn_failed",
+				message: `Process was created, but the worker could not be started cleanly. Review the process error and retry startup.${diagnostic}`,
+				errorClass: "infrastructure",
+			});
+			observeWorkerLease(instanceId, workerId, "failure_reported", "spawn_failed");
+			observeWorkerLease(instanceId, workerId, "process_exited", "spawn_failed");
+			throw error;
+		}
+
+		if (!processExitedBeforeRegistration) {
+			startWorkerStartupTimer(instanceId, handle, startupDeadlineMs);
+			workers.set(instanceId, handle);
+			for (const envelope of earlyEnvelopes) {
+				routeEnvelope(envelope, instanceId);
+			}
+		}
+		return handle;
+	}
+
+	const capacityQueue = createWorkerCapacityQueue<WorkerHandle>({
+		limit: deps.config.workers.max_parallel_processes,
+		activeCount: () => workers.size,
+		isCurrent(instanceId, startId) {
+			const process = safeGetProcessById(instanceId);
+			if (
+				process?.lifecycleStatus !== "active" ||
+				process.currentExecution?.kind !== "worker_start" ||
+				process.currentExecution.id !== startId
+			)
+				return false;
+			const start = deps.turnStarts.getById(startId);
+			return (
+				start?.state.kind === "starting" ||
+				(start?.state.kind === "accepted" &&
+					deps.turnRecords.getById(start.state.turnRecordId)?.status === "running")
 			);
-			const lease = deps.leases.getByInstance(instanceId);
-			if (lease?.workerId === workerId) {
-				const process = deps.processes.getById(instanceId);
-				deps.leases.update(lease.id, {
-					serverEpoch,
-					connectTokenHash,
-					snapshotTokenHash: hashWorkerConnectToken(snapshotToken),
-					modelPolicyFingerprint: process ? modelPolicyFingerprintForProcess(process) : null,
-				});
-			}
-
-			let handle: WorkerHandle;
-			const startupDeadlineMs = Date.now() + startupTimeoutMs;
-			let processExitedBeforeRegistration = false;
-			let unregisterStartRegistration: (() => void) | undefined;
-			const earlyEnvelopes: IpcEnvelope[] = [];
-			try {
-				const startOptions: RunnerWorkerStartOptions = {
+		},
+		start: spawnWorkerNow,
+		onQueued(instanceId, startId) {
+			const eventType = "worker_capacity_queued";
+			const message =
+				"Waiting for worker capacity; this process will start automatically when a slot is available.";
+			deps.events.create({ instanceId, eventType, data: { startRecordId: startId, message } });
+			deps.broadcaster.broadcast(
+				createDurableWsFrame({
+					type: "process.event",
 					instanceId,
-					workerId,
-					startupDeadlineMs,
-					resolvedExtensionEntriesJson: deps.resolvedExtensionEntriesJson,
-					onEnvelope: (envelope) => {
-						if (workers.has(instanceId)) {
-							routeEnvelope(envelope, instanceId);
-						} else {
-							earlyEnvelopes.push(envelope);
-						}
-					},
-					onInvalidMessage: () => {
-						emitServerObservedWorkerFailure(instanceId, workerId, {
-							errorCode: "invalid_worker_websocket_ipc",
-							message: "Worker emitted invalid WebSocket IPC message",
-							errorClass: "infrastructure",
-						});
-					},
-					onRuntimeError: (error) => handleProcessError(instanceId, workerId, error),
-					snapshotToken,
-					onRuntimeExit: () => {
-						processExitedBeforeRegistration = !workers.has(instanceId);
-					},
-				};
-				const connect = registerRunnerWebSocket({
-					instanceId,
-					workerId,
-					tokenHash: connectTokenHash,
-					onEnvelope: startOptions.onEnvelope,
-					onInvalidMessage: startOptions.onInvalidMessage,
-					onRuntimeError: startOptions.onRuntimeError,
-				});
-				unregisterStartRegistration = () => connect.unregister("start_failed");
-				handle = await startRunnerWorker(startOptions, {
-					token: connectToken,
-					unregister: connect.unregister,
-				});
-				unregisterStartRegistration = undefined;
-			} catch (error) {
-				unregisterStartRegistration?.();
-				const diagnostic =
-					error instanceof WorkerStartDiagnosticError ? ` ${error.publicDiagnostic}` : "";
-				emitServerObservedWorkerFailure(instanceId, workerId, {
-					errorCode: "worker_spawn_failed",
-					message: `Process was created, but the worker could not be started cleanly. Review the process error and retry startup.${diagnostic}`,
-					errorClass: "infrastructure",
-				});
-				observeWorkerLease(instanceId, workerId, "failure_reported", "spawn_failed");
-				observeWorkerLease(instanceId, workerId, "process_exited", "spawn_failed");
-				throw error;
-			}
+					payload: { eventType, level: "info", message },
+				}),
+			);
+			deps.getLaunchCoordinator?.()?.refresh(instanceId);
+		},
+		onFailure(instanceId, error) {
+			deps.logger?.warn?.({ instanceId, err: error }, "Queued worker startup failed");
+		},
+	});
 
-			if (!processExitedBeforeRegistration) {
-				startWorkerStartupTimer(instanceId, handle, startupDeadlineMs);
-				workers.set(instanceId, handle);
-				for (const envelope of earlyEnvelopes) {
-					routeEnvelope(envelope, instanceId);
-				}
+	return {
+		async spawnWorker(instanceId: string): Promise<WorkerHandle | undefined> {
+			unitReclaimer.assertProcessReclaimed(instanceId);
+			if (workers.has(instanceId))
+				throw new Error(`worker already running for process ${instanceId}`);
+			const process = safeGetProcessById(instanceId);
+			if (process?.currentExecution?.kind !== "worker_start") {
+				throw new Error(`Process ${instanceId} has no current worker start`);
 			}
-			return handle;
+			return capacityQueue.request(instanceId, process.currentExecution.id);
 		},
 
 		async stopWorker(instanceId, reason) {
+			await capacityQueue.cancel(instanceId);
 			clearIdleStopTimer(instanceId);
 			await shutdownController.stopWorker(instanceId, reason);
 		},
@@ -1034,6 +1086,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		},
 
 		async detachAll(reason: string): Promise<void> {
+			await capacityQueue.stop();
 			const ids = [...workers.keys()];
 			for (const id of ids) {
 				clearStartupTimer(id);
@@ -1046,6 +1099,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		},
 
 		async shutdownAll(reason: string): Promise<void> {
+			await capacityQueue.stop();
 			const ids = [...workers.keys()];
 			for (const id of ids) {
 				clearStartupTimer(id);
