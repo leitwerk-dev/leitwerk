@@ -174,7 +174,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await harness.ctx.app.close();
+	await harness.close();
 });
 
 describe("single prompt extension", () => {
@@ -461,7 +461,7 @@ describe("single prompt extension", () => {
 				expect.arrayContaining([expect.objectContaining({ annotationType: "external_trigger" })]),
 			);
 		} finally {
-			await fileTriggerHarness.ctx.app.close();
+			await fileTriggerHarness.close();
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
@@ -568,7 +568,7 @@ describe("single prompt extension", () => {
 				]),
 			);
 		} finally {
-			await fileTriggerHarness.ctx.app.close();
+			await fileTriggerHarness.close();
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
@@ -1037,8 +1037,7 @@ describe("single prompt extension", () => {
 			);
 		} finally {
 			if (issuesHarness) {
-				await issuesHarness.ctx.supervisor.shutdownAll("test_cleanup");
-				await issuesHarness.ctx.app.close();
+				await issuesHarness.close();
 			}
 		}
 	});
@@ -1232,8 +1231,7 @@ describe("single prompt extension", () => {
 			expect(JSON.parse(afterRerun.process?.stateJson ?? "null")).toMatchObject({});
 		} finally {
 			if (issuesHarness) {
-				await issuesHarness.ctx.supervisor.shutdownAll("test_cleanup");
-				await issuesHarness.ctx.app.close();
+				await issuesHarness.close();
 			}
 		}
 	});

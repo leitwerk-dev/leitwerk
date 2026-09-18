@@ -9,6 +9,7 @@ import WebSocket from "ws";
 import { type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
+import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
 
 async function context(
 	options: AppOptions = {},
@@ -52,24 +53,24 @@ describe("AppContext lifecycle", () => {
 	it("updates the fixture URL before reconciliation and gates readiness on start hooks", async () => {
 		const entered = Promise.withResolvers<void>();
 		const gate = Promise.withResolvers<void>();
-		const ctx = await context({}, (api) => {
+		const runtime = fakeWorkerRunnerRuntime();
+		const ctx = await context({ workerRunnerRuntime: runtime }, (api) => {
 			api.onStart(() => {
 				entered.resolve();
 				return gate.promise;
 			});
 		});
-		const adoption = vi
-			.spyOn(ctx.supervisor, "adoptRegisteredWorkers")
-			.mockImplementation(async () => {
-				expect(ctx.config.server.base_url).toMatch(/^http:\/\/127\.0\.0\.1:[1-9]\d*$/);
-			});
+		vi.mocked(runtime.runner.list).mockImplementation(async () => {
+			expect(ctx.config.server.base_url).toMatch(/^http:\/\/127\.0\.0\.1:[1-9]\d*$/);
+			return [];
+		});
 		const starting = ctx.listen({ useBoundAddressAsBaseUrl: true });
 		try {
 			await entered.promise;
 			expect((await fetch(`${ctx.config.server.base_url}/api/ready`)).status).toBe(503);
 			gate.resolve();
 			await starting;
-			expect(adoption).toHaveBeenCalledTimes(1);
+			expect(runtime.runner.list).toHaveBeenCalledTimes(1);
 			expect(ctx.isReady()).toBe(true);
 		} finally {
 			gate.resolve();
@@ -142,10 +143,9 @@ describe("AppContext lifecycle", () => {
 		} finally {
 			await Promise.all([first.close(), second.close()]);
 		}
-		const ctx = await context();
-		vi.spyOn(ctx.supervisor, "adoptRegisteredWorkers").mockRejectedValue(
-			new Error("adoption failed"),
-		);
+		const runtime = fakeWorkerRunnerRuntime();
+		vi.mocked(runtime.runner.list).mockRejectedValue(new Error("adoption failed"));
+		const ctx = await context({ workerRunnerRuntime: runtime });
 		await expect(ctx.listen()).rejects.toThrow("adoption failed");
 		expect(ctx.app.server.listening).toBe(false);
 		await ctx.close();

@@ -16,7 +16,7 @@ const harnesses: Array<IntegrationHarness<Record<string, never>>> = [];
 
 afterEach(async () => {
 	for (const harness of harnesses.splice(0)) {
-		await harness.ctx.app.close();
+		await harness.close();
 	}
 	await Promise.all(fixtures.splice(0).map((fixture) => fixture.cleanup()));
 });

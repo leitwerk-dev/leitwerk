@@ -90,7 +90,7 @@ describe("createAppContext extension loading", () => {
 		try {
 			expect(await readFile(path.join(workspaceRoot, "loaded.txt"), "utf8")).toBe("example\n");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -123,7 +123,7 @@ describe("createAppContext extension loading", () => {
 				expect.objectContaining({ availability: "available" }),
 			);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
