@@ -120,7 +120,7 @@ describe("showcase filesystem watcher", () => {
 				(exists) => exists === false,
 			);
 		} finally {
-			await harness?.ctx.app.close();
+			await harness?.close();
 			await rm(dir, { recursive: true, force: true });
 		}
 	}, 15_000);
@@ -157,7 +157,7 @@ describe("showcase filesystem watcher", () => {
 				prompt: "Write a short poem about launch retries.",
 			});
 		} finally {
-			await harness?.ctx.app.close();
+			await harness?.close();
 			await rm(dir, { recursive: true, force: true });
 		}
 	});
