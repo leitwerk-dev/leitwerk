@@ -29,7 +29,7 @@ async function connectUnknownWorker(address: string): Promise<{ code: number; re
 }
 
 afterEach(async () => {
-	await ctx?.app.close();
+	await ctx?.close();
 	ctx = null;
 });
 
@@ -37,20 +37,20 @@ describe("startup worker reconnect retry window", () => {
 	it("returns retryable close codes while startup adoption is pending", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
+		const runtime = fakeWorkerRunnerRuntime();
 		ctx = await createAppContext({
 			config,
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
-			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
+			workerRunnerRuntime: runtime,
 		});
 
 		const entered = Promise.withResolvers<void>();
 		const gate = Promise.withResolvers<void>();
-		const adopt = ctx.supervisor.adoptRegisteredWorkers.bind(ctx.supervisor);
-		vi.spyOn(ctx.supervisor, "adoptRegisteredWorkers").mockImplementation(async () => {
+		vi.mocked(runtime.runner.list).mockImplementation(async () => {
 			entered.resolve();
 			await gate.promise;
-			await adopt();
+			return [];
 		});
 		const starting = ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 		try {
