@@ -27,7 +27,19 @@ Stable publication accepts only releases created from a merged Release Please PR
 
 ## Retries
 
-Failed publication jobs can be rerun. They reuse matching artifacts and stop on conflicts; published versions are never overwritten. If an RC's release PR changes, start a new workflow run.
+Failed publication jobs can be rerun. They reuse matching artifacts and stop on conflicts; published versions are never overwritten. Stable npm verification allows ten minutes for registry propagation, polling missing versions every 15 seconds and listing any still unavailable at timeout. If an RC's release PR changes, start a new workflow run.
+
+## Registering new npm packages
+
+Release PRs run **npm package registration**. If names are missing, its summary lists them and provides this command to run from the PR checkout:
+
+```bash
+npm run publish:bootstrap
+```
+
+Requires npm 11.16+, the macOS/Linux `script` utility, and `npm login` with 2FA enabled. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
+
+Reruns skip matching publishers and resume incomplete setup. Conflicting publishers are never overwritten. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
 
 ## Running an RC
 
