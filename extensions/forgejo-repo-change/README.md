@@ -184,6 +184,13 @@ The retained public E2Es are local repository finalization, issue discovery thro
 merge/issue completion, and lost-PR-response recovery/replay. Sandbox control
 idempotency remains separate from extension publication policy.
 
+## Integration tests
+
+The composed workflow tests copy a pristine Git seed into an independent repository
+per scenario and use in-memory SQLite. They retain real Git, HTTP actions and worker
+IPC without repeating repository initialization. Failures report process and turn
+state before cleanup. File-backed persistence is covered separately below.
+
 ## Restart verification
 
 `src/persistence-recovery.integration.test.ts` replaces the repeated restart-to-merge

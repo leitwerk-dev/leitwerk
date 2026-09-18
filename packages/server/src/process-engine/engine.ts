@@ -148,7 +148,19 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 			});
 		},
 
-		retryProcess(instanceId, opts) {
+		async retryProcess(instanceId, opts) {
+			const current = deps.processes.getById(instanceId)?.currentExecution;
+			const start = current?.kind === "worker_start" ? deps.turnStarts.getById(current.id) : null;
+			if (start?.state.kind === "preparation_failed" || start?.state.kind === "bootstrap_failed") {
+				// RetryStartup fences this ID and lifecycle state under the process lock.
+				// A worker that never accepted its turn has no failed turn record to retry.
+				const result = await run(RetryStartup, {
+					instanceId,
+					startRecordId: start.id,
+					...(opts ?? {}),
+				});
+				return { ...result, data: undefined };
+			}
 			return run(RetryFailedTurn, { instanceId, ...(opts ?? {}) });
 		},
 

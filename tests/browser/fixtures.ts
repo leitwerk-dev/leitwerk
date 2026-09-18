@@ -5,7 +5,7 @@ import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { AppContext, LeitwerkConfig } from "@leitwerk-dev/server";
 import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
-import { test as base, type Locator } from "@playwright/test";
+import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
 const API_PORT = Number(process.env.LEITWERK_BROWSER_API_PORT);
 
@@ -86,4 +86,10 @@ export async function box(locator: Locator) {
 	return bounds;
 }
 
-export { expect } from "@playwright/test";
+export async function expectNoPageOverflow(page: Page) {
+	expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+		true,
+	);
+}
+
+export { expect };

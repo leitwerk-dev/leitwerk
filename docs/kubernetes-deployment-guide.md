@@ -55,6 +55,32 @@ For a source checkout, replace the OCI reference and `--version` with `deploy/ku
 
 For a private worker registry, create a `kubernetes.io/dockerconfigjson` Secret in the server namespace. Configure the same source and target names under `kubernetes.image_pull_secret_copies`, reference the target under `kubernetes.image_pull_secrets`, and pass the non-secret copy names through `kubernetes.imagePullSecretCopies` Helm values so the chart can render least-privilege RBAC and admission rules.
 
+### Admission policy API migration (breaking)
+
+The Helm chart is the sole admission-policy generator. The exports
+`buildKubernetesAdmissionPolicyManifests`, `KubernetesValidatingAdmissionPolicyManifest`
+and `KubernetesValidatingAdmissionPolicyBindingManifest` were removed from
+`@leitwerk-dev/worker-runners` and `@leitwerk-dev/server`. External deployment tools
+must replace those imports; worker and process manifest builders are unchanged.
+
+Render the policy and binding with `helm template leitwerk deploy/kubernetes/helm/leitwerk
+--namespace YOUR_NAMESPACE -f YOUR_VALUES.yaml --show-only templates/admission-policy.yaml`
+(run as one command). Keep `rbac.create=true`. Map former builder arguments as follows:
+
+| Builder argument | Helm input |
+| --- | --- |
+| `serverNamespace` | `--namespace` |
+| `serverServiceAccountName` | `serviceAccount.name` |
+| `processNamespacePrefix` | `kubernetes.processNamespacePrefix` |
+| `allowedWorkerServiceAccount` | `kubernetes.workerServiceAccount` |
+| `allowedImagePullSecretNames` | `kubernetes.imagePullSecretCopies[].targetName` (also set `sourceName`) |
+| `allowVolumePreparation` | `kubernetes.processVolume.preProvision.enabled` |
+| `name`, `labels` | Post-process both documents' metadata; keep binding `spec.policyName` aligned |
+
+Chart policy behavior is unchanged. Consumers needing typed manifests should use
+their Kubernetes client's admissionregistration/v1 types. Direct chart assertions
+replace tests comparing two independent policy generators.
+
 ### 2.3. Safe singleton upgrades
 
 Production upgrades can opt into the candidate-image preflight:

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -59,8 +59,17 @@ export class TemporaryGitRemote {
 	readonly initialSha: string;
 	readonly local: LocalGit;
 
-	constructor(readonly root: string) {
+	constructor(
+		readonly root: string,
+		seed?: TemporaryGitRemote,
+	) {
 		this.local = new LocalGit(root);
+		if (seed) {
+			this.barePath = path.join(realpathSync(root), "repositories", `${OWNER}--${REPO}.git`);
+			cpSync(seed.barePath, this.barePath, { recursive: true });
+			this.initialSha = seed.initialSha;
+			return;
+		}
 		this.barePath = this.local.seed({
 			owner: OWNER,
 			name: REPO,
@@ -487,6 +496,7 @@ export async function createRemoteRepoChangeFixture(
 		feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready";
 		ciRestart?: boolean;
 		diagnostics?: ReturnType<typeof createTestDiagnostics>;
+		seed?: TemporaryGitRemote;
 	} = {},
 ) {
 	const trace = options.diagnostics;
@@ -504,7 +514,7 @@ export async function createRemoteRepoChangeFixture(
 	}
 	try {
 		trace?.mark("fixture.git.start");
-		const temporaryGit = new TemporaryGitRemote(root);
+		const temporaryGit = new TemporaryGitRemote(root, options.seed);
 		trace?.mark("fixture.git.end");
 		let forgejo = forgejoFixture(temporaryGit, options.botLogin);
 		let woodpecker = woodpeckerFixture(root);

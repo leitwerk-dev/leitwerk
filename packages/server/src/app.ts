@@ -1049,6 +1049,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	applyGeneratedFutureExecutionTitle = (input) =>
 		futureExecutionLifecycle.applyGeneratedFutureLaunchTitleIfUnchanged(input);
 	launchCoordinator = createLaunchCoordinator({
+		events: baseDeps.events,
 		commands: processEngine,
 		launchRuns: baseDeps.launchRuns,
 		processes: baseDeps.processes,

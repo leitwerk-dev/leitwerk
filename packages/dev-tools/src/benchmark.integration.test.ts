@@ -2,14 +2,10 @@ import { once } from "node:events";
 import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import path from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { expect, it, onTestFinished } from "vitest";
 import { testWorkspace } from "../test-workspace.js";
 import { runWorkerStartupBenchmark } from "./benchmark.js";
 
-const cleanups: (() => Promise<void> | void)[] = [];
-afterEach(async () => {
-	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
-});
 async function fixture(
 	options: {
 		lostResponse?: boolean;
@@ -130,7 +126,7 @@ async function fixture(
 	});
 	server.listen(0, "127.0.0.1");
 	await once(server, "listening");
-	cleanups.push(async () => {
+	onTestFinished(async () => {
 		server.closeAllConnections();
 		await new Promise<void>((resolve) => server.close(() => resolve()));
 	});

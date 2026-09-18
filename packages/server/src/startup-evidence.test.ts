@@ -81,6 +81,28 @@ function evidence(
 }
 
 describe("startup evidence", () => {
+	it("shows capacity waiting only for the current unallocated queued start", () => {
+		const input = {
+			process: process(),
+			turnStarts: [start()],
+			leases: [] as WorkerLease[],
+			turnRecords: [],
+			events: [
+				{ eventType: "worker_capacity_queued", data: { startRecordId: "tsr_1" } },
+			] as import("@leitwerk-dev/domain").ProcessEvent[],
+		};
+		const queued = buildStartupEvidence(input);
+		expect(queued.currentAttempt?.steps[0].label).toBe("Waiting for worker capacity");
+		expect(queued.currentAttempt?.summary).toContain("automatically");
+		expect(
+			buildStartupEvidence({ ...input, leases: [lease()] }).currentAttempt?.steps[0].label,
+		).toBe("Request worker");
+		expect(
+			buildStartupEvidence({ ...input, process: { ...process(), lifecycleStatus: "aborted" } })
+				.currentAttempt?.summary,
+		).toBeNull();
+	});
+
 	it("stops the last unaccepted startup when its process is aborted", () => {
 		const result = buildStartupEvidence({
 			process: {

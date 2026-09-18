@@ -7,64 +7,69 @@ metadata:
     {{- include "leitwerk.labels" . | nindent 4 }}
     app.kubernetes.io/component: admission-policy
 spec:
+  failurePolicy: Fail
   matchConditions:
     - name: leitwerk-server-service-account
-      expression: "request.userInfo.username == 'system:serviceaccount:{{ include "leitwerk.namespace" . }}:{{ include "leitwerk.serviceAccountName" . }}'"
+      expression: "has(request.userInfo) && has(request.userInfo.username) && request.userInfo.username == 'system:serviceaccount:{{ include "leitwerk.namespace" . }}:{{ include "leitwerk.serviceAccountName" . }}'"
   matchConstraints:
     resourceRules:
       - apiGroups: [""]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE", "DELETE"]
-        resources: ["namespaces", "pods", "persistentvolumeclaims", "serviceaccounts", "configmaps"{{- if .Values.kubernetes.imagePullSecretCopies }}, "secrets"{{- end }}]
-  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+        resources: ["namespaces", "pods", "persistentvolumeclaims", "serviceaccounts", "configmaps", "secrets"]
   variables:
     - name: resource
       expression: "request.operation == 'DELETE' ? oldObject : object"
+    - name: labels
+      expression: "has(variables.resource.metadata.labels) ? variables.resource.metadata.labels : {}"
+    - name: component
+      expression: "'leitwerk.dev/component' in variables.labels ? variables.labels['leitwerk.dev/component'] : ''"
+    - name: managedBy
+      expression: "'leitwerk.dev/managed-by' in variables.labels ? variables.labels['leitwerk.dev/managed-by'] : ''"
+  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
     - name: isPreparation
-      expression: "variables.resource.kind in ['Pod', 'PersistentVolumeClaim'] && variables.resource.metadata.namespace == '{{ include "leitwerk.namespace" . }}' && has(variables.resource.metadata.labels) && 'leitwerk.dev/volume-pool' in variables.resource.metadata.labels && variables.resource.metadata.labels['leitwerk.dev/component'] == 'volume-preparation'"
+      expression: "variables.resource.kind in ['Pod', 'PersistentVolumeClaim'] && has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace == '{{ include "leitwerk.namespace" . }}' && 'leitwerk.dev/volume-pool' in variables.labels && variables.component == 'volume-preparation'"
   {{- end }}
   validations:
     {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
-    - expression: "!variables.isPreparation || variables.resource.kind != 'Pod' || (variables.resource.spec.serviceAccountName == 'default' && has(variables.resource.spec.automountServiceAccountToken) && !variables.resource.spec.automountServiceAccountToken)"
+    - expression: "!variables.isPreparation || variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == 'default' && has(variables.resource.spec.automountServiceAccountToken) && !variables.resource.spec.automountServiceAccountToken)"
       message: "preparation Pods must use the default ServiceAccount without its token"
     {{- end }}
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.name.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}')"
+    - expression: "variables.resource.kind != 'Namespace' || (variables.resource.metadata.name.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}'))"
       message: "leitwerk process namespaces must use the configured prefix"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/managed-by'] == 'leitwerk'"
+    - expression: "variables.resource.kind != 'Namespace' || (variables.managedBy == 'leitwerk')"
       message: "leitwerk process namespaces must carry managed-by label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'process-namespace'"
+    - expression: "variables.resource.kind != 'Namespace' || (variables.component == 'process-namespace')"
       message: "leitwerk process namespaces must carry process-namespace component label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind == 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.namespace.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}'){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind == 'Namespace' || (has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}')){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk process resources must be created in process namespaces"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind == 'Namespace' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/managed-by'] == 'leitwerk'"
+    - expression: "variables.resource.kind == 'Namespace' || (variables.managedBy == 'leitwerk')"
       message: "leitwerk process resources must carry managed-by label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'PersistentVolumeClaim' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'process-volume'{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'PersistentVolumeClaim' || (variables.component == 'process-volume'){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk PVCs must carry process-volume component label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'ConfigMap' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'server-ca'"
+    - expression: "variables.resource.kind != 'ConfigMap' || (variables.component == 'server-ca')"
       message: "leitwerk server CA ConfigMaps must carry server-ca component label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] in ['worker', 'session-export-helper']{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component in ['worker', 'session-export-helper']){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk pods must carry worker or session-export-helper component label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'ServiceAccount' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'worker-service-account'"
+    - expression: "variables.resource.kind != 'ServiceAccount' || (variables.component == 'worker-service-account')"
       message: "leitwerk worker ServiceAccounts must carry worker-service-account component label"
-    {{- if .Values.kubernetes.imagePullSecretCopies }}
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).metadata.name in [{{- range $index, $copy := .Values.kubernetes.imagePullSecretCopies }}{{ if $index }}, {{ end }}'{{ $copy.targetName }}'{{- end }}]"
+    - expression: "variables.resource.kind != 'Secret' || ({{ if .Values.kubernetes.imagePullSecretCopies }}variables.resource.metadata.name in [{{- range $index, $copy := .Values.kubernetes.imagePullSecretCopies }}{{ if $index }}, {{ end }}'{{ $copy.targetName }}'{{- end }}]{{ else }}false{{ end }})"
       message: "leitwerk image-pull Secrets must use a configured target name"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] == 'image-pull-secret'"
+    - expression: "variables.resource.kind != 'Secret' || (variables.component == 'image-pull-secret')"
       message: "leitwerk image-pull Secrets must carry image-pull-secret component label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || (request.operation == 'DELETE' ? oldObject : object).type == 'kubernetes.io/dockerconfigjson'"
+    - expression: "variables.resource.kind != 'Secret' || (has(variables.resource.type) && variables.resource.type == 'kubernetes.io/dockerconfigjson')"
       message: "leitwerk image-pull Secrets must use dockerconfigjson type"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Secret' || ((request.operation == 'DELETE' ? oldObject : object).data.size() == 1 && '.dockerconfigjson' in (request.operation == 'DELETE' ? oldObject : object).data)"
+    - expression: "variables.resource.kind != 'Secret' || (has(variables.resource.data) && variables.resource.data.size() == 1 && '.dockerconfigjson' in variables.resource.data)"
       message: "leitwerk image-pull Secrets may contain only .dockerconfigjson"
-    {{- end }}
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).spec.serviceAccountName == '{{ include "leitwerk.workerServiceAccountName" . }}'{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == '{{ include "leitwerk.workerServiceAccountName" . }}'){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must use the configured worker ServiceAccount"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || 'leitwerk.dev/instance-id' in (request.operation == 'DELETE' ? oldObject : object).metadata.labels{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || ('leitwerk.dev/instance-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry instance-id label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] != 'worker' || 'leitwerk.dev/worker-id' in (request.operation == 'DELETE' ? oldObject : object).metadata.labels{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/worker-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry worker-id label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] != 'worker' || 'leitwerk.dev/server-epoch' in (request.operation == 'DELETE' ? oldObject : object).metadata.labels{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/server-epoch' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry server-epoch label"
-    - expression: "(request.operation == 'DELETE' ? oldObject : object).kind != 'Pod' || (request.operation == 'DELETE' ? oldObject : object).metadata.labels['leitwerk.dev/component'] != 'session-export-helper' || 'leitwerk.dev/export-id' in (request.operation == 'DELETE' ? oldObject : object).metadata.labels{{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'session-export-helper' || 'leitwerk.dev/export-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
       message: "leitwerk session export helper pods must carry export-id label"
 ---
 apiVersion: admissionregistration.k8s.io/v1

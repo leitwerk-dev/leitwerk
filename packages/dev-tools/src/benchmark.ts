@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { appendFileSync, chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import { isUnknownRecord } from "@leitwerk-dev/domain";
 import type {
 	LaunchersResponseBody,
 	LaunchRunResponseBody,
@@ -52,11 +53,8 @@ function credentials(file: string): { base: URL; token: string } {
 		throw new Error("Cannot read a valid API client configuration");
 	}
 	if (
-		!parsed ||
-		typeof parsed !== "object" ||
-		!("base_url" in parsed) ||
+		!isUnknownRecord(parsed) ||
 		typeof parsed.base_url !== "string" ||
-		!("api_token" in parsed) ||
 		typeof parsed.api_token !== "string" ||
 		!parsed.api_token.trim()
 	)
@@ -96,12 +94,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 		"output",
 	] as const)
 		if (!options[field]?.trim()) throw new Error(`${field} is required`);
-	if (
-		!options.launcherInput ||
-		typeof options.launcherInput !== "object" ||
-		Array.isArray(options.launcherInput)
-	)
-		throw new Error("launcherInput must be an object");
+	if (!isUnknownRecord(options.launcherInput)) throw new Error("launcherInput must be an object");
 	const count = positiveInteger(options.samples ?? 30, "samples");
 	const warmups = positiveInteger(options.warmups ?? 0, "warmups", 0);
 	const timeoutMs = positiveInteger(options.timeoutMs ?? 180_000, "timeoutMs");

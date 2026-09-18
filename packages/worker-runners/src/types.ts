@@ -157,6 +157,7 @@ interface StartWorkerInputBase {
 	/** Start the image's private Docker daemon before the worker. */
 	docker: boolean;
 	resources?: WorkerResourceLimits;
+	resourceRequests?: WorkerResourceLimits;
 }
 
 /** Start input for the best-effort local runner, which uses configured host storage. */

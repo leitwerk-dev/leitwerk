@@ -11,6 +11,8 @@ import type {
 	WorkerBootstrapReceipt,
 } from "@leitwerk-dev/domain";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol/config-snapshot";
+import type { InferOutput } from "valibot";
+import type { dockerRegistryCredentialSchema } from "./docker-config.js";
 import { IPC_PROTOCOL_VERSION, type IpcEnvelope } from "./ipc-codec.js";
 
 export interface ProcessInstanceSnapshot {
@@ -96,6 +98,10 @@ export interface WorkerGitHttpsCredential {
 
 export type WorkerRepositoryCredential = WorkerGitSshCredential | WorkerGitHttpsCredential;
 
+/** Secret material allowed only in authenticated worker.start, never snapshots or exports. */
+export interface WorkerDockerRegistryCredential
+	extends InferOutput<typeof dockerRegistryCredentialSchema> {}
+
 export interface LlmWorkerStartBootstrap {
 	kind: "llm";
 	resourceBundle: {
@@ -146,6 +152,7 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	llmPreparation?: { sourceTurnRecordId: string; data: unknown };
 	/** Fresh secret material resolved for this physical worker start only. */
 	repositoryCredentials?: WorkerRepositoryCredential[];
+	dockerRegistryCredentials?: WorkerDockerRegistryCredential[];
 	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
 	/** Non-secret mise adapter settings. Ignored unless the process opts in. */

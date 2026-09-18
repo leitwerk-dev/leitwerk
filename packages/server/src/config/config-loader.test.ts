@@ -206,20 +206,29 @@ describe("validateConfig", () => {
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
-	it("validates Kubernetes Docker RuntimeClass and StorageClass names", () => {
+	it.each([20, 24])("validates Kubernetes Docker names and address-pool prefix %s", (size) => {
 		const config = kubernetesConfig();
 		if (config.kubernetes) {
 			config.kubernetes.docker = {
 				runtime_class_name: "Invalid_Name",
 				host_users: false,
 				process_storage_class_name: "-invalid",
+				network: {
+					bridge_cidr: "192.168.224.1/24",
+					address_pools: [{ base: "192.168.232.0/21", size }],
+					dns: ["10.96.0.10"],
+				},
 			};
 		}
 
-		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([
-			expect.stringContaining("kubernetes.docker.runtime_class_name"),
-			expect.stringContaining("kubernetes.docker.process_storage_class_name"),
-		]);
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual(
+			size < 21
+				? [expect.stringContaining("kubernetes.docker.network.address_pools")]
+				: [
+						expect.stringContaining("kubernetes.docker.runtime_class_name"),
+						expect.stringContaining("kubernetes.docker.process_storage_class_name"),
+					],
+		);
 	});
 
 	it("rejects Kubernetes runner config before pod creation when required wiring is missing", () => {

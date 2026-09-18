@@ -13,6 +13,7 @@ export interface ResolvedKubernetesDockerConfig {
 	runtimeClassName: string;
 	hostUsers: boolean;
 	processStorageClassName: string;
+	network?: import("./config/config-types.js").KubernetesDockerConfig["network"];
 }
 
 /** Resolves the complete trusted Kubernetes Docker block used by availability and launch. */
@@ -31,6 +32,7 @@ export function resolveKubernetesDockerConfig(
 		runtimeClassName: docker.runtime_class_name,
 		hostUsers: docker.host_users,
 		processStorageClassName: docker.process_storage_class_name,
+		...(docker.network ? { network: docker.network } : {}),
 	};
 }
 

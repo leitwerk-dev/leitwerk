@@ -9,7 +9,7 @@ import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
 import { createWorkerSupervisor } from "./worker-supervisor.js";
 import { createWorkerWebSocketIpcManager } from "./worker-websocket-ipc.js";
 
@@ -39,17 +39,13 @@ function storageFixture(extensionSize = "50Gi") {
 		repoLocator: "ssh://git@example.test/team/repo.git",
 		baseBranch: "main",
 	});
-	const start = deps.turnStarts.create({
+	createSelectedTurnStart(deps, {
 		instanceId: process.id,
 		turnId: "start",
 		turnType: "automatic",
 		proposedTurnRecordId: "turn-storage",
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
 		state: { kind: "starting", start: { kind: "automatic" } },
 	});
-	deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 	const ensure = vi.fn<ProcessVolume["ensure"]>(async (instanceId) => ({
 		instanceId,
 		id: "process-pvc",

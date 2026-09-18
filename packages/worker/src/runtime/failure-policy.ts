@@ -85,7 +85,21 @@ export function extractSecretValuesFromPayload(
 			if (typeof value === "string" && value.trim() !== "") secrets.add(value.trim());
 		}
 	}
+	for (const value of extractDockerRegistrySecretValues(payload)) secrets.add(value);
 	return Array.from(secrets);
+}
+
+export function extractDockerRegistrySecretValues(payload: WorkerStartPayload): string[] {
+	const secrets = new Set<string>();
+	for (const credential of payload.dockerRegistryCredentials ?? []) {
+		secrets.add(credential.password);
+		secrets.add(Buffer.from(`${credential.username}:${credential.password}`).toString("base64"));
+		secrets.add(Buffer.from(credential.password).toString("base64"));
+		secrets.add(encodeURIComponent(credential.password));
+	}
+	return Array.from(secrets)
+		.filter(Boolean)
+		.sort((a, b) => b.length - a.length);
 }
 
 export function redactSecrets(message: string, secrets: readonly string[]): string {

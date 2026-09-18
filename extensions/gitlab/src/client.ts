@@ -78,6 +78,30 @@ export interface GitLabNote {
 	id: number;
 	body: string;
 }
+export interface GitLabNoteReaction {
+	id: number;
+	name: string;
+	user: { username: string };
+}
+export interface GitLabFeedback {
+	id: number;
+	discussionId: string;
+	body: string;
+	author: string;
+	createdAt: string;
+	path?: string;
+	line?: number;
+}
+export interface GitLabDiscussion {
+	id: string;
+	notes: (GitLabNote & {
+		system: boolean;
+		created_at: string;
+		author: { username: string; bot?: boolean };
+		resolved?: boolean;
+		position?: { new_path?: string; old_path?: string; new_line?: number; old_line?: number };
+	})[];
+}
 export interface GitLabIdentity {
 	name: string;
 	email: string;
@@ -286,6 +310,86 @@ export class GitLabClient {
 	}
 	listNotes(id: number, iid: number, signal?: AbortSignal): Promise<GitLabNote[]> {
 		return this.pages(`${mrPath(id, iid)}/notes`, signal);
+	}
+	getDiscussion(
+		id: number,
+		iid: number,
+		discussionId: string,
+		signal?: AbortSignal,
+	): Promise<GitLabDiscussion> {
+		return this.request(
+			`${mrPath(id, iid)}/discussions/${encodeURIComponent(discussionId)}`,
+			signal,
+		);
+	}
+	replyToDiscussion(
+		id: number,
+		iid: number,
+		discussionId: string,
+		body: string,
+		signal?: AbortSignal,
+	): Promise<GitLabNote> {
+		return this.request(
+			`${mrPath(id, iid)}/discussions/${encodeURIComponent(discussionId)}/notes`,
+			signal,
+			{ body },
+		);
+	}
+	listNoteReactions(
+		id: number,
+		iid: number,
+		noteId: number,
+		signal?: AbortSignal,
+	): Promise<GitLabNoteReaction[]> {
+		return this.pages(`${mrPath(id, iid)}/notes/${noteId}/award_emoji`, signal);
+	}
+	addNoteReaction(
+		id: number,
+		iid: number,
+		noteId: number,
+		name: string,
+		signal?: AbortSignal,
+	): Promise<GitLabNoteReaction> {
+		return this.request(`${mrPath(id, iid)}/notes/${noteId}/award_emoji`, signal, { name });
+	}
+	async listMergeRequestFeedback(
+		id: number,
+		iid: number,
+		signal?: AbortSignal,
+	): Promise<GitLabFeedback[]> {
+		const [discussions, identity] = await Promise.all([
+			this.pages<GitLabDiscussion>(`${mrPath(id, iid)}/discussions`, signal),
+			this.resolveGitIdentity(signal),
+		]);
+		const feedback: GitLabFeedback[] = [];
+		for (const discussion of discussions) {
+			for (const note of discussion.notes) {
+				if (
+					note.system ||
+					note.resolved ||
+					note.author.bot ||
+					note.author.username === identity.username ||
+					!note.body.trim() ||
+					!Number.isFinite(Date.parse(note.created_at))
+				)
+					continue;
+				const position = note.position ?? discussion.notes[0]?.position;
+				feedback.push({
+					id: note.id,
+					discussionId: discussion.id,
+					body: note.body,
+					author: note.author.username,
+					createdAt: note.created_at,
+					...(position
+						? {
+								path: position.new_path ?? position.old_path,
+								line: position.new_line ?? position.old_line,
+							}
+						: {}),
+				});
+			}
+		}
+		return feedback.sort((a, b) => a.id - b.id);
 	}
 	addNote(id: number, iid: number, body: string, signal?: AbortSignal): Promise<GitLabNote> {
 		return this.request(`${mrPath(id, iid)}/notes`, signal, { body });
