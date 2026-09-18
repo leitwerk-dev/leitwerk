@@ -70,6 +70,7 @@ describe("AppContext lifecycle", () => {
 			expect((await fetch(`${ctx.config.server.base_url}/api/ready`)).status).toBe(503);
 			gate.resolve();
 			await starting;
+			await ctx.listen();
 			expect(runtime.runner.list).toHaveBeenCalledTimes(1);
 			expect(ctx.isReady()).toBe(true);
 		} finally {
@@ -184,6 +185,7 @@ describe("AppContext lifecycle", () => {
 		ctx.app.get("/slow", async () => {
 			entered.resolve();
 			await gate.promise;
+			expect(ctx.deps.processes.listAll()).toEqual([]);
 			return "finished";
 		});
 		const { address } = await ctx.listen();

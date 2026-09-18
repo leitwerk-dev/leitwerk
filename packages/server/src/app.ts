@@ -405,16 +405,15 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	};
 	let finishCleanup: (() => Promise<void>) | undefined;
 	let stopAcquiredWorkers: (() => Promise<void>) | undefined;
-	const constructionCleanup: Array<() => void | Promise<void>> = [];
+	let closeOwnedDatabase: (() => void) | undefined;
+	const preCloseCleanup: Array<() => void | Promise<void>> = [];
 	try {
 		await app.register(cookie);
 		markStartup("fastify_plugins");
 		const ownsDb = !opts.db;
 		const db = opts.db ?? createConfiguredDatabase(config);
-		constructionCleanup.push(() => {
-			if (ownsDb) closeDatabase(db);
-		});
-		constructionCleanup.push(() => stopAcquiredWorkers?.());
+		if (ownsDb) closeOwnedDatabase = () => closeDatabase(db);
+		preCloseCleanup.push(() => stopAcquiredWorkers?.());
 		app.addHook("onClose", async () => {
 			await finishCleanup?.();
 		});
@@ -617,7 +616,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		let closePromise: Promise<void> | undefined;
 		let startupOperation: Promise<void> | undefined;
 		let startupPromise: Promise<void> | undefined;
-		let stopPromise: Promise<void> | undefined;
 		let binding: Required<ServerListenOptions> | undefined;
 		let bindOperation: Promise<ServerListenResult> | undefined;
 		const cleanupErrors: unknown[] = [];
@@ -695,29 +693,22 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			if (closing)
 				return Promise.reject(new Error("AppContext startup interrupted: context is closed"));
 			if (startupPromise) return startupPromise;
-			const pendingStop = stopPromise;
 			startupOperation = (async () => {
-				await pendingStop;
 				await bindOperation;
 				assertOpen();
 				await runStartup();
 			})();
-			startupPromise = startupOperation.catch(failStartup).finally(() => {
-				startupPromise = undefined;
-			});
+			// Cleanup waits on the raw operation, not this promise that itself awaits close().
+			startupPromise = startupOperation.catch(failStartup);
 			return startupPromise;
 		}
-		let backgroundServicesStarted = false;
-		let backgroundCleanupNeeded = true;
 		let backgroundServicesReady = false;
-		let startupReconciliationCompleted = false;
 		const startHooks: Array<() => void | Promise<void>> = [];
 		const stopHooks: Array<() => void | Promise<void>> = [];
-		async function runStopHooks(message: string): Promise<void> {
+		preCloseCleanup.push(async () => {
 			const errors = await collectCleanupErrors(stopHooks);
-			if (errors.length) throw new AggregateError(errors, message);
-		}
-		constructionCleanup.push(stopServices);
+			if (errors.length) throw new AggregateError(errors, "Background service cleanup failed");
+		});
 		const modelRefreshWork = new Set<Promise<void>>();
 		let modelStatusRefreshTimer: NodeJS.Timeout | null = null;
 		let futureExecutionLifecycle: FutureExecutionLifecycle;
@@ -770,81 +761,57 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		});
 
 		async function runStartup(): Promise<void> {
-			if (backgroundServicesStarted) {
-				return;
+			if (!supervisor) {
+				throw new Error("worker supervisor not initialized");
 			}
-
-			backgroundServicesStarted = true;
-			backgroundCleanupNeeded = true;
-			if (!startupReconciliationCompleted) {
-				if (!supervisor) {
-					throw new Error("worker supervisor not initialized");
-				}
-				workerWebSocketIpc.setUnknownWorkerConnectionsRetryable(true);
-				try {
-					await futureExecutionLifecycle.reconcileModelAvailability({
-						availability: modelStatusCache.snapshot(),
-					});
-					assertOpen();
-					await recoverModelAvailabilityFailures({
-						processes: baseDeps.processes,
-						turnStarts: baseDeps.turnStarts,
-						commands: processEngine,
-						policy: processModelPolicy,
-						availability: modelStatusCache.snapshot(),
-						cause: "startup_reconciliation",
-						logger: app.log,
-					});
-					assertOpen();
-					await reconcilePersistedProcessModelIntegrity({
-						processes: baseDeps.processes,
-						commands: processEngine,
-						policy: processModelPolicy,
-						logger: app.log,
-					});
-					assertOpen();
-					await supervisor.adoptRegisteredWorkers();
-					assertOpen();
-					await reconcileProcessesOnStartup({
-						config,
-						processes: baseDeps.processes,
-						leases: baseDeps.leases,
-						turnStarts: baseDeps.turnStarts,
-						turnRecords: baseDeps.turnRecords,
-						broadcaster,
-						supervisor,
-						commands: processEngine,
-						bundlePins: piResourceBundlePins,
-						processActionRegistry,
-						logger: app.log,
-					});
-					assertOpen();
-					startupReconciliationCompleted = true;
-				} finally {
-					workerWebSocketIpc.setUnknownWorkerConnectionsRetryable(false);
-				}
+			workerWebSocketIpc.setUnknownWorkerConnectionsRetryable(true);
+			try {
+				await futureExecutionLifecycle.reconcileModelAvailability({
+					availability: modelStatusCache.snapshot(),
+				});
+				assertOpen();
+				await recoverModelAvailabilityFailures({
+					processes: baseDeps.processes,
+					turnStarts: baseDeps.turnStarts,
+					commands: processEngine,
+					policy: processModelPolicy,
+					availability: modelStatusCache.snapshot(),
+					cause: "startup_reconciliation",
+					logger: app.log,
+				});
+				assertOpen();
+				await reconcilePersistedProcessModelIntegrity({
+					processes: baseDeps.processes,
+					commands: processEngine,
+					policy: processModelPolicy,
+					logger: app.log,
+				});
+				assertOpen();
+				await supervisor.adoptRegisteredWorkers();
+				assertOpen();
+				await reconcileProcessesOnStartup({
+					config,
+					processes: baseDeps.processes,
+					leases: baseDeps.leases,
+					turnStarts: baseDeps.turnStarts,
+					turnRecords: baseDeps.turnRecords,
+					broadcaster,
+					supervisor,
+					commands: processEngine,
+					bundlePins: piResourceBundlePins,
+					processActionRegistry,
+					logger: app.log,
+				});
+				assertOpen();
+			} finally {
+				workerWebSocketIpc.setUnknownWorkerConnectionsRetryable(false);
 			}
-
 			for (const hook of startHooks) {
 				assertOpen();
 				await hook();
 			}
 			assertOpen();
 			backgroundServicesReady = true;
-		}
-		function stopServices(): Promise<void> {
-			backgroundServicesReady = false;
-			stopPromise ??= (async () => {
-				await startupOperation?.catch(() => {});
-				backgroundServicesReady = false;
-				if (!backgroundCleanupNeeded) return;
-				backgroundCleanupNeeded = false;
-				backgroundServicesStarted = false;
-				await runStopHooks("Background service cleanup failed");
-			})().finally(() => {
-				stopPromise = undefined;
-			});
-			return stopPromise;
 		}
 
 		let supervisor: WorkerSupervisor | undefined;
@@ -1443,14 +1410,14 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			cleanupOperation ??= (async () => {
 				await startupOperation?.catch(() => {});
 				// Stop services and workers before connection teardown; retain SQLite for onClose.
-				cleanupErrors.push(...(await collectCleanupErrors(constructionCleanup.splice(1))));
+				cleanupErrors.push(...(await collectCleanupErrors(preCloseCleanup.splice(0))));
 			})();
 			return cleanupOperation;
 		}
 		app.addHook("preClose", cleanup);
 		finishCleanup = async () => {
 			await cleanup();
-			cleanupErrors.push(...(await collectCleanupErrors(constructionCleanup.splice(0))));
+			cleanupErrors.push(...(await collectCleanupErrors([() => closeOwnedDatabase?.()])));
 			if (cleanupErrors.length)
 				throw new AggregateError(cleanupErrors, "AppContext cleanup failed");
 		};
@@ -1477,7 +1444,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 	} catch (error) {
 		const errors = [
 			error,
-			...(await collectCleanupErrors([() => app.close(), ...constructionCleanup])),
+			...(await collectCleanupErrors([
+				() => app.close(),
+				() => closeOwnedDatabase?.(),
+				...preCloseCleanup,
+			])),
 		];
 		if (errors.length > 1)
 			throw new AggregateError(errors, "Context construction and cleanup failed", { cause: error });

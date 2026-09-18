@@ -19,6 +19,33 @@ type ProcessQuestionRepos = Pick<
 	"events" | "leases" | "processes" | "questionRequests" | "transaction" | "turnRecords"
 >;
 
+/** @internal */
+type SubmitAnswersResult =
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			request: ProcessQuestionRequest;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			code: "not_found" | "invalid";
+			/** @internal */
+			message: string;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			code: "not_current";
+			/** @internal */
+			message: string;
+			/** @internal */
+			request: ProcessQuestionRequest;
+	  };
+
 function isCurrentRequest(repos: ProcessQuestionRepos, request: ProcessQuestionRequest): boolean {
 	const process = repos.processes.getById(request.instanceId);
 	const turn = repos.turnRecords.getById(request.turnRecordId);
@@ -133,30 +160,23 @@ export function createProcessQuestionService(input: {
 			requestId: string,
 			draftInput: readonly QuestionAnswerDraft[],
 			actor: Actor,
-		) {
+		): Promise<SubmitAnswersResult> {
 			try {
 				const result = await input.processOperations.runExclusive(instanceId, () =>
-					input.repos.transaction((repos) => {
+					input.repos.transaction((repos): SubmitAnswersResult => {
 						const request = repos.questionRequests.getById(requestId);
 						if (!request || request.instanceId !== instanceId) {
 							return {
-								/** @internal */
-								ok: false as const,
-								/** @internal */
-								code: "not_found" as const,
-								/** @internal */
+								ok: false,
+								code: "not_found",
 								message: "Question request not found",
 							};
 						}
 						if (request.status !== "open" || !isCurrentRequest(repos, request)) {
 							return {
-								/** @internal */
-								ok: false as const,
-								/** @internal */
-								code: "not_current" as const,
-								/** @internal */
+								ok: false,
+								code: "not_current",
 								message: "Question request is no longer active",
-								/** @internal */
 								request,
 							};
 						}
@@ -167,8 +187,8 @@ export function createProcessQuestionService(input: {
 						});
 						if (!answered) {
 							return {
-								ok: false as const,
-								code: "not_current" as const,
+								ok: false,
+								code: "not_current",
 								message: "Question request was answered elsewhere",
 								request: repos.questionRequests.getById(request.id) ?? request,
 							};
@@ -179,9 +199,7 @@ export function createProcessQuestionService(input: {
 							data: { requestId: request.id, actorId: actor.id },
 						});
 						return {
-							/** @internal */
-							ok: true as const,
-							/** @internal */
+							ok: true,
 							request: answered,
 						};
 					}),
@@ -197,11 +215,8 @@ export function createProcessQuestionService(input: {
 				return result;
 			} catch (error) {
 				return {
-					/** @internal */
-					ok: false as const,
-					/** @internal */
-					code: "invalid" as const,
-					/** @internal */
+					ok: false,
+					code: "invalid",
 					message: error instanceof Error ? error.message : String(error),
 				};
 			}
