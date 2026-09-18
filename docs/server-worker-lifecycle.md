@@ -2,6 +2,41 @@
 
 Worker processes in Leitwerk operate under strict server supervision: the server owns desired lifecycle state in SQLite, while physical worker runners execute state transitions, report interaction facts, and upload session snapshots. This reference details how workers connect, adopt running containers, process turns, and recover from failures.
 
+## AppContext lifecycle
+
+`createAppContext()` acquires resources without binding or starting background services.
+Use `ctx.listen(options?)` for startup and `ctx.close()` for shutdown. `listen()` binds,
+optionally applies the fixture base URL, reconciles durable state, adopts workers, and runs
+start hooks in their registered order. It resolves with `{ address, port }` only after
+`/api/ready` can return 200. Unknown workers receive retryable reconnect responses until
+startup adoption and reconciliation finish.
+
+Concurrent startup calls share the startup operation. The first `listen()` fixes binding
+options; later optionless or matching calls reuse the listener. Conflicting explicit options
+reject without disrupting it. A manually bound Fastify listener cannot be adopted by
+`ctx.listen()`.
+
+`close()` immediately clears readiness and prevents startup. It waits for the active startup
+step, skips later steps, then uses Fastify's shutdown hooks to stop services and workers,
+drain HTTP requests, close WebSockets, and close the context-owned database. Local workers
+receive `shutdownAll("server_shutdown")`; isolated workers detach. Maintenance shutdown
+waits for active polling, scheduling, model refresh, retention work, and aborted session
+export preparation. Every stop hook is
+attempted in reverse order even if another fails. Cleanup errors are reported together.
+Repeated close calls share one settled result and never repeat cleanup side effects.
+Injected databases remain open; durable process, workspace, and tree data remain intact.
+
+Bind, reconciliation, and start-hook failures close the context automatically. A new context
+is required to retry. Startup errors remain the primary error; when cleanup also fails, an
+`AggregateError` retains the startup error as its cause. Construction failures release
+resources acquired before the failure.
+
+`startBackgroundServices()` and `stopBackgroundServices()` are deprecated but retain
+standalone use. Stopping services leaves the listener bound; starting them again, or calling
+matching `listen()`, restarts services without rebinding. Raw `app.listen()` remains available
+for controlled tests and deployment preflight; it leaves readiness false. Direct `app.close()`
+uses the same cleanup hooks.
+
 ---
 
 ## 1. Responsibilities & Ownership Boundaries
