@@ -54,6 +54,7 @@ describe("internal TLS listener", () => {
 	it("serves the internal endpoint over HTTPS when internal_tls is enabled", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
 		config.internal_tls = { enabled: true, cert_file: certFile, key_file: keyFile };
 		if (config.docker) {
 			config.docker.server_url = "https://leitwerk-server:8080";
@@ -65,9 +66,9 @@ describe("internal TLS listener", () => {
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
 		});
-		close = () => ctx.app.close();
+		close = () => ctx.close();
 
-		const address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+		const { address } = await ctx.listen({ host: "127.0.0.1", port: 0 });
 		expect(address.startsWith("https://")).toBe(true);
 
 		const port = new URL(address).port;
@@ -82,15 +83,16 @@ describe("internal TLS listener", () => {
 	it("serves plain HTTP when internal_tls is disabled (default)", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
+		config.workers.runner = "local";
 
 		const ctx = await createAppContext({
 			config,
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
 		});
-		close = () => ctx.app.close();
+		close = () => ctx.close();
 
-		const address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+		const { address } = await ctx.listen({ host: "127.0.0.1", port: 0 });
 		expect(address.startsWith("http://")).toBe(true);
 
 		const response = await fetch(`${address}/api/health`);

@@ -18,6 +18,8 @@ export interface IntegrationHarness<
 > {
 	/** @public */
 	ctx: AppContext;
+	/** @public */
+	close(): Promise<void>;
 	/** @internal */
 	config: LeitwerkConfig;
 	/** @public */
@@ -38,6 +40,8 @@ export interface IntegrationHarnessOptions<
 	appOverrides?: Partial<AppOptions>;
 	/** @internal */
 	listen?: boolean;
+	/** Start background services when binding a listener. Defaults to true. @public */
+	backgroundServices?: boolean;
 	/** @internal */
 	inProcessWorkers?: boolean;
 	/** @public */
@@ -66,7 +70,7 @@ export function createPersistentIntegrationFixture(
 		return config;
 	}
 	async function close() {
-		await harness?.ctx.app.close();
+		await harness?.close();
 		harness = undefined;
 	}
 	return {
@@ -131,16 +135,27 @@ export async function createIntegrationHarness<
 	const ctx = await createAppContext(appOpts);
 
 	let address = "";
-	if (opts.listen !== false || config.workers.runner === "local") {
-		await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-		const info = ctx.app.server.address();
-		const port = typeof info === "object" && info ? info.port : 0;
-		address = `http://127.0.0.1:${port}`;
-		ctx.config.server.base_url = address;
+	try {
+		if (opts.listen !== false || config.workers.runner === "local") {
+			if (opts.backgroundServices !== false) {
+				({ address } = await ctx.listen({
+					host: "127.0.0.1",
+					port: 0,
+					useBoundAddressAsBaseUrl: true,
+				}));
+			} else {
+				address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+				ctx.config.server.base_url = address;
+			}
+		}
+	} catch (error) {
+		await ctx.close().catch(() => {});
+		throw error;
 	}
 
 	return {
 		ctx,
+		close: () => ctx.close(),
 		config,
 		address,
 		resources: opts.resources ?? ({} as TResources),

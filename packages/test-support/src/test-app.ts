@@ -40,6 +40,8 @@ export interface TestAppOptions<
 	resources?: TResources;
 	/** @internal */
 	listen?: boolean;
+	/** Start background services when binding a listener. Defaults to true. @internal */
+	backgroundServices?: boolean;
 	/** @internal */
 	inProcessWorkers?: boolean;
 	/** @internal */
@@ -73,12 +75,22 @@ export async function createTestApp<
 	});
 
 	let address = "";
-	if (opts.listen !== false || config.workers.runner === "local") {
-		await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-		const addressInfo = ctx.app.server.address();
-		const port = typeof addressInfo === "object" && addressInfo ? addressInfo.port : 0;
-		address = `http://127.0.0.1:${port}`;
-		ctx.config.server.base_url = address;
+	try {
+		if (opts.listen !== false || config.workers.runner === "local") {
+			if (opts.backgroundServices !== false) {
+				({ address } = await ctx.listen({
+					host: "127.0.0.1",
+					port: 0,
+					useBoundAddressAsBaseUrl: true,
+				}));
+			} else {
+				address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+				ctx.config.server.base_url = address;
+			}
+		}
+	} catch (error) {
+		await ctx.close().catch(() => {});
+		throw error;
 	}
 
 	return {
@@ -87,11 +99,6 @@ export async function createTestApp<
 		address,
 		llm,
 		...(opts.resources ?? ({} as TResources)),
-		close: async () => {
-			await ctx.supervisor.shutdownAll("test_app_close");
-			ctx.app.server.closeIdleConnections?.();
-			ctx.app.server.closeAllConnections?.();
-			await ctx.app.close();
-		},
+		close: () => ctx.close(),
 	};
 }

@@ -277,38 +277,42 @@ export async function createUiTestApp<
 	config.storage.process_workspaces_dir = path.join(runtimeRoot, "workspaces");
 	config.storage.tree_files_dir = path.join(runtimeRoot, "sessions");
 	config.pi.agent_dir = path.join(runtimeRoot, "pi-agent");
-	options.configureConfig?.(config);
-	const ctx = await createAppContext({
-		logger: false,
-		config,
-		extensionCatalog,
-		extensionUiRuntimeLane: "dist",
-		preProvidedCapabilities: options.preProvidedCapabilities,
-		localWorkerSpawnImpl:
-			options.localWorkerSpawnImpl ?? createInProcessWorkerSpawn({ extensionCatalog }),
-	});
-	await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-
-	const addressInfo = ctx.app.server.address();
-	const port = typeof addressInfo === "object" && addressInfo ? addressInfo.port : 0;
-	const address = `http://127.0.0.1:${port}`;
-	ctx.config.server.base_url = address;
-
-	return {
-		ctx,
-		address,
-		wsAddress: `ws://127.0.0.1:${port}/ws`,
-		resources: options.resources ?? ({} as TResources),
-		close: async () => {
-			try {
-				await ctx.app.close();
-			} finally {
-				// In-process workers can finish filesystem writes during shutdown. Retry
-				// transient ENOTEMPTY/EBUSY races, but still fail if cleanup cannot complete.
-				await rm(runtimeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-			}
-		},
+	let ctx: AppContext | undefined;
+	const close = async () => {
+		try {
+			await ctx?.close();
+		} finally {
+			// In-process workers can finish filesystem writes during shutdown.
+			await rm(runtimeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
 	};
+	try {
+		options.configureConfig?.(config);
+		ctx = await createAppContext({
+			logger: false,
+			config,
+			extensionCatalog,
+			extensionUiRuntimeLane: "dist",
+			preProvidedCapabilities: options.preProvidedCapabilities,
+			localWorkerSpawnImpl:
+				options.localWorkerSpawnImpl ?? createInProcessWorkerSpawn({ extensionCatalog }),
+		});
+		const { address } = await ctx.listen({
+			host: "127.0.0.1",
+			port: 0,
+			useBoundAddressAsBaseUrl: true,
+		});
+		return {
+			ctx,
+			address,
+			wsAddress: `${address.replace(/^http/, "ws")}/ws`,
+			resources: options.resources ?? ({} as TResources),
+			close,
+		};
+	} catch (error) {
+		await close().catch(() => {});
+		throw error;
+	}
 }
 
 export async function setupMountedUiHarness<

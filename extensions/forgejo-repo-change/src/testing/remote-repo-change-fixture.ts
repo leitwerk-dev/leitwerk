@@ -483,15 +483,22 @@ export async function createRemoteRepoChangeFixture(
 	trace?.mark("fixture.create.start");
 	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
 	let runningHarness: IntegrationHarness | undefined;
-	async function close() {
-		trace?.mark("fixture.close.app.start");
-		await runningHarness?.ctx.app.close();
-		trace?.mark("fixture.close.app.end");
+	async function removeFixtureRoot() {
 		if (!root.startsWith(path.join(tmpdir(), FIXTURE_PREFIX)))
 			throw new Error(`Refusing to remove unvalidated fixture root '${root}'`);
 		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 		trace?.mark("fixture.close.files.end");
 	}
+	async function close() {
+		try {
+			trace?.mark("fixture.close.app.start");
+			await runningHarness?.close();
+			trace?.mark("fixture.close.app.end");
+		} finally {
+			await removeFixtureRoot();
+		}
+	}
+
 	try {
 		trace?.mark("fixture.git.start");
 		const temporaryGit = new TemporaryGitRemote(root, options.seed);
@@ -566,6 +573,8 @@ export async function createRemoteRepoChangeFixture(
 				return child;
 			};
 			const result = await createIntegrationHarness({
+				// This fixture advances each provider poll explicitly.
+				backgroundServices: false,
 				config: retainedConfig,
 				extensionCatalog,
 				appOverrides: {
@@ -672,7 +681,7 @@ export async function createRemoteRepoChangeFixture(
 			async restart(whileStopped?: () => Promise<void>) {
 				const config = harness.config;
 				trace?.mark("fixture.restart.close.start");
-				await harness.ctx.app.close();
+				await harness.close();
 				trace?.mark("fixture.restart.close.end");
 				await whileStopped?.();
 				forgejo = forgejoFixture(temporaryGit, options.botLogin);

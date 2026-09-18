@@ -145,13 +145,9 @@ export async function createSandboxApp(
 	const stop = () =>
 		(stopped ??= (async () => {
 			try {
-				await context?.stopBackgroundServices();
+				await context?.close();
 			} finally {
-				try {
-					await context?.app.close();
-				} finally {
-					await composition.cleanup?.();
-				}
+				await composition.cleanup?.();
 			}
 		})());
 	try {

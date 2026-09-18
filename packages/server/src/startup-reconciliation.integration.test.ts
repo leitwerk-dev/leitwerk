@@ -77,7 +77,12 @@ function createPersistentFixture(opts: { resumeOnBoot?: boolean } = {}) {
 		...fixture,
 		config: fixture.createConfig(),
 		open: (config: LeitwerkConfig, appOverrides: Partial<AppOptions> = {}) =>
-			fixture.open({ config, extensionCatalog: extensionCatalogPromise, appOverrides }),
+			fixture.open({
+				config,
+				backgroundServices: false,
+				extensionCatalog: extensionCatalogPromise,
+				appOverrides,
+			}),
 	};
 }
 

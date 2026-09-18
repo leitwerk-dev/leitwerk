@@ -65,15 +65,14 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 						? { extensionLoadingStartDir: browserServerOptions.extensionLoadingStartDir }
 						: {}),
 				});
-				await ctx.app.listen({ host: "127.0.0.1", port: API_PORT });
+				await ctx.listen({ host: "127.0.0.1", port: API_PORT });
 				await use({ ctx, tempRoot });
 			} finally {
-				if (ctx) {
-					ctx.app.server.closeIdleConnections?.();
-					ctx.app.server.closeAllConnections?.();
-					await ctx.app.close();
+				try {
+					await ctx?.close();
+				} finally {
+					await rm(tempRoot, { recursive: true, force: true });
 				}
-				await rm(tempRoot, { recursive: true, force: true });
 			}
 		},
 		{ scope: "worker" },

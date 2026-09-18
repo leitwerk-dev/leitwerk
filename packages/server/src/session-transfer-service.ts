@@ -103,6 +103,7 @@ export function createSessionTransferService(deps: {
 	const now = deps.now ?? (() => new Date());
 	const limits = deps.limits ?? DEFAULT_SESSION_TRANSFER_LIMITS;
 	const runtimes = new Map<string, AttemptRuntime>();
+	const exportWork = new Set<Promise<void>>();
 	let sweepTimer: NodeJS.Timeout | null = null;
 
 	function publish(attempt: SessionTransferAttempt | null): SessionTransferAttempt | null {
@@ -193,7 +194,7 @@ export function createSessionTransferService(deps: {
 			streamClaimed: false,
 		};
 		runtimes.set(attempt.id, runtime);
-		void (async () => {
+		const work = (async () => {
 			updatePhase(attempt.id, "waiting_for_execution_chain");
 			while (true) {
 				const reserved = await deps.processOperations.runExclusive(attempt.instanceId, () => {
@@ -250,6 +251,11 @@ export function createSessionTransferService(deps: {
 					runtimes.delete(attempt.id);
 				}
 			});
+		exportWork.add(work);
+		void work.then(
+			() => exportWork.delete(work),
+			() => exportWork.delete(work),
+		);
 	}
 
 	function cancelAttempt(attempt: SessionTransferAttempt, code: string): SessionTransferAttempt {
@@ -474,7 +480,7 @@ export function createSessionTransferService(deps: {
 			if (!sweepTimer) sweepTimer = setInterval(sweep, 15_000);
 		},
 		/** @internal */
-		stop() {
+		async stop() {
 			if (sweepTimer) clearInterval(sweepTimer);
 			sweepTimer = null;
 			for (const runtime of runtimes.values()) {
@@ -482,6 +488,11 @@ export function createSessionTransferService(deps: {
 			}
 			runtimes.clear();
 			deps.helperRelays.stop();
+			const results = await Promise.allSettled(exportWork);
+			const errors = results
+				.filter((result) => result.status === "rejected")
+				.map((result) => result.reason);
+			if (errors.length) throw new AggregateError(errors, "Session export cleanup failed");
 		},
 		/** @internal */
 		helperSpec: deps.helperRelays.helperSpec,

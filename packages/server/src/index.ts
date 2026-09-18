@@ -53,7 +53,14 @@ export {
 	type WorkerUnitIdentity,
 	type WorkerUnitRef,
 } from "@leitwerk-dev/worker-runners";
-export { type AppContext, type AppOptions, createApp, createAppContext } from "./app.js";
+export {
+	type AppContext,
+	type AppOptions,
+	createApp,
+	createAppContext,
+	type ServerListenOptions,
+	type ServerListenResult,
+} from "./app.js";
 export {
 	applyConfigDefaults,
 	getDefaultConfig,
