@@ -15,8 +15,8 @@ import {
 const databases: LeitwerkDb[] = [];
 const services: SessionTransferService[] = [];
 
-afterEach(() => {
-	for (const service of services.splice(0)) service.stop();
+afterEach(async () => {
+	for (const service of services.splice(0)) await service.stop();
 	for (const database of databases.splice(0)) closeDatabase(database);
 });
 
@@ -151,6 +151,29 @@ describe("session transfer service", () => {
 		});
 		expect(retried.kind).toBe("created");
 		if (retried.kind === "created") service.cancelForWeb(process.id, retried.attempt.id);
+	});
+
+	it("waits for aborted exporter preparation before shutdown completes", async () => {
+		const { repos, process, service, prepare } = harness();
+		const preparation = Promise.withResolvers<Awaited<ReturnType<typeof prepare>>>();
+		prepare.mockImplementationOnce(() => preparation.promise);
+		const createdGrant = await grant(service, process.id);
+		const started = service.startAttempt({
+			instanceId: process.id,
+			grantId: createdGrant.grantId,
+			token: createdGrant.rawToken,
+		});
+		if (started.kind !== "created") throw new Error("Expected attempt");
+		await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+		let stopped = false;
+		const stopping = service.stop().then(() => {
+			stopped = true;
+		});
+		await new Promise<void>((resolve) => setImmediate(resolve));
+		expect(stopped).toBe(false);
+		preparation.reject(new Error("export aborted"));
+		await stopping;
+		expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("failed");
 	});
 
 	it("does not revive a cancelled attempt when exporter preparation finishes", async () => {

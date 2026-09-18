@@ -49,7 +49,7 @@ export interface PollLoop<T extends PollResultWithErrors = PollResult> {
 	/** @internal */
 	start(): void;
 	/** @internal */
-	stop(): void;
+	stop(): Promise<void>;
 }
 
 /**
@@ -111,12 +111,10 @@ export function createPollLoop<T extends PollResultWithErrors>(opts: {
 			timer = setInterval(pollScheduled, ms);
 			pollScheduled();
 		},
-		stop() {
-			if (!timer) {
-				return;
-			}
-			clearInterval(timer);
+		async stop() {
+			if (timer) clearInterval(timer);
 			timer = null;
+			await pollInFlight;
 		},
 	};
 }

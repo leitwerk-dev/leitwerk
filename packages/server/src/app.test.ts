@@ -301,7 +301,7 @@ describe("createAppContext", () => {
 		try {
 			await expect(ctx.startBackgroundServices()).rejects.toThrow("start rejected");
 			expect(ctx.isReady()).toBe(false);
-			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
+			await expect(ctx.listen()).rejects.toThrow("closed");
 		} finally {
 			await ctx.app.close();
 		}

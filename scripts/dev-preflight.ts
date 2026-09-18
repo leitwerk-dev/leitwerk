@@ -32,7 +32,7 @@ async function main(): Promise<void> {
 		// binding the production port or starting background services.
 		await appContext.app.ready();
 	} finally {
-		await appContext.app.close();
+		await appContext.close();
 	}
 }
 
