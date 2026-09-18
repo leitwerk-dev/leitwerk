@@ -13,6 +13,7 @@ import type {
 	TurnId,
 	TurnProgressReport,
 } from "@leitwerk-dev/domain";
+import type { ExternalWrites } from "@leitwerk-dev/external-writes";
 import type { WatcherPresentationField } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
 import type { FormDefinition } from "./form-contract.js";
@@ -1041,6 +1042,9 @@ export interface TicketCreationReceipt {
 
 /** @public */
 export interface IntegrationToolExecutionContext {
+	/** Process-bound coordination; storage remains server-owned. */
+	/** @public */
+	readonly externalWrites: ExternalWrites;
 	/** @public */
 	readonly process: ProcessInstance;
 	/** @public */

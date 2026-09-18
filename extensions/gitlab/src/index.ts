@@ -1,4 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
 import {
 	coreHostCapabilities,
 	type LeitwerkExtensionModule,
@@ -27,7 +26,7 @@ export function setupGitLabIntegration(
 	api.provide(gitlabIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
-	registerGitLabTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
+	registerGitLabTools(api, integration);
 	return createGitLabProvider(deps, integration, options);
 }
 /** @public */

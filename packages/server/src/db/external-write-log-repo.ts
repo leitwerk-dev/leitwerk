@@ -1,5 +1,5 @@
 import type { ExternalWriteLog, ExternalWriteType } from "@leitwerk-dev/domain";
-import type { ExternalWriteLogRecordInput } from "@leitwerk-dev/external-writes";
+import type { ExternalWriteLogRecordInput } from "@leitwerk-dev/external-writes/internal";
 import { desc, eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";

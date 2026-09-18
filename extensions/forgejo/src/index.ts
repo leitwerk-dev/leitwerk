@@ -1,4 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
 import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { type ForgejoIntegration, forgejoIntegration } from "./capability.js";
 import { ForgejoClient, parseForgejoProfiles, parseForgejoTicketCreationConfig } from "./client.js";
@@ -57,13 +56,7 @@ export function setupForgejoIntegration(
 	api.provide(forgejoIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
-	registerForgejoTools(
-		api,
-		integration,
-		deps.externalWrites as ExternalWriteLogRepoLike,
-		ticketCreation,
-		deps.projects,
-	);
+	registerForgejoTools(api, integration, ticketCreation, deps.projects);
 	return createForgejoProvider(deps, integration, options.issueWatcherSource, options);
 }
 

@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { bindExternalWrites } from "@leitwerk-dev/external-writes/internal";
 import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
 import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
 import { expect, onTestFinished, test, vi } from "vitest";
@@ -25,7 +26,7 @@ test("restarts after persistence, reconciles the original write key, and records
 		return record(input);
 	});
 	const adapter = new LocalTicketAdapter(options);
-	const tool = adapter.tool(writes);
+	const tool = adapter.tool();
 	const provider = tool.capability?.destinations;
 	if (!provider) throw new Error("Missing destinations");
 	const actor = { id: "local", kind: "user" as const, provider: null };
@@ -34,22 +35,29 @@ test("restarts after persistence, reconciles the original write key, and records
 	await provider.validate(snapshot);
 	const ctx = {
 		process: { id: "child-1" },
+		externalWrites: bindExternalWrites(writes, "child-1"),
 		idempotencyKey: "stable-write-key",
 		ticketDestination: snapshot,
 	} as IntegrationToolExecutionContext;
 	adapter.injectLostResponse();
-	await expect(tool.execute(ctx, { title: "Review", body: "Review the notes" })).rejects.toThrow(
-		/Write log unavailable/,
-	);
+	await expect(
+		tool.execute(ctx, { title: "Review", body: "Review the notes" }),
+	).rejects.toMatchObject({
+		name: "AggregateError",
+		errors: [
+			expect.objectContaining({ message: "Local ticket persisted, but its response was lost." }),
+			expect.objectContaining({ message: "Write log unavailable after persistence" }),
+		],
+	});
 	expect(records).toHaveLength(0);
 	expect(JSON.parse(readFileSync(options.file, "utf8")).tickets).toHaveLength(1);
 	const restarted = new LocalTicketAdapter(options);
 	writeLogAvailable = true;
 	const receipt = await restarted
-		.tool(writes)
+		.tool()
 		.execute(ctx, { title: "Review", body: "Review the notes" });
 	expect(
-		await restarted.tool(writes).execute(ctx, { title: "Review", body: "Review the notes" }),
+		await restarted.tool().execute(ctx, { title: "Review", body: "Review the notes" }),
 	).toEqual(receipt);
 	expect(restarted.state.tickets).toHaveLength(1);
 	expect(records).toEqual([

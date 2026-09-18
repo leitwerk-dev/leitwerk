@@ -243,6 +243,13 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 		},
 		...store.pullRequestClient(repo),
 		addPullRequestComment: comment,
+		async listPullRequestFeedbackReactions(owner, name, feedback) {
+			return structuredClone(
+				(repo(owner, name).reactions ?? [])
+					.filter((r) => r.feedbackId === feedback.id && r.kind === feedback.kind)
+					.map((r) => ({ ...r, user: { login: "leitwerk-bot" } })),
+			);
+		},
 		async addPullRequestFeedbackReaction(owner, name, feedback, content) {
 			const r = repo(owner, name);
 			if (
@@ -263,7 +270,19 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 		},
 		async replyToPullRequestFeedback(owner, name, number, feedback, body) {
 			const r = repo(owner, name);
-			const result = await comment(owner, name, number, body);
+			const result =
+				feedback.kind === "inline" && feedback.reviewId && feedback.path
+					? store.addFeedback(r, number, {
+							kind: "inline",
+							body,
+							author: "leitwerk-bot",
+							reviewId: feedback.reviewId,
+							path: feedback.path,
+							line: feedback.line,
+							position: feedback.position,
+							originalPosition: feedback.originalPosition,
+						})
+					: await comment(owner, name, number, body);
 			r.replies ??= [];
 			r.replies.push({
 				id: result.id,

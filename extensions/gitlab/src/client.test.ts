@@ -1,3 +1,4 @@
+import { bindExternalWrites } from "@leitwerk-dev/external-writes/internal";
 import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -40,7 +41,7 @@ describe("GitLab boundary", () => {
 		});
 		const input = {
 			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
-			writes: createInMemoryExternalWriteLog(),
+			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
 			instanceId: "process",
 			projectId: 7,
 			iid: 1,
@@ -49,8 +50,11 @@ describe("GitLab boundary", () => {
 		await ensureGitLabSeenReaction(input);
 		const reads = request.mock.calls.length;
 		await ensureGitLabSeenReaction(input);
-		expect(request).toHaveBeenCalledTimes(reads);
-		await ensureGitLabSeenReaction({ ...input, writes: createInMemoryExternalWriteLog() });
+		expect(request).toHaveBeenCalledTimes(reads + 2);
+		await ensureGitLabSeenReaction({
+			...input,
+			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
+		});
 		expect(posts).toBe(1);
 		expect(reactions).toHaveLength(2);
 	});
@@ -75,7 +79,7 @@ describe("GitLab boundary", () => {
 		});
 		const input = {
 			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
-			writes: createInMemoryExternalWriteLog(),
+			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
 			instanceId: "process",
 			projectId: 7,
 			iid: 1,
@@ -86,7 +90,10 @@ describe("GitLab boundary", () => {
 		const first = await ensureGitLabComment(input);
 		expect(notes[0]?.body).toContain(first.marker);
 		await ensureGitLabComment(input);
-		await ensureGitLabComment({ ...input, writes: createInMemoryExternalWriteLog() });
+		await ensureGitLabComment({
+			...input,
+			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
+		});
 		expect(posts).toBe(1);
 	});
 	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {

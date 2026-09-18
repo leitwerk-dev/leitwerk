@@ -1,3 +1,4 @@
+import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import {
 	createIntegrationToolRequestService,
@@ -20,7 +21,7 @@ function deferred<T>() {
 }
 
 function pendingTicketRequest() {
-	const registry = new IntegrationToolRegistry();
+	const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 	const destination = deferred<{
 		summary: { id: string; displayName: string };
 		data: Record<string, unknown>;
@@ -165,7 +166,7 @@ function registerEcho(
 
 describe("IntegrationToolRegistry", () => {
 	it("validates declarations and rejects duplicate names", () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		registerEcho(registry);
 		expect(registry.declarations(["provider_echo"])).toEqual([
 			{
@@ -202,7 +203,7 @@ describe("IntegrationToolRegistry", () => {
 	});
 
 	it("discovers only validated ticket capabilities", () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		registerEcho(registry);
 		registry.register({
 			name: "tracker_create",
@@ -236,7 +237,7 @@ describe("IntegrationToolRegistry", () => {
 	});
 
 	it("resolves and validates adapter-owned ticket destinations", async () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const validate = vi.fn(async () => undefined);
 		registry.register({
 			name: "tracker_create",
@@ -273,7 +274,7 @@ describe("IntegrationToolRegistry", () => {
 	});
 
 	it("adds deferred destination choices to child-process tool declarations", () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		registry.register({
 			name: "tracker_create",
 			description: "Create tracker item",
@@ -322,7 +323,7 @@ describe("IntegrationToolRegistry", () => {
 	});
 
 	it("coalesces only concurrent executions by stable idempotency key", async () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		let release!: () => void;
 		const gate = new Promise<void>((resolve) => {
 			release = resolve;
@@ -334,7 +335,10 @@ describe("IntegrationToolRegistry", () => {
 				return args;
 			}),
 		);
-		const context = { idempotencyKey: "process:turn:call:provider_echo" } as never;
+		const context = {
+			process: { id: "process" },
+			idempotencyKey: "process:turn:call:provider_echo",
+		} as never;
 
 		const first = registry.execute("provider_echo", { value: 1 }, context);
 		const replay = registry.execute("provider_echo", { value: 1 }, context);
@@ -349,7 +353,7 @@ describe("IntegrationToolRegistry", () => {
 	});
 
 	it("aborts the server execution identified by a worker cancellation", async () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const execute = registerEcho(
 			registry,
 			vi.fn(
@@ -364,7 +368,10 @@ describe("IntegrationToolRegistry", () => {
 			),
 		);
 		const idempotencyKey = "process:turn:call:provider_echo";
-		const pending = registry.execute("provider_echo", {}, { idempotencyKey } as never);
+		const pending = registry.execute("provider_echo", {}, {
+			process: { id: "process" },
+			idempotencyKey,
+		} as never);
 		await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
 
 		expect(registry.cancel(idempotencyKey)).toBe(true);
@@ -379,7 +386,7 @@ describe("integration tool request service", () => {
 		"llm",
 		"automatic",
 	] as const)("authorizes the active %s turn and resolves an optional project", async (turnKind) => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const execute = registerEcho(registry);
 		const process = {
 			id: "instance-1",
@@ -427,7 +434,7 @@ describe("integration tool request service", () => {
 	});
 
 	it("rejects stale, unauthorized, and unknown-project calls before execution", async () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const execute = registerEcho(registry);
 		const base = {
 			registry,
@@ -472,7 +479,7 @@ describe("integration tool request service", () => {
 	});
 
 	it("rejects a running record from an older attempt of the selected turn", async () => {
-		const registry = new IntegrationToolRegistry();
+		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const execute = registerEcho(registry);
 		const service = createIntegrationToolRequestService({
 			registry,
@@ -528,5 +535,49 @@ it("validates ticket process composition after tool registration", () => {
 			new Map([[ticketProcess.processId, { turns: new Map([[ticketProcess.startTurnId, {}]]) }]]),
 		),
 	).not.toThrow();
-	expect(() => new IntegrationToolRegistry().validateTicketProcesses(new Map())).not.toThrow();
+	expect(() =>
+		new IntegrationToolRegistry(createInMemoryExternalWriteLog()).validateTicketProcesses(
+			new Map(),
+		),
+	).not.toThrow();
+});
+
+it("binds write receipts to the server's process and keeps replay storage out of tool access", async () => {
+	const writes = createInMemoryExternalWriteLog();
+	const registry = new IntegrationToolRegistry(writes);
+	let executions = 0;
+	let remote: { id: number } | null = null;
+	registry.register({
+		name: "test_write",
+		description: "Write once",
+		parameters: { type: "object" },
+		execute: async (ctx) => {
+			expect(Object.keys(ctx.externalWrites)).toEqual(["ensure", "logOnly"]);
+			return ctx.externalWrites.ensure(
+				{ writeType: "test", dedupKey: "write-1" },
+				{
+					reconcile: async () => remote,
+					execute: async () => {
+						executions++;
+						remote = { id: 1 };
+						return remote;
+					},
+					toMetadata: (value) => ({ remoteId: value.id }),
+				},
+			);
+		},
+	});
+	const ctx = {
+		process: { id: "owner" },
+		projects: [],
+		project: null,
+		turn: {},
+		idempotencyKey: "request-1",
+	} as Parameters<IntegrationToolRegistry["execute"]>[2];
+	expect(await registry.execute("test_write", {}, ctx)).toMatchObject({ id: 1 });
+	expect(await registry.execute("test_write", {}, { ...ctx, idempotencyKey: "request-2" })).toEqual(
+		{ id: 1 },
+	);
+	expect(executions).toBe(1);
+	expect(writes.records).toMatchObject([{ instanceId: "owner", dedupKey: "write-1" }]);
 });

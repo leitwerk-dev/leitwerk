@@ -1,10 +1,4 @@
 import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-	recordWriteIfMissing,
-} from "@leitwerk-dev/external-writes";
-import {
 	type IntegrationToolExecutionContext,
 	numberArg,
 	objectArg as object,
@@ -23,6 +17,7 @@ import {
 	type ForgejoTicketCreationConfig,
 	parseLabelNames,
 } from "./client.js";
+import { existingObject, matchesPatch } from "./write-reconciliation.js";
 
 interface ForgejoTicketDestinationData {
 	profile: string;
@@ -162,7 +157,6 @@ const target = resolveForgejoProjectBinding;
 export function registerForgejoTools(
 	api: ServerExtensionAPI,
 	integration: ForgejoIntegration,
-	externalWrites: ExternalWriteLogRepoLike,
 	ticketCreation: ForgejoTicketCreationConfig = { defaultLabels: ["created-by-leitwerk"] },
 	projects?: ProcessProjectRepoLike,
 ): void {
@@ -177,25 +171,14 @@ export function registerForgejoTools(
 			(await client.listLabels(target.owner, target.repo, ctx.signal)).find(
 				(label) => label.name === name,
 			);
-		const existing = await find();
-		if (existing) return existing;
-		let created = null;
-		try {
-			await ensureWrite(
-				externalWrites,
-				ctx.process.id,
-				createWriteIdentity("forgejo.ensure_label", writeKey),
-				async () => {
-					created = await client.createLabel(target.owner, target.repo, name, "2da44e", ctx.signal);
-					return { id: created.id, name: created.name };
-				},
-			);
-		} catch (error) {
-			const reconciled = await find();
-			if (!reconciled) throw error;
-			return reconciled;
-		}
-		return created ?? (await find());
+		return await ctx.externalWrites.ensure(
+			{ writeType: "forgejo.ensure_label", dedupKey: writeKey },
+			{
+				reconcile: async () => existingObject(async () => (await find()) ?? null),
+				execute: () => client.createLabel(target.owner, target.repo, name, "2da44e", ctx.signal),
+				toMetadata: (label) => ({ id: label.id, name: label.name }),
+			},
+		);
 	}
 
 	api.tool<Record<string, unknown>>({
@@ -267,37 +250,23 @@ export function registerForgejoTools(
 					if (!label) throw new Error(`Forgejo label '${name}' is unavailable`);
 					return label.id;
 				});
-				const identity = createWriteIdentity("forgejo.create_issue", ctx.idempotencyKey);
+				const identity = { writeType: "forgejo.create_issue", dedupKey: ctx.idempotencyKey };
 				const marker = `<!-- leitwerk-ticket-write:${ctx.idempotencyKey} -->`;
 				const markedBody = `${body}\n\n${marker}`;
 				const find = async () =>
 					(await client.listIssues(target.owner, target.repo, "all", ctx.signal)).find((issue) =>
 						issue.body?.includes(marker),
 					) ?? null;
-				let issue = await find();
-				if (!issue) {
-					try {
-						await ensureWrite(externalWrites, ctx.process.id, identity, async () => {
-							issue = await client.createIssue(
-								target.owner,
-								target.repo,
-								{ title, body: markedBody, labels: labelIds },
-								ctx.signal,
-							);
-							return { number: issue.number, url: issue.html_url };
-						});
-					} catch (error) {
-						issue = await find();
-						if (!issue) throw error;
-					}
-					issue ??= await find();
-				}
-				if (!issue) throw new Error("Forgejo issue creation could not be reconciled");
-				// A lost response can be reconciled by the provider marker before a write
-				// record exists. Record the confirmed receipt without issuing another POST.
-				recordWriteIfMissing(externalWrites, ctx.process.id, identity, {
-					number: issue.number,
-					url: issue.html_url,
+				const issue = await ctx.externalWrites.ensure(identity, {
+					reconcile: () => existingObject(find),
+					execute: () =>
+						client.createIssue(
+							target.owner,
+							target.repo,
+							{ title, body: markedBody, labels: labelIds },
+							ctx.signal,
+						),
+					toMetadata: (issue) => ({ number: issue.number, url: issue.html_url }),
 				});
 				return {
 					externalId: `${target.owner}/${target.repo}#${issue.number}`,
@@ -324,24 +293,20 @@ export function registerForgejoTools(
 				(await client.listPullRequests(t.owner, t.repo, "all")).find(
 					(candidate) => candidate.head.ref === head && candidate.base.ref === base,
 				) ?? null;
-			const existing = await find();
-			if (existing) return existing;
-			let created = null;
-			await ensureWrite(
-				externalWrites,
-				ctx.process.id,
-				createWriteIdentity("forgejo.ensure_pr", ctx.idempotencyKey),
-				async () => {
-					created = await client.createPullRequest(t.owner, t.repo, {
-						title: stringArg(args, "title"),
-						body: stringArg(args, "body"),
-						head,
-						base,
-					});
-					return { number: created.number, url: created.html_url };
+			return await ctx.externalWrites.ensure(
+				{ writeType: "forgejo.ensure_pr", dedupKey: ctx.idempotencyKey },
+				{
+					reconcile: () => existingObject(find),
+					execute: () =>
+						client.createPullRequest(t.owner, t.repo, {
+							title: stringArg(args, "title"),
+							body: stringArg(args, "body"),
+							head,
+							base,
+						}),
+					toMetadata: (pr) => ({ number: pr.number, url: pr.html_url }),
 				},
 			);
-			return created ?? (await find());
 		},
 	});
 	api.tool<Record<string, unknown>>({
@@ -405,25 +370,41 @@ export function registerForgejoTools(
 				throw new Error("'feedbackKind' must be 'conversation' or 'inline'");
 			}
 			const feedbackId = numberArg(args, "feedbackId");
-			await ensureWrite(
-				externalWrites,
-				ctx.process.id,
-				createWriteIdentity("forgejo.feedback_reaction", stringArg(args, "writeKey")),
-				async () => {
-					await integration
-						.client(t.profile)
-						.addPullRequestFeedbackReaction(
-							t.owner,
-							t.repo,
-							{ kind, id: feedbackId },
-							"eyes",
-							ctx.signal,
-						);
-					return {
+			const client = integration.client(t.profile);
+			await ctx.externalWrites.ensure(
+				{ writeType: "forgejo.feedback_reaction", dedupKey: stringArg(args, "writeKey") },
+				{
+					reconcile: async () =>
+						existingObject(
+							async () =>
+								(
+									await client.listPullRequestFeedbackReactions(
+										t.owner,
+										t.repo,
+										{ kind, id: feedbackId },
+										ctx.signal,
+									)
+								).find(
+									(reaction) =>
+										reaction.content === "eyes" &&
+										reaction.user.login.toLowerCase() === client.profile.botLogin.toLowerCase(),
+								) ?? null,
+						),
+					execute: async () =>
+						object(
+							await client.addPullRequestFeedbackReaction(
+								t.owner,
+								t.repo,
+								{ kind, id: feedbackId },
+								"eyes",
+								ctx.signal,
+							),
+						),
+					toMetadata: () => ({
 						pullRequestNumber: numberArg(args, "pullRequestNumber"),
 						kind,
 						feedbackId,
-					};
+					}),
 				},
 			);
 			return { ok: true };
@@ -456,20 +437,50 @@ export function registerForgejoTools(
 					`Forgejo ${feedbackKind} feedback ${feedbackId} is unavailable on pull request #${pullRequestNumber}`,
 				);
 			}
-			await ensureWrite(
-				externalWrites,
-				ctx.process.id,
-				createWriteIdentity("forgejo.feedback_reply", stringArg(args, "writeKey")),
-				async () => {
-					await client.replyToPullRequestFeedback(
-						t.owner,
-						t.repo,
-						pullRequestNumber,
-						feedback,
-						stringArg(args, "body"),
-						ctx.signal,
-					);
-					return { pullRequestNumber, feedbackKind, feedbackId };
+			const marker = `<!-- leitwerk-write:${ctx.process.id}:${stringArg(args, "writeKey")} -->`;
+			await ctx.externalWrites.ensure(
+				{ writeType: "forgejo.feedback_reply", dedupKey: stringArg(args, "writeKey") },
+				{
+					reconcile: async (): Promise<object | null> =>
+						existingObject(async () => {
+							if (feedback.kind !== "inline" || !feedback.reviewId || !feedback.path)
+								return (
+									(
+										await client.listIssueComments(t.owner, t.repo, pullRequestNumber, ctx.signal)
+									).find((comment) => String(comment.body).includes(marker)) ?? null
+								);
+							return (
+								(
+									await client.listPullRequestFeedback(
+										t.owner,
+										t.repo,
+										pullRequestNumber,
+										ctx.signal,
+									)
+								).find(
+									(item) =>
+										item.kind === "inline" &&
+										item.reviewId === feedback.reviewId &&
+										item.path === feedback.path &&
+										(item.position ?? item.line ?? 0) ===
+											(feedback.position ?? feedback.line ?? 0) &&
+										(item.originalPosition ?? 0) === (feedback.originalPosition ?? 0) &&
+										item.body.includes(marker),
+								) ?? null
+							);
+						}),
+					execute: async () =>
+						object(
+							await client.replyToPullRequestFeedback(
+								t.owner,
+								t.repo,
+								pullRequestNumber,
+								feedback,
+								`${stringArg(args, "body")}\n\n${marker}`,
+								ctx.signal,
+							),
+						),
+					toMetadata: () => ({ pullRequestNumber, feedbackKind, feedbackId }),
 				},
 			);
 			return { ok: true };
@@ -497,19 +508,46 @@ export function registerForgejoTools(
 					const t = target(ctx);
 					const number = numberArg(args, numberName);
 					const payload = updating ? object(args.patch) : stringArg(args, "body");
-					const result = await ensureWrite(
-						externalWrites,
-						ctx.process.id,
-						createWriteIdentity(
-							updating ? "forgejo.update" : "forgejo.comment",
-							typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey,
-						),
-						async () => {
-							const client = integration.client(t.profile);
-							await (typeof payload === "string"
-								? client[comment](t.owner, t.repo, number, payload, ctx.signal)
-								: client[update](t.owner, t.repo, number, payload, ctx.signal));
-							return { owner: t.owner, repo: t.repo, number };
+					const key =
+						typeof args.writeKey === "string" ? stringArg(args, "writeKey") : ctx.idempotencyKey;
+					const marker = `<!-- leitwerk-write:${ctx.process.id}:${key} -->`;
+					const client = integration.client(t.profile);
+					const result = await ctx.externalWrites.ensure(
+						{ writeType: updating ? "forgejo.update" : "forgejo.comment", dedupKey: key },
+						{
+							reconcile: async (phase): Promise<object | null> =>
+								existingObject(async () => {
+									if (typeof payload === "string")
+										return (
+											(await client.listIssueComments(t.owner, t.repo, number, ctx.signal)).find(
+												(comment) => String(comment.body).includes(marker),
+											) ?? null
+										);
+									const current = await existingObject<object>(() =>
+										client[resource === "issue" ? "getIssue" : "getPullRequest"](
+											t.owner,
+											t.repo,
+											number,
+											ctx.signal,
+										),
+									);
+									return current && (phase === "already_recorded" || matchesPatch(current, payload))
+										? current
+										: null;
+								}),
+							execute: async () =>
+								object(
+									await (typeof payload === "string"
+										? client[comment](
+												t.owner,
+												t.repo,
+												number,
+												`${payload}\n\n${marker}`,
+												ctx.signal,
+											)
+										: client[update](t.owner, t.repo, number, payload, ctx.signal)),
+								),
+							toMetadata: () => ({ owner: t.owner, repo: t.repo, number }),
 						},
 					);
 					return updating ? { ok: true } : result;

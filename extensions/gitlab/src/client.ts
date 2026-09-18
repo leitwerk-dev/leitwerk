@@ -608,7 +608,32 @@ export class GitLabClient {
 	}
 }
 /** @public */
-export type GitLabClientLike = Pick<GitLabClient, keyof GitLabClient>;
+export type GitLabClientLike = Pick<
+	GitLabClient,
+	| "addNote"
+	| "addNoteReaction"
+	| "baseUrl"
+	| "getBranch"
+	| "getChanges"
+	| "getCommit"
+	| "getDiscussion"
+	| "getGroup"
+	| "getJobTrace"
+	| "getMergeRequest"
+	| "getPipeline"
+	| "getProject"
+	| "listBranchPipelines"
+	| "listFailedJobs"
+	| "listGroupProjects"
+	| "listMergeRequestFeedback"
+	| "listMergeRequestPipelines"
+	| "listMergeRequests"
+	| "listNoteReactions"
+	| "listNotes"
+	| "listProjects"
+	| "replyToDiscussion"
+	| "resolveGitIdentity"
+>;
 
 /** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. @public */
 export async function observeMergeRequest(

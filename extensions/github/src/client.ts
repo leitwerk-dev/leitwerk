@@ -293,15 +293,25 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 	/** @internal */
-	async ensureLabel(owner: string, repo: string, name: string) {
-		const labels = await this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`);
-		return (
-			labels.find((label) => label.name === name) ??
-			this.request<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, {
-				method: "POST",
-				body: JSON.stringify({ name, color: "238636" }),
-			})
-		);
+	listLabels(owner: string, repo: string) {
+		return this.pages<{
+			/** @internal */
+			id: number;
+			/** @internal */
+			name: string;
+		}>(`${this.repositoryPath(owner, repo)}/labels`);
+	}
+	/** @internal */
+	createLabel(owner: string, repo: string, name: string) {
+		return this.request<{
+			/** @internal */
+			id: number;
+			/** @internal */
+			name: string;
+		}>(`${this.repositoryPath(owner, repo)}/labels`, {
+			method: "POST",
+			body: JSON.stringify({ name, color: "238636" }),
+		});
 	}
 	/** @internal */
 	addFeedbackReaction(owner: string, repo: string, kind: string, id: number) {

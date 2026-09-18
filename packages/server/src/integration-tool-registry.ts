@@ -1,5 +1,9 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import {
+	bindExternalWrites,
+	type ExternalWriteLogRepoLike,
+} from "@leitwerk-dev/external-writes/internal";
+import {
 	type IntegrationToolDefinition,
 	type IntegrationToolExecutionContext,
 	parseJsonData,
@@ -27,7 +31,10 @@ import type { ToolApprovalGate } from "./tool-approval-gate.js";
 
 type RegisteredIntegrationTool = IntegrationToolDefinition<unknown>;
 type TicketCreationTool = RegisteredIntegrationTool & { capability: TicketCreationCapability };
-type IntegrationToolExecutionInput = Omit<IntegrationToolExecutionContext, "signal">;
+type IntegrationToolExecutionInput = Omit<
+	IntegrationToolExecutionContext,
+	"signal" | "externalWrites"
+>;
 
 interface PendingIntegrationToolExecution {
 	readonly controller: AbortController;
@@ -259,6 +266,7 @@ function withTicketDestinationParameter(
 }
 
 export class IntegrationToolRegistry {
+	constructor(private readonly writes: ExternalWriteLogRepoLike) {}
 	private readonly tools = new Map<string, RegisteredIntegrationTool>();
 	private readonly executions = new Map<string, PendingIntegrationToolExecution>();
 
@@ -373,7 +381,11 @@ export class IntegrationToolRegistry {
 					throw new Error("Integration tool execution cancelled");
 				}
 				return definition.execute(
-					{ ...ctx, signal: controller.signal },
+					{
+						...ctx,
+						signal: controller.signal,
+						externalWrites: bindExternalWrites(this.writes, ctx.process.id),
+					},
 					definition.parse?.(args) ?? parseToolArgs(args),
 				);
 			})

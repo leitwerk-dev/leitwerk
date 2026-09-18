@@ -70,4 +70,14 @@ The following exported declarations are `@public`:
 - `@leitwerk-dev/woodpecker`: `WoodpeckerClient`, `WoodpeckerClientLike`, `WoodpeckerIntegration`, `WoodpeckerPipeline`, `WoodpeckerProjectBinding`, `WoodpeckerRepository`, `default`, `setupWoodpeckerIntegration`.
 - `@leitwerk-dev/woodpecker/testing`: `LocalWoodpeckerAdapter`, `LocalWoodpeckerOptions`, `LocalWoodpeckerRepository`, `LocalWoodpeckerState`.
 
-See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).
+
+### External-write replay
+
+Pipeline restart uses `ctx.externalWrites.logOnly()` and returns `{ ok: true }`.
+The durable record includes diagnosis metadata and prevents a recorded restart
+from repeating. Lost responses and remote success followed by recording failure
+cannot be recovered. Pipeline status is not evidence that a restart occurred.

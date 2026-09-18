@@ -8,9 +8,20 @@
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"],
 	"references": [
-		{ "path": "../domain" },
-		{ "path": "../protocol" },
-		{ "path": "../worker-protocol" },
-		{ "path": "../watcher-utils" }
+		{
+			"path": "../domain"
+		},
+		{
+			"path": "../protocol"
+		},
+		{
+			"path": "../worker-protocol"
+		},
+		{
+			"path": "../watcher-utils"
+		},
+		{
+			"path": "../external-writes"
+		}
 	]
 }

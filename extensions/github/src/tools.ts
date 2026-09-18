@@ -1,10 +1,4 @@
 import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-	recordWriteIfMissing,
-} from "@leitwerk-dev/external-writes";
-import {
 	type IntegrationToolExecutionContext,
 	numberArg,
 	objectArg,
@@ -15,24 +9,11 @@ import {
 import { resolveGitHubProjectBinding } from "./binding.js";
 import type { GitHubIntegration } from "./capability.js";
 import { assertGitHubRepository } from "./client.js";
+import { existingObject, matchesPatch } from "./write-reconciliation.js";
 
 const object = (value: unknown) => objectArg(value, "Expected an object");
 
-async function reconcileComment(
-	comments: Promise<Array<{ body?: unknown }>>,
-	marker: string,
-	body: () => string,
-	post: (body: string) => Promise<unknown>,
-) {
-	const existing = (await comments).find((comment) => String(comment.body).includes(marker));
-	return existing ?? post(`${body()}\n\n${marker}`);
-}
-
-export function registerGitHubTools(
-	api: ServerExtensionAPI,
-	integration: GitHubIntegration,
-	writes: ExternalWriteLogRepoLike,
-) {
+export function registerGitHubTools(api: ServerExtensionAPI, integration: GitHubIntegration) {
 	const target = (ctx: IntegrationToolExecutionContext) => {
 		const binding = resolveGitHubProjectBinding(ctx);
 		assertGitHubRepository(
@@ -87,77 +68,98 @@ export function registerGitHubTools(
 				const key =
 					typeof input.writeKey === "string" ? stringArg(input, "writeKey") : ctx.idempotencyKey;
 				const marker = `<!-- leitwerk-write:${ctx.process.id}:${key} -->`;
-				let value: unknown;
-				const result = await ensureWrite(
-					writes,
-					ctx.process.id,
-					createWriteIdentity(name, key),
-					async () => {
-						if (name === "github_ensure_label")
-							value = await client.ensureLabel(t.owner, t.repo, stringArg(input, "name"));
-						else if (name === "github_update_issue") {
-							const issueNumber = numberArg(input, "issueNumber");
-							const current = await client.getIssue(t.owner, t.repo, issueNumber);
-							const patch = object(input.patch);
-							const same = Object.entries(patch).every(
-								([key, expected]) =>
-									JSON.stringify(
-										key === "labels"
-											? current.labels.map((label) => label.name).sort()
-											: object(current)[key],
-									) ===
-									JSON.stringify(
-										key === "labels" && Array.isArray(expected) ? [...expected].sort() : expected,
-									),
-							);
-							value = same
-								? current
-								: await client.updateIssue(t.owner, t.repo, issueNumber, patch);
-						} else if (name === "github_add_pull_request_feedback_reaction") {
-							const kind = stringArg(input, "feedbackKind");
-							const id = numberArg(input, "feedbackId");
-							const reactions = await client.listFeedbackReactions(t.owner, t.repo, kind, id);
-							value =
-								reactions.find(
-									(reaction) =>
-										reaction.content === "eyes" &&
-										reaction.user.login.toLowerCase() === client.profile.botLogin.toLowerCase(),
-								) ?? (await client.addFeedbackReaction(t.owner, t.repo, kind, id));
-						} else {
-							const issueNumber = numberArg(
-								{ issueNumber: input.issueNumber ?? input.pullRequestNumber },
-								"issueNumber",
-							);
-							value = await reconcileComment(
-								name === "github_reply_to_pull_request_feedback"
-									? client.listFeedbackReplies(
-											t.owner,
-											t.repo,
-											issueNumber,
-											stringArg(input, "feedbackKind"),
-										)
-									: client.listIssueComments(t.owner, t.repo, issueNumber),
-								marker,
-								() => stringArg(input, "body"),
-								(body) =>
-									name === "github_add_issue_comment"
-										? client.addIssueComment(t.owner, t.repo, issueNumber, body)
-										: client.replyFeedback(
+				const issueNumber = () =>
+					numberArg({ issueNumber: input.issueNumber ?? input.pullRequestNumber }, "issueNumber");
+				const findComment = async () => {
+					const replies =
+						name === "github_reply_to_pull_request_feedback"
+							? await client.listFeedbackReplies(
+									t.owner,
+									t.repo,
+									issueNumber(),
+									stringArg(input, "feedbackKind"),
+								)
+							: await client.listIssueComments(t.owner, t.repo, issueNumber());
+					return (
+						replies.find(
+							(comment) =>
+								String(comment.body).includes(marker) &&
+								(name !== "github_reply_to_pull_request_feedback" ||
+									input.feedbackKind !== "inline" ||
+									object(comment).in_reply_to_id === numberArg(input, "feedbackId")),
+						) ?? null
+					);
+				};
+				const result = await ctx.externalWrites.ensure(
+					{ writeType: name, dedupKey: key },
+					{
+						reconcile: async (phase): Promise<object | null> =>
+							existingObject(async () => {
+								if (name === "github_ensure_label")
+									return (
+										(await client.listLabels(t.owner, t.repo)).find(
+											(label) => label.name === stringArg(input, "name"),
+										) ?? null
+									);
+								if (name === "github_update_issue") {
+									const current = await existingObject(() =>
+										client.getIssue(t.owner, t.repo, issueNumber()),
+									);
+									return current &&
+										(phase === "already_recorded" || matchesPatch(current, object(input.patch)))
+										? current
+										: null;
+								}
+								if (name === "github_add_pull_request_feedback_reaction")
+									return (
+										(
+											await client.listFeedbackReactions(
 												t.owner,
 												t.repo,
-												issueNumber,
 												stringArg(input, "feedbackKind"),
 												numberArg(input, "feedbackId"),
-												body,
-											),
+											)
+										).find(
+											(reaction) =>
+												reaction.content === "eyes" &&
+												reaction.user.login.toLowerCase() === client.profile.botLogin.toLowerCase(),
+										) ?? null
+									);
+								return findComment();
+							}),
+						execute: async (): Promise<object> => {
+							if (name === "github_ensure_label")
+								return client.createLabel(t.owner, t.repo, stringArg(input, "name"));
+							if (name === "github_update_issue")
+								return client.updateIssue(t.owner, t.repo, issueNumber(), object(input.patch));
+							if (name === "github_add_pull_request_feedback_reaction")
+								return object(
+									await client.addFeedbackReaction(
+										t.owner,
+										t.repo,
+										stringArg(input, "feedbackKind"),
+										numberArg(input, "feedbackId"),
+									),
+								);
+							const body = `${stringArg(input, "body")}\n\n${marker}`;
+							return object(
+								await (name === "github_add_issue_comment"
+									? client.addIssueComment(t.owner, t.repo, issueNumber(), body)
+									: client.replyFeedback(
+											t.owner,
+											t.repo,
+											issueNumber(),
+											stringArg(input, "feedbackKind"),
+											numberArg(input, "feedbackId"),
+											body,
+										)),
 							);
-						}
-						return { value };
+						},
+						toMetadata: (value) => ({ value }),
 					},
 				);
-
 				if (name === "github_ensure_label") return { name: stringArg(input, "name") };
-				return value ?? result;
+				return result;
 			},
 		});
 	}
@@ -182,30 +184,20 @@ export function registerGitHubTools(
 				(await client.listPullRequests(t.owner, t.repo, "all")).find(
 					(candidate) => candidate.head.ref === head && candidate.base.ref === base,
 				) ?? null;
-			let pr = await find();
-			const identity = createWriteIdentity("github.ensure_pr", ctx.idempotencyKey);
-			if (!pr) {
-				try {
-					await ensureWrite(writes, ctx.process.id, identity, async () => {
-						pr = await client.createPullRequest(t.owner, t.repo, {
+			const pr = await ctx.externalWrites.ensure(
+				{ writeType: "github.ensure_pr", dedupKey: ctx.idempotencyKey },
+				{
+					reconcile: () => existingObject(find),
+					execute: () =>
+						client.createPullRequest(t.owner, t.repo, {
 							title: stringArg(input, "title"),
 							body: stringArg(input, "body"),
 							head,
 							base,
-						});
-						return { number: pr.number, url: pr.html_url };
-					});
-				} catch (error) {
-					pr = await find();
-					if (!pr) throw error;
-				}
-				pr ??= await find();
-			}
-			if (!pr) throw new Error("GitHub pull request creation could not be reconciled");
-			recordWriteIfMissing(writes, ctx.process.id, identity, {
-				number: pr.number,
-				url: pr.html_url,
-			});
+						}),
+					toMetadata: (pr) => ({ number: pr.number, url: pr.html_url }),
+				},
+			);
 			return pr;
 		},
 	});
@@ -277,25 +269,40 @@ export function registerGitHubTools(
 					!definition.update && typeof input.writeKey === "string"
 						? stringArg(input, "writeKey")
 						: ctx.idempotencyKey;
-				return ensureWrite(
-					writes,
-					ctx.process.id,
-					createWriteIdentity(definition.update ? "github.update_pr" : "github.comment", key),
-					async () => {
-						if (definition.update)
-							await integration
-								.client(t.profile)
-								.updatePullRequest(t.owner, t.repo, pr, object(input.patch), ctx.signal);
-						else {
-							const client = integration.client(t.profile);
-							await reconcileComment(
-								client.listIssueComments(t.owner, t.repo, pr, ctx.signal),
-								`<!-- leitwerk-write:${ctx.process.id}:${key} -->`,
-								() => stringArg(input, "body"),
-								(body) => client.addIssueComment(t.owner, t.repo, pr, body, ctx.signal),
-							);
-						}
-						return { owner: t.owner, repo: t.repo, pullRequestNumber: pr };
+				const client = integration.client(t.profile);
+				const marker = `<!-- leitwerk-write:${ctx.process.id}:${key} -->`;
+				return ctx.externalWrites.ensure(
+					{ writeType: definition.update ? "github.update_pr" : "github.comment", dedupKey: key },
+					{
+						reconcile: async (phase): Promise<object | null> =>
+							existingObject(async () => {
+								if (!definition.update)
+									return (
+										(await client.listIssueComments(t.owner, t.repo, pr, ctx.signal)).find(
+											(comment) => String(comment.body).includes(marker),
+										) ?? null
+									);
+								const current = await existingObject(() =>
+									client.getPullRequest(t.owner, t.repo, pr, ctx.signal),
+								);
+								return current &&
+									(phase === "already_recorded" || matchesPatch(current, object(input.patch)))
+									? current
+									: null;
+							}),
+						execute: async (): Promise<object> =>
+							object(
+								await (definition.update
+									? client.updatePullRequest(t.owner, t.repo, pr, object(input.patch), ctx.signal)
+									: client.addIssueComment(
+											t.owner,
+											t.repo,
+											pr,
+											`${stringArg(input, "body")}\n\n${marker}`,
+											ctx.signal,
+										)),
+							),
+						toMetadata: () => ({ owner: t.owner, repo: t.repo, pullRequestNumber: pr }),
 					},
 				);
 			},
