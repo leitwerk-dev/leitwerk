@@ -77,8 +77,9 @@ metadata uses that legacy binding and process profile. Explicit malformed metada
 identity to observations. Extensions still own scheduling, event selection, and stale-source checks.
 
 Reconnects replay a call with the same idempotency key. Mutating tools must use
-`ensureWrite()` so replay remains safe across server restarts. When a turn stops, the
-server aborts `ctx.signal`; tool implementations must pass it to cancellable provider calls.
+`ctx.externalWrites.ensure()` or `ctx.externalWrites.logOnly()` under the
+[external-write contract](process-sdk.md#typed-external-writes). When a turn stops,
+the server aborts `ctx.signal`; tools must pass it to cancellable provider calls.
 
 Authors register tools for the external systems their extension owns, such as issue trackers,
 VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.

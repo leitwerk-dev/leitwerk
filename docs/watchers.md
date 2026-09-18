@@ -131,7 +131,9 @@ fixtures, but do not own scheduled polling lifecycle. `createPollSchedule(now?)`
 
 Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. Watcher callers provide only the registered watcher, event intent, idempotency key, and optional actor attribution; the server-owned coordinator supplies launch-plan and process-executor dependencies. Watcher admission keeps the event key stable across retries. An uncommitted failed launch run may yield the key to a new attempt; once a run has a process, it remains authoritative. The shared server launch pipeline executes the admitted attempt and keeps the event key as the process handoff deduplication key.
 
-External mutations should use `ensureWrite()` from `@leitwerk-dev/external-writes` so retries and restarts converge without duplicate remote writes.
+External mutations must follow the
+[external-write contract](process-sdk.md#typed-external-writes). Retries and
+restarts reconcile remote identity before repeating a write.
 
 If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.
 

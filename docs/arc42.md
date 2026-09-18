@@ -101,7 +101,7 @@ Core packages under `packages/` maintain strict boundaries and **never** import 
 | `process-sdk` | Fluent authoring API (`flow`) for process definitions, turns, and tools. |
 | `extension-runtime` | Config-driven extension discovery, catalog loading, and host assembly. |
 | `watcher-utils` | Provider-neutral watcher polling and reconciliation utilities. |
-| `external-writes` | Idempotent external-write coordination (`ensureWrite`). |
+| `external-writes` | Idempotent external-write coordination (`ctx.externalWrites.ensure`). |
 | `session-transfer` | Portable manifest, path validation, tar+Zstandard streaming, limits, and Pi-session rewriting. |
 | `pi-session-transfer` | Interactive local Pi import, atomic recovery records, and session switching. |
 | `worker-runners` | Local, Docker, and Kubernetes execution and read-only process-export adapters. |
@@ -167,8 +167,19 @@ replacement unchanged. See [storage configuration](configuration.md#per-process-
 ### 8.1 Error Model & Orthogonal Failure Position
 Error is orthogonal to business position. When a turn fails or times out, `selectedTurnId` remains unchanged while `lifecycleStatus` transitions to `error`. A failed turn record is logged. Recovery commands (`Retry` or `Continue`) operate directly on failed turn lineages without mutating process graphs.
 
-### 8.2 Idempotent External Writes (`ensureWrite`)
-External writes to trackers and VCS providers must use `ensureWrite()` from `@leitwerk-dev/external-writes`. All external mutations are safe to retry across poll cycles and server restarts. Ticket adapters return a standard external receipt and reconcile provider-side identity after ambiguous outcomes; a durable-write row alone is not a substitute for a recoverable remote identity.
+### 8.2 Idempotent External Writes
+
+External mutations use `ctx.externalWrites.ensure()` to recover remote objects
+before execution, after execution errors, and on logged replay. A logged write
+without a recoverable remote object fails without repeating the mutation. Ticket
+adapters return a receipt backed by remote identity; a durable record alone is
+insufficient.
+
+Calls sharing a repository object and deduplication key serialize within one server
+process. This does not coordinate separate servers. Operations without recoverable
+remote identity use `ctx.externalWrites.logOnly()`, which cannot recover lost
+responses or remote success followed by recording failure. See the
+[SDK contract](process-sdk.md#typed-external-writes).
 
 ### 8.3 Turn-Record Correlation
 Every worker outcome message carries `turnRecordId` and `turnId`. The server rejects outcomes that do not match the current expected turn record, preventing stale or abandoned worker branches from mutating state.

@@ -21,6 +21,6 @@ test("source discovery is durable and merge finalizes the issue once", async ({ 
 	await f.restart();
 	const replay = await control(f, "merge", { requestId: "source-merge-once" });
 	expect(replay.result).toEqual(merged.result);
-	expect(replay.write.performed).toBe(false);
+	expect(replay.result).toBeDefined();
 	expect(repo(f).comments[issue.number]).toHaveLength(2);
 }, 60000);

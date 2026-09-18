@@ -1,9 +1,9 @@
 import type { ProcessInstance, TurnId } from "@leitwerk-dev/domain";
+import type { WriteIdentity } from "@leitwerk-dev/external-writes";
 import {
 	type ExternalWriteLogRepoLike,
 	recordWriteIfMissing,
-	type WriteIdentity,
-} from "@leitwerk-dev/external-writes";
+} from "@leitwerk-dev/external-writes/internal";
 import type { KnownDurableWsFrameType, WsPayloadByType } from "@leitwerk-dev/protocol";
 import type { PollResult } from "./poll-loop.js";
 import {

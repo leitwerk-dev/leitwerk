@@ -1,4 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
 import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { type GitHubIntegration, githubIntegration } from "./capability.js";
 import { GitHubClient, parseGitHubProfiles } from "./client.js";
@@ -46,7 +45,7 @@ export function setupGitHubIntegration(
 	api.provide(githubIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
-	registerGitHubTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
+	registerGitHubTools(api, integration);
 	return createGitHubProvider(deps, integration, options);
 }
 

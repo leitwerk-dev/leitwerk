@@ -27,7 +27,7 @@ test("publication reconciles a lost PR response and concurrent control replays r
 	const head = repo(f).pulls[0].head.sha;
 	const input = { requestId: "concurrent-feedback-control", kind: "conversation" };
 	const results = await Promise.all([control(f, "feedback", input), control(f, "feedback", input)]);
-	expect(results.map((r) => r.write.performed).sort()).toEqual([false, true]);
+	expect(results[0].result).toEqual(results[1].result);
 	expect(repo(f).feedback[repo(f).pulls[0].number]).toHaveLength(1);
 	const conflict = await f.context.app.inject({
 		method: "POST",
@@ -44,6 +44,6 @@ test("publication reconciles a lost PR response and concurrent control replays r
 	await revised(f, id, head);
 	await f.restart();
 	const replay = await control(f, "feedback", input);
-	expect(replay.write.performed).toBe(false);
+	expect(replay.result).toBeDefined();
 	expect(repo(f).replies).toHaveLength(1);
 }, 60000);
