@@ -245,6 +245,15 @@ export class FakeKubernetesApiClient implements KubernetesApiClient {
 	}
 
 	/** @internal */
+	async getPersistentVolumeClaim(
+		name: string,
+		namespace: string,
+	): Promise<KubernetesPvcSummary | null> {
+		const pvc = this.pvcs.get(`${namespace}/${name}`);
+		return pvc ? { storageClass: pvc.spec.storageClassName } : null;
+	}
+
+	/** @internal */
 	async ensurePersistentVolumeClaim(
 		manifest: KubernetesPersistentVolumeClaimManifest,
 	): Promise<void> {
