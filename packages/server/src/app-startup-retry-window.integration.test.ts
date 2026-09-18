@@ -1,5 +1,5 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { type AppContext, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
@@ -34,7 +34,7 @@ afterEach(async () => {
 });
 
 describe("startup worker reconnect retry window", () => {
-	it("returns retryable close codes after listen but before background services start", async () => {
+	it("returns retryable close codes while startup adoption is pending", async () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
 		ctx = await createAppContext({
@@ -44,11 +44,26 @@ describe("startup worker reconnect retry window", () => {
 			workerRunnerRuntime: fakeWorkerRunnerRuntime(),
 		});
 
-		const address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-
-		await expect(connectUnknownWorker(address)).resolves.toMatchObject({ code: 1013 });
-
-		await ctx.startBackgroundServices();
-		await expect(connectUnknownWorker(address)).resolves.toMatchObject({ code: 1008 });
+		const entered = Promise.withResolvers<void>();
+		const gate = Promise.withResolvers<void>();
+		const adopt = ctx.supervisor.adoptRegisteredWorkers.bind(ctx.supervisor);
+		vi.spyOn(ctx.supervisor, "adoptRegisteredWorkers").mockImplementation(async () => {
+			entered.resolve();
+			await gate.promise;
+			await adopt();
+		});
+		const starting = ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
+		try {
+			await entered.promise;
+			await expect(connectUnknownWorker(ctx.config.server.base_url)).resolves.toMatchObject({
+				code: 1013,
+			});
+		} finally {
+			gate.resolve();
+			await starting;
+		}
+		await expect(connectUnknownWorker(ctx.config.server.base_url)).resolves.toMatchObject({
+			code: 1008,
+		});
 	});
 });

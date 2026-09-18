@@ -136,7 +136,7 @@ export async function createIntegrationHarness<
 
 	let address = "";
 	try {
-		if (opts.listen !== false || config.workers.runner === "local") {
+		if (opts.listen !== false) {
 			if (opts.backgroundServices !== false) {
 				({ address } = await ctx.listen({
 					host: "127.0.0.1",
@@ -157,7 +157,9 @@ export async function createIntegrationHarness<
 		ctx,
 		close: () => ctx.close(),
 		config,
-		address,
+		get address() {
+			return address || (ctx.app.server.listening ? ctx.config.server.base_url : "");
+		},
 		resources: opts.resources ?? ({} as TResources),
 	};
 }

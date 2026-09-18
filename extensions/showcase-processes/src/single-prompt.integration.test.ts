@@ -141,7 +141,7 @@ async function createFileTriggerHarness(paths: {
 			};
 		},
 	});
-	await harness.ctx.startBackgroundServices();
+	await harness.ctx.listen();
 	return harness;
 }
 

@@ -574,7 +574,7 @@ export async function createRemoteRepoChangeFixture(
 			};
 			const result = await createIntegrationHarness({
 				// This fixture advances each provider poll explicitly.
-				backgroundServices: false,
+				backgroundServices: retainedConfig !== undefined,
 				config: retainedConfig,
 				extensionCatalog,
 				appOverrides: {
@@ -689,7 +689,6 @@ export async function createRemoteRepoChangeFixture(
 				piFactory = createPiFactory(piTurns, temporaryGit.local, options);
 				harness = await start(config);
 				runningHarness = harness;
-				await harness.ctx.startBackgroundServices();
 			},
 			piTurns: piTurns as readonly PiTurnRecord[],
 			root,
