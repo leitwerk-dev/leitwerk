@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 import { loadActiveDevelopmentComposition } from "./scripts/development-composition.js";
 import { browserViteCache } from "./scripts/playwright-cache.js";
+import { browserOutputDir, createBrowserOutputRoot } from "./scripts/test-browser.js";
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 const composition = loadActiveDevelopmentComposition(repoRoot);
@@ -27,9 +28,11 @@ const API_PORT = process.env.LEITWERK_BROWSER_API_PORT;
 const UI_PORT = process.env.LEITWERK_BROWSER_UI_PORT;
 const baseURL = `http://127.0.0.1:${UI_PORT}`;
 const cacheDir = browserViteCache();
+process.env.LEITWERK_BROWSER_OUTPUT_ROOT ??= createBrowserOutputRoot(repoRoot);
 
 export default defineConfig({
 	globalTeardown: "./scripts/playwright-cache.ts",
+	outputDir: browserOutputDir(process.env),
 	testDir: "./tests/browser",
 	fullyParallel: false,
 	forbidOnly: !!process.env.CI,

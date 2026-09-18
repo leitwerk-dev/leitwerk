@@ -1,22 +1,34 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
+import { browserOutputDir, createBrowserOutputRoot } from "./test-browser.js";
 
 describe("CI browser installation", () => {
-	it("keeps artifacts separate for every browser invocation in the full gate", () => {
-		const packageJson = JSON.parse(
-			readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+	it("isolates browser artifacts across engines and simultaneous runs in one checkout", () => {
+		const repo = mkdtempSync(path.join(tmpdir(), "leitwerk-browser-outputs-"));
+		onTestFinished(() => rmSync(repo, { recursive: true, force: true }));
+		const roots = [createBrowserOutputRoot(repo), createBrowserOutputRoot(repo)];
+		const outputs = roots.flatMap((root) =>
+			["chromium", "firefox", "webkit", "firefox-layout"].map((name) => {
+				const output = browserOutputDir({
+					LEITWERK_BROWSER_OUTPUT_ROOT: root,
+					LEITWERK_BROWSER_ENGINE: name === "firefox-layout" ? "firefox" : name,
+					...(name === "firefox-layout" ? { LEITWERK_BROWSER_OUTPUT_NAME: name } : {}),
+				});
+				if (!output) throw new Error("Missing browser output directory");
+				mkdirSync(output);
+				writeFileSync(path.join(output, "trace.zip"), name);
+				return output;
+			}),
 		);
-		const script: string = packageJson.scripts["test:browser"];
-		const invocations = script.match(/playwright test\b/g) ?? [];
-		const outputs = [...script.matchAll(/--output=([^\s"]+)/g)].map((match) => match[1]);
-		expect(invocations).toHaveLength(4);
-		expect(outputs).toHaveLength(invocations.length);
-		expect(new Set(outputs).size).toBe(outputs.length);
-		// A parent output directory would also delete another invocation's artifacts.
-		for (const output of outputs) {
-			for (const other of outputs) expect(other.startsWith(`${output}/`)).toBe(false);
+		expect(new Set(outputs).size).toBe(8);
+		// Playwright cleans its output on startup. A second run must retain every trace.
+		for (const output of outputs.slice(0, 4)) rmSync(output, { recursive: true });
+		for (const output of outputs.slice(4)) {
+			expect(readFileSync(path.join(output, "trace.zip"), "utf8")).toBe(path.basename(output));
 		}
 	});
 

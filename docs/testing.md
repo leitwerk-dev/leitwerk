@@ -21,13 +21,30 @@ npm run test:e2e
 npm run build
 ```
 
+### Concurrent validation
+
+Full validations may run concurrently in independent checkouts or worktrees,
+without a host-wide lock, reduced worker counts, or longer test timeouts. Give
+each worktree its own dependency installation; do not symlink another checkout's
+`node_modules` with workspace-package links. Builds and typechecking write into
+the checkout, so use separate worktrees rather than rebuilding outputs another
+run is currently testing.
+
+On macOS, when `PATH` selects Apple's `/usr/bin/git` launcher, validation resolves
+Git once through `xcrun` and prepends the selected developer-tool directory for
+child processes. This avoids repeatedly paying launcher overhead for Git-heavy
+tests. The selected Xcode installation and `DEVELOPER_DIR` are respected. Explicit
+Homebrew Git or custom Git wrappers on `PATH` are left unchanged. Linux keeps its
+existing environment. This does not change Git configuration or disable macOS
+security checks.
+
 ### Browser layout and behavior
 
 Install the browser engines once with `npx playwright install chromium firefox webkit`
 (`--with-deps` also installs system libraries on Linux). After rebuilding, run
 `npm run test:browser`. The full gate includes this suite in Chromium (Chrome),
 Firefox, and WebKit (Safari), including composed browser tests. Use
-`-- --project=firefox` to select one engine. Each run selects free loopback API
+`LEITWERK_BROWSER_ENGINE=firefox npx playwright test` to select one engine. Each run selects free loopback API
 and UI ports and passes them to its workers and Vite proxy; it never reuses an
 existing UI server. `LEITWERK_BROWSER_API_PORT` and `LEITWERK_BROWSER_UI_PORT`
 carry these ports within the run.
@@ -79,7 +96,7 @@ Turborepo entry point.
 
 - **Functional Core, Imperative Shell:** Pure domain logic, graph routing, and codecs are isolated from side effects. This makes them fast and simple to unit test without booting Fastify servers or physical workers. Imperative boundaries use deterministic fakes (`FakeLlmProvider` and extension-owned fakes) rather than broad mocks.
 - **Shared fixtures:** System and browser tests use `tests/helpers/accepted-llm-turn.ts` to create accepted starts, leases, and turn records together.
-- **Browser isolation:** Each Playwright invocation selects ephemeral API and UI ports, inherited by its workers through `LEITWERK_BROWSER_API_PORT` and `LEITWERK_BROWSER_UI_PORT`. It starts its own UI server and never reuses another run's server. The full gate assigns sibling output directories under `test-results/` to Chromium, WebKit, concurrent Firefox, and serial Firefox layout runs. No invocation may clean another invocation's traces or retry artifacts.
+- **Browser isolation:** Each Playwright invocation selects ephemeral API and UI ports, inherited by its workers through `LEITWERK_BROWSER_API_PORT` and `LEITWERK_BROWSER_UI_PORT`. It starts its own UI server and never reuses another run's server. Each `npm run test:browser` invocation allocates a unique directory under `test-results/` and prints its path. Chromium, WebKit, Firefox, and the subsequent Firefox layout run have separate subdirectories, including when two invocations share a checkout. No invocation may clean another invocation's traces or retry artifacts.
 - **Avoid Change Detector Tests:** Tests verify business behavior, not implementation details. For example, prompt tests assert runtime variable interpolation and sentinel values—never literal prompt prose—so harmless text edits don't break tests.
 
 ---

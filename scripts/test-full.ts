@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import process from "node:process";
 import { activateDevelopmentComposition } from "./development-composition.ts";
+import { validationEnvironment } from "./validation-environment.ts";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 activateDevelopmentComposition(process.cwd());
@@ -20,6 +21,7 @@ const phases = [
 	"test:browser",
 ];
 
+const validationEnv = validationEnvironment();
 const startedAt = performance.now();
 const timings: Array<{ phase: string; seconds: number }> = [];
 for (const phase of phases) {
@@ -28,7 +30,7 @@ for (const phase of phases) {
 	const result = spawnSync(npm, ["run", "--silent", phase], {
 		cwd: process.cwd(),
 		env: {
-			...process.env,
+			...validationEnv,
 			TURBO_DISABLE_UPDATE_CHECK: "1",
 			NODE_OPTIONS: [process.env.NODE_OPTIONS, "--no-deprecation"].filter(Boolean).join(" "),
 		},
