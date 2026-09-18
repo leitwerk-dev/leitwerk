@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing Release Please tag to resume, for example v0.1.0
+        description: Release Please draft or published tag to resume, for example v0.2.1
         required: true
         type: string
 
@@ -23,7 +23,8 @@ jobs:
     name: Resolve release inputs
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # GitHub only lists draft releases for callers with push access.
+      contents: write
       pull-requests: read
     outputs:
       version: ${{ steps.release.outputs.version }}
@@ -628,6 +629,7 @@ jobs:
             npm run publish:verify
 
       - name: Record immutable release coordinates
+        id: coordinates
         env:
           CHART_DIGEST: ${{ steps.chart.outputs.digest }}
         shell: bash
@@ -648,16 +650,21 @@ jobs:
             echo "chart_digest: $CHART_DIGEST"
           } | tee release-artifacts/final/leitwerk-base.lock.yaml
 
-      - name: Attach public release assets
+      - name: Checkout trusted release finalization tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          persist-credentials: false
+
+      - name: Attach assets and publish the draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload "$RELEASE_TAG" \
-            "${{ steps.chart.outputs.archive }}" \
-            release-artifacts/final/leitwerk-base.lock.yaml \
-            --clobber
+          CHART_ARCHIVE: ${{ steps.chart.outputs.archive }}
+        run: node .release-tooling/scripts/finalize-release.mjs
 
       - name: Upload release artifacts to workflow run
+        if: ${{ always() && steps.coordinates.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: leitwerk-${{ needs.resolve.outputs.version }}-release-artifacts

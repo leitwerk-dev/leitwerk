@@ -16,6 +16,14 @@ describe("release contract", () => {
 		expect(validateReleaseContract(repoRoot)).toEqual([]);
 	});
 
+	it.each(["draft", "force-tag-creation"])("requires %s for the root release", (field) => {
+		const config = JSON.parse(readFileSync(`${repoRoot}/release-please-config.json`, "utf8"));
+		config.packages["."][field] = false;
+		expect(validateReleaseRegistration([], config)).toContain(
+			"root release must create a draft and its Git tag before artifact publication",
+		);
+	});
+
 	it("keeps the release workflow manually recoverable", () => {
 		const workflow = readFileSync(`${repoRoot}/.github/workflows/release-please.yml`, "utf8");
 		expect(workflow.split("\n")).toContain("  workflow_dispatch:");
