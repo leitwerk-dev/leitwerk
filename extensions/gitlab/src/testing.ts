@@ -4,8 +4,10 @@ import path from "node:path";
 import type {
 	GitLabClientLike,
 	GitLabDiff,
+	GitLabFeedback,
 	GitLabMergeRequest,
 	GitLabNote,
+	GitLabNoteReaction,
 	GitLabPipeline,
 	GitLabProject,
 } from "./client.js";
@@ -30,6 +32,12 @@ interface LocalState {
 	notes: Record<string, GitLabNote[]>;
 	/** @internal */
 	diffs: Record<string, GitLabDiff[]>;
+	/** @public */
+	feedback?: Record<string, GitLabFeedback[]>;
+	/** @public */
+	discussionNotes?: Record<string, GitLabNote[]>;
+	/** @public */
+	reactions?: Record<string, GitLabNoteReaction[]>;
 }
 /** Persistent GitLab test boundary. Repository URLs use local Git's file transport. */
 /** @public */
@@ -38,6 +46,10 @@ export class LocalGitLabAdapter {
 	state: LocalState;
 	/** @public */
 	loseNextCommentResponse = false;
+	/** @public */
+	loseNextReplyResponse = false;
+	/** @public */
+	loseNextReactionResponse = false;
 	/** @public */
 	constructor(
 		/** @internal */
@@ -54,6 +66,21 @@ export class LocalGitLabAdapter {
 	/** @public */
 	save() {
 		writeFileSync(path.join(this.root, "gitlab.json"), JSON.stringify(this.state), { mode: 0o600 });
+	}
+	private append<T>(items: T[], item: T, kind: "Comment" | "Reply" | "Reaction"): T {
+		items.push(item);
+		this.save();
+		const flag = `loseNext${kind}Response` as const;
+		if (this[flag]) {
+			this[flag] = false;
+			const action = {
+				Comment: "comment write",
+				Reply: "discussion reply",
+				Reaction: "reaction write",
+			};
+			throw new Error(`Response lost after ${action[kind]}`);
+		}
+		return item;
 	}
 	private project(id: number | string) {
 		const p = this.state.projects.find((p) => p.id === id || p.path_with_namespace === id);
@@ -191,18 +218,43 @@ export class LocalGitLabAdapter {
 				username: "bot",
 			}),
 			listNotes: async (id, iid) => structuredClone(this.state.notes[`${id}:${iid}`] ?? []),
+			listMergeRequestFeedback: async (id, iid) =>
+				structuredClone(this.state.feedback?.[`${id}:${iid}`] ?? []),
+			getDiscussion: async (id, iid, discussionId) => ({
+				id: discussionId,
+				notes: (this.state.discussionNotes?.[`${id}:${iid}:${discussionId}`] ?? []).map((note) => ({
+					...structuredClone(note),
+					system: false,
+					created_at: new Date().toISOString(),
+					author: { username: "bot" },
+				})),
+			}),
+			replyToDiscussion: async (id, iid, discussionId, body) => {
+				const key = `${id}:${iid}:${discussionId}`;
+				this.state.discussionNotes ??= {};
+				this.state.discussionNotes[key] ??= [];
+				const notes = this.state.discussionNotes[key];
+				return this.append(notes, { id: notes.length + 1, body }, "Reply");
+			},
+			listNoteReactions: async (id, iid, noteId) =>
+				structuredClone(this.state.reactions?.[`${id}:${iid}:${noteId}`] ?? []),
+			addNoteReaction: async (id, iid, noteId, name) => {
+				const key = `${id}:${iid}:${noteId}`;
+				this.state.reactions ??= {};
+				this.state.reactions[key] ??= [];
+				const reactions = this.state.reactions[key];
+				if (
+					reactions.some((reaction) => reaction.name === name && reaction.user.username === "bot")
+				)
+					throw new Error("Reaction already exists");
+				const reaction = { id: reactions.length + 1, name, user: { username: "bot" } };
+				return this.append(reactions, reaction, "Reaction");
+			},
 			addNote: async (id, iid, body) => {
 				const key = `${id}:${iid}`;
 				this.state.notes[key] ??= [];
-				const list = this.state.notes[key];
-				const note = { id: list.length + 1, body };
-				list.push(note);
-				this.save();
-				if (this.loseNextCommentResponse) {
-					this.loseNextCommentResponse = false;
-					throw new Error("Response lost after comment write");
-				}
-				return note;
+				const notes = this.state.notes[key];
+				return this.append(notes, { id: notes.length + 1, body }, "Comment");
 			},
 		};
 	}

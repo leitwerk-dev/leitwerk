@@ -66,6 +66,10 @@ export interface BootstrapWorkerRuntimeDeps {
 	gitOps: RunRootGitOps;
 	scheduler: WorkerRuntimeScheduler;
 	developmentTools?: DevelopmentToolEnvironment;
+	configureDockerCredentials?(
+		credentials: NonNullable<WorkerStartPayload["dockerRegistryCredentials"]>,
+		enabled: boolean,
+	): void;
 	toolPreparationSignal?: AbortSignal;
 	onToolPreparationProgress?(repositoryKey: string, phase: "installing" | "verifying"): void;
 	onToolDiagnosticTrace?(text: string): void;
@@ -135,19 +139,19 @@ export interface BootstrapWorkerRuntimeResult {
 }
 
 function withoutCredentialValues(payload: WorkerStartPayload): WorkerStartPayload {
-	const withoutRepositoryCredentials = {
+	const withoutCredentials = {
 		...payload,
 		repositoryCredentials: undefined,
+		dockerRegistryCredentials: undefined,
 	} as WorkerStartPayload;
-	if (!isLlmWorkerStartPayload(payload) || !payload.bootstrap.credential) {
-		return withoutRepositoryCredentials;
+	if (!isLlmWorkerStartPayload(withoutCredentials) || !withoutCredentials.bootstrap.credential) {
+		return withoutCredentials;
 	}
 	return {
-		...payload,
-		repositoryCredentials: undefined,
+		...withoutCredentials,
 		bootstrap: {
-			...payload.bootstrap,
-			credential: { ...payload.bootstrap.credential, values: {} },
+			...withoutCredentials.bootstrap,
+			credential: { ...withoutCredentials.bootstrap.credential, values: {} },
 		},
 	};
 }
@@ -424,6 +428,13 @@ export async function bootstrapWorkerRuntime(
 		? await deps.resolveWorkerProcess(processId, { paramsJson, stateJson })
 		: undefined;
 
+	const dockerCredentials = deps.payload.dockerRegistryCredentials ?? [];
+	if (dockerCredentials.length && !deps.configureDockerCredentials)
+		throw new Error("Docker credential delivery is unavailable");
+	deps.configureDockerCredentials?.(
+		dockerCredentials,
+		resolvedWorkerProcess?.runtime?.docker === true,
+	);
 	const projectSnapshots = projectSnapshotsFromPayload(deps.payload.projectSnapshots);
 	const repositoryCredentials = deps.payload.repositoryCredentials ?? [];
 	const declaredRequirements =

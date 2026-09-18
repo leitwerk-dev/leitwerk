@@ -1,4 +1,11 @@
-import { completeSimple, getModel, type ThinkingLevel } from "@earendil-works/pi-ai/compat";
+import {
+	type Api,
+	completeSimple,
+	getModel,
+	type Model,
+	type ThinkingLevel,
+} from "@earendil-works/pi-ai/compat";
+import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 import { definePiServerAdapter, type PiServerAdapter } from "@leitwerk-dev/process-sdk";
 
 const THINKING_LEVELS = new Set<ThinkingLevel>([
@@ -23,9 +30,21 @@ function requireApiKey(secrets: Readonly<Record<string, string>>): string {
 }
 
 function configuredBaseUrl(config: unknown): string | undefined {
-	if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
-	const value = (config as { baseUrl?: unknown }).baseUrl;
+	const value = isRecord(config) ? config.baseUrl : undefined;
 	return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+}
+
+function configuredModel(
+	config: unknown,
+	providerId: string,
+	modelId: string,
+): Model<Api> | undefined {
+	if (!isRecord(config) || !Array.isArray(config.models)) return undefined;
+	// The owning provider parses and normalizes these credential-blind definitions.
+	return config.models.find(
+		(model): model is Model<Api> =>
+			isRecord(model) && model.provider === providerId && model.id === modelId,
+	);
 }
 
 /**
@@ -41,7 +60,9 @@ export function createBuiltinPiServerAdapter(builtinProviderId: string): PiServe
 					`Built-in adapter '${builtinProviderId}' cannot serve provider '${input.providerId}'`,
 				);
 			}
-			const canonicalModel = getModel(builtinProviderId as never, input.modelId as never);
+			const canonicalModel =
+				configuredModel(input.config, builtinProviderId, input.modelId) ??
+				getModel(builtinProviderId as never, input.modelId as never);
 			if (!canonicalModel) {
 				throw new Error(`Built-in Pi model '${builtinProviderId}/${input.modelId}' is unavailable`);
 			}

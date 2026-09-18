@@ -28,9 +28,13 @@ extensions:
 
 ## Project-bound tools
 
-Project metadata binds tools to `{ gitlab: { profile, projectId, iid } }`. Each call requires an authorized process project. Available tools are `gitlab_observe_merge_request`, `gitlab_get_changes`, `gitlab_get_identity`, `gitlab_list_failed_jobs`, `gitlab_get_job_trace`, and `gitlab_comment`. Job and pipeline reads verify membership in the bound MR's current pipeline. Traces cap individual reads at 256 KiB; truncation is explicit.
+Project metadata binds tools to `{ gitlab: { profile, projectId, iid } }`. Each call requires an authorized process project. Available tools are `gitlab_observe_merge_request`, `gitlab_get_changes`, `gitlab_get_identity`, `gitlab_list_failed_jobs`, `gitlab_get_job_trace`, `gitlab_comment`, and `gitlab_reply`. Job and pipeline reads verify membership in the bound MR's current pipeline. Traces cap individual reads at 256 KiB; truncation is explicit.
 
-Comments require a stable business `writeKey`. `ensureGitLabComment()` combines it with the instance, project, MR and process IDs, appends a hidden marker, and uses `ensureWrite()`. It searches remote notes before creating a comment and after an uncertain write. Repeating a call after losing either the response or the local write-log record reuses the same remote comment.
+Comments require a stable business `writeKey`. `ensureGitLabComment()` combines it with the instance, project, MR and process IDs, appends a hidden marker, and uses `ensureWrite()`. It searches remote notes before creating a comment and after an uncertain write. `gitlab_reply` additionally requires `discussionId` and reconciles within that discussion. Repeating a call after losing either the response or the local write-log record reuses the same remote comment.
+
+The MR external source can also observe review feedback using `feedback: { afterId, since, quietPeriodMs }`. It reads paginated discussions, preserving inline file/line context, and excludes system/resolved notes, the authenticated bot and accounts flagged as bots. Each new unseen note resets the trailing quiet period; a mature batch wakes the process even when the MR revision and CI status are unchanged. The process owns the durable cursor and decides when feedback is consumed. The provider recomputes timing from note timestamps after restart.
+
+`ensureGitLabSeenReaction()` lets a process acknowledge an authorized MR comment with an eyes reaction. It reconciles the authenticated bot's reaction and records it with `ensureWrite()`. Other users' eyes reactions do not suppress the bot's acknowledgement; retries and restarts do not duplicate it. The calling process owns selection and lifecycle checks.
 
 The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.
 

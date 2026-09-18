@@ -15,6 +15,7 @@ This document defines security boundaries, authentication models, and credential
 ## 2. Secrets & Container Isolation
 
 - **SQLite Secret Encryption:** Provider credentials stored in SQLite are encrypted using a 32-byte application key (`LEITWERK_CREDENTIAL_ENCRYPTION_KEY`). Raw secrets never appear in logs, process state, or session tree files.
+- **Admission policy:** The Helm chart owns Kubernetes admission-policy generation. See the [breaking API migration](kubernetes-deployment-guide.md#admission-policy-api-migration-breaking) for external deployment tools.
 - **Container Isolation:** Docker and Kubernetes container runtimes provide the production security boundary. Workers operate in isolated environments without direct database access. Kubernetes private-Docker Pods use only the operator-configured RuntimeClass and `hostUsers`; Leitwerk does not add privileged mode, host paths, host namespaces, capabilities, a node runtime socket, or a TCP Docker listener.
 - **Transfer Scope:** Export preflight is root-confined and accepts only regular files, directories, and relative symlinks that remain inside the workspace. Archives exclude provider, repository, Pi-agent, and runner credentials. Both peers enforce entry, logical-byte, and compressed-byte limits; local Pi verifies the final compressed SHA-256 before committing.
 - **Isolated Export Helpers:** Docker named-volume and Kubernetes PVC helpers receive only non-secret manifest and limit data plus one random export credential. The server keeps its SHA-256 hash, binds it to one live attempt, accepts one stream, and rechecks lease and deadline state on every helper request. Helpers mount only the process volume's `workspace/` and `tree/` directories read-only, plus an optional read-only server CA certificate. Pi-agent state and other process-volume directories are not mounted. Helpers receive no worker connection, model, provider, Forgejo, repository, Docker, or Kubernetes API credential, and wait for an active client stream before uploading. Docker named-volume exports require Engine 26.0 or newer (API 1.45+) for scoped volume mounts; unsupported APIs fail without a full-volume fallback.
@@ -91,3 +92,16 @@ process data.
 The credential provider authorizes an HTTPS origin; the server narrows it to the process project's exact repository URL. Userinfo, query strings, fragments and ambiguous paths are rejected. Fresh username/password material travels only in authenticated `worker.start`. The worker validates it against both the process declaration and authenticated project snapshots, then removes it from its retained runtime payload.
 
 HTTPS credentials are materialized outside checkouts in a mode-0700 temporary directory. Secret files use 0600. An ephemeral Node Git credential helper answers only `get` requests for the exact HTTPS host, port and repository path. Trusted Git resets credential-helper configuration, enables path matching, disables redirects and disallows other transports. Tokens never appear in clone URLs, argv, Git configuration or ordinary tool environments. Worker cleanup removes the files and internal registrations, including partially materialized batches. As with SSH keys, this is credential routing within a semi-trusted worker, not isolation from code running as the same OS user.
+
+### Docker registry credentials
+
+[Operator-owned bindings](configuration.md#docker-registry-credentials) select
+credentials for Docker-enabled processes, never process parameters. Bindings control
+delivery, not registry-side account permissions.
+
+Workers materialize Docker `config.json` in a private ephemeral directory (0700;
+file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
+Shutdown and failed bootstrap remove credentials. Credential values and encoded
+auth are redacted from IPC diagnostics; credential payloads are removed from retained
+bootstrap state. Credential directories are outside process volumes and exports.
+See [worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).

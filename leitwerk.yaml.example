@@ -285,14 +285,23 @@ extensions:
   #   azure-openai-responses:
   #     api_key: env:AZURE_OPENAI_API_KEY
   #     base_url: env:AZURE_OPENAI_ENDPOINT # optional non-secret HTTP(S) endpoint
+  #     models: # Optional deployment IDs absent from the bundled catalog.
+  #       - id: private-reasoner
+  #         reasoning: true
+  #         thinking_level_map: {low: low, medium: medium, xhigh: xhigh}
   #   custom_gateways:
   #     internal-gateway:
   #       base_url: https://llm-gateway.example.com/v1
   #       api_key: false # set to false for unauthenticated endpoints, or use env:VAR
   #       api: openai-completions
+  #       compat: {supportsStore: false, thinkingFormat: deepseek}
   #       models:
   #         - id: gemma-4-31b-it
   #           name: Gemma 4 31B IT
+  #           reasoning: true
+  #           thinking_level_map: {off: null, xhigh: high}
+  #           input: [text]
+  #           cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
   # git-ssh:
   #   credentials:
   #     default:
@@ -323,6 +332,23 @@ extensions:
       - deepseek-v4-flash
       - deepseek-v4-pro
       - gpt-5.5-xhigh-auto
+
+# Server-only inner Docker authentication, separate from Kubernetes image pulls.
+# Registry-side account permissions remain authoritative.
+# docker_registries:
+#   profiles:
+#     build_registry:
+#       registry: registry.example.com
+#       username: robot
+#       password: replace-with-secret
+#   process_bindings:
+#     docker_enabled_process: [build_registry]
+# Worker profiles also accept resources.requests: {cpu: "1", memory: 2Gi}.
+# kubernetes.docker.network (trusted operator allocation):
+#   bridge_cidr: 192.168.224.1/24
+#   address_pools: [{base: 192.168.232.0/21, size: 24}]
+#   dns: [10.96.0.10]
+# The example network is for disposable canaries; allocate production ranges separately.
 
 # Optional GitHub organization boundary (configure an actual token locally):
 # extensions:

@@ -1,22 +1,14 @@
 import path from "node:path";
+import type { DockerNetworkConfig } from "@leitwerk-dev/worker-protocol";
 import type { IsolatedStartWorkerInput, VolumeRef, WorkerExitInfo } from "./types.js";
 import {
 	buildExportHelperLabels,
 	buildProcessResourceLabels,
 	buildWorkerUnitLabels,
-	EXPORT_HELPER_COMPONENT_VALUE,
-	EXPORT_HELPER_LABEL_EXPORT_ID,
 	PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE,
 	PROCESS_NAMESPACE_COMPONENT_VALUE,
 	PROCESS_SERVER_CA_COMPONENT_VALUE,
 	PROCESS_VOLUME_COMPONENT_VALUE,
-	WORKER_LABEL_COMPONENT,
-	WORKER_LABEL_COMPONENT_VALUE,
-	WORKER_LABEL_INSTANCE_ID,
-	WORKER_LABEL_MANAGED_BY,
-	WORKER_LABEL_MANAGED_BY_VALUE,
-	WORKER_LABEL_SERVER_EPOCH,
-	WORKER_LABEL_WORKER_ID,
 } from "./worker-labels.js";
 
 /** @internal */
@@ -64,6 +56,8 @@ export interface KubernetesDockerPodSpecOptions {
 	runtimeClassName: string;
 	/** @internal */
 	hostUsers: boolean;
+	/** @internal */
+	network?: DockerNetworkConfig;
 }
 
 /** @internal */
@@ -97,11 +91,11 @@ export interface KubernetesPodSpecOptions {
 }
 
 /** @internal */
-export interface KubernetesPersistentVolumeClaimManifest {
+interface NamespacedManifest<Kind extends string> {
 	/** @internal */
 	apiVersion: "v1";
 	/** @internal */
-	kind: "PersistentVolumeClaim";
+	kind: Kind;
 	/** @internal */
 	metadata: {
 		/** @internal */
@@ -111,6 +105,11 @@ export interface KubernetesPersistentVolumeClaimManifest {
 		/** @internal */
 		labels: Record<string, string>;
 	};
+}
+
+/** @internal */
+export interface KubernetesPersistentVolumeClaimManifest
+	extends NamespacedManifest<"PersistentVolumeClaim"> {
 	/** @internal */
 	spec: {
 		/** @internal */
@@ -129,113 +128,19 @@ export interface KubernetesPersistentVolumeClaimManifest {
 }
 
 /** @internal */
-export interface KubernetesConfigMapManifest {
-	/** @internal */
-	apiVersion: "v1";
-	/** @internal */
-	kind: "ConfigMap";
-	/** @internal */
-	metadata: {
-		/** @internal */
-		name: string;
-		/** @internal */
-		namespace: string;
-		/** @internal */
-		labels: Record<string, string>;
-	};
+export interface KubernetesConfigMapManifest extends NamespacedManifest<"ConfigMap"> {
 	/** @internal */
 	data: Record<string, string>;
 }
 
 /** @internal */
-export interface KubernetesDockerConfigJsonSecretManifest {
-	/** @internal */
-	apiVersion: "v1";
-	/** @internal */
-	kind: "Secret";
-	/** @internal */
-	metadata: {
-		/** @internal */
-		name: string;
-		/** @internal */
-		namespace: string;
-		/** @internal */
-		labels: Record<string, string>;
-	};
+export interface KubernetesDockerConfigJsonSecretManifest extends NamespacedManifest<"Secret"> {
 	/** @internal */
 	type: "kubernetes.io/dockerconfigjson";
 	/** @internal */
 	data: {
 		/** @internal */
 		".dockerconfigjson": string;
-	};
-}
-
-/** @internal */
-export interface KubernetesValidatingAdmissionPolicyManifest {
-	/** @internal */
-	apiVersion: "admissionregistration.k8s.io/v1";
-	/** @internal */
-	kind: "ValidatingAdmissionPolicy";
-	/** @internal */
-	metadata: {
-		/** @internal */
-		name: string;
-		/** @internal */
-		labels?: Record<string, string>;
-	};
-	/** @internal */
-	spec: {
-		/** @internal */
-		matchConditions?: Array<{
-			/** @internal */
-			name: string;
-			/** @internal */
-			expression: string;
-		}>;
-		/** @internal */
-		matchConstraints: {
-			/** @internal */
-			resourceRules: Array<{
-				/** @internal */
-				apiGroups: string[];
-				/** @internal */
-				apiVersions: string[];
-				/** @internal */
-				operations: string[];
-				/** @internal */
-				resources: string[];
-			}>;
-		};
-		/** @internal */
-		validations: Array<{
-			/** @internal */
-			expression: string;
-			/** @internal */
-			message: string;
-		}>;
-	};
-}
-
-/** @internal */
-export interface KubernetesValidatingAdmissionPolicyBindingManifest {
-	/** @internal */
-	apiVersion: "admissionregistration.k8s.io/v1";
-	/** @internal */
-	kind: "ValidatingAdmissionPolicyBinding";
-	/** @internal */
-	metadata: {
-		/** @internal */
-		name: string;
-		/** @internal */
-		labels?: Record<string, string>;
-	};
-	/** @internal */
-	spec: {
-		/** @internal */
-		policyName: string;
-		/** @internal */
-		validationActions: string[];
 	};
 }
 
@@ -262,19 +167,9 @@ export interface KubernetesPodEventSummary {
 }
 
 /** @internal */
-export interface KubernetesPodManifest {
+export interface KubernetesPodManifest extends NamespacedManifest<"Pod"> {
 	/** @internal */
-	apiVersion: "v1";
-	/** @internal */
-	kind: "Pod";
-	/** @internal */
-	metadata: {
-		/** @internal */
-		name: string;
-		/** @internal */
-		namespace: string;
-		/** @internal */
-		labels: Record<string, string>;
+	metadata: NamespacedManifest<"Pod">["metadata"] & {
 		/** @internal */
 		annotations?: Record<string, string>;
 	};
@@ -382,11 +277,7 @@ export const KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH = "/leitwerk/server-ca";
 export const KUBERNETES_WORKER_SERVER_CA_CERT_PATH = `${KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH}/${KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY}`;
 
 function safeKubernetesDnsName(value: string, maxLen = DNS_LABEL_MAX): string {
-	const cleaned =
-		value
-			.toLowerCase()
-			.replace(/[^a-z0-9-]/g, "-")
-			.replace(/^-+|-+$/g, "") || "x";
+	const cleaned = sanitizeKubernetesNameSegment(value);
 	const trimmed = cleaned.slice(0, maxLen).replace(/-+$/g, "");
 	return trimmed.length > 0 ? trimmed : "x";
 }
@@ -461,6 +352,21 @@ export function buildKubernetesProcessNamespaceManifest(args: {
 	};
 }
 
+function processResourceMetadata(
+	args: { instanceId: string; namespace: string; extraLabels?: Record<string, string> },
+	name: string,
+	component: Parameters<typeof buildProcessResourceLabels>[0]["component"],
+): NamespacedManifest<string>["metadata"] {
+	return {
+		name,
+		namespace: args.namespace,
+		labels: buildProcessResourceLabels(
+			{ instanceId: args.instanceId, component },
+			args.extraLabels,
+		),
+	};
+}
+
 /** @internal */
 export function buildKubernetesProcessPvcManifest(args: {
 	/** @internal */
@@ -472,10 +378,6 @@ export function buildKubernetesProcessPvcManifest(args: {
 	/** @internal */
 	extraLabels?: Record<string, string>;
 }): KubernetesPersistentVolumeClaimManifest {
-	const labels = buildProcessResourceLabels(
-		{ instanceId: args.instanceId, component: PROCESS_VOLUME_COMPONENT_VALUE },
-		args.extraLabels,
-	);
 	const spec: KubernetesPersistentVolumeClaimManifest["spec"] = {
 		accessModes: [...args.volume.accessModes],
 		resources: { requests: { storage: args.volume.size } },
@@ -486,11 +388,11 @@ export function buildKubernetesProcessPvcManifest(args: {
 	return {
 		apiVersion: "v1",
 		kind: "PersistentVolumeClaim",
-		metadata: {
-			name: kubernetesProcessPvcName(args.instanceId, args.volume.namePrefix),
-			namespace: args.namespace,
-			labels,
-		},
+		metadata: processResourceMetadata(
+			args,
+			kubernetesProcessPvcName(args.instanceId, args.volume.namePrefix),
+			PROCESS_VOLUME_COMPONENT_VALUE,
+		),
 		spec,
 	};
 }
@@ -503,18 +405,14 @@ export function buildKubernetesServerCaConfigMapManifest(args: {
 	key?: string;
 	extraLabels?: Record<string, string>;
 }): KubernetesConfigMapManifest {
-	const labels = buildProcessResourceLabels(
-		{ instanceId: args.instanceId, component: PROCESS_SERVER_CA_COMPONENT_VALUE },
-		args.extraLabels,
-	);
 	return {
 		apiVersion: "v1",
 		kind: "ConfigMap",
-		metadata: {
-			name: args.name ?? KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-			namespace: args.namespace,
-			labels,
-		},
+		metadata: processResourceMetadata(
+			args,
+			args.name ?? KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+			PROCESS_SERVER_CA_COMPONENT_VALUE,
+		),
 		data: { [args.key ?? KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY]: args.caPem },
 	};
 }
@@ -529,17 +427,7 @@ export function buildKubernetesDockerConfigJsonSecretManifest(args: {
 	return {
 		apiVersion: "v1",
 		kind: "Secret",
-		metadata: {
-			name: args.name,
-			namespace: args.namespace,
-			labels: buildProcessResourceLabels(
-				{
-					instanceId: args.instanceId,
-					component: PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE,
-				},
-				args.extraLabels,
-			),
-		},
+		metadata: processResourceMetadata(args, args.name, PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE),
 		type: "kubernetes.io/dockerconfigjson",
 		data: { ".dockerconfigjson": args.dockerConfigJson },
 	};
@@ -554,48 +442,60 @@ function envList(env: Record<string, string>): Array<{ name: string; value: stri
 function resources(
 	input: IsolatedStartWorkerInput,
 ): KubernetesPodManifest["spec"]["containers"][number]["resources"] {
-	const limits: Record<string, string> = {};
-	if (input.resources?.cpu) limits.cpu = input.resources.cpu;
-	if (input.resources?.memory) limits.memory = input.resources.memory;
-	return Object.keys(limits).length > 0 ? { limits } : undefined;
+	const result: NonNullable<ReturnType<typeof resources>> = {};
+	for (const [kind, values] of [
+		["limits", { cpu: input.resources?.cpu, memory: input.resources?.memory }],
+		["requests", input.resourceRequests],
+	] as const) {
+		const entries = Object.entries(values ?? {}).filter(([, value]) => value);
+		if (entries.length) result[kind] = Object.fromEntries(entries);
+	}
+	return Object.keys(result).length ? result : undefined;
 }
 
-function podMetadata(
+function podManifest(
 	name: string,
-	namespace: string,
+	volume: VolumeRef,
 	labels: Record<string, string>,
 	options: KubernetesPodSpecOptions,
-): KubernetesPodManifest["metadata"] {
+	container: KubernetesPodManifest["spec"]["containers"][number],
+	spec: Partial<KubernetesPodManifest["spec"]> = {},
+): KubernetesPodManifest {
 	return {
-		name,
-		namespace,
-		labels,
-		...(options.annotations && Object.keys(options.annotations).length > 0
-			? { annotations: { ...options.annotations } }
-			: {}),
-	};
-}
-
-function sharedPodSpec(options: KubernetesPodSpecOptions): Partial<KubernetesPodManifest["spec"]> {
-	return {
-		...(options.workerServiceAccount?.trim()
-			? { serviceAccountName: options.workerServiceAccount }
-			: {}),
-		...(options.imagePullSecrets?.length
-			? { imagePullSecrets: options.imagePullSecrets.map((name) => ({ name })) }
-			: {}),
-		...(options.nodeSelector && Object.keys(options.nodeSelector).length > 0
-			? { nodeSelector: { ...options.nodeSelector } }
-			: {}),
-		...(options.tolerations?.length ? { tolerations: [...options.tolerations] } : {}),
-		...(options.hostAliases?.length
-			? {
-					hostAliases: options.hostAliases.map(({ ip, hostnames }) => ({
-						ip,
-						hostnames: [...hostnames],
-					})),
-				}
-			: {}),
+		apiVersion: "v1",
+		kind: "Pod",
+		metadata: {
+			name,
+			namespace: volume.namespace ?? options.namespace,
+			labels,
+			...(options.annotations && Object.keys(options.annotations).length > 0
+				? { annotations: { ...options.annotations } }
+				: {}),
+		},
+		spec: {
+			restartPolicy: "Never",
+			...(options.workerServiceAccount?.trim()
+				? { serviceAccountName: options.workerServiceAccount }
+				: {}),
+			...(options.imagePullSecrets?.length
+				? { imagePullSecrets: options.imagePullSecrets.map((name) => ({ name })) }
+				: {}),
+			...(options.nodeSelector && Object.keys(options.nodeSelector).length > 0
+				? { nodeSelector: { ...options.nodeSelector } }
+				: {}),
+			...(options.tolerations?.length ? { tolerations: [...options.tolerations] } : {}),
+			...(options.hostAliases?.length
+				? {
+						hostAliases: options.hostAliases.map(({ ip, hostnames }) => ({
+							ip,
+							hostnames: [...hostnames],
+						})),
+					}
+				: {}),
+			...spec,
+			containers: [container],
+			volumes: processStateVolumes(volume.id, options.serverCaConfigMap),
+		},
 	};
 }
 
@@ -658,33 +558,25 @@ export function buildKubernetesExportHelperPodManifest(
 	},
 	options: KubernetesPodSpecOptions,
 ): KubernetesPodManifest {
-	const ca = options.serverCaConfigMap;
-	const namespace = input.volume.namespace ?? options.namespace;
-	return {
-		apiVersion: "v1",
-		kind: "Pod",
-		metadata: podMetadata(
-			kubernetesExportHelperPodName(input.instanceId, input.exportId),
-			namespace,
-			buildExportHelperLabels({ instanceId: input.instanceId, exportId: input.exportId }),
-			options,
-		),
-		spec: {
-			restartPolicy: "Never",
-			automountServiceAccountToken: false,
-			...sharedPodSpec(options),
-			containers: [
-				{
-					name: "session-export-helper",
-					image: input.image,
-					command: [...input.command],
-					...processStateContainerConfig(input.env, input.volume.mountPath, true, ca),
-					...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
-				},
-			],
-			volumes: processStateVolumes(input.volume.id, ca),
+	return podManifest(
+		kubernetesExportHelperPodName(input.instanceId, input.exportId),
+		input.volume,
+		buildExportHelperLabels({ instanceId: input.instanceId, exportId: input.exportId }),
+		options,
+		{
+			name: "session-export-helper",
+			image: input.image,
+			command: [...input.command],
+			...processStateContainerConfig(
+				input.env,
+				input.volume.mountPath,
+				true,
+				options.serverCaConfigMap,
+			),
+			...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
 		},
-	};
+		{ automountServiceAccountToken: false },
+	);
 }
 
 /** @internal */
@@ -700,58 +592,34 @@ export function buildKubernetesWorkerPodManifest(
 	});
 	const containerResources = resources(input);
 	const ca = options.serverCaConfigMap;
-	const caCertPath = ca ? `${ca.mountPath}/${ca.key}` : undefined;
 	const trustedDockerEnv = input.docker
 		? {
 				...input.env,
 				DOCKER_HOST: "unix:///var/run/docker.sock",
 				LEITWERK_PRIVATE_DOCKER: "1",
 				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
+				...(options.docker?.network
+					? { LEITWERK_DOCKER_NETWORK: JSON.stringify(options.docker.network) }
+					: {}),
 			}
 		: input.env;
-	const containerEnv = caCertPath
-		? { ...trustedDockerEnv, NODE_EXTRA_CA_CERTS: caCertPath }
-		: trustedDockerEnv;
-	const volumeMounts: KubernetesPodManifest["spec"]["containers"][number]["volumeMounts"] = [
-		{ name: WORKER_VOLUME_NAME, mountPath: volume.mountPath },
-	];
-	if (ca) {
-		volumeMounts.push({
-			name: WORKER_SERVER_CA_VOLUME_NAME,
-			mountPath: ca.mountPath,
-			readOnly: true,
-		});
-	}
 	const container: KubernetesPodManifest["spec"]["containers"][number] = {
 		name: "worker",
 		image: input.image.reference,
-		env: envList(containerEnv),
-		volumeMounts,
+		...processStateContainerConfig(trustedDockerEnv, volume.mountPath, false, ca),
 		...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
 		...(containerResources ? { resources: containerResources } : {}),
 	};
-	return {
-		apiVersion: "v1",
-		kind: "Pod",
-		metadata: podMetadata(
-			kubernetesWorkerPodName(input.instanceId, input.workerId),
-			volume.namespace ?? options.namespace,
-			labels,
-			options,
-		),
-		spec: {
-			restartPolicy: "Never",
-			...sharedPodSpec(options),
-			...(input.docker && options.docker
-				? {
-						runtimeClassName: options.docker.runtimeClassName,
-						hostUsers: options.docker.hostUsers,
-					}
-				: {}),
-			containers: [container],
-			volumes: processStateVolumes(volume.id, ca),
-		},
-	};
+	return podManifest(
+		kubernetesWorkerPodName(input.instanceId, input.workerId),
+		volume,
+		labels,
+		options,
+		container,
+		input.docker && options.docker
+			? { runtimeClassName: options.docker.runtimeClassName, hostUsers: options.docker.hostUsers }
+			: {},
+	);
 }
 
 const KUBERNETES_DIAGNOSTIC_MAX_LENGTH = 2_048;
@@ -840,203 +708,6 @@ export function mapKubernetesPodExit(args: {
 		signal: args.signal ?? null,
 		...(args.oomKilled !== undefined ? { oomKilled: args.oomKilled } : {}),
 		...(reason ? { reason } : {}),
-	};
-}
-
-interface AdmissionRule {
-	/** "Namespace" = only-namespace, "!Namespace" = everything-but-namespace, or a specific kind */
-	scope: string;
-	condition: string;
-	message: string;
-}
-
-function admissionObjectExpression(): string {
-	return "(request.operation == 'DELETE' ? oldObject : object)";
-}
-
-function toAdmissionObjectCondition(condition: string): string {
-	return condition.replaceAll("object.", `${admissionObjectExpression()}.`);
-}
-
-function toCelExpression(rule: AdmissionRule): string {
-	const obj = admissionObjectExpression();
-	const condition = toAdmissionObjectCondition(rule.condition);
-	if (rule.scope === "Namespace") return `${obj}.kind != 'Namespace' || ${condition}`;
-	if (rule.scope === "!Namespace") return `${obj}.kind == 'Namespace' || ${condition}`;
-	return `${obj}.kind != '${rule.scope}' || ${condition}`;
-}
-
-/** @internal */
-export function buildKubernetesAdmissionPolicyManifests(args: {
-	/** @internal */
-	name: string;
-	/** @internal */
-	serverNamespace: string;
-	/** @internal */
-	serverServiceAccountName: string;
-	/** @internal */
-	processNamespacePrefix: string;
-	/** @internal */
-	allowedWorkerServiceAccount?: string;
-	/** @internal */
-	allowedImagePullSecretNames?: string[];
-	/** @internal */
-	labels?: Record<string, string>;
-}): {
-	/** @internal */
-	policy: KubernetesValidatingAdmissionPolicyManifest;
-	/** @internal */
-	binding: KubernetesValidatingAdmissionPolicyBindingManifest;
-} {
-	const p = args.processNamespacePrefix;
-	const sa = args.allowedWorkerServiceAccount?.trim() || "leitwerk-worker";
-	const M = WORKER_LABEL_MANAGED_BY;
-	const MV = WORKER_LABEL_MANAGED_BY_VALUE;
-	const C = WORKER_LABEL_COMPONENT;
-	const NS = PROCESS_NAMESPACE_COMPONENT_VALUE;
-	const PV = PROCESS_VOLUME_COMPONENT_VALUE;
-	const CA = PROCESS_SERVER_CA_COMPONENT_VALUE;
-	const IPS = PROCESS_IMAGE_PULL_SECRET_COMPONENT_VALUE;
-	const CV = WORKER_LABEL_COMPONENT_VALUE;
-	const EH = EXPORT_HELPER_COMPONENT_VALUE;
-	const allowedSecretNames = (args.allowedImagePullSecretNames ?? []).map((name) => `'${name}'`);
-
-	const rules: AdmissionRule[] = [
-		{
-			scope: "Namespace",
-			condition: `object.metadata.name.startsWith('${p}')`,
-			message: "leitwerk process namespaces must use the configured prefix",
-		},
-		{
-			scope: "Namespace",
-			condition: `object.metadata.labels['${M}'] == '${MV}'`,
-			message: "leitwerk process namespaces must carry managed-by label",
-		},
-		{
-			scope: "Namespace",
-			condition: `object.metadata.labels['${C}'] == '${NS}'`,
-			message: "leitwerk process namespaces must carry process-namespace component label",
-		},
-		{
-			scope: "!Namespace",
-			condition: `object.metadata.namespace.startsWith('${p}')`,
-			message: "leitwerk process resources must be created in process namespaces",
-		},
-		{
-			scope: "!Namespace",
-			condition: `object.metadata.labels['${M}'] == '${MV}'`,
-			message: "leitwerk process resources must carry managed-by label",
-		},
-		{
-			scope: "PersistentVolumeClaim",
-			condition: `object.metadata.labels['${C}'] == '${PV}'`,
-			message: "leitwerk PVCs must carry process-volume component label",
-		},
-		{
-			scope: "ConfigMap",
-			condition: `object.metadata.labels['${C}'] == '${CA}'`,
-			message: "leitwerk server CA ConfigMaps must carry server-ca component label",
-		},
-		{
-			scope: "Pod",
-			condition: `object.metadata.labels['${C}'] in ['${CV}', '${EH}']`,
-			message: "leitwerk pods must carry worker or session-export-helper component label",
-		},
-		{
-			scope: "ServiceAccount",
-			condition: `object.metadata.labels['${C}'] == 'worker-service-account'`,
-			message: "leitwerk worker ServiceAccounts must carry worker-service-account component label",
-		},
-		{
-			scope: "Secret",
-			condition:
-				allowedSecretNames.length > 0
-					? `object.metadata.name in [${allowedSecretNames.join(", ")}]`
-					: "false",
-			message: "leitwerk image-pull Secrets must use a configured target name",
-		},
-		{
-			scope: "Secret",
-			condition: `object.metadata.labels['${C}'] == '${IPS}'`,
-			message: "leitwerk image-pull Secrets must carry image-pull-secret component label",
-		},
-		{
-			scope: "Secret",
-			condition: "object.type == 'kubernetes.io/dockerconfigjson'",
-			message: "leitwerk image-pull Secrets must use dockerconfigjson type",
-		},
-		{
-			scope: "Secret",
-			condition: "object.data.size() == 1 && '.dockerconfigjson' in object.data",
-			message: "leitwerk image-pull Secrets may contain only .dockerconfigjson",
-		},
-		{
-			scope: "Pod",
-			condition: `object.spec.serviceAccountName == '${sa}'`,
-			message: "leitwerk worker pods must use the configured worker ServiceAccount",
-		},
-		{
-			scope: "Pod",
-			condition: `'${WORKER_LABEL_INSTANCE_ID}' in object.metadata.labels`,
-			message: "leitwerk worker pods must carry instance-id label",
-		},
-		{
-			scope: "Pod",
-			condition: `object.metadata.labels['${C}'] != '${CV}' || '${WORKER_LABEL_WORKER_ID}' in object.metadata.labels`,
-			message: "leitwerk worker pods must carry worker-id label",
-		},
-		{
-			scope: "Pod",
-			condition: `object.metadata.labels['${C}'] != '${CV}' || '${WORKER_LABEL_SERVER_EPOCH}' in object.metadata.labels`,
-			message: "leitwerk worker pods must carry server-epoch label",
-		},
-		{
-			scope: "Pod",
-			condition: `object.metadata.labels['${C}'] != '${EH}' || '${EXPORT_HELPER_LABEL_EXPORT_ID}' in object.metadata.labels`,
-			message: "leitwerk session export helper pods must carry export-id label",
-		},
-	];
-
-	const labels = args.labels;
-	const meta = { name: args.name, ...(labels ? { labels: { ...labels } } : {}) };
-	return {
-		policy: {
-			apiVersion: "admissionregistration.k8s.io/v1",
-			kind: "ValidatingAdmissionPolicy",
-			metadata: meta,
-			spec: {
-				matchConditions: [
-					{
-						name: "leitwerk-server-service-account",
-						expression: `request.userInfo.username == 'system:serviceaccount:${args.serverNamespace}:${args.serverServiceAccountName}'`,
-					},
-				],
-				matchConstraints: {
-					resourceRules: [
-						{
-							apiGroups: [""],
-							apiVersions: ["v1"],
-							operations: ["CREATE", "UPDATE", "DELETE"],
-							resources: [
-								"namespaces",
-								"pods",
-								"persistentvolumeclaims",
-								"serviceaccounts",
-								"configmaps",
-								"secrets",
-							],
-						},
-					],
-				},
-				validations: rules.map((r) => ({ expression: toCelExpression(r), message: r.message })),
-			},
-		},
-		binding: {
-			apiVersion: "admissionregistration.k8s.io/v1",
-			kind: "ValidatingAdmissionPolicyBinding",
-			metadata: meta,
-			spec: { policyName: args.name, validationActions: ["Deny"] },
-		},
 	};
 }
 

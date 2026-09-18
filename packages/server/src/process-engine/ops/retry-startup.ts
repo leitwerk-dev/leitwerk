@@ -1,13 +1,20 @@
+import type { Actor } from "@leitwerk-dev/domain";
 import { generateId } from "../../db/repo-helpers.js";
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
-import { appendProcessEvent, applyProcessPatchField, createWrites } from "../writes/writes.js";
+import {
+	appendProcessEvent,
+	applyProcessPatchField,
+	createWrites,
+	stampActorOnEvents,
+} from "../writes/writes.js";
 
 export interface RetryStartupInput {
 	instanceId: string;
 	startRecordId: string;
 	nextTurnModelProfileId?: string | null;
 	providerOptions?: Readonly<Record<string, string>>;
+	actor?: Actor;
 }
 
 /** Replaces only the current failed worker start; it never creates a turn attempt. */
@@ -80,6 +87,7 @@ export const RetryStartup = defineOperation<
 			message: "Startup retry scheduled",
 			data: { previousStartRecordId: failed.id, startRecordId: id, state: state.kind },
 		});
+		stampActorOnEvents(writes, input.actor, "startup_retry_scheduled");
 		return accept({
 			writes,
 			data: { startRecordId: id },

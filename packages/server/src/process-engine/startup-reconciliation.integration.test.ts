@@ -11,7 +11,7 @@ import {
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
 import { createTestLlmTurn } from "../test-helpers/turn-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
 import { reconcileProcessesOnStartup } from "./startup-reconciliation.js";
 
 describe("reconcileProcessesOnStartup", () => {
@@ -29,14 +29,11 @@ describe("reconcileProcessesOnStartup", () => {
 			selectedTurnId: "llm_turn",
 			lifecycleStatus: "active",
 		});
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			instanceId: process.id,
 			turnId: "llm_turn",
 			turnType: "llm",
 			proposedTurnRecordId: "trn_missing_bundle",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: {
 				kind: "starting",
 				start: {
@@ -50,7 +47,6 @@ describe("reconcileProcessesOnStartup", () => {
 				},
 			},
 		});
-		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		const supervisor = createFakeWorkerSupervisor();
 
 		await reconcileProcessesOnStartup({
@@ -88,17 +84,13 @@ describe("reconcileProcessesOnStartup", () => {
 			selectedTurnId: "llm_turn",
 			lifecycleStatus: "active",
 		});
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			instanceId: process.id,
 			turnId: "llm_turn",
 			turnType: "automatic",
 			proposedTurnRecordId: "trn_startup",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: { kind: "starting", start: { kind: "automatic" } },
 		});
-		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		deps.leases.create({ instanceId: process.id, workerId: "wkr_stale", state: "busy" });
 		const supervisor = createFakeWorkerSupervisor();
 

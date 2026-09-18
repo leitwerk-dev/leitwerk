@@ -1,14 +1,19 @@
 import { existsSync, readFileSync } from "node:fs";
-import { isIP } from "node:net";
 import { resolve } from "node:path";
 import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import {
+	dockerNetworkSchema,
+	dockerRegistryCredentialSchema,
+	ipAddressSchema as kubernetesHostAliasIpSchema,
+} from "@leitwerk-dev/worker-protocol";
 import { createDefu } from "defu";
 import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
 import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
+import { resolveDockerRegistryCredentials } from "../docker-registry-credentials.js";
 import { isValidStorageSize } from "../process-storage-size.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
 import type { LeitwerkConfig } from "./config-types.js";
@@ -185,11 +190,6 @@ const authConfigSchema = v.looseObject({
 });
 
 const safeSkillIdSchema = v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN));
-const kubernetesHostAliasIpSchema = v.pipe(
-	v.string(),
-	v.nonEmpty(),
-	v.check((value) => isIP(value) !== 0, "Expected an IPv4 or IPv6 address"),
-);
 const kubernetesHostnameSchema = v.pipe(
 	v.string(),
 	v.nonEmpty(),
@@ -206,6 +206,8 @@ const skillRepositorySchema = v.strictObject({
 	ref: v.pipe(v.string(), v.nonEmpty()),
 	path: v.optional(v.pipe(v.string(), v.nonEmpty())),
 });
+
+const cpuMemoryEntries = { cpu: v.optional(v.string()), memory: v.optional(v.string()) };
 
 const configSchema = v.looseObject({
 	skill_repositories: v.optional(v.array(skillRepositorySchema)),
@@ -348,6 +350,12 @@ const configSchema = v.looseObject({
 		sources: stringArraySchema,
 	}),
 	auth: v.optional(authConfigSchema),
+	docker_registries: v.optional(
+		v.strictObject({
+			profiles: v.record(v.string(), v.strictObject(dockerRegistryCredentialSchema.entries)),
+			process_bindings: v.record(v.string(), v.array(v.pipe(v.string(), v.nonEmpty()))),
+		}),
+	),
 	docker: v.optional(
 		v.looseObject({
 			socket: v.string(),
@@ -387,6 +395,7 @@ const configSchema = v.looseObject({
 					runtime_class_name: v.optional(v.string()),
 					host_users: v.optional(v.boolean()),
 					process_storage_class_name: v.optional(v.string()),
+					network: v.optional(dockerNetworkSchema),
 				}),
 			),
 			pod: v.optional(
@@ -423,11 +432,9 @@ const configSchema = v.looseObject({
 				image_pull_policy: v.optional(v.string()),
 				resources: v.optional(
 					v.looseObject({
-						cpu: v.optional(v.string()),
-						memory: v.optional(v.string()),
-						limits: v.optional(
-							v.looseObject({ cpu: v.optional(v.string()), memory: v.optional(v.string()) }),
-						),
+						...cpuMemoryEntries,
+						requests: v.optional(v.strictObject(cpuMemoryEntries)),
+						limits: v.optional(v.looseObject(cpuMemoryEntries)),
 					}),
 				),
 			}),
@@ -901,6 +908,15 @@ function validateResolvedConfig(config: Record<string, unknown>): string[] {
 	}
 	const resolvedConfig = config as unknown as LeitwerkConfig;
 	const skillErrors: string[] = [];
+	for (const processId of Object.keys(resolvedConfig.docker_registries?.process_bindings ?? {})) {
+		try {
+			resolveDockerRegistryCredentials(resolvedConfig, processId, true);
+		} catch {
+			skillErrors.push(
+				"docker_registries.process_bindings contains an unknown profile or duplicate registry",
+			);
+		}
+	}
 	const repositoryIds = new Set<string>();
 	for (const repository of resolvedConfig.skill_repositories ?? []) {
 		if (repositoryIds.has(repository.id)) {

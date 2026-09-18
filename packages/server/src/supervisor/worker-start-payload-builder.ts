@@ -19,6 +19,7 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
+import { resolveDockerRegistryCredentials } from "../docker-registry-credentials.js";
 import type { ResolvedProviderCredential } from "../model-providers/credentials.js";
 import {
 	type ProcessActionRegistry,
@@ -324,6 +325,11 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					process,
 					projects: deps.projects.listByInstance(process.id),
 				}) ?? [];
+			const dockerRegistryCredentials = resolveDockerRegistryCredentials(
+				deps.config,
+				process.processId,
+				deps.processGraphs.get(process.processId)?.runtime?.docker === true,
+			);
 			const bootstrap = resolveBootstrap(start, deps);
 			const integrationToolNames = resolveTurnIntegrationToolNames(
 				deps.processActionRegistry,
@@ -372,6 +378,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 				...(treePaths.resume ? { resumeLeafEntryId } : {}),
 				...(llmPreparation ? { llmPreparation } : {}),
 				...(repositoryCredentials.length > 0 ? { repositoryCredentials } : {}),
+				...(dockerRegistryCredentials.length > 0 ? { dockerRegistryCredentials } : {}),
 				...(integrationTools && integrationTools.length > 0 ? { integrationTools } : {}),
 			};
 			const payload: WorkerStartPayload =

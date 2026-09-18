@@ -1,6 +1,6 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { Page } from "@playwright/test";
-import { box, expect, test } from "./fixtures.js";
+import { box, expect, expectNoPageOverflow, test } from "./fixtures.js";
 
 const usage = {
 	attachedAllTime: 8,
@@ -101,9 +101,7 @@ test.describe("skills responsive and keyboard behavior", () => {
 			await page.goto("/skills");
 			await expect(page.locator('[data-page="skills"]')).toBeVisible();
 			await expect(page.getByText("Review changes").first()).toBeVisible();
-			expect(
-				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-			).toBe(true);
+			await expectNoPageOverflow(page);
 			const tableWrap = page.locator(".skill-table-wrap");
 			expect(
 				await tableWrap.evaluate((element) => element.scrollWidth <= element.clientWidth),
@@ -116,9 +114,7 @@ test.describe("skills responsive and keyboard behavior", () => {
 			expect((await detailPane.boundingBox())?.height ?? 0).toBeGreaterThan(
 				Math.min(500, viewport.height * 0.55),
 			);
-			expect(
-				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-			).toBe(true);
+			await expectNoPageOverflow(page);
 			await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toHaveCount(0);
 			await page.getByRole("tab", { name: "Instructions" }).click();
 			await expect(page.getByRole("heading", { name: "Instructions", exact: true })).toBeVisible();
@@ -141,9 +137,7 @@ test.describe("skills responsive and keyboard behavior", () => {
 						.evaluate((element) => element.scrollWidth <= element.clientWidth),
 				).toBe(true);
 			}
-			expect(
-				await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-			).toBe(true);
+			await expectNoPageOverflow(page);
 		});
 	}
 

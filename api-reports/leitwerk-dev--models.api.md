@@ -87,6 +87,78 @@ interface ApiKeyCredential
 readonly apiKey: string
 ```
 
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema
+
+@internal
+
+```ts
+compatibilitySchema: v.StrictObjectSchema<{ readonly supportsStore: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsDeveloperRole: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsReasoningEffort: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsUsageInStreaming: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly maxTokensField: v.OptionalSchema<v.PicklistSchema<["max_tokens", "max_completion_tokens"], undefined>, undefined>; readonly supportsStrictMode: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly requiresReasoningContentOnAssistantMessages: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly thinkingFormat: v.OptionalSchema<v.PicklistSchema<["openai", "openrouter", "deepseek", "together", "zai", "qwen", "chat-template", "qwen-chat-template", "string-thinking", "ant-ling"], undefined>, undefined>; }, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.maxTokensField
+
+@internal
+
+```ts
+maxTokensField: v.OptionalSchema<v.PicklistSchema<["max_tokens", "max_completion_tokens"], undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.requiresReasoningContentOnAssistantMessages
+
+@internal
+
+```ts
+requiresReasoningContentOnAssistantMessages: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.supportsDeveloperRole
+
+@internal
+
+```ts
+supportsDeveloperRole: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.supportsReasoningEffort
+
+@internal
+
+```ts
+supportsReasoningEffort: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.supportsStore
+
+@internal
+
+```ts
+supportsStore: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.supportsStrictMode
+
+@internal
+
+```ts
+supportsStrictMode: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.supportsUsageInStreaming
+
+@internal
+
+```ts
+supportsUsageInStreaming: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#compatibilitySchema.thinkingFormat
+
+@internal
+
+```ts
+thinkingFormat: v.OptionalSchema<v.PicklistSchema<["openai", "openrouter", "deepseek", "together", "zai", "qwen", "chat-template", "qwen-chat-template", "string-thinking", "ant-ling"], undefined>, undefined>
+```
+
 ### @leitwerk-dev/models/src/models-provider.ts#createCustomGatewayProvider
 
 @internal
@@ -127,6 +199,14 @@ readonly api: string
 readonly baseUrl: string
 ```
 
+### @leitwerk-dev/models/src/models-provider.ts#CustomGatewayConfig.compat
+
+@internal
+
+```ts
+readonly compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined
+```
+
 ### @leitwerk-dev/models/src/models-provider.ts#CustomGatewayConfig.keyless
 
 @internal
@@ -140,7 +220,7 @@ readonly keyless: boolean
 @internal
 
 ```ts
-readonly models: { maxTokens?: number | undefined; contextWindow?: number | undefined; id: string; name?: string | undefined; reasoning?: boolean | undefined; }[]
+readonly models: { maxTokens?: number | undefined; contextWindow?: number | undefined; thinkingLevelMap?: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; } | undefined; id: string; name?: string | undefined; reasoning?: boolean | undefined; input?: ("text" | "image")[] | undefined; cost?: { input: number; output: number; cacheRead: number; cacheWrite: number; } | undefined; compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined; }[]
 ```
 
 ### @leitwerk-dev/models/src/models-provider.ts#CustomGatewayConfig.providerId
@@ -164,7 +244,15 @@ export type CustomModelDefinition = v.InferOutput<typeof customModelSchema>;
 @internal
 
 ```ts
-customModelSchema: v.SchemaWithPipe<readonly [v.StrictObjectSchema<{ readonly id: v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>; readonly name: v.OptionalSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>; readonly reasoning: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly context_window: v.OptionalSchema<v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.IntegerAction<number, undefined>, v.MinValueAction<number, 1, undefined>]>, undefined>; readonly max_tokens: v.OptionalSchema<v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.IntegerAction<number, undefined>, v.MinValueAction<number, 1, undefined>]>, undefined>; }, undefined>, v.TransformAction<{ id: string; name?: string | undefined; reasoning?: boolean | undefined; context_window?: number | undefined; max_tokens?: number | undefined; }, { maxTokens?: number | undefined; contextWindow?: number | undefined; id: string; name?: string | undefined; reasoning?: boolean | undefined; }>]>
+customModelSchema: v.SchemaWithPipe<readonly [v.StrictObjectSchema<{ readonly id: v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>; readonly name: v.OptionalSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>; readonly reasoning: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly thinking_level_map: v.OptionalSchema<v.StrictObjectSchema<{ readonly off: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly minimal: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly low: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly medium: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly high: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly xhigh: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly max: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; }, undefined>, undefined>; readonly input: v.OptionalSchema<v.SchemaWithPipe<readonly [v.ArraySchema<v.PicklistSchema<["text", "image"], undefined>, undefined>, v.MinLengthAction<("text" | "image")[], 1, undefined>]>, undefined>; readonly cost: v.OptionalSchema<v.StrictObjectSchema<{ readonly input: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly output: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly cacheRead: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly cacheWrite: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; }, undefined>, undefined>; readonly compat: v.OptionalSchema<v.StrictObjectSchema<{ readonly supportsStore: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsDeveloperRole: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsReasoningEffort: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsUsageInStreaming: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly maxTokensField: v.OptionalSchema<v.PicklistSchema<["max_tokens", "max_completion_tokens"], undefined>, undefined>; readonly supportsStrictMode: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly requiresReasoningContentOnAssistantMessages: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly thinkingFormat: v.OptionalSchema<v.PicklistSchema<["openai", "openrouter", "deepseek", "together", "zai", "qwen", "chat-template", "qwen-chat-template", "string-thinking", "ant-ling"], undefined>, undefined>; }, undefined>, undefined>; readonly context_window: v.OptionalSchema<v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.IntegerAction<number, undefined>, v.MinValueAction<number, 1, undefined>]>, undefined>; readonly max_tokens: v.OptionalSchema<v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.IntegerAction<number, undefined>, v.MinValueAction<number, 1, undefined>]>, undefined>; }, undefined>, v.TransformAction<{ id: string; name?: string | undefined; reasoning?: boolean | undefined; thinking_level_map?: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; } | undefined; input?: ("text" | "image")[] | undefined; cost?: { input: number; output: number; cacheRead: number; cacheWrite: number; } | undefined; compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined; context_window?: number | undefined; max_tokens?: number | undefined; }, { maxTokens?: number | undefined; contextWindow?: number | undefined; thinkingLevelMap?: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; } | undefined; id: string; name?: string | undefined; reasoning?: boolean | undefined; input?: ("text" | "image")[] | undefined; cost?: { input: number; output: number; cacheRead: number; cacheWrite: number; } | undefined; compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined; }>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.compat
+
+@internal
+
+```ts
+compat: v.OptionalSchema<v.StrictObjectSchema<{ readonly supportsStore: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsDeveloperRole: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsReasoningEffort: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly supportsUsageInStreaming: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly maxTokensField: v.OptionalSchema<v.PicklistSchema<["max_tokens", "max_completion_tokens"], undefined>, undefined>; readonly supportsStrictMode: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly requiresReasoningContentOnAssistantMessages: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>; readonly thinkingFormat: v.OptionalSchema<v.PicklistSchema<["openai", "openrouter", "deepseek", "together", "zai", "qwen", "chat-template", "qwen-chat-template", "string-thinking", "ant-ling"], undefined>, undefined>; }, undefined>, undefined>
 ```
 
 ### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.context_window
@@ -183,12 +271,28 @@ context_window: v.OptionalSchema<v.SchemaWithPipe<readonly [v.NumberSchema<undef
 contextWindow: number
 ```
 
+### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.cost
+
+@internal
+
+```ts
+cost: v.OptionalSchema<v.StrictObjectSchema<{ readonly input: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly output: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly cacheRead: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; readonly cacheWrite: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>; }, undefined>, undefined>
+```
+
 ### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.id
 
 @internal
 
 ```ts
 id: v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.input
+
+@internal
+
+```ts
+input: v.OptionalSchema<v.SchemaWithPipe<readonly [v.ArraySchema<v.PicklistSchema<["text", "image"], undefined>, undefined>, v.MinLengthAction<("text" | "image")[], 1, undefined>]>, undefined>
 ```
 
 ### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.max_tokens
@@ -223,12 +327,140 @@ name: v.OptionalSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.T
 reasoning: v.OptionalSchema<v.BooleanSchema<undefined>, undefined>
 ```
 
+### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.thinking_level_map
+
+@internal
+
+```ts
+thinking_level_map: v.OptionalSchema<v.StrictObjectSchema<{ readonly off: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly minimal: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly low: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly medium: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly high: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly xhigh: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; readonly max: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>; }, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#customModelSchema.thinkingLevelMap
+
+@internal
+
+```ts
+thinkingLevelMap: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; }
+```
+
 ### @leitwerk-dev/models/src/models-provider.ts#evaluateStandardModelStatuses
 
 @internal
 
 ```ts
-evaluateStandardModelStatuses(providerId: string, ctx: ModelProviderModelsContext): readonly ProviderModelStatus[]
+evaluateStandardModelStatuses(providerId: string, ctx: ModelProviderModelsContext<StandardProviderConfig>): readonly ProviderModelStatus[]
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#modelCostSchema.cacheRead
+
+@internal
+
+```ts
+cacheRead: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#modelCostSchema.cacheWrite
+
+@internal
+
+```ts
+cacheWrite: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#modelCostSchema.input
+
+@internal
+
+```ts
+input: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#modelCostSchema.output
+
+@internal
+
+```ts
+output: v.SchemaWithPipe<readonly [v.NumberSchema<undefined>, v.FiniteAction<number, undefined>, v.MinValueAction<number, 0, undefined>]>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels
+
+@internal
+
+```ts
+normalizeStandardModels(providerId: string, models: CustomModelDefinition[], baseUrl?: string): { provider: string; api: never; baseUrl: string; name: string; reasoning: boolean; input: ("text" | "image")[]; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; }; contextWindow: number; maxTokens: number; thinkingLevelMap?: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; } | undefined; id: string; compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined; }[]
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.api
+
+@internal
+
+```ts
+api: never
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.baseUrl
+
+@internal
+
+```ts
+baseUrl: string
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.contextWindow
+
+@internal
+
+```ts
+contextWindow: number
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.cost
+
+@internal
+
+```ts
+cost: { input: number; output: number; cacheRead: number; cacheWrite: number; }
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.input
+
+@internal
+
+```ts
+input: ("text" | "image")[]
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.maxTokens
+
+@internal
+
+```ts
+maxTokens: number
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.name
+
+@internal
+
+```ts
+name: string
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.provider
+
+@internal
+
+```ts
+provider: string
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#normalizeStandardModels.return.return.reasoning
+
+@internal
+
+```ts
+reasoning: boolean
 ```
 
 ### @leitwerk-dev/models/src/models-provider.ts#parseApiKeyCredential
@@ -309,6 +541,70 @@ interface StandardProviderConfig
 
 ```ts
 readonly baseUrl?: string | undefined
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#StandardProviderConfig.models
+
+@internal
+
+```ts
+readonly models?: { provider: string; api: never; baseUrl: string; name: string; reasoning: boolean; input: ("text" | "image")[]; cost: { input: number; output: number; cacheRead: number; cacheWrite: number; }; contextWindow: number; maxTokens: number; thinkingLevelMap?: { off?: string | null | undefined; minimal?: string | null | undefined; low?: string | null | undefined; medium?: string | null | undefined; high?: string | null | undefined; xhigh?: string | null | undefined; max?: string | null | undefined; } | undefined; id: string; compat?: { supportsStore?: boolean | undefined; supportsDeveloperRole?: boolean | undefined; supportsReasoningEffort?: boolean | undefined; supportsUsageInStreaming?: boolean | undefined; maxTokensField?: "max_tokens" | "max_completion_tokens" | undefined; supportsStrictMode?: boolean | undefined; requiresReasoningContentOnAssistantMessages?: boolean | undefined; thinkingFormat?: "openai" | "openrouter" | "deepseek" | "together" | "zai" | "qwen" | "chat-template" | "qwen-chat-template" | "string-thinking" | "ant-ling" | undefined; } | undefined; }[] | undefined
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.high
+
+@internal
+
+```ts
+high: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.low
+
+@internal
+
+```ts
+low: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.max
+
+@internal
+
+```ts
+max: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.medium
+
+@internal
+
+```ts
+medium: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.minimal
+
+@internal
+
+```ts
+minimal: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.off
+
+@internal
+
+```ts
+off: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
+```
+
+### @leitwerk-dev/models/src/models-provider.ts#thinkingLevelMapSchema.xhigh
+
+@internal
+
+```ts
+xhigh: v.OptionalSchema<v.NullableSchema<v.SchemaWithPipe<readonly [v.StringSchema<undefined>, v.TransformAction<string, string>, v.MinLengthAction<string, 1, undefined>]>, undefined>, undefined>
 ```
 
 ### @leitwerk-dev/models/src/provider-auth.ts#getKnownEnvKeys

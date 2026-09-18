@@ -625,6 +625,7 @@ export interface ProcessEngineLike {
 			actor?: Actor;
 		},
 	): Promise<ProcessEngineResultLike>;
+	/** Retries the current failed startup or accepted turn; startup retries consume no attempt. */
 	/** @public */
 	retryProcess(
 		instanceId: string,

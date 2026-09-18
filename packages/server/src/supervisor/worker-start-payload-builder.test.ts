@@ -2,7 +2,7 @@ import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
 import {
 	buildWorkerConfigSnapshot,
 	createWorkerStartPayloadBuilder,
@@ -71,29 +71,37 @@ describe("worker.start runtime settings", () => {
 			selectedTurnId: "generate_plan",
 			lifecycleStatus: "active",
 		});
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			id: "tsr_automatic_settings",
 			instanceId: process.id,
 			turnId: "generate_plan",
 			turnType: "automatic",
 			proposedTurnRecordId: "trn_automatic_settings",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: { kind: "starting", start: { kind: "automatic" } },
-		});
-		deps.processes.update(process.id, {
-			currentExecution: { kind: "worker_start", id: start.id },
 		});
 		deps.leases.create({
 			instanceId: process.id,
 			workerId: "wkr_automatic_settings",
 			state: "bootstrapping",
 		});
+		const processGraphs = createDefaultTestProcessGraphRegistry();
+		const graph = processGraphs.get(process.processId);
+		if (!graph) throw new Error("Missing fixture graph");
+		processGraphs.set(process.processId, { ...graph, runtime: { docker: true } });
+		config.docker_registries = {
+			profiles: {
+				bound: { registry: "registry.example", username: "devuser", password: "initial" },
+				unbound: { registry: "admin.example", username: "admin", password: "forbidden" },
+			},
+			process_bindings: { [process.processId]: ["bound"] },
+		};
+		deps.processes.update(process.id, {
+			paramsJson: JSON.stringify({ dockerRegistryProfile: "unbound" }),
+		});
 		const builder = createWorkerStartPayloadBuilder({
 			...deps,
 			config,
-			processGraphs: createDefaultTestProcessGraphRegistry(),
+			processGraphs,
 			processActionRegistry: {
 				getTurnDefinition: () => undefined,
 				resolveContextData: () => ({ params: {}, state: {} }),
@@ -108,6 +116,19 @@ describe("worker.start runtime settings", () => {
 
 		const message = builder.buildStartMessage(process.id, "wkr_automatic_settings");
 
+		expect(message?.payload.dockerRegistryCredentials).toEqual([
+			config.docker_registries.profiles.bound,
+		]);
+		expect(builder.buildStartMessage(process.id, "unauthenticated-worker")).toBeNull();
+		const bound = config.docker_registries.profiles.bound;
+		if (!bound) throw new Error("Missing fixture credential");
+		bound.password = "rotated";
+		expect(
+			builder.buildStartMessage(process.id, "wkr_automatic_settings")?.payload
+				.dockerRegistryCredentials?.[0]?.password,
+		).toBe("rotated");
+		expect(message?.payload.dockerRegistryCredentials?.[0]?.password).toBe("initial");
+		expect(JSON.stringify(message)).not.toContain("forbidden");
 		expect(message?.payload.bootstrap).toEqual({ kind: "automatic" });
 		expect(message?.payload.workerRuntimeSettings).toEqual({
 			heartbeat_interval: "5s",
@@ -135,15 +156,12 @@ describe("worker.start Pi resource-bundle delivery", () => {
 			{ path: "generated.json", content: Buffer.from("{}") },
 			{ path: "settings.json", content: Buffer.from("{}") },
 		]);
-		const start = deps.turnStarts.create({
+		createSelectedTurnStart(deps, {
 			id: "tsr_bundle",
 			instanceId: process.id,
 			turnId: "generate_plan",
 			turnType: "llm",
 			proposedTurnRecordId: "trn_bundle",
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
 			state: {
 				kind: "starting",
 				start: {
@@ -162,7 +180,6 @@ describe("worker.start Pi resource-bundle delivery", () => {
 				},
 			},
 		});
-		deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 		deps.leases.create({ instanceId: process.id, workerId: "wkr_bundle", state: "bootstrapping" });
 		function makeBuilder(
 			resume = false,

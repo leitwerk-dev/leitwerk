@@ -1,7 +1,7 @@
 import type { WorkerBootstrapReceipt } from "@leitwerk-dev/domain";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it, vi } from "vitest";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
 import { createIpcHandler } from "./ipc-handler.js";
 
 function receipt(startRecordId: string, leaseId: string): WorkerBootstrapReceipt {
@@ -21,18 +21,14 @@ function setup() {
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
 	});
-	deps.turnStarts.create({
+	createSelectedTurnStart(deps, {
 		id: "start-1",
 		instanceId: process.id,
 		turnId: "generate_plan",
 		turnType: "automatic",
 		proposedTurnRecordId: "turn-1",
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
 		state: { kind: "starting", start: { kind: "automatic" } },
 	});
-	deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: "start-1" } });
 	const workerId = "worker-1";
 	const lease = deps.leases.create({ instanceId: process.id, workerId, state: "bootstrapping" });
 	const acceptWorkerTurnStart = vi

@@ -9,7 +9,7 @@ export function listWorkspacePackageDirs(
 	manifest: {
 		/** @internal */
 		workspaces?: unknown;
-	} = JSON.parse(readFileSync(path.join(rootDir, "package.json"), "utf8")),
+	} = readJson(path.join(rootDir, "package.json")),
 ): string[] {
 	const workspaces = manifest.workspaces;
 	const patterns = Array.isArray(workspaces)

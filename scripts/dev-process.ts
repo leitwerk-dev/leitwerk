@@ -5,6 +5,16 @@ import { signalProcessGroup, stopAttached } from "../packages/dev-tools/src/chil
 export { createCoalescedRunner } from "../packages/dev-tools/src/coalesced-runner.ts";
 export { signalProcessGroup, stopAttached };
 
+/** Wire child and terminal exits to an idempotent shutdown callback. */
+export function watchChildren(children: ChildProcess[], finish: (code: number) => void): void {
+	process.once("SIGINT", () => finish(130));
+	process.once("SIGTERM", () => finish(143));
+	for (const child of children) {
+		child.once("error", () => finish(1));
+		child.once("exit", (code, signal) => finish(code ?? (signal === "SIGINT" ? 130 : 1)));
+	}
+}
+
 /** Forward signals to an attached child and exit with its status. */
 export function forwardChildLifecycle(child: ChildProcess, cleanup: () => void = () => {}): void {
 	for (const signal of ["SIGINT", "SIGTERM"] as const) {

@@ -7,7 +7,6 @@ import {
 	type ModelProviderDefinition,
 	type ModelProviderModelsContext,
 	type ModelProviderSetEntry,
-	type ProviderJsonObject,
 	type ProviderModelStatus,
 } from "@leitwerk-dev/process-sdk";
 import * as v from "valibot";
@@ -21,6 +20,8 @@ import {
 export interface StandardProviderConfig {
 	/** @internal */
 	readonly baseUrl?: string;
+	/** @internal */
+	readonly models?: ReturnType<typeof normalizeStandardModels>;
 }
 
 /** @internal */
@@ -35,6 +36,67 @@ const nonEmptyStringSchema = v.pipe(
 	v.minLength(1),
 );
 const positiveIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(1));
+const nonNegativeNumberSchema = v.pipe(v.number(), v.finite(), v.minValue(0));
+const thinkingLevelValueSchema = v.optional(v.nullable(nonEmptyStringSchema));
+const thinkingLevelMapSchema = v.strictObject({
+	/** @internal */
+	off: thinkingLevelValueSchema,
+	/** @internal */
+	minimal: thinkingLevelValueSchema,
+	/** @internal */
+	low: thinkingLevelValueSchema,
+	/** @internal */
+	medium: thinkingLevelValueSchema,
+	/** @internal */
+	high: thinkingLevelValueSchema,
+	/** @internal */
+	xhigh: thinkingLevelValueSchema,
+	/** @internal */
+	max: thinkingLevelValueSchema,
+});
+// Compatibility options use Pi's names so they can be copied from models.json.
+/** @internal */
+const compatibilitySchema = v.strictObject({
+	/** @internal */
+	supportsStore: v.optional(v.boolean()),
+	/** @internal */
+	supportsDeveloperRole: v.optional(v.boolean()),
+	/** @internal */
+	supportsReasoningEffort: v.optional(v.boolean()),
+	/** @internal */
+	supportsUsageInStreaming: v.optional(v.boolean()),
+	/** @internal */
+	maxTokensField: v.optional(v.picklist(["max_tokens", "max_completion_tokens"])),
+	/** @internal */
+	supportsStrictMode: v.optional(v.boolean()),
+	/** @internal */
+	requiresReasoningContentOnAssistantMessages: v.optional(v.boolean()),
+	/** @internal */
+	thinkingFormat: v.optional(
+		v.picklist([
+			"openai",
+			"openrouter",
+			"deepseek",
+			"together",
+			"zai",
+			"qwen",
+			"chat-template",
+			"qwen-chat-template",
+			"string-thinking",
+			"ant-ling",
+		]),
+	),
+});
+const modelCostSchema = v.strictObject({
+	/** @internal */
+	input: nonNegativeNumberSchema,
+	/** @internal */
+	output: nonNegativeNumberSchema,
+	/** @internal */
+	cacheRead: nonNegativeNumberSchema,
+	/** @internal */
+	cacheWrite: nonNegativeNumberSchema,
+});
 const baseUrlSchema = v.pipe(
 	nonEmptyStringSchema,
 	v.url(),
@@ -55,12 +117,26 @@ const customModelSchema = v.pipe(
 		/** @internal */
 		reasoning: v.optional(v.boolean()),
 		/** @internal */
+		thinking_level_map: v.optional(thinkingLevelMapSchema),
+		/** @internal */
+		input: v.optional(v.pipe(v.array(v.picklist(["text", "image"])), v.minLength(1))),
+		/** @internal */
+		cost: v.optional(modelCostSchema),
+		/** @internal */
+		compat: v.optional(compatibilitySchema),
+		/** @internal */
 		context_window: v.optional(positiveIntegerSchema),
 		/** @internal */
 		max_tokens: v.optional(positiveIntegerSchema),
 	}),
-	v.transform(({ context_window, max_tokens, ...model }) => ({
+	v.transform(({ context_window, max_tokens, thinking_level_map, ...model }) => ({
 		...model,
+		...(thinking_level_map === undefined
+			? {}
+			: {
+					/** @internal */
+					thinkingLevelMap: thinking_level_map,
+				}),
 		...(context_window === undefined
 			? {}
 			: {
@@ -75,6 +151,14 @@ const customModelSchema = v.pipe(
 				}),
 	})),
 );
+const modelDefinitionsSchema = v.pipe(
+	v.array(customModelSchema),
+	v.minLength(1),
+	v.check(
+		(models) => new Set(models.map(({ id }) => id)).size === models.length,
+		"Duplicate model id",
+	),
+);
 const customGatewaySchema = v.strictObject({
 	base_url: baseUrlSchema,
 	api_key: v.optional(v.nullable(v.union([v.literal(false), nonEmptyStringSchema]))),
@@ -87,7 +171,8 @@ const customGatewaySchema = v.strictObject({
 		]),
 		"openai-completions",
 	),
-	models: v.pipe(v.array(customModelSchema), v.minLength(1)),
+	compat: v.optional(compatibilitySchema),
+	models: modelDefinitionsSchema,
 });
 
 /** @internal */
@@ -104,7 +189,44 @@ export interface CustomGatewayConfig {
 	/** @internal */
 	readonly keyless: boolean;
 	/** @internal */
+	readonly compat?: v.InferOutput<typeof compatibilitySchema>;
+	/** @internal */
 	readonly models: CustomModelDefinition[];
+}
+
+/** @internal */
+function normalizeStandardModels(
+	providerId: string,
+	models: CustomModelDefinition[],
+	baseUrl?: string,
+) {
+	const catalog = getBuiltinModels(providerId as never);
+	return models.map((model) => {
+		const reference = catalog.find(({ id }) => id === model.id) ?? catalog[0];
+		if (!reference) throw new Error(`Provider '${providerId}' has no canonical API definition`);
+		return {
+			...model,
+			/** @internal */
+			provider: providerId,
+			/** @internal */
+			api: reference.api,
+			/** @internal */
+			baseUrl: baseUrl ?? reference.baseUrl,
+			/** @internal */
+			name: model.name ?? model.id,
+			/** @internal */
+			reasoning: model.reasoning ?? false,
+			/** @internal */
+			input: model.input ?? ["text" as const],
+			/** @internal */
+			cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			// Match Pi's defaults for explicitly configured models.
+			/** @internal */
+			contextWindow: model.contextWindow ?? 128_000,
+			/** @internal */
+			maxTokens: model.maxTokens ?? 16_384,
+		};
+	});
 }
 
 function assertKnownFields(
@@ -158,7 +280,7 @@ export function parseStandardProviderConfig(
 		throw new Error("configuration must be an object");
 	}
 	const rawConfig = (raw ?? {}) as Record<string, unknown>;
-	assertKnownFields(rawConfig, ["api_key", "base_url"]);
+	assertKnownFields(rawConfig, ["api_key", "base_url", "models"]);
 	const apiKey =
 		rawConfig.api_key === undefined || rawConfig.api_key === null
 			? getStandardEnvApiKey(providerId)
@@ -168,7 +290,18 @@ export function parseStandardProviderConfig(
 			? undefined
 			: v.parse(baseUrlSchema, resolveSecret(rawConfig.base_url, "base_url"));
 	return {
-		config: { ...(baseUrl ? { baseUrl } : {}) },
+		config: {
+			...(baseUrl ? { baseUrl } : {}),
+			...(rawConfig.models === undefined
+				? {}
+				: {
+						models: normalizeStandardModels(
+							providerId,
+							v.parse(modelDefinitionsSchema, rawConfig.models),
+							baseUrl,
+						),
+					}),
+		},
 		...(apiKey ? { credential: { apiKey } } : {}),
 	};
 }
@@ -192,11 +325,14 @@ function catalogModelStatuses(
 /** @internal */
 export function evaluateStandardModelStatuses(
 	providerId: string,
-	ctx: ModelProviderModelsContext,
+	ctx: ModelProviderModelsContext<StandardProviderConfig>,
 ): readonly ProviderModelStatus[] {
 	return catalogModelStatuses(
 		ctx,
-		new Set(getBuiltinModels(providerId as never).map(({ id }) => id)),
+		new Set([
+			...getBuiltinModels(providerId as never).map(({ id }) => id),
+			...(ctx.config.models ?? []).map(({ id }) => id),
+		]),
 		ctx.credentialStatus.available,
 		(modelId) => `Canonical Pi model '${providerId}/${modelId}' is not found in catalog`,
 		`${providerId} credentials are unavailable (set ${getKnownEnvKeys(providerId).join(" or ")})`,
@@ -212,7 +348,7 @@ export function createStandardModelProvider(
 		id: providerId,
 		parseConfig: (raw) => parseStandardProviderConfig(raw, providerId),
 		worker: configuredPiProvider(providerId, ({ config }) => ({
-			providers: config.baseUrl ? { [providerId]: { baseUrl: config.baseUrl } } : {},
+			providers: config.baseUrl || config.models ? { [providerId]: { ...config } } : {},
 		})),
 		server: reference,
 		models: (ctx) => evaluateStandardModelStatuses(providerId, ctx),
@@ -232,11 +368,6 @@ export function parseCustomGatewayConfig(
 	credential?: ApiKeyCredential;
 } {
 	const parsed = v.parse(customGatewaySchema, raw);
-	const ids = new Set<string>();
-	for (const model of parsed.models) {
-		if (ids.has(model.id)) throw new Error(`duplicate custom model id '${model.id}'`);
-		ids.add(model.id);
-	}
 	const keyless = parsed.api_key === false;
 	const apiKey =
 		keyless || parsed.api_key === undefined || parsed.api_key === null
@@ -248,36 +379,11 @@ export function parseCustomGatewayConfig(
 			baseUrl: parsed.base_url,
 			api: parsed.api,
 			keyless,
+			...(parsed.compat === undefined ? {} : { compat: parsed.compat }),
 			models: parsed.models,
 		},
 		...(apiKey ? { credential: { apiKey } } : {}),
 	};
-}
-
-function customGatewayPiModels(config: CustomGatewayConfig): ProviderJsonObject {
-	return {
-		providers: {
-			[config.providerId]: {
-				baseUrl: config.baseUrl,
-				api: config.api,
-				models: config.models,
-			},
-		},
-	};
-}
-
-function customGatewayModelStatuses(
-	config: CustomGatewayConfig,
-	ctx: ModelProviderModelsContext<CustomGatewayConfig>,
-): readonly ProviderModelStatus[] {
-	return catalogModelStatuses(
-		ctx,
-		new Set(config.models.map(({ id }) => id)),
-		config.keyless || ctx.credentialStatus.available,
-		(modelId) =>
-			`Canonical model '${config.providerId}/${modelId}' is not found in custom gateway definition`,
-		`Gateway provider '${config.providerId}' credentials are unavailable`,
-	);
 }
 
 /** @internal */
@@ -288,8 +394,25 @@ export function createCustomGatewayProvider(
 	return defineModelProvider({
 		id: providerId,
 		parseConfig: (raw) => parseCustomGatewayConfig(providerId, raw),
-		worker: configuredPiProvider(providerId, ({ config }) => customGatewayPiModels(config)),
-		models: (ctx) => customGatewayModelStatuses(ctx.config, ctx),
+		worker: configuredPiProvider(providerId, ({ config }) => ({
+			providers: {
+				[config.providerId]: {
+					baseUrl: config.baseUrl,
+					api: config.api,
+					...(config.compat === undefined ? {} : { compat: config.compat }),
+					models: config.models,
+				},
+			},
+		})),
+		models: (ctx) =>
+			catalogModelStatuses(
+				ctx,
+				new Set(ctx.config.models.map(({ id }) => id)),
+				ctx.config.keyless || ctx.credentialStatus.available,
+				(modelId) =>
+					`Canonical model '${ctx.config.providerId}/${modelId}' is not found in custom gateway definition`,
+				`Gateway provider '${ctx.config.providerId}' credentials are unavailable`,
+			),
 		...(keyless
 			? {}
 			: { credential: { parse: (value: unknown) => parseApiKeyCredential(value, providerId) } }),

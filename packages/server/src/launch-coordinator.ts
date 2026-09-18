@@ -175,6 +175,7 @@ export interface LaunchCoordinator {
 }
 
 interface LaunchCoordinatorDeps {
+	events?: RepositoryBundle["events"];
 	launchRuns: RepositoryBundle["launchRuns"];
 	processes: RepositoryBundle["processes"];
 	leases: RepositoryBundle["leases"];
@@ -241,6 +242,7 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 		return projectLaunchRunStartup(
 			run,
 			buildStartupEvidence({
+				events: deps.events?.listByInstance(process.id),
 				process,
 				turnStarts: deps.turnStarts.listByInstance(process.id),
 				leases: deps.leases.listByInstance(process.id),

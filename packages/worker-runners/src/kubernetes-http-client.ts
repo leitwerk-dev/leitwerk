@@ -29,6 +29,10 @@ const TRANSIENT_PLAIN_BAD_REQUEST_MAX_ATTEMPTS = 3;
 const TRANSIENT_PLAIN_BAD_REQUEST_BACKOFF_MS = 25;
 const MAX_API_ERROR_LENGTH = 2_048;
 
+function resourcePath(namespace: string, resource: string, name?: string): string {
+	return `/api/v1/namespaces/${encodeURIComponent(namespace)}/${resource}${name === undefined ? "" : `/${encodeURIComponent(name)}`}`;
+}
+
 function boundedApiError(text: string): string {
 	let summary = text.trim();
 	try {
@@ -214,30 +218,29 @@ export function createKubernetesHttpApiClient(options: {
 		};
 	}
 
+	function readObject(path: string, signal?: AbortSignal) {
+		return request<KubernetesObjectResponse>({ method: "GET", path, ok: [200, 404], signal });
+	}
+
 	async function exists(path: string): Promise<KubernetesObjectResponse | null> {
-		const result = await request<KubernetesObjectResponse>({
-			method: "GET",
-			path,
-			ok: [200, 404],
-		});
+		const result = await readObject(path);
 		return result.status === 404 ? null : result.body;
 	}
 
 	/** Idempotent create-or-patch for K8s resources. */
 	async function upsertResource(input: {
-		existsPath: string;
+		path: string;
 		createPath: string;
 		createBody: unknown;
-		patchPath: string;
 		patchBody: unknown;
 	}): Promise<void> {
-		const existing = await exists(input.existsPath);
+		const existing = await exists(input.path);
 		if (!existing) {
 			await request({ method: "POST", path: input.createPath, body: input.createBody });
 		} else {
 			await request({
 				method: "PATCH",
-				path: input.patchPath,
+				path: input.path,
 				contentType: "application/merge-patch+json",
 				body: input.patchBody,
 			});
@@ -291,7 +294,7 @@ export function createKubernetesHttpApiClient(options: {
 			const result = await request<KubernetesListResponse<KubernetesObjectResponse>>({
 				method: "GET",
 				signal: options?.signal,
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/events?fieldSelector=${encodeURIComponent(`involvedObject.kind=Pod,involvedObject.name=${name}`)}&limit=100${continuation ? `&continue=${encodeURIComponent(continuation)}` : ""}`,
+				path: `${resourcePath(namespace, "events")}?fieldSelector=${encodeURIComponent(`involvedObject.kind=Pod,involvedObject.name=${name}`)}&limit=100${continuation ? `&continue=${encodeURIComponent(continuation)}` : ""}`,
 			});
 			events.push(
 				...(result.body?.items ?? []).map((event) => ({
@@ -347,10 +350,9 @@ export function createKubernetesHttpApiClient(options: {
 		async ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void> {
 			const name = manifest.metadata.name;
 			await upsertResource({
-				existsPath: `/api/v1/namespaces/${encodeURIComponent(name)}`,
+				path: `/api/v1/namespaces/${encodeURIComponent(name)}`,
 				createPath: "/api/v1/namespaces",
 				createBody: manifest,
-				patchPath: `/api/v1/namespaces/${encodeURIComponent(name)}`,
 				patchBody: { metadata: { labels: manifest.metadata.labels } },
 			});
 		},
@@ -370,37 +372,29 @@ export function createKubernetesHttpApiClient(options: {
 			return (result.body?.items ?? []).map(namespaceSummary).filter((item) => item !== null);
 		},
 		async ensureServiceAccount(name, namespace, labels): Promise<void> {
-			const enc = (s: string) => encodeURIComponent(s);
 			await upsertResource({
-				existsPath: `/api/v1/namespaces/${enc(namespace)}/serviceaccounts/${enc(name)}`,
-				createPath: `/api/v1/namespaces/${enc(namespace)}/serviceaccounts`,
+				path: resourcePath(namespace, "serviceaccounts", name),
+				createPath: resourcePath(namespace, "serviceaccounts"),
 				createBody: {
 					apiVersion: "v1",
 					kind: "ServiceAccount",
 					metadata: { name, namespace, labels },
 					automountServiceAccountToken: false,
 				},
-				patchPath: `/api/v1/namespaces/${enc(namespace)}/serviceaccounts/${enc(name)}`,
 				patchBody: { metadata: { labels } },
 			});
 		},
 		async ensureConfigMap(manifest: KubernetesConfigMapManifest): Promise<void> {
-			const name = encodeURIComponent(manifest.metadata.name);
-			const namespace = encodeURIComponent(manifest.metadata.namespace);
+			const { name, namespace } = manifest.metadata;
 			await upsertResource({
-				existsPath: `/api/v1/namespaces/${namespace}/configmaps/${name}`,
-				createPath: `/api/v1/namespaces/${namespace}/configmaps`,
+				path: resourcePath(namespace, "configmaps", name),
+				createPath: resourcePath(namespace, "configmaps"),
 				createBody: manifest,
-				patchPath: `/api/v1/namespaces/${namespace}/configmaps/${name}`,
 				patchBody: { metadata: { labels: manifest.metadata.labels }, data: manifest.data },
 			});
 		},
 		async getDockerConfigJsonSecret(name: string, namespace: string): Promise<string> {
-			const result = await request<KubernetesObjectResponse>({
-				method: "GET",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets/${encodeURIComponent(name)}`,
-				ok: [200, 404],
-			});
+			const result = await readObject(resourcePath(namespace, "secrets", name));
 			if (result.status === 404) {
 				throw new Error(`Kubernetes image-pull Secret ${namespace}/${name} was not found`);
 			}
@@ -420,18 +414,17 @@ export function createKubernetesHttpApiClient(options: {
 		async ensureDockerConfigJsonSecret(
 			manifest: KubernetesDockerConfigJsonSecretManifest,
 		): Promise<void> {
-			const namespace = encodeURIComponent(manifest.metadata.namespace);
-			const name = encodeURIComponent(manifest.metadata.name);
+			const { namespace, name } = manifest.metadata;
 			const created = await request({
 				method: "POST",
-				path: `/api/v1/namespaces/${namespace}/secrets`,
+				path: resourcePath(namespace, "secrets"),
 				body: manifest,
 				ok: [201, 409],
 			});
 			if (created.status === 409) {
 				await request({
 					method: "PATCH",
-					path: `/api/v1/namespaces/${namespace}/secrets/${name}`,
+					path: resourcePath(namespace, "secrets", name),
 					contentType: "application/merge-patch+json",
 					body: {
 						metadata: { labels: manifest.metadata.labels },
@@ -444,15 +437,12 @@ export function createKubernetesHttpApiClient(options: {
 		async ensurePersistentVolumeClaim(
 			manifest: KubernetesPersistentVolumeClaimManifest,
 		): Promise<void> {
-			const name = encodeURIComponent(manifest.metadata.name);
-			const namespace = encodeURIComponent(manifest.metadata.namespace);
-			const existing = await exists(
-				`/api/v1/namespaces/${namespace}/persistentvolumeclaims/${name}`,
-			);
+			const { name, namespace } = manifest.metadata;
+			const existing = await exists(resourcePath(namespace, "persistentvolumeclaims", name));
 			if (!existing) {
 				await request({
 					method: "POST",
-					path: `/api/v1/namespaces/${namespace}/persistentvolumeclaims`,
+					path: resourcePath(namespace, "persistentvolumeclaims"),
 					body: manifest,
 				});
 			}
@@ -460,21 +450,21 @@ export function createKubernetesHttpApiClient(options: {
 		async deletePersistentVolumeClaim(name: string, namespace: string): Promise<void> {
 			await request({
 				method: "DELETE",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/persistentvolumeclaims/${encodeURIComponent(name)}`,
+				path: resourcePath(namespace, "persistentvolumeclaims", name),
 				ok: [200, 202, 404],
 			});
 		},
 		async createPod(manifest: KubernetesPodManifest): Promise<void> {
 			await request({
 				method: "POST",
-				path: `/api/v1/namespaces/${encodeURIComponent(manifest.metadata.namespace)}/pods`,
+				path: resourcePath(manifest.metadata.namespace, "pods"),
 				body: manifest,
 			});
 		},
 		async deletePod(name, namespace, options) {
 			await request({
 				method: "DELETE",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
+				path: resourcePath(namespace, "pods", name),
 				body: {
 					apiVersion: "v1",
 					kind: "DeleteOptions",
@@ -485,21 +475,14 @@ export function createKubernetesHttpApiClient(options: {
 			});
 		},
 		async getPod(name, namespace, options): Promise<KubernetesPodSummary | null> {
-			const result = await request<KubernetesObjectResponse>({
-				method: "GET",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
-				ok: [200, 404],
-				signal: options?.signal,
-			});
+			const result = await readObject(resourcePath(namespace, "pods", name), options?.signal);
 			return result.status === 404 ? null : podSummary(result.body ?? {});
 		},
 		async getPersistentVolumeClaim(name, namespace, options) {
-			const result = await request<KubernetesObjectResponse>({
-				method: "GET",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/persistentvolumeclaims/${encodeURIComponent(name)}`,
-				signal: options?.signal,
-				ok: [200, 404],
-			});
+			const result = await readObject(
+				resourcePath(namespace, "persistentvolumeclaims", name),
+				options?.signal,
+			);
 			return result.status === 404
 				? null
 				: {
@@ -516,7 +499,7 @@ export function createKubernetesHttpApiClient(options: {
 			const selector = labelSelector(labels);
 			const result = await request<KubernetesListResponse<KubernetesObjectResponse>>({
 				method: "GET",
-				path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods?labelSelector=${encodeURIComponent(selector)}`,
+				path: `${resourcePath(namespace, "pods")}?labelSelector=${encodeURIComponent(selector)}`,
 			});
 			return (result.body?.items ?? []).map(podSummary).filter((item) => item !== null);
 		},
@@ -530,11 +513,7 @@ export function createKubernetesHttpApiClient(options: {
 			const timer = setInterval(async () => {
 				if (stopped) return;
 				try {
-					const result = await request<KubernetesObjectResponse>({
-						method: "GET",
-						path: `/api/v1/namespaces/${encodeURIComponent(namespace)}/pods/${encodeURIComponent(name)}`,
-						ok: [200, 404],
-					});
+					const result = await readObject(resourcePath(namespace, "pods", name));
 					if (
 						result.status === 404 ||
 						["Failed", "Succeeded"].includes(result.body?.status?.phase ?? "")

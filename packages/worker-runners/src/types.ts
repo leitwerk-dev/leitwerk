@@ -226,6 +226,8 @@ interface StartWorkerInputBase {
 	docker: boolean;
 	/** @internal */
 	resources?: WorkerResourceLimits;
+	/** @internal */
+	resourceRequests?: WorkerResourceLimits;
 }
 
 /** Start input for the best-effort local runner, which uses configured host storage. */

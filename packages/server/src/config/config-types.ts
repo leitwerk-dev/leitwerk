@@ -9,6 +9,7 @@ import type {
 	StorageConfigSnapshot,
 	WorkersConfigSnapshot,
 } from "@leitwerk-dev/protocol";
+import type { DockerNetworkConfig } from "@leitwerk-dev/worker-protocol";
 
 export type {
 	ComponentConfigSnapshot as ComponentConfig,
@@ -199,6 +200,8 @@ export interface KubernetesDockerConfig {
 	/** StorageClass selected for the process's single retained PVC. */
 	/** @internal */
 	process_storage_class_name?: string;
+	/** @internal */
+	network?: DockerNetworkConfig;
 }
 
 /** @internal */
@@ -288,7 +291,28 @@ export interface WorkerRuntimeProfileCpuMemoryConfig {
 }
 
 /** @internal */
+export interface DockerRegistryConfig {
+	/** Actual registry permissions are enforced by the registry, not this binding. */
+	/** @internal */
+	profiles: Record<
+		string,
+		{
+			/** @internal */
+			registry: string;
+			/** @internal */
+			username: string;
+			/** @internal */
+			password: string;
+		}
+	>;
+	/** @internal */
+	process_bindings: Record<string, string[]>;
+}
+
+/** @internal */
 export interface WorkerRuntimeProfileResourcesConfig {
+	/** @internal */
+	requests?: WorkerRuntimeProfileCpuMemoryConfig;
 	/** @internal */
 	limits?: WorkerRuntimeProfileCpuMemoryConfig;
 	/** Back-compat shorthand interpreted as limits by Docker and manifest builders. */
@@ -409,6 +433,9 @@ export interface LeitwerkConfig extends ConfigSnapshot {
 	/** Server-only Docker run-mode wiring; stripped from the worker snapshot. */
 	/** @internal */
 	docker?: DockerRunnerConfig;
+	/** Server-only credentials delivered exclusively through authenticated worker.start. */
+	/** @internal */
+	docker_registries?: DockerRegistryConfig;
 	/** Server-only Kubernetes run-mode wiring; stripped from the worker snapshot. */
 	/** @internal */
 	kubernetes?: KubernetesRunnerConfig;

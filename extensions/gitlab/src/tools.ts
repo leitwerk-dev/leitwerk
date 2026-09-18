@@ -38,6 +38,17 @@ export function resolveGitLabBinding(
 		throw new Error("Invalid GitLab project binding");
 	return { profile: binding.profile, projectId: binding.projectId, iid: binding.iid };
 }
+async function findOrCreate<T>(find: () => Promise<T | undefined>, create: () => Promise<T>) {
+	const existing = await find();
+	if (existing) return existing;
+	try {
+		return await create();
+	} catch (error) {
+		const recovered = await find();
+		if (!recovered) throw error;
+		return recovered;
+	}
+}
 /** @internal */
 export async function ensureGitLabComment(input: {
 	/** @internal */
@@ -55,31 +66,72 @@ export async function ensureGitLabComment(input: {
 	/** @internal */
 	body: string;
 	/** @internal */
+	discussionId?: string;
+	/** @internal */
 	signal?: AbortSignal;
 }): Promise<{
 	/** @internal */
 	marker: string;
 }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, signal } = input;
-	const digest = createHash("sha256")
-		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, writeKey]))
-		.digest("hex");
+	const identity = [client.baseUrl, projectId, iid, instanceId, writeKey];
+	if (input.discussionId) identity.push(input.discussionId);
+	const digest = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
 	const marker = `<!-- leitwerk:gitlab:${digest} -->`;
-	const find = async () =>
-		(await client.listNotes(projectId, iid, signal)).find((note) => note.body.includes(marker));
+	const find = async () => {
+		const notes = input.discussionId
+			? (await client.getDiscussion(projectId, iid, input.discussionId, signal)).notes
+			: await client.listNotes(projectId, iid, signal);
+		return notes.find((note) => note.body.includes(marker));
+	};
 	await ensureWrite(writes, instanceId, createWriteIdentity("gitlab.comment", digest), async () => {
-		let note = await find();
-		if (!note) {
-			try {
-				note = await client.addNote(projectId, iid, `${input.body}\n\n${marker}`, signal);
-			} catch (error) {
-				note = await find();
-				if (!note) throw error;
-			}
-		}
+		const note = await findOrCreate(find, () => {
+			const body = `${input.body}\n\n${marker}`;
+			return input.discussionId
+				? client.replyToDiscussion(projectId, iid, input.discussionId, body, signal)
+				: client.addNote(projectId, iid, body, signal);
+		});
 		return { projectId, iid, noteId: note.id, marker };
 	});
 	return { marker };
+}
+/** @public */
+export async function ensureGitLabSeenReaction(input: {
+	/** @public */
+	client: GitLabClientLike;
+	/** @public */
+	writes: ExternalWriteLogRepoLike;
+	/** @public */
+	instanceId: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+	/** @public */
+	noteId: number;
+	/** @public */
+	signal?: AbortSignal;
+}): Promise<void> {
+	const { client, writes, instanceId, projectId, iid, noteId, signal } = input;
+	const digest = createHash("sha256")
+		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]))
+		.digest("hex");
+	await ensureWrite(
+		writes,
+		instanceId,
+		createWriteIdentity("gitlab.reaction", digest),
+		async () => {
+			const identity = await client.resolveGitIdentity(signal);
+			const find = async () =>
+				(await client.listNoteReactions(projectId, iid, noteId, signal)).find(
+					(reaction) => reaction.name === "eyes" && reaction.user.username === identity.username,
+				);
+			const reaction = await findOrCreate(find, () =>
+				client.addNoteReaction(projectId, iid, noteId, "eyes", signal),
+			);
+			return { projectId, iid, noteId, reactionId: reaction.id, name: "eyes" };
+		},
+	);
 }
 /** @internal */
 export function registerGitLabTools(
@@ -87,24 +139,26 @@ export function registerGitLabTools(
 	integration: GitLabIntegration,
 	writes: ExternalWriteLogRepoLike,
 ) {
-	for (const name of [
-		"gitlab_observe_merge_request",
-		"gitlab_get_changes",
-		"gitlab_get_identity",
-		"gitlab_list_failed_jobs",
-		"gitlab_get_job_trace",
-		"gitlab_comment",
+	for (const [name, description, required] of [
+		["gitlab_observe_merge_request", "Read the current MR source revision and its latest CI", []],
+		["gitlab_get_changes", "Read the MR changes", []],
+		["gitlab_get_identity", "Resolve the authenticated GitLab bot Git identity", []],
+		["gitlab_list_failed_jobs", "Read failed jobs from an MR-associated pipeline", ["pipelineId"]],
+		[
+			"gitlab_get_job_trace",
+			"Read a bounded trace from a failed MR pipeline job",
+			["pipelineId", "jobId"],
+		],
+		["gitlab_comment", "Post a retry-safe MR comment", ["body", "writeKey"]],
+		[
+			"gitlab_reply",
+			"Post a retry-safe reply in an MR discussion",
+			["body", "writeKey", "discussionId"],
+		],
 	] as const) {
 		api.tool<Record<string, unknown>>({
 			name,
-			description: {
-				gitlab_observe_merge_request: "Read the current MR source revision and its latest CI",
-				gitlab_get_changes: "Read the MR changes",
-				gitlab_get_identity: "Resolve the authenticated GitLab bot Git identity",
-				gitlab_list_failed_jobs: "Read failed jobs from an MR-associated pipeline",
-				gitlab_get_job_trace: "Read a bounded trace from a failed MR pipeline job",
-				gitlab_comment: "Post a retry-safe MR comment",
-			}[name],
+			description,
 			parameters: projectParameters(
 				{
 					pipelineId: { type: "integer" },
@@ -112,14 +166,9 @@ export function registerGitLabTools(
 					maxBytes: { type: "integer" },
 					body: { type: "string" },
 					writeKey: { type: "string" },
+					discussionId: { type: "string" },
 				},
-				name === "gitlab_comment"
-					? ["body", "writeKey"]
-					: name === "gitlab_get_job_trace"
-						? ["pipelineId", "jobId"]
-						: name === "gitlab_list_failed_jobs"
-							? ["pipelineId"]
-							: [],
+				[...required],
 			),
 			async execute(ctx, args) {
 				const b = resolveGitLabBinding(ctx);
@@ -128,7 +177,7 @@ export function registerGitLabTools(
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_changes") return client.getChanges(b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_identity") return client.resolveGitIdentity(ctx.signal);
-				if (name === "gitlab_comment")
+				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
 						client,
 						writes,
@@ -137,6 +186,7 @@ export function registerGitLabTools(
 						iid: b.iid,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
+						...(name === "gitlab_reply" ? { discussionId: stringArg(args, "discussionId") } : {}),
 						signal: ctx.signal,
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);

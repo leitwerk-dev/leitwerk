@@ -59,6 +59,8 @@ Set a custom gateway's `api_key` to `false` only when its endpoint intentionally
 
 ### Custom gateways
 
+Standard providers may also declare `models` using the same model fields as custom gateways. This adds deployment IDs absent from the bundled Pi catalog and replaces definitions with matching IDs. Worker and server calls use the explicit definition with the standard provider's canonical API and configured base URL. Omitted metadata follows Pi's explicit-model defaults: text input, no reasoning, zero estimated costs, 128,000 context tokens and 16,384 output tokens. Set actual limits and costs when known.
+
 Define OpenAI-compatible gateways and internal inference endpoints under `custom_gateways`:
 
 ```yaml
@@ -75,6 +77,9 @@ extensions:
             reasoning: true
             context_window: 262144
             max_tokens: 32768
+            thinking_level_map: {off: null, xhigh: high}
+            input: [text]
+            cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
           - id: qwen-3.6-27b
             name: Qwen 3.6 27B
             reasoning: true
@@ -89,6 +94,8 @@ pi:
       provider: internal-gateway
       model_id: gemma-4-31b-it
 ```
+
+Model definitions support `thinking_level_map` with Pi thinking levels as keys and strings or `null` as values. `null` marks an unsupported level. Gateway and model `compat` objects retain Pi's camelCase compatibility keys; model settings override gateway settings. `cost` also uses Pi's keys, including `cacheRead` and `cacheWrite`. The [models extension](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/models/README.md) lists the supported fields. These definitions are non-secret and travel through managed `models.json`; credentials remain separate.
 
 ## Profile resolution
 

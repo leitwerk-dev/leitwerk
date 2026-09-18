@@ -1,5 +1,6 @@
 import type {
 	LaunchRun,
+	ProcessEvent,
 	ProcessInstance,
 	ProcessTurnRecord,
 	TurnStartRecord,
@@ -18,6 +19,7 @@ export interface StartupEvidenceInput {
 	turnStarts: readonly TurnStartRecord[];
 	leases: readonly WorkerLease[];
 	turnRecords: readonly ProcessTurnRecord[];
+	events?: readonly ProcessEvent[];
 }
 
 export interface StartupEvidence {
@@ -160,6 +162,15 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 						(start.id !== currentStartId && index < startupStarts.length - 1)
 					? "superseded"
 					: "starting";
+		const queued =
+			status === "starting" &&
+			!lease &&
+			input.events?.some(
+				(event) =>
+					event.eventType === "worker_capacity_queued" && event.data.startRecordId === start.id,
+			);
+		const queueSummary =
+			"Waiting for worker capacity; starts automatically when a slot is available.";
 		const failedStepId: StartupAttemptStepSummary["id"] = !lease
 			? "start_worker"
 			: !connectedAt
@@ -167,24 +178,21 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 				: !readyAt
 					? "prepare_workspace"
 					: "start_first_turn";
-		const phaseStarts = {
-			start_worker: start.createdAt,
-			connect_worker: lease?.startedAt ?? null,
-			prepare_workspace: lease?.connectedAt ?? null,
-			start_first_turn: readyAt,
-		};
-		const phaseEnds = {
-			start_worker: lease?.startedAt ?? null,
-			connect_worker: lease?.connectedAt ?? null,
-			prepare_workspace: readyAt,
-			start_first_turn: firstTurnAt,
-		};
-		const details = {
-			start_worker: "Resolve the turn and request its worker.",
-			connect_worker: "Allocate storage, schedule and start the worker, then connect.",
-			prepare_workspace: "Prepare the workspace, tools and model provider.",
-			start_first_turn: "Accept the turn and hand it to the worker.",
-		};
+		const phases = [
+			["start_worker", queued ? queueSummary : "Resolve the turn and request its worker."],
+			["connect_worker", "Allocate storage, schedule and start the worker, then connect."],
+			["prepare_workspace", "Prepare the workspace, tools and model provider."],
+			["start_first_turn", "Accept the turn and hand it to the worker."],
+		] as const;
+		const allocatedAt = lease?.startedAt ?? null;
+		const boundaries = [
+			start.createdAt,
+			allocatedAt,
+			lease?.connectedAt ?? null,
+			readyAt,
+			firstTurnAt,
+		];
+		const observations = [allocatedAt, connectedAt, readyAt, firstTurnAt];
 		const stoppedAt =
 			failed || start.state.kind === "superseded"
 				? start.updatedAt
@@ -194,27 +202,26 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 						input.process.updatedAt ??
 						start.updatedAt)
 					: null;
-		const step = (
-			id: StartupAttemptStepSummary["id"],
-			completed: boolean,
-			occurredAt: string | null,
-		): StartupAttemptStepSummary => ({
-			id,
-			label: STARTUP_STEP_LABELS[id],
-			status: completed
-				? "completed"
-				: status === "superseded"
-					? "superseded"
-					: failed && id === failedStepId
-						? "failed"
-						: id === failedStepId && status === "starting"
-							? "in_progress"
-							: "pending",
-			occurredAt,
-			startedAt: phaseStarts[id],
-			endedAt: phaseEnds[id] ?? (id === failedStepId ? stoppedAt : null),
-			detail: details[id],
-		});
+		const steps = phases.map(
+			([id, detail], phase): StartupAttemptStepSummary => ({
+				id,
+				label:
+					queued && id === "start_worker" ? "Waiting for worker capacity" : STARTUP_STEP_LABELS[id],
+				status: (phase === 0 ? Boolean(lease) : Boolean(observations[phase]))
+					? "completed"
+					: status === "superseded"
+						? "superseded"
+						: failed && id === failedStepId
+							? "failed"
+							: id === failedStepId && status === "starting"
+								? "in_progress"
+								: "pending",
+				occurredAt: observations[phase] ?? null,
+				startedAt: boundaries[phase] ?? null,
+				endedAt: boundaries[phase + 1] ?? (id === failedStepId ? stoppedAt : null),
+				detail,
+			}),
+		);
 		return {
 			startRecordId: start.id,
 			workerLeaseId: lease?.id ?? null,
@@ -226,14 +233,11 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			summary:
 				start.state.kind === "preparation_failed" || start.state.kind === "bootstrap_failed"
 					? start.state.safeSummary
-					: null,
+					: queued
+						? queueSummary
+						: null,
 			recoveredByStartRecordId: null,
-			steps: [
-				step("start_worker", Boolean(lease), lease?.startedAt ?? null),
-				step("connect_worker", Boolean(connectedAt), connectedAt),
-				step("prepare_workspace", Boolean(readyAt), readyAt),
-				step("start_first_turn", Boolean(firstTurnAt), firstTurnAt),
-			],
+			steps,
 		};
 	});
 	const recoveredAttempts = attempts.map((attempt, index) => {
@@ -337,7 +341,9 @@ export function projectLaunchRunStartup(
 				status === "failed"
 					? (attempt?.summary ??
 							"Worker startup stopped before completion. Retry startup from the process page.")
-					: undefined,
+					: id === "start_worker" && attempt?.summary
+						? attempt.summary
+						: undefined,
 			);
 		}
 		next = {

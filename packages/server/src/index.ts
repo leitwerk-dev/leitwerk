@@ -1,5 +1,4 @@
 export {
-	buildKubernetesAdmissionPolicyManifests,
 	buildKubernetesProcessNamespaceManifest,
 	buildKubernetesProcessPvcManifest,
 	buildKubernetesWorkerPodManifest,
@@ -22,8 +21,6 @@ export {
 	type KubernetesPodSummary,
 	type KubernetesProcessNamespaceManifest,
 	type KubernetesProcessVolumeSpec,
-	type KubernetesValidatingAdmissionPolicyBindingManifest,
-	type KubernetesValidatingAdmissionPolicyManifest,
 	type KubernetesWorkerRunnerOptions,
 	kubernetesProcessNamespaceName,
 	kubernetesProcessPvcName,
