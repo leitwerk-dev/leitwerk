@@ -11,10 +11,9 @@ Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm p
 Every PR must pass `Full validation` and `Conventional PR title and DCO`. These checks cover builds, type checks, tests, PR title format, and commit sign-offs. Publication also validates release metadata and package contents.
 
 CI and publication workflows run `npm run api:check` as a required step after
-`npm run test:full`; the local full gate does not include it. It checks explicit `@public`/`@internal`
-annotations, public signature dependencies, and drift in committed interface
-reports. The usage baseline is committed; CI never reads sibling consumer
-repositories. Both classifications remain in published declarations.
+`npm run test:full`; the local full gate does not include it. It checks explicit
+`@public`/`@internal` annotations and public signature dependencies. Both
+classifications remain in published declarations.
 
 Builds, tests, and browser installation use Node 26. Playwright 1.63 supports
 fresh browser archive extraction on Node 26.8.1, so the older temporary Node 24

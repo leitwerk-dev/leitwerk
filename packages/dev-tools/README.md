@@ -30,16 +30,13 @@ and the `{ "packages": [...] }` workspace form are supported.
 
 `leitwerk-dev api:check --workspace PATH` checks the workspace's typed package
 exports. Every exposed declaration and member needs `@public` or `@internal`.
-The check rejects conflicting tags, internal supporting types in public
-signatures, and changes to `api-reports/*.api.md`. It permits calls to internal
-APIs. Source exports take precedence; declaration exports work for packages
-without a source condition. The command does not select or clone a core checkout.
+The check rejects conflicting tags and internal supporting types in public
+signatures. It permits calls to internal APIs. Source exports take precedence;
+declaration exports work for packages without a source condition. The command
+does not select or clone a core checkout.
 
-After reviewing an intentional interface change, run
-`leitwerk-dev api:check --workspace PATH --update` and commit the reports.
-Updating a report does not waive the public compatibility policy: breaking
-public APIs require release notes and a minor bump during `0.x`, or a major
-bump from `1.0`. Members retain individual classifications.
+Breaking public APIs require release notes and a minor bump during `0.x`, or a
+major bump from `1.0`. Members retain individual classifications.
 
 Add `--built` after building to verify the emitted exports and release tags.
 The core build restores explicit member tags that TypeScript drops when

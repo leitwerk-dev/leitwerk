@@ -29,12 +29,9 @@ internal. Forwarding an options object does not consume all its members.
 
 Run `leitwerk-dev api:check --workspace PATH` from an installed
 `@leitwerk-dev/dev-tools` package to check an extension workspace. It verifies
-classification completeness, conflicting tags, public signature dependencies,
-and interface report drift. Internal API calls are allowed. Use `--update` to
-write reports after reviewing changes. The core repository runs this check in
-`npm run test:full`; it needs no consumer checkout. See the
-[API reports](https://github.com/leitwerk-dev/leitwerk/tree/main/api-reports) for
-the recorded baseline and unresolved consumer dependencies.
+classification completeness, conflicting tags, and public signature
+dependencies. Internal API calls are allowed. The check needs no consumer
+checkout.
 
 ## Extension Package
 
