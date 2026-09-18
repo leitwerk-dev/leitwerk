@@ -54,27 +54,11 @@ export async function createRemoteRepoChangeFixture(...args: Parameters<typeof c
 	snapshot();
 	timer = setInterval(snapshot, 250);
 	timer.unref();
-	const operations = new Set([
-		"restart",
-		"launchTicketlessChange",
-		"exposeTriggeredIssue",
-		"approvePlan",
-		"approveImplementation",
-		"action",
-		"pollFeedback",
-		"publishPipeline",
-		"markPullRequestMerged",
-		"markPullRequestClosed",
-		"removeSourceTrigger",
-		"waitForTurn",
-		"waitForHeadChange",
-		"waitForCompleted",
-		"close",
-	]);
 	return new Proxy(fixture, {
 		get(target, key, receiver) {
 			const value = Reflect.get(target, key, receiver);
-			if (!operations.has(String(key)) || typeof value !== "function") return value;
+			// subscriptions is a synchronous read; all other methods are awaited operations.
+			if (typeof value !== "function" || key === "subscriptions") return value;
 			return (...input: unknown[]) =>
 				trace.run(async () => {
 					const operation = String(key);

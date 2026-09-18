@@ -214,19 +214,16 @@ export function parseStandardProviderConfig(
 		rawConfig.base_url === undefined || rawConfig.base_url === null
 			? undefined
 			: v.parse(baseUrlSchema, resolveSecret(rawConfig.base_url, "base_url"));
+	const models =
+		rawConfig.models === undefined
+			? undefined
+			: normalizeStandardModels(
+					providerId,
+					v.parse(modelDefinitionsSchema, rawConfig.models),
+					baseUrl,
+				);
 	return {
-		config: {
-			...(baseUrl ? { baseUrl } : {}),
-			...(rawConfig.models === undefined
-				? {}
-				: {
-						models: normalizeStandardModels(
-							providerId,
-							v.parse(modelDefinitionsSchema, rawConfig.models),
-							baseUrl,
-						),
-					}),
-		},
+		config: { ...(baseUrl ? { baseUrl } : {}), ...(models ? { models } : {}) },
 		...(apiKey ? { credential: { apiKey } } : {}),
 	};
 }

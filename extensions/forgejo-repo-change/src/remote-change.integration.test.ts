@@ -125,29 +125,9 @@ describe("Forgejo repository-change composed integration", () => {
 	});
 	const createFixture: typeof createRemoteRepoChangeFixture = (preflight, options) =>
 		createRemoteRepoChangeFixture(preflight, { ...options, seed });
-	afterEach(async ({ task }) => {
-		try {
-			if (fixture && task.result?.state === "fail") {
-				console.error(
-					"Remote-change state at failure",
-					JSON.stringify({
-						processes: processInstances(fixture).map(({ id, selectedTurnId, lifecycleStatus }) => ({
-							id,
-							selectedTurnId,
-							lifecycleStatus,
-							turns: fixture?.harness.ctx.deps.turnRecords
-								.listByInstance(id)
-								.slice(-10)
-								.map(({ turnId, status }) => ({ turnId, status })),
-						})),
-						piTurns: fixture.piTurns.slice(-10).map(({ kind }) => kind),
-					}),
-				);
-			}
-		} finally {
-			await fixture?.close();
-			fixture = null;
-		}
+	afterEach(async () => {
+		await fixture?.close();
+		fixture = null;
 	});
 
 	it.each([
@@ -218,8 +198,7 @@ describe("Forgejo repository-change composed integration", () => {
 			botLogin: "garden-bot",
 		});
 		const id = await fixture.launchTicketlessChange("Update the service image");
-		await fixture.approvePlan(id);
-		await fixture.approveImplementation(id);
+		await fixture.publishChange(id);
 		expect(preflight).not.toHaveBeenCalled();
 		expect(fixture.harness.ctx.deps.projects.listByInstance(id)[0]?.metadata).toMatchObject({
 			"leitwerk.gitIdentity": { login: "garden-bot" },

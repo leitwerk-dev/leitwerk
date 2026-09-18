@@ -265,13 +265,22 @@ function treeText(factory: StubPiTreeHandleFactory): string {
 		.join("\n\n");
 }
 
+interface PiFixtureOptions {
+	ciRepairBlockedOnce?: boolean;
+	feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready";
+	ciRestart?: boolean;
+}
+
+function markdownCall(toolName: string, markdown: string) {
+	return { toolName, args: { markdown } };
+}
+
 function createPiFactory(
 	records: PiTurnRecord[],
 	git: LocalGit,
-	ciRepairBlockedOnce = false,
-	feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready",
-	ciRestart = false,
+	options: PiFixtureOptions = {},
 ): StubPiTreeHandleFactory {
+	const { ciRepairBlockedOnce = false, feedbackOutcome, ciRestart = false } = options;
 	const factory = new StubPiTreeHandleFactory({
 		recordSessionTrace: true,
 		toolCallScriptResolver({ tools, promptText, sessionCwd, workspaceRoot }) {
@@ -331,12 +340,10 @@ function createPiFactory(
 					}
 					git.run(cwd, ["-c", "core.editor=true", "rebase", "--continue"]);
 				}
-				return {
-					toolName: "changes_ready",
-					args: {
-						markdown: "Resolved manifest conflict, retaining base annotations and requested image.",
-					},
-				};
+				return markdownCall(
+					"changes_ready",
+					"Resolved manifest conflict, retaining base annotations and requested image.",
+				);
 			}
 
 			if (
@@ -351,34 +358,35 @@ function createPiFactory(
 						"# Service\n",
 						"# Service\n\nReviewed deployment configuration.\n",
 					);
-				return {
-					toolName: feedbackOutcome,
-					args: {
-						markdown: "The service image is already updated; no repository edit is justified.",
-					},
-				};
+				return markdownCall(
+					feedbackOutcome,
+					"The service image is already updated; no repository edit is justified.",
+				);
 			}
 
 			if (names.has("changes_ready") && names.has("woodpecker_get_step_logs")) {
 				const blocked = ciRepairBlockedOnce && !records.some((turn) => turn.kind === "ci-repair");
 				records.push({ kind: "ci-repair", sessionId, prompt, toolNames });
+				const diagnosticCalls = [
+					{
+						toolName: "woodpecker_get_pipeline",
+						args: { projectKey: "repo", pipelineNumber: 1 },
+					},
+					{
+						toolName: "woodpecker_get_step_logs",
+						args: {
+							projectKey: "repo",
+							pipelineNumber: 1,
+							stepId: 10,
+							tailLines: 100,
+							maxBytes: 16_384,
+						},
+					},
+				];
 				if (ciRestart)
 					return {
 						calls: [
-							{
-								toolName: "woodpecker_get_pipeline",
-								args: { projectKey: "repo", pipelineNumber: 1 },
-							},
-							{
-								toolName: "woodpecker_get_step_logs",
-								args: {
-									projectKey: "repo",
-									pipelineNumber: 1,
-									stepId: 10,
-									tailLines: 100,
-									maxBytes: 16384,
-								},
-							},
+							...diagnosticCalls,
 							{
 								toolName: "woodpecker_restart_pipeline",
 								args: {
@@ -388,21 +396,17 @@ function createPiFactory(
 									logEvidence: "Inspected runner unavailable in pipeline logs",
 								},
 							},
-							{
-								toolName: "no_changes",
-								args: {
-									markdown: "Restarted pipeline after diagnosis without repository changes.",
-								},
-							},
+							markdownCall(
+								"no_changes",
+								"Restarted pipeline after diagnosis without repository changes.",
+							),
 						],
 					};
 				if (blocked)
-					return {
-						toolName: "cannot_repair",
-						args: {
-							markdown: "Operator approval is required before changing the readiness probe.",
-						},
-					};
+					return markdownCall(
+						"cannot_repair",
+						"Operator approval is required before changing the readiness probe.",
+					);
 				replaceWorkspaceText(
 					"k8s/deployment.yaml",
 					"        image: example/service:new\n",
@@ -414,24 +418,8 @@ function createPiFactory(
 							toolName: "woodpecker_lookup_repository",
 							args: { projectKey: "repo" },
 						},
-						{
-							toolName: "woodpecker_get_pipeline",
-							args: { projectKey: "repo", pipelineNumber: 1 },
-						},
-						{
-							toolName: "woodpecker_get_step_logs",
-							args: {
-								projectKey: "repo",
-								pipelineNumber: 1,
-								stepId: 10,
-								tailLines: 100,
-								maxBytes: 16_384,
-							},
-						},
-						{
-							toolName: "changes_ready",
-							args: { markdown: "Added the required readiness probe." },
-						},
+						...diagnosticCalls,
+						markdownCall("changes_ready", "Added the required readiness probe."),
 					],
 				};
 			}
@@ -448,20 +436,15 @@ function createPiFactory(
 					"        image: example/service:new",
 				);
 				records.push({ kind: "implementation", sessionId, prompt, toolNames });
-				return {
-					toolName: "markdown_result",
-					args: {
-						markdown: "## Implementation\n\nUpdated the service deployment image.",
-					},
-				};
+				return markdownCall(
+					"markdown_result",
+					"## Implementation\n\nUpdated the service deployment image.",
+				);
 			}
 
 			if (names.has("markdown_result") || prompt.includes("commit message")) {
 				records.push({ kind: "commit-message", sessionId, prompt, toolNames });
-				return {
-					toolName: "markdown_result",
-					args: { markdown: "feat: update service deployment image" },
-				};
+				return markdownCall("markdown_result", "feat: update service deployment image");
 			}
 
 			throw new Error(`Unexpected fixture Pi turn with tools: ${toolNames.join(", ")}`);
@@ -489,12 +472,9 @@ export type RemoteRepoChangeFixture = Awaited<ReturnType<typeof createRemoteRepo
 
 export async function createRemoteRepoChangeFixture(
 	dockerPreflight: (timeoutMs: number) => Promise<void> = async () => {},
-	options: {
+	options: PiFixtureOptions & {
 		docker?: boolean;
 		botLogin?: string;
-		ciRepairBlockedOnce?: boolean;
-		feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready";
-		ciRestart?: boolean;
 		diagnostics?: ReturnType<typeof createTestDiagnostics>;
 		seed?: TemporaryGitRemote;
 	} = {},
@@ -519,13 +499,7 @@ export async function createRemoteRepoChangeFixture(
 		let forgejo = forgejoFixture(temporaryGit, options.botLogin);
 		let woodpecker = woodpeckerFixture(root);
 		const piTurns: PiTurnRecord[] = [];
-		let piFactory = createPiFactory(
-			piTurns,
-			temporaryGit.local,
-			options.ciRepairBlockedOnce,
-			options.feedbackOutcome,
-			options.ciRestart,
-		);
+		let piFactory = createPiFactory(piTurns, temporaryGit.local, options);
 		let pollTime = Date.now();
 		const forgejoProvider = createPollingTestExtension({ id: "forgejo", version: "1.0.0" }, (api) =>
 			setupForgejoIntegration(
@@ -543,6 +517,12 @@ export async function createRemoteRepoChangeFixture(
 				// Each explicit poll advances past the provider's throttle interval.
 				setupWoodpeckerIntegration(api, woodpecker, { now: () => (pollTime += 60_000) }),
 		);
+
+		async function checkedPoll(provider: typeof forgejoProvider, errorPrefix: string) {
+			const result = await provider.poll();
+			if (result.errors.length) throw new Error(errorPrefix + result.errors.join(", "));
+			return result;
+		}
 
 		let generation = 0;
 		async function start(retainedConfig?: IntegrationHarness["config"]) {
@@ -697,13 +677,7 @@ export async function createRemoteRepoChangeFixture(
 				await whileStopped?.();
 				forgejo = forgejoFixture(temporaryGit, options.botLogin);
 				woodpecker = woodpeckerFixture(root);
-				piFactory = createPiFactory(
-					piTurns,
-					temporaryGit.local,
-					options.ciRepairBlockedOnce,
-					options.feedbackOutcome,
-					options.ciRestart,
-				);
+				piFactory = createPiFactory(piTurns, temporaryGit.local, options);
 				harness = await start(config);
 				runningHarness = harness;
 				await harness.ctx.startBackgroundServices();
@@ -736,10 +710,7 @@ export async function createRemoteRepoChangeFixture(
 			},
 			async exposeTriggeredIssue() {
 				forgejo.exposeTriggeredIssue();
-				const pollResult = await forgejoProvider.poll();
-				if (pollResult.errors.length > 0) {
-					throw new Error(`Forgejo fixture poll failed: ${pollResult.errors.join(", ")}`);
-				}
+				const pollResult = await checkedPoll(forgejoProvider, "Forgejo fixture poll failed: ");
 				if (pollResult.created.length === 0) {
 					throw new Error(
 						`Forgejo fixture poll did not create a process: ${JSON.stringify(pollResult)}`,
@@ -767,6 +738,11 @@ export async function createRemoteRepoChangeFixture(
 				await action(instanceId, codingActionIds.finalizeChange);
 				await waitForTurn(instanceId, "deliver_change");
 			},
+			async publishChange(instanceId: string): Promise<string> {
+				await this.approvePlan(instanceId);
+				await this.approveImplementation(instanceId);
+				return instanceId;
+			},
 			action,
 			async conflictBase() {
 				const directory = path.join(root, "conflicting-base");
@@ -786,23 +762,17 @@ export async function createRemoteRepoChangeFixture(
 				git("push", "origin", "main");
 				const baseSha = temporaryGit.head("main");
 				pollTime += 180_000;
-				const result = await forgejoProvider.poll();
-				if (result.errors.length) throw new Error(result.errors.join(", "));
+				await checkedPoll(forgejoProvider, "");
 				return baseSha;
 			},
 			async pollFeedback() {
 				// Advance beyond both the feedback quiet period and provider throttle.
 				pollTime += 180_000;
-				const result = await forgejoProvider.poll();
-				if (result.errors.length > 0)
-					throw new Error(`Forgejo fixture poll failed: ${result.errors.join(", ")}`);
+				await checkedPoll(forgejoProvider, "Forgejo fixture poll failed: ");
 			},
 			async publishPipeline(input: PipelineFixture) {
 				woodpecker.publish(input);
-				const result = await woodpeckerProvider.poll();
-				if (result.errors.length > 0) {
-					throw new Error(`Woodpecker fixture poll failed: ${result.errors.join(", ")}`);
-				}
+				await checkedPoll(woodpeckerProvider, "Woodpecker fixture poll failed: ");
 			},
 			async markPullRequestMerged() {
 				forgejo.markPullRequestMerged();
@@ -820,9 +790,7 @@ export async function createRemoteRepoChangeFixture(
 						.map((label) => label.id),
 				});
 				pollTime += 60_000;
-				const result = await forgejoProvider.poll();
-				if (result.errors.length > 0)
-					throw new Error(`Forgejo fixture poll failed: ${result.errors.join(", ")}`);
+				await checkedPoll(forgejoProvider, "Forgejo fixture poll failed: ");
 			},
 			waitForTurn,
 			async waitForHeadChange(instanceId: string, previousSha: string) {

@@ -1,31 +1,28 @@
 import { expect, it } from "vitest";
 import { forgejoRepoChangeProcess as process } from "./index.js";
+import { deliveryTurn, routingState } from "./routing.test-fixture.js";
 
 function feedbackState() {
-	return process.stateCodec.parse({
-		extensionState: {
-			unrelated: { retained: true },
-			forgejoRepoChange: {
-				headSha: "current-head",
-				prNumber: 7,
-				prUrl: "https://forgejo.example/pulls/7",
-				ciRecoveryCycles: 3,
-				conversationCursor: 10,
-				reviewCursor: 20,
-				inlineCursor: 30,
-				feedbackIds: [{ kind: "conversation", id: 10 }],
-				delivery: { stage: "awaiting", adjustment: null },
-			},
+	return routingState(
+		{
+			headSha: "current-head",
+			prNumber: 7,
+			prUrl: "https://forgejo.example/pulls/7",
+			ciRecoveryCycles: 3,
+			conversationCursor: 10,
+			reviewCursor: 20,
+			inlineCursor: 30,
+			feedbackIds: [{ kind: "conversation", id: 10 }],
+			delivery: { stage: "awaiting", adjustment: null },
 		},
-	});
+		{ unrelated: { retained: true } },
+	);
 }
 
 it("accepts feedback evidence without resetting unrelated delivery state or omitted cursors", async () => {
 	const state = feedbackState();
 	const before = structuredClone(state);
-	const turn = process.turns.get("deliver_change")?.definition;
-	if (turn?.kind !== "automatic") throw new Error("Missing delivery turn");
-	const action = turn.externalActions?.forgejo_feedback;
+	const action = deliveryTurn().externalActions?.forgejo_feedback;
 	const feedbackIds = [{ kind: "inline", id: 31 }];
 	expect(action).toMatchObject({ to: "deliver_change" });
 	const effect = await action?.effect?.({
@@ -50,12 +47,16 @@ it("accepts feedback evidence without resetting unrelated delivery state or omit
 });
 
 it.each([
-	["changes_ready", true],
-	["no_changes", false],
-] as const)("feedback %s requests publication only when necessary", async (name, publishRequired) => {
+	["ci", "changes_ready", true],
+	["ci", "no_changes", false],
+	["feedback", "changes_ready", true],
+	["feedback", "no_changes", false],
+] as const)("%s %s preserves evidence and budget, publishing only when necessary", async (origin, name, publishRequired) => {
 	const state = feedbackState();
 	const before = structuredClone(state);
-	const turn = process.turns.get("revise_from_pull_request_feedback")?.definition;
+	const turn = process.turns.get(
+		origin === "ci" ? "repair_woodpecker_pipeline" : "revise_from_pull_request_feedback",
+	)?.definition;
 	if (turn?.kind !== "llm") throw new Error("Missing feedback turn");
 	const outcome = turn.outcomes?.[name];
 	expect(outcome).toMatchObject({ to: "deliver_change" });
@@ -67,7 +68,7 @@ it.each([
 				headSha: "current-head",
 				ciRecoveryCycles: 3,
 				feedbackIds: [{ kind: "conversation", id: 10 }],
-				delivery: { stage: "awaiting", adjustment: { origin: "feedback", publishRequired } },
+				delivery: { stage: "awaiting", adjustment: { origin, publishRequired } },
 			},
 		},
 	});

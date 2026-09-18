@@ -19,10 +19,7 @@ async function publish(f: RemoteRepoChangeFixture) {
 		docker: false,
 		sshCredentialRef: "untrusted",
 	});
-	await f.approvePlan(id);
-	await f.approveImplementation(id);
-	await f.waitForTurn(id, "deliver_change");
-	return id;
+	return f.publishChange(id);
 }
 
 it("UI publication retains provider bindings and reasoning, completes without an issue, and replays on a fresh branch", async () => {

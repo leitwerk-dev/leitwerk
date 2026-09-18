@@ -1,15 +1,11 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { setupForgejoIntegration } from "@leitwerk-dev/forgejo";
 import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
 import { createAcceptedLlmTurn } from "@leitwerk-dev/server/testing";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
-	createIntegrationHarness,
+	createPersistentIntegrationFixture,
 	createProcessDriver,
-	type IntegrationHarness,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import {
@@ -20,12 +16,9 @@ import { expect, it, onTestFinished } from "vitest";
 import ticketCreation from "./index.js";
 
 async function fixture(options: { clarifyDestination?: boolean } = {}) {
-	const root = await mkdtemp(path.join(tmpdir(), "forgejo-ticket-"));
-	let harness: IntegrationHarness | undefined;
-	onTestFinished(async () => {
-		await harness?.ctx.app.close();
-		await rm(root, { recursive: true, force: true });
-	});
+	const persistent = createPersistentIntegrationFixture("forgejo-ticket-");
+	onTestFinished(persistent.dispose);
+	const { root, context } = persistent;
 	let adapter: LocalForgejoAdapter;
 	async function start() {
 		adapter = new LocalForgejoAdapter({
@@ -103,16 +96,12 @@ async function fixture(options: { clarifyDestination?: boolean } = {}) {
 				},
 			}),
 		});
-		harness = await createIntegrationHarness({
+		await persistent.open({
 			extensionCatalog: catalog,
 			appOverrides: {
 				localWorkerSpawnImpl: createInProcessWorkerSpawn({ extensionCatalog: catalog, piFactory }),
 			},
 			configOverride(config) {
-				config.storage.sqlite_path = path.join(root, "state.sqlite");
-				config.storage.tree_files_dir = path.join(root, "trees");
-				config.storage.process_workspaces_dir = path.join(root, "workspaces");
-				config.pi.agent_dir = path.join(root, "pi");
 				config.pi.model_profiles = [
 					{ id: "scripted", provider: "ticket-model", model_id: "scripted", thinking_level: "off" },
 				];
@@ -124,10 +113,6 @@ async function fixture(options: { clarifyDestination?: boolean } = {}) {
 		});
 	}
 	await start();
-	function context() {
-		if (!harness) throw new Error("Fixture not started");
-		return harness.ctx;
-	}
 	const driver = createProcessDriver(context);
 	// A retained parent artifact is sufficient; no repository workflow or watcher is needed.
 	const parent = context().deps.processes.create({
@@ -180,7 +165,7 @@ async function fixture(options: { clarifyDestination?: boolean } = {}) {
 			return pending;
 		},
 		async restart() {
-			await context().app.close();
+			await persistent.close();
 			await start();
 		},
 	};

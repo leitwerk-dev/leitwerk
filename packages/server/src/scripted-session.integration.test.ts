@@ -1,17 +1,16 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { defineProcess, emptyParamsCodec, llmTurn } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
-import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
+import {
+	createPersistentIntegrationFixture,
+	waitForValue,
+} from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
 	StubPiTreeHandleFactory,
 	type StubToolCallScriptResolver,
 } from "@leitwerk-dev/test-support/worker-testing";
 import { expect, it, onTestFinished } from "vitest";
-import { getDefaultConfig } from "./config/index.js";
 
 const prompt = "Retain this input sentinel across failed attempts.";
 const turn = llmTurn<Record<string, never>, Record<string, never>>({
@@ -42,11 +41,9 @@ const processDefinition = defineProcess<Record<string, never>, Record<string, ne
 });
 
 async function fixture(resolver: StubToolCallScriptResolver) {
-	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-session-migration-"));
-	const config = getDefaultConfig();
-	config.storage.sqlite_path = path.join(root, "application.sqlite");
-	config.storage.process_workspaces_dir = path.join(root, "workspaces");
-	config.storage.tree_files_dir = path.join(root, "trees");
+	const persistent = createPersistentIntegrationFixture("leitwerk-session-migration-");
+	onTestFinished(persistent.dispose);
+	const config = persistent.createConfig();
 	config.workers.shutdown_grace_period = "100ms";
 	config.extension_loading.sources = [];
 	config.pi.model_profiles = [
@@ -71,10 +68,9 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 		},
 	]);
 	const open = () =>
-		createIntegrationHarness({
+		persistent.open({
 			config,
 			extensionCatalog: catalog,
-			inProcessWorkers: false,
 			appOverrides: {
 				localWorkerSpawnImpl: createInProcessWorkerSpawn({
 					extensionCatalog: catalog,
@@ -85,15 +81,7 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 				}),
 			},
 		});
-	let h: Awaited<ReturnType<typeof open>> | undefined;
-	onTestFinished(async () => {
-		try {
-			await h?.ctx.app.close();
-		} finally {
-			rmSync(root, { recursive: true, force: true });
-		}
-	});
-	h = await open();
+	const h = await open();
 	await h.ctx.startBackgroundServices();
 	const process = h.ctx.deps.processes.create({
 		processId: processDefinition.id,
@@ -104,19 +92,17 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 	expect((await h.ctx.deps.processEngine.startProcess(process.id, "respond")).ok).toBe(true);
 	return {
 		get ctx() {
-			if (!h) throw new Error("Closed fixture");
-			return h.ctx;
+			return persistent.context();
 		},
 		id: process.id,
 		async restart() {
-			await h?.ctx.app.close();
-			h = undefined;
-			h = await open();
-			await h.ctx.startBackgroundServices();
+			await persistent.close();
+			await open();
+			await persistent.context().startBackgroundServices();
 		},
 		async wait(status: string) {
 			await waitForValue(
-				() => h?.ctx.deps.processes.getById(process.id),
+				() => persistent.context().deps.processes.getById(process.id),
 				(value) => value?.lifecycleStatus === status,
 			);
 		},

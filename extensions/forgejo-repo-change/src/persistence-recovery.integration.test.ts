@@ -7,15 +7,6 @@ import {
 	remoteState,
 } from "./testing/remote-repo-change-fixture.js";
 
-async function publish(f: RemoteRepoChangeFixture, issueOrigin: boolean) {
-	const id = issueOrigin
-		? await f.exposeTriggeredIssue()
-		: await f.launchTicketlessChange("Update the service image");
-	await f.approvePlan(id);
-	await f.approveImplementation(id);
-	return id;
-}
-
 async function reopenLegacyDelivery(f: RemoteRepoChangeFixture, id: string, issueOrigin: boolean) {
 	const { deps } = f.harness.ctx;
 	const retained = deps.processes.getById(id);
@@ -71,7 +62,7 @@ async function reopenLegacyDelivery(f: RemoteRepoChangeFixture, id: string, issu
 it("reopens armed UI delivery with legacy project bindings and repairs CI using retained profiles", async () => {
 	const f = await createRemoteRepoChangeFixture();
 	onTestFinished(() => f.close());
-	const id = await publish(f, false);
+	const id = await f.publishChange(await f.launchTicketlessChange("Update the service image"));
 	const pr = f.forgejo.pullRequest();
 	await reopenLegacyDelivery(f, id, false);
 	await f.publishPipeline({
@@ -101,7 +92,7 @@ it("reopens armed UI delivery with legacy project bindings and repairs CI using 
 it("reconciles an offline merge for a legacy issue delivery once after subscription rearming", async () => {
 	const f = await createRemoteRepoChangeFixture();
 	onTestFinished(() => f.close());
-	const id = await publish(f, true);
+	const id = await f.publishChange(await f.exposeTriggeredIssue());
 	const pr = f.forgejo.pullRequest();
 	await reopenLegacyDelivery(f, id, true);
 	await f.restart(async () => {

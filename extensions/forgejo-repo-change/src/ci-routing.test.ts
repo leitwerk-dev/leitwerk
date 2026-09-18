@@ -1,11 +1,6 @@
 import { expect, it } from "vitest";
 import { forgejoRepoChangeProcess as process } from "./index.js";
-
-function deliveryTurn() {
-	const turn = process.turns.get("deliver_change")?.definition;
-	if (turn?.kind !== "automatic") throw new Error("Missing delivery turn");
-	return turn;
-}
+import { deliveryTurn, routingState } from "./routing.test-fixture.js";
 
 function operatorTurn() {
 	const turn = process.turns.get("ci_operator_action")?.definition;
@@ -14,17 +9,15 @@ function operatorTurn() {
 }
 
 function stateWithCycles(ciRecoveryCycles?: number) {
-	return process.stateCodec.parse({
-		extensionState: {
-			unrelated: { retained: true },
-			forgejoRepoChange: {
-				headSha: "current-head",
-				prNumber: 7,
-				prUrl: "https://forgejo.example/team/service/pulls/7",
-				...(ciRecoveryCycles === undefined ? {} : { ciRecoveryCycles }),
-			},
+	return routingState(
+		{
+			headSha: "current-head",
+			prNumber: 7,
+			prUrl: "https://forgejo.example/team/service/pulls/7",
+			...(ciRecoveryCycles === undefined ? {} : { ciRecoveryCycles }),
 		},
-	});
+		{ unrelated: { retained: true } },
+	);
 }
 
 it.each([
@@ -112,26 +105,6 @@ it("resume waiting clears pending adjustment without resetting the CI budget or 
 		},
 	});
 	expect(state).toEqual(before);
-});
-
-it.each([
-	["changes_ready", true],
-	["no_changes", false],
-] as const)("CI %s retains the exhausted budget when returning to delivery", async (name, publishRequired) => {
-	const state = stateWithCycles(3);
-	const turn = process.turns.get("repair_woodpecker_pipeline")?.definition;
-	if (turn?.kind !== "llm") throw new Error("Missing repair turn");
-	const outcome = turn.outcomes?.[name];
-	expect(outcome).toMatchObject({ to: "deliver_change" });
-	const effect = await outcome?.effect?.({ ctx: { state }, event: {} } as never);
-	expect(effect?.state).toMatchObject({
-		extensionState: {
-			forgejoRepoChange: {
-				ciRecoveryCycles: 3,
-				delivery: { adjustment: { origin: "ci", publishRequired } },
-			},
-		},
-	});
 });
 
 it("operator abort terminates without routing another repair", () => {

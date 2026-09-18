@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
@@ -10,7 +9,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
-	createIntegrationHarness,
+	createPersistentIntegrationFixture,
 	type IntegrationHarness,
 	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
@@ -19,9 +18,10 @@ import {
 	type StubPiTreeHandle,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { AppOptions } from "./app.js";
-import { getDefaultConfig, type LeitwerkConfig } from "./config/index.js";
+import type { LeitwerkConfig } from "./config/index.js";
+import { createAcceptedLlmTurnStart } from "./test-helpers/accepted-turn-start.js";
 
 const startupPlanTurn = llmTurn<Record<string, never>, Record<string, never>>({
 	description: "Startup planning turn",
@@ -65,44 +65,20 @@ const startupTestExtension: LeitwerkExtensionModule = {
 
 const extensionCatalogPromise = buildExtensionCatalogFromModules([startupTestExtension]);
 
-const harnesses: IntegrationHarness[] = [];
-const tempRoots: string[] = [];
-
-function createPersistentConfig(
-	tempRoot: string,
-	opts: { resumeOnBoot?: boolean } = {},
-): LeitwerkConfig {
-	const config = getDefaultConfig();
-	config.storage.sqlite_path = path.join(tempRoot, "db", "leitwerk.sqlite");
-	config.storage.process_workspaces_dir = path.join(tempRoot, "workspaces");
-	config.storage.tree_files_dir = path.join(tempRoot, "trees");
-	config.workers.shutdown_grace_period = "100ms";
-	config.workers.startup_timeout = "5s";
-	config.workers.resume_on_boot = opts.resumeOnBoot ?? true;
-	config.extension_loading.sources = [];
-	return config;
-}
-
-async function createPersistentHarness(
-	config: LeitwerkConfig,
-	appOverrides: Partial<AppOptions> = {},
-): Promise<IntegrationHarness> {
-	const harness = await createIntegrationHarness({
-		config,
-		extensionCatalog: extensionCatalogPromise,
-		inProcessWorkers: !appOverrides.localWorkerSpawnImpl,
-		appOverrides,
+function createPersistentFixture(opts: { resumeOnBoot?: boolean } = {}) {
+	const fixture = createPersistentIntegrationFixture("leitwerk-startup-", (config) => {
+		config.workers.shutdown_grace_period = "100ms";
+		config.workers.startup_timeout = "5s";
+		config.workers.resume_on_boot = opts.resumeOnBoot ?? true;
+		config.extension_loading.sources = [];
 	});
-	harnesses.push(harness);
-	return harness;
-}
-
-async function closeHarness(harness: IntegrationHarness): Promise<void> {
-	const index = harnesses.indexOf(harness);
-	if (index >= 0) {
-		harnesses.splice(index, 1);
-	}
-	await harness.ctx.app.close();
+	onTestFinished(fixture.dispose);
+	return {
+		...fixture,
+		config: fixture.createConfig(),
+		open: (config: LeitwerkConfig, appOverrides: Partial<AppOptions> = {}) =>
+			fixture.open({ config, extensionCatalog: extensionCatalogPromise, appOverrides }),
+	};
 }
 
 function seedAcceptedWorkerTurn(
@@ -133,35 +109,20 @@ function seedAcceptedWorkerTurn(
 		readyAt: "2026-01-01T00:00:00.000Z",
 	});
 	harness.ctx.deps.leases.update(lease.id, { state: "exited" });
-	harness.ctx.deps.turnStarts.create({
-		id: startRecordId,
-		instanceId: input.instanceId,
-		turnId: input.turnId,
-		turnType: "llm",
-		proposedTurnRecordId: input.turnRecordId,
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
-		state: {
-			kind: "accepted",
-			start: {
-				kind: "llm",
-				model: {
-					profileId: "fixture-model",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: input.resourceDigest ?? "startup-fixture-digest",
-				workerRuntimeProfileId: "local",
-				piSettings: {},
+	createAcceptedLlmTurnStart(
+		harness.ctx,
+		{ id: input.turnRecordId, instanceId: input.instanceId, turnId: input.turnId },
+		lease.id,
+		{
+			model: {
+				profileId: "fixture-model",
+				providerId: "fixture-provider",
+				modelId: "fixture-model",
+				thinkingLevel: "off",
 			},
-			turnRecordId: input.turnRecordId,
-			acceptedWorkerLeaseId: lease.id,
+			piResourceSnapshotDigest: input.resourceDigest ?? "startup-fixture-digest",
 		},
-	});
+	);
 	harness.ctx.deps.turnRecords.create({
 		id: input.turnRecordId,
 		instanceId: input.instanceId,
@@ -176,19 +137,6 @@ function seedAcceptedWorkerTurn(
 		currentExecution: { kind: "worker_start", id: startRecordId },
 	});
 }
-
-afterEach(async () => {
-	while (harnesses.length > 0) {
-		const harness = harnesses.pop();
-		await harness?.ctx.app.close();
-	}
-	while (tempRoots.length > 0) {
-		const tempRoot = tempRoots.pop();
-		if (tempRoot) {
-			rmSync(tempRoot, { recursive: true, force: true });
-		}
-	}
-});
 
 function configureStartupModel(config: LeitwerkConfig): void {
 	config.pi.model_profiles = [
@@ -205,12 +153,10 @@ describe("startup reconciliation", () => {
 	it.each([
 		7000, 10800,
 	])("cancels a reserved start before connection (%i ms delay) without accepting a turn", async (connectMs) => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-cancel-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
+		const { config, open, close } = createPersistentFixture();
 		config.workers.startup_timeout = "30s";
 		configureStartupModel(config);
-		const harness = await createPersistentHarness(config, {
+		const harness = await open(config, {
 			localWorkerSpawnImpl: createInProcessWorkerSpawn({
 				extensionCatalog: extensionCatalogPromise,
 				startupDelays: () => ({ connectMs, prepareMs: 1000 }),
@@ -242,18 +188,16 @@ describe("startup reconciliation", () => {
 		expect(harness.ctx.deps.processes.getById(process.id)?.lifecycleStatus).toBe("aborted");
 		expect(harness.ctx.deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
 		expect((await startup()).attempts[0].status).toBe("superseded");
-		await closeHarness(harness);
-		const reopened = await createPersistentHarness(config);
+		await close();
+		const reopened = await open(config);
 		expect(reopened.ctx.deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
 		expect(reopened.ctx.deps.processes.getById(process.id)?.lifecycleStatus).toBe("aborted");
 	});
 
 	it("persists successful delayed startup observations across a fresh app restart", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-observations-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
+		const { config, open, close } = createPersistentFixture();
 		configureStartupModel(config);
-		const harness = await createPersistentHarness(config, {
+		const harness = await open(config, {
 			localWorkerSpawnImpl: createInProcessWorkerSpawn({
 				extensionCatalog: extensionCatalogPromise,
 				piFactory: new StubPiTreeHandleFactory(),
@@ -287,8 +231,8 @@ describe("startup reconciliation", () => {
 		expect(records).toHaveLength(1);
 		expect(records[0]).toMatchObject({ status: "succeeded" });
 		expect(harness.ctx.deps.turnStarts.listByInstance(process.id)[0].state.kind).toBe("accepted");
-		await closeHarness(harness);
-		const reopened = await createPersistentHarness(config);
+		await close();
+		const reopened = await open(config);
 		const restored = await reopened.ctx.app.inject(`/api/processes/${process.id}/ui-snapshot`);
 		expect(restored.statusCode).toBe(200);
 		expect(restored.json().startup.attempts).toEqual(attempts);
@@ -296,10 +240,8 @@ describe("startup reconciliation", () => {
 	});
 
 	it("keeps process detail durable across restart and auto-resumes active work on boot", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
+		const { config, open, close } = createPersistentFixture();
+		const firstHarness = await open(config);
 
 		const created = firstHarness.ctx.deps.processes.create({
 			processId: "startup_test_process",
@@ -318,9 +260,9 @@ describe("startup reconciliation", () => {
 
 		expect(existsSync(config.storage.sqlite_path)).toBe(true);
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const secondHarness = await createPersistentHarness(config);
+		const secondHarness = await open(config);
 		const detailResponse = await fetch(`${secondHarness.address}/api/processes/${created.id}`);
 		expect(detailResponse.status).toBe(200);
 		const detail = await detailResponse.json();
@@ -339,10 +281,8 @@ describe("startup reconciliation", () => {
 	});
 
 	it("reclaims stale persisted leases before resuming active processes on boot", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
+		const { config, open, close } = createPersistentFixture();
+		const firstHarness = await open(config);
 
 		const process = firstHarness.ctx.deps.processes.create({
 			processId: "startup_test_process",
@@ -356,9 +296,9 @@ describe("startup reconciliation", () => {
 			turnId: "startup_plan_turn",
 		});
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const secondHarness = await createPersistentHarness(config);
+		const secondHarness = await open(config);
 		await secondHarness.ctx.startBackgroundServices();
 
 		expect(
@@ -377,10 +317,8 @@ describe("startup reconciliation", () => {
 	});
 
 	it("reuses the persisted running turn record when startup resume restarts active work", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(config);
+		const { config, open, close } = createPersistentFixture();
+		const firstHarness = await open(config);
 
 		const process = firstHarness.ctx.deps.processes.create({
 			processId: "startup_test_process",
@@ -394,9 +332,9 @@ describe("startup reconciliation", () => {
 		});
 		mkdirSync(path.join(config.storage.process_workspaces_dir, process.id), { recursive: true });
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const secondHarness = await createPersistentHarness(config);
+		const secondHarness = await open(config);
 		await secondHarness.ctx.startBackgroundServices();
 
 		const resumedTurn = await waitFor(
@@ -417,15 +355,13 @@ describe("startup reconciliation", () => {
 	});
 
 	it.skip("keeps the persisted active leaf when startup resume continues a running turn", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot);
+		const { config, open, close } = createPersistentFixture();
 		const sharedPiFactory = new StubPiTreeHandleFactory();
 		const sharedSpawnImpl = createInProcessWorkerSpawn({
 			extensionCatalog: extensionCatalogPromise,
 			piFactory: sharedPiFactory,
 		});
-		const firstHarness = await createPersistentHarness(config, {
+		const firstHarness = await open(config, {
 			localWorkerSpawnImpl: sharedSpawnImpl,
 		});
 
@@ -480,9 +416,9 @@ describe("startup reconciliation", () => {
 			}),
 		});
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const secondHarness = await createPersistentHarness(config, {
+		const secondHarness = await open(config, {
 			localWorkerSpawnImpl: sharedSpawnImpl,
 		});
 		await secondHarness.ctx.startBackgroundServices();
@@ -520,10 +456,8 @@ describe("startup reconciliation", () => {
 	});
 
 	it("uses the current default without rewriting historical process or turn models", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const initialConfig = createPersistentConfig(tempRoot);
-		const firstHarness = await createPersistentHarness(initialConfig);
+		const { config: initialConfig, createConfig, open, close } = createPersistentFixture();
+		const firstHarness = await open(initialConfig);
 
 		const historicalTurnConfigsJson = JSON.stringify({
 			startup_plan_turn: { modelProfileId: "claude_fast" },
@@ -538,14 +472,14 @@ describe("startup reconciliation", () => {
 			selectedTurnModelProfileId: "claude_fast",
 		});
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const updatedConfig = createPersistentConfig(tempRoot);
+		const updatedConfig = createConfig();
 		updatedConfig.pi.model_profiles = updatedConfig.pi.model_profiles.filter(
 			(profile) => profile.id === "local_qwen",
 		);
 
-		const secondHarness = await createPersistentHarness(updatedConfig);
+		const secondHarness = await open(updatedConfig);
 
 		const persisted = secondHarness.ctx.deps.processes.getById(created.id);
 		expect(persisted).toMatchObject({
@@ -572,10 +506,8 @@ describe("startup reconciliation", () => {
 	});
 
 	it("preserves durable state without respawning workers when resume_on_boot is disabled", async () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
-		tempRoots.push(tempRoot);
-		const config = createPersistentConfig(tempRoot, { resumeOnBoot: false });
-		const firstHarness = await createPersistentHarness(config);
+		const { config, open, close } = createPersistentFixture({ resumeOnBoot: false });
+		const firstHarness = await open(config);
 
 		const process = firstHarness.ctx.deps.processes.create({
 			processId: "startup_test_process",
@@ -584,9 +516,9 @@ describe("startup reconciliation", () => {
 		});
 		mkdirSync(path.join(config.storage.process_workspaces_dir, process.id), { recursive: true });
 
-		await closeHarness(firstHarness);
+		await close();
 
-		const secondHarness = await createPersistentHarness(config);
+		const secondHarness = await open(config);
 		await secondHarness.ctx.startBackgroundServices();
 
 		const detailResponse = await fetch(`${secondHarness.address}/api/processes/${process.id}`);

@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import { forgejoRepoChangeProcess as process } from "./index.js";
 import { forgejoRepoChangeParamsCodec } from "./params.js";
+import { deliveryTurn, routingState } from "./routing.test-fixture.js";
 
 const params = {
 	launchKind: "requested_change",
@@ -24,28 +25,22 @@ it.each([
 	["issue", 2, "woodpecker_failure_repair"],
 	[undefined, 3, "woodpecker_failure_operator"],
 ] as const)("resolves retained %s delivery sources with %s CI cycles", (origin, ciRecoveryCycles, ciAction) => {
-	const state = process.stateCodec.parse({
-		extensionState: {
-			forgejoRepoChange: {
-				headSha: "retained-head",
-				prNumber: 7,
-				prUrl: "https://forgejo.example/pulls/7",
-				conversationCursor: 11,
-				reviewCursor: 12,
-				inlineCursor: 13,
-				pipeline: { number: 8 },
-				ciRecoveryCycles,
-				lastConflictKey: "seen-conflict",
-			},
-		},
+	const state = routingState({
+		headSha: "retained-head",
+		prNumber: 7,
+		prUrl: "https://forgejo.example/pulls/7",
+		conversationCursor: 11,
+		reviewCursor: 12,
+		inlineCursor: 13,
+		pipeline: { number: 8 },
+		ciRecoveryCycles,
+		lastConflictKey: "seen-conflict",
 	});
 	const ctx = {
 		params: forgejoRepoChangeParamsCodec.parse({ ...params, ...(origin ? { origin } : {}) }),
 		state,
 	};
-	const turn = process.turns.get("deliver_change")?.definition;
-	if (turn?.kind !== "automatic") throw new Error("Missing delivery turn");
-	const armed = Object.entries(turn.externalActions ?? {}).filter(
+	const armed = Object.entries(deliveryTurn().externalActions ?? {}).filter(
 		([, action]) => !action.when || action.when(ctx as never),
 	);
 	expect(armed.map(([id]) => id).sort()).toEqual(

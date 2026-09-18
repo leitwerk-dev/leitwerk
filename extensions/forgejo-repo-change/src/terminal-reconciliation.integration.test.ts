@@ -8,9 +8,7 @@ import {
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
 
 async function publishIssue(f: RemoteRepoChangeFixture) {
-	const id = await f.exposeTriggeredIssue();
-	await f.approvePlan(id);
-	await f.approveImplementation(id);
+	const id = await f.publishChange(await f.exposeTriggeredIssue());
 	await waitForValue(
 		() => f.subscriptions(id).some((source) => source.kind === FORGEJO_ISSUE_CANCELLED_KIND),
 		Boolean,

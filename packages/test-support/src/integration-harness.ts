@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { ProvidedCapability } from "@leitwerk-dev/process-sdk";
 import {
@@ -29,6 +32,51 @@ export interface IntegrationHarnessOptions<
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 	resources?: TResources;
+}
+
+/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. */
+export function createPersistentIntegrationFixture(
+	prefix: string,
+	configure?: (config: LeitwerkConfig) => void,
+) {
+	const root = mkdtempSync(path.join(tmpdir(), prefix));
+	let harness: IntegrationHarness | undefined;
+	function createConfig() {
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = path.join(root, "state.sqlite");
+		config.storage.process_workspaces_dir = path.join(root, "workspaces");
+		config.storage.tree_files_dir = path.join(root, "trees");
+		config.pi.agent_dir = path.join(root, "pi");
+		configure?.(config);
+		return config;
+	}
+	async function close() {
+		await harness?.ctx.app.close();
+		harness = undefined;
+	}
+	return {
+		root,
+		createConfig,
+		context() {
+			if (!harness) throw new Error("Fixture is not open");
+			return harness.ctx;
+		},
+		async open(options: IntegrationHarnessOptions) {
+			harness = await createIntegrationHarness({
+				...options,
+				config: options.config ?? createConfig(),
+			});
+			return harness;
+		},
+		close,
+		async dispose() {
+			try {
+				await close();
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		},
+	};
 }
 
 export async function createIntegrationHarness<
