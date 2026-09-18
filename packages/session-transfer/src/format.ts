@@ -33,8 +33,7 @@ export const SESSION_TRANSFER_PHASES = [
 /** @internal */
 export type SessionTransferPhase = (typeof SESSION_TRANSFER_PHASES)[number];
 
-/** Derives the public coarse status from the persisted lifecycle phase. */
-/** @internal */
+/** Derives the public coarse status from the persisted lifecycle phase. @internal */
 export function sessionTransferAttemptStateForPhase(
 	phase: SessionTransferPhase,
 ): SessionTransferAttemptState {
@@ -66,8 +65,7 @@ export interface SessionTransferAttemptWire {
 	grantId: string;
 	/** @internal */
 	instanceId: string;
-	/** Derived from phase; it is not persisted in the server database. */
-	/** @internal */
+	/** Derived from phase; it is not persisted in the server database. @internal */
 	state: SessionTransferAttemptState;
 	/** @internal */
 	phase: SessionTransferPhase;

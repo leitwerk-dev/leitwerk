@@ -13,4 +13,3 @@ export {
 	type ServerExtensionTestHarness,
 	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";
-export { createTestApp, type TestApp, type TestAppOptions } from "./test-app.js";

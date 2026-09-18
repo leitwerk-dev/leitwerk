@@ -77,33 +77,26 @@ export interface KubernetesWorkerRunnerOptions {
 	};
 	/** @internal */
 	client: KubernetesApiClient;
-	/** Prefix used to derive one Kubernetes namespace per process instance. */
-	/** @internal */
+	/** Prefix used to derive one Kubernetes namespace per process instance. @internal */
 	processNamespacePrefix: string;
 	/** @internal */
 	volume: KubernetesProcessVolumeSpec;
-	/** Storage and Pod wiring for process definitions that require private Docker. */
-	/** @internal */
+	/** Storage and Pod wiring for process definitions that require private Docker. @internal */
 	docker?: KubernetesDockerPodSpecOptions & {
 		/** @internal */
 		processStorageClassName: string;
 	};
-	/** Maximum wait after deletion before replacement is rejected. */
-	/** @internal */
+	/** Maximum wait after deletion before replacement is rejected. @internal */
 	podDisappearanceTimeoutMs?: number;
 	/** @internal */
 	podDisappearancePollIntervalMs?: number;
-	/** Test seam for bounded disappearance polling. */
-	/** @internal */
+	/** Test seam for bounded disappearance polling. @internal */
 	delay?: (ms: number) => Promise<void>;
-	/** Server-local CA bundle copied into each process namespace for worker TLS trust. */
-	/** @internal */
+	/** Server-local CA bundle copied into each process namespace for worker TLS trust. @internal */
 	serverCaFile?: string;
-	/** Namespace containing operator-managed source image-pull Secrets. */
-	/** @internal */
+	/** Namespace containing operator-managed source image-pull Secrets. @internal */
 	serverNamespace?: string;
-	/** Docker registry Secrets copied into every process namespace. */
-	/** @internal */
+	/** Docker registry Secrets copied into every process namespace. @internal */
 	imagePullSecretCopies?: Array<{
 		/** @internal */
 		sourceName: string;
@@ -112,17 +105,13 @@ export interface KubernetesWorkerRunnerOptions {
 	}>;
 	/** @internal */
 	pod?: Omit<KubernetesPodSpecOptions, "namespace">;
-	/** Stable internal URL used by PVC export helpers. */
-	/** @internal */
+	/** Stable internal URL used by PVC export helpers. @internal */
 	serverUrl?: string;
-	/** Trusted image containing the bundled session-transfer helper entrypoint. */
-	/** @internal */
+	/** Trusted image containing the bundled session-transfer helper entrypoint. @internal */
 	exporterImage?: string;
-	/** Pull policy for the trusted helper image. */
-	/** @internal */
+	/** Pull policy for the trusted helper image. @internal */
 	exporterImagePullPolicy?: string;
-	/** Server-owned relay registry used by PVC export helpers. */
-	/** @internal */
+	/** Server-owned relay registry used by PVC export helpers. @internal */
 	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 

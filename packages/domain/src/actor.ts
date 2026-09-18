@@ -34,8 +34,7 @@ export function normalizeActor(value: unknown): Actor | null {
 	};
 }
 
-/** Serializes an `Actor` to a stable JSON string for durable storage. */
-/** @internal */
+/** Serializes an `Actor` to a stable JSON string for durable storage. @internal */
 export function serializeActor(actor: Actor): string {
 	return JSON.stringify({
 		id: actor.id,
@@ -62,6 +61,5 @@ export function parseActorOrSystem(value: string | null | undefined): Actor {
 	}
 }
 
-/** Canonical serialized form of `SYSTEM_ACTOR`, used as the durable default. */
-/** @internal */
+/** Canonical serialized form of `SYSTEM_ACTOR`, used as the durable default. @internal */
 export const SERIALIZED_SYSTEM_ACTOR = serializeActor(SYSTEM_ACTOR);

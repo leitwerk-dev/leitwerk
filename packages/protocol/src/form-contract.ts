@@ -13,15 +13,13 @@ export interface FormFieldOptionDefinition {
 
 /** @internal */
 export interface FormFieldPublishDefinition {
-	/** Product name to publish. Defaults to the field id. */
-	/** @internal */
+	/** Product name to publish. Defaults to the field id. @internal */
 	product?: string;
 }
 
 /** @internal */
 export interface FormFieldStateDefinition {
-	/** Dot-separated path in process state to write the submitted field value to. */
-	/** @internal */
+	/** Dot-separated path in process state to write the submitted field value to. @internal */
 	path: string;
 }
 
@@ -43,11 +41,9 @@ export interface FormFieldDefinition<TKind extends FormFieldKind = FormFieldKind
 	options?: readonly FormFieldOptionDefinition[];
 	/** @internal */
 	rememberRecentValues?: boolean;
-	/** Publish this field as transition-scoped product/input data. */
-	/** @internal */
+	/** Publish this field as transition-scoped product/input data. @internal */
 	publish?: true | FormFieldPublishDefinition;
-	/** Persist this field value into process state. */
-	/** @internal */
+	/** Persist this field value into process state. @internal */
 	state?: FormFieldStateDefinition;
 }
 
@@ -58,8 +54,7 @@ export type ActionFormFieldDefinition = Omit<
 	FormFieldDefinition<ActionFormFieldKind>,
 	"options" | "rememberRecentValues"
 > & {
-	/** Share this textual value across compatible action forms as their primary prompt. */
-	/** @internal */
+	/** Share this textual value across compatible action forms as their primary prompt. @internal */
 	primaryPrompt?: true;
 };
 

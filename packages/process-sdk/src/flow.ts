@@ -701,8 +701,7 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	/** @internal */
 	protected summaryParameter: string | null = null;
 
-	/** Optional concise result publication, separate from the full Markdown. */
-	/** @public */
+	/** Optional concise result publication, separate from the full Markdown. @public */
 	resultSummary(name = "resultSummary"): this {
 		this.summaryParameter = name;
 		return this.parameter(name, {
@@ -1219,8 +1218,7 @@ export class LlmFlowBuilder<
 		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared>;
 	}
 
-	/** Enable durable operator questions for this LLM turn. */
-	/** @public */
+	/** Enable durable operator questions for this LLM turn. @public */
 	askQuestions(): this {
 		this.questionsEnabled = true;
 		return this;
@@ -2209,8 +2207,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Declare an additional turn that launchers may select as the first turn. */
-	/** @internal */
+	/** Declare an additional turn that launchers may select as the first turn. @internal */
 	alternateEntry(turnId: TurnId): this {
 		this.alternateEntryTurnIds.push(turnId);
 		return this;
@@ -2253,8 +2250,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Resolve new process-volume capacity on the server; operator configuration wins. */
-	/** @internal */
+	/** Resolve new process-volume capacity on the server; operator configuration wins. @internal */
 	resolveStorageSize(
 		fn: NonNullable<ProcessDefinition<TParams, TState>["resolveStorageSize"]>,
 	): this {
@@ -2268,8 +2264,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Declare runner-provided process runtime capabilities. */
-	/** @public */
+	/** Declare runner-provided process runtime capabilities. @public */
 	runtime(capabilities: {
 		/** @internal */
 		developmentTools?: boolean;

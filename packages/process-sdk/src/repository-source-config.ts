@@ -1,7 +1,6 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 
-/** Parse common forge source fields, preserving polling defaults and permissive string handling. */
-/** @internal */
+/** Parse common forge source fields, preserving polling defaults and permissive string handling. @internal */
 export function parseRepositoryPullRequestConfig(value: unknown) {
 	const config = asUnknownRecord(value) ?? {};
 	if (

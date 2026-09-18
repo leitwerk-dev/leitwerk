@@ -538,8 +538,7 @@ export type WsPayloadByType = {
 		dedupeKey: string;
 		/** @internal */
 		ttlMs: number;
-		/** Optional typed Chronicle target applied only when the operator opens the toast. */
-		/** @internal */
+		/** Optional typed Chronicle target applied only when the operator opens the toast. @internal */
 		focusTarget?: ProcessAttentionTarget;
 	};
 	/** @internal */

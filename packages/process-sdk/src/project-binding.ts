@@ -11,8 +11,7 @@ export interface RepositoryProjectBinding {
 	profile: string;
 }
 
-/** Validate an authorized project's binding, retaining extension-selected legacy metadata. */
-/** @public */
+/** Validate an authorized project's binding, retaining extension-selected legacy metadata. @public */
 export function resolveRepositoryProjectBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
 	provider: string,

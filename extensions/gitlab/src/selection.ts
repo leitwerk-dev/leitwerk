@@ -58,8 +58,7 @@ export function projectExcluded(selection: GitLabSelection, name: string): boole
 		selection.groups.exclude.some((group) => name.startsWith(`${group}/`))
 	);
 }
-/** Include union, subgroup expansion, exclusion precedence, stable-ID deduplication. */
-/** @public */
+/** Include union, subgroup expansion, exclusion precedence, stable-ID deduplication. @public */
 export async function selectGitLabProjects(
 	client: GitLabClientLike,
 	selection: GitLabSelection,

@@ -22,56 +22,47 @@ export interface ActionPreviewLike {
 }
 
 /** @internal */
-export type PendingTelegramSession =
-	| {
+interface PendingAction {
+	/** @internal */
+	actionId: string;
+	/** @internal */
+	actionLabel: string;
+	/** @internal */
+	actionPreview?: ActionPreviewLike | null;
+	/** @internal */
+	sessionId: string;
+}
+
+/** @internal */
+export type PendingTelegramSession = {
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	expiresAt: number;
+} & (
+	| (PendingAction & {
 			/** @internal */
 			kind: "action_form";
-			/** @internal */
-			instanceId: string;
-			/** @internal */
-			actionId: string;
-			/** @internal */
-			actionLabel: string;
-			/** @internal */
-			actionPreview?: ActionPreviewLike | null;
-			/** @internal */
-			sessionId: string;
 			/** @internal */
 			form: FormDefinition;
 			/** @internal */
 			fieldIndex: number;
 			/** @internal */
 			values: Record<string, unknown>;
-			/** @internal */
-			expiresAt: number;
-	  }
-	| {
+	  })
+	| (PendingAction & {
 			/** @internal */
 			kind: "action_model";
-			/** @internal */
-			instanceId: string;
-			/** @internal */
-			actionId: string;
-			/** @internal */
-			actionLabel: string;
-			/** @internal */
-			actionPreview?: ActionPreviewLike | null;
-			/** @internal */
-			sessionId: string;
 			/** @internal */
 			formValues: Record<string, unknown>;
 			/** @internal */
 			preview: ProcessActionModelPreviewLike;
 			/** @internal */
 			profiles: readonly ModelProfileOptionSummaryLike[];
-			/** @internal */
-			expiresAt: number;
-	  }
+	  })
 	| {
 			/** @internal */
 			kind: "recovery_model";
-			/** @internal */
-			instanceId: string;
 			/** @internal */
 			recoveryKind: "retry" | "continue";
 			/** @internal */
@@ -82,35 +73,26 @@ export type PendingTelegramSession =
 			profiles: readonly ModelProfileOptionSummaryLike[];
 			/** @internal */
 			selectedModelProfileId?: string | null;
-			/** @internal */
-			expiresAt: number;
 	  }
 	| {
 			/** @internal */
 			kind: "continue";
 			/** @internal */
-			instanceId: string;
-			/** @internal */
 			turnRecordId: string;
 			/** @internal */
 			nextTurnModelProfileId?: string | null;
-			/** @internal */
-			expiresAt: number;
 	  }
 	| {
 			/** @internal */
 			kind: "question";
-			/** @internal */
-			instanceId: string;
 			/** @internal */
 			request: ProcessQuestionRequest;
 			/** @internal */
 			questionIndex: number;
 			/** @internal */
 			draft: QuestionAnswerDraft[];
-			/** @internal */
-			expiresAt: number;
-	  };
+	  }
+);
 
 /** @internal */
 export type PendingActionFormSession = Extract<PendingTelegramSession, { kind: "action_form" }>;

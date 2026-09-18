@@ -20,8 +20,7 @@ export interface SandboxLauncherOptions {
 	args?: string[];
 }
 
-/** Only these ambient values enter the sandbox process tree. */
-/** @public */
+/** Only these ambient values enter the sandbox process tree. @public */
 export function sandboxEnvironment(
 	directory: string,
 	ambient: NodeJS.ProcessEnv = process.env,

@@ -38,8 +38,7 @@ export interface LocalWoodpeckerOptions {
 	nextId?: () => number;
 }
 
-/** Local CI state is independent of the repository's Git host. */
-/** @public */
+/** Local CI state is independent of the repository's Git host. @public */
 export class LocalWoodpeckerAdapter extends LocalProviderStore<
 	LocalWoodpeckerState,
 	LocalWoodpeckerOptions
