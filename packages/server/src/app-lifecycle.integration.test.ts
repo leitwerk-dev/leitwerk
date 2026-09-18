@@ -25,15 +25,11 @@ async function context(options: AppOptions = {}) {
 }
 
 describe("AppContext lifecycle", () => {
-	it("coalesces startup, preserves the configured URL and restarts without rebinding", async () => {
+	it("coalesces startup, preserves the configured URL and reuses the listener", async () => {
 		const ctx = await context();
 		const url = ctx.config.server.base_url;
 		try {
-			const [first, second] = await Promise.all([
-				ctx.listen(),
-				ctx.listen(),
-				ctx.startBackgroundServices(),
-			]);
+			const [first, second] = await Promise.all([ctx.listen(), ctx.listen(), ctx.listen()]);
 			expect(first).toEqual(second);
 			expect(first.port).toBeGreaterThan(0);
 			expect(first.address).toBe(`http://127.0.0.1:${first.port}`);
@@ -41,8 +37,6 @@ describe("AppContext lifecycle", () => {
 			expect((await fetch(`${first.address}/api/ready`)).status).toBe(200);
 			await expect(ctx.listen({ port: first.port })).rejects.toThrow("Conflicting");
 			expect(ctx.isReady()).toBe(true);
-			await ctx.stopBackgroundServices();
-			expect(ctx.isReady()).toBe(false);
 			expect(await ctx.listen()).toEqual(first);
 			expect(ctx.isReady()).toBe(true);
 		} finally {
@@ -123,7 +117,7 @@ describe("AppContext lifecycle", () => {
 	it("supports close before listen and rejects adoption of a raw listener", async () => {
 		const closed = await context();
 		await closed.close();
-		await expect(closed.startBackgroundServices()).rejects.toThrow("closed");
+		await expect(closed.listen()).rejects.toThrow("closed");
 		const raw = await context();
 		try {
 			await raw.app.listen({ host: "127.0.0.1", port: 0 });

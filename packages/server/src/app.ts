@@ -205,8 +205,6 @@ export interface AppContext {
 	config: LeitwerkConfig;
 	/** @public */
 	deps: RouteDeps;
-	/** @public */
-	extensionCatalog: ExtensionCatalog;
 	/** @internal */
 	modelProviderRegistry: ModelProviderRegistry;
 	/** @internal */
@@ -229,16 +227,6 @@ export interface AppContext {
 	listen(options?: ServerListenOptions): Promise<ServerListenResult>;
 	/** @public */
 	close(): Promise<void>;
-	/**
-	 * @public
-	 * @deprecated Use listen().
-	 */
-	startBackgroundServices(): Promise<void>;
-	/**
-	 * @public
-	 * @deprecated Use close() for context shutdown.
-	 */
-	stopBackgroundServices(): Promise<void>;
 	/** @internal */
 	isReady(): boolean;
 }
@@ -369,12 +357,6 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		helperRelays: input.helperRelays,
 	});
 	return { ...created, webSocketIpc: input.webSocketIpc };
-}
-
-/** @internal */
-export async function createApp(opts: AppOptions = {}): Promise<FastifyInstance> {
-	const ctx = await createAppContext(opts);
-	return ctx.app;
 }
 
 /** @public */
@@ -706,11 +688,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			} catch (error) {
 				return failStartup(error);
 			}
-			await startBackgroundServices();
+			await startServices();
 			assertOpen();
 			return result;
 		}
-		function startBackgroundServices(): Promise<void> {
+		function startServices(): Promise<void> {
 			if (closing)
 				return Promise.reject(new Error("AppContext startup interrupted: context is closed"));
 			if (startupPromise) return startupPromise;
@@ -857,7 +839,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			assertOpen();
 			backgroundServicesReady = true;
 		}
-		function stopBackgroundServices(): Promise<void> {
+		function stopServices(): Promise<void> {
 			backgroundServicesReady = false;
 			stopPromise ??= (async () => {
 				await startupOperation?.catch(() => {});
@@ -1495,7 +1477,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			backgroundServicesReady = false;
 			cleanupOperation ??= (async () => {
 				await startupOperation?.catch(() => {});
-				await attempt(stopBackgroundServices);
+				await attempt(stopServices);
 				await attempt(closeWorkersForServerShutdown);
 			})();
 			return cleanupOperation;
@@ -1516,7 +1498,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			broadcaster,
 			config,
 			deps,
-			extensionCatalog,
 			modelProviderRegistry,
 			modelProviderServerAdapters,
 			modelStatusCache,
@@ -1528,8 +1509,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			supervisor,
 			listen,
 			close,
-			startBackgroundServices,
-			stopBackgroundServices,
 			isReady: () => backgroundServicesReady,
 		};
 	} catch (error) {
