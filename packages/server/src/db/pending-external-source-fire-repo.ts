@@ -4,36 +4,63 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface PendingExternalSourceFire {
+	/** @internal */
 	id: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	armingId: string;
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	externalActionId: string;
+	/** @internal */
 	sourceKind: string;
+	/** @internal */
 	input: Record<string, unknown>;
+	/** @internal */
 	event: Record<string, unknown>;
+	/** @internal */
 	mergeKey: string | null;
+	/** @internal */
 	queuedCount: number;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	updatedAt: string;
 }
 
+/** @internal */
 export interface CreatePendingExternalSourceFireInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	armingId: string;
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	externalActionId: string;
+	/** @internal */
 	sourceKind?: string;
+	/** @internal */
 	input?: Record<string, unknown>;
+	/** @internal */
 	event?: Record<string, unknown>;
+	/** @internal */
 	mergeKey?: string | null;
+	/** @internal */
 	queuedCount?: number;
 }
 
+/** @internal */
 export interface UpdatePendingExternalSourceFireInput {
+	/** @internal */
 	input?: Record<string, unknown>;
+	/** @internal */
 	event?: Record<string, unknown>;
+	/** @internal */
 	queuedCount?: number;
 }
 
@@ -63,8 +90,10 @@ function rowToPendingExternalSourceFire(
 	};
 }
 
+/** @internal */
 export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreatePendingExternalSourceFireInput): PendingExternalSourceFire {
 			const ts = now();
 			const values = {
@@ -85,6 +114,7 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 			return rowToPendingExternalSourceFire(values);
 		},
 
+		/** @internal */
 		listByInstance(instanceId: string): PendingExternalSourceFire[] {
 			return db
 				.select()
@@ -95,6 +125,7 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 				.map(rowToPendingExternalSourceFire);
 		},
 
+		/** @internal */
 		getByMergeKey(
 			instanceId: string,
 			armingId: string,
@@ -114,6 +145,7 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 			return row ? rowToPendingExternalSourceFire(row) : null;
 		},
 
+		/** @internal */
 		update(
 			id: string,
 			input: UpdatePendingExternalSourceFireInput,
@@ -137,6 +169,7 @@ export function createPendingExternalSourceFireRepo(db: LeitwerkDb) {
 			return row ? rowToPendingExternalSourceFire(row) : null;
 		},
 
+		/** @internal */
 		delete(id: string): boolean {
 			const result = db
 				.delete(s.pendingExternalSourceFires)

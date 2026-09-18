@@ -1,21 +1,32 @@
 import * as v from "valibot";
 import { trimToNull } from "./string-normalize.js";
 
+/** @internal */
 export interface InstanceTurnConfigInput {
+	/** @internal */
 	modelProfileId?: string | null;
 }
 
+/** @internal */
 export type InstanceTurnConfigMap = Record<string, InstanceTurnConfigInput>;
 
+/** @public */
 export interface LaunchModelConfigInput {
+	/** @internal */
 	defaultModelProfileId?: string | null;
+	/** @internal */
 	turnConfigs?: InstanceTurnConfigMap;
 }
 
+/** @internal */
 export interface InstanceTurnConfigsJsonError {
+	/** @internal */
 	code: "invalid_turn_configs_json";
+	/** @internal */
 	processId: string;
+	/** @internal */
 	reason: "invalid_json" | "not_object" | "turn_config_not_object";
+	/** @internal */
 	turnId?: string;
 }
 
@@ -55,10 +66,23 @@ function getFirstIssuePathKey(issue: v.BaseIssue<unknown>): string | undefined {
 	return typeof pathItem?.key === "string" ? pathItem.key : undefined;
 }
 
+/** @internal */
 export function parseStrictInstanceTurnConfigsJson(
 	processId: string,
 	turnConfigsJson: string | null | undefined,
-): { ok: true; value: InstanceTurnConfigMap } | { ok: false; error: InstanceTurnConfigsJsonError } {
+):
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			value: InstanceTurnConfigMap;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			error: InstanceTurnConfigsJsonError;
+	  } {
 	if (!turnConfigsJson) return { ok: true, value: {} };
 	const result = v.safeParse(strictInstanceTurnConfigsJsonSchema, turnConfigsJson, {
 		abortEarly: true,
@@ -85,6 +109,7 @@ export function parseStrictInstanceTurnConfigsJson(
 	return { ok: true, value: normalizeInstanceTurnConfigs(result.output) };
 }
 
+/** @internal */
 export function serializeInstanceTurnConfigs(turnConfigs: InstanceTurnConfigMap): string | null {
 	const normalizedEntries = Object.entries(turnConfigs)
 		.map(([turnId, turnConfig]) => {
@@ -97,6 +122,7 @@ export function serializeInstanceTurnConfigs(turnConfigs: InstanceTurnConfigMap)
 		: JSON.stringify(Object.fromEntries(normalizedEntries));
 }
 
+/** @internal */
 export function normalizeLaunchModelConfigInput(
 	input: LaunchModelConfigInput,
 ): LaunchModelConfigInput {

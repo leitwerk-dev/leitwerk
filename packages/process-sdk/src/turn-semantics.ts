@@ -21,24 +21,28 @@ import {
 	RESERVED_INTEGRATION_TOOL_NAMES,
 } from "./types.js";
 
+/** @internal */
 export function isLlmTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): turnDef is LlmTurnDefinition<string, TParams, TState> {
 	return turnDef.kind === "llm";
 }
 
+/** @internal */
 export function isAutomaticTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): turnDef is AutomaticTurnDefinition<string, TParams, TState> {
 	return turnDef.kind === "automatic";
 }
 
+/** @internal */
 export function isHumanTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): turnDef is HumanTurnDefinition<TParams, TState> {
 	return turnDef.kind === "human";
 }
 
+/** @internal */
 export function isExternalTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): turnDef is ExternalTurnDefinition<TParams, TState> {
@@ -47,12 +51,14 @@ export function isExternalTurnDefinition<TParams = unknown, TState = unknown>(
 
 export { defaultProcessTurnStartSelection as defaultTurnStartSelection } from "@leitwerk-dev/domain";
 
+/** @internal */
 export function resolveLlmTurnStartSelection<TOutcome extends string = string>(
 	turnDef: Pick<LlmTurnDefinition<TOutcome>, "branchType" | "startFrom">,
 ): ProcessTurnStartSelection {
 	return resolveProcessTurnStartSelection(turnDef);
 }
 
+/** @internal */
 export function resolveLlmTurnRestorePrimaryLeafAfterTurn<TOutcome extends string = string>(
 	turnDef: Pick<LlmTurnDefinition<TOutcome>, "branchType" | "restorePrimaryLeafAfterTurn">,
 ): boolean {
@@ -210,6 +216,7 @@ function validateTurnStartSelection(
 	return errors;
 }
 
+/** @internal */
 export function validateLlmTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
@@ -320,6 +327,7 @@ export function validateLlmTurnDefinition<
 	return errors;
 }
 
+/** @internal */
 export function validateAutomaticTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
@@ -331,6 +339,7 @@ export function validateAutomaticTurnDefinition<
 	];
 }
 
+/** @internal */
 export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: HumanTurnDefinition<TParams, TState>,
@@ -440,6 +449,7 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 	return errors;
 }
 
+/** @internal */
 export function validateExternalTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: ExternalTurnDefinition<TParams, TState>,
@@ -467,13 +477,16 @@ export function validateExternalTurnDefinition<TParams = unknown, TState = unkno
 	return errors;
 }
 
+/** @internal */
 export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: TurnDefinition<TParams, TState>,
 ): string[];
+/** @internal */
 export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	turnDef: TurnDefinition<TParams, TState>,
 ): string[];
+/** @internal */
 export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	turnIdOrDef: string | TurnDefinition<TParams, TState>,
 	turnDef?: TurnDefinition<TParams, TState>,
@@ -495,6 +508,7 @@ export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 				: validateExternalTurnDefinition(effectiveTurnId, effectiveTurnDef);
 }
 
+/** @internal */
 export function assertValidLlmTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
@@ -503,6 +517,7 @@ export function assertValidLlmTurnDefinition<
 	assertNoValidationErrors(validateLlmTurnDefinition(turnId, turnDef));
 }
 
+/** @internal */
 export function createRootBranchReviewTurn<
 	TOutcome extends string,
 	TParams = unknown,

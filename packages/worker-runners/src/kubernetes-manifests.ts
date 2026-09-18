@@ -11,114 +11,259 @@ import {
 	PROCESS_VOLUME_COMPONENT_VALUE,
 } from "./worker-labels.js";
 
+/** @internal */
 export interface KubernetesProcessVolumeSpec {
+	/** @internal */
 	storageClassName?: string;
+	/** @internal */
 	size: string;
+	/** @internal */
 	accessModes: string[];
+	/** @internal */
 	mountPath: string;
+	/** @internal */
 	namePrefix?: string;
 }
 
+/** @internal */
 export interface KubernetesProcessNamespaceManifest {
+	/** @internal */
 	apiVersion: "v1";
+	/** @internal */
 	kind: "Namespace";
-	metadata: { name: string; labels: Record<string, string> };
+	/** @internal */
+	metadata: {
+		/** @internal */
+		name: string;
+		/** @internal */
+		labels: Record<string, string>;
+	};
 }
 
+/** @internal */
 export interface KubernetesWorkerServerCaConfigMapSpec {
+	/** @internal */
 	name: string;
+	/** @internal */
 	key: string;
+	/** @internal */
 	mountPath: string;
 }
 
+/** @internal */
 export interface KubernetesDockerPodSpecOptions {
+	/** @internal */
 	runtimeClassName: string;
+	/** @internal */
 	hostUsers: boolean;
+	/** @internal */
 	network?: DockerNetworkConfig;
 }
 
+/** @internal */
 export interface KubernetesPodSpecOptions {
+	/** @internal */
 	namespace: string;
+	/** @internal */
 	workerServiceAccount?: string;
+	/** @internal */
 	imagePullSecrets?: string[];
+	/** @internal */
 	imagePullPolicy?: string;
+	/** @internal */
 	nodeSelector?: Record<string, string>;
+	/** @internal */
 	annotations?: Record<string, string>;
+	/** @internal */
 	tolerations?: unknown[];
-	hostAliases?: Array<{ ip: string; hostnames: string[] }>;
+	/** @internal */
+	hostAliases?: Array<{
+		/** @internal */
+		ip: string;
+		/** @internal */
+		hostnames: string[];
+	}>;
+	/** @internal */
 	serverCaConfigMap?: KubernetesWorkerServerCaConfigMapSpec;
 	/** Trusted operator wiring used only when the process declares runtime.docker. */
+	/** @internal */
 	docker?: KubernetesDockerPodSpecOptions;
 }
 
+/** @internal */
 interface NamespacedManifest<Kind extends string> {
+	/** @internal */
 	apiVersion: "v1";
+	/** @internal */
 	kind: Kind;
-	metadata: { name: string; namespace: string; labels: Record<string, string> };
+	/** @internal */
+	metadata: {
+		/** @internal */
+		name: string;
+		/** @internal */
+		namespace: string;
+		/** @internal */
+		labels: Record<string, string>;
+	};
 }
 
+/** @internal */
 export interface KubernetesPersistentVolumeClaimManifest
 	extends NamespacedManifest<"PersistentVolumeClaim"> {
+	/** @internal */
 	spec: {
+		/** @internal */
 		accessModes: string[];
-		resources: { requests: { storage: string } };
+		/** @internal */
+		resources: {
+			/** @internal */
+			requests: {
+				/** @internal */
+				storage: string;
+			};
+		};
+		/** @internal */
 		storageClassName?: string;
 	};
 }
 
+/** @internal */
 export interface KubernetesConfigMapManifest extends NamespacedManifest<"ConfigMap"> {
+	/** @internal */
 	data: Record<string, string>;
 }
 
+/** @internal */
 export interface KubernetesDockerConfigJsonSecretManifest extends NamespacedManifest<"Secret"> {
+	/** @internal */
 	type: "kubernetes.io/dockerconfigjson";
-	data: { ".dockerconfigjson": string };
+	/** @internal */
+	data: {
+		/** @internal */
+		".dockerconfigjson": string;
+	};
 }
 
+/** @internal */
 export interface KubernetesPodEventSummary {
+	/** @internal */
 	objectUid?: string;
+	/** @internal */
 	fieldPath?: string;
+	/** @internal */
 	firstTimestamp?: string;
+	/** @internal */
 	eventTime?: string;
+	/** @internal */
 	type?: string;
+	/** @internal */
 	reason?: string;
+	/** @internal */
 	message?: string;
+	/** @internal */
 	count?: number;
+	/** @internal */
 	lastTimestamp?: string;
 }
 
+/** @internal */
 export interface KubernetesPodManifest extends NamespacedManifest<"Pod"> {
-	metadata: NamespacedManifest<"Pod">["metadata"] & { annotations?: Record<string, string> };
+	/** @internal */
+	metadata: NamespacedManifest<"Pod">["metadata"] & {
+		/** @internal */
+		annotations?: Record<string, string>;
+	};
+	/** @internal */
 	spec: {
+		/** @internal */
 		restartPolicy: "Never";
+		/** @internal */
 		runtimeClassName?: string;
+		/** @internal */
 		hostUsers?: boolean;
+		/** @internal */
 		serviceAccountName?: string;
+		/** @internal */
 		nodeSelector?: Record<string, string>;
+		/** @internal */
 		tolerations?: unknown[];
-		hostAliases?: Array<{ ip: string; hostnames: string[] }>;
-		imagePullSecrets?: Array<{ name: string }>;
-		automountServiceAccountToken?: boolean;
-		containers: Array<{
+		/** @internal */
+		hostAliases?: Array<{
+			/** @internal */
+			ip: string;
+			/** @internal */
+			hostnames: string[];
+		}>;
+		/** @internal */
+		imagePullSecrets?: Array<{
+			/** @internal */
 			name: string;
+		}>;
+		/** @internal */
+		automountServiceAccountToken?: boolean;
+		/** @internal */
+		containers: Array<{
+			/** @internal */
+			name: string;
+			/** @internal */
 			image: string;
+			/** @internal */
 			command?: string[];
+			/** @internal */
 			imagePullPolicy?: string;
-			env: Array<{ name: string; value: string }>;
-			volumeMounts: Array<{
+			/** @internal */
+			env: Array<{
+				/** @internal */
 				name: string;
+				/** @internal */
+				value: string;
+			}>;
+			/** @internal */
+			volumeMounts: Array<{
+				/** @internal */
+				name: string;
+				/** @internal */
 				mountPath: string;
+				/** @internal */
 				readOnly?: boolean;
+				/** @internal */
 				subPath?: string;
 			}>;
+			/** @internal */
 			resources?: {
+				/** @internal */
 				requests?: Record<string, string>;
+				/** @internal */
 				limits?: Record<string, string>;
 			};
 		}>;
+		/** @internal */
 		volumes: Array<
-			| { name: string; persistentVolumeClaim: { claimName: string } }
-			| { name: string; configMap: { name: string; items: Array<{ key: string; path: string }> } }
+			| {
+					/** @internal */
+					name: string;
+					/** @internal */
+					persistentVolumeClaim: {
+						/** @internal */
+						claimName: string;
+					};
+			  }
+			| {
+					/** @internal */
+					name: string;
+					/** @internal */
+					configMap: {
+						/** @internal */
+						name: string;
+						/** @internal */
+						items: Array<{
+							/** @internal */
+							key: string;
+							/** @internal */
+							path: string;
+						}>;
+					};
+			  }
 		>;
 	};
 }
@@ -137,6 +282,7 @@ function safeKubernetesDnsName(value: string, maxLen = DNS_LABEL_MAX): string {
 	return trimmed.length > 0 ? trimmed : "x";
 }
 
+/** @internal */
 export function sanitizeKubernetesNameSegment(value: string): string {
 	const cleaned = value
 		.toLowerCase()
@@ -145,12 +291,14 @@ export function sanitizeKubernetesNameSegment(value: string): string {
 	return cleaned.length > 0 ? cleaned : "x";
 }
 
+/** @internal */
 export function kubernetesWorkerPodName(instanceId: string, workerId: string): string {
 	return safeKubernetesDnsName(
 		`leitwerk-worker-${sanitizeKubernetesNameSegment(instanceId)}-${sanitizeKubernetesNameSegment(workerId)}`,
 	);
 }
 
+/** @internal */
 export function kubernetesExportHelperPodName(instanceId: string, exportId: string): string {
 	const exportSegment = sanitizeKubernetesNameSegment(exportId);
 	const suffix = `-${exportSegment}`;
@@ -164,6 +312,7 @@ export function kubernetesExportHelperPodName(instanceId: string, exportId: stri
 	return safeKubernetesDnsName(`${instancePrefix}${suffix}`);
 }
 
+/** @internal */
 export function kubernetesProcessPvcName(
 	instanceId: string,
 	namePrefix = "leitwerk-process-",
@@ -171,6 +320,7 @@ export function kubernetesProcessPvcName(
 	return safeKubernetesDnsName(`${namePrefix}${sanitizeKubernetesNameSegment(instanceId)}`);
 }
 
+/** @internal */
 export function kubernetesProcessNamespaceName(
 	instanceId: string,
 	processNamespacePrefix = "leitwerk-process-",
@@ -180,9 +330,13 @@ export function kubernetesProcessNamespaceName(
 	);
 }
 
+/** @internal */
 export function buildKubernetesProcessNamespaceManifest(args: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	processNamespacePrefix?: string;
+	/** @internal */
 	extraLabels?: Record<string, string>;
 }): KubernetesProcessNamespaceManifest {
 	return {
@@ -213,10 +367,15 @@ function processResourceMetadata(
 	};
 }
 
+/** @internal */
 export function buildKubernetesProcessPvcManifest(args: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	namespace: string;
+	/** @internal */
 	volume: KubernetesProcessVolumeSpec;
+	/** @internal */
 	extraLabels?: Record<string, string>;
 }): KubernetesPersistentVolumeClaimManifest {
 	const spec: KubernetesPersistentVolumeClaimManifest["spec"] = {
@@ -381,13 +540,20 @@ function processStateContainerConfig(
 	};
 }
 
+/** @internal */
 export function buildKubernetesExportHelperPodManifest(
 	input: {
+		/** @internal */
 		instanceId: string;
+		/** @internal */
 		exportId: string;
+		/** @internal */
 		image: string;
+		/** @internal */
 		command: string[];
+		/** @internal */
 		env: Record<string, string>;
+		/** @internal */
 		volume: VolumeRef;
 	},
 	options: KubernetesPodSpecOptions,
@@ -413,6 +579,7 @@ export function buildKubernetesExportHelperPodManifest(
 	);
 }
 
+/** @internal */
 export function buildKubernetesWorkerPodManifest(
 	input: IsolatedStartWorkerInput,
 	options: KubernetesPodSpecOptions,
@@ -492,6 +659,7 @@ function formatPodEvent(
 	);
 }
 
+/** @internal */
 export function formatKubernetesPodDiagnostics(
 	events: readonly KubernetesPodEventSummary[] | undefined,
 	limit = 3,
@@ -506,14 +674,23 @@ export function formatKubernetesPodDiagnostics(
 		: undefined;
 }
 
+/** @internal */
 export function mapKubernetesPodExit(args: {
+	/** @internal */
 	phase?: string;
+	/** @internal */
 	reason?: string;
+	/** @internal */
 	exitCode?: number | null;
+	/** @internal */
 	signal?: string | null;
+	/** @internal */
 	oomKilled?: boolean;
+	/** @internal */
 	terminationMessage?: string;
+	/** @internal */
 	events?: readonly KubernetesPodEventSummary[];
+	/** @internal */
 	sensitiveValues?: readonly string[];
 }): WorkerExitInfo {
 	const sensitiveValues = args.sensitiveValues ?? [];

@@ -11,17 +11,36 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import { resolveWorkerHttpUrl } from "./worker-http.js";
 
+/** @internal */
 export type SessionSnapshotUploadResult =
-	| { kind: "disabled" }
-	| { kind: "missing" }
-	| { kind: "empty" }
-	| { kind: "uploaded"; bytes: number };
+	| {
+			/** @internal */
+			kind: "disabled";
+	  }
+	| {
+			/** @internal */
+			kind: "missing";
+	  }
+	| {
+			/** @internal */
+			kind: "empty";
+	  }
+	| {
+			/** @internal */
+			kind: "uploaded";
+			/** @internal */
+			bytes: number;
+	  };
 
+/** @internal */
 export interface WorkerSessionSnapshotUploadMetadata {
+	/** @internal */
 	turnRecordId?: string | null;
 }
 
+/** @internal */
 export interface WorkerSessionSnapshotExchange {
+	/** @internal */
 	uploadSnapshot(
 		treeFile: string,
 		reason: string,

@@ -4,8 +4,10 @@ import { type PiResourceLayer, SKILL_RESOURCE_OWNER } from "../pi-resources/reso
 import type { LeitwerkDb } from "./database.js";
 import { processSkills, skillRevisions } from "./schema.js";
 
+/** @internal */
 export function createProcessSkillRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		attach(instanceId: string, selections: readonly SkillSelection[]): void {
 			const seen = new Set<string>();
 			selections.forEach((selection, position) => {
@@ -29,6 +31,7 @@ export function createProcessSkillRepo(db: LeitwerkDb) {
 					.run();
 			});
 		},
+		/** @internal */
 		listSelections(instanceId: string): SkillSelection[] {
 			return db
 				.select({
@@ -40,6 +43,7 @@ export function createProcessSkillRepo(db: LeitwerkDb) {
 				.orderBy(asc(processSkills.position))
 				.all();
 		},
+		/** @internal */
 		listResourceLayers(instanceId: string): PiResourceLayer[] {
 			return db
 				.select({

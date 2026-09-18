@@ -11,80 +11,156 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import { resolvePromptCacheSwitch } from "@leitwerk-dev/protocol/http-contracts";
 
+/** @internal */
 export interface ActionPreviewLike {
+	/** @internal */
 	kind?: string;
+	/** @internal */
 	turnId?: string;
+	/** @internal */
 	lifecycleStatus?: string;
 }
 
+/** @internal */
 export type PendingTelegramSession =
 	| {
+			/** @internal */
 			kind: "action_form";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			actionId: string;
+			/** @internal */
 			actionLabel: string;
+			/** @internal */
 			actionPreview?: ActionPreviewLike | null;
+			/** @internal */
 			sessionId: string;
+			/** @internal */
 			form: FormDefinition;
+			/** @internal */
 			fieldIndex: number;
+			/** @internal */
 			values: Record<string, unknown>;
+			/** @internal */
 			expiresAt: number;
 	  }
 	| {
+			/** @internal */
 			kind: "action_model";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			actionId: string;
+			/** @internal */
 			actionLabel: string;
+			/** @internal */
 			actionPreview?: ActionPreviewLike | null;
+			/** @internal */
 			sessionId: string;
+			/** @internal */
 			formValues: Record<string, unknown>;
+			/** @internal */
 			preview: ProcessActionModelPreviewLike;
+			/** @internal */
 			profiles: readonly ModelProfileOptionSummaryLike[];
+			/** @internal */
 			expiresAt: number;
 	  }
 	| {
+			/** @internal */
 			kind: "recovery_model";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			recoveryKind: "retry" | "continue";
+			/** @internal */
 			turnRecordId?: string;
+			/** @internal */
 			sessionId: string;
+			/** @internal */
 			profiles: readonly ModelProfileOptionSummaryLike[];
+			/** @internal */
 			selectedModelProfileId?: string | null;
+			/** @internal */
 			expiresAt: number;
 	  }
 	| {
+			/** @internal */
 			kind: "continue";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			turnRecordId: string;
+			/** @internal */
 			nextTurnModelProfileId?: string | null;
+			/** @internal */
 			expiresAt: number;
 	  }
 	| {
+			/** @internal */
 			kind: "question";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			request: ProcessQuestionRequest;
+			/** @internal */
 			questionIndex: number;
+			/** @internal */
 			draft: QuestionAnswerDraft[];
+			/** @internal */
 			expiresAt: number;
 	  };
 
+/** @internal */
 export type PendingActionFormSession = Extract<PendingTelegramSession, { kind: "action_form" }>;
+/** @internal */
 export type PendingActionModelSession = Extract<PendingTelegramSession, { kind: "action_model" }>;
+/** @internal */
 export type PendingQuestionSession = Extract<PendingTelegramSession, { kind: "question" }>;
 
+/** @internal */
 export type FormStepResult =
-	| { ok: true; done: false; prompt: string }
-	| { ok: true; done: true; values: Record<string, unknown> }
-	| { ok: false; prompt: string };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: false;
+			/** @internal */
+			prompt: string;
+	  }
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: true;
+			/** @internal */
+			values: Record<string, unknown>;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			prompt: string;
+	  };
 
+/** @internal */
 export function buildActionFormSession(input: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	actionId: string;
+	/** @internal */
 	actionLabel?: string;
+	/** @internal */
 	actionPreview?: ActionPreviewLike | null;
+	/** @internal */
 	sessionId: string;
+	/** @internal */
 	form: FormDefinition;
+	/** @internal */
 	now?: number;
+	/** @internal */
 	ttlMs?: number;
 }): PendingActionFormSession {
 	return {
@@ -101,8 +177,11 @@ export function buildActionFormSession(input: {
 	};
 }
 
+/** @internal */
 export function buildQuestionSession(input: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	request: ProcessQuestionRequest;
 }): PendingQuestionSession {
 	return {
@@ -115,6 +194,7 @@ export function buildQuestionSession(input: {
 	};
 }
 
+/** @internal */
 export function buildQuestionPrompt(session: PendingQuestionSession): string {
 	const question = session.request.questions[session.questionIndex];
 	if (!question) return "Send your answer.";
@@ -129,10 +209,18 @@ export function buildQuestionPrompt(session: PendingQuestionSession): string {
 	].join("\n");
 }
 
+/** @internal */
 export function applyQuestionText(
 	session: PendingQuestionSession,
 	text: string,
-): { done: boolean; draft: QuestionAnswerDraft[]; prompt?: string } {
+): {
+	/** @internal */
+	done: boolean;
+	/** @internal */
+	draft: QuestionAnswerDraft[];
+	/** @internal */
+	prompt?: string;
+} {
 	const answer = session.draft[session.questionIndex];
 	if (!answer || text.trim() === "") {
 		return {
@@ -148,11 +236,17 @@ export function applyQuestionText(
 		: { done: true, draft: session.draft };
 }
 
+/** @internal */
 export function buildContinueSession(input: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	turnRecordId: string;
+	/** @internal */
 	nextTurnModelProfileId?: string | null;
+	/** @internal */
 	now?: number;
+	/** @internal */
 	ttlMs?: number;
 }): Extract<PendingTelegramSession, { kind: "continue" }> {
 	return {
@@ -164,10 +258,12 @@ export function buildContinueSession(input: {
 	};
 }
 
+/** @internal */
 export function currentField(session: PendingActionFormSession): FormFieldDefinition | null {
 	return session.form.fields[session.fieldIndex] ?? null;
 }
 
+/** @internal */
 export function buildFieldPrompt(field: FormFieldDefinition): string {
 	const required = field.required ? " required" : "";
 	const description = field.description ? `\n${field.description}` : "";
@@ -175,6 +271,7 @@ export function buildFieldPrompt(field: FormFieldDefinition): string {
 	return `Enter ${field.label}${required}.${description}${hint}`;
 }
 
+/** @internal */
 export function canSkipActionFormField(field: FormFieldDefinition | null | undefined): boolean {
 	return Boolean(field && !field.required);
 }
@@ -187,6 +284,7 @@ function advanceFormField(session: PendingActionFormSession): FormStepResult {
 		: { ok: true, done: true, values: session.values };
 }
 
+/** @internal */
 export function applyFormSkip(session: PendingActionFormSession): FormStepResult {
 	const field = currentField(session);
 	if (!field) {
@@ -231,6 +329,7 @@ function parseFieldValue(
 	return { ok: true, value: text };
 }
 
+/** @internal */
 export function applyFormText(session: PendingActionFormSession, text: string): FormStepResult {
 	const field = currentField(session);
 	if (!field) {
@@ -244,16 +343,27 @@ export function applyFormText(session: PendingActionFormSession, text: string): 
 	return advanceFormField(session);
 }
 
+/** @internal */
 export function buildActionModelSession(input: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	actionId: string;
+	/** @internal */
 	actionLabel: string;
+	/** @internal */
 	actionPreview?: ActionPreviewLike | null;
+	/** @internal */
 	sessionId: string;
+	/** @internal */
 	formValues: Record<string, unknown>;
+	/** @internal */
 	preview: ProcessActionModelPreviewLike;
+	/** @internal */
 	profiles: readonly ModelProfileOptionSummaryLike[];
+	/** @internal */
 	now?: number;
+	/** @internal */
 	ttlMs?: number;
 }): PendingActionModelSession {
 	return {
@@ -270,9 +380,13 @@ export function buildActionModelSession(input: {
 	};
 }
 
+/** @internal */
 export function buildActionModelSwitchWarning(input: {
+	/** @internal */
 	session: PendingActionModelSession;
+	/** @internal */
 	effectiveModelProfileId: string;
+	/** @internal */
 	now?: number;
 }): string | null {
 	const resolution = resolvePromptCacheSwitch({
@@ -291,7 +405,11 @@ export function buildActionModelSwitchWarning(input: {
 	return `⚠ Switching models may lose prompt-cache reuse and increase costs. To keep using the previous model, choose ${recommendation}.`;
 }
 
-export function buildActionModelPrompt(input: { session: PendingActionModelSession }): string {
+/** @internal */
+export function buildActionModelPrompt(input: {
+	/** @internal */
+	session: PendingActionModelSession;
+}): string {
 	const { session } = input;
 	const lines = [`Next-turn model for: ${session.actionLabel}`];
 	const preview = session.preview;
@@ -317,18 +435,27 @@ export function buildActionModelPrompt(input: { session: PendingActionModelSessi
 	return lines.join("\n");
 }
 
+/** @internal */
 export type PendingRecoveryModelSession = Extract<
 	PendingTelegramSession,
 	{ kind: "recovery_model" }
 >;
 
+/** @internal */
 export function buildRecoveryModelSession(input: {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	recoveryKind: "retry" | "continue";
+	/** @internal */
 	turnRecordId?: string;
+	/** @internal */
 	sessionId: string;
+	/** @internal */
 	profiles: readonly ModelProfileOptionSummaryLike[];
+	/** @internal */
 	now?: number;
+	/** @internal */
 	ttlMs?: number;
 }): PendingRecoveryModelSession {
 	return {
@@ -342,7 +469,11 @@ export function buildRecoveryModelSession(input: {
 	};
 }
 
-export function buildRecoveryModelPrompt(input: { session: PendingRecoveryModelSession }): string {
+/** @internal */
+export function buildRecoveryModelPrompt(input: {
+	/** @internal */
+	session: PendingRecoveryModelSession;
+}): string {
 	const { session } = input;
 	const label = session.recoveryKind === "retry" ? "Retry" : "Continue";
 	const lines = [`Next-turn model for: ${label}`];

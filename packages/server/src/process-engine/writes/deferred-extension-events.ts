@@ -5,9 +5,12 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import type { ExtensionHost } from "../../extensions/extension-host.js";
 
+/** @internal */
 export type DeferredProcessExtensionEvent = {
 	[K in ServerExtensionEventName]: {
+		/** @internal */
 		type: K;
+		/** @internal */
 		payload: ServerExtensionEventMap[K];
 	};
 }[ServerExtensionEventName];
@@ -26,6 +29,7 @@ export function createDeferredExtensionEvent<K extends ServerExtensionEventName>
 	} as DeferredProcessExtensionEvent;
 }
 
+/** @internal */
 export function emitDeferredExtensionEvent(
 	host: ExtensionHost | undefined,
 	event: DeferredProcessExtensionEvent,

@@ -53,9 +53,13 @@ function sameManifestAuthority(
 	return JSON.stringify(manifestAuthority(expected)) === JSON.stringify(manifestAuthority(actual));
 }
 
+/** @internal */
 export function createSessionTransferHelperRelays(deps: {
+	/** @internal */
 	repos: Pick<RepositoryBundle, "sessionTransfers">;
+	/** @internal */
 	limits: SessionTransferLimits;
+	/** @internal */
 	now?: () => Date;
 }) {
 	const now = deps.now ?? (() => new Date());
@@ -83,8 +87,11 @@ export function createSessionTransferHelperRelays(deps: {
 	}
 
 	return {
+		/** @internal */
 		create(input: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			manifest: LeitwerkTransferManifestV1;
 		}): ProcessStateExportHelperRelay {
 			const attempt = deps.repos.sessionTransfers.getActiveByInstance(input.instanceId);
@@ -128,20 +135,30 @@ export function createSessionTransferHelperRelays(deps: {
 				fail: runtime.fail,
 			};
 		},
+		/** @internal */
 		sweep(): void {
 			const currentTime = now().getTime();
 			for (const helper of helpers.values()) {
 				if (helper.expiresAt <= currentTime) helper.fail(new Error("export_helper_expired"));
 			}
 		},
+		/** @internal */
 		stop(): void {
 			for (const helper of helpers.values()) helper.fail(new Error("server_stopping"));
 			helpers.clear();
 		},
+		/** @internal */
 		helperSpec(input: {
+			/** @internal */
 			exportId: string;
+			/** @internal */
 			credential: string;
-		}): { manifest: LeitwerkTransferManifestV1; limits: SessionTransferLimits } | null {
+		}): {
+			/** @internal */
+			manifest: LeitwerkTransferManifestV1;
+			/** @internal */
+			limits: SessionTransferLimits;
+		} | null {
 			const helper = active(input.exportId, input.credential);
 			if (!helper || helper.reported || helper.streamAccepted) return null;
 			const attempt = deps.repos.sessionTransfers.getAttempt(helper.attemptId);
@@ -153,10 +170,15 @@ export function createSessionTransferHelperRelays(deps: {
 				limits: { ...deps.limits },
 			};
 		},
+		/** @internal */
 		async reportHelperPreflight(input: {
+			/** @internal */
 			exportId: string;
+			/** @internal */
 			credential: string;
+			/** @internal */
 			report: unknown;
+			/** @internal */
 			signal?: AbortSignal;
 		}): Promise<boolean> {
 			const helper = active(input.exportId, input.credential);
@@ -184,7 +206,15 @@ export function createSessionTransferHelperRelays(deps: {
 				return false;
 			}
 		},
-		acceptHelperStream(input: { exportId: string; credential: string; stream: Readable }): boolean {
+		/** @internal */
+		acceptHelperStream(input: {
+			/** @internal */
+			exportId: string;
+			/** @internal */
+			credential: string;
+			/** @internal */
+			stream: Readable;
+		}): boolean {
 			const helper = active(input.exportId, input.credential);
 			if (!helper?.reported || helper.streamAccepted) return false;
 			const attempt = deps.repos.sessionTransfers.getAttempt(helper.attemptId);
@@ -198,4 +228,5 @@ export function createSessionTransferHelperRelays(deps: {
 	};
 }
 
+/** @internal */
 export type SessionTransferHelperRelays = ReturnType<typeof createSessionTransferHelperRelays>;

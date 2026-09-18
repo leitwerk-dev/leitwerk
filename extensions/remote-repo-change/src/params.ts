@@ -8,8 +8,13 @@ import {
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
 
+/** @internal */
 export type RemoteRepoChangeLaunchKind = RepositoryChangeLaunchKind;
-export type RemoteRepoChangeParams = RepositoryChangeLaunchParams<{ sshCredentialRef: string }>;
+/** @internal */
+export type RemoteRepoChangeParams = RepositoryChangeLaunchParams<{
+	/** @internal */
+	sshCredentialRef: string;
+}>;
 export type NormalizedRemoteRepoChangeParamsInput = NormalizedRepositoryChangeParamsInput & {
 	sshCredentialRef: string;
 };
@@ -22,6 +27,7 @@ export function normalizeRemoteRepoChangeParamsInput(
 	return { ...normalized, sshCredentialRef: trimString(record.sshCredentialRef) };
 }
 
+/** @internal */
 export const remoteRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<RemoteRepoChangeParams>({
 		displayName: "Remote Repo Change",

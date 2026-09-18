@@ -50,11 +50,32 @@ const markdown = new MarkdownIt("commonmark", {
 	linkify: false,
 });
 
+/** @internal */
 export type TelegramResultVisual =
-	| { kind: "image"; imageId: string; alt: string }
-	| { kind: "mermaid"; source: string };
+	| {
+			/** @internal */
+			kind: "image";
+			/** @internal */
+			imageId: string;
+			/** @internal */
+			alt: string;
+	  }
+	| {
+			/** @internal */
+			kind: "mermaid";
+			/** @internal */
+			source: string;
+	  };
 
-export type TelegramResultPart = { kind: "html"; html: string } | TelegramResultVisual;
+/** @internal */
+export type TelegramResultPart =
+	| {
+			/** @internal */
+			kind: "html";
+			/** @internal */
+			html: string;
+	  }
+	| TelegramResultVisual;
 
 markdown.renderer.rules.image = (tokens, index) => escapeTelegramHtml(tokens[index]?.content ?? "");
 
@@ -62,10 +83,12 @@ type Parse5Node = DefaultTreeAdapterMap["node"];
 type Parse5Element = DefaultTreeAdapterMap["element"];
 type Parse5TextNode = DefaultTreeAdapterMap["textNode"];
 
+/** @internal */
 export function escapeTelegramHtml(value: string): string {
 	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+/** @internal */
 export function escapeTelegramAttribute(value: string): string {
 	return escapeTelegramHtml(value).replaceAll('"', "&quot;");
 }
@@ -150,6 +173,7 @@ function normalizeTelegramHtml(html: string): string {
 	return parseFragment(html).childNodes.map(renderNode).join("").trim();
 }
 
+/** @internal */
 export function telegramHtmlToPlainText(html: string): string {
 	return parseFragment(normalizeTelegramHtml(html)).childNodes.map(collectText).join("").trim();
 }
@@ -202,6 +226,7 @@ function splitEncodedText(
 	return chunks;
 }
 
+/** @internal */
 export function splitPlainTelegramText(
 	value: string,
 	maxChars = DEFAULT_TELEGRAM_SOFT_LIMIT,
@@ -209,6 +234,7 @@ export function splitPlainTelegramText(
 	return splitEncodedText(value, maxChars, (char) => char);
 }
 
+/** @internal */
 export function splitTelegramHtml(value: string, maxChars = DEFAULT_TELEGRAM_SOFT_LIMIT): string[] {
 	const normalized = normalizeLineEndings(value);
 	if (!normalized) return [];
@@ -221,6 +247,7 @@ export function splitTelegramHtml(value: string, maxChars = DEFAULT_TELEGRAM_SOF
 		: splitEncodedText(telegramHtmlToPlainText(safeHtml), max, escapeTelegramHtml);
 }
 
+/** @internal */
 export function renderMarkdownToTelegramHtml(markdownText: string): string {
 	const normalized = normalizeLineEndings(markdownText);
 	return normalized ? normalizeTelegramHtml(markdown.render(normalized)) : "";
@@ -249,9 +276,13 @@ function resultVisual(
  * ordinary rendered Markdown so media delivery never has to reconstruct open
  * formatting containers around Telegram uploads.
  */
+/** @internal */
 export function renderResultMarkdownForTelegram(input: {
+	/** @internal */
 	markdown: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	turnRecordId: string;
 }): TelegramResultPart[] {
 	const normalized = normalizeLineEndings(input.markdown);

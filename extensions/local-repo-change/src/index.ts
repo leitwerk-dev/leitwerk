@@ -3,11 +3,15 @@ import { createLocalRepoChangeAutoWorkBranchCoordinator } from "./auto-work-bran
 import { localRepoChangeCapabilities, localRepoChangeLaunchPlanner } from "./launch-policy.js";
 import { localRepoChangeProcess } from "./process-definition.js";
 
+/** @internal */
 export const manifest = {
+	/** @internal */
 	id: "local-repo-change",
+	/** @internal */
 	version: "0.1.0",
 } as const;
 
+/** @internal */
 const localRepoChangeExtension: LeitwerkExtensionModule = {
 	manifest,
 	setupCatalog(api) {

@@ -6,6 +6,7 @@ function isNonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim() !== "";
 }
 
+/** @internal */
 export function validateProcessLeafOutcomeDefinition(def: ProcessLeafOutcomeDefinition): string[] {
 	const errors: string[] = [];
 	if (!isNonEmptyString(def.rendererId)) {
@@ -17,6 +18,7 @@ export function validateProcessLeafOutcomeDefinition(def: ProcessLeafOutcomeDefi
 	return errors;
 }
 
+/** @internal */
 export function validateLeafOutcomeCaptureResult(
 	result: unknown,
 	expectedRendererId?: string,
@@ -54,6 +56,7 @@ export function validateLeafOutcomeCaptureResult(
 	return errors;
 }
 
+/** @internal */
 export function normalizeLeafOutcomeCaptureResult(
 	result: LeafOutcomeCaptureResult,
 ): LeafOutcomeCaptureResult {

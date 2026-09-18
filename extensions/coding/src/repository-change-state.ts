@@ -1,20 +1,30 @@
 import type { Codec, StructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 
+/** @public */
 export interface RepositoryChangeFinalizationState {
+	/** @internal */
 	expectedPostConflictHeadSha: string | null;
+	/** @internal */
 	usedConflictResolution: boolean;
+	/** @internal */
 	finalizationSummaryMarkdown: string | null;
+	/** @internal */
 	finalizedHeadSha: string | null;
+	/** @public */
 	generatedCommitMessage: string | null;
 }
 
+/** @public */
 export interface RepositoryChangeState extends StructuralProcessState {
+	/** @public */
 	finalization: RepositoryChangeFinalizationState;
 	/** Namespaced state owned by a caller-supplied publication workflow. */
+	/** @public */
 	extensionState?: Record<string, unknown>;
 }
 
+/** @internal */
 export function createEmptyRepositoryChangeFinalizationState(): RepositoryChangeFinalizationState {
 	return {
 		expectedPostConflictHeadSha: null,
@@ -45,6 +55,7 @@ function parseFinalizationState(value: unknown): RepositoryChangeFinalizationSta
 	};
 }
 
+/** @internal */
 export const repositoryChangeStateCodec: Codec<RepositoryChangeState> = {
 	parse(value) {
 		const record = toRecord(value);
@@ -59,6 +70,7 @@ export const repositoryChangeStateCodec: Codec<RepositoryChangeState> = {
 	},
 };
 
+/** @internal */
 export function clearReviewRefs(
 	semanticEntryRefs: RepositoryChangeState["semanticEntryRefs"],
 ): RepositoryChangeState["semanticEntryRefs"] {
@@ -68,6 +80,7 @@ export function clearReviewRefs(
 	};
 }
 
+/** @internal */
 export function resetRepositoryChangeFinalizationState(
 	overrides: Partial<RepositoryChangeFinalizationState> = {},
 ): RepositoryChangeFinalizationState {

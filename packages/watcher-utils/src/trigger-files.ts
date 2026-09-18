@@ -1,7 +1,19 @@
 import { readFile, unlink } from "node:fs/promises";
 
-export type TriggerFileReadResult = { exists: false } | { exists: true; content: string };
+/** @internal */
+export type TriggerFileReadResult =
+	| {
+			/** @internal */
+			exists: false;
+	  }
+	| {
+			/** @internal */
+			exists: true;
+			/** @internal */
+			content: string;
+	  };
 
+/** @internal */
 export function errorCode(error: unknown): string | null {
 	if (typeof error !== "object" || error === null || !("code" in error)) {
 		return null;
@@ -10,6 +22,7 @@ export function errorCode(error: unknown): string | null {
 	return typeof code === "string" ? code : null;
 }
 
+/** @internal */
 export async function readTriggerFile(filePath: string): Promise<TriggerFileReadResult> {
 	try {
 		return { exists: true, content: await readFile(filePath, "utf8") };
@@ -21,6 +34,7 @@ export async function readTriggerFile(filePath: string): Promise<TriggerFileRead
 	}
 }
 
+/** @internal */
 export async function consumeTriggerFile(filePath: string): Promise<void> {
 	try {
 		await unlink(filePath);

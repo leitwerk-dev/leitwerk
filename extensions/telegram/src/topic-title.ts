@@ -14,6 +14,7 @@ function truncate(value: string, max: number): string {
 	return `${value.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
 }
 
+/** @internal */
 export function getProcessTopicBaseTitle(process: ProcessInstance): string {
 	return (
 		flatten(process.title ?? "") ||
@@ -23,7 +24,13 @@ export function getProcessTopicBaseTitle(process: ProcessInstance): string {
 	);
 }
 
-export function buildTopicTitle(input: { process: ProcessInstance; template: string }): string {
+/** @internal */
+export function buildTopicTitle(input: {
+	/** @internal */
+	process: ProcessInstance;
+	/** @internal */
+	template: string;
+}): string {
 	const shortId = input.process.id.slice(-8);
 	const title = getProcessTopicBaseTitle(input.process);
 	const rendered = input.template

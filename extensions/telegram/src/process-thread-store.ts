@@ -2,6 +2,7 @@ import type { ProcessEvent, ProcessInstance } from "@leitwerk-dev/domain";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import type { TelegramProcessThread } from "./types.js";
 
+/** @internal */
 export const TELEGRAM_THREAD_LINKED_EVENT = "telegram.thread_linked";
 
 function readThreadFromEvent(event: ProcessEvent): TelegramProcessThread | null {
@@ -32,16 +33,20 @@ type ProcessEventRepoWithTypedLookup = CoreServerSetupDeps["events"] & {
 	) => ProcessEvent[];
 };
 
+/** @internal */
 export function threadKey(chatId: string, messageThreadId: number | undefined): string {
 	return `${chatId}:${messageThreadId ?? 0}`;
 }
 
+/** @internal */
 export class ProcessThreadStore {
 	private readonly byInstanceId = new Map<string, TelegramProcessThread>();
 	private readonly byThreadKey = new Map<string, string>();
 
+	/** @internal */
 	constructor(private readonly deps: Pick<CoreServerSetupDeps, "events" | "processes">) {}
 
+	/** @internal */
 	rebuildFromEvents(): readonly string[] {
 		this.byInstanceId.clear();
 		this.byThreadKey.clear();
@@ -58,14 +63,17 @@ export class ProcessThreadStore {
 		return mappedInstanceIds;
 	}
 
+	/** @internal */
 	getByInstanceId(instanceId: string): TelegramProcessThread | null {
 		return this.byInstanceId.get(instanceId) ?? null;
 	}
 
+	/** @internal */
 	getInstanceIdForThread(chatId: string, messageThreadId: number | undefined): string | null {
 		return this.byThreadKey.get(threadKey(chatId, messageThreadId)) ?? null;
 	}
 
+	/** @internal */
 	record(process: Pick<ProcessInstance, "id">, thread: TelegramProcessThread): void {
 		this.deps.events.create({
 			instanceId: process.id,

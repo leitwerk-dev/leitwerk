@@ -9,8 +9,11 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { RepositoryBundle } from "./db/repositories.js";
 
+/** @internal */
 export interface LauncherRecentValuesService {
+	/** @internal */
 	list(launcherId: string): Record<string, readonly string[]>;
+	/** @internal */
 	record(launcherId: string, launcherInput: Record<string, unknown>): void;
 }
 

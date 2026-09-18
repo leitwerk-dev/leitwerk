@@ -1,7 +1,10 @@
+/** @internal */
 export interface ProcessOperationCoordinator {
+	/** @internal */
 	runExclusive<T>(instanceId: string, operation: () => Promise<T> | T): Promise<T>;
 }
 
+/** @internal */
 export function createProcessOperationCoordinator(): ProcessOperationCoordinator {
 	const tails = new Map<string, Promise<void>>();
 

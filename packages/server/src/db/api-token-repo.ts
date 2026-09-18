@@ -4,17 +4,42 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { apiTokens } from "./schema.js";
 
+/** @internal */
 export type TokenProviderBinding =
-	| { id: string; kind: "oidc"; issuer: string; identityClaim: string }
-	| { id: string; kind: "oauth2"; organization: string };
+	| {
+			/** @internal */
+			id: string;
+			/** @internal */
+			kind: "oidc";
+			/** @internal */
+			issuer: string;
+			/** @internal */
+			identityClaim: string;
+	  }
+	| {
+			/** @internal */
+			id: string;
+			/** @internal */
+			kind: "oauth2";
+			/** @internal */
+			organization: string;
+	  };
+/** @internal */
 export interface ApiTokenOwner {
+	/** @internal */
 	kind: "user" | "anonymous";
+	/** @internal */
 	id: string;
+	/** @internal */
 	actor: Actor;
+	/** @internal */
 	providerBinding: TokenProviderBinding | null;
 }
+/** @internal */
 export interface ApiTokenRecord extends ApiTokenMetadata {
+	/** @internal */
 	secretHash: string;
+	/** @internal */
 	owner: ApiTokenOwner;
 }
 function record(row: typeof apiTokens.$inferSelect): ApiTokenRecord {
@@ -32,8 +57,10 @@ function record(row: typeof apiTokens.$inferSelect): ApiTokenRecord {
 function owned(owner: ApiTokenOwner) {
 	return and(eq(apiTokens.ownerKind, owner.kind), eq(apiTokens.ownerId, owner.id));
 }
+/** @internal */
 export function createApiTokenRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create({ owner, ...fields }: ApiTokenRecord): void {
 			db.insert(apiTokens)
 				.values({
@@ -45,6 +72,7 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 				})
 				.run();
 		},
+		/** @internal */
 		list(owner: ApiTokenOwner): ApiTokenRecord[] {
 			return db
 				.select()
@@ -54,10 +82,12 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 				.all()
 				.map(record);
 		},
+		/** @internal */
 		findByHash(hash: string): ApiTokenRecord | null {
 			const row = db.select().from(apiTokens).where(eq(apiTokens.secretHash, hash)).get();
 			return row ? record(row) : null;
 		},
+		/** @internal */
 		revoke(owner: ApiTokenOwner, id: string, at: string): boolean {
 			const filter = and(owned(owner), eq(apiTokens.id, id));
 			if (!db.select({ id: apiTokens.id }).from(apiTokens).where(filter).get()) return false;
@@ -67,6 +97,7 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 				.run();
 			return true;
 		},
+		/** @internal */
 		revokeAll(owner: ApiTokenOwner, at: string): number {
 			const result = db
 				.update(apiTokens)
@@ -75,6 +106,7 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 				.run();
 			return Number(result.changes);
 		},
+		/** @internal */
 		revokeAnonymous(at: string): number {
 			const result = db
 				.update(apiTokens)
@@ -83,6 +115,7 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 				.run();
 			return Number(result.changes);
 		},
+		/** @internal */
 		touch(id: string, at: string): void {
 			db.update(apiTokens).set({ lastUsedAt: at }).where(eq(apiTokens.id, id)).run();
 		},

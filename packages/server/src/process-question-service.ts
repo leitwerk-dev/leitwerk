@@ -13,6 +13,7 @@ import type { RepositoryBundle } from "./db/repositories.js";
 import type { ProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
+/** @internal */
 type ProcessQuestionRepos = Pick<
 	RepositoryBundle,
 	"events" | "leases" | "processes" | "questionRequests" | "transaction" | "turnRecords"
@@ -30,16 +31,23 @@ function isCurrentRequest(repos: ProcessQuestionRepos, request: ProcessQuestionR
 	);
 }
 
+/** @internal */
 export function createProcessQuestionService(input: {
+	/** @internal */
 	repos: ProcessQuestionRepos;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	getWorkerId: (instanceId: string) => string | null;
+	/** @internal */
 	sendQuestionResponse: (
 		instanceId: string,
 		workerId: string,
 		payload: WorkerQuestionResponsePayload,
 	) => void;
+	/** @internal */
 	emitQuestionRequested?: (request: ProcessQuestionRequest) => void | Promise<void>;
 }) {
 	const sendResponse = (instanceId: string, workerId: string, request: ProcessQuestionRequest) => {
@@ -51,7 +59,9 @@ export function createProcessQuestionService(input: {
 		});
 	};
 	return {
+		/** @internal */
 		listOpen: (instanceId?: string) => input.repos.questionRequests.listOpen(instanceId),
+		/** @internal */
 		async handleWorkerRequest(
 			instanceId: string,
 			workerLeaseId: string,
@@ -117,6 +127,7 @@ export function createProcessQuestionService(input: {
 				instanceId,
 			);
 		},
+		/** @internal */
 		async submitAnswers(
 			instanceId: string,
 			requestId: string,
@@ -129,16 +140,23 @@ export function createProcessQuestionService(input: {
 						const request = repos.questionRequests.getById(requestId);
 						if (!request || request.instanceId !== instanceId) {
 							return {
+								/** @internal */
 								ok: false as const,
+								/** @internal */
 								code: "not_found" as const,
+								/** @internal */
 								message: "Question request not found",
 							};
 						}
 						if (request.status !== "open" || !isCurrentRequest(repos, request)) {
 							return {
+								/** @internal */
 								ok: false as const,
+								/** @internal */
 								code: "not_current" as const,
+								/** @internal */
 								message: "Question request is no longer active",
+								/** @internal */
 								request,
 							};
 						}
@@ -160,7 +178,12 @@ export function createProcessQuestionService(input: {
 							eventType: "question_answered",
 							data: { requestId: request.id, actorId: actor.id },
 						});
-						return { ok: true as const, request: answered };
+						return {
+							/** @internal */
+							ok: true as const,
+							/** @internal */
+							request: answered,
+						};
 					}),
 				);
 				if (!result.ok) return result;
@@ -174,8 +197,11 @@ export function createProcessQuestionService(input: {
 				return result;
 			} catch (error) {
 				return {
+					/** @internal */
 					ok: false as const,
+					/** @internal */
 					code: "invalid" as const,
+					/** @internal */
 					message: error instanceof Error ? error.message : String(error),
 				};
 			}
@@ -183,4 +209,5 @@ export function createProcessQuestionService(input: {
 	};
 }
 
+/** @internal */
 export type ProcessQuestionService = ReturnType<typeof createProcessQuestionService>;

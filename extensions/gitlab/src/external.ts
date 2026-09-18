@@ -6,18 +6,35 @@ import {
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";
+/** @internal */
 export const GITLAB_MR_KIND = "@leitwerk-dev/gitlab.merge-request";
+/** @public */
 export interface GitLabSourceConfig {
+	/** @public */
 	profile: string;
+	/** @public */
 	projectId: number;
+	/** @public */
 	iid: number;
+	/** @public */
 	pollInterval?: string;
+	/** @public */
 	afterKey?: string;
 	/** Optional timer also wakes retry work when GitLab facts have not changed. */
+	/** @public */
 	wakeAt?: number;
-	feedback?: { afterId: number; since?: string; quietPeriodMs: number };
+	/** @public */
+	feedback?: {
+		/** @public */
+		afterId: number;
+		/** @public */
+		since?: string;
+		/** @public */
+		quietPeriodMs: number;
+	};
 }
 /** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. */
+/** @public */
 export function pendingGitLabFeedback(
 	items: GitLabFeedback[],
 	afterId: number,
@@ -26,6 +43,7 @@ export function pendingGitLabFeedback(
 	const start = since ? Date.parse(since) : 0;
 	return items.filter((item) => item.id > afterId && Date.parse(item.createdAt) >= start);
 }
+/** @public */
 export function gitLabFeedbackReadyAt(
 	items: GitLabFeedback[],
 	quietPeriodMs: number,
@@ -34,6 +52,7 @@ export function gitLabFeedbackReadyAt(
 		? Math.max(...items.map((item) => Date.parse(item.createdAt))) + quietPeriodMs
 		: null;
 }
+/** @public */
 export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
 	JSON.stringify([
 		mr.state,
@@ -43,9 +62,16 @@ export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
 		pipeline?.id,
 		pipeline?.status,
 	]);
+/** @public */
 export const gitlabExternal = {
+	/** @public */
 	mergeRequest<P, S>(
-		resolve: (ctx: { params: P; state: S }) => GitLabSourceConfig,
+		resolve: (ctx: {
+			/** @public */
+			params: P;
+			/** @public */
+			state: S;
+		}) => GitLabSourceConfig,
 	): ExternalActionSource<P, S, GitLabObservation> {
 		return {
 			kind: GITLAB_MR_KIND,
@@ -57,10 +83,14 @@ export const gitlabExternal = {
 		};
 	},
 };
+/** @internal */
 export function createGitLabProvider(
 	deps: CoreServerSetupDeps,
 	integration: GitLabIntegration,
-	options: { now?: () => number } = {},
+	options: {
+		/** @internal */
+		now?: () => number;
+	} = {},
 ) {
 	const schedule = new Map<string, { at: number; failures: number }>();
 	const now = options.now ?? Date.now;

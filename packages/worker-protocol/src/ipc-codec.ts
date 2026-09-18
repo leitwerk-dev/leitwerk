@@ -1,24 +1,46 @@
 import { parseSchema } from "@leitwerk-dev/protocol";
 import * as v from "valibot";
 
+/** @internal */
 export const IPC_PROTOCOL_VERSION = "leitwerk/worker-ipc/v1" as const;
 
+/** @internal */
 export const IPC_ENVELOPE_SCHEMA = v.object({
+	/** @internal */
 	protocol: v.literal(IPC_PROTOCOL_VERSION),
+	/** @internal */
 	messageId: v.string(),
+	/** @internal */
 	correlationId: v.optional(v.string()),
+	/** @internal */
 	type: v.string(),
+	/** @internal */
 	instanceId: v.string(),
+	/** @internal */
 	workerId: v.string(),
+	/** @internal */
 	sentAt: v.string(),
+	/** @internal */
 	payload: v.unknown(),
 });
 
+/** @internal */
 export type IpcEnvelope = v.InferOutput<typeof IPC_ENVELOPE_SCHEMA>;
 
-export function validateEnvelope(
-	msg: unknown,
-): { ok: true; envelope: IpcEnvelope } | { ok: false; error: string } {
+/** @internal */
+export function validateEnvelope(msg: unknown):
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			envelope: IpcEnvelope;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			error: string;
+	  } {
 	if (
 		typeof msg === "object" &&
 		msg !== null &&
@@ -37,13 +59,25 @@ export function validateEnvelope(
 		: { ok: false, error: envelope.error };
 }
 
+/** @internal */
 export function serializeMessage<TEnvelope extends IpcEnvelope>(envelope: TEnvelope): string {
 	return JSON.stringify(envelope);
 }
 
-export function deserializeMessage(
-	line: string,
-): { ok: true; message: IpcEnvelope } | { ok: false; error: string } {
+/** @internal */
+export function deserializeMessage(line: string):
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			message: IpcEnvelope;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			error: string;
+	  } {
 	const trimmed =
 		line.length > 0 && line.charCodeAt(line.length - 1) === 0x0d ? line.slice(0, -1) : line;
 	let parsed: unknown;

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { LeitwerkConfig } from "./config/config-types.js";
 
 /** Reads a file's UTF-8 contents. Injected so the pure logic stays testable. */
+/** @internal */
 export type FileReader = (path: string) => string;
 
 const defaultFileReader: FileReader = (path) => readFileSync(path, "utf8");
@@ -14,11 +15,17 @@ const defaultFileReader: FileReader = (path) => readFileSync(path, "utf8");
  * verification. Config validation currently rejects `internal_tls.client_ca_file`
  * until workers receive client cert/key material.
  */
+/** @internal */
 export interface ServerTlsOptions {
+	/** @internal */
 	cert: string;
+	/** @internal */
 	key: string;
+	/** @internal */
 	ca?: string;
+	/** @internal */
 	requestCert: boolean;
+	/** @internal */
 	rejectUnauthorized: boolean;
 }
 
@@ -32,6 +39,7 @@ export interface ServerTlsOptions {
  * verification is intentionally not configurable yet because workers do not
  * receive client cert/key material.
  */
+/** @internal */
 export function resolveServerTlsOptions(
 	config: LeitwerkConfig,
 	readFile: FileReader = defaultFileReader,

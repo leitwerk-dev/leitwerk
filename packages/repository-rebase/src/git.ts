@@ -6,21 +6,35 @@ import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
 import { type ConflictEvidence, conflictKey } from "./index.js";
 
+/** @public */
 export interface RebaseInput {
+	/** @public */
 	projectKey: string;
+	/** @public */
 	path: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	conflict: ConflictEvidence;
 }
+/** @public */
 interface RebaseRecord {
+	/** @internal */
 	key: string;
+	/** @internal */
 	branch: string;
+	/** @internal */
 	originalHead: string;
+	/** @internal */
 	baseSha: string;
+	/** @internal */
 	status: "prepared" | "rebasing" | "clean";
 	/** Optional for records written before origin identity was retained. */
+	/** @internal */
 	originUrl?: string;
+	/** @internal */
 	originPushUrl?: string;
+	/** @internal */
 	baseBranch?: string;
 }
 function git(input: RebaseInput, ...args: string[]): string {
@@ -109,6 +123,7 @@ function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: stri
 }
 
 /** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. */
+/** @internal */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
 	const old = read(input);
 	requireTarget(input, old?.key === conflictKey(input.conflict) ? old : null);
@@ -148,6 +163,7 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 	save(input, record);
 	return record;
 }
+/** @public */
 export function startRebase(input: RebaseInput): RebaseRecord {
 	const record = prepareRebase(input);
 	if (active(input)) return record;
@@ -173,10 +189,15 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	}
 	return record;
 }
+/** @public */
 export function verifyRebase(input: RebaseInput): {
+	/** @public */
 	headSha: string;
+	/** @internal */
 	changed: boolean;
+	/** @internal */
 	originalHead: string;
+	/** @internal */
 	baseSha: string;
 } {
 	const record = read(input);
@@ -202,6 +223,7 @@ export function verifyRebase(input: RebaseInput): {
 		baseSha: record.baseSha,
 	};
 }
+/** @public */
 export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebase> {
 	const result = verifyRebase(input);
 	const record = read(input);

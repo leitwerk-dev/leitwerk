@@ -17,12 +17,19 @@ import {
 	type WriteBuildResult,
 } from "./writes.js";
 
+/** @internal */
 export interface TurnSelectionWritesInput {
+	/** @internal */
 	fromTurnId?: TurnId | null;
+	/** @internal */
 	toTurnId: TurnId | null;
+	/** @internal */
 	trigger?: TransitionTrigger | string;
+	/** @internal */
 	lifecycleStatus?: ProcessLifecycleStatus;
+	/** @internal */
 	workerIntent?: WorkerIntent;
+	/** @internal */
 	state?: unknown;
 }
 
@@ -35,6 +42,7 @@ function deriveLifecycleStatusForSelectedTurn(
 	return turn ? lifecycleStatusForSelectedTurnType(turn.turnType) : "active";
 }
 
+/** @internal */
 export function buildTurnSelectionWrites(
 	processGraphs: ProcessGraphRegistry,
 	process: ProcessInstance,

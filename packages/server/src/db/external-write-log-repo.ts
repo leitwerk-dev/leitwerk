@@ -5,6 +5,7 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateExternalWriteLogInput extends ExternalWriteLogRecordInput {}
 
 function rowToExternalWriteLog(row: typeof s.externalWriteLog.$inferSelect): ExternalWriteLog {
@@ -18,8 +19,10 @@ function rowToExternalWriteLog(row: typeof s.externalWriteLog.$inferSelect): Ext
 	};
 }
 
+/** @public */
 export function createExternalWriteLogRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		record(input: CreateExternalWriteLogInput): ExternalWriteLog {
 			const id = generateId("ewl");
 			const ts = now();
@@ -35,6 +38,7 @@ export function createExternalWriteLogRepo(db: LeitwerkDb) {
 			return rowToExternalWriteLog(values);
 		},
 
+		/** @internal */
 		hasDedupKey(dedupKey: string): boolean {
 			const row = db
 				.select()
@@ -44,6 +48,7 @@ export function createExternalWriteLogRepo(db: LeitwerkDb) {
 			return row !== undefined;
 		},
 
+		/** @public */
 		listByInstance(instanceId: string): ExternalWriteLog[] {
 			return db
 				.select()

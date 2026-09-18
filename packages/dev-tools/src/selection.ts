@@ -17,11 +17,17 @@ import { run } from "./command.js";
 import { loadWorkspaceComposition } from "./composition.js";
 import { isInside, packageDirectory, readJson, workspacePackages } from "./workspace.js";
 
+/** @internal */
 export interface DevelopmentOptions {
+	/** @internal */
 	workspaceRoot?: string;
+	/** @internal */
 	compositionPath?: string;
+	/** @internal */
 	checkout?: string;
+	/** @internal */
 	repository?: string;
+	/** @internal */
 	revision?: string;
 }
 

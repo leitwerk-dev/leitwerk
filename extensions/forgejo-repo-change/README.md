@@ -100,3 +100,14 @@ They reopen feedback, CI, conflict, operator and terminal deliveries, compare pr
 turn and session identities, and verify that changed profile mappings do not rebind
 existing work. A remote merge while the server is stopped completes after rearming.
 Lost PR responses and publication retries reconcile one PR without duplicate comments.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/forgejo-repo-change`: `ForgejoIssueOriginParams`, `ForgejoRepoChangeParams`, `ForgejoUiOriginParams`, `createForgejoRepoChange`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

@@ -5,30 +5,48 @@ import type { LeitwerkConfig, WorkerRuntimeProfileConfig } from "./config/config
  * Per-component runtime profile selection input. `profile` is the component's
  * configured `worker_runtime_profile`, or `undefined` when it declares none.
  */
+/** @internal */
 export interface ComponentRuntimeProfileSelection {
+	/** @internal */
 	component: string;
+	/** @internal */
 	profile?: string;
 }
 
+/** @internal */
 export interface RuntimeProfileSelectionInput {
+	/** @internal */
 	processId: string;
 	/** `process_configs.<processId>.worker_runtime_profile`, if set. */
+	/** @internal */
 	processOverride?: string;
 	/** Per-component profile selections for the process's projects. */
+	/** @internal */
 	componentProfiles: ComponentRuntimeProfileSelection[];
 	/** Runner-specific default profile (`kubernetes.default_worker_runtime_profile` wins in Kubernetes mode). */
+	/** @internal */
 	defaultProfile?: string;
 	/** Configured `worker_runtime_profiles` keyed by id. */
+	/** @internal */
 	profiles: Record<string, WorkerRuntimeProfileConfig>;
 }
 
+/** @internal */
 export type RuntimeProfileSelectionResult =
 	| {
+			/** @internal */
 			ok: true;
+			/** @internal */
 			runtimeProfile: string;
+			/** @internal */
 			image: ResolvedWorkerImage;
 	  }
-	| { ok: false; error: string };
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			error: string;
+	  };
 
 function trimToUndefined(value: string | undefined): string | undefined {
 	if (typeof value !== "string") {
@@ -65,6 +83,7 @@ export function defaultWorkerRuntimeProfile(config: LeitwerkConfig): string | nu
  * Repository branch content never reaches this function; image authority lives
  * entirely in leitwerk config.
  */
+/** @internal */
 export function selectWorkerRuntimeProfile(
 	input: RuntimeProfileSelectionInput,
 ): RuntimeProfileSelectionResult {
@@ -128,9 +147,13 @@ function resolveProfileImage(
  * Builds {@link RuntimeProfileSelectionInput} from leitwerk config for a
  * process and the components it spans.
  */
+/** @internal */
 export function buildRuntimeProfileSelectionInput(args: {
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	processId: string;
+	/** @internal */
 	componentKeys: string[];
 }): RuntimeProfileSelectionInput {
 	const { config, processId, componentKeys } = args;

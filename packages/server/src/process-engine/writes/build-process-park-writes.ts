@@ -7,10 +7,13 @@ import {
 	type WriteBuildResult,
 } from "./writes.js";
 
+/** @internal */
 interface ParkProcessWritesOptions {
+	/** @internal */
 	allowInactiveLifecycle?: boolean;
 }
 
+/** @internal */
 export function buildParkProcessWrites(
 	process: ProcessInstance,
 	payload: ParkProcessLifecyclePayload,

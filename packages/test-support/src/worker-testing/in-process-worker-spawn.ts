@@ -15,18 +15,31 @@ const WebSocket =
 	(require("ws") as { default?: unknown }).default ??
 	require("ws");
 
+/** @public */
 export interface InProcessWorkerSpawnOptions {
+	/** @public */
 	extensionCatalog?: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @public */
 	piFactory?: PiTreeHandleFactory;
+	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
 	/** Optional delays at real connection and managed-runtime preparation boundaries. */
-	startupDelays?: (instanceId: string) => { connectMs: number; prepareMs: number } | undefined;
+	/** @internal */
+	startupDelays?: (instanceId: string) =>
+		| {
+				/** @internal */
+				connectMs: number;
+				/** @internal */
+				prepareMs: number;
+		  }
+		| undefined;
 }
 
 /**
  * Fast local-runner-shaped spawn fake. The worker receives the local runner's
  * env and connects over WebSocket just like Docker/Kubernetes workers do.
  */
+/** @public */
 export function createInProcessWorkerSpawn(
 	options: InProcessWorkerSpawnOptions = {},
 ): typeof spawn {

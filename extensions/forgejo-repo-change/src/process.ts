@@ -236,6 +236,7 @@ const deliveryTools = [
 	"forgejo_update_issue",
 ] as const;
 
+/** @internal */
 export function createForgejoRepoChangeProcess(
 	launcher: ReturnType<typeof createForgejoRepoChangeLauncher>,
 	docker: boolean,

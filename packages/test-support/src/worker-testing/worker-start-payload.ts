@@ -13,26 +13,43 @@ import {
 	type WorkerStartPayload,
 } from "@leitwerk-dev/worker-protocol";
 
+/** @internal */
 type LlmStart = Extract<ResolvedTurnStart, { kind: "llm" }>;
+/** @internal */
 type LlmModel = LlmStart["model"];
 
+/** @internal */
 export interface TestLlmWorkerStartPayloadOptions {
+	/** @internal */
 	root: string;
+	/** @internal */
 	processSnapshot: ProcessInstanceSnapshot;
+	/** @internal */
 	projectSnapshots?: ProcessProjectSnapshot[];
+	/** @internal */
 	turnResultMarkdownBySemanticRef?: WorkerStartPayload["turnResultMarkdownBySemanticRef"];
+	/** @internal */
 	turnResultMarkdownByProduct?: WorkerStartPayload["turnResultMarkdownByProduct"];
+	/** @internal */
 	pendingInputs?: InputDelivery[];
+	/** @internal */
 	workerLeaseId?: string;
+	/** @internal */
 	startRecordId?: string;
+	/** @internal */
 	turnRecordId?: string;
+	/** @internal */
 	model?: LlmModel;
+	/** @internal */
 	credential?: WorkerCredentialMaterial | null;
+	/** @internal */
 	resume?: boolean;
+	/** @internal */
 	now?: string;
 }
 
 /** Builds a valid public LLM worker.start payload with canonical Pi resources. */
+/** @internal */
 export function createTestLlmWorkerStartPayload(
 	options: TestLlmWorkerStartPayloadOptions,
 ): WorkerStartPayload {

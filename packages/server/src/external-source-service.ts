@@ -84,11 +84,22 @@ export interface ExternalSourceServiceDeps
 	processActionRegistry: ProcessActionRegistry;
 }
 
+/** @public */
 export interface ExternalSourceService extends ExternalSourceServiceLike {
-	currentGenerations(instanceId: string): Array<{ id: string; generation: string }>;
+	/** @internal */
+	currentGenerations(instanceId: string): Array<{
+		/** @internal */
+		id: string;
+		/** @internal */
+		generation: string;
+	}>;
+	/** @internal */
 	drainQueued(instanceId: string): Promise<void>;
+	/** @internal */
 	invalidateArmings(instanceId: string): void;
+	/** @internal */
 	reconcileArmings(instanceId: string): Promise<void>;
+	/** @internal */
 	reconcileAllArmings(): Promise<void>;
 }
 

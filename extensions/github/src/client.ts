@@ -12,58 +12,116 @@ import { actionableFeedback, authorizedTrigger } from "./authorization.js";
 
 export type { GitHubFeedbackItem, GitHubIssue, GitHubPullRequest };
 
+/** @public */
 export interface GitHubRepository {
+	/** @public */
 	name: string;
+	/** @internal */
 	full_name: string;
-	owner: { login: string };
+	/** @public */
+	owner: {
+		/** @public */
+		login: string;
+	};
+	/** @public */
 	ssh_url: string;
+	/** @public */
 	default_branch: string;
+	/** @internal */
 	html_url: string;
+	/** @internal */
 	archived: boolean;
+	/** @internal */
 	has_issues: boolean;
 }
+/** @public */
 export interface GitHubGitIdentity {
+	/** @internal */
 	provider: "github";
+	/** @internal */
 	profile: string;
+	/** @internal */
 	login: string;
+	/** @public */
 	name: string;
+	/** @public */
 	email: string;
 }
+/** @public */
 export interface GitHubLabelEvent {
+	/** @internal */
 	id: number;
+	/** @internal */
 	event: string;
-	label?: { name: string };
-	actor: { login: string } | null;
+	/** @internal */
+	label?: {
+		/** @internal */
+		name: string;
+	};
+	/** @internal */
+	actor: {
+		/** @internal */
+		login: string;
+	} | null;
 }
 
+/** @internal */
 export interface GitHubProfile {
+	/** @internal */
 	apiBaseUrl: string;
+	/** @internal */
 	token: string;
+	/** @internal */
 	botLogin: string;
+	/** @internal */
 	allowedOrganization?: string;
 }
 
+/** @public */
 export interface GitHubCheckSummary {
+	/** @public */
 	headSha: string;
+	/** @public */
 	status: "pending" | "success" | "failure";
+	/** @public */
 	total: number;
+	/** @public */
 	failed: Array<{
+		/** @public */
 		name: string;
+		/** @public */
 		conclusion: string | null;
+		/** @public */
 		url: string | null;
 	}>;
 }
 
+/** @public */
 export interface GitHubRelease {
+	/** @internal */
 	id: number;
+	/** @public */
 	tag_name: string;
+	/** @internal */
 	target_commitish: string;
+	/** @internal */
 	draft: boolean;
+	/** @internal */
 	prerelease: boolean;
+	/** @internal */
 	html_url: string;
-	assets: Array<{ name: string; url: string; browser_download_url: string }>;
+	/** @public */
+	assets: Array<{
+		/** @internal */
+		name: string;
+		/** @internal */
+		url: string;
+		/** @internal */
+		browser_download_url: string;
+	}>;
 }
 
+/** @internal */
 export function parseGitHubProfiles(value: unknown): Map<string, GitHubProfile> {
 	const profiles = new Map<string, GitHubProfile>();
 	for (const [name, raw] of Object.entries(
@@ -99,6 +157,7 @@ export function parseGitHubProfiles(value: unknown): Map<string, GitHubProfile> 
 	return profiles;
 }
 
+/** @internal */
 export function assertGitHubRepository(profile: GitHubProfile, owner: string, repo: string): void {
 	if (
 		!/^[a-z0-9-]+$/i.test(owner) ||
@@ -116,8 +175,13 @@ export function assertGitHubRepository(profile: GitHubProfile, owner: string, re
 	}
 }
 
+/** @public */
 export class GitHubClient extends RepositoryHttpClient {
-	constructor(readonly profile: GitHubProfile) {
+	/** @internal */
+	constructor(
+		/** @internal */
+		readonly profile: GitHubProfile,
+	) {
 		super("GitHub", profile.apiBaseUrl, {
 			Accept: "application/vnd.github+json",
 			Authorization: `Bearer ${profile.token}`,
@@ -125,6 +189,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 
+	/** @internal */
 	protected override response(path: string, init: RequestInit = {}): Promise<Response> {
 		return super.response(path, {
 			...init,
@@ -133,11 +198,13 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 
+	/** @internal */
 	protected override repositoryPath(owner: string, repo: string): string {
 		assertGitHubRepository(this.profile, owner, repo);
 		return super.repositoryPath(owner, repo);
 	}
 
+	/** @internal */
 	async listRepositories() {
 		return (
 			await this.pages<GitHubRepository>(
@@ -153,18 +220,24 @@ export class GitHubClient extends RepositoryHttpClient {
 				repo.has_issues,
 		);
 	}
+	/** @internal */
 	async listOpenIssues(owner: string, repo: string) {
 		return (
-			await this.pages<GitHubIssue & { pull_request?: unknown }>(
-				`${this.repositoryPath(owner, repo)}/issues?state=open`,
-			)
+			await this.pages<
+				GitHubIssue & {
+					/** @internal */
+					pull_request?: unknown;
+				}
+			>(`${this.repositoryPath(owner, repo)}/issues?state=open`)
 		).filter((issue) => !issue.pull_request);
 	}
+	/** @internal */
 	listIssueEvents(owner: string, repo: string, number: number) {
 		return this.pages<GitHubLabelEvent>(
 			`${this.repositoryPath(owner, repo)}/issues/${number}/events`,
 		);
 	}
+	/** @internal */
 	async isOrganizationMember(login: string): Promise<boolean> {
 		if (!this.profile.allowedOrganization) return true;
 		if (!/^[a-z0-9-]+$/i.test(login)) return false;
@@ -181,6 +254,7 @@ export class GitHubClient extends RepositoryHttpClient {
 			throw error;
 		}
 	}
+	/** @internal */
 	async authorizedTrigger(
 		owner: string,
 		repo: string,
@@ -190,6 +264,7 @@ export class GitHubClient extends RepositoryHttpClient {
 	) {
 		return authorizedTrigger(this, owner, repo, number, trigger, done);
 	}
+	/** @public */
 	async resolveGitIdentity(profile: string): Promise<GitHubGitIdentity> {
 		const user = await this.request<{ login: string; name: string | null; id: number }>("/user");
 		if (user.login !== this.profile.botLogin)
@@ -202,24 +277,35 @@ export class GitHubClient extends RepositoryHttpClient {
 			email: `${user.id}+${user.login}@users.noreply.github.com`,
 		};
 	}
+	/** @public */
 	updateIssue(owner: string, repo: string, number: number, patch: Record<string, unknown>) {
 		return this.request<GitHubIssue>(`${this.repositoryPath(owner, repo)}/issues/${number}`, {
 			method: "PATCH",
 			body: JSON.stringify(patch),
 		});
 	}
+	/** @internal */
 	async ensureLabel(owner: string, repo: string, name: string) {
-		const labels = await this.pages<{ id: number; name: string }>(
-			`${this.repositoryPath(owner, repo)}/labels`,
-		);
+		const labels = await this.pages<{
+			/** @internal */
+			id: number;
+			/** @internal */
+			name: string;
+		}>(`${this.repositoryPath(owner, repo)}/labels`);
 		return (
 			labels.find((label) => label.name === name) ??
-			this.request<{ id: number; name: string }>(`${this.repositoryPath(owner, repo)}/labels`, {
+			this.request<{
+				/** @internal */
+				id: number;
+				/** @internal */
+				name: string;
+			}>(`${this.repositoryPath(owner, repo)}/labels`, {
 				method: "POST",
 				body: JSON.stringify({ name, color: "238636" }),
 			})
 		);
 	}
+	/** @internal */
 	addFeedbackReaction(owner: string, repo: string, kind: string, id: number) {
 		const segment = kind === "inline" ? "pulls/comments" : "issues/comments";
 		return this.request(`${this.repositoryPath(owner, repo)}/${segment}/${id}/reactions`, {
@@ -227,6 +313,7 @@ export class GitHubClient extends RepositoryHttpClient {
 			body: JSON.stringify({ content: "eyes" }),
 		});
 	}
+	/** @internal */
 	async replyFeedback(
 		owner: string,
 		repo: string,
@@ -246,12 +333,15 @@ export class GitHubClient extends RepositoryHttpClient {
 		return this.addIssueComment(owner, repo, pr, body);
 	}
 
+	/** @internal */
 	getCommit(owner: string, repo: string, ref: string) {
-		return this.request<{ sha: string }>(
-			`${this.repositoryPath(owner, repo)}/commits/${encodeURIComponent(ref)}`,
-		);
+		return this.request<{
+			/** @internal */
+			sha: string;
+		}>(`${this.repositoryPath(owner, repo)}/commits/${encodeURIComponent(ref)}`);
 	}
 
+	/** @public */
 	async isAncestor(owner: string, repo: string, ancestor: string, descendant: string) {
 		const comparison = await this.request<{ status: string }>(
 			`${this.repositoryPath(owner, repo)}/compare/${encodeURIComponent(ancestor)}...${encodeURIComponent(descendant)}`,
@@ -259,6 +349,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		return comparison.status === "identical" || comparison.status === "ahead";
 	}
 
+	/** @public */
 	async listPullRequestFeedback(
 		owner: string,
 		repo: string,
@@ -350,6 +441,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		return feedback;
 	}
 
+	/** @public */
 	async getCheckSummary(owner: string, repo: string, headSha: string): Promise<GitHubCheckSummary> {
 		const runs: Array<Record<string, unknown>> = [];
 		for (let page = 1; ; page++) {
@@ -377,6 +469,7 @@ export class GitHubClient extends RepositoryHttpClient {
 	}
 
 	/** Human feedback checked against current membership; delivery receipts use raw reads. */
+	/** @internal */
 	async listActionablePullRequestFeedback(
 		owner: string,
 		repo: string,
@@ -389,6 +482,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		);
 	}
 
+	/** @internal */
 	listFeedbackReplies(owner: string, repo: string, pr: number, kind: string) {
 		return kind === "inline"
 			? this.pages<Record<string, unknown>>(
@@ -397,19 +491,30 @@ export class GitHubClient extends RepositoryHttpClient {
 			: this.listIssueComments(owner, repo, pr);
 	}
 
+	/** @internal */
 	listFeedbackReactions(owner: string, repo: string, kind: string, id: number) {
 		if (kind !== "inline" && kind !== "conversation")
 			throw new Error("Reviews do not support reactions");
 		const segment = kind === "inline" ? "pulls/comments" : "issues/comments";
-		return this.pages<{ id: number; content: string; user: { login: string } }>(
-			`${this.repositoryPath(owner, repo)}/${segment}/${id}/reactions`,
-		);
+		return this.pages<{
+			/** @internal */
+			id: number;
+			/** @internal */
+			content: string;
+			/** @internal */
+			user: {
+				/** @internal */
+				login: string;
+			};
+		}>(`${this.repositoryPath(owner, repo)}/${segment}/${id}/reactions`);
 	}
 
+	/** @internal */
 	listReleases(owner: string, repo: string) {
 		return this.pages<GitHubRelease>(`${this.repositoryPath(owner, repo)}/releases`);
 	}
 
+	/** @public */
 	downloadReleaseAsset(asset: GitHubRelease["assets"][number]): Promise<string> {
 		const url = new URL(asset.url);
 		if (`${url.protocol}//${url.host}` !== this.profile.apiBaseUrl)

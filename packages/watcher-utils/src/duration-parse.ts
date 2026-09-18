@@ -7,10 +7,14 @@ import ms from "ms";
  * `options.allowHours` is retained for existing callers; the underlying `ms`
  * parser supports hours and other common duration units by default.
  */
+/** @public */
 export function parseDurationMs(
 	value: string,
 	defaultMs: number,
-	_options: { allowHours?: boolean } = {},
+	_options: {
+		/** @public */
+		allowHours?: boolean;
+	} = {},
 ): number {
 	const parsed = ms(value.trim() as ms.StringValue);
 	if (!Number.isFinite(parsed) || parsed < 0) {

@@ -11,15 +11,22 @@ import {
 	readTriggerFile,
 } from "@leitwerk-dev/watcher-utils";
 
+/** @internal */
 export type FileExternalConsumeMode = "delete" | "keep";
 
+/** @internal */
 export interface FileExternalInput {
+	/** @internal */
 	path: string;
+	/** @internal */
 	pollInterval: string;
+	/** @internal */
 	consume: FileExternalConsumeMode;
 }
 
+/** @internal */
 export const FILE_EXTERNAL_PRESENCE_KIND = "@leitwerk-dev/showcase-processes.file.presence";
+/** @internal */
 export const FILE_EXTERNAL_INSTRUCTION_KIND = "@leitwerk-dev/showcase-processes.file.instruction";
 
 function normalizeConfig(input: FileExternalInput): FileExternalInput {
@@ -48,7 +55,9 @@ function fileLabel(kind: "presence" | "instruction", path: string): string {
 	return kind === "presence" ? `File present: ${path}` : `File instruction: ${path}`;
 }
 
+/** @internal */
 export const fileExternal = {
+	/** @internal */
 	presence(input: FileExternalInput): ExternalActionSource {
 		const config = normalizeConfig(input);
 		return {
@@ -62,6 +71,7 @@ export const fileExternal = {
 			},
 		};
 	},
+	/** @internal */
 	instruction(input: FileExternalInput): ExternalActionSource {
 		const config = normalizeConfig(input);
 		return {
@@ -213,6 +223,7 @@ async function fireInstructionSources(
 	}
 }
 
+/** @internal */
 export function createFileExternalSourceProvider(
 	deps: CoreServerSetupDeps,
 	aliases: Partial<Record<string, string>> = {},

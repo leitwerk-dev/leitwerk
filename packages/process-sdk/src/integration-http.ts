@@ -1,6 +1,9 @@
 /** An HTTP failure without provider response bodies or credentials. */
+/** @internal */
 export class IntegrationHttpError extends Error {
+	/** @internal */
 	constructor(
+		/** @internal */
 		readonly status: number,
 		message: string,
 	) {
@@ -9,14 +12,22 @@ export class IntegrationHttpError extends Error {
 }
 
 /** Shared transport; extensions own endpoint paths, credentials, and response types. */
+/** @public */
 export class IntegrationHttpClient {
+	/** @internal */
 	constructor(
 		private readonly provider: string,
 		private readonly baseUrl: string,
 		private readonly headers: Record<string, string>,
-		private readonly pagination = { key: "per_page", size: 100 },
+		private readonly pagination = {
+			/** @internal */
+			key: "per_page",
+			/** @internal */
+			size: 100,
+		},
 	) {}
 
+	/** @internal */
 	protected async response(path: string, init: RequestInit = {}): Promise<Response> {
 		const response = await fetch(`${this.baseUrl}${path}`, {
 			...init,
@@ -34,15 +45,18 @@ export class IntegrationHttpClient {
 		return response;
 	}
 
+	/** @internal */
 	protected async request<T>(path: string, init: RequestInit = {}): Promise<T> {
 		const response = await this.response(path, init);
 		return response.status === 204 ? (undefined as T) : response.json();
 	}
 
+	/** @internal */
 	protected writeJson<T>(path: string, method: string, body: unknown, signal?: AbortSignal) {
 		return this.request<T>(path, { method, body: JSON.stringify(body), signal });
 	}
 
+	/** @internal */
 	protected async pages<T>(path: string, signal?: AbortSignal): Promise<T[]> {
 		const items: T[] = [];
 		const { key, size } = this.pagination;

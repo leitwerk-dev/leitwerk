@@ -4,8 +4,18 @@ import {
 	defineModelProviders,
 } from "@leitwerk-dev/process-sdk";
 
+/** @public */
 export function fixtureModelProviders(
-	...models: { id: string; modelId: string; piProvider?: string; server?: boolean }[]
+	...models: {
+		/** @public */
+		id: string;
+		/** @public */
+		modelId: string;
+		/** @internal */
+		piProvider?: string;
+		/** @public */
+		server?: boolean;
+	}[]
 ) {
 	return defineModelProviders((rawConfig) =>
 		models.map(({ id, modelId, piProvider = id, server = false }) => ({
