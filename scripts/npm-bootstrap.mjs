@@ -149,8 +149,11 @@ export function needsPublisher(output, name) {
 export function trustTranscript(transcript) {
 	const text = stripVTControlCharacters(transcript);
 	const configurations = [];
+	let framing = "";
+	let previousEnd = 0;
 	// npm emits a JSON object per publisher, plus optional browser-auth metadata.
 	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start)) {
+		framing += text.slice(previousEnd, start);
 		let depth = 0;
 		let quoted = false;
 		let escaped = false;
@@ -171,7 +174,19 @@ export function trustTranscript(transcript) {
 			configurations.push(value);
 		}
 		start = end + 1;
+		previousEnd = start;
 	}
+	framing += text.slice(previousEnd);
+	// Only known terminal/authentication framing may accompany npm's JSON.
+	// Unknown output must not turn into permission to create a publisher.
+	const unexpected = framing
+		.replaceAll("^D\b\b", "") // BSD script echoes EOF when its input is closed.
+		.replace(/^Script (?:started|done)(?: on [^\r\n]*)?\r?$/gm, "")
+		.replaceAll("Press ENTER to open in the browser...", "")
+		.replace(/This operation requires a one-time password\.\s*Enter OTP:\s*\d{6}/g, "")
+		.trim();
+	if (unexpected)
+		throw new Error("Unexpected npm trust output; refusing to infer publisher settings");
 	if (configurations.length > 1) throw new Error("Unexpected multiple npm trust configurations");
 	return configurations.length ? JSON.stringify(configurations[0]) : "";
 }

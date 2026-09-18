@@ -39,7 +39,9 @@ npm run publish:bootstrap
 
 Requires npm 11.16+, the macOS/Linux `script` utility, and `npm login` with 2FA enabled. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
 
-Reruns skip matching publishers and resume incomplete setup. Conflicting publishers are never overwritten. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
+Reruns skip matching publishers and resume incomplete setup. Conflicting publishers and unrecognized trust output stop setup. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
+
+Bootstrap changes also need an authorized live acceptance check: complete interactive bootstrap, inspect the registry's tags and publisher settings, rerun to confirm no changes, and publish through the configured GitHub workflow. Local tests do not establish npm authentication or OIDC compatibility. Do not create packages or change trust settings merely to run the automated suite.
 
 ## Running an RC
 
