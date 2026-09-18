@@ -10,7 +10,8 @@ Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm p
 
 Every PR must pass `Full validation` and `Conventional PR title and DCO`. These checks cover builds, type checks, tests, PR title format, and commit sign-offs. Publication also validates release metadata and package contents.
 
-`npm run test:full` includes `api:check`. It checks explicit `@public`/`@internal`
+CI and publication workflows run `npm run api:check` as a required step after
+`npm run test:full`; the local full gate does not include it. It checks explicit `@public`/`@internal`
 annotations, public signature dependencies, and drift in committed interface
 reports. The usage baseline is committed; CI never reads sibling consumer
 repositories. Both classifications remain in published declarations.

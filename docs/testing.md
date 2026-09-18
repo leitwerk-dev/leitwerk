@@ -21,7 +21,9 @@ npm run test:e2e
 npm run build
 ```
 
-The full gate runs `api:check` after building. It checks release tags and
+CI runs `npm run api:check` separately after the full gate; local `test:full`
+does not include it. To check locally, run `npm run build && npm run api:check`.
+It checks release tags and
 signature dependencies, compares interface reports, and verifies that public
 and internal declarations survive the build. Usage-analysis tests cover
 capabilities, callbacks, supplied contracts, type-only and indexed access,
