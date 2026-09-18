@@ -8,6 +8,7 @@ import {
 	type LeitwerkExtensionModule,
 	llmTurn,
 } from "@leitwerk-dev/process-sdk";
+import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
@@ -52,6 +53,11 @@ const startupTestProcess = defineProcess<Record<string, never>, Record<string, n
 
 const startupTestExtension: LeitwerkExtensionModule = {
 	manifest: { id: "startup-test", version: "0.1.0" },
+	modelProviders: fixtureModelProviders({
+		id: "startup-provider",
+		modelId: "fixture-model",
+		piProvider: "ollama",
+	}),
 	setupCatalog(api) {
 		api.registerProcess(startupTestProcess);
 	},
@@ -184,7 +190,111 @@ afterEach(async () => {
 	}
 });
 
+function configureStartupModel(config: LeitwerkConfig): void {
+	config.pi.model_profiles = [
+		{
+			id: "startup-model",
+			provider: "startup-provider",
+			model_id: "fixture-model",
+			thinking_level: "off",
+		},
+	];
+}
+
 describe("startup reconciliation", () => {
+	it.each([
+		7000, 10800,
+	])("cancels a reserved start before connection (%i ms delay) without accepting a turn", async (connectMs) => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-cancel-"));
+		tempRoots.push(tempRoot);
+		const config = createPersistentConfig(tempRoot);
+		config.workers.startup_timeout = "30s";
+		configureStartupModel(config);
+		const harness = await createPersistentHarness(config, {
+			localWorkerSpawnImpl: createInProcessWorkerSpawn({
+				extensionCatalog: extensionCatalogPromise,
+				startupDelays: () => ({ connectMs, prepareMs: 1000 }),
+			}),
+		});
+		await harness.ctx.startBackgroundServices();
+		const process = harness.ctx.deps.processes.create({
+			defaultModelProfileId: "startup-model",
+			processId: "startup_test_process",
+			selectedTurnId: null,
+			lifecycleStatus: "discovered",
+		});
+		expect(
+			(await harness.ctx.deps.processEngine.startProcess(process.id, "startup_plan_turn")).ok,
+		).toBe(true);
+		const startup = async () => {
+			const response = await harness.ctx.app.inject(`/api/processes/${process.id}/ui-snapshot`);
+			expect(response.statusCode).toBe(200);
+			return response.json().startup;
+		};
+		await waitFor(startup, (value) => value?.attempts?.[0]?.steps[1]?.status === "in_progress");
+		expect(harness.ctx.deps.turnStarts.listByInstance(process.id)).toHaveLength(1);
+		expect(harness.ctx.deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+		const aborted = await harness.ctx.app.inject({
+			method: "POST",
+			url: `/api/processes/${process.id}/abort`,
+		});
+		expect(aborted.statusCode, aborted.body).toBe(200);
+		expect(harness.ctx.deps.processes.getById(process.id)?.lifecycleStatus).toBe("aborted");
+		expect(harness.ctx.deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+		expect((await startup()).attempts[0].status).toBe("superseded");
+		await closeHarness(harness);
+		const reopened = await createPersistentHarness(config);
+		expect(reopened.ctx.deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+		expect(reopened.ctx.deps.processes.getById(process.id)?.lifecycleStatus).toBe("aborted");
+	});
+
+	it("persists successful delayed startup observations across a fresh app restart", async () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-observations-"));
+		tempRoots.push(tempRoot);
+		const config = createPersistentConfig(tempRoot);
+		configureStartupModel(config);
+		const harness = await createPersistentHarness(config, {
+			localWorkerSpawnImpl: createInProcessWorkerSpawn({
+				extensionCatalog: extensionCatalogPromise,
+				piFactory: new StubPiTreeHandleFactory(),
+				startupDelays: () => ({ connectMs: 50, prepareMs: 50 }),
+			}),
+		});
+		await harness.ctx.startBackgroundServices();
+		const process = harness.ctx.deps.processes.create({
+			defaultModelProfileId: "startup-model",
+			processId: "startup_test_process",
+			selectedTurnId: null,
+			lifecycleStatus: "discovered",
+		});
+		expect(
+			(await harness.ctx.deps.processEngine.startProcess(process.id, "startup_plan_turn")).ok,
+		).toBe(true);
+		await waitFor(
+			() => harness.ctx.deps.processes.getById(process.id),
+			(value) => value?.lifecycleStatus === "completed",
+		);
+		const response = await harness.ctx.app.inject(`/api/processes/${process.id}/ui-snapshot`);
+		expect(response.statusCode).toBe(200);
+		const attempts = response.json().startup.attempts;
+		expect(attempts).toHaveLength(1);
+		expect(attempts[0].status).toBe("succeeded");
+		expect(attempts[0].steps.length).toBeGreaterThan(0);
+		expect(attempts[0].steps.every((step: { status: string }) => step.status === "completed")).toBe(
+			true,
+		);
+		const records = harness.ctx.deps.turnRecords.listByInstance(process.id);
+		expect(records).toHaveLength(1);
+		expect(records[0]).toMatchObject({ status: "succeeded" });
+		expect(harness.ctx.deps.turnStarts.listByInstance(process.id)[0].state.kind).toBe("accepted");
+		await closeHarness(harness);
+		const reopened = await createPersistentHarness(config);
+		const restored = await reopened.ctx.app.inject(`/api/processes/${process.id}/ui-snapshot`);
+		expect(restored.statusCode).toBe(200);
+		expect(restored.json().startup.attempts).toEqual(attempts);
+		expect(reopened.ctx.deps.turnRecords.listByInstance(process.id)).toEqual(records);
+	});
+
 	it("keeps process detail durable across restart and auto-resumes active work on boot", async () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-startup-"));
 		tempRoots.push(tempRoot);

@@ -264,6 +264,8 @@ export function createWebSocketWorkerIpc(input: {
 }
 
 export function createWorkerIpcFromEnvironment(input: {
+	/** Observe sanitized connection summaries without replacing standard diagnostics. */
+	onDiagnostic?: (message: string) => void;
 	env?: NodeJS.ProcessEnv;
 	instanceId: string;
 	workerId: string;
@@ -274,12 +276,16 @@ export function createWorkerIpcFromEnvironment(input: {
 	if (!serverUrl || !token) {
 		throw new Error("WebSocket worker IPC requires LEITWERK_SERVER_URL and worker token env");
 	}
+	const recordDiagnostic = createConnectionDiagnosticRecorder();
 	return createWebSocketWorkerIpc({
 		serverUrl,
 		instanceId: input.instanceId,
 		workerId: input.workerId,
 		token,
 		reconnect: env[WORKER_IPC_RECONNECT_ENV] === "1",
-		onDiagnostic: createConnectionDiagnosticRecorder(),
+		onDiagnostic(message) {
+			recordDiagnostic(message);
+			input.onDiagnostic?.(message);
+		},
 	});
 }

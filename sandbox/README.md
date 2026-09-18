@@ -102,11 +102,34 @@ Startup is source-only and requires this checkout's supervisor and UI tooling.
 The package does not include these built-in scenarios or offer installed-release
 startup. See [the harness contract](../packages/dev-sandbox/README.md).
 
-Run `npm run test:full`. Public coverage includes every scripted scenario, real
-commit/merge, questions, approvals and ticket reconciliation, restart persistence,
-source reload, strict ports and reset confinement. Sandbox source, scripts and
+Run `npm run test:full`. Public coverage includes real commit/merge, questions,
+approvals and ticket reconciliation, restart persistence, source reload, strict
+ports and reset confinement. Startup cancellation and observation persistence
+are server-owned synthetic-process integration tests, not notebook E2Es; see the
+[startup replacement ledger](../docs/testing.md#startup-e2e-replacement-ledger). Sandbox source, scripts and
 workflow fixtures participate in lint, typechecking and tests. This environment
 does not simulate production scheduling or deployment.
+
+Sandbox-owned tests live in `sandbox/tests/` and run in Vitest's
+`integration-isolated` project:
+
+- `supervisor.integration.test.ts`: real source CLI subprocess, strict ports,
+  disposable reload preflight, retained state, and acknowledged reset.
+- `controls.integration.test.ts`: configured URLs, cross-origin rejection, and
+  scenario launch deduplication through the control endpoint.
+- `provider-controls.integration.test.ts`: provider-control validation and local
+  receipt serving after restart.
+- `notebook-ticket-controls.integration.test.ts`: persisted notebook receipt URLs.
+
+Shared application fixtures live in `sandbox/testing/`; remaining product E2Es
+under `tests/e2e/sandbox/` reuse them. The sandbox TypeScript project's existing
+`./**/*.ts` include covers both new directories. Moving these tests preserves their
+assertions, timeouts, and real I/O; it does not imply a runtime reduction.
+The three retained E2Es cover local repository finalization, Forgejo issue discovery
+through merge/issue completion, and lost-PR-response recovery/replay. UI launch/replay,
+feedback batching, explicit CI restart, and real-Git conflict repair now belong to
+`extensions/forgejo-repo-change/src/publication-repair.integration.test.ts`; its
+extension README records the per-assertion replacement ledger.
 
 ## Local integration composition
 

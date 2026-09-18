@@ -21,6 +21,12 @@ export interface InProcessWorkerSpawnOptions {
 	toolCallScriptResolver?: StubToolCallScriptResolver;
 	/** Optional delays at real connection and managed-runtime preparation boundaries. */
 	startupDelays?: (instanceId: string) => { connectMs: number; prepareMs: number } | undefined;
+	/** Sanitized IPC observations, correlated even after fixture teardown. */
+	onConnectionDiagnostic?: (event: {
+		instanceId: string;
+		workerId: string;
+		message: string;
+	}) => void;
 }
 
 /**
@@ -82,6 +88,12 @@ export function createInProcessWorkerSpawn(
 					}
 				: piFactory,
 			stderr,
+			onConnectionDiagnostic: (message) =>
+				options.onConnectionDiagnostic?.({
+					instanceId: spawnOptions?.env?.LEITWERK_INSTANCE_ID ?? "",
+					workerId: spawnOptions?.env?.LEITWERK_WORKER_ID ?? "",
+					message,
+				}),
 			env: spawnOptions?.env ?? process.env,
 			exit: finish,
 		});

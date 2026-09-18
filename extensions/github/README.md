@@ -111,3 +111,9 @@ retrying it. Release-lock selection stays outside this integration.
 The local adapter supports `createIssue`, `setIssueLabel`, `setMembership`,
 `editFeedback` and `failNextResponse`. Membership, label events, feedback edits,
 write outcomes and Git history survive restart.
+
+Tool authorization and retry edge cases use an in-memory provider boundary.
+The recovery integration exercises real Git and reopens both provider storage and
+SQLite receipts: a lost create response and subsequent restart must retain one PR
+and the same receipt. This verifies local persistence and tool wiring, not live
+GitHub API compatibility.

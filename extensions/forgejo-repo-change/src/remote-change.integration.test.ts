@@ -5,7 +5,7 @@ import {
 	createRemoteRepoChangeFixture,
 	type RemoteRepoChangeFixture,
 	remoteState,
-} from "./testing/remote-repo-change-fixture.js";
+} from "./testing/diagnosed-remote-repo-change-fixture.js";
 
 function processInstances(fixture: RemoteRepoChangeFixture): ProcessInstance[] {
 	return fixture.harness.ctx.deps.processes
@@ -149,6 +149,19 @@ describe("Forgejo repository-change composed integration", () => {
 			).toEqual([]);
 			expect(fixture.forgejo.comments()).toEqual([]);
 			expect(fixture.forgejo.issues).toHaveLength(0);
+			if (terminal === "markPullRequestClosed") {
+				const writes = fixture.harness.ctx.deps.externalWrites.listByInstance(instanceId);
+				await fixture.restart();
+				await fixture.pollFeedback();
+				expect(processInstances(fixture)).toHaveLength(1);
+				expect(fixture.harness.ctx.deps.processes.getById(instanceId)).toMatchObject({
+					lifecycleStatus: "aborted",
+					selectedTurnId: null,
+				});
+				expect(fixture.harness.ctx.deps.externalWrites.listByInstance(instanceId)).toEqual(writes);
+				expect(fixture.subscriptions(instanceId)).toEqual([]);
+				expect(fixture.forgejo.issues).toHaveLength(0);
+			}
 		},
 		15_000,
 	);
@@ -211,11 +224,22 @@ describe("Forgejo repository-change composed integration", () => {
 		assertCompletedRemoteChange(fixture, completed);
 	}, 15_000);
 
-	it("repairs failed exact-SHA CI in a fresh turn and waits for the repaired SHA", async () => {
-		fixture = await createRemoteRepoChangeFixture();
+	it("filters unrelated CI and repairs exact-SHA failure after operator retry", async () => {
+		fixture = await createRemoteRepoChangeFixture(undefined, { ciRepairBlockedOnce: true });
 		const { instanceId, head1 } = await driveToPublishedPullRequest(fixture);
 		const implementationTurn = fixture.piTurns.find((turn) => turn.kind === "implementation");
 		expect(implementationTurn).toBeDefined();
+
+		for (const overrides of [
+			{ branch: "main", commit: head1, status: "failure" },
+			{ branch: constants.workBranch, commit: fixture.git.initialSha, status: "failure" },
+			{ branch: constants.workBranch, commit: head1, status: "success" },
+		]) {
+			await fixture.publishPipeline({ id: 501, number: 1, event: "push", ...overrides });
+			const waiting = await fixture.waitForTurn(instanceId, "deliver_change");
+			expect(remoteState(waiting)).toMatchObject({ headSha: head1, pipeline: null });
+			expect(fixture.piTurns.filter((turn) => turn.kind === "ci-repair")).toEqual([]);
+		}
 
 		await fixture.publishPipeline({
 			id: 501,
@@ -227,6 +251,13 @@ describe("Forgejo repository-change composed integration", () => {
 			workflows: [{ id: 10, status: "failure" }],
 			logs: "manifest validation failed: readinessProbe is required",
 		});
+		const blocked = await fixture.waitForTurn(instanceId, "ci_operator_action");
+		expect(remoteState(blocked)).toMatchObject({
+			headSha: head1,
+			ciRecoveryCycles: 1,
+			pipeline: { number: 1, commit: head1 },
+		});
+		await fixture.action(instanceId, "retry_repair");
 		const head2 = await fixture.waitForHeadChange(instanceId, head1);
 		await fixture.waitForTurn(instanceId, "deliver_change");
 
@@ -241,8 +272,10 @@ describe("Forgejo repository-change composed integration", () => {
 		});
 		expect(fixture.forgejo.pullRequests).toHaveLength(1);
 
-		const repairTurn = fixture.piTurns.find((turn) => turn.kind === "ci-repair");
-		expect(repairTurn).toBeDefined();
+		const repairTurns = fixture.piTurns.filter((turn) => turn.kind === "ci-repair");
+		expect(repairTurns).toHaveLength(2);
+		const repairTurn = repairTurns[1];
+		expect(repairTurn?.sessionId).not.toBe(repairTurns[0]?.sessionId);
 		expect(repairTurn?.sessionId).not.toBe(implementationTurn?.sessionId);
 		expect(repairTurn?.prompt).toContain("pipeline #1 (failure)");
 		expect(repairTurn?.prompt).toContain("Woodpecker tools");
@@ -262,11 +295,8 @@ describe("Forgejo repository-change composed integration", () => {
 			args: [99, 1, 10, 100, 16_384, expect.any(AbortSignal)],
 		});
 		expect(calls.filter((call) => call.method === "restartPipeline")).toEqual([]);
-		expect(
-			fixture.harness.ctx.deps.turnRecords
-				.listByInstance(instanceId)
-				.some((turn) => turn.turnId === "ci_operator_action"),
-		).toBe(false);
+		const repaired = await fixture.waitForTurn(instanceId, "deliver_change");
+		expect(remoteState(repaired)).toMatchObject({ ciRecoveryCycles: 1 });
 
 		await fixture.publishPipeline({
 			id: 502,

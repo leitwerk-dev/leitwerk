@@ -1,11 +1,5 @@
-import { existsSync } from "node:fs";
 import path from "node:path";
-import {
-	LocalGit,
-	localPath,
-	readLocalJson,
-	writeLocalJson,
-} from "@leitwerk-dev/test-support/local-git";
+import { LocalGit, readLocalJson, writeLocalJson } from "@leitwerk-dev/test-support/local-git";
 
 export interface NotebookSeed {
 	name: string;
@@ -34,7 +28,8 @@ export class Notebook {
 		return this.local.run(directory, args);
 	}
 	initialize(): void {
-		if (existsSync(localPath(this.directory, `repositories/${this.seed.name}.git`))) return;
+		// A failed startup can leave the directory without a branch or scenario state.
+		// LocalGit.seed resumes partial seeds and preserves an already seeded branch.
 		this.local.seed({
 			...this.seed,
 			owner: "local",

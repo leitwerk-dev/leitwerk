@@ -341,6 +341,40 @@ async function runSelectedTurn(
 }
 
 describe("local repo change instance tree", () => {
+	it("accepts three plan reviews and enters the fourth planning pass at revision three", async () => {
+		const harness = createHarness();
+		const savePlan = () =>
+			runSelectedTurn(harness, [
+				{
+					toolName: "plan_saved",
+					args: {
+						markdown: candidatePlanMarkdown,
+						summary: "Plan saved",
+						acceptanceCriteria: ["Sidebar collapses"],
+					},
+				},
+			]);
+		await savePlan();
+		for (let revision = 1; revision <= 3; revision++) {
+			await executeAction(harness, localRepoChangeActionIds.runReview);
+			await runSelectedTurn(harness, [
+				{ toolName: "request_changes", args: { markdown: planReviewMarkdown } },
+			]);
+			expect(currentProcess(harness).selectedTurnId).toBe("plan_review_feedback");
+			await executeAction(harness, localRepoChangeActionIds.acceptReview);
+			expect(currentProcess(harness)).toMatchObject({
+				selectedTurnId: "generate_plan",
+				planRevision: revision,
+			});
+			await savePlan();
+			expect(currentProcess(harness)).toMatchObject({
+				selectedTurnId: "plan_decision",
+				lifecycleStatus: "waiting",
+				planRevision: revision + 1,
+			});
+		}
+	});
+
 	it("runs one end-to-end happy path and preserves branch/ref semantics", async () => {
 		const harness = createHarness({ baseBranch: "release/2026.04" });
 

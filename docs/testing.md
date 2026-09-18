@@ -129,9 +129,12 @@ killed; callers without a resolver retain immediate startup.
 
 Use `@leitwerk-dev/dev-sandbox` for application startup and cleanup with an explicit
 composition. Its package tests use synthetic catalogs to preserve core/extension
-boundaries. Built-in notebook scenarios and their end-to-end tests live in
-`sandbox/` and `tests/e2e/sandbox/`. The sandbox TypeScript project also includes its
-source CLI and workflow fixtures in the full gate.
+boundaries. Built-in notebook scenarios live in `sandbox/`. Sandbox supervisor,
+control, and receipt tests live in `sandbox/tests/` and run once in the
+`integration-isolated` Vitest project, preserving per-file module isolation.
+Product workflows remain in `tests/e2e/sandbox/`; both layers share fixtures in
+`sandbox/testing/`. The sandbox TypeScript project includes its source CLI,
+integration tests, shared fixtures, and remaining E2Es in the full gate.
 `createProcessDriver` from `@leitwerk-dev/test-support/integration` shares HTTP actions and process waits; its context callback follows app restarts.
 `createPollingTestExtension` from `@leitwerk-dev/test-support` wraps provider setup as an extension with a typed `poll()` method for fixtures and sandbox compositions.
 
@@ -145,6 +148,108 @@ an isolated workspace and environment, check strict ports, exercise the outer
 configuration reload, and verify acknowledged reset. Preflight tests prove that
 application and adapter initialization use disposable storage. See the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
+
+## Startup E2E replacement ledger
+
+Server-owned replacements live in
+`packages/server/src/startup-reconciliation.integration.test.ts`. They use a
+synthetic process, real worker runtime over WebSocket with an in-process spawn
+adapter, HTTP snapshots/abort, and file-backed SQLite. Pi is scripted; these are
+not physical-worker or abrupt-crash tests.
+
+| Removed assertion from `workflows.e2e.test.ts` | Replacement assertion | Removal condition |
+| --- | --- | --- |
+| `startup` and `startup-cold` reach pre-connection progress, abort without turn records, and report `superseded` | Parameterized cancellation test retains both connection delays, observes startup progress, proves a reserved start exists without an accepted turn, awaits HTTP abort, and checks durable abort plus zero turn records after reopening storage | Both parameter rows pass |
+| Delayed startup succeeds with every observation step completed; restart preserves attempts | Successful delayed-start test crosses connection and preparation delays, completes a synthetic LLM turn, checks accepted start and completed observation steps, and reopens SQLite in a fresh app to compare attempts and records | Persistence replacement passes |
+| Startup scenario control request returns 202 | Sandbox `controls.integration.test.ts` covers control admission; startup-specific scene timing is no longer a product E2E assertion | Control tests remain in the full gate |
+
+The retained repository happy-path E2E covers arrival at the ordinary planning
+decision. The startup test instead completes a synthetic process to isolate
+runtime acceptance and persistence from repository policy. Short successful
+startup delays are sufficient to cross both asynchronous boundaries; cancellation
+retains the two original delay values.
+
+## Session and question E2E replacement ledger
+
+`packages/server/src/scripted-session.integration.test.ts` uses a synthetic LLM
+process, real worker runtime over WebSocket, HTTP, generated Pi JSONL, and
+file-backed SQLite reopened with a fresh app and Pi factory. Git and production
+repository processes are not required. These are graceful-restart tests, not
+abrupt-crash coverage.
+
+| Removed assertion from `workflows.e2e.test.ts` | Replacement assertion | Removal condition |
+| --- | --- | --- |
+| Scripted failure parks planning, reasoning exposes the original prompt, HTTP retry reaches the next decision, scenario step is two | Failed-worker retry test checks selected turn retention, failed-record input via reasoning HTTP, exactly two scripted calls, one failed and one succeeded record, and retained records/input after restart | Retry replacement passes |
+| Long result exceeds 20,000 characters | Streamed-output test persists a generated result exceeding 20,000 characters in the turn record | Session replacement passes |
+| Session HTTP contains observation 80 and thinking; restart returns identical content | Streamed-output test emits 80 delayed text frames and distinct thinking, checks session HTTP and exact response/record retention after reopening storage | Session replacement passes |
+| Ordinary question API answers first option and unblocks planning | Worker-question test posts the generated option ID through HTTP, checks the actual tool result and completion on the same accepted turn record; route tests separately cover attribution and duplicate rejection | Question replacement passes |
+| Three accepted reviews enter planning pass four at revision three, then return to the planning decision | Extension-owned `worker-tree.integration.test.ts` executes three review/action/plan cycles; see its README ledger | Review replacement passes |
+
+The sandbox's choice to ask a question specifically on pass four is scripted scene
+content, not production routing policy. Question transport and review routing are
+now tested independently. The retained local repository E2E proves the ordinary
+planning and implementation decisions remain connected to real Git finalization.
+
+## Intermittent timeout diagnostics
+
+The feedback-routing integration cases and GitHub tool reconciliation test use
+`createTestDiagnostics` from `@leitwerk-dev/test-support/local-git`. Each trace
+records UTC timestamps, monotonic elapsed time, worker-thread identity, and named
+workflow stages, including cleanup. `trace.run()` scopes LocalGit subprocess
+start/exit events to that test across async calls. Exits include duration, status,
+signal, and error code; arguments, environment, and subprocess output are omitted.
+The trace retains the latest 512 events and reports how many were dropped.
+`onTestFailed` prints it on failure; successful tests remain quiet. This is
+in-memory diagnostics, not a durable crash recorder: process termination can lose
+it, and work continuing after the failure report is not included.
+
+Forgejo remote-change and terminal-reconciliation tests also use the diagnosed
+extension fixture. Its trace starts before Git/app setup and scopes every awaited
+fixture operation, including restart and cleanup. A 250-ms sampler records only
+changed process/turn/start states, active lease identities, armed source kinds and
+scripted turn kinds. Sampling stops before cleanup; the last snapshot remains in
+the trace after SQLite closes. Worker spawn, kill, exit and sanitized connection
+observations carry instance/worker IDs and app generation, so reconnects can be
+correlated with the server that closed. The worker's optional connection observer
+preserves its normal diagnostic recorder; it does not capture raw stderr, tokens,
+prompts or provider payloads. Timers and traces do not extend test budgets.
+
+The Docker canary separately captures its shell subprocess error and signal,
+including `ETIMEDOUT`, rather than reporting only a null exit status. Its fake
+kubectl records starts and exits; failure output includes recent and unmatched
+commands plus shell output before temporary files are removed. The subprocess
+budget includes both replacement generations; timeout terminates the owned
+process group before storage cleanup. These are fixture commands and manifests,
+not operator data.
+
+For a suspected hang, preserve each run in a distinct log and compare the last
+started stage with subprocess exits and cleanup timestamps. Rebuild first. Run
+Vitest projects separately when their worker limits differ. A passing rerun does
+not rule out ordering bugs or leaks; reconnect messages alone do not establish
+whether IPC failed before or during teardown. Diagnostics alone do not extend test budgets.
+
+### Collect repeated failures
+
+```sh
+bash scripts/collect-test-failures.sh
+# Optional total-run cap and log parent directory:
+bash scripts/collect-test-failures.sh --max-runs 50 --log-dir /tmp/leitwerk-failures
+```
+
+The script repeats `npm run test:full` sequentially until **10 runs fail**.
+Passing runs do not count; timeout and non-timeout failures both count. Each
+invocation creates a fresh log directory containing complete per-run output,
+timeout-match excerpts, and `summary.tsv` with timestamps, durations, exit codes,
+and classifications. A failed full gate stops at its first failing phase, as
+usual. Timeout classification uses diagnostic text and is a triage hint, not a
+root-cause determination. Browser artifacts are not archived by this script.
+
+Exit status is 0 after collecting ten failed runs, 1 when the optional total-run
+limit is reached first, and 2 for invalid arguments or initial directory setup
+failure. Interrupted runs stop the loop and do not count. The default has no run
+limit; use Ctrl-C to stop it. Each full-gate invocation includes the required
+build before Vitest. Do not treat this collector's successful exit as passing
+validation: it means ten failures were collected.
 
 ## Worker startup benchmarks
 

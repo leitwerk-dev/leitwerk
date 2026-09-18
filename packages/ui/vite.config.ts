@@ -55,6 +55,7 @@ function extensionUiSourcePlugin(): Plugin {
 }
 
 export default defineConfig({
+	cacheDir: process.env.LEITWERK_BROWSER_VITE_CACHE_DIR,
 	plugins: [svelte(), extensionUiSourcePlugin()],
 	resolve: {
 		alias: [
