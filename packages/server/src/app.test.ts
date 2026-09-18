@@ -14,6 +14,8 @@ function createLocalApp(options: Partial<AppOptions> = {}, maxParallelProcesses?
 	const config = getDefaultConfig();
 	config.storage.sqlite_path = ":memory:";
 	config.workers.runner = "local";
+	config.server.host = "127.0.0.1";
+	config.server.port = 0;
 	if (maxParallelProcesses !== undefined)
 		config.workers.max_parallel_processes = maxParallelProcesses;
 	return createAppContext({
@@ -234,16 +236,16 @@ describe("createAppContext", () => {
 			expect((await ctx.app.inject({ url: "/api/health" })).statusCode).toBe(200);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 
-			const starting = ctx.startBackgroundServices();
+			const starting = ctx.listen();
 			await Promise.resolve();
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 			releaseStart();
 			await starting;
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(200);
 
-			await ctx.stopBackgroundServices();
+			await ctx.close();
 			expect(readyDuringStop).toBe(false);
-			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
+			expect(ctx.isReady()).toBe(false);
 		} finally {
 			releaseStart();
 			await ctx.app.close();
@@ -273,11 +275,11 @@ describe("createAppContext", () => {
 		]);
 		const ctx = await createLocalApp({ extensionCatalog });
 		try {
-			await ctx.startBackgroundServices();
+			await ctx.listen();
 			await vi.waitFor(() => expect(events).toContain("poll"));
 			expect(events.slice(0, 2)).toEqual(["extension-start", "poll"]);
 
-			await ctx.stopBackgroundServices();
+			await ctx.close();
 			const countAfterStop = events.length;
 			await new Promise((resolve) => setTimeout(resolve, 30));
 			expect(events).toHaveLength(countAfterStop);
@@ -299,7 +301,7 @@ describe("createAppContext", () => {
 		]);
 		const ctx = await createLocalApp({ extensionCatalog });
 		try {
-			await expect(ctx.startBackgroundServices()).rejects.toThrow("start rejected");
+			await expect(ctx.listen()).rejects.toThrow("start rejected");
 			expect(ctx.isReady()).toBe(false);
 			await expect(ctx.listen()).rejects.toThrow("closed");
 		} finally {

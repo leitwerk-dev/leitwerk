@@ -38,8 +38,9 @@ directories and compositions still belong in `finally` blocks, including startup
 | Use | Options / behavior |
 |---|---|
 | Normal integration or UI fixture | Default: bind, reconcile, start services, become ready. |
-| Controlled restart or reconciliation test | `backgroundServices: false`: bind only; call `ctx.startBackgroundServices()` explicitly. |
-| Injection-only fixture with no listener requested | Existing injection-only behavior is preserved; no background startup. Local workers still require a listener. |
+| Controlled restart or reconciliation test | `createIntegrationHarness({ listen: false, ... })`: prepare state, then call `ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true })`. The harness address becomes available after startup. |
+| Bind-only fixture | `backgroundServices: false`: raw listener, no reconciliation or background services. Close and recreate the context to use full startup. |
+| Injection-only fixture with no listener requested | `createIntegrationHarness({ listen: false, ... })` stays unbound with no background startup. Start the listener before launching local workers. |
 | Browser fixture | Full lifecycle; preserve the configured UI origin. |
 | Deployment preflight | Raw Fastify listener only; assert readiness remains false; clean up with `ctx.close()`. |
 

@@ -82,7 +82,7 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 			},
 		});
 	const h = await open();
-	await h.ctx.startBackgroundServices();
+	await h.ctx.listen();
 	const process = h.ctx.deps.processes.create({
 		processId: processDefinition.id,
 		lifecycleStatus: "discovered",
@@ -98,7 +98,7 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 		async restart() {
 			await persistent.close();
 			await open();
-			await persistent.context().startBackgroundServices();
+			await persistent.context().listen();
 		},
 		async wait(status: string) {
 			await waitForValue(

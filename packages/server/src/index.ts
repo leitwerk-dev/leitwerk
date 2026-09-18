@@ -56,7 +56,6 @@ export {
 export {
 	type AppContext,
 	type AppOptions,
-	createApp,
 	createAppContext,
 	type ServerListenOptions,
 	type ServerListenResult,

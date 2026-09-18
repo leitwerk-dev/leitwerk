@@ -31,11 +31,18 @@ is required to retry. Startup errors remain the primary error; when cleanup also
 `AggregateError` retains the startup error as its cause. Construction failures release
 resources acquired before the failure.
 
-`startBackgroundServices()` and `stopBackgroundServices()` are deprecated but retain
-standalone use. Stopping services leaves the listener bound; starting them again, or calling
-matching `listen()`, restarts services without rebinding. Raw `app.listen()` remains available
-for controlled tests and deployment preflight; it leaves readiness false. Direct `app.close()`
-uses the same cleanup hooks.
+The context lifecycle API is `listen()` and `close()`. **Breaking change:**
+`startBackgroundServices()` and `stopBackgroundServices()` have been removed.
+Migrate startup to `listen()` and shutdown to `close()`; restarting a closed context
+requires creating a new one. Services cannot be stopped independently of the context.
+
+`AppContext` no longer exposes the extension catalog. Compositions own catalogs they
+supply; test extension loading through its registered behavior. The unused `createApp()`
+wrapper is removed; use `createAppContext()` and its lifecycle methods.
+
+Raw `app.listen()` remains available for bind-only controlled tests and deployment
+preflight; it leaves readiness false and cannot later transition to full context startup.
+Direct `app.close()` uses the same cleanup hooks.
 
 ---
 
