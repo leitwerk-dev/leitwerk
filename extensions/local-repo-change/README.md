@@ -6,17 +6,8 @@ Shared coding action contracts now live in `@leitwerk-dev/coding`. This extensio
 
 Process extension for planning, implementing, reviewing, and finalizing a single local or remote git repository change.
 
-## Review-loop E2E replacement
-
-| Former sandbox assertion | Owning replacement | Mechanisms retained |
-| --- | --- | --- |
-| Run and accept three reviews; fourth planning pass starts at revision three and returns to `plan_decision` | `src/worker-tree.integration.test.ts`: three `request_changes` / `accept_review` cycles, asserting feedback selection, revision before each plan, and waiting decision after publication | Production process definition, action engine, worker runtime, scripted Pi tree; fake Git and in-memory repositories |
-
-Plan publication increments the revision: the fourth pass starts at three and
-publishes revision four. Question HTTP transport is independently covered by the
-server's `scripted-session.integration.test.ts`. Asking specifically on pass four
-is sandbox script content, not a local-repository process rule. The replacement
-must pass before removing the mixed question/review sandbox E2E.
+Publishing a generated plan increments the plan revision and returns to `plan_decision`
+for operator input.
 
 ## Naming
 

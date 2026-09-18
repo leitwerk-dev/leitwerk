@@ -54,8 +54,5 @@ A passing canary establishes compatibility for the tested worker image, kernel, 
 
 The Docker canary removes only resource IDs created by that run. Its default state volume gets a fresh Docker-generated name. Set `LEITWERK_DOCKER_STATE_VOLUME` to reuse a retained volume; cleanup preserves that volume.
 
-Blocking tests cover runner-generated manifests, isolation/identity rejection and
-the canary's complete command sequence with a local kubectl fixture. They verify
-that deletion is confirmed before replacement and changed retained storage fails
-the gate. Live canaries verify runtime-handler, storage, entrypoint and daemon
-compatibility without requiring a durable Leitwerk process.
+Live canaries verify deployment compatibility without requiring a durable
+Leitwerk process. They are opt-in and do not replace `npm run test:full`.
