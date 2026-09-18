@@ -108,14 +108,28 @@ describe("createAppContext", () => {
 				"Waiting for worker capacity",
 			);
 			// Cancellation remains possible while the queue is full.
-			ctx.deps.processes.update(processes[1].id, { lifecycleStatus: "aborted" });
-			await ctx.supervisor.stopWorker(processes[1].id, "operator");
-			await ctx.supervisor.stopWorker(processes[0].id, "test_release");
-			await vi.waitFor(() => expect(ctx.supervisor.getWorker(processes[2].id)).toBeDefined());
-			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+			const aborted = await ctx.app.inject({
+				method: "POST",
+				url: `/api/processes/${processes[1].id}/abort`,
+			});
+			expect(aborted.statusCode, aborted.body).toBe(200);
+			expect(ctx.deps.processes.getById(processes[1].id)?.lifecycleStatus).toBe("aborted");
+			const exit = exits.get(processes[0].id);
+			expect(exit).toBeDefined();
+			exit?.();
+			await vi.waitFor(() => {
+				expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+				expect(
+					vi.mocked(runtime.runner.start).mock.calls.map(([input]) => input.instanceId),
+				).toEqual([processes[0].id, processes[2].id]);
+				expect(ctx.deps.leases.getByInstance(processes[2].id)).toMatchObject({
+					workerId: vi.mocked(runtime.runner.start).mock.calls[1][0].workerId,
+				});
+			});
 			expect(ctx.deps.leases.getByInstance(processes[1].id)).toBeNull();
+			expect(ctx.deps.turnRecords.listByInstance(processes[1].id)).toEqual([]);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -152,7 +166,7 @@ describe("createAppContext", () => {
 			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
 		} finally {
 			cleanup.resolve();
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -192,7 +206,7 @@ describe("createAppContext", () => {
 			});
 			expect(projectFrames.at(-1)?.payload).not.toHaveProperty("changedFields");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -213,7 +227,7 @@ describe("createAppContext", () => {
 			config,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
 		});
-		await ctx.app.close();
+		await ctx.close();
 	});
 
 	it("reports readiness only after every start hook succeeds and clears it before stop hooks", async () => {
@@ -248,7 +262,7 @@ describe("createAppContext", () => {
 			expect(ctx.isReady()).toBe(false);
 		} finally {
 			releaseStart();
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -284,7 +298,7 @@ describe("createAppContext", () => {
 			await new Promise((resolve) => setTimeout(resolve, 30));
 			expect(events).toHaveLength(countAfterStop);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -305,7 +319,7 @@ describe("createAppContext", () => {
 			expect(ctx.isReady()).toBe(false);
 			await expect(ctx.listen()).rejects.toThrow("closed");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 });
