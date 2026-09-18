@@ -10,6 +10,9 @@ import {
 } from "node:fs";
 import path from "node:path";
 import type { RepositoryFeedbackItem, RepositoryPullRequest } from "@leitwerk-dev/process-sdk";
+import { traceTestSubprocess } from "./test-diagnostics.js";
+
+export { createTestDiagnostics } from "./test-diagnostics.js";
 
 /** @public */
 export interface LocalRepositorySeed {
@@ -350,27 +353,29 @@ export class LocalGit {
 			directoryPath,
 		);
 		const cwd = localPath(this.root, relative);
-		return execFileSync(
-			"git",
-			["-c", "protocol.file.allow=always", "-c", "core.hooksPath=/dev/null", ...args],
-			{
-				cwd,
-				encoding: "utf8",
-				stdio: ["ignore", "pipe", "pipe"],
-				env: {
-					PATH: process.env.PATH,
-					HOME: this.root,
-					GIT_CONFIG_NOSYSTEM: "1",
-					GIT_CONFIG_GLOBAL: "/dev/null",
-					GIT_TERMINAL_PROMPT: "0",
-					GIT_ALLOW_PROTOCOL: "file",
-					GIT_AUTHOR_NAME: "Sandbox Developer",
-					GIT_AUTHOR_EMAIL: "developer@sandbox.invalid",
-					GIT_COMMITTER_NAME: "Sandbox Developer",
-					GIT_COMMITTER_EMAIL: "developer@sandbox.invalid",
+		return traceTestSubprocess(`git ${args[0] ?? ""}`, () =>
+			execFileSync(
+				"git",
+				["-c", "protocol.file.allow=always", "-c", "core.hooksPath=/dev/null", ...args],
+				{
+					cwd,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "pipe"],
+					env: {
+						PATH: process.env.PATH,
+						HOME: this.root,
+						GIT_CONFIG_NOSYSTEM: "1",
+						GIT_CONFIG_GLOBAL: "/dev/null",
+						GIT_TERMINAL_PROMPT: "0",
+						GIT_ALLOW_PROTOCOL: "file",
+						GIT_AUTHOR_NAME: "Sandbox Developer",
+						GIT_AUTHOR_EMAIL: "developer@sandbox.invalid",
+						GIT_COMMITTER_NAME: "Sandbox Developer",
+						GIT_COMMITTER_EMAIL: "developer@sandbox.invalid",
+					},
 				},
-			},
-		).trim();
+			).trim(),
+		);
 	}
 	/** @public */
 	head(directory: string, ref: string): string {

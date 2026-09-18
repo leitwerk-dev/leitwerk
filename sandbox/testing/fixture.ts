@@ -12,8 +12,8 @@ import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { createProcessDriver, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { test as baseTest, expect, type TestContext } from "vitest";
-import composition from "../../../sandbox/composition.js";
-import { Notebook } from "../../../sandbox/notebook.js";
+import composition from "../composition.js";
+import { Notebook } from "../notebook.js";
 
 export async function fixture(
 	onTestFinished: TestContext["onTestFinished"],

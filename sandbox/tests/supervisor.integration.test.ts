@@ -30,7 +30,7 @@ async function reservePort() {
 
 test("source supervisor uses strict ports, isolated reload preflight, and acknowledged reset", async () => {
 	const workspace = mkdtempSync(path.join(tmpdir(), "sandbox-source-"));
-	const source = fileURLToPath(new URL("../../../", import.meta.url));
+	const source = fileURLToPath(new URL("../../", import.meta.url));
 	const directory = path.join(workspace, ".leitwerk/sandbox/scripted");
 	writeFileSync(
 		path.join(workspace, "package.json"),

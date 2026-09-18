@@ -86,6 +86,7 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - **Schema Changes:** Test migrations against file-backed storage and verify durable data survives. Do not delete operator data automatically. Preserve durable process, workspace, and tree state.
 - **Fakes:** Use `FakeLlmProvider` and extension-owned fakes for boundary testing. Avoid broad mocking.
 - **Test Levels:** Unit tests should be simple to setup, due to the functional core. Integration tests can use the test support utilities for leitwerk-managed Pi instances and fake external services. Those tests live within the package. Broad system tests are located under `tests/` and should import via package specifiers.
+- **API Classification:** Use `@internal` by default for exported declarations and members. Use `@public` only when the declaration is an intentionally supported external API and its compatibility contract has been established.
 
 ## 8. MVP Boundaries
 These are not MVP features. Keep them in `docs/future.md` until explicitly promoted:

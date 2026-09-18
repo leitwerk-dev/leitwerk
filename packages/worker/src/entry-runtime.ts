@@ -138,6 +138,8 @@ export interface WorkerEntryRuntimeOverrides extends Partial<WorkerRuntimeConfig
 	/** @internal */
 	stderr?: NodeJS.WritableStream;
 	/** @internal */
+	onConnectionDiagnostic?: (message: string) => void;
+	/** @internal */
 	env?: NodeJS.ProcessEnv;
 	/** @internal */
 	exit?: (code: number) => void;
@@ -184,7 +186,12 @@ export function createWorkerEntryRuntime(
 	}
 	const transport =
 		overrides.transport ??
-		createWorkerIpcFromEnvironment({ env: runtimeEnv, instanceId, workerId });
+		createWorkerIpcFromEnvironment({
+			env: runtimeEnv,
+			instanceId,
+			workerId,
+			onDiagnostic: overrides.onConnectionDiagnostic,
+		});
 	const sessionSnapshots =
 		overrides.sessionSnapshots ??
 		createWorkerSessionSnapshotExchangeFromEnv({ env: runtimeEnv, instanceId, workerId });

@@ -238,7 +238,11 @@ describe("createForgejoProvider", () => {
 		expect(fire).not.toHaveBeenCalled();
 	});
 
-	it("fires cancellation when the source issue loses the trigger label", async () => {
+	it.each([
+		["open", [], "trigger_label_removed"],
+		["closed", [{ name: "use-leitwerk" }], "issue_closed"],
+		["open", [{ name: "use-leitwerk" }], null],
+	] as const)("detects cancellation for issue state %s and labels %j", async (state, labels, reason) => {
 		const { provider, fire } = providerFixture({
 			armedByKind: {
 				[FORGEJO_ISSUE_CANCELLED_KIND]: [
@@ -261,8 +265,8 @@ describe("createForgejoProvider", () => {
 					async () =>
 						({
 							number: 4,
-							state: "open",
-							labels: [],
+							state,
+							labels,
 							title: "Change",
 						}) as never,
 				),
@@ -271,11 +275,13 @@ describe("createForgejoProvider", () => {
 
 		await provider.poll();
 
-		expect(fire).toHaveBeenCalledWith(
-			expect.objectContaining({
-				event: expect.objectContaining({ reason: "trigger_label_removed" }),
-				mergeKey: "4:trigger_label_removed",
-			}),
-		);
+		if (reason === null) expect(fire).not.toHaveBeenCalled();
+		else
+			expect(fire).toHaveBeenCalledWith(
+				expect.objectContaining({
+					event: expect.objectContaining({ reason }),
+					mergeKey: `4:${reason}`,
+				}),
+			);
 	});
 });

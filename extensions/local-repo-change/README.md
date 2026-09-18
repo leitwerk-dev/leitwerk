@@ -6,6 +6,9 @@ Shared coding action contracts now live in `@leitwerk-dev/coding`. This extensio
 
 Process extension for planning, implementing, reviewing, and finalizing a single local or remote git repository change.
 
+Publishing a generated plan increments the plan revision and returns to `plan_decision`
+for operator input.
+
 ## Naming
 
 | Item | Value |

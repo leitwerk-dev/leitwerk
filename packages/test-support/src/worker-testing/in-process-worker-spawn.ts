@@ -33,6 +33,15 @@ export interface InProcessWorkerSpawnOptions {
 				prepareMs: number;
 		  }
 		| undefined;
+	/** @internal Sanitized IPC observations, correlated even after fixture teardown. */
+	onConnectionDiagnostic?: (event: {
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		workerId: string;
+		/** @internal */
+		message: string;
+	}) => void;
 }
 
 /**
@@ -95,6 +104,12 @@ export function createInProcessWorkerSpawn(
 					}
 				: piFactory,
 			stderr,
+			onConnectionDiagnostic: (message) =>
+				options.onConnectionDiagnostic?.({
+					instanceId: spawnOptions?.env?.LEITWERK_INSTANCE_ID ?? "",
+					workerId: spawnOptions?.env?.LEITWERK_WORKER_ID ?? "",
+					message,
+				}),
 			env: spawnOptions?.env ?? process.env,
 			exit: finish,
 		});

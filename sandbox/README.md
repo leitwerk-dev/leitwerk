@@ -102,11 +102,9 @@ Startup is source-only and requires this checkout's supervisor and UI tooling.
 The package does not include these built-in scenarios or offer installed-release
 startup. See [the harness contract](../packages/dev-sandbox/README.md).
 
-Run `npm run test:full`. Public coverage includes every scripted scenario, real
-commit/merge, questions, approvals and ticket reconciliation, restart persistence,
-source reload, strict ports and reset confinement. Sandbox source, scripts and
-workflow fixtures participate in lint, typechecking and tests. This environment
-does not simulate production scheduling or deployment.
+Run `npm run test:full` to validate changes. See the [testing guide](../docs/testing.md)
+for commands and test boundaries. The sandbox does not simulate production
+scheduling or deployment.
 
 ## Local integration composition
 

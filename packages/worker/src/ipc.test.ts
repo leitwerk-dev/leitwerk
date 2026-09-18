@@ -5,7 +5,7 @@ import {
 	serializeMessage,
 } from "@leitwerk-dev/worker-protocol";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createWebSocketWorkerIpc } from "./ipc.js";
+import { createWebSocketWorkerIpc, createWorkerIpcFromEnvironment } from "./ipc.js";
 import { FakeWorkerWebSocket as FakeWebSocket } from "./test-helpers/fake-websocket.js";
 
 function createIpc(overrides: Partial<Parameters<typeof createWebSocketWorkerIpc>[0]> = {}) {
@@ -191,6 +191,35 @@ describe("createWebSocketWorkerIpc", () => {
 			]);
 		} finally {
 			ipc.stop();
+		}
+	});
+
+	it("observes environment transport diagnostics without replacing the standard recorder", () => {
+		const observed: string[] = [];
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		const ipc = createWorkerIpcFromEnvironment({
+			env: {
+				LEITWERK_SERVER_URL: "http://127.0.0.1:8080",
+				LEITWERK_WORKER_CONNECT_TOKEN: "secret-token",
+			},
+			instanceId: "proc_1",
+			workerId: "wkr_1",
+			onDiagnostic: (message) => observed.push(message),
+		});
+		try {
+			ipc.start();
+			const socket = FakeWebSocket.instances[0];
+			socket.emit("error", { error: { code: "ECONNREFUSED", message: "secret-token" } });
+			socket.open();
+			expect(observed).toEqual([
+				"Worker connection initial_connect: attempt=1; error=ECONNREFUSED",
+				"",
+			]);
+			expect(log).toHaveBeenCalledWith(observed[0]);
+			expect(observed.join()).not.toContain("secret-token");
+		} finally {
+			ipc.stop();
+			log.mockRestore();
 		}
 	});
 

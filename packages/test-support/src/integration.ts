@@ -1,5 +1,6 @@
 export {
 	createIntegrationHarness,
+	createPersistentIntegrationFixture,
 	type IntegrationHarness,
 	type IntegrationHarnessOptions,
 } from "./integration-harness.js";

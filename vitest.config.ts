@@ -154,6 +154,7 @@ export default defineConfig({
 						"packages/*/src/**/*.integration.test.ts",
 						"extensions/*/src/**/*.integration.test.ts",
 						"tests/**/*.integration.test.ts",
+						"scripts/**/*.integration.test.ts",
 					],
 					exclude: ["**/*.ui.integration.test.ts"],
 				},
@@ -169,7 +170,12 @@ export default defineConfig({
 					setupFiles: sharedSetupFiles,
 					testTimeout: 15_000,
 					maxWorkers: Math.max(2, Math.min(4, availableParallelism())),
-					include: [...externalIntegrationTests, ...composedIntegrationTests],
+					// Preserve per-file isolation for sandbox compositions and the source supervisor.
+					include: [
+						"sandbox/tests/**/*.integration.test.ts",
+						...externalIntegrationTests,
+						...composedIntegrationTests,
+					],
 					exclude: ["**/*.ui.integration.test.ts"],
 				},
 			},

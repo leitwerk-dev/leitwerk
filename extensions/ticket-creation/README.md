@@ -25,6 +25,17 @@ that ticket and records its receipt without creating another. If receipt recordi
 is interrupted, replay the same execution key after restarting. Serve the returned local receipt URLs from the
 composition's controls. There is no production HTTP fallback.
 
+## Approval and recovery
+
+Approval feedback revises the draft while retaining its destination. Declining
+writes no ticket. Captured parent context and the resolved destination survive
+restart and Retry; later parent edits do not change that context.
+
+Pending approval is retained across shutdown. An interrupted turn parks for
+Retry. Repeating a launch with the same idempotency key returns the same child,
+including after restart. Lost provider responses are reconciled without creating
+another ticket.
+
 ## API support
 
 The following exported declarations are `@public`:

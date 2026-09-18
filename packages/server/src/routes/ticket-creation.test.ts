@@ -205,6 +205,104 @@ describe("ticket creation routes", () => {
 	});
 });
 
+describe("retained ticket artifacts over HTTP", () => {
+	it("rejects foreign or missing leaf snapshots and excerpts outside the retained result before admission", async () => {
+		const repos = createTestDeps();
+		const parent = repos.processes.create({ processId: "parent", lifecycleStatus: "completed" });
+		const other = repos.processes.create({ processId: "parent", lifecycleStatus: "completed" });
+		for (const [instanceId, leafEntryId] of [
+			[parent.id, "retained"],
+			[other.id, "foreign"],
+		]) {
+			repos.leafOutcomeSnapshots.create({
+				instanceId,
+				leafEntryId,
+				status: "ready",
+				fallbackMarkdown: "Garden notebook: record watering dates.",
+				anchoredAt: "2026-09-13T00:00:00Z",
+			});
+		}
+		const startPreparedPlan = vi.fn();
+		const app = appWith(
+			{ ...repos, launchCoordinator: { startPreparedPlan } as never },
+			{
+				resolveTicketTool: () => ({ capability: ticketCapability() }) as never,
+			},
+		);
+		for (const [leafEntryId, excerpt] of [
+			["foreign", "record watering dates"],
+			["missing", "record watering dates"],
+			["retained", "not present"],
+		]) {
+			const response = await app.inject({
+				method: "POST",
+				url: `/api/processes/${parent.id}/ticket-creation`,
+				headers: { "idempotency-key": "invalid-artifact" },
+				payload: {
+					toolName: "tracker_create_ticket",
+					artifact: { kind: "leaf_outcome", leafEntryId },
+					focus: { kind: "excerpt", excerpt },
+				},
+			});
+			expect(response.statusCode, response.body).toBe(400);
+		}
+		expect(startPreparedPlan).not.toHaveBeenCalled();
+	});
+
+	it("admits a ticket with the normalized excerpt from its parent's historical leaf snapshot", async () => {
+		const repos = createTestDeps();
+		const parent = repos.processes.create({
+			processId: "parent",
+			lifecycleStatus: "completed",
+			paramsJson: JSON.stringify({ prompt: "Original parent prompt" }),
+		});
+		repos.leafOutcomeSnapshots.create({
+			instanceId: parent.id,
+			leafEntryId: "historical",
+			status: "ready",
+			fallbackMarkdown: "Garden notebook: record watering dates.",
+			anchoredAt: "2026-09-13T00:00:00Z",
+		});
+		const startPreparedPlan = vi.fn(async () => ({
+			launchRunId: "launch-1",
+			process: { id: "child-1" },
+			error: null,
+		}));
+		const app = appWith(
+			{
+				...repos,
+				launchCoordinator: { startPreparedPlan } as never,
+				processRelations: {
+					getByChild: () => ({ ...ticketRelation(), parentInstanceId: parent.id }),
+				} as never,
+			},
+			{
+				resolveTicketTool: () => ({ capability: ticketCapability() }) as never,
+			},
+		);
+		const response = await app.inject({
+			method: "POST",
+			url: `/api/processes/${parent.id}/ticket-creation`,
+			headers: { "idempotency-key": "historical-ticket" },
+			payload: {
+				toolName: "tracker_create_ticket",
+				artifact: { kind: "leaf_outcome", leafEntryId: "historical" },
+				focus: { kind: "excerpt", excerpt: "record  watering\n dates" },
+			},
+		});
+		expect(response.statusCode, response.body).toBe(200);
+		expect(response.json().childInstanceId).toBe("child-1");
+		expect(startPreparedPlan).toHaveBeenCalledOnce();
+		const call = startPreparedPlan.mock.calls[0] as unknown as [
+			{ launchPlan: { processInput: { paramsJson: string } } },
+		];
+		expect(JSON.parse(call[0].launchPlan.processInput.paramsJson).context).toMatchObject({
+			focusedResult: "record watering dates",
+			parentPrompt: "Original parent prompt",
+		});
+	});
+});
+
 describe("ticket approval decisions", () => {
 	it.each([
 		"running",

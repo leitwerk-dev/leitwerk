@@ -14,6 +14,8 @@ async function fixture(
 		multipleTurns?: boolean;
 		failedTurn?: boolean;
 		abort?: boolean;
+		stallSnapshot?: "headers" | "body";
+		breakSnapshot?: boolean;
 	} = {},
 ) {
 	const { root } = testWorkspace();
@@ -79,7 +81,15 @@ async function fixture(
 				launchRun: { id, instanceId: id, status: "completed", createdAt: "2026-09-15T00:00:00Z" },
 			});
 		}
-		if (url.endsWith("/ui-snapshot"))
+		if (url.endsWith("/ui-snapshot")) {
+			if (options.breakSnapshot) {
+				response.destroy();
+				return;
+			}
+			if (options.stallSnapshot) {
+				if (options.stallSnapshot === "body") response.write('{"startup":');
+				return;
+			}
 			return send({
 				startup: {
 					workerStarts: [
@@ -94,6 +104,7 @@ async function fixture(
 					],
 				},
 			});
+		}
 		if (url.startsWith("/api/processes/")) {
 			controller?.abort();
 			const reads = (detailReads.get(url) ?? 0) + 1;
@@ -207,6 +218,31 @@ it.each([
 		instanceId: "run-0",
 	});
 	expect(launches.size).toBe(1);
+});
+
+it.each([
+	"headers",
+	"body",
+] as const)("records deadline expiration while waiting for snapshot %s and retains identities", async (stallSnapshot) => {
+	const { options, calls, launches } = await fixture({ stallSnapshot });
+	const result = await runWorkerStartupBenchmark({ ...options, samples: 3 });
+	expect(calls.some((call) => call.path.endsWith("/ui-snapshot"))).toBe(true);
+	expect(result.complete).toBe(false);
+	expect(result.succeeded).toBe(false);
+	expect(result.samples).toMatchObject([
+		{ outcome: "timeout", launchRunId: "run-0", instanceId: "run-0" },
+	]);
+	expect(launches.size).toBe(1);
+	const evidence = JSON.parse(readFileSync(path.join(options.output, "results.jsonl"), "utf8"));
+	expect(evidence.outcome).toBe("timeout");
+});
+
+it("does not classify a transport failure before the deadline as a timeout", async () => {
+	const { options } = await fixture({ breakSnapshot: true });
+	const result = await runWorkerStartupBenchmark({ ...options, timeoutMs: 10_000 });
+	expect(result.samples).toMatchObject([
+		{ outcome: "failed", launchRunId: "run-0", instanceId: "run-0" },
+	]);
 });
 
 it("rejects unavailable launcher/model selections before creating processes", async () => {
