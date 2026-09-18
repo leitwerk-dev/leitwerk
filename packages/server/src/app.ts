@@ -144,16 +144,13 @@ export interface AppOptions {
 	resolvedExtensionEntries?: readonly DiscoveredExtensionEntry[];
 	/** @public */
 	extensionLoadingStartDir?: string;
-	/** Runtime lane override for extension UI assets. */
-	/** @internal */
+	/** Runtime lane override for extension UI assets. @internal */
 	extensionUiRuntimeLane?: LeitwerkRuntimeLane;
-	/** Pre-provided capabilities injected before extensions are set up (e.g. fake adapters for testing). */
-	/** @internal */
+	/** Pre-provided capabilities injected before extensions are set up (e.g. fake adapters for testing). @internal */
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 	/** @internal */
 	processTitleGenerator?: ProcessTitleGenerator;
-	/** Test/custom seam for supplying a concrete container runner implementation. */
-	/** @internal */
+	/** Test/custom seam for supplying a concrete container runner implementation. @internal */
 	workerRunnerRuntime?: {
 		/** @internal */
 		runner: WorkerRunner;
@@ -164,14 +161,11 @@ export interface AppOptions {
 		/** @internal */
 		webSocketIpc?: WorkerWebSocketIpcManager;
 	};
-	/** Local runner spawn seam for tests/dev only. */
-	/** @public */
+	/** Local runner spawn seam for tests/dev only. @public */
 	localWorkerSpawnImpl?: typeof spawn;
-	/** Test seam shared by local Docker admission and worker startup. */
-	/** @public */
+	/** Test seam shared by local Docker admission and worker startup. @public */
 	localWorkerDockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
-	/** Credential-store seam. Declared credential providers default unavailable until it is wired. */
-	/** @internal */
+	/** Credential-store seam. Declared credential providers default unavailable until it is wired. @internal */
 	modelProviderCredentialStatus?: ModelProviderCredentialStatusResolver;
 }
 
@@ -229,6 +223,18 @@ export interface AppContext {
 	close(): Promise<void>;
 	/** @internal */
 	isReady(): boolean;
+}
+
+async function collectCleanupErrors(operations: Array<() => void | Promise<void>>) {
+	const errors: unknown[] = [];
+	for (const operation of [...operations].reverse()) {
+		try {
+			await operation();
+		} catch (error) {
+			errors.push(error);
+		}
+	}
+	return errors;
 }
 
 function createConfiguredDatabase(config: LeitwerkConfig): LeitwerkDb {
@@ -618,13 +624,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		function assertOpen() {
 			if (closing) throw new Error("AppContext startup interrupted: context is closed");
 		}
-		async function attempt(operation: () => void | Promise<void>) {
-			try {
-				await operation();
-			} catch (error) {
-				cleanupErrors.push(error);
-			}
-		}
 		function close(): Promise<void> {
 			closing = true;
 			backgroundServicesReady = false;
@@ -714,17 +713,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		let startupReconciliationCompleted = false;
 		const startHooks: Array<() => void | Promise<void>> = [];
 		const stopHooks: Array<() => void | Promise<void>> = [];
-		constructionCleanup.push(async () => {
-			const errors: unknown[] = [];
-			for (const hook of [...stopHooks].reverse()) {
-				try {
-					await hook();
-				} catch (error) {
-					errors.push(error);
-				}
-			}
-			if (errors.length) throw new AggregateError(errors, "Construction cleanup failed");
-		});
+		async function runStopHooks(message: string): Promise<void> {
+			const errors = await collectCleanupErrors(stopHooks);
+			if (errors.length) throw new AggregateError(errors, message);
+		}
+		constructionCleanup.push(stopServices);
 		const modelRefreshWork = new Set<Promise<void>>();
 		let modelStatusRefreshTimer: NodeJS.Timeout | null = null;
 		let futureExecutionLifecycle: FutureExecutionLifecycle;
@@ -847,15 +840,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				if (!backgroundCleanupNeeded) return;
 				backgroundCleanupNeeded = false;
 				backgroundServicesStarted = false;
-				const errors: unknown[] = [];
-				for (const hook of [...stopHooks].reverse()) {
-					try {
-						await hook();
-					} catch (error) {
-						errors.push(error);
-					}
-				}
-				if (errors.length) throw new AggregateError(errors, "Background service cleanup failed");
+				await runStopHooks("Background service cleanup failed");
 			})().finally(() => {
 				stopPromise = undefined;
 			});
@@ -1099,7 +1084,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		});
 
 		let staleHeartbeatWatchdog: ReturnType<typeof startStaleHeartbeatWatchdog> | null = null;
+		let workersClosedForServerShutdown = false;
 		stopAcquiredWorkers = async () => {
+			if (workersClosedForServerShutdown) return;
+			workersClosedForServerShutdown = true;
 			if (config.workers.runner === "local") await supervisor?.shutdownAll("server_shutdown");
 			else await supervisor?.detachAll("server_shutdown");
 		};
@@ -1189,6 +1177,15 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			titleGenerationAvailable: Boolean(processTitles),
 			logger: app.log,
 		});
+		const assertRuntimeAvailable = (processId: string) =>
+			assertProcessRuntimeAvailable(
+				{
+					config,
+					processes: extensionCatalog.processes,
+					dockerInfo: opts.localWorkerDockerPreflightImpl,
+				},
+				processId,
+			);
 		const processLaunchDeps = {
 			...baseDeps,
 			broadcaster,
@@ -1198,15 +1195,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			logger: app.log,
 			repositoryCredentials,
 			getSupervisor: () => supervisor,
-			assertRuntimeAvailable: (processId: string) =>
-				assertProcessRuntimeAvailable(
-					{
-						config,
-						processes: extensionCatalog.processes,
-						dockerInfo: opts.localWorkerDockerPreflightImpl,
-					},
-					processId,
-				),
+			assertRuntimeAvailable,
 		};
 		const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 		futureExecutionLifecycle = createFutureExecutionLifecycle({
@@ -1232,15 +1221,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			launchPlans,
 			modelStatusCache,
 			launchPipeline,
-			assertRuntimeAvailable: (processId) =>
-				assertProcessRuntimeAvailable(
-					{
-						config,
-						processes: extensionCatalog.processes,
-						dockerInfo: opts.localWorkerDockerPreflightImpl,
-					},
-					processId,
-				),
+			assertRuntimeAvailable,
 			logger: app.log,
 		});
 		applyGeneratedFutureExecutionTitle = (input) =>
@@ -1455,39 +1436,21 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		});
 		markStartup("routes_ready");
 
-		let workersClosedForServerShutdown = false;
-		async function closeWorkersForServerShutdown(): Promise<void> {
-			if (workersClosedForServerShutdown) {
-				return;
-			}
-			workersClosedForServerShutdown = true;
-			if (!supervisor) {
-				return;
-			}
-			if (config.workers.runner === "local") {
-				await supervisor.shutdownAll("server_shutdown");
-			} else {
-				await supervisor.detachAll("server_shutdown");
-			}
-		}
-
 		let cleanupOperation: Promise<void> | undefined;
 		function cleanup() {
 			closing = true;
 			backgroundServicesReady = false;
 			cleanupOperation ??= (async () => {
 				await startupOperation?.catch(() => {});
-				await attempt(stopServices);
-				await attempt(closeWorkersForServerShutdown);
+				// Stop services and workers before connection teardown; retain SQLite for onClose.
+				cleanupErrors.push(...(await collectCleanupErrors(constructionCleanup.splice(1))));
 			})();
 			return cleanupOperation;
 		}
 		app.addHook("preClose", cleanup);
 		finishCleanup = async () => {
 			await cleanup();
-			await attempt(() => {
-				if (ownsDb) closeDatabase(db);
-			});
+			cleanupErrors.push(...(await collectCleanupErrors(constructionCleanup.splice(0))));
 			if (cleanupErrors.length)
 				throw new AggregateError(cleanupErrors, "AppContext cleanup failed");
 		};
@@ -1512,19 +1475,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			isReady: () => backgroundServicesReady,
 		};
 	} catch (error) {
-		const errors: unknown[] = [error];
-		for (const cleanup of constructionCleanup.reverse()) {
-			try {
-				await cleanup();
-			} catch (failure) {
-				errors.push(failure);
-			}
-		}
-		try {
-			await app.close();
-		} catch (failure) {
-			errors.push(failure);
-		}
+		const errors = [
+			error,
+			...(await collectCleanupErrors([() => app.close(), ...constructionCleanup])),
+		];
 		if (errors.length > 1)
 			throw new AggregateError(errors, "Context construction and cleanup failed", { cause: error });
 		throw error;

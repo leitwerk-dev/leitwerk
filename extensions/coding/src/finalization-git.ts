@@ -650,8 +650,7 @@ export interface RepositoryChangeFinalizationContextState extends StructuralProc
 	};
 }
 
-/** Commit the current workspace change and non-force push only the feature branch. */
-/** @public */
+/** Commit the current workspace change and non-force push only the feature branch. @public */
 export function commitAndPushWorkBranch(input: {
 	/** @public */
 	repoPath: string;

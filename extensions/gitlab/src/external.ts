@@ -20,8 +20,7 @@ export interface GitLabSourceConfig {
 	pollInterval?: string;
 	/** @public */
 	afterKey?: string;
-	/** Optional timer also wakes retry work when GitLab facts have not changed. */
-	/** @public */
+	/** Optional timer also wakes retry work when GitLab facts have not changed. @public */
 	wakeAt?: number;
 	/** @public */
 	feedback?: {
@@ -33,8 +32,7 @@ export interface GitLabSourceConfig {
 		quietPeriodMs: number;
 	};
 }
-/** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. */
-/** @public */
+/** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. @public */
 export function pendingGitLabFeedback(
 	items: GitLabFeedback[],
 	afterId: number,

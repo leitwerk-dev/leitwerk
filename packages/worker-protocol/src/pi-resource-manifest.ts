@@ -94,8 +94,7 @@ function invalidManifest(message: string, cause?: unknown): never {
 	throw new Error(`Invalid managed Pi resource snapshot: ${message}`, { cause });
 }
 
-/** Parses and validates the complete generated.json contract. */
-/** @internal */
+/** Parses and validates the complete generated.json contract. @internal */
 export function parsePiResourceManifest(raw: unknown): PiResourceManifest {
 	let manifest: PiResourceManifest;
 	try {

@@ -46,8 +46,7 @@ export interface LocalTicketAdapterOptions {
 	destinations: readonly TicketCreationDestinationSummary[];
 }
 
-/** Local persistence only. This entrypoint is never loaded by production registration. */
-/** @internal */
+/** Local persistence only. This entrypoint is never loaded by production registration. @internal */
 export class LocalTicketAdapter {
 	/** @internal */
 	readonly state: LocalTicketState;

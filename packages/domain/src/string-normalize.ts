@@ -6,8 +6,7 @@ export function toErrorMessage(error: unknown): string {
 	return String(error);
 }
 
-/** Return non-blank strings verbatim; unlike trimToNull, preserve surrounding whitespace. */
-/** @internal */
+/** Return non-blank strings verbatim; unlike trimToNull, preserve surrounding whitespace. @internal */
 export function readNonBlankString(value: unknown): string | null {
 	return typeof value === "string" && value.trim() !== "" ? value : null;
 }
@@ -56,8 +55,7 @@ const IDENTIFIER_WORD_LABELS: Record<string, string> = {
 	ui: "UI",
 };
 
-/** Display an identifier with known acronyms, preserving the remaining spelling. */
-/** @internal */
+/** Display an identifier with known acronyms, preserving the remaining spelling. @internal */
 export function formatProcessIdentifier(value: string): string {
 	return value
 		.split(/[_-]+/)

@@ -103,11 +103,7 @@ export function apiPackages(root: string, condition: "source" | "types" = "sourc
 	});
 }
 
-export function apiProgram(
-	packages: ApiPackage[],
-	extraFiles: string[] = [],
-	virtual = new Map<string, string>(),
-): ts.Program {
+export function apiProgram(packages: ApiPackage[]): ts.Program {
 	const paths = Object.fromEntries(
 		packages.flatMap((pkg) => [...pkg.entries].map(([key, file]) => [key, [file]])),
 	);
@@ -124,21 +120,9 @@ export function apiProgram(
 		paths,
 		types: ["node"],
 	};
-	const host = ts.createCompilerHost(options);
-	const readFile = host.readFile.bind(host);
-	const fileExists = host.fileExists.bind(host);
-	host.readFile = (file) => virtual.get(file) ?? readFile(file);
-	host.fileExists = (file) => virtual.has(file) || fileExists(file);
 	return ts.createProgram({
-		rootNames: [
-			...new Set([
-				...packages.flatMap((p) => [...p.entries.values()]),
-				...extraFiles,
-				...virtual.keys(),
-			]),
-		],
+		rootNames: [...new Set(packages.flatMap((p) => [...p.entries.values()]))],
 		options,
-		host,
 	});
 }
 
@@ -208,11 +192,9 @@ export interface ApiItem {
 	tags: string[];
 	dependencies: Set<ApiItem>;
 	parent?: ApiItem;
-	signature: string;
 }
 
 export interface ApiSurface {
-	program: ts.Program;
 	checker: ts.TypeChecker;
 	items: ApiItem[];
 	byNode: Map<ts.Node, ApiItem>;
@@ -263,7 +245,6 @@ export function apiSurface(program: ts.Program, packages: ApiPackage[]): ApiSurf
 			name: qualifiedName(node),
 			tags: releaseTags(node),
 			dependencies: new Set(),
-			signature: "",
 		});
 	}
 	function symbol(raw: ts.Symbol): void {
@@ -435,7 +416,6 @@ export function apiSurface(program: ts.Program, packages: ApiPackage[]): ApiSurf
 				item.parent = byNode.get(parent);
 				break;
 			}
-		item.signature = itemSignature(checker, item.node);
 	}
 	// Named signature dependencies are checked separately from members: a supported
 	// interface never implicitly promotes all of its methods.
@@ -499,28 +479,5 @@ export function apiSurface(program: ts.Program, packages: ApiPackage[]): ApiSurf
 		} else if (!ts.isInterfaceDeclaration(item.node) && !ts.isClassDeclaration(item.node))
 			dependency(checker.getTypeAtLocation(item.node));
 	}
-	return { program, checker, items, byNode, exports, diagnostics };
-}
-
-function itemSignature(checker: ts.TypeChecker, node: ts.Declaration): string {
-	const printer = ts.createPrinter({ removeComments: true });
-	const print = (n: ts.Node) =>
-		printer.printNode(ts.EmitHint.Unspecified, n, node.getSourceFile()).replace(/\s+/g, " ").trim();
-	const modifiers = ts.canHaveModifiers(node)
-		? (ts.getModifiers(node) ?? [])
-				.map(print)
-				.filter((m) => !["export", "default", "declare", "async"].includes(m))
-				.join(" ")
-		: "";
-	const prefix = modifiers ? `${modifiers} ` : "";
-	if (ts.isInterfaceDeclaration(node) || ts.isClassDeclaration(node)) {
-		return `${prefix}${ts.isInterfaceDeclaration(node) ? "interface" : "class"} ${node.name?.text ?? "default"}${node.typeParameters ? `<${node.typeParameters.map(print).join(", ")}>` : ""} ${(node.heritageClauses ?? []).map(print).join(" ")}`.trim();
-	}
-	if (ts.isTypeAliasDeclaration(node)) return print(node);
-	const sig = ts.isFunctionLike(node) ? checker.getSignatureFromDeclaration(node) : undefined;
-	if (sig)
-		return `${prefix}${nodeName(node) ?? "call"}${"questionToken" in node && node.questionToken ? "?" : ""}${checker.signatureToString(sig, node, ts.TypeFormatFlags.NoTruncation)}`;
-	const type = checker.getTypeAtLocation(node);
-	const flags = ts.TypeFormatFlags.NoTruncation;
-	return `${prefix}${nodeName(node) ?? "default"}${"questionToken" in node && node.questionToken ? "?" : ""}: ${checker.typeToString(type, node, flags)}`;
+	return { checker, items, byNode, exports, diagnostics };
 }

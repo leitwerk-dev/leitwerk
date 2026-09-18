@@ -19,8 +19,7 @@ export interface PiSessionTreeNode {
 
 /** @internal */
 export interface ReadonlyPiSessionTree {
-	/** Identifier of the parsed source (instance id or file path). */
-	/** @internal */
+	/** Identifier of the parsed source (instance id or file path). @internal */
 	treeFile: string;
 	/** @internal */
 	header: SessionHeader | null;

@@ -1,8 +1,7 @@
 import { IntegrationHttpClient } from "./integration-http.js";
 import type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 
-/** Common forge endpoints; extensions retain authentication and specialized operations. */
-/** @public */
+/** Common forge endpoints; extensions retain authentication and specialized operations. @public */
 export class RepositoryHttpClient<Comment = Record<string, unknown>> extends IntegrationHttpClient {
 	/** @internal */
 	protected repositoryPath(owner: string, repo: string): string {

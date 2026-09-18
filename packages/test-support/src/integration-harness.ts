@@ -10,7 +10,10 @@ import {
 	getDefaultConfig,
 	type LeitwerkConfig,
 } from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "./in-process-worker.js";
+import {
+	createInProcessWorkerSpawn,
+	type InProcessWorkerSpawnOptions,
+} from "./in-process-worker.js";
 
 /** @public */
 export interface IntegrationHarness<
@@ -43,7 +46,7 @@ export interface IntegrationHarnessOptions<
 	/** Start background services when binding a listener. Defaults to true. @public */
 	backgroundServices?: boolean;
 	/** @internal */
-	inProcessWorkers?: boolean;
+	inProcessWorkers?: boolean | Omit<InProcessWorkerSpawnOptions, "extensionCatalog">;
 	/** @public */
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
 	/** @internal */
@@ -52,14 +55,14 @@ export interface IntegrationHarnessOptions<
 	resources?: TResources;
 }
 
-/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. */
-/** @internal */
+/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. @internal */
 export function createPersistentIntegrationFixture(
 	prefix: string,
 	configure?: (config: LeitwerkConfig) => void,
 ) {
 	const root = mkdtempSync(path.join(tmpdir(), prefix));
 	let harness: IntegrationHarness | undefined;
+	/** @internal */
 	function createConfig() {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = path.join(root, "state.sqlite");
@@ -69,6 +72,7 @@ export function createPersistentIntegrationFixture(
 		configure?.(config);
 		return config;
 	}
+	/** @internal */
 	async function close() {
 		await harness?.close();
 		harness = undefined;
@@ -77,9 +81,7 @@ export function createPersistentIntegrationFixture(
 		/** @internal */
 		root,
 		/** @internal */
-		createConfig() {
-			return createConfig();
-		},
+		createConfig,
 		/** @internal */
 		context() {
 			if (!harness) throw new Error("Fixture is not open");
@@ -94,15 +96,13 @@ export function createPersistentIntegrationFixture(
 			return harness;
 		},
 		/** @internal */
-		async close() {
-			await close();
-		},
+		close,
 		/** @internal */
 		async dispose() {
 			try {
 				await close();
 			} finally {
-				rmSync(root, { recursive: true, force: true });
+				rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 			}
 		},
 	};
@@ -129,6 +129,7 @@ export async function createIntegrationHarness<
 
 	if (opts.inProcessWorkers !== false && !appOpts.localWorkerSpawnImpl) {
 		appOpts.localWorkerSpawnImpl = createInProcessWorkerSpawn({
+			...(typeof opts.inProcessWorkers === "object" ? opts.inProcessWorkers : {}),
 			extensionCatalog,
 		});
 	}

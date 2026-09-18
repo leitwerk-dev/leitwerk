@@ -6,7 +6,6 @@ import {
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import {
-	createInProcessWorkerSpawn,
 	StubPiTreeHandleFactory,
 	type StubToolCallScriptResolver,
 } from "@leitwerk-dev/test-support/worker-testing";
@@ -71,18 +70,14 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 		persistent.open({
 			config,
 			extensionCatalog: catalog,
-			appOverrides: {
-				localWorkerSpawnImpl: createInProcessWorkerSpawn({
-					extensionCatalog: catalog,
-					piFactory: new StubPiTreeHandleFactory({
-						recordSessionTrace: true,
-						toolCallScriptResolver: resolver,
-					}),
+			inProcessWorkers: {
+				piFactory: new StubPiTreeHandleFactory({
+					recordSessionTrace: true,
+					toolCallScriptResolver: resolver,
 				}),
 			},
 		});
 	const h = await open();
-	await h.ctx.listen();
 	const process = h.ctx.deps.processes.create({
 		processId: processDefinition.id,
 		lifecycleStatus: "discovered",
@@ -98,7 +93,6 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 		async restart() {
 			await persistent.close();
 			await open();
-			await persistent.context().listen();
 		},
 		async wait(status: string) {
 			await waitForValue(

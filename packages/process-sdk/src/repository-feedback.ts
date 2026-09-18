@@ -18,8 +18,7 @@ export interface RepositoryFeedbackItem {
 	line?: number | null;
 }
 
-/** Batch already-authorized, unseen feedback after its quiet period. */
-/** @internal */
+/** Batch already-authorized, unseen feedback after its quiet period. @internal */
 export function repositoryFeedbackBatch(
 	unseen: readonly RepositoryFeedbackItem[],
 	config: Record<`${RepositoryFeedbackItem["kind"]}Cursor`, number> & {
@@ -61,8 +60,7 @@ export function repositoryFeedbackBatch(
 	};
 }
 
-/** Normalize common forge feedback fields; reject empty bodies and missing identities. */
-/** @internal */
+/** Normalize common forge feedback fields; reject empty bodies and missing identities. @internal */
 export function normalizeRepositoryFeedback(
 	kind: RepositoryFeedbackItem["kind"],
 	item: Record<string, unknown>,

@@ -1,5 +1,4 @@
-/** Repository review created by a worker-side handoff and persisted by the server. */
-/** @internal */
+/** Repository review created by a worker-side handoff and persisted by the server. @internal */
 export interface CreatedExternalReview {
 	/** @internal */
 	projectKey: string;

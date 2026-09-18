@@ -1,6 +1,5 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import codingExtension, { codingActionIds } from "@leitwerk-dev/coding";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
@@ -24,7 +23,7 @@ import {
 	postImmediateLaunch,
 } from "@leitwerk-dev/test-support";
 import {
-	createIntegrationHarness,
+	createPersistentIntegrationFixture,
 	createProcessDriver,
 	type IntegrationHarness,
 	waitForValue,
@@ -480,24 +479,9 @@ export async function createRemoteRepoChangeFixture(
 	} = {},
 ) {
 	const trace = options.diagnostics;
-	trace?.mark("fixture.create.start");
-	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
-	let runningHarness: IntegrationHarness | undefined;
-	async function removeFixtureRoot() {
-		if (!root.startsWith(path.join(tmpdir(), FIXTURE_PREFIX)))
-			throw new Error(`Refusing to remove unvalidated fixture root '${root}'`);
-		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-		trace?.mark("fixture.close.files.end");
-	}
-	async function close() {
-		try {
-			trace?.mark("fixture.close.app.start");
-			await runningHarness?.close();
-			trace?.mark("fixture.close.app.end");
-		} finally {
-			await removeFixtureRoot();
-		}
-	}
+	const persistent = createPersistentIntegrationFixture(FIXTURE_PREFIX);
+	const { root } = persistent;
+	const close = persistent.dispose;
 
 	try {
 		trace?.mark("fixture.git.start");
@@ -544,8 +528,8 @@ export async function createRemoteRepoChangeFixture(
 				fixtureModelProviderExtension,
 			]);
 
-			await mkdir(path.join(root, "storage", "trees"), { recursive: true });
-			await mkdir(path.join(root, "storage", "workspaces"), { recursive: true });
+			await mkdir(path.join(root, "trees"), { recursive: true });
+			await mkdir(path.join(root, "workspaces"), { recursive: true });
 			const spawn = createInProcessWorkerSpawn({
 				extensionCatalog,
 				piFactory,
@@ -572,7 +556,7 @@ export async function createRemoteRepoChangeFixture(
 				};
 				return child;
 			};
-			const result = await createIntegrationHarness({
+			const result = await persistent.open({
 				// This fixture advances each provider poll explicitly.
 				backgroundServices: retainedConfig !== undefined,
 				config: retainedConfig,
@@ -586,10 +570,6 @@ export async function createRemoteRepoChangeFixture(
 					if (retainedConfig) return;
 					if (!config.local_worker) throw new Error("Fixture requires local worker configuration");
 					config.local_worker.allow_host_docker = options.docker ?? true;
-					config.storage.sqlite_path = path.join(root, "storage", "leitwerk.sqlite");
-					config.storage.tree_files_dir = path.join(root, "storage", "trees");
-					config.storage.process_workspaces_dir = path.join(root, "storage", "workspaces");
-					config.pi.agent_dir = path.join(root, "storage", "pi-agent");
 					config.pi.model_profiles = [
 						{
 							id: MODEL_PROFILE_ID,
@@ -627,7 +607,6 @@ export async function createRemoteRepoChangeFixture(
 			return result;
 		}
 		let harness = await start();
-		runningHarness = harness;
 		const { action, wait, waitForProcess } = createProcessDriver(() => harness.ctx);
 		const subscriptions = (id: string) => {
 			const sources = harness.ctx.deps
@@ -680,15 +659,12 @@ export async function createRemoteRepoChangeFixture(
 			subscriptions,
 			async restart(whileStopped?: () => Promise<void>) {
 				const config = harness.config;
-				trace?.mark("fixture.restart.close.start");
-				await harness.close();
-				trace?.mark("fixture.restart.close.end");
+				await persistent.close();
 				await whileStopped?.();
 				forgejo = forgejoFixture(temporaryGit, options.botLogin);
 				woodpecker = woodpeckerFixture(root);
 				piFactory = createPiFactory(piTurns, temporaryGit.local, options);
 				harness = await start(config);
-				runningHarness = harness;
 			},
 			piTurns: piTurns as readonly PiTurnRecord[],
 			root,

@@ -2,8 +2,7 @@ import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { AppContext } from "@leitwerk-dev/server";
 import { waitForValue } from "./polling.js";
 
-/** Drive a running or restarted app without bypassing process HTTP actions. */
-/** @public */
+/** Drive a running or restarted app without bypassing process HTTP actions. @public */
 export function createProcessDriver(context: () => AppContext) {
 	/** @public */
 	async function post(url: string, payload: Record<string, unknown> = {}) {

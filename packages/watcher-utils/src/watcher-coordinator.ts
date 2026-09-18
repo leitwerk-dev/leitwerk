@@ -74,8 +74,7 @@ export interface ContinueWatcherAgentStartupOptions {
 	createdEventData: Record<string, unknown>;
 	/** @internal */
 	createdBroadcastData: Record<string, unknown>;
-	/** Defaults to true. Set false when the shared launch executor already emitted process.created. */
-	/** @internal */
+	/** Defaults to true. Set false when the shared launch executor already emitted process.created. @internal */
 	broadcastCreated?: boolean;
 	/** @internal */
 	afterCreatedEvent?: (process: ProcessInstance) => Promise<void> | void;

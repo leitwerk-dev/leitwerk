@@ -1,5 +1,4 @@
-/** First server receipt of a physical worker startup milestone. */
-/** @internal */
+/** First server receipt of a physical worker startup milestone. @internal */
 export type StartupMilestone =
 	| "pvc_requested"
 	| "pvc_acknowledged"
@@ -30,8 +29,7 @@ export interface StartupObservation {
 	objectUid: string | null;
 	/** @internal */
 	turnRecordId: string | null;
-	/** Sampling lower bound, never an exact binding timestamp. */
-	/** @internal */
+	/** Sampling lower bound, never an exact binding timestamp. @internal */
 	notBefore: string | null;
 	/** @internal */
 	metadata: {

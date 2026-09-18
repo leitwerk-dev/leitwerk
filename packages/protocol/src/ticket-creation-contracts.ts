@@ -27,8 +27,7 @@ export type TicketResultArtifactLocator =
 export interface TicketCreationFocus {
 	/** @internal */
 	kind: "whole_result" | "excerpt";
-	/** Browser-selected normalized text. The server still validates the artifact. */
-	/** @internal */
+	/** Browser-selected normalized text. The server still validates the artifact. @internal */
 	excerpt?: string;
 }
 

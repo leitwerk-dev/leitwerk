@@ -1,5 +1,4 @@
-/** JSON values that may cross the server/worker bootstrap boundary. */
-/** @public */
+/** JSON values that may cross the server/worker bootstrap boundary. @public */
 export type ProviderJsonPrimitive = string | number | boolean | null;
 /** @public */
 export type ProviderJsonValue =
@@ -32,8 +31,7 @@ export interface ProviderModelStatus {
 	readonly modelId: string;
 	/** @public */
 	readonly availability: ProviderAvailability;
-	/** Safe operator-facing reason. It must not contain credential material. */
-	/** @internal */
+	/** Safe operator-facing reason. It must not contain credential material. @internal */
 	readonly safeReason?: string;
 }
 
@@ -255,8 +253,7 @@ export function resolveProviderOptions<TConfig = unknown>(
 	return issues.length > 0 ? { ok: false, issues } : { ok: true, value: resolved };
 }
 
-/** Keep only fields declared by a newly selected provider. */
-/** @internal */
+/** Keep only fields declared by a newly selected provider. @internal */
 export function filterProviderOptionsForDefinition<TConfig = unknown>(
 	definition: ProviderOptionsDefinition<TConfig> | null | undefined,
 	values: Readonly<Record<string, string>>,
@@ -318,8 +315,7 @@ export interface PiWorkerReference<
 	readonly kind: "extension_pi_worker";
 	/** @internal */
 	readonly config?: ProviderWorkerConfigDefinition<TConfig, TValue>;
-	/** Mutable, flat JSON credential files required by this provider's Pi extension. */
-	/** @internal */
+	/** Mutable, flat JSON credential files required by this provider's Pi extension. @internal */
 	readonly credentialFiles?: readonly string[];
 }
 
@@ -360,8 +356,7 @@ export interface PiServerGenerateTextInput<TConfig = unknown> {
 	};
 }
 
-/** Server-only provider boundary for title generation and future cheap LLM consumers. */
-/** @public */
+/** Server-only provider boundary for title generation and future cheap LLM consumers. @public */
 export interface PiServerAdapter<TConfig = unknown> {
 	/** @public */
 	generateText(input: PiServerGenerateTextInput<TConfig>): Promise<string>;
@@ -391,8 +386,7 @@ export interface ConfiguredPiProviderReference<TConfig = unknown> {
 	readonly kind: "configured_pi_provider";
 	/** @internal */
 	readonly providerId: string;
-	/** Resolve the credential-blind models.json document pinned into each worker snapshot. */
-	/** @internal */
+	/** Resolve the credential-blind models.json document pinned into each worker snapshot. @internal */
 	resolveModels(ctx: {
 		/** @internal */
 		readonly config: TConfig;
@@ -469,18 +463,15 @@ export interface ModelProviderSecretsContext<TConfig = unknown, TCredential = un
 
 /** @public */
 export interface ParsedModelProviderConfig<TConfig = unknown, TCredential = unknown> {
-	/** Restart-scoped, non-secret provider configuration. */
-	/** @public */
+	/** Restart-scoped, non-secret provider configuration. @public */
 	readonly config: TConfig;
-	/** Optional credential used only to initialize an empty durable credential store. */
-	/** @internal */
+	/** Optional credential used only to initialize an empty durable credential store. @internal */
 	readonly credential?: TCredential;
 }
 
 /** @public */
 export interface ModelProviderCredentialDefinition<TCredential = unknown> {
-	/** Validates configured, durable, and worker-refreshed credential data. */
-	/** @public */
+	/** Validates configured, durable, and worker-refreshed credential data. @public */
 	parse?(value: unknown): TCredential;
 }
 
@@ -524,8 +515,7 @@ export function defineModelProvider<
 	return definition;
 }
 
-/** Type-erased provider definition used after its typed boundary has been established. */
-/** @public */
+/** Type-erased provider definition used after its typed boundary has been established. @public */
 // biome-ignore lint/suspicious/noExplicitAny: provider sets intentionally erase provider-owned generic types
 export type ErasedModelProviderDefinition = ModelProviderDefinition<any, any, any>;
 
@@ -533,13 +523,11 @@ export type ErasedModelProviderDefinition = ModelProviderDefinition<any, any, an
 export interface ModelProviderSetEntry {
 	/** @public */
 	readonly definition: ErasedModelProviderDefinition;
-	/** Owner-scoped fragment passed to this provider's parseConfig(). */
-	/** @public */
+	/** Owner-scoped fragment passed to this provider's parseConfig(). @public */
 	readonly rawConfig: unknown;
 }
 
-/** Resolves every provider owned by one extension from its owner-scoped configuration. */
-/** @public */
+/** Resolves every provider owned by one extension from its owner-scoped configuration. @public */
 export type ModelProviderSet = (ownerConfig: unknown) => readonly ModelProviderSetEntry[];
 
 /** @public */

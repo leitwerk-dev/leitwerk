@@ -1,7 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-/** Application boundary for encrypted credential payloads. Callers supply deployment key material. */
-/** @internal */
+/** Application boundary for encrypted credential payloads. Callers supply deployment key material. @internal */
 export interface CredentialCipher {
 	/** @internal */
 	encrypt(plaintext: string): string;
@@ -12,8 +11,7 @@ export interface CredentialCipher {
 /** @internal */
 export const PROVIDER_CREDENTIAL_KEY_ENV = "LEITWERK_CREDENTIAL_ENCRYPTION_KEY";
 
-/** A missing deployment key may inspect an empty table but can never read or write credentials. */
-/** @internal */
+/** A missing deployment key may inspect an empty table but can never read or write credentials. @internal */
 export function createUnavailableCredentialCipher(): CredentialCipher {
 	const unavailable = (): never => {
 		throw new Error(
@@ -23,8 +21,7 @@ export function createUnavailableCredentialCipher(): CredentialCipher {
 	return { encrypt: unavailable, decrypt: unavailable };
 }
 
-/** Parses an exact 32-byte Base64 deployment secret. */
-/** @internal */
+/** Parses an exact 32-byte Base64 deployment secret. @internal */
 export function createCredentialCipherFromBase64(value: string): CredentialCipher {
 	const normalized = value.trim();
 	if (normalized === "") {
