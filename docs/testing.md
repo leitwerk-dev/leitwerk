@@ -29,10 +29,10 @@ internal declarations survive the build.
 
 ### Harness lifecycle compatibility
 
-For the next minor release, `createIntegrationHarness()` and the internal `createTestApp()`
-start the full `AppContext` lifecycle by default whenever they bind a listener. Their returned
-address is applied before reconciliation for ephemeral unauthenticated loopback fixtures.
-Use `await harness.close()` (or the test app's `close()`) for cleanup. Caller-owned temporary
+For the next minor release, `createIntegrationHarness()` starts the full `AppContext`
+lifecycle by default whenever it binds a listener. Its returned address is applied before
+reconciliation for ephemeral unauthenticated loopback fixtures.
+Use `await harness.close()` for cleanup. Caller-owned temporary
 directories and compositions still belong in `finally` blocks, including startup failures.
 
 | Use | Options / behavior |

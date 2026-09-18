@@ -39,8 +39,7 @@ interface LocalState {
 	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
 }
-/** Persistent GitLab test boundary. Repository URLs use local Git's file transport. */
-/** @public */
+/** Persistent GitLab test boundary. Repository URLs use local Git's file transport. @public */
 export class LocalGitLabAdapter {
 	/** @public */
 	state: LocalState;

@@ -88,8 +88,7 @@ export interface LocalGitHubOptions {
 	allowedOrganization?: string;
 }
 
-/** Persistent local GitHub with actual commit ancestry and configurable release assets. */
-/** @public */
+/** Persistent local GitHub with actual commit ancestry and configurable release assets. @public */
 export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalGitHubOptions> {
 	/** @public */
 	constructor(options: LocalGitHubOptions) {

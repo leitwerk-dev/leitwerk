@@ -97,8 +97,7 @@ function positiveInteger(value: number, label: string, minimum = 1) {
 	return value;
 }
 
-/** Launch sequentially; keep uncertain attempts and their request identities for diagnosis. */
-/** @internal */
+/** Launch sequentially; keep uncertain attempts and their request identities for diagnosis. @internal */
 export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkOptions) {
 	for (const field of [
 		"apiConfig",

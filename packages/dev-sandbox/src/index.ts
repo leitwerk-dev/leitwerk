@@ -55,8 +55,7 @@ export interface SandboxScenario<T = unknown> {
 	};
 }
 
-/** The composition owns adapters and persisted scenario progress. */
-/** @public */
+/** The composition owns adapters and persisted scenario progress. @public */
 export interface SandboxComposition {
 	/** @public */
 	processConfigs: LeitwerkConfig["process_configs"];
@@ -87,8 +86,7 @@ export interface SandboxComposition {
 /** @public */
 export type SandboxCompositionFactory = (input: SandboxInput) => SandboxComposition;
 
-/** Install development launchers on an SDK-defined process, retaining its identity. */
-/** @public */
+/** Install development launchers on an SDK-defined process, retaining its identity. @public */
 export function withSandboxLaunchers<T, S>(
 	definition: ExtensionProcessDefinition<T, S>,
 	scenarios: readonly SandboxScenario<T>[],

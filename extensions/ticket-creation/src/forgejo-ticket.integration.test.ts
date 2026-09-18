@@ -8,10 +8,7 @@ import {
 	createProcessDriver,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import {
-	createInProcessWorkerSpawn,
-	StubPiTreeHandleFactory,
-} from "@leitwerk-dev/test-support/worker-testing";
+import { StubPiTreeHandleFactory } from "@leitwerk-dev/test-support/worker-testing";
 import { expect, it, onTestFinished } from "vitest";
 import ticketCreation from "./index.js";
 
@@ -98,9 +95,7 @@ async function fixture(options: { clarifyDestination?: boolean } = {}) {
 		});
 		await persistent.open({
 			extensionCatalog: catalog,
-			appOverrides: {
-				localWorkerSpawnImpl: createInProcessWorkerSpawn({ extensionCatalog: catalog, piFactory }),
-			},
+			inProcessWorkers: { piFactory },
 			configOverride(config) {
 				config.pi.model_profiles = [
 					{ id: "scripted", provider: "ticket-model", model_id: "scripted", thinking_level: "off" },

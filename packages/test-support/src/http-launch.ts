@@ -1,7 +1,6 @@
 import type { LaunchRun } from "@leitwerk-dev/domain";
 
-/** Accepts a launch-run request shape and waits for its admitted process commit. */
-/** @internal */
+/** Accepts a launch-run request shape and waits for its admitted process commit. @internal */
 export async function postImmediateLaunchRequest(
 	input: string | URL | Request,
 	init?: RequestInit,

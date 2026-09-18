@@ -1,6 +1,6 @@
 import { FORGEJO_ISSUE_CANCELLED_KIND } from "@leitwerk-dev/forgejo";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it } from "vitest";
 import {
 	remoteRepoChangeFixtureConstants as constants,
 	createRemoteRepoChangeFixture,
@@ -19,7 +19,6 @@ async function publishIssue(f: RemoteRepoChangeFixture) {
 
 it("closing an unmerged issue-origin PR removes the trigger, comments once, and leaves the issue open", async () => {
 	const f = await createRemoteRepoChangeFixture();
-	onTestFinished(() => f.close());
 	const id = await publishIssue(f);
 	await f.markPullRequestClosed();
 	await f.waitForTurn(id, null, "aborted");
@@ -45,7 +44,6 @@ it("closing an unmerged issue-origin PR removes the trigger, comments once, and 
 
 it("source cancellation aborts waiting delivery without another worker turn or reconciliation write", async () => {
 	const f = await createRemoteRepoChangeFixture();
-	onTestFinished(() => f.close());
 	const id = await publishIssue(f);
 	const workerTurns = () =>
 		f.harness.ctx.deps.turnRecords

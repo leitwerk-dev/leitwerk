@@ -29,8 +29,7 @@ interface RebaseRecord {
 	baseSha: string;
 	/** @internal */
 	status: "prepared" | "rebasing" | "clean";
-	/** Optional for records written before origin identity was retained. */
-	/** @internal */
+	/** Optional for records written before origin identity was retained. @internal */
 	originUrl?: string;
 	/** @internal */
 	originPushUrl?: string;
@@ -122,8 +121,7 @@ function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: stri
 	else git(input, "merge-tree", "--write-tree", headSha, baseSha);
 }
 
-/** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. */
-/** @internal */
+/** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. @internal */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
 	const old = read(input);
 	requireTarget(input, old?.key === conflictKey(input.conflict) ? old : null);

@@ -50,8 +50,7 @@ export function getStandardEnvApiKey(providerId: string): string | undefined {
 	return undefined;
 }
 
-/** Built-in providers whose credentials fit Leitwerk's standard API-key projection. */
-/** @internal */
+/** Built-in providers whose credentials fit Leitwerk's standard API-key projection. @internal */
 export function getSupportedStandardProviders(): readonly string[] {
 	return Object.keys(STANDARD_PROVIDER_ENV_KEYS);
 }

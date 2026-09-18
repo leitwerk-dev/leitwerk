@@ -99,11 +99,9 @@ export function createManualWorkerRuntimeScheduler(
 export interface WorkerRuntimeHarnessOptions {
 	/** @internal */
 	config?: Partial<WorkerRuntimeConfig>;
-	/** Optional default used by start() and startLlmTo(). */
-	/** @internal */
+	/** Optional default used by start() and startLlmTo(). @internal */
 	startPayload?: WorkerStartPayload;
-	/** Model the server's durable terminal acknowledgement. Defaults to true. */
-	/** @internal */
+	/** Model the server's durable terminal acknowledgement. Defaults to true. @internal */
 	autoAcknowledgeTerminals?: boolean;
 	/** @internal */
 	adapters: Pick<WorkerRuntimeAdapters, "piFactory" | "gitOps"> &

@@ -83,8 +83,7 @@ export function buildAutoWorkBranch(
 	return `${slug}-${suffix}-${sha.slice(0, DEFAULT_BASE_SHA_SUFFIX_LENGTH)}`;
 }
 
-/** Builds the same safe branch shape when authenticated remote SHA lookup must wait for a worker. */
-/** @internal */
+/** Builds the same safe branch shape when authenticated remote SHA lookup must wait for a worker. @internal */
 export function gitShaLikeDigestFromSeed(seed: string): string {
 	return createHash("sha256").update(seed).digest("hex");
 }

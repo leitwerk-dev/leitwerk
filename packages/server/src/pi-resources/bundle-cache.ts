@@ -56,8 +56,7 @@ export interface PiResourceBundleCache {
 	stats(): PiResourceBundleCacheStats;
 }
 
-/** In-memory operational cache. Bundles are immutable copies and pins are reference-counted. */
-/** @internal */
+/** In-memory operational cache. Bundles are immutable copies and pins are reference-counted. @internal */
 export function createPiResourceBundleCache(
 	options: PiResourceBundleCacheOptions = {},
 ): PiResourceBundleCache {

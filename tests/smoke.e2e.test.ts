@@ -1,11 +1,20 @@
+import {
+	createIntegrationHarness,
+	type IntegrationHarness,
+} from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createExtensionTestApp, type ExtensionTestApp } from "./helpers/test-app.js";
+import { getDefaultTestExtensionCatalog } from "./helpers/test-extension-catalog.js";
 
 describe("smoke e2e", () => {
-	let app: ExtensionTestApp;
+	let app: IntegrationHarness;
 
 	beforeAll(async () => {
-		app = await createExtensionTestApp();
+		app = await createIntegrationHarness({
+			extensionCatalog: getDefaultTestExtensionCatalog(),
+			configOverride(config) {
+				config.workers.shutdown_grace_period = "100ms";
+			},
+		});
 	});
 
 	afterAll(async () => {
@@ -48,13 +57,5 @@ describe("smoke e2e", () => {
 		expect((hello.payload as Record<string, unknown>).serverVersion).toBe("0.1.0");
 
 		ws.close();
-	});
-
-	it("fake llm boundary is available", () => {
-		expect(app.llm).toBeDefined();
-
-		app.llm.onPrompt(() => ({ content: "plan: do something" }));
-		const response = app.llm.respond("generate a plan");
-		expect(response.content).toBe("plan: do something");
 	});
 });
