@@ -105,11 +105,9 @@ export interface ProcessLaunchProjectConfig {
 
 /** @public */
 export interface ProcessTitleSourceField {
-	/** Short label shown to the title-generation model, e.g. "Prompt" or "Summary". */
-	/** @public */
+	/** Short label shown to the title-generation model, e.g. "Prompt" or "Summary". @public */
 	label: string;
-	/** Launcher-selected descriptive text to summarize into a short operator-facing title. */
-	/** @public */
+	/** Launcher-selected descriptive text to summarize into a short operator-facing title. @public */
 	value: string;
 }
 
@@ -121,11 +119,9 @@ export interface ProcessLaunchConfig<TParams = unknown> {
 	params: TParams;
 	/** @public */
 	startTurnId?: TurnId | null;
-	/** Explicit operator-facing title. UI launches may override this with the built-in title input before persistence. */
-	/** @public */
+	/** Explicit operator-facing title. UI launches may override this with the built-in title input before persistence. @public */
 	title?: string | null;
-	/** Explicit launcher-selected fields for optional server-side title generation when title is blank. */
-	/** @public */
+	/** Explicit launcher-selected fields for optional server-side title generation when title is blank. @public */
 	titleSourceFields?: readonly ProcessTitleSourceField[];
 	/** @public */
 	externalId?: string | null;
@@ -143,8 +139,7 @@ export interface ProcessLaunchConfig<TParams = unknown> {
 			modelProfileId?: string | null;
 		}
 	>;
-	/** Skill ids resolved to active immutable revisions before process creation. */
-	/** @internal */
+	/** Skill ids resolved to active immutable revisions before process creation. @internal */
 	skillIds?: readonly string[];
 	/** @public */
 	projects?: readonly ProcessLaunchProjectConfig[];
@@ -190,8 +185,7 @@ export interface LaunchPreparationCheck<TParams = unknown> {
 	run(ctx: LaunchPreparationContext<TParams>): Promise<void>;
 }
 
-/** A launcher check may throw this error to expose bounded operator-safe remediation. */
-/** @public */
+/** A launcher check may throw this error to expose bounded operator-safe remediation. @public */
 export class SafeLaunchPreparationError extends Error {
 	/** @public */
 	constructor(
@@ -263,15 +257,13 @@ export interface ParsedProcessWatcherConfig<TConfig = unknown> {
 	readonly launchModelConfig?: LaunchModelConfigInput;
 }
 
-/** A watcher source is defined and owned by the extension that implements it. */
-/** @public */
+/** A watcher source is defined and owned by the extension that implements it. @public */
 export interface ProcessWatcherSource<TConfig = unknown, TEvent = unknown> {
 	/** @public */
 	readonly id: string;
 	/** @public */
 	readonly label: string;
-	/** Type-only marker used to carry the provider event type across the source seam. */
-	/** @internal */
+	/** Type-only marker used to carry the provider event type across the source seam. @internal */
 	readonly eventType?: TEvent;
 	/** @public */
 	parseConfig(raw: unknown): ParsedProcessWatcherConfig<TConfig>;
@@ -339,11 +331,9 @@ export interface ProcessLaunchPlan {
 	processId: string;
 	/** @internal */
 	processInput: ProcessLaunchPlanProcessInput;
-	/** Optional server-owned idempotency key for cross-process handoffs. */
-	/** @internal */
+	/** Optional server-owned idempotency key for cross-process handoffs. @internal */
 	handoffDedupKey?: string | null;
-	/** Carry-forward launcher-selected fields for optional server-side title generation. */
-	/** @internal */
+	/** Carry-forward launcher-selected fields for optional server-side title generation. @internal */
 	titleSourceFields?: readonly ProcessTitleSourceField[];
 	/** @internal */
 	projectInputs: readonly ProcessLaunchProjectConfig[];
@@ -417,8 +407,7 @@ export interface ProcessLauncherService {
 	): Promise<UiLauncherResolutionResult>;
 }
 
-/** Resolve a UI launcher summary by id, returning `null` when it is unknown. */
-/** @internal */
+/** Resolve a UI launcher summary by id, returning `null` when it is unknown. @internal */
 export function findUiLauncherById(
 	launcherService: Pick<ProcessLauncherService, "listUiLaunchers">,
 	launcherId: string,
@@ -562,8 +551,7 @@ export interface ServerTransitionRequest<TState = unknown> {
 	turnId?: TurnId | null;
 	/** @internal */
 	state?: TState;
-	/** State machine trigger for the selected-turn graph. */
-	/** @internal */
+	/** State machine trigger for the selected-turn graph. @internal */
 	trigger?: string;
 	/** @internal */
 	effect?: ServerTransitionEffect;
@@ -634,8 +622,7 @@ export interface ExternalActionSource<
 	label?: string;
 	/** @public */
 	description?: string;
-	/** Pure description captured when the event is consumed. */
-	/** @public */
+	/** Pure description captured when the event is consumed. @public */
 	describeEvent?(event: _TEvent): ExternalEventDescription;
 	/**
 	 * Extension-owned opaque config. Core may persist, hash, and display it, but must not
@@ -643,11 +630,9 @@ export interface ExternalActionSource<
 	 */
 	/** @public */
 	config: unknown;
-	/** Source-provided input behavior. Provider input is only published when the external action declares publishInput. */
-	/** @public */
+	/** Source-provided input behavior. Provider input is only published when the external action declares publishInput. @public */
 	inputMode?: ExternalSourceInputMode;
-	/** Optional extension-owned resolver for process-instance-specific matching. */
-	/** @public */
+	/** Optional extension-owned resolver for process-instance-specific matching. @public */
 	resolve?(ctx: ExternalSourceResolveContext<TParams, TState>): unknown;
 }
 
@@ -713,17 +698,13 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	readonly turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
 	/** @internal */
 	readonly turnResultMarkdownByProduct?: Readonly<Record<string, string>>;
-	/** Absolute workspace root for the current process instance, when available. */
-	/** @internal */
+	/** Absolute workspace root for the current process instance, when available. @internal */
 	readonly workspaceRoot?: string;
-	/** Durable output produced by this LLM turn's preparation phase, when declared. */
-	/** @internal */
+	/** Durable output produced by this LLM turn's preparation phase, when declared. @internal */
 	readonly prepared?: unknown;
-	/** Invoke a server-owned integration tool authorized for this automatic turn or LLM preparation. */
-	/** @internal */
+	/** Invoke a server-owned integration tool authorized for this automatic turn or LLM preparation. @internal */
 	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
-	/** Replace the durable operator-facing progress report for this turn attempt. */
-	/** @internal */
+	/** Replace the durable operator-facing progress report for this turn attempt. @internal */
 	reportProgress?(report: TurnProgressReport): void;
 }
 
@@ -817,8 +798,7 @@ export interface ProcessTurnBinding<TTurn = TurnDefinition> {
 /** @public */
 export type RepositoryCredentialKind = "git_ssh" | "git_https";
 
-/** Non-secret, code-defined repository authentication request. */
-/** @public */
+/** Non-secret, code-defined repository authentication request. @public */
 export interface RepositoryCredentialRequirement {
 	/** @public */
 	readonly projectKey: string;
@@ -828,8 +808,7 @@ export interface RepositoryCredentialRequirement {
 	readonly credentialRef: string;
 }
 
-/** Project fields available while deriving repository credential requirements. */
-/** @public */
+/** Project fields available while deriving repository credential requirements. @public */
 export interface RepositoryCredentialProject {
 	/** @internal */
 	readonly key: string;
@@ -841,8 +820,7 @@ export interface RepositoryCredentialProject {
 	readonly workBranch: string | null;
 }
 
-/** Secret material is intentionally restricted to server registration and worker.start. */
-/** @internal */
+/** Secret material is intentionally restricted to server registration and worker.start. @internal */
 export interface GitSshCredentialMaterial {
 	/** @internal */
 	readonly privateKey: string;
@@ -852,8 +830,7 @@ export interface GitSshCredentialMaterial {
 
 /** @internal */
 export interface GitHttpsCredentialMaterial {
-	/** HTTPS origin authorized by the credential-owning extension. */
-	/** @internal */
+	/** HTTPS origin authorized by the credential-owning extension. @internal */
 	readonly origin: string;
 	/** @internal */
 	readonly username: string;
@@ -884,11 +861,9 @@ export interface RepositoryCredentialRegistrar {
 
 /** @public */
 export interface ProcessRuntimeCapabilities {
-	/** Install repository-declared development tools with mise before accepting work. */
-	/** @internal */
+	/** Install repository-declared development tools with mise before accepting work. @internal */
 	readonly developmentTools?: boolean;
-	/** Require a Docker CLI connected to a private or explicitly acknowledged daemon. */
-	/** @public */
+	/** Require a Docker CLI connected to a private or explicitly acknowledged daemon. @public */
 	readonly docker?: boolean;
 }
 
@@ -898,11 +873,9 @@ export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown>
 	id: string;
 	/** @public */
 	displayName: string;
-	/** Primary entry used when a launch does not select a start turn explicitly. */
-	/** @public */
+	/** Primary entry used when a launch does not select a start turn explicitly. @public */
 	entryTurnId: TurnId;
-	/** Additional entry turns that launchers may select explicitly. */
-	/** @public */
+	/** Additional entry turns that launchers may select explicitly. @public */
 	alternateEntryTurnIds?: readonly TurnId[];
 	/**
 	 * Optional author-declared happy path: the ordered spine of turns a successful
@@ -920,8 +893,7 @@ export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown>
 	stateCodec: Codec<TState>;
 	/** @public */
 	initialState(params: TParams): TState;
-	/** Process-owned runtime capabilities. All capabilities default to disabled. */
-	/** @public */
+	/** Process-owned runtime capabilities. All capabilities default to disabled. @public */
 	runtime?: ProcessRuntimeCapabilities;
 	/**
 	 * Server-only Kubernetes process-volume size, derived from extension configuration.
@@ -936,8 +908,7 @@ export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown>
 		/** @internal */
 		projects: readonly ProcessProject[];
 	}): string | undefined;
-	/** Runtime-only requirements; references are non-secret and remain in opaque params JSON. */
-	/** @public */
+	/** Runtime-only requirements; references are non-secret and remain in opaque params JSON. @public */
 	repositoryCredentials?(input: {
 		/** @public */
 		params: TParams;
@@ -991,8 +962,7 @@ export interface ServerExtensionLogger {
 
 /** @public */
 export interface TicketCreationDestinationSummary {
-	/** Adapter-owned opaque identifier. Browsers must not construct or interpret it. */
-	/** @public */
+	/** Adapter-owned opaque identifier. Browsers must not construct or interpret it. @public */
 	readonly id: string;
 	/** @public */
 	readonly displayName: string;
@@ -1014,11 +984,9 @@ export interface TicketCreationDestinationList {
 export interface TicketCreationDestinationSnapshot {
 	/** @public */
 	readonly summary: TicketCreationDestinationSummary;
-	/** Adapter-owned, JSON-serializable immutable destination state. */
-	/** @public */
+	/** Adapter-owned, JSON-serializable immutable destination state. @public */
 	readonly data: unknown;
-	/** Untrusted destination context included in the ticket agent prompt. */
-	/** @public */
+	/** Untrusted destination context included in the ticket agent prompt. @public */
 	readonly agentContext?: string;
 }
 
@@ -1039,8 +1007,7 @@ export interface TicketCreationDestinationProvider {
 			destinationId: string;
 		},
 	): Promise<TicketCreationDestinationSnapshot>;
-	/** Rejects stale, renamed, transferred, or otherwise invalid snapshots. */
-	/** @public */
+	/** Rejects stale, renamed, transferred, or otherwise invalid snapshots. @public */
 	validate(snapshot: TicketCreationDestinationSnapshot): Promise<void>;
 }
 
@@ -1050,17 +1017,13 @@ export interface TicketCreationCapability {
 	readonly kind: "ticket_creation";
 	/** @public */
 	readonly displayName: string;
-	/** Extension-owned process launched by the generic derived-ticket route. */
-	/** @public */
+	/** Extension-owned process launched by the generic derived-ticket route. @public */
 	readonly processId: string;
-	/** Entry turn selected when the derived process starts. */
-	/** @public */
+	/** Entry turn selected when the derived process starts. @public */
 	readonly startTurnId: TurnId;
-	/** RFC 6901 JSON Pointer into the tool arguments. */
-	/** @public */
+	/** RFC 6901 JSON Pointer into the tool arguments. @public */
 	readonly titlePath?: string;
-	/** RFC 6901 JSON Pointer into the tool arguments. */
-	/** @public */
+	/** RFC 6901 JSON Pointer into the tool arguments. @public */
 	readonly descriptionPath?: string;
 	/** @public */
 	readonly destinations?: TicketCreationDestinationProvider;
@@ -1088,11 +1051,9 @@ export interface IntegrationToolExecutionContext {
 	readonly project: ProcessProject | null;
 	/** @public */
 	readonly ticketDestination?: TicketCreationDestinationSnapshot;
-	/** Stable for a single Pi tool call, including reconnect/replay. */
-	/** @public */
+	/** Stable for a single Pi tool call, including reconnect/replay. @public */
 	readonly idempotencyKey: string;
-	/** Aborted when the worker stops waiting for this tool call. */
-	/** @public */
+	/** Aborted when the worker stops waiting for this tool call. @public */
 	readonly signal: AbortSignal;
 }
 
@@ -1104,8 +1065,7 @@ export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {
 	readonly description: string;
 	/** @public */
 	readonly parameters: Record<string, unknown>;
-	/** Sanitized discovery metadata; credentials and adapter configuration never belong here. */
-	/** @public */
+	/** Sanitized discovery metadata; credentials and adapter configuration never belong here. @public */
 	readonly capability?: TicketCreationCapability;
 	/** @internal */
 	parse?(value: unknown): TArgs;
@@ -1159,8 +1119,7 @@ export interface LeitwerkExtensionManifest {
 export interface LeitwerkExtensionModule {
 	/** @public */
 	manifest: LeitwerkExtensionManifest;
-	/** Resolves every provider owned by this extension before setupServer. */
-	/** @public */
+	/** Resolves every provider owned by this extension before setupServer. @public */
 	modelProviders?: ModelProviderSet;
 	/** @public */
 	setupCatalog?(api: CatalogExtensionAPI): void | Promise<void>;

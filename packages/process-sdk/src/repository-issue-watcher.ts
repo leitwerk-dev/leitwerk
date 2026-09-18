@@ -59,8 +59,7 @@ function repositoryNames(value: unknown, path: string): readonly string[] {
 	});
 }
 
-/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. */
-/** @internal */
+/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. @internal */
 export function parseRepositoryIssueWatcherConfig(
 	raw: unknown,
 	legacyType: string,

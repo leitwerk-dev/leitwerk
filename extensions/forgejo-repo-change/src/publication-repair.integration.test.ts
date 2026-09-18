@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it } from "vitest";
 import {
 	createRemoteRepoChangeFixture,
 	type RemoteRepoChangeFixture,
@@ -24,7 +24,6 @@ async function publish(f: RemoteRepoChangeFixture) {
 
 it("UI publication retains provider bindings and reasoning, completes without an issue, and replays on a fresh branch", async () => {
 	const f = await createRemoteRepoChangeFixture();
-	onTestFinished(() => f.close());
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	const project = f.harness.ctx.deps.projects.listByInstance(id)[0];
@@ -58,7 +57,6 @@ it("UI publication retains provider bindings and reasoning, completes without an
 
 it("batches conversation, inline and review feedback into a fresh revision and retains replies after restart", async () => {
 	const f = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome: "changes_ready" });
-	onTestFinished(() => f.close());
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	const feedback = (["conversation", "inline", "review"] as const).map((kind) =>
@@ -99,7 +97,6 @@ it("batches conversation, inline and review feedback into a fresh revision and r
 
 it("diagnoses CI and explicitly restarts through a durable write without republishing or restarting again after app restart", async () => {
 	const f = await createRemoteRepoChangeFixture(undefined, { ciRestart: true });
-	onTestFinished(() => f.close());
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	await f.publishPipeline({
@@ -135,7 +132,6 @@ it("diagnoses CI and explicitly restarts through a durable write without republi
 
 it("rebases a conflicting base after app restart and publishes with the retained original-head lease", async () => {
 	const f = await createRemoteRepoChangeFixture();
-	onTestFinished(() => f.close());
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	await f.restart();

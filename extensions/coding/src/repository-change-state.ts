@@ -19,8 +19,7 @@ export interface RepositoryChangeFinalizationState {
 export interface RepositoryChangeState extends StructuralProcessState {
 	/** @public */
 	finalization: RepositoryChangeFinalizationState;
-	/** Namespaced state owned by a caller-supplied publication workflow. */
-	/** @public */
+	/** Namespaced state owned by a caller-supplied publication workflow. @public */
 	extensionState?: Record<string, unknown>;
 }
 

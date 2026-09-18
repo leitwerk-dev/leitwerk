@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
@@ -10,7 +10,10 @@ import { type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
 
-async function context(options: AppOptions = {}) {
+async function context(
+	options: AppOptions = {},
+	setupServer?: LeitwerkExtensionModule["setupServer"],
+) {
 	const config = getDefaultConfig();
 	config.storage.sqlite_path = ":memory:";
 	config.server.host = "127.0.0.1";
@@ -19,7 +22,9 @@ async function context(options: AppOptions = {}) {
 	return createAppContext({
 		logger: false,
 		config,
-		extensionCatalog: buildExtensionCatalogFromModules([]),
+		extensionCatalog: buildExtensionCatalogFromModules(
+			setupServer ? [{ manifest: { id: "lifecycle-test", version: "1.0.0" }, setupServer }] : [],
+		),
 		...options,
 	});
 }
@@ -47,18 +52,11 @@ describe("AppContext lifecycle", () => {
 	it("updates the fixture URL before reconciliation and gates readiness on start hooks", async () => {
 		const entered = Promise.withResolvers<void>();
 		const gate = Promise.withResolvers<void>();
-		const ctx = await context({
-			extensionCatalog: buildExtensionCatalogFromModules([
-				{
-					manifest: { id: "lifecycle-gate", version: "1.0.0" },
-					setupServer(api) {
-						api.onStart(() => {
-							entered.resolve();
-							return gate.promise;
-						});
-					},
-				},
-			]),
+		const ctx = await context({}, (api) => {
+			api.onStart(() => {
+				entered.resolve();
+				return gate.promise;
+			});
 		});
 		const adoption = vi
 			.spyOn(ctx.supervisor, "adoptRegisteredWorkers")
@@ -84,20 +82,13 @@ describe("AppContext lifecycle", () => {
 		const gate = Promise.withResolvers<void>();
 		const later = vi.fn();
 		const stopped = vi.fn();
-		const ctx = await context({
-			extensionCatalog: buildExtensionCatalogFromModules([
-				{
-					manifest: { id: "lifecycle-race", version: "1.0.0" },
-					setupServer(api) {
-						api.onStart(() => {
-							entered.resolve();
-							return gate.promise;
-						});
-						api.onStart(later);
-						api.onStop(stopped);
-					},
-				},
-			]),
+		const ctx = await context({}, (api) => {
+			api.onStart(() => {
+				entered.resolve();
+				return gate.promise;
+			});
+			api.onStart(later);
+			api.onStop(stopped);
 		});
 		const starting = ctx.listen();
 		const rejected = expect(starting).rejects.toThrow("interrupted");
@@ -163,24 +154,17 @@ describe("AppContext lifecycle", () => {
 	it("preserves startup errors, attempts every stop hook and remembers failed cleanup", async () => {
 		const events: string[] = [];
 		const failure = new Error("start failed");
-		const ctx = await context({
-			extensionCatalog: buildExtensionCatalogFromModules([
-				{
-					manifest: { id: "lifecycle-errors", version: "1.0.0" },
-					setupServer(api) {
-						api.onStart(() => {
-							throw failure;
-						});
-						api.onStop(() => {
-							events.push("first");
-						});
-						api.onStop(() => {
-							events.push("second");
-							throw new Error("stop failed");
-						});
-					},
-				},
-			]),
+		const ctx = await context({}, (api) => {
+			api.onStart(() => {
+				throw failure;
+			});
+			api.onStop(() => {
+				events.push("first");
+			});
+			api.onStop(() => {
+				events.push("second");
+				throw new Error("stop failed");
+			});
 		});
 		const workerClose = vi.spyOn(ctx.supervisor, "shutdownAll");
 		await expect(ctx.listen()).rejects.toMatchObject({ cause: failure });
@@ -222,27 +206,20 @@ describe("AppContext lifecycle", () => {
 		const gate = Promise.withResolvers<void>();
 		const entered = Promise.withResolvers<void>();
 		let readAfterStop: (() => void) | undefined;
-		const ctx = await context({
-			extensionCatalog: buildExtensionCatalogFromModules([
-				{
-					manifest: { id: "lifecycle-poll", version: "1.0.0" },
-					setupServer(api) {
-						const deps = api.require(coreHostCapabilities.serverSetup);
-						if (Array.isArray(deps)) throw new Error("expected one capability");
-						deps.polling.create({
-							id: "gated",
-							isEnabled: () => true,
-							pollInterval: () => "1h",
-							async pollOnce() {
-								entered.resolve();
-								await gate.promise;
-								readAfterStop?.();
-								return emptyPollResult();
-							},
-						});
-					},
+		const ctx = await context({}, (api) => {
+			const deps = api.require(coreHostCapabilities.serverSetup);
+			if (Array.isArray(deps)) throw new Error("expected one capability");
+			deps.polling.create({
+				id: "gated",
+				isEnabled: () => true,
+				pollInterval: () => "1h",
+				async pollOnce() {
+					entered.resolve();
+					await gate.promise;
+					readAfterStop?.();
+					return emptyPollResult();
 				},
-			]),
+			});
 		});
 		readAfterStop = () => expect(ctx.deps.processes.listAll()).toEqual([]);
 		await ctx.listen();
@@ -269,23 +246,15 @@ describe("AppContext lifecycle", () => {
 		const db = createInMemoryDatabase();
 		try {
 			await expect(
-				context({
-					db,
-					extensionCatalog: buildExtensionCatalogFromModules([
-						{
-							manifest: { id: "construction-failure", version: "1.0.0" },
-							setupServer(api) {
-								api.onStop(() => {
-									events.push("first");
-								});
-								api.onStop(() => {
-									events.push("second");
-									throw new Error("construction stop failed");
-								});
-								throw new Error("construction failed");
-							},
-						},
-					]),
+				context({ db }, (api) => {
+					api.onStop(() => {
+						events.push("first");
+					});
+					api.onStop(() => {
+						events.push("second");
+						throw new Error("construction stop failed");
+					});
+					throw new Error("construction failed");
 				}),
 			).rejects.toMatchObject({
 				cause: expect.objectContaining({ message: expect.stringContaining("construction failed") }),

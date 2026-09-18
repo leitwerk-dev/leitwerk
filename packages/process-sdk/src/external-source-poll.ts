@@ -7,8 +7,7 @@ import type {
 /** @internal */
 type Arming = Pick<ExternalSourceArmingLike, "id" | "instanceId" | "generation">;
 
-/** Report one poll's effects without choosing events, scheduling, or subscription policy. */
-/** @internal */
+/** Report one poll's effects without choosing events, scheduling, or subscription policy. @internal */
 export function createExternalSourcePollReporter(
 	sources: ExternalSourceServiceLike,
 	result: {

@@ -5,13 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { ProvidedCapability } from "@leitwerk-dev/process-sdk";
-import {
-	type AppContext,
-	createAppContext,
-	getDefaultConfig,
-	type LeitwerkConfig,
-} from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
+import { type AppContext, getDefaultConfig, type LeitwerkConfig } from "@leitwerk-dev/server";
+import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { vi } from "vitest";
 import type {
 	UiModuleImporter,
@@ -270,10 +265,8 @@ export async function createUiTestApp<
 		| "configureConfig"
 	>,
 ): Promise<UiTestApp<TResources>> {
-	const extensionCatalog = await Promise.resolve(options.extensionCatalog);
 	const config = getDefaultConfig();
 	const runtimeRoot = await mkdtemp(path.join(tmpdir(), "leitwerk-ui-"));
-	config.workers.runner = "local";
 	config.storage.process_workspaces_dir = path.join(runtimeRoot, "workspaces");
 	config.storage.tree_files_dir = path.join(runtimeRoot, "sessions");
 	config.pi.agent_dir = path.join(runtimeRoot, "pi-agent");
@@ -287,26 +280,21 @@ export async function createUiTestApp<
 		}
 	};
 	try {
-		options.configureConfig?.(config);
-		ctx = await createAppContext({
-			logger: false,
+		const harness = await createIntegrationHarness({
 			config,
-			extensionCatalog,
-			extensionUiRuntimeLane: "dist",
+			configOverride: options.configureConfig,
+			extensionCatalog: options.extensionCatalog,
 			preProvidedCapabilities: options.preProvidedCapabilities,
-			localWorkerSpawnImpl:
-				options.localWorkerSpawnImpl ?? createInProcessWorkerSpawn({ extensionCatalog }),
+			resources: options.resources,
+			appOverrides: {
+				extensionUiRuntimeLane: "dist",
+				localWorkerSpawnImpl: options.localWorkerSpawnImpl,
+			},
 		});
-		const { address } = await ctx.listen({
-			host: "127.0.0.1",
-			port: 0,
-			useBoundAddressAsBaseUrl: true,
-		});
+		ctx = harness.ctx;
 		return {
-			ctx,
-			address,
-			wsAddress: `${address.replace(/^http/, "ws")}/ws`,
-			resources: options.resources ?? ({} as TResources),
+			...harness,
+			wsAddress: `${harness.address.replace(/^http/, "ws")}/ws`,
 			close,
 		};
 	} catch (error) {

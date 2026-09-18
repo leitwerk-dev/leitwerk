@@ -48,8 +48,7 @@ export interface ModelStatusCacheSnapshot {
 	readonly capturedAt: string;
 	/** @internal */
 	readonly profiles: readonly CachedModelProfileStatus[];
-	/** Present only on the refresh result that observed the transition. */
-	/** @internal */
+	/** Present only on the refresh result that observed the transition. @internal */
 	readonly availabilityTransitions: readonly ModelAvailabilityTransition[];
 }
 

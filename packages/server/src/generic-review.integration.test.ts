@@ -12,8 +12,8 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
-	createTestApp,
-	type TestApp,
+	createIntegrationHarness,
+	type IntegrationHarness,
 	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
@@ -240,7 +240,7 @@ const genericPlanReviewExtension: LeitwerkExtensionModule = {
 	},
 };
 
-let app: TestApp;
+let app: IntegrationHarness;
 
 function futureIso(minutesAhead = 24 * 60): string {
 	return new Date(Date.now() + minutesAhead * 60_000).toISOString();
@@ -321,9 +321,10 @@ function attachWorkerReceipt(input: {
 
 beforeAll(async () => {
 	const extensionCatalog = await buildExtensionCatalogFromModules([genericPlanReviewExtension]);
-	app = await createTestApp({
+	app = await createIntegrationHarness({
 		extensionCatalog,
-		configureConfig(config) {
+		configOverride(config) {
+			config.workers.shutdown_grace_period = "100ms";
 			config.pi.model_profiles = [
 				{
 					id: "claude_fast",

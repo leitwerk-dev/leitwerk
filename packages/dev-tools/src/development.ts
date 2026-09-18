@@ -42,8 +42,7 @@ async function hook(root: string, name: string) {
 		await run("npm", ["run", name], { cwd: root });
 }
 
-/** Run against installed dependencies unless source mode was explicitly selected. */
-/** @internal */
+/** Run against installed dependencies unless source mode was explicitly selected. @internal */
 export async function runDevelopment(
 	command: DevelopmentCommand,
 	options: DevelopmentOptions = {},

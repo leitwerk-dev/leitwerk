@@ -48,8 +48,7 @@ export interface TestLlmWorkerStartPayloadOptions {
 	now?: string;
 }
 
-/** Builds a valid public LLM worker.start payload with canonical Pi resources. */
-/** @internal */
+/** Builds a valid public LLM worker.start payload with canonical Pi resources. @internal */
 export function createTestLlmWorkerStartPayload(
 	options: TestLlmWorkerStartPayloadOptions,
 ): WorkerStartPayload {
