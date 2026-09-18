@@ -23,19 +23,33 @@ export {
 	statistics,
 } from "./benchmark-report.js";
 
+/** @internal */
 export interface WorkerStartupBenchmarkOptions {
+	/** @internal */
 	apiConfig: string;
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	modelProfileId: string;
+	/** @internal */
 	launcherInput: Record<string, unknown>;
+	/** @internal */
 	title: string;
+	/** @internal */
 	candidate: string;
+	/** @internal */
 	output: string;
+	/** @internal */
 	samples?: number;
+	/** @internal */
 	warmups?: number;
+	/** @internal */
 	timeoutMs?: number;
+	/** @internal */
 	pollIntervalMs?: number;
+	/** @internal */
 	kubernetes?: KubernetesEvidenceOptions;
+	/** @internal */
 	signal?: AbortSignal;
 }
 
@@ -84,6 +98,7 @@ function positiveInteger(value: number, label: string, minimum = 1) {
 }
 
 /** Launch sequentially; keep uncertain attempts and their request identities for diagnosis. */
+/** @internal */
 export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkOptions) {
 	for (const field of [
 		"apiConfig",
@@ -289,9 +304,13 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 	}
 	const complete = samples.filter((sample) => !sample.warmup).length === count;
 	return {
+		/** @internal */
 		samples,
+		/** @internal */
 		complete,
+		/** @internal */
 		succeeded: complete && samples.every((sample) => sample.outcome === "completed"),
+		/** @internal */
 		reportPath: path.join(output, "report.md"),
 	};
 }

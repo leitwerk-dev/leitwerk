@@ -13,9 +13,17 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabClientLike, observeMergeRequest } from "./client.js";
+/** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-): { profile: string; projectId: number; iid: number } {
+): {
+	/** @public */
+	profile: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+} {
 	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
 		throw new Error("An authorized GitLab process project is required");
 	const binding = ctx.project.metadata?.gitlab as
@@ -41,17 +49,30 @@ async function findOrCreate<T>(find: () => Promise<T | undefined>, create: () =>
 		return recovered;
 	}
 }
+/** @internal */
 export async function ensureGitLabComment(input: {
+	/** @internal */
 	client: GitLabClientLike;
+	/** @internal */
 	writes: ExternalWriteLogRepoLike;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	projectId: number;
+	/** @internal */
 	iid: number;
+	/** @internal */
 	writeKey: string;
+	/** @internal */
 	body: string;
+	/** @internal */
 	discussionId?: string;
+	/** @internal */
 	signal?: AbortSignal;
-}): Promise<{ marker: string }> {
+}): Promise<{
+	/** @internal */
+	marker: string;
+}> {
 	const { client, writes, instanceId, projectId, iid, writeKey, signal } = input;
 	const identity = [client.baseUrl, projectId, iid, instanceId, writeKey];
 	if (input.discussionId) identity.push(input.discussionId);
@@ -74,13 +95,21 @@ export async function ensureGitLabComment(input: {
 	});
 	return { marker };
 }
+/** @public */
 export async function ensureGitLabSeenReaction(input: {
+	/** @public */
 	client: GitLabClientLike;
+	/** @public */
 	writes: ExternalWriteLogRepoLike;
+	/** @public */
 	instanceId: string;
+	/** @public */
 	projectId: number;
+	/** @public */
 	iid: number;
+	/** @public */
 	noteId: number;
+	/** @public */
 	signal?: AbortSignal;
 }): Promise<void> {
 	const { client, writes, instanceId, projectId, iid, noteId, signal } = input;
@@ -104,6 +133,7 @@ export async function ensureGitLabSeenReaction(input: {
 		},
 	);
 }
+/** @internal */
 export function registerGitLabTools(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,

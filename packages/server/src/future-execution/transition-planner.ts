@@ -5,39 +5,64 @@ import type {
 } from "@leitwerk-dev/domain";
 import type { RepositoryBundle } from "../db/repositories.js";
 
+/** @internal */
 export type FutureExecutionTransitionPlan =
 	| {
+			/** @internal */
 			kind: "consume";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedKind: FutureExecution["kind"];
+			/** @internal */
 			expectedNextRunAt: string;
 	  }
 	| {
+			/** @internal */
 			kind: "advance";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedKind: FutureExecution["kind"];
+			/** @internal */
 			expectedNextRunAt: string;
+			/** @internal */
 			nextRunAt: string;
 	  }
 	| {
+			/** @internal */
 			kind: "block";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedKind: FutureExecution["kind"];
+			/** @internal */
 			expectedNextRunAt: string;
+			/** @internal */
 			blockedReason: FutureExecutionBlockReason;
+			/** @internal */
 			modelSelection: DurableModelSelection | null;
+			/** @internal */
 			nextRunAt?: string;
 	  }
 	| {
+			/** @internal */
 			kind: "retry";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedKind: FutureExecution["kind"];
+			/** @internal */
 			expectedNextRunAt: string;
+			/** @internal */
 			nextRunAt: string;
 	  }
 	| {
+			/** @internal */
 			kind: "cancel_action";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedInstanceId: string;
 	  };
 

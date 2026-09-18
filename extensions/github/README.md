@@ -117,3 +117,15 @@ The recovery integration exercises real Git and reopens both provider storage an
 SQLite receipts: a lost create response and subsequent restart must retain one PR
 and the same receipt. This verifies local persistence and tool wiring, not live
 GitHub API compatibility.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubClient`, `GitHubClientLike`, `GitHubFeedbackItem`, `GitHubFeedbackSourceConfig`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubIssueCancelledSourceConfig`, `GitHubIssueWatcherConfig`, `GitHubIssueWatcherEvent`, `GitHubLabelEvent`, `GitHubProjectBinding`, `GitHubPullRequest`, `GitHubPullRequestSourceConfig`, `GitHubPullRequestTerminalSourceConfig`, `GitHubRelease`, `GitHubRepository`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `manifest`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
+- `@leitwerk-dev/github/testing`: `LocalGitHubAdapter`, `LocalGitHubOptions`, `LocalGitHubRepository`, `LocalGitHubState`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

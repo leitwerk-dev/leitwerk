@@ -11,43 +11,71 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now, sqliteLikePatterns } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 interface FutureExecutionWritableFields {
+	/** @internal */
 	scheduleKind: FutureExecutionScheduleKind;
+	/** @internal */
 	processId: string;
+	/** @internal */
 	instanceId?: string | null;
+	/** @internal */
 	launcherId?: string | null;
+	/** @internal */
 	actionId?: string | null;
+	/** @internal */
 	payloadJson: string;
+	/** @internal */
 	cronExpression?: string | null;
+	/** @internal */
 	nextRunAt: string;
+	/** @internal */
 	modelSelection?: DurableModelSelection | null;
+	/** @internal */
 	blockedReason?: FutureExecutionBlockReason | null;
 }
 
+/** @internal */
 export interface CreateFutureExecutionInput extends FutureExecutionWritableFields {
+	/** @internal */
 	id?: string;
+	/** @internal */
 	kind: FutureExecutionKind;
 }
 
+/** @internal */
 export interface FutureExecutionOverviewQuery {
+	/** @internal */
 	query?: string;
+	/** @internal */
 	processType?: string;
+	/** @internal */
 	status?: "all" | "running" | "scheduled" | "needs_attention" | "completed" | "aborted";
+	/** @internal */
 	matchingLauncherIdsByTerm?: readonly (readonly string[])[];
 }
 
+/** @internal */
 export interface FutureExecutionOverviewPageQuery extends FutureExecutionOverviewQuery {
+	/** @internal */
 	limit: number;
+	/** @internal */
 	offset: number;
 }
 
+/** @internal */
 export interface FutureExecutionOverviewWindowQuery extends FutureExecutionOverviewQuery {
+	/** @internal */
 	limit: number;
+	/** @internal */
 	sortKey: "status" | "title" | "timeline";
+	/** @internal */
 	sortDirection: "asc" | "desc";
+	/** @internal */
 	launcherFallbackTitles: Readonly<Record<string, string>>;
 }
 
+/** @internal */
 export type UpdateFutureExecutionInput = Partial<FutureExecutionWritableFields>;
 
 function overviewPredicates(input: FutureExecutionOverviewQuery): SQL[] {
@@ -152,8 +180,10 @@ function rowToFutureExecution(row: typeof s.futureExecutions.$inferSelect): Futu
 	};
 }
 
+/** @internal */
 export function createFutureExecutionRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateFutureExecutionInput): FutureExecution {
 			const id = input.id ?? generateId("fut");
 			const ts = now();
@@ -177,11 +207,13 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			return rowToFutureExecution(values);
 		},
 
+		/** @internal */
 		getById(id: string): FutureExecution | null {
 			const row = db.select().from(s.futureExecutions).where(eq(s.futureExecutions.id, id)).get();
 			return row ? rowToFutureExecution(row) : null;
 		},
 
+		/** @internal */
 		listAll(): FutureExecution[] {
 			return db
 				.select()
@@ -191,6 +223,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
+		/** @internal */
 		countOverview(input: FutureExecutionOverviewQuery): number {
 			return (
 				db.select({ value: count() }).from(s.futureExecutions).where(overviewWhere(input)).get()
@@ -198,11 +231,17 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		listOverviewProcessTypes(
 			input: Pick<FutureExecutionOverviewQuery, "query" | "status" | "matchingLauncherIdsByTerm">,
 		) {
 			return db
-				.select({ processId: s.futureExecutions.processId, value: count() })
+				.select({
+					/** @internal */
+					processId: s.futureExecutions.processId,
+					/** @internal */
+					value: count(),
+				})
 				.from(s.futureExecutions)
 				.where(overviewWhere(input))
 				.groupBy(s.futureExecutions.processId)
@@ -210,6 +249,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		listOverviewWindow(input: FutureExecutionOverviewWindowQuery): FutureExecution[] {
 			const fallbackCases = Object.entries(input.launcherFallbackTitles).map(
 				([launcherId, title]) => sql`when ${launcherId} then ${title}`,
@@ -245,8 +285,11 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
+		/** @internal */
 		listOverviewPage(input: FutureExecutionOverviewPageQuery): {
+			/** @internal */
 			items: FutureExecution[];
+			/** @internal */
 			total: number;
 		} {
 			const items = db
@@ -262,6 +305,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			return { items, total };
 		},
 
+		/** @internal */
 		listByInstance(instanceId: string): FutureExecution[] {
 			return db
 				.select()
@@ -272,6 +316,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
+		/** @internal */
 		listRunnableDue(asOf: string): FutureExecution[] {
 			return db
 				.select()
@@ -287,6 +332,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
+		/** @internal */
 		listBlockedCronDue(asOf: string): FutureExecution[] {
 			return db
 				.select()
@@ -303,6 +349,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 				.map(rowToFutureExecution);
 		},
 
+		/** @internal */
 		getScheduledActionByInstance(instanceId: string): FutureExecution | null {
 			const row = db
 				.select()
@@ -315,6 +362,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			return row ? rowToFutureExecution(row) : null;
 		},
 
+		/** @internal */
 		updatePayloadJsonIfUnchanged(
 			id: string,
 			expectedPayloadJson: string,
@@ -333,6 +381,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			return result.changes > 0 ? this.getById(id) : null;
 		},
 
+		/** @internal */
 		update(id: string, input: UpdateFutureExecutionInput): FutureExecution | null {
 			const setValues: SQLiteUpdateSetSource<typeof s.futureExecutions> = {
 				updatedAt: now(),
@@ -356,6 +405,7 @@ export function createFutureExecutionRepo(db: LeitwerkDb) {
 			return this.getById(id);
 		},
 
+		/** @internal */
 		delete(id: string): boolean {
 			const result = db.delete(s.futureExecutions).where(eq(s.futureExecutions.id, id)).run();
 			return result.changes > 0;

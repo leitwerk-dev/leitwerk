@@ -284,3 +284,12 @@ selects `import_plan`. If it is blank, launch defers. Automatic work-branch assi
 through the same interface and atomically activates `import_plan`. The worker automatic turn
 publishes the supplied markdown as the `plan` product, increments the plan revision, clears stale
 review refs, and transitions directly to `implement`.
+
+## API support
+
+This extension currently has no `@public` declarations established by consumer usage.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

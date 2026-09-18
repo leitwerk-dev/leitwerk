@@ -7,8 +7,11 @@ import type {
 	WorkerUnitRef,
 } from "@leitwerk-dev/worker-runners/types";
 
+/** @internal */
 export interface WorkerUnitCleanupLogger {
+	/** @internal */
 	info?(bindings: Record<string, unknown>, message: string): void;
+	/** @internal */
 	warn?(bindings: Record<string, unknown>, message: string): void;
 }
 

@@ -3,7 +3,7 @@ import { threadId } from "node:worker_threads";
 
 const active = new AsyncLocalStorage<ReturnType<typeof createTestDiagnostics>>();
 
-/** Bounded, in-memory trace. Call report from onTestFailed; successful tests stay quiet. */
+/** @internal Bounded, in-memory trace. Call report from onTestFailed; successful tests stay quiet. */
 export function createTestDiagnostics(label: string) {
 	const started = performance.now();
 	const events: Record<string, unknown>[] = [];
@@ -21,13 +21,17 @@ export function createTestDiagnostics(label: string) {
 		});
 	};
 	const diagnostics = {
+		/** @internal */
 		mark,
+		/** @internal */
 		run<T>(fn: () => T): T {
 			return active.run(diagnostics, fn);
 		},
+		/** @internal */
 		format() {
 			return JSON.stringify({ label, pid: process.pid, threadId, dropped, events }, null, 2);
 		},
+		/** @internal */
 		report() {
 			mark("diagnostics.report");
 			console.error(diagnostics.format());
@@ -37,7 +41,7 @@ export function createTestDiagnostics(label: string) {
 	return diagnostics;
 }
 
-/** Logs only the operation name and exit metadata, never arguments, output or environment. */
+/** @internal Logs only the operation name and exit metadata, never arguments, output or environment. */
 export function traceTestSubprocess<T>(operation: string, run: () => T): T {
 	const trace = active.getStore();
 	if (!trace) return run();

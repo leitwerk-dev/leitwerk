@@ -51,6 +51,7 @@ function configuredModel(
  * Direct, server-only Pi AI adapter. It never reads PI_CODING_AGENT_DIR or an
  * ambient auth file; the current credential revision is supplied per call.
  */
+/** @internal */
 export function createBuiltinPiServerAdapter(builtinProviderId: string): PiServerAdapter {
 	return definePiServerAdapter({
 		async generateText(input) {

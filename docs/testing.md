@@ -22,6 +22,13 @@ npm run test:e2e
 If a failure points into `dist/`, rebuild before debugging the implementation.
 Never edit generated files by hand.
 
+CI runs `npm run api:check` separately after the full gate; local `test:full`
+does not include it. To check locally, run `npm run build && npm run api:check`.
+It checks release tags and signature dependencies and verifies that public and
+internal declarations survive the build.
+
+### Browser layout and behavior
+
 To validate external packages, extensions, and test roots in a development
 composition:
 

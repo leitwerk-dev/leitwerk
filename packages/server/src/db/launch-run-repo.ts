@@ -32,13 +32,19 @@ function toLaunchRun(row: typeof s.launchRuns.$inferSelect): LaunchRun {
 	};
 }
 
+/** @internal */
 export interface CreateLaunchRunInput {
+	/** @internal */
 	launcherId: string | null;
+	/** @internal */
 	idempotencyKey?: string | null;
+	/** @internal */
 	origin: LaunchOrigin;
+	/** @internal */
 	steps: readonly LaunchChecklistStep[];
 }
 
+/** @internal */
 export function createLaunchRunRepo(db: LeitwerkDb) {
 	const list = (where: SQL): LaunchRun[] =>
 		db
@@ -49,6 +55,7 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 			.all()
 			.map(toLaunchRun);
 	return {
+		/** @internal */
 		create(input: CreateLaunchRunInput): LaunchRun {
 			const ts = now();
 			const row = {
@@ -68,11 +75,13 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 			return toLaunchRun(row);
 		},
 
+		/** @internal */
 		getById(id: string): LaunchRun | null {
 			const row = db.select().from(s.launchRuns).where(eq(s.launchRuns.id, id)).get();
 			return row ? toLaunchRun(row) : null;
 		},
 
+		/** @internal */
 		saveReplay(runId: string, payload: unknown): void {
 			db.insert(s.launchRunReplays)
 				.values({ launchRunId: runId, payloadJson: JSON.stringify(payload) })
@@ -83,6 +92,7 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 				.run();
 		},
 
+		/** @internal */
 		getReplay<T>(runId: string): T | null {
 			const row = db
 				.select({ payloadJson: s.launchRunReplays.payloadJson })
@@ -92,15 +102,18 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 			return row ? (JSON.parse(row.payloadJson) as T) : null;
 		},
 
+		/** @internal */
 		deleteReplay(runId: string): void {
 			db.delete(s.launchRunReplays).where(eq(s.launchRunReplays.launchRunId, runId)).run();
 		},
 
+		/** @internal */
 		getByIdempotencyKey(key: string): LaunchRun | null {
 			const row = db.select().from(s.launchRuns).where(eq(s.launchRuns.idempotencyKey, key)).get();
 			return row ? toLaunchRun(row) : null;
 		},
 
+		/** @internal */
 		archiveIdempotencyKey(id: string, key: string): void {
 			db.update(s.launchRuns)
 				.set({ idempotencyKey: `${key}:attempt:${id}` })
@@ -108,9 +121,12 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 				.run();
 		},
 
+		/** @internal */
 		listByInstance: (instanceId: string) => list(eq(s.launchRuns.instanceId, instanceId)),
+		/** @internal */
 		listIncomplete: () => list(inArray(s.launchRuns.status, [...ACTIVE_STATUSES])),
 
+		/** @internal */
 		compareAndSet(next: LaunchRun, expectedRevision: number): LaunchRun | null {
 			const updatedAt = now();
 			const result = db
@@ -130,6 +146,7 @@ export function createLaunchRunRepo(db: LeitwerkDb) {
 			return result.changes > 0 ? this.getById(next.id) : null;
 		},
 
+		/** @internal */
 		update(id: string, mutate: (current: LaunchRun) => LaunchRun): LaunchRun | null {
 			for (let attempt = 0; attempt < 8; attempt += 1) {
 				const current = this.getById(id);

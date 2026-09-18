@@ -10,34 +10,54 @@ interface CacheEntry {
 	pins: number;
 }
 
+/** @internal */
 export interface PiResourceBundleCacheOptions {
+	/** @internal */
 	readonly maxEntries?: number;
+	/** @internal */
 	readonly maxBytes?: number;
 }
 
+/** @internal */
 export interface PiResourceBundleCacheStats {
+	/** @internal */
 	readonly entries: number;
+	/** @internal */
 	readonly bytes: number;
+	/** @internal */
 	readonly pinnedEntries: number;
+	/** @internal */
 	readonly pins: number;
 }
 
+/** @internal */
 export interface PiResourceBundleCacheGcResult {
+	/** @internal */
 	readonly removedDigests: readonly string[];
+	/** @internal */
 	readonly removedBytes: number;
 }
 
+/** @internal */
 export interface PiResourceBundleCache {
+	/** @internal */
 	put(bundle: PiResourceBundle): void;
+	/** @internal */
 	get(digest: string): PiResourceBundle | null;
+	/** @internal */
 	has(digest: string): boolean;
+	/** @internal */
 	pin(digest: string): boolean;
+	/** @internal */
 	unpin(digest: string): boolean;
+	/** @internal */
 	gc(): PiResourceBundleCacheGcResult;
+	/** @internal */
 	stats(): PiResourceBundleCacheStats;
 }
 
 /** In-memory operational cache. Bundles are immutable copies and pins are reference-counted. */
+/** @internal */
 export function createPiResourceBundleCache(
 	options: PiResourceBundleCacheOptions = {},
 ): PiResourceBundleCache {

@@ -10,8 +10,16 @@ Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm p
 
 Every PR must pass `Full validation` and `Conventional PR title and DCO`. These checks cover builds, type checks, tests, PR title format, and commit sign-offs. Publication also validates release metadata and package contents.
 
-Builds, tests, and browser installation use Node 26. Validation installs Chromium,
-Firefox, and WebKit and runs the browser suite in all three engines.
+CI and publication workflows run `npm run api:check` as a required step after
+`npm run test:full`; the local full gate does not include it. It checks explicit
+`@public`/`@internal` annotations and public signature dependencies. Both
+classifications remain in published declarations.
+
+Builds, tests, and browser installation use Node 26. Playwright 1.63 supports
+fresh browser archive extraction on Node 26.8.1, so the older temporary Node 24
+installer workaround is no longer needed. Validation installs Chromium, Firefox,
+and WebKit and runs the browser suite in all three engines. Browser installation
+retains a five-minute timeout.
 
 ## Publication safeguards
 
@@ -45,6 +53,11 @@ GitHub squash-merges PRs using their titles as commit titles. Release Please der
 | `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf` | none | none |
 
 An explicit `Release-As: X.Y.Z` footer overrides version selection. Commit sign-off requirements are documented in [Contributing](https://github.com/leitwerk-dev/leitwerk/blob/main/CONTRIBUTING.md).
+
+Breaking an `@public` API requires release notes and a minor bump before 1.0,
+or a major bump from 1.0. Removing its supported classification counts as a
+breaking change even when current consumers no longer use it. `@internal`
+APIs remain usable without this compatibility promise.
 
 ## Release automation
 

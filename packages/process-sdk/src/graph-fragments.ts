@@ -6,7 +6,9 @@ import type {
 	ProcessHumanTurnActionSpec,
 } from "./define-process.js";
 
+/** @internal */
 type MaybePromise<T> = T | Promise<T>;
+/** @internal */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 function appendQueuedInstruction<TState>(input: {
@@ -36,19 +38,26 @@ function appendQueuedInstruction<TState>(input: {
 	};
 }
 
+/** @internal */
 export type QueuedInstructionActionSpec<TParams = unknown, TState = unknown> = DistributiveOmit<
 	ProcessHumanTurnActionSpec<TParams, TState>,
 	"effect"
 > & {
+	/** @internal */
 	queueTarget?: ProcessInputTarget;
+	/** @internal */
 	queueSource?: InputSource;
+	/** @internal */
 	queueKind?: InputKind;
+	/** @internal */
 	resolveBodyMarkdown(
 		input: ProcessActionExecution<TParams, TState>,
 	): MaybePromise<string | null | undefined>;
+	/** @internal */
 	effect?: ProcessActionEffect<TParams, TState>;
 };
 
+/** @internal */
 export function queuedInstructionAction<TParams = unknown, TState = unknown>(
 	spec: QueuedInstructionActionSpec<TParams, TState>,
 ): ProcessHumanTurnActionSpec<TParams, TState> {
@@ -69,14 +78,18 @@ export function queuedInstructionAction<TParams = unknown, TState = unknown>(
 	} as ProcessHumanTurnActionSpec<TParams, TState>;
 }
 
+/** @internal */
 export type RevisionActionSpec<TParams = unknown, TState = unknown> = DistributiveOmit<
 	QueuedInstructionActionSpec<TParams, TState>,
 	"resolveBodyMarkdown"
 > & {
+	/** @internal */
 	messageFieldId?: string;
+	/** @internal */
 	missingMessageError?: string;
 };
 
+/** @internal */
 export function revisionAction<TParams = unknown, TState = unknown>(
 	spec: RevisionActionSpec<TParams, TState>,
 ): ProcessHumanTurnActionSpec<TParams, TState> {
@@ -93,13 +106,16 @@ export function revisionAction<TParams = unknown, TState = unknown>(
 	});
 }
 
+/** @internal */
 export type AcceptedReviewHandoffActionSpec<TParams = unknown, TState = unknown> = DistributiveOmit<
 	QueuedInstructionActionSpec<TParams, TState>,
 	"queueTarget"
 > & {
+	/** @internal */
 	queueTarget?: ProcessInputTarget;
 };
 
+/** @internal */
 export function acceptedReviewHandoffAction<TParams = unknown, TState = unknown>(
 	spec: AcceptedReviewHandoffActionSpec<TParams, TState>,
 ): ProcessHumanTurnActionSpec<TParams, TState> {

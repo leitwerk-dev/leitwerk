@@ -35,3 +35,14 @@ Pending approval is retained across shutdown. An interrupted turn parks for
 Retry. Repeating a launch with the same idempotency key returns the same child,
 including after restart. Lost provider responses are reconciled without creating
 another ticket.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/ticket-creation`: `TicketCreationParams`, `default`, `ticketCreationProcess`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

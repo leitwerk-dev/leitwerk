@@ -10,7 +10,9 @@ import type {
 	RegisteredProcessWatcherLike,
 } from "../process-watcher-registry.js";
 
+/** @internal */
 export interface WatcherRouteDeps {
+	/** @internal */
 	processWatchers?: ProcessWatcherServiceLike;
 }
 
@@ -58,6 +60,7 @@ function buildWatcherSummary(watcher: RegisteredProcessWatcherLike): WatcherSumm
 	};
 }
 
+/** @internal */
 export function registerWatcherRoutes(app: FastifyInstance, deps: WatcherRouteDeps): void {
 	app.get("/api/watchers", async () => {
 		const watchers = deps.processWatchers?.listAll() ?? [];

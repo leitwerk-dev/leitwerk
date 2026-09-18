@@ -3,17 +3,26 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface LauncherRecentValue {
+	/** @internal */
 	id: string;
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	fieldId: string;
+	/** @internal */
 	value: string;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	updatedAt: string;
 }
 
+/** @internal */
 export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		listByLauncher(launcherId: string): LauncherRecentValue[] {
 			return db
 				.select()
@@ -23,10 +32,15 @@ export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		recordValue(input: {
+			/** @internal */
 			launcherId: string;
+			/** @internal */
 			fieldId: string;
+			/** @internal */
 			value: string;
+			/** @internal */
 			limit?: number;
 		}): LauncherRecentValue {
 			const ts = now();
@@ -54,6 +68,7 @@ export function createLauncherRecentValueRepo(db: LeitwerkDb) {
 			return row;
 		},
 
+		/** @internal */
 		pruneField(launcherId: string, fieldId: string, limit = 5): void {
 			const stale = db
 				.select({ id: s.launcherRecentValues.id })

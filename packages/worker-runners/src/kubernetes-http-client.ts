@@ -106,13 +106,19 @@ interface KubernetesObjectResponse {
 	data?: Record<string, string>;
 }
 
+/** @internal */
 export interface KubernetesHttpApiClientOptions {
+	/** @internal */
 	apiServerUrl?: string;
+	/** @internal */
 	bearerToken?: string;
+	/** @internal */
 	caFile?: string;
+	/** @internal */
 	pollIntervalMs?: number;
 }
 
+/** @internal */
 export function createInClusterKubernetesApiClient(
 	options: KubernetesHttpApiClientOptions = {},
 ): KubernetesApiClient {
@@ -126,10 +132,15 @@ export function createInClusterKubernetesApiClient(
 	});
 }
 
+/** @internal */
 export function createKubernetesHttpApiClient(options: {
+	/** @internal */
 	apiServerUrl: string;
+	/** @internal */
 	bearerToken?: string;
+	/** @internal */
 	ca?: Buffer;
+	/** @internal */
 	pollIntervalMs?: number;
 }): KubernetesApiClient {
 	const baseUrl = new URL(options.apiServerUrl);

@@ -11,13 +11,21 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateProcessInputInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	sequence: number;
+	/** @internal */
 	source: InputSource;
+	/** @internal */
 	kind: InputKind;
+	/** @internal */
 	target?: ProcessInputTarget | null;
+	/** @internal */
 	bodyMarkdown: string;
+	/** @internal */
 	actor?: Actor;
 }
 
@@ -48,6 +56,7 @@ function rowToProcessInput(row: typeof s.processInputs.$inferSelect): ProcessInp
 	};
 }
 
+/** @internal */
 export function createProcessInputRepo(db: LeitwerkDb) {
 	const list = (instanceId: string, unconsumed = false): ProcessInput[] =>
 		db
@@ -63,6 +72,7 @@ export function createProcessInputRepo(db: LeitwerkDb) {
 			.all()
 			.map(rowToProcessInput);
 	return {
+		/** @internal */
 		create(input: CreateProcessInputInput): ProcessInput {
 			const id = generateId("inp");
 			const ts = now();
@@ -83,9 +93,12 @@ export function createProcessInputRepo(db: LeitwerkDb) {
 			return rowToProcessInput(values);
 		},
 
+		/** @internal */
 		listByInstance: (instanceId: string) => list(instanceId),
+		/** @internal */
 		listUnconsumed: (instanceId: string) => list(instanceId, true),
 
+		/** @internal */
 		markConsumed(id: string): boolean {
 			const result = db
 				.update(s.processInputs)
@@ -95,11 +108,13 @@ export function createProcessInputRepo(db: LeitwerkDb) {
 			return result.changes > 0;
 		},
 
+		/** @internal */
 		delete(id: string): boolean {
 			const result = db.delete(s.processInputs).where(eq(s.processInputs.id, id)).run();
 			return result.changes > 0;
 		},
 
+		/** @internal */
 		getMaxSequence(instanceId: string): number {
 			const row = db
 				.select({ sequence: max(s.processInputs.sequence) })

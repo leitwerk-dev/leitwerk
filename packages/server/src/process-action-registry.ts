@@ -31,80 +31,131 @@ import type {
 	ProcessSelectedTurnSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
 
+/** @internal */
 export interface ProcessContextData {
+	/** @internal */
 	params: unknown;
+	/** @internal */
 	state: unknown;
 }
 
+/** @internal */
 export interface ResolvedUiHumanTurnAction {
+	/** @internal */
 	kind: "ui_human_action";
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	turnType: "human";
+	/** @internal */
 	semanticEntryRefKey: ProcessSemanticEntryRefKey | null;
+	/** @internal */
 	acceptanceState: TurnAcceptanceState;
 }
 
+/** @internal */
 export interface ResolvedExternalHumanTriggerAction {
+	/** @internal */
 	kind: "external_human_trigger";
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	turnType: "external";
+	/** @internal */
 	semanticEntryRefKey: ProcessSemanticEntryRefKey | null;
+	/** @internal */
 	acceptanceState: TurnAcceptanceState;
-	externalTrigger: { id: string; actionId: string; label: string; description: string };
+	/** @internal */
+	externalTrigger: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		actionId: string;
+		/** @internal */
+		label: string;
+		/** @internal */
+		description: string;
+	};
 }
 
+/** @internal */
 export type ResolvedTurnScopedAction =
 	| ResolvedUiHumanTurnAction
 	| ResolvedExternalHumanTriggerAction;
 
+/** @internal */
 interface ResolvedAction<Definition> {
+	/** @internal */
 	definition: Definition;
+	/** @internal */
 	candidateSelectedTurnId: string | null;
+	/** @internal */
 	lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
 }
 
+/** @internal */
 export type ResolvedActionPreview = ResolvedAction<ProcessActionPreviewDefinition>;
+/** @internal */
 export type ResolvedActionScheduling = ResolvedAction<ProcessActionSchedulingDefinition>;
 
+/** @internal */
 export interface VisibleProcessActionSummary {
+	/** @internal */
 	id: string;
+	/** @internal */
 	label: string;
+	/** @internal */
 	description: string | null;
+	/** @internal */
 	form?: ProcessActionDefinition["form"];
+	/** @internal */
 	preview: ResolvedActionPreview | null;
 }
 
+/** @internal */
 export interface ProcessActionRegistry {
+	/** @internal */
 	getAction(processId: string, actionId: string): ProcessActionDefinition | undefined;
+	/** @internal */
 	isTurnScopedAction(processId: string, actionId: string): boolean;
+	/** @internal */
 	listVisibleActions(processId: string, ctx: ServerProcessContext): VisibleProcessActionSummary[];
+	/** @internal */
 	getSelectedTurnSummary(
 		processId: string,
 		process: ProcessInstance,
 		projects?: readonly ProcessProject[],
 	): ProcessSelectedTurnSummary | null;
+	/** @internal */
 	getServerDefinition(processId: string): BuiltServerProcessDefinition | undefined;
+	/** @internal */
 	getTurnDefinition(
 		processId: string,
 		turnId: string,
 	): TurnDefinition<unknown, unknown> | undefined;
+	/** @internal */
 	getProcessGraph(processId: string): ExtensionProcessDefinition | undefined;
+	/** @internal */
 	getProcessDisplayName(processId: string): string | undefined;
+	/** @internal */
 	resolveContextData(
 		processId: string,
 		process: Pick<ProcessInstance, "paramsJson" | "stateJson">,
 	): ProcessContextData;
+	/** @internal */
 	resolveTurnScopedAction(
 		processId: string,
 		process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
 		actionId: string,
 		source: ProcessActionExecutionSource,
 	): ResolvedTurnScopedAction | null;
+	/** @internal */
 	resolveActionPreview(
 		processId: string,
 		process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
 		actionId: string,
 	): ResolvedActionPreview | null;
+	/** @internal */
 	resolveActionScheduling(
 		processId: string,
 		process: Pick<ProcessInstance, "selectedTurnId" | "paramsJson" | "stateJson">,
@@ -360,6 +411,7 @@ function resolveTurnScopedActionForProcess(
 	};
 }
 
+/** @internal */
 export function buildProcessActionRegistry(
 	catalog: Pick<ExtensionCatalog, "processes">,
 ): ProcessActionRegistry {

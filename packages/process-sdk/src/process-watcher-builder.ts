@@ -5,7 +5,9 @@ import type {
 } from "./extension-api.js";
 import { cloneMap, registerUnique } from "./registry-utils.js";
 
+/** @public */
 export interface BuiltProcessWatcherDefinition<TParams = unknown> {
+	/** @public */
 	watchers: ReadonlyMap<string, ProcessWatcherDefinition<TParams, unknown, unknown>>;
 }
 
@@ -26,7 +28,9 @@ function validateWatcherDefinition<TParams>(
 	}
 }
 
+/** @internal */
 export function createProcessWatcherBuilder<TParams = unknown>(): ProcessWatcherAPI<TParams> & {
+	/** @internal */
 	getDefinition(): BuiltProcessWatcherDefinition<TParams>;
 } {
 	const watchers = new Map<string, ProcessWatcherDefinition<TParams, unknown, unknown>>();
@@ -53,6 +57,7 @@ export function createProcessWatcherBuilder<TParams = unknown>(): ProcessWatcher
 	};
 }
 
+/** @public */
 export function buildProcessWatchers<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 ): BuiltProcessWatcherDefinition<TParams> | undefined {

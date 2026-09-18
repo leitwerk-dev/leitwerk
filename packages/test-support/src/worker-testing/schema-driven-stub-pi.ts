@@ -8,6 +8,7 @@ function isObjectLike(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
 }
 
+/** @internal */
 export function synthesizeStubArgValue(key: string, spec: unknown): unknown {
 	if (key === "changedProjects") {
 		return undefined;
@@ -30,6 +31,7 @@ export function synthesizeStubArgValue(key: string, spec: unknown): unknown {
 	}
 }
 
+/** @internal */
 export function synthesizeStubToolArgs(
 	parameters: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -42,6 +44,7 @@ export function synthesizeStubToolArgs(
 	);
 }
 
+/** @internal */
 export function createSchemaDrivenToolCallScriptResolver(): StubToolCallScriptResolver {
 	return ({ tools }: StubToolCallScriptResolverContext) => {
 		const markdownTool = tools.find((tool) => tool.name === "markdown_result");
@@ -73,8 +76,12 @@ export function createSchemaDrivenToolCallScriptResolver(): StubToolCallScriptRe
 	};
 }
 
+/** @internal */
 export function createSchemaDrivenStubPiFactory(
-	options: { toolCallScriptResolver?: StubToolCallScriptResolver } = {},
+	options: {
+		/** @internal */
+		toolCallScriptResolver?: StubToolCallScriptResolver;
+	} = {},
 ): StubPiTreeHandleFactory {
 	return new StubPiTreeHandleFactory({
 		toolCallScriptResolver:

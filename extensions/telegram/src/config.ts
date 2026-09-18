@@ -1,19 +1,48 @@
 import { isUnknownRecord as isRecord } from "@leitwerk-dev/domain";
 
+/** @internal */
 export interface TelegramExtensionConfig {
+	/** @internal */
 	enabled: boolean;
+	/** @internal */
 	botToken: string;
+	/** @internal */
 	allowUserIds: readonly number[];
-	delivery: { forumChatId: string };
-	markdown: { maxChars: number };
+	/** @internal */
+	delivery: {
+		/** @internal */
+		forumChatId: string;
+	};
+	/** @internal */
+	markdown: {
+		/** @internal */
+		maxChars: number;
+	};
+	/** @internal */
 	topicTitleTemplate: string;
-	actionModelSelection: { enabled: boolean };
+	/** @internal */
+	actionModelSelection: {
+		/** @internal */
+		enabled: boolean;
+	};
+	/** @internal */
 	allowedModelProfileIds: readonly string[];
 }
 
+/** @internal */
 export type TelegramConfigResult =
-	| { ok: true; config: TelegramExtensionConfig }
-	| { ok: false; errors: readonly string[] };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			config: TelegramExtensionConfig;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			errors: readonly string[];
+	  };
 
 interface RawTelegramConfig {
 	enabled?: unknown;
@@ -61,6 +90,7 @@ function normalizeAllowedModelProfileIds(value: unknown): string[] {
 	];
 }
 
+/** @internal */
 export function normalizeTelegramConfig(rawValue: unknown): TelegramConfigResult {
 	const raw = (isRecord(rawValue) ? rawValue : {}) as RawTelegramConfig;
 	const delivery = isRecord(raw.delivery) ? raw.delivery : {};

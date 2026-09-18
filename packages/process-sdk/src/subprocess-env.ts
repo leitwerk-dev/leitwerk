@@ -4,11 +4,13 @@ import {
 	WORKER_SNAPSHOT_TOKEN_ENV,
 } from "@leitwerk-dev/worker-protocol";
 
+/** @public */
 export type SubprocessEnvInput = Record<string, string | undefined>;
 
 export const INTERNAL_REPOSITORY_GIT_SSH_ENV_PREFIX = "LEITWERK_INTERNAL_REPOSITORY_GIT_SSH_";
 export const INTERNAL_REPOSITORY_GIT_HTTPS_ENV_PREFIX = "LEITWERK_INTERNAL_REPOSITORY_GIT_HTTPS_";
 
+/** @internal */
 export const WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS = [
 	WORKER_IPC_CONNECT_TOKEN_ENV,
 	WORKER_IPC_RECONNECT_ENV,
@@ -32,6 +34,7 @@ const SENSITIVE_ENV_KEYS = new Set<string>([
  * process itself. Repository scripts, git hooks, package managers, and other
  * tool subprocesses must not receive them.
  */
+/** @internal */
 export function sanitizeWorkerSubprocessEnv(
 	baseEnv: SubprocessEnvInput = process.env,
 	overrides: SubprocessEnvInput = {},

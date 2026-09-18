@@ -12,9 +12,13 @@ const DEFAULT_MAX_CHOICE_FIELDS = 64;
 const DEFAULT_MAX_CHOICES_PER_FIELD = 256;
 const DEFAULT_MAX_CHOICE_TEXT_LENGTH = 512;
 
+/** @internal */
 export interface ResolveRegisteredProviderOptionsInput {
+	/** @internal */
 	readonly provider: RegisteredModelProvider;
+	/** @internal */
 	readonly explicit?: Readonly<Record<string, unknown>> | null;
+	/** @internal */
 	readonly profileDefaults?: Readonly<Record<string, unknown>> | null;
 }
 
@@ -22,6 +26,7 @@ export interface ResolveRegisteredProviderOptionsInput {
  * Resolve structural option values. Dynamic choices are deliberately absent:
  * they are advisory UI data, not an allowlist or fallback source.
  */
+/** @internal */
 export function resolveRegisteredProviderOptions(
 	input: ResolveRegisteredProviderOptionsInput,
 ): ProviderOptionsResolution {
@@ -33,8 +38,11 @@ export function resolveRegisteredProviderOptions(
 	});
 }
 
+/** @internal */
 export function validateConfiguredProviderOptions(input: {
+	/** @internal */
 	readonly provider: RegisteredModelProvider;
+	/** @internal */
 	readonly values: Readonly<Record<string, unknown>>;
 }): readonly ProviderOptionValidationIssue[] {
 	const result = resolveRegisteredProviderOptions({
@@ -50,23 +58,39 @@ export function validateConfiguredProviderOptions(input: {
 	return result.issues.filter((issue) => issue.code !== "required");
 }
 
+/** @internal */
 export type ProviderOptionChoicesResult =
 	| {
+			/** @internal */
 			readonly ok: true;
+			/** @internal */
 			readonly choices: Readonly<Record<string, readonly ProviderOptionChoice[]>>;
 	  }
-	| { readonly ok: false; readonly safeReason: string };
+	| {
+			/** @internal */
+			readonly ok: false;
+			/** @internal */
+			readonly safeReason: string;
+	  };
 
+/** @internal */
 export interface LoadProviderOptionChoicesInput {
+	/** @internal */
 	readonly provider: RegisteredModelProvider;
+	/** @internal */
 	readonly credentialStatus: ModelProviderCredentialStatusResolver;
+	/** @internal */
 	readonly timeoutMs?: number;
+	/** @internal */
 	readonly maxFields?: number;
+	/** @internal */
 	readonly maxChoicesPerField?: number;
+	/** @internal */
 	readonly maxTextLength?: number;
 }
 
 /** Fetch bounded advisory choices without making them part of option validation. */
+/** @internal */
 export async function loadProviderOptionChoices(
 	input: LoadProviderOptionChoicesInput,
 ): Promise<ProviderOptionChoicesResult> {

@@ -91,6 +91,7 @@ import type { Broadcaster } from "../ws/broadcast.js";
 
 export const PRIMARY_PATH_ACTIVE_TURN_EVENT_LIMIT = 500;
 
+/** @public */
 export interface RouteDeps
 	extends Pick<
 		RepositoryBundle,
@@ -115,37 +116,66 @@ export interface RouteDeps
 		| "externalWrites"
 		| "transaction"
 	> {
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
+	/** @public */
 	externalSourceService?: Pick<
 		import("../external-source-service.js").ExternalSourceService,
 		"currentGenerations"
 	>;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	processQuestions: ProcessQuestionService;
+	/** @internal */
 	toolApprovalGate: ToolApprovalGate;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	supervisor?: WorkerSupervisor;
+	/** @internal */
 	processEngine: ProcessEngine;
+	/** @internal */
 	processDeletion: ProcessDeletionService;
+	/** @internal */
 	processActionRegistry?: ProcessActionRegistry;
+	/** @internal */
 	processUiRegistry?: ProcessUiRegistry;
+	/** @internal */
 	extensionHost?: ExtensionHost;
+	/** @internal */
 	launcherService: ProcessLauncherService;
+	/** @internal */
 	launchCoordinator: LaunchCoordinator;
+	/** @internal */
 	launcherRecentValues: LauncherRecentValuesService;
+	/** @internal */
 	launchPlans: ProcessLaunchPlanServiceLike;
+	/** @internal */
 	processTitles?: ProcessTitleGenerator;
+	/** @internal */
 	toolRenderers?: ReadonlyMap<string, ToolCallRendererDefinition>;
+	/** @internal */
 	config?: LeitwerkConfig;
+	/** @internal */
 	sessionReader: ProcessSessionReader;
+	/** @internal */
 	futureExecutionLifecycle: FutureExecutionLifecycle;
+	/** @internal */
 	modelProviderRegistry?: ModelProviderRegistry;
+	/** @internal */
 	modelProviderCredentialStatus?: ModelProviderCredentialStatusResolver;
+	/** @internal */
 	modelStatusCache: ModelStatusCache;
+	/** @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	processModelSelection: ProcessModelSelectionServiceLike;
+	/** @internal */
 	skillCatalog?: SkillCatalogService;
+	/** @internal */
 	sessionTransferService?: SessionTransferService;
 }
 

@@ -62,42 +62,77 @@ import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 
 // ── Repository bundle ──
 
+/** @public */
 export interface RepositoryBundle {
+	/** @internal */
 	startupObservations: ReturnType<typeof createStartupObservationRepo>;
+	/** @internal */
 	turnSummaries: ReturnType<typeof createTurnSummaryRepo>;
+	/** @public */
 	processes: ReturnType<typeof createProcessInstanceRepo>;
+	/** @public */
 	projects: ReturnType<typeof createProcessProjectRepo>;
+	/** @internal */
 	questionRequests: ReturnType<typeof createProcessQuestionRequestRepo>;
+	/** @internal */
 	processRelations: ReturnType<typeof createProcessRelationRepo>;
+	/** @internal */
 	toolApprovalRequests: ReturnType<typeof createProcessToolApprovalRequestRepo>;
+	/** @internal */
 	inputs: ReturnType<typeof createProcessInputRepo>;
+	/** @internal */
 	events: ReturnType<typeof createProcessEventRepo>;
+	/** @internal */
 	handoffDedupKeys: ReturnType<typeof createProcessHandoffDedupKeyRepo>;
+	/** @internal */
 	futureExecutions: ReturnType<typeof createFutureExecutionRepo>;
+	/** @internal */
 	launcherRecentValues: ReturnType<typeof createLauncherRecentValueRepo>;
+	/** @internal */
 	ticketDestinationRecents: ReturnType<typeof createTicketDestinationRecentRepo>;
+	/** @internal */
 	launchRuns: ReturnType<typeof createLaunchRunRepo>;
+	/** @internal */
 	titleJobs: ReturnType<typeof createProcessTitleJobRepo>;
+	/** @internal */
 	pendingExternalSourceFires: ReturnType<typeof createPendingExternalSourceFireRepo>;
+	/** @internal */
 	leafOutcomeSnapshots: ReturnType<typeof createProcessLeafOutcomeSnapshotRepo>;
+	/** @public */
 	turnRecords: ReturnType<typeof createProcessTurnRecordRepo>;
+	/** @internal */
 	turnStarts: ReturnType<typeof createTurnStartRecordRepo>;
+	/** @internal */
 	turnAnnotations: ReturnType<typeof createProcessTurnAnnotationRepo>;
+	/** @internal */
 	leases: ReturnType<typeof createWorkerLeaseRepo>;
+	/** @internal */
 	providerCredentials: ReturnType<typeof createProviderCredentialRepo>;
+	/** @public */
 	externalWrites: ReturnType<typeof createExternalWriteLogRepo>;
+	/** @internal */
 	sessionTransfers: ReturnType<typeof createSessionTransferRepo>;
+	/** @internal */
 	skills: ReturnType<typeof createSkillRepo>;
+	/** @internal */
 	processSkills: ReturnType<typeof createProcessSkillRepo>;
+	/** @internal */
 	apiTokens: ReturnType<typeof createApiTokenRepo>;
+	/** @internal */
 	authSessions: ReturnType<typeof createAuthSessionRepo>;
+	/** @internal */
 	authLoginFlows: ReturnType<typeof createAuthLoginFlowRepo>;
+	/** @internal */
 	transaction<T>(fn: (repos: RepositoryBundle) => T): T;
 }
 
+/** @internal */
 export function createAllRepos(
 	db: LeitwerkDb,
-	options: { credentialCipher?: CredentialCipher } = {},
+	options: {
+		/** @internal */
+		credentialCipher?: CredentialCipher;
+	} = {},
 ): RepositoryBundle {
 	const credentialCipher = options.credentialCipher ?? createUnavailableCredentialCipher();
 	const bundle: RepositoryBundle = {

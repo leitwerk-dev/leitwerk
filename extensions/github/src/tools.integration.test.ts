@@ -1,77 +1,98 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { closeDatabase, createAllRepos, createDatabase } from "@leitwerk-dev/server";
-import { createToolCollector } from "@leitwerk-dev/test-support";
-import { createTestDiagnostics } from "@leitwerk-dev/test-support/local-git";
-import { expect, it } from "vitest";
-import { pullRequestArgs, toolContext } from "./testing/tool-fixture.js";
+import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
+import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
+import { expect, it, vi } from "vitest";
 import { LocalGitHubAdapter } from "./testing.js";
 import { registerGitHubTools } from "./tools.js";
 
-it("retains one reconciled PR and SQLite receipt across provider and repository reopening", async ({
+it("authorizes project bindings and reconciles a lost PR response into one durable receipt", async ({
 	onTestFinished,
-	onTestFailed,
 }) => {
-	const trace = createTestDiagnostics("github-tools recovery");
-	onTestFailed(() => trace.report());
-	await trace.run(async () => {
-		const root = mkdtempSync(path.join(tmpdir(), "github-tools-recovery-"));
-		let db: ReturnType<typeof createDatabase> | undefined;
-		onTestFinished(() => {
-			if (db) closeDatabase(db);
-			rmSync(root, { recursive: true, force: true });
-		});
-		trace.mark("seed.start");
-		let adapter = new LocalGitHubAdapter({
-			root,
-			baseUrl: "https://github.invalid",
-			seeds: [{ owner: "team", name: "one" }],
-		});
-		const bare = adapter.repo("team", "one").repository.ssh_url;
-		const baseSha = adapter.git.head(bare, "main");
-		const tree = adapter.git.run(bare, ["rev-parse", "main^{tree}"]);
-		const headSha = adapter.git.run(bare, [
-			"commit-tree",
-			tree,
-			"-p",
-			baseSha,
-			"-m",
-			"Feature commit",
-		]);
-		adapter.git.run(bare, ["update-ref", "refs/heads/feature", headSha]);
-		const sqlitePath = path.join(root, "receipts.sqlite");
-		db = createDatabase({ sqlitePath });
-		let repos = createAllRepos(db);
-		const process = repos.processes.create({ processId: "test", lifecycleStatus: "active" });
-		const ctx = toolContext(process.id);
-		const register = () => {
-			const { api, tools } = createToolCollector();
-			registerGitHubTools(api, { client: () => adapter.client() }, repos.externalWrites);
-			const tool = tools.get("github_ensure_pull_request");
-			if (!tool) throw new Error("Missing PR tool");
-			return tool;
-		};
-		trace.mark("reconcile.start");
-		adapter.state.failAfterPullRequestWrite = true;
-		const pr = await register().execute(ctx, pullRequestArgs);
-		expect(pr).toMatchObject({ head: { sha: headSha }, base: { sha: baseSha } });
-		const receipts = repos.externalWrites.listByInstance(process.id);
-		expect(receipts).toHaveLength(1);
-		expect(receipts[0]).toMatchObject({
-			dedupKey: ctx.idempotencyKey,
-			writeType: "github.ensure_pr",
-			metadata: { number: adapter.repo("team", "one").pulls[0].number },
-		});
-		trace.mark("reopen.start");
-		closeDatabase(db);
-		db = undefined;
-		adapter = new LocalGitHubAdapter({ root, baseUrl: "https://github.invalid" });
-		db = createDatabase({ sqlitePath });
-		repos = createAllRepos(db);
-		await expect(register().execute(ctx, pullRequestArgs)).resolves.toEqual(pr);
-		expect(adapter.repo("team", "one").pulls).toHaveLength(1);
-		expect(repos.externalWrites.listByInstance(process.id)).toEqual(receipts);
-		trace.mark("reopen.end");
+	const root = mkdtempSync(path.join(tmpdir(), "github-tools-"));
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+	const adapter = new LocalGitHubAdapter({
+		root,
+		baseUrl: "http://127.0.0.1:18082",
+		seeds: [
+			{ owner: "team", name: "one" },
+			{ owner: "team", name: "two" },
+		],
 	});
-}, 60_000);
+	const repo = adapter.repo("team", "one");
+	adapter.git.run(repo.repository.ssh_url, ["branch", "feature", "main"]);
+	const { api, tools } = createToolCollector();
+	const writes = createInMemoryExternalWriteLog();
+	const client = vi.fn((profile: string) => {
+		if (profile !== "first") throw new Error("Wrong profile");
+		return adapter.client();
+	});
+	registerGitHubTools(api, { client }, writes);
+	const ctx = {
+		process: { id: "p", paramsJson: "{}" },
+		project: {
+			instanceId: "p",
+			workBranch: "feature",
+			baseBranch: "main",
+			metadata: { github: { owner: "team", repo: "one", profile: "first" } },
+		},
+		idempotencyKey: "retained-pr-key",
+		signal: new AbortController().signal,
+	} as IntegrationToolExecutionContext;
+	const tool = tools.get("github_ensure_pull_request");
+	const args = {
+		projectKey: "one",
+		owner: "attacker",
+		repo: "two",
+		profile: "other",
+		title: "A change",
+		body: "Review",
+		head: "feature",
+		base: "main",
+	};
+	adapter.state.failAfterPullRequestWrite = true;
+	await expect(tool?.execute(ctx, args)).resolves.toMatchObject({ number: expect.any(Number) });
+	expect(writes.records).toMatchObject([
+		{
+			dedupKey: "retained-pr-key",
+			writeType: "github.ensure_pr",
+			metadata: { number: repo.pulls[0].number },
+		},
+	]);
+	await tool?.execute(ctx, args);
+	expect(repo.pulls).toHaveLength(1);
+	expect(adapter.repo("team", "two").pulls).toHaveLength(0);
+	expect(tools.has("github_resolve_release_lock")).toBe(false);
+	const comment = tools.get("github_add_pull_request_comment");
+	const commentCtx = { ...ctx, idempotencyKey: "comment-key" };
+	const commentArgs = {
+		projectKey: "one",
+		pullRequestNumber: repo.pulls[0].number,
+		body: "Reviewed",
+	};
+	await comment?.execute(commentCtx, commentArgs);
+	await comment?.execute(commentCtx, commentArgs);
+	expect(repo.comments[repo.pulls[0].number]).toHaveLength(1);
+	const update = tools.get("github_update_pull_request");
+	const updateCtx = { ...ctx, idempotencyKey: "update-key" };
+	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Updated" } });
+	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Should not replay" } });
+	expect(repo.pulls[0].title).toBe("Updated");
+	client.mockClear();
+	await expect(
+		tool?.execute(
+			{
+				...ctx,
+				project: {
+					...ctx.project,
+					instanceId: "other",
+				} as IntegrationToolExecutionContext["project"],
+			},
+			args,
+		),
+	).rejects.toThrow("authorized");
+	expect(client).not.toHaveBeenCalled();
+	const restarted = new LocalGitHubAdapter({ root, baseUrl: "http://127.0.0.1:18082" });
+	expect(await restarted.client().listPullRequests("team", "one", "all")).toHaveLength(1);
+}, 30_000);

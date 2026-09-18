@@ -10,12 +10,19 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import { createConnectionDiagnosticRecorder } from "./connection-diagnostics.js";
 
+/** @internal */
 export interface WorkerIpc {
+	/** @internal */
 	send(message: WorkerToServerMessage): void;
+	/** @internal */
 	onMessage(handler: (message: ServerToWorkerMessage) => void): void;
+	/** @internal */
 	onError(handler: (error: Error) => void): void;
+	/** @internal */
 	onConnect?(handler: () => void): void;
+	/** @internal */
 	start(): void;
+	/** @internal */
 	stop(): void;
 }
 

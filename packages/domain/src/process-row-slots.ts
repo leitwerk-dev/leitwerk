@@ -1,18 +1,30 @@
 import type { ProcessInstance, ProcessLifecycleStatus, ProcessProject } from "./domain-model.js";
 
+/** @internal */
 export interface ProcessRowSlot {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	processId: string;
+	/** @internal */
 	title: string;
+	/** @internal */
 	subtitle: string;
+	/** @internal */
 	selectedTurnId: string | null;
+	/** @internal */
 	lifecycleStatus: ProcessLifecycleStatus;
+	/** @internal */
 	statusCategory: "error" | "active" | "waiting" | "terminal" | "discovered";
+	/** @internal */
 	projectCount: number;
+	/** @internal */
 	externalId: string | null;
+	/** @internal */
 	externalLinkCount: number;
 }
 
+/** @internal */
 export function getProcessStatusCategory(
 	lifecycleStatus: ProcessLifecycleStatus,
 ): ProcessRowSlot["statusCategory"] {
@@ -23,6 +35,7 @@ export function getProcessStatusCategory(
 	return "discovered";
 }
 
+/** @internal */
 export function buildProcessRowSlot(
 	process: ProcessInstance,
 	projects: ReadonlyArray<ProcessProject>,
@@ -46,6 +59,7 @@ export function buildProcessRowSlot(
 	};
 }
 
+/** @internal */
 export function sortProcessRows(rows: ProcessRowSlot[]): ProcessRowSlot[] {
 	const categoryOrder: Record<string, number> = {
 		error: 0,

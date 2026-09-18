@@ -46,58 +46,96 @@ interface LeitwerkConditionalExtensionEntryRecord {
 	import?: unknown;
 }
 
+/** @internal */
 export interface DiscoveredExtensionEntry {
+	/** @internal */
 	packageName: string;
+	/** @internal */
 	packageDir: string;
+	/** @internal */
 	entryPath: string;
+	/** @internal */
 	pi?: DiscoveredPiContribution;
 }
 
+/** @internal */
 export interface DiscoveredPiContribution {
+	/** @internal */
 	workerEntryPath?: string;
+	/** @internal */
 	serverEntryPath?: string;
+	/** @internal */
 	resources: {
+		/** @internal */
 		skillDirectories: string[];
+		/** @internal */
 		promptDirectories: string[];
 	};
 }
 
+/** @public */
 export interface LoadedExtensionModule {
+	/** @internal */
 	packageName: string;
+	/** @internal */
 	packageDir: string;
+	/** @internal */
 	entryPath: string;
+	/** @internal */
 	pi?: DiscoveredPiContribution;
+	/** @public */
 	module: LeitwerkExtensionModule;
 }
 
+/** @internal */
 export interface CatalogPiContribution extends DiscoveredPiContribution {
+	/** @internal */
 	ownerExtensionId: string;
+	/** @internal */
 	packageName: string;
 }
 
+/** @internal */
 export interface OwnedModelProviderSet {
+	/** @internal */
 	ownerExtensionId: string;
+	/** @internal */
 	packageName: string;
+	/** @internal */
 	resolve: NonNullable<LeitwerkExtensionModule["modelProviders"]>;
 }
 
+/** @public */
 export interface ExtensionCatalog {
+	/** @internal */
 	readonly events: EventBus;
+	/** @public */
 	readonly modules: readonly LoadedExtensionModule[];
+	/** @public */
 	readonly processes: ReadonlyMap<string, ExtensionProcessDefinition>;
+	/** @internal */
 	readonly toolRenderers: ReadonlyMap<string, ToolCallRendererDefinition>;
+	/** @internal */
 	readonly piContributions: readonly CatalogPiContribution[];
+	/** @internal */
 	readonly modelProviders: readonly OwnedModelProviderSet[];
+	/** @internal */
 	get<T>(token: CapabilityToken<T>): T | T[] | undefined;
+	/** @internal */
 	require<T>(token: CapabilityToken<T>): T | T[];
 }
 
+/** @internal */
 export interface ResolveExtensionEntriesOptions {
+	/** @internal */
 	startDir?: string;
+	/** @internal */
 	sources?: readonly string[];
 }
 
+/** @internal */
 export const RUNTIME_EXTENSION_ENTRIES_ENV = "LEITWERK_EXTENSION_ENTRIES_JSON";
+/** @internal */
 export const RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV = "LEITWERK_EXTENSION_ALLOWED_ROOTS_JSON";
 
 const jiti = createJiti(import.meta.url);
@@ -430,6 +468,7 @@ function dedupeEntries(entries: readonly DiscoveredExtensionEntry[]): Discovered
 	return [...deduped.values()].sort((a, b) => a.packageName.localeCompare(b.packageName));
 }
 
+/** @internal */
 export async function resolveExtensionEntries(
 	options: ResolveExtensionEntriesOptions = {},
 ): Promise<DiscoveredExtensionEntry[]> {
@@ -442,12 +481,14 @@ export async function resolveExtensionEntries(
 	return dedupeEntries(explicitEntries);
 }
 
+/** @internal */
 export function serializeResolvedExtensionEntries(
 	entries: readonly DiscoveredExtensionEntry[],
 ): string {
 	return JSON.stringify(entries);
 }
 
+/** @internal */
 export function parseResolvedExtensionEntries(json: string): DiscoveredExtensionEntry[] {
 	const parsed = JSON.parse(json) as unknown;
 	if (!v.safeParse(v.array(v.unknown()), parsed).success) {
@@ -465,6 +506,7 @@ export function parseResolvedExtensionEntries(json: string): DiscoveredExtension
 	});
 }
 
+/** @internal */
 export async function importExtensionModules(
 	entries: readonly DiscoveredExtensionEntry[],
 ): Promise<LoadedExtensionModule[]> {
@@ -492,6 +534,7 @@ export async function importExtensionModules(
 }
 
 /** Loads one server-only Pi adapter declared by an extension package. */
+/** @internal */
 export async function importPiServerAdapter(entryPath: string): Promise<PiServerAdapter> {
 	const imported = (await jiti.import(entryPath)) as unknown;
 	const importedRecord = v.safeParse(unknownRecordSchema, imported);
@@ -548,6 +591,7 @@ function sortByDependencies(modules: readonly LoadedExtensionModule[]): LoadedEx
 	return ordered;
 }
 
+/** @internal */
 export async function buildExtensionCatalog(
 	modules: readonly LoadedExtensionModule[],
 ): Promise<ExtensionCatalog> {
@@ -657,6 +701,7 @@ export async function buildExtensionCatalog(
 	return catalog;
 }
 
+/** @internal */
 export async function loadExtensionCatalog(
 	options: ResolveExtensionEntriesOptions = {},
 ): Promise<ExtensionCatalog> {

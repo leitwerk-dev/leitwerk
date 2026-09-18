@@ -169,6 +169,7 @@ function dedupeTransitions(transitions: readonly ProcessTurnTransition[]): Proce
  * here and dropped later during edge construction. Entry turns and the declared
  * happy path are remapped/filtered to stay consistent.
  */
+/** @internal */
 export function collapseRoutingTurns(graph: ProcessGraphView): ProcessGraphView {
 	const routingIds = new Set<TurnId>();
 	for (const [turnId, turn] of graph.turns) {
@@ -332,6 +333,7 @@ function transitionLabel(transition: { outcome?: string; trigger?: string }): st
  * The `aborted` end state is always present because abort is reachable from any
  * active turn, even when no explicit transition targets it.
  */
+/** @internal */
 export function buildProcessFlowView(rawGraph: ProcessGraphView): ProcessFlowView {
 	const graph = collapseRoutingTurns(rawGraph);
 	const entryTurnIds = [...graph.entryTurnIds].filter((turnId) => graph.turns.has(turnId));

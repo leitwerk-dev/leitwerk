@@ -17,9 +17,12 @@ export {
 	type ToolCallRendererValueSource,
 };
 
+/** @internal */
 export const MARKDOWN_RESULT_TOOL_NAME = "markdown_result";
+/** @internal */
 export const MARKDOWN_RESULT_TOOL_MARKDOWN_PATH = "markdown";
 
+/** @internal */
 export const MARKDOWN_RESULT_TOOL_RENDERER: ToolCallRendererDefinition = {
 	toolName: MARKDOWN_RESULT_TOOL_NAME,
 	title: "Markdown result",
@@ -34,10 +37,12 @@ export const MARKDOWN_RESULT_TOOL_RENDERER: ToolCallRendererDefinition = {
 	],
 };
 
+/** @internal */
 export const CORE_TOOL_CALL_RENDERERS: readonly ToolCallRendererDefinition[] = [
 	MARKDOWN_RESULT_TOOL_RENDERER,
 ];
 
+/** @public */
 export const REQUIRED_MARKDOWN_RESULT_TURN_RESULT: TurnResultMarkdownBehavior = {
 	mode: "tool_call",
 	toolName: MARKDOWN_RESULT_TOOL_NAME,
@@ -49,6 +54,7 @@ function isNonEmptyString(value: unknown): value is string {
 	return typeof value === "string" && value.trim() !== "";
 }
 
+/** @internal */
 export function validateToolCallRendererDefinition(def: ToolCallRendererDefinition): string[] {
 	const errors: string[] = [];
 	if (!isNonEmptyString(def.toolName)) {

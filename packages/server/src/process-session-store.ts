@@ -31,10 +31,13 @@ import {
  * unchanged. Sources may capture content while producing a handle so its
  * signature and payload come from the same storage generation.
  */
+/** @internal */
 export interface ProcessSessionSnapshotHandle {
 	/** Opaque value that changes whenever the underlying session content changes. */
+	/** @internal */
 	signature: string;
 	/** Loads the raw session JSONL content captured by this handle. */
+	/** @internal */
 	load(): Promise<string>;
 }
 
@@ -47,8 +50,10 @@ export interface ProcessSessionSnapshotHandle {
  * represents the server copy of the session JSONL rather than a requirement to
  * mount or inspect worker volumes.
  */
+/** @internal */
 export interface ProcessSessionSource {
 	/** Returns a handle for the instance, or `null` when no session exists yet. */
+	/** @internal */
 	readSnapshotHandle(instanceId: string): Promise<ProcessSessionSnapshotHandle | null>;
 }
 
@@ -76,9 +81,13 @@ interface CachedSessionTree {
 	parsedTree: ParsedInstanceTree;
 }
 
+/** @internal */
 export interface ProcessSessionTreeReadResult {
+	/** @internal */
 	signature: string | null;
+	/** @internal */
 	piTree: ReadonlyPiSessionTree;
+	/** @internal */
 	parsedTree: ParsedInstanceTree;
 }
 
@@ -89,12 +98,15 @@ export interface ProcessSessionTreeReadResult {
  * capture and failed-turn continuation) go through this seam so
  * the server never reads worker filesystems directly.
  */
+/** @internal */
 export class ProcessSessionReader {
 	private readonly sessionTreeCache = new Map<string, CachedSessionTree>();
 	private readonly inFlightReads = new Map<string, Promise<CachedSessionTree>>();
 
+	/** @internal */
 	constructor(private readonly source: ProcessSessionSource) {}
 
+	/** @internal */
 	async readSessionTree(instanceId: string): Promise<ProcessSessionTreeReadResult> {
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			const handle = await this.source.readSnapshotHandle(instanceId);
@@ -122,10 +134,12 @@ export class ProcessSessionReader {
 		throw new Error(`Unable to read process session snapshot '${instanceId}'`);
 	}
 
+	/** @internal */
 	async readInstanceTree(instanceId: string): Promise<ParsedInstanceTree> {
 		return (await this.readSessionTree(instanceId)).parsedTree;
 	}
 
+	/** @internal */
 	async readPiSessionTree(instanceId: string): Promise<ReadonlyPiSessionTree> {
 		return (await this.readSessionTree(instanceId)).piTree;
 	}
@@ -160,6 +174,7 @@ export class ProcessSessionReader {
 	}
 
 	/** Returns the raw session JSONL, or `null` when no session exists yet. */
+	/** @internal */
 	async readRawContent(instanceId: string): Promise<string | null> {
 		for (let attempt = 0; attempt < 3; attempt += 1) {
 			const handle = await this.source.readSnapshotHandle(instanceId);

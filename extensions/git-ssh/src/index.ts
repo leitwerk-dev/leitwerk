@@ -12,24 +12,50 @@ import {
 
 const execFileAsync = promisify(execFile);
 
-export const manifest = { id: "git-ssh", version: "0.1.0" } as const;
+/** @internal */
+export const manifest = {
+	/** @internal */
+	id: "git-ssh",
+	/** @internal */
+	version: "0.1.0",
+} as const;
 
+/** @public */
 export interface GitSshAuthorizationPreflightInput {
+	/** @public */
 	credentialRef: string;
+	/** @public */
 	repoLocator: string;
+	/** @public */
 	baseBranch: string;
+	/** @public */
 	requireWrite: boolean;
 }
 
+/** @public */
 export type GitSshAuthorizationPreflightResult =
-	| { ok: true }
-	| { ok: false; access: "read" | "write"; detail: string };
+	| {
+			/** @public */
+			ok: true;
+	  }
+	| {
+			/** @public */
+			ok: false;
+			/** @public */
+			access: "read" | "write";
+			/** @public */
+			detail: string;
+	  };
 
+/** @public */
 export interface GitSshIntegration {
+	/** @public */
 	profiles(): readonly string[];
+	/** @public */
 	preflight(input: GitSshAuthorizationPreflightInput): Promise<GitSshAuthorizationPreflightResult>;
 }
 
+/** @public */
 export const gitSshIntegration = createCapabilityToken<GitSshIntegration>(
 	"@leitwerk-dev/git-ssh.integration",
 );
@@ -48,6 +74,7 @@ function gitFailureDetail(error: unknown): string {
 	return output.replace(/\s+/g, " ").trim().slice(0, 500);
 }
 
+/** @internal */
 export async function preflightGitSshAccess(
 	input: Omit<GitSshAuthorizationPreflightInput, "credentialRef">,
 	material: GitSshCredentialMaterial,
@@ -106,6 +133,7 @@ export async function preflightGitSshAccess(
 	}
 }
 
+/** @internal */
 function parseProfiles(raw: unknown): Map<string, GitSshCredentialMaterial> {
 	const root = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 	const credentials =
@@ -141,6 +169,7 @@ function parseProfiles(raw: unknown): Map<string, GitSshCredentialMaterial> {
 	return profiles;
 }
 
+/** @public */
 const extension: LeitwerkExtensionModule = {
 	manifest,
 	setupServer(api, config) {

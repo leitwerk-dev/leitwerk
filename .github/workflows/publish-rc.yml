@@ -85,6 +85,8 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Run full candidate test gate
         run: npm run test:full
+      - name: Check API classification and interface reports
+        run: npm run api:check
       - name: Validate package contents before RC versioning
         run: node ../tooling/scripts/publish-workspaces.mjs dry-run
       - name: Prepare immutable RC archives without lifecycle hooks

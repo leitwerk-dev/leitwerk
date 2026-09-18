@@ -60,53 +60,110 @@ export type {
 } from "@leitwerk-dev/process-sdk";
 export { isPiBranchDriftError, PiBranchDriftError } from "./pi-branch-guard.js";
 
+/** @public */
 export interface PiTreeHandleOptions {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	treeFile: string;
+	/** @public */
 	workspaceRoot: string;
+	/** @public */
 	sessionCwd?: string;
+	/** @internal */
 	resume: boolean;
+	/** @internal */
 	agentDir?: string;
+	/** @internal */
 	configSnapshot?: ConfigSnapshot;
+	/** @internal */
 	modelProfileId?: string | null;
+	/** @internal */
 	piConfig?: {
+		/** @internal */
 		systemPrompt?: string;
+		/** @internal */
 		appendSystemPrompt?: string;
+		/** @internal */
 		availableToolNames: string[];
 	};
 }
 
+/** @internal */
 export interface PiManagedBootstrapOptions {
+	/** @internal */
 	agentDir: string;
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	sessionCwd: string;
+	/** @internal */
 	configSnapshot: ConfigSnapshot;
+	/** @internal */
 	piConfig: PiTreeHandleOptions["piConfig"];
+	/** @internal */
 	manifest: ManagedPiResourceManifest;
-	expectedModel: { providerId: string; modelId: string };
+	/** @internal */
+	expectedModel: {
+		/** @internal */
+		providerId: string;
+		/** @internal */
+		modelId: string;
+	};
 }
 
+/** @internal */
 export interface PiManagedBootstrapResult {
+	/** @internal */
 	loadedResourceIds: string[];
-	loadedAgentsFiles: Array<{ path: string; sizeBytes: number }>;
-	loadedSkillFiles: Array<{ name: string; path: string }>;
-	resolvedModel: { providerId: string; modelId: string };
+	/** @internal */
+	loadedAgentsFiles: Array<{
+		/** @internal */
+		path: string;
+		/** @internal */
+		sizeBytes: number;
+	}>;
+	/** @internal */
+	loadedSkillFiles: Array<{
+		/** @internal */
+		name: string;
+		/** @internal */
+		path: string;
+	}>;
+	/** @internal */
+	resolvedModel: {
+		/** @internal */
+		providerId: string;
+		/** @internal */
+		modelId: string;
+	};
+	/** @internal */
 	diagnostics: string[];
 }
 
+/** @public */
 export interface PiTreeHandleFactory {
+	/** @internal */
 	prepareManagedBootstrap(opts: PiManagedBootstrapOptions): Promise<PiManagedBootstrapResult>;
+	/** @internal */
 	inspectPrimaryTree(opts: PiTreePlanningOptions): Promise<PiTreePlanningSnapshot>;
+	/** @internal */
 	createPrimaryTreeHandle(opts: PiTreeHandleOptions): Promise<PiTreeHandle>;
 }
 
+/** @internal */
 export interface PiTreePlanningOptions {
+	/** @internal */
 	treeFile: string;
+	/** @internal */
 	sessionCwd: string;
 }
 
+/** @internal */
 export interface PiTreePlanningSnapshot {
+	/** @internal */
 	currentLeafId: string | null;
+	/** @internal */
 	entries: readonly Pick<PiTreeEntry, "id" | "parentId">[];
 }
 
@@ -684,8 +741,11 @@ function describeRetryEnd(input: {
 		: `Retry sequence failed after ${attemptLabel}`;
 }
 
+/** @internal */
 export interface AgentSessionEventTranslation {
+	/** @internal */
 	piEvents: PiEvent[];
+	/** @internal */
 	diagnostics: PiSessionDiagnostic[];
 }
 
@@ -705,6 +765,7 @@ const INACTIVITY_RESET_EVENT_TYPES = new Set<PiEventType>([
 	"retry.end",
 ]);
 
+/** @internal */
 export function doesPiEventResetInactivity(event: PiEvent): boolean {
 	return INACTIVITY_RESET_EVENT_TYPES.has(event.type);
 }
@@ -883,9 +944,15 @@ function buildUnknownAssistantEventDiagnostic(input: {
 	});
 }
 
+/** @internal */
 export function translateAgentSessionEventEnvelope(
 	event: AgentSessionEvent,
-	state: { currentTurnId: string | null; turnSequence: number },
+	state: {
+		/** @internal */
+		currentTurnId: string | null;
+		/** @internal */
+		turnSequence: number;
+	},
 ): AgentSessionEventTranslation {
 	const runtimeEventType = (event as unknown as { type?: unknown }).type;
 	if (runtimeEventType === "session_info_changed") {
@@ -1267,9 +1334,13 @@ export function translateAgentSessionEventEnvelope(
 	}
 }
 
+/** @internal */
 export class SdkPiTreeHandle implements PiTreeHandle {
+	/** @internal */
 	readonly sessionId: string;
+	/** @internal */
 	readonly treeFile: string;
+	/** @internal */
 	readonly isResumed: boolean;
 
 	private readonly eventState = { currentTurnId: null as string | null, turnSequence: 0 };
@@ -1280,12 +1351,17 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 	private readonly availableToolNames: string[];
 	private readonly runDetails: PiRunDetails;
 
+	/** @internal */
 	constructor(
 		private readonly session: AgentSession,
 		options: {
+			/** @internal */
 			treeFile: string;
+			/** @internal */
 			isResumed: boolean;
+			/** @internal */
 			availableToolNames: string[];
+			/** @internal */
 			runDetails: PiRunDetails;
 		},
 	) {
@@ -1300,6 +1376,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	getRunDetails(): PiRunDetails {
 		return {
 			loadedAgentsFiles: this.runDetails.loadedAgentsFiles.map((file) => ({ ...file })),
@@ -1308,40 +1385,49 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	getLeafId(): string | null {
 		return this.session.sessionManager.getLeafId();
 	}
 
+	/** @internal */
 	getEntry(id: string): PiTreeEntry | undefined {
 		return this.session.sessionManager.getEntry(id) as PiTreeEntry | undefined;
 	}
 
+	/** @internal */
 	getBranch(fromId?: string): PiTreeEntry[] {
 		return this.session.sessionManager.getBranch(fromId) as PiTreeEntry[];
 	}
 
+	/** @internal */
 	getChildren(parentId: string): PiTreeEntry[] {
 		return this.session.sessionManager.getChildren(parentId) as PiTreeEntry[];
 	}
 
+	/** @internal */
 	getTree(): PiTreeNode[] {
 		return this.session.sessionManager.getTree() as unknown as PiTreeNode[];
 	}
 
+	/** @internal */
 	async branch(entryId: string): Promise<void> {
 		this.session.sessionManager.branch(entryId);
 		updateAgentMessagesForCurrentLeaf(this.session);
 	}
 
+	/** @internal */
 	async branchFromRoot(): Promise<void> {
 		this.session.sessionManager.resetLeaf();
 		updateAgentMessagesForCurrentLeaf(this.session);
 	}
 
+	/** @internal */
 	async resetLeaf(): Promise<void> {
 		await this.branchFromRoot();
 	}
 
+	/** @internal */
 	async compact(customInstructions?: string, details?: unknown): Promise<unknown> {
 		if (details === undefined) {
 			const result = await this.session.compact(customInstructions);
@@ -1637,14 +1723,17 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		);
 	}
 
+	/** @internal */
 	async prompt(text: string, options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		return await this.executePrompt(options, () => this.session.prompt(text));
 	}
 
+	/** @internal */
 	async promptLiteral(text: string, options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		return await this.executePrompt(options, () => this.session.sendUserMessage(text));
 	}
 
+	/** @internal */
 	async promptCustom(
 		input: PiCustomMessageInput,
 		options: PiPromptOptions = {},
@@ -1657,6 +1746,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		);
 	}
 
+	/** @internal */
 	async continueTurn(options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		updateAgentMessagesForCurrentLeaf(this.session);
 		return await this.captureTurnExecutionResult(
@@ -1667,6 +1757,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		);
 	}
 
+	/** @internal */
 	async appendCustomMessage(input: PiCustomMessageInput): Promise<string> {
 		const branch = this.createExecutionBranchSnapshot();
 		const sessionManager = this.session
@@ -1693,15 +1784,18 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		return entryId;
 	}
 
+	/** @internal */
 	async steer(text: string): Promise<void> {
 		await this.session.steer(text);
 	}
 
+	/** @internal */
 	async abortTurn(): Promise<void> {
 		this.continuationRetryAbortController?.abort(new Error("Retry cancelled"));
 		await this.session.abort();
 	}
 
+	/** @internal */
 	subscribe(handler: PiEventHandler): () => void {
 		this.eventHandlers.add(handler);
 		this.ensureSessionSubscription();
@@ -1711,6 +1805,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	subscribeDiagnostics(handler: PiSessionDiagnosticHandler): () => void {
 		this.diagnosticHandlers.add(handler);
 		this.ensureSessionSubscription();
@@ -1766,6 +1861,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		}
 	}
 
+	/** @internal */
 	async close(): Promise<void> {
 		if (this.sessionUnsubscribe) {
 			this.sessionUnsubscribe();
@@ -2030,15 +2126,18 @@ function managedServicesKey(agentDir: string, sessionCwd: string): string {
 	return `${path.resolve(agentDir)}\0${path.resolve(sessionCwd)}`;
 }
 
+/** @internal */
 export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 	private readonly preparedServices = new Map<string, AgentSessionServices>();
 
+	/** @internal */
 	constructor() {
 		// Module loading can overlap IPC connection and workspace materialization.
 		// Bootstrap awaits the same module and reports any import failure.
 		void import("@earendil-works/pi-coding-agent").catch(() => undefined);
 	}
 
+	/** @internal */
 	async prepareManagedBootstrap(
 		opts: PiManagedBootstrapOptions,
 	): Promise<PiManagedBootstrapResult> {
@@ -2091,10 +2190,12 @@ export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 		};
 	}
 
+	/** @internal */
 	async inspectPrimaryTree(opts: PiTreePlanningOptions): Promise<PiTreePlanningSnapshot> {
 		return inspectPiTreeForPlanning(opts);
 	}
 
+	/** @internal */
 	async createPrimaryTreeHandle(opts: PiTreeHandleOptions): Promise<PiTreeHandle> {
 		const { CURRENT_SESSION_VERSION, createAgentSessionFromServices, SessionManager } =
 			await import("@earendil-works/pi-coding-agent");

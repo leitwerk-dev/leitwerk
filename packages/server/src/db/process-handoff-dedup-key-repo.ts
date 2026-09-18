@@ -4,11 +4,16 @@ import type { LeitwerkDb } from "./database.js";
 import { now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface ProcessHandoffDedupKeyRecord extends HandoffDedupKeyRecordLike {}
 
+/** @internal */
 export interface CreateProcessHandoffDedupKeyInput {
+	/** @internal */
 	key: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	metadata?: Record<string, unknown> | null;
 }
 
@@ -23,8 +28,10 @@ function rowToRecord(
 	};
 }
 
+/** @internal */
 export function createProcessHandoffDedupKeyRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateProcessHandoffDedupKeyInput): ProcessHandoffDedupKeyRecord {
 			const values = {
 				key: input.key,
@@ -36,6 +43,7 @@ export function createProcessHandoffDedupKeyRepo(db: LeitwerkDb) {
 			return rowToRecord(values);
 		},
 
+		/** @internal */
 		getByKey(key: string): ProcessHandoffDedupKeyRecord | null {
 			const row = db
 				.select()

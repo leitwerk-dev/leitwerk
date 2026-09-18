@@ -94,3 +94,33 @@ subscriptions, project metadata, and external-write keys remain compatible with
 existing deliveries. Legacy issue parameters without `origin` remain readable.
 Forgejo and Woodpecker retain their documented persisted protocol identifiers.
 The separate `remote-repo-change` extension continues direct base-branch delivery.
+At operator action, **Retry repair** retains the pending evidence. **Resume waiting**
+dismisses the pending feedback and adjustment, retaining accepted feedback cursors
+and remote delivery state while waiting for new evidence.
+
+## Integration tests
+
+The composed workflow tests copy a pristine Git seed into an independent repository
+per scenario and use in-memory SQLite. They retain real Git, HTTP actions and worker
+IPC without repeating repository initialization. Failures report process and turn
+state before cleanup. File-backed persistence is covered separately below.
+
+## Restart verification
+
+The provider sandbox's file-backed restart fixtures retain legacy issue/UI params,
+Forgejo-only project metadata, completed write receipts and waiting subscriptions.
+They reopen feedback, CI, conflict, operator and terminal deliveries, compare project,
+turn and session identities, and verify that changed profile mappings do not rebind
+existing work. A remote merge while the server is stopped completes after rearming.
+Lost PR responses and publication retries reconcile one PR without duplicate comments.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/forgejo-repo-change`: `ForgejoIssueOriginParams`, `ForgejoRepoChangeParams`, `ForgejoUiOriginParams`, `createForgejoRepoChange`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

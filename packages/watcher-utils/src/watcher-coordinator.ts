@@ -14,11 +14,15 @@ import {
 	type WorkerSupervisorLike,
 } from "./process-helpers.js";
 
+/** @internal */
 export interface AgentRepoAccessorLike {
+	/** @internal */
 	getById(id: string): ProcessInstance | null;
 }
 
+/** @internal */
 export interface BroadcasterLike {
+	/** @internal */
 	sendDurable<T extends KnownDurableWsFrameType>(
 		type: T,
 		payload: WsPayloadByType[T],
@@ -26,39 +30,67 @@ export interface BroadcasterLike {
 	): void;
 }
 
+/** @internal */
 export interface WatcherCommandResult {
+	/** @internal */
 	ok: boolean;
+	/** @internal */
 	code?: string;
+	/** @internal */
 	message?: string;
+	/** @internal */
 	process?: ProcessInstance | null;
 }
 
+/** @internal */
 export interface WatcherCommandServiceLike {
+	/** @internal */
 	startProcess(instanceId: string, startTurnId: TurnId): Promise<WatcherCommandResult>;
+	/** @internal */
 	abortProcess(instanceId: string): Promise<WatcherCommandResult>;
 }
 
+/** @internal */
 export interface WatcherStartupDeps {
+	/** @internal */
 	processes: AgentRepoAccessorLike;
+	/** @internal */
 	events: ProcessEventRepoLike;
+	/** @internal */
 	broadcaster: BroadcasterLike;
+	/** @internal */
 	commands: WatcherCommandServiceLike;
+	/** @internal */
 	supervisor: WorkerSupervisorLike;
 }
 
+/** @internal */
 export interface ContinueWatcherAgentStartupOptions {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	startTurnId: TurnId;
+	/** @internal */
 	createdEventData: Record<string, unknown>;
+	/** @internal */
 	createdBroadcastData: Record<string, unknown>;
 	/** Defaults to true. Set false when the shared launch executor already emitted process.created. */
+	/** @internal */
 	broadcastCreated?: boolean;
+	/** @internal */
 	afterCreatedEvent?: (process: ProcessInstance) => Promise<void> | void;
+	/** @internal */
 	beforeStart?: (process: ProcessInstance) => Promise<void>;
 }
 
+/** @internal */
 export function requireWatcherStartTurnId(
-	launchPlan: { launcherId: string; startTurnId: TurnId | null },
+	launchPlan: {
+		/** @internal */
+		launcherId: string;
+		/** @internal */
+		startTurnId: TurnId | null;
+	},
 	targetLabel: string,
 ): TurnId {
 	if (launchPlan.startTurnId) {
@@ -69,6 +101,7 @@ export function requireWatcherStartTurnId(
 	);
 }
 
+/** @internal */
 export async function continueWatcherAgentStartup(
 	deps: WatcherStartupDeps,
 	opts: ContinueWatcherAgentStartupOptions,
@@ -111,26 +144,49 @@ export async function continueWatcherAgentStartup(
 	return currentProcess.id;
 }
 
+/** @internal */
 export type DiscoveryResumeResult = "handled" | "skipped" | undefined;
 
+/** @internal */
 export type DiscoveryCreateResult =
-	| { outcome: "created"; instanceId: string }
-	| { outcome: "skipped" }
-	| { outcome: "handled" }
+	| {
+			/** @internal */
+			outcome: "created";
+			/** @internal */
+			instanceId: string;
+	  }
+	| {
+			/** @internal */
+			outcome: "skipped";
+	  }
+	| {
+			/** @internal */
+			outcome: "handled";
+	  }
 	| null
 	| undefined;
 
+/** @internal */
 export interface DiscoveryPassOptions<TItem> {
+	/** @internal */
 	items: readonly TItem[];
+	/** @internal */
 	result: PollResult;
+	/** @internal */
 	findExistingAgent(item: TItem): ProcessInstance | null;
+	/** @internal */
 	getResultLabel(item: TItem): string;
+	/** @internal */
 	resumeDiscoveredAgent(process: ProcessInstance, item: TItem): Promise<DiscoveryResumeResult>;
+	/** @internal */
 	createAgent(item: TItem): Promise<DiscoveryCreateResult>;
+	/** @internal */
 	ensureWorkerForExistingAgent?(process: ProcessInstance, item: TItem): Promise<boolean>;
+	/** @internal */
 	formatError(item: TItem, error: unknown): string;
 }
 
+/** @internal */
 export async function runWatcherDiscoveryPass<TItem>(
 	opts: DiscoveryPassOptions<TItem>,
 ): Promise<void> {
@@ -169,17 +225,27 @@ export async function runWatcherDiscoveryPass<TItem>(
 	}
 }
 
+/** @internal */
 export interface AbortReconciliationOptions {
+	/** @internal */
 	candidates: readonly ProcessInstance[];
+	/** @internal */
 	result: PollResult;
+	/** @internal */
 	events: ProcessEventRepoLike;
+	/** @internal */
 	commands: WatcherCommandServiceLike;
+	/** @internal */
 	shouldAbort(process: ProcessInstance): Promise<boolean>;
+	/** @internal */
 	getResultLabel(process: ProcessInstance): string;
+	/** @internal */
 	getErrorLabel(process: ProcessInstance): string;
+	/** @internal */
 	getAbortedEventData(process: ProcessInstance): Record<string, unknown>;
 }
 
+/** @internal */
 export async function runWatcherAbortReconciliation(
 	opts: AbortReconciliationOptions,
 ): Promise<void> {
@@ -215,21 +281,33 @@ export async function runWatcherAbortReconciliation(
 	}
 }
 
+/** @internal */
 export interface CompletionReconciliationResult {
+	/** @internal */
 	changed: boolean;
+	/** @internal */
 	writeIdentity?: WriteIdentity;
+	/** @internal */
 	metadata?: Record<string, unknown>;
 }
 
+/** @internal */
 export interface CompletionReconciliationOptions {
+	/** @internal */
 	candidates: readonly ProcessInstance[];
+	/** @internal */
 	result: PollResult;
+	/** @internal */
 	externalWrites: ExternalWriteLogRepoLike;
+	/** @internal */
 	reconcile(process: ProcessInstance): Promise<CompletionReconciliationResult>;
+	/** @internal */
 	getResultLabel(process: ProcessInstance): string;
+	/** @internal */
 	getErrorLabel(process: ProcessInstance): string;
 }
 
+/** @internal */
 export async function runWatcherCompletionReconciliation(
 	opts: CompletionReconciliationOptions,
 ): Promise<void> {
@@ -257,21 +335,32 @@ export async function runWatcherCompletionReconciliation(
 	}
 }
 
+/** @internal */
 export function shouldEnsureWorkerForExistingActiveAgent(
-	deps: { supervisor: WorkerSupervisorLike },
+	deps: {
+		/** @internal */
+		supervisor: WorkerSupervisorLike;
+	},
 	process: ProcessInstance,
 ): boolean {
 	return processNeedsWorker(process) && !deps.supervisor.getWorker(process.id);
 }
 
-export function deferWatcherLaunchStart<TLaunchPlan extends { startTurnId: unknown }>(
-	launchPlan: TLaunchPlan,
-): TLaunchPlan {
+/** @internal */
+export function deferWatcherLaunchStart<
+	TLaunchPlan extends {
+		/** @internal */
+		startTurnId: unknown;
+	},
+>(launchPlan: TLaunchPlan): TLaunchPlan {
 	return launchPlan.startTurnId === null ? launchPlan : { ...launchPlan, startTurnId: null };
 }
 
+/** @internal */
 export function launchFailureMessage(result: {
+	/** @internal */
 	status: number;
+	/** @internal */
 	body: Record<string, unknown>;
 }): string {
 	return typeof result.body.error === "string" && result.body.error.trim().length > 0
