@@ -772,12 +772,6 @@ export interface PollResultLike {
 }
 
 /** @public */
-export interface PollingHandleLike<T extends PollResultLike = PollResultLike> {
-	/** @public */
-	poll(): Promise<T>;
-}
-
-/** @public */
 export interface PollingServiceLike {
 	/** @public */
 	create<T extends PollResultLike>(options: {
@@ -791,7 +785,10 @@ export interface PollingServiceLike {
 		pollInterval(): string;
 		/** @public */
 		defaultIntervalMs?: number;
-	}): PollingHandleLike<T>;
+	}): {
+		/** @public */
+		poll(): Promise<T>;
+	};
 }
 
 /** @internal */

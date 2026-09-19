@@ -1101,21 +1101,18 @@ export interface WorkerExtensionAPI {
 }
 
 /** @public */
-export interface LeitwerkExtensionManifest {
-	/** @public */
-	id: string;
-	/** @public */
-	version: string;
-	/** @public */
-	requires?: readonly string[];
-	/** @internal */
-	optional?: readonly string[];
-}
-
-/** @public */
 export interface LeitwerkExtensionModule {
 	/** @public */
-	manifest: LeitwerkExtensionManifest;
+	manifest: {
+		/** @public */
+		id: string;
+		/** @public */
+		version: string;
+		/** @public */
+		requires?: readonly string[];
+		/** @internal */
+		optional?: readonly string[];
+	};
 	/** Resolves every provider owned by this extension before setupServer. @public */
 	modelProviders?: ModelProviderSet;
 	/** @public */

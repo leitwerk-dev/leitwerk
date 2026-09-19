@@ -39,7 +39,6 @@ export {
 	type LaunchPlanPreparationIssueCode,
 	type LaunchPlanPreparationResultLike,
 	type ModelProfileOptionSummaryLike,
-	type PollingHandleLike,
 	type PollingServiceLike,
 	type PreparedDeferredProcessActivation,
 	type ProcessActionExecutionOrigin,
@@ -72,7 +71,6 @@ export {
 	humanTurn,
 	type LlmTurnDefinition,
 	llmTurn,
-	type ProcessDefinition,
 	type ProcessEffectPlan,
 	type ProcessHumanTurnExternalActionSpec,
 	type ProcessLifecycleEffects,
@@ -97,7 +95,6 @@ export type {
 	LauncherModelProfileSummary,
 	LaunchPreparationCheck,
 	LeafOutcomeCaptureResult,
-	LeitwerkExtensionManifest,
 	LeitwerkExtensionModule,
 	ProcessActionDefinition,
 	ProcessLaunchConfig,
@@ -153,19 +150,15 @@ export {
 	revisionAction,
 } from "./graph-fragments.js";
 export {
-	type CapabilityAccessor,
 	createCapabilityAccessor,
 	type ProvidedCapability,
 } from "./host-capabilities.js";
 export { IntegrationHttpClient, IntegrationHttpError } from "./integration-http.js";
 export { parseJsonData } from "./json-data.js";
 export type {
-	LauncherCardMetadata,
 	LauncherFieldDefinition,
 	LauncherFieldOptionDefinition,
-	LauncherSchemaDefinition,
 	LauncherValidationError,
-	UiLauncherSummaryBase,
 } from "./launcher-contract.js";
 export {
 	normalizeLeafOutcomeCaptureResult,
@@ -200,9 +193,7 @@ export {
 	piWorker,
 	resolveProviderOptions,
 } from "./model-provider.js";
-export {
-	buildProcessFlowView,
-} from "./process-flow-view.js";
+export { buildProcessFlowView } from "./process-flow-view.js";
 export {
 	getProcessGraph,
 	getProcessTurnGraph,
@@ -211,7 +202,6 @@ export {
 	isTurnAvailableForProcessGraph,
 	listLlmTurnIdsForProcessGraph,
 	type ProcessGraphRegistry,
-	type ProcessGraphTurnView,
 	type ProcessGraphView,
 	serializeProcessGraph,
 	toProcessGraphView,
@@ -277,9 +267,7 @@ export {
 	type StructuralProcessState,
 	structuralStateCodec,
 } from "./state-helpers.js";
-export {
-	sanitizeWorkerSubprocessEnv,
-} from "./subprocess-env.js";
+export { sanitizeWorkerSubprocessEnv } from "./subprocess-env.js";
 export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type {
 	ToolCallRendererDefinition,
@@ -335,9 +323,7 @@ export type {
 	TurnResult,
 	TurnResultMarkdownBehavior,
 } from "./types.js";
-export {
-	RESERVED_INTEGRATION_TOOL_NAMES,
-} from "./types.js";
+export { RESERVED_INTEGRATION_TOOL_NAMES } from "./types.js";
 export {
 	buildUiProcessDefinition,
 	createUiProcessBuilder,

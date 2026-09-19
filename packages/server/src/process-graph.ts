@@ -13,7 +13,6 @@ export {
 	isTurnAvailableForProcessGraph,
 	listLlmTurnIdsForProcessGraph,
 	type ProcessGraphRegistry,
-	type ProcessGraphTurnView,
 	type ProcessGraphView,
 	serializeProcessGraph,
 	toProcessGraphView,
