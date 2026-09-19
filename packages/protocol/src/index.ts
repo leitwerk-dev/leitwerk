@@ -22,11 +22,6 @@ export type {
 export type {
 	ActionFormDefinition,
 	ActionFormFieldDefinition,
-	ActionFormFieldKind,
-	FormFieldKind,
-	FormFieldOptionDefinition,
-	FormFieldPublishDefinition,
-	FormFieldStateDefinition,
 } from "./form-contract.js";
 export {
 	parseActionRequestBody,
