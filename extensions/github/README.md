@@ -122,7 +122,7 @@ GitHub API compatibility.
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubClient`, `GitHubClientLike`, `GitHubFeedbackItem`, `GitHubFeedbackSourceConfig`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubIssueCancelledSourceConfig`, `GitHubIssueWatcherConfig`, `GitHubIssueWatcherEvent`, `GitHubLabelEvent`, `GitHubProjectBinding`, `GitHubPullRequest`, `GitHubPullRequestSourceConfig`, `GitHubPullRequestTerminalSourceConfig`, `GitHubRelease`, `GitHubRepository`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `manifest`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
+- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_STATE_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubPullRequest`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
 - `@leitwerk-dev/github/testing`: `LocalGitHubAdapter`, `LocalGitHubOptions`, `LocalGitHubRepository`, `LocalGitHubState`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
