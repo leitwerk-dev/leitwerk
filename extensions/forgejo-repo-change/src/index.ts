@@ -7,7 +7,7 @@ import { createForgejoRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "forgejo-repo-change",
 	/** @internal */
@@ -54,21 +54,8 @@ export function createForgejoRepoChange(options: {
 	};
 }
 
-export * from "./launcher.js";
-export * from "./params.js";
-export * from "./process.js";
-export * from "./profile-bindings.js";
+export type { ForgejoRepoChangeParams } from "./params.js";
+
 /** @internal */
-export const {
-	extension: defaultExtension,
-	process: forgejoRepoChangeProcess,
-	launcher: defaultForgejoRepoChangeLauncher,
-} = createForgejoRepoChange({ docker: true });
-/** @internal */
-export const {
-	configure: configureForgejoRepoChangeLauncher,
-	preparationChecks: forgejoRepositoryPreparationChecks,
-	resolveGitIdentity: resolveForgejoGitIdentity,
-	launcher: forgejoRepoChangeUiLauncher,
-} = defaultForgejoRepoChangeLauncher;
+const { extension: defaultExtension } = createForgejoRepoChange({ docker: true });
 export default defaultExtension;

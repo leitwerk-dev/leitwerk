@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
-import { forgejoRepoChangeProcess as process } from "./index.js";
 import { forgejoRepoChangeParamsCodec } from "./params.js";
 import { deliveryTurn, routingState } from "./routing.test-fixture.js";
+import { forgejoRepoChangeProcess as process } from "./testing/default-process.js";
 
 const params = {
 	launchKind: "requested_change",
