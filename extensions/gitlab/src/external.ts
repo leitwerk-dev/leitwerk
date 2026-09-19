@@ -53,7 +53,7 @@ export function gitLabFeedbackReadyAt(
 		: null;
 }
 /** @public */
-export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
+export const observationKey = ({ mr, pipeline, targetHead }: GitLabObservation): string =>
 	JSON.stringify([
 		mr.state,
 		mr.sha,
@@ -61,6 +61,14 @@ export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
 		pipeline?.project_id,
 		pipeline?.id,
 		pipeline?.status,
+		mr.source_project_id,
+		mr.source_branch,
+		mr.target_project_id,
+		mr.target_branch,
+		targetHead,
+		mr.has_conflicts,
+		mr.merge_status,
+		mr.detailed_merge_status,
 	]);
 /** @public */
 export const gitlabExternal = {
@@ -76,7 +84,7 @@ export const gitlabExternal = {
 		return {
 			kind: GITLAB_MR_KIND,
 			label: "GitLab merge request",
-			description: "Observe MR state, current source head and revision-correlated CI",
+			description: "Observe MR state, source/target heads, mergeability and revision-correlated CI",
 			config: {},
 			inputMode: "none",
 			resolve,

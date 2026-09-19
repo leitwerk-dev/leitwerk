@@ -141,7 +141,7 @@ describe("npm bootstrap safety (npm responses are substituted)", () => {
 			url: "https://example.invalid/auth",
 		});
 		const frame = (body: string) =>
-			`Script started on example\r\n${body}\r\nScript done on example\r\n`;
+			`Script started on example [COMMAND="node -e 'console.log({example:true})'" <not executed on terminal>]\r\n${body}\r\nScript done on example [COMMAND_EXIT_CODE="0"]\r\n`;
 		expect(
 			needsPublisher(
 				trustTranscript(frame(`${auth}\nPress ENTER to open in the browser...`)),

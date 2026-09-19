@@ -4,6 +4,8 @@ import {
 	GitLabClient,
 	type GitLabClientLike,
 	type GitLabPipeline,
+	gitLabMergeabilityPending,
+	gitLabMergeRepairReason,
 	observeMergeRequest,
 	parseGitLabProfiles,
 } from "./client.js";
@@ -22,6 +24,41 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it.each([
+		[{ has_conflicts: true }, "conflict"],
+		[{ detailed_merge_status: "conflict", has_conflicts: false }, "conflict"],
+		[{ detailed_merge_status: "need_rebase" }, "rebase"],
+		[{ detailed_merge_status: "not_approved" }, null],
+		[{ detailed_merge_status: "ci_must_pass" }, null],
+		[{ merge_status: "cannot_be_merged" }, null],
+		[{ detailed_merge_status: "checking", has_conflicts: true }, null],
+		[{ detailed_merge_status: "unchecked" }, null],
+		[{}, null],
+	] as const)("classifies merge repair evidence %j as %s", (fields, reason) => {
+		expect(gitLabMergeRepairReason({ ...mr, ...fields })).toBe(reason);
+	});
+	it("observes conflicts without CI and reads the current target tip instead of diff_refs", async () => {
+		const getBranch = vi.fn(async () => ({ commit: { id: "current-target" } }));
+		const client = {
+			getMergeRequest: async () => ({
+				...mr,
+				has_conflicts: true,
+				detailed_merge_status: "conflict",
+				diff_refs: { base_sha: "old-base", head_sha: mr.sha, start_sha: "old-target" },
+			}),
+			getBranch,
+			listMergeRequestPipelines: async () => [],
+			listBranchPipelines: async () => [],
+		} as unknown as GitLabClientLike;
+		const observed = await observeMergeRequest(client, 7, 1);
+		expect(observed).toMatchObject({
+			targetHead: "current-target",
+			pipeline: null,
+			mr: { has_conflicts: true },
+		});
+		expect(getBranch).toHaveBeenCalledWith(7, "main", undefined);
+		expect(gitLabMergeabilityPending({ ...mr, detailed_merge_status: "preparing" })).toBe(true);
+	});
 	it("adds its own eyes reaction once despite another user's reaction and a lost write response", async () => {
 		const reactions = [{ id: 1, name: "eyes", user: { username: "reviewer" } }];
 		let posts = 0;
@@ -211,6 +248,7 @@ describe("GitLab boundary", () => {
 			synthetic = { ...pipeline(3, "failed", "merge"), ref: "refs/merge-requests/1/merge" };
 		const client = {
 			getMergeRequest: async () => mr,
+			getBranch: async () => ({ commit: { id: "target" } }),
 			listMergeRequestPipelines: async () => [older, pending, synthetic],
 			getPipeline: async (_id: number, id: number) =>
 				[older, pending, synthetic].find((p) => p.id === id)!,
@@ -227,6 +265,7 @@ describe("GitLab boundary", () => {
 	it("falls back to the current source-branch push pipeline, ignoring other revisions", async () => {
 		const client = {
 			getMergeRequest: async () => mr,
+			getBranch: async () => ({ commit: { id: "target" } }),
 			listMergeRequestPipelines: async () => [],
 			listBranchPipelines: async () => [
 				{ ...pipeline(1, "failed", "old"), source: "push" },

@@ -147,7 +147,12 @@ export function needsPublisher(output, name) {
 }
 
 export function trustTranscript(transcript) {
-	const text = stripVTControlCharacters(transcript);
+	// util-linux records the command in its header; it may itself contain braces.
+	// Remove script framing before looking for npm's JSON objects.
+	const text = stripVTControlCharacters(transcript).replace(
+		/^Script (?:started|done)(?: on [^\r\n]*)?\r?$/gm,
+		"",
+	);
 	const configurations = [];
 	let framing = "";
 	let previousEnd = 0;
@@ -181,7 +186,6 @@ export function trustTranscript(transcript) {
 	// Unknown output must not turn into permission to create a publisher.
 	const unexpected = framing
 		.replaceAll("^D\b\b", "") // BSD script echoes EOF when its input is closed.
-		.replace(/^Script (?:started|done)(?: on [^\r\n]*)?\r?$/gm, "")
 		.replaceAll("Press ENTER to open in the browser...", "")
 		.replace(/This operation requires a one-time password\.\s*Enter OTP:\s*\d{6}/g, "")
 		.trim();
