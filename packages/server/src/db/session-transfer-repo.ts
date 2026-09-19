@@ -9,10 +9,7 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
-export type {
-	SessionTransferAttemptState,
-	SessionTransferPhase,
-} from "@leitwerk-dev/session-transfer";
+export type { SessionTransferPhase } from "@leitwerk-dev/session-transfer";
 
 /** @internal */
 export interface SessionTransferGrant {
