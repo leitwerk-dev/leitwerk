@@ -18,5 +18,3 @@ const modelsExtension = {
 } satisfies LeitwerkExtensionModule;
 
 export default modelsExtension;
-export * from "./models-provider.js";
-export * from "./provider-auth.js";
