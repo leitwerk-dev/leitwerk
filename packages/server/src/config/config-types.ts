@@ -8,7 +8,7 @@ import type {
 	ServerConfigSnapshot,
 	StorageConfigSnapshot,
 	WorkersConfigSnapshot,
-} from "@leitwerk-dev/protocol";
+} from "@leitwerk-dev/protocol/config-snapshot";
 import type { DockerNetworkConfig } from "@leitwerk-dev/worker-protocol";
 
 export type {
@@ -33,7 +33,7 @@ export type {
 	StorageConfigSnapshot as StorageConfig,
 	WorkersCleanupConfigSnapshot,
 	WorkersConfigSnapshot as WorkersConfig,
-} from "@leitwerk-dev/protocol";
+} from "@leitwerk-dev/protocol/config-snapshot";
 
 /** @internal */
 export interface SkillRepositoryConfig {
