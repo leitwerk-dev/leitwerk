@@ -6,16 +6,8 @@ export {
 } from "./compact-turn-summary.js";
 export type { CompactActiveTurnSnapshot, CompactTurnSummary } from "./compact-turn-summary.js";
 export type {
-	ComponentConfigSnapshot,
 	ConfigSnapshot,
-	ExtensionLoadingConfigSnapshot,
 	ModelProfileSnapshot,
-	NotificationsConfigSnapshot,
-	ProcessConfigSnapshot,
-	SandboxConfigSnapshot,
-	ServerConfigSnapshot,
-	StorageConfigSnapshot,
-	WorkersConfigSnapshot,
 } from "./config-snapshot.js";
 export {
 	browserUiExtensionDescriptorSchema,
