@@ -1,10 +1,13 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { getDefaultConfig, type LeitwerkConfig } from "@leitwerk-dev/server";
-import type { SandboxInput, SandboxPaths } from "./index.js";
+import type { SandboxInput } from "./index.js";
 import { assertSandboxPath } from "./storage.js";
 
-export function configureSandboxStorage(config: LeitwerkConfig, paths: SandboxPaths): void {
+export function configureSandboxStorage(
+	config: LeitwerkConfig,
+	paths: SandboxInput["paths"],
+): void {
 	config.storage = {
 		sqlite_path: path.join(paths.directory, "application.sqlite"),
 		tree_files_dir: path.join(paths.directory, "trees"),

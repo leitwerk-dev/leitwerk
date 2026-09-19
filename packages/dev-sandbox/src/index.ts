@@ -8,9 +8,9 @@ import { type PiTreeHandleFactory, SdkPiTreeHandleFactory } from "@leitwerk-dev/
 export { sandboxConfig } from "./config.js";
 
 /** @public */
-export type SandboxMode = "scripted" | "real";
+type SandboxMode = "scripted" | "real";
 /** @public */
-export interface SandboxPaths {
+interface SandboxPaths {
 	/** @public */
 	workspaceRoot: string;
 	/** @public */
@@ -19,7 +19,7 @@ export interface SandboxPaths {
 	directory: string;
 }
 /** @public */
-export interface SandboxUrls {
+interface SandboxUrls {
 	/** @public */
 	ui: string;
 	/** @public */
@@ -56,7 +56,7 @@ export interface SandboxScenario<T = unknown> {
 }
 
 /** The composition owns adapters and persisted scenario progress. @public */
-export interface SandboxComposition {
+interface SandboxComposition {
 	/** @public */
 	processConfigs: LeitwerkConfig["process_configs"];
 	/** @public */
