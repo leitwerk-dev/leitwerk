@@ -298,7 +298,6 @@ export {
 export {
 	assertValidLlmTurnDefinition,
 	createRootBranchReviewTurn,
-	defaultTurnStartSelection,
 	isAutomaticTurnDefinition,
 	isExternalTurnDefinition,
 	isHumanTurnDefinition,

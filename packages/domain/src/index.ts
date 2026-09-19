@@ -177,7 +177,6 @@ export {
 	readFailedTurnRecoveryContext,
 } from "./turn-recovery.js";
 export {
-	defaultProcessTurnStartSelection,
 	type ProcessTurnStartSelection,
 	type ProcessTurnStartTarget,
 	resolveExistingProcessEntryId,
