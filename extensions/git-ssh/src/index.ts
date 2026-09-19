@@ -13,7 +13,7 @@ import {
 const execFileAsync = promisify(execFile);
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "git-ssh",
 	/** @internal */
@@ -75,7 +75,7 @@ function gitFailureDetail(error: unknown): string {
 }
 
 /** @internal */
-export async function preflightGitSshAccess(
+async function preflightGitSshAccess(
 	input: Omit<GitSshAuthorizationPreflightInput, "credentialRef">,
 	material: GitSshCredentialMaterial,
 	gitBinary = "git",
@@ -197,5 +197,4 @@ const extension: LeitwerkExtensionModule = {
 	},
 };
 
-export { parseProfiles };
 export default extension;
