@@ -215,6 +215,27 @@ describe("Kubernetes manifest builders", () => {
 		).toEqual([{ name: "LEITWERK_PROCESS_VOLUME_MOUNT_PATH", value: "/process-storage" }]);
 	});
 
+	it("scopes gVisor guest capabilities and wrapper to Docker workers", () => {
+		const options = { namespace: "leitwerk", docker: { runtimeClassName: "gvisor", gvisor: true } };
+		const pod = buildKubernetesWorkerPodManifest(startInput({ docker: true }), options);
+		expect(pod.spec.runtimeClassName).toBe("gvisor");
+		expect(pod.spec).not.toHaveProperty("hostUsers");
+		expect(pod.spec.containers[0].securityContext).toEqual({
+			privileged: false,
+			capabilities: { add: ["SYS_ADMIN", "NET_ADMIN"] },
+		});
+		expect(pod.spec.containers[0].env).toContainEqual({
+			name: "LEITWERK_DOCKER_GVISOR",
+			value: "1",
+		});
+		const ordinary = buildKubernetesWorkerPodManifest(startInput(), options);
+		expect(ordinary.spec).not.toHaveProperty("runtimeClassName");
+		expect(ordinary.spec.containers[0]).not.toHaveProperty("securityContext");
+		expect(ordinary.spec.containers[0].env.some((e) => e.name === "LEITWERK_DOCKER_GVISOR")).toBe(
+			false,
+		);
+	});
+
 	it("omits host aliases from worker Pods when none are configured", () => {
 		const manifest = buildKubernetesWorkerPodManifest(startInput(), { namespace: "leitwerk" });
 

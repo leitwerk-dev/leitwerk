@@ -77,6 +77,24 @@ describe("process runtime availability", () => {
 		).rejects.toThrow(/kubernetes\.docker/);
 	});
 
+	it("requires omitted hostUsers for explicit gVisor Docker mode", async () => {
+		const config = getDefaultConfig();
+		config.workers.runner = "kubernetes";
+		if (!config.kubernetes) throw new Error("Missing default Kubernetes config");
+		config.kubernetes.docker = {
+			runtime_class_name: "gvisor",
+			gvisor: true,
+			process_storage_class_name: "longhorn",
+		};
+		await expect(
+			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
+		).resolves.toBeUndefined();
+		config.kubernetes.docker.host_users = false;
+		await expect(
+			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
+		).rejects.toThrow(/kubernetes.docker/);
+	});
+
 	it("accepts complete Kubernetes Docker wiring without cluster preflight", async () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";

@@ -157,6 +157,7 @@ docker:
 #   docker:
 #     runtime_class_name: leitwerk-sysbox
 #     host_users: false
+#     # For verified gVisor nodes: omit host_users and set gvisor: true.
 #     process_storage_class_name: leitwerk-docker-process
 #   pod:
 #     node_selector: {}

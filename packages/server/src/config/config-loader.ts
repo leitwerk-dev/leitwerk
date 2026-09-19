@@ -394,6 +394,7 @@ const configSchema = v.looseObject({
 				v.strictObject({
 					runtime_class_name: v.optional(v.string()),
 					host_users: v.optional(v.boolean()),
+					gvisor: v.optional(v.boolean()),
 					process_storage_class_name: v.optional(v.string()),
 					network: v.optional(dockerNetworkSchema),
 				}),
