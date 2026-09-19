@@ -10,12 +10,15 @@ import type { FlowAutomaticRunContext } from "@leitwerk-dev/process-sdk";
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { commitAndPushWorkBranch, runDeterministicFinalization } from "./finalization-git.js";
-import type { RepositoryChangeParamsBase } from "./repository-change-launch.js";
+import {
+	commitAndPushWorkBranch,
+	runDeterministicFinalization,
+} from "./finalization-git-internal.js";
+import type { RepositoryChangeParamsBase } from "./repository-change-launch-internal.js";
 import {
 	type RepositoryChangeState as LocalRepoChangeState,
 	resetRepositoryChangeFinalizationState as resetLocalRepoChangeFinalizationState,
-} from "./repository-change-state.js";
+} from "./repository-change-state-internal.js";
 
 // These tests spawn many real git subprocesses per case; raise the timeout so
 // process-spawn contention under the full parallel suite does not flake them.
