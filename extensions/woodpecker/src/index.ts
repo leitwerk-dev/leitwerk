@@ -5,7 +5,7 @@ import { parseWoodpeckerProfiles, WoodpeckerClient } from "./client.js";
 import { createWoodpeckerProvider } from "./provider.js";
 import { registerWoodpeckerTools } from "./tools.js";
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "woodpecker",
 	/** @internal */
@@ -28,8 +28,9 @@ const extension: LeitwerkExtensionModule = {
 };
 
 export * from "./capability.js";
-export * from "./client.js";
-export * from "./external.js";
+export { WoodpeckerClient } from "./client.js";
+export type { WoodpeckerPipeline, WoodpeckerRepository } from "./client.js";
+export { WOODPECKER_PIPELINE_KIND, woodpeckerExternal } from "./external.js";
 export default extension;
 
 /** Register shared tools and polling with an explicit integration. @public */
