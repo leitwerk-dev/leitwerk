@@ -84,6 +84,6 @@ export async function runDeploymentPreflight(input: {
 			throw new Error("Deployment preflight started background services unexpectedly");
 		}
 	} finally {
-		await ctx?.app.close();
+		await ctx?.close();
 	}
 }

@@ -15,8 +15,7 @@ import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 
-/** Register a test provider and expose its poll result without erasing its type. */
-/** @public */
+/** Register a test provider and expose its poll result without erasing its type. @public */
 export function createPollingTestExtension<T>(
 	manifest: LeitwerkExtensionModule["manifest"],
 	setup: (api: ServerExtensionAPI) =>

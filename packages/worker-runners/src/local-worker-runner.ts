@@ -21,33 +21,25 @@ export const DEFAULT_LOCAL_WORKER_ENTRY_SPECIFIER = "@leitwerk-dev/worker/worker
 
 /** @internal */
 export interface LocalWorkerRunnerOptions {
-	/** Command used to launch the worker. Defaults to `node`. */
-	/** @internal */
+	/** Command used to launch the worker. Defaults to `node`. @internal */
 	command?: string;
-	/** Worker entry args. The default package subpath is resolved to the installed entry file. */
-	/** @internal */
+	/** Worker entry args. The default package subpath is resolved to the installed entry file. @internal */
 	args?: readonly string[];
-	/** Working directory for the spawned worker. Defaults to the installed server package dir. */
-	/** @internal */
+	/** Working directory for the spawned worker. Defaults to the installed server package dir. @internal */
 	cwd?: string;
-	/** Process storage roots used by the read-only session exporter. */
-	/** @internal */
+	/** Process storage roots used by the read-only session exporter. @internal */
 	processWorkspacesDir?: string;
 	/** @internal */
 	treeFilesDir?: string;
-	/** Explicit acknowledgement that Docker processes inherit host Docker authority. */
-	/** @internal */
+	/** Explicit acknowledgement that Docker processes inherit host Docker authority. @internal */
 	allowHostDocker?: boolean;
-	/** Test seam. Production uses node's spawn directly. */
-	/** @internal */
+	/** Test seam. Production uses node's spawn directly. @internal */
 	localWorkerSpawnImpl?: typeof spawn;
-	/** Test seam for the shared host-Docker preflight. */
-	/** @internal */
+	/** Test seam for the shared host-Docker preflight. @internal */
 	dockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
 }
 
-/** Verifies that the inherited Docker CLI context can reach its daemon. */
-/** @internal */
+/** Verifies that the inherited Docker CLI context can reach its daemon. @internal */
 export async function preflightHostDocker(timeoutMs: number): Promise<void> {
 	if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
 		throw new Error("Docker preflight requires a positive startup timeout");

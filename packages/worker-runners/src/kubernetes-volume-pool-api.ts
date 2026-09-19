@@ -1,5 +1,4 @@
-/** Kubernetes objects used for native PVC provisioning and safe PV rebinding. */
-/** @internal */
+/** Kubernetes objects used for native PVC provisioning and safe PV rebinding. @internal */
 export interface PoolObject {
 	/** @internal */
 	apiVersion?: string;

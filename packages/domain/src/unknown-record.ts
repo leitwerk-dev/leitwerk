@@ -1,7 +1,6 @@
 import * as v from "valibot";
 
-/** Parse non-array objects into a fresh record using Valibot's key handling. */
-/** @internal */
+/** Parse non-array objects into a fresh record using Valibot's key handling. @internal */
 export const copiedUnknownRecordSchema = v.pipe(
 	v.unknown(),
 	v.check(isUnknownRecord, "Expected object"),

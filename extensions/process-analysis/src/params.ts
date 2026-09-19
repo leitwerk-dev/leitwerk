@@ -7,8 +7,7 @@ export interface ProcessAnalysisParams {
 	processRef: string;
 	/** @internal */
 	instruction: string;
-	/** Hidden launch param: absolute directory where the server was started. */
-	/** @internal */
+	/** Hidden launch param: absolute directory where the server was started. @internal */
 	analysisCwd: string;
 }
 
@@ -27,8 +26,7 @@ export const processAnalysisParamsCodec: Codec<ProcessAnalysisParams> = {
 	},
 };
 
-/** Visible fields validated at launch time. analysisCwd is merged by the launcher. */
-/** @internal */
+/** Visible fields validated at launch time. analysisCwd is merged by the launcher. @internal */
 export type VisibleProcessAnalysisParams = Omit<ProcessAnalysisParams, "analysisCwd">;
 
 /** @internal */

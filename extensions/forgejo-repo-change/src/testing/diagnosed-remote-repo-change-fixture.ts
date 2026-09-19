@@ -15,6 +15,9 @@ export async function createRemoteRepoChangeFixture(...args: Parameters<typeof c
 	let timer: ReturnType<typeof setInterval> | undefined;
 	onTestFinished(() => clearInterval(timer));
 	const fixture = await trace.run(() => createFixture(args[0], { ...args[1], diagnostics: trace }));
+	const close = fixture.close;
+	let closePromise: Promise<void> | undefined;
+	fixture.close = () => (closePromise ??= close());
 	let previous = "";
 	let closed = false;
 	const snapshot = () => {
@@ -54,7 +57,7 @@ export async function createRemoteRepoChangeFixture(...args: Parameters<typeof c
 	snapshot();
 	timer = setInterval(snapshot, 250);
 	timer.unref();
-	return new Proxy(fixture, {
+	const diagnosed = new Proxy(fixture, {
 		get(target, key, receiver) {
 			const value = Reflect.get(target, key, receiver);
 			// subscriptions is a synchronous read; all other methods are awaited operations.
@@ -83,4 +86,6 @@ export async function createRemoteRepoChangeFixture(...args: Parameters<typeof c
 				});
 		},
 	});
+	onTestFinished(() => diagnosed.close());
+	return diagnosed;
 }

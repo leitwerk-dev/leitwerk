@@ -125,8 +125,7 @@ export function managedExportHelperLabelSelector(): Record<string, string> {
 	return managedResourceLabelSelector(EXPORT_HELPER_COMPONENT_VALUE);
 }
 
-/** True when the labels identify an leitwerk-managed worker unit. */
-/** @internal */
+/** True when the labels identify an leitwerk-managed worker unit. @internal */
 export function isManagedWorkerUnitLabels(labels: Record<string, string>): boolean {
 	return (
 		labels[WORKER_LABEL_MANAGED_BY] === WORKER_LABEL_MANAGED_BY_VALUE &&
@@ -152,8 +151,7 @@ export function parseWorkerUnitIdentity(labels: Record<string, string>): WorkerU
 	return { instanceId, workerId, serverEpoch };
 }
 
-/** Label selector for listing managed worker units in a runtime query. */
-/** @internal */
+/** Label selector for listing managed worker units in a runtime query. @internal */
 export function managedWorkerLabelSelector(): Record<string, string> {
 	return managedResourceLabelSelector(WORKER_LABEL_COMPONENT_VALUE);
 }

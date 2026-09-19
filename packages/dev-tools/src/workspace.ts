@@ -2,8 +2,7 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-/** Expand literal package paths and trailing /* workspace patterns. */
-/** @internal */
+/** Expand literal package paths and trailing /* workspace patterns. @internal */
 export function listWorkspacePackageDirs(
 	rootDir: string,
 	manifest: {
@@ -80,8 +79,7 @@ function isPackageName(name: unknown): name is string {
 	);
 }
 
-/** Resolve package metadata even when package.json is not exported. */
-/** @internal */
+/** Resolve package metadata even when package.json is not exported. @internal */
 export function packageDirectory(name: string, from: string): string {
 	if (!isPackageName(name)) {
 		throw new Error(`Invalid package name: ${name}`);

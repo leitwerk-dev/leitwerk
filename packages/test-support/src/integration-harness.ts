@@ -10,7 +10,10 @@ import {
 	getDefaultConfig,
 	type LeitwerkConfig,
 } from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "./in-process-worker.js";
+import {
+	createInProcessWorkerSpawn,
+	type InProcessWorkerSpawnOptions,
+} from "./in-process-worker.js";
 
 /** @public */
 export interface IntegrationHarness<
@@ -18,6 +21,8 @@ export interface IntegrationHarness<
 > {
 	/** @public */
 	ctx: AppContext;
+	/** @public */
+	close(): Promise<void>;
 	/** @internal */
 	config: LeitwerkConfig;
 	/** @public */
@@ -38,8 +43,10 @@ export interface IntegrationHarnessOptions<
 	appOverrides?: Partial<AppOptions>;
 	/** @internal */
 	listen?: boolean;
+	/** Start background services when binding a listener. Defaults to true. @public */
+	backgroundServices?: boolean;
 	/** @internal */
-	inProcessWorkers?: boolean;
+	inProcessWorkers?: boolean | Omit<InProcessWorkerSpawnOptions, "extensionCatalog">;
 	/** @public */
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
 	/** @internal */
@@ -48,14 +55,14 @@ export interface IntegrationHarnessOptions<
 	resources?: TResources;
 }
 
-/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. */
-/** @internal */
+/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. @internal */
 export function createPersistentIntegrationFixture(
 	prefix: string,
 	configure?: (config: LeitwerkConfig) => void,
 ) {
 	const root = mkdtempSync(path.join(tmpdir(), prefix));
 	let harness: IntegrationHarness | undefined;
+	/** @internal */
 	function createConfig() {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = path.join(root, "state.sqlite");
@@ -65,17 +72,16 @@ export function createPersistentIntegrationFixture(
 		configure?.(config);
 		return config;
 	}
+	/** @internal */
 	async function close() {
-		await harness?.ctx.app.close();
+		await harness?.close();
 		harness = undefined;
 	}
 	return {
 		/** @internal */
 		root,
 		/** @internal */
-		createConfig() {
-			return createConfig();
-		},
+		createConfig,
 		/** @internal */
 		context() {
 			if (!harness) throw new Error("Fixture is not open");
@@ -90,15 +96,13 @@ export function createPersistentIntegrationFixture(
 			return harness;
 		},
 		/** @internal */
-		async close() {
-			await close();
-		},
+		close,
 		/** @internal */
 		async dispose() {
 			try {
 				await close();
 			} finally {
-				rmSync(root, { recursive: true, force: true });
+				rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 			}
 		},
 	};
@@ -125,24 +129,38 @@ export async function createIntegrationHarness<
 
 	if (opts.inProcessWorkers !== false && !appOpts.localWorkerSpawnImpl) {
 		appOpts.localWorkerSpawnImpl = createInProcessWorkerSpawn({
+			...(typeof opts.inProcessWorkers === "object" ? opts.inProcessWorkers : {}),
 			extensionCatalog,
 		});
 	}
 	const ctx = await createAppContext(appOpts);
 
 	let address = "";
-	if (opts.listen !== false || config.workers.runner === "local") {
-		await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-		const info = ctx.app.server.address();
-		const port = typeof info === "object" && info ? info.port : 0;
-		address = `http://127.0.0.1:${port}`;
-		ctx.config.server.base_url = address;
+	try {
+		if (opts.listen !== false) {
+			if (opts.backgroundServices !== false) {
+				({ address } = await ctx.listen({
+					host: "127.0.0.1",
+					port: 0,
+					useBoundAddressAsBaseUrl: true,
+				}));
+			} else {
+				address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+				ctx.config.server.base_url = address;
+			}
+		}
+	} catch (error) {
+		await ctx.close().catch(() => {});
+		throw error;
 	}
 
 	return {
 		ctx,
+		close: () => ctx.close(),
 		config,
-		address,
+		get address() {
+			return address || (ctx.app.server.listening ? ctx.config.server.base_url : "");
+		},
 		resources: opts.resources ?? ({} as TResources),
 	};
 }

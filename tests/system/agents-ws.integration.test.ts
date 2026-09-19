@@ -6,6 +6,7 @@ import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+let harness: Awaited<ReturnType<typeof createIntegrationHarness>>;
 let ctx: AppContext;
 let address: string;
 
@@ -61,7 +62,7 @@ async function waitForFrame(
 }
 
 beforeAll(async () => {
-	const harness = await createIntegrationHarness({
+	harness = await createIntegrationHarness({
 		extensionCatalog: buildExtensionCatalogFromModules([
 			showcaseProcessesExtension,
 			websocketFixtureProviderExtension,
@@ -82,7 +83,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await ctx.app.close();
+	await harness.close();
 });
 
 describe("WebSocket protocol contract", () => {

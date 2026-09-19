@@ -13,8 +13,7 @@ export interface ProcessTurnStartFromCurrentLeaf {
 
 /** @internal */
 export interface ProcessTurnStartFromSessionRoot {
-	/** Start with no persisted Pi entry in context. The kickoff entry has parentId null. */
-	/** @internal */
+	/** Start with no persisted Pi entry in context. The kickoff entry has parentId null. @internal */
 	kind: "session_root";
 }
 

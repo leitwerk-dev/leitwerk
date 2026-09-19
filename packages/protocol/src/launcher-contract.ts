@@ -63,7 +63,6 @@ export interface UiLauncherSummaryBase {
 	card: LauncherCardMetadata;
 	/** @internal */
 	launchConfigSchema: LauncherSchemaDefinition;
-	/** Safe summaries of currently available opt-in skills. */
-	/** @internal */
+	/** Safe summaries of currently available opt-in skills. @internal */
 	skills?: readonly SkillOptionSummary[];
 }

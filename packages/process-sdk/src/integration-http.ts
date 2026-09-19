@@ -1,5 +1,4 @@
-/** An HTTP failure without provider response bodies or credentials. */
-/** @internal */
+/** An HTTP failure without provider response bodies or credentials. @internal */
 export class IntegrationHttpError extends Error {
 	/** @internal */
 	constructor(
@@ -11,8 +10,7 @@ export class IntegrationHttpError extends Error {
 	}
 }
 
-/** Shared transport; extensions own endpoint paths, credentials, and response types. */
-/** @public */
+/** Shared transport; extensions own endpoint paths, credentials, and response types. @public */
 export class IntegrationHttpClient {
 	/** @internal */
 	constructor(

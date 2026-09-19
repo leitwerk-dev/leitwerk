@@ -14,8 +14,7 @@ export interface CreateProcessTurnAnnotationInput {
 	instanceId: string;
 	/** @internal */
 	annotationType: string;
-	/** Null means append-only and therefore not addressable via upsert key. */
-	/** @internal */
+	/** Null means append-only and therefore not addressable via upsert key. @internal */
 	annotationKey?: string | null;
 	/** @internal */
 	references?: readonly TurnAnnotationReference[];
@@ -31,8 +30,7 @@ export interface CreateProcessTurnAnnotationInput {
 export interface UpdateProcessTurnAnnotationInput {
 	/** @internal */
 	annotationType?: string;
-	/** Null means append-only and therefore not addressable via upsert key. */
-	/** @internal */
+	/** Null means append-only and therefore not addressable via upsert key. @internal */
 	annotationKey?: string | null;
 	/** @internal */
 	references?: readonly TurnAnnotationReference[];

@@ -117,11 +117,9 @@ export interface WorkerRuntimeContextSnapshot {
 export interface WorkerCredentialMaterial {
 	/** @internal */
 	providerId: string;
-	/** Null for generated credentials that are materialized but never synchronized. */
-	/** @internal */
+	/** Null for generated credentials that are materialized but never synchronized. @internal */
 	revision: number | null;
-	/** Secret payload. This type is valid only in worker.start and credential-update frames. */
-	/** @internal */
+	/** Secret payload. This type is valid only in worker.start and credential-update frames. @internal */
 	values: Record<string, string>;
 }
 
@@ -133,8 +131,7 @@ export interface WorkerGitSshCredential {
 	kind: "git_ssh";
 	/** @internal */
 	credentialRef: string;
-	/** Secret values; valid only while preparing worker.start. */
-	/** @internal */
+	/** Secret values; valid only while preparing worker.start. @internal */
 	privateKey: string;
 	/** @internal */
 	knownHosts: string;
@@ -148,21 +145,18 @@ export interface WorkerGitHttpsCredential {
 	kind: "git_https";
 	/** @internal */
 	credentialRef: string;
-	/** Exact non-secret HTTPS clone URL authorized by the server. */
-	/** @internal */
+	/** Exact non-secret HTTPS clone URL authorized by the server. @internal */
 	repositoryUrl: string;
 	/** @internal */
 	username: string;
-	/** Secret; only delivered through authenticated worker.start. */
-	/** @internal */
+	/** Secret; only delivered through authenticated worker.start. @internal */
 	password: string;
 }
 
 /** @internal */
 export type WorkerRepositoryCredential = WorkerGitSshCredential | WorkerGitHttpsCredential;
 
-/** Secret material allowed only in authenticated worker.start, never snapshots or exports. */
-/** @internal */
+/** Secret material allowed only in authenticated worker.start, never snapshots or exports. @internal */
 export interface WorkerDockerRegistryCredential
 	extends InferOutput<typeof dockerRegistryCredentialSchema> {}
 
@@ -174,8 +168,7 @@ export interface LlmWorkerStartBootstrap {
 	resourceBundle: {
 		/** @internal */
 		digest: string;
-		/** Present for a newly assembled bundle; omitted when the worker can reuse its process volume. */
-		/** @internal */
+		/** Present for a newly assembled bundle; omitted when the worker can reuse its process volume. @internal */
 		archiveBase64?: string;
 	};
 	/** @internal */
@@ -233,35 +226,29 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 		primaryTreeFile: string;
 		/** @internal */
 		workspaceRoot: string;
-		/** Process-scoped persistent storage for immutable Pi resource bundles. */
-		/** @internal */
+		/** Process-scoped persistent storage for immutable Pi resource bundles. @internal */
 		piResourceBundlesDir: string;
 	};
 	/** @internal */
 	resume: boolean;
 	/** @internal */
 	resumeLeafEntryId?: string | null;
-	/** Durable non-secret preparation checkpoint reused by a replacement or Continue start. */
-	/** @internal */
+	/** Durable non-secret preparation checkpoint reused by a replacement or Continue start. @internal */
 	llmPreparation?: {
 		/** @internal */
 		sourceTurnRecordId: string;
 		/** @internal */
 		data: unknown;
 	};
-	/** Fresh secret material resolved for this physical worker start only. */
-	/** @internal */
+	/** Fresh secret material resolved for this physical worker start only. @internal */
 	repositoryCredentials?: WorkerRepositoryCredential[];
 	/** @internal */
 	dockerRegistryCredentials?: WorkerDockerRegistryCredential[];
-	/** Non-secret lifecycle settings supplied to every worker bootstrap type. */
-	/** @internal */
+	/** Non-secret lifecycle settings supplied to every worker bootstrap type. @internal */
 	workerRuntimeSettings?: WorkerRuntimeSettingsSnapshot;
-	/** Non-secret mise adapter settings. Ignored unless the process opts in. */
-	/** @internal */
+	/** Non-secret mise adapter settings. Ignored unless the process opts in. @internal */
 	developmentTools?: DevelopmentToolsStartConfig;
-	/** Non-secret declarations authorized for the selected LLM turn. */
-	/** @internal */
+	/** Non-secret declarations authorized for the selected LLM turn. @internal */
 	integrationTools?: IntegrationToolDeclaration[];
 }
 
@@ -437,11 +424,9 @@ export type ServerToWorkerMessage =
 
 /** @internal */
 export interface WorkerHelloPayload {
-	/** Package/runtime version for diagnostics. */
-	/** @internal */
+	/** Package/runtime version for diagnostics. @internal */
 	version: string;
-	/** Server-worker API compatibility version. Missing only on legacy/test workers. */
-	/** @internal */
+	/** Server-worker API compatibility version. Missing only on legacy/test workers. @internal */
 	apiVersion?: string;
 	/** @internal */
 	capabilities: string[];
@@ -512,8 +497,7 @@ export interface WorkerReadyPayload {
 
 /** @internal */
 export interface WorkerHeartbeatPayload {
-	/** Diagnostic worker-local runtime state; not the authoritative lease transition channel. */
-	/** @internal */
+	/** Diagnostic worker-local runtime state; not the authoritative lease transition channel. @internal */
 	state: string;
 	/** @internal */
 	lastSequenceConsumed: number;
@@ -525,8 +509,7 @@ export interface WorkerHeartbeatPayload {
 
 /** @internal */
 export interface WorkerStatePayload {
-	/** Explicit server-visible runtime transition, e.g. idle -> busy or busy -> idle. */
-	/** @internal */
+	/** Explicit server-visible runtime transition, e.g. idle -> busy or busy -> idle. @internal */
 	from: string;
 	/** @internal */
 	to: string;
@@ -583,8 +566,7 @@ export interface WorkerCredentialUpdatePayload {
 	providerId: string;
 	/** @internal */
 	expectedRevision: number;
-	/** Secret payload. It must not be copied into receipts, events, or turn state. */
-	/** @internal */
+	/** Secret payload. It must not be copied into receipts, events, or turn state. @internal */
 	values: Record<string, string>;
 }
 

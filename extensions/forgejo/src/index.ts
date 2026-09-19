@@ -40,8 +40,7 @@ export * from "./external.js";
 export * from "./issue-watcher.js";
 export default extension;
 
-/** Register shared tools and polling with an explicit integration. */
-/** @public */
+/** Register shared tools and polling with an explicit integration. @public */
 export function setupForgejoIntegration(
 	api: Parameters<NonNullable<LeitwerkExtensionModule["setupServer"]>>[0],
 	integration: ForgejoIntegration,
