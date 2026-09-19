@@ -82,7 +82,6 @@ export {
 	defineProcess,
 	type ExternalSourceTransition,
 	type ExternalTurnDefinition,
-	externalTurn,
 	getExternalActionArmingId,
 	getExternalActionTransitionTrigger,
 	getExternalSourceTransitionId,
@@ -116,7 +115,6 @@ export {
 	type ProcessToolOutcomeSpec,
 	type ProcessTurnEndSpec,
 	resolveHumanTurnView,
-	routeTurnOutcomes,
 	type TurnDefinition,
 	type TurnDefinitionRecord,
 } from "./define-process.js";
@@ -164,7 +162,6 @@ export type {
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
 	ProcessWatcherPresentation,
-	ProcessWatcherPresentationField,
 	ProcessWatcherSource,
 	RepositoryCredentialKind,
 	RepositoryCredentialProject,
@@ -204,9 +201,7 @@ export { createExternalSourcePollReporter } from "./external-source-poll.js";
 export {
 	AutomaticFlowBuilder,
 	AutomaticOutcomeBuilder,
-	createFlowAutomaticRunContext,
 	createFlowPromptContext,
-	DEFAULT_FLOW_PRODUCT_NAME,
 	DEFAULT_PLAN_RESULT_OUTCOME_ID,
 	ExternalActionBuilder,
 	ExternalFlowBuilder,
@@ -241,7 +236,6 @@ export {
 	type AcceptedReviewHandoffActionSpec,
 	acceptedReviewHandoffAction,
 	type QueuedInstructionActionSpec,
-	queuedInstructionAction,
 	type RevisionActionSpec,
 	revisionAction,
 } from "./graph-fragments.js";
@@ -263,7 +257,6 @@ export type {
 export {
 	normalizeLeafOutcomeCaptureResult,
 	validateLeafOutcomeCaptureResult,
-	validateProcessLeafOutcomeDefinition,
 } from "./leaf-outcomes.js";
 export {
 	type BuiltinPiProviderReference,
@@ -318,12 +311,8 @@ export {
 	resolveProviderOptions,
 } from "./model-provider.js";
 export {
-	collectProcessAvailableToolNames,
-	resolveTurnActiveToolNames,
-	resolveTurnAvailableToolNames,
-	validatePiBuiltInToolArray,
-} from "./pi-config.js";
-export { buildProcessFlowView, collapseRoutingTurns } from "./process-flow-view.js";
+	buildProcessFlowView,
+} from "./process-flow-view.js";
 export {
 	getAllProcessGraphs,
 	getProcessGraph,
@@ -344,12 +333,10 @@ export {
 	validateProcessGraphTurnTransitions,
 } from "./process-graph.js";
 export {
-	type BuiltProcessLauncherDefinition,
 	buildProcessLaunchers,
 	createProcessLauncherBuilder,
 } from "./process-launcher-builder.js";
 export {
-	type BuiltProcessWatcherDefinition,
 	buildProcessWatchers,
 	createProcessWatcherBuilder,
 } from "./process-watcher-builder.js";
@@ -388,12 +375,6 @@ export {
 	parseRepositoryPullRequestConfig,
 } from "./repository-source-config.js";
 export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
-export {
-	buildPlanSavedEventPayload,
-	buildReviewCompletedEventPayload,
-	buildReviewRequestedEventPayload,
-	filterStringArray,
-} from "./review-flow.js";
 export type {
 	LeafOutcomeCapturedEvent,
 	PlanApprovedEvent,
@@ -452,11 +433,6 @@ export {
 	isHumanTurnDefinition,
 	isLlmTurnDefinition,
 	resolveLlmTurnRestorePrimaryLeafAfterTurn,
-	resolveLlmTurnStartSelection,
-	validateAutomaticTurnDefinition,
-	validateExternalTurnDefinition,
-	validateHumanTurnDefinition,
-	validateLlmTurnDefinition,
 	validateTurnDefinition,
 } from "./turn-semantics.js";
 export type {
@@ -493,10 +469,8 @@ export type {
 	ProcessActionSchedulingFixedTurnPreview,
 	ProcessActionSchedulingPreview,
 	ProcessActionSchedulingTriggerPreview,
-	ProcessContext,
 	ProcessCustomTool,
 	ProcessPiConfig,
-	ProcessToolResult,
 	ResolvedProcessPiConfig,
 	TurnAcceptanceState,
 	TurnBranchType,
@@ -505,17 +479,11 @@ export type {
 	TurnOptions,
 	TurnResult,
 	TurnResultMarkdownBehavior,
-	TurnSemanticEntryRefKey,
 } from "./types.js";
 export {
-	FRAMEWORK_LLM_TOOL_NAMES,
-	PI_BUILT_IN_TOOL_NAMES,
 	RESERVED_INTEGRATION_TOOL_NAMES,
-	TURN_COMPLETION_MODES,
-	TURN_CONTEXT_MODES,
 } from "./types.js";
 export {
-	type BuiltUiProcessDefinition,
 	buildUiProcessDefinition,
 	createUiProcessBuilder,
 } from "./ui-process-builder.js";

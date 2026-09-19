@@ -236,9 +236,6 @@ export interface UiLauncherDefinition<TParams = unknown> {
 	): UiLauncherConfigResolution<TParams> | Promise<UiLauncherConfigResolution<TParams>>;
 }
 
-/** @internal */
-export type ProcessWatcherPresentationField = WatcherPresentationField;
-
 /** @public */
 export interface ProcessWatcherPresentation {
 	/** @public */
