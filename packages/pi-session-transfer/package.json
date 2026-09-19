@@ -18,13 +18,6 @@
 			"./dist/index.js"
 		]
 	},
-	"exports": {
-		".": {
-			"source": "./src/index.ts",
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
-		}
-	},
 	"scripts": {
 		"build": "tsup --silent"
 	},
