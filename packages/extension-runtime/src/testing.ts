@@ -245,7 +245,6 @@ export function buildServerProcessForTest<TParams = unknown, TState = unknown>(
 export {
 	buildProcessLaunchers as buildProcessLaunchersForTest,
 	buildProcessWatchers as buildProcessWatchersForTest,
-	buildUiProcessDefinition as buildUiProcessForTest,
 } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
