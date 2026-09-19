@@ -10,6 +10,4 @@ export {
 	createInMemoryExternalWriteLog,
 	createTestServerSetupCapability,
 	type InMemoryExternalWriteLog,
-	type ServerExtensionTestHarness,
-	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";

@@ -22,8 +22,6 @@ export {
 	createTestServerSetupCapability,
 	createToolCollector,
 	type InMemoryExternalWriteLog,
-	type ServerExtensionTestHarness,
-	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";
 export {
 	createStubToolScriptController,
