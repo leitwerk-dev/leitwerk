@@ -15,21 +15,6 @@
 			"source": "./src/index.ts",
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
-		},
-		"./composition": {
-			"source": "./src/composition.ts",
-			"import": "./dist/composition.js",
-			"types": "./dist/composition.d.ts"
-		},
-		"./workspace": {
-			"source": "./src/workspace.ts",
-			"import": "./dist/workspace.js",
-			"types": "./dist/workspace.d.ts"
-		},
-		"./benchmark": {
-			"source": "./src/benchmark.ts",
-			"import": "./dist/benchmark.js",
-			"types": "./dist/benchmark.d.ts"
 		}
 	},
 	"scripts": {
