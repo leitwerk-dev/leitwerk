@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/worker-runners",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -53,10 +53,10 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0",
-		"@leitwerk-dev/session-transfer": "0.2.0",
-		"@leitwerk-dev/watcher-utils": "0.2.0",
-		"@leitwerk-dev/worker-protocol": "0.2.0"
+		"@leitwerk-dev/domain": "0.2.1",
+		"@leitwerk-dev/session-transfer": "0.2.1",
+		"@leitwerk-dev/watcher-utils": "0.2.1",
+		"@leitwerk-dev/worker-protocol": "0.2.1"
 	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",
