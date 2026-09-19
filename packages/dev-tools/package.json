@@ -36,14 +36,17 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
+		"@jridgewell/trace-mapping": "^0.3.31",
+		"@leitwerk-dev/domain": "0.2.0",
+		"@leitwerk-dev/protocol": "0.2.0",
 		"@leitwerk-dev/server": "0.2.0",
 		"@leitwerk-dev/ui": "0.2.0",
+		"@microsoft/api-extractor": "^7.59.1",
 		"chokidar": "4.0.3",
+		"svelte2tsx": "^0.7.61",
 		"typescript": "^6.0.2",
 		"vite": "^8.1.4",
-		"yaml": "^2.8.3",
-		"@leitwerk-dev/domain": "0.2.0",
-		"@leitwerk-dev/protocol": "0.2.0"
+		"yaml": "^2.8.3"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

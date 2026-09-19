@@ -165,3 +165,53 @@ Pod image IDs. `--expected-server-image` optionally requires an exact image
 reference in the Deployment. No local public/private Git layout is assumed.
 The `/benchmark` export provides `runWorkerStartupBenchmark`, report functions
 and their types for repository wrappers.
+
+## Portable API reports
+
+`leitwerk-dev api:report` generates JSON evidence without installing or starting the
+API explorer. In a Leitwerk checkout, use `npm run api:report`.
+
+| Option | Contract |
+| --- | --- |
+| `--workspace PATH` | Analyze this workspace; defaults to the current directory. |
+| `--composition PATH` | Include explicitly declared packages and test roots using composition discovery. Relative paths resolve from the analyzed workspace. |
+| `--usage-only` | Read source and installed package metadata without building. Write consumer evidence without replacing the catalog. |
+| `--output-dir PATH` | Report destination; defaults to `.leitwerk/api-explorer/reports/` under the analyzed workspace. Explicit relative paths resolve from the invocation directory. |
+| `--built` | Reuse a successful preceding build. Catalog generation otherwise builds using the selected development mode. |
+
+```sh
+npm run api:report -- --composition /path/to/leitwerk.composition.yaml
+npm --prefix /path/to/leitwerk run api:report -- \
+  --workspace /path/to/consumer --usage-only --output-dir /path/to/report-collection
+```
+
+An installed consumer can define `"api:report": "leitwerk-dev api:report --usage-only"`.
+It needs no core checkout. Invoking a checkout with `npm --prefix` does not change
+the consumer's dependency selection. Generation is explicit, never part of every build. Source discovery does not descend
+into nested Git checkouts or worktrees. Select their packages or test roots explicitly
+through a composition when they belong to the analysis.
+
+The version 1 envelope contains `schemaVersion`, `producerVersion`, `kind`, `source`
+(identity, revision, content fingerprint), `analyzedPackages`, and `snapshot`.
+`catalog.json` contains exported declarations, export routes, canonical implementation
+identities, signatures, snippets, local occurrences, wiring, relationships, diagnostics,
+and coverage. `usage-<source-id>.json` carries the same evidence from a consumer.
+Files replace the previous report for that source atomically. Locations and snippets
+are embedded and relative to the analyzed workspace; readers never open those locations.
+Copy reports into a collection directory. Do not collect old revisions as new consumers.
+
+Targets use stable package, subpath, and qualified export/member IDs. Aliases retain
+separate routes and share canonical implementation evidence. Members declared only
+in TypeScript's standard library are not indexed beneath aliases or derived APIs:
+calling a string's `replace()` is not evidence of using a package's string alias.
+Declared API members and inherited non-standard-library members remain indexed. Different package versions
+can supply matched positive evidence, but cannot establish an absence of consumers.
+Unmatched symbols and incompatible schemas remain diagnostics. Empty evidence never
+proves that a declaration can be removed. Coverage describes the loaded sources.
+
+Supplemental JSON uses the same version 1 envelope, `kind: "supplemental"`, a distinct
+`source.id`, and a valid snapshot (which may have empty arrays and zero source files).
+Add `keep: [{ "target": "<stable API ID>", "reason": "Loaded by name at runtime" }]`
+to preserve an export for runtime use or another explicit reason. Copy the target ID
+from exported findings. Keep reasons override removal proposals. Supplemental
+occurrences use the catalog's target IDs and carry their own source snippets.
