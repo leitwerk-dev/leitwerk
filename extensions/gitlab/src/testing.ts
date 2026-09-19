@@ -18,7 +18,7 @@ export type {
 	GitLabPipeline,
 	GitLabProject,
 } from "./client.js";
-export { setupGitLabIntegration } from "./index.js";
+export { setupGitLabIntegration } from "./setup.js";
 
 /** @public */
 interface LocalState {

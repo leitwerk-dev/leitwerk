@@ -43,7 +43,7 @@ The extension contains no Renovate selection or repair policy. `./testing` expor
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/gitlab`: `GitLabBranch`, `GitLabClient`, `GitLabClientLike`, `GitLabCommit`, `GitLabDiff`, `GitLabIdentity`, `GitLabIntegration`, `GitLabJob`, `GitLabMergeRequest`, `GitLabNote`, `GitLabObservation`, `GitLabPipeline`, `GitLabProject`, `GitLabSelection`, `GitLabSourceConfig`, `default`, `gitlabExternal`, `gitlabIntegration`, `gitlabRepositoryCredentials`, `observationKey`, `observeMergeRequest`, `parseGitLabSelection`, `resolveGitLabBinding`, `selectGitLabProjects`, `setupGitLabIntegration`.
+- `@leitwerk-dev/gitlab`: `GitLabDiff`, `GitLabFeedback`, `GitLabIdentity`, `GitLabIntegration`, `GitLabJob`, `GitLabMergeRequest`, `GitLabObservation`, `GitLabProject`, `GitLabSelection`, `default`, `ensureGitLabSeenReaction`, `gitLabFeedbackReadyAt`, `gitlabExternal`, `gitlabIntegration`, `gitlabRepositoryCredentials`, `observationKey`, `observeMergeRequest`, `parseGitLabSelection`, `pendingGitLabFeedback`, `resolveGitLabBinding`, `selectGitLabProjects`.
 - `@leitwerk-dev/gitlab/testing`: `GitLabClientLike`, `GitLabMergeRequest`, `GitLabPipeline`, `GitLabProject`, `LocalGitLabAdapter`, `setupGitLabIntegration`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
