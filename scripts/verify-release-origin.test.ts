@@ -52,12 +52,6 @@ describe("stable release origin", () => {
 			},
 		],
 		[
-			"draft release",
-			(input) => {
-				input.release.draft = true;
-			},
-		],
-		[
 			"prerelease",
 			(input) => {
 				input.release.prerelease = true;
@@ -141,14 +135,20 @@ describe("stable release origin", () => {
 	});
 
 	it.each([
-		false,
-		true,
-	])("resolves GitHub metadata and pins the verified commit (annotated=%s)", async (annotated) => {
+		{ annotated: false, draft: false },
+		{ annotated: true, draft: false },
+		{ annotated: false, draft: true },
+		{ annotated: true, draft: true },
+	])("resolves GitHub metadata and pins the verified commit (%j)", async ({ annotated, draft }) => {
 		const input = releaseOrigin();
+		input.release.draft = draft;
 		const prefix = `/repos/${input.repository}/`;
 		const requests: string[] = [];
 		const responses: Record<string, unknown> = {
-			[`releases/tags/${input.tag}`]: input.release,
+			"releases?per_page=100&page=1": Array.from({ length: 100 }, (_, index) => ({
+				tag_name: `other-${index}`,
+			})),
+			"releases?per_page=100&page=2": [input.release],
 			[`git/ref/tags/${input.tag}`]: {
 				object: { type: annotated ? "tag" : "commit", sha: input.sha },
 			},
@@ -197,5 +197,6 @@ describe("stable release origin", () => {
 			expect(checkout.with.ref).toBe(`\${{ needs.resolve.outputs.git_sha }}`);
 		}
 		expect(workflow.jobs.publish.environment).toBe("npm-publish");
+		expect(workflow.jobs.resolve.permissions.contents).toBe("write");
 	});
 });
