@@ -272,17 +272,6 @@ export class ForgejoClient extends RepositoryHttpClient<Record<string, unknown>>
 	}
 
 	/** @internal */
-	addPullRequestComment(
-		owner: string,
-		repo: string,
-		number: number,
-		body: string,
-		signal?: AbortSignal,
-	): Promise<unknown> {
-		return this.addIssueComment(owner, repo, number, body, signal);
-	}
-
-	/** @internal */
 	listPullRequestFeedbackReactions(
 		owner: string,
 		repo: string,
@@ -331,7 +320,7 @@ export class ForgejoClient extends RepositoryHttpClient<Record<string, unknown>>
 		signal?: AbortSignal,
 	): Promise<unknown> {
 		if (feedback.kind !== "inline" || !feedback.reviewId || !feedback.path) {
-			return this.addPullRequestComment(owner, repo, pullRequestNumber, body, signal);
+			return this.addIssueComment(owner, repo, pullRequestNumber, body, signal);
 		}
 		return this.writeJson(
 			`${repositoryPath(owner, repo)}/pulls/${pullRequestNumber}/reviews/${feedback.reviewId}/comments`,

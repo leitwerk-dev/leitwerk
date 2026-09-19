@@ -242,7 +242,6 @@ function forgejoClient(store: LocalForgejoAdapter): ForgejoClientLike {
 			return structuredClone(value);
 		},
 		...store.pullRequestClient(repo),
-		addPullRequestComment: comment,
 		async listPullRequestFeedbackReactions(owner, name, feedback) {
 			return structuredClone(
 				(repo(owner, name).reactions ?? [])

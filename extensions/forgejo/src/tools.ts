@@ -1,5 +1,7 @@
 import {
+	existingObject,
 	type IntegrationToolExecutionContext,
+	matchesPatch,
 	numberArg,
 	objectArg as object,
 	type ProcessProjectRepoLike,
@@ -17,7 +19,6 @@ import {
 	type ForgejoTicketCreationConfig,
 	parseLabelNames,
 } from "./client.js";
-import { existingObject, matchesPatch } from "./write-reconciliation.js";
 
 interface ForgejoTicketDestinationData {
 	profile: string;
@@ -170,11 +171,11 @@ export function registerForgejoTools(
 		const find = async () =>
 			(await client.listLabels(target.owner, target.repo, ctx.signal)).find(
 				(label) => label.name === name,
-			);
+			) ?? null;
 		return await ctx.externalWrites.ensure(
 			{ writeType: "forgejo.ensure_label", dedupKey: writeKey },
 			{
-				reconcile: async () => existingObject(async () => (await find()) ?? null),
+				reconcile: () => existingObject(find),
 				execute: () => client.createLabel(target.owner, target.repo, name, "2da44e", ctx.signal),
 				toMetadata: (label) => ({ id: label.id, name: label.name }),
 			},
@@ -489,7 +490,7 @@ export function registerForgejoTools(
 
 	for (const [resource, numberName, comment, update] of [
 		["issue", "issueNumber", "addIssueComment", "updateIssue"],
-		["pull_request", "pullRequestNumber", "addPullRequestComment", "updatePullRequest"],
+		["pull_request", "pullRequestNumber", "addIssueComment", "updatePullRequest"],
 	] as const) {
 		for (const updating of [false, true]) {
 			const payloadName = updating ? "patch" : "body";
@@ -523,14 +524,9 @@ export function registerForgejoTools(
 												(comment) => String(comment.body).includes(marker),
 											) ?? null
 										);
-									const current = await existingObject<object>(() =>
-										client[resource === "issue" ? "getIssue" : "getPullRequest"](
-											t.owner,
-											t.repo,
-											number,
-											ctx.signal,
-										),
-									);
+									const current = await client[
+										resource === "issue" ? "getIssue" : "getPullRequest"
+									](t.owner, t.repo, number, ctx.signal);
 									return current && (phase === "already_recorded" || matchesPatch(current, payload))
 										? current
 										: null;

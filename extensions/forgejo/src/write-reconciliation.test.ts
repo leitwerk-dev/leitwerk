@@ -1,12 +1,13 @@
 import {
+	existingObject,
 	IntegrationHttpError,
 	type IntegrationToolExecutionContext,
+	matchesPatch,
 } from "@leitwerk-dev/process-sdk";
 import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { afterEach, expect, it, vi } from "vitest";
 import { ForgejoClient } from "./client.js";
 import { registerForgejoTools } from "./tools.js";
-import { existingObject, matchesPatch } from "./write-reconciliation.js";
 
 afterEach(() => vi.unstubAllGlobals());
 function fixture() {
@@ -37,18 +38,28 @@ function fixture() {
 		},
 	};
 }
+function loseWriteResponse(
+	path: string,
+	remote: unknown,
+	mutate: (body: Record<string, unknown>) => void,
+	method = "POST",
+) {
+	const write = vi.fn(mutate);
+	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
+		expect(url).toContain(path);
+		if (init.method === method) {
+			write(JSON.parse(String(init.body)));
+			throw new Error("lost response");
+		}
+		return Response.json(remote);
+	});
+	return write;
+}
 it("recovers a lost comment response with the marker, including logged replay", async () => {
 	const f = fixture();
 	const comments: Array<{ id: number; body: string }> = [];
-	let posts = 0;
-	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-		expect(url).toContain("/repos/team/repo/issues/7/comments");
-		if (init.method === "POST") {
-			posts++;
-			comments.push({ id: 1, body: JSON.parse(String(init.body)).body });
-			throw new Error("lost response");
-		}
-		return Response.json(comments);
+	const post = loseWriteResponse("/repos/team/repo/issues/7/comments", comments, (body) => {
+		comments.push({ id: 1, body: String(body.body) });
 	});
 	const args = { issueNumber: 7, body: "Addressed" };
 	expect(await f.run("forgejo_add_issue_comment", args)).toMatchObject({ id: 1 });
@@ -58,7 +69,7 @@ it("recovers a lost comment response with the marker, including logged replay", 
 	await expect(f.run("forgejo_add_issue_comment", args)).rejects.toMatchObject({
 		name: "ExternalWriteMissingRemoteError",
 	});
-	expect(posts).toBe(1);
+	expect(post).toHaveBeenCalledTimes(1);
 });
 it("rejects historical logged comments without a recoverable marker", async () => {
 	const f = fixture();
@@ -73,24 +84,17 @@ it("rejects historical logged comments without a recoverable marker", async () =
 it("recovers only the bot's eyes reaction at the scoped comment endpoint", async () => {
 	const f = fixture();
 	const reactions = [{ content: "eyes", user: { login: "someone" } }];
-	let posts = 0;
-	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-		expect(url).toContain("/repos/team/repo/issues/comments/8/reactions");
-		if (init.method === "POST") {
-			posts++;
-			reactions.push({ content: "eyes", user: { login: "BOT" } });
-			throw new Error("lost response");
-		}
-		return Response.json(reactions);
+	const post = loseWriteResponse("/repos/team/repo/issues/comments/8/reactions", reactions, () => {
+		reactions.push({ content: "eyes", user: { login: "BOT" } });
 	});
 	const args = { pullRequestNumber: 7, feedbackKind: "inline", feedbackId: 8, writeKey: "key" };
 	expect(await f.run("forgejo_add_pull_request_feedback_reaction", args)).toEqual({ ok: true });
 	await f.run("forgejo_add_pull_request_feedback_reaction", args);
-	expect(posts).toBe(1);
+	expect(post).toHaveBeenCalledTimes(1);
 });
 it("compares requested fields after lost updates and preserves later edits", async () => {
 	const f = fixture();
-	let current = {
+	const current = {
 		title: "Old",
 		labels: [
 			{ id: 2, name: "two" },
@@ -98,21 +102,17 @@ it("compares requested fields after lost updates and preserves later edits", asy
 		],
 		state: "closed",
 	};
-	let patches = 0;
-	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
-		expect(url).toContain("/repos/team/repo/issues/7");
-		if (init.method === "PATCH") {
-			patches++;
-			current = { ...current, title: "Updated" };
-			throw new Error("lost response");
-		}
-		return Response.json(current);
-	});
+	const patch = loseWriteResponse(
+		"/repos/team/repo/issues/7",
+		current,
+		() => Object.assign(current, { title: "Updated" }),
+		"PATCH",
+	);
 	await f.run("forgejo_update_issue", { issueNumber: 7, patch: { title: "Updated" } });
 	current.title = "Later edit";
 	await f.run("forgejo_update_issue", { issueNumber: 7, patch: { title: "Updated" } });
 	expect(current.title).toBe("Later edit");
-	expect(patches).toBe(1);
+	expect(patch).toHaveBeenCalledTimes(1);
 	expect(matchesPatch(current, { labels: [1, 2], state: "closed" })).toBe(true);
 	expect(matchesPatch(current, { labels: ["two", "one"] })).toBe(true);
 	expect(matchesPatch(current, { title: "Updated" })).toBe(false);

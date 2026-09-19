@@ -7,23 +7,11 @@
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"],
 	"references": [
-		{
-			"path": "../domain"
-		},
-		{
-			"path": "../extension-runtime"
-		},
-		{
-			"path": "../protocol"
-		},
-		{
-			"path": "../server"
-		},
-		{
-			"path": "../worker-protocol"
-		},
-		{
-			"path": "../external-writes"
-		}
+		{ "path": "../domain" },
+		{ "path": "../extension-runtime" },
+		{ "path": "../protocol" },
+		{ "path": "../server" },
+		{ "path": "../worker-protocol" },
+		{ "path": "../external-writes" }
 	]
 }

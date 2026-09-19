@@ -5,7 +5,6 @@ import {
 	bindExternalWrites,
 	type ExternalWriteLogRecordInput,
 	type ExternalWriteLogRepoLike,
-	ensureWrite,
 	recordWriteIfMissing,
 } from "./external-writes.js";
 
@@ -15,13 +14,6 @@ const id = (writeType: ExternalWriteType, dedupKey: string): WriteIdentity => ({
 	writeType,
 	dedupKey,
 });
-
-const notification = (
-	instanceId: string,
-	channelKey: string,
-	logicalEventKey: string,
-): WriteIdentity =>
-	id("notification", `${instanceId}:notification:${channelKey}:${logicalEventKey}`);
 
 function createWriteLogRepo(
 	state: Map<string, ExternalWriteLogRecordInput> = new Map(),
@@ -39,7 +31,7 @@ function createWriteLogRepo(
 		},
 	};
 }
-describe("ensureWrite", () => {
+describe("logOnly", () => {
 	it("performs the async write on first call and skips the duplicate", async () => {
 		const repo = createWriteLogRepo();
 		const identity = id("type.beta", "beta:1");
@@ -62,71 +54,27 @@ describe("ensureWrite", () => {
 
 describe("recordWriteIfMissing", () => {
 	it("records completion metadata without rerunning external work", () => {
-		const repo = createWriteLogRepo();
+		const state = new Map<string, ExternalWriteLogRecordInput>();
+		const repo = createWriteLogRepo(state);
 		const identity = id("type.gamma", "gamma:1");
-
-		const first = recordWriteIfMissing(repo, instanceId, identity, { attempt: 1 });
-		const second = recordWriteIfMissing(repo, instanceId, identity, { attempt: 1 });
-
-		expect(first.recorded).toBe(true);
-		expect(second.recorded).toBe(false);
-		expect(repo.hasDedupKey(identity.dedupKey)).toBe(true);
+		recordWriteIfMissing(repo, instanceId, identity, { attempt: 1 });
+		recordWriteIfMissing(repo, instanceId, identity, { attempt: 2 });
+		expect([...state.values()]).toEqual([{ instanceId, ...identity, metadata: { attempt: 1 } }]);
 	});
 });
 
-describe("distinct identities", () => {
-	it("treats different dedup keys as separate writes", () => {
-		const repo = createWriteLogRepo();
-		const id1 = id("type.alpha", "shared:1");
-		const id2 = id("type.alpha", "shared:2");
-		const id3 = id("type.beta", "shared:1");
-
-		expect(id1.dedupKey).not.toBe(id2.dedupKey);
-		expect(id1.writeType).not.toBe(id3.writeType);
-
-		recordWriteIfMissing(repo, instanceId, id1);
-		recordWriteIfMissing(repo, instanceId, id2);
-		recordWriteIfMissing(repo, instanceId, id3);
-
-		expect(repo.hasDedupKey(id1.dedupKey)).toBe(true);
-		expect(repo.hasDedupKey(id2.dedupKey)).toBe(true);
-		expect(repo.hasDedupKey(id3.dedupKey)).toBe(true);
-	});
-});
-
-describe("notifications", () => {
-	it("deduplicates by channel and logical event key", () => {
-		const repo = createWriteLogRepo();
-		const id1 = notification(instanceId, "all", "turn_selected:generate_plan");
-		const id2 = notification(instanceId, "debug", "turn_selected:generate_plan");
-
-		recordWriteIfMissing(repo, instanceId, id1);
-		recordWriteIfMissing(repo, instanceId, id2);
-
-		expect(id1.dedupKey).not.toBe(id2.dedupKey);
-		expect(recordWriteIfMissing(repo, instanceId, id1).recorded).toBe(false);
-	});
-});
-
-describe("restart behavior", () => {
-	it("preserves deduplication across fresh repo instances", () => {
-		const sharedState = new Map<string, ExternalWriteLogRecordInput>();
-		const repo1 = createWriteLogRepo(sharedState);
-		const identities = [
-			id("type.alpha", "alpha:1"),
-			id("type.beta", "beta:1"),
-			notification(instanceId, "all", "turn_selected:generate_plan"),
-		];
-
-		for (const identity of identities) {
-			recordWriteIfMissing(repo1, instanceId, identity);
-		}
-
-		const repo2 = createWriteLogRepo(sharedState);
-		for (const identity of identities) {
-			expect(recordWriteIfMissing(repo2, instanceId, identity).recorded).toBe(false);
-		}
-	});
+it("deduplicates by key alone across fresh repository instances", () => {
+	const state = new Map<string, ExternalWriteLogRecordInput>();
+	const repo = createWriteLogRepo(state);
+	const first = id("type.alpha", "shared:1");
+	const second = id("type.alpha", "shared:2");
+	recordWriteIfMissing(repo, instanceId, first);
+	recordWriteIfMissing(repo, instanceId, second);
+	recordWriteIfMissing(createWriteLogRepo(state), instanceId, id("type.beta", "shared:1"));
+	expect([...state.values()]).toEqual([
+		{ instanceId, ...first, metadata: {} },
+		{ instanceId, ...second, metadata: {} },
+	]);
 });
 
 function reconciliationFixture(state = new Map<string, ExternalWriteLogRecordInput>()) {
@@ -136,7 +84,6 @@ function reconciliationFixture(state = new Map<string, ExternalWriteLogRecordInp
 	let executions = 0;
 	const phases: string[] = [];
 	const operation = {
-		mode: "reconcile" as const,
 		reconcile: async (phase: string) => {
 			phases.push(phase);
 			return remote;
@@ -266,9 +213,7 @@ describe("typed reconciliation", () => {
 		await expect(f.run()).rejects.toBe(error);
 		expect(f.phases).toEqual(["before_execute"]);
 		f.operation.toMetadata = metadata;
-		const result = await ensureWrite(
-			createWriteLogRepo(f.state),
-			instanceId,
+		const result = await bindExternalWrites(createWriteLogRepo(f.state), instanceId).ensure(
 			f.identity,
 			f.operation,
 		);
@@ -277,10 +222,7 @@ describe("typed reconciliation", () => {
 	});
 	it("serializes the same key while independent keys proceed", async () => {
 		const f = reconciliationFixture();
-		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: gate, resolve: release } = Promise.withResolvers<void>();
 		const execute = f.operation.execute;
 		f.operation.execute = async () => {
 			await gate;
@@ -288,10 +230,10 @@ describe("typed reconciliation", () => {
 		};
 		const first = f.run();
 		const second = f.run();
-		const independent = await ensureWrite(f.repo, instanceId, id("test.other", "other"), {
-			mode: "log_only",
-			execute: async () => ({}),
-		});
+		const independent = await bindExternalWrites(f.repo, instanceId).logOnly(
+			id("test.other", "other"),
+			async () => ({}),
+		);
 		expect(independent).toBeUndefined();
 		release();
 		expect(await Promise.all([first, second])).toEqual([{ id: 42 }, { id: 42 }]);

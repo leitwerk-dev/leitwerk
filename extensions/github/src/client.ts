@@ -331,12 +331,10 @@ export class GitHubClient extends RepositoryHttpClient {
 		body: string,
 	) {
 		if (kind === "inline")
-			return this.request(
+			return this.writeJson(
 				`${this.repositoryPath(owner, repo)}/pulls/${pr}/comments/${id}/replies`,
-				{
-					method: "POST",
-					body: JSON.stringify({ body }),
-				},
+				"POST",
+				{ body },
 			);
 		return this.addIssueComment(owner, repo, pr, body);
 	}

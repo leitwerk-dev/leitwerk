@@ -1,9 +1,8 @@
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
+import { type IntegrationToolExecutionContext, matchesPatch } from "@leitwerk-dev/process-sdk";
 import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { afterEach, expect, it, vi } from "vitest";
 import { GitHubClient } from "./client.js";
 import { registerGitHubTools } from "./tools.js";
-import { matchesPatch } from "./write-reconciliation.js";
 
 afterEach(() => vi.unstubAllGlobals());
 it("recovers a lost inline reply only in its original thread", async () => {

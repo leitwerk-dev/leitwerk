@@ -67,7 +67,7 @@ describe("Forgejo server tools", () => {
 		[
 			"forgejo_add_pull_request_comment",
 			"pullRequestNumber",
-			"addPullRequestComment",
+			"addIssueComment",
 			{ body: "Review" },
 		],
 		["forgejo_update_issue", "issueNumber", "updateIssue", { patch: { title: "Updated" } }],

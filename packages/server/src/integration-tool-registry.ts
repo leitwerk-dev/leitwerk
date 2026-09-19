@@ -6,6 +6,7 @@ import {
 import {
 	type IntegrationToolDefinition,
 	type IntegrationToolExecutionContext,
+	objectArg,
 	parseJsonData,
 	RESERVED_INTEGRATION_TOOL_NAMES,
 	type TicketCreationCapability,
@@ -203,12 +204,8 @@ function resolveJsonPointer(value: unknown, pointer: string): unknown {
 		}, value);
 }
 
-function parseToolArgs(value: unknown): Record<string, unknown> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
-		throw new Error("Integration tool arguments must be an object");
-	}
-	return value as Record<string, unknown>;
-}
+const parseToolArgs = (value: unknown) =>
+	objectArg(value, "Integration tool arguments must be an object");
 
 function persistedTicketActor(value: unknown): Actor {
 	return parseSchema(persistedActorSchema, value, "Ticket creation actor is invalid");

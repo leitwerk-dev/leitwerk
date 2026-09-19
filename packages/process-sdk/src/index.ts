@@ -382,6 +382,7 @@ export {
 	presentRepositoryIssueWatcherConfig,
 	type RepositoryIssueWatcherConfig,
 } from "./repository-issue-watcher.js";
+export { existingObject, matchesPatch } from "./repository-reconciliation.js";
 export {
 	parseRepositoryFeedbackConfig,
 	parseRepositoryIssueCancelledConfig,

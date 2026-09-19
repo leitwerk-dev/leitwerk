@@ -12,21 +12,13 @@ const ticketProcess = {
 	startTurnId: "create_ticket",
 } as const;
 
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
-		resolve = done;
-	});
-	return { promise, resolve };
-}
-
 function pendingTicketRequest() {
 	const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
-	const destination = deferred<{
+	const destination = Promise.withResolvers<{
 		summary: { id: string; displayName: string };
 		data: Record<string, unknown>;
 	}>();
-	const approval = deferred<ToolApprovalDecision>();
+	const approval = Promise.withResolvers<ToolApprovalDecision>();
 	const review = vi.fn(() => approval.promise);
 	const execute = vi.fn(async () => ({ externalId: "1", url: "https://tracker.test/1" }));
 	const resolve = vi.fn(() => destination.promise);
@@ -324,10 +316,7 @@ describe("IntegrationToolRegistry", () => {
 
 	it("coalesces only concurrent executions by stable idempotency key", async () => {
 		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
-		let release!: () => void;
-		const gate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
+		const { promise: gate, resolve: release } = Promise.withResolvers<void>();
 		const execute = registerEcho(
 			registry,
 			vi.fn(async (_ctx, args) => {
