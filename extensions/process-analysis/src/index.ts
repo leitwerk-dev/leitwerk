@@ -5,7 +5,7 @@ import { configureProcessAnalysisRuntime } from "./server-runtime.js";
 import { registerProcessAnalysisTools } from "./tools.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "process-analysis",
 	/** @internal */

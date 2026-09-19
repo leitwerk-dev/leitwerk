@@ -2,7 +2,7 @@ import { defineModelProviders, type LeitwerkExtensionModule } from "@leitwerk-de
 import { resolveModelProviders } from "./models-provider.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "models",
 	/** @internal */
