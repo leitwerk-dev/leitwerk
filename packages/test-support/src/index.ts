@@ -1,9 +1,5 @@
-export {
-	flushAsyncWork,
-} from "@leitwerk-dev/worker-protocol";
-export { createCompactProcessDetailFixtureFactory } from "./compact-process-detail-fixture.js";
-export { FakeGitOps, type RepoTemplate } from "./fakes/fake-git-ops.js";
-export { FakeLlmProvider, type LlmResponse } from "./fakes/fake-llm.js";
+export { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
+export { FakeLlmProvider } from "./fakes/fake-llm.js";
 export { postImmediateLaunch, postImmediateLaunchRequest } from "./http-launch.js";
 export {
 	createInProcessWorkerSpawn,
