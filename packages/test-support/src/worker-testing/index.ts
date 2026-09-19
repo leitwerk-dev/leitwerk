@@ -1,18 +1,10 @@
 export {
-	createTestConfigSnapshot as testConfigSnapshot,
-	createTestIpcEnvelopeBase as baseEnvelope,
 	flushAsyncWork,
 } from "@leitwerk-dev/worker-protocol";
 export {
 	createInProcessWorkerSpawn,
 	type InProcessWorkerSpawnOptions,
 } from "../in-process-worker.js";
-export {
-	createSchemaDrivenStubPiFactory,
-	createSchemaDrivenToolCallScriptResolver,
-	synthesizeStubArgValue,
-	synthesizeStubToolArgs,
-} from "./schema-driven-stub-pi.js";
 export {
 	createStubToolScriptController,
 	type StubToolScriptController,

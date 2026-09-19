@@ -1,6 +1,4 @@
 export {
-	createTestConfigSnapshot as testConfigSnapshot,
-	createTestIpcEnvelopeBase as baseEnvelope,
 	flushAsyncWork,
 } from "@leitwerk-dev/worker-protocol";
 export { createCompactProcessDetailFixtureFactory } from "./compact-process-detail-fixture.js";
@@ -27,12 +25,6 @@ export {
 	type ServerExtensionTestHarness,
 	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";
-export {
-	createSchemaDrivenStubPiFactory,
-	createSchemaDrivenToolCallScriptResolver,
-	synthesizeStubArgValue,
-	synthesizeStubToolArgs,
-} from "./worker-testing/schema-driven-stub-pi.js";
 export {
 	createStubToolScriptController,
 	type StubToolScriptController,
