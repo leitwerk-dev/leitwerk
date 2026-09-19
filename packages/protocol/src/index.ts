@@ -109,7 +109,6 @@ export type {
 	ProcessStartupSummary,
 	ProcessTimelineInputSummary,
 	ProcessTimelineSnapshot,
-	ProcessTimelineTurnPresentation,
 	ProcessTimelineTurnSummary,
 	ProcessUiSnapshotProcess,
 	ProcessUsageEstimateSnapshot,
