@@ -92,9 +92,7 @@ export {
 	type LlmTurnDefinition,
 	type LlmTurnPreparationContext,
 	llmTurn,
-	type OutcomeRouteOptions,
 	type OutcomeRouteSpec,
-	type ProcessActionBranchSelector,
 	type ProcessActionBranchSpec,
 	type ProcessActionEffect,
 	type ProcessActionExecution,
@@ -314,10 +312,8 @@ export {
 	buildProcessFlowView,
 } from "./process-flow-view.js";
 export {
-	getAllProcessGraphs,
 	getProcessGraph,
 	getProcessTurnGraph,
-	getReachableTurnIdsForProcessGraph,
 	getTurnTransitionsForProcessGraph,
 	hasProcessGraph,
 	isTurnAvailableForProcessGraph,
@@ -405,7 +401,6 @@ export {
 export {
 	type SubprocessEnvInput,
 	sanitizeWorkerSubprocessEnv,
-	WORKER_SUBPROCESS_SENSITIVE_ENV_KEYS,
 } from "./subprocess-env.js";
 export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type {
@@ -416,9 +411,7 @@ export type {
 } from "./tool-renderers.js";
 export {
 	CORE_TOOL_CALL_RENDERERS,
-	MARKDOWN_RESULT_TOOL_MARKDOWN_PATH,
 	MARKDOWN_RESULT_TOOL_NAME,
-	MARKDOWN_RESULT_TOOL_RENDERER,
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
 	TOOL_CALL_RENDERER_VALUE_KINDS,
 	TOOL_CALL_RENDERER_VALUE_SOURCES,

@@ -6,10 +6,8 @@ import {
 } from "@leitwerk-dev/process-sdk";
 
 export {
-	getAllProcessGraphs,
 	getProcessGraph,
 	getProcessTurnGraph,
-	getReachableTurnIdsForProcessGraph,
 	getTurnTransitionsForProcessGraph,
 	hasProcessGraph,
 	isTurnAvailableForProcessGraph,
