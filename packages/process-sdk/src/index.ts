@@ -269,18 +269,11 @@ export {
 } from "./state-helpers.js";
 export { sanitizeWorkerSubprocessEnv } from "./subprocess-env.js";
 export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
-export type {
-	ToolCallRendererDefinition,
-	ToolCallRendererFieldDefinition,
-	ToolCallRendererValueKind,
-	ToolCallRendererValueSource,
-} from "./tool-renderers.js";
+export type { ToolCallRendererDefinition } from "./tool-renderers.js";
 export {
 	CORE_TOOL_CALL_RENDERERS,
 	MARKDOWN_RESULT_TOOL_NAME,
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
-	TOOL_CALL_RENDERER_VALUE_KINDS,
-	TOOL_CALL_RENDERER_VALUE_SOURCES,
 	validateToolCallRendererDefinition,
 } from "./tool-renderers.js";
 export {
