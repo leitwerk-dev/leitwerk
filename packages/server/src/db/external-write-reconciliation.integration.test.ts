@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	bindExternalWrites,
 	ExternalWriteMissingRemoteError,
-	ensureWrite,
 } from "@leitwerk-dev/external-writes/internal";
 import { expect, it } from "vitest";
 import { closeDatabase, createDatabase } from "./database.js";
@@ -20,7 +20,6 @@ it("retains receipts after reopening SQLite and never recreates a logged remote 
 		let remote: { id: string; url: string } | null = null;
 		let creations = 0;
 		const operation = {
-			mode: "reconcile" as const,
 			reconcile: async () => remote,
 			execute: async () => {
 				creations++;
@@ -32,9 +31,9 @@ it("retains receipts after reopening SQLite and never recreates a logged remote 
 				url: value.url,
 			}),
 		};
-		expect(await ensureWrite(repos.externalWrites, process.id, identity, operation)).toEqual(
-			remote,
-		);
+		expect(
+			await bindExternalWrites(repos.externalWrites, process.id).ensure(identity, operation),
+		).toEqual(remote);
 		closeDatabase(db);
 		db = createDatabase({ sqlitePath });
 		const reopened = createAllRepos(db);
@@ -42,11 +41,11 @@ it("retains receipts after reopening SQLite and never recreates a logged remote 
 			{ dedupKey: "ticket:1", metadata: { externalId: "42", url: "https://example.test/42" } },
 		]);
 		expect(
-			await ensureWrite(reopened.externalWrites, process.id, identity, operation),
+			await bindExternalWrites(reopened.externalWrites, process.id).ensure(identity, operation),
 		).toMatchObject(remote);
 		remote = null;
 		await expect(
-			ensureWrite(reopened.externalWrites, process.id, identity, operation),
+			bindExternalWrites(reopened.externalWrites, process.id).ensure(identity, operation),
 		).rejects.toBeInstanceOf(ExternalWriteMissingRemoteError);
 		expect(creations).toBe(1);
 	} finally {

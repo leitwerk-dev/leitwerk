@@ -1,4 +1,4 @@
-import { IntegrationHttpError } from "@leitwerk-dev/process-sdk";
+import { IntegrationHttpError } from "./integration-http.js";
 
 /** @internal */
 export async function existingObject<T>(read: () => Promise<T>): Promise<T | null> {
@@ -14,18 +14,13 @@ export async function existingObject<T>(read: () => Promise<T>): Promise<T | nul
 export function matchesPatch(current: object, patch: Record<string, unknown>): boolean {
 	const fields = current as Record<string, unknown>;
 	return Object.entries(patch).every(([key, expected]) => {
+		const labelKey = Array.isArray(expected) && typeof expected[0] === "number" ? "id" : "name";
 		const normalize = (value: unknown) =>
 			key === "labels" && Array.isArray(value)
 				? [
 						...new Set(
 							value.map((label) =>
-								typeof label === "object" && label !== null
-									? typeof expected === "object" &&
-										Array.isArray(expected) &&
-										typeof expected[0] === "number"
-										? label.id
-										: label.name
-									: label,
+								typeof label === "object" && label !== null ? label[labelKey] : label,
 							),
 						),
 					].sort()
