@@ -14,7 +14,7 @@ import {
 import { leaveFeedbackToolRenderer } from "./turns/poem-creator.js";
 
 /** @internal */
-export interface SinglePromptExtensionConfig {
+interface SinglePromptExtensionConfig {
 	/** @internal */
 	file_triggers?: {
 		/** @internal */
@@ -27,7 +27,7 @@ export interface SinglePromptExtensionConfig {
 }
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "showcase-processes",
 	/** @internal */

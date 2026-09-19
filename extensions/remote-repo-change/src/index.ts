@@ -3,7 +3,7 @@ import { remoteRepoChangeCapabilities, remoteRepoChangeLaunchPlanner } from "./l
 import { remoteRepoChangeProcess } from "./process-definition.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "remote-repo-change",
 	/** @internal */
