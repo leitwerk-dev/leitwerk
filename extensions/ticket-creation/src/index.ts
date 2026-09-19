@@ -48,7 +48,7 @@ export const ticketCreationProcess = flow
 	.define();
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "ticket-creation",
 	/** @internal */
