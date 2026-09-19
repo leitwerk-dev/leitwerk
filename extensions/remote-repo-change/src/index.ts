@@ -22,20 +22,3 @@ const remoteRepoChangeExtension: LeitwerkExtensionModule = {
 };
 
 export default remoteRepoChangeExtension;
-
-export {
-	type RemoteRepoChangeLaunchPlanner,
-	type RemoteRepoChangeLaunchPlannerInput,
-	type RemoteRepoChangeLaunchResolution,
-	remoteRepoChangeCapabilities,
-	remoteRepoChangeImportedPlanLauncherId,
-	remoteRepoChangeLaunchPlanner,
-	remoteRepoChangeProcessId,
-	remoteRepoChangeUiLauncherId,
-} from "./launch-policy.js";
-export {
-	type RemoteRepoChangeLaunchKind,
-	type RemoteRepoChangeParams,
-	remoteRepoChangeParamsCodec,
-} from "./params.js";
-export { remoteRepoChangeProcess } from "./process-definition.js";
