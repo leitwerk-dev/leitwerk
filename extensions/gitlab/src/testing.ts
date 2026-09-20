@@ -12,12 +12,6 @@ import type {
 	GitLabProject,
 } from "./client.js";
 
-export type {
-	GitLabClientLike,
-	GitLabMergeRequest,
-	GitLabPipeline,
-	GitLabProject,
-} from "./client.js";
 export { setupGitLabIntegration } from "./setup.js";
 
 /** @public */

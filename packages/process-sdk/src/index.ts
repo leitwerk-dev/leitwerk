@@ -299,7 +299,6 @@ export type {
 	PiRunDetails,
 	PiSessionDiagnostic,
 	PiSessionDiagnosticHandler,
-	PiSessionDiagnosticLevel,
 	PiTerminalAcknowledgementControl,
 	PiTerminalAcknowledgementState,
 	PiTreeEntry,

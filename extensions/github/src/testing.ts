@@ -13,7 +13,7 @@ import type {
 import { assertGitHubRepository } from "./client.js";
 
 /** @public */
-export interface LocalGitHubRepository {
+interface LocalGitHubRepository {
 	/** @public */
 	repository: ReturnType<LocalGitHubAdapter["newRepository"]>;
 	/** @public */
@@ -73,7 +73,7 @@ export interface LocalGitHubState {
 	failAfterWrite: string | null;
 }
 /** @public */
-export interface LocalGitHubOptions {
+interface LocalGitHubOptions {
 	/** @public */
 	root: string;
 	/** @public */

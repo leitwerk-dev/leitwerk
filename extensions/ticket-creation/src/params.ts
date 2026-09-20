@@ -105,8 +105,6 @@ const paramsSchema = v.object({
 	launchModelProfileId: v.optional(nonEmptyString),
 });
 
-/** @internal */
-export type TicketParentContextSnapshot = v.InferOutput<typeof contextSchema>;
 /** @public */
 export type TicketCreationParams = v.InferOutput<typeof paramsSchema>;
 /** @internal */

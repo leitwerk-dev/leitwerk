@@ -13,7 +13,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
-export interface LocalTicket {
+interface LocalTicket {
 	/** @internal */
 	id: string;
 	/** @internal */
@@ -37,7 +37,7 @@ interface LocalTicketState {
 	failAfterPersistence: boolean;
 }
 /** @internal */
-export interface LocalTicketAdapterOptions {
+interface LocalTicketAdapterOptions {
 	/** @internal */
 	file: string;
 	/** @internal */

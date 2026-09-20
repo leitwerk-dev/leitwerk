@@ -4,6 +4,7 @@ import { type WoodpeckerIntegration, woodpeckerIntegration } from "./capability.
 import { parseWoodpeckerProfiles, WoodpeckerClient } from "./client.js";
 import { createWoodpeckerProvider } from "./provider.js";
 import { registerWoodpeckerTools } from "./tools.js";
+
 /** @internal */
 const manifest = {
 	/** @internal */
@@ -27,9 +28,9 @@ const extension: LeitwerkExtensionModule = {
 	},
 };
 
-export * from "./capability.js";
-export { WoodpeckerClient } from "./client.js";
-export type { WoodpeckerPipeline, WoodpeckerRepository } from "./client.js";
+export type { WoodpeckerIntegration } from "./capability.js";
+export { woodpeckerIntegration } from "./capability.js";
+export type { WoodpeckerPipeline } from "./client.js";
 export { WOODPECKER_PIPELINE_KIND, woodpeckerExternal } from "./external.js";
 export default extension;
 
