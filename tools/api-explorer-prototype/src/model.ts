@@ -40,6 +40,7 @@ export interface ApiNode {
 }
 /** @internal */
 export interface Occurrence extends Source {
+	sourceOrigin?: "workspace" | "composition";
 	routeTargets?: string[];
 	reportId?: string;
 	id: string;

@@ -10,10 +10,10 @@ import {
 	removalCandidates,
 } from "../src/candidates";
 import {
+	type FindingFilters,
 	filterFindings,
 	findingRecord,
 	findingsExportParts,
-	type FindingFilters,
 } from "../src/findings-export";
 import type { Snapshot } from "../src/model";
 
@@ -241,9 +241,11 @@ export function createFindingsApi(load: () => Snapshot) {
 			const cursor = url.searchParams.get("cursor");
 			const filterId = JSON.stringify(filters);
 			if (cursor !== null) {
-				let decoded;
+				let decoded: Record<string, unknown> | undefined;
 				try {
-					decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+					const parsed: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+					decoded =
+						parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : undefined;
 				} catch {
 					badRequest("Malformed cursor.");
 				}
@@ -251,17 +253,23 @@ export function createFindingsApi(load: () => Snapshot) {
 					!decoded ||
 					typeof decoded.analysisId !== "string" ||
 					typeof decoded.filterId !== "string" ||
+					typeof decoded.offset !== "number" ||
 					!Number.isSafeInteger(decoded.offset) ||
 					decoded.offset < 0
 				)
 					badRequest("Malformed cursor.");
-				if (decoded.analysisId !== analysisId || decoded.filterId !== filterId)
+				const validCursor = decoded as {
+					analysisId: string;
+					filterId: string;
+					offset: number;
+				};
+				if (validCursor.analysisId !== analysisId || validCursor.filterId !== filterId)
 					throw new RequestError(
 						409,
 						"stale-analysis",
 						"Cursor evidence or filters changed. Restart from the first page.",
 					);
-				offset = decoded.offset;
+				offset = validCursor.offset;
 				if (offset > findings.length) badRequest("Cursor offset is outside the result set.");
 			}
 			const page = findings.slice(offset, offset + limit);

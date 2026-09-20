@@ -77,6 +77,9 @@ function valid(value: unknown): value is Report {
 				typeof o.fileId === "string" &&
 				validSource(o) &&
 				["call", "type", "other", "import", "re-export"].includes(o.kind) &&
+				(o.sourceOrigin === undefined ||
+					o.sourceOrigin === "workspace" ||
+					o.sourceOrigin === "composition") &&
 				(o.routeTargets === undefined || strings(o.routeTargets)) &&
 				Array.isArray(o.targets) &&
 				o.targets.every((t) => typeof t === "string"),
@@ -185,13 +188,16 @@ export function loadReports(directory: string): Snapshot {
 		if (report !== catalog) {
 			result.diagnostics.push(...report.snapshot.diagnostics);
 			result.coverage.sourceFiles += report.snapshot.coverage.sourceFiles;
+			const reportNodes = new Set(report.snapshot.nodes.map((node) => node.id));
 			for (const node of report.snapshot.nodes.filter((n) => n.kind === "file")) {
 				const copy = { ...node, id: `${report.source.id}:${node.id}` };
 				nodes.set(copy.id, copy);
 			}
 			for (const item of report.snapshot.occurrences) {
 				const targets = item.targets.filter((id) => nodes.has(id));
-				if (targets.length !== item.targets.length)
+				// Consumer-owned or newer APIs are valid local evidence but have no
+				// catalog node to merge. Only an ID absent from both reports is corrupt.
+				if (item.targets.some((id) => !nodes.has(id) && !reportNodes.has(id)))
 					result.diagnostics.push({
 						severity: "warning",
 						scope: report.source.name,

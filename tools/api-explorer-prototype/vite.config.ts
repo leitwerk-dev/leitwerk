@@ -2,8 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vite";
-import { loadReports } from "./scripts/reports";
 import { createFindingsApi } from "./scripts/findings-api";
+import { loadReports } from "./scripts/reports";
 export default defineConfig({
 	plugins: [
 		svelte(),

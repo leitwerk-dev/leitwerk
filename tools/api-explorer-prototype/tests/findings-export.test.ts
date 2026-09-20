@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { type Candidate, removalCandidates } from "../src/candidates";
-import { findingsFixture } from "./fixtures/findings";
 import { filterFindings, findingsExportParts } from "../src/findings-export";
 import type { Occurrence, Snapshot } from "../src/model";
+import { findingsFixture } from "./fixtures/findings";
 
 const occurrence: Occurrence = {
 	id: "shared",

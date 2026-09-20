@@ -10,12 +10,19 @@ import {
 } from "@xyflow/svelte";
 import { onMount, tick, untrack } from "svelte";
 import ApiCard from "./ApiCard.svelte";
-import { type Assessment, type Candidate, type Constraint, assessmentLabels, constraintLabels, removalCandidates } from "./candidates";
-import { filterFindings, findingsExportParts } from "./findings-export";
+import {
+	type Assessment,
+	assessmentLabels,
+	type Candidate,
+	type Constraint,
+	constraintLabels,
+	removalCandidates,
+} from "./candidates";
 import FlowActions from "./FlowActions.svelte";
+import { filterFindings, findingsExportParts } from "./findings-export";
 import { buildGraph, graphChildren, type View } from "./graph";
-import { createLayout } from "./layout";
 import InternalDependencies from "./InternalDependencies.svelte";
+import { createLayout } from "./layout";
 import {
 	type Filters,
 	indexSnapshot,
@@ -29,7 +36,6 @@ import {
 	usageScope,
 } from "./model";
 import { dismissNote, focusNote } from "./note-editor";
-import { sectionForHash, sectionLinks } from "./sections";
 import {
 	clearNotes,
 	makeNote,
@@ -41,6 +47,7 @@ import {
 	storageKey,
 	undoNoteClear,
 } from "./notes";
+import { sectionForHash, sectionLinks } from "./sections";
 
 let snapshot = $state.raw<Snapshot | null>(null);
 let candidateQuery = $state("");
@@ -48,7 +55,13 @@ let candidateCategory = $state<Candidate["action"] | "">("");
 let candidateAssessment = $state<Assessment | "">("");
 let candidateConstraint = $state<Constraint["code"] | "">("");
 let candidateScope = $state("");
-const candidateFilters = $derived({ query: candidateQuery, category: candidateCategory, assessment: candidateAssessment, constraint: candidateConstraint, scope: candidateScope });
+const candidateFilters = $derived({
+	query: candidateQuery,
+	category: candidateCategory,
+	assessment: candidateAssessment,
+	constraint: candidateConstraint,
+	scope: candidateScope,
+});
 let candidateLimit = $state(60);
 let candidateSort = $state<"action" | "name">("action");
 const candidates = $derived(
@@ -68,9 +81,7 @@ const candidateCategories = $derived(
 		count: candidates.filter((f) => f.action === action).length,
 	})),
 );
-const shownCandidates = $derived(
-	filterFindings(candidates, candidateFilters),
-);
+const shownCandidates = $derived(filterFindings(candidates, candidateFilters));
 function resetCandidateFilters() {
 	candidateQuery = "";
 	candidateCategory = "";
@@ -421,7 +432,9 @@ async function layout() {
 }
 
 function download(name: string, content: string | Blob, type?: string) {
-	const url = URL.createObjectURL(content instanceof Blob ? content : new Blob([content], { type }));
+	const url = URL.createObjectURL(
+		content instanceof Blob ? content : new Blob([content], { type }),
+	);
 	const link = document.createElement("a");
 	try {
 		link.href = url;

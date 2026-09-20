@@ -207,31 +207,55 @@ below the canvas; this prototype is designed for a desktop workbench.
 
 ## Internal API dependencies
 
-This view lists cross-package references to APIs classified as internal in the
-catalog. Findings are grouped by consumer repository and target package/API. Expand
-a finding for caller locations, snippets, routes, and production/test counts.
-Select an API to open it in Explorer.
+This view shows only confirmed internal API boundary violations. Allowed dependencies
+and uncertain references are excluded from the list, count, and export. A separate
+notice flags uncertain evidence without treating it as a violation. Findings are
+grouped by target package/API; each finding identifies its consumer package and repository. Expand a finding for caller
+locations, snippets, routes, and production/test counts. Select an API to open it
+in Explorer. The analyzer retains the following assessments:
 
 | Assessment | Meaning |
 | --- | --- |
-| Warning | Explicit internal route, known consumer package, matching package versions |
-| Needs review | Ambiguous route, unknown consumer or version, or version mismatch |
+| Allowed internal dependency | Resolved core-to-core internal dependency |
+| Forbidden internal dependency | Resolved cross-package internal dependency from an extension or external consumer, or core-to-extension dependency |
+| Needs review | Unresolved ownership, ambiguous route, unknown consumer or version, or version mismatch |
+
+Tests follow the same policy as production; no production call is required to
+permit a test reference. Catalog package roots under `packages/*` identify core;
+roots under `extensions/*` identify extensions. The analyzer includes catalog
+callers and workspace-owned callers in consumer reports. It excludes consumer
+occurrences marked `composition` and callers beneath `.leitwerk-base/`, including
+legacy reports without provenance. These base sources provide declaration-resolution
+context, not additional consumer findings. Exclusion happens before classification
+and grouping, so base-source repetitions cannot affect violation counts, uncertainty
+notices, or exports. Workspace-owned sources outside the base remain external,
+regardless of their directory layout or package name.
+Unknown catalog roots, repository-level sources (including top-level tests), and
+legacy consumers without provenance require review; they receive no implicit
+core privileges. Same-package catalog references are allowed and
+excluded from this cross-package view. The core-to-extension rule also forbids
+public imports; this view only assesses internal routes.
 
 A version mismatch does not establish that the consumed API was internal. Explicit
 public routes are not attributed to internal aliases. Same-package references are
-excluded; shared aliases count each occurrence once.
+excluded when catalog ownership is established; shared aliases count each occurrence once.
 
-Filter by repository, target package, assessment, usage scope, or search text.
-Scope filters select findings containing production or test references; details
-retain both. Explorer filters do not affect this view. Empty results do not prove
-absence of consumers, particularly with incomplete coverage or unmatched symbols.
+Filter by the target **API package** (for example, `@leitwerk-dev/server`) or search
+API names, consumer/target packages, repositories, and caller paths.
+All confirmed catalog and workspace-owned violations are included by default;
+production and test evidence remain together. Source provenance is shown on each
+finding, not used as a filter. Explorer filters do not affect this view. Empty
+results do not establish the absence of violations when evidence is uncertain,
+incomplete, or unmatched.
 
-**Export dependencies** downloads all matching findings, including undisplayed rows,
-as `schemaVersion: 1` JSON with `advisory: true`, report provenance, coverage,
-filters, and source evidence. The read-only findings API serves removal findings,
+**Export violations** downloads all matching violations, including undisplayed rows,
+as `schemaVersion: 2` JSON with `advisory: true`, report provenance, coverage,
+filters (`targetPackage`, search query, and fixed `assessment: "forbidden"`), source ownership, boundary decision, policy
+reason, assessment, and source evidence. Boundary decisions remain separate from
+route/version uncertainty; an allowed boundary can still need review. The read-only findings API serves removal findings,
 not internal dependencies.
 
-These warnings are advisory. Composed builds and `api:check` permit internal API
+These policy assessments are advisory. Composed builds and `api:check` permit internal API
 calls. `api:check` validates classifications and public-signature dependencies;
 this view adds no CI enforcement.
 

@@ -84,6 +84,19 @@ it("loads portable snippets and stable note identities without accessing source 
 	expect(mergeNotes({ [node.id]: note }, {})[node.id].text).toBe("Keep local call");
 	expect(result.occurrences[0].snippet).toBe("helper()");
 });
+it("preserves valid occurrence origins and accepts legacy reports", () => {
+	const dir = temp(),
+		report = fixture();
+	report.snapshot.occurrences[0].sourceOrigin = "workspace";
+	put(dir, "catalog.json", report);
+	expect(loadReports(dir).occurrences[0].sourceOrigin).toBe("workspace");
+	delete report.snapshot.occurrences[0].sourceOrigin;
+	put(dir, "catalog.json", report);
+	expect(loadReports(dir).occurrences[0].sourceOrigin).toBeUndefined();
+	report.snapshot.occurrences[0].sourceOrigin = "elsewhere" as "workspace";
+	put(dir, "catalog.json", report);
+	expect(loadReports(dir).nodes).toEqual([]);
+});
 it("diagnoses empty, malformed, and incompatible directories", () => {
 	const dir = temp();
 	expect(loadReports(dir).coverage.complete).toBe(false);
@@ -111,6 +124,26 @@ it("deduplicates sources, replaces older evidence, and retains mismatched positi
 	expect(merged.occurrences[1].snippet).toBe("new helper()");
 	expect(merged.coverage.complete).toBe(false);
 	expect(removalCandidates(merged)[0].assessment).toBe("review-required");
+});
+it("ignores consumer-owned targets but blocks corrupt occurrence targets", () => {
+	const dir = temp();
+	put(dir, "catalog.json", fixture());
+	const usage = fixture();
+	usage.kind = "usage";
+	usage.source.id = "consumer";
+	usage.source.name = "Consumer";
+	usage.snapshot.nodes.push({
+		id: "consumer-only",
+		label: "consumerOnly",
+		kind: "function",
+		package: "consumer",
+	});
+	usage.snapshot.occurrences[0].targets = ["consumer-only"];
+	put(dir, "usage.json", usage);
+	expect(loadReports(dir).coverage.complete).toBe(true);
+	usage.snapshot.occurrences[0].targets = ["missing-from-report"];
+	put(dir, "usage.json", usage);
+	expect(loadReports(dir).coverage.complete).toBe(false);
 });
 it("counts import-only test consumers and separates exposure from deletion blockers", () => {
 	const report = fixture(),
