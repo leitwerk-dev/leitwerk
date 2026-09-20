@@ -10,11 +10,11 @@ const manifest = {
 } as const;
 
 /** @public */
-const modelsExtension = {
+const modelsExtension: LeitwerkExtensionModule = {
 	/** @internal */
 	manifest,
 	/** @internal */
 	modelProviders: defineModelProviders(resolveModelProviders),
-} satisfies LeitwerkExtensionModule;
+};
 
 export default modelsExtension;

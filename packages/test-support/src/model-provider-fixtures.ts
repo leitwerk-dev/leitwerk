@@ -5,6 +5,9 @@ import {
 } from "@leitwerk-dev/process-sdk";
 
 /** @public */
+export type FixtureModelProviderSet = ReturnType<typeof defineModelProviders>;
+
+/** @public */
 export function fixtureModelProviders(
 	...models: {
 		/** @public */
@@ -16,7 +19,7 @@ export function fixtureModelProviders(
 		/** @public */
 		server?: boolean;
 	}[]
-) {
+): FixtureModelProviderSet {
 	return defineModelProviders((rawConfig) =>
 		models.map(({ id, modelId, piProvider = id, server = false }) => ({
 			definition: defineModelProvider({

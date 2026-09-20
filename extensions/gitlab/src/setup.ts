@@ -4,12 +4,12 @@ import { type GitLabIntegration, gitlabIntegration } from "./capability.js";
 import { createGitLabProvider } from "./external.js";
 import { registerGitLabTools } from "./tools.js";
 
-/** @internal */
+/** Register shared tools and polling with an explicit integration. @public */
 export function setupGitLabIntegration(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,
 	options: {
-		/** @internal */
+		/** @public */
 		now?: () => number;
 	} = {},
 ) {

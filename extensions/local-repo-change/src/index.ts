@@ -38,4 +38,5 @@ const localRepoChangeExtension: LeitwerkExtensionModule = {
 };
 
 export default localRepoChangeExtension;
+export type { LocalRepoChangeParams } from "./params.js";
 export { localRepoChangeProcess } from "./process-definition.js";

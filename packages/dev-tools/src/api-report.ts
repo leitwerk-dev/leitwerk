@@ -28,7 +28,7 @@ export async function runApiReportCli(args: string[]): Promise<void> {
 		);
 		return;
 	}
-	const root = path.resolve(values.workspace ?? process.cwd());
+	const root = fs.realpathSync(path.resolve(values.workspace ?? process.cwd()));
 	const output = path.resolve(
 		values["output-dir"] ?? path.join(root, ".leitwerk/api-explorer/reports"),
 	);
@@ -72,6 +72,26 @@ export async function runApiReportCli(args: string[]): Promise<void> {
 			}
 		}
 	}
+	const isInside = (parent: string, child: string) => {
+		const relative = path.relative(path.resolve(parent), path.resolve(child));
+		return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+	};
+	const compositionPackageOrigins = (composition?.packages ?? []).map((entry) => ({
+		root: entry.dir,
+		origin:
+			(composition?.declaredCoreRoot && isInside(composition.declaredCoreRoot, entry.dir)) ||
+			!isInside(root, entry.dir)
+				? ("composition" as const)
+				: ("workspace" as const),
+	}));
+	const sourceOriginRoots = [
+		{ root, origin: "workspace" as const },
+		...compositionPackageOrigins,
+		...(composition?.testRoots.map((testRoot) => ({
+			root: testRoot,
+			origin: "workspace" as const,
+		})) ?? []),
+	];
 	const snapshot = await createSnapshot(root, path.join(output, "../models"), {
 		extract: !values["usage-only"],
 		packageDirs: [...packageDirs],
@@ -82,6 +102,7 @@ export async function runApiReportCli(args: string[]): Promise<void> {
 				...(composition?.testRoots ?? []),
 			]),
 		],
+		sourceOriginRoots,
 	});
 	const report = {
 		schemaVersion: 1,

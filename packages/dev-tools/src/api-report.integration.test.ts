@@ -62,6 +62,11 @@ afterEach(() => {
 it("generates installed-package consumer evidence without a core checkout or build, and replaces it atomically", async () => {
 	const root = workspace(),
 		output = temporary();
+	const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+	manifest.exports = { ".": { source: "./src/index.ts", types: "./src/index.ts" } };
+	put(root, "package.json", JSON.stringify(manifest));
+	put(root, "src/index.ts", "");
+	put(root, "src/external.ts", 'import "missing-external";');
 	const args = ["--workspace", root, "--usage-only", "--output-dir", output];
 	await runApiReportCli(args);
 	const files = fs.readdirSync(output);
@@ -69,10 +74,15 @@ it("generates installed-package consumer evidence without a core checkout or bui
 	expect(files[0]).toMatch(/^usage-.*\.json$/);
 	const first = JSON.parse(fs.readFileSync(path.join(output, files[0]), "utf8"));
 	expect(first.analyzedPackages["@leitwerk-dev/report-fixture"]).toBe("1.0.0");
+	expect(first.snapshot.coverage.complete).toBe(true);
+	expect(first.snapshot.diagnostics).not.toContainEqual(
+		expect.objectContaining({ message: expect.stringContaining("missing-external") }),
+	);
 	expect(first.snapshot.occurrences).toEqual(
 		expect.arrayContaining([
 			expect.objectContaining({
 				kind: "call",
+				sourceOrigin: "workspace",
 				path: "src/Consumer.svelte",
 				line: 4,
 				snippet: expect.stringContaining("{consumed()}"),
@@ -129,7 +139,54 @@ it("includes only explicitly selected composition packages and test roots", asyn
 			expect.objectContaining({
 				kind: "call",
 				isTest: true,
+				sourceOrigin: "workspace",
 				path: expect.stringContaining("extra.test.ts"),
+			}),
+			expect.objectContaining({
+				kind: "call",
+				sourceOrigin: "composition",
+				path: expect.stringContaining("src/extra.ts"),
+			}),
+		]),
+	);
+}, 30000);
+it("uses the most-specific root for a nested declared core checkout", async () => {
+	const root = workspace(),
+		output = temporary(),
+		core = path.join(root, ".leitwerk-base"),
+		corePackage = path.join(core, "extensions/copied");
+	put(core, "package.json", JSON.stringify({ name: "leitwerk", version: "1", type: "module" }));
+	put(
+		corePackage,
+		"package.json",
+		JSON.stringify({ name: "copied", version: "1", type: "module" }),
+	);
+	put(
+		corePackage,
+		"src/copied.ts",
+		'import { consumed } from "@leitwerk-dev/report-fixture"; consumed();',
+	);
+	put(root, "runtime.yaml", "extensions: []");
+	put(
+		root,
+		"composition.yaml",
+		`version: 1\nleitwerk:\n  root: ./.leitwerk-base\nruntime_config: ./runtime.yaml\nextensions:\n  - ./.leitwerk-base/extensions/copied\n`,
+	);
+	await runApiReportCli([
+		"--workspace",
+		root,
+		"--usage-only",
+		"--composition",
+		"composition.yaml",
+		"--output-dir",
+		output,
+	]);
+	const report = JSON.parse(fs.readFileSync(path.join(output, fs.readdirSync(output)[0]), "utf8"));
+	expect(report.snapshot.occurrences).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				path: ".leitwerk-base/extensions/copied/src/copied.ts",
+				sourceOrigin: "composition",
 			}),
 		]),
 	);

@@ -76,6 +76,7 @@ export {
 	type ProcessLifecycleEffects,
 	type ProcessToolOutcomeSpec,
 	resolveHumanTurnView,
+	routeTurnOutcomes,
 	type TurnDefinition,
 } from "./define-process.js";
 export { createEventBus } from "./event-bus.js";
@@ -179,6 +180,7 @@ export {
 	filterProviderOptionsForDefinition,
 	type ModelProviderDefinition,
 	type ModelProviderModelsContext,
+	type ModelProviderSet,
 	type ModelProviderSetEntry,
 	type ModelProviderWorker,
 	type PiServerAdapter,

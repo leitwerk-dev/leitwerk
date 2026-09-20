@@ -200,6 +200,13 @@ Files replace the previous report for that source atomically. Locations and snip
 are embedded and relative to the analyzed workspace; readers never open those locations.
 Copy reports into a collection directory. Do not collect old revisions as new consumers.
 
+Each occurrence may include `sourceOrigin: "workspace" | "composition"`. Workspace
+sources and declared consumer test roots are `workspace`; explicit packages from a
+declared core checkout or another composed package root are `composition`. The most
+specific root wins, so copied core packages nested below a consumer workspace keep
+their composition ownership. The field is additive in schema version 1. Readers must
+accept older reports without it and treat their origin as unknown.
+
 Targets use stable package, subpath, and qualified export/member IDs. Aliases retain
 separate routes and share canonical implementation evidence. Members declared only
 in TypeScript's standard library are not indexed beneath aliases or derived APIs:

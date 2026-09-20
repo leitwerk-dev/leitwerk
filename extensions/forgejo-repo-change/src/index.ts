@@ -3,6 +3,9 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { woodpeckerIntegration } from "@leitwerk-dev/woodpecker";
 import { createForgejoRepoChangeLauncher } from "./launcher.js";
+
+export { forgejoRepoChangeLaunchConfig, forgejoRepoChangeParams } from "./launcher.js";
+
 import { createForgejoRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 

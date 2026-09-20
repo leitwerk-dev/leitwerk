@@ -240,7 +240,7 @@ function extractModels(root, entries, output, diagnostics) {
 export async function createSnapshot(
 	root,
 	output,
-	{ extract = true, packageDirs, sourceRoots } = {},
+	{ extract = true, packageDirs, sourceRoots, sourceOriginRoots } = {},
 ) {
 	const { packages, entries, diagnostics } = discover(root, packageDirs);
 	const models = extract
@@ -621,6 +621,8 @@ export async function createSnapshot(
 		const file = entry.source && program.getSourceFile(entry.source);
 		const symbol = file && checker.getSymbolAtLocation(file);
 		if (!symbol) {
+			// An empty public entry point is valid and exports no declarations.
+			if (file && file.statements.length === 0) continue;
 			diagnostics.push({
 				severity: "error",
 				scope: entry.id,
@@ -939,7 +941,17 @@ export async function createSnapshot(
 				ts.isImportDeclaration(node) &&
 				ts.isStringLiteral(node.moduleSpecifier) &&
 				!checker.getSymbolAtLocation(node.moduleSpecifier) &&
-				!node.moduleSpecifier.text.endsWith(".svelte")
+				!node.moduleSpecifier.text.endsWith(".svelte") &&
+				(() => {
+					const specifier = node.moduleSpecifier.text.split("?", 1)[0];
+					if (specifier.startsWith("@leitwerk-dev/")) return true;
+					if (!specifier.startsWith(".")) return false;
+					const extension = path.extname(specifier);
+					return (
+						!extension ||
+						[".js", ".jsx", ".ts", ".tsx", ".mjs", ".mts", ".cjs", ".cts"].includes(extension)
+					);
+				})()
 			)
 				diagnostics.push({
 					severity: "warning",
@@ -982,6 +994,16 @@ export async function createSnapshot(
 		/* Local repositories have no remote. */
 	}
 	const errors = diagnostics.filter((d) => d.severity === "error").length;
+	const originRoots = (sourceOriginRoots ?? [])
+		.map((entry) => ({ ...entry, root: path.resolve(entry.root) }))
+		.sort((a, b) => b.root.length - a.root.length);
+	const occurrenceOrigin = (occurrence) => {
+		const absolute = path.resolve(root, occurrence.path);
+		return originRoots.find((entry) => {
+			const relative = path.relative(entry.root, absolute);
+			return relative === "" || (!relative.startsWith(`..${path.sep}`) && relative !== "..");
+		})?.origin;
+	};
 	return {
 		contentFingerprint: hash(
 			sourceFiles
@@ -1014,7 +1036,10 @@ export async function createSnapshot(
 			],
 		},
 		nodes: nodes.sort((a, b) => a.id.localeCompare(b.id)),
-		occurrences,
+		occurrences: occurrences.map((occurrence) => {
+			const sourceOrigin = occurrenceOrigin(occurrence);
+			return { ...occurrence, ...(sourceOrigin ? { sourceOrigin } : {}) };
+		}),
 		relationships: [...relationships.values()],
 		diagnostics,
 	};

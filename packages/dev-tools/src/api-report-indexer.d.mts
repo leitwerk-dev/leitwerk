@@ -2,7 +2,12 @@
 export function createSnapshot(
 	root: string,
 	output: string,
-	options?: { extract?: boolean; packageDirs?: string[]; sourceRoots?: string[] },
+	options?: {
+		extract?: boolean;
+		packageDirs?: string[];
+		sourceRoots?: string[];
+		sourceOriginRoots?: { root: string; origin: "workspace" | "composition" }[];
+	},
 ): Promise<{
 	contentFingerprint: string;
 	version: number;

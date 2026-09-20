@@ -5,7 +5,7 @@ export {
 } from "./app.js";
 export {
 	getDefaultConfig,
-	loadConfig,
 	type LeitwerkConfig,
+	loadConfig,
 } from "./config/index.js";
 export type { WsFrame } from "./ws/broadcast.js";
