@@ -35,7 +35,7 @@ export interface PollingCoordinator {
 	/** @internal */
 	start(): void;
 	/** @internal */
-	stop(): void;
+	stop(): Promise<void>;
 }
 
 /** @internal */
@@ -72,8 +72,12 @@ export function createPollingCoordinator(logger: PollingLogger): PollingCoordina
 			sealed = true;
 			for (const loop of loops.values()) loop.start();
 		},
-		stop() {
-			for (const loop of loops.values()) loop.stop();
+		async stop() {
+			const results = await Promise.allSettled([...loops.values()].map((loop) => loop.stop()));
+			const errors = results
+				.filter((result) => result.status === "rejected")
+				.map((result) => result.reason);
+			if (errors.length) throw new AggregateError(errors, "Polling shutdown failed");
 		},
 	};
 }

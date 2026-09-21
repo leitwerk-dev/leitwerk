@@ -32,8 +32,7 @@ export * from "./client.js";
 export * from "./external.js";
 export default extension;
 
-/** Register shared tools and polling with an explicit integration. */
-/** @public */
+/** Register shared tools and polling with an explicit integration. @public */
 export function setupWoodpeckerIntegration(
 	api: Parameters<NonNullable<LeitwerkExtensionModule["setupServer"]>>[0],
 	integration: WoodpeckerIntegration,

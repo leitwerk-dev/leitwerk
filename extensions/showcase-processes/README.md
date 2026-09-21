@@ -76,7 +76,4 @@ The following exported declarations are `@public`:
 
 - `@leitwerk-dev/showcase-processes`: `default`.
 
-Members have individual classifications; these exports do not make every member
-public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
-annotations are authoritative; see the [SDK compatibility
-policy](../../docs/process-sdk.md#api-compatibility).
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

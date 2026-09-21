@@ -16,14 +16,12 @@ let stopping = false;
 async function stop() {
 	if (stopping) return;
 	stopping = true;
-	await context.stopBackgroundServices();
-	await context.app.close();
+	await context.close();
 }
 process.once("SIGINT", () => void stop());
 process.once("SIGTERM", () => void stop());
 try {
-	await context.app.listen({ host: config.server.host, port: config.server.port });
-	await context.startBackgroundServices();
+	await context.listen({ host: config.server.host, port: config.server.port });
 } catch (error) {
 	await stop();
 	throw error;

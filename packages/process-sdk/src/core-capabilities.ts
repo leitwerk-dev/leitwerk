@@ -69,8 +69,7 @@ export interface ProcessRepoLike {
 	getById(id: string): ProcessInstance | null;
 	/** @public */
 	listAll(): ProcessInstance[];
-	/** Startup-only compatibility migrations may rewrite persisted process position and state. */
-	/** @public */
+	/** Startup-only compatibility migrations may rewrite persisted process position and state. @public */
 	update(
 		id: string,
 		input: {
@@ -86,8 +85,7 @@ export interface ProcessRepoLike {
 
 /** @public */
 export interface ProcessProjectRepoLike {
-	/** Server-provided project mutation service. Implementations should emit project.updated after committed writes. */
-	/** @internal */
+	/** Server-provided project mutation service. Implementations should emit project.updated after committed writes. @internal */
 	create(input: {
 		/** @internal */
 		instanceId: string;
@@ -185,8 +183,7 @@ export interface LauncherModelConfigServiceLike {
 	): Promise<LauncherModelConfigPreviewLike | null>;
 }
 
-/** Stable, machine-readable codes returned while preparing a launch. */
-/** @internal */
+/** Stable, machine-readable codes returned while preparing a launch. @internal */
 export type LaunchPlanPreparationIssueCode =
 	| "process_id_mismatch"
 	| "invalid_turn_configs_json"
@@ -197,8 +194,7 @@ export type LaunchPlanPreparationIssueCode =
 	| "selected_turn_model_requires_llm_turn"
 	| "model_required";
 
-/** Complete, presentation-safe diagnostic returned while preparing a launch. */
-/** @internal */
+/** Complete, presentation-safe diagnostic returned while preparing a launch. @internal */
 export interface LaunchPlanPreparationIssue {
 	/** @internal */
 	readonly code: LaunchPlanPreparationIssueCode;
@@ -221,8 +217,7 @@ export type LaunchPlanPreparationResultLike =
 	| {
 			/** @internal */
 			ok: false;
-			/** Normalized durable plan retained when a scheduled launch is blocked. */
-			/** @internal */
+			/** Normalized durable plan retained when a scheduled launch is blocked. @internal */
 			launchPlan: ProcessLaunchPlan;
 			/** @internal */
 			modelConfig: LaunchModelConfigInputLike;
@@ -512,8 +507,7 @@ export interface ExternalObservationInput {
 
 /** @public */
 export interface ExternalSourceArmingLike {
-	/** Process-local arming id. Durable arming identity is { instanceId, id }. */
-	/** @public */
+	/** Process-local arming id. Durable arming identity is { instanceId, id }. @public */
 	id: string;
 	/** @public */
 	instanceId: string;
@@ -527,8 +521,7 @@ export interface ExternalSourceArmingLike {
 	source: ExternalActionSource;
 	/** @public */
 	resolved: unknown;
-	/** Opaque identity of this resolved subscription. */
-	/** @public */
+	/** Opaque identity of this resolved subscription. @public */
 	generation?: string;
 }
 
@@ -538,8 +531,7 @@ export interface ExternalSourceFireInput {
 	instanceId: string;
 	/** @public */
 	armingId: string;
-	/** Reject a superseded subscription instead of queuing its event for a later turn. */
-	/** @internal */
+	/** Reject a superseded subscription instead of queuing its event for a later turn. @internal */
 	generation?: string;
 	/** @internal */
 	input?: Record<string, unknown>;
@@ -555,8 +547,7 @@ export interface ExternalSourceServiceLike {
 	listArmed(kind: string): readonly ExternalSourceArmingLike[];
 	/** @public */
 	fire(input: ExternalSourceFireInput): Promise<ActionExecutionResultLike>;
-	/** Records facts without firing an action or changing lifecycle state. */
-	/** @public */
+	/** Records facts without firing an action or changing lifecycle state. @public */
 	observe?(input: ExternalObservationInput): Promise<ActionExecutionResultLike>;
 }
 
@@ -578,8 +569,7 @@ export interface QueuedProcessInputLike {
 	bodyMarkdown: string;
 	/** @internal */
 	target?: ProcessInputTarget | null;
-	/** Stable principal that queued this input. Defaults to SYSTEM_ACTOR at persist time. */
-	/** @internal */
+	/** Stable principal that queued this input. Defaults to SYSTEM_ACTOR at persist time. @internal */
 	actor?: Actor;
 }
 
@@ -625,8 +615,7 @@ export interface ProcessEngineLike {
 			actor?: Actor;
 		},
 	): Promise<ProcessEngineResultLike>;
-	/** Retries the current failed startup or accepted turn; startup retries consume no attempt. */
-	/** @public */
+	/** Retries the current failed startup or accepted turn; startup retries consume no attempt. @public */
 	retryProcess(
 		instanceId: string,
 		opts?: {
@@ -727,8 +716,7 @@ export interface ProgrammaticLaunchRequestLike {
 	modelConfig?: LaunchModelConfigInputLike;
 	/** @internal */
 	skillIds?: readonly string[];
-	/** Trusted, non-secret process metadata merged after launcher resolution. */
-	/** @internal */
+	/** Trusted, non-secret process metadata merged after launcher resolution. @internal */
 	processMetadata?: Record<string, unknown>;
 }
 
@@ -844,8 +832,7 @@ export interface CoreServerSetupDeps {
 	processWorkspacesDir?: string;
 	/** @internal */
 	components: Record<string, ComponentConfigLike>;
-	/** Typed by consuming extensions via watcher-utils ExternalWriteLogRepoLike. */
-	/** @public */
+	/** Typed by consuming extensions via watcher-utils ExternalWriteLogRepoLike. @public */
 	externalWrites: unknown;
 	/** @public */
 	processes: ProcessRepoLike;
@@ -881,14 +868,11 @@ export interface CoreServerSetupDeps {
 	polling: PollingServiceLike;
 	/** @internal */
 	processModelSelection?: ProcessModelSelectionServiceLike;
-	/** Durable active-turn questions for trusted operator-channel extensions. */
-	/** @internal */
+	/** Durable active-turn questions for trusted operator-channel extensions. @internal */
 	processQuestions?: ProcessQuestionServiceLike;
-	/** Registration boundary for secret-backed repository credential extensions. */
-	/** @internal */
+	/** Registration boundary for secret-backed repository credential extensions. @internal */
 	repositoryCredentials: RepositoryCredentialRegistrar;
-	/** Server-owned managed result images, available to trusted delivery extensions. */
-	/** @internal */
+	/** Server-owned managed result images, available to trusted delivery extensions. @internal */
 	resultImages?: {
 		/** @internal */
 		get(instanceId: string, turnRecordId: string, imageId: string): Promise<Uint8Array | null>;

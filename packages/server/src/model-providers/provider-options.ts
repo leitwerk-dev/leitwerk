@@ -89,8 +89,7 @@ export interface LoadProviderOptionChoicesInput {
 	readonly maxTextLength?: number;
 }
 
-/** Fetch bounded advisory choices without making them part of option validation. */
-/** @internal */
+/** Fetch bounded advisory choices without making them part of option validation. @internal */
 export async function loadProviderOptionChoices(
 	input: LoadProviderOptionChoicesInput,
 ): Promise<ProviderOptionChoicesResult> {

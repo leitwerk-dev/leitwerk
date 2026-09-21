@@ -18,8 +18,7 @@ export interface ProcessTurnTransition {
 	trigger?: string;
 }
 
-/** Wire DTO used by HTTP clients that need serialized process graph data. */
-/** @internal */
+/** Wire DTO used by HTTP clients that need serialized process graph data. @internal */
 export interface SerializedProcessGraph {
 	/** @internal */
 	id: string;
@@ -31,8 +30,7 @@ export interface SerializedProcessGraph {
 	turnTransitions: Record<TurnId, ProcessTurnTransition[]>;
 }
 
-/** Whether a flow node sits on the declared happy path (`spine`) or hangs off it (`branch`). */
-/** @internal */
+/** Whether a flow node sits on the declared happy path (`spine`) or hangs off it (`branch`). @internal */
 export type ProcessFlowNodeRole = "spine" | "branch";
 
 /**
@@ -55,14 +53,11 @@ export interface ProcessFlowNode {
 	turnType: ProcessTurnType;
 	/** @internal */
 	role: ProcessFlowNodeRole;
-	/** Position on the spine when `role === "spine"`, otherwise `null`. */
-	/** @internal */
+	/** Position on the spine when `role === "spine"`, otherwise `null`. @internal */
 	spineIndex: number | null;
-	/** The spine node this branch hangs off, when derivable. `null` for spine nodes. */
-	/** @internal */
+	/** The spine node this branch hangs off, when derivable. `null` for spine nodes. @internal */
 	anchorTurnId: TurnId | null;
-	/** True when this turn is a launch entry point. */
-	/** @internal */
+	/** True when this turn is a launch entry point. @internal */
 	isEntry: boolean;
 }
 
@@ -70,16 +65,13 @@ export interface ProcessFlowNode {
 export interface ProcessFlowEdge {
 	/** @internal */
 	from: TurnId;
-	/** Target turn for non-terminal edges. */
-	/** @internal */
+	/** Target turn for non-terminal edges. @internal */
 	to: TurnId | null;
-	/** Lifecycle status for `terminal` edges. */
-	/** @internal */
+	/** Lifecycle status for `terminal` edges. @internal */
 	lifecycleStatus: ProcessTurnTerminalLifecycleStatus | null;
 	/** @internal */
 	kind: ProcessFlowEdgeKind;
-	/** Optional human-facing edge label derived from outcome/trigger metadata. */
-	/** @internal */
+	/** Optional human-facing edge label derived from outcome/trigger metadata. @internal */
 	label: string | null;
 }
 

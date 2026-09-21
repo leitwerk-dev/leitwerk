@@ -21,8 +21,7 @@ export interface UsageTokenCounts {
 	input: number;
 	/** @internal */
 	output: number;
-	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
-	/** @internal */
+	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. @internal */
 	reasoning?: number;
 	/** @internal */
 	cacheRead: number;
@@ -36,11 +35,9 @@ export interface UsageTokenCounts {
 export interface UsageSnapshot extends UsageTokenCounts {
 	/** @internal */
 	cost: UsageCostSnapshot | null;
-	/** Number of model requests represented by this aggregate, when known. */
-	/** @internal */
+	/** Number of model requests represented by this aggregate, when known. @internal */
 	requestCount?: number;
-	/** Largest input-token count for a single represented model request, when known. */
-	/** @internal */
+	/** Largest input-token count for a single represented model request, when known. @internal */
 	maxInputTokens?: number;
 }
 

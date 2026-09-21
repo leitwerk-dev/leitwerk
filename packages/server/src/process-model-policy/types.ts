@@ -330,8 +330,7 @@ export type ProcessModelPolicyEvaluationSubject =
 			readonly availability?: ProcessModelAvailabilitySnapshot;
 			/** @internal */
 			readonly startKind?: TurnStartKind;
-			/** True only when selecting the first turn of a persisted process. */
-			/** @internal */
+			/** True only when selecting the first turn of a persisted process. @internal */
 			readonly initialSelection?: boolean;
 			/** @internal */
 			readonly modelOverride?: string | null;

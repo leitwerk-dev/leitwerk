@@ -69,8 +69,7 @@ async function shutdown(signal: keyof typeof SIGNAL_EXIT_CODES) {
 	}
 	shuttingDown = true;
 	try {
-		await ctx.stopBackgroundServices();
-		await ctx.app.close();
+		await ctx.close();
 		process.exit(SIGNAL_EXIT_CODES[signal]);
 	} catch (error) {
 		ctx.app.log.error(error);
@@ -86,17 +85,11 @@ process.once("SIGTERM", () => {
 });
 
 try {
-	const listenStartedAt = performance.now();
-	await ctx.app.listen({ host: runtimeServer.host, port: runtimeServer.port });
-	ctx.app.log.info(
-		{ listenDurationMs: Math.round((performance.now() - listenStartedAt) * 10) / 10 },
-		"Server HTTP listener ready",
-	);
-	await ctx.startBackgroundServices();
+	await ctx.listen({ host: runtimeServer.host, port: runtimeServer.port });
 } catch (err) {
 	ctx.app.log.error(err);
 	try {
-		await ctx.app.close();
+		await ctx.close();
 	} catch (closeError) {
 		ctx.app.log.error(closeError);
 	}

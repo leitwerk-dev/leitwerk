@@ -1,7 +1,6 @@
 import type { ExternalActionSource } from "./extension-api.js";
 
-/** Define a resolver-based source with no provider input. */
-/** @public */
+/** Define a resolver-based source with no provider input. @public */
 export function defineExternalActionSource<TConfig>(
 	metadata: Pick<ExternalActionSource, "kind" | "label" | "description" | "describeEvent">,
 ) {

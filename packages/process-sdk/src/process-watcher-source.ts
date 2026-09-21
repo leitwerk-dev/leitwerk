@@ -12,8 +12,7 @@ function nonEmptyString(value: unknown, path: string): string {
 	return value;
 }
 
-/** Parse the shared launch-model fragment nested inside extension-owned watcher config. */
-/** @public */
+/** Parse the shared launch-model fragment nested inside extension-owned watcher config. @public */
 export function parseProcessWatcherLaunchModelConfig(value: unknown): LaunchModelConfigInput & {
 	/** @internal */
 	skillIds: string[];

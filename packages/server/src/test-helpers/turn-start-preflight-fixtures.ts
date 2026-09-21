@@ -16,8 +16,7 @@ export interface SuccessfulLlmTurnStartOptions {
 	workerRuntimeProfileId?: string;
 }
 
-/** Creates a preflight double that successfully prepares every new LLM turn start. */
-/** @internal */
+/** Creates a preflight double that successfully prepares every new LLM turn start. @internal */
 export function prepareSuccessfulLlmTurnStarts(
 	options: SuccessfulLlmTurnStartOptions = {},
 ): NonNullable<ProcessEngineDeps["prepareTurnStarts"]> {

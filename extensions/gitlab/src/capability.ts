@@ -15,8 +15,7 @@ export interface GitLabIntegration {
 export const gitlabIntegration = createCapabilityToken<GitLabIntegration>(
 	"@leitwerk-dev/gitlab.integration",
 );
-/** Internal references are derived from the same profile as API access. */
-/** @public */
+/** Internal references are derived from the same profile as API access. @public */
 export function gitlabRepositoryCredentials(
 	profile: string,
 	projects: readonly RepositoryCredentialProject[],

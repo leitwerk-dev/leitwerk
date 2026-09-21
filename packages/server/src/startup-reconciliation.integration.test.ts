@@ -77,7 +77,12 @@ function createPersistentFixture(opts: { resumeOnBoot?: boolean } = {}) {
 		...fixture,
 		config: fixture.createConfig(),
 		open: (config: LeitwerkConfig, appOverrides: Partial<AppOptions> = {}) =>
-			fixture.open({ config, extensionCatalog: extensionCatalogPromise, appOverrides }),
+			fixture.open({
+				config,
+				listen: false,
+				extensionCatalog: extensionCatalogPromise,
+				appOverrides,
+			}),
 	};
 }
 
@@ -162,7 +167,7 @@ describe("startup reconciliation", () => {
 				startupDelays: () => ({ connectMs, prepareMs: 1000 }),
 			}),
 		});
-		await harness.ctx.startBackgroundServices();
+		await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 		const process = harness.ctx.deps.processes.create({
 			defaultModelProfileId: "startup-model",
 			processId: "startup_test_process",
@@ -204,7 +209,7 @@ describe("startup reconciliation", () => {
 				startupDelays: () => ({ connectMs: 50, prepareMs: 50 }),
 			}),
 		});
-		await harness.ctx.startBackgroundServices();
+		await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 		const process = harness.ctx.deps.processes.create({
 			defaultModelProfileId: "startup-model",
 			processId: "startup_test_process",
@@ -263,8 +268,10 @@ describe("startup reconciliation", () => {
 		await close();
 
 		const secondHarness = await open(config);
-		const detailResponse = await fetch(`${secondHarness.address}/api/processes/${created.id}`);
-		expect(detailResponse.status).toBe(200);
+		const detailResponse = await secondHarness.ctx.app.inject({
+			url: `/api/processes/${created.id}`,
+		});
+		expect(detailResponse.statusCode).toBe(200);
 		const detail = await detailResponse.json();
 		expect(detail.process).toMatchObject({
 			id: created.id,
@@ -272,7 +279,7 @@ describe("startup reconciliation", () => {
 			selectedTurnId: "startup_plan_turn",
 		});
 
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 		const reconciled = await waitFor(
 			() => secondHarness.ctx.deps.processes.getById(created.id),
 			(value) => value?.lifecycleStatus === "error",
@@ -299,7 +306,7 @@ describe("startup reconciliation", () => {
 		await close();
 
 		const secondHarness = await open(config);
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 
 		expect(
 			secondHarness.ctx.deps.leases
@@ -335,7 +342,7 @@ describe("startup reconciliation", () => {
 		await close();
 
 		const secondHarness = await open(config);
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 
 		const resumedTurn = await waitFor(
 			() => secondHarness.ctx.deps.turnRecords.getById("trn_startup_running"),
@@ -421,7 +428,7 @@ describe("startup reconciliation", () => {
 		const secondHarness = await open(config, {
 			localWorkerSpawnImpl: sharedSpawnImpl,
 		});
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 
 		const resumedTurn = await waitFor(
 			() => secondHarness.ctx.deps.turnRecords.getById("trn_startup_running_leaf"),
@@ -497,7 +504,7 @@ describe("startup reconciliation", () => {
 				.some((event) => event.eventType === "persisted_model_selection_repaired"),
 		).toBe(false);
 
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 		expect(secondHarness.ctx.deps.turnRecords.listByInstance(created.id)).toEqual([]);
 		expect(secondHarness.ctx.deps.processes.getById(created.id)).toMatchObject({
 			defaultModelProfileId: "claude_fast",
@@ -519,7 +526,7 @@ describe("startup reconciliation", () => {
 		await close();
 
 		const secondHarness = await open(config);
-		await secondHarness.ctx.startBackgroundServices();
+		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 
 		const detailResponse = await fetch(`${secondHarness.address}/api/processes/${process.id}`);
 		expect(detailResponse.status).toBe(200);

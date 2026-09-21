@@ -209,7 +209,7 @@ describe("poem leaf outcome adoption", () => {
 				}),
 			]);
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	});
 
@@ -280,7 +280,7 @@ describe("poem leaf outcome adoption", () => {
 				}),
 			);
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	}, 15_000);
 
@@ -337,7 +337,7 @@ describe("poem leaf outcome adoption", () => {
 				}),
 			);
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	}, 15_000);
 
@@ -383,7 +383,7 @@ describe("poem leaf outcome adoption", () => {
 				"Brighter Platform",
 			]);
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	}, 15_000);
 });

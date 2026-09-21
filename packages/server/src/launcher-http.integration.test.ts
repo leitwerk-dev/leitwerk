@@ -552,7 +552,7 @@ async function createTitleTestHarness(
 			return { ...queueCounts };
 		},
 		async close() {
-			await ctx?.app.close();
+			await ctx?.close();
 		},
 	};
 }
@@ -566,7 +566,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await harness.ctx.app.close();
+	await harness.close();
 });
 
 describe("launcher HTTP routes", () => {
@@ -753,7 +753,7 @@ describe("launcher HTTP routes", () => {
 				}),
 			]);
 		} finally {
-			await restrictedHarness.ctx.app.close();
+			await restrictedHarness.close();
 		}
 	});
 
@@ -908,7 +908,7 @@ describe("launcher HTTP routes", () => {
 				],
 			});
 		} finally {
-			await configuredHarness.ctx.app.close();
+			await configuredHarness.close();
 		}
 	});
 
@@ -1077,7 +1077,7 @@ describe("launcher HTTP routes", () => {
 				message: "Review the launch configuration and try again.",
 			});
 		} finally {
-			await restrictedHarness.ctx.app.close();
+			await restrictedHarness.close();
 		}
 	});
 
@@ -1129,7 +1129,7 @@ describe("launcher HTTP routes", () => {
 			]);
 			expect(restrictedHarness.ctx.deps.processes.listAll()).toEqual([]);
 		} finally {
-			await restrictedHarness.ctx.app.close();
+			await restrictedHarness.close();
 		}
 	});
 
@@ -1949,7 +1949,7 @@ describe("launcher HTTP routes", () => {
 				failingHarness.ctx.deps.futureExecutions.getById(scheduledBody.futureExecution.id),
 			).toBeNull();
 		} finally {
-			await failingHarness.ctx.app.close();
+			await failingHarness.close();
 		}
 	});
 
@@ -2013,7 +2013,7 @@ describe("launcher HTTP routes", () => {
 			});
 			expect(persistedProjects).toHaveLength(1);
 		} finally {
-			await failingHarness.ctx.app.close();
+			await failingHarness.close();
 		}
 	});
 
@@ -2080,7 +2080,7 @@ describe("launcher HTTP routes", () => {
 			]);
 		} finally {
 			try {
-				await startHarness?.ctx.app.close();
+				await startHarness?.close();
 			} finally {
 				await rm(repoPath, { recursive: true, force: true });
 			}

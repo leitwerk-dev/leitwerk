@@ -39,8 +39,7 @@ export interface VolumePoolOptions {
 	onError?: () => void;
 }
 
-/** Only the staging claim's UID authorizes rebinding; process claims are never recycled. */
-/** @internal */
+/** Only the staging claim's UID authorizes rebinding; process claims are never recycled. @internal */
 export function createKubernetesVolumePool(options: VolumePoolOptions) {
 	const { api, namespace } = options;
 	if (!Number.isSafeInteger(options.count) || options.count < 0)

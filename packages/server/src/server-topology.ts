@@ -1,8 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { LeitwerkConfig } from "./config/config-types.js";
 
-/** Reads a file's UTF-8 contents. Injected so the pure logic stays testable. */
-/** @internal */
+/** Reads a file's UTF-8 contents. Injected so the pure logic stays testable. @internal */
 export type FileReader = (path: string) => string;
 
 const defaultFileReader: FileReader = (path) => readFileSync(path, "utf8");
