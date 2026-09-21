@@ -1132,7 +1132,7 @@ describe("generic review integration", () => {
 				nextTurnModelProfileId: null,
 				actionLabel: "Approve plan",
 			}),
-			nextRunAt: "2026-04-26T09:00:00.000Z",
+			nextRunAt: "2099-04-26T09:00:00.000Z",
 		});
 		app.ctx.deps.processes.update(process.id, {
 			selectedTurnId: "implement",
