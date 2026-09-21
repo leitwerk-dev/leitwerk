@@ -159,3 +159,5 @@ replays return the current object without reapplying the patch.
 
 Older logged comments and replies without recoverable markers fail on replay;
 they are not recreated. Ticket markers and receipt shapes remain unchanged.
+
+Conflict reporting uses `createConflictReporter(kind)` and the shared poll reporter. Polling retains its existing generation queueing policy.

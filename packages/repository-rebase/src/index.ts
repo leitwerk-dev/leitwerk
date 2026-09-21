@@ -1,9 +1,8 @@
 import type {
-	createExternalSourcePollReporter,
 	ExternalEventDescription,
 	ExternalObservationInput,
 	ExternalSourceArmingLike,
-	ExternalSourceServiceLike,
+	ExternalSourcePollReporter,
 	RepositoryPullRequest,
 } from "@leitwerk-dev/process-sdk";
 
@@ -62,7 +61,7 @@ export function validateConflict(
 		throw new Error("Stale or invalid pull request conflict evidence");
 	return evidence;
 }
-/** @internal */
+/** @public */
 export function describeConflict(event: unknown): ExternalEventDescription {
 	const evidence = (event as { conflict: ConflictEvidence }).conflict;
 	return {
@@ -77,16 +76,16 @@ export function describeConflict(event: unknown): ExternalEventDescription {
 		],
 	};
 }
-/** @internal */
+/** @public */
 export function conflictEvidence(
 	config: {
-		/** @internal */
+		/** @public */
 		owner: string;
-		/** @internal */
+		/** @public */
 		repo: string;
-		/** @internal */
+		/** @public */
 		prNumber: number;
-		/** @internal */
+		/** @public */
 		headSha: string;
 	},
 	pr: Pick<
@@ -120,11 +119,11 @@ export function conflictEvidence(
 	};
 }
 
-/** Observe every refresh; fire each conflict pair once per live subscription. @internal */
-export function createConflictReporter(sources: ExternalSourceServiceLike, kind: string) {
+/** Observe every refresh; fire each conflict pair once per live subscription. @public */
+export function createConflictReporter(kind: string) {
 	const accepted = new Map<string, string>();
 	return async (
-		report: ReturnType<typeof createExternalSourcePollReporter>,
+		report: ExternalSourcePollReporter,
 		armed: ExternalSourceArmingLike,
 		conflict: ConflictEvidence | null,
 		lastKey: unknown,
@@ -136,45 +135,10 @@ export function createConflictReporter(sources: ExternalSourceServiceLike, kind:
 		if (!conflict) return false;
 		const pair = conflictKey(conflict);
 		const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
-		if (
-			pair === lastKey ||
-			accepted.get(key) === pair ||
-			!sources.listArmed(kind).some((current) => sameSubscription(armed, current))
-		)
+		if (pair === lastKey || accepted.get(key) === pair || !report.isCurrent(kind, armed))
 			return false;
 		if (await report.fire(armed, { kind: "merge_conflict", conflict }, pair))
 			accepted.set(key, pair);
 		return true;
 	};
-}
-
-/** A captured generation and resolved identity must still be armed after provider I/O. @internal */
-export function sameSubscription(
-	captured: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-	current: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-): boolean {
-	return (
-		current.id === captured.id &&
-		current.instanceId === captured.instanceId &&
-		current.generation === captured.generation &&
-		JSON.stringify(current.resolved) === JSON.stringify(captured.resolved)
-	);
 }

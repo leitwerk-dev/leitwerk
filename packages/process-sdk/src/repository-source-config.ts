@@ -1,7 +1,10 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
+import type { RepositoryFeedbackBatchConfig } from "./repository-feedback.js";
 
-/** Parse common forge source fields, preserving polling defaults and permissive string handling. @internal */
-export function parseRepositoryPullRequestConfig(value: unknown) {
+/** Parse common forge source fields, preserving polling defaults and permissive string handling. @public */
+export function parseRepositoryPullRequestConfig(
+	value: unknown,
+): RepositoryPullRequestSourceConfig | null {
 	const config = asUnknownRecord(value) ?? {};
 	if (
 		typeof config.profile !== "string" ||
@@ -15,44 +18,48 @@ export function parseRepositoryPullRequestConfig(value: unknown) {
 			? config.terminalOutcome
 			: undefined;
 	return {
-		/** @internal */
+		/** @public */
 		profile: config.profile,
-		/** @internal */
+		/** @public */
 		owner: config.owner,
-		/** @internal */
+		/** @public */
 		repo: config.repo,
-		/** @internal */
+		/** @public */
 		prNumber: config.prNumber,
-		/** @internal */
+		/** @public */
 		pollInterval: typeof config.pollInterval === "string" ? config.pollInterval : "30s",
-		/** @internal */
+		/** @public */
 		terminalOutcome,
-		/** @internal */
+		/** @public */
 		disabled: config.disabled === true,
 	};
 }
 
-/** @internal */
-export function parseRepositoryFeedbackConfig(value: unknown) {
+/** @public */
+export function parseRepositoryFeedbackConfig(
+	value: unknown,
+): RepositoryFeedbackSourceConfig | null {
 	const base = parseRepositoryPullRequestConfig(value);
 	const config = asUnknownRecord(value) ?? {};
 	if (!base) return null;
 	return {
 		...base,
-		/** @internal */
+		/** @public */
 		conversationCursor:
 			typeof config.conversationCursor === "number" ? config.conversationCursor : 0,
-		/** @internal */
+		/** @public */
 		reviewCursor: typeof config.reviewCursor === "number" ? config.reviewCursor : 0,
-		/** @internal */
+		/** @public */
 		inlineCursor: typeof config.inlineCursor === "number" ? config.inlineCursor : 0,
-		/** @internal */
+		/** @public */
 		quietPeriodMs: typeof config.quietPeriodMs === "number" ? config.quietPeriodMs : 120_000,
 	};
 }
 
-/** @internal */
-export function parseRepositoryIssueCancelledConfig(value: unknown) {
+/** @public */
+export function parseRepositoryIssueCancelledConfig(
+	value: unknown,
+): RepositoryIssueCancelledSourceConfig | null {
 	const config = asUnknownRecord(value) ?? {};
 	if (
 		typeof config.profile !== "string" ||
@@ -63,17 +70,53 @@ export function parseRepositoryIssueCancelledConfig(value: unknown) {
 	)
 		return null;
 	return {
-		/** @internal */
+		/** @public */
 		profile: config.profile,
-		/** @internal */
+		/** @public */
 		owner: config.owner,
-		/** @internal */
+		/** @public */
 		repo: config.repo,
-		/** @internal */
+		/** @public */
 		issueNumber: config.issueNumber,
-		/** @internal */
+		/** @public */
 		triggerLabel: config.triggerLabel,
-		/** @internal */
+		/** @public */
 		pollInterval: typeof config.pollInterval === "string" ? config.pollInterval : "30s",
 	};
+}
+/** @public */
+export interface RepositoryPullRequestSourceConfig {
+	/** @public */
+	profile: string;
+	/** @public */
+	owner: string;
+	/** @public */
+	repo: string;
+	/** @public */
+	prNumber: number;
+	/** @public */
+	pollInterval: string;
+	/** @public */
+	terminalOutcome: "merged" | "closed" | undefined;
+	/** @public */
+	disabled: boolean;
+}
+/** @public */
+export interface RepositoryFeedbackSourceConfig
+	extends RepositoryPullRequestSourceConfig,
+		RepositoryFeedbackBatchConfig {}
+/** @public */
+export interface RepositoryIssueCancelledSourceConfig {
+	/** @public */
+	profile: string;
+	/** @public */
+	owner: string;
+	/** @public */
+	repo: string;
+	/** @public */
+	issueNumber: number;
+	/** @public */
+	triggerLabel: string;
+	/** @public */
+	pollInterval: string;
 }

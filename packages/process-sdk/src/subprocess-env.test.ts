@@ -27,3 +27,33 @@ describe("sanitizeWorkerSubprocessEnv", () => {
 		expect(env).toEqual({ PATH: "/bin", KEEP: "override" });
 	});
 });
+
+it("filters credential and helper variables after merging overrides", () => {
+	const sensitive = Object.fromEntries(
+		[
+			"GIT_CONFIG_COUNT",
+			"GIT_CONFIG_KEY_0",
+			"GIT_CONFIG_VALUE_0",
+			"GIT_CONFIG_PARAMETERS",
+			"GIT_CONFIG_GLOBAL",
+			"GIT_SSH",
+			"GIT_SSH_COMMAND",
+			"GIT_ASKPASS",
+			"SSH_ASKPASS",
+			"SSH_AUTH_SOCK",
+			"SSH_AGENT_PID",
+			"LEITWERK_INTERNAL_REPOSITORY_GIT_SSH_HELPER",
+			"LEITWERK_INTERNAL_REPOSITORY_GIT_HTTPS_HELPER",
+			"FORGE_TOKEN",
+			"API_KEY",
+			"DB_PASSWORD",
+			"CLIENT_SECRET",
+		].map((key) => [key, "sensitive"]),
+	);
+	expect(
+		sanitizeWorkerSubprocessEnv(
+			{ ...sensitive, PATH: "/bin" },
+			{ ...sensitive, KEEP: "ok", REMOVE: undefined },
+		),
+	).toEqual({ PATH: "/bin", KEEP: "ok" });
+});

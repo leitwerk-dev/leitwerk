@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { expect, test } from "vitest";
-import { conflictKey, sameSubscription, validateConflict } from "./index.js";
+import { conflictKey, validateConflict } from "./index.js";
 
 const evidence = {
 	owner: "owner",
@@ -27,14 +27,6 @@ test("validates captured evidence and preserves conflict deduplication keys", ()
 		{ ...evidence, prNumber: 0 },
 	])
 		expect(() => validateConflict(value, evidence)).toThrow();
-});
-test("compares subscription identity, generation and resolved evidence after polling", () => {
-	const captured = { id: "sub", instanceId: "process", generation: "1", resolved: evidence };
-	expect(sameSubscription(captured, structuredClone(captured))).toBe(true);
-	expect(sameSubscription(captured, { ...captured, generation: "2" })).toBe(false);
-	expect(
-		sameSubscription(captured, { ...captured, resolved: { ...evidence, headSha: "c".repeat(40) } }),
-	).toBe(false);
 });
 test("root import loads neither Git execution nor repair prompts", () => {
 	// Exercise the packaged import graph in a fresh process, rejecting forbidden loads.

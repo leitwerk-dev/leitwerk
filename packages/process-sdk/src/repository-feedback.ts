@@ -4,38 +4,35 @@ import { asUnknownRecord } from "@leitwerk-dev/domain";
 export interface RepositoryFeedbackItem {
 	/** @public */
 	kind: "conversation" | "review" | "inline";
-	/** @internal */
+	/** @public */
 	id: number;
 	/** @public */
 	body: string;
-	/** @internal */
+	/** @public */
 	createdAt: string;
 	/** @public */
 	author: string;
-	/** @internal */
+	/** @public */
 	path?: string;
-	/** @internal */
+	/** @public */
 	line?: number | null;
 }
 
-/** Batch already-authorized, unseen feedback after its quiet period. @internal */
+/** Batch already-authorized, unseen feedback after its quiet period. @public */
 export function repositoryFeedbackBatch(
 	unseen: readonly RepositoryFeedbackItem[],
-	config: Record<`${RepositoryFeedbackItem["kind"]}Cursor`, number> & {
-		/** @internal */
-		quietPeriodMs: number;
-	},
+	config: RepositoryFeedbackBatchConfig,
 	now: number,
-) {
+): RepositoryFeedbackBatch | null {
 	if (!unseen.length) return null;
 	const latest = Math.max(...unseen.map((item) => Date.parse(item.createdAt) || 0));
 	if (now - latest < config.quietPeriodMs) return null;
 	const cursors = {
-		/** @internal */
+		/** @public */
 		conversationCursor: config.conversationCursor,
-		/** @internal */
+		/** @public */
 		reviewCursor: config.reviewCursor,
-		/** @internal */
+		/** @public */
 		inlineCursor: config.inlineCursor,
 	};
 	for (const item of unseen) {
@@ -43,24 +40,24 @@ export function repositoryFeedbackBatch(
 		cursors[key] = Math.max(cursors[key], item.id);
 	}
 	return {
-		/** @internal */
+		/** @public */
 		event: {
-			/** @internal */
+			/** @public */
 			feedbackIds: unseen.map(({ kind, id }) => ({
-				/** @internal */
+				/** @public */
 				kind,
-				/** @internal */
+				/** @public */
 				id,
 			})),
-			/** @internal */
+			/** @public */
 			cursors,
 		},
-		/** @internal */
+		/** @public */
 		mergeKey: `${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
 	};
 }
 
-/** Normalize common forge feedback fields; reject empty bodies and missing identities. @internal */
+/** Normalize common forge feedback fields; reject empty bodies and missing identities. @public */
 export function normalizeRepositoryFeedback(
 	kind: RepositoryFeedbackItem["kind"],
 	item: Record<string, unknown>,
@@ -82,4 +79,35 @@ export function normalizeRepositoryFeedback(
 		...(typeof item.path === "string" ? { path: item.path } : {}),
 		...(typeof item.line === "number" ? { line: item.line } : {}),
 	};
+}
+/** @public */
+export interface RepositoryFeedbackCursors {
+	/** @public */
+	conversationCursor: number;
+	/** @public */
+	reviewCursor: number;
+	/** @public */
+	inlineCursor: number;
+}
+/** @public */
+export interface RepositoryFeedbackBatchConfig extends RepositoryFeedbackCursors {
+	/** @public */
+	quietPeriodMs: number;
+}
+/** @public */
+export interface RepositoryFeedbackBatch {
+	/** @public */
+	event: {
+		/** @public */
+		feedbackIds: {
+			/** @public */
+			kind: RepositoryFeedbackItem["kind"];
+			/** @public */
+			id: number;
+		}[];
+		/** @public */
+		cursors: RepositoryFeedbackCursors;
+	};
+	/** @public */
+	mergeKey: string;
 }

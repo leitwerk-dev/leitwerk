@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CoreServerSetupDeps, ExternalSourceArmingLike } from "@leitwerk-dev/process-sdk";
@@ -157,4 +157,41 @@ describe("file external source provider", () => {
 			fileExternal.instruction({ path: "/tmp/x", pollInterval: "1s", consume: "delete" }).kind,
 		).toBe(FILE_EXTERNAL_INSTRUCTION_KIND);
 	});
+});
+
+it("retains trigger files after rejected admission and consumes only after success", async () => {
+	const dir = await mkdtemp(path.join(tmpdir(), "file-trigger-retry-"));
+	try {
+		const filePath = path.join(dir, "trigger");
+		const source = fileExternal.instruction({
+			path: filePath,
+			pollInterval: "1ms",
+			consume: "delete",
+		});
+		const deps = createDeps({
+			fires: [],
+			armings: [
+				{
+					id: "sub",
+					instanceId: "process",
+					processId: "poem_creator_process",
+					turnId: "review",
+					externalActionId: "action",
+					source,
+					resolved: { path: filePath, pollInterval: "1ms", consume: "delete" },
+				},
+			],
+		});
+		deps.externalSources.fire = async () => ({ ok: false, error: "admission rejected" });
+		// A missing trigger is ignored.
+		expect((await createFileExternalSourceProvider(deps).poll()).errors).toEqual([]);
+		await writeFile(filePath, "Revise", "utf8");
+		expect((await createFileExternalSourceProvider(deps).poll()).created).toEqual([]);
+		expect(await readFile(filePath, "utf8")).toBe("Revise");
+		deps.externalSources.fire = async () => ({ ok: true });
+		expect((await createFileExternalSourceProvider(deps).poll()).created).toEqual(["sub"]);
+		await expect(readFile(filePath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
 });

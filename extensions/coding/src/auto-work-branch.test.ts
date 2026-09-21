@@ -27,12 +27,19 @@ describe("local repo change automatic work branches", () => {
 		).toBe("fix-login-flow-abc-a1b2c3d4e5f6");
 	});
 
-	it("resolves the configured base branch sha with git metadata", async () => {
+	it("resolves the base branch before launch without ambient project credentials", async () => {
+		onTestFinished(() => {
+			vi.unstubAllEnvs();
+		});
 		const root = mkdtempSync(path.join(tmpdir(), "local-repo-change-auto-branch-"));
 		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 		const git = new LocalGit(root);
 		const { worktree: repoDir } = git.seed({ owner: "test", name: "repo" });
 		const expectedSha = git.head(repoDir, "main");
+		// An inherited malformed Git configuration would make ls-remote fail.
+		vi.stubEnv("GIT_CONFIG_COUNT", "invalid");
+		vi.stubEnv("GIT_ASKPASS", "/missing/credential-helper");
+		vi.stubEnv("LEITWERK_INTERNAL_REPOSITORY_GIT_HTTPS_HELPER", "/missing/project-helper");
 
 		await expect(resolveBaseBranchSha({ repoLocator: repoDir, baseBranch: "main" })).resolves.toBe(
 			expectedSha,

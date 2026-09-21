@@ -105,3 +105,10 @@ Shutdown and failed bootstrap remove credentials. Credential values and encoded
 auth are redacted from IPC diagnostics; credential payloads are removed from retained
 bootstrap state. Credential directories are outside process volumes and exports.
 See [worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).
+
+`sanitizeWorkerSubprocessEnv(baseEnv?, overrides?)` is the supported environment
+boundary for ordinary worker subprocesses and pre-launch repository lookup. It
+filters after applying overrides, so overrides cannot restore stripped worker or
+provider credentials, Git configuration, SSH/askpass variables, or managed helper
+references. `repositoryGitSubprocessEnv(projectKey)` builds on this sanitizer and
+adds only the selected project's trusted Git credentials.

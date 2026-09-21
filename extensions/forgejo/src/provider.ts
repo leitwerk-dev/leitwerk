@@ -43,7 +43,7 @@ export function createForgejoProvider(
 	options: { now?: () => number } = {},
 ) {
 	const due = createPollSchedule(options.now);
-	const reportConflict = createConflictReporter(deps.externalSources, FORGEJO_PR_CONFLICT_KIND);
+	const reportConflict = createConflictReporter(FORGEJO_PR_CONFLICT_KIND);
 
 	async function discover(
 		watcher: RegisteredProcessWatcherLike<ForgejoIssueWatcherConfig, ForgejoIssueWatcherEvent>,
