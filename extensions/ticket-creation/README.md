@@ -6,7 +6,7 @@ Ticket adapters register normal integration tools with `capability.kind: "ticket
 
 The initial dialog contains only the operator's issue description and, when more than one adapter exists, the ticket system. Ticket refinement and destination clarification stay in the child process's normal UI.
 
-Adapters must use the execution context idempotency key with `ensureWrite()` and reconcile ambiguous external outcomes before retrying.
+Adapters must use the execution context idempotency key with `ctx.externalWrites.ensure()` and reconcile ambiguous external outcomes before retrying.
 
 The root export provides the process and `ticketCreationParamsCodec`. The codec
 validates nested parent strings/results, artifact identifiers, excerpt focus,
@@ -42,4 +42,13 @@ The following exported declarations are `@public`:
 
 - `@leitwerk-dev/ticket-creation`: `TicketCreationParams`, `default`, `ticketCreationProcess`.
 
-See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).
+
+### External-write replay
+
+Adapters follow the [shared reconciliation contract](../../docs/process-sdk.md#typed-external-writes)
+and return the standard ticket receipt on creation and replay. A logged ticket
+that cannot be recovered fails without creating another ticket.

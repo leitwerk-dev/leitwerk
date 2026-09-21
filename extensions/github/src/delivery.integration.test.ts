@@ -33,8 +33,8 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 		author: "member",
 	});
 	const writes = createInMemoryExternalWriteLog();
-	const { api, tools } = createToolCollector();
-	registerGitHubTools(api, { client: () => adapter.client() }, writes);
+	const { api, tools } = createToolCollector(writes);
+	registerGitHubTools(api, { client: () => adapter.client() });
 	const ctx = {
 		process: { id: "p", paramsJson: JSON.stringify({ githubProfile: "legacy" }) },
 		project: { instanceId: "p", metadata: { github: { owner: "leitwerk-dev", repo: "test" } } },
@@ -67,7 +67,8 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 		if (!tool) throw new Error(`Missing tool ${toolName}`);
 		adapter.failNextResponse(operation);
 		const input = { projectKey: "repo", ...args, writeKey: toolName };
-		await expect(tool.execute(ctx, input)).rejects.toThrow("response lost");
+		const recovered = await tool.execute(ctx, input);
+		expect(recovered).toBeDefined();
 		adapter = new LocalGitHubAdapter({
 			root,
 			baseUrl: "http://127.0.0.1:18082",

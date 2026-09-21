@@ -1,4 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
 import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { type WoodpeckerIntegration, woodpeckerIntegration } from "./capability.js";
 import { parseWoodpeckerProfiles, WoodpeckerClient } from "./client.js";
@@ -46,7 +45,7 @@ export function setupWoodpeckerIntegration(
 	api.provide(woodpeckerIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
-	registerWoodpeckerTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
+	registerWoodpeckerTools(api, integration);
 	return createWoodpeckerProvider(deps, integration, options);
 }
 

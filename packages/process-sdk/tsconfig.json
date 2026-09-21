@@ -11,6 +11,7 @@
 		{ "path": "../domain" },
 		{ "path": "../protocol" },
 		{ "path": "../worker-protocol" },
-		{ "path": "../watcher-utils" }
+		{ "path": "../watcher-utils" },
+		{ "path": "../external-writes" }
 	]
 }

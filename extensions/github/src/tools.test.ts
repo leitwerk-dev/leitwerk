@@ -80,10 +80,7 @@ it.each([false, true])("reconciles comment replay with response loss=%s", async 
 	const f = toolFixture();
 	const args = { projectKey: "one", pullRequestNumber: 1, body: "Reviewed" };
 	f.failure.comment = lost;
-	if (lost)
-		await expect(f.execute("github_add_pull_request_comment", args)).rejects.toThrow(
-			"response lost",
-		);
+	await f.execute("github_add_pull_request_comment", args);
 	f.failure.comment = false;
 	await f.execute("github_add_pull_request_comment", args);
 	await f.execute("github_add_pull_request_comment", args);
@@ -106,4 +103,16 @@ it("does not overwrite an accepted update on replay", async () => {
 	expect(f.pulls[0].title).toBe("Updated");
 	expect(f.requests.filter((r) => r.method === "update")).toHaveLength(1);
 	expect(f.writes.records).toHaveLength(2);
+});
+
+it("recovers a closed PR and refuses to recreate it if it disappears after logging", async () => {
+	const f = toolFixture();
+	await f.execute(ensure, pullRequestArgs);
+	f.pulls[0].state = "closed";
+	await expect(f.execute(ensure, pullRequestArgs)).resolves.toMatchObject({ state: "closed" });
+	f.pulls.length = 0;
+	await expect(f.execute(ensure, pullRequestArgs)).rejects.toMatchObject({
+		name: "ExternalWriteMissingRemoteError",
+	});
+	expect(f.requests.filter((r) => r.method === "create")).toHaveLength(1);
 });
