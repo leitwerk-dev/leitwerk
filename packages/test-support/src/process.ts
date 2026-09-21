@@ -1,3 +1,4 @@
+import { bindExternalWrites } from "@leitwerk-dev/external-writes/internal";
 import type { ExtensionTestCapability } from "./test-capability.js";
 
 export type { ExtensionTestCapability } from "./test-capability.js";
@@ -419,6 +420,7 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 						(projects.length === 1 ? (projects[0] ?? null) : null),
 					idempotencyKey: fixture.invocationId ?? `${process.id}:test_tool:${++toolSequence}`,
 					ticketDestination: structuredClone(fixture.ticketDestination),
+					externalWrites: bindExternalWrites(externalWrites, process.id),
 					signal: new AbortController().signal,
 				},
 				tool.parse ? tool.parse(structuredClone(args)) : structuredClone(args),

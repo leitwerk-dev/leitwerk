@@ -1,10 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
 import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
-import { expect, onTestFinished, test } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 import { LocalTicketAdapter } from "./testing.js";
 
 test("restarts after persistence, reconciles the original write key, and records exactly one receipt", async () => {
@@ -27,27 +26,15 @@ test("restarts after persistence, reconciles the original write key, and records
 				setupServer(api) {
 					const deps = api.get(coreHostCapabilities.serverSetup);
 					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
-					const writes = deps.externalWrites as ExternalWriteLogRepoLike;
-					const tool = adapter.tool({
-						hasDedupKey: (key) => writes.hasDedupKey(key),
-						record(input) {
-							if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
-							return writes.record(input);
-						},
+					const record = deps.externalWrites.record.bind(deps.externalWrites);
+					vi.spyOn(deps.externalWrites, "record").mockImplementation((input) => {
+						if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
+						return record(input);
 					});
+					const tool = adapter.tool();
 					api.tool({
 						...tool,
-						execute: (ctx, args) =>
-							adapter
-								.tool({
-									hasDedupKey: (key) => writes.hasDedupKey(key),
-									record(input) {
-										if (!writeLogAvailable)
-											throw new Error("Write log unavailable after persistence");
-										return writes.record(input);
-									},
-								})
-								.execute(ctx, args),
+						execute: (ctx, args) => adapter.tool().execute(ctx, args),
 					});
 				},
 			},
@@ -63,7 +50,13 @@ test("restarts after persistence, reconciles the original write key, and records
 	adapter.injectLostResponse();
 	await expect(
 		harness.callTool(name, { title: "Review", body: "Review the notes" }, fixture),
-	).rejects.toThrow(/Write log unavailable/);
+	).rejects.toMatchObject({
+		name: "AggregateError",
+		errors: [
+			expect.objectContaining({ message: "Local ticket persisted, but its response was lost." }),
+			expect.objectContaining({ message: "Write log unavailable after persistence" }),
+		],
+	});
 	expect(harness.writeReceipts()).toHaveLength(0);
 	expect(JSON.parse(readFileSync(options.file, "utf8")).tickets).toHaveLength(1);
 	adapter = new LocalTicketAdapter(options);

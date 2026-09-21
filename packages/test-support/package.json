@@ -55,7 +55,8 @@
 		"@leitwerk-dev/protocol": "0.2.0",
 		"@leitwerk-dev/server": "0.2.0",
 		"@leitwerk-dev/worker": "0.2.0",
-		"@leitwerk-dev/worker-protocol": "0.2.0"
+		"@leitwerk-dev/worker-protocol": "0.2.0",
+		"@leitwerk-dev/external-writes": "0.2.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

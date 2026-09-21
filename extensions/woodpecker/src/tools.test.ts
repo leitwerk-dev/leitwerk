@@ -1,8 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it, vi } from "vitest";
@@ -29,18 +27,12 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 			{
 				manifest: { id: "woodpecker-tools-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
-					registerWoodpeckerTools(
-						api,
-						{
-							client(profile) {
-								expect(profile).toBe("ci-profile");
-								return client;
-							},
+					registerWoodpeckerTools(api, {
+						client(profile) {
+							expect(profile).toBe("ci-profile");
+							return client;
 						},
-						deps.externalWrites as ExternalWriteLogRepoLike,
-					);
+					});
 				},
 			},
 		],

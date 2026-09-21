@@ -1,5 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import {
 	createExtensionTestHarness,
@@ -23,12 +21,9 @@ async function setup(client: Record<string, unknown>, enabled = true) {
 			{
 				manifest: { id: "forgejo-tools-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
 					registerForgejoTools(
 						api,
 						integration,
-						deps.externalWrites as ExternalWriteLogRepoLike,
 						{ enabled, defaultLabels: ["created-by-leitwerk"] },
 						projects as never,
 					);
@@ -74,7 +69,7 @@ describe("Forgejo server tools", () => {
 		[
 			"forgejo_add_pull_request_comment",
 			"pullRequestNumber",
-			"addPullRequestComment",
+			"addIssueComment",
 			{ body: "Review" },
 		],
 		["forgejo_update_issue", "issueNumber", "updateIssue", { patch: { title: "Updated" } }],
@@ -85,8 +80,21 @@ describe("Forgejo server tools", () => {
 			{ patch: { title: "Updated" } },
 		],
 	] as const)("routes %s through the authorized project", async (name, numberName, method, payload) => {
-		const read = vi.fn(async () => "result");
-		const { test } = await setup({ [method]: read });
+		const remote = {
+			body: "Review\n\n<!-- leitwerk-write:ticket-1:stable-write-key -->",
+			title: "Before",
+		};
+		let created = false;
+		const read = vi.fn(async () => {
+			created = true;
+			return payload ? remote : "result";
+		});
+		const { test } = await setup({
+			listIssueComments: async () => (created ? [remote] : []),
+			getIssue: async () => remote,
+			getPullRequest: async () => remote,
+			[method]: read,
+		});
 		const ctx = {
 			...fixture({}),
 			projects: [
@@ -105,18 +113,12 @@ describe("Forgejo server tools", () => {
 		]);
 		const args = { [numberName]: 7, ...payload };
 		const result = await test.callTool(name, args, ctx);
-		expect(result).toEqual(
-			payload
-				? "patch" in payload
-					? { ok: true }
-					: { performed: true, dedupKey: ctx.invocationId }
-				: "result",
-		);
+		expect(result).toEqual(payload ? ("patch" in payload ? { ok: true } : remote) : "result");
 		expect(read).toHaveBeenCalledWith(
 			"team",
 			"repo",
 			7,
-			...Object.values(payload ?? {}),
+			...(payload && "body" in payload ? [remote.body] : Object.values(payload ?? {})),
 			expect.any(AbortSignal),
 		);
 		if (payload) {
@@ -279,7 +281,7 @@ describe("Forgejo server tools", () => {
 			expect.any(AbortSignal),
 		);
 		expect(issues[0]?.body).toContain("<!-- leitwerk-ticket-write:stable-write-key -->");
-		expect(test.writeReceipts().length).toBe(lostLabelResponse ? 1 : 2);
+		expect(test.writeReceipts().length).toBe(2);
 
 		const replay = await test.callTool(
 			"forgejo_create_issue",

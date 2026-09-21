@@ -1,10 +1,15 @@
 import { type ExtensionCatalog, setupServerExtensions } from "@leitwerk-dev/extension-runtime";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
+	bindExternalWrites,
+	type ExternalWriteLogRepoLike,
+} from "@leitwerk-dev/external-writes/internal";
+import {
 	type CoreServerSetupDeps,
 	coreHostCapabilities,
 	createCapabilityAccessor,
 	createEventBus,
+	type IntegrationToolDefinition,
 	type LeitwerkExtensionModule,
 	type ProvidedCapability,
 	type ServerExtensionAPI,
@@ -37,6 +42,30 @@ export function createPollingTestExtension<T>(
 			if (!provider) throw new Error(`Test provider '${manifest.id}' has not been initialized`);
 			return provider.poll();
 		},
+	};
+}
+
+/** @internal */
+export function createToolCollector(
+	writes: ExternalWriteLogRepoLike = createInMemoryExternalWriteLog(),
+) {
+	const tools = new Map<string, IntegrationToolDefinition>();
+	const api = {
+		tool: (tool: IntegrationToolDefinition) =>
+			tools.set(tool.name, {
+				...tool,
+				execute: (ctx, args) =>
+					tool.execute(
+						{ ...ctx, externalWrites: bindExternalWrites(writes, ctx.process.id) },
+						args,
+					),
+			}),
+	} as unknown as ServerExtensionAPI;
+	return {
+		/** @internal */
+		api,
+		/** @internal */
+		tools,
 	};
 }
 

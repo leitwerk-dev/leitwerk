@@ -320,7 +320,8 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				name: "Sandbox Developer",
 				email: "developer@sandbox.invalid",
 			}),
-			ensureLabel: async (owner, name, labelName) => {
+			listLabels: async (owner, name) => structuredClone(repo(owner, name).labels),
+			createLabel: async (owner, name, labelName) => {
 				const r = repo(owner, name);
 				let label = r.labels.find((value) => value.name === labelName);
 				if (!label) {
@@ -330,6 +331,10 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 					this.lostResponse("label");
 				}
 				return structuredClone(label);
+			},
+			ensureLabel: async (owner, name, labelName) => {
+				const label = repo(owner, name).labels.find((value) => value.name === labelName);
+				return label ? structuredClone(label) : client.createLabel(owner, name, labelName);
 			},
 			updateIssue: async (owner, name, number, patch) => {
 				const issue = repo(owner, name).issues.find((i) => i.number === number);
@@ -370,13 +375,15 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 								.map((f) => ({ ...f })),
 						)
 					: client.listIssueComments(owner, name, number),
-			replyFeedback: async (owner, name, number, kind, _id, body) => {
+			replyFeedback: async (owner, name, number, kind, id, body) => {
 				if (kind !== "inline") return client.addIssueComment(owner, name, number, body);
 				const value = this.addFeedback(repo(owner, name), number, {
 					kind: "inline",
 					body,
 					author: profile.botLogin,
 				});
+				Object.assign(value, { in_reply_to_id: id });
+				this.save();
 				this.lostResponse("reply");
 				return structuredClone(value);
 			},

@@ -1,5 +1,3 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import {
 	createExtensionTestHarness,
@@ -80,6 +78,12 @@ export async function toolFixture() {
 			if (failure.comment) throw new Error("response lost");
 			return {};
 		},
+		async getPullRequest(owner, repo, number) {
+			record("get", owner, repo);
+			const pr = pulls.find((p) => p.number === number);
+			if (!pr) throw new Error("Unknown PR");
+			return structuredClone(pr);
+		},
 		async updatePullRequest(owner, repo, number, patch) {
 			record("update", owner, repo);
 			const pr = pulls.find((p) => p.number === number);
@@ -95,6 +99,7 @@ export async function toolFixture() {
 		| "listIssueComments"
 		| "addIssueComment"
 		| "updatePullRequest"
+		| "getPullRequest"
 	>;
 	const client = new Proxy(methods, {
 		get(target, key) {
@@ -107,18 +112,12 @@ export async function toolFixture() {
 			{
 				manifest: { id: "github-tools-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
-					registerGitHubTools(
-						api,
-						{
-							client(profile) {
-								profiles.push(profile);
-								return client;
-							},
+					registerGitHubTools(api, {
+						client(profile) {
+							profiles.push(profile);
+							return client;
 						},
-						deps.externalWrites as ExternalWriteLogRepoLike,
-					);
+					});
 				},
 			},
 		],

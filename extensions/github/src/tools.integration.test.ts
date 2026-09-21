@@ -1,8 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it, vi } from "vitest";
@@ -33,9 +31,7 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 			{
 				manifest: { id: "github-tools-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
-					registerGitHubTools(api, { client }, deps.externalWrites as ExternalWriteLogRepoLike);
+					registerGitHubTools(api, { client });
 				},
 			},
 		],

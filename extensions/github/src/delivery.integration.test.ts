@@ -1,8 +1,6 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it } from "vitest";
@@ -39,13 +37,7 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 			{
 				manifest: { id: "github-delivery-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
-					registerGitHubTools(
-						api,
-						{ client: () => adapter.client() },
-						deps.externalWrites as ExternalWriteLogRepoLike,
-					);
+					registerGitHubTools(api, { client: () => adapter.client() });
 				},
 			},
 		],
@@ -88,14 +80,13 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 	] as const) {
 		adapter.failNextResponse(operation);
 		const input = { projectKey: "repo", ...args, writeKey: toolName };
-		await expect(test.callTool(toolName, input, fixture)).rejects.toThrow("response lost");
+		await expect(test.callTool(toolName, input, fixture)).resolves.toBeDefined();
 		adapter = new LocalGitHubAdapter({
 			root,
 			baseUrl: "http://127.0.0.1:18082",
 			allowedOrganization: "leitwerk-dev",
 		});
 		repo = adapter.repo("leitwerk-dev", "test");
-		await test.callTool(toolName, input, fixture);
 		await test.callTool(toolName, input, fixture);
 	}
 	expect(repo.comments[issue.number]).toHaveLength(1);

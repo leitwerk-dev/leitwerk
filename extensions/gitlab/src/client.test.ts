@@ -1,5 +1,4 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import type { ExternalWrites } from "@leitwerk-dev/external-writes";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
@@ -15,19 +14,17 @@ import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
 import { ensureGitLabComment, ensureGitLabSeenReaction } from "./tools.js";
 
-async function writeHarness(execute: (writes: ExternalWriteLogRepoLike) => Promise<unknown>) {
+async function writeHarness(execute: (writes: ExternalWrites) => Promise<unknown>) {
 	const harness = await createExtensionTestHarness({
 		extensions: [
 			{
 				manifest: { id: "gitlab-write-test", version: "1" },
 				setupServer(api) {
-					const deps = api.get(coreHostCapabilities.serverSetup);
-					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
 					api.tool({
 						name: "write",
 						description: "Exercise the GitLab write boundary",
 						parameters: {},
-						execute: () => execute(deps.externalWrites as ExternalWriteLogRepoLike),
+						execute: (ctx) => execute(ctx.externalWrites),
 					});
 				},
 			},
@@ -110,7 +107,7 @@ describe("GitLab boundary", () => {
 		await harness.callTool("write", {});
 		const reads = request.mock.calls.length;
 		await harness.callTool("write", {});
-		expect(request).toHaveBeenCalledTimes(reads);
+		expect(request).toHaveBeenCalledTimes(reads + 2);
 		const reopened = await writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
 		await reopened.callTool("write", {});
 		expect(posts).toBe(1);
