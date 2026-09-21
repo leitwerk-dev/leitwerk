@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/coding",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -45,11 +45,11 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0",
-		"@leitwerk-dev/process-sdk": "0.2.0"
+		"@leitwerk-dev/domain": "0.2.1",
+		"@leitwerk-dev/process-sdk": "0.2.1"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/test-support": "0.2.0",
+		"@leitwerk-dev/test-support": "0.2.1",
 		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",
