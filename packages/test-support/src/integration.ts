@@ -1,5 +1,6 @@
 export {
 	createIntegrationHarness,
+	createPersistentIntegrationFixture,
 	type IntegrationHarness,
 	type IntegrationHarnessOptions,
 } from "./integration-harness.js";
@@ -12,4 +13,3 @@ export {
 	type ServerExtensionTestHarness,
 	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";
-export { createTestApp, type TestApp, type TestAppOptions } from "./test-app.js";

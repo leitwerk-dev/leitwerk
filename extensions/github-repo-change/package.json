@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/github-repo-change",
-	"version": "0.1.9",
+	"version": "0.2.0",
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -20,12 +20,12 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/coding": "0.1.9",
-		"@leitwerk-dev/external-writes": "0.1.9",
-		"@leitwerk-dev/git-ssh": "0.1.9",
-		"@leitwerk-dev/process-sdk": "0.1.9",
-		"@leitwerk-dev/github": "0.1.9",
-		"@leitwerk-dev/repository-rebase": "0.1.9"
+		"@leitwerk-dev/coding": "0.2.0",
+		"@leitwerk-dev/external-writes": "0.2.0",
+		"@leitwerk-dev/git-ssh": "0.2.0",
+		"@leitwerk-dev/process-sdk": "0.2.0",
+		"@leitwerk-dev/github": "0.2.0",
+		"@leitwerk-dev/repository-rebase": "0.2.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

@@ -2,9 +2,13 @@ import type { ProcessInstance, ProcessTurnRecord, TurnStartRecord } from "@leitw
 import { generateId } from "../../db/repo-helpers.js";
 import { applyProcessPatchField, createWrites, type Writes } from "./writes.js";
 
+/** @internal */
 export interface RecoveryStartWritesInput {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	failedRun: ProcessTurnRecord;
+	/** @internal */
 	acceptedStart: TurnStartRecord;
 }
 

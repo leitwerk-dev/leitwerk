@@ -6,20 +6,30 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.js";
 import { generateCreateIndexDDL, generateCreateTableDDL, getTableName } from "./schema-ddl.js";
 
+/** @public */
 export type LeitwerkDb = ReturnType<typeof drizzle>;
 
+/** @internal */
 export interface DatabaseOptions {
+	/** @internal */
 	sqlitePath: string;
+	/** @internal */
 	enableWAL?: boolean;
 }
 
+/** @internal */
 export interface InitializeSchemaOptions {
+	/** @internal */
 	sqlitePath?: string;
 }
 
+/** @internal */
 export class DatabaseSchemaMismatchError extends Error {
+	/** @internal */
 	constructor(
+		/** @internal */
 		readonly sqlitePath: string,
+		/** @internal */
 		readonly tableName: string,
 	) {
 		super(
@@ -885,6 +895,7 @@ export function applyKnownMigrations(
 	return { backupPath, migrationIds: migrations.map((migration) => migration.id) };
 }
 
+/** @internal */
 export function initializeSchema(sqlite: DatabaseSync, opts: InitializeSchemaOptions = {}) {
 	const sqlitePath = opts.sqlitePath ?? ":memory:";
 	for (const table of ALL_TABLES) {
@@ -893,6 +904,7 @@ export function initializeSchema(sqlite: DatabaseSync, opts: InitializeSchemaOpt
 	}
 }
 
+/** @internal */
 export function createDatabase(opts: DatabaseOptions) {
 	const fileBacked = opts.sqlitePath !== ":memory:";
 	const existingFileBackedDatabase = fileBacked && existsSync(opts.sqlitePath);
@@ -925,10 +937,12 @@ export function createDatabase(opts: DatabaseOptions) {
 	}
 }
 
+/** @internal */
 export function createInMemoryDatabase() {
 	return createDatabase({ sqlitePath: ":memory:", enableWAL: false });
 }
 
+/** @internal */
 export function closeDatabase(db: LeitwerkDb): void {
 	const sqlite = (db as unknown as { $client?: DatabaseSync }).$client;
 	sqlite?.close();

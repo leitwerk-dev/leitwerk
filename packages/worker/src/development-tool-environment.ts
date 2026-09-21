@@ -4,42 +4,70 @@ import path from "node:path";
 import type { DevelopmentToolsStartConfig } from "@leitwerk-dev/worker-protocol";
 import { execa } from "execa";
 
+/** @internal */
 export const PINNED_MISE_VERSION = "2026.8.14";
 const OUTPUT_LIMIT_BYTES = 64 * 1024;
 const JSON_LIMIT_BYTES = 1024 * 1024;
 const TRACE_CHUNK_LENGTH = 16 * 1024;
 
+/** @internal */
 export interface ToolPreparationRepository {
+	/** @internal */
 	repositoryKey: string;
+	/** @internal */
 	workingDirectory: string;
 }
 
+/** @internal */
 export interface ToolPreparationInput {
+	/** @internal */
 	config: DevelopmentToolsStartConfig;
+	/** @internal */
 	repositories: readonly ToolPreparationRepository[];
+	/** @internal */
 	signal?: AbortSignal;
+	/** @internal */
 	onProgress?(repositoryKey: string, phase: "installing" | "verifying"): void;
+	/** @internal */
 	onDiagnosticTrace?(text: string): void;
 }
 
+/** @internal */
 export interface PreparedToolEnvironment {
+	/** @internal */
 	miseVersion: string;
+	/** @internal */
 	commandEnvironment: NodeJS.ProcessEnv;
+	/** @internal */
 	repositories: Array<{
+		/** @internal */
 		repositoryKey: string;
+		/** @internal */
 		workingDirectory: string;
-		tools: Array<{ name: string; version: string }>;
+		/** @internal */
+		tools: Array<{
+			/** @internal */
+			name: string;
+			/** @internal */
+			version: string;
+		}>;
 	}>;
+	/** @internal */
 	warnings: string[];
 }
 
+/** @internal */
 export interface DevelopmentToolEnvironment {
+	/** @internal */
 	prepare(input: ToolPreparationInput): Promise<PreparedToolEnvironment>;
 }
 
+/** @internal */
 export class DevelopmentToolPreparationError extends Error {
+	/** @internal */
 	constructor(
 		message: string,
+		/** @internal */
 		readonly code:
 			| "mise_missing"
 			| "mise_unsupported"
@@ -47,6 +75,7 @@ export class DevelopmentToolPreparationError extends Error {
 			| "verification_failed"
 			| "timeout"
 			| "cancelled",
+		/** @internal */
 		readonly diagnostics = "",
 	) {
 		super(message);
@@ -67,6 +96,7 @@ function compareVersion(a: readonly number[], b: readonly number[]): number {
 	return 0;
 }
 
+/** @internal */
 export function validateMiseVersion(value: string, runner: "local" | "isolated"): string {
 	const parsed = parseVersion(value);
 	const pinned = parseVersion(PINNED_MISE_VERSION);
@@ -116,7 +146,7 @@ const SAFE_ENV_KEYS = new Set([
 	"XDG_STATE_HOME",
 ]);
 
-/** Keep OS, network, and mise discovery settings while excluding application credentials. */
+/** Keep OS, network, and mise discovery settings while excluding application credentials. @internal */
 export function buildMiseSubprocessEnvironment(
 	base: NodeJS.ProcessEnv,
 	config: DevelopmentToolsStartConfig,
@@ -276,8 +306,13 @@ function toolPair(
 	return name && version ? { name, version } : null;
 }
 
-/** Normalize the mise JSON adapter boundary without retaining backend-specific fields. */
-export function normalizeMiseEvidence(value: unknown): Array<{ name: string; version: string }> {
+/** Normalize the mise JSON adapter boundary without retaining backend-specific fields. @internal */
+export function normalizeMiseEvidence(value: unknown): Array<{
+	/** @internal */
+	name: string;
+	/** @internal */
+	version: string;
+}> {
 	const tools: Array<{ name: string; version: string }> = [];
 	if (Array.isArray(value)) {
 		for (const item of value) {
@@ -333,9 +368,12 @@ function translateCommandError(
 	);
 }
 
+/** @internal */
 export class MiseDevelopmentToolEnvironment implements DevelopmentToolEnvironment {
+	/** @internal */
 	constructor(private readonly baseEnv: NodeJS.ProcessEnv = process.env) {}
 
+	/** @internal */
 	async prepare(input: ToolPreparationInput): Promise<PreparedToolEnvironment> {
 		const env = buildMiseSubprocessEnvironment(this.baseEnv, input.config);
 		const versionResult = await runCommand({

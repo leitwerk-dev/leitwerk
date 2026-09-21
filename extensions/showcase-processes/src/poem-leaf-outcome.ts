@@ -1,19 +1,30 @@
 import { normalizeMarkdownText, trimToNull as normalizeOptionalText } from "@leitwerk-dev/domain";
 import type { PiTreeEntry } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export type PoemLeafOutcomeReviewOutcome = "no_issues" | "leave_feedback";
 
+/** @internal */
 export interface PoemLeafOutcomeReview extends Record<string, unknown> {
+	/** @internal */
 	outcome: PoemLeafOutcomeReviewOutcome;
+	/** @internal */
 	summary: string | null;
+	/** @internal */
 	feedback: string | null;
 }
 
+/** @internal */
 export interface PoemLeafOutcomePayload extends Record<string, unknown> {
+	/** @internal */
 	prompt: string;
+	/** @internal */
 	markdown: string;
+	/** @internal */
 	title: string | null;
+	/** @internal */
 	stanzas: string[][];
+	/** @internal */
 	review?: PoemLeafOutcomeReview | null;
 }
 
@@ -45,14 +56,18 @@ function uniqueNonEmptyStrings(values: Array<string | null>): string[] {
 	return [...new Set(values.filter((value): value is string => Boolean(value)))];
 }
 
+/** @internal */
 export function extractLeafEntryMarkdown(
 	entry: Pick<PiTreeEntry, "message"> | null,
 ): string | null {
 	return normalizeOptionalText(entry?.message?.content);
 }
 
+/** @internal */
 export function resolvePoemLeafMarkdown(input: {
+	/** @internal */
 	turnResultMarkdown: string | null | undefined;
+	/** @internal */
 	leafEntry: Pick<PiTreeEntry, "message"> | null;
 }): string {
 	const turnResultMarkdown = input.turnResultMarkdown?.trim() ?? "";
@@ -62,8 +77,11 @@ export function resolvePoemLeafMarkdown(input: {
 	return extractLeafEntryMarkdown(input.leafEntry) ?? "";
 }
 
+/** @internal */
 export function parsePoemLeafMarkdown(markdown: string): {
+	/** @internal */
 	title: string | null;
+	/** @internal */
 	stanzas: string[][];
 } {
 	const normalized = normalizeMarkdownText(markdown);
@@ -105,12 +123,19 @@ export function parsePoemLeafMarkdown(markdown: string): {
 	return { title, stanzas };
 }
 
+/** @internal */
 export function buildPoemLeafOutcomePayload(input: {
+	/** @internal */
 	prompt: string;
+	/** @internal */
 	markdown: string;
+	/** @internal */
 	review?: {
+		/** @internal */
 		outcome: PoemLeafOutcomeReviewOutcome;
+		/** @internal */
 		summary?: string | null;
+		/** @internal */
 		feedback?: string | null;
 	} | null;
 }): PoemLeafOutcomePayload {
@@ -126,11 +151,17 @@ export function buildPoemLeafOutcomePayload(input: {
 	};
 }
 
+/** @internal */
 export function buildPoemLeafOutcomeFallbackMarkdown(input: {
+	/** @internal */
 	markdown: string;
+	/** @internal */
 	review?: {
+		/** @internal */
 		outcome: PoemLeafOutcomeReviewOutcome;
+		/** @internal */
 		summary?: string | null;
+		/** @internal */
 		feedback?: string | null;
 	} | null;
 }): string {

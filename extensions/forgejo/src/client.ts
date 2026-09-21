@@ -9,55 +9,94 @@ import {
 
 export type { ForgejoIssue, ForgejoPullRequest };
 
+/** @public */
 export interface ForgejoRepository {
+	/** @public */
 	id: number;
+	/** @internal */
 	name: string;
+	/** @public */
 	full_name: string;
+	/** @internal */
 	ssh_url: string;
+	/** @internal */
 	html_url: string;
+	/** @internal */
 	default_branch: string;
+	/** @internal */
 	archived?: boolean;
+	/** @internal */
 	has_issues?: boolean;
-	owner: { login: string };
+	/** @internal */
+	owner: {
+		/** @internal */
+		login: string;
+	};
 }
 
+/** @public */
 export interface ForgejoFeedbackItem extends RepositoryFeedbackItem {
+	/** @internal */
 	reviewId?: number;
+	/** @internal */
 	position?: number;
+	/** @internal */
 	originalPosition?: number;
+	/** @internal */
 	extraLinesCount?: number;
 }
 
+/** @public */
 export interface ForgejoLabel {
+	/** @public */
 	id: number;
+	/** @internal */
 	name: string;
+	/** @internal */
 	color?: string;
 }
 
+/** @internal */
 export interface ForgejoProfile {
+	/** @internal */
 	baseUrl: string;
+	/** @internal */
 	token: string;
+	/** @internal */
 	botLogin: string;
 }
 
+/** @internal */
 export interface ForgejoAuthenticatedUser {
+	/** @internal */
 	login: string;
+	/** @internal */
 	full_name?: string;
 }
 
+/** @internal */
 export interface ForgejoGitIdentity {
+	/** @internal */
 	name: string;
+	/** @internal */
 	email: string;
+	/** @internal */
 	provider: "forgejo";
+	/** @internal */
 	profile: string;
+	/** @internal */
 	login: string;
 }
 
+/** @public */
 export interface ForgejoTicketCreationConfig {
+	/** @public */
 	enabled?: boolean;
+	/** @public */
 	defaultLabels: readonly string[];
 }
 
+/** @internal */
 export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketCreationConfig {
 	const ticketCreation = asUnknownRecord(asUnknownRecord(value)?.ticket_creation) ?? {};
 	const rawLabels = ticketCreation.default_labels;
@@ -72,12 +111,14 @@ export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketC
 	};
 }
 
+/** @internal */
 export function parseLabelNames(value: unknown = [], name: string): string[] {
 	if (!Array.isArray(value) || value.some((label) => typeof label !== "string" || !label.trim()))
 		throw new Error(`${name} must be an array of non-empty strings`);
 	return [...new Set(value.map((label) => label.trim()))];
 }
 
+/** @internal */
 export function parseForgejoProfiles(value: unknown): Map<string, ForgejoProfile> {
 	const profiles = new Map<string, ForgejoProfile>();
 	for (const [name, raw] of Object.entries(
@@ -96,14 +137,21 @@ export function parseForgejoProfiles(value: unknown): Map<string, ForgejoProfile
 	return profiles;
 }
 
+/** @internal */
 function repositoryPath(owner: string, repo: string): string {
 	return `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
 }
 
+/** @public */
 export class ForgejoClient extends RepositoryHttpClient<unknown> {
+	/** @internal */
 	protected override repositoryPath = repositoryPath;
 
-	constructor(readonly profile: ForgejoProfile) {
+	/** @internal */
+	constructor(
+		/** @internal */
+		readonly profile: ForgejoProfile,
+	) {
 		super(
 			"Forgejo",
 			`${profile.baseUrl}/api/v1`,
@@ -115,10 +163,12 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		);
 	}
 
+	/** @internal */
 	getAuthenticatedUser(signal?: AbortSignal): Promise<ForgejoAuthenticatedUser> {
 		return this.request("/user", { signal });
 	}
 
+	/** @internal */
 	async resolveGitIdentity(profile: string, signal?: AbortSignal): Promise<ForgejoGitIdentity> {
 		const user = await this.getAuthenticatedUser(signal);
 		const login = user.login?.trim();
@@ -135,14 +185,17 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		return { name, email, provider: "forgejo", profile, login };
 	}
 
+	/** @public */
 	listRepositories(): Promise<ForgejoRepository[]> {
 		return this.pages("/user/repos?sort=updated");
 	}
 
+	/** @internal */
 	getRepositoryById(id: number, signal?: AbortSignal): Promise<ForgejoRepository> {
 		return this.request(`/repositories/${id}`, { signal });
 	}
 
+	/** @public */
 	listIssues(
 		owner: string,
 		repo: string,
@@ -155,10 +208,12 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		);
 	}
 
+	/** @public */
 	listOpenIssues(owner: string, repo: string): Promise<ForgejoIssue[]> {
 		return this.listIssues(owner, repo, "open");
 	}
 
+	/** @internal */
 	async updateIssue(
 		owner: string,
 		repo: string,
@@ -183,10 +238,12 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		return this.getIssue(owner, repo, number, signal);
 	}
 
+	/** @internal */
 	listLabels(owner: string, repo: string, signal?: AbortSignal): Promise<ForgejoLabel[]> {
 		return this.pages(`${repositoryPath(owner, repo)}/labels`, signal);
 	}
 
+	/** @public */
 	createLabel(
 		owner: string,
 		repo: string,
@@ -197,15 +254,24 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		return this.writeJson(`${repositoryPath(owner, repo)}/labels`, "POST", { name, color }, signal);
 	}
 
+	/** @public */
 	createIssue(
 		owner: string,
 		repo: string,
-		input: { title: string; body: string; labels?: readonly number[] },
+		input: {
+			/** @public */
+			title: string;
+			/** @public */
+			body: string;
+			/** @public */
+			labels?: readonly number[];
+		},
 		signal?: AbortSignal,
 	): Promise<ForgejoIssue> {
 		return this.writeJson(`${repositoryPath(owner, repo)}/issues`, "POST", input, signal);
 	}
 
+	/** @internal */
 	addPullRequestComment(
 		owner: string,
 		repo: string,
@@ -216,6 +282,7 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		return this.addIssueComment(owner, repo, number, body, signal);
 	}
 
+	/** @internal */
 	addPullRequestFeedbackReaction(
 		owner: string,
 		repo: string,
@@ -234,6 +301,7 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		);
 	}
 
+	/** @internal */
 	replyToPullRequestFeedback(
 		owner: string,
 		repo: string,
@@ -259,6 +327,7 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		);
 	}
 
+	/** @internal */
 	async listPullRequestFeedback(
 		owner: string,
 		repo: string,

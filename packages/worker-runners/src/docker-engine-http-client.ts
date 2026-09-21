@@ -7,25 +7,34 @@ import type {
 	DockerEngineClient,
 } from "./docker-engine-client.js";
 
+/** @internal */
 export class DockerEngineHttpError extends Error {
+	/** @internal */
 	constructor(
 		message: string,
+		/** @internal */
 		readonly statusCode: number,
+		/** @internal */
 		readonly body: string,
 	) {
 		super(message);
 	}
 }
 
+/** @internal */
 export function isDockerEngineNotFoundError(error: unknown): boolean {
 	return error instanceof DockerEngineHttpError && error.statusCode === 404;
 }
 
+/** @internal */
 export interface ParsedDockerEngineSocket {
+	/** @internal */
 	socketPath?: string;
+	/** @internal */
 	baseUrl?: URL;
 }
 
+/** @internal */
 export function parseDockerEngineSocket(value: string): ParsedDockerEngineSocket {
 	if (value.startsWith("unix://")) {
 		const socketPath = value.slice("unix://".length);
@@ -45,8 +54,11 @@ export function parseDockerEngineSocket(value: string): ParsedDockerEngineSocket
 	);
 }
 
+/** @internal */
 export interface DockerEngineHttpClientOptions {
+	/** @internal */
 	socket: string;
+	/** @internal */
 	apiVersion?: string;
 }
 
@@ -136,6 +148,7 @@ function mapWait(raw: DockerWaitResponse): DockerContainerExit {
 	};
 }
 
+/** @internal */
 export function createDockerEngineHttpClient(
 	options: DockerEngineHttpClientOptions,
 ): DockerEngineClient {

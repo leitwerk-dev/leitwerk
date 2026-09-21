@@ -6,8 +6,15 @@ import type { forgejoIssueWatcherSource } from "./issue-watcher.js";
 import { createForgejoProvider } from "./provider.js";
 import { registerForgejoTools } from "./tools.js";
 
-export const manifest = { id: "forgejo", version: "0.1.9" } as const;
+/** @internal */
+export const manifest = {
+	/** @internal */
+	id: "forgejo",
+	/** @internal */
+	version: "0.1.9",
+} as const;
 
+/** @public */
 const extension: LeitwerkExtensionModule = {
 	manifest,
 	setupServer(api, config) {
@@ -33,14 +40,19 @@ export * from "./external.js";
 export * from "./issue-watcher.js";
 export default extension;
 
-/** Register shared tools and polling with an explicit integration. */
+/** Register shared tools and polling with an explicit integration. @public */
 export function setupForgejoIntegration(
 	api: Parameters<NonNullable<LeitwerkExtensionModule["setupServer"]>>[0],
 	integration: ForgejoIntegration,
 	ticketCreation: import("./client.js").ForgejoTicketCreationConfig = {
 		defaultLabels: ["created-by-leitwerk"],
 	},
-	options: { now?: () => number; issueWatcherSource?: typeof forgejoIssueWatcherSource } = {},
+	options: {
+		/** @public */
+		now?: () => number;
+		/** @public */
+		issueWatcherSource?: typeof forgejoIssueWatcherSource;
+	} = {},
 ) {
 	api.provide(forgejoIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);

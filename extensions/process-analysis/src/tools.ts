@@ -1,6 +1,7 @@
 import type { ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
 import { downloadProcessSnapshot } from "./snapshot-downloader.js";
 
+/** @internal */
 export const processAnalysisDownloadSnapshotTool = "process_analysis_download_snapshot";
 
 function parseArgs(value: unknown): { processRef: string } {
@@ -14,6 +15,7 @@ function parseArgs(value: unknown): { processRef: string } {
 	return { processRef: processRef.trim() };
 }
 
+/** @internal */
 export function registerProcessAnalysisTools(api: ServerExtensionAPI): void {
 	api.tool({
 		name: processAnalysisDownloadSnapshotTool,

@@ -14,6 +14,7 @@ export function configureSandboxStorage(config: LeitwerkConfig, paths: SandboxPa
 	for (const candidate of [...Object.values(config.storage), config.pi.agent_dir])
 		assertSandboxPath(paths.root, candidate);
 }
+/** @public */
 export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 	const config = getDefaultConfig();
 	config.server = {

@@ -2,15 +2,23 @@ import type { ProcessInstance } from "@leitwerk-dev/domain";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { ProcessVolume } from "./types.js";
 
+/** @internal */
 export interface ProcessVolumeRetentionPolicy {
+	/** @internal */
 	completedProcessRetention: string;
+	/** @internal */
 	errorProcessRetention: string;
 }
 
+/** @internal */
 export interface PlanProcessVolumeRetentionCleanupInput {
+	/** @internal */
 	processes: readonly ProcessInstance[];
+	/** @internal */
 	now: Date;
+	/** @internal */
 	policy: ProcessVolumeRetentionPolicy;
+	/** @internal */
 	alreadyReleased?: ReadonlySet<string>;
 }
 
@@ -26,6 +34,7 @@ function closedAtMs(process: ProcessInstance): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** @internal */
 export function planProcessVolumeRetentionCleanup(
 	input: PlanProcessVolumeRetentionCleanupInput,
 ): string[] {
@@ -55,11 +64,17 @@ export function planProcessVolumeRetentionCleanup(
 	return candidates;
 }
 
+/** @internal */
 export async function cleanupRetainedProcessVolumes(input: {
+	/** @internal */
 	volume?: ProcessVolume;
+	/** @internal */
 	processes: readonly ProcessInstance[];
+	/** @internal */
 	now: Date;
+	/** @internal */
 	policy: ProcessVolumeRetentionPolicy;
+	/** @internal */
 	alreadyReleased?: ReadonlySet<string>;
 }): Promise<string[]> {
 	const candidates = planProcessVolumeRetentionCleanup(input);

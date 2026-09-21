@@ -17,15 +17,23 @@ export const DEFAULT_PI_RESOURCE_LIMITS = {
 	maxTotalBytes: 64 * 1024 * 1024,
 } as const;
 
+/** @internal */
 export interface PiResourceLimits {
+	/** @internal */
 	readonly maxFiles?: number;
+	/** @internal */
 	readonly maxFileBytes?: number;
+	/** @internal */
 	readonly maxTotalBytes?: number;
 }
 
+/** @internal */
 export interface ResourceOwner {
+	/** @internal */
 	readonly kind: Exclude<PiResourceProvenanceKind, "generated">;
+	/** @internal */
 	readonly ownerExtensionId: string | null;
+	/** @internal */
 	readonly packageName: string | null;
 }
 
@@ -35,8 +43,11 @@ export const SKILL_RESOURCE_OWNER: ResourceOwner = {
 	packageName: null,
 };
 
+/** @internal */
 export interface PiResourceLayer {
+	/** @internal */
 	readonly bundle: PiResourceBundle;
+	/** @internal */
 	readonly owner: ResourceOwner;
 }
 

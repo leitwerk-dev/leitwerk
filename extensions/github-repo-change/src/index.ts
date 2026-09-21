@@ -5,14 +5,23 @@ import { createGitHubRepoChangeLauncher } from "./launcher.js";
 import { createGitHubRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 
+/** @public */
 export const manifest = {
+	/** @public */
 	id: "github-repo-change",
+	/** @public */
 	version: "0.1.9",
+	/** @public */
 	requires: ["github", "coding", "git-ssh"],
 } as const;
 
 /** Load exactly one variant per catalog. Only trusted composition code selects Docker. */
-export function createGitHubRepoChange(options: { docker: boolean }) {
+/** @public */
+/** @public */
+export function createGitHubRepoChange(options: {
+	/** @public */
+	docker: boolean;
+}) {
 	if (typeof options.docker !== "boolean") throw new Error("docker must be a boolean");
 	const launcher = createGitHubRepoChangeLauncher();
 	const process = createGitHubRepoChangeProcess(launcher, options.docker);
@@ -34,18 +43,29 @@ export function createGitHubRepoChange(options: { docker: boolean }) {
 			api.onStop(() => launcher.configure(null));
 		},
 	};
-	return { extension, process, launcher };
+	/** @public */
+	/** @public */
+	return {
+		/** @public */
+		extension,
+		/** @public */
+		process,
+		/** @public */
+		launcher,
+	};
 }
 
 export * from "./launcher.js";
 export * from "./params.js";
 export * from "./process.js";
 export * from "./profile-bindings.js";
+/** @public */
 export const {
 	extension: defaultExtension,
 	process: githubRepoChangeProcess,
 	launcher: defaultGitHubRepoChangeLauncher,
 } = createGitHubRepoChange({ docker: true });
+/** @public */
 export const {
 	configure: configureGitHubRepoChangeLauncher,
 	preparationChecks: githubRepositoryPreparationChecks,

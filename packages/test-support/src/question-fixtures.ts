@@ -1,5 +1,6 @@
 import type { NormalizedQuestion, ProcessQuestionRequest } from "@leitwerk-dev/domain";
 
+/** @internal */
 export function createTestQuestion(
 	overrides: Partial<NormalizedQuestion> = {},
 ): NormalizedQuestion {
@@ -12,6 +13,7 @@ export function createTestQuestion(
 	};
 }
 
+/** @internal */
 export function createTestQuestionRequest(
 	overrides: Partial<ProcessQuestionRequest> = {},
 ): ProcessQuestionRequest {

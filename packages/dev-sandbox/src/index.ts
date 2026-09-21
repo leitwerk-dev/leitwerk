@@ -7,46 +7,86 @@ import { type PiTreeHandleFactory, SdkPiTreeHandleFactory } from "@leitwerk-dev/
 
 export { sandboxConfig } from "./config.js";
 
+/** @public */
 export type SandboxMode = "scripted" | "real";
+/** @public */
 export interface SandboxPaths {
+	/** @public */
 	workspaceRoot: string;
+	/** @public */
 	root: string;
+	/** @public */
 	directory: string;
 }
+/** @public */
 export interface SandboxUrls {
+	/** @public */
 	ui: string;
+	/** @public */
 	backend: string;
 }
+/** @public */
 export interface SandboxInput {
+	/** @public */
 	paths: SandboxPaths;
+	/** @public */
 	mode: SandboxMode;
+	/** @public */
 	urls: SandboxUrls;
+	/** @public */
 	modelProfileId: string;
 }
+/** @public */
 export interface SandboxScenario<T = unknown> {
+	/** @public */
 	name: string;
+	/** @internal */
 	description: string;
+	/** @internal */
 	launch(input: Record<string, unknown>, branch: string): ProcessLaunchConfig<T>;
+	/** @internal */
 	prepareLaunch?(requestId: string): Promise<Record<string, unknown>>;
-	startupDelays?: { connectMs: number; prepareMs: number };
+	/** @internal */
+	startupDelays?: {
+		/** @internal */
+		connectMs: number;
+		/** @internal */
+		prepareMs: number;
+	};
 }
 
-/** The composition owns adapters and persisted scenario progress. */
+/** The composition owns adapters and persisted scenario progress. @public */
 export interface SandboxComposition {
+	/** @public */
 	processConfigs: LeitwerkConfig["process_configs"];
-	development: { extensions: string[]; watchPaths: string[] };
+	/** @public */
+	development: {
+		/** @public */
+		extensions: string[];
+		/** @public */
+		watchPaths: string[];
+	};
+	/** @public */
 	scenarios: readonly SandboxScenario[];
+	/** @public */
 	initialize?(): void | Promise<void>;
+	/** @public */
 	createCatalog(): Promise<ExtensionCatalog>;
+	/** @public */
 	scriptedPi(context: () => AppContext): PiTreeHandleFactory;
+	/** @public */
 	registerControls?(context: AppContext): void | Promise<void>;
+	/** @public */
 	controlState?(): Record<string, unknown>;
+	/** @public */
 	poll?(): Promise<unknown>;
+	/** @internal */
 	cleanup?(): void | Promise<void>;
 }
+/** @public */
 export type SandboxCompositionFactory = (input: SandboxInput) => SandboxComposition;
 
-/** Install development launchers on an SDK-defined process, retaining its identity. */
+/** Install development launchers on an SDK-defined process, retaining its identity. @public */
 export function withSandboxLaunchers<T, S>(
 	definition: ExtensionProcessDefinition<T, S>,
 	scenarios: readonly SandboxScenario<T>[],
@@ -84,6 +124,7 @@ export function withSandboxLaunchers<T, S>(
 	});
 }
 
+/** @public */
 export async function createSandboxApp(
 	config: LeitwerkConfig,
 	input: SandboxInput,
@@ -102,13 +143,9 @@ export async function createSandboxApp(
 	const stop = () =>
 		(stopped ??= (async () => {
 			try {
-				await context?.stopBackgroundServices();
+				await context?.close();
 			} finally {
-				try {
-					await context?.app.close();
-				} finally {
-					await composition.cleanup?.();
-				}
+				await composition.cleanup?.();
 			}
 		})());
 	try {
@@ -177,7 +214,16 @@ export async function createSandboxApp(
 		);
 		app.post("/__local/poll", async () => (await composition.poll?.()) ?? []);
 		await composition.registerControls?.(context);
-		return { context, composition, stop, poll: async () => (await composition.poll?.()) ?? [] };
+		return {
+			/** @public */
+			context,
+			/** @public */
+			composition,
+			/** @public */
+			stop,
+			/** @public */
+			poll: async () => (await composition.poll?.()) ?? [],
+		};
 	} catch (error) {
 		await stop();
 		throw error;

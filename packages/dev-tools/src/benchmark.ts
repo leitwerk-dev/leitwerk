@@ -23,19 +23,33 @@ export {
 	statistics,
 } from "./benchmark-report.js";
 
+/** @internal */
 export interface WorkerStartupBenchmarkOptions {
+	/** @internal */
 	apiConfig: string;
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	modelProfileId: string;
+	/** @internal */
 	launcherInput: Record<string, unknown>;
+	/** @internal */
 	title: string;
+	/** @internal */
 	candidate: string;
+	/** @internal */
 	output: string;
+	/** @internal */
 	samples?: number;
+	/** @internal */
 	warmups?: number;
+	/** @internal */
 	timeoutMs?: number;
+	/** @internal */
 	pollIntervalMs?: number;
+	/** @internal */
 	kubernetes?: KubernetesEvidenceOptions;
+	/** @internal */
 	signal?: AbortSignal;
 }
 
@@ -83,7 +97,7 @@ function positiveInteger(value: number, label: string, minimum = 1) {
 	return value;
 }
 
-/** Launch sequentially; keep uncertain attempts and their request identities for diagnosis. */
+/** Launch sequentially; keep uncertain attempts and their request identities for diagnosis. @internal */
 export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkOptions) {
 	for (const field of [
 		"apiConfig",
@@ -104,7 +118,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 	const api = async <T>(
 		route: string,
 		init: RequestInit = {},
-		requestTimeoutMs = 10_000,
+		deadlineSignal?: AbortSignal,
 	): Promise<T> => {
 		let response: Response;
 		try {
@@ -112,7 +126,8 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 				...init,
 				redirect: "error",
 				signal: AbortSignal.any([
-					AbortSignal.timeout(Math.max(1, requestTimeoutMs)),
+					AbortSignal.timeout(10_000),
+					...(deadlineSignal ? [deadlineSignal] : []),
 					...(options.signal ? [options.signal] : []),
 				]),
 				headers: {
@@ -176,9 +191,13 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 		appendFileSync(path.join(output, "launches.jsonl"), `${JSON.stringify(sample)}\n`, {
 			mode: 0o600,
 		});
-		const deadline = Date.now() + timeoutMs;
-		const remaining = () => Math.min(10_000, Math.max(1, deadline - Date.now()));
-		const get = <T>(route: string) => api<T>(route, {}, remaining());
+		// One signal owns the deadline across requests, response bodies and polling.
+		// Do not infer timer cancellation from a separate wall-clock comparison.
+		const deadlineSignal = AbortSignal.timeout(timeoutMs);
+		const sampleSignal = AbortSignal.any([
+			deadlineSignal,
+			...(options.signal ? [options.signal] : []),
+		]);
 		try {
 			let launch: StartLaunchRunResponseBody | undefined;
 			for (let attempt = 0; attempt < 3; attempt++) {
@@ -194,7 +213,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 								modelConfig: { defaultModelProfileId: options.modelProfileId },
 							}),
 						},
-						remaining(),
+						deadlineSignal,
 					);
 					if (typeof launch.launchRunId !== "string" || !launch.launchRunId)
 						throw new Error("API response did not identify the launch run");
@@ -203,7 +222,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 					if (
 						attempt === 2 ||
 						options.signal?.aborted ||
-						Date.now() >= deadline ||
+						deadlineSignal.aborted ||
 						(error instanceof ApiError && error.status < 500 && ![408, 429].includes(error.status))
 					)
 						throw error;
@@ -212,16 +231,25 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 			if (!launch) throw new Error("Launch was not accepted");
 			sample.launchRunId = launch.launchRunId;
 			sample.instanceId = launch.instanceId;
-			while (Date.now() < deadline) {
-				const { launchRun } = await get<LaunchRunResponseBody>(
+			while (!deadlineSignal.aborted) {
+				const { launchRun } = await api<LaunchRunResponseBody>(
 					`/api/launch-runs/${encodeURIComponent(sample.launchRunId)}`,
+					{},
+					deadlineSignal,
 				);
 				sample.launchRun = launchRun;
 				sample.instanceId ??= launchRun.instanceId;
 				if (sample.instanceId) {
-					const route = `/api/processes/${encodeURIComponent(sample.instanceId)}`;
-					const detail = await get<ProcessDiagnosticsData>(route);
-					const snapshot = await get<ProcessDetailUiSnapshotResponseBody>(`${route}/ui-snapshot`);
+					const detail = await api<ProcessDiagnosticsData>(
+						`/api/processes/${encodeURIComponent(sample.instanceId)}`,
+						{},
+						deadlineSignal,
+					);
+					const snapshot = await api<ProcessDetailUiSnapshotResponseBody>(
+						`/api/processes/${encodeURIComponent(sample.instanceId)}/ui-snapshot`,
+						{},
+						deadlineSignal,
+					);
 					sample.startup = snapshot.startup;
 					sample.turnRecords = detail.turnRecords;
 					// A later turn may start another generation. Wait for the whole process.
@@ -247,9 +275,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 					stop = !!sample.instanceId;
 					break;
 				}
-				await delay(Math.min(pollIntervalMs, Math.max(1, deadline - Date.now())), undefined, {
-					signal: options.signal,
-				});
+				await delay(pollIntervalMs, undefined, { signal: sampleSignal });
 			}
 			if (sample.outcome === "pending") {
 				sample.outcome = "timeout";
@@ -258,7 +284,7 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 		} catch (error) {
 			sample.outcome = options.signal?.aborted
 				? "interrupted"
-				: Date.now() >= deadline
+				: deadlineSignal.aborted
 					? "timeout"
 					: "failed";
 			sample.error = options.signal?.aborted
@@ -277,9 +303,13 @@ export async function runWorkerStartupBenchmark(options: WorkerStartupBenchmarkO
 	}
 	const complete = samples.filter((sample) => !sample.warmup).length === count;
 	return {
+		/** @internal */
 		samples,
+		/** @internal */
 		complete,
+		/** @internal */
 		succeeded: complete && samples.every((sample) => sample.outcome === "completed"),
+		/** @internal */
 		reportPath: path.join(output, "report.md"),
 	};
 }

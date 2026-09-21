@@ -26,36 +26,54 @@ import type {
 	PiTreePlanningSnapshot,
 } from "@leitwerk-dev/worker";
 
+/** @public */
 export interface StubToolCallScriptCall {
+	/** @public */
 	toolName: string;
+	/** @public */
 	args: Record<string, unknown>;
+	/** @internal */
 	intermediateEntryCount?: number;
 }
 
+/** @public */
 export type StubToolCallScriptItem =
 	| StubToolCallScriptCall
 	| {
+			/** @public */
 			calls: readonly StubToolCallScriptCall[];
+			/** @public */
 			textChunks?: readonly string[];
+			/** @public */
 			thinkingChunks?: readonly string[];
+			/** @public */
 			chunkDelayMs?: number;
-			/** Optional scripted model reaction to a tool result, within the same turn. */
+			/** Optional scripted model reaction to a tool result, within the same turn. @internal */
 			afterToolResult?: (
 				call: StubToolCallScriptCall,
 				result: unknown,
 			) => StubToolCallScriptCall | undefined;
 	  };
 
+/** @public */
 export interface StubToolCallScriptResolverContext {
+	/** @public */
 	promptText: string;
+	/** @public */
 	tools: readonly PiCustomTool[];
+	/** @public */
 	instanceId?: string;
+	/** @public */
 	workspaceRoot?: string;
+	/** @public */
 	sessionCwd?: string;
+	/** @public */
 	treeFile: string;
+	/** @internal */
 	turnSequence: number;
 }
 
+/** @public */
 export type StubToolCallScriptResolver = (
 	context: StubToolCallScriptResolverContext,
 ) => StubToolCallScriptItem | undefined | Promise<StubToolCallScriptItem | undefined>;
@@ -88,11 +106,17 @@ function stubToolCallId(turnSeq: number, totalCalls: number, index: number): str
 	return `tool-${turnSeq}-${index + 1}`;
 }
 
+/** @internal */
 interface StubPiTreeState {
+	/** @internal */
 	header?: SessionHeader;
+	/** @internal */
 	turnSeq: number;
+	/** @internal */
 	currentLeafId: string | null;
+	/** @internal */
 	entries: Map<string, PiTreeEntry>;
+	/** @internal */
 	childIdsByParent: Map<string | null, string[]>;
 }
 
@@ -180,13 +204,20 @@ function deserializeStubPiTreeState(value: string): StubPiTreeState {
 	};
 }
 
+/** @public */
 export class StubPiTreeHandle implements PiTreeHandle {
+	/** @public */
 	readonly sessionId: string;
+	/** @internal */
 	readonly treeFile: string;
+	/** @internal */
 	readonly isResumed: boolean;
 
+	/** @internal */
 	readonly prompts: string[] = [];
+	/** @internal */
 	readonly steers: string[] = [];
+	/** @internal */
 	beforeTurn?: (
 		kind: "prompt" | "literal" | "custom" | "continue",
 		options: PiPromptOptions | undefined,
@@ -204,14 +235,23 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	private readonly persistState?: (() => Promise<void>) | undefined;
 	private readonly recordSessionTrace: boolean;
 
+	/** @internal */
 	constructor(options: {
+		/** @internal */
 		sessionId: string;
+		/** @internal */
 		treeFile: string;
+		/** @internal */
 		isResumed: boolean;
+		/** @internal */
 		toolCallScriptResolver?: StubToolCallScriptResolver;
+		/** @internal */
 		state?: StubPiTreeState;
+		/** @internal */
 		runDetails?: Partial<PiRunDetails>;
+		/** @internal */
 		persistState?: () => Promise<void>;
+		/** @internal */
 		recordSessionTrace?: boolean;
 	}) {
 		this.sessionId = options.sessionId;
@@ -228,10 +268,12 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	get closed(): boolean {
 		return this._closed;
 	}
 
+	/** @internal */
 	failNextTurnWithBranchDrift(): void {
 		this.branchDriftPending = true;
 	}
@@ -272,6 +314,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		}
 	}
 
+	/** @internal */
 	getRunDetails(): PiRunDetails {
 		return {
 			loadedAgentsFiles: this.runDetails.loadedAgentsFiles.map((file) => ({ ...file })),
@@ -280,14 +323,17 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	getLeafId(): string | null {
 		return this.state.currentLeafId;
 	}
 
+	/** @internal */
 	getEntry(id: string): PiTreeEntry | undefined {
 		return this.state.entries.get(id);
 	}
 
+	/** @public */
 	getBranch(fromId: string | undefined = this.state.currentLeafId ?? undefined): PiTreeEntry[] {
 		if (!fromId) {
 			return [];
@@ -306,12 +352,14 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		return branch;
 	}
 
+	/** @internal */
 	getChildren(parentId: string): PiTreeEntry[] {
 		return (this.state.childIdsByParent.get(parentId) ?? [])
 			.map((childId) => this.state.entries.get(childId))
 			.filter((entry): entry is PiTreeEntry => entry !== undefined);
 	}
 
+	/** @internal */
 	getTree(): PiTreeNode[] {
 		const buildNode = (entry: PiTreeEntry): PiTreeNode => ({
 			entry,
@@ -323,6 +371,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			.map(buildNode);
 	}
 
+	/** @internal */
 	async branch(entryId: string): Promise<void> {
 		this.assertOpen();
 		if (!this.state.entries.has(entryId)) {
@@ -332,17 +381,26 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		await this.persistState?.();
 	}
 
+	/** @internal */
 	async branchFromRoot(): Promise<void> {
 		this.assertOpen();
 		this.state.currentLeafId = null;
 		await this.persistState?.();
 	}
 
+	/** @internal */
 	async resetLeaf(): Promise<void> {
 		await this.branchFromRoot();
 	}
 
-	async compact(_customInstructions?: string, details?: unknown): Promise<{ summary: string }> {
+	/** @internal */
+	async compact(
+		_customInstructions?: string,
+		details?: unknown,
+	): Promise<{
+		/** @internal */
+		summary: string;
+	}> {
 		this.assertOpen();
 		const timestamp = new Date().toISOString();
 		const compactionEntryId = `compaction-${++this.state.turnSeq}`;
@@ -645,6 +703,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	async prompt(text: string, options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		return await this.executeTurn({
 			kind: "prompt",
@@ -654,6 +713,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		});
 	}
 
+	/** @internal */
 	async promptLiteral(text: string, options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		return await this.executeTurn({
 			kind: "literal",
@@ -663,6 +723,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		});
 	}
 
+	/** @internal */
 	async promptCustom(
 		input: PiCustomMessageInput,
 		options: PiPromptOptions = {},
@@ -681,6 +742,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	async continueTurn(options: PiPromptOptions = {}): Promise<PiTurnExecutionResult> {
 		return await this.executeTurn({
 			kind: "continue",
@@ -689,6 +751,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		});
 	}
 
+	/** @internal */
 	async appendUserMessage(text: string): Promise<string> {
 		this.assertOpen();
 		const timestamp = new Date().toISOString();
@@ -700,6 +763,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		return userEntryId;
 	}
 
+	/** @internal */
 	async appendCustomMessage(input: PiCustomMessageInput): Promise<string> {
 		this.assertOpen();
 		const timestamp = new Date().toISOString();
@@ -717,16 +781,19 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		return entryId;
 	}
 
+	/** @internal */
 	async steer(text: string): Promise<void> {
 		this.assertOpen();
 		this.steers.push(text);
 	}
 
+	/** @internal */
 	async abortTurn(): Promise<void> {
 		this.assertOpen();
 		this.turnAbort.abort(new Error("Scripted turn aborted"));
 	}
 
+	/** @internal */
 	subscribe(handler: PiEventHandler): () => void {
 		this.handlers.add(handler);
 		return () => {
@@ -734,6 +801,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	subscribeDiagnostics(handler: PiSessionDiagnosticHandler): () => void {
 		this.diagnosticHandlers.add(handler);
 		return () => {
@@ -741,10 +809,12 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		};
 	}
 
+	/** @internal */
 	emitDiagnostic(diagnostic: PiSessionDiagnostic): void {
 		for (const handler of this.diagnosticHandlers) handler(diagnostic);
 	}
 
+	/** @internal */
 	async close(): Promise<void> {
 		this.turnAbort.abort(new Error("Scripted session closed"));
 		await this.persistState?.();
@@ -754,25 +824,32 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	}
 }
 
+/** @public */
 export interface StubPiTreeHandleFactoryOptions {
+	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
-	/** Persist SDK-readable JSONL with reasoning and tool messages for history/detail tests. */
+	/** Persist SDK-readable JSONL with reasoning and tool messages for history/detail tests. @public */
 	recordSessionTrace?: boolean;
 }
 
+/** @public */
 export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
+	/** @public */
 	readonly sessions: StubPiTreeHandle[] = [];
+	/** @internal */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
 
 	private seq = 0;
 	private readonly treeStateByFile = new Map<string, StubPiTreeState>();
 	private readonly recordSessionTrace: boolean;
 
+	/** @public */
 	constructor(options: StubPiTreeHandleFactoryOptions = {}) {
 		this.toolCallScriptResolver = options.toolCallScriptResolver;
 		this.recordSessionTrace = options.recordSessionTrace ?? false;
 	}
 
+	/** @internal */
 	async prepareManagedBootstrap(
 		opts: PiManagedBootstrapOptions,
 	): Promise<PiManagedBootstrapResult> {
@@ -787,6 +864,7 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 		};
 	}
 
+	/** @internal */
 	async inspectPrimaryTree(opts: PiTreePlanningOptions): Promise<PiTreePlanningSnapshot> {
 		let treeState = this.treeStateByFile.get(opts.treeFile);
 		if (!treeState) {
@@ -808,6 +886,7 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 		};
 	}
 
+	/** @public */
 	async createPrimaryTreeHandle(opts: PiTreeHandleOptions): Promise<PiTreeHandle> {
 		const persistState = async (state: StubPiTreeState): Promise<void> => {
 			this.treeStateByFile.set(opts.treeFile, state);

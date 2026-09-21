@@ -2,10 +2,13 @@ import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 
-/** Expand literal package paths and trailing /* workspace patterns. */
+/** Expand literal package paths and trailing /* workspace patterns. @internal */
 export function listWorkspacePackageDirs(
 	rootDir: string,
-	manifest: { workspaces?: unknown } = readJson(path.join(rootDir, "package.json")),
+	manifest: {
+		/** @internal */
+		workspaces?: unknown;
+	} = readJson(path.join(rootDir, "package.json")),
 ): string[] {
 	const workspaces = manifest.workspaces;
 	const patterns = Array.isArray(workspaces)
@@ -32,22 +35,35 @@ export function listWorkspacePackageDirs(
 	return [...new Set(dirs)].sort((left, right) => left.localeCompare(right));
 }
 
+/** @internal */
 export interface WorkspacePackage extends PackageManifest, Record<string, unknown> {
+	/** @internal */
 	name: string;
+	/** @internal */
 	dir: string;
 }
 
+/** @internal */
 export interface PackageManifest {
+	/** @internal */
 	name?: string;
+	/** @internal */
 	version?: string;
+	/** @internal */
 	workspaces?: unknown;
+	/** @internal */
 	bin?: string | Record<string, string>;
+	/** @internal */
 	scripts?: Record<string, string>;
+	/** @internal */
 	dependencies?: Record<string, string>;
+	/** @internal */
 	devDependencies?: Record<string, string>;
+	/** @internal */
 	optionalDependencies?: Record<string, string>;
 }
 
+/** @internal */
 export function readJson<T = PackageManifest>(file: string): T {
 	return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -63,7 +79,7 @@ function isPackageName(name: unknown): name is string {
 	);
 }
 
-/** Resolve package metadata even when package.json is not exported. */
+/** Resolve package metadata even when package.json is not exported. @internal */
 export function packageDirectory(name: string, from: string): string {
 	if (!isPackageName(name)) {
 		throw new Error(`Invalid package name: ${name}`);
@@ -76,6 +92,7 @@ export function packageDirectory(name: string, from: string): string {
 	throw new Error(`${name} is not installed in ${from}. Run npm ci.`);
 }
 
+/** @internal */
 export function readWorkspacePackage(dir: string): WorkspacePackage {
 	const manifest = readJson(path.join(dir, "package.json"));
 	if (!manifest || !isPackageName(manifest.name))
@@ -83,10 +100,12 @@ export function readWorkspacePackage(dir: string): WorkspacePackage {
 	return { ...manifest, name: manifest.name, dir: realpathSync(dir) };
 }
 
+/** @internal */
 export function workspacePackages(root: string): WorkspacePackage[] {
 	return listWorkspacePackageDirs(root).map(readWorkspacePackage);
 }
 
+/** @internal */
 export function orderedPackages<T extends WorkspacePackage>(
 	packages: readonly T[],
 	dependencyNames: (entry: T) => string[] = (entry) =>
@@ -113,6 +132,7 @@ export function orderedPackages<T extends WorkspacePackage>(
 	return ordered;
 }
 
+/** @internal */
 export function isInside(parent: string, candidate: string): boolean {
 	const relative = path.relative(parent, candidate);
 	return (

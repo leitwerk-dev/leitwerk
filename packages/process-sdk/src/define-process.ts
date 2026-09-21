@@ -45,20 +45,30 @@ import type {
 	TurnResultMarkdownBehavior,
 } from "./types.js";
 
+/** @internal */
 type ProcessEventName = keyof ServerExtensionEventMap & string;
 
+/** @internal */
 type ProcessEmittedEvent = {
+	/** @internal */
 	type: ProcessEventName;
+	/** @internal */
 	data: unknown;
 };
 
+/** @public */
 type ProcessQueuedInput = Parameters<ServerProcessContext["queueInput"]>[0];
 
+/** @public */
 type MaybePromise<T> = T | Promise<T>;
 
+/** @public */
 type StaticRouteTarget = {
+	/** @public */
 	to?: TurnId;
+	/** @internal */
 	complete?: boolean;
+	/** @public */
 	lifecycleStatus?: ProcessTurnTerminalLifecycleStatus;
 };
 
@@ -71,30 +81,46 @@ type NormalizedActionRoute = NormalizedRouteTarget & {
 	trigger: string;
 };
 
+/** @public */
 export interface ProcessRuntimeTurnContext<TParams = unknown, TState = unknown>
 	extends WorkerProcessContext<TParams, TState> {}
 
+/** @internal */
 export interface LlmTurnPreparationContext<TParams = unknown, TState = unknown>
 	extends ProcessRuntimeTurnContext<TParams, TState> {
+	/** @internal */
 	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+	/** @internal */
 	reportProgress(report: TurnProgressReport): void;
 }
 
+/** @public */
 export interface ProcessServerRuntimeContext<TParams = unknown, TState = unknown> {
+	/** @internal */
 	readonly process: ServerProcessContext<TParams, TState>["process"];
+	/** @internal */
 	readonly projects: ServerProcessContext<TParams, TState>["projects"];
+	/** @internal */
 	readonly params: TParams;
+	/** @public */
 	readonly state: TState;
+	/** @internal */
 	readSemanticTurnResultMarkdown(ref: ProcessSemanticEntryRefKey): string | null;
+	/** @internal */
 	readProductTurnResultMarkdown(productName: string): string | null;
+	/** @internal */
 	reportProgress?(report: TurnProgressReport): void;
 }
 
+/** @internal */
 export interface ProcessBroadcastEffect {
+	/** @internal */
 	type: string;
+	/** @internal */
 	payload: Record<string, unknown>;
 }
 
+/** @public */
 export type ProcessPatchEffect = Partial<
 	Pick<
 		ProcessInstance,
@@ -109,137 +135,207 @@ export type ProcessPatchEffect = Partial<
 	>
 >;
 
+/** @public */
 export interface ProcessLifecycleEffects {
+	/** @public */
 	processPatch?: ProcessPatchEffect;
+	/** @internal */
 	broadcasts?: readonly ProcessBroadcastEffect[];
 }
 
+/** @public */
 export interface ProcessEffectPlan<TState = unknown> extends ProcessLifecycleEffects {
+	/** @public */
 	state?: TState;
+	/** @internal */
 	emit?: readonly ProcessEmittedEvent[];
+	/** @public */
 	queueInput?: readonly ProcessQueuedInput[];
 }
 
+/** @internal */
 export interface SavePlanResultLifecycleIntent<TParams = unknown, TState = unknown> {
+	/** @internal */
 	kind: "save_plan_result";
+	/** @internal */
 	summaryParam: string;
+	/** @internal */
 	acceptanceCriteriaParam: string;
+	/** @internal */
 	planMarkdownParam: string;
+	/** @internal */
 	emitEventType: ProcessEventName;
+	/** @internal */
 	broadcastType: string;
+	/** @internal */
 	state?: ProcessOutcomeEffect<TParams, TState>;
 }
 
+/** @internal */
 export type ProcessOutcomeLifecycleIntent<
 	TParams = unknown,
 	TState = unknown,
 > = SavePlanResultLifecycleIntent<TParams, TState>;
 
+/** @public */
 export interface ProcessActionExecution<TParams = unknown, TState = unknown> {
+	/** @public */
 	readonly ctx: ProcessServerRuntimeContext<TParams, TState>;
+	/** @public */
 	readonly input: Record<string, unknown>;
+	/** @internal */
 	readonly turnId: TurnId;
+	/** @internal */
 	readonly actionId: string;
+	/** @internal */
 	readonly selectedBranchId?: string;
 }
 
+/** @public */
 export interface ProcessOutcomeExecution<TParams = unknown, TState = unknown> {
+	/** @internal */
 	readonly ctx: ProcessServerRuntimeContext<TParams, TState>;
+	/** @internal */
 	readonly event: ProcessTurnOutcomeEvent;
+	/** @internal */
 	readonly turnId: TurnId;
+	/** @internal */
 	readonly outcome: string;
 }
 
+/** @public */
 export type ProcessActionEffect<TParams = unknown, TState = unknown> = (
 	input: ProcessActionExecution<TParams, TState>,
 ) => MaybePromise<ProcessEffectPlan<TState> | undefined>;
 
+/** @public */
 export type ProcessActionBranchSelector<TParams = unknown, TState = unknown> = (
 	input: Omit<ProcessActionExecution<TParams, TState>, "selectedBranchId">,
 ) => MaybePromise<string>;
 
+/** @public */
 export type ProcessOutcomeEffect<TParams = unknown, TState = unknown> = (
 	input: ProcessOutcomeExecution<TParams, TState>,
 ) => MaybePromise<ProcessEffectPlan<TState> | undefined>;
 
+/** @internal */
 export type ProcessOutcomeBranchSelector<TParams = unknown, TState = unknown> = (
 	input: ProcessOutcomeExecution<TParams, TState>,
 ) => MaybePromise<string>;
 
+/** @internal */
 export interface ProcessOutcomeBranchSpec extends StaticRouteTarget {
+	/** @internal */
 	trigger?: string;
 }
 
+/** @internal */
 export interface ProcessActionExternalTrigger {
+	/** @internal */
 	id: string;
+	/** @internal */
 	label: string;
+	/** @internal */
 	description: string;
 }
 
+/** @internal */
 export interface ExternalActionInputPublication {
+	/** @internal */
 	productName: string;
+	/** @internal */
 	inputField: string;
 }
 
+/** @public */
 export interface ProcessHumanTurnExternalActionSpec<
 	TParams = unknown,
 	TState = unknown,
 	TEvent = unknown,
 	TInput extends Record<string, unknown> = Record<string, unknown>,
 > extends StaticRouteTarget {
+	/** @internal */
 	id: string;
+	/** @internal */
 	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
-	/** Arms and exposes this action only when the current process snapshot matches. */
+	/** Arms and exposes this action only when the current process snapshot matches. @public */
 	when?: (ctx: ExternalSourceResolveContext<TParams, TState>) => boolean;
+	/** @internal */
 	label?: string;
+	/** @internal */
 	description?: string;
+	/** @internal */
 	publishInput?: ExternalActionInputPublication;
+	/** @public */
 	effect?: ExternalSourceEffect<TParams, TState, TEvent, TInput>;
 }
 
+/** @public */
 export interface ProcessActionBranchSpec extends StaticRouteTarget {
+	/** @internal */
 	trigger?: string;
 }
 
+/** @public */
 type StaticActionRouting = StaticRouteTarget & {
+	/** @internal */
 	trigger?: string;
 };
 
+/** @public */
 type BranchingActionRouting<TParams, TState> = {
+	/** @public */
 	branches: Record<string, ProcessActionBranchSpec>;
+	/** @public */
 	choose: ProcessActionBranchSelector<TParams, TState>;
 };
 
+/** @public */
 interface BaseActionSpec<TParams, TState> {
+	/** @public */
 	label: string;
+	/** @public */
 	description?: string;
+	/** @internal */
 	form?: FormDefinition;
+	/** @public */
 	preview?: ProcessActionPreviewDefinition;
+	/** @public */
 	schedulable?: boolean;
+	/** @public */
 	effect?: ProcessActionEffect<TParams, TState>;
 }
 
+/** @public */
 export type ProcessHumanTurnActionSpec<TParams = unknown, TState = unknown> = BaseActionSpec<
 	TParams,
 	TState
 > & {
+	/** @public */
 	acceptanceState: TurnAcceptanceState;
+	/** @internal */
 	externalTriggers?: readonly ProcessActionExternalTrigger[];
 } & (StaticActionRouting | BranchingActionRouting<TParams, TState>);
 
+/** @public */
 interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
+	/** @internal */
 	description: string;
+	/** @internal */
 	parameters: Record<string, OutcomeToolParameterSpec>;
-	/** Product published from this outcome's turn-result markdown, when this outcome is selected. */
+	/** Product published from this outcome's turn-result markdown, when this outcome is selected. @internal */
 	publishedProduct?: string;
-	/** Outcome parameter whose markdown value is captured as the turn result. */
+	/** Outcome parameter whose markdown value is captured as the turn result. @internal */
 	turnResultMarkdownParameter?: string;
-	/** Outcome parameter containing a concise operator-facing summary. */
+	/** Outcome parameter containing a concise operator-facing summary. @internal */
 	resultSummaryParameter?: string;
+	/** @internal */
 	effect?: ProcessOutcomeEffect<TParams, TState>;
+	/** @internal */
 	lifecycleIntent?: ProcessOutcomeLifecycleIntent<TParams, TState>;
 }
 
+/** @public */
 export type ProcessToolOutcomeSpec<
 	TParams = unknown,
 	TState = unknown,
@@ -247,143 +343,201 @@ export type ProcessToolOutcomeSpec<
 	(
 		| StaticRouteTarget
 		| {
+				/** @internal */
 				branches: Record<string, ProcessOutcomeBranchSpec>;
+				/** @internal */
 				choose: ProcessOutcomeBranchSelector<TParams, TState>;
 		  }
 	);
+/** @public */
 export type HumanTurnOperatorAttention = "required" | "passive";
 
+/** @public */
 export interface HumanTurnDefinition<TParams = unknown, TState = unknown> {
+	/** @public */
 	kind: "human";
+	/** @public */
 	description: string;
-	/** Named product rendered as the subject of this human review turn. */
+	/** Named product rendered as the subject of this human review turn. @internal */
 	reviewProduct?: string;
+	/** @internal */
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
-	/** Controls whether entering this turn should raise an action-required toast. */
+	/** Controls whether entering this turn should raise an action-required toast. @public */
 	operatorAttention?: HumanTurnOperatorAttention;
+	/** @internal */
 	notesFields?: readonly HumanTurnNotesField[];
+	/** @internal */
 	commentary?: string;
+	/** @public */
 	actions: Record<string, ProcessHumanTurnActionSpec<TParams, TState>>;
+	/** @internal */
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 }
 
+/** @public */
 export interface ProcessTurnEndSpec<
 	TParams = unknown,
 	TState = unknown,
 	TOutcome extends string = string,
 > extends StaticRouteTarget {
+	/** @public */
 	outcome: TOutcome;
+	/** @public */
 	params?: Record<string, unknown>;
+	/** @public */
 	effect?: ProcessOutcomeEffect<TParams, TState>;
 }
 
+/** @internal */
 export type OutcomeRouteSpec<TParams = unknown, TState = unknown> = StaticRouteTarget &
 	Partial<Pick<ProcessToolOutcomeSpec<TParams, TState>, "description" | "parameters" | "effect">>;
 
+/** @internal */
 export interface OutcomeRouteOptions {
+	/** @internal */
 	strict?: boolean;
 }
 
+/** @internal */
 export type LlmModelPurpose = "process_title_generation";
 
+/** @public */
 export interface LlmTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
 	TState = unknown,
 > {
+	/** @public */
 	kind: "llm";
+	/** @public */
 	description: string;
-	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. */
+	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
-	/** Built-in Pi tools active while this turn runs. */
+	/** Built-in Pi tools active while this turn runs. @public */
 	availableTools: readonly PiBuiltInToolName[];
-	/** Server-owned integration tools proxied over authenticated worker IPC. */
+	/** Server-owned integration tools proxied over authenticated worker IPC. @internal */
 	integrationTools?: readonly string[];
-	/** Resolve a constrained tool set from validated durable process data at turn start. */
+	/** Resolve a constrained tool set from validated durable process data at turn start. @public */
 	resolveIntegrationTools?: (params: TParams, state: TState) => readonly string[];
-	/** Opt in to the durable, operator-facing ask_questions custom tool. */
+	/** Opt in to the durable, operator-facing ask_questions custom tool. @internal */
 	askQuestions?: boolean;
-	/** Deterministic worker preparation that must complete before Pi is prompted. */
+	/** Deterministic worker preparation that must complete before Pi is prompted. @internal */
 	prepare?(ctx: LlmTurnPreparationContext<TParams, TState>): MaybePromise<unknown>;
+	/** @public */
 	completionMode?: TurnCompletionMode;
+	/** @public */
 	branchType: TurnBranchType;
+	/** @public */
 	context: TurnContextMode;
+	/** @internal */
 	startFrom?: ProcessTurnStartSelection;
+	/** @internal */
 	restorePrimaryLeafAfterTurn?: boolean;
+	/** @public */
 	prompt(ctx: ProcessRuntimeTurnContext<TParams, TState>): string | Promise<string>;
+	/** @public */
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
+	/** @public */
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
+	/** @public */
 	turnResultMarkdown?: TurnResultMarkdownBehavior;
+	/** @internal */
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
+	/** @internal */
 	resultSemanticRef?: ProcessSemanticEntryRefKey;
+	/** @internal */
 	publishedProduct?: string;
+	/** @internal */
 	consumedProducts?: readonly string[];
+	/** @internal */
 	optionalConsumedProducts?: readonly string[];
+	/** @internal */
 	requiredSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
+	/** @internal */
 	optionalSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
 }
 
+/** @public */
 export interface AutomaticTurnDefinition<
 	TOutcome extends string = string,
 	TParams = unknown,
 	TState = unknown,
 > {
+	/** @public */
 	kind: "automatic";
+	/** @public */
 	description: string;
-	/** Server-owned integration tools callable by this deterministic worker turn. */
+	/** Server-owned integration tools callable by this deterministic worker turn. @internal */
 	integrationTools?: readonly string[];
-	/** External events armed while this automatic turn is selected and waiting. */
+	/** External events armed while this automatic turn is selected and waiting. @public */
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
+	/** @internal */
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
+	/** @internal */
 	turnEnd?: ProcessTurnEndSpec<TParams, TState, TOutcome>;
+	/** @internal */
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
+	/** @public */
 	run(
 		ctx: ProcessRuntimeTurnContext<TParams, TState>,
 	): Promise<WorkerCompleteInput<TOutcome>> | WorkerCompleteInput<TOutcome>;
 }
 
+/** @internal */
 export interface ExternalSourceTransition<
 	TParams = unknown,
 	TState = unknown,
 	TEvent = unknown,
 	TInput extends Record<string, unknown> = Record<string, unknown>,
 > extends StaticRouteTarget {
+	/** @internal */
 	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
+	/** @internal */
 	effect?: ExternalSourceEffect<TParams, TState, TEvent, TInput>;
 }
 
+/** @public */
 export interface ExternalTurnDefinition<TParams = unknown, TState = unknown> {
+	/** @public */
 	kind: "external";
+	/** @public */
 	description: string;
+	/** @internal */
 	transitions: readonly ExternalSourceTransition<TParams, TState>[];
+	/** @internal */
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
 }
 
+/** @public */
 export type TurnDefinition<TParams = unknown, TState = unknown> =
 	| LlmTurnDefinition<string, TParams, TState>
 	| AutomaticTurnDefinition<string, TParams, TState>
 	| HumanTurnDefinition<TParams, TState>
 	| ExternalTurnDefinition<TParams, TState>;
 
+/** @public */
 export type TurnDefinitionRecord<TParams = unknown, TState = unknown> = Record<
 	TurnId,
 	TurnDefinition<TParams, TState>
 >;
 
+/** @public */
 export type ProcessDefinition<TParams = unknown, TState = unknown> = ExtensionProcessDefinition<
 	TParams,
 	TState
 >;
 
+/** @public */
 export interface DefinedProcessInput<TParams = unknown, TState = unknown>
 	extends Omit<
 		ExtensionProcessDefinition<TParams, TState>,
 		"entryTurnId" | "alternateEntryTurnIds" | "turns"
 	> {
-	/** Primary entry used when a launch does not select a start turn explicitly. */
+	/** Primary entry used when a launch does not select a start turn explicitly. @public */
 	entry: TurnId;
-	/** Additional entry turns that launchers may select explicitly. */
+	/** Additional entry turns that launchers may select explicitly. @public */
 	alternateEntries?: readonly TurnId[];
+	/** @public */
 	turns: TurnDefinitionRecord<TParams, TState>;
 }
 
@@ -582,22 +736,33 @@ function resolveActionRouting<TParams, TState>(input: {
 	};
 }
 
+/** @internal */
 export function getExternalSourceTransitionId(input: {
+	/** @internal */
 	turnId: TurnId;
+	/** @internal */
 	source: ExternalActionSource;
+	/** @internal */
 	index: number;
 }): string {
 	return `${input.turnId}:${input.source.kind}:${input.index}`;
 }
 
+/** @internal */
 export function getExternalActionArmingId(input: {
+	/** @internal */
 	turnId: TurnId;
+	/** @internal */
 	externalActionId: string;
 }): string {
 	return `${input.turnId}:${input.externalActionId}`;
 }
 
-export function getExternalActionTransitionTrigger(input: { externalActionId: string }): string {
+/** @internal */
+export function getExternalActionTransitionTrigger(input: {
+	/** @internal */
+	externalActionId: string;
+}): string {
 	return `external:${input.externalActionId}`;
 }
 
@@ -1312,12 +1477,18 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	};
 }
 
+/** @internal */
 export function resolveHumanTurnView<TParams, TState>(input: {
+	/** @internal */
 	turnId: TurnId;
+	/** @internal */
 	turn: HumanTurnDefinition<TParams, TState>;
 }): {
+	/** @internal */
 	actions: readonly HumanTurnActionView[];
+	/** @internal */
 	externalTriggers: readonly HumanTurnExternalTrigger[];
+	/** @internal */
 	externalActions: readonly HumanTurnExternalActionView[];
 } {
 	const derived = deriveHumanTurnActions({
@@ -1715,6 +1886,7 @@ function buildDefinedProcess<TParams, TState>(
 	};
 }
 
+/** @public */
 export function defineProcess<TParams = unknown, TState = unknown>(
 	input: DefinedProcessInput<TParams, TState>,
 ): ProcessDefinition<TParams, TState> {
@@ -1743,18 +1915,23 @@ export function defineProcess<TParams = unknown, TState = unknown>(
 	return process;
 }
 
+/** @internal */
 type RoutableTurnDefinition<TOutcome extends string, TParams, TState> =
 	| LlmTurnDefinition<TOutcome, TParams, TState>
 	| AutomaticTurnDefinition<TOutcome, TParams, TState>;
 
 // biome-ignore-start lint/suspicious/noExplicitAny: conditional helper types must match and preserve any routable turn instantiation
+/** @internal */
 type RoutableOutcome<TTurn> =
 	TTurn extends RoutableTurnDefinition<infer TOutcome, any, any> ? TOutcome : never;
+/** @internal */
 type RoutableParams<TTurn> =
 	TTurn extends RoutableTurnDefinition<any, infer TParams, any> ? TParams : never;
+/** @internal */
 type RoutableState<TTurn> =
 	TTurn extends RoutableTurnDefinition<any, any, infer TState> ? TState : never;
 
+/** @internal */
 export function routeTurnOutcomes<TTurn extends RoutableTurnDefinition<string, any, any>>(
 	baseTurn: TTurn,
 	routes: Partial<
@@ -1794,6 +1971,7 @@ export function routeTurnOutcomes<TTurn extends RoutableTurnDefinition<string, a
 }
 // biome-ignore-end lint/suspicious/noExplicitAny: end routable turn instantiation helper suppression
 
+/** @public */
 export function llmTurn<TParams = unknown, TState = unknown, TOutcome extends string = string>(
 	input: Omit<LlmTurnDefinition<TOutcome, TParams, TState>, "kind">,
 ): LlmTurnDefinition<TOutcome, TParams, TState> {
@@ -1803,6 +1981,7 @@ export function llmTurn<TParams = unknown, TState = unknown, TOutcome extends st
 	};
 }
 
+/** @internal */
 export function automaticTurn<
 	TParams = unknown,
 	TState = unknown,
@@ -1816,6 +1995,7 @@ export function automaticTurn<
 	};
 }
 
+/** @public */
 export function humanTurn<TParams = unknown, TState = unknown>(
 	input: Omit<HumanTurnDefinition<TParams, TState>, "kind">,
 ): HumanTurnDefinition<TParams, TState> {
@@ -1825,6 +2005,7 @@ export function humanTurn<TParams = unknown, TState = unknown>(
 	};
 }
 
+/** @internal */
 export function externalTurn<TParams = unknown, TState = unknown>(
 	input: Omit<ExternalTurnDefinition<TParams, TState>, "kind">,
 ): ExternalTurnDefinition<TParams, TState> {

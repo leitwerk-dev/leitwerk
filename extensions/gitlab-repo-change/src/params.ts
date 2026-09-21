@@ -5,24 +5,47 @@ import {
 	repositoryChangeParamsRecord,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
+/** @public */
 export type GitLabRepoChangeParams = RepositoryChangeLaunchParams<
 	{
+		/** @public */
 		gitlabProfile: string;
+		/** @public */
 		gitlabOrigin: string;
+		/** @public */
 		projectId: number;
+		/** @public */
 		owner: string;
+		/** @public */
 		repo: string;
-	} & (
-		| { origin: "ui"; issueNumber: null; issueUrl: null; triggerLabel: null; doneLabel: null }
+	} /** @public */ /** @public */ & (
 		| {
+				/** @public */
+				origin: "ui";
+				/** @public */
+				issueNumber: null;
+				/** @public */
+				issueUrl: null;
+				/** @public */
+				triggerLabel: null;
+				/** @public */
+				doneLabel: null;
+		  }
+		| {
+				/** @public */
 				origin: "issue";
+				/** @public */
 				issueNumber: number;
+				/** @public */
 				issueUrl: string;
+				/** @public */
 				triggerLabel: string;
+				/** @public */
 				doneLabel: string;
 		  }
 	)
 >;
+/** @public */
 export const gitlabRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<GitLabRepoChangeParams>({
 		normalize(value) {

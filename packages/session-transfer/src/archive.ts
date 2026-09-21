@@ -32,29 +32,49 @@ import { assertConfinedSymlinks } from "./symlink-confinement.js";
 const MANIFEST_MAX_BYTES = 1024 * 1024;
 type TarHeader = Partial<tar.Header> & Pick<tar.Header, "name">;
 
+/** @internal */
 export interface PortableEntry {
+	/** @internal */
 	relativePath: string;
+	/** @internal */
 	kind: "file" | "directory" | "symlink";
+	/** @internal */
 	mode: number;
+	/** @internal */
 	mtimeMs: number;
+	/** @internal */
 	size: number;
+	/** @internal */
 	linkTarget?: string;
 }
 
+/** @internal */
 export interface TransferPreflight extends SessionTransferPreflight {
+	/** @internal */
 	entries: PortableEntry[];
 }
 
+/** @internal */
 export interface ExtractTransferResult {
+	/** @internal */
 	manifest: LeitwerkTransferManifestV1;
+	/** @internal */
 	compressedBytes: number;
+	/** @internal */
 	streamSha256: string;
 }
 
+/** @internal */
 export interface PreparedTransferArchive {
+	/** @internal */
 	manifest: LeitwerkTransferManifestV1;
+	/** @internal */
 	preflight: TransferPreflight;
-	stream(input: { signal?: AbortSignal }): Readable;
+	/** @internal */
+	stream(input: {
+		/** @internal */
+		signal?: AbortSignal;
+	}): Readable;
 }
 
 function abortIfNeeded(signal?: AbortSignal): void {
@@ -67,10 +87,15 @@ function toSafeNumber(value: bigint, label: string): number {
 	return Number(value);
 }
 
+/** @internal */
 export async function scanPortableWorkspace(input: {
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	sessionFile: string;
+	/** @internal */
 	limits?: SessionTransferLimits;
+	/** @internal */
 	signal?: AbortSignal;
 }): Promise<TransferPreflight> {
 	const limits = input.limits ?? DEFAULT_SESSION_TRANSFER_LIMITS;
@@ -166,11 +191,17 @@ async function addFileEntry(
 	await pipeline(createReadStream(filePath), entry, { signal });
 }
 
+/** @internal */
 export async function prepareTransferArchive(input: {
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	sessionFile: string;
+	/** @internal */
 	manifest: LeitwerkTransferManifestV1;
+	/** @internal */
 	limits: SessionTransferLimits;
+	/** @internal */
 	signal?: AbortSignal;
 }): Promise<PreparedTransferArchive> {
 	const preflight = await scanPortableWorkspace(input);
@@ -185,11 +216,17 @@ export async function prepareTransferArchive(input: {
 	};
 }
 
+/** @internal */
 export function createTransferArchive(input: {
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	sessionFile: string;
+	/** @internal */
 	manifest: LeitwerkTransferManifestV1;
+	/** @internal */
 	preflight: TransferPreflight;
+	/** @internal */
 	signal?: AbortSignal;
 }): Readable {
 	const pack = tar.pack();
@@ -292,13 +329,30 @@ async function streamBuffer(
 	return Buffer.concat(chunks);
 }
 
+/** @internal */
 export async function extractTransferArchive(input: {
+	/** @internal */
 	compressed: Readable;
+	/** @internal */
 	outputRoot: string;
+	/** @internal */
 	limits?: SessionTransferLimits;
+	/** @internal */
 	signal?: AbortSignal;
-	onProgress?: (progress: TransferArchiveProgress & { compressedBytes: number }) => void;
-	ownershipMarker?: { name: string; value: string };
+	/** @internal */
+	onProgress?: (
+		progress: TransferArchiveProgress & {
+			/** @internal */
+			compressedBytes: number;
+		},
+	) => void;
+	/** @internal */
+	ownershipMarker?: {
+		/** @internal */
+		name: string;
+		/** @internal */
+		value: string;
+	};
 }): Promise<ExtractTransferResult> {
 	const limits = input.limits ?? DEFAULT_SESSION_TRANSFER_LIMITS;
 	const outputRoot = path.resolve(input.outputRoot);

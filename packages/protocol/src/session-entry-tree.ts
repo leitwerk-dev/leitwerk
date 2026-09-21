@@ -1,18 +1,30 @@
+/** @internal */
 export interface SessionTreeEntryLike {
+	/** @internal */
 	id: string;
+	/** @internal */
 	parentId: string | null;
+	/** @internal */
 	timestamp: string;
+	/** @internal */
 	type: string;
 }
 
+/** @internal */
 export interface ReadonlyEntryTree<TEntry extends SessionTreeEntryLike> {
+	/** @internal */
 	entries: TEntry[];
+	/** @internal */
 	leafId: string | null;
+	/** @internal */
 	getEntry(id: string): TEntry | undefined;
+	/** @internal */
 	getChildren(parentId: string): TEntry[];
+	/** @internal */
 	getBranch(fromId?: string | null): TEntry[];
 }
 
+/** @internal */
 export function createReadonlyEntryTree<TEntry extends SessionTreeEntryLike>(
 	entries: readonly TEntry[],
 ): ReadonlyEntryTree<TEntry> {

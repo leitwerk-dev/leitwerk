@@ -11,6 +11,7 @@ import {
 } from "./selection.js";
 import { orderedPackages, packageDirectory, readJson, workspacePackages } from "./workspace.js";
 
+/** @internal */
 export type DevelopmentCommand =
 	| "dev"
 	| "build"
@@ -41,7 +42,7 @@ async function hook(root: string, name: string) {
 		await run("npm", ["run", name], { cwd: root });
 }
 
-/** Run against installed dependencies unless source mode was explicitly selected. */
+/** Run against installed dependencies unless source mode was explicitly selected. @internal */
 export async function runDevelopment(
 	command: DevelopmentCommand,
 	options: DevelopmentOptions = {},

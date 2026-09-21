@@ -61,61 +61,154 @@ import {
 } from "./support.js";
 import { planConsumeFutureExecution } from "./transition-planner.js";
 
+/** @internal */
 export interface FutureExecutionIssue extends LauncherValidationError {}
 
+/** @internal */
 type LaunchFailure =
-	| { kind: "invalid"; issues: readonly FutureExecutionIssue[] }
-	| { kind: "not_found"; target: "future_execution" | "launch" | "action" | "process" }
-	| { kind: "conflict"; issue: FutureExecutionIssue }
-	| { kind: "unavailable"; reason: string }
-	| { kind: "failed"; issue: FutureExecutionIssue };
-
-export type LaunchMutationOutcome =
-	| { kind: "scheduled"; execution: FutureExecution; operation: "created" | "updated" }
 	| {
-			kind: "launched";
-			process: ProcessInstance;
-			projects: ProcessProject[];
+			/** @internal */
+			kind: "invalid";
+			/** @internal */
+			issues: readonly FutureExecutionIssue[];
+	  }
+	| {
+			/** @internal */
+			kind: "not_found";
+			/** @internal */
+			target: "future_execution" | "launch" | "action" | "process";
+	  }
+	| {
+			/** @internal */
+			kind: "conflict";
+			/** @internal */
+			issue: FutureExecutionIssue;
+	  }
+	| {
+			/** @internal */
+			kind: "unavailable";
+			/** @internal */
+			reason: string;
+	  }
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			issue: FutureExecutionIssue;
+	  };
+
+/** @internal */
+export type LaunchMutationOutcome =
+	| {
+			/** @internal */
+			kind: "scheduled";
+			/** @internal */
+			execution: FutureExecution;
+			/** @internal */
 			operation: "created" | "updated";
 	  }
 	| {
-			kind: "committed_with_reaction_error";
+			/** @internal */
+			kind: "launched";
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			projects: ProcessProject[];
+			/** @internal */
+			operation: "created" | "updated";
+	  }
+	| {
+			/** @internal */
+			kind: "committed_with_reaction_error";
+			/** @internal */
+			process: ProcessInstance;
+			/** @internal */
+			projects: ProcessProject[];
+			/** @internal */
 			error: string;
+			/** @internal */
 			code?: string;
 	  }
 	| {
+			/** @internal */
 			kind: "committed_with_reaction_error";
+			/** @internal */
 			execution: FutureExecution;
+			/** @internal */
 			operation: "created" | "updated";
+			/** @internal */
 			error: string;
+			/** @internal */
 			code: string;
 	  }
 	| LaunchFailure;
 
+/** @internal */
 export interface NormalizedScheduledLaunchInput extends ParsedLauncherRequestBody {}
 
+/** @internal */
 export type ValidatedLaunchSchedule =
-	| { mode: "now"; nextRunAt: null; cronExpression: null }
-	| { mode: "once"; nextRunAt: string; cronExpression: null }
-	| { mode: "cron"; nextRunAt: string; cronExpression: string };
+	| {
+			/** @internal */
+			mode: "now";
+			/** @internal */
+			nextRunAt: null;
+			/** @internal */
+			cronExpression: null;
+	  }
+	| {
+			/** @internal */
+			mode: "once";
+			/** @internal */
+			nextRunAt: string;
+			/** @internal */
+			cronExpression: null;
+	  }
+	| {
+			/** @internal */
+			mode: "cron";
+			/** @internal */
+			nextRunAt: string;
+			/** @internal */
+			cronExpression: string;
+	  };
 
+/** @internal */
 export interface PreparedLaunch {
+	/** @internal */
 	processId: string;
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	launcherInput: Record<string, unknown>;
+	/** @internal */
 	modelConfig: LauncherModelConfigDefaults;
+	/** @internal */
 	launchPlan: ProcessLaunchPlan;
+	/** @internal */
 	selectedSkillIds: readonly string[];
+	/** @internal */
 	resourceSelections: readonly SkillSelection[];
+	/** @internal */
 	modelState: ReturnType<typeof projectLaunchPlanModelState>;
+	/** @internal */
 	schedule: ValidatedLaunchSchedule;
 }
 
+/** @internal */
 export type PreparedLaunchResult =
-	| { ok: true; prepared: PreparedLaunch }
-	| { ok: false; outcome: LaunchMutationOutcome };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			prepared: PreparedLaunch;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			outcome: LaunchMutationOutcome;
+	  };
 
 export interface FutureLaunchLifecycleDeps
 	extends Pick<
@@ -538,10 +631,14 @@ export function createFutureLaunchLifecycle(
 	}
 
 	return {
+		/** @internal */
 		async prepareLaunch(
 			launcherId: string,
 			request: NormalizedScheduledLaunchInput,
-			opts?: { resolvedLauncher?: ResolvedProcessLauncher },
+			opts?: {
+				/** @internal */
+				resolvedLauncher?: ResolvedProcessLauncher;
+			},
 		): Promise<PreparedLaunchResult> {
 			return prepareLaunchInternal({
 				launcherId,
@@ -549,9 +646,15 @@ export function createFutureLaunchLifecycle(
 				...(opts?.resolvedLauncher ? { resolvedLauncher: opts.resolvedLauncher } : {}),
 			});
 		},
+		/** @internal */
 		async commitPreparedLaunch(
 			prepared: PreparedLaunch,
-			opts?: { actor?: Actor; launchRunId?: string },
+			opts?: {
+				/** @internal */
+				actor?: Actor;
+				/** @internal */
+				launchRunId?: string;
+			},
 		): Promise<LaunchMutationOutcome> {
 			if (prepared.schedule.mode !== "now")
 				return persistPreparedLaunch({ ...prepared, actor: opts?.actor ?? SYSTEM_ACTOR });
@@ -569,20 +672,41 @@ export function createFutureLaunchLifecycle(
 				operation: "created",
 			};
 		},
+		/** @internal */
 		async applyGeneratedFutureLaunchTitleIfUnchanged(input: {
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			expectedPayloadJson: string;
+			/** @internal */
 			title: string;
 		}): Promise<
-			| { kind: "applied"; execution: FutureExecution }
 			| {
-					kind: "applied_with_reaction_error";
+					/** @internal */
+					kind: "applied";
+					/** @internal */
 					execution: FutureExecution;
+			  }
+			| {
+					/** @internal */
+					kind: "applied_with_reaction_error";
+					/** @internal */
+					execution: FutureExecution;
+					/** @internal */
 					error: string;
+					/** @internal */
 					code: string;
 			  }
-			| { kind: "superseded" }
-			| { kind: "failed"; error: string }
+			| {
+					/** @internal */
+					kind: "superseded";
+			  }
+			| {
+					/** @internal */
+					kind: "failed";
+					/** @internal */
+					error: string;
+			  }
 		> {
 			return runFutureExecutionExclusive(
 				deps.processOperations,
@@ -630,10 +754,14 @@ export function createFutureLaunchLifecycle(
 				},
 			);
 		},
+		/** @internal */
 		async reviseScheduledLaunch(
 			futureExecutionId: string,
 			request: NormalizedScheduledLaunchInput,
-			opts?: { actor?: Actor },
+			opts?: {
+				/** @internal */
+				actor?: Actor;
+			},
 		): Promise<LaunchMutationOutcome> {
 			const operationTime = now();
 			return runFutureExecutionExclusive(deps.processOperations, futureExecutionId, async () => {

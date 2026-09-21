@@ -14,18 +14,29 @@ export type {
 	SessionTransferPhase,
 } from "@leitwerk-dev/session-transfer";
 
+/** @internal */
 export interface SessionTransferGrant {
+	/** @internal */
 	id: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	tokenHash: string;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	expiresAt: string;
+	/** @internal */
 	consumedAt: string | null;
+	/** @internal */
 	tombstoneUntil: string | null;
 }
 
+/** @internal */
 export interface SessionTransferAttempt extends SessionTransferAttemptWire {
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	completedAt: string | null;
 }
 
@@ -44,6 +55,7 @@ function isActivePhase(phase: SessionTransferPhase): boolean {
 	return ACTIVE_PHASES.includes(phase);
 }
 
+/** @internal */
 export function createSessionTransferRepo(db: LeitwerkDb) {
 	const toAttempt = (
 		row: typeof s.sessionTransferAttempts.$inferSelect | undefined,
@@ -56,8 +68,18 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			: null;
 
 	return {
-		createGrant(input: { instanceId: string; now: Date; lifetimeMs: number }): {
+		/** @internal */
+		createGrant(input: {
+			/** @internal */
+			instanceId: string;
+			/** @internal */
+			now: Date;
+			/** @internal */
+			lifetimeMs: number;
+		}): {
+			/** @internal */
 			grant: SessionTransferGrant;
+			/** @internal */
 			rawToken: string;
 		} {
 			const rawToken = createOpaqueToken();
@@ -74,6 +96,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return { grant: this.getGrant(values.id) as SessionTransferGrant, rawToken };
 		},
 
+		/** @internal */
 		getGrant(id: string): SessionTransferGrant | null {
 			return (
 				db.select().from(s.sessionTransferGrants).where(eq(s.sessionTransferGrants.id, id)).get() ??
@@ -81,6 +104,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		getAttempt(id: string): SessionTransferAttempt | null {
 			return toAttempt(
 				db
@@ -91,6 +115,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		getActiveByInstance(instanceId: string): SessionTransferAttempt | null {
 			return toAttempt(
 				db
@@ -106,6 +131,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		listActive(): SessionTransferAttempt[] {
 			return db
 				.select()
@@ -115,17 +141,35 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 				.map((row) => toAttempt(row) as SessionTransferAttempt);
 		},
 
+		/** @internal */
 		startAttempt(input: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			grantId: string;
+			/** @internal */
 			token: string;
+			/** @internal */
 			now: Date;
+			/** @internal */
 			leaseMs: number;
+			/** @internal */
 			hardDeadlineMs: number;
 		}):
-			| { kind: "created"; attempt: SessionTransferAttempt }
-			| { kind: "not_found" }
-			| { kind: "busy" } {
+			| {
+					/** @internal */
+					kind: "created";
+					/** @internal */
+					attempt: SessionTransferAttempt;
+			  }
+			| {
+					/** @internal */
+					kind: "not_found";
+			  }
+			| {
+					/** @internal */
+					kind: "busy";
+			  } {
 			const grant = this.getGrant(input.grantId);
 			if (
 				!grant ||
@@ -165,10 +209,15 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			};
 		},
 
+		/** @internal */
 		verifyAttempt(input: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			grantId: string;
+			/** @internal */
 			attemptId: string;
+			/** @internal */
 			token: string;
 		}): SessionTransferAttempt | null {
 			const grant = this.getGrant(input.grantId);
@@ -184,6 +233,7 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return verifyOpaqueToken(input.token, grant.tokenHash, "hex") ? attempt : null;
 		},
 
+		/** @internal */
 		updateAttempt(
 			id: string,
 			patch: Partial<
@@ -197,7 +247,16 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return this.getAttempt(id);
 		},
 
-		renew(id: string, input: { now: Date; leaseMs: number }): SessionTransferAttempt | null {
+		/** @internal */
+		renew(
+			id: string,
+			input: {
+				/** @internal */
+				now: Date;
+				/** @internal */
+				leaseMs: number;
+			},
+		): SessionTransferAttempt | null {
 			const attempt = this.getAttempt(id);
 			if (!attempt || !isActivePhase(attempt.phase)) return attempt;
 			const nextLease = Math.min(
@@ -207,9 +266,13 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return this.updateAttempt(id, { leaseUntil: new Date(nextLease).toISOString() });
 		},
 
+		/** @internal */
 		acknowledge(input: {
+			/** @internal */
 			attemptId: string;
+			/** @internal */
 			now: Date;
+			/** @internal */
 			tombstoneMs: number;
 		}): SessionTransferAttempt | null {
 			const attempt = this.getAttempt(input.attemptId);
@@ -246,12 +309,14 @@ export function createSessionTransferRepo(db: LeitwerkDb) {
 			return this.getAttempt(attempt.id);
 		},
 
+		/** @internal */
 		revokeProcess(instanceId: string): void {
 			db.delete(s.sessionTransferGrants)
 				.where(eq(s.sessionTransferGrants.instanceId, instanceId))
 				.run();
 		},
 
+		/** @internal */
 		cleanup(now: Date): void {
 			const cutoff = now.toISOString();
 			db.delete(s.sessionTransferGrants)

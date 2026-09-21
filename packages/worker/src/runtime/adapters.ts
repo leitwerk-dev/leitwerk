@@ -10,11 +10,15 @@ import type { CredentialRefreshDescriptor } from "./bootstrap-session.js";
 
 export type WorkerRuntimeTimer = PromptGuardTimer;
 
+/** @internal */
 export interface WorkerRuntimeScheduler extends PromptGuardScheduler {
+	/** @internal */
 	sleep(delayMs: number): Promise<void>;
+	/** @internal */
 	now(): Date;
 }
 
+/** @internal */
 export const nodeWorkerRuntimeScheduler: WorkerRuntimeScheduler = {
 	setTimeout(handler, delayMs) {
 		return setTimeout(handler, delayMs);
@@ -30,44 +34,80 @@ export const nodeWorkerRuntimeScheduler: WorkerRuntimeScheduler = {
 	},
 };
 
+/** @internal */
 export interface WorkerRuntimeConfig {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	workerId: string;
+	/** @internal */
 	heartbeatIntervalMs?: number;
+	/** @internal */
 	turnMaxDurationMs?: number;
+	/** @internal */
 	turnInactivityTimeoutMs?: number;
+	/** @internal */
 	turnAbortGracePeriodMs?: number;
 }
 
+/** @internal */
 export interface ResultImageToolFactory {
+	/** @internal */
 	create(input: {
+		/** @internal */
 		workspaceRoot?: string;
+		/** @internal */
 		instanceId: string;
+		/** @internal */
 		turnRecordId: string;
 	}): PiCustomTool | null;
 }
 
+/** @internal */
 export interface WorkerRuntimeAdapters {
+	/** @internal */
 	transport: WorkerIpc;
+	/** @internal */
 	sessionSnapshots: WorkerSessionSnapshotExchange;
+	/** @internal */
 	resultImageTools: ResultImageToolFactory;
+	/** @internal */
 	piFactory: PiTreeHandleFactory;
+	/** @internal */
 	gitOps: RunRootGitOps;
+	/** @internal */
 	developmentTools?: DevelopmentToolEnvironment;
+	/** @internal */
 	scheduler: WorkerRuntimeScheduler;
+	/** @internal */
 	exit(code: number): void;
+	/** @internal */
 	stderr?: NodeJS.WritableStream;
+	/** @internal */
 	extensionEvents?: EventBus;
-	sampleCredentials?: (
-		descriptor: CredentialRefreshDescriptor,
-	) => Promise<{ values: Record<string, string>; fingerprint: string }>;
+	/** @internal */
+	sampleCredentials?: (descriptor: CredentialRefreshDescriptor) => Promise<{
+		/** @internal */
+		values: Record<string, string>;
+		/** @internal */
+		fingerprint: string;
+	}>;
+	/** @internal */
 	resolveWorkerProcess?: (
 		processId: string,
-		opts?: { paramsJson?: string | null; stateJson?: string | null },
+		opts?: {
+			/** @internal */
+			paramsJson?: string | null;
+			/** @internal */
+			stateJson?: string | null;
+		},
 	) => Promise<ResolvedWorkerProcess | undefined> | ResolvedWorkerProcess | undefined;
 }
 
+/** @internal */
 export interface WorkerRuntimeOptions {
+	/** @internal */
 	config: WorkerRuntimeConfig;
+	/** @internal */
 	adapters: WorkerRuntimeAdapters;
 }

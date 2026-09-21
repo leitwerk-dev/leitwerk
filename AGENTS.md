@@ -80,12 +80,14 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - **Required Checks:** Before merge, confirm both `Full validation` and `Conventional PR title and DCO` pass. See `CONTRIBUTING.md` and `docs/ci.md` for the complete policy.
 
 ## 7. Testing & Operational Directives
-- **Change Completion:** A change is not complete until `npm run test:full` passes (lint, build, typecheck, tests). Do not substitute with partial workspace runs.
+- **Change Completion:** Changes to application code, shared contracts, dependencies, or build/test/runtime configuration require `npm run test:full` (lint, build, typecheck, tests) to pass. Partial workspace runs do not replace full validation for these changes.
+- **Scoped Validation:** For documentation-only changes (including `AGENTS.md`), review the diff for correctness and consistency. For standalone helper scripts that do not affect the application or its build/test/runtime paths, use syntax checks and focused smoke checks. These changes do not require `npm run test:full`; complete them once the relevant checks pass. The pre-merge required checks in section 6 still apply.
 - **Test Failure Triage:** If tests fail in `packages/*/dist` or `extensions/*/dist`, suspect stale build artifacts. **Never edit `dist/` by hand.** Run `npm run build` (or `npm run build -w <workspace>`) before debugging logic.
 - **Running vitest**: Always rebuild before running vitest to avoid stale artifacts.
 - **Schema Changes:** Test migrations against file-backed storage and verify durable data survives. Do not delete operator data automatically. Preserve durable process, workspace, and tree state.
 - **Fakes:** Use `FakeLlmProvider` and extension-owned fakes for boundary testing. Avoid broad mocking.
 - **Test Levels:** Unit tests should be simple to setup, due to the functional core. Integration tests can use the test support utilities for leitwerk-managed Pi instances and fake external services. Those tests live within the package. Broad system tests are located under `tests/` and should import via package specifiers.
+- **API Classification:** Use `@internal` by default for exported declarations and members. Use `@public` only when the declaration is an intentionally supported external API and its compatibility contract has been established.
 
 ## 8. MVP Boundaries
 These are not MVP features. Keep them in `docs/future.md` until explicitly promoted:

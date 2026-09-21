@@ -18,6 +18,19 @@ Leitwerk loads built-in defaults overlaid with settings from `leitwerk.yaml`.
 | `PORT` | HTTP port for the server. | `3000` |
 | `LEITWERK_BASE_URL` | Public base URL for HTTP and WebSocket auth. | `http://localhost:3000` |
 
+### Programmatic listener options
+
+`AppContext.listen({ host?, port?, useBoundAddressAsBaseUrl? })` defaults to
+`server.host` and `server.port`. Port `0` requests an ephemeral port. The returned
+`ServerListenResult` contains the actual `address` and `port`, preserving TLS and IPv6
+URL formatting. Binding preserves `server.base_url` by default.
+
+Unauthenticated loopback fixtures can set `useBoundAddressAsBaseUrl: true` to replace
+`server.base_url` after binding and before reconciliation. Authenticated or non-loopback
+use rejects before binding because authentication captures its origin at context creation.
+This is an API option, not a configuration key. Browser fixtures retain their configured UI
+origin instead.
+
 ### Reload Classes
 - **Immediate:** Takes effect immediately when `leitwerk.yaml` is saved (e.g., worker pool limits).
 - **Future:** Applies to future process launches or LLM turns.
@@ -174,7 +187,7 @@ kubernetes:
 - `local_worker.allow_host_docker`: Acknowledges that Docker processes inherit the host Docker context and credentials. Launch admission and worker startup each run `docker info` within `workers.startup_timeout`; the worker check is also bounded by its remaining startup deadline. A timeout kills the probe and rejects the launch or worker start.
 - `docker.private_daemon.isolation`: Selects exactly one private-daemon isolation. `privileged` grants broad host-kernel authority. `sysbox-runc` requires that runtime on the Docker host. Neither mode mounts the host runtime socket.
 - `kubernetes.server_namespace`: Management namespace housing the server Deployment.
-- `kubernetes.docker`: Trusted RuntimeClass, `hostUsers`, and process StorageClass wiring for process definitions that declare `runtime.docker`. All three fields are required for those definitions to be available. Ordinary processes ignore this block.
+- `kubernetes.docker`: Trusted RuntimeClass, `hostUsers`, and process StorageClass wiring for process definitions that declare `runtime.docker`. RuntimeClass and StorageClass are required. Set `gvisor: true` for the verified runsc Docker wrapper; omit `host_users` in this mode. It adds SYS_ADMIN and NET_ADMIN inside the sandbox, without privileged mode. Other runtimes require an explicit `host_users` boolean. Docker process namespaces receive the Pod Security `privileged` admission label to permit these guest capabilities, and scheduling must select a node with the verified runsc handler. Ordinary processes ignore this block.
 - `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
 - `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
 - `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.

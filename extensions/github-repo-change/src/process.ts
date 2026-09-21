@@ -87,6 +87,7 @@ const deliveryTools = [
 	"github_update_issue",
 ] as const;
 
+/** @public */
 export function createGitHubRepoChangeProcess(
 	launcher: ReturnType<typeof createGitHubRepoChangeLauncher>,
 	docker: boolean,

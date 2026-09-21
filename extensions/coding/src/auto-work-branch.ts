@@ -26,6 +26,7 @@ function randomHex(): string {
 }
 
 /** Build a safe branch name without requiring authenticated remote access. */
+/** @public */
 export function buildAutoWorkBranchFromSeed(
 	sourceText: string,
 	seed: string,

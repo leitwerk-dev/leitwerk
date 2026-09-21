@@ -15,17 +15,25 @@ import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 
-/** Register a test provider and expose its poll result without erasing its type. */
+/** Register a test provider and expose its poll result without erasing its type. @public */
 export function createPollingTestExtension<T>(
 	manifest: LeitwerkExtensionModule["manifest"],
-	setup: (api: ServerExtensionAPI) => { poll(): Promise<T> } | undefined,
+	setup: (api: ServerExtensionAPI) =>
+		| {
+				/** @internal */
+				poll(): Promise<T>;
+		  }
+		| undefined,
 ) {
 	let provider: ReturnType<typeof setup>;
 	return {
+		/** @internal */
 		manifest,
+		/** @internal */
 		setupServer(api: ServerExtensionAPI) {
 			provider = setup(api);
 		},
+		/** @public */
 		poll() {
 			if (!provider) throw new Error(`Test provider '${manifest.id}' has not been initialized`);
 			return provider.poll();
@@ -33,21 +41,42 @@ export function createPollingTestExtension<T>(
 	};
 }
 
+/** @internal */
 export function createToolCollector() {
 	const tools = new Map<string, IntegrationToolDefinition>();
 	const api = {
 		tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool),
 	} as unknown as ServerExtensionAPI;
-	return { api, tools };
+	return {
+		/** @internal */
+		api,
+		/** @internal */
+		tools,
+	};
 }
 
+/** @internal */
 export interface InMemoryExternalWriteLog {
-	records: { dedupKey: string }[];
+	/** @internal */
+	records: {
+		/** @internal */
+		dedupKey: string;
+	}[];
+	/** @internal */
 	hasDedupKey(key: string): boolean;
-	record(input: { dedupKey: string }): { dedupKey: string };
+	/** @internal */
+	record(input: {
+		/** @internal */
+		dedupKey: string;
+	}): {
+		/** @internal */
+		dedupKey: string;
+	};
+	/** @internal */
 	getDedupKeys(): ReadonlySet<string>;
 }
 
+/** @internal */
 export function createInMemoryExternalWriteLog(): InMemoryExternalWriteLog {
 	const dedupKeys = new Set<string>();
 	const records: { dedupKey: string }[] = [];
@@ -159,6 +188,7 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 	};
 }
 
+/** @public */
 export function createTestServerSetupCapability(
 	overrides: Partial<CoreServerSetupDeps> = {},
 ): CoreServerSetupDeps {
@@ -187,20 +217,33 @@ export function createTestServerSetupCapability(
 	};
 }
 
+/** @internal */
 export interface ServerExtensionTestHarness {
+	/** @internal */
 	catalog: ExtensionCatalog;
+	/** @internal */
 	events: ReturnType<typeof createEventBus>;
+	/** @internal */
 	serverSetup: CoreServerSetupDeps;
+	/** @internal */
 	startHooks: Array<() => void | Promise<void>>;
+	/** @internal */
 	stopHooks: Array<() => void | Promise<void>>;
+	/** @internal */
 	flushAsyncWork: typeof flushAsyncWork;
 }
 
+/** @internal */
 export async function setupServerExtensionTest(input: {
+	/** @internal */
 	modules: readonly LeitwerkExtensionModule[];
+	/** @internal */
 	providedCapabilities?: readonly ProvidedCapability[];
+	/** @internal */
 	serverSetup?: Partial<CoreServerSetupDeps>;
+	/** @internal */
 	onStart?: (handler: () => void | Promise<void>) => void;
+	/** @internal */
 	onStop?: (handler: () => void | Promise<void>) => void;
 }): Promise<ServerExtensionTestHarness> {
 	const catalog = await buildExtensionCatalogFromModules(input.modules);

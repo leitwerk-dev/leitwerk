@@ -241,7 +241,6 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				};
 			},
 		});
-		await harness.ctx.startBackgroundServices();
 	}
 	onFinished(async () => {
 		await harness?.ctx.app.close();

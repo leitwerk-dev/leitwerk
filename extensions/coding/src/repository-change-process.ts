@@ -35,26 +35,42 @@ import { buildReviewImplementationPrompt } from "./turns/review-implementation.j
 import { buildReviewPlanPrompt } from "./turns/review-plan.js";
 import { buildSimplifyImplementationPrompt } from "./turns/simplify-implementation.js";
 
+/** @public */
 export type RepositoryChangeParams = object;
 
+/** @public */
 export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeParams> {
+	/** @public */
 	processId: string;
+	/** @public */
 	displayName: string;
+	/** @public */
 	paramsCodec: Codec<TParams>;
+	/** @public */
 	launcher?: ProcessLauncherDefinition<TParams>;
+	/** @public */
 	finalizeLabel: string;
+	/** @public */
 	finalizeForm: FormDefinition;
+	/** @public */
 	repositoryCredentials?(input: {
+		/** @public */
 		params: TParams;
+		/** @internal */
 		projects: readonly RepositoryCredentialProject[];
 	}): readonly RepositoryCredentialRequirement[];
+	/** @public */
 	publication: {
+		/** @public */
 		entryTurnId: string;
+		/** @public */
 		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
+		/** @public */
 		happyPath?: readonly string[];
 	};
 }
 
+/** @public */
 export function createRepositoryChangeProcess<TParams extends RepositoryChangeParams>(
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
@@ -650,15 +666,24 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const process = builder.define();
 	const decision = (id: string) =>
 		({
+			/** @public */
 			id,
 			...(process.turns.get(id)?.definition as HumanTurnDefinition),
-		}) as HumanTurnDefinition & { id: string };
+		}) as HumanTurnDefinition & {
+			/** @public */ id: string;
+		};
 	return {
+		/** @public */
 		process,
+		/** @internal */
 		planDecision: decision(turnIds.planDecision),
+		/** @internal */
 		planReviewFeedback: decision(turnIds.planReviewFeedback),
+		/** @internal */
 		implementationDecision: decision(turnIds.implementationDecision),
+		/** @internal */
 		implementationReviewFeedback: decision(turnIds.implementationReviewFeedback),
+		/** @internal */
 		simplificationDecision: decision(turnIds.simplificationDecision),
 	};
 }

@@ -3,6 +3,7 @@ import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
 
 import { type EntryRefPatch, mergeEntryRefPatchIntoStateJson } from "./entry-ref-patch.js";
 
+/** @internal */
 export type ProcessSemanticEntryRefPatch = Partial<
 	Record<ProcessSemanticEntryRefKey, EntryRefPatch[string]>
 >;

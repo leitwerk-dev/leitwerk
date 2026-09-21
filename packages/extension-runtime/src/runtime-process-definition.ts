@@ -9,23 +9,41 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { ExtensionCatalog } from "./extension-loader.js";
 
+/** @internal */
 export interface RuntimeProcessDefinitionBuildOptions<TParams = unknown, TState = unknown> {
+	/** @internal */
 	params?: TParams;
+	/** @internal */
 	state?: TState;
 }
 
 /**
  * Resolved worker process definition with params and state ready for runtime.
  */
+/** @internal */
 export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
+	/** @internal */
 	processId: string;
+	/** @internal */
 	startTurnId: TurnId;
+	/** @internal */
 	turns: ReadonlyMap<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>;
+	/** @internal */
 	definition: BuiltWorkerProcessDefinition;
+	/** @internal */
 	repositoryCredentials?: ExtensionProcessDefinition<TParams, TState>["repositoryCredentials"];
-	runtime: { readonly developmentTools: boolean; readonly docker: boolean };
+	/** @internal */
+	runtime: {
+		/** @internal */
+		readonly developmentTools: boolean;
+		/** @internal */
+		readonly docker: boolean;
+	};
+	/** @internal */
 	params: TParams;
+	/** @internal */
 	state: TState;
+	/** @internal */
 	piConfig?: ProcessPiConfig;
 }
 
@@ -34,10 +52,13 @@ export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
  * Resolves params/state from options or codec defaults. Parses paramsJson/stateJson
  * when provided.
  */
+/** @internal */
 export function buildWorkerRuntimeDefinition<TParams = unknown, TState = unknown>(
 	extensionProcess: ExtensionProcessDefinition<TParams, TState>,
 	options?: RuntimeProcessDefinitionBuildOptions<TParams, TState> & {
+		/** @internal */
 		paramsJson?: string | null;
+		/** @internal */
 		stateJson?: string | null;
 	},
 ): ResolvedWorkerProcess<TParams, TState> | undefined {
@@ -94,11 +115,17 @@ export function buildWorkerRuntimeDefinition<TParams = unknown, TState = unknown
 /**
  * Create a resolver that returns a ResolvedWorkerProcess from the catalog.
  */
+/** @internal */
 export function createCatalogWorkerDefinitionResolver(
 	catalog: Pick<ExtensionCatalog, "processes">,
 ): (
 	processId: string,
-	opts?: { paramsJson?: string | null; stateJson?: string | null },
+	opts?: {
+		/** @internal */
+		paramsJson?: string | null;
+		/** @internal */
+		stateJson?: string | null;
+	},
 ) => ResolvedWorkerProcess | undefined {
 	return (processId, opts) => {
 		const extensionProcess = catalog.processes.get(processId);

@@ -5,8 +5,15 @@ import { GitHubClient, parseGitHubProfiles } from "./client.js";
 import { createGitHubProvider } from "./provider.js";
 import { registerGitHubTools } from "./tools.js";
 
-export const manifest = { id: "github", version: "0.1.9" } as const;
+/** @public */
+export const manifest = {
+	/** @public */
+	id: "github",
+	/** @internal */
+	version: "0.1.9",
+} as const;
 
+/** @public */
 const extension: LeitwerkExtensionModule = {
 	manifest,
 	setupServer(api, config) {
@@ -28,11 +35,14 @@ export * from "./client.js";
 export * from "./external.js";
 export default extension;
 
-/** Register shared tools and polling with an explicit integration. */
+/** Register shared tools and polling with an explicit integration. @public */
 export function setupGitHubIntegration(
 	api: Parameters<NonNullable<LeitwerkExtensionModule["setupServer"]>>[0],
 	integration: GitHubIntegration,
-	options: { now?: () => number } = {},
+	options: {
+		/** @public */
+		now?: () => number;
+	} = {},
 ) {
 	api.provide(githubIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);

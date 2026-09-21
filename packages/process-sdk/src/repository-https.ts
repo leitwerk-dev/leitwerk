@@ -1,4 +1,4 @@
-/** Canonical, credential-free HTTPS repository URL. Reject ambiguous Git credential paths. */
+/** Canonical, credential-free HTTPS repository URL. Reject ambiguous Git credential paths. @internal */
 export function repositoryHttpsUrl(value: string): URL {
 	let url: URL;
 	try {

@@ -156,3 +156,11 @@ Kubernetes deployments should use the chart's `Recreate` strategy, readiness
 endpoint, and optional deployment preflight. Preflight loads this extension but
 never invokes its start hook, so it does not log in to Telegram or compete with
 the production poller.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/telegram`: `default`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

@@ -13,9 +13,17 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabClientLike, observeMergeRequest } from "./client.js";
+/** @public */
 export function resolveGitLabRepositoryBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-): { profile: string; projectId: number } {
+	/** @public */
+	/** @public */
+): {
+	/** @public */
+	profile: string;
+	/** @public */
+	projectId: number;
+} {
 	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
 		throw new Error("An authorized GitLab process project is required");
 	const binding = ctx.project.metadata?.gitlab as
@@ -32,9 +40,19 @@ export function resolveGitLabRepositoryBinding(
 		throw new Error("Invalid GitLab project binding");
 	return { profile: binding.profile, projectId: binding.projectId };
 }
+/** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-): { profile: string; projectId: number; iid: number } {
+	/** @public */
+	/** @public */
+): {
+	/** @public */
+	profile: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+} {
 	const repository = resolveGitLabRepositoryBinding(ctx);
 	const iid = (ctx.project?.metadata?.gitlab as { iid?: unknown })?.iid;
 	if (typeof iid !== "number" || !Number.isSafeInteger(iid) || iid <= 0)
@@ -53,17 +71,32 @@ async function findOrCreate<T>(find: () => Promise<T | undefined>, create: () =>
 		return recovered;
 	}
 }
+/** @internal */
 export async function ensureGitLabComment(input: {
+	/** @internal */
 	client: GitLabClientLike;
+	/** @internal */
 	writes: ExternalWriteLogRepoLike;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	projectId: number;
+	/** @internal */
 	iid: number;
+	/** @internal */
 	writeKey: string;
+	/** @internal */
 	body: string;
+	/** @internal */
 	discussionId?: string;
+	/** @internal */
 	signal?: AbortSignal;
-}): Promise<{ marker: string }> {
+	/** @public */
+	/** @public */
+}): Promise<{
+	/** @internal */
+	marker: string;
+}> {
 	const { client, writes, instanceId, projectId, iid, writeKey, signal } = input;
 	const identity = [client.baseUrl, projectId, iid, instanceId, writeKey];
 	if (input.discussionId) identity.push(input.discussionId);
@@ -86,13 +119,21 @@ export async function ensureGitLabComment(input: {
 	});
 	return { marker };
 }
+/** @public */
 export async function ensureGitLabSeenReaction(input: {
+	/** @public */
 	client: GitLabClientLike;
+	/** @public */
 	writes: ExternalWriteLogRepoLike;
+	/** @public */
 	instanceId: string;
+	/** @internal */
 	projectId: number;
+	/** @internal */
 	iid: number;
+	/** @public */
 	noteId: number;
+	/** @public */
 	signal?: AbortSignal;
 }): Promise<void> {
 	const { client, writes, instanceId, projectId, iid, noteId, signal } = input;
@@ -116,6 +157,7 @@ export async function ensureGitLabSeenReaction(input: {
 		},
 	);
 }
+/** @internal */
 export function registerGitLabTools(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,

@@ -9,10 +9,14 @@ import {
 	type ResolvedProcessPiConfig,
 } from "./types.js";
 
+/** @internal */
 type TemplateScalar = string | number | boolean;
+/** @internal */
 type TemplateValue = TemplateScalar | TemplateContext | readonly TemplateValue[] | undefined;
 
+/** @internal */
 export interface TemplateContext {
+	/** @internal */
 	[key: string]: TemplateValue;
 }
 
@@ -33,18 +37,30 @@ function toTemplateContextRecord(value: unknown): TemplateContext {
 	return context;
 }
 
+/** @internal */
 export function createTemplateContext(input: {
+	/** @internal */
 	params?: unknown;
+	/** @internal */
 	process?: {
+		/** @internal */
 		processId?: string | null;
+		/** @internal */
 		externalId?: string | null;
+		/** @internal */
 		externalUrl?: string | null;
+		/** @internal */
 		selectedTurnId?: string | null;
 	};
+	/** @internal */
 	projects?: ReadonlyArray<{
+		/** @internal */
 		key: string;
+		/** @internal */
 		repoLocator: string;
+		/** @internal */
 		baseBranch: string;
+		/** @internal */
 		workBranch?: string | null;
 	}>;
 }): TemplateContext {
@@ -67,18 +83,31 @@ export function createTemplateContext(input: {
 	return context;
 }
 
+/** @internal */
 export function interpolateTemplate(template: string, context: TemplateContext): string {
 	return Mustache.render(template, context);
 }
 
+/** @internal */
 type TurnToolDefinitionLike =
-	| { kind: "llm"; availableTools: readonly PiBuiltInToolName[] }
-	| { kind: string };
+	| {
+			/** @internal */
+			kind: "llm";
+			/** @internal */
+			availableTools: readonly PiBuiltInToolName[];
+	  }
+	| {
+			/** @internal */
+			kind: string;
+	  };
 
+/** @internal */
 type ProcessTurnBindingLike = {
+	/** @internal */
 	definition: TurnToolDefinitionLike;
 };
 
+/** @internal */
 type ProcessToolSource = TurnToolDefinitionLike | ProcessTurnBindingLike;
 
 function isTurnDefinitionSource(source: ProcessToolSource): source is TurnToolDefinitionLike {
@@ -89,6 +118,7 @@ function resolveToolSourceDefinition(source: ProcessToolSource): TurnToolDefinit
 	return isTurnDefinitionSource(source) ? source : source.definition;
 }
 
+/** @internal */
 export function validatePiBuiltInToolArray(
 	toolNames: readonly unknown[],
 	context: string,
@@ -124,8 +154,11 @@ export function validatePiBuiltInToolArray(
 	return errors;
 }
 
+/** @internal */
 export function resolveTurnAvailableToolNames(input: {
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	turnDef: LlmTurnDefinition<string, unknown, unknown>;
 }): string[] {
 	const errors = validatePiBuiltInToolArray(
@@ -138,6 +171,7 @@ export function resolveTurnAvailableToolNames(input: {
 	return [...input.turnDef.availableTools];
 }
 
+/** @internal */
 export function collectProcessAvailableToolNames(
 	turns: Iterable<ProcessToolSource> | undefined,
 ): string[] {
@@ -196,11 +230,17 @@ Guidelines:
 - Show file paths clearly when working with files.`;
 }
 
+/** @internal */
 export function resolveProcessPiConfig(input: {
+	/** @internal */
 	processId: string;
+	/** @internal */
 	processPiConfig?: ProcessPiConfig;
+	/** @internal */
 	turns?: Iterable<ProcessToolSource>;
+	/** @internal */
 	configSnapshot?: ConfigSnapshot;
+	/** @internal */
 	templateContext: TemplateContext;
 }): ResolvedProcessPiConfig {
 	const processConfig = input.configSnapshot?.process_configs?.[input.processId];
@@ -237,6 +277,7 @@ export { resolveTurnAvailableToolNames as resolveTurnActiveToolNames };
 
 // Mirror Pi's PI_CODING_AGENT_DIR expansion semantics from
 // pi-mono/packages/coding-agent/src/config.ts.
+/** @internal */
 export function expandPiAgentDir(agentDir: string): string {
 	if (agentDir === "~") {
 		return homedir();
@@ -247,9 +288,13 @@ export function expandPiAgentDir(agentDir: string): string {
 	return agentDir;
 }
 
+/** @internal */
 export function resolvePiAgentDir(options: {
+	/** @internal */
 	agentDir?: string | null;
+	/** @internal */
 	configSnapshot?: ConfigSnapshot;
+	/** @internal */
 	fallbackDir: string;
 }): string {
 	const configuredAgentDir =

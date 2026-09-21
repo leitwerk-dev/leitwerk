@@ -1,6 +1,6 @@
 import { parseDurationMs } from "./duration-parse.js";
 
-/** Reserve the next poll time for a caller-owned key, before starting its work. */
+/** Reserve the next poll time for a caller-owned key, before starting its work. @internal */
 export function createPollSchedule(now: () => number = () => Date.now()) {
 	const dueAt = new Map<string, number>();
 	return (key: string, interval = "30s", timestamp = now()): boolean => {
@@ -10,14 +10,21 @@ export function createPollSchedule(now: () => number = () => Date.now()) {
 	};
 }
 
+/** @public */
 export interface PollResult {
+	/** @public */
 	created: string[];
+	/** @internal */
 	aborted: string[];
+	/** @internal */
 	labelExchanged: string[];
+	/** @public */
 	skipped: string[];
+	/** @public */
 	errors: string[];
 }
 
+/** @public */
 export function emptyPollResult(): PollResult {
 	return {
 		created: [],
@@ -28,26 +35,39 @@ export function emptyPollResult(): PollResult {
 	};
 }
 
+/** @internal */
 export interface PollResultWithErrors {
+	/** @internal */
 	readonly errors: readonly string[];
 }
 
+/** @internal */
 export interface PollLoop<T extends PollResultWithErrors = PollResult> {
+	/** @internal */
 	poll(): Promise<T>;
+	/** @internal */
 	start(): void;
-	stop(): void;
+	/** @internal */
+	stop(): Promise<void>;
 }
 
 /**
  * Create a non-overlapping polling loop. `pollOnce` is the actual work;
  * concurrent calls to `poll()` coalesce into the in-flight promise.
  */
+/** @internal */
 export function createPollLoop<T extends PollResultWithErrors>(opts: {
+	/** @internal */
 	pollOnce: () => Promise<T>;
+	/** @internal */
 	isEnabled: () => boolean;
+	/** @internal */
 	pollInterval: () => string;
+	/** @internal */
 	defaultIntervalMs?: number;
+	/** @internal */
 	onScheduledResult: (result: T, durationMs: number) => void;
+	/** @internal */
 	onScheduledError: (error: unknown, durationMs: number) => void;
 }): PollLoop<T> {
 	let timer: ReturnType<typeof setInterval> | null = null;
@@ -90,12 +110,10 @@ export function createPollLoop<T extends PollResultWithErrors>(opts: {
 			timer = setInterval(pollScheduled, ms);
 			pollScheduled();
 		},
-		stop() {
-			if (!timer) {
-				return;
-			}
-			clearInterval(timer);
+		async stop() {
+			if (timer) clearInterval(timer);
 			timer = null;
+			await pollInFlight;
 		},
 	};
 }

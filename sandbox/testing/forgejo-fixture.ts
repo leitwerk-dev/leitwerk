@@ -11,7 +11,7 @@ import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { WOODPECKER_PIPELINE_KIND } from "@leitwerk-dev/woodpecker";
 import type { LocalWoodpeckerState } from "@leitwerk-dev/woodpecker/testing";
-import providerComposition from "../../../sandbox/provider-composition.js";
+import providerComposition from "../provider-composition.js";
 import { test as baseTest, type Fixture, fixture } from "./fixture.js";
 
 export const test = baseTest.extend<{ f: Fixture }>({

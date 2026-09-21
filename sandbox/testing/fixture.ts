@@ -12,8 +12,8 @@ import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { createProcessDriver, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { test as baseTest, expect, type TestContext } from "vitest";
-import composition from "../../../sandbox/composition.js";
-import { Notebook } from "../../../sandbox/notebook.js";
+import composition from "../composition.js";
+import { Notebook } from "../notebook.js";
 
 export async function fixture(
 	onTestFinished: TestContext["onTestFinished"],
@@ -52,12 +52,11 @@ export async function fixture(
 	sandbox = await createSandboxApp(config, input, testFactory);
 	let url: string;
 	async function start() {
-		await sandbox.context.app.listen({ host: "127.0.0.1", port: 0 });
-		const address = sandbox.context.app.server.address();
-		if (!address || typeof address === "string") throw new Error("No listening address");
-		url = `http://127.0.0.1:${address.port}`;
-		config.server.base_url = url;
-		await sandbox.context.startBackgroundServices();
+		({ address: url } = await sandbox.context.listen({
+			host: "127.0.0.1",
+			port: 0,
+			useBoundAddressAsBaseUrl: true,
+		}));
 	}
 	await start();
 	const driver = createProcessDriver(() => sandbox.context);

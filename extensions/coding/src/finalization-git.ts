@@ -5,14 +5,20 @@ import { trimToNull, type WorkerErrorClass } from "@leitwerk-dev/domain";
 import { repositoryGitArgs, repositoryGitSubprocessEnv } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
+/** @public */
 export interface GitIdentity {
+	/** @public */
 	name: string;
+	/** @public */
 	email: string;
 }
 
+/** @internal */
 export class DeterministicGitError extends Error {
+	/** @internal */
 	readonly errorClass: WorkerErrorClass = "git_error";
 
+	/** @internal */
 	constructor(message: string) {
 		super(message);
 		this.name = "DeterministicGitError";
@@ -126,8 +132,11 @@ function assertGitIdentity(repoPath: string, identity: GitIdentity): void {
 }
 
 function commitIfDirty(input: {
+	/** @public */
 	repoPath: string;
+	/** @public */
 	commitMessage: string;
+	/** @public */
 	gitIdentity: GitIdentity;
 }): string {
 	if (workingTreeStatus(input.repoPath).length === 0)
@@ -163,10 +172,15 @@ function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string
 }
 
 /** Commit the current workspace change and non-force push only the feature branch. */
+/** @public */
 export function commitAndPushWorkBranch(input: {
+	/** @public */
 	repoPath: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	commitMessage: string;
+	/** @public */
 	gitIdentity: GitIdentity;
 }) {
 	const repoPath = path.resolve(input.repoPath);
@@ -195,5 +209,10 @@ export function commitAndPushWorkBranch(input: {
 		commitMessage: input.commitMessage,
 		gitIdentity: input.gitIdentity,
 	});
-	return { headSha, pushTarget: pushAndVerify(repoPath, input.workBranch, headSha) };
+	return {
+		/** @public */
+		headSha,
+		/** @internal */
+		pushTarget: pushAndVerify(repoPath, input.workBranch, headSha),
+	};
 }

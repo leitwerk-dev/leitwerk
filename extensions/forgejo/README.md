@@ -136,3 +136,12 @@ Typed watcher lookup uses the source object supplied by the process definition.
 When composing retained processes from another module instance, pass their source
 as `setupForgejoIntegration`'s `options.issueWatcherSource`. The default is this
 package's exported `forgejoIssueWatcherSource`; persisted source IDs remain unchanged.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/forgejo`: `ForgejoClient`, `ForgejoClientLike`, `ForgejoFeedbackItem`, `ForgejoIntegration`, `ForgejoIssue`, `ForgejoIssueWatcherConfig`, `ForgejoIssueWatcherEvent`, `ForgejoLabel`, `ForgejoProjectBinding`, `ForgejoPullRequest`, `ForgejoRepository`, `ForgejoTicketCreationConfig`, `default`, `forgejoIssueWatcherSource`, `setupForgejoIntegration`.
+- `@leitwerk-dev/forgejo/testing`: `LocalForgejoAdapter`, `LocalForgejoOptions`, `LocalForgejoRepository`, `LocalForgejoState`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

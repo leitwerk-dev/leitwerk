@@ -5,22 +5,40 @@ import {
 	startupInterval,
 } from "@leitwerk-dev/domain";
 
+/** @internal */
 export interface BenchmarkSample {
+	/** @internal */
 	index: number;
+	/** @internal */
 	warmup: boolean;
+	/** @internal */
 	idempotencyKey: string;
+	/** @internal */
 	startedAt: string;
+	/** @internal */
 	endedAt?: string;
+	/** @internal */
 	outcome: "pending" | "completed" | "failed" | "timeout" | "interrupted";
+	/** @internal */
 	launchRunId?: string;
+	/** @internal */
 	instanceId?: string | null;
+	/** @internal */
 	launchRun?: LaunchRun;
-	startup?: { workerStarts?: PhysicalWorkerStart[] };
+	/** @internal */
+	startup?: {
+		/** @internal */
+		workerStarts?: PhysicalWorkerStart[];
+	};
+	/** @internal */
 	turnRecords?: unknown[];
+	/** @internal */
 	launchTimings?: Record<string, StartupInterval>;
+	/** @internal */
 	error?: string;
 }
 
+/** @internal */
 export function statistics(values: (number | null | undefined)[]) {
 	const sorted = values
 		.filter(
@@ -29,13 +47,18 @@ export function statistics(values: (number | null | undefined)[]) {
 		.sort((a, b) => a - b);
 	const n = sorted.length;
 	return {
+		/** @internal */
 		count: n,
+		/** @internal */
 		median: n ? (sorted[Math.floor((n - 1) / 2)] + sorted[Math.ceil((n - 1) / 2)]) / 2 : null,
+		/** @internal */
 		p90: n ? sorted[Math.ceil(n * 0.9) - 1] : null,
+		/** @internal */
 		maximum: n ? sorted[n - 1] : null,
 	};
 }
 
+/** @internal */
 export function imageCohort(worker?: Pick<PhysicalWorkerStart, "observations">) {
 	const milestones = new Set((worker?.observations ?? []).map((entry) => entry.milestone));
 	if (milestones.has("image_pull_started") && milestones.has("image_pull_finished"))
@@ -44,6 +67,7 @@ export function imageCohort(worker?: Pick<PhysicalWorkerStart, "observations">) 
 	return "unknown";
 }
 
+/** @internal */
 export function launchTimings(
 	launchRun: Pick<LaunchRun, "createdAt"> | undefined,
 	startup: BenchmarkSample["startup"],
@@ -61,6 +85,7 @@ export function launchTimings(
 	};
 }
 
+/** @internal */
 export function report(samples: BenchmarkSample[], expectedLaunches = 30): string {
 	const measured = samples.filter((sample) => !sample.warmup);
 	const lines = [

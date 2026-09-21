@@ -13,6 +13,7 @@ import {
 	SafeLaunchPreparationError,
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabRepoChangeParams } from "./params.js";
+/** @public */
 export function createGitLabRepoChangeLauncher() {
 	let integration: GitLabIntegration | null = null;
 	const requireIntegration = () => {
@@ -220,9 +221,13 @@ export function createGitLabRepoChangeLauncher() {
 		},
 	};
 	return {
+		/** @public */
 		configure,
+		/** @public */
 		launcher,
+		/** @public */
 		preparationChecks,
+		/** @public */
 		async fromIssue(event: GitLabIssueWatcherEvent) {
 			return launch(
 				event.repository,

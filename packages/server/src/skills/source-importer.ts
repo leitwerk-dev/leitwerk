@@ -15,15 +15,23 @@ const execFileAsync = promisify(execFile);
 const GIT_ENV = { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "/bin/false" };
 const FORBIDDEN_SKILL_NAMES = new Set([".git"]);
 
+/** @internal */
 export interface ImportedSkill {
+	/** @internal */
 	skillId: string;
+	/** @internal */
 	label: string;
+	/** @internal */
 	description: string | null;
+	/** @internal */
 	bundle: PiResourceBundle;
+	/** @internal */
 	sourceRevision: string | null;
 }
 
+/** @internal */
 export interface ImportedRepositorySkill extends ImportedSkill {
+	/** @internal */
 	sourcePath: string;
 }
 

@@ -36,10 +36,12 @@ const STANDARD_PROVIDER_ENV_KEYS: Readonly<Record<string, readonly string[]>> = 
 	"zai-coding-cn": ["ZAI_CODING_CN_API_KEY"],
 };
 
+/** @internal */
 export function getKnownEnvKeys(providerId: string): readonly string[] {
 	return STANDARD_PROVIDER_ENV_KEYS[providerId] ?? [];
 }
 
+/** @internal */
 export function getStandardEnvApiKey(providerId: string): string | undefined {
 	for (const key of getKnownEnvKeys(providerId)) {
 		const value = process.env[key]?.trim();
@@ -48,7 +50,7 @@ export function getStandardEnvApiKey(providerId: string): string | undefined {
 	return undefined;
 }
 
-/** Built-in providers whose credentials fit Leitwerk's standard API-key projection. */
+/** Built-in providers whose credentials fit Leitwerk's standard API-key projection. @internal */
 export function getSupportedStandardProviders(): readonly string[] {
 	return Object.keys(STANDARD_PROVIDER_ENV_KEYS);
 }

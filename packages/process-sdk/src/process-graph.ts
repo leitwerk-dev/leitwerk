@@ -10,29 +10,50 @@ import type { TurnDefinition } from "./define-process.js";
 import type { ExtensionProcessDefinition, ProcessTurnBinding } from "./extension-api.js";
 import { getProcessTurnTransitions } from "./process-definition-internals.js";
 
+/** @internal */
 export type ProcessGraphSource = ExtensionProcessDefinition<unknown, unknown>;
+/** @internal */
 export type ProcessGraphRegistry = ReadonlyMap<string, ProcessGraphSource>;
 
+/** @internal */
 export interface ProcessGraphTurnView {
+	/** @internal */
 	turnType: ProcessTurnType;
+	/** @internal */
 	description: string;
+	/** @internal */
 	transitions: readonly ProcessTurnTransition[];
+	/** @internal */
 	reviewProduct?: string;
+	/** @internal */
 	resultSemanticRef?: ProcessSemanticEntryRefKey;
+	/** @internal */
 	publishedProduct?: string;
+	/** @internal */
 	publishedProducts?: readonly string[];
+	/** @internal */
 	consumedProducts?: readonly string[];
+	/** @internal */
 	optionalConsumedProducts?: readonly string[];
+	/** @internal */
 	requiredSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
+	/** @internal */
 	optionalSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
+	/** @internal */
 	turnResultMarkdownRequired?: boolean;
 }
 
+/** @internal */
 export interface ProcessGraphView {
+	/** @internal */
 	id: string;
+	/** @internal */
 	primaryEntryTurnId: TurnId;
+	/** @internal */
 	entryTurnIds: ReadonlySet<TurnId>;
+	/** @internal */
 	happyPath: readonly TurnId[] | null;
+	/** @internal */
 	turns: ReadonlyMap<TurnId, ProcessGraphTurnView>;
 }
 
@@ -110,6 +131,7 @@ function toTurnView(
  * All server lifecycle, validation, model-selection and serialization code should use this view
  * instead of maintaining a second graph representation.
  */
+/** @internal */
 export function toProcessGraphView(definition: ProcessGraphSource): ProcessGraphView {
 	const turns = new Map<TurnId, ProcessGraphTurnView>();
 	for (const [turnId, binding] of definition.turns) {
@@ -124,10 +146,12 @@ export function toProcessGraphView(definition: ProcessGraphSource): ProcessGraph
 	};
 }
 
+/** @internal */
 export function hasProcessGraph(registry: ProcessGraphRegistry, processId: string): boolean {
 	return registry.has(processId);
 }
 
+/** @internal */
 export function getProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -139,10 +163,12 @@ export function getProcessGraph(
 	return toProcessGraphView(definition);
 }
 
+/** @internal */
 export function getAllProcessGraphs(registry: ProcessGraphRegistry): readonly ProcessGraphView[] {
 	return [...registry.values()].map((definition) => toProcessGraphView(definition));
 }
 
+/** @internal */
 export function getProcessTurnGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -151,6 +177,7 @@ export function getProcessTurnGraph(
 	return getProcessGraph(registry, processId).turns.get(turnId);
 }
 
+/** @internal */
 export function getTurnTransitionsForProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -159,6 +186,7 @@ export function getTurnTransitionsForProcessGraph(
 	return getProcessTurnGraph(registry, processId, turnId)?.transitions ?? [];
 }
 
+/** @internal */
 export function getReachableTurnIdsForProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -166,6 +194,7 @@ export function getReachableTurnIdsForProcessGraph(
 	return [...getProcessGraph(registry, processId).turns.keys()];
 }
 
+/** @internal */
 export function isTurnAvailableForProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -174,6 +203,7 @@ export function isTurnAvailableForProcessGraph(
 	return getProcessGraph(registry, processId).turns.has(turnId);
 }
 
+/** @internal */
 export function serializeProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -191,6 +221,7 @@ export function serializeProcessGraph(
 	};
 }
 
+/** @internal */
 export function listLlmTurnIdsForProcessGraph(
 	registry: ProcessGraphRegistry,
 	processId: string,
@@ -204,6 +235,7 @@ function isTerminalLifecycleStatus(value: string | undefined): value is "complet
 	return value === "completed" || value === "aborted";
 }
 
+/** @internal */
 export function validateProcessGraphEntryTurns(graph: ProcessGraphView): readonly string[] {
 	const errors: string[] = [];
 	for (const turnId of graph.entryTurnIds) {
@@ -214,6 +246,7 @@ export function validateProcessGraphEntryTurns(graph: ProcessGraphView): readonl
 	return errors;
 }
 
+/** @internal */
 export function validateProcessGraphProducts(graph: ProcessGraphView): readonly string[] {
 	const errors: string[] = [];
 	const publishedProducts = new Set<string>();
@@ -249,6 +282,7 @@ export function validateProcessGraphProducts(graph: ProcessGraphView): readonly 
 	return errors;
 }
 
+/** @internal */
 export function validateProcessGraphTurnTransitions(graph: ProcessGraphView): readonly string[] {
 	const errors: string[] = [];
 	for (const [turnId, turn] of graph.turns) {

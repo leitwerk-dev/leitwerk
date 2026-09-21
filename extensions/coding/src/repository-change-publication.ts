@@ -14,100 +14,220 @@ import { rebasePrompt } from "@leitwerk-dev/repository-rebase/prompt";
 import { commitAndPushWorkBranch, type GitIdentity } from "./finalization-git.js";
 import type { RepositoryChangeState } from "./repository-change-state.js";
 
+/** @public */
 export interface PublicationRequest {
+	/** @public */
 	number: number;
+	/** @public */
 	html_url: string;
+	/** @public */
 	merged: boolean;
+	/** @public */
 	merge_commit_sha?: string | null;
 }
+/** @public */
 export interface PublicationPipeline {
+	/** @public */
 	number: number;
+	/** @public */
 	status: string;
+	/** @public */
 	[key: string]: unknown;
 }
+/** @public */
 export interface PublicationParams {
+	/** @public */
 	owner: string;
+	/** @public */
 	repo: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	baseBranch: string;
 }
+/** @public */
 export type PublicationContext<P> = FlowAutomaticRunContext<P, RepositoryChangeState>;
+/** @public */
 export type PublicationEvidence = (
 	| {
+			/** @public */
 			kind: "feedback";
+			/** @public */
 			feedbackIds: PublicationFeedbackId[];
+			/** @public */
 			conversationCursor: number;
+			/** @public */
 			reviewCursor: number;
+			/** @public */
 			inlineCursor: number;
 	  }
-	| { kind: "failure"; pipeline: PublicationPipeline }
-	| { kind: "conflict"; conflict: ConflictEvidence }
-	| { kind: "terminal"; request: PublicationRequest }
-	| { kind: "cancelled" }
-	| { kind: "observed" }
-) & { observationKey?: string };
+	| {
+			/** @public */
+			kind: "failure";
+			/** @public */
+			pipeline: PublicationPipeline;
+	  }
+	| {
+			/** @public */
+			kind: "conflict";
+			/** @public */
+			conflict: ConflictEvidence;
+	  }
+	| {
+			/** @public */
+			kind: "terminal";
+			/** @public */
+			request: PublicationRequest;
+	  }
+	| {
+			/** @public */
+			kind: "cancelled";
+	  }
+	| {
+			/** @public */
+			kind: "observed";
+	  }
+) & {
+	/** @public */
+	observationKey?: string;
+};
+/** @public */
 export interface PublicationSource<P> {
+	/** @public */
 	id: string;
+	/** @public */
 	kind: "feedback" | "failure" | "conflict" | "terminal" | "cancelled" | "observation";
+	/** @public */
 	operatorId?: string;
+	/** @public */
 	label: string;
+	/** @public */
 	source: ExternalActionSource<P, RepositoryChangeState, unknown>;
+	/** @public */
 	enabled?(params: P): boolean;
-	read(input: { params: P; state: RepositoryChangeState; event: unknown }): PublicationEvidence;
+	/** @public */
+	read(input: {
+		/** @public */
+		params: P;
+		/** @public */
+		state: RepositoryChangeState;
+		/** @public */
+		event: unknown;
+	}): PublicationEvidence;
 }
+/** @public */
 export interface RepositoryChangePublicationAdapter<P extends PublicationParams> {
+	/** @public */
 	namespace: string;
+	/** @public */
 	label: string;
-	ids: { deliver: string; feedback: string; ciRepair: string; operator: string };
-	tools: { delivery: readonly string[]; feedback: readonly string[]; ci: readonly string[] };
+	/** @public */
+	ids: {
+		/** @public */
+		deliver: string;
+		/** @public */
+		feedback: string;
+		/** @public */
+		ciRepair: string;
+		/** @public */
+		operator: string;
+	};
+	/** @public */
+	tools: {
+		/** @public */
+		delivery: readonly string[];
+		/** @public */
+		feedback: readonly string[];
+		/** @public */
+		ci: readonly string[];
+	};
+	/** @public */
 	sources: readonly PublicationSource<P>[];
+	/** @public */
 	identity(ctx: PublicationContext<P>): Promise<GitIdentity>;
+	/** @public */
 	ensureRequest(ctx: PublicationContext<P>): Promise<PublicationRequest>;
+	/** @public */
 	reconcileTerminal(
 		ctx: PublicationContext<P>,
 		current: PublicationState,
 		request: PublicationRequest,
 	): Promise<void>;
+	/** @public */
 	linkIssue(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+	/** @public */
 	acknowledge(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+	/** @public */
 	reply(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+	/** @public */
 	afterRebase(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+	/** @public */
 	head(ctx: PublicationContext<P>, current: PublicationState): Promise<string>;
+	/** @public */
 	prompt(kind: "feedback" | "ci", current: PublicationState): string;
+	/** @public */
 	commitMessage(kind: "feedback" | "ci"): string;
 }
+/** @public */
 export type PublicationFeedbackId = {
+	/** @public */
 	kind: "conversation" | "review" | "inline";
+	/** @public */
 	id: number;
+	/** @public */
 	discussionId?: string;
 };
+/** @public */
 type AdjustmentInvocation = {
+	/** @public */
 	origin: "feedback" | "ci" | "rebase";
+	/** @public */
 	publishRequired: boolean;
 };
 
+/** @public */
 export interface DeliveryState {
+	/** @public */
 	stage: "not_started" | "branch_published" | "pull_request_ready" | "awaiting";
+	/** @public */
 	issueLinked: boolean;
+	/** @public */
 	adjustment: AdjustmentInvocation | null;
+	/** @public */
 	terminalPullRequest: PublicationRequest | null;
 }
 
+/** @public */
 export interface PublicationState {
+	/** @public */
 	lastConflictKey?: string | null;
+	/** @public */
 	conflict?: ConflictEvidence | null;
+	/** @public */
 	repairReason?: "feedback" | "ci" | "rebase";
+	/** @public */
 	headSha: string | null;
+	/** @public */
 	prNumber: number | null;
+	/** @public */
 	prUrl: string | null;
+	/** @public */
 	conversationCursor: number;
+	/** @public */
 	reviewCursor: number;
+	/** @public */
 	inlineCursor: number;
+	/** @public */
 	feedbackIds: PublicationFeedbackId[];
+	/** @public */
 	pipeline: PublicationPipeline | null;
+	/** @public */
 	ciRecoveryCycles: number;
+	/** @public */
 	delivery: DeliveryState;
+	/** @public */
 	observationKey?: string;
+	/** @public */
 	pendingEvidence?: PublicationEvidence | null;
 }
 
@@ -131,8 +251,10 @@ const initialPublicationState: PublicationState = {
 	delivery: initialDeliveryState,
 };
 
+/** @public */
 export const publicationObject = (value: unknown) => asUnknownRecord(value) ?? {};
 
+/** @public */
 export function readPublicationState(
 	state: RepositoryChangeState,
 	namespace: string,
@@ -148,10 +270,14 @@ export function readPublicationState(
 	} as PublicationState;
 }
 
+/** @public */
 export function patchPublicationState(
 	state: RepositoryChangeState,
 	namespace: string,
-	patch: Partial<Omit<PublicationState, "delivery">> & { delivery?: Partial<DeliveryState> },
+	patch: Partial<Omit<PublicationState, "delivery">> & {
+		/** @public */
+		delivery?: Partial<DeliveryState>;
+	},
 ): RepositoryChangeState {
 	const current = readPublicationState(state, namespace);
 	return {
@@ -167,6 +293,7 @@ export function patchPublicationState(
 	};
 }
 
+/** @public */
 export function applyPublicationEvidence(
 	params: PublicationParams,
 	current: PublicationState,
@@ -262,6 +389,7 @@ function deliveryProgress(value: PublicationState, label: string, activeStepId?:
 	};
 }
 
+/** @public */
 export function createRepositoryChangePublication<P extends PublicationParams>(
 	adapter: RepositoryChangePublicationAdapter<P>,
 ) {
@@ -550,5 +678,12 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 		},
 	});
 
-	return { entryTurnId: ids.deliver, fragment: publication, happyPath: [ids.deliver] };
+	return {
+		/** @public */
+		entryTurnId: ids.deliver,
+		/** @public */
+		fragment: publication,
+		/** @public */
+		happyPath: [ids.deliver],
+	};
 }

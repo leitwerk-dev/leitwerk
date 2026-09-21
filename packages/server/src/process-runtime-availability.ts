@@ -11,7 +11,8 @@ export interface ProcessRuntimeAvailabilityDeps {
 
 export interface ResolvedKubernetesDockerConfig {
 	runtimeClassName: string;
-	hostUsers: boolean;
+	hostUsers?: boolean;
+	gvisor?: boolean;
 	processStorageClassName: string;
 	network?: import("./config/config-types.js").KubernetesDockerConfig["network"];
 }
@@ -23,14 +24,14 @@ export function resolveKubernetesDockerConfig(
 	const docker = config.kubernetes?.docker;
 	if (
 		!docker?.runtime_class_name?.trim() ||
-		typeof docker.host_users !== "boolean" ||
+		(docker.gvisor ? docker.host_users !== undefined : typeof docker.host_users !== "boolean") ||
 		!docker.process_storage_class_name?.trim()
 	) {
 		return undefined;
 	}
 	return {
 		runtimeClassName: docker.runtime_class_name,
-		hostUsers: docker.host_users,
+		...(docker.gvisor ? { gvisor: true } : { hostUsers: docker.host_users }),
 		processStorageClassName: docker.process_storage_class_name,
 		...(docker.network ? { network: docker.network } : {}),
 	};

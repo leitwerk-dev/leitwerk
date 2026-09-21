@@ -41,6 +41,7 @@ import {
 
 const ONE_TIME_FAILURE_RETRY_DELAY_MS = 60_000;
 
+/** @internal */
 export interface FutureExecutionExecutorDeps
 	extends Pick<
 		RepositoryBundle,
@@ -53,19 +54,31 @@ export interface FutureExecutionExecutorDeps
 		| "handoffDedupKeys"
 		| "transaction"
 	> {
+	/** @internal */
 	turnRecords?: RepositoryBundle["turnRecords"];
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	commands: ProcessEngine;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	processTitles?: ProcessTitleGenerator;
+	/** @internal */
 	extensionHost?: ExtensionHost;
+	/** @internal */
 	processGraphs?: ProcessGraphRegistry;
+	/** @internal */
 	processActionRegistry?: ProcessActionRegistry;
-	/** Required for every server-owned scheduled execution. */
+	/** Required for every server-owned scheduled execution. @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	launchPlans: ProcessLaunchPlanServiceLike;
+	/** @internal */
 	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
+	/** @internal */
 	launchPipeline: LaunchPipeline;
+	/** @internal */
 	logger?: ProcessEngineLogger;
 }
 
@@ -78,14 +91,38 @@ export type FutureExecutionDisposition =
 	| { kind: "retry_later"; error: Error }
 	| { kind: "remove"; error?: Error };
 
+/** @internal */
 export type FutureExecutionItemOutcome =
-	| { kind: "no_work" }
-	| { kind: "blocked" }
-	| { kind: "retry_scheduled" }
-	| { kind: "occurrence_advanced" }
-	| { kind: "terminal_invalid_removed" }
-	| { kind: "durable_work_committed" }
-	| { kind: "durable_work_committed_with_reaction_error"; error: string };
+	| {
+			/** @internal */
+			kind: "no_work";
+	  }
+	| {
+			/** @internal */
+			kind: "blocked";
+	  }
+	| {
+			/** @internal */
+			kind: "retry_scheduled";
+	  }
+	| {
+			/** @internal */
+			kind: "occurrence_advanced";
+	  }
+	| {
+			/** @internal */
+			kind: "terminal_invalid_removed";
+	  }
+	| {
+			/** @internal */
+			kind: "durable_work_committed";
+	  }
+	| {
+			/** @internal */
+			kind: "durable_work_committed_with_reaction_error";
+			/** @internal */
+			error: string;
+	  };
 
 function toError(error: unknown, fallbackMessage: string): Error {
 	return error instanceof Error ? error : new Error(fallbackMessage);

@@ -2,6 +2,48 @@
 
 Worker processes in Leitwerk operate under strict server supervision: the server owns desired lifecycle state in SQLite, while physical worker runners execute state transitions, report interaction facts, and upload session snapshots. This reference details how workers connect, adopt running containers, process turns, and recover from failures.
 
+## AppContext lifecycle
+
+`createAppContext()` acquires resources without binding or starting background services.
+Use `ctx.listen(options?)` for startup and `ctx.close()` for shutdown. `listen()` binds,
+optionally applies the fixture base URL, reconciles durable state, adopts workers, and runs
+start hooks in their registered order. It resolves with `{ address, port }` only after
+`/api/ready` can return 200. Unknown workers receive retryable reconnect responses until
+startup adoption and reconciliation finish.
+
+Concurrent startup calls share the startup operation. The first `listen()` fixes binding
+options; later optionless or matching calls reuse the listener. Conflicting explicit options
+reject without disrupting it. A manually bound Fastify listener cannot be adopted by
+`ctx.listen()`.
+
+`close()` immediately clears readiness and prevents startup. It waits for the active startup
+step, skips later steps, then uses Fastify's shutdown hooks to stop services and workers,
+drain HTTP requests, close WebSockets, and close the context-owned database. Local workers
+receive `shutdownAll("server_shutdown")`; isolated workers detach. Maintenance shutdown
+waits for active polling, scheduling, model refresh, retention work, and aborted session
+export preparation. Every stop hook is
+attempted in reverse order even if another fails. Cleanup errors are reported together.
+Repeated close calls share one settled result and never repeat cleanup side effects.
+Injected databases remain open; durable process, workspace, and tree data remain intact.
+
+Bind, reconciliation, and start-hook failures close the context automatically. A new context
+is required to retry. Startup errors remain the primary error; when cleanup also fails, an
+`AggregateError` retains the startup error as its cause. Construction failures release
+resources acquired before the failure.
+
+The context lifecycle API is `listen()` and `close()`. **Breaking change:**
+`startBackgroundServices()` and `stopBackgroundServices()` have been removed.
+Migrate startup to `listen()` and shutdown to `close()`; restarting a closed context
+requires creating a new one. Services cannot be stopped independently of the context.
+
+`AppContext` no longer exposes the extension catalog. Compositions own catalogs they
+supply; test extension loading through its registered behavior. The unused `createApp()`
+wrapper is removed; use `createAppContext()` and its lifecycle methods.
+
+Raw `app.listen()` remains available for bind-only controlled tests and deployment
+preflight; it leaves readiness false and cannot later transition to full context startup.
+Direct `app.close()` uses the same cleanup hooks.
+
 ---
 
 ## 1. Responsibilities & Ownership Boundaries
@@ -206,30 +248,26 @@ detail. The latest startup-retry run is authoritative; without a retry, the late
 then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
 commits a process, later polls return that attempt instead of creating incomplete launch runs.
 
-Worker entry modules do not synchronously load the Pi SDK. The default Pi factory starts an asynchronous import so module loading can overlap IPC connection and workspace materialization. Managed bootstrap still awaits Pi version validation and SDK preparation before worker readiness. Import failures surface through that bootstrap path.
+Worker readiness requires successful Pi version validation and SDK preparation.
+SDK loading failures fail managed bootstrap.
 
 ### Durable startup observations
 
-The server stores the first valid receipt of each startup milestone per physical
-worker lease in `startup_observations`. Replacement leases retain separate history.
+The server retains the first valid receipt of each startup milestone per physical
+worker lease. Replacement leases retain separate history.
 Prompt start uses `turn.prompt_started`; first text requires a nonempty
 `pi.stream.delta` with `streamType: "text"`. Both require the current worker and
 initial accepted turn to match and use server receipt time. Thinking and tool
-output do not qualify. No new worker IPC message is required.
+output do not qualify.
 
-Kubernetes sampling runs independently at 250 ms with one cycle per worker and
-1.5-second request cancellation. It stops on lifecycle termination, timeout, two
-seconds after readiness, or complete evidence. Events are paginated and matched
-by pod UID and worker-container field path. Running and terminated starts are
-accepted. A cached-image event is not a pull start. PVC and pod collection run
-independently; a PVC read failure does not suppress pod evidence. API failures leave
-gaps and emit at most three generic diagnostics per sampler. Adoption resumes
-collection for the original lease; request boundaries are never reconstructed.
+Kubernetes observations belong to the worker Pod and container. A cached-image
+event does not count as a pull start. API failures leave gaps; a PVC read failure
+does not suppress Pod observations. Adoption resumes collection for the original
+lease without reconstructing unobserved request boundaries.
 
 The UI snapshot's optional `startup.workerStarts` contains all physical leases,
-observations and derived intervals. It uses durable timestamps only, without
-bootstrap-receipt fallbacks. Existing attempts, recovery and four UI steps retain
-their behavior. Unknown historical milestones remain missing. Intervals report
+observations and derived intervals. It uses durable timestamps only.
+Unknown historical milestones remain missing. Intervals report
 `available`, `missing` or `invalid_order`; only available intervals have durations.
 Server receipt totals and Kubernetes source-time intervals use separate clocks.
 Kubernetes timestamps retain source precision (seconds, milliseconds or microseconds).
@@ -253,7 +291,6 @@ does not mean a worker accepted the start. Chronicle provenance follows explicit
 identifiers and retry parents; timestamps do not establish causal links.
 Observation annotations replace one snapshot per resolved subscription generation,
 retain the last successful facts across refresh failures, and reject stale writes.
-These reporting contracts use existing JSON annotations without schema migration.
 
 ## Repository credentials on worker start
 

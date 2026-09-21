@@ -1,13 +1,17 @@
 import { trimString } from "@leitwerk-dev/domain";
 import type { Codec, LauncherValidationError } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export interface ProcessAnalysisParams {
+	/** @internal */
 	processRef: string;
+	/** @internal */
 	instruction: string;
-	/** Hidden launch param: absolute directory where the server was started. */
+	/** Hidden launch param: absolute directory where the server was started. @internal */
 	analysisCwd: string;
 }
 
+/** @internal */
 export const processAnalysisParamsCodec: Codec<ProcessAnalysisParams> = {
 	parse(value) {
 		const record = typeof value === "object" && value !== null ? value : {};
@@ -22,14 +26,23 @@ export const processAnalysisParamsCodec: Codec<ProcessAnalysisParams> = {
 	},
 };
 
-/** Visible fields validated at launch time. analysisCwd is merged by the launcher. */
+/** Visible fields validated at launch time. analysisCwd is merged by the launcher. @internal */
 export type VisibleProcessAnalysisParams = Omit<ProcessAnalysisParams, "analysisCwd">;
 
-export function validateProcessAnalysisLaunchInput(
-	input: Record<string, unknown>,
-):
-	| { ok: true; value: VisibleProcessAnalysisParams }
-	| { ok: false; errors: readonly LauncherValidationError[] } {
+/** @internal */
+export function validateProcessAnalysisLaunchInput(input: Record<string, unknown>):
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			value: VisibleProcessAnalysisParams;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			errors: readonly LauncherValidationError[];
+	  } {
 	const processRef = trimString(input.processRef);
 	const instruction = trimString(input.instruction);
 	const errors: LauncherValidationError[] = [];

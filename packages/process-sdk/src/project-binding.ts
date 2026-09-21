@@ -1,13 +1,17 @@
 import type { IntegrationToolExecutionContext } from "./extension-api.js";
 import { objectArg } from "./tool-arguments.js";
 
+/** @public */
 export interface RepositoryProjectBinding {
+	/** @public */
 	owner: string;
+	/** @public */
 	repo: string;
+	/** @public */
 	profile: string;
 }
 
-/** Validate an authorized project's binding, retaining extension-selected legacy metadata. */
+/** Validate an authorized project's binding, retaining extension-selected legacy metadata. @public */
 export function resolveRepositoryProjectBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
 	provider: string,

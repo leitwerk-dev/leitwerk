@@ -39,10 +39,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await ctx.supervisor.detachAll("test_close");
-	ctx.app.server.closeIdleConnections?.();
-	ctx.app.server.closeAllConnections?.();
-	await ctx.app.close();
+	await ctx.close();
 }, 20_000);
 
 describe("GET /api/processes", () => {

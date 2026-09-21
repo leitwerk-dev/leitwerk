@@ -6,24 +6,37 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateProcessTurnAnnotationInput {
+	/** @internal */
 	id?: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	annotationType: string;
-	/** Null means append-only and therefore not addressable via upsert key. */
+	/** Null means append-only and therefore not addressable via upsert key. @internal */
 	annotationKey?: string | null;
+	/** @internal */
 	references?: readonly TurnAnnotationReference[];
+	/** @internal */
 	payload?: Record<string, unknown>;
+	/** @internal */
 	createdAt?: string;
+	/** @internal */
 	updatedAt?: string;
 }
 
+/** @internal */
 export interface UpdateProcessTurnAnnotationInput {
+	/** @internal */
 	annotationType?: string;
-	/** Null means append-only and therefore not addressable via upsert key. */
+	/** Null means append-only and therefore not addressable via upsert key. @internal */
 	annotationKey?: string | null;
+	/** @internal */
 	references?: readonly TurnAnnotationReference[];
+	/** @internal */
 	payload?: Record<string, unknown>;
+	/** @internal */
 	updatedAt?: string;
 }
 
@@ -50,8 +63,10 @@ function rowToProcessTurnAnnotation(
 	};
 }
 
+/** @internal */
 export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateProcessTurnAnnotationInput): ProcessTurnAnnotation {
 			const id = input.id ?? generateId("tan");
 			const createdAt = input.createdAt ?? now();
@@ -70,11 +85,13 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 			return rowToProcessTurnAnnotation(values);
 		},
 
+		/** @internal */
 		getById(id: string): ProcessTurnAnnotation | null {
 			const row = db.select().from(s.turnAnnotations).where(eq(s.turnAnnotations.id, id)).get();
 			return row ? rowToProcessTurnAnnotation(row) : null;
 		},
 
+		/** @internal */
 		findByKey(instanceId: string, annotationKey: string): ProcessTurnAnnotation | null {
 			const key = annotationKey.trim();
 			if (key.length === 0) {
@@ -93,6 +110,7 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 			return row ? rowToProcessTurnAnnotation(row) : null;
 		},
 
+		/** @internal */
 		listByInstance(instanceId: string): ProcessTurnAnnotation[] {
 			return db
 				.select()
@@ -103,6 +121,7 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 				.map(rowToProcessTurnAnnotation);
 		},
 
+		/** @internal */
 		update(id: string, input: UpdateProcessTurnAnnotationInput): ProcessTurnAnnotation | null {
 			const setValues: SQLiteUpdateSetSource<typeof s.turnAnnotations> = {
 				updatedAt: input.updatedAt ?? now(),
@@ -117,6 +136,7 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 			return this.getById(id);
 		},
 
+		/** @internal */
 		delete(id: string): boolean {
 			const result = db.delete(s.turnAnnotations).where(eq(s.turnAnnotations.id, id)).run();
 			return result.changes > 0;

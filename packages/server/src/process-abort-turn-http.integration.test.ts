@@ -87,7 +87,7 @@ afterEach(() => {
 
 afterAll(async () => {
 	if (harness) {
-		await harness.ctx.app.close();
+		await harness.close();
 	}
 	rmSync(tempRoot, { recursive: true, force: true });
 });

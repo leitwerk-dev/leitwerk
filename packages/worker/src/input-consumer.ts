@@ -9,6 +9,7 @@ export interface DeliveredInput {
 	deliveryMode: InputDeliveryMode;
 }
 
+/** @internal */
 export interface InputItem extends Omit<InputDelivery, "receivedAt"> {}
 
 export type TargetedInputItem = InputItem & { target: NonNullable<InputItem["target"]> };

@@ -14,32 +14,49 @@ import {
 	readWsEventToolName,
 } from "./ws-event-payloads.js";
 
+/** @internal */
 export const REASONING_PREVIEW_MAX_CHARS = 1_024;
 
+/** @internal */
 export interface CompactTurnSummary {
-	assistant: { text: string; thinking: string; lastUpdatedAt: string | null };
+	/** @internal */
+	assistant: {
+		/** @internal */
+		text: string;
+		/** @internal */
+		thinking: string;
+		/** @internal */
+		lastUpdatedAt: string | null;
+	};
+	/** @internal */
 	currentTool: Pick<
 		PrimaryPathToolCallSnapshot,
 		"toolCallId" | "toolName" | "status" | "isError"
 	> | null;
+	/** @internal */
 	usage: UsageSnapshot | null;
+	/** @internal */
 	toolCallCount: number;
+	/** @internal */
 	traceItemCount: number;
-	/** The last persisted event incorporated into this projection. */
+	/** The last persisted event incorporated into this projection. @internal */
 	throughEventSequence: number;
+	/** @internal */
 	lastTraceKind: "thinking" | "tool_call" | "operational_event" | null;
 }
 
-/** Initial-page state. It never contains trace items, tool arguments or results. */
+/** Initial-page state. It never contains trace items, tool arguments or results. @internal */
 export interface CompactActiveTurnSnapshot
 	extends CompactTurnSummary,
 		Pick<
 			PrimaryPathActiveTurnSnapshot,
 			"turnRecordId" | "turnId" | "turnType" | "pathType" | "startedAt"
 		> {
+	/** @internal */
 	summaryPending: boolean;
 }
 
+/** @internal */
 export function emptyCompactTurnSummary(): CompactTurnSummary {
 	return {
 		assistant: { text: "", thinking: "", lastUpdatedAt: null },
@@ -52,7 +69,7 @@ export function emptyCompactTurnSummary(): CompactTurnSummary {
 	};
 }
 
-/** Retain paragraph context; wrapping and blank-line removal belong to the preview viewport. */
+/** Retain paragraph context; wrapping and blank-line removal belong to the preview viewport. @internal */
 export function reasoningPreviewTail(text: string): string {
 	const normalized = text.replace(/\r\n?/g, "\n");
 	const lines = normalized.split("\n").filter((line) => line.trim() !== "");
@@ -60,12 +77,17 @@ export function reasoningPreviewTail(text: string): string {
 	return (lines.join("\n") + separator).slice(-REASONING_PREVIEW_MAX_CHARS);
 }
 
+/** @internal */
 export function applyEventToCompactTurnSummary(
 	previous: CompactTurnSummary,
 	event: {
+		/** @internal */
 		eventType: string;
+		/** @internal */
 		data: Record<string, unknown>;
+		/** @internal */
 		createdAt: string;
+		/** @internal */
 		eventSequence: number;
 	},
 ): CompactTurnSummary {

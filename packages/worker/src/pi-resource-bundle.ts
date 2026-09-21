@@ -108,12 +108,20 @@ async function writeExtractedFiles(
 	}
 }
 
-/** Extracts a verified bundle into an empty staging directory, then atomically publishes it. */
+/** Extracts a verified bundle into an empty staging directory, then atomically publishes it. @internal */
 export async function materializeCanonicalPiResourceBundle(input: {
+	/** @internal */
 	bundle: Uint8Array;
+	/** @internal */
 	digest: string;
+	/** @internal */
 	targetDir: string;
-}): Promise<{ targetDir: string; reused: boolean }> {
+}): Promise<{
+	/** @internal */
+	targetDir: string;
+	/** @internal */
+	reused: boolean;
+}> {
 	const files = verifyCanonicalPiResourceBundle(input.bundle, input.digest);
 	const targetDir = path.resolve(input.targetDir);
 	const parent = path.dirname(targetDir);

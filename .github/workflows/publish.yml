@@ -142,6 +142,9 @@ jobs:
       - name: Run full test gate
         run: npm run test:full
 
+      - name: Check API classification and interface reports
+        run: npm run api:check
+
       - name: Build documentation
         run: npm run docs:build
 

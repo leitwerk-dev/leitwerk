@@ -1,15 +1,22 @@
 import type { ProcessEngineDeps } from "../process-engine/types.js";
 
+/** @internal */
 export interface SuccessfulLlmTurnStartOptions {
+	/** @internal */
 	profileId?: string;
+	/** @internal */
 	providerId?: string;
+	/** @internal */
 	modelId?: string;
+	/** @internal */
 	thinkingLevel?: string;
+	/** @internal */
 	piResourceSnapshotDigest?: string;
+	/** @internal */
 	workerRuntimeProfileId?: string;
 }
 
-/** Creates a preflight double that successfully prepares every new LLM turn start. */
+/** Creates a preflight double that successfully prepares every new LLM turn start. @internal */
 export function prepareSuccessfulLlmTurnStarts(
 	options: SuccessfulLlmTurnStartOptions = {},
 ): NonNullable<ProcessEngineDeps["prepareTurnStarts"]> {

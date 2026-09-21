@@ -58,3 +58,12 @@ confirmed conflict evidence, and an observation cursor alongside existing MR and
 facts. Existing source callers retain their event kind and observation behavior.
 HTTPS preflight performs repository reads and a dry-run feature-branch push without
 putting credentials in URLs or command arguments.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/gitlab`: `GitLabBranch`, `GitLabClient`, `GitLabClientLike`, `GitLabCommit`, `GitLabDiff`, `GitLabIdentity`, `GitLabIntegration`, `GitLabJob`, `GitLabMergeRequest`, `GitLabNote`, `GitLabObservation`, `GitLabPipeline`, `GitLabProject`, `GitLabSelection`, `GitLabSourceConfig`, `default`, `gitlabExternal`, `gitlabIntegration`, `gitlabRepositoryCredentials`, `observationKey`, `observeMergeRequest`, `parseGitLabSelection`, `resolveGitLabBinding`, `selectGitLabProjects`, `setupGitLabIntegration`.
+- `@leitwerk-dev/gitlab/testing`: `GitLabClientLike`, `GitLabMergeRequest`, `GitLabPipeline`, `GitLabProject`, `LocalGitLabAdapter`, `setupGitLabIntegration`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

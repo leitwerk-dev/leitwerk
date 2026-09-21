@@ -41,6 +41,7 @@ const EMPTY_TRACE: TurnTraceSnapshot = {
 	piInput: null,
 };
 
+/** @internal */
 export function createCompactProcessDetailFixtureFactory() {
 	const reasoningSourceByInstanceId = new Map<
 		string,
@@ -51,6 +52,7 @@ export function createCompactProcessDetailFixtureFactory() {
 		}
 	>();
 
+	/** @internal */
 	function compact(input: unknown): ProcessDetailUiSnapshotResponseBody {
 		const legacy = input as LegacyProcessDetailFixture;
 		if (!Array.isArray(legacy.turnRecords)) {
@@ -124,6 +126,7 @@ export function createCompactProcessDetailFixtureFactory() {
 		return compactDetail;
 	}
 
+	/** @internal */
 	function reasoningResponse(
 		instanceId: string,
 		turnRecordId: string,
@@ -139,5 +142,10 @@ export function createCompactProcessDetailFixtureFactory() {
 		};
 	}
 
-	return { compact, reasoningResponse };
+	return {
+		/** @internal */
+		compact,
+		/** @internal */
+		reasoningResponse,
+	};
 }

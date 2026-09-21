@@ -119,20 +119,37 @@ function getRuntimeCatalog(): Promise<ExtensionCatalog> {
 	return runtimeCatalogPromise;
 }
 
+/** @internal */
 export interface WorkerEntryRuntimeOverrides extends Partial<WorkerRuntimeConfig> {
+	/** @internal */
 	piFactory?: PiTreeHandleFactory;
+	/** @internal */
 	gitOps?: RunRootGitOps;
+	/** @internal */
 	developmentTools?: WorkerRuntimeAdapters["developmentTools"];
+	/** @internal */
 	transport?: WorkerIpc;
+	/** @internal */
 	sessionSnapshots?: WorkerSessionSnapshotExchange;
+	/** @internal */
 	resultImageTools?: WorkerRuntimeAdapters["resultImageTools"];
+	/** @internal */
 	scheduler?: WorkerRuntimeScheduler;
+	/** @internal */
 	stderr?: NodeJS.WritableStream;
+	/** @internal */
+	onConnectionDiagnostic?: (message: string) => void;
+	/** @internal */
 	env?: NodeJS.ProcessEnv;
+	/** @internal */
 	exit?: (code: number) => void;
+	/** @internal */
 	extensionEvents?: WorkerRuntimeAdapters["extensionEvents"];
+	/** @internal */
 	resolveWorkerProcess?: WorkerRuntimeAdapters["resolveWorkerProcess"];
+	/** @internal */
 	extensionCatalog?: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @internal */
 	workerExtensionApi?: WorkerExtensionAPI;
 }
 
@@ -140,6 +157,7 @@ function resolveDefaultPiFactory(): PiTreeHandleFactory {
 	return new SdkPiTreeHandleFactory();
 }
 
+/** @internal */
 export function createWorkerEntryRuntime(
 	overrides: WorkerEntryRuntimeOverrides = {},
 ): WorkerRuntime {
@@ -168,7 +186,12 @@ export function createWorkerEntryRuntime(
 	}
 	const transport =
 		overrides.transport ??
-		createWorkerIpcFromEnvironment({ env: runtimeEnv, instanceId, workerId });
+		createWorkerIpcFromEnvironment({
+			env: runtimeEnv,
+			instanceId,
+			workerId,
+			onDiagnostic: overrides.onConnectionDiagnostic,
+		});
 	const sessionSnapshots =
 		overrides.sessionSnapshots ??
 		createWorkerSessionSnapshotExchangeFromEnv({ env: runtimeEnv, instanceId, workerId });

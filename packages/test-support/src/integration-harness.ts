@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { ProvidedCapability } from "@leitwerk-dev/process-sdk";
 import {
@@ -7,30 +10,104 @@ import {
 	getDefaultConfig,
 	type LeitwerkConfig,
 } from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "./in-process-worker.js";
+import {
+	createInProcessWorkerSpawn,
+	type InProcessWorkerSpawnOptions,
+} from "./in-process-worker.js";
 
+/** @public */
 export interface IntegrationHarness<
 	TResources extends Record<string, unknown> = Record<string, never>,
 > {
+	/** @public */
 	ctx: AppContext;
+	/** @public */
+	close(): Promise<void>;
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @public */
 	address: string;
+	/** @internal */
 	resources: TResources;
 }
 
+/** @public */
 export interface IntegrationHarnessOptions<
 	TResources extends Record<string, unknown> = Record<string, never>,
 > {
+	/** @internal */
 	config?: LeitwerkConfig;
+	/** @public */
 	configOverride?: (config: LeitwerkConfig) => void;
+	/** @public */
 	appOverrides?: Partial<AppOptions>;
+	/** @internal */
 	listen?: boolean;
-	inProcessWorkers?: boolean;
+	/** Start background services when binding a listener. Defaults to true. @public */
+	backgroundServices?: boolean;
+	/** @internal */
+	inProcessWorkers?: boolean | Omit<InProcessWorkerSpawnOptions, "extensionCatalog">;
+	/** @public */
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @internal */
 	preProvidedCapabilities?: readonly ProvidedCapability[];
+	/** @internal */
 	resources?: TResources;
 }
 
+/** Owns disposable file-backed storage; close retains it for the next open, dispose removes it. @internal */
+export function createPersistentIntegrationFixture(
+	prefix: string,
+	configure?: (config: LeitwerkConfig) => void,
+) {
+	const root = mkdtempSync(path.join(tmpdir(), prefix));
+	let harness: IntegrationHarness | undefined;
+	/** @internal */
+	function createConfig() {
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = path.join(root, "state.sqlite");
+		config.storage.process_workspaces_dir = path.join(root, "workspaces");
+		config.storage.tree_files_dir = path.join(root, "trees");
+		config.pi.agent_dir = path.join(root, "pi");
+		configure?.(config);
+		return config;
+	}
+	/** @internal */
+	async function close() {
+		await harness?.close();
+		harness = undefined;
+	}
+	return {
+		/** @internal */
+		root,
+		/** @internal */
+		createConfig,
+		/** @internal */
+		context() {
+			if (!harness) throw new Error("Fixture is not open");
+			return harness.ctx;
+		},
+		/** @internal */
+		async open(options: IntegrationHarnessOptions) {
+			harness = await createIntegrationHarness({
+				...options,
+				config: options.config ?? createConfig(),
+			});
+			return harness;
+		},
+		/** @internal */
+		close,
+		/** @internal */
+		async dispose() {
+			try {
+				await close();
+			} finally {
+				rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+			}
+		},
+	};
+}
+/** @public */
 export async function createIntegrationHarness<
 	TResources extends Record<string, unknown> = Record<string, never>,
 >(opts: IntegrationHarnessOptions<TResources>): Promise<IntegrationHarness<TResources>> {
@@ -52,24 +129,38 @@ export async function createIntegrationHarness<
 
 	if (opts.inProcessWorkers !== false && !appOpts.localWorkerSpawnImpl) {
 		appOpts.localWorkerSpawnImpl = createInProcessWorkerSpawn({
+			...(typeof opts.inProcessWorkers === "object" ? opts.inProcessWorkers : {}),
 			extensionCatalog,
 		});
 	}
 	const ctx = await createAppContext(appOpts);
 
 	let address = "";
-	if (opts.listen !== false || config.workers.runner === "local") {
-		await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-		const info = ctx.app.server.address();
-		const port = typeof info === "object" && info ? info.port : 0;
-		address = `http://127.0.0.1:${port}`;
-		ctx.config.server.base_url = address;
+	try {
+		if (opts.listen !== false) {
+			if (opts.backgroundServices !== false) {
+				({ address } = await ctx.listen({
+					host: "127.0.0.1",
+					port: 0,
+					useBoundAddressAsBaseUrl: true,
+				}));
+			} else {
+				address = await ctx.app.listen({ host: "127.0.0.1", port: 0 });
+				ctx.config.server.base_url = address;
+			}
+		}
+	} catch (error) {
+		await ctx.close().catch(() => {});
+		throw error;
 	}
 
 	return {
 		ctx,
+		close: () => ctx.close(),
 		config,
-		address,
+		get address() {
+			return address || (ctx.app.server.listening ? ctx.config.server.base_url : "");
+		},
 		resources: opts.resources ?? ({} as TResources),
 	};
 }

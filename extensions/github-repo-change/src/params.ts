@@ -6,39 +6,59 @@ import {
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
 
+/** @public */
 interface GitHubRepoChangeCommonParams {
+	/** @public */
 	githubProfile: string;
+	/** @public */
 	sshCredentialRef: string;
+	/** @public */
 	owner: string;
+	/** @public */
 	repo: string;
 }
 
+/** @public */
 export interface GitHubIssueOriginParams {
+	/** @public */
 	origin: "issue";
+	/** @public */
 	issueNumber: number;
+	/** @public */
 	issueUrl: string;
+	/** @public */
 	triggerLabel: string;
+	/** @public */
 	doneLabel: string;
 }
 
+/** @public */
 export interface GitHubUiOriginParams {
+	/** @public */
 	origin: "ui";
+	/** @public */
 	issueNumber: null;
+	/** @public */
 	issueUrl: null;
+	/** @public */
 	triggerLabel: null;
+	/** @public */
 	doneLabel: null;
 }
 
+/** @public */
 export type GitHubRepoChangeParams = RepositoryChangeLaunchParams<
 	GitHubRepoChangeCommonParams & (GitHubIssueOriginParams | GitHubUiOriginParams)
 >;
 
+/** @public */
 export function isIssueOrigin(
 	params: GitHubRepoChangeParams,
 ): params is GitHubRepoChangeParams & GitHubIssueOriginParams {
 	return params.origin === "issue";
 }
 
+/** @public */
 export const githubRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<GitHubRepoChangeParams>({
 		normalize(value) {

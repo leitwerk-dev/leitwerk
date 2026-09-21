@@ -1,29 +1,43 @@
 import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
 import * as v from "valibot";
 
+/** @internal */
 export interface UsageCostSnapshot {
+	/** @internal */
 	input: number;
+	/** @internal */
 	output: number;
+	/** @internal */
 	cacheRead: number;
+	/** @internal */
 	cacheWrite: number;
+	/** @internal */
 	total: number;
 }
 
+/** @internal */
 export interface UsageTokenCounts {
+	/** @internal */
 	input: number;
+	/** @internal */
 	output: number;
-	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. */
+	/** Provider-reported reasoning/thinking tokens. This is a subset of output tokens. @internal */
 	reasoning?: number;
+	/** @internal */
 	cacheRead: number;
+	/** @internal */
 	cacheWrite: number;
+	/** @internal */
 	totalTokens: number;
 }
 
+/** @internal */
 export interface UsageSnapshot extends UsageTokenCounts {
+	/** @internal */
 	cost: UsageCostSnapshot | null;
-	/** Number of model requests represented by this aggregate, when known. */
+	/** Number of model requests represented by this aggregate, when known. @internal */
 	requestCount?: number;
-	/** Largest input-token count for a single represented model request, when known. */
+	/** Largest input-token count for a single represented model request, when known. @internal */
 	maxInputTokens?: number;
 }
 
@@ -50,6 +64,7 @@ function normalizeUsageCostSnapshot(value: unknown): UsageCostSnapshot | null {
 	};
 }
 
+/** @internal */
 export function cloneUsageSnapshot(usage: UsageSnapshot | null | undefined): UsageSnapshot | null {
 	if (!usage) {
 		return null;
@@ -60,6 +75,7 @@ export function cloneUsageSnapshot(usage: UsageSnapshot | null | undefined): Usa
 	};
 }
 
+/** @internal */
 export function normalizeUsageSnapshot(value: unknown): UsageSnapshot | null {
 	const parsedValue = v.safeParse(unknownRecordSchema, value);
 	if (!parsedValue.success) {
@@ -93,6 +109,7 @@ export function normalizeUsageSnapshot(value: unknown): UsageSnapshot | null {
 	};
 }
 
+/** @internal */
 export function mergeUsageSnapshots(
 	total: UsageSnapshot | null,
 	usage: UsageSnapshot | null,

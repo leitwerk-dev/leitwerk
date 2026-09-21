@@ -3,7 +3,7 @@ import { createAllRepos } from "../db/repositories.js";
 import { createFileBackedProcessSessionSnapshotStore } from "../process-session-store.js";
 import { createProjectedSessionSnapshotStore } from "../session-summary-projection.js";
 
-/** Accept fixture snapshots through the same persisted projection as worker uploads. */
+/** Accept fixture snapshots through the same persisted projection as worker uploads. @internal */
 export async function writeProcessSessionSnapshot(
 	ctx: Pick<AppContext, "db" | "config">,
 	instanceId: string,

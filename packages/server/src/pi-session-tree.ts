@@ -7,21 +7,33 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { createReadonlyEntryTree } from "@leitwerk-dev/protocol";
 
+/** @internal */
 export interface PiSessionTreeNode {
+	/** @internal */
 	entry: SessionEntry;
+	/** @internal */
 	children: PiSessionTreeNode[];
+	/** @internal */
 	label?: string;
 }
 
+/** @internal */
 export interface ReadonlyPiSessionTree {
-	/** Identifier of the parsed source (instance id or file path). */
+	/** Identifier of the parsed source (instance id or file path). @internal */
 	treeFile: string;
+	/** @internal */
 	header: SessionHeader | null;
+	/** @internal */
 	entries: SessionEntry[];
+	/** @internal */
 	leafId: string | null;
+	/** @internal */
 	getEntry(id: string): SessionEntry | undefined;
+	/** @internal */
 	getChildren(parentId: string): SessionEntry[];
+	/** @internal */
 	getBranch(fromId?: string): SessionEntry[];
+	/** @internal */
 	getTree(): PiSessionTreeNode[];
 }
 

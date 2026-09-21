@@ -44,20 +44,34 @@ export interface RecordWritesDeps
 		| "transaction"
 	> {}
 
+/** @internal */
 export interface RecordCommit {
+	/** @internal */
 	turnEventSequences?: Record<string, number>;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	processBefore: ProcessInstance | null;
+	/** @internal */
 	processAfter: ProcessInstance | null;
+	/** @internal */
 	committedProject: ProcessProject | null;
+	/** @internal */
 	committedTurnRecords: ProcessTurnRecord[];
+	/** @internal */
 	committedLeafOutcomeSnapshots: ProcessLeafOutcomeSnapshot[];
+	/** @internal */
 	committedAnnotationChanges: Array<{
+		/** @internal */
 		change: "created" | "updated";
+		/** @internal */
 		annotation: ProcessTurnAnnotation;
 	}>;
+	/** @internal */
 	persistedInputs: ProcessInput[];
+	/** @internal */
 	extensionEvents: DeferredProcessExtensionEvent[];
+	/** @internal */
 	workerIntent?: WorkerIntent;
 }
 

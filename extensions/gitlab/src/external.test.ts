@@ -22,6 +22,7 @@ it("debounces comments on unchanged green CI, resets for new arrivals and resume
 			source_branch: "upgrade",
 			web_url: "https://forge.test/mr/1",
 		},
+		targetHead: "target",
 		pipeline: {
 			id: 1,
 			project_id: 7,
@@ -52,6 +53,7 @@ it("debounces comments on unchanged green CI, resets for new arrivals and resume
 	} as unknown as Partial<CoreServerSetupDeps>);
 	const client = {
 		getMergeRequest: async () => observation.mr,
+		getBranch: async () => ({ commit: { id: observation.targetHead } }),
 		listMergeRequestPipelines: async () => [observation.pipeline],
 		getPipeline: async () => observation.pipeline,
 		listMergeRequestFeedback: async () => structuredClone(notes),
@@ -91,6 +93,32 @@ it("debounces comments on unchanged green CI, resets for new arrivals and resume
 	time += 121_000;
 	await provider.poll();
 	expect(fire).toHaveBeenCalledTimes(1);
+	// Mergeability and target changes wake the same idle process even with unchanged green CI.
+	for (const change of [
+		() => {
+			observation.mr.detailed_merge_status = "conflict";
+		},
+		() => {
+			observation.mr.has_conflicts = true;
+		},
+		() => {
+			observation.targetHead = "new-target";
+		},
+		() => {
+			observation.mr.target_branch = "release";
+		},
+		() => {
+			observation.mr.detailed_merge_status = "need_rebase";
+		},
+	]) {
+		armed.resolved.afterKey = observationKey(observation);
+		change();
+		provider = create();
+		time += 30_000;
+		fire.mockClear();
+		await provider.poll();
+		expect(fire).toHaveBeenCalledTimes(1);
+	}
 });
 
 it.each([

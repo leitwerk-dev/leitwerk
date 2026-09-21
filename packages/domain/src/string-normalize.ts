@@ -1,3 +1,4 @@
+/** @internal */
 export function toErrorMessage(error: unknown): string {
 	if (error instanceof Error && error.message.trim() !== "") {
 		return error.message;
@@ -5,20 +6,23 @@ export function toErrorMessage(error: unknown): string {
 	return String(error);
 }
 
-/** Return non-blank strings verbatim; unlike trimToNull, preserve surrounding whitespace. */
+/** Return non-blank strings verbatim; unlike trimToNull, preserve surrounding whitespace. @internal */
 export function readNonBlankString(value: unknown): string | null {
 	return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
+/** @internal */
 export function trimString(value: unknown): string {
 	return typeof value === "string" ? value.trim() : "";
 }
 
+/** @internal */
 export function trimToNull(value: unknown): string | null {
 	const trimmed = trimString(value);
 	return trimmed === "" ? null : trimmed;
 }
 
+/** @internal */
 export function normalizeStringArray(value: unknown): string[] {
 	if (!Array.isArray(value)) {
 		return [];
@@ -33,6 +37,7 @@ export function normalizeStringArray(value: unknown): string[] {
  * flow diagrams) must route through this so the translation lives in one place
  * and can later be swapped for a localized lookup.
  */
+/** @internal */
 export function humanizeProcessLabel(identifier: unknown): string {
 	return trimString(identifier)
 		.replace(/[_-]+/g, " ")
@@ -50,7 +55,7 @@ const IDENTIFIER_WORD_LABELS: Record<string, string> = {
 	ui: "UI",
 };
 
-/** Display an identifier with known acronyms, preserving the remaining spelling. */
+/** Display an identifier with known acronyms, preserving the remaining spelling. @internal */
 export function formatProcessIdentifier(value: string): string {
 	return value
 		.split(/[_-]+/)

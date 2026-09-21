@@ -19,3 +19,15 @@ repair tools/prompts, pinned identity resolution, and stored names. The shared m
 owns Git publication and lifecycle policy without importing provider integrations.
 Provider cursors and receipts remain durable in namespaced publication state.
 Forgejo retains its original namespace, turn/action identifiers, and write identities.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/coding`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParams`, `RepositoryChangeParamsBase`, `RepositoryChangeProcessConfig`, `codingActionIds`, `createRepositoryChangeParamsCodec`, `default`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/auto-work-branch`: `buildAutoWorkBranchFromSeed`, `generateAutoWorkBranchRandomHex`.
+- `@leitwerk-dev/coding/finalization-git`: `GitIdentity`, `commitAndPushWorkBranch`.
+- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeFinalizationState`, `RepositoryChangeState`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

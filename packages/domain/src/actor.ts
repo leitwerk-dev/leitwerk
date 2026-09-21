@@ -11,6 +11,7 @@ function isActorKind(value: unknown): value is ActorKind {
  * defaults for invalid kind/provider. Returns `null` when no stable id is
  * present so callers can decide on a fallback actor.
  */
+/** @internal */
 export function normalizeActor(value: unknown): Actor | null {
 	if (typeof value !== "object" || value === null) {
 		return null;
@@ -33,7 +34,7 @@ export function normalizeActor(value: unknown): Actor | null {
 	};
 }
 
-/** Serializes an `Actor` to a stable JSON string for durable storage. */
+/** Serializes an `Actor` to a stable JSON string for durable storage. @internal */
 export function serializeActor(actor: Actor): string {
 	return JSON.stringify({
 		id: actor.id,
@@ -48,6 +49,7 @@ export function serializeActor(actor: Actor): string {
  * stored value is missing or malformed. Used when reading legacy rows that
  * predate actor attribution.
  */
+/** @internal */
 export function parseActorOrSystem(value: string | null | undefined): Actor {
 	if (value === null || value === undefined || value.trim() === "") {
 		return SYSTEM_ACTOR;
@@ -59,5 +61,5 @@ export function parseActorOrSystem(value: string | null | undefined): Actor {
 	}
 }
 
-/** Canonical serialized form of `SYSTEM_ACTOR`, used as the durable default. */
+/** Canonical serialized form of `SYSTEM_ACTOR`, used as the durable default. @internal */
 export const SERIALIZED_SYSTEM_ACTOR = serializeActor(SYSTEM_ACTOR);

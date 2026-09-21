@@ -32,9 +32,13 @@ interface RegisteredProcessWatcher {
 	launchSkillIds: readonly string[];
 }
 
+/** @public */
 interface ProcessWatcherRegistryOptions {
+	/** @internal */
 	modelProfiles?: readonly LauncherModelProfileSummary[];
+	/** @internal */
 	getModelProfilesForProcess?: (processId: string) => readonly LauncherModelProfileSummary[];
+	/** @internal */
 	processModelPolicy?: ServerProcessModelPolicy;
 }
 
@@ -161,6 +165,7 @@ function collectConfiguredProcessWatchers(input: {
 	return { watchers, errors };
 }
 
+/** @public */
 export function buildProcessWatcherRegistry(
 	catalog: Pick<ExtensionCatalog, "processes">,
 	config: LeitwerkConfig,

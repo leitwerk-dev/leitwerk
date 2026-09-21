@@ -69,3 +69,11 @@ Review, Assess Poem, and Review Feedback for the poem process. The human
 review and automated assessment remain distinct; turn ids and routing are unchanged.
 
 Poem review outcomes publish their existing concise summary separately from the full review result. This adds no turn or model call and leaves human review routing unchanged.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/showcase-processes`: `default`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

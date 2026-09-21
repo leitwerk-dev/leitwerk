@@ -7,20 +7,32 @@ import type {
 	RepositoryPullRequest,
 } from "@leitwerk-dev/process-sdk";
 
+/** @public */
 export interface ConflictEvidence {
+	/** @public */
 	reason?: "behind";
+	/** @public */
 	owner: string;
+	/** @public */
 	repo: string;
+	/** @public */
 	prNumber: number;
+	/** @public */
 	headBranch: string;
+	/** @public */
 	baseBranch: string;
+	/** @public */
 	headSha: string;
+	/** @public */
 	baseSha: string;
+	/** @public */
 	url: string;
 }
+/** @public */
 export function conflictKey(value: ConflictEvidence): string {
 	return JSON.stringify([value.owner, value.repo, value.prNumber, value.headSha, value.baseSha]);
 }
+/** @public */
 export function validateConflict(
 	value: unknown,
 	expected: Omit<ConflictEvidence, "baseSha" | "url">,
@@ -50,6 +62,7 @@ export function validateConflict(
 		throw new Error("Stale or invalid pull request conflict evidence");
 	return evidence;
 }
+/** @internal */
 export function describeConflict(event: unknown): ExternalEventDescription {
 	const evidence = (event as { conflict: ConflictEvidence }).conflict;
 	return {
@@ -64,8 +77,18 @@ export function describeConflict(event: unknown): ExternalEventDescription {
 		],
 	};
 }
+/** @internal */
 export function conflictEvidence(
-	config: { owner: string; repo: string; prNumber: number; headSha: string },
+	config: {
+		/** @internal */
+		owner: string;
+		/** @internal */
+		repo: string;
+		/** @internal */
+		prNumber: number;
+		/** @internal */
+		headSha: string;
+	},
 	pr: Pick<
 		RepositoryPullRequest,
 		"number" | "state" | "merged" | "mergeable" | "mergeable_state" | "head" | "base" | "html_url"
@@ -97,7 +120,7 @@ export function conflictEvidence(
 	};
 }
 
-/** Observe every refresh; fire each conflict pair once per live subscription. */
+/** Observe every refresh; fire each conflict pair once per live subscription. @internal */
 export function createConflictReporter(sources: ExternalSourceServiceLike, kind: string) {
 	const accepted = new Map<string, string>();
 	return async (
@@ -125,10 +148,28 @@ export function createConflictReporter(sources: ExternalSourceServiceLike, kind:
 	};
 }
 
-/** A captured generation and resolved identity must still be armed after provider I/O. */
+/** A captured generation and resolved identity must still be armed after provider I/O. @internal */
 export function sameSubscription(
-	captured: { id: string; instanceId: string; generation?: string; resolved: unknown },
-	current: { id: string; instanceId: string; generation?: string; resolved: unknown },
+	captured: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		generation?: string;
+		/** @internal */
+		resolved: unknown;
+	},
+	current: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		generation?: string;
+		/** @internal */
+		resolved: unknown;
+	},
 ): boolean {
 	return (
 		current.id === captured.id &&

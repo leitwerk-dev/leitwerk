@@ -2,16 +2,35 @@ import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { parseProcessWatcherLaunchModelConfig } from "./process-watcher-source.js";
 import { objectArg } from "./tool-arguments.js";
 
+/** @public */
 export interface RepositoryIssueWatcherConfig {
+	/** @internal */
 	profile: string;
+	/** @internal */
 	pollInterval: string;
-	repositories: { include: readonly string[]; exclude: readonly string[] };
-	labels: { trigger: string; done: string };
+	/** @internal */
+	repositories: {
+		/** @internal */
+		include: readonly string[];
+		/** @internal */
+		exclude: readonly string[];
+	};
+	/** @internal */
+	labels: {
+		/** @internal */
+		trigger: string;
+		/** @internal */
+		done: string;
+	};
 }
 
+/** @internal */
 export function matchesRepository(
 	config: Pick<RepositoryIssueWatcherConfig, "repositories">,
-	repository: { full_name: string },
+	repository: {
+		/** @internal */
+		full_name: string;
+	},
 ): boolean {
 	const { include = [], exclude = [] } = config.repositories ?? {};
 	return (
@@ -40,7 +59,7 @@ function repositoryNames(value: unknown, path: string): readonly string[] {
 	});
 }
 
-/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. */
+/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. @internal */
 export function parseRepositoryIssueWatcherConfig(
 	raw: unknown,
 	legacyType: string,
@@ -71,17 +90,28 @@ export function parseRepositoryIssueWatcherConfig(
 	if (distinctLabels && parsed.labels.trigger === parsed.labels.done)
 		throw new Error("Trigger and done labels must differ");
 	return {
+		/** @internal */
 		config: parsed,
+		/** @internal */
 		enabled: config.enabled,
+		/** @internal */
 		launchModelConfig: parseProcessWatcherLaunchModelConfig(config.launch),
 	};
 }
 
+/** @internal */
 export function presentRepositoryIssueWatcherConfig(config: RepositoryIssueWatcherConfig) {
 	return {
+		/** @internal */
 		targetSummary: `Profile ${config.profile} · trigger ${config.labels.trigger}`,
+		/** @internal */
 		details: [
-			{ label: "Profile", value: config.profile },
+			{
+				/** @internal */
+				label: "Profile",
+				/** @internal */
+				value: config.profile,
+			},
 			{ label: "Included repositories", value: config.repositories.include.join(", ") || "all" },
 			{ label: "Excluded repositories", value: config.repositories.exclude.join(", ") || "none" },
 			{ label: "Trigger label", value: config.labels.trigger },

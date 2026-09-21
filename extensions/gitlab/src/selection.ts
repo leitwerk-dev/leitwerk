@@ -1,9 +1,24 @@
 import type { GitLabClientLike, GitLabProject } from "./client.js";
+/** @public */
 export interface GitLabSelection {
-	projects: { include: readonly string[]; exclude: readonly string[] };
-	groups: { include: readonly string[]; exclude: readonly string[] };
+	/** @public */
+	projects: {
+		/** @public */
+		include: readonly string[];
+		/** @internal */
+		exclude: readonly string[];
+	};
+	/** @public */
+	groups: {
+		/** @public */
+		include: readonly string[];
+		/** @internal */
+		exclude: readonly string[];
+	};
+	/** @internal */
 	allAccessible: boolean;
 }
+/** @public */
 export function parseGitLabSelection(raw: Record<string, unknown>): GitLabSelection {
 	const list = (value: unknown): string[] => {
 		if (value === undefined) return [];
@@ -36,13 +51,14 @@ export function parseGitLabSelection(raw: Record<string, unknown>): GitLabSelect
 		throw new Error("GitLab requires explicit project/group includes or all_accessible: true");
 	return parsed;
 }
+/** @internal */
 export function projectExcluded(selection: GitLabSelection, name: string): boolean {
 	return (
 		selection.projects.exclude.includes(name) ||
 		selection.groups.exclude.some((group) => name.startsWith(`${group}/`))
 	);
 }
-/** Include union, subgroup expansion, exclusion precedence, stable-ID deduplication. */
+/** Include union, subgroup expansion, exclusion precedence, stable-ID deduplication. @public */
 export async function selectGitLabProjects(
 	client: GitLabClientLike,
 	selection: GitLabSelection,

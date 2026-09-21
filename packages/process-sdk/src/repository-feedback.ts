@@ -1,27 +1,41 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 
+/** @public */
 export interface RepositoryFeedbackItem {
+	/** @public */
 	kind: "conversation" | "review" | "inline";
+	/** @internal */
 	id: number;
+	/** @public */
 	body: string;
+	/** @internal */
 	createdAt: string;
+	/** @public */
 	author: string;
+	/** @internal */
 	path?: string;
+	/** @internal */
 	line?: number | null;
 }
 
-/** Batch already-authorized, unseen feedback after its quiet period. */
+/** Batch already-authorized, unseen feedback after its quiet period. @internal */
 export function repositoryFeedbackBatch(
 	unseen: readonly RepositoryFeedbackItem[],
-	config: Record<`${RepositoryFeedbackItem["kind"]}Cursor`, number> & { quietPeriodMs: number },
+	config: Record<`${RepositoryFeedbackItem["kind"]}Cursor`, number> & {
+		/** @internal */
+		quietPeriodMs: number;
+	},
 	now: number,
 ) {
 	if (!unseen.length) return null;
 	const latest = Math.max(...unseen.map((item) => Date.parse(item.createdAt) || 0));
 	if (now - latest < config.quietPeriodMs) return null;
 	const cursors = {
+		/** @internal */
 		conversationCursor: config.conversationCursor,
+		/** @internal */
 		reviewCursor: config.reviewCursor,
+		/** @internal */
 		inlineCursor: config.inlineCursor,
 	};
 	for (const item of unseen) {
@@ -29,12 +43,24 @@ export function repositoryFeedbackBatch(
 		cursors[key] = Math.max(cursors[key], item.id);
 	}
 	return {
-		event: { feedbackIds: unseen.map(({ kind, id }) => ({ kind, id })), cursors },
+		/** @internal */
+		event: {
+			/** @internal */
+			feedbackIds: unseen.map(({ kind, id }) => ({
+				/** @internal */
+				kind,
+				/** @internal */
+				id,
+			})),
+			/** @internal */
+			cursors,
+		},
+		/** @internal */
 		mergeKey: `${cursors.conversationCursor}:${cursors.reviewCursor}:${cursors.inlineCursor}`,
 	};
 }
 
-/** Normalize common forge feedback fields; reject empty bodies and missing identities. */
+/** Normalize common forge feedback fields; reject empty bodies and missing identities. @internal */
 export function normalizeRepositoryFeedback(
 	kind: RepositoryFeedbackItem["kind"],
 	item: Record<string, unknown>,

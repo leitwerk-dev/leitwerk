@@ -1,6 +1,13 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 
-export const manifest = { id: "coding", version: "0.1.0" } as const;
+/** @internal */
+export const manifest = {
+	/** @internal */
+	id: "coding",
+	/** @internal */
+	version: "0.1.0",
+} as const;
+/** @public */
 const extension: LeitwerkExtensionModule = { manifest };
 export default extension;
 

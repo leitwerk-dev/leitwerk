@@ -12,39 +12,85 @@ import type {
 } from "./client.js";
 import { assertGitHubRepository } from "./client.js";
 
+/** @public */
 export interface LocalGitHubRepository {
+	/** @public */
 	repository: ReturnType<LocalGitHubAdapter["newRepository"]>;
+	/** @public */
 	issues: GitHubIssue[];
+	/** @public */
 	pulls: GitHubPullRequest[];
+	/** @public */
 	comments: Record<string, Array<ReturnType<LocalGitHubAdapter["newComment"]>>>;
+	/** @public */
 	feedback: Record<string, GitHubFeedbackItem[]>;
+	/** @public */
 	checks: Record<string, GitHubCheckSummary>;
+	/** @public */
 	releases: GitHubRelease[];
+	/** @public */
 	assets: Record<string, string>;
-	labels: Array<{ id: number; name: string }>;
+	/** @public */
+	labels: Array<{
+		/** @internal */
+		id: number;
+		/** @internal */
+		name: string;
+	}>;
+	/** @public */
 	labelEvents: Record<string, GitHubLabelEvent[]>;
-	reactions: Record<string, Array<{ id: number; content: string; user: { login: string } }>>;
+	/** @public */
+	reactions: Record<
+		string,
+		Array<{
+			/** @internal */
+			id: number;
+			/** @internal */
+			content: string;
+			/** @internal */
+			user: {
+				/** @internal */
+				login: string;
+			};
+		}>
+	>;
+	/** @public */
 	feedbackEditors: Record<string, string | null>;
 }
+/** @public */
 export interface LocalGitHubState {
+	/** @public */
 	version: 1;
+	/** @public */
 	sequence: number;
+	/** @public */
 	repositories: LocalGitHubRepository[];
+	/** @public */
 	failAfterPullRequestWrite: boolean;
+	/** @public */
 	members: string[];
+	/** @public */
 	failAfterWrite: string | null;
 }
+/** @public */
 export interface LocalGitHubOptions {
+	/** @public */
 	root: string;
+	/** @public */
 	baseUrl: string;
+	/** @public */
 	now?: () => number;
+	/** @public */
 	nextId?: () => number;
+	/** @public */
 	seeds?: LocalRepositorySeed[];
+	/** @public */
 	allowedOrganization?: string;
 }
 
-/** Persistent local GitHub with actual commit ancestry and configurable release assets. */
+/** Persistent local GitHub with actual commit ancestry and configurable release assets. @public */
 export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalGitHubOptions> {
+	/** @public */
 	constructor(options: LocalGitHubOptions) {
 		super(options, "github.json", {
 			version: 1,
@@ -64,11 +110,13 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		}
 		for (const seed of options.seeds ?? []) this.seed(seed);
 	}
+	/** @public */
 	repo(owner: string, name: string) {
 		const repo = this.state.repositories.find((r) => r.repository.full_name === `${owner}/${name}`);
 		if (!repo) throw new Error("Unknown local GitHub repository");
 		return repo;
 	}
+	/** @public */
 	seed(seed: LocalRepositorySeed) {
 		const existing = this.state.repositories.find(
 			(r) => r.repository.full_name === `${seed.owner}/${seed.name}`,
@@ -92,18 +140,25 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		return repo;
 	}
+	/** @public */
 	setChecks(repo: LocalGitHubRepository, summary: GitHubCheckSummary) {
 		this.git.head(repo.repository.ssh_url, summary.headSha);
 		repo.checks[summary.headSha] = structuredClone(summary);
 		this.save();
 	}
+	/** @public */
 	publishRelease(
 		repo: LocalGitHubRepository,
 		input: {
+			/** @public */
 			tag: string;
+			/** @public */
 			ref: string;
+			/** @public */
 			assets: Record<string, string>;
+			/** @internal */
 			draft?: boolean;
+			/** @internal */
 			prerelease?: boolean;
 		},
 	) {
@@ -128,9 +183,17 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		return release;
 	}
+	/** @public */
 	override newRepository(seed: LocalRepositorySeed) {
-		return { ...super.newRepository(seed), archived: false, has_issues: true };
+		return {
+			...super.newRepository(seed),
+			/** @public */
+			archived: false,
+			/** @public */
+			has_issues: true,
+		};
 	}
+	/** @public */
 	setMembership(login: string, member: boolean) {
 		this.state.members = this.state.members.filter(
 			(value) => value.toLowerCase() !== login.toLowerCase(),
@@ -138,6 +201,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		if (member) this.state.members.push(login);
 		this.save();
 	}
+	/** @public */
 	failNextResponse(operation: "comment" | "reply" | "reaction" | "issue" | "label") {
 		this.state.failAfterWrite = operation;
 		this.save();
@@ -148,9 +212,17 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		throw new Error(`Local GitHub: response lost after ${operation} write`);
 	}
+	/** @public */
 	createIssue(
 		repo: LocalGitHubRepository,
-		input: { title: string; body?: string; author?: string },
+		input: {
+			/** @public */
+			title: string;
+			/** @public */
+			body?: string;
+			/** @public */
+			author?: string;
+		},
 	) {
 		const number = this.id();
 		const issue: GitHubIssue = {
@@ -167,6 +239,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		return issue;
 	}
+	/** @public */
 	setIssueLabel(
 		repo: LocalGitHubRepository,
 		number: number,
@@ -190,6 +263,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 		return event;
 	}
+	/** @public */
 	editFeedback(
 		repo: LocalGitHubRepository,
 		number: number,
@@ -206,6 +280,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 	}
 
+	/** @public */
 	client(): GitHubClientLike {
 		const profile: GitHubProfile = {
 			apiBaseUrl: this.options.baseUrl,

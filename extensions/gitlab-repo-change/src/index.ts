@@ -2,12 +2,21 @@ import { gitlabIntegration } from "@leitwerk-dev/gitlab";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { createGitLabRepoChangeLauncher } from "./launcher.js";
 import { createGitLabRepoChangeProcess } from "./process.js";
+/** @public */
 export const manifest = {
+	/** @public */
 	id: "gitlab-repo-change",
+	/** @public */
 	version: "0.1.9",
+	/** @public */
 	requires: ["gitlab", "coding"],
 } as const;
-export function createGitLabRepoChange(options: { docker: boolean }) {
+/** @public */
+/** @public */
+export function createGitLabRepoChange(options: {
+	/** @public */
+	docker: boolean;
+}) {
 	if (typeof options.docker !== "boolean") throw new Error("docker must be a boolean");
 	const launcher = createGitLabRepoChangeLauncher();
 	const process = createGitLabRepoChangeProcess(launcher, options.docker);
@@ -23,8 +32,18 @@ export function createGitLabRepoChange(options: { docker: boolean }) {
 			api.onStop(() => launcher.configure(null));
 		},
 	};
-	return { extension, process, launcher };
+	/** @public */
+	/** @public */
+	return {
+		/** @public */
+		extension,
+		/** @public */
+		process,
+		/** @public */
+		launcher,
+	};
 }
+/** @public */
 export const {
 	extension: defaultExtension,
 	process: gitlabRepoChangeProcess,

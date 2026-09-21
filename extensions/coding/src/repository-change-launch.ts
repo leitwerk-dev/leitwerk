@@ -1,23 +1,35 @@
 import { parseRepoLocator, trimString } from "@leitwerk-dev/domain";
 import type { Codec } from "@leitwerk-dev/process-sdk";
 
+/** @public */
 export interface RepositoryChangeParamsBase {
+	/** @public */
 	repoLocator: string;
+	/** @public */
 	baseBranch: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	prompt: string;
 }
 
+/** @public */
 export type RepositoryChangeLaunchParams<TExtra extends object = Record<never, never>> = TExtra &
 	RepositoryChangeParamsBase;
 
+/** @public */
 export interface NormalizedRepositoryChangeParamsInput {
+	/** @internal */
 	repoLocator: string;
+	/** @internal */
 	baseBranch: string;
+	/** @internal */
 	workBranch: string;
+	/** @internal */
 	prompt: string;
 }
 
+/** @public */
 export function repositoryChangeParamsRecord(
 	value: unknown,
 	displayName: string,
@@ -28,6 +40,7 @@ export function repositoryChangeParamsRecord(
 	return value as Record<string, unknown>;
 }
 
+/** @public */
 export function normalizeRepositoryChangeParamsInput(
 	value: unknown,
 	displayName: string,
@@ -42,7 +55,9 @@ export function normalizeRepositoryChangeParamsInput(
 	};
 }
 
+/** @public */
 export function createRepositoryChangeParamsCodec<T extends RepositoryChangeParamsBase>(input: {
+	/** @public */
 	normalize(value: unknown): T;
 }): Codec<T> {
 	return { parse: input.normalize, serialize: (value) => value };

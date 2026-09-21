@@ -8,14 +8,19 @@ import { prepareSandboxDirectory, sandboxConfig } from "./config.js";
 import type { SandboxCompositionFactory, SandboxInput } from "./index.js";
 import { assertSandboxPath, processIdentity, resetSandbox, sandboxDirectory } from "./storage.js";
 
+/** @public */
 export interface SandboxLauncherOptions {
+	/** @public */
 	publicRoot: string;
+	/** @public */
 	workspaceRoot: string;
+	/** @public */
 	compositionEntry: string;
+	/** @internal */
 	args?: string[];
 }
 
-/** Only these ambient values enter the sandbox process tree. */
+/** Only these ambient values enter the sandbox process tree. @public */
 export function sandboxEnvironment(
 	directory: string,
 	ambient: NodeJS.ProcessEnv = process.env,
@@ -41,6 +46,7 @@ function port(value: string | undefined, fallback: number): number {
 	return Number(value);
 }
 
+/** @public */
 export async function launchSandbox(options: SandboxLauncherOptions): Promise<void> {
 	const workspaceRoot = realpathSync(options.workspaceRoot);
 	const root = sandboxDirectory(workspaceRoot);

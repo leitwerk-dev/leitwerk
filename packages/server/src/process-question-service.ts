@@ -13,10 +13,38 @@ import type { RepositoryBundle } from "./db/repositories.js";
 import type { ProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
+/** @internal */
 type ProcessQuestionRepos = Pick<
 	RepositoryBundle,
 	"events" | "leases" | "processes" | "questionRequests" | "transaction" | "turnRecords"
 >;
+
+/** @internal */
+type SubmitAnswersResult =
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			request: ProcessQuestionRequest;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			code: "not_found" | "invalid";
+			/** @internal */
+			message: string;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			code: "not_current";
+			/** @internal */
+			message: string;
+			/** @internal */
+			request: ProcessQuestionRequest;
+	  };
 
 function isCurrentRequest(repos: ProcessQuestionRepos, request: ProcessQuestionRequest): boolean {
 	const process = repos.processes.getById(request.instanceId);
@@ -30,16 +58,23 @@ function isCurrentRequest(repos: ProcessQuestionRepos, request: ProcessQuestionR
 	);
 }
 
+/** @internal */
 export function createProcessQuestionService(input: {
+	/** @internal */
 	repos: ProcessQuestionRepos;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	getWorkerId: (instanceId: string) => string | null;
+	/** @internal */
 	sendQuestionResponse: (
 		instanceId: string,
 		workerId: string,
 		payload: WorkerQuestionResponsePayload,
 	) => void;
+	/** @internal */
 	emitQuestionRequested?: (request: ProcessQuestionRequest) => void | Promise<void>;
 }) {
 	const sendResponse = (instanceId: string, workerId: string, request: ProcessQuestionRequest) => {
@@ -51,7 +86,9 @@ export function createProcessQuestionService(input: {
 		});
 	};
 	return {
+		/** @internal */
 		listOpen: (instanceId?: string) => input.repos.questionRequests.listOpen(instanceId),
+		/** @internal */
 		async handleWorkerRequest(
 			instanceId: string,
 			workerLeaseId: string,
@@ -117,27 +154,28 @@ export function createProcessQuestionService(input: {
 				instanceId,
 			);
 		},
+		/** @internal */
 		async submitAnswers(
 			instanceId: string,
 			requestId: string,
 			draftInput: readonly QuestionAnswerDraft[],
 			actor: Actor,
-		) {
+		): Promise<SubmitAnswersResult> {
 			try {
 				const result = await input.processOperations.runExclusive(instanceId, () =>
-					input.repos.transaction((repos) => {
+					input.repos.transaction((repos): SubmitAnswersResult => {
 						const request = repos.questionRequests.getById(requestId);
 						if (!request || request.instanceId !== instanceId) {
 							return {
-								ok: false as const,
-								code: "not_found" as const,
+								ok: false,
+								code: "not_found",
 								message: "Question request not found",
 							};
 						}
 						if (request.status !== "open" || !isCurrentRequest(repos, request)) {
 							return {
-								ok: false as const,
-								code: "not_current" as const,
+								ok: false,
+								code: "not_current",
 								message: "Question request is no longer active",
 								request,
 							};
@@ -149,8 +187,8 @@ export function createProcessQuestionService(input: {
 						});
 						if (!answered) {
 							return {
-								ok: false as const,
-								code: "not_current" as const,
+								ok: false,
+								code: "not_current",
 								message: "Question request was answered elsewhere",
 								request: repos.questionRequests.getById(request.id) ?? request,
 							};
@@ -160,7 +198,10 @@ export function createProcessQuestionService(input: {
 							eventType: "question_answered",
 							data: { requestId: request.id, actorId: actor.id },
 						});
-						return { ok: true as const, request: answered };
+						return {
+							ok: true,
+							request: answered,
+						};
 					}),
 				);
 				if (!result.ok) return result;
@@ -174,8 +215,8 @@ export function createProcessQuestionService(input: {
 				return result;
 			} catch (error) {
 				return {
-					ok: false as const,
-					code: "invalid" as const,
+					ok: false,
+					code: "invalid",
 					message: error instanceof Error ? error.message : String(error),
 				};
 			}
@@ -183,4 +224,5 @@ export function createProcessQuestionService(input: {
 	};
 }
 
+/** @internal */
 export type ProcessQuestionService = ReturnType<typeof createProcessQuestionService>;

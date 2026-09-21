@@ -13,40 +13,77 @@ import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";
 import { createGitLabIssueDiscovery } from "./issue-watcher.js";
+/** @public */
 export interface GitLabDeliveryObservation extends GitLabObservation {
+	/** @public */
 	observationKey?: string;
+	/** @public */
 	feedback?: GitLabFeedback[];
+	/** @public */
 	conflict?: ConflictEvidence;
 }
+/** @public */
 export const GITLAB_ISSUE_CANCELLED_KIND = "@leitwerk-dev/gitlab.issue-cancelled";
+/** @public */
 export interface GitLabIssueCancelledConfig {
+	/** @public */
 	profile: string;
+	/** @public */
 	projectId: number;
+	/** @public */
 	issueIid: number;
+	/** @public */
 	iid: number;
+	/** @public */
 	triggerLabel: string;
+	/** @public */
 	pollInterval?: string;
 }
+/** @internal */
 export const GITLAB_MR_KIND = "@leitwerk-dev/gitlab.merge-request";
+/** @public */
 export interface GitLabSourceConfig {
+	/** @public */
 	profile: string;
+	/** @public */
 	projectId: number;
+	/** @public */
 	iid: number;
+	/** @public */
 	pollInterval?: string;
+	/** @public */
 	afterKey?: string;
 	/** Optional timer also wakes retry work when GitLab facts have not changed. */
+	/** @public */
 	wakeAt?: number;
+	/** @public */
 	delivery?: {
+		/** @public */
 		headSha: string;
+		/** @public */
 		owner: string;
+		/** @public */
 		repo: string;
+		/** @public */
 		headBranch: string;
+		/** @public */
 		baseBranch: string;
+		/** @public */
 		lastConflictKey?: string | null;
 	};
-	feedback?: { afterId: number; since?: string; quietPeriodMs: number };
+	/** @public */
+	/** @public */
+	feedback?: {
+		/** @public */
+		afterId: number;
+		/** @public */
+		since?: string;
+		/** @public */
+		quietPeriodMs: number;
+	};
 }
 /** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. */
+/** @public */
 export function pendingGitLabFeedback(
 	items: GitLabFeedback[],
 	afterId: number,
@@ -55,6 +92,7 @@ export function pendingGitLabFeedback(
 	const start = since ? Date.parse(since) : 0;
 	return items.filter((item) => item.id > afterId && Date.parse(item.createdAt) >= start);
 }
+/** @public */
 export function gitLabFeedbackReadyAt(
 	items: GitLabFeedback[],
 	quietPeriodMs: number,
@@ -63,7 +101,8 @@ export function gitLabFeedbackReadyAt(
 		? Math.max(...items.map((item) => Date.parse(item.createdAt))) + quietPeriodMs
 		: null;
 }
-export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
+/** @public */
+export const observationKey = ({ mr, pipeline, targetHead }: GitLabObservation): string =>
 	JSON.stringify([
 		mr.state,
 		mr.sha,
@@ -71,10 +110,27 @@ export const observationKey = ({ mr, pipeline }: GitLabObservation): string =>
 		pipeline?.project_id,
 		pipeline?.id,
 		pipeline?.status,
+		mr.source_project_id,
+		mr.source_branch,
+		mr.target_project_id,
+		mr.target_branch,
+		targetHead,
+		mr.has_conflicts,
+		mr.merge_status,
+		mr.detailed_merge_status,
 	]);
+/** @public */
 export const gitlabExternal = {
+	/** @public */
 	issueCancelled<P, S>(
-		resolve: (ctx: { params: P; state: S }) => GitLabIssueCancelledConfig,
+		/** @public */
+		/** @public */
+		resolve: (ctx: {
+			/** @public */
+			params: P;
+			/** @public */
+			state: S;
+		}) => GitLabIssueCancelledConfig,
 	): ExternalActionSource<P, S, unknown> {
 		return {
 			kind: GITLAB_ISSUE_CANCELLED_KIND,
@@ -84,8 +140,16 @@ export const gitlabExternal = {
 			resolve,
 		};
 	},
+	/** @public */
 	mergeRequest<P, S>(
-		resolve: (ctx: { params: P; state: S }) => GitLabSourceConfig,
+		/** @public */
+		/** @public */
+		resolve: (ctx: {
+			/** @public */
+			params: P;
+			/** @public */
+			state: S;
+		}) => GitLabSourceConfig,
 	): ExternalActionSource<P, S, GitLabDeliveryObservation> {
 		return {
 			kind: GITLAB_MR_KIND,
@@ -97,10 +161,15 @@ export const gitlabExternal = {
 		};
 	},
 };
+/** @internal */
 export function createGitLabProvider(
 	deps: CoreServerSetupDeps,
 	integration: GitLabIntegration,
-	options: { now?: () => number } = {},
+	/** @public */
+	/** @public */
+	options: {
+		/** @internal */ now?: () => number;
+	} = {},
 ) {
 	const schedule = new Map<string, { at: number; failures: number }>();
 	const now = options.now ?? Date.now;

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { ProcessInstance, WorkerLease } from "@leitwerk-dev/domain";
 import {
 	parseResolvedExtensionEntries,
 	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
@@ -72,44 +73,72 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./worker-websocket-ipc.js";
 
+/** @internal */
 export interface SupervisorDeps
 	extends Pick<
 		RepositoryBundle,
 		"leases" | "processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "events"
 	> {
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
+	/** @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	ipcHandler: ReturnType<typeof createIpcHandler>;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	runnerRuntime: {
+		/** @internal */
 		runner: WorkerRunner;
+		/** @internal */
 		volume?: ProcessVolume;
+		/** @internal */
 		webSocketIpc: WorkerWebSocketIpcManager;
 	};
+	/** @internal */
 	resolvedExtensionEntriesJson?: string;
+	/** @internal */
 	serverEpoch?: string;
+	/** @internal */
 	logger?: WorkerUnitCleanupLogger;
+	/** @internal */
 	resolveResourceBundle?: (digest: string) => PiResourceBundle | null;
+	/** @internal */
 	resolveRepositoryCredentials?: WorkerStartPayloadBuilderDeps["resolveRepositoryCredentials"];
+	/** @internal */
 	integrationTools?: WorkerStartPayloadBuilderDeps["integrationTools"];
+	/** @internal */
 	resolveCredential?: WorkerStartPayloadBuilderDeps["resolveCredential"];
 }
 
+/** @public */
 export interface WorkerHandle {
+	/** @internal */
 	workerId: string;
+	/** @internal */
 	instanceId: string;
-	/** Runtime-specific handle id when known; used to distinguish duplicate units during adoption scans. */
+	/** Runtime-specific handle id when known; used to distinguish duplicate units during adoption scans. @internal */
 	unitId?: string;
+	/** @internal */
 	namespace?: string;
+	/** @internal */
 	send(message: ServerToWorkerMessage): void;
+	/** @internal */
 	kill(signal?: NodeJS.Signals | number): void;
-	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. */
+	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. @internal */
 	killAndWait?(signal?: NodeJS.Signals | number): Promise<void>;
+	/** @internal */
 	detach(reason: string): void;
+	/** @internal */
 	onceExit(listener: () => void): void;
 }
 
@@ -119,9 +148,6 @@ interface RunnerWorkerStartOptions {
 	startupDeadlineMs: number;
 	resolvedExtensionEntriesJson?: string;
 	snapshotToken?: string;
-	onEnvelope(envelope: IpcEnvelope): void;
-	onInvalidMessage(): void;
-	onRuntimeError(error: unknown): void;
 	onRuntimeExit(): void;
 }
 
@@ -129,44 +155,66 @@ type ServerToWorkerMessageBody<T = ServerToWorkerMessage> = T extends ServerToWo
 	? Pick<T, "type" | "payload">
 	: never;
 
+/** @public */
 export interface WorkerSupervisor {
-	/** Returns undefined when accepted into the capacity queue. */
+	/** Returns undefined when accepted into the capacity queue. @internal */
 	spawnWorker(instanceId: string): Promise<WorkerHandle | undefined>;
+	/** @internal */
 	stopWorker(instanceId: string, reason: string): Promise<void>;
+	/** @internal */
 	abortTurn(instanceId: string, reason: string): void;
+	/** @internal */
 	deliverInputs(instanceId: string, inputs: InputDelivery[]): void;
+	/** @internal */
 	acceptTurnStart(
 		instanceId: string,
 		workerId: string,
 		startRecordId: string,
 		turnRecordId: string,
 	): void;
+	/** @internal */
 	reconcileAcceptedTurnStart(instanceId: string, workerId: string): boolean;
+	/** @internal */
 	acknowledgeTurnTerminal(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerTurnTerminalRecordedPayload,
 	): void;
+	/** @internal */
 	questionResponse(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerQuestionResponsePayload,
 	): void;
+	/** @internal */
 	credentialUpdateResult(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerCredentialUpdateResultPayload,
 	): void;
+	/** @internal */
 	integrationToolResult(
 		instanceId: string,
 		workerId: string,
 		payload: WorkerIntegrationToolResultPayload,
 	): void;
+	/** @public */
 	getWorker(instanceId: string): WorkerHandle | undefined;
+	/** @internal */
 	isAdoptionPending(instanceId: string): boolean;
+	/** @internal */
 	adoptRegisteredWorkers(): Promise<void>;
+	/** @internal */
 	detachAll(reason: string): Promise<void>;
+	/** @public */
 	shutdownAll(reason: string): Promise<void>;
+}
+
+function isLiveWorkerLease(lease: WorkerLease | null, workerId: string): lease is WorkerLease {
+	return (
+		lease?.workerId === workerId &&
+		!["draining", "cleanup", "failed", "exited"].includes(lease.state)
+	);
 }
 
 function generateWorkerId(): string {
@@ -175,6 +223,7 @@ function generateWorkerId(): string {
 	return `wkr_${ts}${rand}`;
 }
 
+/** @internal */
 export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	const workers = new Map<string, WorkerHandle>();
 	const startupTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -274,20 +323,12 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 	}
 
 	function clearStartupTimer(instanceId: string): void {
-		const timer = startupTimers.get(instanceId);
-		if (timer === undefined) {
-			return;
-		}
-		clearTimeout(timer);
+		clearTimeout(startupTimers.get(instanceId));
 		startupTimers.delete(instanceId);
 	}
 
 	function clearIdleStopTimer(instanceId: string): void {
-		const timer = idleStopTimers.get(instanceId);
-		if (timer === undefined) {
-			return;
-		}
-		clearTimeout(timer);
+		clearTimeout(idleStopTimers.get(instanceId));
 		idleStopTimers.delete(instanceId);
 	}
 
@@ -547,41 +588,30 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		clearStartupTimer(instanceId);
 		clearIdleStopTimer(instanceId);
 		const leaseBeforeError = safeGetLeaseByInstance(instanceId);
-		const shouldNormalizeProcessError =
-			leaseBeforeError?.workerId === workerId &&
-			leaseBeforeError.state !== "draining" &&
-			leaseBeforeError.state !== "cleanup" &&
-			leaseBeforeError.state !== "failed" &&
-			leaseBeforeError.state !== "exited";
 		const shouldStopWorker = error instanceof WorkerOutboundBufferOverflowError;
-		if (!shouldNormalizeProcessError) {
-			if (shouldStopWorker) {
-				const handle = workers.get(instanceId);
-				if (handle?.workerId === workerId) {
-					handle.kill("SIGKILL");
-				}
-			}
-			return;
-		}
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		const startupTimedOut = startupTimedOutWorkers.delete(timedOutWorkerKey(instanceId, workerId));
-		const failedBeforeBootstrap =
-			leaseBeforeError.state === "spawning" || leaseBeforeError.state === "bootstrapping";
-		emitServerObservedWorkerFailure(instanceId, workerId, {
-			errorCode: shouldStopWorker
-				? "worker_websocket_outbound_buffer_overflow"
-				: startupTimedOut
-					? "startup_timeout"
+		if (isLiveWorkerLease(leaseBeforeError, workerId)) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const startupTimedOut = startupTimedOutWorkers.delete(
+				timedOutWorkerKey(instanceId, workerId),
+			);
+			const failedBeforeBootstrap =
+				leaseBeforeError.state === "spawning" || leaseBeforeError.state === "bootstrapping";
+			emitServerObservedWorkerFailure(instanceId, workerId, {
+				errorCode: shouldStopWorker
+					? "worker_websocket_outbound_buffer_overflow"
+					: startupTimedOut
+						? "startup_timeout"
+						: failedBeforeBootstrap
+							? "spawn_error"
+							: "process_error",
+				message: startupTimedOut
+					? `Worker startup timed out after ${startupTimeoutMs}ms: ${errorMessage}`
 					: failedBeforeBootstrap
-						? "spawn_error"
-						: "process_error",
-			message: startupTimedOut
-				? `Worker startup timed out after ${startupTimeoutMs}ms: ${errorMessage}`
-				: failedBeforeBootstrap
-					? `Worker process error before bootstrap completed: ${errorMessage}`
-					: `Worker process error: ${errorMessage}`,
-			errorClass: "infrastructure",
-		});
+						? `Worker process error before bootstrap completed: ${errorMessage}`
+						: `Worker process error: ${errorMessage}`,
+				errorClass: "infrastructure",
+			});
+		}
 		if (shouldStopWorker) {
 			const handle = workers.get(instanceId);
 			if (handle?.workerId === workerId) {
@@ -607,13 +637,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		pendingCleanup.delete(instanceId);
 		const leaseBeforeExit = safeGetLeaseByInstance(instanceId);
 		const startupTimedOut = startupTimedOutWorkers.delete(timedOutWorkerKey(instanceId, workerId));
-		const shouldNormalizeUnexpectedExit =
-			leaseBeforeExit?.workerId === workerId &&
-			leaseBeforeExit.state !== "draining" &&
-			leaseBeforeExit.state !== "cleanup" &&
-			leaseBeforeExit.state !== "failed" &&
-			leaseBeforeExit.state !== "exited";
-		if (shouldNormalizeUnexpectedExit) {
+		if (isLiveWorkerLease(leaseBeforeExit, workerId)) {
 			const diagnostics = formatWorkerExitDiagnostics(info);
 			emitServerObservedWorkerFailure(instanceId, workerId, {
 				errorCode: startupTimedOut
@@ -675,39 +699,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		};
 	}
 
-	function registerRunnerWebSocket(input: {
-		instanceId: string;
-		workerId: string;
-		tokenHash: string;
-		onEnvelope(envelope: IpcEnvelope): void;
-		onInvalidMessage(): void;
-		onRuntimeError(error: unknown): void;
-	}): { unregister(reason: string): void } {
-		if (!runnerRuntime) {
-			throw new Error("runner runtime is not configured");
-		}
-		runnerRuntime.webSocketIpc.registerWorker({
-			instanceId: input.instanceId,
-			workerId: input.workerId,
-			callbacks: {
-				onEnvelope: input.onEnvelope,
-				onInvalidOutput: input.onInvalidMessage,
-				onRuntimeError: input.onRuntimeError,
-			},
-			tokenHash: input.tokenHash,
-		});
-		return {
-			unregister(reason: string) {
-				runnerRuntime.webSocketIpc.unregister(input.instanceId, input.workerId, reason);
-			},
-		};
-	}
-
-	function resolveRunnerStartSelection(instanceId: string) {
-		const process = deps.processes.getById(instanceId);
-		if (!process) {
-			throw new Error(`Cannot start worker for missing process ${instanceId}`);
-		}
+	function resolveRunnerStartSelection(process: ProcessInstance) {
 		if (deps.config.workers.runner === "local") {
 			return {
 				selection: {
@@ -722,7 +714,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			buildRuntimeProfileSelectionInput({
 				config: deps.config,
 				processId: process.processId,
-				componentKeys: deps.projects.listByInstance(instanceId).map((project) => project.key),
+				componentKeys: deps.projects.listByInstance(process.id).map((project) => project.key),
 			}),
 		);
 		if (!selection.ok) {
@@ -746,9 +738,9 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		options: RunnerWorkerStartOptions,
 		connect: { token: string; unregister(reason: string): void },
 	): Promise<WorkerHandle> {
-		const { selection, profile } = resolveRunnerStartSelection(options.instanceId);
 		const process = deps.processes.getById(options.instanceId);
 		if (!process) throw new Error(`Cannot start worker for missing process ${options.instanceId}`);
+		const { selection, profile } = resolveRunnerStartSelection(process);
 		const docker = deps.processGraphs.get(process.processId)?.runtime?.docker === true;
 		const resourceLimits =
 			profile?.resources?.limits ??
@@ -822,9 +814,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		});
 	}
 
-	const modelPolicyFingerprintForProcess = (
-		process: import("@leitwerk-dev/domain").ProcessInstance,
-	) => {
+	const modelPolicyFingerprintForProcess = (process: ProcessInstance) => {
 		if (process.currentExecution?.kind !== "worker_start") {
 			throw new Error(`Process '${process.id}' has no current worker start to fingerprint`);
 		}
@@ -894,44 +884,44 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		let unregisterStartRegistration: (() => void) | undefined;
 		const earlyEnvelopes: IpcEnvelope[] = [];
 		try {
-			const startOptions: RunnerWorkerStartOptions = {
-				instanceId,
-				workerId,
-				startupDeadlineMs,
-				resolvedExtensionEntriesJson: deps.resolvedExtensionEntriesJson,
-				onEnvelope: (envelope) => {
-					if (workers.has(instanceId)) {
-						routeEnvelope(envelope, instanceId);
-					} else {
-						earlyEnvelopes.push(envelope);
-					}
-				},
-				onInvalidMessage: () => {
-					emitServerObservedWorkerFailure(instanceId, workerId, {
-						errorCode: "invalid_worker_websocket_ipc",
-						message: "Worker emitted invalid WebSocket IPC message",
-						errorClass: "infrastructure",
-					});
-				},
-				onRuntimeError: (error) => handleProcessError(instanceId, workerId, error),
-				snapshotToken,
-				onRuntimeExit: () => {
-					processExitedBeforeRegistration = !workers.has(instanceId);
-				},
-			};
-			const connect = registerRunnerWebSocket({
+			runnerRuntime.webSocketIpc.registerWorker({
 				instanceId,
 				workerId,
 				tokenHash: connectTokenHash,
-				onEnvelope: startOptions.onEnvelope,
-				onInvalidMessage: startOptions.onInvalidMessage,
-				onRuntimeError: startOptions.onRuntimeError,
+				callbacks: {
+					onEnvelope: (envelope) => {
+						if (workers.has(instanceId)) {
+							routeEnvelope(envelope, instanceId);
+						} else {
+							earlyEnvelopes.push(envelope);
+						}
+					},
+					onInvalidOutput: () => {
+						emitServerObservedWorkerFailure(instanceId, workerId, {
+							errorCode: "invalid_worker_websocket_ipc",
+							message: "Worker emitted invalid WebSocket IPC message",
+							errorClass: "infrastructure",
+						});
+					},
+					onRuntimeError: (error) => handleProcessError(instanceId, workerId, error),
+				},
 			});
-			unregisterStartRegistration = () => connect.unregister("start_failed");
-			handle = await startRunnerWorker(startOptions, {
-				token: connectToken,
-				unregister: connect.unregister,
-			});
+			const unregister = (reason: string) =>
+				runnerRuntime.webSocketIpc.unregister(instanceId, workerId, reason);
+			unregisterStartRegistration = () => unregister("start_failed");
+			handle = await startRunnerWorker(
+				{
+					instanceId,
+					workerId,
+					startupDeadlineMs,
+					resolvedExtensionEntriesJson: deps.resolvedExtensionEntriesJson,
+					snapshotToken,
+					onRuntimeExit: () => {
+						processExitedBeforeRegistration = !workers.has(instanceId);
+					},
+				},
+				{ token: connectToken, unregister },
+			);
 			unregisterStartRegistration = undefined;
 		} catch (error) {
 			unregisterStartRegistration?.();
@@ -1035,14 +1025,10 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 			if (!handle) {
 				return;
 			}
-			const msg = createIpcMessage<ServerToWorkerMessage>({
+			sendToCurrentWorker(instanceId, handle.workerId, {
 				type: "worker.abort_turn",
-				instanceId,
-				workerId: handle.workerId,
-				messageId: randomUUID(),
 				payload: { reason },
 			});
-			handle.send(msg);
 		},
 
 		deliverInputs(instanceId: string, inputs: InputDelivery[]): void {

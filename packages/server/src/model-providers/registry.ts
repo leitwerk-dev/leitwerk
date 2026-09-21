@@ -4,29 +4,42 @@ import type { ModelProviderDefinition, ProviderCredentialStatus } from "@leitwer
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
 import { validateConfiguredProviderOptions } from "./provider-options.js";
 
+/** @internal */
 export interface RegisteredModelProvider {
+	/** @internal */
 	readonly id: string;
+	/** @internal */
 	readonly ownerExtensionId: string;
+	/** @internal */
 	readonly packageName: string;
+	/** @internal */
 	readonly definition: ModelProviderDefinition;
-	/** The parsed, non-secret provider configuration fragment. */
+	/** The parsed, non-secret provider configuration fragment. @internal */
 	readonly config: unknown;
-	/** Configured credential seed, visible only to the credential service. */
+	/** Configured credential seed, visible only to the credential service. @internal */
 	readonly configuredCredential: unknown | null;
+	/** @internal */
 	readonly piContribution: CatalogPiContribution | null;
 }
 
+/** @internal */
 export interface ModelProviderRegistry {
+	/** @internal */
 	readonly size: number;
+	/** @internal */
 	list(): readonly RegisteredModelProvider[];
+	/** @internal */
 	get(providerId: string): RegisteredModelProvider | null;
+	/** @internal */
 	require(providerId: string): RegisteredModelProvider;
 }
 
+/** @internal */
 export type ModelProviderCredentialStatusResolver = (
 	provider: RegisteredModelProvider,
 ) => ProviderCredentialStatus | Promise<ProviderCredentialStatus>;
 
+/** @internal */
 export const defaultModelProviderCredentialStatus: ModelProviderCredentialStatusResolver = (
 	provider,
 ) =>
@@ -34,11 +47,17 @@ export const defaultModelProviderCredentialStatus: ModelProviderCredentialStatus
 		? { available: false, revision: null }
 		: { available: true, revision: null };
 
+/** @internal */
 export interface CreateModelProviderRegistryInput {
+	/** @internal */
 	readonly sets: readonly OwnedModelProviderSet[];
+	/** @internal */
 	readonly piContributions: readonly CatalogPiContribution[];
+	/** @internal */
 	readonly extensionConfig: Readonly<Record<string, unknown>>;
+	/** @internal */
 	readonly modelProfiles: readonly ModelProfileSnapshot[];
+	/** @internal */
 	readonly titleModelProfileId: string | null;
 }
 
@@ -130,6 +149,7 @@ function validateConfiguredProfiles(
  * Parse extension-owned provider configuration once and freeze the resulting
  * lookup. Provider definitions cannot be added from setupServer().
  */
+/** @internal */
 export function createModelProviderRegistry(
 	input: CreateModelProviderRegistryInput,
 ): ModelProviderRegistry {

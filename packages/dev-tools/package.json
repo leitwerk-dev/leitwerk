@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/dev-tools",
-	"version": "0.1.9",
+	"version": "0.2.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -36,13 +36,14 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/server": "0.1.9",
-		"@leitwerk-dev/ui": "0.1.9",
+		"@leitwerk-dev/server": "0.2.0",
+		"@leitwerk-dev/ui": "0.2.0",
 		"chokidar": "4.0.3",
+		"typescript": "^6.0.2",
 		"vite": "^8.1.4",
 		"yaml": "^2.8.3",
-		"@leitwerk-dev/domain": "0.1.9",
-		"@leitwerk-dev/protocol": "0.1.9"
+		"@leitwerk-dev/domain": "0.2.0",
+		"@leitwerk-dev/protocol": "0.2.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

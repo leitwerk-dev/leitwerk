@@ -12,29 +12,49 @@ import {
 	type TicketCreationDestinationSummary,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export interface LocalTicket {
+	/** @internal */
 	id: string;
+	/** @internal */
 	writeKey: string;
+	/** @internal */
 	destinationId: string;
+	/** @internal */
 	title: string;
+	/** @internal */
 	body: string;
+	/** @internal */
 	url: string;
 }
+/** @internal */
 interface LocalTicketState {
+	/** @internal */
 	version: 1;
+	/** @internal */
 	tickets: LocalTicket[];
+	/** @internal */
 	failAfterPersistence: boolean;
 }
+/** @internal */
 export interface LocalTicketAdapterOptions {
+	/** @internal */
 	file: string;
+	/** @internal */
 	baseUrl: string;
+	/** @internal */
 	destinations: readonly TicketCreationDestinationSummary[];
 }
 
-/** Local persistence only. This entrypoint is never loaded by production registration. */
+/** Local persistence only. This entrypoint is never loaded by production registration. @internal */
 export class LocalTicketAdapter {
+	/** @internal */
 	readonly state: LocalTicketState;
-	constructor(readonly options: LocalTicketAdapterOptions) {
+	/** @internal */
+	constructor(
+		/** @internal */
+		readonly options: LocalTicketAdapterOptions,
+	) {
 		this.state = existsSync(options.file)
 			? JSON.parse(readFileSync(options.file, "utf8"))
 			: { version: 1, tickets: [], failAfterPersistence: false };
@@ -50,13 +70,18 @@ export class LocalTicketAdapter {
 		writeFileSync(`${this.options.file}.tmp`, JSON.stringify(this.state, null, 2), { mode: 0o600 });
 		renameSync(`${this.options.file}.tmp`, this.options.file);
 	}
+	/** @internal */
 	injectLostResponse(enabled = true): void {
 		this.state.failAfterPersistence = enabled;
 		this.save();
 	}
-	tool(
-		writes: ExternalWriteLogRepoLike,
-	): IntegrationToolDefinition<{ title: string; body: string }> {
+	/** @internal */
+	tool(writes: ExternalWriteLogRepoLike): IntegrationToolDefinition<{
+		/** @internal */
+		title: string;
+		/** @internal */
+		body: string;
+	}> {
 		const target = (id: unknown) => {
 			const destination = this.options.destinations.find((d) => d.id === id);
 			if (!destination) throw new Error("Unknown local ticket destination");
@@ -152,6 +177,7 @@ export class LocalTicketAdapter {
 			},
 		};
 	}
+	/** @internal */
 	extension(): LeitwerkExtensionModule {
 		return {
 			manifest: { id: "local-tickets", version: "1.0.0", requires: ["ticket-creation"] },

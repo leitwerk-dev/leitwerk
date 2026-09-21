@@ -8,13 +8,19 @@ import {
 	type Writes,
 } from "./writes.js";
 
+/** @internal */
 export interface TurnFailedWritesInput {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	payload: TurnFailedPayload;
+	/** @internal */
 	existingTurnRecord: ProcessTurnRecord;
+	/** @internal */
 	endedAt?: string;
 }
 
+/** @internal */
 export function buildTurnFailedWrites(input: TurnFailedWritesInput): Writes {
 	const { process, payload, existingTurnRecord } = input;
 	const endedAt = input.endedAt ?? new Date().toISOString();

@@ -19,6 +19,7 @@ import type { WorkerSupervisor } from "../supervisor/worker-supervisor.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 import type { PostCommitEffect } from "./post-commit-effect.js";
 
+/** @internal */
 export type PostCommitEffectFailureCode =
 	| "input_dispatch_failed"
 	| "worker_reconcile_failed"

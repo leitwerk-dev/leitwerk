@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/gitlab",
-	"version": "0.1.9",
+	"version": "0.2.0",
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -25,12 +25,12 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.1.9",
-		"@leitwerk-dev/external-writes": "0.1.9",
-		"@leitwerk-dev/process-sdk": "0.1.9",
-		"@leitwerk-dev/watcher-utils": "0.1.9",
-		"@leitwerk-dev/test-support": "0.1.9",
-		"@leitwerk-dev/repository-rebase": "0.1.9"
+		"@leitwerk-dev/domain": "0.2.0",
+		"@leitwerk-dev/external-writes": "0.2.0",
+		"@leitwerk-dev/process-sdk": "0.2.0",
+		"@leitwerk-dev/watcher-utils": "0.2.0",
+		"@leitwerk-dev/test-support": "0.2.0",
+		"@leitwerk-dev/repository-rebase": "0.2.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1",

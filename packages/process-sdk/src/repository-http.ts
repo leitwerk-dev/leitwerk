@@ -1,18 +1,21 @@
 import { IntegrationHttpClient } from "./integration-http.js";
 import type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 
-/** Common forge endpoints; extensions retain authentication and specialized operations. */
+/** Common forge endpoints; extensions retain authentication and specialized operations. @public */
 export class RepositoryHttpClient<Comment = Record<string, unknown>> extends IntegrationHttpClient {
+	/** @internal */
 	protected repositoryPath(owner: string, repo: string): string {
 		return `/repos/${owner}/${repo}`;
 	}
 
+	/** @internal */
 	getIssue(owner: string, repo: string, number: number, signal?: AbortSignal) {
 		return this.request<RepositoryIssue>(`${this.repositoryPath(owner, repo)}/issues/${number}`, {
 			signal,
 		});
 	}
 
+	/** @public */
 	listIssueComments(owner: string, repo: string, number: number, signal?: AbortSignal) {
 		return this.pages<Comment>(
 			`${this.repositoryPath(owner, repo)}/issues/${number}/comments`,
@@ -20,6 +23,7 @@ export class RepositoryHttpClient<Comment = Record<string, unknown>> extends Int
 		);
 	}
 
+	/** @public */
 	addIssueComment(owner: string, repo: string, number: number, body: string, signal?: AbortSignal) {
 		return this.writeJson(
 			`${this.repositoryPath(owner, repo)}/issues/${number}/comments`,
@@ -29,10 +33,20 @@ export class RepositoryHttpClient<Comment = Record<string, unknown>> extends Int
 		);
 	}
 
+	/** @public */
 	createPullRequest(
 		owner: string,
 		repo: string,
-		input: { title: string; body: string; head: string; base: string },
+		input: {
+			/** @public */
+			title: string;
+			/** @public */
+			body: string;
+			/** @public */
+			head: string;
+			/** @public */
+			base: string;
+		},
 	) {
 		return this.writeJson<RepositoryPullRequest>(
 			`${this.repositoryPath(owner, repo)}/pulls`,
@@ -41,6 +55,7 @@ export class RepositoryHttpClient<Comment = Record<string, unknown>> extends Int
 		);
 	}
 
+	/** @public */
 	getPullRequest(owner: string, repo: string, number: number, signal?: AbortSignal) {
 		return this.request<RepositoryPullRequest>(
 			`${this.repositoryPath(owner, repo)}/pulls/${number}`,
@@ -48,12 +63,14 @@ export class RepositoryHttpClient<Comment = Record<string, unknown>> extends Int
 		);
 	}
 
+	/** @internal */
 	listPullRequests(owner: string, repo: string, state = "open") {
 		return this.pages<RepositoryPullRequest>(
 			`${this.repositoryPath(owner, repo)}/pulls?state=${encodeURIComponent(state)}`,
 		);
 	}
 
+	/** @public */
 	updatePullRequest(
 		owner: string,
 		repo: string,

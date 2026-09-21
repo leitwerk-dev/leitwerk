@@ -2,7 +2,9 @@ import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { ProcessLeafOutcomeDefinition } from "@leitwerk-dev/process-sdk";
 import { buildUiProcessDefinition } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export interface ProcessUiRegistry {
+	/** @internal */
 	getLeafOutcomeDefinition(processId: string): ProcessLeafOutcomeDefinition | undefined;
 }
 

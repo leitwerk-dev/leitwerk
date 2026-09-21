@@ -17,8 +17,16 @@ type ServerMessageType = ServerToWorkerMessage["type"];
 type ServerMessagePayloadByType = {
 	[T in ServerMessageType]: Extract<ServerToWorkerMessage, { type: T }>["payload"];
 };
+/** @internal */
 type WorkerMessageType = WorkerToServerMessage["type"];
-type WorkerMessageByType<T extends WorkerMessageType> = Extract<WorkerToServerMessage, { type: T }>;
+/** @internal */
+type WorkerMessageByType<T extends WorkerMessageType> = Extract<
+	WorkerToServerMessage,
+	{
+		/** @internal */
+		type: T;
+	}
+>;
 type MessageWaiter = {
 	type: WorkerMessageType;
 	count: number;
@@ -31,11 +39,15 @@ type Scheduled = {
 	handler(): void;
 };
 
+/** @internal */
 export interface ManualWorkerRuntimeScheduler extends WorkerRuntimeScheduler {
+	/** @internal */
 	advanceBy(delayMs: number): Promise<void>;
+	/** @internal */
 	pendingDelays(): number[];
 }
 
+/** @internal */
 export function createManualWorkerRuntimeScheduler(
 	initialNow = new Date("2025-01-01T00:00:00.000Z"),
 ): ManualWorkerRuntimeScheduler {
@@ -83,12 +95,15 @@ export function createManualWorkerRuntimeScheduler(
 	};
 }
 
+/** @internal */
 export interface WorkerRuntimeHarnessOptions {
+	/** @internal */
 	config?: Partial<WorkerRuntimeConfig>;
-	/** Optional default used by start() and startLlmTo(). */
+	/** Optional default used by start() and startLlmTo(). @internal */
 	startPayload?: WorkerStartPayload;
-	/** Model the server's durable terminal acknowledgement. Defaults to true. */
+	/** Model the server's durable terminal acknowledgement. Defaults to true. @internal */
 	autoAcknowledgeTerminals?: boolean;
+	/** @internal */
 	adapters: Pick<WorkerRuntimeAdapters, "piFactory" | "gitOps"> &
 		Partial<
 			Pick<
@@ -103,10 +118,22 @@ export interface WorkerRuntimeHarnessOptions {
 		>;
 }
 
+/** @internal */
 export type WorkerRuntimeObservation =
-	| { kind: "ipc"; type: WorkerToServerMessage["type"] }
-	| { kind: "extension"; event: string };
+	| {
+			/** @internal */
+			kind: "ipc";
+			/** @internal */
+			type: WorkerToServerMessage["type"];
+	  }
+	| {
+			/** @internal */
+			kind: "extension";
+			/** @internal */
+			event: string;
+	  };
 
+/** @internal */
 export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions) {
 	let messageHandler: ((message: ServerToWorkerMessage) => void) | undefined;
 	let errorHandler: ((error: Error) => void) | undefined;
@@ -226,26 +253,36 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 	});
 
 	return {
+		/** @internal */
 		scheduler,
+		/** @internal */
 		outgoing,
+		/** @internal */
 		observations,
+		/** @internal */
 		exitCodes,
+		/** @internal */
 		get transportStartCount() {
 			return transportStartCount;
 		},
+		/** @internal */
 		get transportStopCount() {
 			return transportStopCount;
 		},
+		/** @internal */
 		deliver,
+		/** @internal */
 		async connect() {
 			await runtime.start();
 		},
+		/** @internal */
 		async start(payload = options.startPayload) {
 			if (!payload) throw new Error("WorkerRuntimeHarness.start requires a start payload");
 			await this.connect();
 			deliver("worker.start", payload);
 			await this.flush();
 		},
+		/** @internal */
 		async stop(reason: string) {
 			const terminal = [...outgoing]
 				.reverse()
@@ -261,7 +298,15 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			}
 			await runtime.stop(reason);
 		},
-		async acceptStart(acceptance: { startRecordId?: string; turnRecordId?: string } = {}) {
+		/** @internal */
+		async acceptStart(
+			acceptance: {
+				/** @internal */
+				startRecordId?: string;
+				/** @internal */
+				turnRecordId?: string;
+			} = {},
+		) {
 			if (!latestStart) throw new Error("Cannot accept a turn before worker.start");
 			deliver("worker.turn_start_accepted", {
 				startRecordId: acceptance.startRecordId ?? latestStart.turnStart.id,
@@ -269,6 +314,7 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			});
 			await this.flush();
 		},
+		/** @internal */
 		async startLlmTo<T extends WorkerMessageType>(
 			type: T,
 			payload = options.startPayload,
@@ -282,12 +328,15 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 			await this.acceptStart();
 			return this.waitForMessage(type);
 		},
+		/** @internal */
 		reconnect() {
 			connectHandler?.();
 		},
+		/** @internal */
 		failTransport(error: Error) {
 			errorHandler?.(error);
 		},
+		/** @internal */
 		async waitForMessage<T extends WorkerMessageType>(
 			type: T,
 			count = 1,
@@ -302,6 +351,7 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 				}),
 			);
 		},
+		/** @internal */
 		async flush() {
 			for (let index = 0; index < 100; index++)
 				await new Promise<void>((resolve) => setImmediate(resolve));
@@ -309,4 +359,5 @@ export function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions)
 	};
 }
 
+/** @internal */
 export type WorkerRuntimeHarness = ReturnType<typeof createWorkerRuntimeHarness>;

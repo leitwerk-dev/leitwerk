@@ -5,28 +5,49 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateWorkerLeaseInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	workerId: string;
+	/** @internal */
 	state: WorkerState;
+	/** @internal */
 	serverEpoch?: string | null;
+	/** @internal */
 	connectTokenHash?: string | null;
+	/** @internal */
 	snapshotTokenHash?: string | null;
+	/** @internal */
 	modelPolicyFingerprint?: string | null;
+	/** @internal */
 	bootstrapReceipt?: WorkerBootstrapReceipt | null;
+	/** @internal */
 	turnStartRecordId?: string | null;
 }
 
+/** @internal */
 export interface UpdateWorkerLeaseInput {
+	/** @internal */
 	state?: WorkerState;
+	/** @internal */
 	serverEpoch?: string | null;
+	/** @internal */
 	connectTokenHash?: string | null;
+	/** @internal */
 	snapshotTokenHash?: string | null;
+	/** @internal */
 	modelPolicyFingerprint?: string | null;
+	/** @internal */
 	lastHeartbeatAt?: string | null;
+	/** @internal */
 	connectedAt?: string | null;
+	/** @internal */
 	workspacePreparationStartedAt?: string | null;
+	/** @internal */
 	readyAt?: string | null;
+	/** @internal */
 	exitedAt?: string | null;
 }
 
@@ -53,8 +74,10 @@ function rowToWorkerLease(row: typeof s.workerLeases.$inferSelect): WorkerLease 
 	};
 }
 
+/** @internal */
 export function createWorkerLeaseRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateWorkerLeaseInput): WorkerLease {
 			const id = generateId("wls");
 			const ts = now();
@@ -80,6 +103,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return rowToWorkerLease(values);
 		},
 
+		/** @internal */
 		getByInstance(instanceId: string): WorkerLease | null {
 			const row = db
 				.select()
@@ -89,11 +113,13 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return row ? rowToWorkerLease(row) : null;
 		},
 
+		/** @internal */
 		getById(id: string): WorkerLease | null {
 			const row = db.select().from(s.workerLeases).where(eq(s.workerLeases.id, id)).get();
 			return row ? rowToWorkerLease(row) : null;
 		},
 
+		/** @internal */
 		listByInstance(instanceId: string): WorkerLease[] {
 			return db
 				.select()
@@ -104,6 +130,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 				.map(rowToWorkerLease);
 		},
 
+		/** @internal */
 		listActive(): WorkerLease[] {
 			return db
 				.select()
@@ -113,6 +140,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 				.map(rowToWorkerLease);
 		},
 
+		/** @internal */
 		update(id: string, input: UpdateWorkerLeaseInput): WorkerLease | null {
 			const setValues: SQLiteUpdateSetSource<typeof s.workerLeases> = {
 				state: input.state,
@@ -132,6 +160,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return row ? rowToWorkerLease(row) : null;
 		},
 
+		/** @internal */
 		observeTimestamp(
 			id: string,
 			field: "connectedAt" | "workspacePreparationStartedAt" | "readyAt",
@@ -144,6 +173,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return this.getById(id);
 		},
 
+		/** @internal */
 		updateHeartbeat(workerId: string): boolean {
 			const result = db
 				.update(s.workerLeases)
@@ -153,7 +183,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return result.changes > 0;
 		},
 
-		/** Stores the first receipt only. Exact replay is accepted; changed receipts are rejected. */
+		/** Stores the first receipt only. Exact replay is accepted; changed receipts are rejected. @internal */
 		compareAndSetBootstrapReceipt(
 			id: string,
 			receipt: WorkerBootstrapReceipt,

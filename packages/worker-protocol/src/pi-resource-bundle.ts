@@ -3,18 +3,27 @@ import path from "node:path";
 
 const BLOCK_SIZE = 512;
 
+/** @internal */
 export interface PiResourceFile {
+	/** @internal */
 	path: string;
+	/** @internal */
 	content: Uint8Array;
 }
 
+/** @internal */
 export interface PiResourceBundle {
+	/** @internal */
 	digest: string;
+	/** @internal */
 	bytes: Uint8Array;
 }
 
+/** @internal */
 export interface ExtractedPiResourceFile {
+	/** @internal */
 	path: string;
+	/** @internal */
 	content: Uint8Array;
 }
 
@@ -22,6 +31,7 @@ function fail(message: string): never {
 	throw new Error(`Invalid Pi resource bundle: ${message}`);
 }
 
+/** @internal */
 export function validateResourceRelativePath(value: string): string {
 	if (!value || path.posix.isAbsolute(value) || value.includes("\\")) {
 		fail(`unsafe path '${value}'`);
@@ -69,11 +79,12 @@ function padding(size: number): Buffer {
 	return Buffer.alloc(length);
 }
 
+/** @internal */
 export function sha256Digest(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Creates a deterministic, uncompressed ustar archive containing regular files only. */
+/** Creates a deterministic, uncompressed ustar archive containing regular files only. @internal */
 export function createCanonicalPiResourceBundle(
 	files: readonly PiResourceFile[],
 ): PiResourceBundle {
@@ -120,7 +131,7 @@ function allZero(block: Uint8Array): boolean {
 	return block.every((byte) => byte === 0);
 }
 
-/** Parses only the narrow regular-file ustar subset emitted by this module. */
+/** Parses only the narrow regular-file ustar subset emitted by this module. @internal */
 export function verifyCanonicalPiResourceBundle(
 	bytes: Uint8Array,
 	expectedDigest?: string,

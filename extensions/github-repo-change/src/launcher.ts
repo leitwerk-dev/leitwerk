@@ -12,14 +12,20 @@ import {
 import { type GitHubRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
 
+/** @public */
 export const githubRepoChangeUiLauncherId = "github_repo_change_process.ui_launcher" as const;
 
+/** @public */
 export function githubRepoChangeParams(
 	repository: GitHubRepository,
 	input: {
+		/** @public */
 		profile: string;
+		/** @public */
 		sshCredentialRef: string;
+		/** @public */
 		prompt: string;
+		/** @public */
 		workBranch: string;
 	},
 ): GitHubRepoChangeParams {
@@ -40,6 +46,7 @@ export function githubRepoChangeParams(
 	};
 }
 
+/** @public */
 export function githubRepoChangeLaunchConfig(
 	params: GitHubRepoChangeParams,
 	title: string,
@@ -74,15 +81,21 @@ export function githubRepoChangeLaunchConfig(
 	};
 }
 
+/** @public */
 export interface LauncherDependencies {
+	/** @public */
 	github: GitHubIntegration;
+	/** @public */
 	gitSsh: GitSshIntegration;
+	/** @public */
 	profileBindings?: ProfileBindings;
 }
 
+/** @public */
 export function createGitHubRepoChangeLauncher() {
 	let dependencies: LauncherDependencies | null = null;
 
+	/** @public */
 	function configureGitHubRepoChangeLauncher(value: LauncherDependencies | null): void {
 		dependencies = value;
 	}
@@ -119,6 +132,7 @@ export function createGitHubRepoChangeLauncher() {
 		};
 	}
 
+	/** @public */
 	function githubRepositoryPreparationChecks(
 		_input: unknown,
 		{ params }: ProcessLaunchConfig<GitHubRepoChangeParams>,
@@ -155,6 +169,7 @@ export function createGitHubRepoChangeLauncher() {
 		return { code, fieldId, message };
 	}
 
+	/** @public */
 	function resolveProfiles(profile: string) {
 		const { github, gitSsh, profileBindings = {} } = requireDependencies();
 		if (!(github.profiles?.() ?? []).includes(profile))
@@ -166,6 +181,7 @@ export function createGitHubRepoChangeLauncher() {
 		return binding;
 	}
 
+	/** @public */
 	async function resolveGitHubGitIdentity(profile: string): Promise<GitHubGitIdentity> {
 		if (!profile) throw new Error("A GitHub profile is required to resolve Git identity");
 		return requireDependencies().github.client(profile).resolveGitIdentity(profile);
@@ -297,10 +313,15 @@ export function createGitHubRepoChangeLauncher() {
 	};
 
 	return {
+		/** @public */
 		configure: configureGitHubRepoChangeLauncher,
+		/** @public */
 		preparationChecks: githubRepositoryPreparationChecks,
+		/** @public */
 		resolveProfiles,
+		/** @public */
 		resolveGitIdentity: resolveGitHubGitIdentity,
+		/** @public */
 		launcher: githubRepoChangeUiLauncher,
 	};
 }

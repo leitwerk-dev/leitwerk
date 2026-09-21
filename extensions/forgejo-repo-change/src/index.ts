@@ -6,14 +6,21 @@ import { createForgejoRepoChangeLauncher } from "./launcher.js";
 import { createForgejoRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 
+/** @internal */
 export const manifest = {
+	/** @internal */
 	id: "forgejo-repo-change",
+	/** @internal */
 	version: "0.1.9",
+	/** @internal */
 	requires: ["forgejo", "woodpecker", "coding", "git-ssh"],
 } as const;
 
-/** Load exactly one variant per catalog. Only trusted composition code selects Docker. */
-export function createForgejoRepoChange(options: { docker: boolean }) {
+/** Load exactly one variant per catalog. Only trusted composition code selects Docker. @public */
+export function createForgejoRepoChange(options: {
+	/** @public */
+	docker: boolean;
+}) {
 	if (typeof options.docker !== "boolean") throw new Error("docker must be a boolean");
 	const launcher = createForgejoRepoChangeLauncher();
 	const process = createForgejoRepoChangeProcess(launcher, options.docker);
@@ -37,18 +44,27 @@ export function createForgejoRepoChange(options: { docker: boolean }) {
 			api.onStop(() => launcher.configure(null));
 		},
 	};
-	return { extension, process, launcher };
+	return {
+		/** @public */
+		extension,
+		/** @public */
+		process,
+		/** @internal */
+		launcher,
+	};
 }
 
 export * from "./launcher.js";
 export * from "./params.js";
 export * from "./process.js";
 export * from "./profile-bindings.js";
+/** @internal */
 export const {
 	extension: defaultExtension,
 	process: forgejoRepoChangeProcess,
 	launcher: defaultForgejoRepoChangeLauncher,
 } = createForgejoRepoChange({ docker: true });
+/** @internal */
 export const {
 	configure: configureForgejoRepoChangeLauncher,
 	preparationChecks: forgejoRepositoryPreparationChecks,

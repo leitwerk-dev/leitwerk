@@ -36,6 +36,7 @@ interface AttemptRuntime {
 	streamClaimed: boolean;
 }
 
+/** @internal */
 type AttemptAuth = Parameters<RepositoryBundle["sessionTransfers"]["verifyAttempt"]>[0];
 
 function isExportPending(attempt: SessionTransferAttempt): boolean {
@@ -66,26 +67,43 @@ function relativeSessionCwd(input: {
 	return relative.split(path.sep).join("/");
 }
 
+/** @internal */
 export function createSessionTransferService(deps: {
+	/** @internal */
 	repos: Pick<
 		RepositoryBundle,
 		"processes" | "projects" | "leases" | "sessionTransfers" | "transaction"
 	>;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
 	supervisor: WorkerSupervisor;
+	/** @internal */
 	exporter: ProcessStateExporter;
+	/** @internal */
 	helperRelays: SessionTransferHelperRelays;
+	/** @internal */
 	sessionSource: ProcessSessionSource;
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	limits?: SessionTransferLimits;
+	/** @internal */
 	now?: () => Date;
-	logger?: { warn(details: unknown, message: string): void };
+	/** @internal */
+	logger?: {
+		/** @internal */
+		warn(details: unknown, message: string): void;
+	};
+	/** @internal */
 	onUpdated?: (attempt: SessionTransferAttempt) => void;
+	/** @internal */
 	isDeletionPending?: (instanceId: string) => boolean;
 }) {
 	const now = deps.now ?? (() => new Date());
 	const limits = deps.limits ?? DEFAULT_SESSION_TRANSFER_LIMITS;
 	const runtimes = new Map<string, AttemptRuntime>();
+	const exportWork = new Set<Promise<void>>();
 	let sweepTimer: NodeJS.Timeout | null = null;
 
 	function publish(attempt: SessionTransferAttempt | null): SessionTransferAttempt | null {
@@ -176,7 +194,7 @@ export function createSessionTransferService(deps: {
 			streamClaimed: false,
 		};
 		runtimes.set(attempt.id, runtime);
-		void (async () => {
+		const work = (async () => {
 			updatePhase(attempt.id, "waiting_for_execution_chain");
 			while (true) {
 				const reserved = await deps.processOperations.runExclusive(attempt.instanceId, () => {
@@ -233,6 +251,11 @@ export function createSessionTransferService(deps: {
 					runtimes.delete(attempt.id);
 				}
 			});
+		exportWork.add(work);
+		void work.then(
+			() => exportWork.delete(work),
+			() => exportWork.delete(work),
+		);
 	}
 
 	function cancelAttempt(attempt: SessionTransferAttempt, code: string): SessionTransferAttempt {
@@ -265,10 +288,19 @@ export function createSessionTransferService(deps: {
 	}
 
 	return {
+		/** @internal */
 		async createGrant(instanceId: string) {
 			return deps.processOperations.runExclusive(instanceId, async () => {
-				if (deps.isDeletionPending?.(instanceId)) return { kind: "deletion_pending" as const };
-				if (!deps.repos.processes.getById(instanceId)) return { kind: "not_found" as const };
+				if (deps.isDeletionPending?.(instanceId))
+					return {
+						/** @internal */
+						kind: "deletion_pending" as const,
+					};
+				if (!deps.repos.processes.getById(instanceId))
+					return {
+						/** @internal */
+						kind: "not_found" as const,
+					};
 				const handle = await deps.sessionSource.readSnapshotHandle(instanceId);
 				if (!handle) return { kind: "not_found" as const };
 				const created = deps.repos.sessionTransfers.createGrant({
@@ -277,14 +309,26 @@ export function createSessionTransferService(deps: {
 					lifetimeMs: GRANT_LIFETIME_MS,
 				});
 				return {
+					/** @internal */
 					kind: "created" as const,
+					/** @internal */
 					grantId: created.grant.id,
+					/** @internal */
 					rawToken: created.rawToken,
+					/** @internal */
 					expiresAt: created.grant.expiresAt,
 				};
 			});
 		},
-		startAttempt(input: { instanceId: string; grantId: string; token: string }) {
+		/** @internal */
+		startAttempt(input: {
+			/** @internal */
+			instanceId: string;
+			/** @internal */
+			grantId: string;
+			/** @internal */
+			token: string;
+		}) {
 			if (deps.isDeletionPending?.(input.instanceId)) return { kind: "not_found" as const };
 			const result = deps.repos.transaction((repos) =>
 				repos.sessionTransfers.startAttempt({
@@ -300,6 +344,7 @@ export function createSessionTransferService(deps: {
 			}
 			return result;
 		},
+		/** @internal */
 		heartbeat(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			if (!attempt) return null;
@@ -310,6 +355,7 @@ export function createSessionTransferService(deps: {
 				current
 			);
 		},
+		/** @internal */
 		openStream(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			if (!attempt || deadlineCode(attempt)) {
@@ -370,10 +416,17 @@ export function createSessionTransferService(deps: {
 			void pipeline(source, meter, { signal: runtime.controller.signal }).catch(() => undefined);
 			return meter;
 		},
-		cancel(input: AttemptAuth & { code?: string }) {
+		/** @internal */
+		cancel(
+			input: AttemptAuth & {
+				/** @internal */
+				code?: string;
+			},
+		) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			return attempt ? cancelAttempt(attempt, input.code ?? "client_cancelled") : null;
 		},
+		/** @internal */
 		cancelForWeb(instanceId: string, attemptId: string) {
 			const attempt = deps.repos.sessionTransfers.getAttempt(attemptId);
 			if (!attempt || attempt.instanceId !== instanceId) return null;
@@ -381,6 +434,7 @@ export function createSessionTransferService(deps: {
 				? attempt
 				: cancelAttempt(attempt, "operator_cancelled");
 		},
+		/** @internal */
 		acknowledge(input: AttemptAuth) {
 			const attempt = deps.repos.sessionTransfers.verifyAttempt(input);
 			if (!attempt) return null;
@@ -398,14 +452,17 @@ export function createSessionTransferService(deps: {
 			);
 			return publish(acknowledged);
 		},
+		/** @internal */
 		activeForProcess(instanceId: string) {
 			return deps.repos.sessionTransfers.getActiveByInstance(instanceId);
 		},
+		/** @internal */
 		revokeProcess(instanceId: string) {
 			const active = deps.repos.sessionTransfers.getActiveByInstance(instanceId);
 			if (active) cancelAttempt(active, "process_deleted");
 			deps.repos.sessionTransfers.revokeProcess(instanceId);
 		},
+		/** @internal */
 		async reconcile() {
 			await deps.exporter.reconcile();
 			for (const attempt of deps.repos.sessionTransfers.listActive()) {
@@ -418,10 +475,12 @@ export function createSessionTransferService(deps: {
 			}
 			sweep();
 		},
+		/** @internal */
 		start() {
 			if (!sweepTimer) sweepTimer = setInterval(sweep, 15_000);
 		},
-		stop() {
+		/** @internal */
+		async stop() {
 			if (sweepTimer) clearInterval(sweepTimer);
 			sweepTimer = null;
 			for (const runtime of runtimes.values()) {
@@ -429,11 +488,20 @@ export function createSessionTransferService(deps: {
 			}
 			runtimes.clear();
 			deps.helperRelays.stop();
+			const results = await Promise.allSettled(exportWork);
+			const errors = results
+				.filter((result) => result.status === "rejected")
+				.map((result) => result.reason);
+			if (errors.length) throw new AggregateError(errors, "Session export cleanup failed");
 		},
+		/** @internal */
 		helperSpec: deps.helperRelays.helperSpec,
+		/** @internal */
 		reportHelperPreflight: deps.helperRelays.reportHelperPreflight,
+		/** @internal */
 		acceptHelperStream: deps.helperRelays.acceptHelperStream,
 	};
 }
 
+/** @internal */
 export type SessionTransferService = ReturnType<typeof createSessionTransferService>;

@@ -123,3 +123,18 @@ failed check details and ten failed job logs, with 64 KiB per log and explicit
 truncation. Signed log downloads do not receive the API token. Actions read access
 is required. Existing check-source callers remain compatible; the optional
 `afterKey` suppresses a failure already consumed by a process.
+
+Tool authorization and retry edge cases use an in-memory provider boundary.
+The recovery integration exercises real Git and reopens both provider storage and
+SQLite receipts: a lost create response and subsequent restart must retain one PR
+and the same receipt. This verifies local persistence and tool wiring, not live
+GitHub API compatibility.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubClient`, `GitHubClientLike`, `GitHubFeedbackItem`, `GitHubFeedbackSourceConfig`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubIssueCancelledSourceConfig`, `GitHubIssueWatcherConfig`, `GitHubIssueWatcherEvent`, `GitHubLabelEvent`, `GitHubProjectBinding`, `GitHubPullRequest`, `GitHubPullRequestSourceConfig`, `GitHubPullRequestTerminalSourceConfig`, `GitHubRelease`, `GitHubRepository`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `manifest`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
+- `@leitwerk-dev/github/testing`: `LocalGitHubAdapter`, `LocalGitHubOptions`, `LocalGitHubRepository`, `LocalGitHubState`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

@@ -1,98 +1,109 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
-import { expect, it, vi } from "vitest";
-import { LocalGitHubAdapter } from "./testing.js";
-import { registerGitHubTools } from "./tools.js";
+import { expect, it } from "vitest";
+import { pullRequestArgs, toolContext, toolFixture } from "./testing/tool-fixture.js";
 
-it("authorizes project bindings and reconciles a lost PR response into one durable receipt", async ({
-	onTestFinished,
-}) => {
-	const root = mkdtempSync(path.join(tmpdir(), "github-tools-"));
-	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-	const adapter = new LocalGitHubAdapter({
-		root,
-		baseUrl: "http://127.0.0.1:18082",
-		seeds: [
-			{ owner: "team", name: "one" },
-			{ owner: "team", name: "two" },
-		],
-	});
-	const repo = adapter.repo("team", "one");
-	adapter.git.run(repo.repository.ssh_url, ["branch", "feature", "main"]);
-	const { api, tools } = createToolCollector();
-	const writes = createInMemoryExternalWriteLog();
-	const client = vi.fn((profile: string) => {
-		if (profile !== "first") throw new Error("Wrong profile");
-		return adapter.client();
-	});
-	registerGitHubTools(api, { client }, writes);
-	const ctx = {
-		process: { id: "p", paramsJson: "{}" },
-		project: {
-			instanceId: "p",
-			workBranch: "feature",
-			baseBranch: "main",
-			metadata: { github: { owner: "team", repo: "one", profile: "first" } },
-		},
-		idempotencyKey: "retained-pr-key",
-		signal: new AbortController().signal,
-	} as IntegrationToolExecutionContext;
-	const tool = tools.get("github_ensure_pull_request");
-	const args = {
-		projectKey: "one",
-		owner: "attacker",
-		repo: "two",
-		profile: "other",
-		title: "A change",
-		body: "Review",
-		head: "feature",
-		base: "main",
-	};
-	adapter.state.failAfterPullRequestWrite = true;
-	await expect(tool?.execute(ctx, args)).resolves.toMatchObject({ number: expect.any(Number) });
-	expect(writes.records).toMatchObject([
+const ensure = "github_ensure_pull_request";
+it("uses only the authorized project repository and profile", async () => {
+	const f = toolFixture();
+	await f.execute(ensure, pullRequestArgs);
+	expect(f.requests.every((r) => r.owner === "team" && r.repo === "one")).toBe(true);
+	expect(f.profiles.length).toBeGreaterThan(0);
+	expect(new Set(f.profiles)).toEqual(new Set(["first"]));
+	expect(f.tools.has("github_resolve_release_lock")).toBe(false);
+});
+
+it.each([
+	"wrong process",
+	"missing project",
+	"missing binding",
+	"malformed binding",
+])("rejects %s before provider access", async (kind) => {
+	const f = toolFixture();
+	let ctx = toolContext();
+	if (!ctx.project) throw new Error("Missing fixture project");
+	if (kind === "wrong process") ctx.project.instanceId = "other";
+	if (kind === "missing binding") ctx.project.metadata = {};
+	if (kind === "malformed binding")
+		ctx.project.metadata = { github: { owner: "team", repo: "one", profile: 42 } };
+	if (kind === "missing project") ctx = { ...ctx, project: null };
+	await expect(f.execute(ensure, pullRequestArgs, ctx)).rejects.toThrow();
+	expect(f.profiles).toEqual([]);
+	expect(f.writes.records).toEqual([]);
+});
+
+it.each(["head", "base"])("rejects a mismatched %s without a write", async (branch) => {
+	const f = toolFixture();
+	await expect(f.execute(ensure, { ...pullRequestArgs, [branch]: "wrong" })).rejects.toThrow(
+		"branches must match",
+	);
+	expect(f.requests).toEqual([]);
+	expect(f.writes.records).toEqual([]);
+});
+
+it.each([
+	"none",
+	"after",
+] as const)("reconciles create response %s and replay into one receipt", async (failure) => {
+	const f = toolFixture();
+	f.failure.create = failure;
+	const pr = await f.execute(ensure, pullRequestArgs);
+	await expect(f.execute(ensure, pullRequestArgs)).resolves.toEqual(pr);
+	expect(f.pulls).toHaveLength(1);
+	expect(f.requests.filter((r) => r.method === "create")).toHaveLength(1);
+	expect(f.writes.records).toMatchObject([
 		{
 			dedupKey: "retained-pr-key",
 			writeType: "github.ensure_pr",
-			metadata: { number: repo.pulls[0].number },
+			metadata: { number: 1, url: f.pulls[0].html_url },
 		},
 	]);
-	await tool?.execute(ctx, args);
-	expect(repo.pulls).toHaveLength(1);
-	expect(adapter.repo("team", "two").pulls).toHaveLength(0);
-	expect(tools.has("github_resolve_release_lock")).toBe(false);
-	const comment = tools.get("github_add_pull_request_comment");
-	const commentCtx = { ...ctx, idempotencyKey: "comment-key" };
-	const commentArgs = {
-		projectKey: "one",
-		pullRequestNumber: repo.pulls[0].number,
-		body: "Reviewed",
-	};
-	await comment?.execute(commentCtx, commentArgs);
-	await comment?.execute(commentCtx, commentArgs);
-	expect(repo.comments[repo.pulls[0].number]).toHaveLength(1);
-	const update = tools.get("github_update_pull_request");
-	const updateCtx = { ...ctx, idempotencyKey: "update-key" };
-	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Updated" } });
-	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Should not replay" } });
-	expect(repo.pulls[0].title).toBe("Updated");
-	client.mockClear();
-	await expect(
-		tool?.execute(
-			{
-				...ctx,
-				project: {
-					...ctx.project,
-					instanceId: "other",
-				} as IntegrationToolExecutionContext["project"],
-			},
-			args,
-		),
-	).rejects.toThrow("authorized");
-	expect(client).not.toHaveBeenCalled();
-	const restarted = new LocalGitHubAdapter({ root, baseUrl: "http://127.0.0.1:18082" });
-	expect(await restarted.client().listPullRequests("team", "one", "all")).toHaveLength(1);
+});
+
+it("records a receipt for an existing PR without creating another", async () => {
+	const f = toolFixture();
+	await f.execute(ensure, pullRequestArgs);
+	const ctx = { ...toolContext(), idempotencyKey: "new-receipt" };
+	await f.execute(ensure, pullRequestArgs, ctx);
+	expect(f.requests.filter((r) => r.method === "create")).toHaveLength(1);
+	expect(f.writes.records).toHaveLength(2);
+	expect(f.writes.records[1]).toMatchObject({ dedupKey: "new-receipt", metadata: { number: 1 } });
+});
+
+it("propagates a failed create without recording success", async () => {
+	const f = toolFixture();
+	f.failure.create = "before";
+	await expect(f.execute(ensure, pullRequestArgs)).rejects.toThrow("create rejected");
+	expect(f.pulls).toEqual([]);
+	expect(f.writes.records).toEqual([]);
+});
+
+it.each([false, true])("reconciles comment replay with response loss=%s", async (lost) => {
+	const f = toolFixture();
+	const args = { projectKey: "one", pullRequestNumber: 1, body: "Reviewed" };
+	f.failure.comment = lost;
+	if (lost)
+		await expect(f.execute("github_add_pull_request_comment", args)).rejects.toThrow(
+			"response lost",
+		);
+	f.failure.comment = false;
+	await f.execute("github_add_pull_request_comment", args);
+	await f.execute("github_add_pull_request_comment", args);
+	expect(f.comments).toEqual([{ body: "Reviewed\n\n<!-- leitwerk-write:p:retained-pr-key -->" }]);
+	expect(f.requests.filter((r) => r.method === "comment")).toHaveLength(1);
+	expect(f.writes.records).toHaveLength(1);
+});
+
+it("does not overwrite an accepted update on replay", async () => {
+	const f = toolFixture();
+	await f.execute(ensure, pullRequestArgs);
+	const ctx = { ...toolContext(), idempotencyKey: "update-key" };
+	for (const title of ["Updated", "Should not replay"]) {
+		await f.execute(
+			"github_update_pull_request",
+			{ projectKey: "one", pullRequestNumber: 1, patch: { title } },
+			ctx,
+		);
+	}
+	expect(f.pulls[0].title).toBe("Updated");
+	expect(f.requests.filter((r) => r.method === "update")).toHaveLength(1);
+	expect(f.writes.records).toHaveLength(2);
 });

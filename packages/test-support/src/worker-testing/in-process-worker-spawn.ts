@@ -15,18 +15,39 @@ const WebSocket =
 	(require("ws") as { default?: unknown }).default ??
 	require("ws");
 
+/** @public */
 export interface InProcessWorkerSpawnOptions {
+	/** @public */
 	extensionCatalog?: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @public */
 	piFactory?: PiTreeHandleFactory;
+	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
-	/** Optional delays at real connection and managed-runtime preparation boundaries. */
-	startupDelays?: (instanceId: string) => { connectMs: number; prepareMs: number } | undefined;
+	/** Optional delays at real connection and managed-runtime preparation boundaries. @internal */
+	startupDelays?: (instanceId: string) =>
+		| {
+				/** @internal */
+				connectMs: number;
+				/** @internal */
+				prepareMs: number;
+		  }
+		| undefined;
+	/** @internal Sanitized IPC observations, correlated even after fixture teardown. */
+	onConnectionDiagnostic?: (event: {
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		workerId: string;
+		/** @internal */
+		message: string;
+	}) => void;
 }
 
 /**
  * Fast local-runner-shaped spawn fake. The worker receives the local runner's
  * env and connects over WebSocket just like Docker/Kubernetes workers do.
  */
+/** @public */
 export function createInProcessWorkerSpawn(
 	options: InProcessWorkerSpawnOptions = {},
 ): typeof spawn {
@@ -82,6 +103,12 @@ export function createInProcessWorkerSpawn(
 					}
 				: piFactory,
 			stderr,
+			onConnectionDiagnostic: (message) =>
+				options.onConnectionDiagnostic?.({
+					instanceId: spawnOptions?.env?.LEITWERK_INSTANCE_ID ?? "",
+					workerId: spawnOptions?.env?.LEITWERK_WORKER_ID ?? "",
+					message,
+				}),
 			env: spawnOptions?.env ?? process.env,
 			exit: finish,
 		});

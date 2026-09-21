@@ -5,7 +5,9 @@ import type {
 } from "./extension-api.js";
 import { cloneMap, registerUnique } from "./registry-utils.js";
 
+/** @public */
 export interface BuiltProcessLauncherDefinition<TParams = unknown> {
+	/** @public */
 	launchers: ReadonlyMap<string, ProcessLauncherDefinition<TParams>>;
 }
 
@@ -27,7 +29,9 @@ function validateLauncherDefinition<TParams>(def: ProcessLauncherDefinition<TPar
 	}
 }
 
+/** @internal */
 export function createProcessLauncherBuilder<TParams = unknown>(): ProcessLauncherAPI<TParams> & {
+	/** @internal */
 	getDefinition(): BuiltProcessLauncherDefinition<TParams>;
 } {
 	const launchers = new Map<string, ProcessLauncherDefinition<TParams>>();
@@ -47,6 +51,7 @@ export function createProcessLauncherBuilder<TParams = unknown>(): ProcessLaunch
 	};
 }
 
+/** @public */
 export function buildProcessLaunchers<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 ): BuiltProcessLauncherDefinition<TParams> | undefined {

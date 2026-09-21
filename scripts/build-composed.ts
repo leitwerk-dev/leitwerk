@@ -26,7 +26,10 @@ run(process.execPath, [
 	mode,
 	"--output-logs=errors-only",
 ]);
-if (mode === "build") run("npm", ["run", "--silent", "stage:licenses"]);
+if (mode === "build") {
+	run(process.execPath, ["--import", "tsx", "scripts/preserve-api-annotations.ts"]);
+	run("npm", ["run", "--silent", "stage:licenses"]);
+}
 const packages = orderedPackages(composition?.externalPackages ?? [], (entry) =>
 	Object.keys({ ...entry.dependencies, ...entry.devDependencies, ...entry.optionalDependencies }),
 );

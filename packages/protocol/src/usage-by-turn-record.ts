@@ -6,8 +6,10 @@ import {
 } from "./usage-snapshot.js";
 import { asWsEventPayloadRecord, readWsEventTurnRecordId } from "./ws-event-payloads.js";
 
+/** @internal */
 export type UsageSnapshotByTurnRecordId = Record<string, UsageSnapshot>;
 
+/** @internal */
 export function buildUsageSnapshotsByTurnRecordId(
 	events: readonly ProcessEvent[],
 ): UsageSnapshotByTurnRecordId {

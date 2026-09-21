@@ -56,3 +56,11 @@ Standard providers accept an optional `models` list to add deployments or replac
 Both kinds of model definition accept `thinking_level_map`, `input`, `cost`, and `compat`. Thinking-map keys are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; `null` marks a level unsupported. `context_window`, `max_tokens`, and `thinking_level_map` are converted to Pi's field names. `cost` and `compat` use Pi's camelCase keys directly. Gateway-level compatibility settings apply to all models; model-level settings override them. Supported compatibility keys are `supportsStore`, `supportsDeveloperRole`, `supportsReasoningEffort`, `supportsUsageInStreaming`, `maxTokensField`, `supportsStrictMode`, `thinkingFormat`, and `requiresReasoningContentOnAssistantMessages`. Model IDs must be unique within each list, and unknown metadata fields are rejected.
 
 Custom gateways support `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. They support worker LLM turns. Because they do not declare a server adapter, they cannot be selected for process-title generation.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/models`: `default`.
+
+See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

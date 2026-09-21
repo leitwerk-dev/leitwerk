@@ -1,9 +1,20 @@
 import { validateEnvelope } from "./ipc-codec.js";
 import type { ServerToWorkerMessage, WorkerToServerMessage } from "./ipc-messages.js";
 
+/** @internal */
 export type IpcDecodeResult<TMessage> =
-	| { ok: true; message: TMessage }
-	| { ok: false; error: string };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			message: TMessage;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			error: string;
+	  };
 
 const SERVER_TO_WORKER_TYPES = [
 	"worker.start",
@@ -78,6 +89,7 @@ function decodeKnownMessage<TMessage extends { type: string }>(
  * Decode a parsed envelope coming from the server side of the IPC channel.
  * Only envelope structure + message type are runtime-validated.
  */
+/** @internal */
 export function decodeServerToWorkerMessage(msg: unknown): IpcDecodeResult<ServerToWorkerMessage> {
 	return decodeKnownMessage(msg, SERVER_TO_WORKER_TYPES, "server-to-worker");
 }
@@ -86,6 +98,7 @@ export function decodeServerToWorkerMessage(msg: unknown): IpcDecodeResult<Serve
  * Decode a parsed envelope coming from the worker side of the IPC channel.
  * Only envelope structure + message type are runtime-validated.
  */
+/** @internal */
 export function decodeWorkerToServerMessage(msg: unknown): IpcDecodeResult<WorkerToServerMessage> {
 	return decodeKnownMessage(msg, WORKER_TO_SERVER_TYPES, "worker-to-server");
 }

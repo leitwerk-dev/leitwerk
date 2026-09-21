@@ -8,19 +8,40 @@ import { type emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-uti
 import type { GitLabIntegration } from "./capability.js";
 import type { GitLabIssue, GitLabProject } from "./client.js";
 import { type GitLabSelection, parseGitLabSelection, selectGitLabProjects } from "./selection.js";
+/** @public */
 export interface GitLabIssueWatcherConfig extends GitLabSelection {
+	/** @public */
 	profile: string;
+	/** @public */
 	pollInterval: string;
-	labels: { trigger: string; done: string };
+	/** @public */
+	/** @public */
+	labels: {
+		/** @public */ trigger: string /** @public */;
+		/** @public */
+		done: string;
+	};
 }
+/** @public */
 export interface GitLabIssueWatcherEvent {
+	/** @public */
 	profile: string;
+	/** @public */
 	repository: GitLabProject;
+	/** @public */
 	issue: GitLabIssue;
-	labels: { trigger: string; done: string };
+	/** @public */
+	/** @public */
+	labels: {
+		/** @public */ trigger: string /** @public */;
+		/** @public */
+		done: string;
+	};
 }
+/** @public */
 export const gitlabIssueExternalId = (origin: string, projectId: number, iid: number) =>
 	`gitlab:${origin}:${projectId}#${iid}`;
+/** @public */
 export const gitlabIssueWatcherSource = defineProcessWatcherSource<
 	GitLabIssueWatcherConfig,
 	GitLabIssueWatcherEvent
@@ -63,6 +84,7 @@ export const gitlabIssueWatcherSource = defineProcessWatcherSource<
 		};
 	},
 });
+/** @public */
 export function createGitLabIssueDiscovery(
 	deps: CoreServerSetupDeps,
 	integration: GitLabIntegration,

@@ -240,20 +240,17 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			steps,
 		};
 	});
-	const recoveredAttempts = attempts.map((attempt, index) => {
-		if (attempt.status !== "failed") return attempt;
-		const recoveryAttempt = attempts
-			.slice(index + 1)
-			.find((candidate) => candidate.status === "succeeded");
-		return recoveryAttempt
+	// Startup history ends at the first accepted start, so any success is the final attempt.
+	const authoritative = attempts.find((attempt) => attempt.status === "succeeded");
+	const recoveredAttempts = attempts.map((attempt) =>
+		attempt.status === "failed" && authoritative
 			? {
 					...attempt,
 					status: "recovered" as const,
-					recoveredByStartRecordId: recoveryAttempt.startRecordId,
+					recoveredByStartRecordId: authoritative.startRecordId,
 				}
-			: attempt;
-	});
-	const authoritative = recoveredAttempts.findLast((attempt) => attempt.status === "succeeded");
+			: attempt,
+	);
 	const currentAttempt =
 		(currentStartId
 			? recoveredAttempts.find((attempt) => attempt.startRecordId === currentStartId)
@@ -320,43 +317,28 @@ export function projectLaunchRunStartup(
 	let next = run;
 	const attempt = evidence.currentAttempt;
 	if (!wasFailed) {
-		for (const id of [
-			"start_worker",
-			"connect_worker",
-			"prepare_workspace",
-			"start_first_turn",
-		] as const) {
-			const step = attempt?.steps.find((candidate) => candidate.id === id);
-			if (!step) {
-				const existing = next.steps.find((candidate) => candidate.id === id);
-				if (existing?.status !== "skipped") next = projectStep(next, id, "pending", null);
-				continue;
-			}
-			const status = step.status === "superseded" ? "pending" : step.status;
-			next = projectStep(
-				next,
-				id,
-				status,
-				step.occurredAt,
-				status === "failed"
-					? (attempt?.summary ??
-							"Worker startup stopped before completion. Retry startup from the process page.")
-					: id === "start_worker" && attempt?.summary
-						? attempt.summary
-						: undefined,
-			);
-		}
 		next = {
 			...next,
 			steps: next.steps.map((item) => {
+				if (!Object.hasOwn(STARTUP_STEP_LABELS, item.id)) return item;
 				const phase = attempt?.steps.find((candidate) => candidate.id === item.id);
-				if (!phase) return item;
-				const { startedAt: _start, completedAt: _end, ...rest } = item;
+				if (!phase && item.status === "skipped") return item;
+				const { startedAt: _start, completedAt: _end, safeSummary: _summary, ...rest } = item;
+				const status = !phase || phase.status === "superseded" ? "pending" : phase.status;
+				const safeSummary =
+					status === "failed"
+						? (attempt?.summary ??
+							"Worker startup stopped before completion. Retry startup from the process page.")
+						: item.id === "start_worker"
+							? attempt?.summary
+							: undefined;
 				return {
 					...rest,
-					label: phase.label,
-					...(phase.startedAt ? { startedAt: phase.startedAt } : {}),
-					...(phase.endedAt ? { completedAt: phase.endedAt } : {}),
+					status,
+					label: phase?.label ?? item.label,
+					...(phase?.startedAt ? { startedAt: phase.startedAt } : {}),
+					...(phase?.endedAt ? { completedAt: phase.endedAt } : {}),
+					...(phase && safeSummary ? { safeSummary } : {}),
 				};
 			}),
 		};

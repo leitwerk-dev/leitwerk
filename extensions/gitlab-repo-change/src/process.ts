@@ -36,6 +36,7 @@ function requireRequest(state: RepositoryChangeState) {
 		throw new Error("Merge request delivery state is incomplete");
 	return { ...current, prNumber: current.prNumber, headSha: current.headSha };
 }
+/** @public */
 export function gitlabPublicationEvidence(
 	state: RepositoryChangeState,
 	event: GitLabDeliveryObservation,
@@ -63,6 +64,7 @@ export function gitlabPublicationEvidence(
 		return { kind: "failure", pipeline: { ...event.pipeline, number: event.pipeline.id }, ...key };
 	return { kind: "observed", ...key };
 }
+/** @public */
 export function createGitLabRepoChangeProcess(
 	launcher: ReturnType<typeof createGitLabRepoChangeLauncher>,
 	docker: boolean,
