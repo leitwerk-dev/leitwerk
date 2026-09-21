@@ -43,14 +43,11 @@ export type DockerProcessVolumeMode = "bind" | "named_volume";
 export interface DockerProcessVolumeOptions {
 	/** @internal */
 	mode: DockerProcessVolumeMode;
-	/** Host root for per-process bind mounts (bind mode). */
-	/** @internal */
+	/** Host root for per-process bind mounts (bind mode). @internal */
 	hostRoot: string;
-	/** Mount path injected into worker containers. */
-	/** @internal */
+	/** Mount path injected into worker containers. @internal */
 	mountPath: string;
-	/** Prefix for named volumes (named_volume mode). */
-	/** @internal */
+	/** Prefix for named volumes (named_volume mode). @internal */
 	namedVolumePrefix?: string;
 }
 
@@ -60,23 +57,17 @@ export interface DockerWorkerRunnerOptions {
 	engine: DockerEngineClient;
 	/** @internal */
 	volume: DockerProcessVolumeOptions;
-	/** Shared private network attached to every worker container. */
-	/** @internal */
+	/** Shared private network attached to every worker container. @internal */
 	defaultNetwork: string;
-	/** Exact isolation used for Docker-requiring processes. Omit to make them unavailable. */
-	/** @internal */
+	/** Exact isolation used for Docker-requiring processes. Omit to make them unavailable. @internal */
 	privateDaemonIsolation?: "privileged" | "sysbox-runc";
-	/** Host CA bundle mounted read-only into workers and export helpers. */
-	/** @internal */
+	/** Host CA bundle mounted read-only into workers and export helpers. @internal */
 	serverCaFile?: string;
-	/** Stable internal URL used by named-volume export helpers. */
-	/** @internal */
+	/** Stable internal URL used by named-volume export helpers. @internal */
 	serverUrl?: string;
-	/** Trusted image containing the bundled session-transfer helper entrypoint. */
-	/** @internal */
+	/** Trusted image containing the bundled session-transfer helper entrypoint. @internal */
 	exporterImage?: string;
-	/** Server-owned relay registry used by named-volume export helpers. */
-	/** @internal */
+	/** Server-owned relay registry used by named-volume export helpers. @internal */
 	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 

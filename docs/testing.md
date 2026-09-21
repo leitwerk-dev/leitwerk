@@ -27,6 +27,26 @@ does not include it. To check locally, run `npm run build && npm run api:check`.
 It checks release tags and signature dependencies and verifies that public and
 internal declarations survive the build.
 
+### Harness lifecycle compatibility
+
+For the next minor release, `createIntegrationHarness()` starts the full `AppContext`
+lifecycle by default whenever it binds a listener. Its returned address is applied before
+reconciliation for ephemeral unauthenticated loopback fixtures.
+Use `await harness.close()` for cleanup. Caller-owned temporary
+directories and compositions still belong in `finally` blocks, including startup failures.
+
+| Use | Options / behavior |
+|---|---|
+| Normal integration or UI fixture | Default: bind, reconcile, start services, become ready. |
+| Controlled restart or reconciliation test | `createIntegrationHarness({ listen: false, ... })`: prepare state, then call `ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true })`. The harness address becomes available after startup. |
+| Bind-only fixture | `backgroundServices: false`: raw listener, no reconciliation or background services. Close and recreate the context to use full startup. |
+| Injection-only fixture with no listener requested | `createIntegrationHarness({ listen: false, ... })` stays unbound with no background startup. Start the listener before launching local workers. |
+| Browser fixture | Full lifecycle; preserve the configured UI origin. |
+| Deployment preflight | Raw Fastify listener only; assert readiness remains false; clean up with `ctx.close()`. |
+
+Lifecycle tests exercise real HTTP/WebSocket draining, concurrent startup/shutdown,
+startup and cleanup failures, database ownership, and durable state across recreation.
+
 ### Browser layout and behavior
 
 To validate external packages, extensions, and test roots in a development

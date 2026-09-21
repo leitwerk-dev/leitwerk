@@ -183,8 +183,7 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 			return result.changes > 0;
 		},
 
-		/** Stores the first receipt only. Exact replay is accepted; changed receipts are rejected. */
-		/** @internal */
+		/** Stores the first receipt only. Exact replay is accepted; changed receipts are rejected. @internal */
 		compareAndSetBootstrapReceipt(
 			id: string,
 			receipt: WorkerBootstrapReceipt,

@@ -63,8 +63,7 @@ export interface WorkersCleanupConfigSnapshot {
 
 /** @public */
 export interface WorkersConfigSnapshot {
-	/** Worker execution run mode. Docker/Kubernetes are production; local is test/development only. */
-	/** @public */
+	/** Worker execution run mode. Docker/Kubernetes are production; local is test/development only. @public */
 	runner: "docker" | "kubernetes" | "local";
 	/**
 	 * Fallback worker runtime profile id used when neither the process nor any
@@ -93,11 +92,9 @@ export interface WorkersConfigSnapshot {
 	resume_on_boot: boolean;
 	/** @internal */
 	idle_worker_ttl: string;
-	/** Server-enforced maximum HTTP session snapshot upload size in bytes. */
-	/** @internal */
+	/** Server-enforced maximum HTTP session snapshot upload size in bytes. @internal */
 	session_snapshot_max_size_bytes: number;
-	/** Server-owned debug mirror for raw worker.event payloads. Workers ignore this switch. */
-	/** @internal */
+	/** Server-owned debug mirror for raw worker.event payloads. Workers ignore this switch. @internal */
 	log_worker_events_to_stdout: boolean;
 	/** @internal */
 	cleanup: WorkersCleanupConfigSnapshot;
@@ -125,21 +122,17 @@ export interface ModelProfileSnapshot {
 	model_id: string;
 	/** @public */
 	thinking_level?: string;
-	/** Non-secret provider-owned defaults applied to each new LLM start. */
-	/** @internal */
+	/** Non-secret provider-owned defaults applied to each new LLM start. @internal */
 	provider_options?: Record<string, string>;
 }
 
 /** @internal */
 export interface PiProviderRetryConfigSnapshot {
-	/** Optional provider/SDK request timeout. Null defers to the provider SDK default. */
-	/** @internal */
+	/** Optional provider/SDK request timeout. Null defers to the provider SDK default. @internal */
 	timeout: string | null;
-	/** Optional provider/SDK retry attempts. Null defers to the provider SDK default. */
-	/** @internal */
+	/** Optional provider/SDK retry attempts. Null defers to the provider SDK default. @internal */
 	max_retries: number | null;
-	/** Maximum provider-requested retry delay before failing fast. */
-	/** @internal */
+	/** Maximum provider-requested retry delay before failing fast. @internal */
 	max_retry_delay: string;
 }
 
@@ -157,14 +150,11 @@ export interface PiRetryConfigSnapshot {
 
 /** @internal */
 export interface PiProcessTitleGenerationRetryConfigSnapshot {
-	/** Total title-generation attempts including the first immediate try. */
-	/** @internal */
+	/** Total title-generation attempts including the first immediate try. @internal */
 	max_attempts: number;
-	/** Base outer retry delay after a failed server-side title request. */
-	/** @internal */
+	/** Base outer retry delay after a failed server-side title request. @internal */
 	base_delay: string;
-	/** Maximum outer retry delay for failed title-generation jobs. */
-	/** @internal */
+	/** Maximum outer retry delay for failed title-generation jobs. @internal */
 	max_delay: string;
 }
 
@@ -178,19 +168,15 @@ export interface PiProcessTitleGenerationConfigSnapshot {
 
 /** @public */
 export interface PiConfigSnapshot {
-	/** Leitwerk-managed Pi agent directory. Local workers use it as PI_CODING_AGENT_DIR. */
-	/** @public */
+	/** Leitwerk-managed Pi agent directory. Local workers use it as PI_CODING_AGENT_DIR. @public */
 	agent_dir: string;
 	/** @public */
 	model_profiles: ModelProfileSnapshot[];
-	/** Global default system prompt template for all processes. Rendered with Mustache against runtime context. When omitted, the worker uses its built-in default. */
-	/** @internal */
+	/** Global default system prompt template for all processes. Rendered with Mustache against runtime context. When omitted, the worker uses its built-in default. @internal */
 	system_prompt_template?: string;
-	/** Server-side pre-start process title generation settings. */
-	/** @public */
+	/** Server-side pre-start process title generation settings. @public */
 	process_title_generation: PiProcessTitleGenerationConfigSnapshot;
-	/** Leitwerk-managed Pi retry/runtime settings for newly created worker sessions. */
-	/** @internal */
+	/** Leitwerk-managed Pi retry/runtime settings for newly created worker sessions. @internal */
 	retry: PiRetryConfigSnapshot;
 }
 
@@ -225,15 +211,13 @@ export interface ProcessConfigSnapshot {
 	 */
 	/** @internal */
 	worker_runtime_profile?: string;
-	/** Server-only process-volume capacity override, for example 128Mi or 1Gi. */
-	/** @internal */
+	/** Server-only process-volume capacity override, for example 128Mi or 1Gi. @internal */
 	storage_size?: string;
 	/** @internal */
 	pi?: ProcessPiConfigSnapshot;
 	/** @public */
 	turn_configs: Record<string, ProcessTurnConfigSnapshot>;
-	/** Extension-owned watcher configuration, keyed by code-defined watcher id. */
-	/** @public */
+	/** Extension-owned watcher configuration, keyed by code-defined watcher id. @public */
 	watchers?: Record<string, unknown>;
 }
 

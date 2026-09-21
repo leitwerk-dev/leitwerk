@@ -48,8 +48,7 @@ export type StubToolCallScriptItem =
 			thinkingChunks?: readonly string[];
 			/** @public */
 			chunkDelayMs?: number;
-			/** Optional scripted model reaction to a tool result, within the same turn. */
-			/** @internal */
+			/** Optional scripted model reaction to a tool result, within the same turn. @internal */
 			afterToolResult?: (
 				call: StubToolCallScriptCall,
 				result: unknown,
@@ -829,8 +828,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 export interface StubPiTreeHandleFactoryOptions {
 	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
-	/** Persist SDK-readable JSONL with reasoning and tool messages for history/detail tests. */
-	/** @public */
+	/** Persist SDK-readable JSONL with reasoning and tool messages for history/detail tests. @public */
 	recordSessionTrace?: boolean;
 }
 

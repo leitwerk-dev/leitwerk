@@ -14,6 +14,8 @@ function createLocalApp(options: Partial<AppOptions> = {}, maxParallelProcesses?
 	const config = getDefaultConfig();
 	config.storage.sqlite_path = ":memory:";
 	config.workers.runner = "local";
+	config.server.host = "127.0.0.1";
+	config.server.port = 0;
 	if (maxParallelProcesses !== undefined)
 		config.workers.max_parallel_processes = maxParallelProcesses;
 	return createAppContext({
@@ -106,14 +108,28 @@ describe("createAppContext", () => {
 				"Waiting for worker capacity",
 			);
 			// Cancellation remains possible while the queue is full.
-			ctx.deps.processes.update(processes[1].id, { lifecycleStatus: "aborted" });
-			await ctx.supervisor.stopWorker(processes[1].id, "operator");
-			await ctx.supervisor.stopWorker(processes[0].id, "test_release");
-			await vi.waitFor(() => expect(ctx.supervisor.getWorker(processes[2].id)).toBeDefined());
-			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+			const aborted = await ctx.app.inject({
+				method: "POST",
+				url: `/api/processes/${processes[1].id}/abort`,
+			});
+			expect(aborted.statusCode, aborted.body).toBe(200);
+			expect(ctx.deps.processes.getById(processes[1].id)?.lifecycleStatus).toBe("aborted");
+			const exit = exits.get(processes[0].id);
+			expect(exit).toBeDefined();
+			exit?.();
+			await vi.waitFor(() => {
+				expect(runtime.runner.start).toHaveBeenCalledTimes(2);
+				expect(
+					vi.mocked(runtime.runner.start).mock.calls.map(([input]) => input.instanceId),
+				).toEqual([processes[0].id, processes[2].id]);
+				expect(ctx.deps.leases.getByInstance(processes[2].id)).toMatchObject({
+					workerId: vi.mocked(runtime.runner.start).mock.calls[1][0].workerId,
+				});
+			});
 			expect(ctx.deps.leases.getByInstance(processes[1].id)).toBeNull();
+			expect(ctx.deps.turnRecords.listByInstance(processes[1].id)).toEqual([]);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -150,7 +166,7 @@ describe("createAppContext", () => {
 			expect(runtime.runner.start).toHaveBeenCalledTimes(2);
 		} finally {
 			cleanup.resolve();
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -190,7 +206,7 @@ describe("createAppContext", () => {
 			});
 			expect(projectFrames.at(-1)?.payload).not.toHaveProperty("changedFields");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -211,7 +227,7 @@ describe("createAppContext", () => {
 			config,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
 		});
-		await ctx.app.close();
+		await ctx.close();
 	});
 
 	it("reports readiness only after every start hook succeeds and clears it before stop hooks", async () => {
@@ -234,19 +250,19 @@ describe("createAppContext", () => {
 			expect((await ctx.app.inject({ url: "/api/health" })).statusCode).toBe(200);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 
-			const starting = ctx.startBackgroundServices();
+			const starting = ctx.listen();
 			await Promise.resolve();
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 			releaseStart();
 			await starting;
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(200);
 
-			await ctx.stopBackgroundServices();
+			await ctx.close();
 			expect(readyDuringStop).toBe(false);
-			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
+			expect(ctx.isReady()).toBe(false);
 		} finally {
 			releaseStart();
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -273,16 +289,16 @@ describe("createAppContext", () => {
 		]);
 		const ctx = await createLocalApp({ extensionCatalog });
 		try {
-			await ctx.startBackgroundServices();
+			await ctx.listen();
 			await vi.waitFor(() => expect(events).toContain("poll"));
 			expect(events.slice(0, 2)).toEqual(["extension-start", "poll"]);
 
-			await ctx.stopBackgroundServices();
+			await ctx.close();
 			const countAfterStop = events.length;
 			await new Promise((resolve) => setTimeout(resolve, 30));
 			expect(events).toHaveLength(countAfterStop);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -299,11 +315,11 @@ describe("createAppContext", () => {
 		]);
 		const ctx = await createLocalApp({ extensionCatalog });
 		try {
-			await expect(ctx.startBackgroundServices()).rejects.toThrow("start rejected");
+			await expect(ctx.listen()).rejects.toThrow("start rejected");
 			expect(ctx.isReady()).toBe(false);
-			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
+			await expect(ctx.listen()).rejects.toThrow("closed");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 });

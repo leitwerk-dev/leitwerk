@@ -16,8 +16,7 @@ export const manifest = {
 	requires: ["forgejo", "woodpecker", "coding", "git-ssh"],
 } as const;
 
-/** Load exactly one variant per catalog. Only trusted composition code selects Docker. */
-/** @public */
+/** Load exactly one variant per catalog. Only trusted composition code selects Docker. @public */
 export function createForgejoRepoChange(options: {
 	/** @public */
 	docker: boolean;

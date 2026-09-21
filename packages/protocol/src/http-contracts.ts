@@ -406,8 +406,7 @@ export interface ProviderOptionFieldSummary {
 	maxLength: number | null;
 	/** @internal */
 	defaultValue: string | null;
-	/** Advisory values. Values outside this list can still be valid. */
-	/** @internal */
+	/** Advisory values. Values outside this list can still be valid. @internal */
 	choices: readonly ProviderOptionChoiceSummary[];
 }
 
@@ -1008,8 +1007,7 @@ export type ProcessesListResponseBody = {
 export interface ProcessOverviewItem extends ProcessRowSlot {
 	/** @internal */
 	processDisplayName: string | null;
-	/** Nullable durable title before external-id/instance-id display fallback. */
-	/** @internal */
+	/** Nullable durable title before external-id/instance-id display fallback. @internal */
 	processTitle: string | null;
 	/** @internal */
 	initialPromptPreview: string | null;
@@ -1061,8 +1059,7 @@ export interface ProcessesOverviewResponseBody {
 	processes: ProcessOverviewItem[];
 	/** @internal */
 	futureExecutions: FutureExecutionOverviewItem[];
-	/** True when the bounded sidebar response omitted less-recent rows. */
-	/** @internal */
+	/** True when the bounded sidebar response omitted less-recent rows. @internal */
 	truncated: boolean;
 }
 
@@ -1117,8 +1114,7 @@ export type ProcessBrowseItem =
 
 /** @internal */
 export interface ProcessBrowseResponseBody {
-	/** Globally sorted page. The browser must preserve this server-owned order. */
-	/** @internal */
+	/** Globally sorted page. The browser must preserve this server-owned order. @internal */
 	items: ProcessBrowseItem[];
 	/** @internal */
 	pagination: ProcessBrowsePagination;
@@ -1254,8 +1250,7 @@ export interface ProcessTimelineTurnSummary {
 	status: "completed" | "in_progress";
 	/** @internal */
 	modelProfileId: string | null;
-	/** Durable lineage needed by the chronicle rail and input correlation. */
-	/** @internal */
+	/** Durable lineage needed by the chronicle rail and input correlation. @internal */
 	attemptNumber: number;
 	/** @internal */
 	parentTurnRecordId: string | null;
@@ -1375,8 +1370,7 @@ export type StartupAttemptStatus = "starting" | "failed" | "succeeded" | "recove
 
 /** @internal */
 export interface StartupAttemptStepSummary {
-	/** Observed phase interval; absent for older servers or unavailable evidence. */
-	/** @internal */
+	/** Observed phase interval; absent for older servers or unavailable evidence. @internal */
 	startedAt?: string | null;
 	/** @internal */
 	endedAt?: string | null;
@@ -1392,8 +1386,7 @@ export interface StartupAttemptStepSummary {
 	occurredAt: string | null;
 }
 
-/** Worker-start history derived from correlated start, lease, readiness, and turn records. */
-/** @internal */
+/** Worker-start history derived from correlated start, lease, readiness, and turn records. @internal */
 export interface StartupAttemptSummary {
 	/** @internal */
 	startRecordId: string;
@@ -1490,11 +1483,9 @@ export type ProcessUiSnapshotProcess = Pick<
 export interface ProcessDetailUiSnapshotResponseBody {
 	/** @internal */
 	process: ProcessUiSnapshotProcess;
-	/** Next turn on the declared happy path, including human decisions. */
-	/** @internal */
+	/** Next turn on the declared happy path, including human decisions. @internal */
 	plannedNextTurn?: Pick<ProcessSelectedTurnSummary, "turnId" | "description"> | null;
-	/** Durable requests in Chronicle order; at most one is open for the current turn. */
-	/** @internal */
+	/** Durable requests in Chronicle order; at most one is open for the current turn. @internal */
 	questionRequests: ProcessQuestionRequest[];
 	/** @internal */
 	toolApprovalRequests: ProcessToolApprovalRequest[];
@@ -1528,11 +1519,9 @@ export interface ProcessDetailUiSnapshotResponseBody {
 	instanceTree: ProcessInstanceTreeResponseBody;
 	/** @internal */
 	recovery: CurrentTurnRecoverySummary | null;
-	/** Authoritative startup history and current remediation. */
-	/** @internal */
+	/** Authoritative startup history and current remediation. @internal */
 	startup: ProcessStartupSummary;
-	/** Compatibility alias for startup.recovery. */
-	/** @internal */
+	/** Compatibility alias for startup.recovery. @internal */
 	startupRecovery: StartupRecoverySummary | null;
 	/** @internal */
 	processError: CurrentProcessErrorSummary | null;
@@ -1552,8 +1541,7 @@ export interface ProcessDetailUiSnapshotResponseBody {
 /** @internal */
 export type InstanceTreeTurnResultState = "succeeded" | "failed" | "aborted" | "pending";
 
-/** Redacted, semantic process history. Pi message/activity categories are never exposed. */
-/** @internal */
+/** Redacted, semantic process history. Pi message/activity categories are never exposed. @internal */
 export interface InstanceTreeNodeSummary {
 	/** @internal */
 	id: string;

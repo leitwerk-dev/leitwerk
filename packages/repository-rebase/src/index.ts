@@ -120,8 +120,7 @@ export function conflictEvidence(
 	};
 }
 
-/** Observe every refresh; fire each conflict pair once per live subscription. */
-/** @internal */
+/** Observe every refresh; fire each conflict pair once per live subscription. @internal */
 export function createConflictReporter(sources: ExternalSourceServiceLike, kind: string) {
 	const accepted = new Map<string, string>();
 	return async (
@@ -149,8 +148,7 @@ export function createConflictReporter(sources: ExternalSourceServiceLike, kind:
 	};
 }
 
-/** A captured generation and resolved identity must still be armed after provider I/O. */
-/** @internal */
+/** A captured generation and resolved identity must still be armed after provider I/O. @internal */
 export function sameSubscription(
 	captured: {
 		/** @internal */

@@ -24,8 +24,7 @@ export interface LocalRepositorySeed {
 	defaultBranch?: string;
 	/** @public */
 	files?: Record<string, string>;
-	/** Retain a pre-existing sandbox checkout layout. */
-	/** @internal */
+	/** Retain a pre-existing sandbox checkout layout. @internal */
 	directoryName?: string;
 	/** @internal */
 	commitMessage?: string;
@@ -33,8 +32,7 @@ export interface LocalRepositorySeed {
 	signoff?: boolean;
 }
 
-/** Reject escaping paths and symlinks, including a not-yet-created file's parents. */
-/** @public */
+/** Reject escaping paths and symlinks, including a not-yet-created file's parents. @public */
 export function localPath(root: string, relative: string): string {
 	if (lstatSync(root, { throwIfNoEntry: false })?.isSymbolicLink())
 		throw new Error("Local provider storage must not contain symlinks");
@@ -74,8 +72,7 @@ export function writeLocalJson(root: string, file: string, value: unknown): void
 	renameSync(temporary, target);
 }
 
-/** Persist local adapter state with a shared clock and monotonically increasing ids. */
-/** @public */
+/** Persist local adapter state with a shared clock and monotonically increasing ids. @public */
 export class LocalProviderStore<
 	S extends {
 		/** @internal */
@@ -137,8 +134,7 @@ interface LocalPullRequestRepository<P extends LocalPullRequest> {
 	pulls: P[];
 }
 
-/** Common PR operations; adapters retain their provider-specific state and clients. */
-/** @public */
+/** Common PR operations; adapters retain their provider-specific state and clients. @public */
 export class LocalForgeStore<
 	S extends {
 		/** @internal */
@@ -332,8 +328,7 @@ export class LocalForgeStore<
 	}
 }
 
-/** Real Git with file-only transport and no ambient credentials or hooks. */
-/** @public */
+/** Real Git with file-only transport and no ambient credentials or hooks. @public */
 export class LocalGit {
 	/** @public */
 	constructor(

@@ -12,17 +12,17 @@ export function startFutureExecutionScheduler(
 	const pollIntervalMs = options.pollIntervalMs ?? 1_000;
 	const nowFn = options.now ?? (() => new Date());
 	let timer: ReturnType<typeof setInterval> | null = null;
-	let tickInProgress = false;
+	let tickInProgress: Promise<void> | undefined;
 
 	async function tick(): Promise<void> {
 		if (tickInProgress) {
-			return;
+			return tickInProgress;
 		}
-		tickInProgress = true;
+		tickInProgress = lifecycle.runDueWork(nowFn().toISOString()).then(() => {});
 		try {
-			await lifecycle.runDueWork(nowFn().toISOString());
+			await tickInProgress;
 		} finally {
-			tickInProgress = false;
+			tickInProgress = undefined;
 		}
 	}
 
@@ -37,11 +37,12 @@ export function startFutureExecutionScheduler(
 				void tick();
 			}, pollIntervalMs);
 		},
-		stop(): void {
+		async stop(): Promise<void> {
 			if (timer) {
 				clearInterval(timer);
 				timer = null;
 			}
+			await tickInProgress;
 		},
 	};
 }

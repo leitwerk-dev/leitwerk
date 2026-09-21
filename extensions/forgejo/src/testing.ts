@@ -76,8 +76,7 @@ export interface LocalForgejoOptions {
 		}
 	>;
 }
-/** Persistent local Forgejo. Register its client through setupForgejoIntegration. */
-/** @public */
+/** Persistent local Forgejo. Register its client through setupForgejoIntegration. @public */
 export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, LocalForgejoOptions> {
 	/** @internal */
 	readonly baseUrl: string;

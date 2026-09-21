@@ -43,16 +43,13 @@ export interface Actor {
 	id: string;
 	/** @public */
 	kind: ActorKind;
-	/** Origin that vouched for this actor. `null` for system/admin/local. */
-	/** @public */
+	/** Origin that vouched for this actor. `null` for system/admin/local. @public */
 	provider: string | null;
-	/** Optional human-readable name for UI display. */
-	/** @internal */
+	/** Optional human-readable name for UI display. @internal */
 	displayName?: string;
 }
 
-/** Watcher / scheduler / startup reconciliation and other internal callers. */
-/** @internal */
+/** Watcher / scheduler / startup reconciliation and other internal callers. @internal */
 export const SYSTEM_ACTOR: Actor = { id: "system", kind: "system", provider: null };
 
 /**
@@ -191,8 +188,7 @@ function requiredTrimmedString(value: unknown, field: string): string {
 	return trimmed;
 }
 
-/** Normalize an LLM-authored request into immutable, position-stable identities. */
-/** @internal */
+/** Normalize an LLM-authored request into immutable, position-stable identities. @internal */
 export function normalizeAskQuestionsInput(value: unknown): NormalizedQuestion[] {
 	const questions = (
 		value as {
@@ -276,8 +272,7 @@ function normalizeQuestionDrafts(
 	});
 }
 
-/** Validate a complete structured draft and produce one canonical free-text answer per question. */
-/** @internal */
+/** Validate a complete structured draft and produce one canonical free-text answer per question. @internal */
 export function canonicalizeQuestionAnswers(
 	questions: readonly NormalizedQuestion[],
 	value: unknown,
@@ -351,8 +346,7 @@ export function isTurnFailureCode(value: string): value is TurnFailureCode {
 	return value === "branch_drift";
 }
 
-/** Extension-defined stable turn identifier. */
-/** @public */
+/** Extension-defined stable turn identifier. @public */
 export type TurnId = string;
 
 /** @internal */
@@ -466,8 +460,7 @@ export type ModelSelectionKind = "explicit" | "inherited";
 /** @internal */
 export type ModelSelectionSource = ProcessSelectedTurnModelSource;
 
-/** Durable intent and resolution path for one effective model selection. */
-/** @internal */
+/** Durable intent and resolution path for one effective model selection. @internal */
 export interface ModelSelectionProvenance {
 	/** @internal */
 	kind: ModelSelectionKind;
@@ -503,17 +496,14 @@ export interface FutureExecutionBlockReason {
 	summary: string;
 	/** @internal */
 	detectedAt: string;
-	/** Present when the block depends on a runtime availability snapshot. */
-	/** @internal */
+	/** Present when the block depends on a runtime availability snapshot. @internal */
 	availabilityRevision?: number;
 }
 
-/** JSON object persisted as non-secret turn-start configuration. */
-/** @internal */
+/** JSON object persisted as non-secret turn-start configuration. @internal */
 export type JsonObject = Record<string, unknown>;
 
-/** The one durable technical execution currently owned by a process. */
-/** @internal */
+/** The one durable technical execution currently owned by a process. @internal */
 export type CurrentExecutionRef = {
 	/** @internal */
 	kind: "worker_start";
@@ -521,8 +511,7 @@ export type CurrentExecutionRef = {
 	id: string;
 } | null;
 
-/** Immutable non-secret inputs resolved for a worker-owned turn start. */
-/** @internal */
+/** Immutable non-secret inputs resolved for a worker-owned turn start. @internal */
 export type ResolvedTurnStart =
 	| {
 			/** @internal */
@@ -538,11 +527,9 @@ export type ResolvedTurnStart =
 				/** @internal */
 				thinkingLevel: string;
 			};
-			/** Frozen provenance used to resolve this prepared start. */
-			/** @internal */
+			/** Frozen provenance used to resolve this prepared start. @internal */
 			modelSelectionProvenance?: ModelSelectionProvenance;
-			/** Status revision evaluated before preparation. Diagnostic only. */
-			/** @internal */
+			/** Status revision evaluated before preparation. Diagnostic only. @internal */
 			availabilityRevision?: number;
 			/** @internal */
 			providerOptions: Record<string, string>;
@@ -640,8 +627,7 @@ export type TurnStartRecordState =
 			start: ResolvedTurnStart | null;
 	  };
 
-/** Durable preparation for a single worker-owned selected turn, not an attempt. */
-/** @internal */
+/** Durable preparation for a single worker-owned selected turn, not an attempt. @internal */
 export interface TurnStartRecord {
 	/** @internal */
 	id: string;
@@ -651,8 +637,7 @@ export interface TurnStartRecord {
 	turnId: TurnId;
 	/** @internal */
 	turnType: Extract<ProcessTurnType, "llm" | "automatic">;
-	/** Reserved id used when, and only when, this start is accepted. */
-	/** @internal */
+	/** Reserved id used when, and only when, this start is accepted. @internal */
 	proposedTurnRecordId: string;
 	/** @internal */
 	startKind: TurnStartKind;
@@ -668,13 +653,11 @@ export interface TurnStartRecord {
 	updatedAt: string;
 }
 
-/** Tree positioning selected during bootstrap, before a turn is accepted. */
-/** @internal */
+/** Tree positioning selected during bootstrap, before a turn is accepted. @internal */
 export interface PreparedTurnStart {
 	/** @internal */
 	pathType: ProcessTurnRecordPathType;
-	/** Durable authored context mode used to reconcile pre-prompt positioning and compaction. */
-	/** @internal */
+	/** Durable authored context mode used to reconcile pre-prompt positioning and compaction. @internal */
 	contextMode: LlmContextMode;
 	/** @internal */
 	startTarget: ProcessTurnStartTarget;
@@ -685,8 +668,7 @@ export interface PreparedTurnStart {
 /** @internal */
 export type LlmContextMode = "full" | "compacted" | "fresh" | "fresh_seeded";
 
-/** Immutable, lease-correlated proof of successful worker bootstrap. */
-/** @internal */
+/** Immutable, lease-correlated proof of successful worker bootstrap. @internal */
 export type WorkerBootstrapReceipt =
 	| {
 			/** @internal */
@@ -775,62 +757,45 @@ export interface ProcessCustomizableFields {
 export interface ProcessInstance {
 	/** @public */
 	id: string;
-	/** Canonical process identifier from the extension catalog. */
-	/** @public */
+	/** Canonical process identifier from the extension catalog. @public */
 	processId: string;
-	/** Durable pointer to the currently selected business turn, if any. */
-	/** @public */
+	/** Durable pointer to the currently selected business turn, if any. @public */
 	selectedTurnId: TurnId | null;
-	/** High-level lifecycle bucket for scheduling and operator state. */
-	/** @public */
+	/** High-level lifecycle bucket for scheduling and operator state. @public */
 	lifecycleStatus: ProcessLifecycleStatus;
-	/** Single durable technical execution reference; null for waiting/terminal states. */
-	/** @internal */
+	/** Single durable technical execution reference; null for waiting/terminal states. @internal */
 	currentExecution: CurrentExecutionRef;
 	/** @public */
 	planRevision: number;
-	/** Short operator-facing process title used in process lists and related UI. */
-	/** @public */
+	/** Short operator-facing process title used in process lists and related UI. @public */
 	title: string | null;
-	/** Provider-agnostic external reference, such as a work item key or change path. */
-	/** @public */
+	/** Provider-agnostic external reference, such as a work item key or change path. @public */
 	externalId: string | null;
-	/** URL to the external resource, if applicable. */
-	/** @internal */
+	/** URL to the external resource, if applicable. @internal */
 	externalUrl: string | null;
-	/** Extension-owned JSON metadata blob. */
-	/** @internal */
+	/** Extension-owned JSON metadata blob. @internal */
 	metadata: Record<string, unknown> | null;
-	/** Instance-scoped default model profile used when no turn override applies. */
-	/** @internal */
+	/** Instance-scoped default model profile used when no turn override applies. @internal */
 	defaultModelProfileId?: string | null;
-	/** Effective default model at creation time, retained for historical inspection. */
-	/** @internal */
+	/** Effective default model at creation time, retained for historical inspection. @internal */
 	initialDefaultModelProfileId?: string | null;
-	/** JSON-serialized per-turn runtime config overrides for this instance. */
-	/** @internal */
+	/** JSON-serialized per-turn runtime config overrides for this instance. @internal */
 	turnConfigsJson?: string | null;
-	/** Frozen effective model profile for the currently selected LLM turn, if any. */
-	/** @internal */
+	/** Frozen effective model profile for the currently selected LLM turn, if any. @internal */
 	selectedTurnModelProfileId?: string | null;
-	/** Explicit operator intent or inherited policy resolution for the selected model. */
-	/** @internal */
+	/** Explicit operator intent or inherited policy resolution for the selected model. @internal */
 	selectedTurnModelKind?: ModelSelectionKind | null;
-	/** Resolution path that selected `selectedTurnModelProfileId`; null for empty selections. */
-	/** @internal */
+	/** Resolution path that selected `selectedTurnModelProfileId`; null for empty selections. @internal */
 	selectedTurnModelSource?: ProcessSelectedTurnModelSource | null;
-	/** JSON-serialized process params. */
-	/** @public */
+	/** JSON-serialized process params. @public */
 	paramsJson: string | null;
-	/** JSON-serialized process state. */
-	/** @public */
+	/** JSON-serialized process state. @public */
 	stateJson: string | null;
 	/** @public */
 	createdAt: string;
 	/** @internal */
 	updatedAt: string;
-	/** Set once when the process first reaches a terminal lifecycle status. */
-	/** @internal */
+	/** Set once when the process first reaches a terminal lifecycle status. @internal */
 	closedAt?: string | null;
 }
 
@@ -842,8 +807,7 @@ export interface ProcessProject {
 	instanceId: string;
 	/** @public */
 	key: string;
-	/** Repository source identifier. May be a remote URL or a local filesystem path. */
-	/** @public */
+	/** Repository source identifier. May be a remote URL or a local filesystem path. @public */
 	repoLocator: string;
 	/** @internal */
 	repoLocatorKind: RepoLocatorKind;
@@ -851,14 +815,11 @@ export interface ProcessProject {
 	baseBranch: string;
 	/** @internal */
 	workBranch: string | null;
-	/** Provider-agnostic external identifier (e.g. MR IID, PR number). */
-	/** @internal */
+	/** Provider-agnostic external identifier (e.g. MR IID, PR number). @internal */
 	externalId: string | null;
-	/** URL to the external resource (e.g. MR URL, PR URL). */
-	/** @internal */
+	/** URL to the external resource (e.g. MR URL, PR URL). @internal */
 	externalUrl: string | null;
-	/** Extension-owned JSON metadata blob. */
-	/** @public */
+	/** Extension-owned JSON metadata blob. @public */
 	metadata: Record<string, unknown> | null;
 	/** @internal */
 	pipelineStatus: string | null;
@@ -884,8 +845,7 @@ export interface ProcessInput {
 	target: ProcessInputTarget | null;
 	/** @internal */
 	bodyMarkdown: string;
-	/** Stable principal that queued this input. Defaults to `SYSTEM_ACTOR`. */
-	/** @internal */
+	/** Stable principal that queued this input. Defaults to `SYSTEM_ACTOR`. @internal */
 	actor: Actor;
 	/** @internal */
 	receivedAt: string;
@@ -911,8 +871,7 @@ export type LaunchChecklistStepStatus =
 	| "failed"
 	| "skipped";
 
-/** Presentation-safe durable progress for one process launch attempt. */
-/** @internal */
+/** Presentation-safe durable progress for one process launch attempt. @internal */
 export interface LaunchChecklistStep {
 	/** @internal */
 	id: string;
@@ -928,8 +887,7 @@ export interface LaunchChecklistStep {
 	completedAt?: string;
 }
 
-/** Durable launch attempt. Secrets and runner identifiers never belong here. */
-/** @internal */
+/** Durable launch attempt. Secrets and runner identifiers never belong here. @internal */
 export interface LaunchRun {
 	/** @internal */
 	id: string;
@@ -966,28 +924,23 @@ export interface FutureExecution {
 	kind: FutureExecutionKind;
 	/** @internal */
 	scheduleKind: FutureExecutionScheduleKind;
-	/** Canonical target process identifier. */
-	/** @internal */
+	/** Canonical target process identifier. @internal */
 	processId: string;
-	/** Populated only for scheduled actions on an existing process instance. */
-	/** @internal */
+	/** Populated only for scheduled actions on an existing process instance. @internal */
 	instanceId: string | null;
 	/** @internal */
 	launcherId: string | null;
 	/** @internal */
 	actionId: string | null;
-	/** JSON-serialized kind-specific payload. */
-	/** @internal */
+	/** JSON-serialized kind-specific payload. @internal */
 	payloadJson: string;
 	/** @internal */
 	cronExpression: string | null;
 	/** @internal */
 	nextRunAt: string;
-	/** Immediate LLM selection caused by this execution, if known. */
-	/** @internal */
+	/** Immediate LLM selection caused by this execution, if known. @internal */
 	modelSelection?: DurableModelSelection | null;
-	/** Structured model-policy block. Blocked rows remain durable. */
-	/** @internal */
+	/** Structured model-policy block. Blocked rows remain durable. @internal */
 	blockedReason?: FutureExecutionBlockReason | null;
 	/** @internal */
 	createdAt: string;
@@ -997,8 +950,7 @@ export interface FutureExecution {
 
 /** @internal */
 export interface ProcessEvent {
-	/** Persisted ingestion order. Absent only on legacy in-memory fixtures. */
-	/** @internal */
+	/** Persisted ingestion order. Absent only on legacy in-memory fixtures. @internal */
 	eventSequence?: number;
 	/** @internal */
 	id: string;
@@ -1075,13 +1027,11 @@ export interface TurnProgressLink {
 	kind?: "pull_request" | "merge_request" | "commit" | "pipeline" | "other";
 }
 
-/** A complete operator-facing snapshot. Reporters replace, rather than patch, this value. */
-/** @public */
+/** A complete operator-facing snapshot. Reporters replace, rather than patch, this value. @public */
 export interface TurnProgressReport {
 	/** @public */
 	title: string;
-	/** Attempt-specific progress or waiting explanation; not an operation receipt. */
-	/** @public */
+	/** Attempt-specific progress or waiting explanation; not an operation receipt. @public */
 	summary?: string;
 	/** @public */
 	steps: TurnProgressStep[];
@@ -1121,11 +1071,9 @@ export interface ProcessTurnRecord {
 	pathType: ProcessTurnRecordPathType;
 	/** @internal */
 	forkPiEntryId: string | null;
-	/** Accepted worker-start preparation that created this worker-owned record. */
-	/** @internal */
+	/** Accepted worker-start preparation that created this worker-owned record. @internal */
 	turnStartRecordId?: string | null;
-	/** Lease whose receipt first authorized this worker-owned record. */
-	/** @internal */
+	/** Lease whose receipt first authorized this worker-owned record. @internal */
 	acceptedWorkerLeaseId?: string | null;
 	/** @internal */
 	resultPiEntryId: string | null;
@@ -1153,43 +1101,31 @@ export interface WorkerLease {
 	instanceId: string;
 	/** @internal */
 	workerId: string;
-	/** Worker start this physical lease was created to execute. */
-	/** @internal */
+	/** Worker start this physical lease was created to execute. @internal */
 	turnStartRecordId?: string | null;
-	/** Durable server-owned supervision state for the current worker lease. */
-	/** @internal */
+	/** Durable server-owned supervision state for the current worker lease. @internal */
 	state: WorkerState;
-	/** Server epoch this lease belongs to, used to reject stale snapshot writes. */
-	/** @internal */
+	/** Server epoch this lease belongs to, used to reject stale snapshot writes. @internal */
 	serverEpoch?: string | null;
-	/** Hash of the lease-scoped WebSocket connect token. The raw token is never stored. */
-	/** @internal */
+	/** Hash of the lease-scoped WebSocket connect token. The raw token is never stored. @internal */
 	connectTokenHash?: string | null;
-	/** Hash of the lease-scoped HTTP session-snapshot credential. The raw token is never stored. */
-	/** @internal */
+	/** Hash of the lease-scoped HTTP session-snapshot credential. The raw token is never stored. @internal */
 	snapshotTokenHash?: string | null;
-	/** Fingerprint of the effective instance model policy/config snapshot used to start this worker. */
-	/** @internal */
+	/** Fingerprint of the effective instance model policy/config snapshot used to start this worker. @internal */
 	modelPolicyFingerprint?: string | null;
-	/** First valid lease-correlated bootstrap receipt; written once by the server. */
-	/** @internal */
+	/** First valid lease-correlated bootstrap receipt; written once by the server. @internal */
 	bootstrapReceipt?: WorkerBootstrapReceipt | null;
-	/** Updated from heartbeats for liveness/recovery diagnostics. */
-	/** @internal */
+	/** Updated from heartbeats for liveness/recovery diagnostics. @internal */
 	lastHeartbeatAt: string | null;
 	/** @internal */
 	startedAt: string;
-	/** First valid server-observed worker handshake. */
-	/** @internal */
+	/** First valid server-observed worker handshake. @internal */
 	connectedAt?: string | null;
-	/** First valid server-observed workspace preparation progress. */
-	/** @internal */
+	/** First valid server-observed workspace preparation progress. @internal */
 	workspacePreparationStartedAt?: string | null;
-	/** First accepted server-observed worker readiness. */
-	/** @internal */
+	/** First accepted server-observed worker readiness. @internal */
 	readyAt?: string | null;
-	/** Set once the lease is no longer active for supervision. */
-	/** @internal */
+	/** Set once the lease is no longer active for supervision. @internal */
 	exitedAt: string | null;
 }
 

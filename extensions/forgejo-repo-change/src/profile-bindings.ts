@@ -1,5 +1,4 @@
-/** Server-owned, non-secret wiring for future launches. */
-/** @internal */
+/** Server-owned, non-secret wiring for future launches. @internal */
 export interface ProfileBinding {
 	/** @internal */
 	woodpeckerProfile: string;

@@ -47,8 +47,7 @@ export interface OperationSpec<TKind extends string, TInput extends OperationInp
 	kind: TKind;
 	/** @internal */
 	label?: string;
-	/** Reject this operation while another subsystem has reserved new-turn admission. */
-	/** @internal */
+	/** Reject this operation while another subsystem has reserved new-turn admission. @internal */
 	admission?: "new_turn";
 
 	/**
@@ -60,8 +59,7 @@ export interface OperationSpec<TKind extends string, TInput extends OperationInp
 	/** @internal */
 	decide: DecideFunction<TInput, TData>;
 
-	/** Runs after the transaction and process lock complete, before reactions are dispatched. */
-	/** @internal */
+	/** Runs after the transaction and process lock complete, before reactions are dispatched. @internal */
 	afterRecord?: AfterRecordFunction<TInput, TData>;
 	/** @internal */
 	messages?: OperationMessages | MessageResolver<TInput>;

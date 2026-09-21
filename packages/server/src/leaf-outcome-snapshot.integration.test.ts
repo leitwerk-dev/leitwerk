@@ -203,7 +203,7 @@ const captureErrorExtension: LeitwerkExtensionModule = {
 afterEach(async () => {
 	while (harnesses.length > 0) {
 		const harness = harnesses.pop();
-		await harness?.ctx.app.close();
+		await harness?.close();
 	}
 });
 

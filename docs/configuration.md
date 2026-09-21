@@ -18,6 +18,19 @@ Leitwerk loads built-in defaults overlaid with settings from `leitwerk.yaml`.
 | `PORT` | HTTP port for the server. | `3000` |
 | `LEITWERK_BASE_URL` | Public base URL for HTTP and WebSocket auth. | `http://localhost:3000` |
 
+### Programmatic listener options
+
+`AppContext.listen({ host?, port?, useBoundAddressAsBaseUrl? })` defaults to
+`server.host` and `server.port`. Port `0` requests an ephemeral port. The returned
+`ServerListenResult` contains the actual `address` and `port`, preserving TLS and IPv6
+URL formatting. Binding preserves `server.base_url` by default.
+
+Unauthenticated loopback fixtures can set `useBoundAddressAsBaseUrl: true` to replace
+`server.base_url` after binding and before reconciliation. Authenticated or non-loopback
+use rejects before binding because authentication captures its origin at context creation.
+This is an API option, not a configuration key. Browser fixtures retain their configured UI
+origin instead.
+
 ### Reload Classes
 - **Immediate:** Takes effect immediately when `leitwerk.yaml` is saved (e.g., worker pool limits).
 - **Future:** Applies to future process launches or LLM turns.

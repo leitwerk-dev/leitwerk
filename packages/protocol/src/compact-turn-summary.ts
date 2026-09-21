@@ -39,15 +39,13 @@ export interface CompactTurnSummary {
 	toolCallCount: number;
 	/** @internal */
 	traceItemCount: number;
-	/** The last persisted event incorporated into this projection. */
-	/** @internal */
+	/** The last persisted event incorporated into this projection. @internal */
 	throughEventSequence: number;
 	/** @internal */
 	lastTraceKind: "thinking" | "tool_call" | "operational_event" | null;
 }
 
-/** Initial-page state. It never contains trace items, tool arguments or results. */
-/** @internal */
+/** Initial-page state. It never contains trace items, tool arguments or results. @internal */
 export interface CompactActiveTurnSnapshot
 	extends CompactTurnSummary,
 		Pick<
@@ -71,8 +69,7 @@ export function emptyCompactTurnSummary(): CompactTurnSummary {
 	};
 }
 
-/** Retain paragraph context; wrapping and blank-line removal belong to the preview viewport. */
-/** @internal */
+/** Retain paragraph context; wrapping and blank-line removal belong to the preview viewport. @internal */
 export function reasoningPreviewTail(text: string): string {
 	const normalized = text.replace(/\r\n?/g, "\n");
 	const lines = normalized.split("\n").filter((line) => line.trim() !== "");

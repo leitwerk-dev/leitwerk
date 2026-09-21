@@ -1,5 +1,5 @@
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it } from "vitest";
 import {
 	createRemoteRepoChangeFixture,
 	remoteState,
@@ -10,7 +10,6 @@ it.each([
 	"cannot_repair",
 ] as const)("feedback %s returns to waiting without publishing a change", async (feedbackOutcome) => {
 	const fixture = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome });
-	onTestFinished(() => fixture.close());
 	const id = await fixture.launchTicketlessChange("Update the service image");
 	await fixture.publishChange(id);
 	const pr = fixture.forgejo.pullRequest();

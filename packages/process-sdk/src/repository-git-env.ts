@@ -9,8 +9,7 @@ function wrapperKey(projectKey: string): string {
 	return `${INTERNAL_REPOSITORY_GIT_SSH_ENV_PREFIX}${encodeURIComponent(projectKey).replace(/%/g, "_")}`;
 }
 
-/** Worker-internal registration; the wrapper path is never copied to ordinary subprocesses. */
-/** @internal */
+/** Worker-internal registration; the wrapper path is never copied to ordinary subprocesses. @internal */
 export function setRepositoryGitSshWrapper(projectKey: string, wrapperPath: string): void {
 	process.env[wrapperKey(projectKey)] = wrapperPath;
 }
@@ -35,8 +34,7 @@ export function clearRepositoryGitHttpsHelpers(): void {
 	}
 }
 
-/** Safe environment for a trusted Git invocation for one process project. */
-/** @public */
+/** Safe environment for a trusted Git invocation for one process project. @public */
 export function repositoryGitSubprocessEnv(
 	projectKey: string,
 	overrides: SubprocessEnvInput = {},

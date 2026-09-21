@@ -27,8 +27,7 @@ function pinnedDigest(
 		: null;
 }
 
-/** Keeps only the current live LLM start's resource bundle retained in this server. */
-/** @internal */
+/** Keeps only the current live LLM start's resource bundle retained in this server. @internal */
 export function createPiResourceBundlePinReconciler(
 	deps: Pick<RepositoryBundle, "turnStarts" | "turnRecords"> & {
 		/** @internal */

@@ -35,8 +35,7 @@ export function resolveGitBinary(): string {
 	return cachedGitBinary;
 }
 
-/** Reset the cached resolution. Intended for tests that mutate PATH. */
-/** @internal */
+/** Reset the cached resolution. Intended for tests that mutate PATH. @internal */
 export function resetGitBinaryCache(): void {
 	cachedGitBinary = null;
 }

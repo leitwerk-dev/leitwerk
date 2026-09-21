@@ -12,12 +12,12 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
-	createTestApp,
-	type TestApp,
+	createIntegrationHarness,
+	type IntegrationHarness,
 	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 
 function createLlmTurn<TOutcome extends string>(
 	id: string,
@@ -240,7 +240,7 @@ const genericPlanReviewExtension: LeitwerkExtensionModule = {
 	},
 };
 
-let app: TestApp;
+let app: IntegrationHarness;
 
 function futureIso(minutesAhead = 24 * 60): string {
 	return new Date(Date.now() + minutesAhead * 60_000).toISOString();
@@ -321,9 +321,10 @@ function attachWorkerReceipt(input: {
 
 beforeAll(async () => {
 	const extensionCatalog = await buildExtensionCatalogFromModules([genericPlanReviewExtension]);
-	app = await createTestApp({
+	app = await createIntegrationHarness({
 		extensionCatalog,
-		configureConfig(config) {
+		configOverride(config) {
+			config.workers.shutdown_grace_period = "100ms";
 			config.pi.model_profiles = [
 				{
 					id: "claude_fast",
@@ -346,8 +347,6 @@ afterAll(async () => {
 	await app.close();
 });
 
-beforeEach(() => {});
-
 describe("generic review integration", () => {
 	it("runs planning -> llm_review -> human_review -> implementing without parallel review state", async () => {
 		const workerHandles = new Map<
@@ -361,21 +360,32 @@ describe("generic review integration", () => {
 			}
 		>();
 
-		app.ctx.supervisor.getWorker = (instanceId) => workerHandles.get(instanceId);
-		app.ctx.supervisor.spawnWorker = async (instanceId) => {
-			const handle = {
-				workerId: `wkr_${instanceId}_${workerHandles.size + 1}`,
-				instanceId,
-				process: {} as never,
-				send() {},
-				kill() {},
-			};
-			workerHandles.set(instanceId, handle);
-			return handle;
-		};
-		app.ctx.supervisor.stopWorker = async (instanceId) => {
-			workerHandles.delete(instanceId);
-		};
+		const getWorker = vi
+			.spyOn(app.ctx.supervisor, "getWorker")
+			.mockImplementation((instanceId) => workerHandles.get(instanceId));
+		const spawnWorker = vi
+			.spyOn(app.ctx.supervisor, "spawnWorker")
+			.mockImplementation(async (instanceId) => {
+				const handle = {
+					workerId: `wkr_${instanceId}_${workerHandles.size + 1}`,
+					instanceId,
+					process: {} as never,
+					send() {},
+					kill() {},
+				};
+				workerHandles.set(instanceId, handle);
+				return handle;
+			});
+		const stopWorker = vi
+			.spyOn(app.ctx.supervisor, "stopWorker")
+			.mockImplementation(async (instanceId) => {
+				workerHandles.delete(instanceId);
+			});
+		onTestFinished(() => {
+			getWorker.mockRestore();
+			spawnWorker.mockRestore();
+			stopWorker.mockRestore();
+		});
 
 		const process = app.ctx.deps.processes.create({
 			processId: "generic_plan_review_process",

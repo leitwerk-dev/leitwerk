@@ -1,7 +1,6 @@
 import { parseDurationMs } from "./duration-parse.js";
 
-/** Reserve the next poll time for a caller-owned key, before starting its work. */
-/** @internal */
+/** Reserve the next poll time for a caller-owned key, before starting its work. @internal */
 export function createPollSchedule(now: () => number = () => Date.now()) {
 	const dueAt = new Map<string, number>();
 	return (key: string, interval = "30s", timestamp = now()): boolean => {
@@ -49,7 +48,7 @@ export interface PollLoop<T extends PollResultWithErrors = PollResult> {
 	/** @internal */
 	start(): void;
 	/** @internal */
-	stop(): void;
+	stop(): Promise<void>;
 }
 
 /**
@@ -111,12 +110,10 @@ export function createPollLoop<T extends PollResultWithErrors>(opts: {
 			timer = setInterval(pollScheduled, ms);
 			pollScheduled();
 		},
-		stop() {
-			if (!timer) {
-				return;
-			}
-			clearInterval(timer);
+		async stop() {
+			if (timer) clearInterval(timer);
 			timer = null;
+			await pollInFlight;
 		},
 	};
 }

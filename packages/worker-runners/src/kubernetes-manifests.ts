@@ -87,8 +87,7 @@ export interface KubernetesPodSpecOptions {
 	}>;
 	/** @internal */
 	serverCaConfigMap?: KubernetesWorkerServerCaConfigMapSpec;
-	/** Trusted operator wiring used only when the process declares runtime.docker. */
-	/** @internal */
+	/** Trusted operator wiring used only when the process declares runtime.docker. @internal */
 	docker?: KubernetesDockerPodSpecOptions;
 }
 
@@ -186,16 +185,11 @@ export interface KubernetesPodManifest extends NamespacedManifest<"Pod"> {
 		/** @internal */
 		serviceAccountName?: string;
 		/** @internal */
-		nodeSelector?: Record<string, string>;
+		nodeSelector?: KubernetesPodSpecOptions["nodeSelector"];
 		/** @internal */
-		tolerations?: unknown[];
+		tolerations?: KubernetesPodSpecOptions["tolerations"];
 		/** @internal */
-		hostAliases?: Array<{
-			/** @internal */
-			ip: string;
-			/** @internal */
-			hostnames: string[];
-		}>;
+		hostAliases?: KubernetesPodSpecOptions["hostAliases"];
 		/** @internal */
 		imagePullSecrets?: Array<{
 			/** @internal */

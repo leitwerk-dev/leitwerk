@@ -40,11 +40,9 @@ export type PiResourceAssemblyLimits = PiResourceLimits;
 
 /** @internal */
 export interface AssemblePiResourceSnapshotInput {
-	/** Immutable resource fragments pinned to the process. */
-	/** @internal */
+	/** Immutable resource fragments pinned to the process. @internal */
 	readonly resourceLayers?: readonly PiResourceLayer[];
-	/** Catalog dependency order is preserved in generated numeric extension paths. */
-	/** @internal */
+	/** Catalog dependency order is preserved in generated numeric extension paths. @internal */
 	readonly piContributions: readonly CatalogPiContribution[];
 	/** @internal */
 	readonly model: PiResourceSnapshotModel;
@@ -54,8 +52,7 @@ export interface AssemblePiResourceSnapshotInput {
 	readonly providerWorkerConfig: PiResourceSnapshotWorkerConfig | null;
 	/** @internal */
 	readonly piSettings: JsonObject;
-	/** Non-secret Pi model definitions and overrides. Defaults to an empty provider map. */
-	/** @internal */
+	/** Non-secret Pi model definitions and overrides. Defaults to an empty provider map. @internal */
 	readonly piModels?: JsonObject;
 	/** @internal */
 	readonly declaredCredentialPaths: readonly string[];
@@ -285,8 +282,7 @@ function validateAssemblyInput(input: AssemblePiResourceSnapshotInput): void {
 	}
 }
 
-/** Assemble one immutable, non-secret, canonical Pi resource snapshot. */
-/** @internal */
+/** Assemble one immutable, non-secret, canonical Pi resource snapshot. @internal */
 export async function assemblePiResourceSnapshot(
 	input: AssemblePiResourceSnapshotInput,
 ): Promise<AssembledPiResourceSnapshot> {
