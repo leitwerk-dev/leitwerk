@@ -5,7 +5,9 @@ export type SourceOwnership = "core" | "extension" | "external" | "unknown";
 
 /** @internal Catalog package roots establish ownership, including for composed copies. */
 function catalogOwnership(snapshot: Snapshot, packageName: string): SourceOwnership {
-	const roots = snapshot.nodes.filter((node) => node.kind === "package" && node.package === packageName);
+	const roots = snapshot.nodes.filter(
+		(node) => node.kind === "package" && node.package === packageName,
+	);
 	if (roots.length !== 1) return "unknown";
 	const path = roots[0].source?.path;
 	if (path && /^packages\/[^/]+\/package\.json$/.test(path)) return "core";
@@ -58,10 +60,12 @@ export function internalDependencies(snapshot: Snapshot): InternalDependency[] {
 		const reportId = occurrence.reportId ?? snapshot.repository.id;
 		// Composed Leitwerk sources are resolution context, not external consumer evidence.
 		// The path guard also covers legacy reports without source-origin metadata.
-		if (reportId !== snapshot.repository.id && (
-			occurrence.sourceOrigin === "composition" ||
-			/(^|\/)\.leitwerk-base(\/|$)/.test(occurrence.path)
-		)) continue;
+		if (
+			reportId !== snapshot.repository.id &&
+			(occurrence.sourceOrigin === "composition" ||
+				/(^|\/)\.leitwerk-base(\/|$)/.test(occurrence.path))
+		)
+			continue;
 		const report = reports.get(reportId);
 		const file = nodes.get(occurrence.fileId);
 		const consumerSource =
@@ -77,24 +81,34 @@ export function internalDependencies(snapshot: Snapshot): InternalDependency[] {
 			if (occurrence.targetPackages?.length && !occurrence.targetPackages.includes(target.package))
 				continue;
 			const trustedCatalogSource = consumerSource === "catalog";
-			const consumerOwnership = consumerSource === "workspace"
-				? "external"
-				: trustedCatalogSource && file
-					? catalogOwnership(snapshot, file.package)
-					: "unknown";
+			const consumerOwnership =
+				consumerSource === "workspace"
+					? "external"
+					: trustedCatalogSource && file
+						? catalogOwnership(snapshot, file.package)
+						: "unknown";
 			const targetOwnership = catalogOwnership(snapshot, target.package);
 			// A workspace package with the same name is not a catalog-owned package.
-			if (trustedCatalogSource && consumerOwnership !== "unknown" && file?.package === target.package) continue;
-			const boundaryDecision = consumerOwnership === "unknown" || targetOwnership === "unknown"
-				? "unresolved"
-				: consumerOwnership === "core" && targetOwnership === "core" ? "allowed" : "forbidden";
-			const policyReason = boundaryDecision === "unresolved"
-				? "Source/package ownership could not be resolved."
-				: boundaryDecision === "allowed"
-					? "Core packages may depend on other core packages' internal APIs."
-					: consumerOwnership === "core"
-						? "Core packages must not depend on extensions."
-						: "Extensions and external consumers must not depend on another package's internal APIs.";
+			if (
+				trustedCatalogSource &&
+				consumerOwnership !== "unknown" &&
+				file?.package === target.package
+			)
+				continue;
+			const boundaryDecision =
+				consumerOwnership === "unknown" || targetOwnership === "unknown"
+					? "unresolved"
+					: consumerOwnership === "core" && targetOwnership === "core"
+						? "allowed"
+						: "forbidden";
+			const policyReason =
+				boundaryDecision === "unresolved"
+					? "Source/package ownership could not be resolved."
+					: boundaryDecision === "allowed"
+						? "Core packages may depend on other core packages' internal APIs."
+						: consumerOwnership === "core"
+							? "Core packages must not depend on extensions."
+							: "Extensions and external consumers must not depend on another package's internal APIs.";
 			const consumerVersion = report?.analyzedPackages[target.package];
 			const catalogVersion = catalog?.analyzedPackages[target.package];
 			const reasons: string[] = boundaryDecision === "unresolved" ? [policyReason] : [];

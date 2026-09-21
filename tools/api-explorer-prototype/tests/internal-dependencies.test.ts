@@ -44,8 +44,20 @@ function fixture(): Snapshot {
 			api,
 			{ ...api, id: "public", release: "public", entry: "./public" },
 			{ id: "caller", kind: "file", label: "caller", package: "extension" },
-			{ id: "core-package", kind: "package", label: "core", package: "core", source: { path: "packages/domain/package.json", line: 1, column: 1, snippet: "" } },
-			{ id: "extension-package", kind: "package", label: "extension", package: "extension", source: { path: "extensions/telegram/package.json", line: 1, column: 1, snippet: "" } },
+			{
+				id: "core-package",
+				kind: "package",
+				label: "core",
+				package: "core",
+				source: { path: "packages/domain/package.json", line: 1, column: 1, snippet: "" },
+			},
+			{
+				id: "extension-package",
+				kind: "package",
+				label: "extension",
+				package: "extension",
+				source: { path: "extensions/telegram/package.json", line: 1, column: 1, snippet: "" },
+			},
 		],
 		occurrences: [
 			{
@@ -107,12 +119,17 @@ describe("internal API dependencies", () => {
 		const base = snapshot.occurrences[0];
 		snapshot.occurrences.push(
 			{ ...base, id: "catalog", reportId: "catalog" },
-			{ ...base, id: "copy", sourceOrigin: "composition", path: ".leitwerk-base/extensions/caller.ts" },
+			{
+				...base,
+				id: "copy",
+				sourceOrigin: "composition",
+				path: ".leitwerk-base/extensions/caller.ts",
+			},
 		);
 		const findings = internalDependencies(snapshot);
 		expect(findings).toHaveLength(2);
-		expect(findings.map(f => f.consumerSource).sort()).toEqual(["catalog", "workspace"]);
-		expect(findings.every(f => f.assessment === "forbidden")).toBe(true);
+		expect(findings.map((f) => f.consumerSource).sort()).toEqual(["catalog", "workspace"]);
+		expect(findings.every((f) => f.assessment === "forbidden")).toBe(true);
 		// Exclusion is about the caller, not the declaration being resolved.
 		snapshot.nodes[0].source!.path = ".leitwerk-base/packages/domain/src/api.ts";
 		expect(internalDependencies(snapshot)).toHaveLength(2);
@@ -131,11 +148,31 @@ describe("internal API dependencies", () => {
 				for (const isTest of [false, true]) {
 					const snapshot = fixture();
 					snapshot.nodes[2].package = "consumer";
-					snapshot.nodes.push({ id: "consumer-package", kind: "package", package: "consumer", label: "consumer", source: { path: `${consumer === "core" ? "packages" : "extensions"}/consumer/package.json`, line: 1, column: 1, snippet: "" } });
-					snapshot.nodes[3].source!.path = `${target === "core" ? "packages" : "extensions"}/domain/package.json`;
-					Object.assign(snapshot.occurrences[0], { reportId: "catalog", sourceOrigin: "workspace", isTest });
+					snapshot.nodes.push({
+						id: "consumer-package",
+						kind: "package",
+						package: "consumer",
+						label: "consumer",
+						source: {
+							path: `${consumer === "core" ? "packages" : "extensions"}/consumer/package.json`,
+							line: 1,
+							column: 1,
+							snippet: "",
+						},
+					});
+					snapshot.nodes[3].source!.path =
+						`${target === "core" ? "packages" : "extensions"}/domain/package.json`;
+					Object.assign(snapshot.occurrences[0], {
+						reportId: "catalog",
+						sourceOrigin: "workspace",
+						isTest,
+					});
 					const [finding] = internalDependencies(snapshot);
-					expect(finding).toMatchObject({ consumerOwnership: consumer, targetOwnership: target, assessment: consumer === "core" && target === "core" ? "allowed" : "forbidden" });
+					expect(finding).toMatchObject({
+						consumerOwnership: consumer,
+						targetOwnership: target,
+						assessment: consumer === "core" && target === "core" ? "allowed" : "forbidden",
+					});
 				}
 			}
 		}
@@ -143,7 +180,10 @@ describe("internal API dependencies", () => {
 	it("does not grant catalog privileges to same-named external packages", () => {
 		const snapshot = fixture();
 		snapshot.nodes[2].package = "core";
-		expect(internalDependencies(snapshot)[0]).toMatchObject({ consumerOwnership: "external", assessment: "forbidden" });
+		expect(internalDependencies(snapshot)[0]).toMatchObject({
+			consumerOwnership: "external",
+			assessment: "forbidden",
+		});
 	});
 	it("keeps repository-level and legacy consumers unresolved", () => {
 		const snapshot = fixture();
@@ -160,7 +200,10 @@ describe("internal API dependencies", () => {
 		snapshot.occurrences[0].reportId = "catalog";
 		snapshot.nodes[4].source!.path = "packages/server/package.json";
 		snapshot.reports![0].analyzedPackages.core = "unknown";
-		expect(internalDependencies(snapshot)[0]).toMatchObject({ boundaryDecision: "allowed", assessment: "needs-review" });
+		expect(internalDependencies(snapshot)[0]).toMatchObject({
+			boundaryDecision: "allowed",
+			assessment: "needs-review",
+		});
 		snapshot.nodes[3].source!.path = "vendor/packages/domain/package.json";
 		expect(internalDependencies(snapshot)[0].boundaryDecision).toBe("unresolved");
 	});

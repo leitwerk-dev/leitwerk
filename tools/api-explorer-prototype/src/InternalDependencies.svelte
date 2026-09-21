@@ -9,8 +9,12 @@ let limit = $state(60);
 let exportError = $state("");
 const findings = $derived(internalDependencies(snapshot));
 const violations = $derived(findings.filter((finding) => finding.assessment === "forbidden"));
-const hasUncertainEvidence = $derived(findings.some((finding) => finding.assessment === "needs-review"));
-const targetPackages = $derived([...new Set(violations.map((finding) => finding.targetPackage))].sort());
+const hasUncertainEvidence = $derived(
+	findings.some((finding) => finding.assessment === "needs-review"),
+);
+const targetPackages = $derived(
+	[...new Set(violations.map((finding) => finding.targetPackage))].sort(),
+);
 const matches = $derived(
 	violations.filter(
 		(f) =>
