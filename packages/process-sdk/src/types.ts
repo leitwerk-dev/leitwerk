@@ -1,27 +1,10 @@
 import type {
-	ProcessSemanticEntryRefKey as DomainProcessSemanticEntryRefKey,
 	TurnAcceptanceState as DomainTurnAcceptanceState,
-	ProcessInstance,
-	ProcessProject,
 	ProcessTurnRecordPathType,
 	ProcessTurnTerminalLifecycleStatus,
 	TurnId,
 } from "@leitwerk-dev/domain";
 import type { UsageCostSnapshot, UsageTokenCounts } from "@leitwerk-dev/protocol";
-
-/** @internal */
-export interface ProcessContext {
-	/** @internal */
-	readonly process: ProcessInstance;
-	/** @internal */
-	readonly selectedTurnId: TurnId | null;
-	/** @internal */
-	readonly isTerminal: boolean;
-	/** @internal */
-	readonly projects: readonly ProcessProject[];
-	/** @internal */
-	selectTurn(turnId: TurnId | null): void;
-}
 
 /** @internal */
 export interface TurnOptions {
@@ -149,14 +132,6 @@ export interface OutcomeToolSpec {
 	turnResultMarkdownParameter?: string;
 	/** Outcome parameter containing a concise operator-facing summary. @internal */
 	resultSummaryParameter?: string;
-}
-
-/** @internal */
-export interface ProcessToolResult {
-	/** @internal */
-	status: string;
-	/** @internal */
-	outcome?: string;
 }
 
 /** @public */
@@ -440,8 +415,6 @@ export type TurnCompletionMode = (typeof TURN_COMPLETION_MODES)[number];
 
 /** @public */
 export type TurnBranchType = ProcessTurnRecordPathType;
-/** @internal */
-export type TurnSemanticEntryRefKey = DomainProcessSemanticEntryRefKey;
 
 /** @public */
 export interface TurnResultMarkdownNoneBehavior {

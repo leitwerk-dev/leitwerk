@@ -14,9 +14,9 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./git": {
-			"source": "./src/git.ts",
-			"import": "./dist/git.js",
-			"types": "./dist/git.d.ts"
+			"source": "./src/git-public.ts",
+			"import": "./dist/git-public.js",
+			"types": "./dist/git-public.d.ts"
 		},
 		"./prompt": {
 			"source": "./src/prompt.ts",

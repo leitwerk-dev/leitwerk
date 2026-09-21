@@ -8,7 +8,7 @@ import type {
 	ServerConfigSnapshot,
 	StorageConfigSnapshot,
 	WorkersConfigSnapshot,
-} from "@leitwerk-dev/protocol";
+} from "@leitwerk-dev/protocol/config-snapshot";
 import type { DockerNetworkConfig } from "@leitwerk-dev/worker-protocol";
 
 export type {
@@ -16,24 +16,12 @@ export type {
 	ConfigSnapshot,
 	ExtensionLoadingConfigSnapshot as ExtensionLoadingConfig,
 	ModelProfileSnapshot as ModelProfile,
-	NotificationChannelConfigSnapshot as NotificationChannelConfig,
-	NotificationsConfigSnapshot as NotificationsConfig,
-	PiConfigSnapshot as PiConfig,
-	PiProcessTitleGenerationConfigSnapshot,
-	PiProcessTitleGenerationRetryConfigSnapshot,
-	PiProviderRetryConfigSnapshot,
-	PiRetryConfigSnapshot,
 	ProcessConfigSnapshot as ProcessConfig,
-	ProcessTurnConfigSnapshot as ProcessTurnConfig,
 	SandboxConfigSnapshot as SandboxConfig,
 	ServerConfigSnapshot as ServerConfig,
-	ServerWebsocketConfigSnapshot,
-	SquadNotificationConfigSnapshot as SquadNotificationConfig,
-	SquadNotificationRouteSnapshot,
 	StorageConfigSnapshot as StorageConfig,
-	WorkersCleanupConfigSnapshot,
 	WorkersConfigSnapshot as WorkersConfig,
-} from "@leitwerk-dev/protocol";
+} from "@leitwerk-dev/protocol/config-snapshot";
 
 /** @internal */
 export interface SkillRepositoryConfig {

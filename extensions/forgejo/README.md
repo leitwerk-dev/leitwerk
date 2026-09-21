@@ -141,7 +141,7 @@ package's exported `forgejoIssueWatcherSource`; persisted source IDs remain unch
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/forgejo`: `ForgejoClient`, `ForgejoClientLike`, `ForgejoFeedbackItem`, `ForgejoIntegration`, `ForgejoIssue`, `ForgejoIssueWatcherConfig`, `ForgejoIssueWatcherEvent`, `ForgejoLabel`, `ForgejoProjectBinding`, `ForgejoPullRequest`, `ForgejoRepository`, `ForgejoTicketCreationConfig`, `default`, `forgejoIssueWatcherSource`, `setupForgejoIntegration`.
+- `@leitwerk-dev/forgejo`: `FORGEJO_ISSUE_CANCELLED_KIND`, `FORGEJO_PR_CONFLICT_KIND`, `FORGEJO_PR_FEEDBACK_KIND`, `FORGEJO_PR_TERMINAL_KIND`, `ForgejoClient`, `ForgejoGitIdentity`, `ForgejoIntegration`, `ForgejoIssue`, `ForgejoPullRequest`, `ForgejoRepository`, `default`, `forgejoExternal`, `forgejoIntegration`, `forgejoIssueWatcherSource`, `resolveForgejoProjectBinding`, `setupForgejoIntegration`.
 - `@leitwerk-dev/forgejo/testing`: `LocalForgejoAdapter`, `LocalForgejoOptions`, `LocalForgejoRepository`, `LocalForgejoState`.
 
 Members have individual classifications; these exports do not make every member

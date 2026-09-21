@@ -14,24 +14,19 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./launcher": {
-			"source": "./src/launcher.ts",
-			"import": "./dist/launcher.js",
-			"types": "./dist/launcher.d.ts"
+			"source": "./src/launcher-entry.ts",
+			"import": "./dist/launcher-entry.js",
+			"types": "./dist/launcher-entry.d.ts"
 		},
 		"./storage": {
-			"source": "./src/storage.ts",
-			"import": "./dist/storage.js",
-			"types": "./dist/storage.d.ts"
+			"source": "./src/storage-entry.ts",
+			"import": "./dist/storage-entry.js",
+			"types": "./dist/storage-entry.d.ts"
 		},
 		"./backend": {
 			"source": "./src/backend.ts",
 			"import": "./dist/backend.js",
 			"types": "./dist/backend.d.ts"
-		},
-		"./preflight": {
-			"source": "./src/preflight.ts",
-			"import": "./dist/preflight.js",
-			"types": "./dist/preflight.d.ts"
 		}
 	},
 	"scripts": {

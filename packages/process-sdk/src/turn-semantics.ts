@@ -49,8 +49,6 @@ export function isExternalTurnDefinition<TParams = unknown, TState = unknown>(
 	return turnDef.kind === "external";
 }
 
-export { defaultProcessTurnStartSelection as defaultTurnStartSelection } from "@leitwerk-dev/domain";
-
 /** @internal */
 export function resolveLlmTurnStartSelection<TOutcome extends string = string>(
 	turnDef: Pick<LlmTurnDefinition<TOutcome>, "branchType" | "startFrom">,

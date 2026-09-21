@@ -14,9 +14,9 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./worker-result-image": {
-			"source": "./src/worker-result-image.ts",
-			"import": "./dist/worker-result-image.js",
-			"types": "./dist/worker-result-image.d.ts"
+			"source": "./src/worker-result-image-public.ts",
+			"import": "./dist/worker-result-image-public.js",
+			"types": "./dist/worker-result-image-public.d.ts"
 		}
 	},
 	"scripts": {

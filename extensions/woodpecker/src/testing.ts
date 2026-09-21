@@ -4,7 +4,7 @@ import type { WoodpeckerPipeline, WoodpeckerRepository } from "./client.js";
 import { boundedLogTail } from "./logs.js";
 
 /** @public */
-export interface LocalWoodpeckerRepository {
+interface LocalWoodpeckerRepository {
 	/** @public */
 	repository: WoodpeckerRepository;
 	/** @public */
@@ -27,7 +27,7 @@ export interface LocalWoodpeckerState {
 	repositories: LocalWoodpeckerRepository[];
 }
 /** @public */
-export interface LocalWoodpeckerOptions {
+interface LocalWoodpeckerOptions {
 	/** @public */
 	root: string;
 	/** @public */

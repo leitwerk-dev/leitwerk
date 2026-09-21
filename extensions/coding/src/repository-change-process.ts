@@ -19,14 +19,14 @@ import {
 	requestReviewChangesForm,
 	requestRevisionForm,
 } from "./actions.js";
-import { runDeterministicFinalization } from "./finalization-git.js";
+import { runDeterministicFinalization } from "./finalization-git-internal.js";
 import {
 	clearReviewRefs,
 	createEmptyRepositoryChangeFinalizationState,
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
 	resetRepositoryChangeFinalizationState,
-} from "./repository-change-state.js";
+} from "./repository-change-state-internal.js";
 import {
 	buildGenerateCommitMessagePrompt,
 	normalizeGeneratedCommitMessage,

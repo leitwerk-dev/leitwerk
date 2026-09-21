@@ -21,10 +21,10 @@ repository-change processes share these labels; persisted turn ids are unchanged
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/coding`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParams`, `RepositoryChangeParamsBase`, `RepositoryChangeProcessConfig`, `codingActionIds`, `createRepositoryChangeParamsCodec`, `createRepositoryChangeProcess`, `default`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding`: `codingActionIds`, `createRepositoryChangeProcess`, `default`.
 - `@leitwerk-dev/coding/auto-work-branch`: `buildAutoWorkBranchFromSeed`, `generateAutoWorkBranchRandomHex`.
 - `@leitwerk-dev/coding/finalization-git`: `GitIdentity`, `commitAndPushWorkBranch`.
-- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
-- `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeFinalizationState`, `RepositoryChangeState`.
+- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeState`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

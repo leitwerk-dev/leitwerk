@@ -7,7 +7,7 @@ import {
 	buildAutoWorkBranch,
 	resolveBaseBranchSha,
 	slugifyBranchSourceForBranch,
-} from "./auto-work-branch.js";
+} from "./auto-work-branch-internal.js";
 
 // Real git subprocesses make these cases slow under the full parallel suite;
 // raise the timeout so process-spawn contention does not flake them.

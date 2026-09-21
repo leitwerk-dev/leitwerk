@@ -6,7 +6,7 @@ import { createForgejoProvider } from "./provider.js";
 import { registerForgejoTools } from "./tools.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "forgejo",
 	/** @internal */
@@ -33,10 +33,6 @@ const extension: LeitwerkExtensionModule = {
 	},
 };
 
-export * from "./capability.js";
-export * from "./client.js";
-export * from "./external.js";
-export * from "./issue-watcher.js";
 export default extension;
 
 /** Register shared tools and polling with an explicit integration. @public */
@@ -60,4 +56,21 @@ export function setupForgejoIntegration(
 	return createForgejoProvider(deps, integration, options.issueWatcherSource, options);
 }
 
-export * from "./binding.js";
+export { resolveForgejoProjectBinding } from "./binding.js";
+export type { ForgejoIntegration } from "./capability.js";
+export { forgejoIntegration } from "./capability.js";
+export {
+	ForgejoClient,
+	type ForgejoGitIdentity,
+	type ForgejoIssue,
+	type ForgejoPullRequest,
+	type ForgejoRepository,
+} from "./client.js";
+export {
+	FORGEJO_ISSUE_CANCELLED_KIND,
+	FORGEJO_PR_CONFLICT_KIND,
+	FORGEJO_PR_FEEDBACK_KIND,
+	FORGEJO_PR_TERMINAL_KIND,
+	forgejoExternal,
+} from "./external.js";
+export { forgejoIssueWatcherSource } from "./issue-watcher.js";
