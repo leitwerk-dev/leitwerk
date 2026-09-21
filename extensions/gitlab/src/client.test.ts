@@ -168,6 +168,10 @@ describe("GitLab boundary", () => {
 							note(4, { author: { username: "automation", bot: true } }),
 							note(5, { resolved: true }),
 							note(6, { created_at: "invalid" }),
+							note(9, {
+								author: { username: "leitwerk" },
+								body: `Generated reply\n\n<!-- leitwerk:gitlab:${"a".repeat(64)} -->`,
+							}),
 						],
 					},
 				],
@@ -177,8 +181,8 @@ describe("GitLab boundary", () => {
 		const feedback = await new GitLabClient(profile, {
 			fetch: request as typeof fetch,
 		}).listMergeRequestFeedback(7, 1);
-		expect(feedback.map((item) => item.id)).toEqual([1, 7, 8]);
-		expect(feedback[2]).toMatchObject({
+		expect(feedback.map((item) => item.id)).toEqual([1, 3, 7, 8]);
+		expect(feedback[3]).toMatchObject({
 			discussionId: "inline",
 			path: "settings.gradle.kts",
 			line: 1,
