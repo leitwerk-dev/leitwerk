@@ -539,10 +539,10 @@ export class GitLabClient {
 		iid: number,
 		signal?: AbortSignal,
 	): Promise<GitLabFeedback[]> {
-		const [discussions, identity] = await Promise.all([
-			this.pages<GitLabDiscussion>(`${mrPath(id, iid)}/discussions`, signal),
-			this.resolveGitIdentity(signal),
-		]);
+		const discussions = await this.pages<GitLabDiscussion>(
+			`${mrPath(id, iid)}/discussions`,
+			signal,
+		);
 		const feedback: GitLabFeedback[] = [];
 		for (const discussion of discussions) {
 			for (const note of discussion.notes) {
@@ -550,7 +550,7 @@ export class GitLabClient {
 					note.system ||
 					note.resolved ||
 					note.author.bot ||
-					note.author.username === identity.username ||
+					/<!-- leitwerk:gitlab:[a-f0-9]{64} -->/.test(note.body) ||
 					!note.body.trim() ||
 					!Number.isFinite(Date.parse(note.created_at))
 				)
