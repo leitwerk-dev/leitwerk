@@ -6,7 +6,6 @@ export {
 } from "./actor.js";
 export type {
 	Actor,
-	ActorKind,
 	CurrentExecutionRef,
 	DurableModelSelection,
 	ExternalWriteLog,
@@ -17,17 +16,13 @@ export type {
 	FutureExecutionScheduleKind,
 	InputKind,
 	InputSource,
-	JsonObject,
 	LaunchChecklistStep,
 	LaunchChecklistStepStatus,
 	LaunchOrigin,
 	LaunchRun,
 	LaunchRunStatus,
-	LlmContextMode,
-	ModelPolicyFailureCode,
 	ModelSelectionKind,
 	ModelSelectionProvenance,
-	ModelSelectionSource,
 	NormalizedQuestion,
 	PreparedTurnStart,
 	ProcessCustomizableFields,
@@ -58,7 +53,6 @@ export type {
 	TurnOutcomePayload,
 	TurnProgressLink,
 	TurnProgressReport,
-	TurnProgressStep,
 	TurnProgressStepStatus,
 	TurnStartContinuation,
 	TurnStartKind,
@@ -83,7 +77,6 @@ export {
 	isWorkerOwnedTurnType,
 	lifecycleStatusForSelectedTurnType,
 	normalizeAskQuestionsInput,
-	PROCESS_SELECTED_TURN_MODEL_SOURCES,
 	PROCESS_TURN_RECORD_PATH_TYPES,
 	PROCESS_TURN_TYPES,
 	SYSTEM_ACTOR,
@@ -104,10 +97,8 @@ export {
 export { readFiniteNumber } from "./number-normalize.js";
 export type {
 	ProcessFlowEdge,
-	ProcessFlowEdgeKind,
 	ProcessFlowEndState,
 	ProcessFlowNode,
-	ProcessFlowNodeRole,
 	ProcessFlowView,
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnTransition,
@@ -116,7 +107,6 @@ export type {
 export {
 	type InstanceTurnConfigInput,
 	type InstanceTurnConfigMap,
-	type InstanceTurnConfigsJsonError,
 	type LaunchModelConfigInput,
 	normalizeLaunchModelConfigInput,
 	parseStrictInstanceTurnConfigsJson,
@@ -124,17 +114,14 @@ export {
 } from "./process-model-config.js";
 export {
 	buildProcessRowSlot,
-	getProcessStatusCategory,
 	type ProcessRowSlot,
 	sortProcessRows,
 } from "./process-row-slots.js";
 export {
-	type ProcessStateJsonParseContext,
 	parseProcessStateJsonLenient,
 	parseProcessStateJsonStrict,
 	parseProductRefsFromStateJsonLenient,
 	parseProductRefsFromStateJsonStrict,
-	parseProductRefsLenient,
 	parseProductRefsStrict,
 	parseSemanticEntryRefsFromStateJsonLenient,
 	parseSemanticEntryRefsFromStateJsonStrict,
@@ -144,10 +131,7 @@ export {
 export {
 	assertRepoLocator,
 	detectRepoLocatorKind,
-	isRepoLocator,
-	type ParsedRepoLocator,
 	parseRepoLocator,
-	type RepoLocatorKind,
 } from "./repo-locator.js";
 export {
 	areSemanticEntryRefsEqual,
@@ -176,42 +160,25 @@ export {
 	trimString,
 	trimToNull,
 } from "./string-normalize.js";
-export { TURN_ACCEPTANCE_STATES, type TurnAcceptanceState } from "./turn-acceptance.js";
+export type { TurnAcceptanceState } from "./turn-acceptance.js";
 export {
-	type EntryTurnAnnotationReference,
 	type ProcessTurnAnnotation,
-	parseTurnAnnotationReference,
 	parseTurnAnnotationReferences,
-	type SemanticEntryRefTurnAnnotationReference,
-	TURN_ANNOTATION_REFERENCE_KINDS,
 	type TurnAnnotationReference,
-	type TurnAnnotationReferenceKind,
-	type TurnAnnotationReferenceRole,
-	type TurnRecordAnnotationReference,
 } from "./turn-annotations.js";
 export {
 	buildFailedTurnRecoveryMetadata,
 	CONTINUE_PROMPT_METADATA_KEY,
 	createGenericFailedTurnRecoveryContext,
 	DEFAULT_CONTINUE_PROMPT,
-	FAILED_TURN_RECOVERY_CODES,
 	FAILED_TURN_RECOVERY_METADATA_KEY,
 	type FailedTurnRecoveryCode,
 	type FailedTurnRecoveryContext,
 	inferTerminalRecordingFailedTurnRecoveryContext,
-	isFailedTurnRecoveryCode,
 	normalizeContinuePrompt,
 	readFailedTurnRecoveryContext,
 } from "./turn-recovery.js";
 export {
-	defaultProcessTurnStartSelection,
-	type ProcessTurnStartFallback,
-	type ProcessTurnStartFromCurrentLeaf,
-	type ProcessTurnStartFromEntry,
-	type ProcessTurnStartFromProductRef,
-	type ProcessTurnStartFromSemanticRef,
-	type ProcessTurnStartFromSessionRoot,
-	type ProcessTurnStartResolution,
 	type ProcessTurnStartSelection,
 	type ProcessTurnStartTarget,
 	resolveExistingProcessEntryId,

@@ -1,5 +1,4 @@
-/** Object parameters for a tool bound to a current process project. */
-/** @public */
+/** Object parameters for a tool bound to a current process project. @public */
 export function projectParameters(
 	properties: Record<string, unknown> = {},
 	required: readonly string[] = Object.keys(properties),
@@ -23,8 +22,7 @@ export function objectArg(
 	return value as Record<string, unknown>;
 }
 
-/** Read required integration-tool arguments at the runtime boundary. */
-/** @internal */
+/** Read required integration-tool arguments at the runtime boundary. @internal */
 export function stringArg(args: Record<string, unknown>, name: string): string {
 	const value = args[name];
 	if (typeof value !== "string" || !value.trim())

@@ -23,8 +23,7 @@ export interface InProcessWorkerSpawnOptions {
 	piFactory?: PiTreeHandleFactory;
 	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
-	/** Optional delays at real connection and managed-runtime preparation boundaries. */
-	/** @internal */
+	/** Optional delays at real connection and managed-runtime preparation boundaries. @internal */
 	startupDelays?: (instanceId: string) =>
 		| {
 				/** @internal */

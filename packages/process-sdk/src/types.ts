@@ -1,27 +1,10 @@
 import type {
-	ProcessSemanticEntryRefKey as DomainProcessSemanticEntryRefKey,
 	TurnAcceptanceState as DomainTurnAcceptanceState,
-	ProcessInstance,
-	ProcessProject,
 	ProcessTurnRecordPathType,
 	ProcessTurnTerminalLifecycleStatus,
 	TurnId,
 } from "@leitwerk-dev/domain";
 import type { UsageCostSnapshot, UsageTokenCounts } from "@leitwerk-dev/protocol";
-
-/** @internal */
-export interface ProcessContext {
-	/** @internal */
-	readonly process: ProcessInstance;
-	/** @internal */
-	readonly selectedTurnId: TurnId | null;
-	/** @internal */
-	readonly isTerminal: boolean;
-	/** @internal */
-	readonly projects: readonly ProcessProject[];
-	/** @internal */
-	selectTurn(turnId: TurnId | null): void;
-}
 
 /** @internal */
 export interface TurnOptions {
@@ -50,16 +33,14 @@ export const PI_BUILT_IN_TOOL_NAMES = [
 /** @public */
 export type PiBuiltInToolName = (typeof PI_BUILT_IN_TOOL_NAMES)[number];
 
-/** Tool names owned by the worker runtime rather than an integration extension. */
-/** @internal */
+/** Tool names owned by the worker runtime rather than an integration extension. @internal */
 export const FRAMEWORK_LLM_TOOL_NAMES = [
 	"ask_questions",
 	"markdown_result",
 	"upload_result_images",
 ] as const;
 
-/** Names integration tools cannot use because Pi or the worker runtime owns them. */
-/** @internal */
+/** Names integration tools cannot use because Pi or the worker runtime owns them. @internal */
 export const RESERVED_INTEGRATION_TOOL_NAMES = [
 	...PI_BUILT_IN_TOOL_NAMES,
 	...FRAMEWORK_LLM_TOOL_NAMES,
@@ -145,23 +126,12 @@ export interface OutcomeToolSpec {
 	description: string;
 	/** @internal */
 	parameters: Record<string, OutcomeToolParameterSpec>;
-	/** Product published from this outcome's turn-result markdown, when selected. */
-	/** @internal */
+	/** Product published from this outcome's turn-result markdown, when selected. @internal */
 	publishedProduct?: string;
-	/** Outcome parameter whose markdown value is captured as the turn result. */
-	/** @internal */
+	/** Outcome parameter whose markdown value is captured as the turn result. @internal */
 	turnResultMarkdownParameter?: string;
-	/** Outcome parameter containing a concise operator-facing summary. */
-	/** @internal */
+	/** Outcome parameter containing a concise operator-facing summary. @internal */
 	resultSummaryParameter?: string;
-}
-
-/** @internal */
-export interface ProcessToolResult {
-	/** @internal */
-	status: string;
-	/** @internal */
-	outcome?: string;
 }
 
 /** @public */
@@ -181,8 +151,7 @@ export interface PiTreeEntry {
 		/** @public */
 		readonly content?: unknown;
 	};
-	/** Pi custom-message fields. Details are intentionally excluded from model context. */
-	/** @internal */
+	/** Pi custom-message fields. Details are intentionally excluded from model context. @internal */
 	readonly customType?: string;
 	/** @public */
 	readonly content?: unknown;
@@ -216,8 +185,7 @@ export interface PiTurnExecutionResult {
 	createdEntryIds: string[];
 	/** @internal */
 	resultEntryId: string;
-	/** Final assistant markdown captured from the Pi assistant message for this turn, when available. */
-	/** @internal */
+	/** Final assistant markdown captured from the Pi assistant message for this turn, when available. @internal */
 	assistantMarkdown?: string | null;
 }
 
@@ -279,14 +247,11 @@ export type PiSessionDiagnosticHandler = (diagnostic: PiSessionDiagnostic) => vo
 
 /** @public */
 export interface PiCustomToolExecutionContext {
-	/** Pi's identity for this exact invocation; stable across the paused call. */
-	/** @public */
+	/** Pi's identity for this exact invocation; stable across the paused call. @public */
 	toolCallId: string;
-	/** Aborted when the active turn is stopped or torn down. */
-	/** @public */
+	/** Aborted when the active turn is stopped or torn down. @public */
 	signal: AbortSignal;
-	/** Pause model-execution budgets while this custom tool awaits durable operator input. */
-	/** @internal */
+	/** Pause model-execution budgets while this custom tool awaits durable operator input. @internal */
 	suspendPromptGuards?: () => () => void;
 }
 
@@ -450,8 +415,6 @@ export type TurnCompletionMode = (typeof TURN_COMPLETION_MODES)[number];
 
 /** @public */
 export type TurnBranchType = ProcessTurnRecordPathType;
-/** @internal */
-export type TurnSemanticEntryRefKey = DomainProcessSemanticEntryRefKey;
 
 /** @public */
 export interface TurnResultMarkdownNoneBehavior {
@@ -584,8 +547,7 @@ export interface HumanTurnExternalTrigger {
 
 /** @internal */
 export interface HumanTurnExternalActionView {
-	/** Process-local arming id exposed to providers and UI. */
-	/** @internal */
+	/** Process-local arming id exposed to providers and UI. @internal */
 	id: string;
 	/** @internal */
 	externalActionId: string;

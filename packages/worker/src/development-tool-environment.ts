@@ -146,8 +146,7 @@ const SAFE_ENV_KEYS = new Set([
 	"XDG_STATE_HOME",
 ]);
 
-/** Keep OS, network, and mise discovery settings while excluding application credentials. */
-/** @internal */
+/** Keep OS, network, and mise discovery settings while excluding application credentials. @internal */
 export function buildMiseSubprocessEnvironment(
 	base: NodeJS.ProcessEnv,
 	config: DevelopmentToolsStartConfig,
@@ -307,8 +306,7 @@ function toolPair(
 	return name && version ? { name, version } : null;
 }
 
-/** Normalize the mise JSON adapter boundary without retaining backend-specific fields. */
-/** @internal */
+/** Normalize the mise JSON adapter boundary without retaining backend-specific fields. @internal */
 export function normalizeMiseEvidence(value: unknown): Array<{
 	/** @internal */
 	name: string;

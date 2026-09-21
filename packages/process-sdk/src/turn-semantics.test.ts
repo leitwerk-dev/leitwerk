@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
 	type AutomaticTurnDefinition,
-	assertValidLlmTurnDefinition,
 	automaticTurn,
-	createRootBranchReviewTurn,
 	externalTurn,
 	type HumanTurnDefinition,
 	humanTurn,
+	type LlmTurnDefinition,
+	llmTurn,
+} from "./define-process.js";
+import {
+	assertValidLlmTurnDefinition,
+	createRootBranchReviewTurn,
 	isAutomaticTurnDefinition,
 	isExternalTurnDefinition,
 	isHumanTurnDefinition,
 	isLlmTurnDefinition,
-	type LlmTurnDefinition,
-	llmTurn,
 	resolveLlmTurnRestorePrimaryLeafAfterTurn,
 	resolveLlmTurnStartSelection,
 	validateAutomaticTurnDefinition,
@@ -20,7 +22,7 @@ import {
 	validateHumanTurnDefinition,
 	validateLlmTurnDefinition,
 	validateTurnDefinition,
-} from "./index.js";
+} from "./turn-semantics.js";
 
 function makeLlmTurn(
 	overrides: Partial<LlmTurnDefinition<"done">> = {},

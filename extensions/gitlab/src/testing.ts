@@ -12,13 +12,7 @@ import type {
 	GitLabProject,
 } from "./client.js";
 
-export type {
-	GitLabClientLike,
-	GitLabMergeRequest,
-	GitLabPipeline,
-	GitLabProject,
-} from "./client.js";
-export { setupGitLabIntegration } from "./index.js";
+export { setupGitLabIntegration } from "./setup.js";
 
 /** @public */
 interface LocalState {
@@ -39,8 +33,7 @@ interface LocalState {
 	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
 }
-/** Persistent GitLab test boundary. Repository URLs use local Git's file transport. */
-/** @public */
+/** Persistent GitLab test boundary. Repository URLs use local Git's file transport. @public */
 export class LocalGitLabAdapter {
 	/** @public */
 	state: LocalState;

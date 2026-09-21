@@ -71,7 +71,10 @@ async function main() {
 		const published = await waitForPublishedWorkspaces(workspaces, expectedGitSha);
 		if (published.size !== workspaces.length) {
 			fail(
-				`[publish:verify] ${workspaces.length - published.size} workspace versions are not public`,
+				"[publish:verify] Registry propagation window expired; these versions are not public:",
+				workspaces
+					.filter((workspace) => !published.has(workspace.name))
+					.map((workspace) => `${workspace.name}@${workspace.packageJson.version}`),
 			);
 		}
 		console.info(`[publish:verify] OK (${published.size} workspaces)`);
@@ -85,21 +88,29 @@ async function main() {
 	);
 }
 
-async function waitForPublishedWorkspaces(workspaces, expectedGitSha) {
-	const maxAttempts = 7;
-	const delayMs = 10_000;
+export async function waitForPublishedWorkspaces(
+	workspaces,
+	expectedGitSha,
+	{
+		findPublished = findPublishedWorkspaces,
+		now = Date.now,
+		sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+		log = console.info,
+	} = {},
+) {
+	const deadline = now() + 10 * 60_000;
 	const published = new Set();
 	let pending = workspaces;
-	for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-		for (const name of findPublishedWorkspaces(pending, expectedGitSha)) published.add(name);
+	while (pending.length > 0) {
+		for (const name of findPublished(pending, expectedGitSha)) published.add(name);
 		pending = workspaces.filter((workspace) => !published.has(workspace.name));
-		if (pending.length === 0) return published;
-		if (attempt < maxAttempts) {
-			console.info(
-				`[publish:verify] ${pending.length} workspace versions are not public yet; retrying in ${delayMs / 1000}s (${attempt}/${maxAttempts})`,
-			);
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-		}
+		const remainingMs = deadline - now();
+		if (pending.length === 0 || remainingMs <= 0) break;
+		const delayMs = Math.min(15_000, remainingMs);
+		log(
+			`[publish:verify] ${pending.length} workspace versions are not public yet; retrying in ${delayMs / 1000}s (${Math.ceil(remainingMs / 1000)}s remaining)`,
+		);
+		await sleep(delayMs);
 	}
 	return published;
 }

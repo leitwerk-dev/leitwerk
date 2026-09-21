@@ -84,8 +84,7 @@ export function sha256Digest(bytes: Uint8Array): string {
 	return createHash("sha256").update(bytes).digest("hex");
 }
 
-/** Creates a deterministic, uncompressed ustar archive containing regular files only. */
-/** @internal */
+/** Creates a deterministic, uncompressed ustar archive containing regular files only. @internal */
 export function createCanonicalPiResourceBundle(
 	files: readonly PiResourceFile[],
 ): PiResourceBundle {
@@ -132,8 +131,7 @@ function allZero(block: Uint8Array): boolean {
 	return block.every((byte) => byte === 0);
 }
 
-/** Parses only the narrow regular-file ustar subset emitted by this module. */
-/** @internal */
+/** Parses only the narrow regular-file ustar subset emitted by this module. @internal */
 export function verifyCanonicalPiResourceBundle(
 	bytes: Uint8Array,
 	expectedDigest?: string,

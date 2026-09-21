@@ -6,11 +6,11 @@ export function validateReleaseOrigin({ repository, tag, sha, release, compariso
 	if (!/^v\d+\.\d+\.\d+$/u.test(tag)) throw new Error("Expected a stable vX.Y.Z tag");
 	if (
 		release.tag_name !== tag ||
-		release.draft !== false ||
+		typeof release.draft !== "boolean" ||
 		release.prerelease !== false ||
 		release.author?.login !== "github-actions[bot]"
 	) {
-		throw new Error("Expected a published stable GitHub Release created by Release Please");
+		throw new Error("Expected a stable GitHub Release created by Release Please");
 	}
 	if (!["ahead", "identical"].includes(comparison.status)) {
 		throw new Error("Release commit must be on main");
@@ -50,7 +50,14 @@ export async function verifyReleaseOrigin(env = process.env) {
 			throw new Error(`GitHub release verification failed: HTTP ${response.status}`);
 		return response.json();
 	}
-	const release = await get(`releases/tags/${tag}`);
+	// The tag endpoint only returns published releases; list also includes authorized drafts.
+	let release;
+	for (let page = 1; ; page++) {
+		const releases = await get(`releases?per_page=100&page=${page}`);
+		release = releases.find((candidate) => candidate.tag_name === tag);
+		if (release || releases.length < 100) break;
+	}
+	if (!release) throw new Error(`Release Please release not found: ${tag}`);
 	let { object } = await get(`git/ref/tags/${tag}`);
 	for (let depth = 0; object.type === "tag" && depth < 8; depth++) {
 		({ object } = await get(`git/tags/${object.sha}`));

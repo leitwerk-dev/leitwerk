@@ -314,8 +314,7 @@ export function parseGitLabProfiles(raw: unknown): Map<string, GitLabProfile> {
 const projectPath = (id: number | string) => `/projects/${encodeURIComponent(id)}`;
 const mrPath = (id: number, iid: number) => `${projectPath(id)}/merge_requests/${iid}`;
 
-/** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. */
-/** @public */
+/** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. @public */
 export class GitLabClient {
 	/** @public */
 	readonly baseUrl: string;
@@ -631,10 +630,34 @@ export class GitLabClient {
 	}
 }
 /** @public */
-export type GitLabClientLike = Pick<GitLabClient, keyof GitLabClient>;
+export type GitLabClientLike = Pick<
+	GitLabClient,
+	| "addNote"
+	| "addNoteReaction"
+	| "baseUrl"
+	| "getBranch"
+	| "getChanges"
+	| "getCommit"
+	| "getDiscussion"
+	| "getGroup"
+	| "getJobTrace"
+	| "getMergeRequest"
+	| "getPipeline"
+	| "getProject"
+	| "listBranchPipelines"
+	| "listFailedJobs"
+	| "listGroupProjects"
+	| "listMergeRequestFeedback"
+	| "listMergeRequestPipelines"
+	| "listMergeRequests"
+	| "listNoteReactions"
+	| "listNotes"
+	| "listProjects"
+	| "replyToDiscussion"
+	| "resolveGitIdentity"
+>;
 
-/** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
-/** @public */
+/** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. @public */
 export async function observeMergeRequest(
 	client: GitLabClientLike,
 	projectId: number,

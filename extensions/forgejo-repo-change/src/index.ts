@@ -3,11 +3,14 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { woodpeckerIntegration } from "@leitwerk-dev/woodpecker";
 import { createForgejoRepoChangeLauncher } from "./launcher.js";
+
+export { forgejoRepoChangeLaunchConfig, forgejoRepoChangeParams } from "./launcher.js";
+
 import { createForgejoRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "forgejo-repo-change",
 	/** @internal */
@@ -16,8 +19,7 @@ export const manifest = {
 	requires: ["forgejo", "woodpecker", "coding", "git-ssh"],
 } as const;
 
-/** Load exactly one variant per catalog. Only trusted composition code selects Docker. */
-/** @public */
+/** Load exactly one variant per catalog. Only trusted composition code selects Docker. @public */
 export function createForgejoRepoChange(options: {
 	/** @public */
 	docker: boolean;
@@ -55,21 +57,8 @@ export function createForgejoRepoChange(options: {
 	};
 }
 
-export * from "./launcher.js";
-export * from "./params.js";
-export * from "./process.js";
-export * from "./profile-bindings.js";
+export type { ForgejoRepoChangeParams } from "./params.js";
+
 /** @internal */
-export const {
-	extension: defaultExtension,
-	process: forgejoRepoChangeProcess,
-	launcher: defaultForgejoRepoChangeLauncher,
-} = createForgejoRepoChange({ docker: true });
-/** @internal */
-export const {
-	configure: configureForgejoRepoChangeLauncher,
-	preparationChecks: forgejoRepositoryPreparationChecks,
-	resolveGitIdentity: resolveForgejoGitIdentity,
-	launcher: forgejoRepoChangeUiLauncher,
-} = defaultForgejoRepoChangeLauncher;
+const { extension: defaultExtension } = createForgejoRepoChange({ docker: true });
 export default defaultExtension;

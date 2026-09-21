@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/repository-rebase",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -14,9 +14,9 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./git": {
-			"source": "./src/git.ts",
-			"import": "./dist/git.js",
-			"types": "./dist/git.d.ts"
+			"source": "./src/git-public.ts",
+			"import": "./dist/git-public.js",
+			"types": "./dist/git-public.d.ts"
 		},
 		"./prompt": {
 			"source": "./src/prompt.ts",
@@ -28,7 +28,7 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/process-sdk": "0.2.0"
+		"@leitwerk-dev/process-sdk": "0.2.1"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1",

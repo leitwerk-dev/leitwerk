@@ -6,8 +6,7 @@ import {
 import { extractPiSessionMessageText } from "./pi-session-message.js";
 import { isToolResultTruncated } from "./tool-result-truncation.js";
 
-/** Share the recorded tool content presentation between live HTTP history and live frames. */
-/** @internal */
+/** Share the recorded tool content presentation between live HTTP history and live frames. @internal */
 export function snapshotTurnTrace(
 	projection: MutableLiveTurnProjection,
 	piInput: TurnTraceSnapshot["piInput"] = null,

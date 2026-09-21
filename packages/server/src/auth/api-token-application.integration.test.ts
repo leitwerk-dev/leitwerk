@@ -63,6 +63,6 @@ it("preserves the token owner's durable attribution on accepted application muta
 		expect(repos.processes.getById(instance.id)?.lifecycleStatus).toBe("active");
 		expect(JSON.stringify(repos.inputs.listByInstance(instance.id))).not.toContain(secret);
 	} finally {
-		await ctx.app.close();
+		await ctx.close();
 	}
 });

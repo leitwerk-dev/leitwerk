@@ -14,7 +14,7 @@ import {
 import { leaveFeedbackToolRenderer } from "./turns/poem-creator.js";
 
 /** @internal */
-export interface SinglePromptExtensionConfig {
+interface SinglePromptExtensionConfig {
 	/** @internal */
 	file_triggers?: {
 		/** @internal */
@@ -27,7 +27,7 @@ export interface SinglePromptExtensionConfig {
 }
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "showcase-processes",
 	/** @internal */
@@ -72,11 +72,7 @@ const singlePromptExtension: LeitwerkExtensionModule = {
 };
 
 export default singlePromptExtension;
-
-export * from "./file-external.js";
-export * from "./filesystem-watcher.js";
-export * from "./poem-leaf-outcome.js";
-export * from "./process-definition.js";
-export * from "./turns/external-complete.js";
-export * from "./turns/poem-creator.js";
-export * from "./turns/run-single-prompt.js";
+export {
+	buildPoemLeafOutcomeFallbackMarkdown,
+	buildPoemLeafOutcomePayload,
+} from "./poem-leaf-outcome.js";

@@ -6,6 +6,7 @@ import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+let harness: Awaited<ReturnType<typeof createIntegrationHarness>>;
 let ctx: AppContext;
 let address: string;
 
@@ -123,7 +124,7 @@ const retryConfigTestExtension: LeitwerkExtensionModule = {
 const testExtensionCatalog = buildExtensionCatalogFromModules([retryConfigTestExtension]);
 
 beforeAll(async () => {
-	const harness = await createIntegrationHarness({
+	harness = await createIntegrationHarness({
 		extensionCatalog: testExtensionCatalog,
 	});
 	ctx = harness.ctx;
@@ -131,7 +132,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await ctx.app.close();
+	await harness.close();
 });
 
 describe("GET /api/processes/:instanceId/retry-config", () => {
@@ -203,7 +204,7 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 				},
 			});
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	});
 
@@ -252,7 +253,7 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 				skillIds: ["review-draft"],
 			});
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	});
 
@@ -281,7 +282,7 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 				modelConfig: {},
 			});
 		} finally {
-			await harness.ctx.app.close();
+			await harness.close();
 		}
 	});
 });

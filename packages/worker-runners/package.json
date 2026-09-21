@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/worker-runners",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -14,49 +14,44 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./types": {
-			"source": "./src/types.ts",
-			"import": "./dist/types.js",
-			"types": "./dist/types.d.ts"
+			"source": "./src/types-public.ts",
+			"import": "./dist/types-public.js",
+			"types": "./dist/types-public.d.ts"
 		},
 		"./local": {
-			"source": "./src/local-worker-runner.ts",
-			"import": "./dist/local-worker-runner.js",
-			"types": "./dist/local-worker-runner.d.ts"
+			"source": "./src/local-public.ts",
+			"import": "./dist/local-public.js",
+			"types": "./dist/local-public.d.ts"
 		},
 		"./docker": {
-			"source": "./src/docker-worker-runner.ts",
-			"import": "./dist/docker-worker-runner.js",
-			"types": "./dist/docker-worker-runner.d.ts"
+			"source": "./src/docker-public.ts",
+			"import": "./dist/docker-public.js",
+			"types": "./dist/docker-public.d.ts"
 		},
 		"./docker-client": {
-			"source": "./src/docker-engine-http-client.ts",
-			"import": "./dist/docker-engine-http-client.js",
-			"types": "./dist/docker-engine-http-client.d.ts"
+			"source": "./src/docker-client-public.ts",
+			"import": "./dist/docker-client-public.js",
+			"types": "./dist/docker-client-public.d.ts"
 		},
 		"./kubernetes": {
-			"source": "./src/kubernetes-worker-runner.ts",
-			"import": "./dist/kubernetes-worker-runner.js",
-			"types": "./dist/kubernetes-worker-runner.d.ts"
+			"source": "./src/kubernetes-public.ts",
+			"import": "./dist/kubernetes-public.js",
+			"types": "./dist/kubernetes-public.d.ts"
 		},
 		"./kubernetes-client": {
-			"source": "./src/kubernetes-http-client.ts",
-			"import": "./dist/kubernetes-http-client.js",
-			"types": "./dist/kubernetes-http-client.d.ts"
-		},
-		"./session-transfer-helper": {
-			"source": "./src/session-transfer-helper.ts",
-			"import": "./dist/session-transfer-helper.js",
-			"types": "./dist/session-transfer-helper.d.ts"
+			"source": "./src/kubernetes-client-public.ts",
+			"import": "./dist/kubernetes-client-public.js",
+			"types": "./dist/kubernetes-client-public.d.ts"
 		}
 	},
 	"scripts": {
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0",
-		"@leitwerk-dev/session-transfer": "0.2.0",
-		"@leitwerk-dev/watcher-utils": "0.2.0",
-		"@leitwerk-dev/worker-protocol": "0.2.0"
+		"@leitwerk-dev/domain": "0.2.1",
+		"@leitwerk-dev/session-transfer": "0.2.1",
+		"@leitwerk-dev/watcher-utils": "0.2.1",
+		"@leitwerk-dev/worker-protocol": "0.2.1"
 	},
 	"devDependencies": {
 		"@types/node": "^22.15.30",

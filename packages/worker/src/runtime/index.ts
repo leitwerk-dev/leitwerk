@@ -39,8 +39,7 @@ export interface WorkerRuntime {
 	stop(reason: string): Promise<void>;
 }
 
-/** One non-reentrant driver around the pure runtime reducer. */
-/** @internal */
+/** One non-reentrant driver around the pure runtime reducer. @internal */
 export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntime {
 	const { config, adapters } = options;
 	const sampleCredentials = adapters.sampleCredentials ?? sampleCredentialFiles;

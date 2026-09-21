@@ -65,7 +65,7 @@ describe("auth HTTP guard", () => {
 	afterEach(async () => {
 		await authRouteApp?.close();
 		authRouteApp = null;
-		await ctx?.app.close();
+		await ctx?.close();
 		ctx = null;
 	});
 

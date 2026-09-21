@@ -1,49 +1,35 @@
-export {
-	createTestConfigSnapshot as testConfigSnapshot,
-	createTestIpcEnvelopeBase as baseEnvelope,
-	flushAsyncWork,
-} from "@leitwerk-dev/worker-protocol";
-export { createCompactProcessDetailFixtureFactory } from "./compact-process-detail-fixture.js";
-export { FakeGitOps, type RepoTemplate } from "./fakes/fake-git-ops.js";
-export { FakeLlmProvider, type LlmResponse } from "./fakes/fake-llm.js";
+import { createInMemoryExternalWriteLog as createInMemoryExternalWriteLogImpl } from "./server-extension-test-harness.js";
+
+export { FakeLlmProvider } from "./fakes/fake-llm.js";
 export { postImmediateLaunch, postImmediateLaunchRequest } from "./http-launch.js";
 export {
-	createInProcessWorkerSpawn,
-	type InProcessWorkerSpawnOptions,
-} from "./in-process-worker.js";
+	type FixtureModelProviderSet,
+	fixtureModelProviders,
+} from "./model-provider-fixtures.js";
 export {
-	createIntegrationHarness,
-	type IntegrationHarness,
-	type IntegrationHarnessOptions,
-} from "./integration-harness.js";
-export { fixtureModelProviders } from "./model-provider-fixtures.js";
-export { waitForValue } from "./polling.js";
-export {
-	createInMemoryExternalWriteLog,
 	createPollingTestExtension,
 	createTestServerSetupCapability,
 	createToolCollector,
-	type InMemoryExternalWriteLog,
-	type ServerExtensionTestHarness,
-	setupServerExtensionTest,
 } from "./server-extension-test-harness.js";
-export { createTestApp, type TestApp, type TestAppOptions } from "./test-app.js";
-export {
-	createSchemaDrivenStubPiFactory,
-	createSchemaDrivenToolCallScriptResolver,
-	synthesizeStubArgValue,
-	synthesizeStubToolArgs,
-} from "./worker-testing/schema-driven-stub-pi.js";
-export {
-	createStubToolScriptController,
-	type StubToolScriptController,
-} from "./worker-testing/stub-pi-controls.js";
-export {
-	StubPiTreeHandle,
-	StubPiTreeHandleFactory,
-	type StubPiTreeHandleFactoryOptions,
-	type StubToolCallScriptCall,
-	type StubToolCallScriptItem,
-	type StubToolCallScriptResolver,
-	type StubToolCallScriptResolverContext,
-} from "./worker-testing/stub-pi-tree-handle.js";
+/** @internal */
+export function createInMemoryExternalWriteLog(): {
+	/** @internal */
+	records: Array<{
+		/** @internal */
+		dedupKey: string;
+	}>;
+	/** @internal */
+	hasDedupKey(key: string): boolean;
+	/** @internal */
+	record(input: {
+		/** @internal */
+		dedupKey: string;
+	}): {
+		/** @internal */
+		dedupKey: string;
+	};
+	/** @internal */
+	getDedupKeys(): ReadonlySet<string>;
+} {
+	return createInMemoryExternalWriteLogImpl();
+}

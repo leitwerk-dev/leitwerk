@@ -18,7 +18,6 @@ import type {
 	HumanTurnOperatorAttention,
 	LlmModelPurpose,
 	LlmTurnDefinition,
-	ProcessDefinition,
 	ProcessEffectPlan,
 	ProcessHumanTurnActionSpec,
 	ProcessHumanTurnExternalActionSpec,
@@ -33,6 +32,7 @@ import type {
 import { defineProcess } from "./define-process.js";
 import type {
 	Codec,
+	ExtensionProcessDefinition,
 	ExternalActionSource,
 	ExternalSourceEffect,
 	ExternalSourceEffectContext,
@@ -701,8 +701,7 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	/** @internal */
 	protected summaryParameter: string | null = null;
 
-	/** Optional concise result publication, separate from the full Markdown. */
-	/** @public */
+	/** Optional concise result publication, separate from the full Markdown. @public */
 	resultSummary(name = "resultSummary"): this {
 		this.summaryParameter = name;
 		return this.parameter(name, {
@@ -1219,8 +1218,7 @@ export class LlmFlowBuilder<
 		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared>;
 	}
 
-	/** Enable durable operator questions for this LLM turn. */
-	/** @public */
+	/** Enable durable operator questions for this LLM turn. @public */
 	askQuestions(): this {
 		this.questionsEnabled = true;
 		return this;
@@ -2182,8 +2180,11 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	private paramsCodec: Codec<TParams> | null = null;
 	private stateCodec: Codec<TState> | null = null;
 	private initialStateFn: ((params: TParams) => TState) | null = null;
-	private repositoryCredentialsFn: ProcessDefinition<TParams, TState>["repositoryCredentials"];
-	private storageSizeResolver: ProcessDefinition<TParams, TState>["resolveStorageSize"];
+	private repositoryCredentialsFn: ExtensionProcessDefinition<
+		TParams,
+		TState
+	>["repositoryCredentials"];
+	private storageSizeResolver: ExtensionProcessDefinition<TParams, TState>["resolveStorageSize"];
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
 	private docker = false;
@@ -2209,8 +2210,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Declare an additional turn that launchers may select as the first turn. */
-	/** @internal */
+	/** Declare an additional turn that launchers may select as the first turn. @internal */
 	alternateEntry(turnId: TurnId): this {
 		this.alternateEntryTurnIds.push(turnId);
 		return this;
@@ -2247,16 +2247,15 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 
 	/** @public */
 	repositoryCredentials(
-		fn: NonNullable<ProcessDefinition<TParams, TState>["repositoryCredentials"]>,
+		fn: NonNullable<ExtensionProcessDefinition<TParams, TState>["repositoryCredentials"]>,
 	): this {
 		this.repositoryCredentialsFn = fn;
 		return this;
 	}
 
-	/** Resolve new process-volume capacity on the server; operator configuration wins. */
-	/** @internal */
+	/** Resolve new process-volume capacity on the server; operator configuration wins. @internal */
 	resolveStorageSize(
-		fn: NonNullable<ProcessDefinition<TParams, TState>["resolveStorageSize"]>,
+		fn: NonNullable<ExtensionProcessDefinition<TParams, TState>["resolveStorageSize"]>,
 	): this {
 		this.storageSizeResolver = fn;
 		return this;
@@ -2268,8 +2267,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
-	/** Declare runner-provided process runtime capabilities. */
-	/** @public */
+	/** Declare runner-provided process runtime capabilities. @public */
 	runtime(capabilities: {
 		/** @internal */
 		developmentTools?: boolean;
@@ -2292,7 +2290,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 
 	/** @public */
-	define(): ProcessDefinition<TParams, TState> {
+	define(): ExtensionProcessDefinition<TParams, TState> {
 		if (!this.processDisplayName) {
 			throw new Error(`Flow process '${this.processId}' must declare .displayName(...)`);
 		}

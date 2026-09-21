@@ -5,7 +5,10 @@ export default workspaceBuild({
 		"src/git-binary.ts",
 		"src/leaf-outcome-renderer.ts",
 		"src/pi-config.ts",
+		"src/pi-config-public.ts",
 		"src/review-flow.ts",
+		"src/review-flow-public.ts",
 		"src/runtime-internals.ts",
+		"src/runtime-internals-public.ts",
 	],
 });

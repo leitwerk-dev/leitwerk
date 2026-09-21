@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/external-writes",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -12,13 +12,18 @@
 			"source": "./src/index.ts",
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
+		},
+		"./internal": {
+			"source": "./src/internal.ts",
+			"import": "./dist/internal.js",
+			"types": "./dist/internal.d.ts"
 		}
 	},
 	"scripts": {
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0"
+		"@leitwerk-dev/domain": "0.2.1"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

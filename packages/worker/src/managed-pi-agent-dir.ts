@@ -63,8 +63,7 @@ export interface DeclaredCredentialFile {
 	content: string | Uint8Array;
 }
 
-/** Atomically writes declared credential files inside an existing managed directory. */
-/** @internal */
+/** Atomically writes declared credential files inside an existing managed directory. @internal */
 export async function writeManagedPiCredentialFiles(
 	agentDir: string,
 	files: readonly DeclaredCredentialFile[],

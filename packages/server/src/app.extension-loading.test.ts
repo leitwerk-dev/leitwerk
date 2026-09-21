@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { resolveExtensionEntries } from "@leitwerk-dev/extension-runtime";
@@ -47,7 +47,14 @@ async function createExtensionWorkspace(): Promise<string> {
 	);
 	await writeFile(
 		path.join(root, "extensions", "example", "src", "index.ts"),
-		["export default {", "\tmanifest: { id: 'example', version: '0.1.0' },", "};", ""].join("\n"),
+		[
+			'import { appendFileSync } from "node:fs";',
+			"export default {",
+			"\tmanifest: { id: 'example', version: '0.1.0' },",
+			`\tsetupServer() { appendFileSync(${JSON.stringify(path.join(root, "loaded.txt"))}, "example\\n"); },`,
+			"};",
+			"",
+		].join("\n"),
 	);
 	return root;
 }
@@ -81,11 +88,9 @@ describe("createAppContext extension loading", () => {
 			resolvedExtensionEntries,
 		});
 		try {
-			expect(ctx.extensionCatalog.modules.map((module) => module.packageName)).toEqual([
-				"@example/example",
-			]);
+			expect(await readFile(path.join(workspaceRoot, "loaded.txt"), "utf8")).toBe("example\n");
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 
@@ -118,7 +123,7 @@ describe("createAppContext extension loading", () => {
 				expect.objectContaining({ availability: "available" }),
 			);
 		} finally {
-			await ctx.app.close();
+			await ctx.close();
 		}
 	});
 

@@ -6,19 +6,19 @@ import type { ForgejoClient, ForgejoIssue } from "./client.js";
 import { registerForgejoTools } from "./tools.js";
 
 function setup(client: Record<string, unknown>) {
-	const { api, tools } = createToolCollector();
+	const writes = createInMemoryExternalWriteLog();
+	const { api, tools } = createToolCollector(writes);
 	const integration = {
 		profiles: () => ["primary"],
 		client: () => client as unknown as ForgejoClient,
 	} satisfies ForgejoIntegration;
-	const writes = createInMemoryExternalWriteLog();
+
 	const projects = {
 		update: vi.fn((_id: string, input: Record<string, unknown>) => ({ id: "project-1", ...input })),
 	};
 	registerForgejoTools(
 		api,
 		integration,
-		writes,
 		{ defaultLabels: ["created-by-leitwerk"] },
 		projects as never,
 	);
@@ -67,7 +67,7 @@ describe("Forgejo server tools", () => {
 		[
 			"forgejo_add_pull_request_comment",
 			"pullRequestNumber",
-			"addPullRequestComment",
+			"addIssueComment",
 			{ body: "Review" },
 		],
 		["forgejo_update_issue", "issueNumber", "updateIssue", { patch: { title: "Updated" } }],
@@ -78,8 +78,21 @@ describe("Forgejo server tools", () => {
 			{ patch: { title: "Updated" } },
 		],
 	] as const)("routes %s through the authorized project", async (name, numberName, method, payload) => {
-		const read = vi.fn(async () => "result");
-		const { tools } = setup({ [method]: read });
+		const remote = {
+			body: "Review\n\n<!-- leitwerk-write:ticket-1:stable-write-key -->",
+			title: "Before",
+		};
+		let created = false;
+		const read = vi.fn(async () => {
+			created = true;
+			return payload ? remote : "result";
+		});
+		const { tools } = setup({
+			listIssueComments: async () => (created ? [remote] : []),
+			getIssue: async () => remote,
+			getPullRequest: async () => remote,
+			[method]: read,
+		});
 		const ctx = {
 			...context({}),
 			project: {
@@ -95,18 +108,12 @@ describe("Forgejo server tools", () => {
 		]);
 		const args = { [numberName]: 7, ...payload };
 		const result = await tool?.execute(ctx, args);
-		expect(result).toEqual(
-			payload
-				? "patch" in payload
-					? { ok: true }
-					: { performed: true, dedupKey: ctx.idempotencyKey }
-				: "result",
-		);
+		expect(result).toEqual(payload ? ("patch" in payload ? { ok: true } : remote) : "result");
 		expect(read).toHaveBeenCalledWith(
 			"team",
 			"repo",
 			7,
-			...Object.values(payload ?? {}),
+			...(payload && "body" in payload ? [remote.body] : Object.values(payload ?? {})),
 			ctx.signal,
 		);
 		if (payload) {
@@ -259,7 +266,7 @@ describe("Forgejo server tools", () => {
 			ctx.signal,
 		);
 		expect(issues[0]?.body).toContain("<!-- leitwerk-ticket-write:stable-write-key -->");
-		expect(written.size).toBe(lostLabelResponse ? 1 : 2);
+		expect(written.size).toBe(2);
 
 		const replay = await tool?.execute(ctx, { title: "Ticket", body: "Description" });
 		expect(replay).toMatchObject({ externalId: "team/repo#7" });
@@ -278,7 +285,6 @@ it("omits ticket registration when explicitly disabled", () => {
 				throw new Error("No provider call during registration");
 			},
 		},
-		{ hasDedupKey: () => false, record: () => undefined },
 		{ enabled: false, defaultLabels: [] },
 	);
 	expect(tools.has("forgejo_create_issue")).toBe(false);

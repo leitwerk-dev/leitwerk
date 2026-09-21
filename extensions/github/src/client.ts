@@ -66,6 +66,14 @@ export interface GitHubLabelEvent {
 }
 
 /** @internal */
+interface GitHubLabel {
+	/** @internal */
+	id: number;
+	/** @internal */
+	name: string;
+}
+
+/** @internal */
 export interface GitHubProfile {
 	/** @internal */
 	apiBaseUrl: string;
@@ -285,25 +293,20 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 	/** @internal */
+	listLabels(owner: string, repo: string) {
+		return this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`);
+	}
+	/** @internal */
+	createLabel(owner: string, repo: string, name: string) {
+		return this.request<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, {
+			method: "POST",
+			body: JSON.stringify({ name, color: "238636" }),
+		});
+	}
+	/** @internal */
 	async ensureLabel(owner: string, repo: string, name: string) {
-		const labels = await this.pages<{
-			/** @internal */
-			id: number;
-			/** @internal */
-			name: string;
-		}>(`${this.repositoryPath(owner, repo)}/labels`);
-		return (
-			labels.find((label) => label.name === name) ??
-			this.request<{
-				/** @internal */
-				id: number;
-				/** @internal */
-				name: string;
-			}>(`${this.repositoryPath(owner, repo)}/labels`, {
-				method: "POST",
-				body: JSON.stringify({ name, color: "238636" }),
-			})
-		);
+		const labels = await this.listLabels(owner, repo);
+		return labels.find((label) => label.name === name) ?? this.createLabel(owner, repo, name);
 	}
 	/** @internal */
 	addFeedbackReaction(owner: string, repo: string, kind: string, id: number) {
@@ -323,12 +326,10 @@ export class GitHubClient extends RepositoryHttpClient {
 		body: string,
 	) {
 		if (kind === "inline")
-			return this.request(
+			return this.writeJson(
 				`${this.repositoryPath(owner, repo)}/pulls/${pr}/comments/${id}/replies`,
-				{
-					method: "POST",
-					body: JSON.stringify({ body }),
-				},
+				"POST",
+				{ body },
 			);
 		return this.addIssueComment(owner, repo, pr, body);
 	}
@@ -468,8 +469,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		};
 	}
 
-	/** Human feedback checked against current membership; delivery receipts use raw reads. */
-	/** @internal */
+	/** Human feedback checked against current membership; delivery receipts use raw reads. @internal */
 	async listActionablePullRequestFeedback(
 		owner: string,
 		repo: string,

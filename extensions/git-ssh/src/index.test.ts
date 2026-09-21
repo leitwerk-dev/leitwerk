@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { parseProfiles, preflightGitSshAccess } from "./index.js";
+import { parseProfiles, preflightGitSshAccess } from "./git-ssh-internal.js";
 
 const key = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----";
 const tempDirs: string[] = [];

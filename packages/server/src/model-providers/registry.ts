@@ -14,11 +14,9 @@ export interface RegisteredModelProvider {
 	readonly packageName: string;
 	/** @internal */
 	readonly definition: ModelProviderDefinition;
-	/** The parsed, non-secret provider configuration fragment. */
-	/** @internal */
+	/** The parsed, non-secret provider configuration fragment. @internal */
 	readonly config: unknown;
-	/** Configured credential seed, visible only to the credential service. */
-	/** @internal */
+	/** Configured credential seed, visible only to the credential service. @internal */
 	readonly configuredCredential: unknown | null;
 	/** @internal */
 	readonly piContribution: CatalogPiContribution | null;

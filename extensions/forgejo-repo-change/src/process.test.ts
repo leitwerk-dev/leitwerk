@@ -1,6 +1,6 @@
 import { forgejoIssueWatcherSource } from "@leitwerk-dev/forgejo";
 import { describe, expect, it } from "vitest";
-import { forgejoRepoChangeProcess } from "./index.js";
+import { forgejoRepoChangeProcess } from "./testing/default-process.js";
 import { launcherFixture } from "./testing/launcher-fixture.js";
 
 describe("forgejoRepoChangeProcess", () => {

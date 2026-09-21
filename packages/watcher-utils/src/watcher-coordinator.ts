@@ -1,9 +1,9 @@
 import type { ProcessInstance, TurnId } from "@leitwerk-dev/domain";
+import type { WriteIdentity } from "@leitwerk-dev/external-writes";
 import {
 	type ExternalWriteLogRepoLike,
 	recordWriteIfMissing,
-	type WriteIdentity,
-} from "@leitwerk-dev/external-writes";
+} from "@leitwerk-dev/external-writes/internal";
 import type { KnownDurableWsFrameType, WsPayloadByType } from "@leitwerk-dev/protocol";
 import type { PollResult } from "./poll-loop.js";
 import {
@@ -74,8 +74,7 @@ export interface ContinueWatcherAgentStartupOptions {
 	createdEventData: Record<string, unknown>;
 	/** @internal */
 	createdBroadcastData: Record<string, unknown>;
-	/** Defaults to true. Set false when the shared launch executor already emitted process.created. */
-	/** @internal */
+	/** Defaults to true. Set false when the shared launch executor already emitted process.created. @internal */
 	broadcastCreated?: boolean;
 	/** @internal */
 	afterCreatedEvent?: (process: ProcessInstance) => Promise<void> | void;

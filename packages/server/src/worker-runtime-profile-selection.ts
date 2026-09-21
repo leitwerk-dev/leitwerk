@@ -17,17 +17,13 @@ export interface ComponentRuntimeProfileSelection {
 export interface RuntimeProfileSelectionInput {
 	/** @internal */
 	processId: string;
-	/** `process_configs.<processId>.worker_runtime_profile`, if set. */
-	/** @internal */
+	/** `process_configs.<processId>.worker_runtime_profile`, if set. @internal */
 	processOverride?: string;
-	/** Per-component profile selections for the process's projects. */
-	/** @internal */
+	/** Per-component profile selections for the process's projects. @internal */
 	componentProfiles: ComponentRuntimeProfileSelection[];
-	/** Runner-specific default profile (`kubernetes.default_worker_runtime_profile` wins in Kubernetes mode). */
-	/** @internal */
+	/** Runner-specific default profile (`kubernetes.default_worker_runtime_profile` wins in Kubernetes mode). @internal */
 	defaultProfile?: string;
-	/** Configured `worker_runtime_profiles` keyed by id. */
-	/** @internal */
+	/** Configured `worker_runtime_profiles` keyed by id. @internal */
 	profiles: Record<string, WorkerRuntimeProfileConfig>;
 }
 

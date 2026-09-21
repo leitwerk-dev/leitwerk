@@ -1,5 +1,4 @@
-/** Common issue and pull-request response fields used by repository integrations. */
-/** @public */
+/** Common issue and pull-request response fields used by repository integrations. @public */
 export interface RepositoryIssue {
 	/** @public */
 	number: number;

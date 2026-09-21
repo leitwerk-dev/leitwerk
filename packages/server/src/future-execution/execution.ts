@@ -70,8 +70,7 @@ export interface FutureExecutionExecutorDeps
 	processGraphs?: ProcessGraphRegistry;
 	/** @internal */
 	processActionRegistry?: ProcessActionRegistry;
-	/** Required for every server-owned scheduled execution. */
-	/** @internal */
+	/** Required for every server-owned scheduled execution. @internal */
 	processModelPolicy: ServerProcessModelPolicy;
 	/** @internal */
 	launchPlans: ProcessLaunchPlanServiceLike;

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.2.0...v0.2.1) (2026-09-21)
+
+
+### Features
+
+* **api:** classify supported APIs and enforce checks in CI ([#90](https://github.com/leitwerk-dev/leitwerk/issues/90)) ([95c8c9e](https://github.com/leitwerk-dev/leitwerk/commit/95c8c9eb8fb749f7e3634a53d80c874ebe261c2d))
+* **runtime:** support gVisor Docker and GitLab merge repair ([#93](https://github.com/leitwerk-dev/leitwerk/issues/93)) ([4281f93](https://github.com/leitwerk-dev/leitwerk/commit/4281f93bca0f57384b8f6658494f0a37455348de))
+
+
+### Bug Fixes
+
+* **release:** make npm and immutable release publication resumable ([#92](https://github.com/leitwerk-dev/leitwerk/issues/92)) ([25cd628](https://github.com/leitwerk-dev/leitwerk/commit/25cd62870d03353e6c83da60e178f43bc2264817))
+
 ## [0.2.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.1.9...v0.2.0) (2026-09-17)
 
 

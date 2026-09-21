@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/protocol",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -14,36 +14,36 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./config-snapshot": {
-			"source": "./src/config-snapshot.ts",
-			"import": "./dist/config-snapshot.js",
-			"types": "./dist/config-snapshot.d.ts"
+			"source": "./src/config-snapshot-public.ts",
+			"import": "./dist/config-snapshot-public.js",
+			"types": "./dist/config-snapshot-public.d.ts"
 		},
 		"./http-contracts": {
-			"source": "./src/http-contracts.ts",
-			"import": "./dist/http-contracts.js",
-			"types": "./dist/http-contracts.d.ts"
+			"source": "./src/http-contracts-public.ts",
+			"import": "./dist/http-contracts-public.js",
+			"types": "./dist/http-contracts-public.d.ts"
 		},
 		"./form-contract": {
-			"source": "./src/form-contract.ts",
-			"import": "./dist/form-contract.js",
-			"types": "./dist/form-contract.d.ts"
+			"source": "./src/form-contract-public.ts",
+			"import": "./dist/form-contract-public.js",
+			"types": "./dist/form-contract-public.d.ts"
 		},
 		"./launcher-contract": {
-			"source": "./src/launcher-contract.ts",
-			"import": "./dist/launcher-contract.js",
-			"types": "./dist/launcher-contract.d.ts"
+			"source": "./src/launcher-contract-public.ts",
+			"import": "./dist/launcher-contract-public.js",
+			"types": "./dist/launcher-contract-public.d.ts"
 		},
 		"./tool-renderer-contract": {
-			"source": "./src/tool-renderer-contract.ts",
-			"import": "./dist/tool-renderer-contract.js",
-			"types": "./dist/tool-renderer-contract.d.ts"
+			"source": "./src/tool-renderer-contract-public.ts",
+			"import": "./dist/tool-renderer-contract-public.js",
+			"types": "./dist/tool-renderer-contract-public.d.ts"
 		}
 	},
 	"scripts": {
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0",
+		"@leitwerk-dev/domain": "0.2.1",
 		"valibot": "^1.3.1"
 	},
 	"devDependencies": {

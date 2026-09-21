@@ -63,7 +63,7 @@ let root: string | undefined;
 
 afterEach(async () => {
 	try {
-		await harness?.ctx.app.close();
+		await harness?.close();
 	} finally {
 		harness = undefined;
 		if (root) await rm(root, { recursive: true, force: true });

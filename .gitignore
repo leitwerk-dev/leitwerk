@@ -36,6 +36,7 @@ leitwerk.yaml
 !/.agents/skills/
 /.agents/skills/*
 !/.agents/skills/review-stack/
+!/.agents/skills/api-findings/
 .codex/
 .DS_Store
 .release-please-runtime-config.json

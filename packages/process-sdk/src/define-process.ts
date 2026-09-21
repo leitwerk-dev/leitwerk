@@ -258,8 +258,7 @@ export interface ProcessHumanTurnExternalActionSpec<
 	id: string;
 	/** @internal */
 	source: ExternalActionSource<TParams, TState, TEvent, TInput>;
-	/** Arms and exposes this action only when the current process snapshot matches. */
-	/** @public */
+	/** Arms and exposes this action only when the current process snapshot matches. @public */
 	when?: (ctx: ExternalSourceResolveContext<TParams, TState>) => boolean;
 	/** @internal */
 	label?: string;
@@ -324,14 +323,11 @@ interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
 	description: string;
 	/** @internal */
 	parameters: Record<string, OutcomeToolParameterSpec>;
-	/** Product published from this outcome's turn-result markdown, when this outcome is selected. */
-	/** @internal */
+	/** Product published from this outcome's turn-result markdown, when this outcome is selected. @internal */
 	publishedProduct?: string;
-	/** Outcome parameter whose markdown value is captured as the turn result. */
-	/** @internal */
+	/** Outcome parameter whose markdown value is captured as the turn result. @internal */
 	turnResultMarkdownParameter?: string;
-	/** Outcome parameter containing a concise operator-facing summary. */
-	/** @internal */
+	/** Outcome parameter containing a concise operator-facing summary. @internal */
 	resultSummaryParameter?: string;
 	/** @internal */
 	effect?: ProcessOutcomeEffect<TParams, TState>;
@@ -362,13 +358,11 @@ export interface HumanTurnDefinition<TParams = unknown, TState = unknown> {
 	kind: "human";
 	/** @public */
 	description: string;
-	/** Named product rendered as the subject of this human review turn. */
-	/** @internal */
+	/** Named product rendered as the subject of this human review turn. @internal */
 	reviewProduct?: string;
 	/** @internal */
 	reviewSemanticRef?: ProcessSemanticEntryRefKey;
-	/** Controls whether entering this turn should raise an action-required toast. */
-	/** @public */
+	/** Controls whether entering this turn should raise an action-required toast. @public */
 	operatorAttention?: HumanTurnOperatorAttention;
 	/** @internal */
 	notesFields?: readonly HumanTurnNotesField[];
@@ -417,23 +411,17 @@ export interface LlmTurnDefinition<
 	kind: "llm";
 	/** @public */
 	description: string;
-	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. */
-	/** @internal */
+	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
-	/** Built-in Pi tools active while this turn runs. */
-	/** @public */
+	/** Built-in Pi tools active while this turn runs. @public */
 	availableTools: readonly PiBuiltInToolName[];
-	/** Server-owned integration tools proxied over authenticated worker IPC. */
-	/** @internal */
+	/** Server-owned integration tools proxied over authenticated worker IPC. @internal */
 	integrationTools?: readonly string[];
-	/** Resolve a constrained tool set from validated durable process data at turn start. */
-	/** @public */
+	/** Resolve a constrained tool set from validated durable process data at turn start. @public */
 	resolveIntegrationTools?: (params: TParams, state: TState) => readonly string[];
-	/** Opt in to the durable, operator-facing ask_questions custom tool. */
-	/** @internal */
+	/** Opt in to the durable, operator-facing ask_questions custom tool. @internal */
 	askQuestions?: boolean;
-	/** Deterministic worker preparation that must complete before Pi is prompted. */
-	/** @internal */
+	/** Deterministic worker preparation that must complete before Pi is prompted. @internal */
 	prepare?(ctx: LlmTurnPreparationContext<TParams, TState>): MaybePromise<unknown>;
 	/** @public */
 	completionMode?: TurnCompletionMode;
@@ -479,11 +467,9 @@ export interface AutomaticTurnDefinition<
 	kind: "automatic";
 	/** @public */
 	description: string;
-	/** Server-owned integration tools callable by this deterministic worker turn. */
-	/** @internal */
+	/** Server-owned integration tools callable by this deterministic worker turn. @internal */
 	integrationTools?: readonly string[];
-	/** External events armed while this automatic turn is selected and waiting. */
-	/** @public */
+	/** External events armed while this automatic turn is selected and waiting. @public */
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	/** @internal */
 	outcomes?: Partial<Record<TOutcome, ProcessToolOutcomeSpec<TParams, TState>>>;
@@ -536,22 +522,14 @@ export type TurnDefinitionRecord<TParams = unknown, TState = unknown> = Record<
 >;
 
 /** @public */
-export type ProcessDefinition<TParams = unknown, TState = unknown> = ExtensionProcessDefinition<
-	TParams,
-	TState
->;
-
-/** @public */
 export interface DefinedProcessInput<TParams = unknown, TState = unknown>
 	extends Omit<
 		ExtensionProcessDefinition<TParams, TState>,
 		"entryTurnId" | "alternateEntryTurnIds" | "turns"
 	> {
-	/** Primary entry used when a launch does not select a start turn explicitly. */
-	/** @public */
+	/** Primary entry used when a launch does not select a start turn explicitly. @public */
 	entry: TurnId;
-	/** Additional entry turns that launchers may select explicitly. */
-	/** @public */
+	/** Additional entry turns that launchers may select explicitly. @public */
 	alternateEntries?: readonly TurnId[];
 	/** @public */
 	turns: TurnDefinitionRecord<TParams, TState>;
@@ -1905,7 +1883,7 @@ function buildDefinedProcess<TParams, TState>(
 /** @public */
 export function defineProcess<TParams = unknown, TState = unknown>(
 	input: DefinedProcessInput<TParams, TState>,
-): ProcessDefinition<TParams, TState> {
+): ExtensionProcessDefinition<TParams, TState> {
 	const compiled = buildDefinedProcess(input);
 	const process = {
 		id: input.id,

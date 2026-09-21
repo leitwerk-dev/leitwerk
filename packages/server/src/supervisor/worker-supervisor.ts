@@ -126,8 +126,7 @@ export interface WorkerHandle {
 	workerId: string;
 	/** @internal */
 	instanceId: string;
-	/** Runtime-specific handle id when known; used to distinguish duplicate units during adoption scans. */
-	/** @internal */
+	/** Runtime-specific handle id when known; used to distinguish duplicate units during adoption scans. @internal */
 	unitId?: string;
 	/** @internal */
 	namespace?: string;
@@ -135,8 +134,7 @@ export interface WorkerHandle {
 	send(message: ServerToWorkerMessage): void;
 	/** @internal */
 	kill(signal?: NodeJS.Signals | number): void;
-	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. */
-	/** @internal */
+	/** Stops the physical runtime and rejects if disappearance cannot be confirmed. @internal */
 	killAndWait?(signal?: NodeJS.Signals | number): Promise<void>;
 	/** @internal */
 	detach(reason: string): void;
@@ -159,8 +157,7 @@ type ServerToWorkerMessageBody<T = ServerToWorkerMessage> = T extends ServerToWo
 
 /** @public */
 export interface WorkerSupervisor {
-	/** Returns undefined when accepted into the capacity queue. */
-	/** @internal */
+	/** Returns undefined when accepted into the capacity queue. @internal */
 	spawnWorker(instanceId: string): Promise<WorkerHandle | undefined>;
 	/** @internal */
 	stopWorker(instanceId: string, reason: string): Promise<void>;

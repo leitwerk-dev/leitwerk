@@ -4,7 +4,7 @@ import { localRepoChangeCapabilities, localRepoChangeLaunchPlanner } from "./lau
 import { localRepoChangeProcess } from "./process-definition.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "local-repo-change",
 	/** @internal */
@@ -38,21 +38,5 @@ const localRepoChangeExtension: LeitwerkExtensionModule = {
 };
 
 export default localRepoChangeExtension;
-
-export {
-	formatLocalRepoChangeLaunchErrors,
-	type LocalRepoChangeLaunchPlanner,
-	type LocalRepoChangeLaunchPlannerInput,
-	type LocalRepoChangeLaunchResolution,
-	localRepoChangeCapabilities,
-	localRepoChangeImportedPlanLauncherId,
-	localRepoChangeLaunchPlanner,
-	localRepoChangeProcessId,
-	localRepoChangeUiLauncherId,
-} from "./launch-policy.js";
-export {
-	type LocalRepoChangeLaunchKind,
-	type LocalRepoChangeParams,
-	localRepoChangeParamsCodec,
-} from "./params.js";
+export type { LocalRepoChangeParams } from "./params.js";
 export { localRepoChangeProcess } from "./process-definition.js";

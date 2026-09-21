@@ -5,13 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { ProvidedCapability } from "@leitwerk-dev/process-sdk";
-import {
-	type AppContext,
-	createAppContext,
-	getDefaultConfig,
-	type LeitwerkConfig,
-} from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
+import { type AppContext, getDefaultConfig, type LeitwerkConfig } from "@leitwerk-dev/server";
+import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { vi } from "vitest";
 import type {
 	UiModuleImporter,
@@ -270,45 +265,42 @@ export async function createUiTestApp<
 		| "configureConfig"
 	>,
 ): Promise<UiTestApp<TResources>> {
-	const extensionCatalog = await Promise.resolve(options.extensionCatalog);
 	const config = getDefaultConfig();
 	const runtimeRoot = await mkdtemp(path.join(tmpdir(), "leitwerk-ui-"));
-	config.workers.runner = "local";
 	config.storage.process_workspaces_dir = path.join(runtimeRoot, "workspaces");
 	config.storage.tree_files_dir = path.join(runtimeRoot, "sessions");
 	config.pi.agent_dir = path.join(runtimeRoot, "pi-agent");
-	options.configureConfig?.(config);
-	const ctx = await createAppContext({
-		logger: false,
-		config,
-		extensionCatalog,
-		extensionUiRuntimeLane: "dist",
-		preProvidedCapabilities: options.preProvidedCapabilities,
-		localWorkerSpawnImpl:
-			options.localWorkerSpawnImpl ?? createInProcessWorkerSpawn({ extensionCatalog }),
-	});
-	await ctx.app.listen({ host: "127.0.0.1", port: 0 });
-
-	const addressInfo = ctx.app.server.address();
-	const port = typeof addressInfo === "object" && addressInfo ? addressInfo.port : 0;
-	const address = `http://127.0.0.1:${port}`;
-	ctx.config.server.base_url = address;
-
-	return {
-		ctx,
-		address,
-		wsAddress: `ws://127.0.0.1:${port}/ws`,
-		resources: options.resources ?? ({} as TResources),
-		close: async () => {
-			try {
-				await ctx.app.close();
-			} finally {
-				// In-process workers can finish filesystem writes during shutdown. Retry
-				// transient ENOTEMPTY/EBUSY races, but still fail if cleanup cannot complete.
-				await rm(runtimeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-			}
-		},
+	let ctx: AppContext | undefined;
+	const close = async () => {
+		try {
+			await ctx?.close();
+		} finally {
+			// In-process workers can finish filesystem writes during shutdown.
+			await rm(runtimeRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
 	};
+	try {
+		const harness = await createIntegrationHarness({
+			config,
+			configOverride: options.configureConfig,
+			extensionCatalog: options.extensionCatalog,
+			preProvidedCapabilities: options.preProvidedCapabilities,
+			resources: options.resources,
+			appOverrides: {
+				extensionUiRuntimeLane: "dist",
+				localWorkerSpawnImpl: options.localWorkerSpawnImpl,
+			},
+		});
+		ctx = harness.ctx;
+		return {
+			...harness,
+			wsAddress: `${harness.address.replace(/^http/, "ws")}/ws`,
+			close,
+		};
+	} catch (error) {
+		await close().catch(() => {});
+		throw error;
+	}
 }
 
 export async function setupMountedUiHarness<

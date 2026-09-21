@@ -29,13 +29,17 @@ function assertCompletedRemoteChange(fixture: RemoteRepoChangeFixture, process: 
 
 	const comments = fixture.forgejo.comments();
 	expect(
-		comments.filter((comment) => comment === `Leitwerk opened pull request ${constants.prUrl}.`),
+		comments.filter((comment) =>
+			comment.startsWith(
+				`Leitwerk opened pull request ${constants.prUrl}.\n\n<!-- leitwerk-write:`,
+			),
+		),
 	).toHaveLength(1);
 	expect(
-		comments.filter(
-			(comment) =>
-				comment ===
-				`Merged ${constants.prUrl} at ${fixture.forgejo.pullRequest().merge_commit_sha}.`,
+		comments.filter((comment) =>
+			comment.startsWith(
+				`Merged ${constants.prUrl} at ${fixture.forgejo.pullRequest().merge_commit_sha}.\n\n<!-- leitwerk-write:`,
+			),
 		),
 	).toHaveLength(1);
 	expect(fixture.forgejo.calls.filter((call) => call.method === "createLabel")).toHaveLength(1);
@@ -99,7 +103,9 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 		base: { ref: "main", sha: fixture.git.initialSha },
 	});
 	expect(remoteState(waiting)).toMatchObject({ headSha: head1, prNumber: 7 });
-	expect(fixture.forgejo.comments()).toEqual([`Leitwerk opened pull request ${constants.prUrl}.`]);
+	expect(fixture.forgejo.comments()).toEqual([
+		`Leitwerk opened pull request ${constants.prUrl}.\n\n<!-- leitwerk-write:${instanceId}:forgejo:${instanceId}:source-pr-link:7 -->`,
+	]);
 
 	return { instanceId, head1, pr };
 }

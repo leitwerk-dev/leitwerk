@@ -8,7 +8,10 @@ export function presentProcessTurnNavigation(input: {
 	turns: readonly ProcessTimelineTurnSummary[];
 	selectedTurnId: string | null;
 	lifecycleStatus: ProcessLifecycleStatus;
-}) {
+}): {
+	turns: ProcessTimelineTurnSummary[];
+	plannedNextTurn: { turnId: string; description: string } | null;
+} {
 	const path = input.graph.happyPath ?? [];
 	const currentIndex = path.indexOf(input.selectedTurnId ?? "");
 	const nextId =

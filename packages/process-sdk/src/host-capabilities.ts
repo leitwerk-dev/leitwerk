@@ -9,19 +9,14 @@ export interface ProvidedCapability<T = unknown> {
 }
 
 /** @internal */
-export interface CapabilityAccessor {
+export function createCapabilityAccessor(provided: readonly ProvidedCapability[] = []): {
 	/** @internal */
 	provide<T>(token: CapabilityToken<T>, value: T): void;
 	/** @internal */
 	get<T>(token: CapabilityToken<T>): T | T[] | undefined;
 	/** @internal */
 	require<T>(token: CapabilityToken<T>): T | T[];
-}
-
-/** @internal */
-export function createCapabilityAccessor(
-	provided: readonly ProvidedCapability[] = [],
-): CapabilityAccessor {
+} {
 	const singleCapabilities = new Map<string, unknown>();
 	const multiCapabilities = new Map<string, unknown[]>();
 

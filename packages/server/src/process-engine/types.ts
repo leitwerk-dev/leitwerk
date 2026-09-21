@@ -98,8 +98,7 @@ export interface ProcessEngineDeps
 	getProcessUiRegistry?: () => ProcessUiRegistry | undefined;
 	/** @internal */
 	logger?: ProcessEngineLogger;
-	/** Required by the server-owned engine; embedded callers adapt at construction. */
-	/** @internal */
+	/** Required by the server-owned engine; embedded callers adapt at construction. @internal */
 	processModelPolicy: ServerProcessModelPolicy;
 	/** @internal */
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;

@@ -108,8 +108,7 @@ async function writeExtractedFiles(
 	}
 }
 
-/** Extracts a verified bundle into an empty staging directory, then atomically publishes it. */
-/** @internal */
+/** Extracts a verified bundle into an empty staging directory, then atomically publishes it. @internal */
 export async function materializeCanonicalPiResourceBundle(input: {
 	/** @internal */
 	bundle: Uint8Array;

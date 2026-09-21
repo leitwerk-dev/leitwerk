@@ -4,9 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { type AppContext, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
-import { deploymentPreflightConfig } from "./deployment-preflight.js";
+import { closeDatabase, createDatabase } from "./db/database.js";
+import { deploymentPreflightConfig, runDeploymentPreflight } from "./deployment-preflight.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -39,6 +42,48 @@ async function databaseFixture() {
 }
 
 describe("deployment preflight", () => {
+	it("binds without background startup and delegates cleanup to the context", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "preflight-lifecycle-"));
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = path.join(root, "production.sqlite");
+		config.workers.runner = "local";
+		closeDatabase(createDatabase({ sqlitePath: config.storage.sqlite_path }));
+		const started = vi.fn();
+		const stopped = vi.fn();
+		let ctx: AppContext | undefined;
+		try {
+			await runDeploymentPreflight({
+				config,
+				extensionLoadingStartDir: root,
+				scratchRoot: path.join(root, "scratch"),
+				async createContext(options) {
+					ctx = await createAppContext({
+						...options,
+						logger: false,
+						extensionCatalog: buildExtensionCatalogFromModules([
+							{
+								manifest: { id: "preflight-lifecycle", version: "1.0.0" },
+								setupServer(api) {
+									api.onStart(started);
+									api.onStop(stopped);
+								},
+							},
+						]),
+					});
+					return ctx;
+				},
+			});
+			expect(started).not.toHaveBeenCalled();
+			expect(stopped).toHaveBeenCalledTimes(1);
+			expect(ctx?.app.server.listening).toBe(false);
+			expect(ctx?.isReady()).toBe(false);
+			expect(() => ctx?.deps.processes.listAll()).toThrow();
+		} finally {
+			await ctx?.close();
+			await rm(root, { recursive: true, force: true });
+		}
+	});
+
 	it("takes a consistent online backup of a WAL database without changing the source", async () => {
 		const { root, sourcePath, source } = await databaseFixture();
 		const copyPath = path.join(root, "scratch", "copy.sqlite");

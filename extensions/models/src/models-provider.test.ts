@@ -1,15 +1,15 @@
 import type { ModelProviderWorker } from "@leitwerk-dev/process-sdk";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
-import modelsExtension, {
+import modelsExtension from "./index.js";
+import {
 	createCustomGatewayProvider,
 	createStandardModelProvider,
-	getSupportedStandardProviders,
-	manifest,
 	parseApiKeyCredential,
 	parseCustomGatewayConfig,
 	parseStandardProviderConfig,
 	resolveModelProviders,
-} from "./index.js";
+} from "./models-provider.js";
+import { getSupportedStandardProviders } from "./provider-auth.js";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -39,7 +39,7 @@ describe("models extension", () => {
 			openai: { api_key: "sk-openai" },
 			custom_gateways: { "internal-gateway": customGateway },
 		});
-		expect(manifest).toEqual({ id: "models", version: "0.1.0" });
+		expect(modelsExtension.manifest).toEqual({ id: "models", version: "0.1.0" });
 		expect(entries?.some((entry) => entry.definition.id === "openai")).toBe(true);
 		expect(entries?.find((entry) => entry.definition.id === "openai")?.rawConfig).toEqual({
 			api_key: "sk-openai",

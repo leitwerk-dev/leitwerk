@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/dev-sandbox",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -14,35 +14,30 @@
 			"types": "./dist/index.d.ts"
 		},
 		"./launcher": {
-			"source": "./src/launcher.ts",
-			"import": "./dist/launcher.js",
-			"types": "./dist/launcher.d.ts"
+			"source": "./src/launcher-entry.ts",
+			"import": "./dist/launcher-entry.js",
+			"types": "./dist/launcher-entry.d.ts"
 		},
 		"./storage": {
-			"source": "./src/storage.ts",
-			"import": "./dist/storage.js",
-			"types": "./dist/storage.d.ts"
+			"source": "./src/storage-entry.ts",
+			"import": "./dist/storage-entry.js",
+			"types": "./dist/storage-entry.d.ts"
 		},
 		"./backend": {
 			"source": "./src/backend.ts",
 			"import": "./dist/backend.js",
 			"types": "./dist/backend.d.ts"
-		},
-		"./preflight": {
-			"source": "./src/preflight.ts",
-			"import": "./dist/preflight.js",
-			"types": "./dist/preflight.d.ts"
 		}
 	},
 	"scripts": {
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/extension-runtime": "0.2.0",
-		"@leitwerk-dev/process-sdk": "0.2.0",
-		"@leitwerk-dev/server": "0.2.0",
-		"@leitwerk-dev/test-support": "0.2.0",
-		"@leitwerk-dev/worker": "0.2.0",
+		"@leitwerk-dev/extension-runtime": "0.2.1",
+		"@leitwerk-dev/process-sdk": "0.2.1",
+		"@leitwerk-dev/server": "0.2.1",
+		"@leitwerk-dev/test-support": "0.2.1",
+		"@leitwerk-dev/worker": "0.2.1",
 		"yaml": "^2.8.3"
 	},
 	"devDependencies": {

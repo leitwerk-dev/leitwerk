@@ -533,8 +533,7 @@ export async function importExtensionModules(
 	return loaded;
 }
 
-/** Loads one server-only Pi adapter declared by an extension package. */
-/** @internal */
+/** Loads one server-only Pi adapter declared by an extension package. @internal */
 export async function importPiServerAdapter(entryPath: string): Promise<PiServerAdapter> {
 	const imported = (await jiti.import(entryPath)) as unknown;
 	const importedRecord = v.safeParse(unknownRecordSchema, imported);

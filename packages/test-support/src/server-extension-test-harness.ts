@@ -1,6 +1,10 @@
 import { type ExtensionCatalog, setupServerExtensions } from "@leitwerk-dev/extension-runtime";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
+	bindExternalWrites,
+	type ExternalWriteLogRepoLike,
+} from "@leitwerk-dev/external-writes/internal";
+import {
 	type CoreServerSetupDeps,
 	coreHostCapabilities,
 	createCapabilityAccessor,
@@ -15,8 +19,7 @@ import { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 
 export { flushAsyncWork };
 
-/** Register a test provider and expose its poll result without erasing its type. */
-/** @public */
+/** Register a test provider and expose its poll result without erasing its type. @public */
 export function createPollingTestExtension<T>(
 	manifest: LeitwerkExtensionModule["manifest"],
 	setup: (api: ServerExtensionAPI) =>
@@ -43,10 +46,20 @@ export function createPollingTestExtension<T>(
 }
 
 /** @internal */
-export function createToolCollector() {
+export function createToolCollector(
+	writes: ExternalWriteLogRepoLike = createInMemoryExternalWriteLog(),
+) {
 	const tools = new Map<string, IntegrationToolDefinition>();
 	const api = {
-		tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool),
+		tool: (tool: IntegrationToolDefinition) =>
+			tools.set(tool.name, {
+				...tool,
+				execute: (ctx, args) =>
+					tool.execute(
+						{ ...ctx, externalWrites: bindExternalWrites(writes, ctx.process.id) },
+						args,
+					),
+			}),
 	} as unknown as ServerExtensionAPI;
 	return {
 		/** @internal */

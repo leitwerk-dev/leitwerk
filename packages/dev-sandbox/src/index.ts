@@ -8,9 +8,9 @@ import { type PiTreeHandleFactory, SdkPiTreeHandleFactory } from "@leitwerk-dev/
 export { sandboxConfig } from "./config.js";
 
 /** @public */
-export type SandboxMode = "scripted" | "real";
+type SandboxMode = "scripted" | "real";
 /** @public */
-export interface SandboxPaths {
+interface SandboxPaths {
 	/** @public */
 	workspaceRoot: string;
 	/** @public */
@@ -19,7 +19,7 @@ export interface SandboxPaths {
 	directory: string;
 }
 /** @public */
-export interface SandboxUrls {
+interface SandboxUrls {
 	/** @public */
 	ui: string;
 	/** @public */
@@ -55,9 +55,8 @@ export interface SandboxScenario<T = unknown> {
 	};
 }
 
-/** The composition owns adapters and persisted scenario progress. */
-/** @public */
-export interface SandboxComposition {
+/** The composition owns adapters and persisted scenario progress. @public */
+interface SandboxComposition {
 	/** @public */
 	processConfigs: LeitwerkConfig["process_configs"];
 	/** @public */
@@ -87,8 +86,7 @@ export interface SandboxComposition {
 /** @public */
 export type SandboxCompositionFactory = (input: SandboxInput) => SandboxComposition;
 
-/** Install development launchers on an SDK-defined process, retaining its identity. */
-/** @public */
+/** Install development launchers on an SDK-defined process, retaining its identity. @public */
 export function withSandboxLaunchers<T, S>(
 	definition: ExtensionProcessDefinition<T, S>,
 	scenarios: readonly SandboxScenario<T>[],
@@ -145,13 +143,9 @@ export async function createSandboxApp(
 	const stop = () =>
 		(stopped ??= (async () => {
 			try {
-				await context?.stopBackgroundServices();
+				await context?.close();
 			} finally {
-				try {
-					await context?.app.close();
-				} finally {
-					await composition.cleanup?.();
-				}
+				await composition.cleanup?.();
 			}
 		})());
 	try {
