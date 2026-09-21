@@ -59,6 +59,8 @@
 		"test:k8s:local": "bash scripts/k8s/run-smoke.sh",
 		"test:chart": "vitest run --reporter agent --project unit packages/server/src/kubernetes-helm-chart.test.ts && vitest run --reporter agent --project integration packages/server/src/kubernetes-helm-chart.integration.test.ts",
 		"release:check": "node --import tsx scripts/release-contract.ts",
+		"publish:registration": "node scripts/npm-bootstrap.mjs check",
+		"publish:bootstrap": "node scripts/npm-bootstrap.mjs publish",
 		"publish:check": "node scripts/publish-workspaces.mjs check",
 		"publish:dry-run": "node scripts/publish-workspaces.mjs dry-run",
 		"publish:preflight": "node scripts/publish-workspaces.mjs preflight",
