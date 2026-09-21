@@ -1,12 +1,9 @@
 import type { ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
-import {
-	createTestProcessInstance,
-	createTestProcessProject,
-} from "@leitwerk-dev/extension-runtime/testing";
 import type {
 	DeferredProcessActivationSnapshot,
 	PreparedDeferredProcessActivation,
 } from "@leitwerk-dev/process-sdk";
+import { createProcessFixture, createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import { describe, expect, it, vi } from "vitest";
 import { createLocalRepoChangeAutoWorkBranchCoordinator } from "./auto-work-branch-server.js";
 
@@ -39,25 +36,24 @@ function createHarness(
 		resolveBaseBranchSha?: () => string | Promise<string>;
 	} = {},
 ) {
-	let process: ProcessInstance = createTestProcessInstance({
+	let process: ProcessInstance = createProcessFixture({
 		id: "agt_auto_branch",
 		processId: "local_repo_change_process",
-		selectedTurnId: null,
-		lifecycleStatus: "discovered",
+		position: { selectedTurnId: null, lifecycleStatus: "discovered" },
 		title: "title" in input ? input.title : "Fix login flow",
 		metadata: input.processMetadata ?? null,
-		paramsJson: JSON.stringify({
+		params: {
 			...(input.handoffPlanMarkdown ? {} : { launchKind: "requested_change" }),
 			repoLocator: "/tmp/repo",
 			baseBranch: "main",
 			workBranch: input.paramsBranch ?? "",
 			prompt: "Fix login",
 			...(input.handoffPlanMarkdown ? { handoffPlanMarkdown: input.handoffPlanMarkdown } : {}),
-		}),
+		},
 	});
-	let project: ProcessProject = createTestProcessProject({
+	let project: ProcessProject = createProjectFixture({
 		id: "prj_auto_branch",
-		instanceId: process.id,
+		process,
 		key: "repo",
 		repoLocator: "/tmp/repo",
 		repoLocatorKind: "local_path",

@@ -1,17 +1,5 @@
 import type { LaunchRun } from "@leitwerk-dev/domain";
 
-/** Accepts a launch-run request shape and waits for its admitted process commit. @internal */
-export async function postImmediateLaunchRequest(
-	input: string | URL | Request,
-	init?: RequestInit,
-): Promise<Response> {
-	const url = new URL(String(input));
-	const match = /^\/api\/launchers\/([^/]+)\/launch-runs$/.exec(url.pathname);
-	if (!match?.[1]) throw new Error(`Expected an immediate launch-run URL, received '${url}'`);
-	const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
-	return postImmediateLaunch(url.origin, decodeURIComponent(match[1]), body);
-}
-
 /**
  * Admits an immediate launch through the public asynchronous HTTP contract and waits until the
  * process commit or a pre-commit failure is observable. Intended for integration-test setup.

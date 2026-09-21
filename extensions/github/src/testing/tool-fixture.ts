@@ -1,21 +1,29 @@
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
+import {
+	createExtensionTestHarness,
+	type ExtensionToolFixture,
+} from "@leitwerk-dev/test-support/process";
 import type { GitHubClientLike } from "../capability.js";
 import type { GitHubPullRequest } from "../client.js";
 import { registerGitHubTools } from "../tools.js";
 
-export function toolContext(id = "p"): IntegrationToolExecutionContext {
+export function toolFixtureInput(id = "p"): ExtensionToolFixture {
 	return {
-		process: { id, paramsJson: "{}" },
-		project: {
-			instanceId: id,
-			workBranch: "feature",
-			baseBranch: "main",
-			metadata: { github: { owner: "team", repo: "one", profile: "first" } },
-		},
-		idempotencyKey: "retained-pr-key",
-		signal: new AbortController().signal,
-	} as unknown as IntegrationToolExecutionContext;
+		id,
+		params: {},
+		projects: [
+			createProjectFixture({
+				process: { id },
+				key: "one",
+				workBranch: "feature",
+				baseBranch: "main",
+				metadata: { github: { owner: "team", repo: "one", profile: "first" } },
+			}),
+		],
+		invocationId: "retained-pr-key",
+	};
 }
 
 export const pullRequestArgs = {
@@ -30,7 +38,7 @@ export const pullRequestArgs = {
 };
 
 /** Stateful provider boundary, with no Git, filesystem, or network. Unexpected calls fail closed. */
-export function toolFixture() {
+export async function toolFixture() {
 	const pulls: GitHubPullRequest[] = [];
 	const comments: Array<{ body: string }> = [];
 	const requests: Array<{ method: string; owner: string; repo: string }> = [];
@@ -94,30 +102,37 @@ export function toolFixture() {
 			return Reflect.get(target, key);
 		},
 	}) as unknown as GitHubClientLike;
-	const writes = createInMemoryExternalWriteLog();
-	const { api, tools } = createToolCollector();
-	registerGitHubTools(
-		api,
-		{
-			client(profile) {
-				profiles.push(profile);
-				return client;
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "github-tools-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					registerGitHubTools(
+						api,
+						{
+							client(profile) {
+								profiles.push(profile);
+								return client;
+							},
+						},
+						deps.externalWrites as ExternalWriteLogRepoLike,
+					);
+				},
 			},
-		},
-		writes,
-	);
+		],
+	});
+
 	return {
 		pulls,
 		comments,
 		requests,
 		profiles,
 		failure,
-		writes,
-		tools,
-		execute(name: string, args: Record<string, unknown>, ctx = toolContext()) {
-			const tool = tools.get(name);
-			if (!tool) throw new Error(`Missing tool ${name}`);
-			return tool.execute(ctx, args);
+		test,
+		execute(name: string, args: Record<string, unknown>, fixture = toolFixtureInput()) {
+			return test.callTool(name, args, fixture);
 		},
 	};
 }

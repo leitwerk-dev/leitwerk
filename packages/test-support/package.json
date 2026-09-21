@@ -37,6 +37,11 @@
 			"source": "./src/local-git.ts",
 			"import": "./dist/local-git.js",
 			"types": "./dist/local-git.d.ts"
+		},
+		"./process": {
+			"source": "./src/process.ts",
+			"import": "./dist/process.js",
+			"types": "./dist/process.d.ts"
 		}
 	},
 	"scripts": {

@@ -298,27 +298,3 @@ export async function runWorkerTurnForTest<TParams = unknown, TState = unknown>(
 		parkReasons,
 	};
 }
-
-/** @internal */
-export async function runWorkerProcessTurnForTest<TParams = unknown, TState = unknown>(
-	process: ExtensionProcessDefinition<TParams, TState>,
-	turnId: string,
-	options: RunWorkerTurnForTestOptions<TParams, TState> = {},
-): Promise<RunWorkerTurnForTestResult> {
-	const built = buildWorkerProcessForTest(process);
-	const handler = built?.turns.get(turnId);
-	if (!handler) {
-		throw new Error(`Worker turn '${turnId}' is not registered on process '${process.id}'`);
-	}
-	const processSnapshot =
-		options.process ??
-		createTestProcessInstance({
-			processId: process.id,
-			selectedTurnId: turnId,
-			lifecycleStatus: "active",
-		});
-	return runWorkerTurnForTest(handler, {
-		...options,
-		process: processSnapshot,
-	});
-}

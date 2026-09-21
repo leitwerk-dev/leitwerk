@@ -9,7 +9,7 @@ import {
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
 
 function state(f: RemoteRepoChangeFixture, id: string) {
-	const process = f.harness.ctx.deps.processes.getById(id);
+	const process = f.harness.process(id).snapshot().process;
 	if (!process) throw new Error(`Missing process ${id}`);
 	return remoteState(process);
 }
@@ -26,24 +26,26 @@ it("UI publication retains provider bindings and reasoning, completes without an
 	const f = await createRemoteRepoChangeFixture();
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
-	const project = f.harness.ctx.deps.projects.listByInstance(id)[0];
+	const project = f.harness.process(id).snapshot().projects[0];
 	expect(project.metadata).toMatchObject({
 		forgejo: { profile: "team" },
 		woodpecker: { profile: "team" },
 	});
 	expect(f.git.show(pr.head.ref, "k8s/deployment.yaml")).toContain("image: example/service:new");
 	expect(
-		f.harness.ctx.deps.externalWrites
-			.listByInstance(id)
-			.some((write) => write.writeType === "forgejo.ensure_pr"),
+		f.harness
+			.process(id)
+			.snapshot()
+			.writeReceipts.some((write) => write.writeType === "forgejo.ensure_pr"),
 	).toBe(true);
-	const turn = f.harness.ctx.deps.turnRecords
-		.listByInstance(id)
-		.find((record) => record.turnId === "generate_plan");
+	const turn = f.harness
+		.process(id)
+		.snapshot()
+		.turns.find((record) => record.turnId === "generate_plan");
 	if (!turn) throw new Error("Missing planning turn");
-	const reasoning = await f.harness.ctx.app.inject(
-		`/api/processes/${id}/turn-records/${turn.id}/reasoning`,
-	);
+	const reasoning = await f.harness.request({
+		url: `/api/processes/${id}/turn-records/${turn.id}/reasoning`,
+	});
 	expect(reasoning.statusCode).toBe(200);
 	expect(reasoning.json().reasoning.piInput.fullPrompt).toContain("Update the service image");
 	expect(reasoning.json().reasoning.assistant.thinking).toContain("Plan the manifest change");
@@ -52,7 +54,7 @@ it("UI publication retains provider bindings and reasoning, completes without an
 	expect(f.forgejo.issues).toHaveLength(0);
 	const replay = await f.launchTicketlessChange("Update the service image");
 	expect(replay).not.toBe(id);
-	expect(f.harness.ctx.deps.projects.listByInstance(replay)[0].workBranch).not.toBe(pr.head.ref);
+	expect(f.harness.process(replay).snapshot().projects[0].workBranch).not.toBe(pr.head.ref);
 }, 30000);
 
 it("batches conversation, inline and review feedback into a fresh revision and retains replies after restart", async () => {
@@ -73,7 +75,7 @@ it("batches conversation, inline and review feedback into a fresh revision and r
 	);
 	expect(f.forgejo.reactions).toHaveLength(2);
 	expect(f.forgejo.replies).toHaveLength(3);
-	const turns = f.harness.ctx.deps.turnRecords.listByInstance(id);
+	const turns = f.harness.process(id).snapshot().turns;
 	const original = turns.find((turn) => turn.turnId === "implement");
 	const revisions = turns.filter((turn) => turn.turnId === "revise_from_pull_request_feedback");
 	expect(original).toBeDefined();
@@ -92,7 +94,7 @@ it("batches conversation, inline and review feedback into a fresh revision and r
 	expect(f.forgejo.replies).toEqual(replies);
 	expect(f.forgejo.reactions).toEqual(reactions);
 	expect(f.forgejo.pullRequests).toHaveLength(1);
-	expect(f.harness.ctx.deps.turnRecords.listByInstance(id)).toEqual(turns);
+	expect(f.harness.process(id).snapshot().turns).toEqual(turns);
 }, 30000);
 
 it("diagnoses CI and explicitly restarts through a durable write without republishing or restarting again after app restart", async () => {
@@ -119,14 +121,14 @@ it("diagnoses CI and explicitly restarts through a durable write without republi
 	expect(calls.indexOf("getStepLogs")).toBeGreaterThanOrEqual(0);
 	expect(calls.indexOf("restartPipeline")).toBeGreaterThan(calls.indexOf("getStepLogs"));
 	expect(calls.filter((method) => method === "restartPipeline")).toHaveLength(1);
-	const writes = f.harness.ctx.deps.externalWrites.listByInstance(id);
+	const writes = f.harness.process(id).snapshot().writeReceipts;
 	expect(writes.filter((write) => write.writeType === "woodpecker.restart")).toHaveLength(1);
 	await f.restart();
 	await f.waitForTurn(id, "deliver_change");
 	await f.publishPipeline({ ...f.woodpecker.pipelines[0] });
 	expect(f.woodpecker.pipelines).toHaveLength(1);
 	expect(f.woodpecker.calls.filter((call) => call.method === "restartPipeline")).toHaveLength(0);
-	expect(f.harness.ctx.deps.externalWrites.listByInstance(id)).toEqual(writes);
+	expect(f.harness.process(id).snapshot().writeReceipts).toEqual(writes);
 	expect(f.forgejo.pullRequest().head.sha).toBe(pr.head.sha);
 }, 30000);
 
@@ -143,12 +145,11 @@ it("rebases a conflicting base after app restart and publishes with the retained
 	const manifest = f.git.show(head, "k8s/deployment.yaml");
 	expect(manifest).toContain("Base update: preserve deployment notes");
 	expect(manifest).toContain("image: example/service:new");
-	expect(f.harness.ctx.deps.projects.listByInstance(id)[0].workBranch).toBe(pr.head.ref);
+	expect(f.harness.process(id).snapshot().projects[0].workBranch).toBe(pr.head.ref);
 	const record = JSON.parse(
 		readFileSync(
 			path.join(
-				f.harness.config.storage.process_workspaces_dir,
-				id,
+				f.harness.process(id).snapshot().workspaceRoot,
 				"repo",
 				".git",
 				"leitwerk-rebase.json",

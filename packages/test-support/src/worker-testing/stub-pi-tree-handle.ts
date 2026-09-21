@@ -59,6 +59,8 @@ export type StubToolCallScriptItem =
 export interface StubToolCallScriptResolverContext {
 	/** @public */
 	promptText: string;
+	/** Identified turn prompt, when the SDK prompt uses a custom message. @internal */
+	identifiedPromptText?: string;
 	/** @public */
 	tools: readonly PiCustomTool[];
 	/** @public */
@@ -418,6 +420,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 	private async executeTurn(input: {
 		kind: "prompt" | "literal" | "custom" | "continue";
 		promptText?: string;
+		scriptPromptText?: string;
 		options?: PiPromptOptions;
 		appendPromptUserMessage: boolean;
 	}): Promise<PiTurnExecutionResult> {
@@ -472,6 +475,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 			treeFile: this.treeFile,
 			turnSequence: this.state.turnSeq,
 			promptText: input.promptText ?? "",
+			identifiedPromptText: input.scriptPromptText,
 			tools: input.options?.tools ?? [],
 		});
 		signal.throwIfAborted();
@@ -732,6 +736,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 		const promptEntryId = await this.appendCustomMessage(input);
 		const result = await this.executeTurn({
 			kind: "custom",
+			scriptPromptText: input.content,
 			options,
 			appendPromptUserMessage: false,
 		});

@@ -1,46 +1,53 @@
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
-import { describe, expect, it, vi } from "vitest";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
+import {
+	createExtensionTestHarness,
+	type ExtensionToolFixture,
+} from "@leitwerk-dev/test-support/process";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoClient, ForgejoIssue } from "./client.js";
 import { registerForgejoTools } from "./tools.js";
 
-function setup(client: Record<string, unknown>) {
-	const { api, tools } = createToolCollector();
+async function setup(client: Record<string, unknown>, enabled = true) {
 	const integration = {
 		profiles: () => ["primary"],
 		client: () => client as unknown as ForgejoClient,
 	} satisfies ForgejoIntegration;
-	const writes = createInMemoryExternalWriteLog();
 	const projects = {
 		update: vi.fn((_id: string, input: Record<string, unknown>) => ({ id: "project-1", ...input })),
 	};
-	registerForgejoTools(
-		api,
-		integration,
-		writes,
-		{ defaultLabels: ["created-by-leitwerk"] },
-		projects as never,
-	);
-	return { tools, written: writes.getDedupKeys(), projects };
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "forgejo-tools-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					registerForgejoTools(
+						api,
+						integration,
+						deps.externalWrites as ExternalWriteLogRepoLike,
+						{ enabled, defaultLabels: ["created-by-leitwerk"] },
+						projects as never,
+					);
+				},
+			},
+		],
+	});
+	onTestFinished(() => test.close());
+	return { test, projects };
 }
 
-function context(destination: Record<string, unknown>): IntegrationToolExecutionContext {
+function fixture(destination: Record<string, unknown>): ExtensionToolFixture {
 	return {
-		process: { id: "ticket-1" } as IntegrationToolExecutionContext["process"],
-		projects: [],
-		turn: { id: "turn-1" } as IntegrationToolExecutionContext["turn"],
-		project: null,
+		id: "ticket-1",
 		ticketDestination: {
-			summary: {
-				id: "primary.42",
-				displayName: "team/repo",
-				group: "primary · git.example.test",
-			},
+			summary: { id: "primary.42", displayName: "team/repo", group: "primary · git.example.test" },
 			data: destination,
 		},
-		idempotencyKey: "stable-write-key",
-		signal: new AbortController().signal,
+		invocationId: "stable-write-key",
 	};
 }
 
@@ -79,27 +86,30 @@ describe("Forgejo server tools", () => {
 		],
 	] as const)("routes %s through the authorized project", async (name, numberName, method, payload) => {
 		const read = vi.fn(async () => "result");
-		const { tools } = setup({ [method]: read });
+		const { test } = await setup({ [method]: read });
 		const ctx = {
-			...context({}),
-			project: {
-				instanceId: "ticket-1",
-				metadata: { forgejo: { owner: "team", repo: "repo", profile: "primary" } },
-			} as IntegrationToolExecutionContext["project"],
+			...fixture({}),
+			projects: [
+				createProjectFixture({
+					process: { id: "ticket-1" },
+					key: "repo",
+					metadata: { forgejo: { owner: "team", repo: "repo", profile: "primary" } },
+				}),
+			],
 		};
-		const tool = tools.get(name);
+		const tool = test.describeTools().find((t) => t.name === name);
 		expect(tool?.parameters.required).toEqual([
 			"projectKey",
 			numberName,
 			...Object.keys(payload ?? {}),
 		]);
 		const args = { [numberName]: 7, ...payload };
-		const result = await tool?.execute(ctx, args);
+		const result = await test.callTool(name, args, ctx);
 		expect(result).toEqual(
 			payload
 				? "patch" in payload
 					? { ok: true }
-					: { performed: true, dedupKey: ctx.idempotencyKey }
+					: { performed: true, dedupKey: ctx.invocationId }
 				: "result",
 		);
 		expect(read).toHaveBeenCalledWith(
@@ -107,14 +117,14 @@ describe("Forgejo server tools", () => {
 			"repo",
 			7,
 			...Object.values(payload ?? {}),
-			ctx.signal,
+			expect.any(AbortSignal),
 		);
 		if (payload) {
-			await tool?.execute(ctx, args);
+			await test.callTool(name, args, ctx);
 			expect(read).toHaveBeenCalledTimes(1);
 		}
 		for (const invalid of [0, -1, 1.5, NaN, "7"])
-			await expect(tool?.execute(ctx, { [numberName]: invalid })).rejects.toThrow(
+			await expect(test.callTool(name, { [numberName]: invalid }, ctx)).rejects.toThrow(
 				"positive integer",
 			);
 	});
@@ -127,22 +137,23 @@ describe("Forgejo server tools", () => {
 			profile: "primary",
 			login: "leitwerk-bot",
 		};
-		const { tools, projects } = setup({ resolveGitIdentity: vi.fn(async () => identity) });
-		const tool = tools.get("forgejo_resolve_git_identity");
-		const result = await tool?.execute(
-			{
-				...context({}),
-				process: {
-					id: "process-1",
-					paramsJson: JSON.stringify({ forgejoProfile: "primary" }),
-				} as IntegrationToolExecutionContext["process"],
-				project: {
-					id: "project-1",
-					instanceId: "process-1",
-					metadata: { forgejo: { owner: "team", repo: "repo" } },
-				} as IntegrationToolExecutionContext["project"],
-			},
+		const { test, projects } = await setup({ resolveGitIdentity: vi.fn(async () => identity) });
+		const result = await test.callTool(
+			"forgejo_resolve_git_identity",
 			{ projectKey: "repo" },
+			{
+				...fixture({}),
+				id: "process-1",
+				params: { forgejoProfile: "primary" },
+				projects: [
+					createProjectFixture({
+						id: "project-1",
+						process: { id: "process-1" },
+						key: "repo",
+						metadata: { forgejo: { owner: "team", repo: "repo" } },
+					}),
+				],
+			},
 		);
 
 		expect(result).toEqual(identity);
@@ -182,19 +193,21 @@ describe("Forgejo server tools", () => {
 			})),
 			listLabels: vi.fn(async () => [{ id: 3, name: "bug" }]),
 		};
-		const { tools } = setup(client);
-		const tool = tools.get("forgejo_create_issue");
-		const destinations = await tool?.capability?.destinations?.list({
-			actor: { id: "operator", kind: "user", provider: "oidc" },
+		const { test } = await setup(client);
+		const destinations = await test.listToolDestinations("forgejo_create_issue", {
+			id: "operator",
+			kind: "user",
+			provider: "oidc",
 		});
 		expect(destinations?.destinations).toHaveLength(1);
 		expect(destinations?.destinations[0]).toMatchObject({
 			id: "primary.42",
 			displayName: "team/repo",
 		});
-		const snapshot = await tool?.capability?.destinations?.resolve({
-			actor: { id: "operator", kind: "user", provider: "oidc" },
-			destinationId: "primary.42",
+		const snapshot = await test.resolveToolDestination("forgejo_create_issue", "primary.42", {
+			id: "operator",
+			kind: "user",
+			provider: "oidc",
 		});
 		expect(snapshot?.agentContext).toContain("bug");
 		expect(snapshot?.data).toEqual({
@@ -205,7 +218,9 @@ describe("Forgejo server tools", () => {
 			defaultLabels: ["created-by-leitwerk"],
 		});
 		if (!snapshot) throw new Error("destination snapshot missing");
-		await expect(tool?.capability?.destinations?.validate(snapshot)).resolves.toBeUndefined();
+		await expect(
+			test.validateToolDestination("forgejo_create_issue", snapshot),
+		).resolves.toBeUndefined();
 		client.getRepositoryById.mockResolvedValueOnce({
 			id: 42,
 			name: "renamed",
@@ -213,7 +228,9 @@ describe("Forgejo server tools", () => {
 			owner: { login: "team" },
 			has_issues: true,
 		});
-		await expect(tool?.capability?.destinations?.validate(snapshot)).rejects.toThrow(/changed/);
+		await expect(test.validateToolDestination("forgejo_create_issue", snapshot)).rejects.toThrow(
+			/changed/,
+		);
 	});
 
 	it.each([
@@ -238,16 +255,19 @@ describe("Forgejo server tools", () => {
 				return created;
 			}),
 		};
-		const { tools, written } = setup(client);
-		const tool = tools.get("forgejo_create_issue");
-		const ctx = context({
+		const { test } = await setup(client);
+		const ctx = fixture({
 			profile: "primary",
 			repositoryId: 42,
 			owner: "team",
 			repo: "repo",
 			defaultLabels: ["created-by-leitwerk"],
 		});
-		const receipt = await tool?.execute(ctx, { title: "Ticket", body: "Description" });
+		const receipt = await test.callTool(
+			"forgejo_create_issue",
+			{ title: "Ticket", body: "Description" },
+			ctx,
+		);
 		expect(receipt).toMatchObject({
 			externalId: "team/repo#7",
 			url: "https://git.example.test/team/repo/issues/7",
@@ -256,31 +276,25 @@ describe("Forgejo server tools", () => {
 			"team",
 			"repo",
 			expect.objectContaining({ labels: [5] }),
-			ctx.signal,
+			expect.any(AbortSignal),
 		);
 		expect(issues[0]?.body).toContain("<!-- leitwerk-ticket-write:stable-write-key -->");
-		expect(written.size).toBe(lostLabelResponse ? 1 : 2);
+		expect(test.writeReceipts().length).toBe(lostLabelResponse ? 1 : 2);
 
-		const replay = await tool?.execute(ctx, { title: "Ticket", body: "Description" });
+		const replay = await test.callTool(
+			"forgejo_create_issue",
+			{ title: "Ticket", body: "Description" },
+			ctx,
+		);
 		expect(replay).toMatchObject({ externalId: "team/repo#7" });
 		expect(client.createIssue).toHaveBeenCalledTimes(1);
 		expect(client.createLabel).toHaveBeenCalledTimes(1);
 	});
 });
 
-it("omits ticket registration when explicitly disabled", () => {
-	const { api, tools } = createToolCollector();
-	registerForgejoTools(
-		api,
-		{
-			profiles: () => [],
-			client: () => {
-				throw new Error("No provider call during registration");
-			},
-		},
-		{ hasDedupKey: () => false, record: () => undefined },
-		{ enabled: false, defaultLabels: [] },
-	);
-	expect(tools.has("forgejo_create_issue")).toBe(false);
-	expect(tools.has("forgejo_ensure_pull_request")).toBe(true);
+it("omits ticket registration when explicitly disabled", async () => {
+	const { test } = await setup({}, false);
+	const names = test.describeTools().map((tool) => tool.name);
+	expect(names).not.toContain("forgejo_create_issue");
+	expect(names).toContain("forgejo_ensure_pull_request");
 });

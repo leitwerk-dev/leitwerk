@@ -5,7 +5,6 @@ import {
 	coreHostCapabilities,
 	createCapabilityAccessor,
 	createEventBus,
-	type IntegrationToolDefinition,
 	type LeitwerkExtensionModule,
 	type ProvidedCapability,
 	type ServerExtensionAPI,
@@ -38,20 +37,6 @@ export function createPollingTestExtension<T>(
 			if (!provider) throw new Error(`Test provider '${manifest.id}' has not been initialized`);
 			return provider.poll();
 		},
-	};
-}
-
-/** @internal */
-export function createToolCollector() {
-	const tools = new Map<string, IntegrationToolDefinition>();
-	const api = {
-		tool: (tool: IntegrationToolDefinition) => tools.set(tool.name, tool),
-	} as unknown as ServerExtensionAPI;
-	return {
-		/** @internal */
-		api,
-		/** @internal */
-		tools,
 	};
 }
 

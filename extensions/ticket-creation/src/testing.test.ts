@@ -1,9 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
-import { expect, onTestFinished, test, vi } from "vitest";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
+import { expect, onTestFinished, test } from "vitest";
 import { LocalTicketAdapter } from "./testing.js";
 
 test("restarts after persistence, reconciles the original write key, and records exactly one receipt", async () => {
@@ -17,42 +18,66 @@ test("restarts after persistence, reconciles the original write key, and records
 			{ id: "workshop", displayName: "Workshop" },
 		],
 	};
-	const writes = createInMemoryExternalWriteLog();
-	const { records, record } = writes;
 	let writeLogAvailable = false;
-	vi.spyOn(writes, "record").mockImplementation((input) => {
-		if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
-		return record(input);
+	let adapter = new LocalTicketAdapter(options);
+	const harness = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "ticket-adapter-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					const writes = deps.externalWrites as ExternalWriteLogRepoLike;
+					const tool = adapter.tool({
+						hasDedupKey: (key) => writes.hasDedupKey(key),
+						record(input) {
+							if (!writeLogAvailable) throw new Error("Write log unavailable after persistence");
+							return writes.record(input);
+						},
+					});
+					api.tool({
+						...tool,
+						execute: (ctx, args) =>
+							adapter
+								.tool({
+									hasDedupKey: (key) => writes.hasDedupKey(key),
+									record(input) {
+										if (!writeLogAvailable)
+											throw new Error("Write log unavailable after persistence");
+										return writes.record(input);
+									},
+								})
+								.execute(ctx, args),
+					});
+				},
+			},
+		],
 	});
-	const adapter = new LocalTicketAdapter(options);
-	const tool = adapter.tool(writes);
-	const provider = tool.capability?.destinations;
-	if (!provider) throw new Error("Missing destinations");
+	onTestFinished(() => harness.close());
+	const name = harness.describeTools()[0].name;
 	const actor = { id: "local", kind: "user" as const, provider: null };
-	expect((await provider.list({ actor })).destinations).toHaveLength(2);
-	const snapshot = await provider.resolve({ actor, destinationId: "workshop" });
-	await provider.validate(snapshot);
-	const ctx = {
-		process: { id: "child-1" },
-		idempotencyKey: "stable-write-key",
-		ticketDestination: snapshot,
-	} as IntegrationToolExecutionContext;
+	expect((await harness.listToolDestinations(name, actor)).destinations).toHaveLength(2);
+	const snapshot = await harness.resolveToolDestination(name, "workshop", actor);
+	await harness.validateToolDestination(name, snapshot);
+	const fixture = { id: "child-1", invocationId: "stable-write-key", ticketDestination: snapshot };
 	adapter.injectLostResponse();
-	await expect(tool.execute(ctx, { title: "Review", body: "Review the notes" })).rejects.toThrow(
-		/Write log unavailable/,
-	);
-	expect(records).toHaveLength(0);
+	await expect(
+		harness.callTool(name, { title: "Review", body: "Review the notes" }, fixture),
+	).rejects.toThrow(/Write log unavailable/);
+	expect(harness.writeReceipts()).toHaveLength(0);
 	expect(JSON.parse(readFileSync(options.file, "utf8")).tickets).toHaveLength(1);
-	const restarted = new LocalTicketAdapter(options);
+	adapter = new LocalTicketAdapter(options);
 	writeLogAvailable = true;
-	const receipt = await restarted
-		.tool(writes)
-		.execute(ctx, { title: "Review", body: "Review the notes" });
+	const receipt = await harness.callTool(
+		name,
+		{ title: "Review", body: "Review the notes" },
+		fixture,
+	);
 	expect(
-		await restarted.tool(writes).execute(ctx, { title: "Review", body: "Review the notes" }),
+		await harness.callTool(name, { title: "Review", body: "Review the notes" }, fixture),
 	).toEqual(receipt);
-	expect(restarted.state.tickets).toHaveLength(1);
-	expect(records).toEqual([
+	expect(adapter.state.tickets).toHaveLength(1);
+	expect(harness.writeReceipts()).toEqual([
 		expect.objectContaining({
 			instanceId: "child-1",
 			writeType: "local.create_ticket",
@@ -64,7 +89,7 @@ test("restarts after persistence, reconciles the original write key, and records
 		externalId: "1",
 		url: "http://127.0.0.1:19082/__local/tickets/1",
 	});
-	await expect(provider.validate({ ...snapshot, data: { id: "garden" } })).rejects.toThrow(
-		/changed/,
-	);
+	await expect(
+		harness.validateToolDestination(name, { ...snapshot, data: { id: "garden" } }),
+	).rejects.toThrow(/changed/);
 });

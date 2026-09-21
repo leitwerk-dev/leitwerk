@@ -2,13 +2,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-	createTestProcessInstance,
-	createTestProcessProject,
-} from "@leitwerk-dev/extension-runtime/testing";
 import type { FlowAutomaticRunContext } from "@leitwerk-dev/process-sdk";
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
+import { createProcessFixture, createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	commitAndPushWorkBranch,
@@ -189,9 +186,9 @@ function createFinalizationContext(input: {
 	const workspaceClonePath = input.workspaceClonePath ?? "./repo";
 	const key = workspaceClonePath.replace(/^\.\//, "") || "repo";
 	return {
-		process: createTestProcessInstance({ processId: "local_repo_change_process" }),
+		process: createProcessFixture({ processId: "local_repo_change_process" }),
 		projects: [
-			createTestProcessProject({
+			createProjectFixture({
 				key,
 				repoLocator: input.repoPath,
 				repoLocatorKind: "local_path",

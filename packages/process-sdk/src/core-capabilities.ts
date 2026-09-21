@@ -75,6 +75,8 @@ export interface ProcessRepoLike {
 		input: {
 			/** @public */
 			selectedTurnId?: TurnId | null;
+			/** Encoded params rewritten by a startup compatibility migration. @public */
+			paramsJson?: string | null;
 			/** @public */
 			currentExecution?: ProcessInstance["currentExecution"];
 			/** @public */

@@ -27,18 +27,18 @@ it("closing an unmerged issue-origin PR removes the trigger, comments once, and 
 		`Leitwerk opened pull request ${constants.prUrl}.`,
 		`Leitwerk stopped because ${constants.prUrl} was closed without merge.`,
 	]);
-	const writes = f.harness.ctx.deps.externalWrites.listByInstance(id);
+	const writes = f.harness.process(id).snapshot().writeReceipts;
 	expect(writes.length).toBeGreaterThan(0);
 	await f.restart();
 	await f.pollFeedback();
-	expect(f.harness.ctx.deps.processes.listAll()).toHaveLength(1);
-	expect(f.harness.ctx.deps.processes.getById(id)).toMatchObject({
+	expect(f.harness.processes()).toHaveLength(1);
+	expect(f.harness.process(id).snapshot().process).toMatchObject({
 		lifecycleStatus: "aborted",
 		selectedTurnId: null,
 	});
 	expect(f.forgejo.issue()).toMatchObject({ state: "open", labels: [] });
 	expect(f.forgejo.comments()).toHaveLength(2);
-	expect(f.harness.ctx.deps.externalWrites.listByInstance(id)).toEqual(writes);
+	expect(f.harness.process(id).snapshot().writeReceipts).toEqual(writes);
 	expect(f.subscriptions(id)).toEqual([]);
 }, 15_000);
 
@@ -46,16 +46,17 @@ it("source cancellation aborts waiting delivery without another worker turn or r
 	const f = await createRemoteRepoChangeFixture();
 	const id = await publishIssue(f);
 	const workerTurns = () =>
-		f.harness.ctx.deps.turnRecords
-			.listByInstance(id)
-			.filter((turn) => turn.turnType !== "external");
+		f.harness
+			.process(id)
+			.snapshot()
+			.turns.filter((turn) => turn.turnType !== "external");
 	const turns = workerTurns();
-	const writes = f.harness.ctx.deps.externalWrites.listByInstance(id);
+	const writes = f.harness.process(id).snapshot().writeReceipts;
 	const comments = f.forgejo.comments();
 	await f.removeSourceTrigger();
 	await f.waitForTurn(id, null, "aborted");
 	expect(workerTurns()).toEqual(turns);
-	expect(f.harness.ctx.deps.externalWrites.listByInstance(id)).toEqual(writes);
+	expect(f.harness.process(id).snapshot().writeReceipts).toEqual(writes);
 	expect(f.forgejo.comments()).toEqual(comments);
 	expect(f.forgejo.pullRequest()).toMatchObject({ state: "open", merged: false });
 	expect(f.subscriptions(id)).toEqual([]);

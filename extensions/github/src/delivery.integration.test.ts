@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it } from "vitest";
 import { LocalGitHubAdapter } from "./testing.js";
 import { registerGitHubTools } from "./tools.js";
@@ -32,14 +34,35 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 		body: "Please revise",
 		author: "member",
 	});
-	const writes = createInMemoryExternalWriteLog();
-	const { api, tools } = createToolCollector();
-	registerGitHubTools(api, { client: () => adapter.client() }, writes);
-	const ctx = {
-		process: { id: "p", paramsJson: JSON.stringify({ githubProfile: "legacy" }) },
-		project: { instanceId: "p", metadata: { github: { owner: "leitwerk-dev", repo: "test" } } },
-		idempotencyKey: "unused",
-	} as IntegrationToolExecutionContext;
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "github-delivery-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					registerGitHubTools(
+						api,
+						{ client: () => adapter.client() },
+						deps.externalWrites as ExternalWriteLogRepoLike,
+					);
+				},
+			},
+		],
+	});
+	onTestFinished(() => test.close());
+	const fixture = {
+		id: "p",
+		params: { githubProfile: "legacy" },
+		invocationId: "unused",
+		projects: [
+			createProjectFixture({
+				process: { id: "p" },
+				key: "repo",
+				metadata: { github: { owner: "leitwerk-dev", repo: "test" } },
+			}),
+		],
+	};
 	for (const [toolName, operation, args] of [
 		["github_add_issue_comment", "comment", { issueNumber: issue.number, body: "Opened PR" }],
 		[
@@ -63,36 +86,38 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 			{ issueNumber: issue.number, patch: { labels: ["done"], state: "closed" } },
 		],
 	] as const) {
-		const tool = tools.get(toolName);
-		if (!tool) throw new Error(`Missing tool ${toolName}`);
 		adapter.failNextResponse(operation);
 		const input = { projectKey: "repo", ...args, writeKey: toolName };
-		await expect(tool.execute(ctx, input)).rejects.toThrow("response lost");
+		await expect(test.callTool(toolName, input, fixture)).rejects.toThrow("response lost");
 		adapter = new LocalGitHubAdapter({
 			root,
 			baseUrl: "http://127.0.0.1:18082",
 			allowedOrganization: "leitwerk-dev",
 		});
 		repo = adapter.repo("leitwerk-dev", "test");
-		await tool.execute(ctx, input);
-		await tool.execute(ctx, input);
+		await test.callTool(toolName, input, fixture);
+		await test.callTool(toolName, input, fixture);
 	}
 	expect(repo.comments[issue.number]).toHaveLength(1);
 	expect(repo.feedback[pr.number]).toHaveLength(2);
 	expect(repo.reactions[`inline:${feedback.id}`]).toHaveLength(1);
 	expect(repo.issues[0]).toMatchObject({ state: "closed", labels: [{ name: "done" }] });
-	expect(writes.records).toHaveLength(4);
-	expect(tools.has("github_resolve_release_lock")).toBe(false);
+	expect(test.writeReceipts()).toHaveLength(4);
+	expect(test.describeTools().some((t) => t.name === "github_resolve_release_lock")).toBe(false);
 	await expect(
-		tools.get("github_get_issue")?.execute(
-			{
-				...ctx,
-				project: {
-					...ctx.project,
-					metadata: { github: { owner: "outside", repo: "test", profile: "local" } },
-				} as never,
-			},
+		test.callTool(
+			"github_get_issue",
 			{ projectKey: "repo", issueNumber: issue.number },
+			{
+				...fixture,
+				projects: [
+					createProjectFixture({
+						process: { id: "p" },
+						key: "repo",
+						metadata: { github: { owner: "outside", repo: "test", profile: "local" } },
+					}),
+				],
+			},
 		),
 	).rejects.toThrow("leitwerk-dev");
 });

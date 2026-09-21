@@ -1,3 +1,4 @@
+import type { ResolvedTurnStart } from "@leitwerk-dev/domain";
 import type { AppContext } from "../app.js";
 
 /** @internal */
@@ -57,6 +58,8 @@ export function createAcceptedLlmTurnStart(
 		/** @internal */
 		id?: string;
 		/** @internal */
+		preparedStart?: Extract<ResolvedTurnStart, { kind: "llm" }>;
+		/** @internal */
 		model?: {
 			/** @internal */
 			profileId: string;
@@ -84,7 +87,7 @@ export function createAcceptedLlmTurnStart(
 		continuation: null,
 		state: {
 			kind: "accepted",
-			start: {
+			start: options.preparedStart ?? {
 				kind: "llm",
 				model: options.model ?? {
 					profileId: "fixture-profile",

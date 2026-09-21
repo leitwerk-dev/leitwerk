@@ -5,6 +5,7 @@ export default workspaceBuild({
 		"src/local-git.ts",
 		"src/fakes/index.ts",
 		"src/fixtures.ts",
+		"src/process.ts",
 		"src/integration.ts",
 		"src/stub-worker-entry.ts",
 		"src/worker-testing/index.ts",

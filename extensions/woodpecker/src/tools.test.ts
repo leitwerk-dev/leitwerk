@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it, vi } from "vitest";
 import { LocalWoodpeckerAdapter } from "./testing.js";
 import { registerWoodpeckerTools } from "./tools.js";
@@ -22,47 +24,64 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 	});
 	const client = adapter.client();
 	const restart = vi.spyOn(client, "restartPipeline");
-	const { api, tools } = createToolCollector();
-	const writes = createInMemoryExternalWriteLog();
-	registerWoodpeckerTools(
-		api,
-		{
-			client: (profile) => {
-				expect(profile).toBe("ci-profile");
-				return client;
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "woodpecker-tools-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					registerWoodpeckerTools(
+						api,
+						{
+							client(profile) {
+								expect(profile).toBe("ci-profile");
+								return client;
+							},
+						},
+						deps.externalWrites as ExternalWriteLogRepoLike,
+					);
+				},
 			},
-		},
-		writes,
-	);
-	const ctx = {
-		process: { id: "p", paramsJson: "{}" },
-		project: {
-			instanceId: "p",
-			metadata: { woodpecker: { owner: "team", repo: "independent", profile: "ci-profile" } },
-		},
-		idempotencyKey: "restart-retained",
-		signal: new AbortController().signal,
-	} as IntegrationToolExecutionContext;
+		],
+	});
+	onTestFinished(() => test.close());
+	const fixture = {
+		id: "p",
+		params: {},
+		invocationId: "restart-retained",
+		projects: [
+			createProjectFixture({
+				process: { id: "p" },
+				key: "repo",
+				metadata: { woodpecker: { owner: "team", repo: "independent", profile: "ci-profile" } },
+			}),
+		],
+	};
 	const args = { projectKey: "repo", pipelineNumber: pipeline.number };
 	expect(
-		await tools
-			.get("woodpecker_get_step_logs")
-			?.execute(ctx, { ...args, stepId: 1, tailLines: 1, maxBytes: 7 }),
+		await test.callTool(
+			"woodpecker_get_step_logs",
+			{ ...args, stepId: 1, tailLines: 1, maxBytes: 7 },
+			fixture,
+		),
 	).toEqual({ logs: "timeout", truncated: true });
-	await expect(tools.get("woodpecker_restart_pipeline")?.execute(ctx, args)).rejects.toThrow(
+	await expect(test.callTool("woodpecker_restart_pipeline", args, fixture)).rejects.toThrow(
 		"diagnosis",
 	);
 	for (const diagnosis of ["", " ", 1])
 		await expect(
-			tools.get("woodpecker_restart_pipeline")?.execute(ctx, { ...args, diagnosis }),
+			test.callTool("woodpecker_restart_pipeline", { ...args, diagnosis }, fixture),
 		).rejects.toThrow("non-empty string");
 	const diagnosed = {
 		...args,
 		diagnosis: "Transient infrastructure",
 		logEvidence: "network timeout",
 	};
-	await tools.get("woodpecker_restart_pipeline")?.execute(ctx, diagnosed);
-	await tools.get("woodpecker_restart_pipeline")?.execute(ctx, diagnosed);
+	await test.callTool("woodpecker_restart_pipeline", diagnosed, fixture);
+	await test.callTool("woodpecker_restart_pipeline", diagnosed, fixture);
 	expect(restart).toHaveBeenCalledTimes(1);
-	expect(writes.hasDedupKey("restart-retained")).toBe(true);
+	expect(test.writeReceipts()).toContainEqual(
+		expect.objectContaining({ dedupKey: "restart-retained" }),
+	);
 });

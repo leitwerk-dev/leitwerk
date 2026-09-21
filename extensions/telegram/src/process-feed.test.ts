@@ -1,6 +1,6 @@
 import type { ProcessTurnRecord } from "@leitwerk-dev/domain";
 import { formatPathTypeLabel } from "@leitwerk-dev/domain";
-import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
+import { createProcessFixture } from "@leitwerk-dev/test-support/fixtures";
 import { describe, expect, it } from "vitest";
 import {
 	buildActionSubmittedMessage,
@@ -39,7 +39,7 @@ function createTestTurnRecord(overrides?: Partial<ProcessTurnRecord>): ProcessTu
 
 describe("Telegram process feed builders", () => {
 	it("escapes process-created links as HTML attributes", () => {
-		const process = createTestProcessInstance({ id: "agt_123", title: "Process" });
+		const process = createProcessFixture({ id: "agt_123", title: "Process" });
 		const message = buildProcessCreatedMessage({
 			process,
 			serverBaseUrl: 'https://leitwerk.example/a"b',
@@ -49,10 +49,9 @@ describe("Telegram process feed builders", () => {
 	});
 
 	it("includes escaped action labels in prompts and status", () => {
-		const process = createTestProcessInstance({
+		const process = createProcessFixture({
 			title: "Primary <control>",
-			lifecycleStatus: "waiting",
-			selectedTurnId: "control_panel",
+			position: { lifecycleStatus: "waiting", selectedTurnId: "control_panel" },
 		});
 		const actions = [{ id: "tail_logs", label: "Tail <logs>" }];
 
@@ -189,9 +188,8 @@ describe("Telegram process feed builders", () => {
 	});
 
 	it("renders status with current turn description and path type", () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "active",
-			selectedTurnId: "implement",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: "implement" },
 		});
 		const message = buildStatusMessage({
 			process,
@@ -205,9 +203,8 @@ describe("Telegram process feed builders", () => {
 	});
 
 	it("formats fallback selectedTurnId into a human-readable label", () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "active",
-			selectedTurnId: "generate_plan",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: "generate_plan" },
 		});
 		const message = buildStatusMessage({ process });
 

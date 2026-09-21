@@ -1,8 +1,9 @@
 import { formatPathTypeLabel, type QuestionAnswerDraft } from "@leitwerk-dev/domain";
-import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
+
 import {
 	type CoreServerSetupDeps,
-	createEventBus,
+	emptyParamsCodec,
+	flow,
 	type LauncherModelConfigPreviewLike,
 	type LauncherModelConfigSchemaLike,
 	type ModelProfileOptionSummaryLike,
@@ -13,14 +14,55 @@ import {
 	type ProcessModelSelectionServiceLike,
 	type UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
-import { createTestQuestion, createTestQuestionRequest } from "@leitwerk-dev/test-support/fixtures";
-import { createTestServerSetupCapability } from "@leitwerk-dev/test-support/integration";
-import { flushAsyncWork } from "@leitwerk-dev/test-support/worker-testing";
-import { describe, expect, it, vi } from "vitest";
+import {
+	createProcessFixture,
+	createQuestionRequestFixture,
+} from "@leitwerk-dev/test-support/fixtures";
+import {
+	createExtensionIntegrationHarness,
+	createTestServerSetupCapability,
+} from "@leitwerk-dev/test-support/integration";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { TELEGRAM_ACTOR } from "./actor.js";
 import { TelegramBridge } from "./bridge.js";
 import type { TelegramExtensionConfig } from "./config.js";
 import { FakeTelegramClient } from "./fake-telegram-client.js";
+
+async function recoveryProcess(recovered = false) {
+	const definition = flow
+		.process("telegram_recovery")
+		.displayName("Recovery")
+		.entry("work")
+		.codecs({ params: emptyParamsCodec, state: emptyParamsCodec })
+		.initialState(() => ({}))
+		.turn(
+			flow
+				.automatic("work")
+				.description("Work")
+				.run(() => {
+					throw new Error("Temporary failure");
+				})
+				.outcome("done", (o) => o.description("Done").complete()),
+		)
+		.define();
+	const test = await createExtensionIntegrationHarness({
+		execution: "manual",
+		extensions: [
+			{
+				manifest: { id: "telegram-recovery-test", version: "1" },
+				setupCatalog(api) {
+					api.registerProcess(definition);
+				},
+			},
+		],
+	});
+	onTestFinished(() => test.close());
+	const process = await test.createProcess(definition);
+	await process.runTurn();
+	if (recovered) await process.retry();
+	return structuredClone(process.snapshot().process);
+}
 
 type MutableTelegramBridgeInternals = {
 	processModelSelection: ProcessModelSelectionServiceLike | null;
@@ -28,7 +70,7 @@ type MutableTelegramBridgeInternals = {
 		config: TelegramExtensionConfig;
 		deps: {
 			processes: {
-				getById: (id: string) => ReturnType<typeof createTestProcessInstance> | null;
+				getById: (id: string) => ReturnType<typeof createProcessFixture> | null;
 			};
 		};
 	};
@@ -67,7 +109,7 @@ function testConfig(overrides: Partial<TelegramExtensionConfig> = {}): TelegramE
 }
 
 function createDeps(input: {
-	process: ReturnType<typeof createTestProcessInstance>;
+	process: ReturnType<typeof createProcessFixture>;
 	actions?: readonly ProcessActionSummaryLike[];
 	resultImages?: {
 		get(instanceId: string, turnRecordId: string, imageId: string): Promise<Uint8Array | null>;
@@ -123,16 +165,27 @@ function createDeps(input: {
 	};
 }
 
-function setupBridge(
+async function setupBridge(
 	input: Parameters<typeof createDeps>[0],
 	config: TelegramExtensionConfig = testConfig(),
 ) {
 	const client = new FakeTelegramClient();
-	const events = createEventBus();
 	const deps = createDeps(input);
 	const logger = { warn: vi.fn() };
 	const bridge = new TelegramBridge({ config, deps: deps.deps, client, logger });
-	bridge.register(events);
+	const events = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "telegram-bridge-test", version: "1" },
+				setupServer(api) {
+					bridge.register(api.events);
+					api.onStart(() => bridge.start());
+					api.onStop(() => bridge.stop());
+				},
+			},
+		],
+	});
+	onTestFinished(() => events.close());
 	return { client, events, bridge, logger, ...deps };
 }
 
@@ -252,7 +305,7 @@ function launchPlan(input: Record<string, unknown>): ProcessLaunchPlan {
 	};
 }
 
-function setupLaunchBridge(
+async function setupLaunchBridge(
 	options: {
 		resolveUiLauncher?: ReturnType<typeof vi.fn>;
 		recentValues?: Record<string, readonly string[]>;
@@ -261,9 +314,11 @@ function setupLaunchBridge(
 		prepareLaunchPlan?: ReturnType<typeof vi.fn>;
 	} = {},
 ) {
-	const launchedProcess = createTestProcessInstance({ processId: "test_process" });
+	const launchedProcess = createProcessFixture({
+		processId: "test_process",
+		position: { selectedTurnId: null, lifecycleStatus: "active" },
+	});
 	const client = new FakeTelegramClient();
-	const events = createEventBus();
 	const launcher = testLauncher();
 	const startProgrammatic = vi.fn(async () => ({
 		launchRunId: "lnr_telegram",
@@ -328,7 +383,19 @@ function setupLaunchBridge(
 		launchRuns: { startProgrammatic },
 	});
 	const bridge = new TelegramBridge({ config: testConfig(), deps, client });
-	bridge.register(events);
+	const events = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "telegram-bridge-test", version: "1" },
+				setupServer(api) {
+					bridge.register(api.events);
+					api.onStart(() => bridge.start());
+					api.onStop(() => bridge.stop());
+				},
+			},
+		],
+	});
+	onTestFinished(() => events.close());
 	return {
 		client,
 		events,
@@ -346,14 +413,12 @@ async function startProcessTopic(
 	input: Parameters<typeof setupBridge>[0],
 	config?: TelegramExtensionConfig,
 ) {
-	const harness = setupBridge(input, config);
-	await harness.bridge.start();
-	harness.events.emit("process_created", {
+	const harness = await setupBridge(input, config);
+	await harness.events.emit("process_created", {
 		instanceId: input.process.id,
 		process: input.process,
 		projects: [],
 	});
-	await flushAsyncWork(5);
 	return harness;
 }
 
@@ -478,14 +543,16 @@ const approveAction = { id: "approve", label: "Approve", description: null };
 
 async function setupActionModelSelection(
 	input: {
-		process?: ReturnType<typeof createTestProcessInstance>;
+		process?: ReturnType<typeof createProcessFixture>;
 		selection?: ProcessModelSelectionServiceLike;
 		config?: Partial<TelegramExtensionConfig>;
 		actions?: readonly ProcessActionSummaryLike[];
 	} = {},
 ) {
-	const process = input.process ?? createTestProcessInstance({ lifecycleStatus: "waiting" });
-	const harness = setupBridge(
+	const process =
+		input.process ??
+		createProcessFixture({ position: { lifecycleStatus: "waiting", selectedTurnId: null } });
+	const harness = await setupBridge(
 		{ process, actions: input.actions ?? [approveAction] },
 		testConfig({
 			...input.config,
@@ -496,13 +563,11 @@ async function setupActionModelSelection(
 		}),
 	);
 	bridgeInternals(harness.bridge).processModelSelection = input.selection ?? modelSelection();
-	await harness.bridge.start();
-	harness.events.emit("process_created", {
+	await harness.events.emit("process_created", {
 		instanceId: process.id,
 		process,
 		projects: [],
 	});
-	await flushAsyncWork(5);
 	return { ...harness, process };
 }
 
@@ -566,8 +631,7 @@ function leafOutcomeSnapshot(processId: string, fallbackMarkdown = "unique-resul
 
 describe("TelegramBridge", () => {
 	it("shows launch help when an allowlisted user creates a new unmapped topic", async () => {
-		const { bridge, client } = setupLaunchBridge();
-		await bridge.start();
+		const { client } = await setupLaunchBridge();
 
 		await client.simulateForumTopicCreated({
 			messageId: 1,
@@ -582,8 +646,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("lists launchers and starts a launch wizard in an unmapped topic", async () => {
-		const { bridge, client } = setupLaunchBridge();
-		await bridge.start();
+		const { client } = await setupLaunchBridge();
 
 		await sendUnmappedTopicText(client, "/launch");
 		await clickUnmappedTopicButton(client, "Test Launcher");
@@ -595,8 +658,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("launches a process from an unmapped topic and claims that topic for the process", async () => {
-		const { bridge, client, startProgrammatic, recordRecentValues } = setupLaunchBridge();
-		await bridge.start();
+		const { client, startProgrammatic, recordRecentValues } = await setupLaunchBridge();
 
 		await completeLaunchFormToReview(client);
 		expect(findCallbackData(client, "Change models")).toBeUndefined();
@@ -621,11 +683,10 @@ describe("TelegramBridge", () => {
 	});
 
 	it("allows Telegram launchers to change default and per-turn models", async () => {
-		const { bridge, client, startProgrammatic, prepareLaunchPlan } = setupLaunchBridge({
+		const { client, startProgrammatic, prepareLaunchPlan } = await setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
-		await bridge.start();
 
 		await completeLaunchFormToReview(client);
 		expect(client.sentMessages.at(-1)?.text).toContain("Model setup");
@@ -656,11 +717,10 @@ describe("TelegramBridge", () => {
 	});
 
 	it("keeps Telegram model edit open when a typed model profile is invalid", async () => {
-		const { bridge, client, startProgrammatic } = setupLaunchBridge({
+		const { client, startProgrammatic } = await setupLaunchBridge({
 			modelSchema: testModelSchema(),
 			modelPreview: testModelPreview(),
 		});
-		await bridge.start();
 
 		await completeLaunchFormToReview(client);
 		await clickUnmappedTopicButton(client, "Change models");
@@ -672,10 +732,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("offers launcher recent values as field buttons", async () => {
-		const { bridge, client, startProgrammatic } = setupLaunchBridge({
+		const { client, startProgrammatic } = await setupLaunchBridge({
 			recentValues: { prompt: ["Use remembered prompt"] },
 		});
-		await bridge.start();
 
 		await sendUnmappedTopicText(client, "/launch test.launcher");
 		await clickUnmappedTopicButton(client, "Use remembered prompt");
@@ -692,10 +751,9 @@ describe("TelegramBridge", () => {
 			ok: false as const,
 			errors: [{ code: "invalid", message: "Prompt is required", fieldId: "prompt" }],
 		}));
-		const { bridge, client, startProgrammatic } = setupLaunchBridge({
+		const { client, startProgrammatic } = await setupLaunchBridge({
 			resolveUiLauncher,
 		});
-		await bridge.start();
 
 		await sendUnmappedTopicText(client, "/launch test.launcher");
 		await sendUnmappedTopicText(client, "bad prompt");
@@ -706,20 +764,18 @@ describe("TelegramBridge", () => {
 	});
 
 	it("reuses and renames a claimed launch topic when process_created is emitted", async () => {
-		const { bridge, client, events, launchedProcess } = setupLaunchBridge();
+		const { client, events, launchedProcess } = await setupLaunchBridge();
 		launchedProcess.metadata = {
 			telegram: {
 				launchThread: { mode: "forum_topic", chatId: "-100", messageThreadId: 777 },
 			},
 		};
-		await bridge.start();
 
-		events.emit("process_created", {
+		await events.emit("process_created", {
 			instanceId: launchedProcess.id,
 			process: launchedProcess,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
 		expect(client.createdTopics).toHaveLength(0);
 		expect(client.editedTopics).toEqual([
@@ -729,8 +785,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not allow non-allowlisted users to launch processes", async () => {
-		const { bridge, client, startProgrammatic } = setupLaunchBridge();
-		await bridge.start();
+		const { client, startProgrammatic } = await setupLaunchBridge();
 
 		await sendUnmappedTopicText(client, "/launch test.launcher", 777, { from: { id: 999 } });
 
@@ -739,7 +794,10 @@ describe("TelegramBridge", () => {
 	});
 
 	it("creates a topic and records the durable thread mapping", async () => {
-		const process = createTestProcessInstance({ title: "Implement thing" });
+		const process = createProcessFixture({
+			title: "Implement thing",
+			position: { selectedTurnId: null, lifecycleStatus: "active" },
+		});
 		const { client, processEvents } = await startProcessTopic({ process });
 
 		expect(client.createdTopics).toHaveLength(1);
@@ -752,20 +810,21 @@ describe("TelegramBridge", () => {
 	});
 
 	it("delivers active-turn questions and submits Telegram answers", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
-		const request = createTestQuestionRequest({
-			instanceId: process.id,
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
+		const request = createQuestionRequestFixture({
+			process,
 			questions: [
-				createTestQuestion({
+				{
 					options: [
 						{
-							id: "question_1_option_1",
 							label: "Safe (recommended)",
 							details: "Small change",
 						},
-						{ id: "question_1_option_2", label: "Bold", details: null },
+						{ label: "Bold" },
 					],
-				}),
+				},
 			],
 		});
 		const submitAnswers = vi.fn(
@@ -783,13 +842,11 @@ describe("TelegramBridge", () => {
 			processQuestions: { listOpen: () => [], submitAnswers },
 		});
 
-		events.emit("question_requested", { instanceId: process.id, request });
-		await flushAsyncWork(5);
+		await events.emit("question_requested", { instanceId: process.id, request });
 		expect(client.sentMessages.at(-1)?.text).toContain("Choose a strategy");
 		expect(client.sentMessages.at(-1)?.text).toContain("Safe (recommended)");
 
 		await sendText(client, "Use the safe strategy");
-		await flushAsyncWork(5);
 
 		expect(submitAnswers).toHaveBeenCalledWith(
 			process.id,
@@ -801,16 +858,18 @@ describe("TelegramBridge", () => {
 	});
 
 	it("renames the process topic when a generated title is applied", async () => {
-		const process = createTestProcessInstance({ title: null });
+		const process = createProcessFixture({
+			title: null,
+			position: { selectedTurnId: null, lifecycleStatus: "active" },
+		});
 		const { client, events } = await startProcessTopic({ process });
 		process.title = "Generated title";
 
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["title"],
 		});
-		await flushAsyncWork(5);
 
 		expect(client.editedTopics).toEqual([
 			expect.objectContaining({ messageThreadId: topicThreadId(client), name: expect.any(String) }),
@@ -818,28 +877,29 @@ describe("TelegramBridge", () => {
 	});
 
 	it("retries topic creation on later events after an initial create failure", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
-		const { bridge, events, client, processEvents } = setupBridge({ process });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
+		const { events, client, processEvents } = await setupBridge({ process });
 		client.failNextCreateForumTopic(new Error("missing forum permission"));
-		await bridge.start();
-		events.emit("process_created", { instanceId: process.id, process, projects: [] });
-		await flushAsyncWork(5);
+		await events.emit("process_created", { instanceId: process.id, process, projects: [] });
 
 		expect(client.createdTopics).toHaveLength(0);
 
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["selectedTurnId"],
 		});
-		await flushAsyncWork(5);
 
 		expect(client.createdTopics).toHaveLength(1);
 		expect(processEvents.some((event) => event.eventType === "telegram.thread_linked")).toBe(true);
 	});
 
 	it("queues free text in a process topic to the mapped process", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { client, queueInputs } = await startProcessTopic({ process });
 
 		await sendText(client, "Please adjust the plan");
@@ -857,9 +917,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("executes selected actions and rejects callbacks replayed from another topic", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -899,9 +958,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("announces submitted form actions with entered values and expected next turn", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "control_panel",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "control_panel" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -927,9 +985,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("shows current action labels in status", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "control_panel",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "control_panel" },
 		});
 		const { client } = await startProcessTopic({ process, actions: [tailLogsAction] });
 
@@ -940,9 +997,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("collects action form input and escapes form prompts before executing", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -982,9 +1038,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("skips optional action fields without submitting empty values", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -1015,9 +1070,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not apply stale action form skip buttons to a newer form", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -1056,9 +1110,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not execute stale action callbacks after the process leaves waiting", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -1073,16 +1126,17 @@ describe("TelegramBridge", () => {
 	});
 
 	it("renders turn failure summaries from generic server events", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "error" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "error", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process });
 
-		events.emit("turn_failed", {
+		await events.emit("turn_failed", {
 			instanceId: process.id,
 			errorSummary: "Bad <failure> & details",
 			errorClass: "infrastructure",
 			turnRecord: turnRecord(process.id),
 		});
-		await flushAsyncWork(5);
 
 		const failureMessage = client.sentMessages.find((message) =>
 			message.text.includes("Bad &lt;failure&gt; &amp; details"),
@@ -1091,21 +1145,22 @@ describe("TelegramBridge", () => {
 	});
 
 	it("places available actions after a result when the process returns to waiting", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process, actions: [approveAction] });
 		process.lifecycleStatus = "waiting";
 		process.selectedTurnId = "review";
 
-		events.emit("leaf_outcome_captured", {
+		await events.emit("leaf_outcome_captured", {
 			instanceId: process.id,
 			snapshot: leafOutcomeSnapshot(process.id),
 		});
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["lifecycleStatus", "selectedTurnId"],
 		});
-		await flushAsyncWork(5);
 
 		const actionIndex = client.sentMessages.findIndex((message) =>
 			message.replyMarkup?.inlineKeyboard
@@ -1121,18 +1176,20 @@ describe("TelegramBridge", () => {
 	});
 
 	it("sends turn outcome markdown before the next action prompt", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process, actions: [tailLogsAction] });
 		process.lifecycleStatus = "waiting";
 		process.selectedTurnId = "control_panel";
 		process.currentExecution = null;
 
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["currentExecution", "lifecycleStatus", "selectedTurnId"],
 		});
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_operation",
 			turnId: "run_operation",
@@ -1140,7 +1197,6 @@ describe("TelegramBridge", () => {
 			params: {},
 			turnResultMarkdown: "## Primary log tail\n\nLOG_TOKEN",
 		});
-		await flushAsyncWork(5);
 
 		const resultIndex = client.sentMessages.findIndex((message) =>
 			message.text.includes("LOG_TOKEN"),
@@ -1156,7 +1212,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("uploads correlated result images and rendered Mermaid diagrams", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const getResultImage = vi.fn(async () => new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]));
 		const { events, client } = await startProcessTopic({
 			process,
@@ -1164,7 +1222,7 @@ describe("TelegramBridge", () => {
 		});
 		const operationCount = client.operations.length;
 
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_visual",
 			turnId: "review",
@@ -1207,7 +1265,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("retries a Telegram-rejected photo as a document", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({
 			process,
 			resultImages: {
@@ -1216,7 +1276,7 @@ describe("TelegramBridge", () => {
 		});
 		client.failNextSendPhoto(new Error("Telegram rejected photo size or format"));
 
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_photo_fallback",
 			turnId: "review",
@@ -1231,18 +1291,20 @@ describe("TelegramBridge", () => {
 	});
 
 	it("posts terminal turn outcome markdown before closing a completed process topic", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process });
 		process.lifecycleStatus = "completed";
 		process.selectedTurnId = null;
 		process.currentExecution = null;
 
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["currentExecution", "lifecycleStatus", "selectedTurnId"],
 		});
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_terminal_result",
 			turnId: "finish",
@@ -1250,7 +1312,6 @@ describe("TelegramBridge", () => {
 			params: {},
 			turnResultMarkdown: "TERMINAL_RESULT_TOKEN",
 		});
-		await flushAsyncWork(5);
 
 		const resultOperationIndex = client.operations.findIndex(
 			(operation) =>
@@ -1265,22 +1326,24 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not duplicate a leaf result when the matching turn outcome is also emitted", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process, actions: [approveAction] });
 		process.lifecycleStatus = "waiting";
 		process.selectedTurnId = "review";
 		process.currentExecution = null;
 
-		events.emit("leaf_outcome_captured", {
+		await events.emit("leaf_outcome_captured", {
 			instanceId: process.id,
 			snapshot: leafOutcomeSnapshot(process.id, "DEDUP_RESULT_TOKEN"),
 		});
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["currentExecution", "lifecycleStatus", "selectedTurnId"],
 		});
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_result",
 			turnId: "implement",
@@ -1288,7 +1351,6 @@ describe("TelegramBridge", () => {
 			params: {},
 			turnResultMarkdown: "DEDUP_RESULT_TOKEN",
 		});
-		await flushAsyncWork(5);
 
 		expect(
 			client.sentMessages.filter((message) => message.text.includes("DEDUP_RESULT_TOKEN")),
@@ -1297,14 +1359,16 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not let an empty leaf fallback suppress later turn outcome markdown", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process });
 
-		events.emit("leaf_outcome_captured", {
+		await events.emit("leaf_outcome_captured", {
 			instanceId: process.id,
 			snapshot: leafOutcomeSnapshot(process.id, "   "),
 		});
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_result",
 			turnId: "implement",
@@ -1312,7 +1376,6 @@ describe("TelegramBridge", () => {
 			params: {},
 			turnResultMarkdown: "TURN_OUTCOME_AFTER_EMPTY_LEAF",
 		});
-		await flushAsyncWork(5);
 
 		expect(
 			client.sentMessages.some((message) => message.text.includes("TURN_OUTCOME_AFTER_EMPTY_LEAF")),
@@ -1320,12 +1383,14 @@ describe("TelegramBridge", () => {
 	});
 
 	it("splits long turn outcomes across Telegram messages", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const config = testConfig({ markdown: { maxChars: 80 } });
 		const { events, client } = await startProcessTopic({ process }, config);
 		const messageCount = client.sentMessages.length;
 
-		events.emit("turn_outcome", {
+		await events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_long_result",
 			turnId: "run_operation",
@@ -1333,7 +1398,6 @@ describe("TelegramBridge", () => {
 			params: {},
 			turnResultMarkdown: "long-turn-result-token ".repeat(30),
 		});
-		await flushAsyncWork(5);
 
 		const resultMessages = client.sentMessages.slice(messageCount);
 		const combined = resultMessages.map((message) => message.text).join("");
@@ -1344,16 +1408,17 @@ describe("TelegramBridge", () => {
 	});
 
 	it("splits long leaf outcomes across Telegram messages", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const config = testConfig({ markdown: { maxChars: 80 } });
 		const { events, client } = await startProcessTopic({ process }, config);
 		const messageCount = client.sentMessages.length;
 
-		events.emit("leaf_outcome_captured", {
+		await events.emit("leaf_outcome_captured", {
 			instanceId: process.id,
 			snapshot: leafOutcomeSnapshot(process.id, "long-result-token ".repeat(30)),
 		});
-		await flushAsyncWork(5);
 
 		const resultMessages = client.sentMessages.slice(messageCount);
 		const combined = resultMessages.map((message) => message.text).join("");
@@ -1364,20 +1429,21 @@ describe("TelegramBridge", () => {
 	});
 
 	it("falls back only the failed HTML chunk when split delivery fails", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const config = testConfig({ markdown: { maxChars: 80 } });
 		const { events, client } = await startProcessTopic({ process }, config);
 		const messageCount = client.sentMessages.length;
 		client.failSendMessageAfter(1);
 
-		events.emit("leaf_outcome_captured", {
+		await events.emit("leaf_outcome_captured", {
 			instanceId: process.id,
 			snapshot: leafOutcomeSnapshot(
 				process.id,
 				`FIRST-UNIQUE ${"alpha ".repeat(20)} SECOND-UNIQUE ${"omega ".repeat(20)}`,
 			),
 		});
-		await flushAsyncWork(5);
 
 		const resultMessages = client.sentMessages.slice(messageCount);
 		expect(resultMessages.length).toBeGreaterThan(2);
@@ -1388,9 +1454,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("keeps reply markup on the final chunk of a split prompt", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
+		const process = createProcessFixture({
 			title: "Very long process title ".repeat(10),
+			position: { lifecycleStatus: "waiting", selectedTurnId: null },
 		});
 		const config = testConfig({ markdown: { maxChars: 80 } });
 		const { client } = await startProcessTopic({ process, actions: [approveAction] }, config);
@@ -1402,33 +1468,33 @@ describe("TelegramBridge", () => {
 	});
 
 	it("sends action prompts for repeated waiting turns with the same action ids", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process, actions: [approveAction] });
 		const countActionPrompts = () => messagesWithButton(client, `a:${process.id}:approve`).length;
 
 		process.lifecycleStatus = "waiting";
 		process.selectedTurnId = "review";
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process: { ...process },
 			changedFields: ["lifecycleStatus", "selectedTurnId"],
 		});
-		await flushAsyncWork(5);
 		expect(countActionPrompts()).toBe(1);
 
 		process.lifecycleStatus = "active";
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process: { ...process },
 			changedFields: ["lifecycleStatus"],
 		});
 		process.lifecycleStatus = "waiting";
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process: { ...process },
 			changedFields: ["lifecycleStatus"],
 		});
-		await flushAsyncWork(5);
 
 		expect(countActionPrompts()).toBe(2);
 	});
@@ -1437,16 +1503,17 @@ describe("TelegramBridge", () => {
 		"completed",
 		"aborted",
 	] as const)("closes the process topic when the process becomes %s", async (lifecycleStatus) => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { events, client } = await startProcessTopic({ process });
 		process.lifecycleStatus = lifecycleStatus;
 
-		events.emit("process_updated", {
+		await events.emit("process_updated", {
 			instanceId: process.id,
 			process,
 			changedFields: ["lifecycleStatus"],
 		});
-		await flushAsyncWork(5);
 
 		expect(client.closedTopics).toEqual([
 			{ chatId: "-100", messageThreadId: topicThreadId(client) },
@@ -1454,7 +1521,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("closes the process topic when a terminal process is first bridged", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "completed" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "completed", selectedTurnId: null },
+		});
 		const { client } = await startProcessTopic({ process });
 
 		expect(client.closedTopics).toEqual([
@@ -1463,9 +1532,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("omits abort buttons and aborts when the process topic is closed", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, abortProcess } = await startProcessTopic({
 			process,
@@ -1480,13 +1548,14 @@ describe("TelegramBridge", () => {
 			messageThreadId: topicThreadId(client),
 			from: null,
 		});
-		await flushAsyncWork(5);
 
 		expect(abortProcess).toHaveBeenCalledWith(process.id, { actor: TELEGRAM_ACTOR });
 	});
 
 	it("does not queue unknown slash commands as process input", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { client, queueInputs } = await startProcessTopic({ process });
 		const messageCount = client.sentMessages.length;
 
@@ -1497,7 +1566,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not treat /repeat as a recognized command in process topics", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "waiting" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: null },
+		});
 		const { client, queueInputs } = await startProcessTopic({
 			process,
 			actions: [approveAction],
@@ -1511,9 +1582,8 @@ describe("TelegramBridge", () => {
 	});
 
 	it("treats /repeat as text input during a pending action form prompt", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "waiting",
-			selectedTurnId: "review",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: "review" },
 		});
 		const { client, executeAction } = await startProcessTopic({
 			process,
@@ -1551,10 +1621,7 @@ describe("TelegramBridge", () => {
 	});
 
 	it("runs the generic retry command from an error-process button", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "error",
-			currentExecution: { kind: "worker_start", id: "tsr_failed" },
-		});
+		const process = await recoveryProcess(false);
 		const { client, retryProcess } = await startProcessTopic({ process });
 
 		await clickButton(client, callbackData(client, "Retry"));
@@ -1562,18 +1629,14 @@ describe("TelegramBridge", () => {
 	});
 
 	it("does not offer unusable recovery buttons without matching recovery state", async () => {
-		const orphanErrorProcess = createTestProcessInstance({
-			lifecycleStatus: "error",
-			currentExecution: null,
+		const orphanErrorProcess = createProcessFixture({
+			position: { lifecycleStatus: "error", selectedTurnId: null },
 		});
 		const orphan = await startProcessTopic({ process: orphanErrorProcess });
 		expect(findCallbackData(orphan.client, "Retry")).toBeUndefined();
 		expect(findCallbackData(orphan.client, "Continue")).toBeUndefined();
 
-		const failedAutomaticProcess = createTestProcessInstance({
-			lifecycleStatus: "error",
-			currentExecution: { kind: "worker_start", id: "tsr_failed_automatic" },
-		});
+		const failedAutomaticProcess = await recoveryProcess(false);
 		const failedAutomatic = await startProcessTopic({ process: failedAutomaticProcess });
 		expect(findCallbackData(failedAutomatic.client, "Retry")).toBeTruthy();
 		expect(findCallbackData(failedAutomatic.client, "Continue")).toBeUndefined();
@@ -1583,10 +1646,7 @@ describe("TelegramBridge", () => {
 		expect(failedAutomatic.continueFailedTurn).not.toHaveBeenCalled();
 		expect(failedAutomatic.client.sentMessages.length).toBe(messagesBeforeStaleContinue + 1);
 
-		const staleRecoveredProcess = createTestProcessInstance({
-			lifecycleStatus: "active",
-			currentExecution: { kind: "worker_start", id: "tsr_stale_recovered" },
-		});
+		const staleRecoveredProcess = await recoveryProcess(true);
 		const staleRecovered = await startProcessTopic({ process: staleRecoveredProcess });
 		const messagesBeforeRecoveredContinue = staleRecovered.client.sentMessages.length;
 		await clickButton(staleRecovered.client, `c:${staleRecoveredProcess.id}`);
@@ -1595,7 +1655,9 @@ describe("TelegramBridge", () => {
 	});
 
 	it("rejects non-allowlisted users", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
 		const { client, queueInputs } = await startProcessTopic({ process });
 
 		await sendText(client, "not allowed", { from: { id: 999 } });
@@ -1604,18 +1666,18 @@ describe("TelegramBridge", () => {
 	});
 
 	it("executes action directly when actionModelSelection is disabled", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "waiting" });
-		const harness = setupBridge(
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "waiting", selectedTurnId: null },
+		});
+		const harness = await setupBridge(
 			{ process, actions: [approveAction] },
 			testConfig({ actionModelSelection: { enabled: false } }),
 		);
-		await harness.bridge.start();
-		harness.events.emit("process_created", {
+		await harness.events.emit("process_created", {
 			instanceId: process.id,
 			process,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
 		await clickButton(harness.client, callbackData(harness.client, "Approve"));
 
@@ -1836,10 +1898,7 @@ describe("model filtering via allowedModelProfileIds", () => {
 	});
 
 	it("shows only allowed profiles in recovery model selection", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "error",
-			currentExecution: { kind: "worker_start", id: "tsr_failed" },
-		});
+		const process = await recoveryProcess(false);
 		const harness = await setupActionModelSelection({
 			process,
 			actions: [],
@@ -1860,13 +1919,12 @@ describe("model filtering via allowedModelProfileIds", () => {
 	});
 
 	it("shows only allowed profiles in launch model editing", async () => {
-		const { bridge, client } = setupLaunchBridge({ modelSchema: testModelSchema() });
+		const { bridge, client } = await setupLaunchBridge({ modelSchema: testModelSchema() });
 		// Override bridge config with filtering
 		bridgeInternals(bridge).input = {
 			...bridgeInternals(bridge).input,
 			config: testConfig({ allowedModelProfileIds: ["claude_fast"] }),
 		};
-		await bridge.start();
 
 		await completeLaunchFormToReview(client);
 		expect(client.sentMessages.at(-1)?.text).toContain("Model setup");
@@ -1882,8 +1940,10 @@ describe("model filtering via allowedModelProfileIds", () => {
 describe("turn-started model label", () => {
 	it("includes model label in turn-started message for LLM turns", async () => {
 		const modelProfileId = "deepseek-v4-flash";
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
-		const harness = setupBridge({ process });
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
+		const harness = await setupBridge({ process });
 		bridgeInternals(harness.bridge).processModelSelection = modelSelection({
 			profiles: [
 				{
@@ -1894,15 +1954,13 @@ describe("turn-started model label", () => {
 				},
 			],
 		});
-		await harness.bridge.start();
-		harness.events.emit("process_created", {
+		await harness.events.emit("process_created", {
 			instanceId: process.id,
 			process,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
-		harness.events.emit("turn_started", {
+		await harness.events.emit("turn_started", {
 			instanceId: process.id,
 			turnRecord: {
 				id: "trn_1",
@@ -1925,7 +1983,6 @@ describe("turn-started model label", () => {
 				endedAt: null,
 			},
 		});
-		await flushAsyncWork(5);
 
 		const sent = harness.client.sentMessages.at(-1);
 		expect(sent?.text).toContain("Started");
@@ -1935,17 +1992,17 @@ describe("turn-started model label", () => {
 	});
 
 	it("does not include model label for non-LLM turns", async () => {
-		const process = createTestProcessInstance({ lifecycleStatus: "active" });
-		const harness = setupBridge({ process });
-		await harness.bridge.start();
-		harness.events.emit("process_created", {
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: null },
+		});
+		const harness = await setupBridge({ process });
+		await harness.events.emit("process_created", {
 			instanceId: process.id,
 			process,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
-		harness.events.emit("turn_started", {
+		await harness.events.emit("turn_started", {
 			instanceId: process.id,
 			turnRecord: {
 				id: "trn_1",
@@ -1968,7 +2025,6 @@ describe("turn-started model label", () => {
 				endedAt: null,
 			},
 		});
-		await flushAsyncWork(5);
 
 		const sent = harness.client.sentMessages.at(-1);
 		expect(sent?.text).toContain("Started");
@@ -1980,21 +2036,18 @@ describe("turn-started model label", () => {
 
 describe("turn path type in outcome and actions prompt", () => {
 	it("includes path type label in turn outcome messages", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "active",
-			selectedTurnId: "implement",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: "implement" },
 		});
-		const harness = setupBridge({ process });
-		await harness.bridge.start();
-		harness.events.emit("process_created", {
+		const harness = await setupBridge({ process });
+		await harness.events.emit("process_created", {
 			instanceId: process.id,
 			process,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
 		// Simulate turn_started → sets lastTurnInfo
-		harness.events.emit("turn_started", {
+		await harness.events.emit("turn_started", {
 			instanceId: process.id,
 			turnRecord: {
 				id: "trn_1",
@@ -2017,10 +2070,9 @@ describe("turn path type in outcome and actions prompt", () => {
 				endedAt: null,
 			},
 		});
-		await flushAsyncWork(5);
 
 		// Emit turn_outcome with markdown — pathType comes from lastTurnInfo
-		harness.events.emit("turn_outcome", {
+		await harness.events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_1",
 			turnId: "implement",
@@ -2028,7 +2080,6 @@ describe("turn path type in outcome and actions prompt", () => {
 			params: {},
 			turnResultMarkdown: "Changes applied.",
 		});
-		await flushAsyncWork(5);
 
 		const outcomeMessage = harness.client.sentMessages.at(-1);
 		expect(outcomeMessage?.text).toContain("implement.implemented");
@@ -2036,21 +2087,18 @@ describe("turn path type in outcome and actions prompt", () => {
 	});
 
 	it("includes path type label in actions prompt after turn outcome", async () => {
-		const process = createTestProcessInstance({
-			lifecycleStatus: "active",
-			selectedTurnId: "implement",
+		const process = createProcessFixture({
+			position: { lifecycleStatus: "active", selectedTurnId: "implement" },
 		});
 		const actions = [{ id: "approve", label: "Approve" }];
-		const harness = setupBridge({ process, actions });
-		await harness.bridge.start();
-		harness.events.emit("process_created", {
+		const harness = await setupBridge({ process, actions });
+		await harness.events.emit("process_created", {
 			instanceId: process.id,
 			process,
 			projects: [],
 		});
-		await flushAsyncWork(5);
 
-		harness.events.emit("turn_started", {
+		await harness.events.emit("turn_started", {
 			instanceId: process.id,
 			turnRecord: {
 				id: "trn_2",
@@ -2073,13 +2121,12 @@ describe("turn path type in outcome and actions prompt", () => {
 				endedAt: null,
 			},
 		});
-		await flushAsyncWork(5);
 
 		const waitingProcess = { ...process, lifecycleStatus: "waiting" as const };
 		const originalGetById = bridgeInternals(harness.bridge).input.deps.processes.getById;
 		bridgeInternals(harness.bridge).input.deps.processes.getById = () => waitingProcess;
 
-		harness.events.emit("turn_outcome", {
+		await harness.events.emit("turn_outcome", {
 			instanceId: process.id,
 			turnRecordId: "trn_2",
 			turnId: "review",
@@ -2087,7 +2134,6 @@ describe("turn path type in outcome and actions prompt", () => {
 			params: {},
 			turnResultMarkdown: "Looks good.",
 		});
-		await flushAsyncWork(5);
 
 		bridgeInternals(harness.bridge).input.deps.processes.getById = originalGetById;
 

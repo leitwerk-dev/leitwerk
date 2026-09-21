@@ -143,8 +143,14 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 				adapters.exit(command.code);
 				return;
 			case "bootstrap":
-				void resources
-					.bootstrap(command.payload, resolveWorkerRuntimeSettings(config, command.payload))
+				void Promise.resolve()
+					.then(() => adapters.beforeTurnBootstrap?.(command.payload.turnStart.turnId))
+					.then(() =>
+						resources.bootstrap(
+							command.payload,
+							resolveWorkerRuntimeSettings(config, command.payload),
+						),
+					)
 					.then((completion) =>
 						complete({
 							kind: "bootstrap_succeeded",

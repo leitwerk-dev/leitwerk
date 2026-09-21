@@ -12,9 +12,7 @@ import {
 import { TemporaryGitRemote } from "./testing/remote-repo-change-fixture.js";
 
 function processInstances(fixture: RemoteRepoChangeFixture): ProcessInstance[] {
-	return fixture.harness.ctx.deps.processes
-		.listAll()
-		.filter((process) => process.processId === constants.processId);
+	return fixture.harness.processes().filter((process) => process.processId === constants.processId);
 }
 
 function assertCompletedRemoteChange(fixture: RemoteRepoChangeFixture, process: ProcessInstance) {
@@ -54,7 +52,7 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 	const instanceId = await fixture.exposeTriggeredIssue();
 	const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
 	const params = JSON.parse(planDecision.paramsJson ?? "{}") as Record<string, unknown>;
-	const projects = fixture.harness.ctx.deps.projects.listByInstance(instanceId);
+	const projects = fixture.harness.process(instanceId).snapshot().projects;
 	expect(planDecision).toMatchObject({
 		externalId: "forgejo:team/service#42",
 		externalUrl: constants.issueUrl,
@@ -173,15 +171,15 @@ describe("Forgejo repository-change composed integration", () => {
 			expect(fixture.forgejo.comments()).toEqual([]);
 			expect(fixture.forgejo.issues).toHaveLength(0);
 			if (terminal === "markPullRequestClosed") {
-				const writes = fixture.harness.ctx.deps.externalWrites.listByInstance(instanceId);
+				const writes = fixture.harness.process(instanceId).snapshot().writeReceipts;
 				await fixture.restart();
 				await fixture.pollFeedback();
 				expect(processInstances(fixture)).toHaveLength(1);
-				expect(fixture.harness.ctx.deps.processes.getById(instanceId)).toMatchObject({
+				expect(fixture.harness.process(instanceId).snapshot().process).toMatchObject({
 					lifecycleStatus: "aborted",
 					selectedTurnId: null,
 				});
-				expect(fixture.harness.ctx.deps.externalWrites.listByInstance(instanceId)).toEqual(writes);
+				expect(fixture.harness.process(instanceId).snapshot().writeReceipts).toEqual(writes);
 				expect(fixture.subscriptions(instanceId)).toEqual([]);
 				expect(fixture.forgejo.issues).toHaveLength(0);
 			}
@@ -200,7 +198,7 @@ describe("Forgejo repository-change composed integration", () => {
 		const id = await fixture.launchTicketlessChange("Update the service image");
 		await fixture.publishChange(id);
 		expect(preflight).not.toHaveBeenCalled();
-		expect(fixture.harness.ctx.deps.projects.listByInstance(id)[0]?.metadata).toMatchObject({
+		expect(fixture.harness.process(id).snapshot().projects[0]?.metadata).toMatchObject({
 			"leitwerk.gitIdentity": { login: "garden-bot" },
 		});
 		expect(fixture.forgejo.calls.filter((c) => c.method === "getAuthenticatedUser")).toHaveLength(
@@ -213,7 +211,7 @@ describe("Forgejo repository-change composed integration", () => {
 			throw new Error("simulated daemon unavailable");
 		});
 		await expect(fixture.launchTicketlessChange("Update the service image")).rejects.toThrow(
-			"Ticketless launch failed with 400",
+			"could not be created",
 		);
 		expect(processInstances(fixture)).toEqual([]);
 		expect(fixture.piTurns).toEqual([]);

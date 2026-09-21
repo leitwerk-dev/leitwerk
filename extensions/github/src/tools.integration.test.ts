@@ -1,8 +1,10 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
-import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
+import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import { createProjectFixture } from "@leitwerk-dev/test-support/fixtures";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { expect, it, vi } from "vitest";
 import { LocalGitHubAdapter } from "./testing.js";
 import { registerGitHubTools } from "./tools.js";
@@ -22,25 +24,37 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 	});
 	const repo = adapter.repo("team", "one");
 	adapter.git.run(repo.repository.ssh_url, ["branch", "feature", "main"]);
-	const { api, tools } = createToolCollector();
-	const writes = createInMemoryExternalWriteLog();
 	const client = vi.fn((profile: string) => {
 		if (profile !== "first") throw new Error("Wrong profile");
 		return adapter.client();
 	});
-	registerGitHubTools(api, { client }, writes);
-	const ctx = {
-		process: { id: "p", paramsJson: "{}" },
-		project: {
-			instanceId: "p",
-			workBranch: "feature",
-			baseBranch: "main",
-			metadata: { github: { owner: "team", repo: "one", profile: "first" } },
-		},
-		idempotencyKey: "retained-pr-key",
-		signal: new AbortController().signal,
-	} as IntegrationToolExecutionContext;
-	const tool = tools.get("github_ensure_pull_request");
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "github-tools-test", version: "1" },
+				setupServer(api) {
+					const deps = api.get(coreHostCapabilities.serverSetup);
+					if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+					registerGitHubTools(api, { client }, deps.externalWrites as ExternalWriteLogRepoLike);
+				},
+			},
+		],
+	});
+	onTestFinished(() => test.close());
+	const fixture = {
+		id: "p",
+		params: {},
+		invocationId: "retained-pr-key",
+		projects: [
+			createProjectFixture({
+				process: { id: "p" },
+				key: "one",
+				workBranch: "feature",
+				baseBranch: "main",
+				metadata: { github: { owner: "team", repo: "one", profile: "first" } },
+			}),
+		],
+	};
 	const args = {
 		projectKey: "one",
 		owner: "attacker",
@@ -52,46 +66,48 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 		base: "main",
 	};
 	adapter.state.failAfterPullRequestWrite = true;
-	await expect(tool?.execute(ctx, args)).resolves.toMatchObject({ number: expect.any(Number) });
-	expect(writes.records).toMatchObject([
+	await expect(test.callTool("github_ensure_pull_request", args, fixture)).resolves.toMatchObject({
+		number: expect.any(Number),
+	});
+	expect(test.writeReceipts()).toMatchObject([
 		{
 			dedupKey: "retained-pr-key",
 			writeType: "github.ensure_pr",
 			metadata: { number: repo.pulls[0].number },
 		},
 	]);
-	await tool?.execute(ctx, args);
+	await test.callTool("github_ensure_pull_request", args, fixture);
 	expect(repo.pulls).toHaveLength(1);
 	expect(adapter.repo("team", "two").pulls).toHaveLength(0);
-	expect(tools.has("github_resolve_release_lock")).toBe(false);
-	const comment = tools.get("github_add_pull_request_comment");
-	const commentCtx = { ...ctx, idempotencyKey: "comment-key" };
+	expect(test.describeTools().some((t) => t.name === "github_resolve_release_lock")).toBe(false);
+	const commentFixture = { ...fixture, invocationId: "comment-key" };
 	const commentArgs = {
 		projectKey: "one",
 		pullRequestNumber: repo.pulls[0].number,
 		body: "Reviewed",
 	};
-	await comment?.execute(commentCtx, commentArgs);
-	await comment?.execute(commentCtx, commentArgs);
+	await test.callTool("github_add_pull_request_comment", commentArgs, commentFixture);
+	await test.callTool("github_add_pull_request_comment", commentArgs, commentFixture);
 	expect(repo.comments[repo.pulls[0].number]).toHaveLength(1);
-	const update = tools.get("github_update_pull_request");
-	const updateCtx = { ...ctx, idempotencyKey: "update-key" };
-	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Updated" } });
-	await update?.execute(updateCtx, { ...commentArgs, patch: { title: "Should not replay" } });
+	const updateFixture = { ...fixture, invocationId: "update-key" };
+	await test.callTool(
+		"github_update_pull_request",
+		{ ...commentArgs, patch: { title: "Updated" } },
+		updateFixture,
+	);
+	await test.callTool(
+		"github_update_pull_request",
+		{ ...commentArgs, patch: { title: "Should not replay" } },
+		updateFixture,
+	);
 	expect(repo.pulls[0].title).toBe("Updated");
 	client.mockClear();
 	await expect(
-		tool?.execute(
-			{
-				...ctx,
-				project: {
-					...ctx.project,
-					instanceId: "other",
-				} as IntegrationToolExecutionContext["project"],
-			},
-			args,
-		),
-	).rejects.toThrow("authorized");
+		test.callTool("github_ensure_pull_request", args, {
+			...fixture,
+			projects: [{ ...fixture.projects[0], instanceId: "other" }],
+		}),
+	).rejects.toThrow("another process");
 	expect(client).not.toHaveBeenCalled();
 	const restarted = new LocalGitHubAdapter({ root, baseUrl: "http://127.0.0.1:18082" });
 	expect(await restarted.client().listPullRequests("team", "one", "all")).toHaveLength(1);

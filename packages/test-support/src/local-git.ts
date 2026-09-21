@@ -12,6 +12,7 @@ import path from "node:path";
 import type { RepositoryFeedbackItem, RepositoryPullRequest } from "@leitwerk-dev/process-sdk";
 import { traceTestSubprocess } from "./test-diagnostics.js";
 
+// Internal operational tests retain subprocess diagnostics.
 export { createTestDiagnostics } from "./test-diagnostics.js";
 
 /** @public */
