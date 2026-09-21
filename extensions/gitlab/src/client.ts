@@ -76,6 +76,12 @@ export interface GitLabMergeRequest {
 	target_branch: string;
 	/** @public */
 	web_url: string;
+	/** @public */
+	has_conflicts?: boolean;
+	/** @public */
+	merge_status?: string;
+	/** @public */
+	detailed_merge_status?: string;
 	/** @internal */
 	merge_commit_sha?: string | null;
 	/** @internal */
@@ -238,6 +244,22 @@ export interface GitLabObservation {
 	mr: GitLabMergeRequest;
 	/** @public */
 	pipeline: GitLabPipeline | null;
+	/** @public Current target branch tip, not the diff's historical merge base. */
+	targetHead?: string;
+}
+
+/** @public */
+export function gitLabMergeabilityPending(mr: GitLabMergeRequest): boolean {
+	return ["checking", "unchecked", "preparing"].includes(
+		mr.detailed_merge_status ?? mr.merge_status ?? "",
+	);
+}
+
+/** @public Only actionable Git conflicts/rebase requirements, not approvals or CI gates. */
+export function gitLabMergeRepairReason(mr: GitLabMergeRequest): "conflict" | "rebase" | null {
+	if (gitLabMergeabilityPending(mr)) return null;
+	if (mr.has_conflicts || mr.detailed_merge_status === "conflict") return "conflict";
+	return mr.detailed_merge_status === "need_rebase" ? "rebase" : null;
 }
 
 /** @internal */
@@ -644,6 +666,8 @@ export async function observeMergeRequest(
 ): Promise<GitLabObservation> {
 	const mr = await client.getMergeRequest(projectId, iid, signal);
 	if (mr.state !== "opened") return { mr, pipeline: null };
+	const targetHead = (await client.getBranch(mr.target_project_id, mr.target_branch, signal)).commit
+		.id;
 	const associated = (await client.listMergeRequestPipelines(projectId, iid, signal)).sort(
 		(a, b) => b.id - a.id,
 	);
@@ -658,7 +682,8 @@ export async function observeMergeRequest(
 			const commit = await client.getCommit(id, candidate.sha, signal);
 			matches = commit.parent_ids.includes(mr.sha);
 		}
-		if (matches) return { mr, pipeline: await client.getPipeline(id, candidate.id, signal) };
+		if (matches)
+			return { mr, targetHead, pipeline: await client.getPipeline(id, candidate.id, signal) };
 	}
 	const candidates = await client.listBranchPipelines(
 		mr.source_project_id,
@@ -671,6 +696,7 @@ export async function observeMergeRequest(
 		.sort((a, b) => b.id - a.id)[0];
 	return {
 		mr,
+		targetHead,
 		pipeline: latest ? await client.getPipeline(mr.source_project_id, latest.id, signal) : null,
 	};
 }

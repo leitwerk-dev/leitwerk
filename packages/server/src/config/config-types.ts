@@ -181,6 +181,8 @@ export interface KubernetesDockerConfig {
 	runtime_class_name?: string;
 	/** Pod user-namespace policy passed directly to spec.hostUsers. @internal */
 	host_users?: boolean;
+	/** @internal Opt in to the verified gVisor Docker wrapper and guest capabilities. */
+	gvisor?: boolean;
 	/** StorageClass selected for the process's single retained PVC. @internal */
 	process_storage_class_name?: string;
 	/** @internal */

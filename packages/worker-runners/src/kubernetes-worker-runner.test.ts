@@ -494,6 +494,33 @@ describe("KubernetesWorkerRunner", () => {
 		expect(client.pods.size).toBe(0);
 	});
 
+	it("preserves incompatible retained process storage when Docker is activated", async () => {
+		const { client, volume } = bindRunner({
+			docker: { runtimeClassName: "gvisor", gvisor: true, processStorageClassName: "longhorn" },
+		});
+		await volume.ensure("proc-1");
+		const before = structuredClone([...client.pvcs.values()]);
+		await expect(volume.ensure("proc-1", { docker: true })).rejects.toThrow(/preserve and migrate/);
+		expect([...client.pvcs.values()]).toEqual(before);
+		expect(client.deletedPvcs).toEqual([]);
+	});
+
+	it("permits guest capabilities only for opted-in gVisor process namespaces", async () => {
+		const { client, volume } = bindRunner({
+			docker: { runtimeClassName: "gvisor", gvisor: true, processStorageClassName: "longhorn" },
+		});
+		await volume.ensure("docker-process", { docker: true });
+		await volume.ensure("ordinary-process");
+		expect(
+			client.namespaces.get("leitwerk-test-process-docker-process")?.metadata.labels[
+				"pod-security.kubernetes.io/enforce"
+			],
+		).toBe("privileged");
+		expect(
+			client.namespaces.get("leitwerk-test-process-ordinary-process")?.metadata.labels,
+		).not.toHaveProperty("pod-security.kubernetes.io/enforce");
+	});
+
 	it("creates an unprivileged private-Docker Pod from trusted wiring", async () => {
 		const { client, runner, volume } = bindRunner({
 			docker: {

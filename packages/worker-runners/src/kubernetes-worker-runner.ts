@@ -147,7 +147,23 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			const namespaceManifest = buildKubernetesProcessNamespaceManifest({
 				instanceId,
 				processNamespacePrefix: options.processNamespacePrefix,
+				...(requirements?.docker && options.docker?.gvisor
+					? { extraLabels: { "pod-security.kubernetes.io/enforce": "privileged" } }
+					: {}),
 			});
+			if (requirements?.docker && options.docker) {
+				if (!client.getPersistentVolumeClaim)
+					throw new Error("Docker requires process storage inspection");
+				const existing = await client.getPersistentVolumeClaim(
+					kubernetesProcessPvcName(instanceId, options.volume.namePrefix),
+					namespaceManifest.metadata.name,
+				);
+				if (existing && existing.storageClass !== options.docker.processStorageClassName) {
+					throw new Error(
+						"Docker requires the configured block StorageClass; preserve and migrate the existing process volume before resuming",
+					);
+				}
+			}
 			await client.ensureNamespace(namespaceManifest);
 			const copySecrets = (options.imagePullSecretCopies ?? []).map(async (copy) => {
 				const dockerConfigJson = await client.getDockerConfigJsonSecret(

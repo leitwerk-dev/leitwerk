@@ -55,7 +55,9 @@ export interface KubernetesDockerPodSpecOptions {
 	/** @internal */
 	runtimeClassName: string;
 	/** @internal */
-	hostUsers: boolean;
+	hostUsers?: boolean;
+	/** @internal */
+	gvisor?: boolean;
 	/** @internal */
 	network?: DockerNetworkConfig;
 }
@@ -199,6 +201,16 @@ export interface KubernetesPodManifest extends NamespacedManifest<"Pod"> {
 		containers: Array<{
 			/** @internal */
 			name: string;
+			/** @internal */
+			securityContext?: {
+				/** @internal */
+				privileged: false;
+				/** @internal */
+				capabilities: {
+					/** @internal */
+					add: string[];
+				};
+			};
 			/** @internal */
 			image: string;
 			/** @internal */
@@ -591,6 +603,7 @@ export function buildKubernetesWorkerPodManifest(
 				...input.env,
 				DOCKER_HOST: "unix:///var/run/docker.sock",
 				LEITWERK_PRIVATE_DOCKER: "1",
+				...(options.docker?.gvisor ? { LEITWERK_DOCKER_GVISOR: "1" } : {}),
 				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
 				...(options.docker?.network
 					? { LEITWERK_DOCKER_NETWORK: JSON.stringify(options.docker.network) }
@@ -599,6 +612,14 @@ export function buildKubernetesWorkerPodManifest(
 		: input.env;
 	const container: KubernetesPodManifest["spec"]["containers"][number] = {
 		name: "worker",
+		...(input.docker && options.docker?.gvisor
+			? {
+					securityContext: {
+						privileged: false as const,
+						capabilities: { add: ["SYS_ADMIN", "NET_ADMIN"] },
+					},
+				}
+			: {}),
 		image: input.image.reference,
 		...processStateContainerConfig(trustedDockerEnv, volume.mountPath, false, ca),
 		...(options.imagePullPolicy ? { imagePullPolicy: options.imagePullPolicy } : {}),
@@ -611,7 +632,10 @@ export function buildKubernetesWorkerPodManifest(
 		options,
 		container,
 		input.docker && options.docker
-			? { runtimeClassName: options.docker.runtimeClassName, hostUsers: options.docker.hostUsers }
+			? {
+					runtimeClassName: options.docker.runtimeClassName,
+					...(options.docker.gvisor ? {} : { hostUsers: options.docker.hostUsers }),
+				}
 			: {},
 	);
 }

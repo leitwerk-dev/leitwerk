@@ -332,6 +332,10 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 				}
 				return structuredClone(label);
 			},
+			ensureLabel: async (owner, name, labelName) => {
+				const label = repo(owner, name).labels.find((value) => value.name === labelName);
+				return label ? structuredClone(label) : client.createLabel(owner, name, labelName);
+			},
 			updateIssue: async (owner, name, number, patch) => {
 				const issue = repo(owner, name).issues.find((i) => i.number === number);
 				if (!issue) throw new Error("Unknown local GitHub issue");
