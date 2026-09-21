@@ -4,6 +4,7 @@ import {
 	type AutomaticOutcomeBuilder,
 	type Codec,
 	createEmptyStructuralProcessState,
+	type ExtensionProcessDefinition,
 	type FormDefinition,
 	flow,
 	type HumanFlowBuilder,
@@ -304,7 +305,10 @@ const poemReviewChangesForm: FormDefinition = {
 };
 
 /** @internal */
-export const singlePromptProcess = flow
+export const singlePromptProcess: ExtensionProcessDefinition<
+	PromptProcessParams,
+	StructuralProcessState
+> = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_process")
 	.displayName("Single Prompt")
 	.entry("run_single_prompt")
@@ -365,7 +369,10 @@ export const singlePromptProcess = flow
 	.define();
 
 /** @internal */
-export const singlePromptWithToolProcess = flow
+export const singlePromptWithToolProcess: ExtensionProcessDefinition<
+	PromptProcessParams,
+	StructuralProcessState
+> = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_with_tool_process")
 	.displayName("Single Prompt + Done Tool")
 	.entry("run_single_prompt_with_tool")
@@ -463,7 +470,7 @@ function defineK8sSmokeProcess(args: {
 	defaultPrompt: string;
 	titleLabel: string;
 	run: SmokeRunFn;
-}) {
+}): ExtensionProcessDefinition<PromptProcessParams, StructuralProcessState> {
 	const promptField = args.promptField;
 	const resolveLaunchConfig = promptField
 		? (input: Record<string, unknown>) => {
@@ -628,7 +635,10 @@ export const k8sSmokeLongProcess = defineK8sSmokeProcess({
 });
 
 /** @internal */
-export const singlePromptExternalCompleteProcess = flow
+export const singlePromptExternalCompleteProcess: ExtensionProcessDefinition<
+	PromptProcessParams,
+	StructuralProcessState
+> = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_external_complete_process")
 	.displayName("Single Prompt + External Complete")
 	.entry("run_single_prompt")
@@ -813,8 +823,7 @@ const poemReviewFeedbackSpec = flow
 			})),
 	).definition;
 
-/** @internal */
-export const poemCreatorProcess = flow
+const poemCreatorProcessDefinition = flow
 	.process<PromptProcessParams, PoemCreatorState>("poem_creator_process")
 	.displayName("Poem Creator")
 	.entry(poemTurnIds.draftPoem)
@@ -974,3 +983,7 @@ export const poemCreatorProcess = flow
 		},
 	})
 	.define();
+
+/** @internal */
+export const poemCreatorProcess: ExtensionProcessDefinition<PromptProcessParams, PoemCreatorState> =
+	poemCreatorProcessDefinition;

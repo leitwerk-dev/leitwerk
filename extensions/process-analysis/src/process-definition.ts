@@ -1,4 +1,5 @@
 import { rm } from "node:fs/promises";
+import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
 import {
 	createEmptyStructuralProcessState,
 	flow,
@@ -102,7 +103,10 @@ const decisionTurn = humanTurn<ProcessAnalysisParams, ProcessAnalysisState>({
 });
 
 /** @internal */
-export function createProcessAnalysisProcess() {
+export function createProcessAnalysisProcess(): ExtensionProcessDefinition<
+	ProcessAnalysisParams,
+	ProcessAnalysisState
+> {
 	return flow
 		.process<ProcessAnalysisParams, ProcessAnalysisState>("process_analysis_process")
 		.displayName("Process Analysis")

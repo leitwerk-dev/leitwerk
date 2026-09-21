@@ -51,9 +51,9 @@ it("recovers remote MR creation before local binding and preserves existing MR-b
 	let writes = createInMemoryExternalWriteLog();
 	const integration = { profiles: () => ["team"], client: () => adapter.client() };
 	const collector = () => {
-		const { api, tools } = createToolCollector();
-		registerGitLabDeliveryTools(api, integration, writes, projects);
-		registerGitLabTools(api, integration, writes);
+		const { api, tools } = createToolCollector(writes);
+		registerGitLabDeliveryTools(api, integration, projects);
+		registerGitLabTools(api, integration);
 		return tools;
 	};
 	const ctx = () =>

@@ -24,19 +24,19 @@
 			"types": "./dist/leaf-outcome-renderer.d.ts"
 		},
 		"./pi-config": {
-			"source": "./src/pi-config.ts",
-			"import": "./dist/pi-config.js",
-			"types": "./dist/pi-config.d.ts"
+			"source": "./src/pi-config-public.ts",
+			"import": "./dist/pi-config-public.js",
+			"types": "./dist/pi-config-public.d.ts"
 		},
 		"./review-flow": {
-			"source": "./src/review-flow.ts",
-			"import": "./dist/review-flow.js",
-			"types": "./dist/review-flow.d.ts"
+			"source": "./src/review-flow-public.ts",
+			"import": "./dist/review-flow-public.js",
+			"types": "./dist/review-flow-public.d.ts"
 		},
 		"./runtime-internals": {
-			"source": "./src/runtime-internals.ts",
-			"import": "./dist/runtime-internals.js",
-			"types": "./dist/runtime-internals.d.ts"
+			"source": "./src/runtime-internals-public.ts",
+			"import": "./dist/runtime-internals-public.js",
+			"types": "./dist/runtime-internals-public.d.ts"
 		}
 	},
 	"scripts": {
@@ -49,7 +49,8 @@
 		"@leitwerk-dev/watcher-utils": "0.2.0",
 		"escape-html": "^1.0.3",
 		"mustache": "^4.2.0",
-		"valibot": "^1.3.1"
+		"valibot": "^1.3.1",
+		"@leitwerk-dev/external-writes": "0.2.0"
 	},
 	"devDependencies": {
 		"@types/escape-html": "^1.0.4",

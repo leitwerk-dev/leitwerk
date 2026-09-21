@@ -6,12 +6,6 @@ import {
 	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 
-export {
-	type TicketCreationParams,
-	type TicketParentContextSnapshot,
-	ticketCreationParamsCodec,
-} from "./params.js";
-
 import { type TicketCreationParams, ticketCreationParamsCodec } from "./params.js";
 
 function ticketPrompt(params: TicketCreationParams): string {
@@ -29,7 +23,7 @@ function ticketPrompt(params: TicketCreationParams): string {
 }
 
 /** @public */
-export const ticketCreationProcess = flow
+const ticketCreationProcess = flow
 	.process<TicketCreationParams, StructuralProcessState>("ticket_creation_process")
 	.displayName("Ticket creation")
 	.entry("create_ticket")
@@ -48,7 +42,7 @@ export const ticketCreationProcess = flow
 	.define();
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "ticket-creation",
 	/** @internal */

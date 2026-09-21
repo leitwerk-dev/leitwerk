@@ -2,7 +2,7 @@
 
 Ordinary merges do not publish artifacts. Release Please collects changes into one release PR; merging it publishes the stable release. Maintainers can explicitly publish npm release candidates from that PR before merging.
 
-Stable releases use one version, `X.Y.Z`, across all npm packages, container images, and the Helm deployment chart. Publication creates the Git tag `vX.Y.Z` and publishes npm packages under `latest`.
+Stable releases use one version, `X.Y.Z`, across all npm packages, container images, and the Helm deployment chart. Release Please creates tag `vX.Y.Z` and a draft GitHub Release. CI publishes npm packages under `latest`, attaches the chart and lock file, then publishes the draft.
 
 Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm package; internal dependencies pin that same version. RCs publish under `next`, leave `latest` unchanged, and include no container images or Helm chart.
 
@@ -27,7 +27,21 @@ Stable publication accepts only releases created from a merged Release Please PR
 
 ## Retries
 
-Failed publication jobs can be rerun. They reuse matching artifacts and stop on conflicts; published versions are never overwritten. If an RC's release PR changes, start a new workflow run.
+Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. Stable npm verification polls missing versions every 15 seconds for ten minutes and lists any remaining at timeout. If an RC's release PR changes, start a new run.
+
+## Registering new npm packages
+
+Release PRs run **npm package registration**. If names are missing, its summary lists them and provides this command to run from the PR checkout:
+
+```bash
+npm run publish:bootstrap
+```
+
+Requires npm 11.16+, the macOS/Linux `script` utility, and `npm login` with 2FA enabled. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
+
+Reruns skip matching publishers and resume incomplete setup. Conflicting publishers and unrecognized trust output stop setup. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
+
+Bootstrap changes also need an authorized live acceptance check: complete interactive bootstrap, inspect the registry's tags and publisher settings, rerun to confirm no changes, and publish through the configured GitHub workflow. Local tests do not establish npm authentication or OIDC compatibility. Do not create packages or change trust settings merely to run the automated suite.
 
 ## Running an RC
 
@@ -61,7 +75,7 @@ APIs remain usable without this compatibility promise.
 
 ## Release automation
 
-`release-please.yml` updates package versions, internal dependencies, the lockfile, chart metadata, and changelog together. A maintainer approves release-PR CI runs when GitHub requires it. The PR body retains the component metadata Release Please uses to create the release. After merge, Release Please creates the GitHub Release and dispatches `publish.yml`.
+`release-please.yml` updates package versions, internal dependencies, the lockfile, chart metadata, and changelog together. A maintainer approves release-PR CI runs when GitHub requires it. The PR body retains the component metadata Release Please uses to create the release. After merge, Release Please creates the tag and draft GitHub Release, then dispatches `publish.yml`. The release stays a draft until artifact publication succeeds.
 
 ## Stable release artifacts
 

@@ -1,11 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-	recordWriteIfMissing,
-} from "@leitwerk-dev/external-writes";
-import {
 	numberArg,
 	type ProcessProjectRepoLike,
 	projectParameters,
@@ -19,24 +13,9 @@ import {
 	resolveGitLabRepositoryBinding,
 } from "./tools.js";
 
-async function reconcile<T>(
-	find: () => Promise<T | undefined>,
-	create: () => Promise<T>,
-): Promise<T> {
-	const existing = await find();
-	if (existing) return existing;
-	try {
-		return await create();
-	} catch (error) {
-		const recovered = await find();
-		if (recovered) return recovered;
-		throw error;
-	}
-}
 export function registerGitLabDeliveryTools(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,
-	writes: ExternalWriteLogRepoLike,
 	projects: ProcessProjectRepoLike,
 ) {
 	api.tool<Record<string, unknown>>({
@@ -53,10 +32,10 @@ export function registerGitLabDeliveryTools(
 			if (!project?.workBranch || project.workBranch === project.baseBranch)
 				throw new Error("A process feature branch is required");
 			const workBranch = project.workBranch;
-			const identity = createWriteIdentity(
-				"gitlab.ensure_mr",
-				`${binding.projectId}:${project.key}:${workBranch}:${project.baseBranch}`,
-			);
+			const identity = {
+				writeType: "gitlab.ensure_mr",
+				dedupKey: `${binding.projectId}:${project.key}:${workBranch}:${project.baseBranch}`,
+			};
 			const marker = `<!-- leitwerk:gitlab:merge-request:${ctx.process.id}:${project.key} -->`;
 			const find = async () =>
 				(
@@ -74,37 +53,20 @@ export function registerGitLabDeliveryTools(
 						mr.target_branch === project.baseBranch &&
 						mr.description?.includes(marker),
 				);
-			let request = await find();
-			if (!request) {
-				await ensureWrite(
-					writes,
-					ctx.process.id,
-					createWriteIdentity(
-						"gitlab.ensure_mr",
-						`${binding.projectId}:${project.key}:${project.workBranch}:${project.baseBranch}`,
+			const request = await ctx.externalWrites.ensure(identity, {
+				reconcile: async () => (await find()) ?? null,
+				execute: () =>
+					client.createMergeRequest(
+						binding.projectId,
+						{
+							title: stringArg(args, "title"),
+							description: `${stringArg(args, "body")}\n\n${marker}`,
+							source_branch: workBranch,
+							target_branch: project.baseBranch,
+						},
+						ctx.signal,
 					),
-					async () => {
-						request = await reconcile(find, () =>
-							client.createMergeRequest(
-								binding.projectId,
-								{
-									title: stringArg(args, "title"),
-									description: `${stringArg(args, "body")}\n\n${marker}`,
-									source_branch: workBranch,
-									target_branch: project.baseBranch,
-								},
-								ctx.signal,
-							),
-						);
-						return { iid: request.iid, url: request.web_url };
-					},
-				);
-				request ??= await find();
-			}
-			if (!request) throw new Error("GitLab merge request creation could not be reconciled");
-			recordWriteIfMissing(writes, ctx.process.id, identity, {
-				iid: request.iid,
-				url: request.web_url,
+				toMetadata: (mr) => ({ iid: mr.iid, url: mr.web_url }),
 			});
 			const latest = projects.getByInstanceAndKey(ctx.process.id, project.key);
 			if (
@@ -150,7 +112,7 @@ export function registerGitLabDeliveryTools(
 				throw new Error("Note is not actionable feedback on the bound merge request");
 			await ensureGitLabSeenReaction({
 				client,
-				writes,
+				writes: ctx.externalWrites,
 				instanceId: ctx.process.id,
 				projectId: b.projectId,
 				iid: b.iid,
@@ -190,53 +152,74 @@ export function registerGitLabDeliveryTools(
 				const digest = createHash("sha256")
 					.update(JSON.stringify([client.baseUrl, b.projectId, iid, ctx.process.id, key]))
 					.digest("hex");
-				return ensureWrite(writes, ctx.process.id, createWriteIdentity(name, digest), async () => {
-					if (name === "gitlab_add_issue_comment") {
-						const marker = `<!-- leitwerk:gitlab:issue:${digest} -->`;
-						const note = await reconcile(
-							async () =>
+				if (name === "gitlab_add_issue_comment") {
+					const marker = `<!-- leitwerk:gitlab:issue:${digest} -->`;
+					const note = await ctx.externalWrites.ensure(
+						{ writeType: name, dedupKey: digest },
+						{
+							reconcile: async () =>
 								(await client.listIssueNotes(b.projectId, iid, ctx.signal)).find((n) =>
 									n.body.includes(marker),
-								),
-							() =>
+								) ?? null,
+							execute: () =>
 								client.addIssueNote(
 									b.projectId,
 									iid,
 									`${stringArg(args, "body")}\n\n${marker}`,
 									ctx.signal,
 								),
-						);
-						return { noteId: note.id };
-					}
-					const merged = args.merged === true;
-					const trigger = stringArg(args, "triggerLabel");
-					const done = stringArg(args, "doneLabel");
-					if (merged)
-						await reconcile(
-							async () =>
-								(await client.listLabels(b.projectId, ctx.signal)).find((l) => l.name === done),
-							() => client.createLabel(b.projectId, done, ctx.signal),
-						);
-					const issue = await client.getIssue(b.projectId, iid, ctx.signal);
-					const labels = [
-						...new Set([...issue.labels.filter((l) => l !== trigger), ...(merged ? [done] : [])]),
-					];
-					const desired = () =>
-						client.updateIssue(
-							b.projectId,
-							iid,
-							{ labels: labels.join(","), ...(merged ? { state_event: "close" as const } : {}) },
-							ctx.signal,
-						);
-					await reconcile(async () => {
-						const fresh = await client.getIssue(b.projectId, iid, ctx.signal);
-						return !fresh.labels.includes(trigger) &&
-							(!merged || (fresh.state === "closed" && fresh.labels.includes(done)))
-							? fresh
-							: undefined;
-					}, desired);
-					return { issueIid: iid, merged };
-				});
+							toMetadata: (note) => ({ noteId: note.id }),
+						},
+					);
+					return { noteId: note.id };
+				}
+				const merged = args.merged === true;
+				const trigger = stringArg(args, "triggerLabel");
+				const done = stringArg(args, "doneLabel");
+				if (merged) {
+					await ctx.externalWrites.ensure(
+						{
+							writeType: "gitlab.ensure_label",
+							dedupKey: JSON.stringify([client.baseUrl, b.projectId, done]),
+						},
+						{
+							reconcile: async () =>
+								(await client.listLabels(b.projectId, ctx.signal)).find((l) => l.name === done) ??
+								null,
+							execute: () => client.createLabel(b.projectId, done, ctx.signal),
+							toMetadata: (label) => ({ name: label.name }),
+						},
+					);
+				}
+				await ctx.externalWrites.ensure(
+					{ writeType: name, dedupKey: digest },
+					{
+						reconcile: async () => {
+							const fresh = await client.getIssue(b.projectId, iid, ctx.signal);
+							return !fresh.labels.includes(trigger) &&
+								(!merged || (fresh.state === "closed" && fresh.labels.includes(done)))
+								? fresh
+								: null;
+						},
+						execute: async () => {
+							const issue = await client.getIssue(b.projectId, iid, ctx.signal);
+							const labels = [
+								...new Set([
+									...issue.labels.filter((l) => l !== trigger),
+									...(merged ? [done] : []),
+								]),
+							];
+							return client.updateIssue(
+								b.projectId,
+								iid,
+								{ labels: labels.join(","), ...(merged ? { state_event: "close" as const } : {}) },
+								ctx.signal,
+							);
+						},
+						toMetadata: () => ({ issueIid: iid, merged }),
+					},
+				);
+				return { issueIid: iid, merged };
 			},
 		});
 	}

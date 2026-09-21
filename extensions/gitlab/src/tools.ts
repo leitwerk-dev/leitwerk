@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
-import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-} from "@leitwerk-dev/external-writes";
+import type { ExternalWrites } from "@leitwerk-dev/external-writes";
+
 import {
 	type IntegrationToolExecutionContext,
 	numberArg,
@@ -12,7 +9,16 @@ import {
 	stringArg,
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabIntegration } from "./capability.js";
-import { type GitLabClientLike, observeMergeRequest } from "./client.js";
+import { type GitLabClientLike, GitLabError, observeMergeRequest } from "./client.js";
+
+async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
+	try {
+		return await read();
+	} catch (error) {
+		if (error instanceof GitLabError && error.status === 404) return null;
+		throw error;
+	}
+}
 /** @public */
 export function resolveGitLabRepositoryBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
@@ -59,24 +65,12 @@ export function resolveGitLabBinding(
 		throw new Error("Invalid GitLab project binding: a merge request is required");
 	return { ...repository, iid };
 }
-
-async function findOrCreate<T>(find: () => Promise<T | undefined>, create: () => Promise<T>) {
-	const existing = await find();
-	if (existing) return existing;
-	try {
-		return await create();
-	} catch (error) {
-		const recovered = await find();
-		if (!recovered) throw error;
-		return recovered;
-	}
-}
 /** @internal */
 export async function ensureGitLabComment(input: {
 	/** @internal */
 	client: GitLabClientLike;
 	/** @internal */
-	writes: ExternalWriteLogRepoLike;
+	writes: ExternalWrites;
 	/** @internal */
 	instanceId: string;
 	/** @internal */
@@ -108,15 +102,19 @@ export async function ensureGitLabComment(input: {
 			: await client.listNotes(projectId, iid, signal);
 		return notes.find((note) => note.body.includes(marker));
 	};
-	await ensureWrite(writes, instanceId, createWriteIdentity("gitlab.comment", digest), async () => {
-		const note = await findOrCreate(find, () => {
-			const body = `${input.body}\n\n${marker}`;
-			return input.discussionId
-				? client.replyToDiscussion(projectId, iid, input.discussionId, body, signal)
-				: client.addNote(projectId, iid, body, signal);
-		});
-		return { projectId, iid, noteId: note.id, marker };
-	});
+	await writes.ensure(
+		{ writeType: "gitlab.comment", dedupKey: digest },
+		{
+			reconcile: () => existingRemote(async () => (await find()) ?? null),
+			execute: () => {
+				const body = `${input.body}\n\n${marker}`;
+				return input.discussionId
+					? client.replyToDiscussion(projectId, iid, input.discussionId, body, signal)
+					: client.addNote(projectId, iid, body, signal);
+			},
+			toMetadata: (note) => ({ projectId, iid, noteId: note.id, marker }),
+		},
+	);
 	return { marker };
 }
 /** @public */
@@ -124,7 +122,7 @@ export async function ensureGitLabSeenReaction(input: {
 	/** @public */
 	client: GitLabClientLike;
 	/** @public */
-	writes: ExternalWriteLogRepoLike;
+	writes: ExternalWrites;
 	/** @public */
 	instanceId: string;
 	/** @internal */
@@ -140,29 +138,26 @@ export async function ensureGitLabSeenReaction(input: {
 	const digest = createHash("sha256")
 		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]))
 		.digest("hex");
-	await ensureWrite(
-		writes,
-		instanceId,
-		createWriteIdentity("gitlab.reaction", digest),
-		async () => {
-			const identity = await client.resolveGitIdentity(signal);
-			const find = async () =>
-				(await client.listNoteReactions(projectId, iid, noteId, signal)).find(
-					(reaction) => reaction.name === "eyes" && reaction.user.username === identity.username,
-				);
-			const reaction = await findOrCreate(find, () =>
-				client.addNoteReaction(projectId, iid, noteId, "eyes", signal),
-			);
-			return { projectId, iid, noteId, reactionId: reaction.id, name: "eyes" };
+	await writes.ensure(
+		{ writeType: "gitlab.reaction", dedupKey: digest },
+		{
+			reconcile: () =>
+				existingRemote(async () => {
+					const identity = await client.resolveGitIdentity(signal);
+					return (
+						(await client.listNoteReactions(projectId, iid, noteId, signal)).find(
+							(reaction) =>
+								reaction.name === "eyes" && reaction.user.username === identity.username,
+						) ?? null
+					);
+				}),
+			execute: () => client.addNoteReaction(projectId, iid, noteId, "eyes", signal),
+			toMetadata: (reaction) => ({ projectId, iid, noteId, reactionId: reaction.id, name: "eyes" }),
 		},
 	);
 }
 /** @internal */
-export function registerGitLabTools(
-	api: ServerExtensionAPI,
-	integration: GitLabIntegration,
-	writes: ExternalWriteLogRepoLike,
-) {
+export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLabIntegration) {
 	for (const [name, description, required] of [
 		["gitlab_observe_merge_request", "Read the current MR source revision and its latest CI", []],
 		["gitlab_get_changes", "Read the MR changes", []],
@@ -207,7 +202,7 @@ export function registerGitLabTools(
 				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
 						client,
-						writes,
+						writes: ctx.externalWrites,
 						instanceId: ctx.process.id,
 						projectId: b.projectId,
 						iid: b.iid,

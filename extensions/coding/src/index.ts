@@ -1,7 +1,7 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "coding",
 	/** @internal */
@@ -11,8 +11,10 @@ export const manifest = {
 const extension: LeitwerkExtensionModule = { manifest };
 export default extension;
 
-export * from "./actions.js";
-export * from "./repository-change-launch.js";
-export * from "./repository-change-process.js";
-
-export * from "./repository-change-publication.js";
+export {
+	acceptReviewForm,
+	codingActionIds,
+	requestReviewChangesForm,
+	requestRevisionForm,
+} from "./actions.js";
+export { createRepositoryChangeProcess } from "./repository-change-process.js";

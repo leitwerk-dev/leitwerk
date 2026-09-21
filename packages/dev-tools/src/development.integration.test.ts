@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { testWorkspace } from "../test-workspace.js";
-import { runDevelopment } from "./index.js";
+import { runDevelopment } from "./development.js";
 import { packageDirectory, readJson } from "./workspace.js";
 
 beforeEach(() =>

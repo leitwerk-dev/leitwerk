@@ -24,7 +24,7 @@ import {
 	createEmptyRepositoryChangeFinalizationState,
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
-} from "./repository-change-state.js";
+} from "./repository-change-state-internal.js";
 import {
 	buildGenerateCommitMessagePrompt,
 	normalizeGeneratedCommitMessage,

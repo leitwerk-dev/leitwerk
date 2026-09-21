@@ -52,7 +52,6 @@ export type {
 	PiRunDetails,
 	PiSessionDiagnostic,
 	PiSessionDiagnosticHandler,
-	PiSessionDiagnosticLevel,
 	PiTreeEntry,
 	PiTreeHandle,
 	PiTreeNode,

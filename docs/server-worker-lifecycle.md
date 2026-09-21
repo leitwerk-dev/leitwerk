@@ -53,7 +53,7 @@ Direct `app.close()` uses the same cleanup hooks.
 - **ProcessEngine Operations:** Serializes process state mutations, resolves graph transitions, and manages database transactions.
 - **Worker Supervision:** Manages worker leases, adoption, heartbeats, and runner container/pod allocation.
 - **Input Sequencing:** Receives and sequence-numbers FIFO steering inputs from operators.
-- **External Integration:** Manages watchers, arms external actions, and executes safe external API writes (`ensureWrite`).
+- **External Integration:** Manages watchers, arms external actions, and executes safe external API writes (`ctx.externalWrites.ensure`).
 
 ### Worker Ownership
 - **Isolated Execution:** Manages one worker runtime assigned to one active process instance.

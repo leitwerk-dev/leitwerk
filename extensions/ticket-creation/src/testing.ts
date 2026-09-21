@@ -1,19 +1,14 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-} from "@leitwerk-dev/external-writes";
-import {
-	coreHostCapabilities,
-	type IntegrationToolDefinition,
-	type LeitwerkExtensionModule,
-	type TicketCreationDestinationSummary,
+
+import type {
+	IntegrationToolDefinition,
+	LeitwerkExtensionModule,
+	TicketCreationDestinationSummary,
 } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
-export interface LocalTicket {
+interface LocalTicket {
 	/** @internal */
 	id: string;
 	/** @internal */
@@ -37,7 +32,7 @@ interface LocalTicketState {
 	failAfterPersistence: boolean;
 }
 /** @internal */
-export interface LocalTicketAdapterOptions {
+interface LocalTicketAdapterOptions {
 	/** @internal */
 	file: string;
 	/** @internal */
@@ -76,7 +71,7 @@ export class LocalTicketAdapter {
 		this.save();
 	}
 	/** @internal */
-	tool(writes: ExternalWriteLogRepoLike): IntegrationToolDefinition<{
+	tool(): IntegrationToolDefinition<{
 		/** @internal */
 		title: string;
 		/** @internal */
@@ -133,7 +128,7 @@ export class LocalTicketAdapter {
 			},
 			execute: async (ctx, args) => {
 				const destination = target(ctx.ticketDestination?.summary.id);
-				const identity = createWriteIdentity("local.create_ticket", ctx.idempotencyKey);
+				const identity = { writeType: "local.create_ticket", dedupKey: ctx.idempotencyKey };
 				const find = () =>
 					this.state.tickets.find((ticket) => ticket.writeKey === ctx.idempotencyKey);
 				const receipt = (ticket: LocalTicket) => ({
@@ -141,38 +136,26 @@ export class LocalTicketAdapter {
 					url: ticket.url,
 					result: ticket,
 				});
-				try {
-					await ensureWrite(writes, ctx.process.id, identity, async () => {
-						let ticket = find();
-						if (!ticket) {
-							const id = String(this.state.tickets.length + 1);
-							ticket = {
-								id,
-								writeKey: ctx.idempotencyKey,
-								destinationId: destination.id,
-								...args,
-								url: `${this.options.baseUrl}/__local/tickets/${id}`,
-							};
-							this.state.tickets.push(ticket);
-							const fail = this.state.failAfterPersistence;
-							this.state.failAfterPersistence = false;
-							this.save();
-							if (fail)
-								throw new Error(
-									"Local ticket persisted, but its response was lost. Retry to reconcile.",
-								);
-						}
-						return receipt(ticket);
-					});
-				} catch (error) {
-					// Reconcile a lost adapter response before recording the durable receipt.
-					const confirmed = find();
-					if (!confirmed) throw error;
-					await ensureWrite(writes, ctx.process.id, identity, async () => receipt(confirmed));
-				}
-
-				const ticket = find();
-				if (!ticket) throw new Error("Local ticket receipt could not be reconciled");
+				const ticket = await ctx.externalWrites.ensure(identity, {
+					reconcile: async () => find() ?? null,
+					execute: async () => {
+						const id = String(this.state.tickets.length + 1);
+						const ticket = {
+							id,
+							writeKey: ctx.idempotencyKey,
+							destinationId: destination.id,
+							...args,
+							url: `${this.options.baseUrl}/__local/tickets/${id}`,
+						};
+						this.state.tickets.push(ticket);
+						const fail = this.state.failAfterPersistence;
+						this.state.failAfterPersistence = false;
+						this.save();
+						if (fail) throw new Error("Local ticket persisted, but its response was lost.");
+						return ticket;
+					},
+					toMetadata: receipt,
+				});
 				return receipt(ticket);
 			},
 		};
@@ -182,9 +165,7 @@ export class LocalTicketAdapter {
 		return {
 			manifest: { id: "local-tickets", version: "1.0.0", requires: ["ticket-creation"] },
 			setupServer: (api) => {
-				const deps = api.require(coreHostCapabilities.serverSetup);
-				if (Array.isArray(deps)) throw new Error("Expected one server setup capability");
-				api.tool(this.tool(deps.externalWrites as ExternalWriteLogRepoLike));
+				api.tool(this.tool());
 			},
 		};
 	}

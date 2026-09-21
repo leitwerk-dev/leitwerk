@@ -12,6 +12,11 @@
 			"source": "./src/index.ts",
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
+		},
+		"./internal": {
+			"source": "./src/internal.ts",
+			"import": "./dist/internal.js",
+			"types": "./dist/internal.d.ts"
 		}
 	},
 	"scripts": {

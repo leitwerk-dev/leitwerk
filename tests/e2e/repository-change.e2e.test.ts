@@ -9,8 +9,11 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { GITHUB_PR_TERMINAL_KIND, setupGitHubIntegration } from "@leitwerk-dev/github";
 import { LocalGitHubAdapter } from "@leitwerk-dev/github/testing";
 import { createGitHubRepoChange } from "@leitwerk-dev/github-repo-change";
-import { GITLAB_MR_KIND, setupGitLabIntegration } from "@leitwerk-dev/gitlab";
-import { LocalGitLabAdapter } from "@leitwerk-dev/gitlab/testing";
+import {
+	GITLAB_MR_KIND,
+	LocalGitLabAdapter,
+	setupGitLabIntegration,
+} from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import type { CoreServerSetupDeps, LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import {

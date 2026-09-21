@@ -72,6 +72,12 @@ export function toolFixture() {
 			if (failure.comment) throw new Error("response lost");
 			return {};
 		},
+		async getPullRequest(owner, repo, number) {
+			record("get", owner, repo);
+			const pr = pulls.find((p) => p.number === number);
+			if (!pr) throw new Error("Unknown PR");
+			return structuredClone(pr);
+		},
 		async updatePullRequest(owner, repo, number, patch) {
 			record("update", owner, repo);
 			const pr = pulls.find((p) => p.number === number);
@@ -87,6 +93,7 @@ export function toolFixture() {
 		| "listIssueComments"
 		| "addIssueComment"
 		| "updatePullRequest"
+		| "getPullRequest"
 	>;
 	const client = new Proxy(methods, {
 		get(target, key) {
@@ -95,17 +102,13 @@ export function toolFixture() {
 		},
 	}) as unknown as GitHubClientLike;
 	const writes = createInMemoryExternalWriteLog();
-	const { api, tools } = createToolCollector();
-	registerGitHubTools(
-		api,
-		{
-			client(profile) {
-				profiles.push(profile);
-				return client;
-			},
+	const { api, tools } = createToolCollector(writes);
+	registerGitHubTools(api, {
+		client(profile) {
+			profiles.push(profile);
+			return client;
 		},
-		writes,
-	);
+	});
 	return {
 		pulls,
 		comments,

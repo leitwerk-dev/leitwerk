@@ -112,6 +112,8 @@
 	],
 	"packages": {
 		".": {
+			"draft": true,
+			"force-tag-creation": true,
 			"component": "v",
 			"package-name": "leitwerk",
 			"changelog-path": "CHANGELOG.md",

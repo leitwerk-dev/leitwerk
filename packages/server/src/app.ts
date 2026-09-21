@@ -470,7 +470,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const processOperations = createProcessOperationCoordinator();
 		const processGraphs = extensionCatalog.processes;
 		const processActionRegistry = buildProcessActionRegistry(extensionCatalog);
-		const integrationTools = new IntegrationToolRegistry();
+		const integrationTools = new IntegrationToolRegistry(repos.externalWrites);
 		const processUiRegistry = buildProcessUiRegistry(extensionCatalog);
 		const processModelPolicy = createServerProcessModelPolicy({
 			config,

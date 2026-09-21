@@ -24,8 +24,8 @@ it("closing an unmerged issue-origin PR removes the trigger, comments once, and 
 	await f.waitForTurn(id, null, "aborted");
 	expect(f.forgejo.issue()).toMatchObject({ state: "open", labels: [] });
 	expect(f.forgejo.comments()).toEqual([
-		`Leitwerk opened pull request ${constants.prUrl}.`,
-		`Leitwerk stopped because ${constants.prUrl} was closed without merge.`,
+		`Leitwerk opened pull request ${constants.prUrl}.\n\n<!-- leitwerk-write:${id}:forgejo:${id}:source-pr-link:7 -->`,
+		`Leitwerk stopped because ${constants.prUrl} was closed without merge.\n\n<!-- leitwerk-write:${id}:forgejo:${id}:closed-pr-comment -->`,
 	]);
 	const writes = f.harness.ctx.deps.externalWrites.listByInstance(id);
 	expect(writes.length).toBeGreaterThan(0);

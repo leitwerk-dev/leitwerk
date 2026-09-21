@@ -1,42 +1,15 @@
-import type { ExternalWriteLogRepoLike } from "@leitwerk-dev/external-writes";
-import {
-	coreHostCapabilities,
-	type LeitwerkExtensionModule,
-	type ServerExtensionAPI,
-} from "@leitwerk-dev/process-sdk";
-import { type GitLabIntegration, gitlabIntegration } from "./capability.js";
+import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
 import { GitLabClient, parseGitLabProfiles } from "./client.js";
-import { registerGitLabDeliveryTools } from "./delivery-tools.js";
-import { createGitLabProvider } from "./external.js";
-import { registerGitLabTools } from "./tools.js";
+import { setupGitLabIntegration } from "./setup.js";
+
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "gitlab",
 	/** @internal */
 	version: "0.1.9",
 } as const;
-/** @public */
-export function setupGitLabIntegration(
-	api: ServerExtensionAPI,
-	integration: GitLabIntegration,
-	options: {
-		/** @public */
-		now?: () => number;
-	} = {},
-) {
-	api.provide(gitlabIntegration, integration);
-	const deps = api.get(coreHostCapabilities.serverSetup);
-	if (!deps || Array.isArray(deps)) return;
-	registerGitLabTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
-	registerGitLabDeliveryTools(
-		api,
-		integration,
-		deps.externalWrites as ExternalWriteLogRepoLike,
-		deps.projects,
-	);
-	return createGitLabProvider(deps, integration, options);
-}
 /** @public */
 const extension: LeitwerkExtensionModule = {
 	manifest,
@@ -65,9 +38,33 @@ const extension: LeitwerkExtensionModule = {
 	},
 };
 export default extension;
-export * from "./capability.js";
-export * from "./client.js";
-export * from "./external.js";
-export * from "./issue-watcher.js";
-export * from "./selection.js";
-export * from "./tools.js";
+export type { GitLabIntegration } from "./capability.js";
+export {
+	gitlabIntegration,
+	gitlabRepositoryCredentials,
+} from "./capability.js";
+export type {
+	GitLabDiff,
+	GitLabFeedback,
+	GitLabIdentity,
+	GitLabJob,
+	GitLabMergeRequest,
+	GitLabObservation,
+	GitLabProject,
+} from "./client.js";
+export { observeMergeRequest } from "./client.js";
+export type { GitLabDeliveryObservation } from "./external.js";
+export {
+	gitLabFeedbackReadyAt,
+	gitlabExternal,
+	observationKey,
+	pendingGitLabFeedback,
+} from "./external.js";
+export type { GitLabIssueWatcherEvent } from "./issue-watcher.js";
+export { gitlabIssueExternalId, gitlabIssueWatcherSource } from "./issue-watcher.js";
+export type { GitLabSelection } from "./selection.js";
+export {
+	parseGitLabSelection,
+	selectGitLabProjects,
+} from "./selection.js";
+export { ensureGitLabSeenReaction, resolveGitLabBinding } from "./tools.js";

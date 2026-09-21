@@ -143,7 +143,7 @@ function repositoryPath(owner: string, repo: string): string {
 }
 
 /** @public */
-export class ForgejoClient extends RepositoryHttpClient<unknown> {
+export class ForgejoClient extends RepositoryHttpClient<Record<string, unknown>> {
 	/** @internal */
 	protected override repositoryPath = repositoryPath;
 
@@ -272,14 +272,23 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 	}
 
 	/** @internal */
-	addPullRequestComment(
+	listPullRequestFeedbackReactions(
 		owner: string,
 		repo: string,
-		number: number,
-		body: string,
+		feedback: Pick<ForgejoFeedbackItem, "kind" | "id">,
 		signal?: AbortSignal,
-	): Promise<unknown> {
-		return this.addIssueComment(owner, repo, number, body, signal);
+	) {
+		if (feedback.kind === "review")
+			throw new Error("Forgejo does not expose reactions for submitted reviews");
+		return this.pages<{
+			/** @internal */
+			content: string;
+			/** @internal */
+			user: {
+				/** @internal */
+				login: string;
+			};
+		}>(`${repositoryPath(owner, repo)}/issues/comments/${feedback.id}/reactions`, signal);
 	}
 
 	/** @internal */
@@ -311,7 +320,7 @@ export class ForgejoClient extends RepositoryHttpClient<unknown> {
 		signal?: AbortSignal,
 	): Promise<unknown> {
 		if (feedback.kind !== "inline" || !feedback.reviewId || !feedback.path) {
-			return this.addPullRequestComment(owner, repo, pullRequestNumber, body, signal);
+			return this.addIssueComment(owner, repo, pullRequestNumber, body, signal);
 		}
 		return this.writeJson(
 			`${repositoryPath(owner, repo)}/pulls/${pullRequestNumber}/reviews/${feedback.reviewId}/comments`,

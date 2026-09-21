@@ -13,6 +13,7 @@ import type {
 	TurnId,
 	TurnProgressReport,
 } from "@leitwerk-dev/domain";
+import type { ExternalWrites } from "@leitwerk-dev/external-writes";
 import type { WatcherPresentationField } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
 import type { FormDefinition } from "./form-contract.js";
@@ -235,9 +236,6 @@ export interface UiLauncherDefinition<TParams = unknown> {
 		ctx: LauncherContext,
 	): UiLauncherConfigResolution<TParams> | Promise<UiLauncherConfigResolution<TParams>>;
 }
-
-/** @internal */
-export type ProcessWatcherPresentationField = WatcherPresentationField;
 
 /** @public */
 export interface ProcessWatcherPresentation {
@@ -1041,6 +1039,9 @@ export interface TicketCreationReceipt {
 
 /** @public */
 export interface IntegrationToolExecutionContext {
+	/** Process-bound coordination; storage remains server-owned. */
+	/** @public */
+	readonly externalWrites: ExternalWrites;
 	/** @public */
 	readonly process: ProcessInstance;
 	/** @public */
@@ -1104,21 +1105,18 @@ export interface WorkerExtensionAPI {
 }
 
 /** @public */
-export interface LeitwerkExtensionManifest {
-	/** @public */
-	id: string;
-	/** @public */
-	version: string;
-	/** @public */
-	requires?: readonly string[];
-	/** @internal */
-	optional?: readonly string[];
-}
-
-/** @public */
 export interface LeitwerkExtensionModule {
 	/** @public */
-	manifest: LeitwerkExtensionManifest;
+	manifest: {
+		/** @public */
+		id: string;
+		/** @public */
+		version: string;
+		/** @public */
+		requires?: readonly string[];
+		/** @internal */
+		optional?: readonly string[];
+	};
 	/** Resolves every provider owned by this extension before setupServer. @public */
 	modelProviders?: ModelProviderSet;
 	/** @public */

@@ -13,13 +13,8 @@ import type {
 	GitLabProject,
 } from "./client.js";
 
-export type {
-	GitLabClientLike,
-	GitLabMergeRequest,
-	GitLabPipeline,
-	GitLabProject,
-} from "./client.js";
-export { setupGitLabIntegration } from "./index.js";
+export { GITLAB_MR_KIND } from "./external.js";
+export { setupGitLabIntegration } from "./setup.js";
 
 /** @public */
 interface LocalState {

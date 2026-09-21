@@ -469,3 +469,65 @@ facts. Invalid or failing optional event descriptions are omitted; they do not b
 `RepositoryCredentialProvider` is a discriminated union of `git_ssh` and `git_https`. HTTPS providers resolve `{ origin, username, password }`; processes declare only `{ projectKey, kind, credentialRef }`. The server verifies the project locator against the provider origin and adds the exact credential-free HTTPS repository URL to `WorkerGitHttpsCredential`. A project has one credential kind. SSH providers retain their private-key and pinned-known-hosts contract.
 
 Trusted Git calls use `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`. Ordinary tool commands use `sanitizeWorkerSubprocessEnv()`, which removes internal helper references, Git credential configuration, askpass/SSH agent variables and server token, API-key, password and secret variables. Credentials must never enter process params, state, projects or session trees.
+
+## Typed external writes
+
+`ctx.externalWrites.ensure(identity, operation)` returns the remote value after
+recording the write. The server supplies storage and process identity.
+
+```ts
+return ctx.externalWrites.ensure(
+  { writeType: "provider.create", dedupKey: ctx.idempotencyKey },
+  {
+    reconcile: async () => findRemoteByStableIdentity(), // value or null
+    execute: () => createRemote(),
+    toMetadata: (remote) => ({ id: remote.id, url: remote.url }),
+  },
+);
+```
+
+`execute` must return a non-nullish value. `reconcile` receives one of three phases:
+
+| Phase | Required behavior |
+| --- | --- |
+| `before_execute` | Find the remote object before creating or updating it. |
+| `after_execute_error` | Recover the object after an execution error. |
+| `already_recorded` | Fetch the current object without repeating the write. |
+
+Use stable markers or provider identifiers. Reads must include closed objects and
+completed writes. For updates, compare all requested fields, including normalized
+labels, before execution and after errors. On logged replay, fetch the current
+object without reapplying the patch; later edits must survive.
+
+Return `null` only when no matching object or requested state exists. Propagate
+authentication, transport, and other lookup errors. A lookup failure before execution prevents the write.
+A logged write whose remote object cannot be recovered fails without recreating it.
+If execution fails, reconciliation runs once more. No match rethrows the execution
+error. If recovery or recording also fails, an `AggregateError` contains both errors
+and has the execution error as its `cause`.
+
+Metadata extraction and durable recording must succeed before the call returns.
+A recording failure does not repeat execution. A later call reconciles again.
+Calls serialize by repository object and deduplication key within one server
+process. Separate servers, repository objects, and keys are not coordinated.
+
+Use `logOnly` when an operation has no recoverable remote identity:
+
+```ts
+await ctx.externalWrites.logOnly(identity, async () => {
+  await restartPipeline();
+  return { pipelineId, diagnosis }; // durable metadata
+});
+```
+
+`logOnly` returns `void`. A recorded write skips execution. It cannot recover a
+lost response or remote success followed by a recording failure.
+
+To migrate from `ensureWrite`, use the context methods above instead of passing a
+repository and process ID. Replace `createWriteIdentity` with an object literal.
+`ensure` returns the remote value directly; neither method returns execution status
+or a deduplication key. The package root supports `ExternalWrites`, `WriteIdentity`,
+and `WriteOperation`; `/internal` is not a supported extension API.
+
+Existing durable records and remote markers remain valid. Historical unmarked
+writes may not be recoverable. No schema or configuration change is required.

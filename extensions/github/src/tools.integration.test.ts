@@ -22,13 +22,14 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 	});
 	const repo = adapter.repo("team", "one");
 	adapter.git.run(repo.repository.ssh_url, ["branch", "feature", "main"]);
-	const { api, tools } = createToolCollector();
 	const writes = createInMemoryExternalWriteLog();
+	const { api, tools } = createToolCollector(writes);
+
 	const client = vi.fn((profile: string) => {
 		if (profile !== "first") throw new Error("Wrong profile");
 		return adapter.client();
 	});
-	registerGitHubTools(api, { client }, writes);
+	registerGitHubTools(api, { client });
 	const ctx = {
 		process: { id: "p", paramsJson: "{}" },
 		project: {

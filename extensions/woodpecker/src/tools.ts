@@ -1,9 +1,4 @@
 import {
-	createWriteIdentity,
-	type ExternalWriteLogRepoLike,
-	ensureWrite,
-} from "@leitwerk-dev/external-writes";
-import {
 	type IntegrationToolExecutionContext,
 	numberArg,
 	projectParameters,
@@ -21,7 +16,6 @@ function target(ctx: IntegrationToolExecutionContext) {
 export function registerWoodpeckerTools(
 	api: ServerExtensionAPI,
 	integration: WoodpeckerIntegration,
-	writes: ExternalWriteLogRepoLike,
 ) {
 	const schema = projectParameters();
 	api.tool<Record<string, unknown>>({
@@ -75,10 +69,8 @@ export function registerWoodpeckerTools(
 					return client.getPipeline(repo.id, number, ctx.signal);
 				const diagnosis = stringArg(args, "diagnosis");
 				const logEvidence = stringArg(args, "logEvidence");
-				await ensureWrite(
-					writes,
-					ctx.process.id,
-					createWriteIdentity("woodpecker.restart", ctx.idempotencyKey),
+				await ctx.externalWrites.logOnly(
+					{ writeType: "woodpecker.restart", dedupKey: ctx.idempotencyKey },
 					async () => {
 						await client.restartPipeline(repo.id, number, ctx.signal);
 						return { repoId: repo.id, number, diagnosis, logEvidence };

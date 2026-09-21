@@ -11,6 +11,7 @@
 		{ "path": "../extension-runtime" },
 		{ "path": "../protocol" },
 		{ "path": "../server" },
-		{ "path": "../worker-protocol" }
+		{ "path": "../worker-protocol" },
+		{ "path": "../external-writes" }
 	]
 }

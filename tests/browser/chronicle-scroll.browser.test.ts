@@ -1,9 +1,9 @@
+import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
 	createRepositoryChangeParamsCodec,
-	createRepositoryChangeProcess,
 	normalizeRepositoryChangeParamsInput,
 	type RepositoryChangeLaunchParams,
-} from "@leitwerk-dev/coding";
+} from "@leitwerk-dev/coding/repository-change-launch";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { createEmptyStructuralProcessState, flow } from "@leitwerk-dev/process-sdk";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { repositoryChangeStateCodec } from "./repository-change-state.js";
+import { repositoryChangeStateCodec } from "./repository-change-state-internal.js";
 
 describe("repositoryChangeStateCodec", () => {
 	it("keeps the generated commit message and drops retired finalization fields", () => {

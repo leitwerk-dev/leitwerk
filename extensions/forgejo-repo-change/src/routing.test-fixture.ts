@@ -1,4 +1,4 @@
-import { forgejoRepoChangeProcess as process } from "./index.js";
+import { forgejoRepoChangeProcess as process } from "./testing/default-process.js";
 
 export function deliveryTurn() {
 	const turn = process.turns.get("deliver_change")?.definition;

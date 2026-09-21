@@ -82,6 +82,13 @@ export function validateReleaseRegistration(
 		errors.push("root release component must format as the public vX.Y.Z tag");
 	}
 
+	if (
+		asRecord(packages["."]).draft !== true ||
+		asRecord(packages["."])["force-tag-creation"] !== true
+	) {
+		errors.push("root release must create a draft and its Git tag before artifact publication");
+	}
+
 	const components = new Set(
 		Array.isArray(linkedVersions?.components) ? linkedVersions.components : [],
 	);

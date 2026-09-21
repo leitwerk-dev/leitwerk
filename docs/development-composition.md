@@ -133,3 +133,23 @@ existing npm release pins until adopting the containing release. This phase
 supports source development only; an installed package does not contain the
 supervisor, UI source or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
 and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md).
+
+### Portable API evidence
+
+After a successful composed build, generate reports explicitly:
+
+```sh
+npm run api:report -- --built --composition /path/to/leitwerk.composition.yaml
+```
+
+The generator reuses composition package and test-root discovery. It does not switch
+selected dependencies or modify composition repositories. Builds do not generate
+reports automatically. Consumers can run the installed development-tools
+`leitwerk-dev api:report --usage-only` command, or invoke a local checkout with
+`npm --prefix /path/to/leitwerk run api:report -- --workspace /path/to/consumer --usage-only`.
+
+Collect `catalog.json` and `usage-*.json` in the main checkout's ignored
+`.leitwerk/api-explorer/reports/` directory, or choose `--output-dir` explicitly.
+The API explorer accepts only `--reports-dir`; it does not discover compositions,
+build packages, or access originating source directories. See the
+[development-tools report contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#portable-api-reports).

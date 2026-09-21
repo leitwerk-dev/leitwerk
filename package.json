@@ -59,6 +59,8 @@
 		"test:k8s:local": "bash scripts/k8s/run-smoke.sh",
 		"test:chart": "vitest run --reporter agent --project unit packages/server/src/kubernetes-helm-chart.test.ts && vitest run --reporter agent --project integration packages/server/src/kubernetes-helm-chart.integration.test.ts",
 		"release:check": "node --import tsx scripts/release-contract.ts",
+		"publish:registration": "node scripts/npm-bootstrap.mjs check",
+		"publish:bootstrap": "node scripts/npm-bootstrap.mjs publish",
 		"publish:check": "node scripts/publish-workspaces.mjs check",
 		"publish:dry-run": "node scripts/publish-workspaces.mjs dry-run",
 		"publish:preflight": "node scripts/publish-workspaces.mjs preflight",
@@ -66,7 +68,8 @@
 		"publish:verify": "node scripts/publish-workspaces.mjs verify",
 		"dev:sandbox": "node --conditions=source --import tsx scripts/sandbox/cli.ts",
 		"sandbox:reset": "node --conditions=source --import tsx scripts/sandbox/cli.ts reset",
-		"benchmark:worker-startup": "node packages/dev-tools/dist/cli.js benchmark:worker-startup"
+		"benchmark:worker-startup": "node packages/dev-tools/dist/cli.js benchmark:worker-startup",
+		"api:report": "node --import tsx packages/dev-tools/src/cli.ts api:report"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",

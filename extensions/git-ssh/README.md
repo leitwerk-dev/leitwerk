@@ -8,6 +8,6 @@ Dependent server extensions can use `gitSshIntegration.preflight()` before launc
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/git-ssh`: `GitSshAuthorizationPreflightInput`, `GitSshAuthorizationPreflightResult`, `GitSshIntegration`, `default`, `gitSshIntegration`.
+- `@leitwerk-dev/git-ssh`: `GitSshIntegration`, `default`, `gitSshIntegration`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

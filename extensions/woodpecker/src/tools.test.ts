@@ -22,18 +22,15 @@ it("uses CI-only project bindings, bounds logs, and durably replays diagnosed re
 	});
 	const client = adapter.client();
 	const restart = vi.spyOn(client, "restartPipeline");
-	const { api, tools } = createToolCollector();
 	const writes = createInMemoryExternalWriteLog();
-	registerWoodpeckerTools(
-		api,
-		{
-			client: (profile) => {
-				expect(profile).toBe("ci-profile");
-				return client;
-			},
+	const { api, tools } = createToolCollector(writes);
+
+	registerWoodpeckerTools(api, {
+		client: (profile) => {
+			expect(profile).toBe("ci-profile");
+			return client;
 		},
-		writes,
-	);
+	});
 	const ctx = {
 		process: { id: "p", paramsJson: "{}" },
 		project: {
