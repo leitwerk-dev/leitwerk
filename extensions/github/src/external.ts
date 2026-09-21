@@ -97,6 +97,7 @@ export const GITHUB_CHECKS_KIND = "@leitwerk-public/github.checks";
 
 export const githubExternal = {
 	checks: defineExternalActionSource<{
+		afterKey?: string;
 		profile: string;
 		owner: string;
 		repo: string;

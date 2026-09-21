@@ -242,6 +242,31 @@ export function registerGitHubTools(
 		});
 	}
 	api.tool<Record<string, unknown>>({
+		name: "github_get_ci_diagnostics",
+		description:
+			"Read failed check annotations and bounded Actions logs for the current request revision",
+		parameters: projectParameters(
+			{ pullRequestNumber: { type: "integer" }, headSha: { type: "string" } },
+			["pullRequestNumber", "headSha"],
+		),
+		async execute(ctx, input) {
+			const t = target(ctx);
+			const client = integration.client(t.profile);
+			const number = numberArg(input, "pullRequestNumber");
+			const pr = await client.getPullRequest(t.owner, t.repo, number, ctx.signal);
+			if (pr.head.ref !== ctx.project?.workBranch || pr.base.ref !== ctx.project.baseBranch)
+				throw new Error("Pull request does not belong to the process branches");
+			return client.getCiDiagnostics(
+				t.owner,
+				t.repo,
+				number,
+				stringArg(input, "headSha"),
+				ctx.signal,
+			);
+		},
+	});
+
+	api.tool<Record<string, unknown>>({
 		name: "github_get_checks",
 		description: "Read GitHub Actions check runs for a commit",
 		parameters: projectParameters({ headSha: { type: "string" } }),

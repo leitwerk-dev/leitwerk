@@ -42,7 +42,6 @@ export function isIssueOrigin(
 
 export const forgejoRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<ForgejoRepoChangeParams>({
-		displayName: "Forgejo Repo Change",
 		normalize(value) {
 			const shared = normalizeRepositoryChangeParamsInput(value, "Forgejo Repo Change");
 			const record = repositoryChangeParamsRecord(value, "Forgejo Repo Change");

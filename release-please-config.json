@@ -92,10 +92,8 @@
 				"@leitwerk-dev/worker",
 				"@leitwerk-dev/coding",
 				"@leitwerk-dev/git-ssh",
-				"@leitwerk-dev/local-repo-change",
 				"@leitwerk-dev/models",
 				"@leitwerk-dev/process-analysis",
-				"@leitwerk-dev/remote-repo-change",
 				"@leitwerk-dev/showcase-processes",
 				"@leitwerk-dev/telegram",
 				"@leitwerk-dev/dev-sandbox",
@@ -106,7 +104,9 @@
 				"@leitwerk-dev/woodpecker",
 				"@leitwerk-dev/forgejo-repo-change",
 				"@leitwerk-dev/gitlab",
-				"@leitwerk-dev/dev-tools"
+				"@leitwerk-dev/dev-tools",
+				"@leitwerk-dev/github-repo-change",
+				"@leitwerk-dev/gitlab-repo-change"
 			]
 		}
 	],
@@ -206,11 +206,6 @@
 			"skip-github-release": true,
 			"skip-changelog": true
 		},
-		"extensions/local-repo-change": {
-			"component": "@leitwerk-dev/local-repo-change",
-			"skip-github-release": true,
-			"skip-changelog": true
-		},
 		"extensions/models": {
 			"component": "@leitwerk-dev/models",
 			"skip-github-release": true,
@@ -218,11 +213,6 @@
 		},
 		"extensions/process-analysis": {
 			"component": "@leitwerk-dev/process-analysis",
-			"skip-github-release": true,
-			"skip-changelog": true
-		},
-		"extensions/remote-repo-change": {
-			"component": "@leitwerk-dev/remote-repo-change",
 			"skip-github-release": true,
 			"skip-changelog": true
 		},
@@ -278,6 +268,16 @@
 		},
 		"packages/dev-tools": {
 			"component": "@leitwerk-dev/dev-tools",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/github-repo-change": {
+			"component": "@leitwerk-dev/github-repo-change",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/gitlab-repo-change": {
+			"component": "@leitwerk-dev/gitlab-repo-change",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

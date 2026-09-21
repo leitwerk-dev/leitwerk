@@ -6,6 +6,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { type GitLabIntegration, gitlabIntegration } from "./capability.js";
 import { GitLabClient, parseGitLabProfiles } from "./client.js";
+import { registerGitLabDeliveryTools } from "./delivery-tools.js";
 import { createGitLabProvider } from "./external.js";
 import { registerGitLabTools } from "./tools.js";
 export const manifest = { id: "gitlab", version: "0.1.9" } as const;
@@ -18,6 +19,12 @@ export function setupGitLabIntegration(
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
 	registerGitLabTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
+	registerGitLabDeliveryTools(
+		api,
+		integration,
+		deps.externalWrites as ExternalWriteLogRepoLike,
+		deps.projects,
+	);
 	return createGitLabProvider(deps, integration, options);
 }
 const extension: LeitwerkExtensionModule = {
@@ -50,5 +57,6 @@ export default extension;
 export * from "./capability.js";
 export * from "./client.js";
 export * from "./external.js";
+export * from "./issue-watcher.js";
 export * from "./selection.js";
 export * from "./tools.js";

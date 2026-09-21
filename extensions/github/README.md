@@ -111,3 +111,15 @@ retrying it. Release-lock selection stays outside this integration.
 The local adapter supports `createIssue`, `setIssueLabel`, `setMembership`,
 `editFeedback` and `failNextResponse`. Membership, label events, feedback edits,
 write outcomes and Git history survive restart.
+
+## Repository change process
+
+Load [github-repo-change](../github-repo-change/README.md) to create changes from the
+UI or labeled issues. Server-created integrations enumerate available profiles;
+custom integrations may implement `profiles()` for launcher discovery.
+`github_get_ci_diagnostics` verifies the selected process branches and current PR
+head, then reads failed check annotations and Actions jobs. It returns at most ten
+failed check details and ten failed job logs, with 64 KiB per log and explicit
+truncation. Signed log downloads do not receive the API token. Actions read access
+is required. Existing check-source callers remain compatible; the optional
+`afterKey` suppresses a failure already consumed by a process.

@@ -92,3 +92,37 @@ it("debounces comments on unchanged green CI, resets for new arrivals and resume
 	await provider.poll();
 	expect(fire).toHaveBeenCalledTimes(1);
 });
+
+it.each([
+	"generation",
+	"binding",
+] as const)("rejects a superseded %s after provider I/O", async (change) => {
+	let live = {
+		id: "observe",
+		instanceId: "process",
+		generation: "one",
+		resolved: { profile: "test", projectId: 7, iid: 1 },
+	};
+	const fire = vi.fn(async () => ({ ok: true }));
+	const observe = vi.fn(async () => ({ ok: true }));
+	const deps = createTestServerSetupCapability({
+		externalSources: {
+			listArmed: (kind: string) => (kind === GITLAB_MR_KIND ? [live] : []),
+			fire,
+			observe,
+		},
+	} as unknown as Partial<CoreServerSetupDeps>);
+	const client = {
+		getMergeRequest: async () => {
+			live =
+				change === "generation"
+					? { ...live, generation: "two" }
+					: { ...live, resolved: { ...live.resolved, profile: "other" } };
+			return { ...mr, state: "merged" };
+		},
+	} as unknown as GitLabClientLike;
+	const provider = createGitLabProvider(deps, { profiles: () => ["test"], client: () => client });
+	expect((await provider.poll()).errors).toEqual([]);
+	expect(fire).not.toHaveBeenCalled();
+	expect(observe).not.toHaveBeenCalled();
+});

@@ -44,6 +44,11 @@
 			"source": "./src/turns/*.ts",
 			"import": "./dist/turns/*.js",
 			"types": "./dist/turns/*.d.ts"
+		},
+		"./repository-change-publication": {
+			"source": "./src/repository-change-publication.ts",
+			"import": "./dist/repository-change-publication.js",
+			"types": "./dist/repository-change-publication.d.ts"
 		}
 	},
 	"scripts": {
@@ -51,7 +56,8 @@
 	},
 	"dependencies": {
 		"@leitwerk-dev/domain": "0.1.9",
-		"@leitwerk-dev/process-sdk": "0.1.9"
+		"@leitwerk-dev/process-sdk": "0.1.9",
+		"@leitwerk-dev/repository-rebase": "0.1.9"
 	},
 	"devDependencies": {
 		"@leitwerk-dev/test-support": "0.1.9",

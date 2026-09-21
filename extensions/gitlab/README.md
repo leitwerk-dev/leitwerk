@@ -37,3 +37,24 @@ The MR external source can also observe review feedback using `feedback: { after
 `ensureGitLabSeenReaction()` lets a process acknowledge an authorized MR comment with an eyes reaction. It reconciles the authenticated bot's reaction and records it with `ensureWrite()`. Other users' eyes reactions do not suppress the bot's acknowledgement; retries and restarts do not duplicate it. The calling process owns selection and lifecycle checks.
 
 The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.
+
+## Creating repository changes
+
+Load [gitlab-repo-change](../gitlab-repo-change/README.md) for UI and labeled-issue
+change workflows. Repository-only metadata `{ gitlab: { profile, projectId } }`
+permits identity resolution and MR creation. `gitlab_ensure_merge_request` validates
+the process branches, reconciles its remote marker through the durable write log,
+and pins `iid` through server project persistence. Existing MR-bound metadata and
+tool calls remain supported. MR-only tools reject missing bindings.
+
+Source-issue tools require the launch-pinned `issueIid`. Issue updates, comments,
+labels, MR creation, and feedback acknowledgements reconcile uncertain writes.
+`gitlab_list_merge_request_feedback` and `gitlab_acknowledge_feedback` expose the
+existing discussion and seen-reaction operations as project-bound tools.
+
+The issue watcher uses exact project/group selection and rechecks eligibility at
+launch. The MR source accepts optional `delivery` tracking to emit settled feedback,
+confirmed conflict evidence, and an observation cursor alongside existing MR and CI
+facts. Existing source callers retain their event kind and observation behavior.
+HTTPS preflight performs repository reads and a dry-run feature-branch push without
+putting credentials in URLs or command arguments.

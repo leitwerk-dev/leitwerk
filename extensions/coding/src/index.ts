@@ -7,3 +7,5 @@ export default extension;
 export * from "./actions.js";
 export * from "./repository-change-launch.js";
 export * from "./repository-change-process.js";
+
+export * from "./repository-change-publication.js";

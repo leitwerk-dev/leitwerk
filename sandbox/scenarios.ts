@@ -2,7 +2,6 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import type { SandboxScenario } from "@leitwerk-dev/dev-sandbox";
 import { assertSandboxPath } from "@leitwerk-dev/dev-sandbox/storage";
-import type { LocalRepoChangeParams } from "@leitwerk-dev/local-repo-change";
 import type { AppContext } from "@leitwerk-dev/server";
 import {
 	StubPiTreeHandleFactory,
@@ -10,9 +9,13 @@ import {
 	type StubToolCallScriptResolver,
 } from "@leitwerk-dev/test-support/worker-testing";
 import type { Notebook } from "./notebook.js";
+import {
+	type SandboxRepositoryChangeParams,
+	sandboxRepositoryChangeProcessId,
+} from "./repository-change-process.js";
 
 export const scenarioDescriptions = {
-	"repository-change": "Plan, implement, commit and merge a notebook change.",
+	"repository-change": "Plan, implement, commit and publish a notebook change.",
 	ticket: "Create a ticket from a durable plan result, then approve its draft.",
 	question: "Answer a notebook question before reviewing the plan.",
 	"long-message": "Inspect a long Markdown plan and its recorded reasoning.",
@@ -22,7 +25,9 @@ export const scenarioDescriptions = {
 	startup: "Inspect seven seconds of connection delay followed by worker preparation.",
 	"startup-cold": "Inspect a slower cold start, or cancel before the worker connects.",
 };
-export function notebookScenarios(notebook: Notebook): SandboxScenario<LocalRepoChangeParams>[] {
+export function notebookScenarios(
+	notebook: Notebook,
+): SandboxScenario<SandboxRepositoryChangeParams>[] {
 	return Object.entries(scenarioDescriptions).map(([name, description]) => ({
 		name,
 		description,
@@ -32,9 +37,8 @@ export function notebookScenarios(notebook: Notebook): SandboxScenario<LocalRepo
 				? { startupDelays: { connectMs: 10800, prepareMs: 1000 } }
 				: {}),
 		launch: (_input, workBranch) => ({
-			processId: "local_repo_change_process",
+			processId: sandboxRepositoryChangeProcessId,
 			params: {
-				launchKind: "requested_change",
 				repoLocator: notebook.repository,
 				baseBranch: "main",
 				workBranch,
@@ -126,7 +130,7 @@ export function notebookScriptResolver(
 				markdown:
 					progress.name === "long-message"
 						? `# Garden notebook\n\n${"A detailed observation for the next planting season.\n\n".repeat(400)}`
-						: "## Plan\n\nUpdate notes.txt with the weekly garden review. Verify, commit and merge the change.",
+						: "## Plan\n\nUpdate notes.txt with the weekly garden review. Verify, commit and publish the change.",
 				summary: "Document the weekly review",
 				acceptanceCriteria: ["notes.txt documents the weekly review"],
 			});

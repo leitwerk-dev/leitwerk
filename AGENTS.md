@@ -42,7 +42,7 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 ## 3. Package layout & Boundaries
 Monorepo using npm workspaces. 
 - **Core (`packages/`)**: `domain`, `protocol`, `worker-protocol`, `process-sdk`, `extension-runtime`, `watcher-utils`, `external-writes`, `worker-runners`, `server`, `worker`, `ui`, `test-support`.
-- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `local-repo-change`, `remote-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
+- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `forgejo-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
 
 **Hard Rule:** Core packages under `packages/` must **never** import from `extensions/` (applies to runtime, tests, and types). Top-level `tests/` should import via package specifiers (e.g., `@leitwerk-dev/domain`).
 

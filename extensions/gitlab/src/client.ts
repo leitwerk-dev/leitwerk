@@ -1,5 +1,6 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { repositoryHttpsUrl } from "@leitwerk-dev/process-sdk";
+import { preflightGitLabRepository } from "./preflight.js";
 
 export interface GitLabProfile {
 	baseUrl: string;
@@ -22,7 +23,19 @@ export interface GitLabGroup {
 	id: number;
 	full_path: string;
 }
+export interface GitLabIssue {
+	id: number;
+	iid: number;
+	project_id: number;
+	title: string;
+	description: string | null;
+	web_url: string;
+	state: string;
+	labels: string[];
+}
 export interface GitLabMergeRequest {
+	detailed_merge_status?: string;
+	has_conflicts?: boolean;
 	iid: number;
 	project_id: number;
 	source_project_id: number;
@@ -178,12 +191,17 @@ export class GitLabClient {
 		this.#fetch = options.fetch ?? fetch;
 		this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 	}
-	private async response(path: string, signal?: AbortSignal, body?: unknown): Promise<Response> {
+	private async response(
+		path: string,
+		signal?: AbortSignal,
+		body?: unknown,
+		method?: string,
+	): Promise<Response> {
 		for (let attempt = 0; ; attempt++) {
 			let response: Response;
 			try {
 				response = await this.#fetch(`${this.baseUrl}/api/v4${path}`, {
-					method: body === undefined ? "GET" : "POST",
+					method: method ?? (body === undefined ? "GET" : "POST"),
 					redirect: "error",
 					headers: {
 						"PRIVATE-TOKEN": this.#profile.token,
@@ -211,8 +229,13 @@ export class GitLabClient {
 			await this.#sleep(Math.min(30_000, seconds > 0 ? seconds * 1_000 : 1_000 * 2 ** attempt));
 		}
 	}
-	private async request<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
-		return this.json<T>(await this.response(path, signal, body));
+	private async request<T>(
+		path: string,
+		signal?: AbortSignal,
+		body?: unknown,
+		method?: string,
+	): Promise<T> {
+		return this.json<T>(await this.response(path, signal, body, method));
 	}
 	private async json<T>(response: Response): Promise<T> {
 		try {
@@ -241,6 +264,70 @@ export class GitLabClient {
 		}
 		throw new Error("GitLab pagination limit exceeded; discovery incomplete");
 	}
+	listIssues(id: number, signal?: AbortSignal): Promise<GitLabIssue[]> {
+		return this.pages(`${projectPath(id)}/issues?state=opened&scope=all`, signal);
+	}
+	getIssue(id: number, iid: number, signal?: AbortSignal): Promise<GitLabIssue> {
+		return this.request(`${projectPath(id)}/issues/${iid}`, signal);
+	}
+	updateIssue(
+		id: number,
+		iid: number,
+		patch: { labels?: string; state_event?: "close" },
+		signal?: AbortSignal,
+	): Promise<GitLabIssue> {
+		return this.request(`${projectPath(id)}/issues/${iid}`, signal, patch, "PUT");
+	}
+	listIssueNotes(id: number, iid: number, signal?: AbortSignal): Promise<GitLabNote[]> {
+		return this.pages(`${projectPath(id)}/issues/${iid}/notes`, signal);
+	}
+	addIssueNote(id: number, iid: number, body: string, signal?: AbortSignal): Promise<GitLabNote> {
+		return this.request(`${projectPath(id)}/issues/${iid}/notes`, signal, { body });
+	}
+	listLabels(id: number, signal?: AbortSignal): Promise<Array<{ name: string }>> {
+		return this.pages(`${projectPath(id)}/labels`, signal);
+	}
+	createLabel(id: number, name: string, signal?: AbortSignal): Promise<{ name: string }> {
+		return this.request(`${projectPath(id)}/labels`, signal, { name, color: "#2da44e" });
+	}
+	listBranchMergeRequests(
+		id: number,
+		source: string,
+		target: string,
+		signal?: AbortSignal,
+	): Promise<GitLabMergeRequest[]> {
+		return this.pages(
+			`${projectPath(id)}/merge_requests?state=all&source_branch=${encodeURIComponent(source)}&target_branch=${encodeURIComponent(target)}`,
+			signal,
+		);
+	}
+	createMergeRequest(
+		id: number,
+		input: { title: string; description: string; source_branch: string; target_branch: string },
+		signal?: AbortSignal,
+	): Promise<GitLabMergeRequest> {
+		return this.request(`${projectPath(id)}/merge_requests`, signal, {
+			...input,
+			remove_source_branch: false,
+		});
+	}
+	async preflightRepository(
+		projectId: number,
+		baseBranch: string,
+		workBranch: string,
+		signal?: AbortSignal,
+	): Promise<void> {
+		const project = await this.getProject(projectId, signal);
+		await preflightGitLabRepository({
+			url: project.http_url_to_repo,
+			origin: this.baseUrl,
+			token: this.#profile.token,
+			baseBranch,
+			workBranch,
+			signal,
+		});
+	}
+
 	getProject(id: number | string, signal?: AbortSignal): Promise<GitLabProject> {
 		return this.request(projectPath(id), signal);
 	}

@@ -2,10 +2,10 @@ import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { expect } from "vitest";
 import { test } from "./fixture.js";
 
-test("public-only composition commits and merges a real notebook change after restart", async ({
+test("public-only composition commits and publishes a real notebook change after restart", async ({
 	f,
 }) => {
-	const before = f.notebook.git(f.notebook.repository, ["rev-parse", "main"]);
+	const mainSha = f.notebook.git(f.notebook.repository, ["rev-parse", "main"]);
 	const id = await f.launch("repository-change");
 	await f.wait(id, "plan_decision");
 	const progress = f.notebook.state.scenarios[id];
@@ -17,13 +17,15 @@ test("public-only composition commits and merges a real notebook change after re
 	await f.wait(id, "implementation_decision");
 	await f.action(id, "finalize_change");
 	await f.wait(id, null, "completed");
-	expect(f.notebook.git(f.notebook.repository, ["rev-parse", "main"])).not.toBe(before);
-	expect(f.notebook.git(f.notebook.repository, ["show", "main:notes.txt"])).toContain(
-		"Weekly review",
-	);
-	expect(f.notebook.git(f.notebook.repository, ["log", "-1", "--format=%B"])).toContain(
-		"document weekly garden review",
-	);
+	const project = f.context.deps.projects.listByInstance(id)[0];
+	if (!project?.workBranch) throw new Error("Missing sandbox work branch");
+	expect(f.notebook.git(f.notebook.repository, ["rev-parse", "main"])).toBe(mainSha);
+	expect(
+		f.notebook.git(f.notebook.repository, ["show", `${project.workBranch}:notes.txt`]),
+	).toContain("Weekly review");
+	expect(
+		f.notebook.git(f.notebook.repository, ["log", "-1", "--format=%B", project.workBranch]),
+	).toContain("document weekly garden review");
 }, 60000);
 
 test("controls use configured URLs, reject cross-origin writes and deduplicate launches", async ({

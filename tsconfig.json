@@ -64,12 +64,6 @@
 			"path": "extensions/git-ssh"
 		},
 		{
-			"path": "extensions/local-repo-change"
-		},
-		{
-			"path": "extensions/remote-repo-change"
-		},
-		{
 			"path": "extensions/process-analysis"
 		},
 		{
@@ -107,6 +101,12 @@
 		},
 		{
 			"path": "packages/dev-tools"
+		},
+		{
+			"path": "extensions/github-repo-change"
+		},
+		{
+			"path": "extensions/gitlab-repo-change"
 		}
 	],
 	"files": []

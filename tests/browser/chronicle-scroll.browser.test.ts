@@ -1,31 +1,73 @@
-import { loadExtensionCatalog } from "@leitwerk-dev/extension-runtime";
-import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
+import {
+	createRepositoryChangeParamsCodec,
+	createRepositoryChangeProcess,
+	normalizeRepositoryChangeParamsInput,
+	type RepositoryChangeLaunchParams,
+} from "@leitwerk-dev/coding";
+import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
+import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { createEmptyStructuralProcessState, flow } from "@leitwerk-dev/process-sdk";
 import {
 	createDurableWsFrame,
 	createEphemeralWsFrame,
 	WS_PRIMARY_PATH_TYPES,
 } from "@leitwerk-dev/protocol";
 import type { AppContext } from "@leitwerk-dev/server";
+import showcaseProcesses from "@leitwerk-dev/showcase-processes";
 import type { Locator, Page } from "@playwright/test";
 import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 
 let ctx: AppContext | null = null;
 
+const browserRepositoryChangeProcessId = "browser_repository_change_process";
+const browserPublicationTurnId = "browser_publish";
+const browserPublication = flow.fragment<RepositoryChangeLaunchParams, RepositoryChangeState>(
+	"browser-publication",
+);
+browserPublication.turn(
+	flow
+		.automatic<RepositoryChangeLaunchParams, RepositoryChangeState>(browserPublicationTurnId)
+		.description("Publish browser fixture")
+		.run(() => ({ outcome: "published" }))
+		.outcome("published", (outcome) => outcome.description("Published").complete()),
+);
+const browserRepositoryChangeProcess = createRepositoryChangeProcess({
+	processId: browserRepositoryChangeProcessId,
+	displayName: "Browser Repository Change",
+	paramsCodec: createRepositoryChangeParamsCodec<RepositoryChangeLaunchParams>({
+		normalize: (value) => normalizeRepositoryChangeParamsInput(value, "Browser Repository Change"),
+	}),
+	finalizeLabel: "Publish change",
+	finalizeForm: {
+		id: "finalize_change",
+		title: "Publish change",
+		fields: [],
+		submitLabel: "Publish change",
+	},
+	publication: {
+		entryTurnId: browserPublicationTurnId,
+		fragment: browserPublication,
+		happyPath: [browserPublicationTurnId],
+	},
+}).process;
+
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-chronicle-scroll-browser-",
 		configure: (config) => {
-			config.extension_loading.sources = [
-				"./extensions/showcase-processes",
-				"./extensions/local-repo-change",
-			];
+			config.extension_loading.sources = ["./extensions/showcase-processes"];
 		},
-		createExtensionCatalog: (config) =>
-			loadExtensionCatalog({
-				startDir: process.cwd(),
-				sources: config.extension_loading.sources,
-			}),
+		createExtensionCatalog: () =>
+			buildExtensionCatalogFromModules([
+				showcaseProcesses,
+				{
+					manifest: { id: "browser-repository-change", version: "1.0.0" },
+					setupCatalog(api) {
+						api.registerProcess(browserRepositoryChangeProcess);
+					},
+				},
+			]),
 		useInProcessWorker: true,
 		extensionLoadingStartDir: process.cwd(),
 	},
@@ -198,20 +240,19 @@ function buildLargePlanMarkdown() {
 	].join("\n");
 }
 
-function createLocalRepoChangePlanThenImplementReasoningProcess(label: string) {
+function createRepositoryChangePlanThenImplementReasoningProcess(label: string) {
 	if (!ctx) {
 		throw new Error("Server context not initialized");
 	}
 
 	const process = ctx.deps.processes.create({
-		processId: "local_repo_change_process",
+		processId: browserRepositoryChangeProcessId,
 		selectedTurnId: "implement",
 		lifecycleStatus: "active",
 		externalId: label,
-		title: "Desktop scroll repro · local repo change",
+		title: "Desktop scroll repro · repository change",
 		stateJson: JSON.stringify(createEmptyStructuralProcessState()),
 		paramsJson: JSON.stringify({
-			launchKind: "requested_change",
 			repoLocator: "/tmp/leitwerk",
 			baseBranch: "main",
 			workBranch: "preview-deployment",
@@ -956,9 +997,9 @@ async function openReasoningLiveProcess(page: Page, label: string) {
 	return { ...fixture, livePreview };
 }
 
-async function openLocalRepoReasoningProcess(page: Page, label: string) {
+async function openRepositoryReasoningProcess(page: Page, label: string) {
 	await page.setViewportSize({ width: 1920, height: 1080 });
-	const fixture = createLocalRepoChangePlanThenImplementReasoningProcess(label);
+	const fixture = createRepositoryChangePlanThenImplementReasoningProcess(label);
 	await page.goto(`/processes/${fixture.process.id}`);
 	const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 	const liveTail = page.locator('[data-section="live-tail"]');
@@ -1020,10 +1061,10 @@ test.describe("chronicle scroll behavior", () => {
 		expect(afterMetrics.scrollTop).toBeLessThan(50);
 	});
 
-	test("keeps a mid-history desktop chronicle position stable while local-repo-change reasoning streams", async ({
+	test("keeps a mid-history desktop chronicle position stable while repository-change reasoning streams", async ({
 		page,
 	}) => {
-		const { process, runningTurnId, chronicleScroll } = await openLocalRepoReasoningProcess(
+		const { process, runningTurnId, chronicleScroll } = await openRepositoryReasoningProcess(
 			page,
 			"SCROLL-DESKTOP-LONG-PLAN-LIVE-IMPLEMENT-001",
 		);
@@ -1057,7 +1098,7 @@ test.describe("chronicle scroll behavior", () => {
 	test("keeps a followed live tail pinned to the bottom when earlier result content grows", async ({
 		page,
 	}) => {
-		const { chronicleScroll, liveTail } = await openLocalRepoReasoningProcess(
+		const { chronicleScroll, liveTail } = await openRepositoryReasoningProcess(
 			page,
 			"SCROLL-LIVE-TAIL-PRIOR-GROWTH-001",
 		);

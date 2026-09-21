@@ -6,6 +6,7 @@ export default workspaceBuild({
 		"src/finalization-git.ts",
 		"src/repository-change-launch.ts",
 		"src/repository-change-state.ts",
+		"src/repository-change-publication.ts",
 		"src/turns/*.ts",
 	],
 	clean: true,

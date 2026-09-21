@@ -208,11 +208,9 @@ export function createGitHubIssuePolling(
 					},
 				});
 				if (checks.status !== "failure") return;
-				await report.fire(
-					armed,
-					{ checks },
-					`${checks.headSha}:${checks.failed.map((run) => run.url).join(":")}`,
-				);
+				const evidenceKey = `${checks.headSha}:${checks.failed.map((run) => run.url).join(":")}`;
+				if (config.afterKey === evidenceKey) return;
+				await report.fire(armed, { checks }, evidenceKey);
 			},
 		);
 

@@ -9,8 +9,9 @@ describe("forgejoRepoChangeProcess", () => {
 	});
 
 	it("uses one waiting automatic delivery turn for publication and external evidence", () => {
-		expect([...forgejoRepoChangeProcess.turns.keys()]).toHaveLength(16);
+		expect([...forgejoRepoChangeProcess.turns.keys()]).toHaveLength(15);
 		for (const removed of [
+			"import_plan",
 			"publish_work_branch",
 			"create_pull_request",
 			"wait_for_remote",

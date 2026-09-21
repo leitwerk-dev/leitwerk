@@ -30,7 +30,6 @@ export function forgejoRepoChangeParams(
 	},
 ): ForgejoRepoChangeParams {
 	return {
-		launchKind: "requested_change",
 		repoLocator: repository.ssh_url,
 		baseBranch: repository.default_branch,
 		workBranch: input.workBranch,

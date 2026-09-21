@@ -55,6 +55,10 @@ function extensionUiSourcePlugin(): Plugin {
 }
 
 export default defineConfig({
+	// Parallel Playwright servers must not replace each other's optimized dependencies.
+	cacheDir: process.env.LEITWERK_BROWSER_ENGINE
+		? `node_modules/.vite-browser-${process.env.LEITWERK_BROWSER_ENGINE}`
+		: undefined,
 	plugins: [svelte(), extensionUiSourcePlugin()],
 	resolve: {
 		alias: [

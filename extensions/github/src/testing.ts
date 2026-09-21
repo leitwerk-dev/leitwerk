@@ -363,6 +363,23 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 						createdAt: c.created_at,
 					})),
 				]),
+			getCiDiagnostics: async (owner, name, number, headSha) => {
+				const r = this.repo(owner, name);
+				const pr = r.pulls.find((p) => p.number === number);
+				if (!pr || this.git.head(r.repository.ssh_url, pr.head.ref) !== headSha)
+					throw new Error("Stale CI diagnostics");
+				return {
+					headSha,
+					checks: (r.checks[headSha]?.failed ?? []).map((check, i) => ({
+						id: i + 1,
+						name: check.name,
+						output: { summary: check.name },
+						annotations: [],
+					})),
+					jobs: [],
+					truncated: false,
+				};
+			},
 			getCheckSummary: async (owner, name, sha) =>
 				structuredClone(
 					repo(owner, name).checks[sha] ?? {

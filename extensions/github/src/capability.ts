@@ -5,6 +5,7 @@ import type { GitHubClient } from "./client.js";
 export type GitHubClientLike = Pick<GitHubClient, keyof GitHubClient>;
 
 export interface GitHubIntegration {
+	profiles?(): readonly string[];
 	client(profile: string): GitHubClientLike;
 }
 

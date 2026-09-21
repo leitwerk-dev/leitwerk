@@ -2,10 +2,6 @@ import type { Codec, StructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 
 export interface RepositoryChangeFinalizationState {
-	expectedPostConflictHeadSha: string | null;
-	usedConflictResolution: boolean;
-	finalizationSummaryMarkdown: string | null;
-	finalizedHeadSha: string | null;
 	generatedCommitMessage: string | null;
 }
 
@@ -16,13 +12,7 @@ export interface RepositoryChangeState extends StructuralProcessState {
 }
 
 export function createEmptyRepositoryChangeFinalizationState(): RepositoryChangeFinalizationState {
-	return {
-		expectedPostConflictHeadSha: null,
-		usedConflictResolution: false,
-		finalizationSummaryMarkdown: null,
-		finalizedHeadSha: null,
-		generatedCommitMessage: null,
-	};
+	return { generatedCommitMessage: null };
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -35,14 +25,7 @@ function toRecord(value: unknown): Record<string, unknown> {
 
 function parseFinalizationState(value: unknown): RepositoryChangeFinalizationState {
 	const record = toRecord(value);
-	return {
-		expectedPostConflictHeadSha: stringOrNull(record.expectedPostConflictHeadSha),
-		usedConflictResolution: record.usedConflictResolution === true,
-		finalizationSummaryMarkdown: stringOrNull(record.finalizationSummaryMarkdown),
-		finalizedHeadSha: stringOrNull(record.finalizedHeadSha),
-		// Backward-compatible decoding for state persisted before commit-message generation.
-		generatedCommitMessage: stringOrNull(record.generatedCommitMessage),
-	};
+	return { generatedCommitMessage: stringOrNull(record.generatedCommitMessage) };
 }
 
 export const repositoryChangeStateCodec: Codec<RepositoryChangeState> = {
@@ -65,14 +48,5 @@ export function clearReviewRefs(
 	return {
 		...semanticEntryRefs,
 		review: null,
-	};
-}
-
-export function resetRepositoryChangeFinalizationState(
-	overrides: Partial<RepositoryChangeFinalizationState> = {},
-): RepositoryChangeFinalizationState {
-	return {
-		...createEmptyRepositoryChangeFinalizationState(),
-		...overrides,
 	};
 }
