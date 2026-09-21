@@ -5,9 +5,8 @@ import { GitHubClient, parseGitHubProfiles } from "./client.js";
 import { createGitHubProvider } from "./provider.js";
 import { registerGitHubTools } from "./tools.js";
 
-/** @public */
-export const manifest = {
-	/** @public */
+/** @internal */
+const manifest = {
 	id: "github",
 	/** @internal */
 	version: "0.1.9",
@@ -29,9 +28,6 @@ const extension: LeitwerkExtensionModule = {
 	},
 };
 
-export * from "./capability.js";
-export * from "./client.js";
-export * from "./external.js";
 export default extension;
 
 /** Register shared tools and polling with an explicit integration. @public */
@@ -50,6 +46,21 @@ export function setupGitHubIntegration(
 	return createGitHubProvider(deps, integration, options);
 }
 
-export * from "./binding.js";
-
-export * from "./issue-watcher.js";
+export { resolveGitHubProjectBinding } from "./binding.js";
+export type { GitHubIntegration } from "./capability.js";
+export { githubIntegration } from "./capability.js";
+export type {
+	GitHubCheckSummary,
+	GitHubGitIdentity,
+	GitHubIssue,
+	GitHubPullRequest,
+} from "./client.js";
+export {
+	GITHUB_CHECKS_KIND,
+	GITHUB_ISSUE_CANCELLED_KIND,
+	GITHUB_PR_FEEDBACK_KIND,
+	GITHUB_PR_STATE_KIND,
+	GITHUB_PR_TERMINAL_KIND,
+	githubExternal,
+} from "./external.js";
+export { githubIssueWatcherSource } from "./issue-watcher.js";

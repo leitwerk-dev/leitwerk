@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
-import { forgejoRepoChangeProcess as process } from "./index.js";
 import { deliveryTurn, routingState } from "./routing.test-fixture.js";
+import { forgejoRepoChangeProcess as process } from "./testing/default-process.js";
 
 function operatorTurn() {
 	const turn = process.turns.get("ci_operator_action")?.definition;

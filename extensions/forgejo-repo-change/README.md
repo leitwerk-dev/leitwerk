@@ -118,6 +118,6 @@ Lost PR responses and publication retries reconcile one PR without duplicate com
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/forgejo-repo-change`: `ForgejoIssueOriginParams`, `ForgejoRepoChangeParams`, `ForgejoUiOriginParams`, `createForgejoRepoChange`.
+- `@leitwerk-dev/forgejo-repo-change`: `ForgejoRepoChangeParams`, `createForgejoRepoChange`, `default`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.

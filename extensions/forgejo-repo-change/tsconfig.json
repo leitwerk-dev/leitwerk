@@ -6,6 +6,6 @@
 		"types": ["node"]
 	},
 	"include": ["src"],
-	"exclude": ["src/**/*.test.ts", "src/testing/**"],
+	"exclude": ["src/**/*.test.ts", "src/routing.test-fixture.ts", "src/testing/**"],
 	"references": []
 }

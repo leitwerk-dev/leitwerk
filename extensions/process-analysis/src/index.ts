@@ -5,7 +5,7 @@ import { configureProcessAnalysisRuntime } from "./server-runtime.js";
 import { registerProcessAnalysisTools } from "./tools.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "process-analysis",
 	/** @internal */
@@ -31,12 +31,3 @@ const processAnalysisExtension: LeitwerkExtensionModule = {
 };
 
 export default processAnalysisExtension;
-export * from "./actions.js";
-export * from "./params.js";
-export * from "./process-definition.js";
-export * from "./process-ref.js";
-export * from "./server-runtime.js";
-export * from "./snapshot-downloader.js";
-export * from "./snapshot-markdown.js";
-export * from "./state.js";
-export * from "./tools.js";

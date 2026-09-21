@@ -3,7 +3,9 @@ import { parseArgs } from "node:util";
 import { type DevelopmentCommand, runDevelopment } from "./development.js";
 
 try {
-	if (process.argv[2] === "api:check") {
+	if (process.argv[2] === "api:report") {
+		await (await import("./api-report.js")).runApiReportCli(process.argv.slice(3));
+	} else if (process.argv[2] === "api:check") {
 		(await import("./api-check.js")).runApiCheckCli(process.argv.slice(3));
 	} else if (process.argv[2] === "benchmark:worker-startup") {
 		await (await import("./benchmark-cli.js")).runBenchmarkCli(process.argv.slice(3));
@@ -22,7 +24,7 @@ try {
 		if (values.help || positionals.length === 0) {
 			console.info(`Usage: leitwerk-dev <command> [options]
 
-Commands: dev, build, typecheck, test:full, api:check, core:status, core:use-local, core:use-release, benchmark:worker-startup
+Commands: dev, build, typecheck, test:full, api:check, api:report, core:status, core:use-local, core:use-release, benchmark:worker-startup
 
 --workspace PATH    Extension workspace (default: current directory)
 --composition PATH  Composition manifest relative to the workspace

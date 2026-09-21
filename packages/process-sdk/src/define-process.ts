@@ -522,12 +522,6 @@ export type TurnDefinitionRecord<TParams = unknown, TState = unknown> = Record<
 >;
 
 /** @public */
-export type ProcessDefinition<TParams = unknown, TState = unknown> = ExtensionProcessDefinition<
-	TParams,
-	TState
->;
-
-/** @public */
 export interface DefinedProcessInput<TParams = unknown, TState = unknown>
 	extends Omit<
 		ExtensionProcessDefinition<TParams, TState>,
@@ -1889,7 +1883,7 @@ function buildDefinedProcess<TParams, TState>(
 /** @public */
 export function defineProcess<TParams = unknown, TState = unknown>(
 	input: DefinedProcessInput<TParams, TState>,
-): ProcessDefinition<TParams, TState> {
+): ExtensionProcessDefinition<TParams, TState> {
 	const compiled = buildDefinedProcess(input);
 	const process = {
 		id: input.id,

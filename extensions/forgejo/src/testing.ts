@@ -59,7 +59,7 @@ export interface LocalForgejoState {
 	failAfterPullWrite?: boolean;
 }
 /** @public */
-export interface LocalForgejoOptions {
+interface LocalForgejoOptions {
 	/** @public */
 	root: string;
 	/** @public */

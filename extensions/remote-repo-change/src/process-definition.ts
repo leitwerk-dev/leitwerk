@@ -1,5 +1,7 @@
 import { createFinalizeChangeForm, createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import { createRepositoryChangeUiLauncher } from "@leitwerk-dev/coding/repository-change-launch";
+import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
+import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
 import { remoteRepoChangeLaunchPlanner, remoteRepoChangeUiLauncherId } from "./launch-policy.js";
 import { type RemoteRepoChangeParams, remoteRepoChangeParamsCodec } from "./params.js";
 
@@ -30,7 +32,10 @@ const definition = createRepositoryChangeProcess({
 });
 
 /** @internal */
-export const remoteRepoChangeProcess = definition.process;
+export const remoteRepoChangeProcess: ExtensionProcessDefinition<
+	RemoteRepoChangeParams,
+	RepositoryChangeState
+> = definition.process;
 export const planDecision = definition.planDecision;
 export const planReviewFeedback = definition.planReviewFeedback;
 export const implementationDecision = definition.implementationDecision;

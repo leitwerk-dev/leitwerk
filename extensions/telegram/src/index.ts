@@ -9,10 +9,10 @@ import { GrammyTelegramClient } from "./grammy-telegram-client.js";
 import type { TelegramClient } from "./types.js";
 
 /** @internal */
-export const telegramClientToken = createCapabilityToken<TelegramClient>("telegram:client");
+const telegramClientToken = createCapabilityToken<TelegramClient>("telegram:client");
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "telegram",
 	/** @internal */
@@ -62,13 +62,3 @@ const telegramExtension: LeitwerkExtensionModule = {
 };
 
 export default telegramExtension;
-export { TELEGRAM_ACTOR } from "./actor.js";
-export * from "./bridge.js";
-export * from "./config.js";
-export * from "./fake-telegram-client.js";
-export * from "./form-session.js";
-export * from "./launch-session.js";
-export * from "./markdown-html.js";
-export * from "./process-thread-store.js";
-export * from "./topic-title.js";
-export type * from "./types.js";

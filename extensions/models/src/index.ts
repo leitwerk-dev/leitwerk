@@ -2,7 +2,7 @@ import { defineModelProviders, type LeitwerkExtensionModule } from "@leitwerk-de
 import { resolveModelProviders } from "./models-provider.js";
 
 /** @internal */
-export const manifest = {
+const manifest = {
 	/** @internal */
 	id: "models",
 	/** @internal */
@@ -10,13 +10,11 @@ export const manifest = {
 } as const;
 
 /** @public */
-const modelsExtension = {
+const modelsExtension: LeitwerkExtensionModule = {
 	/** @internal */
 	manifest,
 	/** @internal */
 	modelProviders: defineModelProviders(resolveModelProviders),
-} satisfies LeitwerkExtensionModule;
+};
 
 export default modelsExtension;
-export * from "./models-provider.js";
-export * from "./provider-auth.js";

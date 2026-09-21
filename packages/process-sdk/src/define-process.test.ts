@@ -6,12 +6,12 @@ import {
 	createTestServerProcessContext,
 } from "@leitwerk-dev/extension-runtime/testing";
 import { describe, expect, it } from "vitest";
+import { externalTurn } from "./define-process.js";
 import {
 	acceptedReviewHandoffAction,
 	automaticTurn,
 	defineProcess,
 	type ExtensionProcessDefinition,
-	externalTurn,
 	type FormDefinition,
 	getProcessGraph,
 	humanTurn,
