@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/local-repo-change",
-	"version": "0.2.0",
+	"version": "0.2.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -31,12 +31,12 @@
 		"dev:ext-ui": "node ./scripts/write-ui-manifest.mjs && tsup --silent --watch --config tsup.ui.config.ts"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.0",
-		"@leitwerk-dev/coding": "0.2.0",
-		"@leitwerk-dev/process-sdk": "0.2.0"
+		"@leitwerk-dev/domain": "0.2.1",
+		"@leitwerk-dev/coding": "0.2.1",
+		"@leitwerk-dev/process-sdk": "0.2.1"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/test-support": "0.2.0",
+		"@leitwerk-dev/test-support": "0.2.1",
 		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",
