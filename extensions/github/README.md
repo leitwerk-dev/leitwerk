@@ -137,3 +137,5 @@ Pull requests are matched by branch pair; comments and replies use hidden marker
 within their repository and thread. Reaction recovery matches the bot's identity.
 Update recovery compares requested fields, including normalized labels. Logged
 replays return the current object without reapplying the patch.
+
+GitHub polling uses the SDK reporter with live GitHub source kinds and generation forwarding. Conflict reporting uses `createConflictReporter(kind)` without creating another remote object.

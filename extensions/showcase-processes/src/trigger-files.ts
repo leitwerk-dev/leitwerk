@@ -14,7 +14,7 @@ export type TriggerFileReadResult =
 	  };
 
 /** @internal */
-export function errorCode(error: unknown): string | null {
+function errorCode(error: unknown): string | null {
 	if (typeof error !== "object" || error === null || !("code" in error)) {
 		return null;
 	}

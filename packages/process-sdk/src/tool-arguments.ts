@@ -13,7 +13,7 @@ export function projectParameters(
 	};
 }
 
-/** @internal */
+/** @public */
 export function objectArg(
 	value: unknown,
 	message = "Tool arguments must be an object",
@@ -22,7 +22,7 @@ export function objectArg(
 	return value as Record<string, unknown>;
 }
 
-/** Read required integration-tool arguments at the runtime boundary. @internal */
+/** Read required integration-tool arguments at the runtime boundary. @public */
 export function stringArg(args: Record<string, unknown>, name: string): string {
 	const value = args[name];
 	if (typeof value !== "string" || !value.trim())
@@ -30,7 +30,7 @@ export function stringArg(args: Record<string, unknown>, name: string): string {
 	return value.trim();
 }
 
-/** @internal */
+/** @public */
 export function numberArg(args: Record<string, unknown>, name: string): number {
 	const value = args[name];
 	if (typeof value !== "number" || !Number.isInteger(value) || value <= 0)

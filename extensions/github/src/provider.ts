@@ -52,7 +52,7 @@ export function createGitHubProvider(
 ) {
 	const due = createPollSchedule();
 	const pollIssues = createGitHubIssuePolling(deps, integration, options);
-	const reportConflict = createConflictReporter(deps.externalSources, GITHUB_PR_STATE_KIND);
+	const reportConflict = createConflictReporter(GITHUB_PR_STATE_KIND);
 	return deps.polling.create({
 		id: "github",
 		pollInterval: () => "5s",

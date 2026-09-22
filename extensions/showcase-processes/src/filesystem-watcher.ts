@@ -4,12 +4,8 @@ import {
 	defineProcessWatcherSource,
 	parseProcessWatcherLaunchModelConfig,
 } from "@leitwerk-dev/process-sdk";
-import {
-	consumeTriggerFile,
-	emptyPollResult,
-	parseDurationMs,
-	readTriggerFile,
-} from "@leitwerk-dev/watcher-utils";
+import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { consumeTriggerFile, readTriggerFile } from "./trigger-files.js";
 
 /** @internal */
 export interface FilesystemWatcherEvent {

@@ -545,3 +545,27 @@ and `WriteOperation`; `/internal` is not a supported extension API.
 
 Existing durable records and remote markers remain valid. Historical unmarked
 writes may not be recoverable. No schema or configuration change is required.
+
+## Shared integration operations
+
+The SDK supports repository feedback normalization and quiet-period batching,
+repository watcher/source configuration parsing, watcher presentation, and repository
+matching. Their exported input and result types are part of the supported API.
+Extensions remain responsible for authorization and provider-specific filtering.
+Parsing defaults, feedback cursors, and merge keys are shared across callers.
+
+`IntegrationHttpError` exposes its HTTP `status`; `objectArg`, `stringArg`,
+`numberArg`, `parseJsonData`, and `repositoryHttpsUrl` provide shared boundary
+validation. `ServerExtensionAPI.logger` and its `info`, `warn`, and `error` methods
+are optional.
+
+`createExternalSourcePollReporter` returns `ExternalSourcePollReporter`. Its
+`isCurrent(kind, armed)` compares the process, arming id, generation, and resolved
+value after provider I/O. Supplying `currentKinds` also checks freshness before
+`fire` and `observe`. Omit it to retain caller-managed freshness checks.
+`forwardGeneration` defaults to false. Observation is a no-op when the source
+service lacks observation support or the captured subscription lacks a generation.
+
+Use `recordConfirmedWrite` from `@leitwerk-dev/external-writes` to record an
+already-confirmed remote object without repeating the remote operation. It returns
+`{ recorded, dedupKey }`; `ensureWrite` continues to return `{ performed, dedupKey }`.

@@ -1,34 +1,35 @@
+import type { LaunchModelConfigInput } from "@leitwerk-dev/domain";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { parseProcessWatcherLaunchModelConfig } from "./process-watcher-source.js";
 import { objectArg } from "./tool-arguments.js";
 
 /** @public */
 export interface RepositoryIssueWatcherConfig {
-	/** @internal */
+	/** @public */
 	profile: string;
-	/** @internal */
+	/** @public */
 	pollInterval: string;
-	/** @internal */
+	/** @public */
 	repositories: {
-		/** @internal */
+		/** @public */
 		include: readonly string[];
-		/** @internal */
+		/** @public */
 		exclude: readonly string[];
 	};
-	/** @internal */
+	/** @public */
 	labels: {
-		/** @internal */
+		/** @public */
 		trigger: string;
-		/** @internal */
+		/** @public */
 		done: string;
 	};
 }
 
-/** @internal */
+/** @public */
 export function matchesRepository(
 	config: Pick<RepositoryIssueWatcherConfig, "repositories">,
 	repository: {
-		/** @internal */
+		/** @public */
 		full_name: string;
 	},
 ): boolean {
@@ -59,12 +60,12 @@ function repositoryNames(value: unknown, path: string): readonly string[] {
 	});
 }
 
-/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. @internal */
+/** Parse shared issue watcher fields; extensions choose the legacy type and label policy. @public */
 export function parseRepositoryIssueWatcherConfig(
 	raw: unknown,
 	legacyType: string,
 	distinctLabels = false,
-) {
+): ParsedRepositoryIssueWatcherConfig {
 	const config = record(raw, "watcher config");
 	if (config.type !== undefined && config.type !== legacyType)
 		throw new Error(`type must be '${legacyType}' when specified`);
@@ -90,26 +91,28 @@ export function parseRepositoryIssueWatcherConfig(
 	if (distinctLabels && parsed.labels.trigger === parsed.labels.done)
 		throw new Error("Trigger and done labels must differ");
 	return {
-		/** @internal */
+		/** @public */
 		config: parsed,
-		/** @internal */
+		/** @public */
 		enabled: config.enabled,
-		/** @internal */
+		/** @public */
 		launchModelConfig: parseProcessWatcherLaunchModelConfig(config.launch),
 	};
 }
 
-/** @internal */
-export function presentRepositoryIssueWatcherConfig(config: RepositoryIssueWatcherConfig) {
+/** @public */
+export function presentRepositoryIssueWatcherConfig(
+	config: RepositoryIssueWatcherConfig,
+): RepositoryIssueWatcherPresentation {
 	return {
-		/** @internal */
+		/** @public */
 		targetSummary: `Profile ${config.profile} · trigger ${config.labels.trigger}`,
-		/** @internal */
+		/** @public */
 		details: [
 			{
-				/** @internal */
+				/** @public */
 				label: "Profile",
-				/** @internal */
+				/** @public */
 				value: config.profile,
 			},
 			{ label: "Included repositories", value: config.repositories.include.join(", ") || "all" },
@@ -119,4 +122,28 @@ export function presentRepositoryIssueWatcherConfig(config: RepositoryIssueWatch
 			{ label: "Poll interval", value: config.pollInterval },
 		],
 	};
+}
+/** @public */
+export interface ParsedRepositoryIssueWatcherConfig {
+	/** @public */
+	config: RepositoryIssueWatcherConfig;
+	/** @public */
+	enabled: boolean;
+	/** @public */
+	launchModelConfig: LaunchModelConfigInput & {
+		/** @public */
+		skillIds: string[];
+	};
+}
+/** @public */
+export interface RepositoryIssueWatcherPresentation {
+	/** @public */
+	targetSummary: string;
+	/** @public */
+	details: {
+		/** @public */
+		label: string;
+		/** @public */
+		value: string;
+	}[];
 }

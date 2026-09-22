@@ -3,13 +3,8 @@ import type {
 	ExternalActionSource,
 	ExternalSourceArmingLike,
 } from "@leitwerk-dev/process-sdk";
-import {
-	consumeTriggerFile,
-	emptyPollResult,
-	type PollResult,
-	parseDurationMs,
-	readTriggerFile,
-} from "@leitwerk-dev/watcher-utils";
+import { emptyPollResult, type PollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { consumeTriggerFile, readTriggerFile } from "./trigger-files.js";
 
 /** @internal */
 export type FileExternalConsumeMode = "delete" | "keep";

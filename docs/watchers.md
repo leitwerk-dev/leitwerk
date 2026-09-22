@@ -144,3 +144,14 @@ The server checks it under the process operation lock. A superseded subscription
 returns `external_source_superseded` without recording a turn or queuing an
 event. Calls that omit a generation retain the existing queueing contract.
 Observations require their captured generation and never change process state.
+
+`createPollSchedule` is a supported watcher utility. The caller owns scheduling
+keys and may inject a clock. Each admitted poll reserves its next deadline before
+work starts; invalid durations use the existing 30-second fallback. Server polling
+lifecycle remains behind `deps.polling.create`.
+
+Source poll reporters expose `isCurrent` for freshness checks after provider I/O.
+GitHub checks its live source kinds before observation or firing and forwards the
+captured generation. Other providers retain their existing queueing policy.
+Filesystem trigger reading and consumption belong to the showcase extension;
+trigger files are consumed only after successful admission.

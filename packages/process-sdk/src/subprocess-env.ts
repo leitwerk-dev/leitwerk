@@ -34,7 +34,7 @@ const SENSITIVE_ENV_KEYS = new Set<string>([
  * process itself. Repository scripts, git hooks, package managers, and other
  * tool subprocesses must not receive them.
  */
-/** @internal */
+/** @public */
 export function sanitizeWorkerSubprocessEnv(
 	baseEnv: SubprocessEnvInput = process.env,
 	overrides: SubprocessEnvInput = {},

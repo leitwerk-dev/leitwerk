@@ -948,13 +948,13 @@ export interface CatalogExtensionAPI {
 /** @public */
 export type ExtensionLifecycleHook = () => void | Promise<void>;
 
-/** @internal */
+/** @public */
 export interface ServerExtensionLogger {
-	/** @internal */
+	/** @public */
 	info?(payload: Record<string, unknown>, message?: string): void;
-	/** @internal */
+	/** @public */
 	warn?(payload: Record<string, unknown>, message?: string): void;
-	/** @internal */
+	/** @public */
 	error?(payload: Record<string, unknown>, message?: string): void;
 }
 
@@ -1078,7 +1078,7 @@ export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {
 export interface ServerExtensionAPI {
 	/** @internal */
 	readonly events: EventBus<ServerExtensionEventMap>;
-	/** @internal */
+	/** @public */
 	readonly logger?: ServerExtensionLogger;
 	/** @public */
 	provide<T>(token: CapabilityToken<T>, value: T): void;

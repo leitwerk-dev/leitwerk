@@ -1,8 +1,8 @@
-/** An HTTP failure without provider response bodies or credentials. @internal */
+/** An HTTP failure without provider response bodies or credentials. @public */
 export class IntegrationHttpError extends Error {
-	/** @internal */
+	/** @public */
 	constructor(
-		/** @internal */
+		/** @public */
 		readonly status: number,
 		message: string,
 	) {
