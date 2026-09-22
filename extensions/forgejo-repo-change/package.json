@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/forgejo-repo-change",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -20,13 +20,13 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/coding": "0.2.1",
-		"@leitwerk-dev/external-writes": "0.2.1",
-		"@leitwerk-dev/git-ssh": "0.2.1",
-		"@leitwerk-dev/process-sdk": "0.2.1",
-		"@leitwerk-dev/forgejo": "0.2.1",
-		"@leitwerk-dev/woodpecker": "0.2.1",
-		"@leitwerk-dev/repository-rebase": "0.2.1"
+		"@leitwerk-dev/coding": "0.3.0",
+		"@leitwerk-dev/external-writes": "0.3.0",
+		"@leitwerk-dev/git-ssh": "0.3.0",
+		"@leitwerk-dev/process-sdk": "0.3.0",
+		"@leitwerk-dev/forgejo": "0.3.0",
+		"@leitwerk-dev/woodpecker": "0.3.0",
+		"@leitwerk-dev/repository-rebase": "0.3.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"
