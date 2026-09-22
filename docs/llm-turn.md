@@ -1,4 +1,4 @@
-# LLM Turn Flow
+# LLM turn flow
 
 An active LLM turn uses two server paths:
 
@@ -26,12 +26,11 @@ These messages use ProcessEngine operations:
 - `worker.turn_failed`.
 
 ```text
-IPC handler
- -> processEngine.run(Operation, input)
- -> decide
- -> record
- -> lock release
- -> dispatch reactions
+Correlate the worker message
+ → decide under the process lock
+ → commit durable state
+ → release the lock
+ → dispatch reactions
 ```
 
 This path updates process state, turn records, annotations, products, events, and worker intent in a coordinated transaction.
@@ -40,13 +39,9 @@ This path updates process state, turn records, annotations, products, events, an
 
 `worker.event` carries turn-local Pi activity such as stream deltas, tool lifecycle, compaction, retries, errors, labels, and usage.
 
-The IPC handler:
-
-1. checks active turn correlation;
-2. canonicalizes tool-call identity;
-3. stores the raw diagnostic event;
-4. updates the reconnectable active-turn projection when supported;
-5. broadcasts normalized `primary_path.*` frames.
+The server accepts only correlated turn activity. It retains the diagnostic event,
+updates supported live projections, and broadcasts browser frames. Tool calls retain
+a canonical identity across reconnects.
 
 Runtime events do not enter ProcessEngine because they do not change durable business position.
 
@@ -103,7 +98,10 @@ The detail view uses:
 
 Event ingestion atomically persists the event, its monotonic sequence, and a compact turn summary. The summary contains at most 1,024 characters each of recent reasoning and assistant text, current tool status, counts, usage, and `throughEventSequence`. It contains no trace items, tool arguments, or tool results.
 
-Session-derived previews, prompt and continuation evidence are projected when snapshots are accepted and stored in SQLite. Startup backfills legacy projections outside page requests. A missing projection shows turn status until it is available. Initial page handling uses indexed summary lookups; it never replays live events or parses a session tree. These guarantees also apply after restart.
+Session-derived previews and prompt/continuation evidence are stored when snapshots
+are accepted. Missing projections show turn status until available. Initial page
+requests use compact stored summaries; they do not replay event history or parse
+session trees. The same boundary applies after restart.
 
 An expanded live trace reads all recorded activity for the selected `turnRecordId`, including multiple LLM calls and operational events. Detail responses distinguish `live` and `committed` state and capture their event boundary before asynchronous work. The browser buffers `pi.*` frames during recovery and applies only later sequences once. Compact refreshes cannot shorten expanded history.
 

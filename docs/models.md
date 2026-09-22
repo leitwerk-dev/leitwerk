@@ -1,39 +1,43 @@
 # Models
 
-Model profiles give operators and processes stable names for configured provider models.
+A model profile gives a provider/model pair a stable name. Operators select that
+name at launch or for future work; processes can supply defaults and restrict
+allowed profiles. Selection never changes a model call already in flight.
 
 ## Model profiles
-
-Define profiles under `pi.model_profiles`:
 
 ```yaml
 pi:
   model_profiles:
-    - id: gpt_sol_high
+    - id: example_model
       provider: openai
       model_id: gpt-4o
-      thinking_level: high
-    - id: claude_fast
-      provider: anthropic
-      model_id: claude-3-5-sonnet-20241022
     - id: gateway_coder
       provider: internal-gateway
-      model_id: gemma-4-31b-it
+      model_id: team-coder
 ```
+
+These are examples, not a bundled catalog. Use model IDs available to your account
+or defined by your gateway, and load the extension that owns each provider.
 
 ### Profile fields
 
-| Field | Description |
-|---|---|
-| `id` | Custom profile name presented in the UI and referenced in process configurations (e.g. `gpt_sol_high`). |
-| `provider` | ID of a registered standard, custom-gateway, or extension-owned provider. |
-| `model_id` | Canonical model identifier recognized by the backend provider (e.g. `gpt-4o`). |
-| `thinking_level` | Optional reasoning level (`off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`). |
-| `provider_options` | Optional key-value object of provider-specific execution settings. |
+| Field | Contract |
+| --- | --- |
+| `id` | Your profile name, shown in the UI and referenced in configuration. |
+| `provider` | Registered standard, custom-gateway, or extension-owned provider ID. |
+| `model_id` | Model ID understood by that provider. |
+| `thinking_level` | Optional Pi level: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. The selected model must support it. |
+| `provider_options` | Optional non-secret string map of provider-owned execution settings. |
+
+A missing credential makes profiles unavailable. Malformed provider configuration
+fails startup. Check the provider ID, loaded extension, model ID, and credential
+status before retrying a launch.
 
 ## Standard and custom providers
 
-Load `./extensions/models` to register standard API-key providers and configured gateways:
+The optional models extension registers standard API-key providers and configured
+gateways:
 
 ```yaml
 extension_loading:
@@ -44,62 +48,44 @@ extensions:
   models:
     openai:
       api_key: env:OPENAI_API_KEY
-    anthropic:
-      api_key: env:ANTHROPIC_API_KEY
-    azure-openai-responses:
-      api_key: env:AZURE_OPENAI_API_KEY
-      base_url: https://my-resource.openai.azure.com
 ```
+
+Merge this with the existing extension list; do not replace other required sources.
+Full provider fields, custom model definitions, compatibility options, limits, and
+cost metadata belong in the
+[models extension reference](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/models/README.md).
 
 ### Credential initialization
 
-`api_key` under `extensions.models.<provider_id>` accepts a literal value or `env:VAR_NAME`. When omitted for a standard provider, the models extension checks that provider's standard Pi environment variables. The resulting value only initializes an empty encrypted credential store; an existing durable revision wins on restart. Standard providers accept an optional non-secret `base_url`; it is projected to workers in managed `models.json` and used by the built-in server adapter, which keeps process-title generation on the same endpoint. This is useful for providers such as Azure OpenAI that require an endpoint in addition to an API key.
+A provider's `api_key` accepts a literal secret or `env:VARIABLE`. If omitted for a
+standard provider, the models extension checks that provider's standard Pi
+environment variables. This initializes only an empty encrypted credential store;
+an existing durable revision wins on restart. Changing the environment is not a
+credential-rotation mechanism for an already initialized store.
 
-Set a custom gateway's `api_key` to `false` only when its endpoint intentionally accepts unauthenticated requests. Leitwerk then generates the placeholder material Pi requires and delivers it with a null revision. Null-revision material is worker-local bootstrap input: it is never persisted in the credential store, sampled for refresh, or sent in `worker.credential_update`.
+The server sends current credentials separately from immutable non-secret model
+resources. Workers do not load the operator's ambient Pi directory.
 
 ### Custom gateways
 
-Standard providers may also declare `models` using the same model fields as custom gateways. This adds deployment IDs absent from the bundled Pi catalog and replaces definitions with matching IDs. Worker and server calls use the explicit definition with the standard provider's canonical API and configured base URL. Omitted metadata follows Pi's explicit-model defaults: text input, no reasoning, zero estimated costs, 128,000 context tokens and 16,384 output tokens. Set actual limits and costs when known.
+Standard providers may override their non-secret `base_url` and declare model IDs
+absent from Pi's catalog, such as private deployment IDs. Both worker calls and
+server-side title generation use the configured endpoint and explicit definitions.
 
-Define OpenAI-compatible gateways and internal inference endpoints under `custom_gateways`:
+Configured gateways live under `extensions.models.custom_gateways`. Set
+`api_key: false` only for an intentionally unauthenticated endpoint. Generated
+placeholder material has a null revision: it is not stored or refreshed as a
+persistent credential.
 
-```yaml
-extensions:
-  models:
-    custom_gateways:
-      internal-gateway:
-        base_url: https://llm-gateway.example.com/v1
-        api_key: false # Set to false for unauthenticated endpoints, or use env:VAR_NAME
-        api: openai-completions
-        models:
-          - id: gemma-4-31b-it
-            name: Gemma 4 31B IT
-            reasoning: true
-            context_window: 262144
-            max_tokens: 32768
-            thinking_level_map: {off: null, xhigh: high}
-            input: [text]
-            cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0}
-          - id: qwen-3.6-27b
-            name: Qwen 3.6 27B
-            reasoning: true
-            context_window: 131072
-            max_tokens: 81920
-```
-
-```yaml
-pi:
-  model_profiles:
-    - id: gateway_gemma
-      provider: internal-gateway
-      model_id: gemma-4-31b-it
-```
-
-Model definitions support `thinking_level_map` with Pi thinking levels as keys and strings or `null` as values. `null` marks an unsupported level. Gateway and model `compat` objects retain Pi's camelCase compatibility keys; model settings override gateway settings. `cost` also uses Pi's keys, including `cacheRead` and `cacheWrite`. The [models extension](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/models/README.md) lists the supported fields. These definitions are non-secret and travel through managed `models.json`; credentials remain separate.
+Explicit model definitions must describe the endpoint's actual limits and
+capabilities. Omitted metadata uses Pi's defaults: text input, no reasoning, zero
+estimated cost, 128,000 context tokens, and 16,384 output tokens. These are not
+claims about the endpoint. `thinking_level_map` can map a Pi level to a provider
+value or null for unsupported levels.
 
 ## Profile resolution
 
-LLM turns resolve their profile in this order:
+LLM turns resolve profiles in this order:
 
 1. One-shot action override.
 2. Launch per-turn override.
@@ -108,26 +94,22 @@ LLM turns resolve their profile in this order:
 5. Process `default_model_profile`.
 6. First allowed profile in `pi.model_profiles`.
 
+`process_configs.<processId>.allowed_model_profiles` restricts defaults and overrides.
+Omitting the restriction permits all configured profiles; selecting an unavailable
+profile does not bypass credential requirements.
+
 ## Extension-defined providers
 
-An extension exposes one owner-scoped provider set. It may return a fixed provider or providers derived from its configuration:
+An extension exposes one owner-scoped `modelProviders` resolver built with
+`defineModelProviders`. It returns provider definitions and the configuration fragment
+for each. It may return a fixed provider or instantiate providers from owner configuration.
 
-```ts
-import { defineModelProvider, defineModelProviders } from "@leitwerk-dev/process-sdk";
+Sets resolve before `setupServer`. Each provider validates only its returned
+fragment. A provider using Pi's standard APIs can contribute non-secret model
+resources through `configuredPiProvider`; credentials remain separate. Custom
+providers use `defineModelProvider` to declare configuration, model availability,
+credential parsing, and worker behavior.
 
-const customModelProvider = defineModelProvider({
-	id: "custom-broker",
-	parseConfig: parseCustomConfig,
-	worker: customWorker,
-	models: evaluateCustomModelStatuses,
-	credential: { parse: parseCustomCredential },
-	secrets: ({ credential }) => credential ? { token: credential.token } : {},
-});
-
-export const modelProviders = defineModelProviders((rawConfig) => [{
-	definition: customModelProvider,
-	rawConfig,
-}]);
-```
-
-Provider sets resolve before server setup. Provider definitions remain code-owned; the models extension uses the same interface to instantiate custom gateways declared under `extensions.models.custom_gateways`.
+See the [SDK provider declarations](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/process-sdk/src/model-provider.ts)
+for signatures and the [SDK compatibility contract](process-sdk.md#api-compatibility)
+for supported members.

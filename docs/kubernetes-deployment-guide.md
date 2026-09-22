@@ -1,168 +1,171 @@
-# Kubernetes Deployment Guide
+# Kubernetes deployment
 
-This guide explains how to deploy Leitwerk on a Kubernetes cluster. Use this deployment mode when you want pod-isolated worker processes running in dedicated namespaces across your cluster.
+The Helm chart installs a singleton server, storage, Service, RBAC, and admission
+policy. Each process gets its own namespace, worker Pod, and retained PVC. The
+optional gateway serves the browser UI and proxies application requests.
 
----
+This walkthrough uses port forwarding and disabled authentication for an initial
+check. Configure HTTPS and [authentication](security.md) before exposing the service.
 
-## 1. Cluster Topology & Namespaces
+## Prerequisites
 
-Leitwerk deploys its components using dedicated Kubernetes namespaces:
+- A Kubernetes cluster supporting `admissionregistration.k8s.io/v1`
+  ValidatingAdmissionPolicy and permission to install the chart's cluster-level rules.
+- Helm, `kubectl`, and a default dynamic filesystem StorageClass, or explicit classes
+  for the server and process PVCs.
+- Network access to the selected images and model provider.
+- A persistent credential encryption key. Keep it with protected recovery material.
 
-- **Server Namespace:** The Leitwerk server runs as a singleton Deployment in a primary management namespace (e.g. `leitwerk-system`).
-- **Process Namespaces:** Each active process runs inside a dedicated namespace (`leitwerk-proc-<instanceId>`) containing its worker pod and persistent volume claim (PVC).
-- **RBAC & Permissions:** The server uses cluster-level RBAC to dynamically provision and tear down process namespaces, PVCs, and worker pods.
-- **Private worker images:** The server can copy explicitly named registry pull Secrets from its namespace into each process namespace. It never lists Secrets or reads Secrets cluster-wide.
+The server requires cluster-level access to create process namespaces and runtime
+resources. Registry pull-secret access is limited to explicitly named Secrets in
+its own namespace; it does not list Secrets cluster-wide.
 
-See [Server and Worker Lifecycle](server-worker-lifecycle.md#2-worker-runners-isolation-contracts) and [Process Workspace](process-workspace.md#1-workspace-layouts) for worker IPC and storage layout details.
+## Prepare configuration
 
----
+Copy the maintained [server configuration](examples/kubernetes/leitwerk.example.yaml) and
+[Helm values](examples/kubernetes/values.yaml) outside the checkout:
 
-## 2. Deploying with Helm
+```sh
+export DEPLOY_ROOT="$HOME/.local/share/leitwerk/deployments/leitwerk-kubernetes"
+mkdir -p "$DEPLOY_ROOT"
+cp docs/examples/kubernetes/leitwerk.example.yaml "$DEPLOY_ROOT/leitwerk.yaml"
+cp docs/examples/kubernetes/values.yaml "$DEPLOY_ROOT/values.yaml"
+chmod 600 "$DEPLOY_ROOT/leitwerk.yaml"
+```
 
-Leitwerk provides an official Helm chart under `deploy/kubernetes/helm/leitwerk` to deploy the server, RBAC roles, and ingress services. Release charts are available from GHCR and as GitHub Release assets. Their default server and generic-worker images are pinned by digest.
+Select a released chart version and replace `VERSION` in the worker image with the
+same release, or its published immutable worker digest. Release charts pin their
+default images, but an existing configuration Secret overrides generated worker
+configuration; you must keep that Secret's image selection compatible.
 
-### 2.1. Create Required Secrets
+Choose a model ID available to your account. Set `OPENAI_API_KEY` through your secret
+manager. Create the namespace and Secrets once; never regenerate the encryption
+key for an existing database:
 
-Before installing the chart, create the management namespace and store your configuration and encryption secrets:
-
-```bash
+```sh
 kubectl create namespace leitwerk-system
-
-# 1. Create credential encryption key Secret (Base64 encoding of exactly 32 random bytes)
-kubectl create secret generic leitwerk-encryption-key \
-  --namespace leitwerk-system \
+kubectl create secret generic leitwerk-encryption-key --namespace leitwerk-system \
   --from-literal=LEITWERK_CREDENTIAL_ENCRYPTION_KEY="$(openssl rand -base64 32)"
-
-# 2. Create configuration secret from your local leitwerk.yaml
-kubectl create secret generic leitwerk-config \
-  --namespace leitwerk-system \
-  --from-file=leitwerk.yaml=./leitwerk.yaml
+kubectl create secret generic leitwerk-provider --namespace leitwerk-system \
+  --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY"
+kubectl create secret generic leitwerk-config --namespace leitwerk-system \
+  --from-file=leitwerk.yaml="$DEPLOY_ROOT/leitwerk.yaml"
 ```
 
-### 2.2. Deploy Helm Chart
+These commands illustrate Secret inputs. Use your deployment's secret provisioning
+mechanism where command arguments may be visible to other users. Ensure the key is
+recoverable before depending on the installation.
 
-Deploy the Leitwerk server referencing your pre-created secrets. Replace `VERSION` with a released version:
+## Install and verify
 
-```bash
+Replace `VERSION` with the selected released version:
+
+```sh
 helm upgrade --install leitwerk oci://ghcr.io/leitwerk-dev/charts/leitwerk \
-  --version VERSION \
-  --namespace leitwerk-system \
-  --set server.existingConfigSecret=leitwerk-config \
-  --set server.credentialEncryption.existingSecret=leitwerk-encryption-key
+  --version VERSION --namespace leitwerk-system \
+  -f "$DEPLOY_ROOT/values.yaml" --wait
+kubectl rollout status deployment/leitwerk-server --namespace leitwerk-system
+kubectl rollout status deployment/leitwerk-gateway --namespace leitwerk-system
+kubectl port-forward --namespace leitwerk-system service/leitwerk-gateway 18080:8080
 ```
 
-For a source checkout, replace the OCI reference and `--version` with `deploy/kubernetes/helm/leitwerk`.
+In another shell, check `curl --fail http://127.0.0.1:18080/api/ready`, then open that
+origin in the browser and run **Single Prompt**. Readiness verifies server startup,
+not worker allocation or provider access; inspect the process's startup history too.
 
-For a private worker registry, create a `kubernetes.io/dockerconfigjson` Secret in the server namespace. Configure the same source and target names under `kubernetes.image_pull_secret_copies`, reference the target under `kubernetes.image_pull_secrets`, and pass the non-secret copy names through `kubernetes.imagePullSecretCopies` Helm values so the chart can render least-privilege RBAC and admission rules.
+For a source chart, replace the OCI reference and `--version VERSION` with
+`deploy/kubernetes/helm/leitwerk`. Use matching source-built server and worker images.
 
-### Admission policy API migration (breaking)
+Keep deployment values and application YAML distinct: Helm values control chart
+resources; the existing Secret controls server runtime settings. When changing
+namespace, Service naming, storage, or pull-secret permissions, update both sides.
 
-The Helm chart is the sole admission-policy generator. The exports
-`buildKubernetesAdmissionPolicyManifests`, `KubernetesValidatingAdmissionPolicyManifest`
-and `KubernetesValidatingAdmissionPolicyBindingManifest` were removed from
-`@leitwerk-dev/worker-runners` and `@leitwerk-dev/server`. External deployment tools
-must replace those imports; worker and process manifest builders are unchanged.
+### Private worker images
 
-Render the policy and binding with `helm template leitwerk deploy/kubernetes/helm/leitwerk
---namespace YOUR_NAMESPACE -f YOUR_VALUES.yaml --show-only templates/admission-policy.yaml`
-(run as one command). Keep `rbac.create=true`. Map former builder arguments as follows:
+Create a `kubernetes.io/dockerconfigjson` Secret in the server namespace. In the
+application YAML, configure `kubernetes.image_pull_secret_copies` and reference the
+target in `kubernetes.image_pull_secrets`. Repeat the source/target names in Helm
+`kubernetes.imagePullSecretCopies` so RBAC and admission permit those copies.
+Only `.dockerconfigjson` is copied.
 
-| Builder argument | Helm input |
-| --- | --- |
-| `serverNamespace` | `--namespace` |
-| `serverServiceAccountName` | `serviceAccount.name` |
-| `processNamespacePrefix` | `kubernetes.processNamespacePrefix` |
-| `allowedWorkerServiceAccount` | `kubernetes.workerServiceAccount` |
-| `allowedImagePullSecretNames` | `kubernetes.imagePullSecretCopies[].targetName` (also set `sourceName`) |
-| `allowVolumePreparation` | `kubernetes.processVolume.preProvision.enabled` |
-| `name`, `labels` | Post-process both documents' metadata; keep binding `spec.policyName` aligned |
+### Safe singleton upgrades {#23-safe-singleton-upgrades}
 
-Chart policy behavior is unchanged. Consumers needing typed manifests should use
-their Kubernetes client's admissionregistration/v1 types. Direct chart assertions
-replace tests comparing two independent policy generators.
+For production preflight, use an operator-managed server PVC from installation and
+set `server.storage.existingClaim` to it. Keep the configuration and encryption-key
+Secrets. With those values in the deployment's values file:
 
-### 2.3. Safe singleton upgrades
-
-Production upgrades can opt into the candidate-image preflight:
-
-```bash
+```sh
 helm upgrade leitwerk oci://ghcr.io/leitwerk-dev/charts/leitwerk \
-  --version VERSION \
-  --namespace leitwerk-system \
-  --atomic --cleanup-on-fail --wait \
-  --set server.existingConfigSecret=leitwerk-config \
-  --set server.storage.existingClaim=leitwerk-server-data \
-  --set server.preflight.enabled=true
+  --version VERSION --namespace leitwerk-system \
+  -f "$DEPLOY_ROOT/values.yaml" \
+  --set server.preflight.enabled=true \
+  --atomic --cleanup-on-fail --wait
 ```
 
-Preflight requires an operator-managed configuration Secret and production
-PVC. Before cutover, a `pre-upgrade` Job runs the candidate image on the old
-server's node, mounts the PVC writable for SQLite WAL/SHM access, opens the
-database read-only, and creates a consistent online SQLite backup in scratch
-`emptyDir`. The candidate loads the real configuration and
-credential key, validates and migrates only the copy, loads extensions, starts
-a loopback HTTP listener, and checks `/api/health`. Background hooks, workers,
-and Telegram polling do not start. A failed Job is retained for logs and aborts
-the upgrade without changing the old Deployment.
+The candidate runs against an online SQLite backup in scratch storage, validates
+configuration and migrations, loads extensions, and checks a loopback listener.
+It mounts the production PVC writable for SQLite WAL/SHM access but migrates only
+the copy. It does not start background hooks, workers, or polling. A failed Job is
+retained and blocks cutover without replacing the old server.
 
-The server remains a singleton with `Recreate` strategy. A successful preflight
-is followed by a brief cutover: Kubernetes stops the old pod before starting
-the replacement. `/api/health` reports process liveness. `/api/ready` reports
-503 until startup reconciliation and all extension start hooks succeed, and
-reports 503 before shutdown begins. Atomic rollback stops a failed candidate
-before restoring the previous release, so two Telegram pollers do not overlap.
+The server Deployment uses `Recreate`, so the old Pod stops before the replacement
+starts. `/api/health` reports liveness; `/api/ready` stays 503 until reconciliation
+and start hooks succeed and becomes 503 before shutdown.
 
----
+Preflight is not a backup. Helm rollback does not reverse a schema migration made
+during the candidate's real startup. Follow [upgrade and rollback precautions](operations.md#upgrade-and-rollback).
+The example retains its chart-managed server PVC on uninstall; process-volume
+retention is a separate server policy.
 
-## 3. Worker Pod Lifecycle & Runtime Profiles
+## Worker infrastructure
 
-### 3.1. Runtime Profile Selection
-When a worker pod is launched, Leitwerk selects container images, pull policies, and resource limits using this order:
-1. Process definition override
-2. Component runtime profile
-3. `kubernetes.default_worker_runtime_profile` configured in `leitwerk.yaml`
+Runtime profile selection is process override, component requirement, then runner
+default. Conflicting component requirements fail before worker startup. Configure
+images, pull policy, and CPU/memory in `worker_runtime_profiles`; see
+[Configuration](configuration.md#worker-runtime-profiles).
 
-### 3.2. Pod Lifecycle & PVC Retention
-- **Pod Provisioning:** `ProcessVolume.ensure(instanceId, requirements)` creates the process namespace and one PVC mounted at `/state`. Docker processes select `kubernetes.docker.process_storage_class_name`; ordinary processes retain `kubernetes.process_volume.storage_class_name`.
-- **Private Docker:** A Docker process Pod receives the configured `runtimeClassName` and `hostUsers`, plus private-daemon entrypoint mode. The runner does not install or preflight the RuntimeClass, StorageClass, or node handler. Admission errors, Pod events, and the bounded startup termination message report infrastructure failures.
-- **Idle Pod Cleanup:** When a process becomes idle, the server requests worker Pod deletion and polls until GET returns 404. Only then may a replacement use the retained PVC. One bounded timeout covers DELETE, GET responses, and polling. Expiry cancels outstanding API requests and rejects replacement.
-- **Process Deletion:** Explicit process deletion (`DELETE /api/processes/:id`) removes the complete process namespace, including its PVC and ServiceAccount.
-- **Backup Boundary:** Leitwerk does not manage process-PVC backup or restoration. Server-owned durable state is its managed disaster-recovery boundary. Operators may independently snapshot or back up process PVCs and are responsible for retention and restore testing; without that protection, PVC loss can discard unpushed workspace changes and process-local tooling state.
+A process retains one PVC across worker replacement. Replacement waits for the old
+Pod to disappear before using it. Explicit process deletion removes its namespace
+and PVC; retention may also release old process storage. Leitwerk does not back up
+or restore process PVCs. See [storage protection](operations.md#what-to-protect).
 
----
+Processes requiring private Docker need operator-installed RuntimeClass, node
+runtime, and compatible storage. `kubernetes.docker` selects these resources; it
+does not install or preflight them. Use the
+[runtime canaries](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md)
+before accepting work. See [isolation constraints](security.md#2-secrets-container-isolation).
 
-## 4. Internal TLS & Git SSH Credentials
+## Internal TLS and repository access
 
-### 4.1. Internal TLS
-To encrypt server-worker WebSocket IPC traffic inside the cluster:
-- Set `internal_tls.enabled: true` in `leitwerk.yaml`.
-- Mount the cluster CA bundle and configure `kubernetes.server_ca_file`. Worker pods mount this CA via `NODE_EXTRA_CA_CERTS`.
+Internal TLS requires a certificate/key on the server, a CA trusted by workers, and
+HTTPS worker `server_url`. Set `internal_tls` in application configuration and mount
+the chart's `internalTls` Secret. `kubernetes.server_ca_file` is a server-local CA
+path copied into process namespaces.
 
-### 4.2. Repository SSH Keys
-For processes interacting with private Git repositories:
-- Store SSH private keys in a Kubernetes secret in the server namespace.
-- Server-side SSH profiles pass verified keys to workers over authenticated IPC; ambient SSH files and agents are ignored.
+The bundled gateway currently rejects `internalTls.enabled: true`. Use a compatible
+external UI/proxy arrangement if internal TLS is required; do not enable both chart
+options and expect the gateway to trust the backend automatically.
 
----
+Repository credentials are resolved by their owning server extension and delivered
+over authenticated worker IPC. Configure pinned SSH host keys or scoped HTTPS
+credentials through that extension. Ambient host SSH files and agents are not imported.
+See [Security](security.md#https-repository-authentication).
 
-## 5. Local Validation with Kind
+## Local checks with Kind
 
-To test the Kubernetes deployment locally using Kind (Kubernetes in Docker):
+Use a disposable Kind cluster, not an existing operator environment. Build and load
+both images, then override both image selections:
 
-```bash
-# 1. Create a local Kind cluster
+```sh
 kind create cluster --name leitwerk-dev
-
-# 2. Build and load container images into Kind
 docker build -f deploy/images/Dockerfile.server -t leitwerk-server:local .
 docker build -f deploy/images/Dockerfile.worker-generic -t leitwerk-worker-generic:local .
 kind load docker-image leitwerk-server:local --name leitwerk-dev
 kind load docker-image leitwerk-worker-generic:local --name leitwerk-dev
-
-# 3. Install Helm chart
-helm upgrade --install leitwerk deploy/kubernetes/helm/leitwerk \
-  --namespace leitwerk-system \
-  --create-namespace \
-  --set server.image.repository=leitwerk-server \
-  --set server.image.tag=local
 ```
+
+Create the same Secrets in that cluster, but set the application Secret's worker
+image to `leitwerk-worker-generic:local`. Install the source chart with the values
+file and `--set server.image.repository=leitwerk-server --set server.image.tag=local
+--set-string server.image.digest=`. The gateway's UI copy uses the server image.
+Verify readiness, the UI, and one worker launch before removing the disposable cluster.

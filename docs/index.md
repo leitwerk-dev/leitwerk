@@ -1,35 +1,49 @@
 # Documentation
 
-Leitwerk documentation provides complete contracts, authoring guides, and operational references for running AI coding agents. Choose your path below depending on whether you are exploring concepts, building workflows, or operating clusters.
+Leitwerk coordinates AI workflows, human decisions, and updates from connected systems.
+Start with the [overview](overview.md), or choose the task you need to complete.
 
-## 1. Explore & Understand Leitwerk
+## Start
 
-- [Introduction](introduction.md) — High-level overview, key features, and built-in showcase examples.
-- [Architecture Overview (Arc42)](arc42.md) — System goals, package boundaries, C4Context diagram, and runtime invariants.
-- [Terminology & Ubiquitous Language](ubiquitous_language.md) — Canonical definitions (`ProcessInstance`, `WorkerLease`, `Product`).
+- [Overview](overview.md) — What Leitwerk does and who does the work.
+- [Run your first process](introduction.md) — Configure a local instance and run a prompt.
 
-## 2. Build Processes & Extensions (Authoring Track)
+## Use
 
-- [Process SDK](process-sdk.md) — Build custom TypeScript processes, turn graphs, launchers, and external actions.
-- [Agent Tools & Outcomes](agent-tools.md) — Built-in primitives (`read`/`edit`), extension-authored integration tools, `ask_questions`, and outcome tools.
-- [Automated Watchers](watchers.md) — Event-driven watchers (filesystem shipped; other providers via extensions).
-- [Process Workspace](process-workspace.md) — Repository cloning, workspace layout, and skill aggregation.
-- [LLM Turns](llm-turn.md) — LLM turn execution, model selection, and turn runtime settings.
-- [Models & Providers](models.md) — Model profiles, provider extensions, and credentials.
+- [Operate a process](operator-guide.md) — Launch, review, guide, recover, and stop work.
+- [API tokens](api-tokens.md) — Authenticate HTTP clients and manage tokens.
 
-## 3. Deploy & Operate Leitwerk (Operations Track)
+## Build
 
-- [Configuration Reference](configuration.md) — `leitwerk.yaml` contract, model profiles, and environment overrides.
-- [Development Compositions](development-composition.md) — Combine this checkout with external packages, extensions, reload, and the full test gate.
-- [Server & Worker Lifecycle](server-worker-lifecycle.md) — ProcessEngine supervision, worker adoption, IPC protocol, and crash recovery.
-- [Local & Docker Deployment](docker-deployment-guide.md) — Single-machine Docker installation and local dev setup.
-- [Kubernetes Deployment Guide](kubernetes-deployment-guide.md) — Production Kubernetes runner configurations.
+- [Write your first process](first-process.md) — A complete TypeScript extension.
+- [Process SDK](process-sdk.md) — Turns, products, launchers, and compatibility contracts.
+- [Agent tools](agent-tools.md) — Workspace access, integration calls, questions, and outcomes.
+- [Watchers](watchers.md) — Start processes from external events.
+- [Extension UI renderers](extension-ui.md) — Render results inside supported UI slots.
 
-## 4. Core Specifications & Internal Contracts (Developer Track)
+## Operate
 
-- [Browser WebSocket Protocol](websocket.md) — Frame schemas, ordering, and reconnect behavior.
-- [UI Chronicle & Read Models](ui.md) — Browser state and read-model ownership.
-- [Testing Directives](testing.md) — Monorepo test layers, Vitest harnesses, and fakes.
-- [CI](ci.md) — Continuous integration and release checks.
-- [Security & Authentication](security.md) — OIDC authentication, attribution, and security boundaries.
-- [Future Work & Exclusions](future.md) — Roadmap boundaries and non-MVP features.
+- [Configuration](configuration.md) — Server, worker, and process runtime settings.
+- [Models](models.md) — Profiles, credentials, availability, and model selection.
+- [Local Docker deployment](docker-deployment-guide.md) — A loopback-only container installation.
+- [Kubernetes deployment](kubernetes-deployment-guide.md) — Helm installation and worker infrastructure.
+- [Security](security.md) — Authentication, secrets, and isolation boundaries.
+- [Backup and upgrades](operations.md) — Protect durable state and plan recovery.
+
+## Contribute
+
+- [Architecture](arc42.md) — System boundaries, constraints, and runtime relationships.
+- [Terminology](ubiquitous_language.md) — Shared names and definitions.
+- [Server and worker lifecycle](server-worker-lifecycle.md) — Acceptance, supervision, and recovery.
+- [LLM turn flow](llm-turn.md) — From worker acceptance to browser updates.
+- [Process workspace](process-workspace.md) — Repositories, resources, session trees, and retention.
+- [Browser WebSocket protocol](websocket.md) — Frames and reconnect ordering.
+- [UI contracts](ui.md) — Navigation, interaction, accessibility, and read-model behavior.
+- [Development compositions](development-composition.md) — Develop extensions with released or local core packages.
+- [Testing](testing.md) — Validation commands, test boundaries, and harness selection.
+- [CI and releases](ci.md) — Required checks and artifact publication.
+- [Future work](future.md) — Capabilities outside the supported scope.
+
+These pages describe the intended contracts for this checkout. Use documentation from the
+matching release when operating a released installation. Optional extensions own their
+provider configuration and process behavior in their package READMEs.

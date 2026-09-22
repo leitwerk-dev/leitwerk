@@ -1,0 +1,49 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  base_url: http://127.0.0.1:18080
+
+storage:
+  sqlite_path: /var/lib/leitwerk/leitwerk.sqlite
+  process_workspaces_dir: /var/lib/leitwerk/workspaces
+  tree_files_dir: /var/lib/leitwerk/trees
+
+auth:
+  enabled: false
+
+workers:
+  runner: kubernetes
+  default_runtime_profile: generic
+
+kubernetes:
+  server_namespace: leitwerk-system
+  process_namespace_prefix: leitwerk-process-
+  server_url: http://leitwerk-server.leitwerk-system.svc.cluster.local:8080
+  default_worker_runtime_profile: generic
+  worker_service_account: leitwerk-worker
+  process_volume:
+    size: 20Gi
+    access_modes: [ReadWriteOnce]
+    mount_path: /state
+
+worker_runtime_profiles:
+  generic:
+    # Replace VERSION with the same release as the chart, or use its worker digest.
+    image: ghcr.io/leitwerk-dev/leitwerk-worker-generic:VERSION
+
+pi:
+  agent_dir: /var/lib/leitwerk/pi
+  model_profiles:
+    - id: example_model
+      provider: openai
+      model_id: gpt-4o
+
+extension_loading:
+  sources:
+    - /app/extensions/models
+    - /app/extensions/showcase-processes
+
+extensions:
+  models:
+    openai:
+      api_key: env:OPENAI_API_KEY

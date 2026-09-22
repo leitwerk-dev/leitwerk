@@ -1,74 +1,24 @@
-# Development Compositions
+# Development compositions
 
-A development composition declares an extension workspace and its runtime configuration. Extension workspaces can use published npm packages without a core checkout. When a core checkout executes a composed command, it includes the workspace in source development and full validation. The manifest does not change production configuration or the public publish set.
+A composition connects an extension workspace, runtime configuration, and optional
+external test roots. It does not change production configuration or the public
+publish set.
 
-## Installed packages and optional source development
+Choose a development mode before arranging the workspace:
 
-An extension repository should declare only its own packages as npm workspaces and depend on released `@leitwerk-dev/*` packages normally. Build and TypeScript configuration should use package exports, not references into a core checkout. The committed npm lockfile records the released dependency graph.
+| Mode | Use it for | Dependencies |
+| --- | --- | --- |
+| Released packages | Normal extension development without a core checkout. | Locked npm releases. |
+| Optional local core | Develop an extension and core together. | One consistently linked local public package graph. |
+| Core-maintainer composition | Run a core checkout against a separate workspace. | Explicit composition passed to core commands. |
 
-Keep an optional core clone inside the extension repository, for example `.leitwerk-base/`. `@leitwerk-dev/dev-tools` supplies `leitwerk-dev core:use-local` to clone the matching release on first use, install its dependencies, and link the public packages into the extension workspace. Existing checkouts retain their branch and uncommitted edits. Activate the entire local public package graph consistently for runtime, types, and tests; do not mix registry copies with local SDK packages. Keep selection metadata ignored and leave the committed package manifests and release lock unchanged.
+## Released-package development
 
-`core:use-release` restores the committed npm installation and retains the checkout. Normal development commands must not clone, fetch, switch branches, or select source mode merely because a checkout exists. Each extension repository owns its own optional checkout and selection.
+An extension repository declares only its own packages as npm workspaces and depends
+on released `@leitwerk-dev/*` packages. Build and typecheck through package exports,
+not relative paths into a core checkout. Commit the npm lockfile.
 
-The runtime and extension APIs are available from installed `@leitwerk-dev/server` and `@leitwerk-dev/extension-runtime` packages. `@leitwerk-dev/ui` includes compiled UI assets. `leitwerk-dev dev` builds and watches workspace extensions, restarts the installed server after successful builds, and serves the installed UI with API/WebSocket forwarding. See the [development CLI](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md) for commands, dependency selection and repository hooks. Core source development continues to use this repository's `dev` command.
-
-Run `leitwerk-dev api:check --workspace PATH` to check the workspace's API
-classifications without a core checkout. `@public` and `@internal` both remain
-usable; the tags state the
-[SDK compatibility contract](process-sdk.md#api-compatibility).
-
-## Layout
-
-Keep the public and private repositories as siblings:
-
-```text
-checkout/
-├── leitwerk/
-└── leitwerk-private/
-    ├── package.json
-    ├── package-lock.json
-    ├── leitwerk.composition.yaml
-    ├── leitwerk.yaml
-    ├── packages/
-    ├── extensions/
-    └── tests/
-```
-
-The private root owns the composite npm lockfile. Its workspace may include sibling Leitwerk packages:
-
-```json
-{
-  "private": true,
-  "workspaces": [
-    "packages/*",
-    "extensions/*",
-    "../leitwerk/packages/*",
-    "../leitwerk/extensions/*"
-  ]
-}
-```
-
-An extension continues to own its dependencies in its own `package.json`. npm links dependency versions satisfied by a local workspace and installs all other dependencies normally.
-
-## Manifest
-
-```yaml
-version: 1
-leitwerk:
-  root: ../leitwerk
-workspace_root: .
-runtime_config: ./leitwerk.yaml
-extensions:
-  - ./extensions/example
-test_roots:
-  - ./tests
-```
-
-Paths are relative to the manifest. `leitwerk.root` is optional; when present it must identify the checkout executing the command, otherwise that checkout is used. `workspace_root` defaults to the manifest directory. `runtime_config` is required. Listed extensions can be filesystem paths or installed package names such as `@leitwerk-dev/coding`; package metadata need not be exported. They are added to the development extension catalog. Test roots contribute integration, E2E, UI integration, and `*.browser.test.ts` Playwright tests.
-
-## Commands
-
-Install `@leitwerk-dev/dev-tools` in the extension workspace and expose wrappers:
+Install `@leitwerk-dev/dev-tools` and expose command wrappers:
 
 ```json
 {
@@ -83,73 +33,138 @@ Install `@leitwerk-dev/dev-tools` in the extension workspace and expose wrappers
 }
 ```
 
-`npm ci` and `npm run dev` use released packages. `npm run core:use-local --
---revision <commit-or-tag>` explicitly selects source development. Subsequent
-commands delegate to that checkout with the composed manifest. Repository tooling
-checks can use `leitwerk:before-test`; auxiliary type builds can use
-`leitwerk:after-typecheck`. The CLI's full gate includes these hooks in both modes.
+```sh
+npm ci
+npm run dev
+```
 
-Without `--composition`, every Leitwerk command retains its public-only behavior.
-In-checkout packages share `scripts/tsup-config.ts` defaults, tracked by Turbo's global cache inputs; workspace configs retain entry points and overrides. External repositories own their build configs.
+Development builds and watches the workspace's extensions, restarts the installed
+server after successful builds, and serves the installed UI with API/WebSocket
+forwarding. `@leitwerk-dev/ui` includes the compiled assets; a core checkout is not
+required.
+
+## Optional local core
+
+Keep an optional checkout, for example `.leitwerk-base/`, inside the extension
+repository. Select source mode explicitly:
+
+```sh
+npm run core:use-local -- --revision <commit-or-tag>
+```
+
+On first use the command clones the selected core, installs it, and links its public
+packages. Existing checkouts retain their branch and uncommitted edits. Keep ignored
+selection metadata separate from committed manifests and the release lockfile.
+Do not mix local SDK packages with registry copies of the rest of the public graph.
+
+Subsequent commands delegate to the selected checkout with the composition manifest.
+Return to released dependencies with:
+
+```sh
+npm run core:use-release
+```
+
+This restores the committed installation but retains the checkout. Ordinary dev,
+build, or test commands must not clone, fetch, switch branches, or select local core
+merely because a checkout exists.
+
+## Core-maintainer composition
+
+A core checkout may execute composed commands against a sibling workspace:
+
+```text
+checkout/
+├── leitwerk/
+└── my-extensions/
+    ├── package.json
+    ├── package-lock.json
+    ├── leitwerk.composition.yaml
+    ├── leitwerk.yaml
+    ├── packages/
+    ├── extensions/
+    └── tests/
+```
+
+A deliberately composite npm workspace can include sibling core packages, but this
+is not the normal released-package layout. Its root owns that composite installation
+and lockfile. Each extension still declares its own dependencies. Do not share
+`node_modules` or build outputs between concurrent validations.
+
+### Manifest
+
+```yaml
+version: 1
+leitwerk:
+  root: ../leitwerk
+workspace_root: .
+runtime_config: ./leitwerk.yaml
+extensions:
+  - ./extensions/example
+test_roots:
+  - ./tests
+```
+
+Paths are relative to the manifest. `workspace_root` defaults to its directory;
+`runtime_config` is required. Optional `leitwerk.root` must identify the checkout
+executing the command. Extension entries may be paths or installed package names;
+package metadata need not be exported. Test roots contribute integration, E2E,
+UI integration, and `*.browser.test.ts` tests.
+
+From the core checkout:
+
+```sh
+npm run dev -- --composition=../my-extensions/leitwerk.composition.yaml
+npm run test:full -- --composition=../my-extensions/leitwerk.composition.yaml
+```
+
+Without `--composition`, core commands retain their public-only behavior. Public
+publishing and license staging never include private composed packages.
 
 ## Reload and verification
 
-Source development watches composed extension sources and private workspace package sources. Runtime changes preflight and restart the backend. Extension UI sources use the existing Vite development lane. Local workers receive the resolved composition roots so they can load extension entries from the sibling workspace. Isolated workers do not receive host development roots.
+Source development watches configured extension and workspace package sources.
+Runtime changes preflight before replacing the backend. A failed preflight leaves
+the healthy backend running. UI source changes use Vite's development path. Changes
+to configuration or extension metadata preflight and restart the development session.
 
-Composition-aware build and verification include external package builds, TypeScript projects, source aliases, unit and integration tests, private test roots, boundary checks, and dist extension catalog loading. Public publishing and public license staging never include composed packages.
+Local workers can load composed source roots. Isolated workers do not receive host
+source paths; package the required built artifacts in their images.
 
-Development, release, boundary checks, and source aliases share workspace discovery. It accepts `workspaces` arrays or `{ "packages": [...] }`, expands literal package paths and trailing `/*` patterns, and deduplicates directories containing `package.json`.
-
-### Development backend composition
-
-The source supervisor accepts `LEITWERK_DEV_BACKEND_ENTRY`, an absolute backend
-entry path, and `LEITWERK_DEV_PREFLIGHT_ENTRY`, a matching preflight entry.
-The defaults remain the normal server and preflight scripts. A custom preflight
-must validate its composition without opening the application's persistent database
-for writing. The supervisor watches the backend entry and configured extension
-sources and retains its normal graceful restart and readiness handling.
-Both backend source reload and the outer configuration/metadata reload use the
-same custom preflight entry.
-`LEITWERK_DEV_WATCH_PATHS_JSON` adds source paths as a JSON array, allowing a
-development harness outside application packages to participate in backend reloads.
-
-`LEITWERK_UI_HOST` selects the Vite development listener host; it defaults to
-`localhost`. These are development environment variables, not production server
-configuration or extension-discovery overrides.
+The composed full gate includes external builds, TypeScript, tests, boundary checks,
+and built extension loading. Repository-specific checks may use `leitwerk:before-test`
+and auxiliary type builds may use `leitwerk:after-typecheck` in either dependency mode.
+See the [development CLI](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md)
+for command and hook contracts.
 
 ### Source sandbox compositions
 
-`npm run dev:sandbox` starts the public notebook composition without provider
-credentials. `@leitwerk-dev/dev-sandbox` supplies `createSandboxApp` and the source
-launcher/reset entrypoints. A `SandboxCompositionFactory` receives isolated paths,
-mode and configured URLs, then supplies process configuration, an explicit catalog,
-scenarios, scripted Pi, controls, polling and cleanup. Adapters own their persisted
-state. Core harness code and tests import no extensions; built-in scenarios live
-in the checkout's `sandbox/` tooling.
+`npm run dev:sandbox` starts the public source sandbox without provider credentials.
+Custom compositions supply their catalog, scenarios, scripted Pi, controls, and
+provider fixtures. Keep extension behavior outside core packages.
 
-Extension workspaces can delegate to the selected public checkout's
-`scripts/sandbox/cli.ts` with their composition entry and workspace root. Keep the
-existing npm release pins until adopting the containing release. This phase
-supports source development only; an installed package does not contain the
-supervisor, UI source or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
-and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md).
+The source sandbox requires a core checkout; installed packages do not include its
+supervisor, UI source, or built-in scenarios. Follow the
+[sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
+and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md)
+for custom backend composition, startup, and reset. Those guides own the sandbox's
+specialized entry-point options.
 
 ### Portable API evidence
 
-After a successful composed build, generate reports explicitly:
+After a composed build, generate reports explicitly:
 
 ```sh
 npm run api:report -- --built --composition /path/to/leitwerk.composition.yaml
 ```
 
-The generator reuses composition package and test-root discovery. It does not switch
-selected dependencies or modify composition repositories. Builds do not generate
-reports automatically. Consumers can run the installed development-tools
-`leitwerk-dev api:report --usage-only` command, or invoke a local checkout with
-`npm --prefix /path/to/leitwerk run api:report -- --workspace /path/to/consumer --usage-only`.
+Report generation does not switch dependencies or modify composition repositories.
+Builds do not generate reports automatically. Installed consumers can run
+`leitwerk-dev api:report --usage-only` instead.
 
-Collect `catalog.json` and `usage-*.json` in the main checkout's ignored
-`.leitwerk/api-explorer/reports/` directory, or choose `--output-dir` explicitly.
-The API explorer accepts only `--reports-dir`; it does not discover compositions,
-build packages, or access originating source directories. See the
-[development-tools report contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#portable-api-reports).
+Collect `catalog.json` and `usage-*.json` in the ignored
+`.leitwerk/api-explorer/reports/` directory, or select `--output-dir`. The read-only
+explorer accepts `--reports-dir`; it does not discover compositions or build packages.
+See the [report contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#portable-api-reports).
+
+Use `leitwerk-dev api:check --workspace PATH` for API classification checks without
+a core checkout. See [SDK compatibility](process-sdk.md#api-compatibility).
