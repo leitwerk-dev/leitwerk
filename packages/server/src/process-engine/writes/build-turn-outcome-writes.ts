@@ -1,4 +1,6 @@
 import type { ProcessInstance, ProcessProject, TurnOutcomePayload } from "@leitwerk-dev/domain";
+import { SafeOutcomePlanningError } from "@leitwerk-dev/process-sdk";
+import type { RepositoryBundle } from "../../db/repositories.js";
 import {
 	checkTurnOutcomeAvailability,
 	validateTurnOutcome,
@@ -37,24 +39,42 @@ async function buildProcessTurnOutcomeEffectWrites(
 	payload: TurnOutcomePayload,
 	processActionRegistry: ProcessActionRegistry,
 	turnRecords: TurnRecordMarkdownLookup,
+	events?: Pick<RepositoryBundle, "events">["events"],
 ): Promise<WriteBuildResult> {
 	const serverDef = processActionRegistry.getServerDefinition(process.processId);
 	const handlers = serverDef?.turnOutcomeHandlers.get(payload.turnId) ?? [];
 
 	const { params, state } = processActionRegistry.resolveContextData(process.processId, process);
 	const plan = createProcessPlanCollector({ process, projects, params, state, turnRecords });
+	const preparationEvent = events
+		?.listByInstanceTurnRecordEventTypes(process.id, payload.turnRecordId, ["turn.prepared"])
+		.at(-1);
+	const prepared =
+		preparationEvent?.data &&
+		typeof preparationEvent.data === "object" &&
+		"data" in preparationEvent.data
+			? preparationEvent.data.data
+			: undefined;
 
 	for (const handler of handlers) {
-		await handler(
-			{
-				turnRecordId: payload.turnRecordId,
-				turnId: payload.turnId,
-				outcome: payload.outcome,
-				params: payload.params ?? {},
-				turnResultMarkdown: payload.turnResultMarkdown ?? null,
-			},
-			plan.context,
-		);
+		try {
+			await handler(
+				{
+					turnRecordId: payload.turnRecordId,
+					turnId: payload.turnId,
+					outcome: payload.outcome,
+					params: payload.params ?? {},
+					turnResultMarkdown: payload.turnResultMarkdown ?? null,
+					...(prepared !== undefined ? { prepared } : {}),
+				},
+				plan.context,
+			);
+		} catch (error) {
+			if (error instanceof SafeOutcomePlanningError) {
+				return { ok: false, code: error.code, message: error.message };
+			}
+			throw error;
+		}
 	}
 
 	for (const queuedInput of plan.queuedInputs) {
@@ -102,6 +122,8 @@ export interface TurnOutcomePlanningInput {
 	processGraphs: ProcessGraphRegistry;
 	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
+	/** @internal */
+	events?: Pick<RepositoryBundle, "events">["events"];
 }
 
 /** @internal */
@@ -159,6 +181,7 @@ export async function buildTurnOutcomeWrites(
 		input.payload,
 		input.processActionRegistry,
 		input.turnRecords,
+		input.events,
 	);
 	if (isWriteBuildFailure(effectWrites)) {
 		return effectWrites;

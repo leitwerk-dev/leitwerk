@@ -3,6 +3,7 @@ import {
 	type createServerProcessBuilder,
 	flow,
 	type ProcessGraphView,
+	SafeOutcomePlanningError,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
@@ -121,6 +122,12 @@ function createAgent(overrides: Partial<ProcessInstance> = {}): {
 describe("buildTurnOutcomeWrites", () => {
 	it("plans generate_plan.plan_saved from process turn outcome handlers", async () => {
 		const { deps, process } = createAgent();
+		const prepared = { evidence: ["ev-1"] };
+		deps.events.create({
+			instanceId: process.id,
+			eventType: "turn.prepared",
+			data: { turnRecordId: "trn_plan_1", data: prepared },
+		});
 		const registry = buildProcessActionRegistry({
 			processes: new Map([
 				[
@@ -130,6 +137,7 @@ describe("buildTurnOutcomeWrites", () => {
 							if (event.outcome !== "plan_saved") {
 								return;
 							}
+							expect(event.prepared).toEqual(prepared);
 							await ctx.transition({
 								turnId: "plan_review",
 								lifecycleStatus: "waiting",
@@ -174,6 +182,7 @@ describe("buildTurnOutcomeWrites", () => {
 			process,
 			projects: [],
 			turnRecords: deps.turnRecords,
+			events: deps.events,
 			processGraphs,
 			payload: {
 				instanceId: process.id,
@@ -518,5 +527,48 @@ describe("buildTurnOutcomeWrites", () => {
 			}),
 		});
 		expect(planned.changedFields).toEqual(expect.arrayContaining(["stateJson", "selectedTurnId"]));
+	});
+
+	it("returns safe outcome-planning failures without reducing them to operation_failed", async () => {
+		const { deps, process } = createAgent();
+		const registry = buildProcessActionRegistry({
+			processes: new Map([
+				[
+					"ticket_issue_process",
+					makeProcess((api) => {
+						api.onTurnOutcome("generate_plan", () => {
+							throw new SafeOutcomePlanningError(
+								"invalid_candidates",
+								"Candidate evidence is invalid",
+							);
+						});
+					}),
+				],
+			]),
+		});
+		const planned = await buildTurnOutcomeWrites({
+			process,
+			projects: [],
+			turnRecords: deps.turnRecords,
+			processGraphs,
+			payload: {
+				instanceId: process.id,
+				turnRecordId: "trn_plan_1",
+				turnId: "generate_plan",
+				turnType: "llm",
+				outcome: "plan_saved",
+				params: {
+					planMarkdown: "## Plan",
+					acceptanceCriteria: ["A"],
+					summary: "Initial plan",
+				},
+			},
+			processActionRegistry: registry,
+		});
+		expect(planned).toEqual({
+			ok: false,
+			code: "invalid_candidates",
+			message: "Candidate evidence is invalid",
+		});
 	});
 });

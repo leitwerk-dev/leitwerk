@@ -131,7 +131,13 @@ function validateOutcomeTurnResultContract<TParams = unknown, TState = unknown>(
 }
 
 function isValidOutcomeToolArrayItemType(type: unknown): boolean {
-	return type === "string" || type === "number" || type === "boolean" || type === "object";
+	return (
+		type === "string" ||
+		type === "number" ||
+		type === "boolean" ||
+		type === "object" ||
+		type === "array"
+	);
 }
 
 function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(

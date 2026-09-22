@@ -425,6 +425,21 @@ export interface ProcessTurnOutcomeEvent {
 	params: Record<string, unknown>;
 	/** @internal */
 	turnResultMarkdown?: string | null;
+	/** Durable output produced by this turn's preparation phase. @public */
+	prepared?: unknown;
+}
+
+/** Expected outcome-planning rejection safe to persist and show to operators. @public */
+export class SafeOutcomePlanningError extends Error {
+	/** @public */
+	constructor(
+		/** Stable machine-readable failure code. @public */
+		readonly code: string,
+		message: string,
+	) {
+		super(message);
+		this.name = "SafeOutcomePlanningError";
+	}
 }
 
 /** @internal */

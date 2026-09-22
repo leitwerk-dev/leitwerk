@@ -132,7 +132,11 @@ export type {
 	WorkerRunHandle,
 	WorkerTurnHandler,
 } from "./extension-api.js";
-export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
+export {
+	findUiLauncherById,
+	SafeLaunchPreparationError,
+	SafeOutcomePlanningError,
+} from "./extension-api.js";
 export { defineExternalActionSource } from "./external-action-source.js";
 export {
 	createExternalSourcePollReporter,
@@ -299,6 +303,7 @@ export {
 } from "./turn-semantics.js";
 export type {
 	EventBus,
+	OutcomeToolArrayItemSpec,
 	OutcomeToolParameterSpec,
 	OutcomeToolSpec,
 	PiCustomMessageInput,

@@ -664,9 +664,9 @@ interface ParameterOptions extends Partial<Omit<OutcomeToolParameterSpec, "type"
 	requiredErrorCode?: string;
 }
 
-/** @internal */
+/** @public */
 interface ArrayParameterOptions extends ParameterOptions {
-	/** @internal */
+	/** @public */
 	items?: OutcomeToolParameterSpec["items"];
 }
 
@@ -846,6 +846,11 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	/** @internal */
 	array(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", options);
+	}
+
+	/** @public */
+	requiredArray(name: string, options: string | ArrayParameterOptions = {}): this {
+		return this.typedParameter(name, "array", this.withRequired(name, options));
 	}
 }
 

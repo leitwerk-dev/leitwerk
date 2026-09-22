@@ -353,6 +353,7 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			projects,
 			payload,
 			turnRecords: ctx.deps.turnRecords,
+			events: ctx.deps.events,
 			processGraphs: ctx.deps.processGraphs,
 			processActionRegistry,
 		});
