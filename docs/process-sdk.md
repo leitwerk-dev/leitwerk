@@ -470,6 +470,20 @@ facts. Invalid or failing optional event descriptions are omitted; they do not b
 
 Trusted Git calls use `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`. Ordinary tool commands use `sanitizeWorkerSubprocessEnv()`, which removes internal helper references, Git credential configuration, askpass/SSH agent variables and server token, API-key, password and secret variables. Credentials must never enter process params, state, projects or session trees.
 
+## Testing process definitions
+
+Use the supported [extension testing harnesses](testing.md#extension-testing) to
+inspect descriptions, evaluate handlers with independent fixtures, and execute
+server/worker behavior. Extension tests should assert observations instead of
+constructing SDK contexts or inspecting handler registries. Keep prompt and state
+helper tests in the extension that owns those helpers.
+
+Startup compatibility migrations can rewrite encoded process params through
+the server-setup capability’s `processes.update(instanceId, { paramsJson })`
+method, alongside persisted state and position. Run
+such migrations during extension setup, before background services start.
+Use codec parsing to validate compatibility before writing.
+
 ## Typed external writes
 
 `ctx.externalWrites.ensure(identity, operation)` returns the remote value after

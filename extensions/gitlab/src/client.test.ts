@@ -1,6 +1,6 @@
-import { bindExternalWrites } from "@leitwerk-dev/external-writes/internal";
-import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
-import { describe, expect, it, vi } from "vitest";
+import type { ExternalWrites } from "@leitwerk-dev/external-writes";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	GitLabClient,
 	type GitLabClientLike,
@@ -13,6 +13,26 @@ import {
 import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
 import { ensureGitLabComment, ensureGitLabSeenReaction } from "./tools.js";
+
+async function writeHarness(execute: (writes: ExternalWrites) => Promise<unknown>) {
+	const harness = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "gitlab-write-test", version: "1" },
+				setupServer(api) {
+					api.tool({
+						name: "write",
+						description: "Exercise the GitLab write boundary",
+						parameters: {},
+						execute: (ctx) => execute(ctx.externalWrites),
+					});
+				},
+			},
+		],
+	});
+	onTestFinished(() => harness.close());
+	return harness;
+}
 
 const profile = { baseUrl: "https://forge.test", token: "secret-token" };
 const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => ({
@@ -78,20 +98,18 @@ describe("GitLab boundary", () => {
 		});
 		const input = {
 			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
-			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
 			instanceId: "process",
 			projectId: 7,
 			iid: 1,
 			noteId: 42,
 		};
-		await ensureGitLabSeenReaction(input);
+		const harness = await writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
+		await harness.callTool("write", {});
 		const reads = request.mock.calls.length;
-		await ensureGitLabSeenReaction(input);
+		await harness.callTool("write", {});
 		expect(request).toHaveBeenCalledTimes(reads + 2);
-		await ensureGitLabSeenReaction({
-			...input,
-			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
-		});
+		const reopened = await writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
+		await reopened.callTool("write", {});
 		expect(posts).toBe(1);
 		expect(reactions).toHaveLength(2);
 	});
@@ -116,7 +134,6 @@ describe("GitLab boundary", () => {
 		});
 		const input = {
 			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
-			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
 			instanceId: "process",
 			projectId: 7,
 			iid: 1,
@@ -124,13 +141,13 @@ describe("GitLab boundary", () => {
 			writeKey: "feedback:42",
 			body: "Addressed in commit abc; CI passed.",
 		};
-		const first = await ensureGitLabComment(input);
-		expect(notes[0]?.body).toContain(first.marker);
-		await ensureGitLabComment(input);
-		await ensureGitLabComment({
-			...input,
-			writes: bindExternalWrites(createInMemoryExternalWriteLog(), "process"),
-		});
+		const harness = await writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
+		const first = await harness.callTool("write", {});
+		expect(first).toMatchObject({ marker: expect.any(String) });
+		expect(notes[0]?.body).toContain((first as { marker: string }).marker);
+		await harness.callTool("write", {});
+		const reopened = await writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
+		await reopened.callTool("write", {});
 		expect(posts).toBe(1);
 	});
 	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {

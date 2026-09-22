@@ -1,9 +1,9 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import codingExtension, { codingActionIds } from "@leitwerk-dev/coding";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	FORGEJO_ISSUE_CANCELLED_KIND,
 	FORGEJO_PR_CONFLICT_KIND,
@@ -16,23 +16,19 @@ import {
 } from "@leitwerk-dev/forgejo";
 import { LocalForgejoAdapter } from "@leitwerk-dev/forgejo/testing";
 import gitSshExtension from "@leitwerk-dev/git-ssh";
-import type { CoreServerSetupDeps, LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import {
-	createPollingTestExtension,
-	fixtureModelProviders,
-	postImmediateLaunch,
-} from "@leitwerk-dev/test-support";
+	type CoreServerSetupDeps,
+	coreHostCapabilities,
+	type LeitwerkExtensionModule,
+} from "@leitwerk-dev/process-sdk";
+import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
-	createPersistentIntegrationFixture,
-	createProcessDriver,
-	type IntegrationHarness,
+	createExtensionIntegrationHarness,
+	type ExtensionIntegrationHarness,
+	type ExtensionIntegrationHarnessOptions,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import { type createTestDiagnostics, LocalGit } from "@leitwerk-dev/test-support/local-git";
-import {
-	createInProcessWorkerSpawn,
-	StubPiTreeHandleFactory,
-} from "@leitwerk-dev/test-support/worker-testing";
+import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import {
 	setupWoodpeckerIntegration,
 	WOODPECKER_PIPELINE_KIND,
@@ -250,20 +246,6 @@ export interface PiTurnRecord {
 	toolNames: readonly string[];
 }
 
-function treeText(factory: StubPiTreeHandleFactory): string {
-	const session = factory.sessions.at(-1);
-	if (!session) return "";
-	return session
-		.getBranch()
-		.map((entry) => {
-			if (entry.type === "custom_message") return entry.content;
-			if (entry.type === "message" && entry.message) return entry.message.content;
-			return "";
-		})
-		.filter((value): value is string => typeof value === "string")
-		.join("\n\n");
-}
-
 interface PiFixtureOptions {
 	ciRepairBlockedOnce?: boolean;
 	feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready";
@@ -274,17 +256,16 @@ function markdownCall(toolName: string, markdown: string) {
 	return { toolName, args: { markdown } };
 }
 
-function createPiFactory(
+function createScript(
 	records: PiTurnRecord[],
-	git: LocalGit,
 	options: PiFixtureOptions = {},
-): StubPiTreeHandleFactory {
+): NonNullable<ExtensionIntegrationHarnessOptions["script"]> {
 	const { ciRepairBlockedOnce = false, feedbackOutcome, ciRestart = false } = options;
-	const factory = new StubPiTreeHandleFactory({
-		recordSessionTrace: true,
-		toolCallScriptResolver({ tools, promptText, sessionCwd, workspaceRoot }) {
-			const cwd = sessionCwd ?? workspaceRoot;
+	return (_id, promptText, observation) => {
+		const { tools, cwd, branchId: sessionId } = observation;
+		const legacyScript = () => {
 			if (!cwd) throw new Error("Fixture Pi session has no workspace cwd");
+			const git = new LocalGit(path.dirname(cwd));
 			const replaceWorkspaceText = (relativePath: string, oldText: string, newText: string) => {
 				const filePath = path.join(cwd, relativePath);
 				const current = readFileSync(filePath, "utf8");
@@ -295,8 +276,7 @@ function createPiFactory(
 			};
 			const toolNames = tools.map((tool) => tool.name);
 			const names = new Set(toolNames);
-			const prompt = [treeText(factory), promptText].filter(Boolean).join("\n\n");
-			const sessionId = factory.sessions.at(-1)?.sessionId;
+			const prompt = [observation.history, promptText].filter(Boolean).join("\n\n");
 			if (!sessionId) throw new Error("Pi resolver ran without a fixture session");
 
 			if (names.has("plan_saved")) {
@@ -447,9 +427,14 @@ function createPiFactory(
 			}
 
 			throw new Error(`Unexpected fixture Pi turn with tools: ${toolNames.join(", ")}`);
-		},
-	});
-	return factory;
+		};
+		const result = legacyScript();
+		const calls = "calls" in result ? result.calls : [result];
+		return {
+			tools: calls.map((call) => ({ name: call.toolName, arguments: call.args })),
+			thinking: "thinkingChunks" in result ? result.thinkingChunks : undefined,
+		};
+	};
 }
 
 const fixtureModelProviderExtension: LeitwerkExtensionModule = {
@@ -474,23 +459,25 @@ export async function createRemoteRepoChangeFixture(
 	options: PiFixtureOptions & {
 		docker?: boolean;
 		botLogin?: string;
-		diagnostics?: ReturnType<typeof createTestDiagnostics>;
 		seed?: TemporaryGitRemote;
 	} = {},
 ) {
-	const trace = options.diagnostics;
-	const persistent = createPersistentIntegrationFixture(FIXTURE_PREFIX);
-	const { root } = persistent;
-	const close = persistent.dispose;
+	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
+	let harness: ExtensionIntegrationHarness | undefined;
+	const close = async () => {
+		try {
+			await harness?.close();
+		} finally {
+			await rm(root, { recursive: true, force: true });
+		}
+	};
 
 	try {
-		trace?.mark("fixture.git.start");
 		const temporaryGit = new TemporaryGitRemote(root, options.seed);
-		trace?.mark("fixture.git.end");
 		let forgejo = forgejoFixture(temporaryGit, options.botLogin);
 		let woodpecker = woodpeckerFixture(root);
 		const piTurns: PiTurnRecord[] = [];
-		let piFactory = createPiFactory(piTurns, temporaryGit.local, options);
+		const script = createScript(piTurns, options);
 		let pollTime = Date.now();
 		const forgejoProvider = createPollingTestExtension({ id: "forgejo", version: "1.0.0" }, (api) =>
 			setupForgejoIntegration(
@@ -515,102 +502,97 @@ export async function createRemoteRepoChangeFixture(
 			return result;
 		}
 
-		let generation = 0;
-		async function start(retainedConfig?: IntegrationHarness["config"]) {
-			const appGeneration = ++generation;
-			trace?.mark("fixture.app.start", { appGeneration });
-			const extensionCatalog = await buildExtensionCatalogFromModules([
+		let sources: CoreServerSetupDeps["externalSources"] | undefined;
+		let legacySetup: { id: string; issueOrigin: boolean } | undefined;
+		const extensionConfig = {
+			"git-ssh": {
+				credentials: {
+					[PROFILE]: { private_key: privateKey, known_hosts: "forgejo.example ssh-ed25519 AAAA" },
+				},
+			},
+		};
+		harness = await createExtensionIntegrationHarness({
+			polling: "manual",
+			extensions: [
 				codingExtension,
 				gitSshExtension,
 				forgejoProvider,
 				woodpeckerProvider,
 				createForgejoRepoChange({ docker: options.docker ?? true }).extension,
 				fixtureModelProviderExtension,
-			]);
-
-			await mkdir(path.join(root, "trees"), { recursive: true });
-			await mkdir(path.join(root, "workspaces"), { recursive: true });
-			const spawn = createInProcessWorkerSpawn({
-				extensionCatalog,
-				piFactory,
-				onConnectionDiagnostic: (event) =>
-					trace?.mark("worker.connection", { appGeneration, ...event }),
-			});
-			const tracedSpawn: typeof spawn = (...args) => {
-				const child = spawn(...args);
-				const env = args[2]?.env;
-				const identity = {
-					appGeneration,
-					workerId: env?.LEITWERK_WORKER_ID,
-					instanceId: env?.LEITWERK_INSTANCE_ID,
-					pid: child.pid,
-				};
-				trace?.mark("worker.spawn", identity);
-				child.on("exit", (code, signal) =>
-					trace?.mark("worker.exit", { ...identity, code, signal }),
-				);
-				const kill = child.kill.bind(child);
-				child.kill = (signal) => {
-					trace?.mark("worker.kill", { ...identity, signal });
-					return kill(signal);
-				};
-				return child;
-			};
-			const result = await persistent.open({
-				// This fixture advances each provider poll explicitly.
-				backgroundServices: retainedConfig !== undefined,
-				config: retainedConfig,
-				extensionCatalog,
-				appOverrides: {
-					// This fixture simulates worker tools; live Docker is covered by the opt-in runtime gate.
-					localWorkerDockerPreflightImpl: dockerPreflight,
-					localWorkerSpawnImpl: trace ? tracedSpawn : spawn,
+				{
+					manifest: { id: "remote-change-observation", version: "1" },
+					setupServer(api) {
+						const deps = api.get(coreHostCapabilities.serverSetup);
+						if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
+						sources = deps.externalSources;
+						if (legacySetup) {
+							const retained = deps.processes
+								.listAll()
+								.find((process) => process.id === legacySetup?.id);
+							if (!retained) throw new Error("Missing retained process");
+							const params = JSON.parse(retained.paramsJson ?? "{}");
+							if (legacySetup.issueOrigin) delete params.origin;
+							deps.processes.update(retained.id, { paramsJson: JSON.stringify(params) });
+							const project = deps.projects.listByInstance(retained.id)[0];
+							if (!project) throw new Error("Missing retained project");
+							const metadata = { ...project.metadata };
+							delete metadata.woodpecker;
+							metadata.forgejo = {
+								owner: params.owner,
+								repo: params.repo,
+								...(legacySetup.issueOrigin ? { issueNumber: params.issueNumber } : {}),
+							};
+							deps.projects.update(project.id, { metadata });
+							legacySetup = undefined;
+						}
+					},
 				},
-				configOverride(config) {
-					if (retainedConfig) return;
-					if (!config.local_worker) throw new Error("Fixture requires local worker configuration");
-					config.local_worker.allow_host_docker = options.docker ?? true;
-					config.pi.model_profiles = [
-						{
-							id: MODEL_PROFILE_ID,
-							provider: "remote-change-fixture-provider",
-							model_id: "fixture-model",
-							thinking_level: "off",
-						},
-					];
-					config.pi.process_title_generation.model_profile = MODEL_PROFILE_ID;
-					config.process_configs = {
-						[PROCESS_ID]: {
-							default_model_profile: MODEL_PROFILE_ID,
-							turn_configs: {},
-							watchers: {
-								use_leitwerk: {
-									enabled: true,
-									profile: PROFILE,
-									poll_interval: "30s",
-									labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
-								},
-							},
-						},
-					};
-					config.extensions["git-ssh"] = {
-						credentials: {
-							[PROFILE]: {
-								private_key: privateKey,
-								known_hosts: "forgejo.example ssh-ed25519 AAAA",
-							},
-						},
-					};
+			],
+			extensionConfig,
+			models: [
+				{
+					id: MODEL_PROFILE_ID,
+					provider: "remote-change-fixture-provider",
+					modelId: "fixture-model",
 				},
-			});
-			trace?.mark("fixture.app.ready", { appGeneration, address: result.address });
-			return result;
-		}
-		let harness = await start();
-		const { action, wait, waitForProcess } = createProcessDriver(() => harness.ctx);
+			],
+			defaultModel: MODEL_PROFILE_ID,
+			watchers: {
+				[PROCESS_ID]: {
+					use_leitwerk: {
+						enabled: true,
+						profile: PROFILE,
+						poll_interval: "30s",
+						labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
+					},
+				},
+			},
+			hostDocker: { preflight: dockerPreflight },
+			script,
+		});
+		const test = harness;
+		const action = (id: string, actionId: string, input: Record<string, unknown> = {}) =>
+			test.process(id).action(actionId, input);
+		const wait = async (id: string, turn: string | null, status = "waiting") =>
+			(
+				await test.process(id).waitFor((snapshot) => {
+					if (snapshot.process.lifecycleStatus === "error" && status !== "error")
+						throw new Error(snapshot.turns.at(-1)?.errorSummary ?? "Start failed");
+					return (
+						snapshot.process.selectedTurnId === turn && snapshot.process.lifecycleStatus === status
+					);
+				})
+			).process;
+		const waitForProcess = async (
+			id: string,
+			condition: (process: ProcessInstance) => boolean,
+			description: string,
+		) =>
+			(await test.process(id).waitFor((snapshot) => condition(snapshot.process), { description }))
+				.process;
 		const subscriptions = (id: string) => {
-			const sources = harness.ctx.deps
-				.externalSourceService as CoreServerSetupDeps["externalSources"];
+			if (!sources) throw new Error("Missing source observations");
 			return [
 				WOODPECKER_PIPELINE_KIND,
 				FORGEJO_PR_TERMINAL_KIND,
@@ -643,9 +625,7 @@ export async function createRemoteRepoChangeFixture(
 			return process;
 		};
 		return {
-			get harness() {
-				return harness;
-			},
+			harness: test,
 			get forgejo() {
 				return forgejo;
 			},
@@ -653,42 +633,30 @@ export async function createRemoteRepoChangeFixture(
 				return woodpecker;
 			},
 			git: temporaryGit,
-			get piFactory() {
-				return piFactory;
-			},
 			subscriptions,
-			async restart(whileStopped?: () => Promise<void>) {
-				const config = harness.config;
-				await persistent.close();
-				await whileStopped?.();
-				forgejo = forgejoFixture(temporaryGit, options.botLogin);
-				woodpecker = woodpeckerFixture(root);
-				piFactory = createPiFactory(piTurns, temporaryGit.local, options);
-				harness = await start(config);
+			prepareLegacyBindings(id: string, issueOrigin: boolean) {
+				legacySetup = { id, issueOrigin };
+			},
+			async restart(whileStopped?: () => Promise<void>, config?: Record<string, unknown>) {
+				await test.restart({
+					extensionConfig: config ? { ...extensionConfig, ...config } : undefined,
+					whileStopped: async () => {
+						await whileStopped?.();
+						forgejo = forgejoFixture(temporaryGit, options.botLogin);
+						woodpecker = woodpeckerFixture(root);
+					},
+				});
 			},
 			piTurns: piTurns as readonly PiTurnRecord[],
 			root,
 			async launchTicketlessChange(prompt: string, extraInput: Record<string, unknown> = {}) {
-				const response = await postImmediateLaunch(
-					harness.address,
-					"forgejo_repo_change_process.ui_launcher",
-					{
-						launcherInput: {
-							forgejoProfile: PROFILE,
-							repository: `${OWNER}/${REPO}`,
-							prompt,
-							...extraInput,
-						},
-					},
-				);
-				if (response.status !== 201) {
-					throw new Error(
-						`Ticketless launch failed with ${response.status}: ${await response.text()}`,
-					);
-				}
-				const body = (await response.json()) as { process?: { id?: string } };
-				const instanceId = body.process?.id;
-				if (!instanceId) throw new Error("Ticketless launch did not return a process id");
+				const launched = await test.launch("forgejo_repo_change_process.ui_launcher", {
+					forgejoProfile: PROFILE,
+					repository: `${OWNER}/${REPO}`,
+					prompt,
+					...extraInput,
+				});
+				const instanceId = launched.snapshot().process.id;
 				await waitForTurn(instanceId, "plan_decision");
 				return instanceId;
 			},
@@ -701,10 +669,7 @@ export async function createRemoteRepoChangeFixture(
 					);
 				}
 				const launched = await waitForValue(
-					() =>
-						harness.ctx.deps.processes
-							.listAll()
-							.filter((process) => process.processId === PROCESS_ID),
+					() => test.processes().filter((process) => process.processId === PROCESS_ID),
 					(processes) => processes.length === 1,
 					12_000,
 				);
@@ -760,10 +725,12 @@ export async function createRemoteRepoChangeFixture(
 			},
 			async markPullRequestMerged() {
 				forgejo.markPullRequestMerged();
+				pollTime += 60_000;
 				await forgejoProvider.poll();
 			},
 			async markPullRequestClosed() {
 				forgejo.markPullRequestClosed();
+				pollTime += 60_000;
 				await forgejoProvider.poll();
 			},
 			async removeSourceTrigger() {

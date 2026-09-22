@@ -384,8 +384,7 @@ export class TelegramBridge {
 		const on = <K extends keyof ServerExtensionEventMap & string>(
 			event: K,
 			handler: (payload: ServerExtensionEventMap[K]) => Promise<void>,
-		) =>
-			events.on(event, (payload) => void this.enqueue(payload.instanceId, () => handler(payload)));
+		) => events.on(event, (payload) => this.enqueue(payload.instanceId, () => handler(payload)));
 		on("process_created", (payload) => this.onProcessCreated(payload));
 		on("process_updated", (payload) => this.onProcessUpdated(payload));
 		on("turn_started", (payload) => this.onTurnStarted(payload.turnRecord));

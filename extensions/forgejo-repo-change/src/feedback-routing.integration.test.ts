@@ -30,14 +30,14 @@ it.each([
 			feedbackIds: [{ kind: "conversation", id: feedback.id }],
 		});
 		expect(fixture.forgejo.replies).toHaveLength(0);
-		const turns = fixture.harness.ctx.deps.turnRecords.listByInstance(id);
-		const writes = fixture.harness.ctx.deps.externalWrites.listByInstance(id);
+		const turns = fixture.harness.process(id).snapshot().turns;
+		const writes = fixture.harness.process(id).snapshot().writeReceipts;
 		await fixture.restart();
 		const reopened = await fixture.waitForTurn(id, "ci_operator_action");
 		expect(reopened.stateJson).toBe(blocked.stateJson);
 		expect(fixture.subscriptions(id)).toEqual([]);
-		expect(fixture.harness.ctx.deps.turnRecords.listByInstance(id)).toEqual(turns);
-		expect(fixture.harness.ctx.deps.externalWrites.listByInstance(id)).toEqual(writes);
+		expect(fixture.harness.process(id).snapshot().turns).toEqual(turns);
+		expect(fixture.harness.process(id).snapshot().writeReceipts).toEqual(writes);
 		await fixture.action(id, "resume_waiting");
 	} else {
 		await waitForValue(

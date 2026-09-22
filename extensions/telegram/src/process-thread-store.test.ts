@@ -1,5 +1,5 @@
 import type { ProcessEvent, ProcessInstance } from "@leitwerk-dev/domain";
-import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
+import { createProcessFixture } from "@leitwerk-dev/test-support/fixtures";
 import { describe, expect, it } from "vitest";
 import { ProcessThreadStore, TELEGRAM_THREAD_LINKED_EVENT } from "./process-thread-store.js";
 
@@ -74,7 +74,7 @@ function createStoreHarness(input: {
 
 describe("ProcessThreadStore", () => {
 	it("rebuilds the latest persisted process-topic mapping", () => {
-		const process = createTestProcessInstance({ id: "agt_1" });
+		const process = createProcessFixture({ id: "agt_1" });
 		const { store } = createStoreHarness({
 			processes: [process],
 			events: [
@@ -90,7 +90,7 @@ describe("ProcessThreadStore", () => {
 	});
 
 	it("rebuilds mappings that are older than the generic process-event window", () => {
-		const process = createTestProcessInstance({ id: "agt_many_events" });
+		const process = createProcessFixture({ id: "agt_many_events" });
 		const noise = Array.from({ length: 10_050 }, (_, index) =>
 			event({
 				instanceId: process.id,
@@ -110,7 +110,7 @@ describe("ProcessThreadStore", () => {
 	});
 
 	it("removes stale thread routing when a process is re-linked", () => {
-		const process = createTestProcessInstance({ id: "agt_4" });
+		const process = createProcessFixture({ id: "agt_4" });
 		const { store } = createStoreHarness({ processes: [process], events: [] });
 
 		store.record(process, {

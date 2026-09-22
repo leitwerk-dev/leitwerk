@@ -81,6 +81,8 @@ export interface WorkerRuntimeAdapters {
 	scheduler: WorkerRuntimeScheduler;
 	/** @internal */
 	exit(code: number): void;
+	/** Internal test seam; pauses before bootstrap and worker acceptance. @internal */
+	beforeTurnBootstrap?(turnId: string): Promise<void>;
 	/** @internal */
 	stderr?: NodeJS.WritableStream;
 	/** @internal */

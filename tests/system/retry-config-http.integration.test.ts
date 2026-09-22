@@ -1,7 +1,7 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import type { AppContext } from "@leitwerk-dev/server";
-import { postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
+import { postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -227,15 +227,12 @@ describe("GET /api/processes/:instanceId/retry-config", () => {
 					sourceRevision: null,
 				},
 			]);
-			const launched = await postImmediateLaunchRequest(
-				`${harness.address}/api/launchers/retry_config_test_process.primary_ui/launch-runs`,
+			const launched = await postImmediateLaunch(
+				harness.address,
+				"retry_config_test_process.primary_ui",
 				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						launcherInput: { repoPath: "/original/repo", branch: "feature/original" },
-						skillIds: ["review-draft"],
-					}),
+					launcherInput: { repoPath: "/original/repo", branch: "feature/original" },
+					skillIds: ["review-draft"],
 				},
 			);
 			expect(launched.status).toBe(201);
