@@ -14,7 +14,6 @@ export default extension;
 export {
 	acceptReviewForm,
 	codingActionIds,
-	createFinalizeChangeForm,
 	requestReviewChangesForm,
 	requestRevisionForm,
 } from "./actions.js";

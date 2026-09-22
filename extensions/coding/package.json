@@ -39,6 +39,26 @@
 			"source": "./src/repository-change-launch.ts",
 			"import": "./dist/repository-change-launch.js",
 			"types": "./dist/repository-change-launch.d.ts"
+		},
+		"./turns/implement": {
+			"source": "./src/turns/implement.ts",
+			"import": "./dist/turns/implement.js",
+			"types": "./dist/turns/implement.d.ts"
+		},
+		"./turns/review-implementation": {
+			"source": "./src/turns/review-implementation.ts",
+			"import": "./dist/turns/review-implementation.js",
+			"types": "./dist/turns/review-implementation.d.ts"
+		},
+		"./turns/simplify-implementation": {
+			"source": "./src/turns/simplify-implementation.ts",
+			"import": "./dist/turns/simplify-implementation.js",
+			"types": "./dist/turns/simplify-implementation.d.ts"
+		},
+		"./repository-change-publication": {
+			"source": "./src/repository-change-publication.ts",
+			"import": "./dist/repository-change-publication.js",
+			"types": "./dist/repository-change-publication.d.ts"
 		}
 	},
 	"scripts": {
@@ -46,7 +66,8 @@
 	},
 	"dependencies": {
 		"@leitwerk-dev/domain": "0.2.1",
-		"@leitwerk-dev/process-sdk": "0.2.1"
+		"@leitwerk-dev/process-sdk": "0.2.1",
+		"@leitwerk-dev/repository-rebase": "0.2.1"
 	},
 	"devDependencies": {
 		"@leitwerk-dev/test-support": "0.2.1",

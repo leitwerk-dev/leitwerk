@@ -61,16 +61,3 @@ export const acceptReviewForm: FormDefinition = {
 	],
 	submitLabel: "Accept review",
 };
-
-/** @internal */
-export function createFinalizeChangeForm(copy: {
-	/** @internal */
-	title: string;
-}): FormDefinition {
-	return {
-		id: codingActionIds.finalizeChange,
-		title: copy.title,
-		fields: [],
-		submitLabel: copy.title,
-	};
-}

@@ -53,12 +53,15 @@ export type {
 	GitLabProject,
 } from "./client.js";
 export { observeMergeRequest } from "./client.js";
+export type { GitLabDeliveryObservation } from "./external.js";
 export {
 	gitLabFeedbackReadyAt,
 	gitlabExternal,
 	observationKey,
 	pendingGitLabFeedback,
 } from "./external.js";
+export type { GitLabIssueWatcherEvent } from "./issue-watcher.js";
+export { gitlabIssueExternalId, gitlabIssueWatcherSource } from "./issue-watcher.js";
 export type { GitLabSelection } from "./selection.js";
 export {
 	parseGitLabSelection,

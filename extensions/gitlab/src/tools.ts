@@ -20,8 +20,37 @@ async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
 	}
 }
 /** @public */
+export function resolveGitLabRepositoryBinding(
+	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
+	/** @public */
+	/** @public */
+): {
+	/** @public */
+	profile: string;
+	/** @public */
+	projectId: number;
+} {
+	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
+		throw new Error("An authorized GitLab process project is required");
+	const binding = ctx.project.metadata?.gitlab as
+		| { profile?: unknown; projectId?: unknown }
+		| undefined;
+	if (
+		!binding ||
+		typeof binding.profile !== "string" ||
+		!binding.profile.trim() ||
+		typeof binding.projectId !== "number" ||
+		!Number.isSafeInteger(binding.projectId) ||
+		binding.projectId <= 0
+	)
+		throw new Error("Invalid GitLab project binding");
+	return { profile: binding.profile, projectId: binding.projectId };
+}
+/** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
+	/** @public */
+	/** @public */
 ): {
 	/** @public */
 	profile: string;
@@ -30,19 +59,11 @@ export function resolveGitLabBinding(
 	/** @public */
 	iid: number;
 } {
-	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
-		throw new Error("An authorized GitLab process project is required");
-	const binding = ctx.project.metadata?.gitlab as
-		| { profile?: unknown; projectId?: unknown; iid?: unknown }
-		| undefined;
-	if (
-		!binding ||
-		typeof binding.profile !== "string" ||
-		typeof binding.projectId !== "number" ||
-		typeof binding.iid !== "number"
-	)
-		throw new Error("Invalid GitLab project binding");
-	return { profile: binding.profile, projectId: binding.projectId, iid: binding.iid };
+	const repository = resolveGitLabRepositoryBinding(ctx);
+	const iid = (ctx.project?.metadata?.gitlab as { iid?: unknown })?.iid;
+	if (typeof iid !== "number" || !Number.isSafeInteger(iid) || iid <= 0)
+		throw new Error("Invalid GitLab project binding: a merge request is required");
+	return { ...repository, iid };
 }
 /** @internal */
 export async function ensureGitLabComment(input: {
@@ -64,6 +85,8 @@ export async function ensureGitLabComment(input: {
 	discussionId?: string;
 	/** @internal */
 	signal?: AbortSignal;
+	/** @public */
+	/** @public */
 }): Promise<{
 	/** @internal */
 	marker: string;
@@ -102,9 +125,9 @@ export async function ensureGitLabSeenReaction(input: {
 	writes: ExternalWrites;
 	/** @public */
 	instanceId: string;
-	/** @public */
+	/** @internal */
 	projectId: number;
-	/** @public */
+	/** @internal */
 	iid: number;
 	/** @public */
 	noteId: number;
@@ -167,12 +190,15 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 				[...required],
 			),
 			async execute(ctx, args) {
+				if (name === "gitlab_get_identity")
+					return integration
+						.client(resolveGitLabRepositoryBinding(ctx).profile)
+						.resolveGitIdentity(ctx.signal);
 				const b = resolveGitLabBinding(ctx);
 				const client = integration.client(b.profile);
 				if (name === "gitlab_observe_merge_request")
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_changes") return client.getChanges(b.projectId, b.iid, ctx.signal);
-				if (name === "gitlab_get_identity") return client.resolveGitIdentity(ctx.signal);
 				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
 						client,

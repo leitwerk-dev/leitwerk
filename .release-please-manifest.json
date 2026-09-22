@@ -16,10 +16,9 @@
 	"packages/worker": "0.2.1",
 	"extensions/coding": "0.2.1",
 	"extensions/git-ssh": "0.2.1",
-	"extensions/local-repo-change": "0.2.1",
+	"extensions/github-repo-change": "0.2.1",
 	"extensions/models": "0.2.1",
 	"extensions/process-analysis": "0.2.1",
-	"extensions/remote-repo-change": "0.2.1",
 	"extensions/showcase-processes": "0.2.1",
 	"extensions/telegram": "0.2.1",
 	"packages/dev-sandbox": "0.2.1",
@@ -30,5 +29,6 @@
 	"extensions/woodpecker": "0.2.1",
 	"extensions/forgejo-repo-change": "0.2.1",
 	"extensions/gitlab": "0.2.1",
+	"extensions/gitlab-repo-change": "0.2.1",
 	"packages/dev-tools": "0.2.1"
 }

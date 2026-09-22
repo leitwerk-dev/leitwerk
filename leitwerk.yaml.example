@@ -275,6 +275,12 @@ extension_loading:
     - ./extensions/showcase-processes
 
 extensions:
+  # github-repo-change:
+  #   profile_bindings:
+  #     team:
+  #       ssh_credential_ref: repository-writer
+  # GitLab issue selection is owned by its process watcher; see
+  # extensions/gitlab-repo-change/README.md for project/group includes and labels.
   # forgejo: # Optional extension; see extensions/forgejo/README.md for profiles.
   #   ticket_creation:
   #     enabled: false # Enable only with the ticket-creation process extension.

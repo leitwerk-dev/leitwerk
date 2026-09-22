@@ -39,8 +39,7 @@
 | **[@leitwerk-dev/models](extensions/models)** | Standard Pi API-key providers and config-defined custom gateways |
 | **[@leitwerk-dev/coding](extensions/coding)** | Shared repo-change graph, forms, prompts, and Git finalization |
 | **[@leitwerk-dev/git-ssh](extensions/git-ssh)** | Git-over-SSH credential profiles |
-| **[@leitwerk-dev/local-repo-change](extensions/local-repo-change)** | Local repository change process |
-| **[@leitwerk-dev/remote-repo-change](extensions/remote-repo-change)** | Remote SSH plan/implement/review/commit/push process |
+| **[@leitwerk-dev/forgejo-repo-change](extensions/forgejo-repo-change)** | Forgejo issue and UI-launched repository changes with pull-request delivery |
 | **[@leitwerk-dev/process-analysis](extensions/process-analysis)** | Read-only analysis launcher for an existing process |
 | **[@leitwerk-dev/telegram](extensions/telegram)** | Telegram bot bridge for process interaction |
 

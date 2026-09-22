@@ -12,12 +12,21 @@ import { actionableFeedback, authorizedTrigger } from "./authorization.js";
 
 export type { GitHubFeedbackItem, GitHubIssue, GitHubPullRequest };
 
+/** @internal */
+interface GitHubLabel {
+	/** @internal */
+	id: number;
+	/** @internal */
+	name: string;
+}
+
 /** @public */
 export interface GitHubRepository {
 	/** @public */
 	name: string;
 	/** @internal */
 	full_name: string;
+	/** @public */
 	/** @public */
 	owner: {
 		/** @public */
@@ -53,24 +62,18 @@ export interface GitHubLabelEvent {
 	id: number;
 	/** @internal */
 	event: string;
-	/** @internal */
+	/** @public */
+	/** @public */
 	label?: {
-		/** @internal */
+		/** @public */
 		name: string;
 	};
-	/** @internal */
+	/** @public */
+	/** @public */
 	actor: {
-		/** @internal */
+		/** @public */
 		login: string;
 	} | null;
-}
-
-/** @internal */
-interface GitHubLabel {
-	/** @internal */
-	id: number;
-	/** @internal */
-	name: string;
 }
 
 /** @internal */
@@ -95,7 +98,7 @@ export interface GitHubCheckSummary {
 	total: number;
 	/** @public */
 	failed: Array<{
-		/** @public */
+		/** @internal */
 		name: string;
 		/** @public */
 		conclusion: string | null;
@@ -119,12 +122,13 @@ export interface GitHubRelease {
 	/** @internal */
 	html_url: string;
 	/** @public */
+	/** @public */
 	assets: Array<{
-		/** @internal */
+		/** @public */
 		name: string;
-		/** @internal */
+		/** @public */
 		url: string;
-		/** @internal */
+		/** @public */
 		browser_download_url: string;
 	}>;
 }
@@ -186,10 +190,7 @@ export function assertGitHubRepository(profile: GitHubProfile, owner: string, re
 /** @public */
 export class GitHubClient extends RepositoryHttpClient {
 	/** @internal */
-	constructor(
-		/** @internal */
-		readonly profile: GitHubProfile,
-	) {
+	constructor(/** @internal */ readonly profile: GitHubProfile) {
 		super("GitHub", profile.apiBaseUrl, {
 			Accept: "application/vnd.github+json",
 			Authorization: `Bearer ${profile.token}`,
@@ -469,7 +470,8 @@ export class GitHubClient extends RepositoryHttpClient {
 		};
 	}
 
-	/** Human feedback checked against current membership; delivery receipts use raw reads. @internal */
+	/** Human feedback checked against current membership; delivery receipts use raw reads. */
+	/** @internal */
 	async listActionablePullRequestFeedback(
 		owner: string,
 		repo: string,
@@ -507,6 +509,186 @@ export class GitHubClient extends RepositoryHttpClient {
 				login: string;
 			};
 		}>(`${this.repositoryPath(owner, repo)}/${segment}/${id}/reactions`);
+	}
+
+	/** @public */
+	async getCiDiagnostics(
+		owner: string,
+		repo: string,
+		pullRequestNumber: number,
+		headSha: string,
+		signal?: AbortSignal,
+	) {
+		const pr = await this.getPullRequest(owner, repo, pullRequestNumber, signal);
+		if (pr.state !== "open" || pr.merged || pr.head.sha !== headSha)
+			throw new Error("CI diagnostics target a stale pull request revision");
+		const prefix = this.repositoryPath(owner, repo);
+		const checks: Array<{
+			/** @internal */
+			id: number;
+			name: string;
+			conclusion: string | null;
+			/** @public */
+			/** @public */
+			output?: {
+				/** @public */
+				title?: string;
+				/** @public */
+				summary?: string;
+				/** @public */
+				text?: string;
+			};
+		}> = [];
+		for (let page = 1; ; page++) {
+			const batch = await this.request<{ check_runs: typeof checks }>(
+				`${prefix}/commits/${encodeURIComponent(headSha)}/check-runs?filter=latest&per_page=100&page=${page}`,
+				{ signal },
+			);
+			checks.push(...batch.check_runs);
+			if (batch.check_runs.length < 100) break;
+		}
+		const failed = checks.filter(
+			(c) => c.conclusion && !["success", "neutral", "skipped"].includes(c.conclusion),
+		);
+		const annotations = await Promise.all(
+			failed.slice(0, 10).map(async (check) => ({
+				/** @public */
+				id: check.id,
+				/** @public */
+				name: check.name,
+				/** @public */
+				output: check.output,
+				/** @public */
+				annotations: (
+					await this.pages<unknown>(`${prefix}/check-runs/${check.id}/annotations`, signal)
+				).slice(0, 100),
+			})),
+		);
+		const jobs: Array<{
+			/** @public */
+			id: number;
+			/** @public */
+			name: string;
+			/** @public */
+			html_url: string;
+			/** @public */
+			/** @public */
+			log: {
+				/** @public */
+				text: string;
+				/** @public */
+				truncated: boolean;
+			};
+		}> = [];
+		for (let page = 1; jobs.length < 10; page++) {
+			const runs = await this.request<{
+				workflow_runs: Array<{
+					id: number;
+					head_sha: string;
+					head_branch: string;
+					conclusion: string | null;
+				}>;
+			}>(
+				`${prefix}/actions/runs?head_sha=${encodeURIComponent(headSha)}&per_page=100&page=${page}`,
+				{ signal },
+			);
+			for (const run of runs.workflow_runs) {
+				if (
+					run.head_sha !== headSha ||
+					run.head_branch !== pr.head.ref ||
+					!run.conclusion ||
+					["success", "neutral", "skipped"].includes(run.conclusion)
+				)
+					continue;
+				for (let jobPage = 1; jobs.length < 10; jobPage++) {
+					const batch = await this.request<{
+						jobs: Array<{ id: number; name: string; html_url: string; conclusion: string | null }>;
+					}>(`${prefix}/actions/runs/${run.id}/jobs?filter=latest&per_page=100&page=${jobPage}`, {
+						signal,
+					});
+					for (const job of batch.jobs) {
+						if (
+							!job.conclusion ||
+							["success", "neutral", "skipped"].includes(job.conclusion) ||
+							jobs.length >= 10
+						)
+							continue;
+						jobs.push({
+							id: job.id,
+							name: job.name,
+							html_url: job.html_url,
+							log: await this.readJobLog(owner, repo, job.id, signal),
+						});
+					}
+					if (batch.jobs.length < 100) break;
+				}
+			}
+			if (runs.workflow_runs.length < 100) break;
+		}
+		const refreshed = await this.getPullRequest(owner, repo, pullRequestNumber, signal);
+		if (refreshed.head.sha !== headSha || refreshed.state !== "open" || refreshed.merged)
+			throw new Error("CI diagnostics were superseded");
+		return {
+			/** @public */
+			headSha,
+			/** @public */
+			checks: annotations,
+			/** @public */
+			jobs,
+			/** @public */
+			truncated: failed.length > 10 || jobs.length >= 10,
+		};
+	}
+	private async readJobLog(
+		owner: string,
+		repo: string,
+		job: number,
+		signal?: AbortSignal,
+	): Promise<{ text: string; truncated: boolean }> {
+		const timeout = signal
+			? AbortSignal.any([signal, AbortSignal.timeout(30000)])
+			: AbortSignal.timeout(30000);
+		let response = await fetch(
+			`${this.profile.apiBaseUrl}${this.repositoryPath(owner, repo)}/actions/jobs/${job}/logs`,
+			{
+				headers: {
+					Authorization: `Bearer ${this.profile.token}`,
+					Accept: "application/vnd.github+json",
+				},
+				redirect: "manual",
+				signal: timeout,
+			},
+		);
+		if (response.status === 302) {
+			const location = new URL(response.headers.get("location") ?? "");
+			if (location.protocol !== "https:" || location.username || location.password)
+				throw new Error("Invalid GitHub log download URL");
+			await response.body?.cancel();
+			// Signed storage URLs must never receive the GitHub credential.
+			response = await fetch(location, { redirect: "error", signal: timeout });
+		}
+		if (!response.ok) throw new IntegrationHttpError(response.status, "GitHub job log unavailable");
+		const reader = response.body?.getReader();
+		if (!reader) return { text: "", truncated: false };
+		const chunks: Uint8Array[] = [];
+		let bytes = 0;
+		let truncated = false;
+		try {
+			for (;;) {
+				const next = await reader.read();
+				if (next.done) break;
+				const part = next.value.slice(0, 65536 - bytes);
+				chunks.push(part);
+				bytes += part.length;
+				if (bytes === 65536) {
+					truncated = true;
+					break;
+				}
+			}
+		} finally {
+			await reader.cancel();
+		}
+		return { text: Buffer.concat(chunks).toString("utf8"), truncated };
 	}
 
 	/** @internal */

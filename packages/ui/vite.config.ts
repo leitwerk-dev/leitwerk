@@ -55,7 +55,11 @@ function extensionUiSourcePlugin(): Plugin {
 }
 
 export default defineConfig({
-	cacheDir: process.env.LEITWERK_BROWSER_VITE_CACHE_DIR,
+	cacheDir:
+		process.env.LEITWERK_BROWSER_VITE_CACHE_DIR ??
+		(process.env.LEITWERK_BROWSER_ENGINE
+			? `node_modules/.vite-browser-${process.env.LEITWERK_BROWSER_ENGINE}`
+			: undefined),
 	plugins: [svelte(), extensionUiSourcePlugin()],
 	resolve: {
 		alias: [

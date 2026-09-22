@@ -1,5 +1,6 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { repositoryHttpsUrl } from "@leitwerk-dev/process-sdk";
+import { preflightGitLabRepository } from "./preflight.js";
 
 /** @internal */
 export interface GitLabProfile {
@@ -51,7 +52,32 @@ export interface GitLabGroup {
 	full_path: string;
 }
 /** @public */
+export interface GitLabIssue {
+	/** @public */
+	id: number;
+	/** @public */
+	iid: number;
+	/** @public */
+	project_id: number;
+	/** @public */
+	title: string;
+	/** @public */
+	description: string | null;
+	/** @public */
+	web_url: string;
+	/** @public */
+	state: string;
+	/** @public */
+	labels: string[];
+}
+/** @public */
 export interface GitLabMergeRequest {
+	/** @public */
+	detailed_merge_status?: string;
+	/** @public */
+	has_conflicts?: boolean;
+	/** @public */
+	merge_status?: string;
 	/** @public */
 	iid: number;
 	/** @public */
@@ -76,12 +102,6 @@ export interface GitLabMergeRequest {
 	target_branch: string;
 	/** @public */
 	web_url: string;
-	/** @public */
-	has_conflicts?: boolean;
-	/** @public */
-	merge_status?: string;
-	/** @public */
-	detailed_merge_status?: string;
 	/** @internal */
 	merge_commit_sha?: string | null;
 	/** @internal */
@@ -135,7 +155,7 @@ export interface GitLabPipeline {
 }
 /** @public */
 export interface GitLabJob {
-	/** @public */
+	/** @internal */
 	id: number;
 	/** @public */
 	name: string;
@@ -170,7 +190,7 @@ export interface GitLabNote {
 }
 /** @public */
 export interface GitLabNoteReaction {
-	/** @internal */
+	/** @public */
 	id: number;
 	/** @internal */
 	name: string;
@@ -244,7 +264,7 @@ export interface GitLabObservation {
 	mr: GitLabMergeRequest;
 	/** @public */
 	pipeline: GitLabPipeline | null;
-	/** @public Current target branch tip, not the diff's historical merge base. */
+	/** @public */
 	targetHead?: string;
 }
 
@@ -314,7 +334,8 @@ export function parseGitLabProfiles(raw: unknown): Map<string, GitLabProfile> {
 const projectPath = (id: number | string) => `/projects/${encodeURIComponent(id)}`;
 const mrPath = (id: number, iid: number) => `${projectPath(id)}/merge_requests/${iid}`;
 
-/** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. @public */
+/** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. */
+/** @public */
 export class GitLabClient {
 	/** @public */
 	readonly baseUrl: string;
@@ -324,6 +345,8 @@ export class GitLabClient {
 	/** @internal */
 	constructor(
 		profile: GitLabProfile,
+		/** @public */
+		/** @public */
 		options: {
 			/** @internal */
 			fetch?: typeof fetch;
@@ -340,12 +363,17 @@ export class GitLabClient {
 		this.#fetch = options.fetch ?? fetch;
 		this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 	}
-	private async response(path: string, signal?: AbortSignal, body?: unknown): Promise<Response> {
+	private async response(
+		path: string,
+		signal?: AbortSignal,
+		body?: unknown,
+		method?: string,
+	): Promise<Response> {
 		for (let attempt = 0; ; attempt++) {
 			let response: Response;
 			try {
 				response = await this.#fetch(`${this.baseUrl}/api/v4${path}`, {
-					method: body === undefined ? "GET" : "POST",
+					method: method ?? (body === undefined ? "GET" : "POST"),
 					redirect: "error",
 					headers: {
 						"PRIVATE-TOKEN": this.#profile.token,
@@ -373,8 +401,13 @@ export class GitLabClient {
 			await this.#sleep(Math.min(30_000, seconds > 0 ? seconds * 1_000 : 1_000 * 2 ** attempt));
 		}
 	}
-	private async request<T>(path: string, signal?: AbortSignal, body?: unknown): Promise<T> {
-		return this.json<T>(await this.response(path, signal, body));
+	private async request<T>(
+		path: string,
+		signal?: AbortSignal,
+		body?: unknown,
+		method?: string,
+	): Promise<T> {
+		return this.json<T>(await this.response(path, signal, body, method));
 	}
 	private async json<T>(response: Response): Promise<T> {
 		try {
@@ -403,6 +436,113 @@ export class GitLabClient {
 		}
 		throw new Error("GitLab pagination limit exceeded; discovery incomplete");
 	}
+	/** @public */
+	listIssues(id: number, signal?: AbortSignal): Promise<GitLabIssue[]> {
+		return this.pages(`${projectPath(id)}/issues?state=opened&scope=all`, signal);
+	}
+	/** @public */
+	getIssue(id: number, iid: number, signal?: AbortSignal): Promise<GitLabIssue> {
+		return this.request(`${projectPath(id)}/issues/${iid}`, signal);
+	}
+	/** @public */
+	updateIssue(
+		id: number,
+		iid: number,
+		/** @public */
+		/** @public */
+		patch: {
+			/** @public */
+			labels?: string;
+			/** @public */
+			state_event?: "close";
+		},
+		signal?: AbortSignal,
+	): Promise<GitLabIssue> {
+		return this.request(`${projectPath(id)}/issues/${iid}`, signal, patch, "PUT");
+	}
+	/** @public */
+	listIssueNotes(id: number, iid: number, signal?: AbortSignal): Promise<GitLabNote[]> {
+		return this.pages(`${projectPath(id)}/issues/${iid}/notes`, signal);
+	}
+	/** @public */
+	addIssueNote(id: number, iid: number, body: string, signal?: AbortSignal): Promise<GitLabNote> {
+		return this.request(`${projectPath(id)}/issues/${iid}/notes`, signal, { body });
+	}
+	/** @public */
+	/** @public */
+	listLabels(
+		id: number,
+		signal?: AbortSignal,
+	): Promise<
+		Array<{
+			/** @public */ name: string;
+		}>
+	> {
+		return this.pages(`${projectPath(id)}/labels`, signal);
+	}
+	/** @public */
+	/** @public */
+	createLabel(
+		id: number,
+		name: string,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @public */ name: string;
+	}> {
+		return this.request(`${projectPath(id)}/labels`, signal, { name, color: "#2da44e" });
+	}
+	/** @public */
+	listBranchMergeRequests(
+		id: number,
+		source: string,
+		target: string,
+		signal?: AbortSignal,
+	): Promise<GitLabMergeRequest[]> {
+		return this.pages(
+			`${projectPath(id)}/merge_requests?state=all&source_branch=${encodeURIComponent(source)}&target_branch=${encodeURIComponent(target)}`,
+			signal,
+		);
+	}
+	/** @public */
+	createMergeRequest(
+		id: number,
+		/** @public */
+		/** @public */
+		input: {
+			/** @public */
+			title: string;
+			/** @public */
+			description: string;
+			/** @public */
+			source_branch: string;
+			/** @public */
+			target_branch: string;
+		},
+		signal?: AbortSignal,
+	): Promise<GitLabMergeRequest> {
+		return this.request(`${projectPath(id)}/merge_requests`, signal, {
+			...input,
+			remove_source_branch: false,
+		});
+	}
+	/** @public */
+	async preflightRepository(
+		projectId: number,
+		baseBranch: string,
+		workBranch: string,
+		signal?: AbortSignal,
+	): Promise<void> {
+		const project = await this.getProject(projectId, signal);
+		await preflightGitLabRepository({
+			url: project.http_url_to_repo,
+			origin: this.baseUrl,
+			token: this.#profile.token,
+			baseBranch,
+			workBranch,
+			signal,
+		});
+	}
+
 	/** @public */
 	getProject(id: number | string, signal?: AbortSignal): Promise<GitLabProject> {
 		return this.request(projectPath(id), signal);
@@ -598,10 +738,12 @@ export class GitLabClient {
 		job: number,
 		maxBytes = 65_536,
 		signal?: AbortSignal,
+		/** @public */
+		/** @public */
 	): Promise<{
-		/** @internal */
+		/** @public */
 		text: string;
-		/** @internal */
+		/** @public */
 		truncated: boolean;
 	}> {
 		const limit = Math.min(262_144, Math.max(1, Math.floor(maxBytes) || 65_536));
@@ -632,6 +774,16 @@ export class GitLabClient {
 /** @public */
 export type GitLabClientLike = Pick<
 	GitLabClient,
+	| "listIssues"
+	| "getIssue"
+	| "updateIssue"
+	| "listIssueNotes"
+	| "addIssueNote"
+	| "listLabels"
+	| "createLabel"
+	| "listBranchMergeRequests"
+	| "createMergeRequest"
+	| "preflightRepository"
 	| "addNote"
 	| "addNoteReaction"
 	| "baseUrl"
@@ -657,7 +809,8 @@ export type GitLabClientLike = Pick<
 	| "resolveGitIdentity"
 >;
 
-/** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. @public */
+/** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
+/** @public */
 export async function observeMergeRequest(
 	client: GitLabClientLike,
 	projectId: number,

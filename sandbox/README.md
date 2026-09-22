@@ -18,14 +18,14 @@ workspace and adapter directories.
 
 ## Scenarios
 
-All scenarios launch the existing `local_repo_change_process` through the normal
-launcher API. Approve plans and implementations in the ordinary process UI.
-Scripts edit workspace files; the process writes the final commit and merges it
-into the local bare repository's `main` branch.
+All scenarios launch the sandbox-owned `sandbox_repository_change_process` through
+the normal launcher API. Approve plans and implementations in the ordinary process UI.
+Scripts edit workspace files; the process writes the final commit and publishes its
+feature branch to the local bare repository.
 
 | Scenario | Interaction |
 | --- | --- |
-| `repository-change` | Review a plan, approve implementation, then merge a real notebook commit. |
+| `repository-change` | Review a plan, approve implementation, then publish a real notebook commit. |
 | `ticket` | Use **Create issue** on a plan result, describe the issue and review the draft. |
 | `question` | Answer a notebook question before reviewing the plan. |
 | `long-message` | Inspect a long Markdown plan, reasoning and turn details. |
@@ -102,9 +102,11 @@ Startup is source-only and requires this checkout's supervisor and UI tooling.
 The package does not include these built-in scenarios or offer installed-release
 startup. See [the harness contract](../packages/dev-sandbox/README.md).
 
-Run `npm run test:full` to validate changes. See the [testing guide](../docs/testing.md)
-for commands and test boundaries. The sandbox does not simulate production
-scheduling or deployment.
+Run `npm run test:full`. Public coverage includes every scripted scenario, real
+commit/publication, questions, approvals and ticket reconciliation, restart persistence,
+source reload, strict ports and reset confinement. Sandbox source, scripts and
+workflow fixtures participate in lint, typechecking and tests. This environment
+does not simulate production scheduling or deployment.
 
 ## Local integration composition
 

@@ -21,17 +21,17 @@ A central server saves task progress and streams live updates to a web dashboard
 
 ## Built-in Examples
 
-### Local Repository Change (`local_repo_change_process`)
-The Local Repo Change process automates end-to-end coding tasks directly on a local git repository.
+### Forgejo Repository Change (`forgejo_repo_change_process`)
+The Forgejo Repo Change process automates coding tasks from a UI request or a labeled Forgejo issue.
 
-- **Planning & Implementation:** An operator submits a prompt. Leitwerk creates a fresh working branch on a workspace clone, analyzes the repository, and generates a structured implementation plan.
-- **Human Steering & Finalization:** The operator can approve the plan, request revisions, or trigger automated review turns. Once approved, the AI agent implements the code changes and tests. After final verification, Leitwerk automatically commits and merges the completed work.
+- **Planning & Implementation:** Leitwerk creates a feature branch in a workspace clone, generates a plan, and implements the approved change.
+- **Provider Delivery:** The process pushes the branch, opens a pull request, observes review and CI signals, and waits for the provider to report the terminal outcome.
 
-### Process Analysis & Handover (`process-analysis`)
-The Process Analysis extension handles complex tasks by separating architecture analysis from code execution.
+### Process Analysis (`process-analysis`)
+The Process Analysis extension inspects an existing process without changing it.
 
-- **Deep Analysis:** A dedicated analysis process inspects repository structure, diagnoses complex bugs, or drafts detailed technical plans.
-- **Cross-Process Handover:** Once the analysis plan is approved, it hands off directly into `local_repo_change_process`. The implementation process imports the plan markdown, skips redundant plan generation, and immediately starts executing the code changes.
+- **Deep Analysis:** A dedicated analysis process downloads a process snapshot, diagnoses failures, or drafts implementation guidance.
+- **Read-Only Follow-Up:** Operators can refine the analysis, ask follow-up questions, or refresh the snapshot. The process does not launch a repository-change process.
 
 ### Showcase Processes & Watchers (`showcase-processes`)
 The Showcase extension provides zero-dependency demo workflows for local testing when running `npm run dev`.

@@ -203,7 +203,7 @@ Declare a `leitwerk.ui` block next to the extension entry. Source lane and built
 
 ```json
 {
-  "name": "@leitwerk-dev/local-repo-change",
+  "name": "@example/acme-process",
   "leitwerk": {
     "extension": {
       "source": "./src/index.ts",
@@ -224,11 +224,11 @@ The manifest lists renderers by stable id. Each entry is a `custom_element` with
 ```json
 {
   "apiVersion": 1,
-  "extensionManifestId": "local-repo-change",
+  "extensionManifestId": "acme-process",
   "renderers": {
-    "@leitwerk-dev/local-repo-change:local_repo_change_process.leaf_outcome": {
+    "@example/acme-process:acme_process.leaf_outcome": {
       "kind": "custom_element",
-      "tagName": "o2-local-repo-change-legacy-leaf-outcome",
+      "tagName": "acme-process-leaf-outcome",
       "module": "./leaf-outcome-element.ts",
       "rendererApiVersion": 1
     }
@@ -236,7 +236,7 @@ The manifest lists renderers by stable id. Each entry is a `custom_element` with
 }
 ```
 
-Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. `protocol` owns renderer and browser-module wire schemas; manifest validation and supported-version checks remain with the catalog and UI host, respectively. See `extensions/local-repo-change` for a shipped example (legacy leaf-outcome compatibility renderer).
+Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. `protocol` owns renderer and browser-module wire schemas; manifest validation and supported-version checks remain with the catalog and UI host, respectively.
 
 - **Bounded Insertion:** Custom renderers stay inside Chronicle leaf-outcome hosts; they do not own global shell navigation.
 
