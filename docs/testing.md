@@ -87,6 +87,63 @@ Test schema migrations against file-backed storage. Verify that durable data
 survives migration and reopening. Use generated fixtures, never real provider or
 repository credentials.
 
+## Extension testing
+
+Use `createExtensionTestHarness` from `@leitwerk-dev/test-support/process` to
+inspect process descriptions and evaluate behavior without persistence. Supply a
+process definition, params, optional state, projects, and named markdown products.
+Each evaluation starts from that fixture; effects do not carry into later calls.
+
+`describe()` returns detached descriptions. `resolveLaunch()`, `prepareRelaunch()`,
+and `resolveWatcherLaunch()` evaluate launch behavior. `evaluateTurn()` runs
+preparation and the worker handler with scripted outcomes, recording prompts,
+tools, progress, completion, and parking. `evaluateAction()` and
+`evaluateOutcome()` report effects requested by handlers. Declarative transitions
+remain available through `describe()`; evaluating an outcome does not persist or
+apply them. The enclosing harness owns extension registration and lifecycle hooks
+and provides `callTool()`, `emit()`, and `close()`. `describeTools()` returns
+tool metadata; `writeReceipts()` returns recorded external writes, including
+writes preceding a failed invocation. Reuse a tool fixture's `invocationId` to
+test retries. Provider project bindings belong in project fixture metadata.
+`listToolDestinations()`, `resolveToolDestination()`, and
+`validateToolDestination()` exercise registered ticket destinations.
+
+Use `createExtensionIntegrationHarness` from
+`@leitwerk-dev/test-support/integration` for durable server and worker behavior.
+Register extensions and provider adapters, configure model profiles, and supply
+model tool scripts. Scripts receive the rendered prompt, declared tool descriptions,
+working directory, inherited branch text, and an opaque branch identity.
+Execution is automatic by default. `polling: "manual"` disables scheduled provider
+polling while preserving extension lifecycle hooks; call an extension-owned
+polling adapter explicitly. Watcher configuration belongs in `watchers`; host
+Docker preflight can use the `hostDocker` boundary. With `execution: "manual"`,
+`runTurn()` releases exactly one selected worker turn and waits for its durable
+outcome or failure. This includes automatic turns. Worker acceptance and stale
+outcome correlation still run through the application.
+
+Process handles expose application actions, retry, instruction delivery, question
+answers, and approval responses. `snapshot()` returns detached readonly process data, execution records, inputs,
+interactions, receipts, semantic events, annotations, rendered leaf results, and
+the workspace path;
+`waitFor()` has a bounded timeout and includes the final observation on failure.
+`request()` supports HTTP status and response assertions without exposing the
+server context. `restart()` retains file-backed storage and existing process
+handles. Its optional `whileStopped` callback can change an external fixture before
+reopening, and `extensionConfig` can replace extension wiring. `processes()`
+observes processes created by watchers. Always await `close()` to release resources and remove harness files.
+
+Use `createProcessFixture`, `createProjectFixture`, `createQuestionFixture`, and
+`createQuestionRequestFixture` from `@leitwerk-dev/test-support/fixtures` for
+independent deterministic data. Definition-aware process fixtures validate params,
+state, and declared turns. Question resolutions determine status and timestamps.
+Fixtures accept business data, not worker leases or execution pointers.
+
+`seedAcceptedTurn()` creates correlated accepted execution records. A running
+fixture must match the selected turn. A successful historical fixture preserves
+business position and returns a turn-result artifact reference. Both reject live
+execution conflicts. Use real execution when assertions depend on worker tree
+entries or runtime resource materialization.
+
 ## Browser testing
 
 Install browser engines once:

@@ -1,37 +1,10 @@
-import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import type { LeitwerkConfig } from "@leitwerk-dev/server";
-import { fixtureModelProviders, postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
-import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import {
-	createInProcessWorkerSpawn,
-	StubPiTreeHandleFactory,
-} from "@leitwerk-dev/test-support/worker-testing";
+	type ExtensionIntegrationHarness,
+	type ExtensionIntegrationHarnessOptions,
+	waitForValue,
+} from "@leitwerk-dev/test-support/integration";
 import { describe, expect, it } from "vitest";
-import singlePromptExtension from "./index.js";
-
-const poemSnapshotFixtureProviderExtension = {
-	manifest: { id: "poem-snapshot-fixture-provider", version: "1.0.0" },
-	modelProviders: fixtureModelProviders({
-		id: "poem-snapshot-fixture-provider",
-		modelId: "fixture-model",
-		server: true,
-	}),
-};
-
-const extensionCatalog = buildExtensionCatalogFromModules([
-	singlePromptExtension,
-	poemSnapshotFixtureProviderExtension,
-]);
-
-function applyModelProfileConfig(config: LeitwerkConfig): void {
-	config.pi.model_profiles = [
-		{
-			id: "claude_fast",
-			provider: "poem-snapshot-fixture-provider",
-			model_id: "fixture-model",
-		},
-	];
-}
+import { createShowcaseHarness, http } from "./testing/harness.js";
 
 type ReviewScript =
 	| {
@@ -46,151 +19,67 @@ type ReviewScript =
 
 interface ReviewPromptCapture {
 	promptText: string;
-	identifiedPrompt: {
-		content: string;
-		details: unknown;
-	} | null;
 }
-
-function findIdentifiedReviewPrompt(piFactory: StubPiTreeHandleFactory) {
-	const entries = new Map<
-		string,
-		ReturnType<StubPiTreeHandleFactory["sessions"][number]["getBranch"]>[number]
-	>();
-	for (const session of piFactory.sessions) {
-		const visit = (nodes: ReturnType<typeof session.getTree>): void => {
-			for (const node of nodes) {
-				entries.set(node.entry.id, node.entry);
-				visit(node.children);
-			}
-		};
-		visit(session.getTree());
-	}
-	const entry = [...entries.values()].findLast(
-		(candidate) =>
-			candidate.type === "custom_message" &&
-			candidate.customType === "leitwerk" &&
-			typeof candidate.content === "string" &&
-			candidate.content.includes("Poem draft to review:"),
-	);
-	return entry?.type === "custom_message" && typeof entry.content === "string"
-		? { content: entry.content, details: entry.details }
-		: null;
-}
-
-function createPoemSnapshotSpawn(
+function createPoemSnapshotScript(
 	markdowns: readonly string[],
 	reviewScript?: ReviewScript,
 	options: { reviewPrompts?: ReviewPromptCapture[] } = {},
-) {
+): NonNullable<ExtensionIntegrationHarnessOptions["script"]> {
 	let draftIndex = 0;
-	let piFactory: StubPiTreeHandleFactory;
-	piFactory = new StubPiTreeHandleFactory({
-		toolCallScriptResolver({ tools, promptText }) {
-			const turnTools = tools.filter((tool) => tool.name !== "upload_result_images");
-			const toolNames = new Set(turnTools.map((tool) => tool.name));
-			if (reviewScript?.outcome === "leave_feedback" && toolNames.has("leave_feedback")) {
-				options.reviewPrompts?.push({
-					promptText,
-					identifiedPrompt: findIdentifiedReviewPrompt(piFactory),
-				});
-				return {
-					toolName: "leave_feedback",
-					args: {
-						summary: reviewScript.summary,
-						message: `## Review feedback\n\n${reviewScript.feedback}`,
+	return (_id, promptText, observation) => {
+		if (reviewScript && observation.turnId === "review_poem_draft") {
+			options.reviewPrompts?.push({ promptText });
+			return {
+				tools: [
+					{
+						name: reviewScript.outcome,
+						arguments:
+							reviewScript.outcome === "leave_feedback"
+								? {
+										summary: reviewScript.summary,
+										message: `## Review feedback\n\n${reviewScript.feedback}`,
+									}
+								: { summary: reviewScript.summary, review: `## Review\n\n${reviewScript.summary}` },
 					},
-				};
-			}
-			if (reviewScript?.outcome === "no_issues" && toolNames.has("no_issues")) {
-				options.reviewPrompts?.push({
-					promptText,
-					identifiedPrompt: findIdentifiedReviewPrompt(piFactory),
-				});
-				return {
-					toolName: "no_issues",
-					args: {
-						review: `## Review\n\n${reviewScript.summary}`,
-						summary: reviewScript.summary,
-					},
-				};
-			}
-			if ((toolNames.has("markdown_result") && turnTools.length === 1) || turnTools.length === 0) {
-				const markdown =
-					markdowns[Math.min(draftIndex, markdowns.length - 1)] ?? "# Untitled\n\nNo poem";
-				draftIndex += 1;
-				return {
-					toolName: "markdown_result",
-					args: { markdown },
-				};
-			}
-			return undefined;
-		},
-	});
-	return createInProcessWorkerSpawn({ extensionCatalog, piFactory });
-}
-
-async function launchPoemProcess(harness: Awaited<ReturnType<typeof createIntegrationHarness>>) {
-	const prompt = "Write a short poem about Berlin rooftops and release trains at dusk.";
-	const response = await postImmediateLaunchRequest(
-		`${harness.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				launcherInput: {
-					prompt,
-				},
-				modelConfig: {
-					defaultModelProfileId: "claude_fast",
-				},
-			}),
-		},
-	);
-	expect(response.status).toBe(201);
-	const body = (await response.json()) as { process: { id: string } };
-	return {
-		instanceId: body.process.id,
-		prompt,
+				],
+			};
+		}
+		const markdown =
+			markdowns[Math.min(draftIndex++, markdowns.length - 1)] ?? "# Untitled\n\nNo poem";
+		return { tools: [{ name: "markdown_result", arguments: { markdown } }] };
 	};
 }
 
-async function runPoemAutoReview(
-	harness: Awaited<ReturnType<typeof createIntegrationHarness>>,
-	instanceId: string,
-) {
-	const response = await fetch(
-		`${harness.address}/api/processes/${encodeURIComponent(instanceId)}/actions/run_poem_auto_review`,
-		{ method: "POST" },
-	);
-	expect(response.status).toBe(200);
+async function launchPoemProcess(harness: ExtensionIntegrationHarness) {
+	const prompt = "Write a short poem about Berlin rooftops and release trains at dusk.";
+	const process = await harness.launch("poem_creator_process.poem_creator_ui", { prompt });
+	return { instanceId: process.snapshot().process.id, prompt };
+}
+async function runPoemAutoReview(harness: ExtensionIntegrationHarness, instanceId: string) {
+	await harness.process(instanceId).action("run_poem_auto_review");
 }
 
 describe("poem leaf outcome adoption", () => {
 	it.skip("captures structured poem renderer props from the real poem creator process", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog,
-			configOverride: applyModelProfileConfig,
-			appOverrides: {
-				localWorkerSpawnImpl: createPoemSnapshotSpawn([
-					"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-				]),
-			},
+		const harness = await createShowcaseHarness({
+			script: createPoemSnapshotScript([
+				"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
+			]),
 		});
 
 		try {
 			const { instanceId, prompt } = await launchPoemProcess(harness);
 			await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
 			);
 			await waitForValue(
-				() => harness.ctx.deps.processes.getById(instanceId),
+				() => harness.process(instanceId).snapshot().process,
 				(process) =>
 					process?.selectedTurnId === "poem_review" && process.lifecycleStatus === "waiting",
 			);
 
-			expect(harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId)).toEqual([
+			expect(harness.process(instanceId).snapshot().leafOutcomes).toEqual([
 				expect.objectContaining({
 					rendererId: "@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome",
 					schemaVersion: 1,
@@ -217,47 +106,35 @@ describe("poem leaf outcome adoption", () => {
 		const reviewPrompts: ReviewPromptCapture[] = [];
 		const poemMarkdown =
 			"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring";
-		const harness = await createIntegrationHarness({
-			extensionCatalog,
-			configOverride: applyModelProfileConfig,
-			appOverrides: {
-				localWorkerSpawnImpl: createPoemSnapshotSpawn(
-					[poemMarkdown],
-					{
-						outcome: "leave_feedback",
-						summary: "The poem needs revision before publication.",
-						feedback: "Sharpen the closing image and brighten the rhythm.",
-					},
-					{ reviewPrompts },
-				),
-			},
+		const harness = await createShowcaseHarness({
+			script: createPoemSnapshotScript(
+				[poemMarkdown],
+				{
+					outcome: "leave_feedback",
+					summary: "The poem needs revision before publication.",
+					feedback: "Sharpen the closing image and brighten the rhythm.",
+				},
+				{ reviewPrompts },
+			),
 		});
 
 		try {
 			const { instanceId } = await launchPoemProcess(harness);
 			await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
 			);
 
 			await runPoemAutoReview(harness, instanceId);
 
 			const snapshots = await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(items) => items.length === 2,
 			);
 			expect(snapshots[0]?.leafEntryId).not.toBe(snapshots[1]?.leafEntryId);
 			expect(reviewPrompts).toHaveLength(1);
-			expect(reviewPrompts[0]?.promptText).toBe("");
-			expect(reviewPrompts[0]?.identifiedPrompt).toMatchObject({
-				content: expect.stringContaining("Poem draft to review:"),
-				details: {
-					kind: "turn_prompt",
-					startRecordId: expect.any(String),
-					purpose: "kickoff",
-				},
-			});
-			expect(reviewPrompts[0]?.identifiedPrompt?.content).toContain(poemMarkdown);
+			expect(reviewPrompts[0]?.promptText).toContain("Poem draft to review:");
+			expect(reviewPrompts[0]?.promptText).toContain(poemMarkdown);
 			expect(snapshots[1]).toEqual(
 				expect.objectContaining({
 					fallbackMarkdown:
@@ -285,33 +162,29 @@ describe("poem leaf outcome adoption", () => {
 	}, 15_000);
 
 	it("captures a review-leaf snapshot with the poem plus an LLM no-issues opinion", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog,
-			configOverride: applyModelProfileConfig,
-			appOverrides: {
-				localWorkerSpawnImpl: createPoemSnapshotSpawn(
-					[
-						"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-					],
-					{
-						outcome: "no_issues",
-						summary: "The revised poem is ready to publish.",
-					},
-				),
-			},
+		const harness = await createShowcaseHarness({
+			script: createPoemSnapshotScript(
+				[
+					"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
+				],
+				{
+					outcome: "no_issues",
+					summary: "The revised poem is ready to publish.",
+				},
+			),
 		});
 
 		try {
 			const { instanceId } = await launchPoemProcess(harness);
 			await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
 			);
 
 			await runPoemAutoReview(harness, instanceId);
 
 			const snapshots = await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(items) => items.length === 2,
 			);
 			expect(snapshots[0]?.leafEntryId).not.toBe(snapshots[1]?.leafEntryId);
@@ -342,26 +215,23 @@ describe("poem leaf outcome adoption", () => {
 	}, 15_000);
 
 	it("preserves historical poem snapshots across a human revision loop", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog,
-			configOverride: applyModelProfileConfig,
-			appOverrides: {
-				localWorkerSpawnImpl: createPoemSnapshotSpawn([
-					"# First Platform\n\nTin rooftops glimmer<br>Signals softly rise",
-					"# Brighter Platform\n\nTin rooftops shimmer<br>Signals warm the skies",
-				]),
-			},
+		const harness = await createShowcaseHarness({
+			script: createPoemSnapshotScript([
+				"# First Platform\n\nTin rooftops glimmer<br>Signals softly rise",
+				"# Brighter Platform\n\nTin rooftops shimmer<br>Signals warm the skies",
+			]),
 		});
 
 		try {
 			const { instanceId } = await launchPoemProcess(harness);
 			await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
 			);
 
-			const actionResponse = await fetch(
-				`${harness.address}/api/processes/${encodeURIComponent(instanceId)}/actions/request_poem_revision`,
+			const actionResponse = await http(
+				harness,
+				`/api/processes/${encodeURIComponent(instanceId)}/actions/request_poem_revision`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -375,7 +245,7 @@ describe("poem leaf outcome adoption", () => {
 			expect(actionResponse.status).toBe(200);
 
 			const snapshots = await waitForValue(
-				() => harness.ctx.deps.leafOutcomeSnapshots.listByInstance(instanceId),
+				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(items) => items.length === 2,
 			);
 			expect(snapshots.map((snapshot) => snapshot.props?.title)).toEqual([

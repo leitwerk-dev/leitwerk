@@ -1,11 +1,5 @@
-import {
-	buildProcessLaunchersForTest,
-	buildServerProcessForTest,
-	createTestProcessInstance,
-	createTestWorkerProcessContext,
-} from "@leitwerk-dev/extension-runtime/testing";
-import { getProcessGraph, resolveHumanTurnView } from "@leitwerk-dev/process-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { processAnalysisActionIds } from "./actions.js";
 import { processAnalysisProcess, processAnalysisTurnIds } from "./process-definition.js";
 import { configureProcessAnalysisRuntime } from "./server-runtime.js";
@@ -26,19 +20,24 @@ function createSnapshot() {
 	};
 }
 
-function getUiLauncher() {
-	const launcher = buildProcessLaunchersForTest(processAnalysisProcess)?.launchers.get(
-		"process_analysis_process.ui_launcher",
-	)?.ui;
-	if (!launcher) throw new Error("Expected Process Analysis UI launcher");
-	return launcher;
-}
-
-function getTurnTransitions(turnId: string) {
-	return getProcessGraph(
-		new Map([[processAnalysisProcess.id, processAnalysisProcess]]),
-		processAnalysisProcess.id,
-	).turns.get(turnId)?.transitions;
+async function harness() {
+	const test = await createExtensionTestHarness({
+		extensions: [
+			{
+				manifest: { id: "analysis-test-tools", version: "1" },
+				setupServer(api) {
+					api.tool({
+						name: processAnalysisDownloadSnapshotTool,
+						description: "Download snapshot",
+						parameters: {},
+						execute: async () => createSnapshot(),
+					});
+				},
+			},
+		],
+	});
+	onTestFinished(() => test.close());
+	return test.process(processAnalysisProcess, { params: testParams });
 }
 
 describe("processAnalysisProcess", () => {
@@ -46,15 +45,17 @@ describe("processAnalysisProcess", () => {
 		configureProcessAnalysisRuntime({ analysisCwd: "/tmp/process-analysis-runtime-cwd" });
 	});
 
-	it("launches with runtime cwd as a hidden param", () => {
-		const launcher = getUiLauncher();
+	it("launches with runtime cwd as a hidden param", async () => {
+		const process = await harness();
+		const launcher = process.describe().launchers[0];
+		if (!launcher) throw new Error("Missing launcher");
 		expect(
 			launcher.launchConfigSchema.fields.find((field) => field.id === "processRef"),
 		).toMatchObject({
 			rememberRecentValues: true,
 		});
 
-		const result = launcher.resolveLaunchConfig({
+		const result = await process.resolveLaunch("process_analysis_process.ui_launcher", {
 			processRef: "https://ignored.example/processes/agt_source",
 			instruction: "Find the problem",
 		});
@@ -76,8 +77,14 @@ describe("processAnalysisProcess", () => {
 		expect(processAnalysisProcess.piConfig?.sessionCwdTemplate).toBe("{{{analysisCwd}}}");
 	});
 
-	it("returns required errors for blank visible launch fields", () => {
-		expect(getUiLauncher().resolveLaunchConfig({ processRef: " ", instruction: "" })).toEqual({
+	it("returns required errors for blank visible launch fields", async () => {
+		const process = await harness();
+		expect(
+			await process.resolveLaunch("process_analysis_process.ui_launcher", {
+				processRef: " ",
+				instruction: "",
+			}),
+		).toEqual({
 			ok: false,
 			errors: [
 				{ code: "required", fieldId: "processRef", message: "processRef is required" },
@@ -86,64 +93,51 @@ describe("processAnalysisProcess", () => {
 		});
 	});
 
-	it("defines only analysis and decision turns", () => {
-		expect([...processAnalysisProcess.turns.keys()]).toEqual([
+	it("describes analysis turns and evaluates operator completion", async () => {
+		const process = await harness();
+		const description = process.describe();
+		expect(description.turns.map((turn) => turn.id)).toEqual([
 			processAnalysisTurnIds.analyzeProcess,
 			processAnalysisTurnIds.analysisDecision,
 		]);
+		expect(description.actions.some((action) => action.id === "start_local_repo_change")).toBe(
+			false,
+		);
 		expect(
-			buildServerProcessForTest(processAnalysisProcess)?.actions.has("start_local_repo_change"),
-		).toBe(false);
-	});
-
-	it("lets the operator complete analysis", () => {
-		const turn = processAnalysisProcess.turns.get(
-			processAnalysisTurnIds.analysisDecision,
-		)?.definition;
-		expect(turn?.kind).toBe("human");
-		if (turn?.kind !== "human") return;
-		expect(
-			resolveHumanTurnView({ turnId: processAnalysisTurnIds.analysisDecision, turn }).actions.find(
-				(action) => action.actionId === processAnalysisActionIds.completeAnalysis,
-			),
+			description.actions.find((action) => action.id === processAnalysisActionIds.completeAnalysis),
 		).toMatchObject({ label: "Complete analysis" });
-		expect(getTurnTransitions(processAnalysisTurnIds.analysisDecision)).toContainEqual({
-			trigger: processAnalysisActionIds.completeAnalysis,
-			lifecycleStatus: "completed",
-		});
-		expect(getTurnTransitions(processAnalysisTurnIds.analysisDecision)).toContainEqual({
+		const effects = await process.evaluateAction(
+			processAnalysisActionIds.completeAnalysis,
+			{},
+			{
+				position: {
+					selectedTurnId: processAnalysisTurnIds.analysisDecision,
+					lifecycleStatus: "waiting",
+				},
+			},
+		);
+		expect(effects.transitions).toContainEqual(
+			expect.objectContaining({ lifecycleStatus: "completed" }),
+		);
+		expect(description.transitions).toContainEqual({
+			from: processAnalysisTurnIds.analysisDecision,
 			trigger: processAnalysisActionIds.refreshSnapshot,
 			nextTurnId: processAnalysisTurnIds.analyzeProcess,
 		});
 	});
 
 	it("prepares the analysis through the authorized integration tool", async () => {
-		const turn = processAnalysisProcess.turns.get(
-			processAnalysisTurnIds.analyzeProcess,
-		)?.definition;
-		if (turn?.kind !== "llm" || !turn.prepare) throw new Error("Expected prepared LLM turn");
-		expect(turn.integrationTools).toEqual([processAnalysisDownloadSnapshotTool]);
-		const snapshot = createSnapshot();
-		const callIntegrationTool = vi.fn(async () => snapshot);
-		const reportProgress = vi.fn();
-		const ctx = {
-			...createTestWorkerProcessContext({
-				process: createTestProcessInstance({ processId: processAnalysisProcess.id }),
-				params: testParams,
-				state: processAnalysisProcess.initialState(testParams),
-			}),
-			callIntegrationTool,
-			reportProgress,
-		};
-		const prepared = await turn.prepare(ctx);
-		expect(callIntegrationTool).toHaveBeenCalledWith(processAnalysisDownloadSnapshotTool, {
-			processRef: "agt_source",
+		const process = await harness();
+		const result = await process.evaluateTurn(processAnalysisTurnIds.analyzeProcess, {
+			responses: [{ outcome: "analysis", markdown: "Analysis" }],
 		});
-		expect(prepared).toEqual(snapshot);
-		expect(reportProgress).toHaveBeenLastCalledWith({
+		expect(result.tools).toEqual([
+			{ name: processAnalysisDownloadSnapshotTool, arguments: { processRef: "agt_source" } },
+		]);
+		expect(result.progress.at(-1)).toEqual({
 			title: "Analysis preparation",
 			steps: [{ id: "download_snapshot", label: "Download process snapshot", status: "completed" }],
 		});
-		expect(await turn.prompt({ ...ctx, prepared })).toContain("Snapshot directory: /tmp/snapshot");
+		expect(result.prompts[0]).toContain("Snapshot directory: /tmp/snapshot");
 	});
 });

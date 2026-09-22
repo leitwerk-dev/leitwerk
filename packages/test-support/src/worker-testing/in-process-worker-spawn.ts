@@ -23,6 +23,8 @@ export interface InProcessWorkerSpawnOptions {
 	piFactory?: PiTreeHandleFactory;
 	/** @public */
 	toolCallScriptResolver?: StubToolCallScriptResolver;
+	/** @internal */
+	beforeTurnBootstrap?(instanceId: string, turnId: string, signal: AbortSignal): Promise<void>;
 	/** Optional delays at real connection and managed-runtime preparation boundaries. @internal */
 	startupDelays?: (instanceId: string) =>
 		| {
@@ -82,15 +84,26 @@ export function createInProcessWorkerSpawn(
 			stderr,
 			pid: Math.floor(Math.random() * 100_000) + 1_000,
 			kill: (_signal?: NodeJS.Signals | number) => {
-				finish(0);
-				void runtime?.stop("test_kill").catch(() => {});
+				cancellation.abort();
+				void Promise.resolve(runtime?.stop("test_kill"))
+					.finally(() => finish(0))
+					.catch(() => {});
 				return true;
 			},
 			spawnfile: command,
 			spawnargs: [command, ...args],
 		});
 
+		const beforeTurnBootstrap = options.beforeTurnBootstrap;
 		runtime = createWorkerEntryRuntime({
+			beforeTurnBootstrap: beforeTurnBootstrap
+				? (turnId) =>
+						beforeTurnBootstrap(
+							spawnOptions?.env?.LEITWERK_INSTANCE_ID ?? "",
+							turnId,
+							cancellation.signal,
+						)
+				: undefined,
 			extensionCatalog: options.extensionCatalog,
 			piFactory: timing
 				? {

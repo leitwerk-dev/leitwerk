@@ -136,6 +136,8 @@ export interface WorkerEntryRuntimeOverrides extends Partial<WorkerRuntimeConfig
 	/** @internal */
 	scheduler?: WorkerRuntimeScheduler;
 	/** @internal */
+	beforeTurnBootstrap?: WorkerRuntimeAdapters["beforeTurnBootstrap"];
+	/** @internal */
 	stderr?: NodeJS.WritableStream;
 	/** @internal */
 	onConnectionDiagnostic?: (message: string) => void;
@@ -253,6 +255,7 @@ export function createWorkerEntryRuntime(
 			extensionEvents: workerExtensionApi.events,
 			stderr: overrides.stderr,
 			scheduler,
+			beforeTurnBootstrap: overrides.beforeTurnBootstrap,
 			exit: overrides.exit ?? ((code) => process.exit(code)),
 		},
 	});

@@ -11,25 +11,10 @@ export {
 	createTestServerSetupCapability,
 	createToolCollector,
 } from "./server-extension-test-harness.js";
+
 /** @internal */
-export function createInMemoryExternalWriteLog(): {
-	/** @internal */
-	records: Array<{
-		/** @internal */
-		dedupKey: string;
-	}>;
-	/** @internal */
-	hasDedupKey(key: string): boolean;
-	/** @internal */
-	record(input: {
-		/** @internal */
-		dedupKey: string;
-	}): {
-		/** @internal */
-		dedupKey: string;
-	};
-	/** @internal */
-	getDedupKeys(): ReadonlySet<string>;
-} {
+export function createInMemoryExternalWriteLog(): ReturnType<
+	typeof createInMemoryExternalWriteLogImpl
+> {
 	return createInMemoryExternalWriteLogImpl();
 }

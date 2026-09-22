@@ -5,7 +5,3 @@ export {
 	type PollResult,
 } from "./poll-loop.js";
 export { createPollingCoordinator } from "./polling-coordinator.js";
-export {
-	consumeTriggerFile,
-	readTriggerFile,
-} from "./trigger-files.js";

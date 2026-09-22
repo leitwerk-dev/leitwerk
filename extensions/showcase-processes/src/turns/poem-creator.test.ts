@@ -1,8 +1,4 @@
-import {
-	type HumanTurnDefinition,
-	type LlmTurnDefinition,
-	resolveHumanTurnView,
-} from "@leitwerk-dev/process-sdk";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import { describe, expect, it } from "vitest";
 import { poemCreatorProcess } from "../process-definition.js";
 import {
@@ -37,10 +33,14 @@ describe("poem creator turn prompts", () => {
 		expect(prompt).toContain("Preserve the parts");
 	});
 
-	it("continues poem revisions on primary and reviews on their side branch", () => {
-		const draftTurn = poemCreatorProcess.turns.get("draft_poem")?.definition as LlmTurnDefinition;
-		const reviewTurn = poemCreatorProcess.turns.get("review_poem_draft")
-			?.definition as LlmTurnDefinition;
+	it("continues poem revisions on primary and reviews on their side branch", async ({
+		onTestFinished,
+	}) => {
+		const test = await createExtensionTestHarness();
+		onTestFinished(() => test.close());
+		const turns = test.process(poemCreatorProcess, { params: { prompt: "Test" } }).describe().turns;
+		const draftTurn = turns.find((t) => t.id === "draft_poem");
+		const reviewTurn = turns.find((t) => t.id === "review_poem_draft");
 
 		expect(draftTurn).toMatchObject({
 			branchType: "primary",
@@ -63,11 +63,14 @@ describe("poem creator turn prompts", () => {
 		});
 	});
 
-	it("makes only the non-terminal poem review-loop actions schedulable", () => {
-		const poemReviewView = resolveHumanTurnView({
-			turnId: "poem_review",
-			turn: poemCreatorProcess.turns.get("poem_review")?.definition as HumanTurnDefinition,
-		});
+	it("makes only the non-terminal poem review-loop actions schedulable", async ({
+		onTestFinished,
+	}) => {
+		const test = await createExtensionTestHarness();
+		onTestFinished(() => test.close());
+		const turns = test.process(poemCreatorProcess, { params: { prompt: "Test" } }).describe().turns;
+		const poemReviewView = turns.find((t) => t.id === "poem_review")?.humanView;
+		if (!poemReviewView) throw new Error("Missing poem review description");
 		const poemReviewActions = new Map(
 			poemReviewView.actions.map((action) => [action.actionId, action]),
 		);
@@ -79,10 +82,8 @@ describe("poem creator turn prompts", () => {
 			preview: { kind: "trigger", trigger: "operator_re_review" },
 		});
 
-		const reviewFeedbackView = resolveHumanTurnView({
-			turnId: "poem_review_feedback",
-			turn: poemCreatorProcess.turns.get("poem_review_feedback")?.definition as HumanTurnDefinition,
-		});
+		const reviewFeedbackView = turns.find((t) => t.id === "poem_review_feedback")?.humanView;
+		if (!reviewFeedbackView) throw new Error("Missing review feedback description");
 		const reviewFeedbackActions = new Map(
 			reviewFeedbackView.actions.map((action) => [action.actionId, action]),
 		);

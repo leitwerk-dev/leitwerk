@@ -9,7 +9,6 @@ import {
 	type RegisteredProcessWatcherLike,
 	repositoryFeedbackBatch,
 } from "@leitwerk-dev/process-sdk";
-import { sameSubscription } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, type emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { GitHubIntegration } from "./capability.js";
 import type { GitHubIssue, GitHubRepository } from "./client.js";
@@ -163,12 +162,7 @@ export function createGitHubIssuePolling(
 				.client(config.profile)
 				.getPullRequest(config.owner, config.repo, config.prNumber);
 			if (!pr.merged && pr.state !== "closed") return;
-			if (
-				!deps.externalSources
-					.listArmed(GITHUB_PR_TERMINAL_KIND)
-					.some((current) => sameSubscription(armed, current))
-			)
-				return;
+			if (!report.isCurrent(GITHUB_PR_TERMINAL_KIND, armed)) return;
 			terminalInstances.add(armed.instanceId);
 			const outcome = pr.merged ? "merged" : "closed";
 			if (config.terminalOutcome && config.terminalOutcome !== outcome) return;

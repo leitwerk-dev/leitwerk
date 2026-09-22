@@ -470,6 +470,20 @@ facts. Invalid or failing optional event descriptions are omitted; they do not b
 
 Trusted Git calls use `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`. Ordinary tool commands use `sanitizeWorkerSubprocessEnv()`, which removes internal helper references, Git credential configuration, askpass/SSH agent variables and server token, API-key, password and secret variables. Credentials must never enter process params, state, projects or session trees.
 
+## Testing process definitions
+
+Use the supported [extension testing harnesses](testing.md#extension-testing) to
+inspect descriptions, evaluate handlers with independent fixtures, and execute
+server/worker behavior. Extension tests should assert observations instead of
+constructing SDK contexts or inspecting handler registries. Keep prompt and state
+helper tests in the extension that owns those helpers.
+
+Startup compatibility migrations can rewrite encoded process params through
+the server-setup capability’s `processes.update(instanceId, { paramsJson })`
+method, alongside persisted state and position. Run
+such migrations during extension setup, before background services start.
+Use codec parsing to validate compatibility before writing.
+
 ## Typed external writes
 
 `ctx.externalWrites.ensure(identity, operation)` returns the remote value after
@@ -531,3 +545,27 @@ and `WriteOperation`; `/internal` is not a supported extension API.
 
 Existing durable records and remote markers remain valid. Historical unmarked
 writes may not be recoverable. No schema or configuration change is required.
+
+## Shared integration operations
+
+The SDK supports repository feedback normalization and quiet-period batching,
+repository watcher/source configuration parsing, watcher presentation, and repository
+matching. Their exported input and result types are part of the supported API.
+Extensions remain responsible for authorization and provider-specific filtering.
+Parsing defaults, feedback cursors, and merge keys are shared across callers.
+
+`IntegrationHttpError` exposes its HTTP `status`; `objectArg`, `stringArg`,
+`numberArg`, `parseJsonData`, and `repositoryHttpsUrl` provide shared boundary
+validation. `ServerExtensionAPI.logger` and its `info`, `warn`, and `error` methods
+are optional.
+
+`createExternalSourcePollReporter` returns `ExternalSourcePollReporter`. Its
+`isCurrent(kind, armed)` compares the process, arming id, generation, and resolved
+value after provider I/O. Supplying `currentKinds` also checks freshness before
+`fire` and `observe`. Omit it to retain caller-managed freshness checks.
+`forwardGeneration` defaults to false. Observation is a no-op when the source
+service lacks observation support or the captured subscription lacks a generation.
+
+Use `recordConfirmedWrite` from `@leitwerk-dev/external-writes` to record an
+already-confirmed remote object without repeating the remote operation. It returns
+`{ recorded, dedupKey }`; `ensureWrite` continues to return `{ performed, dedupKey }`.

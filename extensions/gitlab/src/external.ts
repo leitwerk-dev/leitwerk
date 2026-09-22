@@ -4,11 +4,7 @@ import {
 	type ExternalActionSource,
 	type ExternalSourceArmingLike,
 } from "@leitwerk-dev/process-sdk";
-import {
-	type ConflictEvidence,
-	conflictKey,
-	sameSubscription,
-} from "@leitwerk-dev/repository-rebase";
+import { type ConflictEvidence, conflictKey } from "@leitwerk-dev/repository-rebase";
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";
@@ -191,7 +187,7 @@ export function createGitLabProvider(
 			});
 			const current = (armed: ExternalSourceArmingLike) =>
 				[GITLAB_MR_KIND, GITLAB_ISSUE_CANCELLED_KIND].some((kind) =>
-					deps.externalSources.listArmed(kind).some((live) => sameSubscription(armed, live)),
+					reporter.isCurrent(kind, armed),
 				);
 			const report = {
 				...reporter,

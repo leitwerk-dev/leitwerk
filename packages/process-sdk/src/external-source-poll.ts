@@ -4,25 +4,33 @@ import type {
 	ExternalSourceServiceLike,
 } from "./core-capabilities.js";
 
-/** @internal */
-type Arming = Pick<ExternalSourceArmingLike, "id" | "instanceId" | "generation">;
+/** @public */
+type Arming = Pick<ExternalSourceArmingLike, "id" | "instanceId" | "generation" | "resolved">;
 
-/** Report one poll's effects without choosing events, scheduling, or subscription policy. @internal */
+/** Report one poll's effects without choosing events, scheduling, or subscription policy. @public */
 export function createExternalSourcePollReporter(
 	sources: ExternalSourceServiceLike,
 	result: {
-		/** @internal */
+		/** @public */
 		created: string[];
-		/** @internal */
+		/** @public */
 		errors: string[];
 	},
 	options: {
-		/** @internal */
+		/** @public */
 		forwardGeneration?: boolean;
+		/** Live source kinds checked before fire and observe. @public */
+		currentKinds?: readonly string[];
 	} = {},
-) {
+): ExternalSourcePollReporter {
+	const isCurrent = (kind: string, armed: Arming) =>
+		sources.listArmed(kind).some((current) => sameSubscription(armed, current));
+	const current = (armed: Arming) =>
+		options.currentKinds === undefined ||
+		options.currentKinds.some((kind) => isCurrent(kind, armed));
 	return {
-		/** @internal */
+		isCurrent,
+		/** @public */
 		async poll(kind: string, read: (armed: ExternalSourceArmingLike) => Promise<void>) {
 			for (const armed of sources.listArmed(kind)) {
 				try {
@@ -34,8 +42,9 @@ export function createExternalSourcePollReporter(
 				}
 			}
 		},
-		/** @internal */
+		/** @public */
 		async fire(armed: Arming, event: Record<string, unknown>, mergeKey: string): Promise<boolean> {
+			if (!current(armed)) return false;
 			const fired = await sources.fire({
 				instanceId: armed.instanceId,
 				armingId: armed.id,
@@ -47,9 +56,9 @@ export function createExternalSourcePollReporter(
 			else result.errors.push(`${armed.id}:fire_failed`);
 			return fired.ok;
 		},
-		/** @internal */
+		/** @public */
 		observe(armed: Arming, input: Pick<ExternalObservationInput, "observation" | "refreshError">) {
-			if (sources.observe && armed.generation)
+			if (current(armed) && sources.observe && armed.generation)
 				return sources.observe({
 					instanceId: armed.instanceId,
 					armingId: armed.id,
@@ -58,4 +67,49 @@ export function createExternalSourcePollReporter(
 				});
 		},
 	};
+}
+
+/** Effects of one poll, with caller-selected scheduling and event policy. @public */
+export interface ExternalSourcePollReporter {
+	/** @public */
+	poll(kind: string, read: (armed: ExternalSourceArmingLike) => Promise<void>): Promise<void>;
+	/** @public */
+	fire(armed: Arming, event: Record<string, unknown>, mergeKey: string): Promise<boolean>;
+	/** @public */
+	observe(
+		armed: Arming,
+		input: Pick<ExternalObservationInput, "observation" | "refreshError">,
+	): ReturnType<NonNullable<ExternalSourceServiceLike["observe"]>> | undefined;
+	/** Compare the captured identity, generation and resolved value with a live subscription. @public */
+	isCurrent(kind: string, armed: Arming): boolean;
+}
+/** A captured generation and resolved identity must still be armed after provider I/O. @internal */
+function sameSubscription(
+	captured: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		generation?: string;
+		/** @internal */
+		resolved: unknown;
+	},
+	current: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		generation?: string;
+		/** @internal */
+		resolved: unknown;
+	},
+): boolean {
+	return (
+		current.id === captured.id &&
+		current.instanceId === captured.instanceId &&
+		current.generation === captured.generation &&
+		JSON.stringify(current.resolved) === JSON.stringify(captured.resolved)
+	);
 }

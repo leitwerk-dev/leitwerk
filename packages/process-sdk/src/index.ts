@@ -134,7 +134,10 @@ export type {
 } from "./extension-api.js";
 export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
 export { defineExternalActionSource } from "./external-action-source.js";
-export { createExternalSourcePollReporter } from "./external-source-poll.js";
+export {
+	createExternalSourcePollReporter,
+	type ExternalSourcePollReporter,
+} from "./external-source-poll.js";
 export {
 	AutomaticOutcomeBuilder,
 	createFlowPromptContext,
@@ -249,6 +252,11 @@ export {
 	type RepositoryIssueWatcherConfig,
 } from "./repository-issue-watcher.js";
 export { existingObject, matchesPatch } from "./repository-reconciliation.js";
+export type {
+	RepositoryFeedbackSourceConfig,
+	RepositoryIssueCancelledSourceConfig,
+	RepositoryPullRequestSourceConfig,
+} from "./repository-source-config.js";
 export {
 	parseRepositoryFeedbackConfig,
 	parseRepositoryIssueCancelledConfig,

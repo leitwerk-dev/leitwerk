@@ -1,8 +1,5 @@
-import {
-	buildProcessLaunchersForTest,
-	buildProcessWatchersForTest,
-} from "@leitwerk-dev/extension-runtime/testing";
-import { describe, expect, it } from "vitest";
+import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	poemCreatorProcess,
 	singlePromptExternalCompleteProcess,
@@ -12,7 +9,9 @@ import {
 import { buildDefaultPoemPrompt } from "./turns/poem-creator.js";
 
 describe("showcase process launchers", () => {
-	it("passes prompt title source fields for the single-prompt launchers", () => {
+	it("passes prompt title source fields for the single-prompt launchers", async () => {
+		const test = await createExtensionTestHarness();
+		onTestFinished(() => test.close());
 		for (const [process, launcherId] of [
 			[singlePromptProcess, "single_prompt_process.single_prompt_ui"],
 			[singlePromptWithToolProcess, "single_prompt_with_tool_process.single_prompt_with_tool_ui"],
@@ -21,15 +20,11 @@ describe("showcase process launchers", () => {
 				"single_prompt_external_complete_process.single_prompt_external_complete_ui",
 			],
 		] as const) {
-			const launchers = buildProcessLaunchersForTest(process);
-			const launcher = launchers?.launchers.get(launcherId);
-			expect(launcher?.ui).toBeDefined();
-			if (!launcher?.ui) {
-				continue;
-			}
-			const resolved = launcher.ui.resolveLaunchConfig({
-				prompt: "  Write something vivid about twilight deployments.  ",
-			});
+			const resolved = await test
+				.process(process, { params: { prompt: "Fixture" } })
+				.resolveLaunch(launcherId, {
+					prompt: "  Write something vivid about twilight deployments.  ",
+				});
 			expect(resolved).toEqual({
 				ok: true,
 				launchConfig: expect.objectContaining({
@@ -41,24 +36,22 @@ describe("showcase process launchers", () => {
 		}
 	});
 
-	it("declares the poem draft as review-branch input", () => {
-		const reviewTurn = poemCreatorProcess.turns.get("review_poem_draft")?.definition;
-		expect(reviewTurn?.kind).toBe("llm");
-		if (reviewTurn?.kind !== "llm") {
-			return;
-		}
-		expect(reviewTurn.consumedProducts).toContain("poem-draft");
+	it("declares the poem draft as review-branch input", async () => {
+		const test = await createExtensionTestHarness();
+		onTestFinished(() => test.close());
+		const process = test.process(poemCreatorProcess, { params: { prompt: "Fixture" } });
+		expect(
+			process.describe().turns.find((turn) => turn.id === "review_poem_draft")?.consumedProducts,
+		).toContain("poem-draft");
 	});
 
-	it("passes prompt title source fields for the poem creator launcher and watcher", () => {
-		const launchers = buildProcessLaunchersForTest(poemCreatorProcess);
-		const launcher = launchers?.launchers.get("poem_creator_process.poem_creator_ui");
-		expect(launcher?.ui).toBeDefined();
-		if (!launcher?.ui) {
-			return;
-		}
-
-		const defaultResolved = launcher.ui.resolveLaunchConfig({ prompt: "   " });
+	it("passes prompt title source fields for the poem creator launcher and watcher", async () => {
+		const test = await createExtensionTestHarness();
+		onTestFinished(() => test.close());
+		const process = test.process(poemCreatorProcess, { params: { prompt: "Fixture" } });
+		const defaultResolved = await process.resolveLaunch("poem_creator_process.poem_creator_ui", {
+			prompt: "   ",
+		});
 		expect(defaultResolved).toEqual({
 			ok: true,
 			launchConfig: expect.objectContaining({
@@ -66,18 +59,13 @@ describe("showcase process launchers", () => {
 			}),
 		});
 
-		const watchers = buildProcessWatchersForTest(poemCreatorProcess);
-		const watcher = watchers?.watchers.get("create_poem");
-		expect(watcher).toBeDefined();
-		if (!watcher) {
-			return;
-		}
 		expect(
-			watcher.resolveLaunchConfig(
+			await process.resolveWatcherLaunch(
+				"create_poem",
 				{
 					content: "  Write a short poem about release trains under Berlin rain.  ",
 				},
-				{},
+				{ enabled: true, poll_interval: "1s", file_path: "/tmp/poem-fixture" },
 			),
 		).toEqual({
 			processId: "poem_creator_process",

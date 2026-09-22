@@ -77,3 +77,5 @@ The following exported declarations are `@public`:
 - `@leitwerk-dev/showcase-processes`: `default`.
 
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
+
+Filesystem trigger helpers are internal to this extension. A missing file is ignored; a failed admission retains the trigger file for a later poll.

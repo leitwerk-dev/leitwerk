@@ -6,7 +6,7 @@ import singlePromptExtension, {
 	buildPoemLeafOutcomeFallbackMarkdown,
 	buildPoemLeafOutcomePayload,
 } from "@leitwerk-dev/showcase-processes";
-import { fixtureModelProviders, postImmediateLaunchRequest } from "@leitwerk-dev/test-support";
+import { fixtureModelProviders, postImmediateLaunch } from "@leitwerk-dev/test-support";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
@@ -88,19 +88,16 @@ async function launchPoemCreator(
 	testApp: NonNullable<MountedUiHarness<Record<string, never>>["testApp"]>,
 	prompt: string,
 ) {
-	const response = await postImmediateLaunchRequest(
-		`${testApp.address}/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
+	const response = await postImmediateLaunch(
+		testApp.address,
+		"poem_creator_process.poem_creator_ui",
 		{
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				launcherInput: {
-					prompt,
-				},
-				modelConfig: {
-					defaultModelProfileId: "claude_fast",
-				},
-			}),
+			launcherInput: {
+				prompt,
+			},
+			modelConfig: {
+				defaultModelProfileId: "claude_fast",
+			},
 		},
 	);
 	expect(response.status).toBe(201);
