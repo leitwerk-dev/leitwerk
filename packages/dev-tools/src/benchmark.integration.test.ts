@@ -1,5 +1,5 @@
 import { once } from "node:events";
-import { readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
 import path from "node:path";
 import { expect, it, onTestFinished } from "vitest";
@@ -21,6 +21,7 @@ async function fixture(
 	const { root } = testWorkspace();
 	const calls: { method: string; path: string; key?: string; body?: unknown; auth?: string }[] = [];
 	const launches = new Map<string, string>();
+	const journalAtPosts: unknown[][] = [];
 	const controller = options.abort ? new AbortController() : undefined;
 	let loseResponse = options.lostResponse;
 	const detailReads = new Map<string, number>();
@@ -59,6 +60,16 @@ async function fixture(
 				],
 			});
 		if (request.method === "POST") {
+			const journalPath = path.join(root, "evidence/launches.jsonl");
+			journalAtPosts.push(
+				existsSync(journalPath)
+					? readFileSync(journalPath, "utf8")
+							.trim()
+							.split("\n")
+							.filter(Boolean)
+							.map((line) => JSON.parse(line))
+					: [],
+			);
 			if (!key) {
 				response.statusCode = 400;
 				return send({});
@@ -141,6 +152,7 @@ async function fixture(
 		root,
 		calls,
 		launches,
+		journalAtPosts,
 		detailReads,
 		options: {
 			apiConfig,
@@ -160,7 +172,7 @@ async function fixture(
 
 it("retries lost launch responses with one identity and writes private evidence for warmups and measured samples", async () => {
 	const fixtureData = await fixture({ lostResponse: true });
-	const { options, calls, launches } = fixtureData;
+	const { options, calls, launches, journalAtPosts } = fixtureData;
 	const result = await runWorkerStartupBenchmark({ ...options, warmups: 1 });
 	expect(result.succeeded).toBe(true);
 	expect(result.samples).toHaveLength(3);
@@ -182,12 +194,44 @@ it("retries lost launch responses with one identity and writes private evidence 
 	expect(readFileSync(result.reportPath, "utf8")).toContain(
 		"Measured launches: 2 / 2; warm-ups: 1",
 	);
-	expect(
-		readFileSync(path.join(options.output, "launches.jsonl"), "utf8").trim().split("\n"),
-	).toHaveLength(3);
+	const journal = readFileSync(path.join(options.output, "launches.jsonl"), "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+	const identities = [...launches.entries()];
+	const expectedJournal = identities.map(([idempotencyKey], index) => ({
+		index,
+		warmup: index === 0,
+		idempotencyKey,
+		outcome: "pending",
+	}));
+	expect(journal).toMatchObject(expectedJournal);
+	expect(journalAtPosts).toHaveLength(4);
+	for (const [index, post] of posts.entries()) {
+		const expected = expectedJournal.find((sample) => sample.idempotencyKey === post.key);
+		expect(expected).toBeDefined();
+		expect(journalAtPosts[index]).toContainEqual(expect.objectContaining(expected));
+	}
+	const rawResults = readFileSync(path.join(options.output, "results.jsonl"), "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+	expect(rawResults).toMatchObject(
+		identities.map(([idempotencyKey, launchRunId], index) => ({
+			index,
+			warmup: index === 0,
+			idempotencyKey,
+			outcome: "completed",
+			launchRunId,
+			instanceId: launchRunId,
+		})),
+	);
+	expect(rawResults).toEqual(result.samples);
 	for (const file of [
 		options.apiConfig,
 		result.reportPath,
+		path.join(options.output, "inputs.json"),
+		path.join(options.output, "launches.jsonl"),
 		path.join(options.output, "results.jsonl"),
 	])
 		expect(statSync(file).mode & 0o777).toBe(0o600);

@@ -59,7 +59,7 @@ function workspace() {
 afterEach(() => {
 	for (const root of dirs.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
-it("generates installed-package consumer evidence without a core checkout or build, and replaces it atomically", async () => {
+it("generates installed-package consumer evidence without a core checkout or build, and replaces the report for the same source", async () => {
 	const root = workspace(),
 		output = temporary();
 	const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
@@ -98,12 +98,18 @@ it("generates installed-package consumer evidence without a core checkout or bui
 	const second = JSON.parse(fs.readFileSync(path.join(output, files[0]), "utf8"));
 	expect(second.source.id).toBe(first.source.id);
 	expect(second.source.fingerprint).not.toBe(first.source.fingerprint);
+	expect(second.snapshot.occurrences).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({ kind: "call", path: "src/usage.js", line: 1 }),
+			expect.objectContaining({ kind: "call", path: "src/Consumer.svelte", line: 4 }),
+		]),
+	);
 	fs.rmSync(root, { recursive: true, force: true });
 	expect(
 		JSON.parse(fs.readFileSync(path.join(output, files[0]), "utf8")).snapshot.occurrences.length,
 	).toBeGreaterThan(0);
 }, 30000);
-it("includes only explicitly selected composition packages and test roots", async () => {
+it("attributes selected composition packages and test roots", async () => {
 	const root = workspace(),
 		other = temporary();
 	put(other, "package.json", JSON.stringify({ name: "extra", version: "1", type: "module" }));
@@ -329,5 +335,20 @@ it("supports npm --prefix without switching consumer dependencies", () => {
 		{ cwd: root, stdio: "pipe", timeout: 30000 },
 	);
 	expect(fs.readFileSync(path.join(root, "package.json"), "utf8")).toBe(before);
-	expect(fs.readdirSync(output)).toHaveLength(1);
+	const files = fs.readdirSync(output);
+	expect(files).toHaveLength(1);
+	const report = JSON.parse(fs.readFileSync(path.join(output, files[0]), "utf8"));
+	expect(report.kind).toBe("usage");
+	expect(report.analyzedPackages["@leitwerk-dev/report-fixture"]).toBe("1.0.0");
+	expect(report.snapshot.occurrences).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				kind: "call",
+				sourceOrigin: "workspace",
+				path: "src/Consumer.svelte",
+				line: 4,
+				snippet: expect.stringContaining("{consumed()}"),
+			}),
+		]),
+	);
 }, 30000);
