@@ -10,14 +10,16 @@ describe("unknown records", () => {
 	});
 
 	it.each([
-		{},
-		{ value: 1 },
-		new Date(0),
-		Object.create(null),
-	])("accepts non-array objects without cloning or validating their fields", (value) => {
+		{ value: {}, expected: {} },
+		{ value: { value: 1 }, expected: { value: 1 } },
+		{ value: new Date(0), expected: {} },
+		{ value: Object.create(null), expected: {} },
+	])("accepts $value and copies its own safe fields", ({ value, expected }) => {
 		expect(isUnknownRecord(value)).toBe(true);
 		expect(asUnknownRecord(value)).toBe(value);
-		expect(v.parse(copiedUnknownRecordSchema, value)).not.toBe(value);
+		const copied = v.parse(copiedUnknownRecordSchema, value);
+		expect(copied).toEqual(expected);
+		expect(copied).not.toBe(value);
 	});
 
 	it("copies own safe keys without changing nested values", () => {

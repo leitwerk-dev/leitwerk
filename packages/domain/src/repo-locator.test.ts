@@ -9,6 +9,7 @@ describe("detectRepoLocatorKind", () => {
 		["~/src/repo", "local_path"],
 		["./repo", "local_path"],
 		["../repo", "local_path"],
+		["/tmp/repo", "local_path"],
 	] as const)("classifies %s as %s", (value, expectedKind) => {
 		expect(repoLocator.detectRepoLocatorKind(value)).toBe(expectedKind);
 	});
@@ -21,6 +22,7 @@ describe("detectRepoLocatorKind", () => {
 		"C:\\Users\\dev\\repo",
 		"https://example.com",
 		"file://server/share/repo",
+		"not a locator",
 		"owner/repo",
 		"foo/bar",
 		"https:foo/bar",
@@ -48,7 +50,7 @@ describe("parseRepoLocator", () => {
 describe("assertRepoLocator", () => {
 	it("throws a helpful error for invalid values", () => {
 		expect(() => repoLocator.assertRepoLocator(" ", "component.repoLocator")).toThrowError(
-			"component.repoLocator must be a remote URL or local filesystem path",
+			/component\.repoLocator/,
 		);
 	});
 

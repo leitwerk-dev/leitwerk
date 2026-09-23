@@ -7,6 +7,13 @@ import {
 	parseSemanticEntryRef,
 } from "./semantic-entry-refs.js";
 
+const emptyRefs = {
+	plan: null,
+	review: null,
+	currentPrimaryPathLeaf: null,
+	rootEntry: null,
+};
+
 describe("areSemanticEntryRefsEqual", () => {
 	const ref = { entryId: "ent_1", turnRecordId: "trn_1" };
 	it.each([
@@ -29,6 +36,7 @@ describe("parseSemanticEntryRef", () => {
 	});
 
 	it("returns null when entryId is empty", () => {
+		expect(parseSemanticEntryRef({ entryId: "" })).toBeNull();
 		expect(parseSemanticEntryRef({ entryId: "   ", turnRecordId: "trn_1" })).toBeNull();
 	});
 
@@ -60,10 +68,12 @@ describe("parseProcessSemanticEntryRefs", () => {
 		expect(
 			parseProcessSemanticEntryRefs({
 				plan: { entryId: "  ent_plan  ", turnRecordId: " trn_plan " },
+				rootEntry: { entryId: "ent_root" },
 			}),
 		).toEqual({
-			...createEmptyProcessSemanticEntryRefs(),
+			...emptyRefs,
 			plan: { entryId: "ent_plan", turnRecordId: "trn_plan" },
+			rootEntry: { entryId: "ent_root", turnRecordId: null },
 		});
 	});
 
@@ -74,11 +84,11 @@ describe("parseProcessSemanticEntryRefs", () => {
 		"refs",
 		[],
 	])("falls back to the empty shape for non-object input %j", (value) => {
-		expect(parseProcessSemanticEntryRefs(value)).toEqual(createEmptyProcessSemanticEntryRefs());
+		expect(parseProcessSemanticEntryRefs(value)).toEqual(emptyRefs);
 	});
 
 	it("returns the all-null default shape when no refs are present", () => {
-		expect(parseProcessSemanticEntryRefs({})).toEqual(createEmptyProcessSemanticEntryRefs());
+		expect(parseProcessSemanticEntryRefs({})).toEqual(emptyRefs);
 	});
 });
 
@@ -93,11 +103,6 @@ describe("isProcessSemanticEntryRefKey", () => {
 
 describe("createEmptyProcessSemanticEntryRefs", () => {
 	it("initializes every semantic ref slot to null", () => {
-		expect(createEmptyProcessSemanticEntryRefs()).toEqual({
-			plan: null,
-			review: null,
-			currentPrimaryPathLeaf: null,
-			rootEntry: null,
-		});
+		expect(createEmptyProcessSemanticEntryRefs()).toEqual(emptyRefs);
 	});
 });
