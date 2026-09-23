@@ -23,6 +23,11 @@
 			"import": "./dist/storage-entry.js",
 			"types": "./dist/storage-entry.d.ts"
 		},
+		"./testing": {
+			"source": "./src/testing.ts",
+			"import": "./dist/testing.js",
+			"types": "./dist/testing.d.ts"
+		},
 		"./backend": {
 			"source": "./src/backend.ts",
 			"import": "./dist/backend.js",

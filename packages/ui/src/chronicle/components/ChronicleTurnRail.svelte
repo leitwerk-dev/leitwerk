@@ -8,6 +8,7 @@ import {
 	formatRailElapsed,
 } from "../lib/chronicle-rail-groups.js";
 import type { ChronicleSelectableItem } from "../lib/chronicle-selectable-items.js";
+import { formatChronicleIterationProgress } from "../lib/chronicle-view-model.js";
 import { groupRetryChains } from "../lib/retry-groups.js";
 
 interface Props {
@@ -44,6 +45,7 @@ const retryMembership = $derived.by(() => {
 		turnId: record.turnId,
 		parentTurnRecordId: record.parentTurnRecordId,
 		failed: record.outcome === "failed",
+		itemKey: record.iteration?.itemKey,
 	}))) {
 		if (group.length > 1)
 			group.forEach((record, index) => {
@@ -166,7 +168,12 @@ function itemDetail(item: ChronicleSelectableItem): string | null {
 			: "Completed";
 	const label = state === "live" ? "In progress" : state === "failed" ? "Failed" : completedLabel;
 	const retry = retryMembership.get(item.turnRecordId);
-	return [retry ? `Attempt ${retry.index} of ${retry.total}` : null, label, elapsed]
+	return [
+		item.iteration ? formatChronicleIterationProgress(item.iteration) : null,
+		retry ? `Attempt ${retry.index} of ${retry.total}` : null,
+		label,
+		elapsed,
+	]
 		.filter(Boolean)
 		.join(" · ");
 }
@@ -266,7 +273,7 @@ function groupElapsed(group: ChronicleRepeatedTurns): string | null {
 					{#if upcomingTurn}
 						<div class="rail-item rail-upcoming" data-section="upcoming-turn" data-state="pending">
 							<span class="rail-marker" aria-hidden="true"></span>
-							<span class="rail-copy"><span class="rail-title">{upcomingTurn.description}</span><span class="rail-detail">Pending</span></span>
+							<span class="rail-copy"><span class="rail-title">{upcomingTurn.description}</span><span class="rail-detail">{upcomingTurn.iteration ? `${formatChronicleIterationProgress(upcomingTurn.iteration)} · Pending` : "Pending"}</span></span>
 						</div>
 					{/if}
 				</div>

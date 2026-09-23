@@ -64,6 +64,7 @@ test_roots:
   - ./tests
 ```
 
+An optional `sandboxes` map names [sandbox compositions](#source-sandbox-compositions).
 Paths are relative to the manifest. `leitwerk.root` is optional; when present it must identify the checkout executing the command, otherwise that checkout is used. `workspace_root` defaults to the manifest directory. `runtime_config` is required. Listed extensions can be filesystem paths or installed package names such as `@leitwerk-dev/coding`; package metadata need not be exported. They are added to the development extension catalog. Test roots contribute integration, E2E, UI integration, and `*.browser.test.ts` Playwright tests.
 
 ## Commands
@@ -127,11 +128,23 @@ scenarios, scripted Pi, controls, polling and cleanup. Adapters own their persis
 state. Core harness code and tests import no extensions; built-in scenarios live
 in the checkout's `sandbox/` tooling.
 
-Extension workspaces can delegate to the selected public checkout's
-`scripts/sandbox/cli.ts` with their composition entry and workspace root. Keep the
-existing npm release pins until adopting the containing release. This phase
-supports source development only; an installed package does not contain the
-supervisor, UI source or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
+Extension workspaces declare their compositions in the manifest:
+
+```yaml
+sandboxes:
+  example: ./sandbox/example/composition.ts
+```
+
+With the local core selected, `leitwerk-dev sandbox` starts the only declared
+sandbox. `--sandbox=NAME` selects one of several; launcher options such as
+`--llm=real` and `reset` pass through. The command runs the checkout's
+`scripts/sandbox/cli.ts --composition=<manifest>` in the foreground, so the launcher
+receives interrupts directly and keeps its shutdown record. Keep sandbox
+settings in `.leitwerk/sandbox/<name>.yaml`, never in tracked files. Depend on a
+released `@leitwerk-dev/dev-sandbox` that matches your other `@leitwerk-dev/*`
+pins, not on a `file:` link into the checkout. This phase supports source
+development only; an installed package does not contain the supervisor, UI source
+or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
 and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md).
 
 ### Portable API evidence

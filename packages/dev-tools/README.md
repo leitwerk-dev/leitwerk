@@ -65,6 +65,12 @@ Repository-specific checks can use two optional npm scripts:
 - `leitwerk:after-typecheck` runs after successful `typecheck` or `test:full` in
   either mode, for auxiliary TypeScript projects outside the composed packages.
 
+`sandbox` starts a sandbox composition declared in the manifest's `sandboxes` map.
+It requires the local core, because the supervisor and UI tooling are
+source-only. `--sandbox=NAME` selects one of several entries. `--llm=real`, the
+port options and `reset` pass through to the checkout's sandbox launcher. See the
+[harness contract](../dev-sandbox/README.md).
+
 ## Local core
 
 ```sh

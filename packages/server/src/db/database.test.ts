@@ -358,6 +358,53 @@ describe("worker startup observation migration", () => {
 	});
 });
 
+describe("mapped LLM run migration", () => {
+	it("backs up a file-backed database and preserves turn starts and records", () => {
+		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-mapped-run-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		const seed = new DatabaseSync(sqlitePath);
+		seed.exec("PRAGMA foreign_keys = OFF");
+		initializeSchema(seed, { sqlitePath });
+		seed.exec(`
+			INSERT INTO process_instances (id, process_id, created_at, updated_at)
+			VALUES ('preserved-mapped', 'test_process', '2026-09-22', '2026-09-22');
+			INSERT INTO turn_start_records (id, instance_id, turn_id, turn_type, proposed_turn_record_id,
+				start_kind, state_json, created_at, updated_at)
+			VALUES ('tsr-preserved', 'preserved-mapped', 'review', 'llm', 'trn-preserved',
+				'selected_turn', '{"kind":"superseded"}', '2026-09-22', '2026-09-22');
+			DROP TABLE mapped_llm_items;
+			DROP TABLE mapped_llm_runs;
+			ALTER TABLE turn_records DROP COLUMN mapped_item_index;
+			ALTER TABLE turn_records DROP COLUMN mapped_item_key;
+			ALTER TABLE turn_records DROP COLUMN mapped_run_id;
+			ALTER TABLE turn_start_records DROP COLUMN mapped_item_index;
+			ALTER TABLE turn_start_records DROP COLUMN mapped_item_key;
+			ALTER TABLE turn_start_records DROP COLUMN mapped_run_id;
+		`);
+		seed.close();
+
+		const db = createDatabase({ sqlitePath, enableWAL: false });
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
+		expect(tableNames(sqlite)).toEqual(
+			expect.arrayContaining(["mapped_llm_runs", "mapped_llm_items"]),
+		);
+		for (const table of ["turn_records", "turn_start_records"]) {
+			expect(columnNames(sqlite, table)).toEqual(
+				expect.arrayContaining(["mapped_run_id", "mapped_item_key", "mapped_item_index"]),
+			);
+		}
+		expect(
+			sqlite
+				.prepare("SELECT id, mapped_run_id FROM turn_start_records WHERE id = 'tsr-preserved'")
+				.get(),
+		).toEqual({ id: "tsr-preserved", mapped_run_id: null });
+		expect(readdirSync(path.join(tempRoot, "backups")).some((name) => name.endsWith(".bak"))).toBe(
+			true,
+		);
+		closeDatabase(db);
+	});
+});
+
 describe("process model policy migration", () => {
 	it("backs up and preserves file-backed provenance data", () => {
 		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-model-policy-migration-"));

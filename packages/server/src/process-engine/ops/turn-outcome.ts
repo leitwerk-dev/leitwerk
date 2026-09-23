@@ -174,13 +174,12 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		});
 		const payload = resolveEffectiveOutcomePayload({ payload: initialPayload, publication });
 		const publishedProduct = publication.productName;
-		const expected =
+		const currentStart =
 			ctx.process.currentExecution?.kind === "worker_start"
-				? (() => {
-						const state = ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)?.state;
-						return state?.kind === "accepted" ? state.turnRecordId : null;
-					})()
+				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
 				: null;
+		const expected =
+			currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
 		const correlationError = validateTurnOutcomeCorrelation(ctx.process, payload, expected);
 		if (correlationError) {
 			return reject(correlationError.code, correlationError.message);
@@ -356,6 +355,8 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			events: ctx.deps.events,
 			processGraphs: ctx.deps.processGraphs,
 			processActionRegistry,
+			mappedRuns: ctx.deps.mappedRuns,
+			iteration: currentStart?.iteration ?? null,
 		});
 		if (isWriteBuildFailure(outcomeWrites)) {
 			return reject(outcomeWrites.code, outcomeWrites.message);

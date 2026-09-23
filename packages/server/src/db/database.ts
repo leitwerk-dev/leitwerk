@@ -68,6 +68,8 @@ const ALL_TABLES = [
 	schema.processLeafOutcomeSnapshots,
 	schema.turnRecords,
 	schema.turnStartRecords,
+	schema.mappedLlmRuns,
+	schema.mappedLlmItems,
 	schema.apiTokens,
 	schema.authSessions,
 	schema.authLoginFlows,
@@ -702,6 +704,32 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			SELECT provider_id, revision, encrypted_payload, created_at, updated_at
 			FROM provider_credentials_before_20260724`);
 			sqlite.exec("DROP TABLE provider_credentials_before_20260724");
+		},
+	},
+	{
+		// Runs before 20260821 so its legacy turn_records validation sees these columns.
+		id: "20260922_add_mapped_llm_runs",
+		tableNames: ["mapped_llm_runs", "mapped_llm_items", "turn_records", "turn_start_records"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) &&
+			(existingTableSql(sqlite, "mapped_llm_runs") === null ||
+				existingTableSql(sqlite, "mapped_llm_items") === null ||
+				!tableHasColumn(sqlite, "turn_records", "mapped_run_id") ||
+				!tableHasColumn(sqlite, "turn_start_records", "mapped_run_id")),
+		apply(sqlite) {
+			for (const table of ["turn_records", "turn_start_records"]) {
+				if (!tableHasColumn(sqlite, table, "mapped_run_id")) {
+					sqlite.exec(`ALTER TABLE ${table} ADD COLUMN mapped_run_id text;
+						ALTER TABLE ${table} ADD COLUMN mapped_item_key text;
+						ALTER TABLE ${table} ADD COLUMN mapped_item_index integer;`);
+				}
+			}
+			if (existingTableSql(sqlite, "mapped_llm_runs") === null) {
+				createTableWithIndexes(sqlite, schema.mappedLlmRuns);
+			}
+			if (existingTableSql(sqlite, "mapped_llm_items") === null) {
+				createTableWithIndexes(sqlite, schema.mappedLlmItems);
+			}
 		},
 	},
 	{

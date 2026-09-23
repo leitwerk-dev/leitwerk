@@ -14,6 +14,7 @@ import {
 	type PiResourceBundle,
 	type ServerToWorkerMessage,
 	verifyCanonicalPiResourceBundle,
+	type WorkerMappedItem,
 	type WorkerRuntimeSettingsSnapshot,
 	type WorkerStartPayload,
 } from "@leitwerk-dev/worker-protocol";
@@ -39,6 +40,8 @@ export interface WorkerStartPayloadBuilderDeps
 		RepositoryBundle,
 		"processes" | "projects" | "inputs" | "turnRecords" | "turnStarts" | "leases" | "events"
 	> {
+	/** Required for processes that declare mapped LLM turns. @internal */
+	mappedRuns?: Pick<RepositoryBundle["mappedRuns"], "getById" | "getItem">;
 	/** @internal */
 	config: LeitwerkConfig;
 	/** @internal */
@@ -219,6 +222,26 @@ function buildTurnResultMarkdownByProduct(
 	return Object.keys(byProduct).length > 0 ? byProduct : undefined;
 }
 
+function resolveMappedItem(
+	start: TurnStartRecord,
+	deps: Pick<WorkerStartPayloadBuilderDeps, "mappedRuns">,
+): WorkerMappedItem | undefined {
+	if (!start.iteration) return undefined;
+	const run = deps.mappedRuns?.getById(start.iteration.runId);
+	const item = deps.mappedRuns?.getItem(start.iteration.runId, start.iteration.itemIndex);
+	if (!run || !item || item.itemKey !== start.iteration.itemKey) {
+		throw new Error(`Mapped item for worker start '${start.id}' is unavailable`);
+	}
+	return {
+		runId: run.id,
+		itemKey: item.itemKey,
+		itemLabel: item.label,
+		itemIndex: item.itemIndex,
+		itemCount: run.itemCount,
+		item: JSON.parse(item.itemJson) as unknown,
+	};
+}
+
 function resolveLlmPreparation(
 	start: TurnStartRecord,
 	deps: Pick<WorkerStartPayloadBuilderDeps, "events">,
@@ -320,6 +343,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 					null)
 				: null;
 			const contextSnapshot = buildWorkerRuntimeContextSnapshot(process, start);
+			const iteration = resolveMappedItem(start, deps);
 			const repositoryCredentials =
 				deps.resolveRepositoryCredentials?.({
 					process,
@@ -380,6 +404,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 				...(repositoryCredentials.length > 0 ? { repositoryCredentials } : {}),
 				...(dockerRegistryCredentials.length > 0 ? { dockerRegistryCredentials } : {}),
 				...(integrationTools && integrationTools.length > 0 ? { integrationTools } : {}),
+				...(iteration ? { iteration } : {}),
 			};
 			const payload: WorkerStartPayload =
 				bootstrap.kind === "llm"

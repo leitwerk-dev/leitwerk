@@ -199,7 +199,7 @@ Provider sets resolve before server setup. Each definition parses only its retur
 
 Every step in a process graph is a **Turn**:
 
-- **`flow.llm` (LLM Turn):** Optionally prepares deterministic inputs, then prompts the AI agent in a worker workspace with active tools (`read`, `bash`, `edit`, `write`).
+- **`flow.llm` (LLM Turn):** Optionally prepares deterministic inputs, then prompts the AI agent in a worker workspace with active tools (`read`, `bash`, `edit`, `write`). With `.forEach(...)`, it runs once per frozen item.
 - **`flow.automatic` (Worker Automatic Turn):** Runs deterministic TypeScript code inside worker workspace clones. Server-owned operations are available only through explicitly authorized integration tools.
 - **`flow.human` (Human Turn):** Pauses execution and waits for operator actions on the web dashboard.
 
@@ -239,6 +239,66 @@ checkpoint when the server received it; preparation must remain deterministic an
 writes must remain idempotent. The result must be JSON-serializable and at most 64 KiB. Do not
 use preparation for an independently reviewable artifact, decision, wait, or business operation.
 Those remain turns.
+
+### Mapped LLM turns
+
+Use `.forEach(...)` when one LLM turn must run once for each item of a list, such as
+investigating each candidate of a shortlist. The turn stays one node in the business
+graph. Items run one at a time, each as its own turn record, Chronicle card, and rail
+entry. Each item's outcome yields a typed result; `.collect(...)` combines all results
+and routes once.
+
+```ts
+const investigate = flow
+  .llm<Params, State>("investigate_candidate")
+  .description("Investigate one candidate")
+  .forEach<Candidate, InvestigationResult>({
+    items: ({ state }) => state.candidates,
+    itemCodec: candidateCodec,
+    resultCodec: investigationResultCodec,
+    key: ({ item }) => item.id,
+    label: ({ item }) => `${item.service}: ${item.pattern}`,
+    stateAfterSnapshot: ({ state }) => ({ ...state, candidates: [] }),
+  })
+  .buildPrompt((ctx) => `Candidate ${ctx.itemIndex + 1} of ${ctx.itemCount}: ${ctx.item.pattern}`)
+  .outcomeTool("candidate_noise", (outcome) =>
+    outcome
+      .description("Classify this candidate as noise")
+      .requiredString("summary", "Reason this candidate is noise")
+      .yield(({ ctx, event }) => validateNoiseResult(ctx.item, event.params)),
+  )
+  .collect(({ state }, results) => ({ ...state, dispositions: results }))
+  .routeByState({ review: "check_writing", done: "deliver" }, ({ state }) =>
+    state.dispositions.some(needsReview) ? "review" : "done",
+  );
+```
+
+Entering the turn evaluates `items` once on the server. Each item is parsed and
+serialized by `itemCodec`; keys must be unique, non-empty, and at most 200 characters,
+and at most 500 items are frozen. Labels are plain text, at most 200 characters, and
+default to the key. The order, values, keys, and labels are durable and do not follow
+later state changes. `stateAfterSnapshot` runs in the same transaction, before any
+item starts, so the source list need not reach workers. A worker receives only its
+active item: `ctx.item`, `ctx.itemKey`, `ctx.itemLabel`, `ctx.itemIndex`, and
+`ctx.itemCount` in `prepare` and `buildPrompt`.
+
+An item outcome declares parameters and `.yield(...)` only. It cannot route, change
+process state, or publish a product; the builder omits those methods and runtime
+validation rejects hand-authored definitions that declare them. `yield` runs on the
+server with the item and the validated outcome parameters. Its value must pass
+`resultCodec`; a failure or a `SafeOutcomePlanningError` rejects the outcome without
+recording a result. Each item's result markdown comes from the outcome's reserved
+`markdown` argument.
+
+After the last item, `collect` receives the results in item order and returns the
+new state. Then the collection route applies: `.to(turnId)`, `.complete()`,
+`.lifecycleStatus(status)`, or `.routeByState(branches, choose)`, whose chooser sees
+the collected state. An empty list collects immediately without starting an item.
+
+A failed item stays current. Retry and Continue run the same item; completed items
+are never re-run. Each item start resolves the model independently, so an unavailable
+model parks the process at that item. Abort ends the run. Re-entering the turn after
+another route starts a new run with fresh items.
 
 ### Ticket creation adapters
 

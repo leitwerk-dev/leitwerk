@@ -24,6 +24,7 @@ export type {
 	WorkerIntegrationToolRequestPayload,
 	WorkerIntegrationToolResultPayload,
 	WorkerLifecycleParkedPayload,
+	WorkerMappedItem,
 	WorkerQuestionRequestedPayload,
 	WorkerQuestionResponsePayload,
 	WorkerReadyPayload,

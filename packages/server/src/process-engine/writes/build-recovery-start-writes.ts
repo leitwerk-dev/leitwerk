@@ -47,6 +47,7 @@ export function buildRecoveryStartWrites(
 			turnId: failedRun.turnId,
 			proposedTurnRecordId: generateId("trn"),
 			recoveryTurnRecordId: failedRun.id,
+			iteration: failedRun.iteration ?? null,
 			state:
 				recovery.turnType === "automatic"
 					? { kind: "starting", start: { kind: "automatic" } }

@@ -448,6 +448,9 @@ export const turnRecords = sqliteTable(
 		endedAt: text("ended_at"),
 		modelSelectionKind: text("model_selection_kind"),
 		modelSelectionSource: text("model_selection_source"),
+		mappedRunId: text("mapped_run_id"),
+		mappedItemKey: text("mapped_item_key"),
+		mappedItemIndex: integer("mapped_item_index"),
 	},
 	(t) => [
 		uniqueIndex("uq_turn_records_instance_id").on(t.instanceId, t.id),
@@ -479,6 +482,9 @@ export const turnStartRecords = sqliteTable(
 		stateJson: text("state_json").notNull(),
 		createdAt: text("created_at").notNull(),
 		updatedAt: text("updated_at").notNull(),
+		mappedRunId: text("mapped_run_id"),
+		mappedItemKey: text("mapped_item_key"),
+		mappedItemIndex: integer("mapped_item_index"),
 	},
 	(t) => [
 		uniqueIndex("uq_turn_start_records_proposed_turn_record").on(t.proposedTurnRecordId),
@@ -791,6 +797,65 @@ export const externalWriteLog = sqliteTable(
 		index("idx_ewl_instance").on(t.instanceId),
 		uniqueIndex("uq_ewl_dedup_key").on(t.dedupKey),
 		index("idx_ewl_write_type").on(t.writeType),
+	],
+);
+
+export const mappedLlmRuns = sqliteTable(
+	"mapped_llm_runs",
+	{
+		id: text("id").primaryKey(),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		turnId: text("turn_id").notNull(),
+		status: text("status").notNull(),
+		itemCount: integer("item_count").notNull(),
+		nextIndex: integer("next_index").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+	},
+	(t) => [
+		index("idx_mapped_llm_runs_instance").on(t.instanceId),
+		uniqueIndex("uq_mapped_llm_runs_active_instance")
+			.on(t.instanceId)
+			.where(sql`${t.status} = 'active'`),
+		check("mapped_llm_runs_status", sql`${t.status} in ('active', 'completed', 'aborted')`),
+		check(
+			"mapped_llm_runs_progress",
+			sql`${t.itemCount} >= 0 and ${t.nextIndex} >= 0 and ${t.nextIndex} <= ${t.itemCount}`,
+		),
+	],
+);
+
+export const mappedLlmItems = sqliteTable(
+	"mapped_llm_items",
+	{
+		runId: text("run_id")
+			.notNull()
+			.references(() => mappedLlmRuns.id, { onDelete: "cascade" }),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		itemIndex: integer("item_index").notNull(),
+		itemKey: text("item_key").notNull(),
+		label: text("label").notNull(),
+		itemJson: text("item_json").notNull(),
+		status: text("status").notNull().default("pending"),
+		outcome: text("outcome"),
+		resultJson: text("result_json"),
+		turnRecordId: text("turn_record_id"),
+		completedAt: text("completed_at"),
+	},
+	(t) => [
+		uniqueIndex("uq_mapped_llm_items_run_index").on(t.runId, t.itemIndex),
+		uniqueIndex("uq_mapped_llm_items_run_key").on(t.runId, t.itemKey),
+		index("idx_mapped_llm_items_instance").on(t.instanceId),
+		check("mapped_llm_items_status", sql`${t.status} in ('pending', 'completed')`),
+		check("mapped_llm_items_item_json", sql`json_valid(${t.itemJson})`),
+		check(
+			"mapped_llm_items_result",
+			sql`(${t.status} = 'pending' and ${t.resultJson} is null) or (${t.status} = 'completed' and ${t.resultJson} is not null and json_valid(${t.resultJson}))`,
+		),
 	],
 );
 

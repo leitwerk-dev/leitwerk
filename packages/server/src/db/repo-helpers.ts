@@ -1,4 +1,14 @@
-import { asUnknownRecord } from "@leitwerk-dev/domain";
+import { asUnknownRecord, type MappedTurnItemRef } from "@leitwerk-dev/domain";
+
+export function mappedItemRef(row: {
+	mappedRunId: string | null;
+	mappedItemKey: string | null;
+	mappedItemIndex: number | null;
+}): MappedTurnItemRef | null {
+	return row.mappedRunId !== null && row.mappedItemKey !== null && row.mappedItemIndex !== null
+		? { runId: row.mappedRunId, itemKey: row.mappedItemKey, itemIndex: row.mappedItemIndex }
+		: null;
+}
 
 export function parsePersistedJson<T>(value: string, label: string): T {
 	try {

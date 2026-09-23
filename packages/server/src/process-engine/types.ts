@@ -76,6 +76,8 @@ export interface ProcessEngineDeps
 		| "turnAnnotations"
 		| "transaction"
 	> {
+	/** Required for processes that declare mapped LLM turns. @internal */
+	mappedRuns?: RepositoryBundle["mappedRuns"];
 	/** @internal */
 	processOperations: ProcessOperationCoordinator;
 	/** @internal */

@@ -647,10 +647,74 @@ export interface TurnStartRecord {
 	continuation: TurnStartContinuation | null;
 	/** @internal */
 	state: TurnStartRecordState;
+	/** Mapped-turn item this start executes; null for ordinary turns. @internal */
+	iteration?: MappedTurnItemRef | null;
 	/** @internal */
 	createdAt: string;
 	/** @internal */
 	updatedAt: string;
+}
+
+/** Identity of one frozen item in a mapped LLM run. @internal */
+export interface MappedTurnItemRef {
+	/** @internal */
+	runId: string;
+	/** @internal */
+	itemKey: string;
+	/** Zero-based position in the frozen order. @internal */
+	itemIndex: number;
+}
+
+/** @internal */
+export type MappedRunStatus = "active" | "completed" | "aborted";
+
+/** Durable bookkeeping for one sequential pass of a mapped LLM turn. @internal */
+export interface MappedRun {
+	/** @internal */
+	id: string;
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	turnId: TurnId;
+	/** @internal */
+	status: MappedRunStatus;
+	/** @internal */
+	itemCount: number;
+	/** Index of the item currently executing, or itemCount when all results exist. @internal */
+	nextIndex: number;
+	/** @internal */
+	createdAt: string;
+	/** @internal */
+	updatedAt: string;
+}
+
+/** @internal */
+export type MappedItemStatus = "pending" | "completed";
+
+/** One frozen item of a mapped run and its validated result. @internal */
+export interface MappedItem {
+	/** @internal */
+	runId: string;
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	itemIndex: number;
+	/** @internal */
+	itemKey: string;
+	/** @internal */
+	label: string;
+	/** Codec-serialized item value. @internal */
+	itemJson: string;
+	/** @internal */
+	status: MappedItemStatus;
+	/** @internal */
+	outcome: string | null;
+	/** Codec-serialized result, set once when the item completes. @internal */
+	resultJson: string | null;
+	/** Turn record whose outcome produced the result. @internal */
+	turnRecordId: string | null;
+	/** @internal */
+	completedAt: string | null;
 }
 
 /** Tree positioning selected during bootstrap, before a turn is accepted. @internal */
@@ -1081,6 +1145,8 @@ export interface ProcessTurnRecord {
 	modelProfileId: string | null;
 	/** @internal */
 	modelSelectionProvenance?: ModelSelectionProvenance | null;
+	/** Mapped-turn item this record executed; retries keep the same item. @internal */
+	iteration?: MappedTurnItemRef | null;
 	/** @internal */
 	turnResultMarkdown: string | null;
 	/** @public */

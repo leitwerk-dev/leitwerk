@@ -20,6 +20,7 @@ export function buildAbortProcessWrites(input: {
 		return writes;
 	}
 
+	writes.mappedRunWrites.push({ kind: "abort_active" });
 	if (input.currentWorkerStart?.state.kind === "starting") {
 		writes.turnStartWrites.push({
 			kind: "cas_state",

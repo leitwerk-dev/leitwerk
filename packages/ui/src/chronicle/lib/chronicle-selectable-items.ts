@@ -36,6 +36,7 @@ export interface ChronicleSelectableTurnItem extends ChronicleSelectableBaseItem
 	turnRecordId: string;
 	status: "completed" | "in_progress" | "waiting";
 	shape: ChronicleTurnShape;
+	iteration?: ChronicleProjection["turnRailItems"][number]["iteration"];
 }
 
 export interface ChronicleSelectableTerminalItem extends ChronicleSelectableBaseItem {
@@ -183,6 +184,7 @@ export function buildChronicleSelectableItems(
 								: "You",
 				status: railItem.status,
 				shape: railItem.shape,
+				...(railItem.iteration ? { iteration: railItem.iteration } : {}),
 			});
 		}
 

@@ -33,6 +33,7 @@ import type {
 	LauncherValidationError,
 	UiLauncherSummaryBase,
 } from "./launcher-contract.js";
+import type { MappedTurnIteration } from "./mapped-turn.js";
 import type { ModelProviderSet } from "./model-provider.js";
 import type {
 	ServerExtensionEventMap,
@@ -715,6 +716,8 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	readonly workspaceRoot?: string;
 	/** Durable output produced by this LLM turn's preparation phase, when declared. @internal */
 	readonly prepared?: unknown;
+	/** Active frozen item of a mapped LLM turn. @internal */
+	readonly iteration?: MappedTurnIteration;
 	/** Invoke a server-owned integration tool authorized for this automatic turn or LLM preparation. @internal */
 	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
 	/** Replace the durable operator-facing progress report for this turn attempt. @internal */

@@ -37,7 +37,7 @@ import {
 	buildChronicleTurnRailItem,
 	type ChronicleTurnPresentation,
 	type ChronicleTurnRailItem,
-	formatChronicleTurnLabel,
+	formatChronicleTurnTitle,
 	getChronicleTurnKindLabel,
 	getChronicleTurnPresentation,
 	getChronicleTurnPreview,
@@ -150,6 +150,7 @@ export interface ChronicleTurnClusterItem {
 	turnType?: ProcessTurnRecord["turnType"];
 	title: string;
 	turnLabel: string;
+	iteration?: TurnRecordView["iteration"];
 	pathLabel: string | null;
 	createdAt: string;
 	preview: string;
@@ -224,6 +225,7 @@ export interface ChronicleLiveTailItem {
 	turnType?: ProcessTurnRecord["turnType"];
 	title: string;
 	turnLabel: string;
+	iteration?: TurnRecordView["iteration"];
 	pathLabel: string | null;
 	state: "tool_running" | "thinking" | "streaming" | "waiting";
 	stateLabel: string;
@@ -682,8 +684,9 @@ function buildTurnClusterItem(input: {
 		turnRecordId: turnRecord.id,
 		turnId: turnRecord.turnId,
 		turnType: turnRecord.turnType,
-		title: formatChronicleTurnLabel(turnRecord.displayTurn),
+		title: formatChronicleTurnTitle(turnRecord),
 		turnLabel: turnRecord.turnId,
+		...(turnRecord.iteration ? { iteration: turnRecord.iteration } : {}),
 		pathLabel: formatPiTreePathLabel(turnRecord),
 		createdAt: turnRecord.createdAt,
 		preview: getChronicleTurnPreview(turnRecord, 320),
@@ -1035,8 +1038,9 @@ function buildLiveTail(input: {
 		turnRecordId: turnRecord.id,
 		turnId: turnRecord.turnId,
 		turnType: turnRecord.turnType,
-		title: formatChronicleTurnLabel(turnRecord.displayTurn),
+		title: formatChronicleTurnTitle(turnRecord),
 		turnLabel: turnRecord.turnId,
+		...(turnRecord.iteration ? { iteration: turnRecord.iteration } : {}),
 		pathLabel: activeTurn ? formatPiTreePathLabel(activeTurn) : formatPiTreePathLabel(turnRecord),
 		state,
 		stateLabel,
@@ -1281,10 +1285,7 @@ export function buildChronicleProjection(
 			receivedAt: processInput.receivedAt,
 		}));
 	const turnTitlesByTurnRecordId = new Map(
-		input.turnRecords.map((turnRecord) => [
-			turnRecord.id,
-			formatChronicleTurnLabel(turnRecord.displayTurn),
-		]),
+		input.turnRecords.map((turnRecord) => [turnRecord.id, formatChronicleTurnTitle(turnRecord)]),
 	);
 	const leafOutcomeItems = buildLeafOutcomeItems(
 		input.leafOutcomeSnapshots,

@@ -2,6 +2,7 @@
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { formatDefinition } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
+import { formatChronicleIterationProgress } from "../lib/chronicle-view-model.js";
 import { formatChronicleCost } from "../lib/formatting.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleThinkingSection from "./ChronicleThinkingSection.svelte";
@@ -83,7 +84,7 @@ const screenReaderStatus = $derived.by(() => {
 		<ChronicleEntryHeader
 			title={liveTail.title}
 			kind={liveTail.turnType === "llm" ? "llm" : "system"}
-			metadata={[liveTail.modelProfileId, liveTail.usage?.cost ? formatChronicleCost(liveTail.usage.cost.total) : null].filter(Boolean).join(" · ")}
+			metadata={[liveTail.iteration ? formatChronicleIterationProgress(liveTail.iteration) : null, liveTail.modelProfileId, liveTail.usage?.cost ? formatChronicleCost(liveTail.usage.cost.total) : null].filter(Boolean).join(" · ")}
 			timestamp={liveTail.facts.startedAt}
 			duration={openQuestionRequest ? "Paused" : "Running"}
 		/>

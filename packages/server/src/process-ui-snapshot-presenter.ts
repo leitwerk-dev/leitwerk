@@ -1215,6 +1215,10 @@ export class ProcessUiSnapshotAssembler {
 		// combine process/turn state from opposite sides of a concurrent mutation.
 		const projects = this.deps.projects.listByInstance(instanceId);
 		const turnRecords = this.deps.turnRecords.listByInstance(instanceId);
+		const mapped = {
+			runs: this.deps.mappedRuns?.listByInstance(instanceId) ?? [],
+			items: this.deps.mappedRuns?.listItemsByInstance(instanceId) ?? [],
+		};
 		const events = compactDetailEvents(this.deps, instanceId, turnRecords);
 		const turnAnnotations = this.deps.turnAnnotations.listByInstance(instanceId);
 		const inputs = this.deps.inputs.listByInstance(instanceId);
@@ -1317,6 +1321,8 @@ export class ProcessUiSnapshotAssembler {
 			turns: projections.timeline.turns,
 			selectedTurnId: process.selectedTurnId,
 			lifecycleStatus: process.lifecycleStatus,
+			turnRecords,
+			mapped,
 		});
 
 		return {

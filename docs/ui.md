@@ -78,6 +78,9 @@ completed-step count, and recorded event or decision labels. Repeated labels inc
 their count. Missing labels do not imply a cause or a successful repair. **History spans**
 measures the first start to the last finish, including gaps; spans over a day use days and hours. The latest
 result stays beside its pending decision. Failed, running, and waiting turns never fold.
+Items of a mapped LLM turn never fold: each item keeps its own card and row, titled with
+its label and showing **Item N of M**. While an item runs, the pending row names the next
+item. Only retries of the same item group into **Earlier attempts**.
 Expanding a group reveals ordinary turn rows on the same rail, within a box whose
 width stays fixed. The Chronicle retains the full history. Selecting a hidden
 turn from the Chronicle or its keyboard navigation expands the containing group.

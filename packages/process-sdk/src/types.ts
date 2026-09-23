@@ -81,7 +81,7 @@ export interface ResolvedProcessPiConfig {
 	availableToolNames: string[];
 }
 
-/** @internal */
+/** @public */
 export type OutcomeToolParameterType = "string" | "number" | "array" | "boolean" | "object";
 
 /** JSON-schema-compatible value declaration nested below an outcome parameter. @public */

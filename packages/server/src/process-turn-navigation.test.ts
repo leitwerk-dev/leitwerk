@@ -75,4 +75,64 @@ describe("turn navigation", () => {
 			}).plannedNextTurn,
 		).toBeNull();
 	});
+	it("labels mapped item records and plans the next frozen item", () => {
+		const run = {
+			id: "mlr_1",
+			instanceId: "pi_1",
+			turnId: "implement",
+			status: "active" as const,
+			itemCount: 3,
+			nextIndex: 1,
+			createdAt: "t",
+			updatedAt: "t",
+		};
+		const item = (itemIndex: number, itemKey: string, label: string) => ({
+			runId: run.id,
+			instanceId: "pi_1",
+			itemIndex,
+			itemKey,
+			label,
+			itemJson: "{}",
+			status: "pending" as const,
+			outcome: null,
+			resultJson: null,
+			turnRecordId: null,
+			completedAt: null,
+		});
+		const turns = ["trn_a", "trn_b"].map(
+			(id) => ({ id, turnId: "implement", displayTurn: "implement" }) as ProcessTimelineTurnSummary,
+		);
+		const result = presentProcessTurnNavigation({
+			graph,
+			turns,
+			selectedTurnId: "implement",
+			lifecycleStatus: "active",
+			turnRecords: [
+				{ id: "trn_a", iteration: { runId: run.id, itemKey: "a", itemIndex: 0 } },
+				{ id: "trn_b", iteration: { runId: run.id, itemKey: "b", itemIndex: 1 } },
+			],
+			mapped: {
+				runs: [run],
+				items: [item(0, "a", "Alpha"), item(1, "b", "Bravo"), item(2, "c", "Charlie")],
+			},
+		});
+		expect(result.turns.map((turn) => [turn.displayTurn, turn.iteration])).toEqual([
+			["Implement: Alpha", { runId: run.id, itemKey: "a", index: 0, count: 3, label: "Alpha" }],
+			["Implement: Bravo", { runId: run.id, itemKey: "b", index: 1, count: 3, label: "Bravo" }],
+		]);
+		expect(result.plannedNextTurn).toEqual({
+			turnId: "implement",
+			description: "Implement: Charlie",
+			iteration: { runId: run.id, itemKey: "c", index: 2, count: 3, label: "Charlie" },
+		});
+		expect(
+			presentProcessTurnNavigation({
+				graph,
+				turns: [],
+				selectedTurnId: "implement",
+				lifecycleStatus: "active",
+				mapped: { runs: [{ ...run, nextIndex: 2 }], items: [item(2, "c", "Charlie")] },
+			}).plannedNextTurn,
+		).toEqual({ turnId: "decision", description: "Review" });
+	});
 });

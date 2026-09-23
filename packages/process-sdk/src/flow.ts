@@ -47,6 +47,14 @@ import type {
 	WorkerCompleteInput,
 } from "./extension-api.js";
 import { isPathInside } from "./fs-utils.js";
+import type {
+	MappedCollect,
+	MappedCollectRouting,
+	MappedItemYield,
+	MappedLlmTurnSpec,
+	MappedTurnItemContext,
+	MappedTurnServerContext,
+} from "./mapped-turn.js";
 import {
 	type ProcessGraphSource,
 	toProcessGraphView,
@@ -1185,10 +1193,109 @@ export class LlmFlowBuilder<
 	} | null = null;
 	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
 	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
+	private mapped: {
+		options: FlowForEachOptions<TParams, TState, unknown, unknown>;
+		yields: Map<string, MappedItemYield<TParams, TState, unknown, unknown>>;
+		collect?: MappedCollect<TParams, TState, unknown>;
+		routing?: MappedCollectRouting<TParams, TState>;
+	} | null = null;
 
 	/** @internal */
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
+	}
+
+	/**
+	 * Run this turn once per frozen item. Items run sequentially; each item's
+	 * outcome yields a typed result, and `collect` updates state and routes once.
+	 * @public
+	 */
+	forEach<TItem, TResult>(
+		options: FlowForEachOptions<TParams, TState, TItem, TResult>,
+	): MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TPrepared> {
+		if (this.mapped) {
+			throw new Error(`LLM turn '${this.turnId}' declares .forEach(...) more than once`);
+		}
+		if (this.outcomeToolBuilders.size > 0 || this.publishedResult || this.endResult) {
+			throw new Error(
+				`LLM turn '${this.turnId}' must declare .forEach(...) before its completion path`,
+			);
+		}
+		this.mapped = {
+			options: options as FlowForEachOptions<TParams, TState, unknown, unknown>,
+			yields: new Map(),
+		};
+		return new MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TPrepared>(
+			this,
+		);
+	}
+
+	/** @internal */
+	addMappedOutcome(
+		id: string,
+		builder: OutcomeToolBuilder<TParams, TState>,
+		yieldResult: MappedItemYield<TParams, TState, unknown, unknown>,
+	): void {
+		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
+		if (id.trim() === "") {
+			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
+		}
+		if (this.outcomeToolBuilders.has(id)) {
+			throw new Error(`LLM turn '${this.turnId}' declares duplicate outcome tool '${id}'`);
+		}
+		this.outcomeToolBuilders.set(id, builder);
+		this.mapped.yields.set(id, yieldResult);
+	}
+
+	/** @internal */
+	setMappedCollect(collect: MappedCollect<TParams, TState, unknown>): void {
+		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
+		if (this.mapped.collect) {
+			throw new Error(`Mapped turn '${this.turnId}' declares .collect(...) more than once`);
+		}
+		this.mapped.collect = collect;
+	}
+
+	/** @internal */
+	setMappedRouting(routing: MappedCollectRouting<TParams, TState>): void {
+		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
+		if (this.mapped.routing) {
+			throw new Error(`Mapped turn '${this.turnId}' collection already declares a route`);
+		}
+		this.mapped.routing = routing;
+	}
+
+	private mappedItemContext(
+		ctx: ProcessRuntimeTurnContext<TParams, TState>,
+	): Partial<MappedTurnItemContext<unknown>> {
+		if (!this.mapped) return {};
+		const iteration = ctx.iteration;
+		if (!iteration) {
+			throw new Error(`Mapped turn '${this.turnId}' requires an active item`);
+		}
+		return {
+			item: this.mapped.options.itemCodec.parse(iteration.item),
+			itemKey: iteration.itemKey,
+			itemLabel: iteration.itemLabel,
+			itemIndex: iteration.itemIndex,
+			itemCount: iteration.itemCount,
+		};
+	}
+
+	private buildMappedSpec(): MappedLlmTurnSpec<TParams, TState> | undefined {
+		if (!this.mapped) return undefined;
+		if (!this.mapped.collect) {
+			throw new Error(`Mapped turn '${this.turnId}' must declare .collect(...)`);
+		}
+		if (!this.mapped.routing) {
+			throw new Error(`Mapped turn '${this.turnId}' must declare a collection route`);
+		}
+		return {
+			...this.mapped.options,
+			yields: Object.fromEntries(this.mapped.yields),
+			collect: this.mapped.collect,
+			routing: this.mapped.routing,
+		};
 	}
 
 	/** @internal */
@@ -1347,6 +1454,7 @@ export class LlmFlowBuilder<
 
 	/** @public */
 	publish(productName: string): PublishedResultBuilder<TParams, TState> {
+		this.assertNotMapped(".publish(...)");
 		const normalized = normalizeProductName(productName);
 		if (this.publishedResult) {
 			throw new Error(`LLM turn '${this.turnId}' can publish only one product in flow v1`);
@@ -1361,6 +1469,7 @@ export class LlmFlowBuilder<
 
 	/** @public */
 	end(outcomeId: string): LlmTurnEndBuilder<TParams, TState> {
+		this.assertNotMapped(".end(...)");
 		if (this.endResult) {
 			throw new Error(`LLM turn '${this.turnId}' declares duplicate .end(...) completion`);
 		}
@@ -1377,12 +1486,23 @@ export class LlmFlowBuilder<
 	/** @public */
 	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
 		this.promptBuilder = (ctx) =>
-			fn(
-				createFlowPromptContext(ctx, [...this.consumedProductNames] as TConsumedProducts[], [
-					...this.optionalConsumedProductNames,
-				]),
-			);
+			fn({
+				...createFlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>(
+					ctx,
+					[...this.consumedProductNames] as TConsumedProducts[],
+					[...this.optionalConsumedProductNames],
+				),
+				...this.mappedItemContext(ctx),
+			});
 		return this;
+	}
+
+	private assertNotMapped(feature: string): void {
+		if (this.mapped) {
+			throw new Error(
+				`Mapped turn '${this.turnId}' cannot declare ${feature}; items yield results and .collect(...) routes`,
+			);
+		}
 	}
 
 	/** @public */
@@ -1398,6 +1518,7 @@ export class LlmFlowBuilder<
 			tool: OutcomeToolBuilder<TParams, TState>,
 		) => OutcomeToolBuilder<TParams, TState> | undefined,
 	): this {
+		this.assertNotMapped("routed outcome tools");
 		if (id.trim() === "") {
 			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
 		}
@@ -1440,7 +1561,10 @@ export class LlmFlowBuilder<
 			...(preparation
 				? {
 						prepare: (ctx: ProcessRuntimeTurnContext<TParams, TState>) =>
-							preparation(createFlowAutomaticRunContext(ctx)),
+							preparation({
+								...createFlowAutomaticRunContext(ctx),
+								...this.mappedItemContext(ctx),
+							}),
 					}
 				: {}),
 			completionMode: "turn_end" as const,
@@ -1550,9 +1674,11 @@ export class LlmFlowBuilder<
 		if (Object.keys(outcomes).length === 0 && !turnEnd) {
 			throw new Error(`LLM turn '${this.turnId}' must declare a completion path`);
 		}
+		const forEach = this.buildMappedSpec();
 
 		return {
 			...definition,
+			...(forEach ? { forEach } : {}),
 			...(Object.keys(outcomes).length > 0 ? { outcomes } : {}),
 			...(turnEnd ? { turnEnd } : {}),
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
@@ -1565,6 +1691,298 @@ export class LlmFlowBuilder<
 				? { optionalConsumedProducts: [...this.optionalConsumedProductNames] }
 				: {}),
 		};
+	}
+}
+
+/** Item selection for `flow.llm(...).forEach(...)`. @public */
+export type FlowForEachOptions<TParams, TState, TItem, TResult> = Pick<
+	MappedLlmTurnSpec<TParams, TState, TItem, TResult>,
+	"items" | "itemCodec" | "resultCodec" | "key" | "label" | "stateAfterSnapshot"
+>;
+
+/** @public */
+export type FlowMappedPromptContext<
+	TParams,
+	TState,
+	TItem,
+	TConsumedProducts extends string,
+	TPrepared,
+> = FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared> & MappedTurnItemContext<TItem>;
+
+/** @public */
+export type FlowMappedPreparationContext<TParams, TState, TItem> = FlowLlmPreparationContext<
+	TParams,
+	TState
+> &
+	MappedTurnItemContext<TItem>;
+
+/**
+ * Outcome of one mapped item. It declares parameters and yields the item's
+ * result; it cannot route, change process state, or publish products.
+ * @public
+ */
+export class MappedOutcomeBuilder<
+	TParams = unknown,
+	TState = unknown,
+	TItem = unknown,
+	TResult = unknown,
+> {
+	private readonly tool = new OutcomeToolBuilder<TParams, TState>();
+	private yieldResult: MappedItemYield<TParams, TState, TItem, TResult> | null = null;
+
+	/** @public */
+	description(text: string): this {
+		this.tool.description(text);
+		return this;
+	}
+
+	/** @public */
+	resultSummary(name?: string): this {
+		this.tool.resultSummary(name);
+		return this;
+	}
+
+	/** @public */
+	requiredString(name: string, options: string | ParameterOptions = {}): this {
+		this.tool.requiredString(name, options);
+		return this;
+	}
+
+	/** @public */
+	string(name: string, options: string | ParameterOptions = {}): this {
+		this.tool.string(name, options);
+		return this;
+	}
+
+	/** @public */
+	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
+		this.tool.requiredNumber(name, options);
+		return this;
+	}
+
+	/** @public */
+	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
+		this.tool.requiredBoolean(name, options);
+		return this;
+	}
+
+	/** @public */
+	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
+		this.tool.requiredStringArray(name, options);
+		return this;
+	}
+
+	/** @public */
+	object(name: string, options: string | ParameterOptions = {}): this {
+		this.tool.object(name, options);
+		return this;
+	}
+
+	/** @public */
+	requiredArray(name: string, options: string | ArrayParameterOptions = {}): this {
+		this.tool.requiredArray(name, options);
+		return this;
+	}
+
+	/** Map this outcome to the item's typed result. @public */
+	yield(fn: MappedItemYield<TParams, TState, TItem, TResult>): this {
+		this.yieldResult = fn;
+		return this;
+	}
+
+	/** @internal */
+	build(): {
+		/** @internal */
+		tool: OutcomeToolBuilder<TParams, TState>;
+		/** @internal */
+		yieldResult: MappedItemYield<TParams, TState, TItem, TResult>;
+	} {
+		if (!this.yieldResult) {
+			throw new Error("Mapped outcome must declare .yield(...)");
+		}
+		return { tool: this.tool, yieldResult: this.yieldResult };
+	}
+}
+
+/** @public */
+abstract class MappedTurnFacade<TParams, TState> implements FlowLlmTurn<TParams, TState, string> {
+	/** @internal */
+	constructor(
+		/** @internal */
+		protected readonly base: LlmFlowBuilder<TParams, TState, string, unknown>,
+	) {}
+
+	/** @internal */
+	get id(): TurnId {
+		return this.base.id;
+	}
+
+	/** @internal */
+	get definition(): LlmTurnDefinition<string, TParams, TState> {
+		return this.base.definition;
+	}
+}
+
+/**
+ * Routes a mapped turn once, after all item results are collected.
+ * @public
+ */
+export class MappedCollectBuilder<TParams = unknown, TState = unknown> extends MappedTurnFacade<
+	TParams,
+	TState
+> {
+	/** @public */
+	to(turnId: TurnId): this {
+		this.base.setMappedRouting({ kind: "static", to: turnId });
+		return this;
+	}
+
+	/** @public */
+	complete(): this {
+		this.base.setMappedRouting({ kind: "static", lifecycleStatus: "completed" });
+		return this;
+	}
+
+	/** @public */
+	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
+		this.base.setMappedRouting({ kind: "static", lifecycleStatus: status });
+		return this;
+	}
+
+	/** Choose the next turn from the collected state. @public */
+	routeByState(
+		branches: Record<string, TurnId>,
+		choose: (ctx: MappedTurnServerContext<TParams, TState>) => MaybePromise<string>,
+	): this {
+		if (Object.keys(branches).length === 0) {
+			throw new Error("Mapped collection routing must declare at least one branch");
+		}
+		this.base.setMappedRouting({ kind: "branches", branches: { ...branches }, choose });
+		return this;
+	}
+}
+
+/**
+ * LLM turn that runs once per frozen item. Business state and routing belong
+ * to `.collect(...)`.
+ * @public
+ */
+export class MappedLlmFlowBuilder<
+	TParams = unknown,
+	TState = unknown,
+	TItem = unknown,
+	TResult = unknown,
+	TConsumedProducts extends string = never,
+	TPrepared = undefined,
+> extends MappedTurnFacade<TParams, TState> {
+	/** @internal */
+	constructor(base: LlmFlowBuilder<TParams, TState, TConsumedProducts, TPrepared>) {
+		super(base as unknown as LlmFlowBuilder<TParams, TState, string, unknown>);
+	}
+
+	/** @public */
+	description(description: string): this {
+		this.base.description(description);
+		return this;
+	}
+
+	/** @public */
+	tools(...tools: readonly PiBuiltInToolName[]): this {
+		this.base.tools(...tools);
+		return this;
+	}
+
+	/** @public */
+	integrationTools(...tools: readonly string[]): this {
+		this.base.integrationTools(...tools);
+		return this;
+	}
+
+	/** @public */
+	freshPrimary(): this {
+		this.base.freshPrimary();
+		return this;
+	}
+
+	/** @public */
+	consume<TProductName extends string>(
+		productName: TProductName,
+	): MappedLlmFlowBuilder<
+		TParams,
+		TState,
+		TItem,
+		TResult,
+		TConsumedProducts | TProductName,
+		TPrepared
+	> {
+		this.base.consume(productName);
+		return this as unknown as MappedLlmFlowBuilder<
+			TParams,
+			TState,
+			TItem,
+			TResult,
+			TConsumedProducts | TProductName,
+			TPrepared
+		>;
+	}
+
+	/** Deterministic worker preparation for the active item. @public */
+	prepare<TNextPrepared>(
+		fn: (ctx: FlowMappedPreparationContext<TParams, TState, TItem>) => MaybePromise<TNextPrepared>,
+	): MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TNextPrepared> {
+		this.base.prepare((ctx) => fn(ctx as FlowMappedPreparationContext<TParams, TState, TItem>));
+		return this as unknown as MappedLlmFlowBuilder<
+			TParams,
+			TState,
+			TItem,
+			TResult,
+			TConsumedProducts,
+			TNextPrepared
+		>;
+	}
+
+	/** Build the prompt for the active item. @public */
+	buildPrompt(
+		fn: (
+			ctx: FlowMappedPromptContext<TParams, TState, TItem, TConsumedProducts, TPrepared>,
+		) => MaybePromise<string>,
+	): this {
+		this.base.buildPrompt((ctx) =>
+			fn(
+				ctx as unknown as FlowMappedPromptContext<
+					TParams,
+					TState,
+					TItem,
+					TConsumedProducts,
+					TPrepared
+				>,
+			),
+		);
+		return this;
+	}
+
+	/** @public */
+	outcomeTool(
+		id: string,
+		configure: (
+			outcome: MappedOutcomeBuilder<TParams, TState, TItem, TResult>,
+		) => MappedOutcomeBuilder<TParams, TState, TItem, TResult> | undefined,
+	): this {
+		const outcome = new MappedOutcomeBuilder<TParams, TState, TItem, TResult>();
+		configure(outcome);
+		const built = outcome.build();
+		this.base.addMappedOutcome(
+			id,
+			built.tool,
+			built.yieldResult as MappedItemYield<TParams, TState, unknown, unknown>,
+		);
+		return this;
+	}
+
+	/** Combine ordered item results into process state, once. @public */
+	collect(fn: MappedCollect<TParams, TState, TResult>): MappedCollectBuilder<TParams, TState> {
+		this.base.setMappedCollect(fn as MappedCollect<TParams, TState, unknown>);
+		return new MappedCollectBuilder<TParams, TState>(this.base);
 	}
 }
 

@@ -1,8 +1,33 @@
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { getDefaultConfig, type LeitwerkConfig } from "@leitwerk-dev/server";
+import { parse } from "yaml";
 import type { SandboxInput } from "./index.js";
 import { assertSandboxPath } from "./storage.js";
+
+export const SANDBOX_MODEL_PROVIDER = "sandbox-model";
+export const SANDBOX_MODEL_ID = "scripted";
+
+function readPrivateFile(root: string, file: string): string | undefined {
+	assertSandboxPath(root, file);
+	if (!existsSync(file)) return undefined;
+	if ((lstatSync(file).mode & 0o777) !== 0o600)
+		throw new Error(`${path.relative(root, file)} must have mode 0600`);
+	return readFileSync(file, "utf8");
+}
+
+/**
+ * Read `<workspace>/.leitwerk/sandbox/<name>.yaml`, the composition's private local
+ * settings. Returns `undefined` when absent. Reset and preflight retain the file.
+ * @public
+ */
+export function readSandboxSettings(input: SandboxInput, name: string): unknown {
+	if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
+		throw new Error("Sandbox settings names must be lowercase kebab-case");
+	const root = path.join(input.paths.workspaceRoot, ".leitwerk", "sandbox");
+	const contents = readPrivateFile(input.paths.workspaceRoot, path.join(root, `${name}.yaml`));
+	return contents === undefined ? undefined : parse(contents);
+}
 
 export function configureSandboxStorage(
 	config: LeitwerkConfig,
@@ -30,21 +55,23 @@ export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 	config.workers.runner = "local";
 	if (config.local_worker) config.local_worker.allow_host_docker = true;
 	config.pi.model_profiles = [
-		{ id: "sandbox", provider: "sandbox-model", model_id: "scripted", thinking_level: "off" },
+		{
+			id: "sandbox",
+			provider: SANDBOX_MODEL_PROVIDER,
+			model_id: SANDBOX_MODEL_ID,
+			thinking_level: "off",
+		},
 	];
 	config.pi.process_title_generation.model_profile = null;
 	config.pi.retry.enabled = false;
 	config.extension_loading.sources = [];
 	if (input.mode === "real") {
-		const file = path.join(input.paths.root, "model.json");
-		assertSandboxPath(input.paths.root, file);
-		if (!existsSync(file))
+		const contents = readPrivateFile(input.paths.root, path.join(input.paths.root, "model.json"));
+		if (contents === undefined)
 			throw new Error(
 				"Real mode requires dedicated .leitwerk/sandbox/model.json. See the sandbox README.",
 			);
-		if ((lstatSync(file).mode & 0o777) !== 0o600)
-			throw new Error("Sandbox model.json must have mode 0600");
-		const model = JSON.parse(readFileSync(file, "utf8"));
+		const model = JSON.parse(contents);
 		if (!Array.isArray(model.model_profiles) || !model.model_profiles.length || !model.providers)
 			throw new Error("model.json requires model_profiles and providers");
 		config.pi.model_profiles = model.model_profiles;

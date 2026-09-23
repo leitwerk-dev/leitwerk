@@ -38,6 +38,48 @@ const pending: ChronicleSelectableItem = {
 };
 
 describe("turn rail history", () => {
+	it("never folds distinct mapped items but groups retries of one item", () => {
+		const items = history(["Investigate", "Investigate", "Investigate", "Investigate"]).map(
+			(item, index) => ({
+				...item,
+				iteration: {
+					runId: "run",
+					itemKey: ["a", "b", "b", "c"][index] ?? "",
+					index: [0, 1, 1, 2][index] ?? 0,
+					count: 3,
+					label: ["A", "B", "B", "C"][index] ?? "",
+				},
+			}),
+		);
+		expect(buildChronicleRailRows([...items, pending]).map((row) => row.kind)).toEqual([
+			"item",
+			"item",
+			"item",
+			"item",
+			"item",
+		]);
+		const records = items.map(
+			(item, index) =>
+				({
+					id: item.turnRecordId,
+					turnId: item.turnId,
+					outcome: index === 1 ? "failed" : "completed",
+					parentTurnRecordId: index === 2 ? items[1]?.turnRecordId : null,
+					iteration: item.iteration,
+				}) as ProcessTimelineTurnSummary,
+		);
+		const rows = buildChronicleRailRows(items, records);
+		expect(rows.map((row) => row.kind)).toEqual(["item", "repeated", "item", "item"]);
+		expect(rows[1]).toMatchObject({ retryCount: 2, items: [items[1]] });
+		const crossItemRecords = records.map((record, index) =>
+			index === 2 && record.iteration
+				? { ...record, iteration: { ...record.iteration, itemKey: "c" } }
+				: record,
+		);
+		expect(
+			buildChronicleRailRows(items, crossItemRecords).every((row) => row.kind === "item"),
+		).toBe(true);
+	});
 	it("folds complete cycles and leaves the newest result beside its review", () => {
 		const items = history([
 			"Plan",

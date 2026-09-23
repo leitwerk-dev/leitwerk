@@ -161,6 +161,7 @@ export const AcceptWorkerTurnStart = defineOperation<
 							acceptedWorkerLeaseId: lease.id,
 							modelProfileId: acceptedLlmStart?.model.profileId ?? null,
 							modelSelectionProvenance: acceptedLlmStart?.modelSelectionProvenance ?? null,
+							iteration: start.iteration ?? null,
 						},
 					},
 				],
