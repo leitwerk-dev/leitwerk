@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "../launch-title.js";
-import { createInMemoryDatabase, type LeitwerkDb } from "./database.js";
+import { closeDatabase, createInMemoryDatabase, type LeitwerkDb } from "./database.js";
 import {
 	createExternalWriteLogRepo,
 	createFutureExecutionRepo,
@@ -19,6 +19,10 @@ let db: LeitwerkDb;
 
 beforeEach(() => {
 	db = createInMemoryDatabase();
+});
+
+afterEach(() => {
+	closeDatabase(db);
 });
 
 describe("ProcessInstanceRepo", () => {

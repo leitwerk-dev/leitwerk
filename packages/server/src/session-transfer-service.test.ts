@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Readable } from "node:stream";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import type { ProcessStateExportHelperRelay } from "@leitwerk-dev/worker-runners";
@@ -391,7 +392,7 @@ describe("session transfer service", () => {
 		expect(Buffer.concat(chunks)).toEqual(streamBody);
 		const delivered = service.heartbeat(input);
 		expect(delivered).toMatchObject({ state: "awaiting_ack", compressedBytes: streamBody.length });
-		expect(delivered?.streamSha256).toMatch(/^[a-f0-9]{64}$/);
+		expect(delivered?.streamSha256).toBe(createHash("sha256").update(streamBody).digest("hex"));
 		expect(service.cancelForWeb(process.id, started.attempt.id)?.state).toBe("awaiting_ack");
 		expect(service.acknowledge(input)?.state).toBe("consumed");
 		expect(service.acknowledge(input)?.state).toBe("consumed");

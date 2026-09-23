@@ -1,3 +1,4 @@
+import { on } from "node:events";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
@@ -77,7 +78,14 @@ describe("websocket server heartbeat", () => {
 		const ws = new WebSocket(wsUrl(server.address));
 		try {
 			await waitForOpen(ws);
-			await new Promise((resolve) => setTimeout(resolve, 200));
+			let pingCount = 0;
+			for await (const _ping of on(ws, "ping", {
+				signal: AbortSignal.timeout(2000),
+				close: ["close"],
+			})) {
+				if (++pingCount === 3) break;
+			}
+			expect(pingCount).toBe(3);
 			expect(ws.readyState).toBe(WebSocket.OPEN);
 		} finally {
 			ws.terminate();

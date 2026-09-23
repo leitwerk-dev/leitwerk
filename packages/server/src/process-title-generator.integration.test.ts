@@ -4,6 +4,7 @@ import path from "node:path";
 import { waitForValue as waitFor } from "@leitwerk-dev/test-support/integration";
 import { afterEach, describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
+import { closeDatabase, type LeitwerkDb } from "./db/database.js";
 import {
 	createProcessTitleGenerator,
 	type ProcessTitleGeneratorRuntimeDeps,
@@ -14,6 +15,14 @@ import { createTestDeps, type TestDeps } from "./test-helpers/unit-deps.js";
 type RuntimeOutcome = { kind: "throw"; error: Error } | { kind: "return"; title: string };
 
 const tempDirs: string[] = [];
+const databases = new Set<LeitwerkDb>();
+const generators: ReturnType<typeof createProcessTitleGenerator>[] = [];
+
+function createTrackedDeps() {
+	const deps = createTestDeps();
+	databases.add(deps.db);
+	return deps;
+}
 
 async function createTempRoot(): Promise<string> {
 	const dir = await mkdtemp(path.join(tmpdir(), "leitwerk-title-provider-extension-"));
@@ -99,7 +108,7 @@ function createGeneratorHarness(options: {
 	pollIntervalMs?: number;
 	now?: () => Date;
 }) {
-	const deps = options.deps ?? createTestDeps();
+	const deps = options.deps ?? createTrackedDeps();
 	const config = getDefaultConfig();
 	config.pi.model_profiles = [
 		{ id: "claude_fast", provider: "anthropic", model_id: "claude-test" },
@@ -132,6 +141,8 @@ function createGeneratorHarness(options: {
 		runtime,
 	});
 
+	generators.push(generator);
+
 	return {
 		deps,
 		generator,
@@ -142,7 +153,18 @@ function createGeneratorHarness(options: {
 }
 
 afterEach(async () => {
-	await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+	const results = await Promise.allSettled(
+		generators.splice(0).map((generator) => generator.close?.()),
+	);
+	try {
+		for (const db of databases) closeDatabase(db);
+	} finally {
+		databases.clear();
+		await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+	}
+	for (const result of results) {
+		if (result.status === "rejected") throw result.reason;
+	}
 });
 
 describe("process title generator retries", () => {
@@ -162,7 +184,7 @@ describe("process title generator retries", () => {
 			}),
 		);
 
-		const deps = createTestDeps();
+		const deps = createTrackedDeps();
 		const config = getDefaultConfig();
 		config.pi.agent_dir = agentDir;
 		config.pi.process_title_generation.model_profile = "extension-profile";
@@ -178,6 +200,7 @@ describe("process title generator retries", () => {
 			repos: deps,
 			broadcaster: deps.broadcaster,
 		});
+		generators.push(generator);
 		const firstProcess = deps.processes.create(createLaunchPlan().processInput);
 		const secondProcess = deps.processes.create(createLaunchPlan().processInput);
 
@@ -298,7 +321,7 @@ describe("process title generator retries", () => {
 	});
 
 	it("retries persisted pending title jobs after the service restarts", async () => {
-		const deps = createTestDeps();
+		const deps = createTrackedDeps();
 		const process = deps.processes.create(createLaunchPlan().processInput);
 		let nowMs = Date.parse("2026-08-23T00:00:00.000Z");
 		const now = () => new Date(nowMs);
