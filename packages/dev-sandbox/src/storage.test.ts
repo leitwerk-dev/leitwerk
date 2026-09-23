@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { onTestFinished, test } from "vitest";
@@ -18,7 +18,9 @@ test("reset removes only sandbox sessions and retains dedicated credentials and 
 	await resetSandbox(root);
 	assert.equal(await readFile(path.join(sandbox, "model.json"), "utf8"), "dedicated");
 	assert.equal(await readFile(path.join(root, ".leitwerk", "other"), "utf8"), "keep");
-	await assert.rejects(readFile(path.join(sandbox, "scripted", "owned")), { code: "ENOENT" });
+	for (const mode of ["scripted", "real"]) {
+		await assert.rejects(lstat(path.join(sandbox, mode)), { code: "ENOENT" });
+	}
 });
 test("reset refuses symlinked storage", async () => {
 	const root = await mkdtemp(path.join(tmpdir(), "sandbox-reset-test-"));

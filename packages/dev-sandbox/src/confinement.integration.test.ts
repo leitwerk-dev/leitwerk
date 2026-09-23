@@ -83,6 +83,7 @@ test("preflight initializes and cleans adapters only in disposable storage", asy
 	});
 	await preflightSandbox(config, input, factory);
 	expect(readFileSync(path.join(directory, "providers.json"), "utf8")).toBe("retained");
+	expect(candidateRoot).not.toBe("");
 	expect(candidateRoot).not.toBe(directory);
 	expect(existsSync(candidateRoot)).toBe(false);
 	expect(cleaned).toBe(true);
@@ -91,14 +92,18 @@ test("preflight initializes and cleans adapters only in disposable storage", asy
 test("reset refuses a reused PID without removing either session", async () => {
 	const directory = root();
 	const sandbox = sandboxDirectory(directory);
-	mkdirSync(path.join(sandbox, "real"));
-	mkdirSync(path.join(sandbox, "scripted"));
+	for (const mode of ["scripted", "real"]) {
+		mkdirSync(path.join(sandbox, mode));
+		writeFileSync(path.join(sandbox, mode, "owned"), `${mode} state`);
+	}
 	writeFileSync(
 		path.join(sandbox, "real", "supervisor.pid"),
 		JSON.stringify({ pid: process.pid, identity: "another process" }),
 	);
 	await expect(resetSandbox(directory)).rejects.toThrow(/PID was reused/);
-	expect(existsSync(path.join(sandbox, "scripted"))).toBe(true);
+	for (const mode of ["scripted", "real"]) {
+		expect(readFileSync(path.join(sandbox, mode, "owned"), "utf8")).toBe(`${mode} state`);
+	}
 });
 
 test("reset retains state when its supervisor does not acknowledge shutdown", async () => {
@@ -111,7 +116,10 @@ test("reset retains state when its supervisor does not acknowledge shutdown", as
 	try {
 		await once(child.stdout, "data");
 		if (!child.pid) throw new Error("Missing child PID");
-		mkdirSync(path.join(sandbox, "scripted"));
+		for (const mode of ["scripted", "real"]) {
+			mkdirSync(path.join(sandbox, mode));
+			writeFileSync(path.join(sandbox, mode, "owned"), `${mode} state`);
+		}
 		writeFileSync(
 			path.join(sandbox, "scripted", "supervisor.pid"),
 			JSON.stringify({ pid: child.pid, identity: processIdentity(child.pid) }),
@@ -120,6 +128,9 @@ test("reset retains state when its supervisor does not acknowledge shutdown", as
 			/did not stop/,
 		);
 		expect(existsSync(path.join(sandbox, "scripted", "supervisor.pid"))).toBe(true);
+		for (const mode of ["scripted", "real"]) {
+			expect(readFileSync(path.join(sandbox, mode, "owned"), "utf8")).toBe(`${mode} state`);
+		}
 	} finally {
 		child.kill("SIGKILL");
 		await once(child, "exit");
@@ -129,18 +140,22 @@ test("reset retains state when its supervisor does not acknowledge shutdown", as
 test("reset retains both sessions after an unconfirmed supervisor exit", async () => {
 	const directory = root();
 	const sandbox = sandboxDirectory(directory);
-	for (const mode of ["scripted", "real"]) mkdirSync(path.join(sandbox, mode));
+	for (const mode of ["scripted", "real"]) {
+		mkdirSync(path.join(sandbox, mode));
+		writeFileSync(path.join(sandbox, mode, "owned"), `${mode} state`);
+	}
 	writeFileSync(
 		path.join(sandbox, "scripted", "supervisor.pid"),
 		JSON.stringify({
 			pid: process.pid,
-			identity: processIdentity(process.pid),
+			identity: "unconfirmed supervisor",
 			shutdownFailed: true,
 		}),
 	);
 	await expect(resetSandbox(directory)).rejects.toThrow(/shutdown was not confirmed/);
-	expect(existsSync(path.join(sandbox, "real"))).toBe(true);
-	expect(existsSync(path.join(sandbox, "scripted"))).toBe(true);
+	for (const mode of ["scripted", "real"]) {
+		expect(readFileSync(path.join(sandbox, mode, "owned"), "utf8")).toBe(`${mode} state`);
+	}
 });
 
 test("real mode requires a dedicated mode-0600 credential file and rejects symlinks", () => {
