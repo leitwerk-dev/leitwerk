@@ -1,4 +1,8 @@
-import { SERIALIZED_SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import {
+	type MappedItem,
+	type MappedRunStatus,
+	SERIALIZED_SYSTEM_ACTOR,
+} from "@leitwerk-dev/domain";
 import type { SessionTransferPhase } from "@leitwerk-dev/session-transfer";
 import { sql } from "drizzle-orm";
 import {
@@ -808,7 +812,7 @@ export const mappedLlmRuns = sqliteTable(
 			.notNull()
 			.references(() => processInstances.id, { onDelete: "cascade" }),
 		turnId: text("turn_id").notNull(),
-		status: text("status").notNull(),
+		status: text("status").$type<MappedRunStatus>().notNull(),
 		itemCount: integer("item_count").notNull(),
 		nextIndex: integer("next_index").notNull(),
 		createdAt: text("created_at").notNull(),
@@ -840,7 +844,7 @@ export const mappedLlmItems = sqliteTable(
 		itemKey: text("item_key").notNull(),
 		label: text("label").notNull(),
 		itemJson: text("item_json").notNull(),
-		status: text("status").notNull().default("pending"),
+		status: text("status").$type<MappedItem["status"]>().notNull().default("pending"),
 		outcome: text("outcome"),
 		resultJson: text("result_json"),
 		turnRecordId: text("turn_record_id"),

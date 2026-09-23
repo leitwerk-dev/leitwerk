@@ -1,7 +1,10 @@
 import {
 	createRepositoryChangeParamsCodec,
 	normalizeRepositoryChangeParamsInput,
+	normalizeRepositoryIssueOrigin,
 	type RepositoryChangeLaunchParams,
+	type RepositoryIssueOriginParams,
+	type RepositoryUiOriginParams,
 	repositoryChangeParamsRecord,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
@@ -19,32 +22,10 @@ interface GitHubRepoChangeCommonParams {
 }
 
 /** @public */
-export interface GitHubIssueOriginParams {
-	/** @public */
-	origin: "issue";
-	/** @public */
-	issueNumber: number;
-	/** @public */
-	issueUrl: string;
-	/** @public */
-	triggerLabel: string;
-	/** @public */
-	doneLabel: string;
-}
+export interface GitHubIssueOriginParams extends RepositoryIssueOriginParams {}
 
 /** @public */
-export interface GitHubUiOriginParams {
-	/** @public */
-	origin: "ui";
-	/** @public */
-	issueNumber: null;
-	/** @public */
-	issueUrl: null;
-	/** @public */
-	triggerLabel: null;
-	/** @public */
-	doneLabel: null;
-}
+export interface GitHubUiOriginParams extends RepositoryUiOriginParams {}
 
 /** @public */
 export type GitHubRepoChangeParams = RepositoryChangeLaunchParams<
@@ -77,34 +58,6 @@ export const githubRepoChangeParamsCodec =
 				owner: text("owner"),
 				repo: text("repo"),
 			};
-			const origin = trimString(record.origin);
-			if (origin === "ui") {
-				return {
-					...common,
-					origin: "ui" as const,
-					issueNumber: null,
-					issueUrl: null,
-					triggerLabel: null,
-					doneLabel: null,
-				};
-			}
-			if (origin && origin !== "issue") {
-				throw new Error("GitHub Repo Change requires a valid origin");
-			}
-
-			if (
-				typeof record.issueNumber !== "number" ||
-				!Number.isInteger(record.issueNumber) ||
-				record.issueNumber <= 0
-			)
-				throw new Error("GitHub Repo Change requires issueNumber");
-			return {
-				...common,
-				origin: "issue" as const,
-				issueNumber: record.issueNumber,
-				issueUrl: text("issueUrl"),
-				triggerLabel: text("triggerLabel"),
-				doneLabel: text("doneLabel"),
-			};
+			return { ...common, ...normalizeRepositoryIssueOrigin(record, "GitHub Repo Change", text) };
 		},
 	});

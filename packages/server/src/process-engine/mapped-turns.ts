@@ -17,6 +17,7 @@ import type { RepositoryBundle } from "../db/repositories.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import { buildServerTransitionWrites } from "./writes/build-server-transition-writes.js";
+import { reserveSelectedTurnStart } from "./writes/reserve-selected-turn-start.js";
 import {
 	appendProcessEvent,
 	applyProcessPatchField,
@@ -65,43 +66,6 @@ function serverContext(
 
 function appendInto(target: Writes, source: Writes): void {
 	Object.assign(target, mergeWrites(target, source));
-}
-
-function reserveItemStart(
-	writes: Writes,
-	process: ProcessInstance,
-	turnId: string,
-	iteration: MappedTurnItemRef,
-): void {
-	const startId = generateId("tsr");
-	writes.turnStartWrites.push({
-		kind: "create",
-		input: {
-			id: startId,
-			instanceId: process.id,
-			turnId,
-			turnType: "llm",
-			proposedTurnRecordId: generateId("trn"),
-			startKind: "selected_turn",
-			recoveryTurnRecordId: null,
-			continuation: null,
-			state: {
-				kind: "preparation_failed",
-				requestedModelProfileId: process.selectedTurnModelProfileId ?? null,
-				providerOptions: {},
-				code: "model_required",
-				safeSummary: "LLM start requires model preflight",
-			},
-			iteration,
-		},
-	});
-	applyProcessPatchField(writes, process, "currentExecution", {
-		kind: "worker_start",
-		id: startId,
-	});
-	// Model preflight activates the start and restarts the worker on success.
-	applyProcessPatchField(writes, process, "lifecycleStatus", "error");
-	writes.workerIntent = { kind: "reconcile" };
 }
 
 async function collectAndRoute(input: {
@@ -338,11 +302,12 @@ export async function buildMappedItemOutcomeWrites(input: {
 	if (nextIndex < run.itemCount) {
 		const next = input.mappedRuns.getItem(run.id, nextIndex);
 		if (!next) return failure("stale_mapped_item", `Mapped run '${run.id}' lost item ${nextIndex}`);
-		reserveItemStart(writes, input.process, payload.turnId, {
+		reserveSelectedTurnStart(writes, input.process, payload.turnId, "llm", {
 			runId: run.id,
 			itemKey: next.itemKey,
 			itemIndex: nextIndex,
 		});
+		writes.workerIntent = { kind: "reconcile" };
 		return writes;
 	}
 	const resultJsons = input.mappedRuns

@@ -1,10 +1,9 @@
 import { writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import codingExtension from "@leitwerk-dev/coding";
 import { readPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
-import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { GITHUB_PR_TERMINAL_KIND, setupGitHubIntegration } from "@leitwerk-dev/github";
 import { LocalGitHubAdapter } from "@leitwerk-dev/github/testing";
@@ -15,33 +14,32 @@ import {
 	setupGitLabIntegration,
 } from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
-import type { CoreServerSetupDeps, LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import {
+	type CoreServerSetupDeps,
+	coreHostCapabilities,
+	type LeitwerkExtensionModule,
+} from "@leitwerk-dev/process-sdk";
 import {
 	createPollingTestExtension,
 	FakeLlmProvider,
 	fixtureModelProviders,
-	postImmediateLaunch,
 } from "@leitwerk-dev/test-support";
 import {
-	createIntegrationHarness,
-	createProcessDriver,
-	type IntegrationHarness,
+	createExtensionIntegrationHarness,
+	type ExtensionIntegrationHarness,
+	type ExtensionIntegrationHarnessOptions,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import {
-	createInProcessWorkerSpawn,
-	StubPiTreeHandleFactory,
-} from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
 
 type Provider = "github" | "gitlab";
 async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>) => void) {
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-change-flow-"));
-	let harness: IntegrationHarness;
+	let harness: ExtensionIntegrationHarness;
 	let github: LocalGitHubAdapter;
 	let gitlab: LocalGitLabAdapter;
-	let pollProvider: () => Promise<unknown>;
+	let externalSources: CoreServerSetupDeps["externalSources"];
 	let clock = Date.now();
 	let repairMode: "change" | "none" | "operator" = "change";
 	let edit = 0;
@@ -93,110 +91,99 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			],
 		};
 	});
-	const pi = new StubPiTreeHandleFactory({
-		toolCallScriptResolver({ tools, promptText, sessionCwd, workspaceRoot, instanceId }) {
-			const names = tools.map((t) => t.name);
-			const treeText =
-				pi.sessions
-					.at(-1)
-					?.getBranch()
-					.map((entry) =>
-						entry.type === "custom_message"
-							? entry.content
-							: entry.type === "message"
-								? entry.message?.content
-								: "",
-					)
-					.filter((value): value is string => typeof value === "string")
-					.join("\n\n") ?? "";
-			const prompt = `${treeText}\n${promptText}`;
-			const response = model.respond(JSON.stringify({ tools: names, prompt }));
-			const cwd = sessionCwd ?? workspaceRoot;
-			if (!cwd) throw new Error("Missing checkout");
-			if (
-				(prompt.includes("Implement this requested change:") &&
-					prompt.includes("Follow this plan:")) ||
-				(names.includes("changes_ready") && repairMode === "change")
-			)
-				writeFileSync(path.join(cwd, "README.md"), `Repository revision ${++edit}\n`);
-			const calls = (response.toolCalls ?? []).map((c) => ({
-				toolName: c.name,
-				args: c.arguments,
-			}));
-			if (names.includes("github_get_ci_diagnostics") && instanceId) {
-				const s = state(instanceId);
-				calls.unshift({
-					toolName: "github_get_ci_diagnostics",
-					args: { projectKey: "repo", pullRequestNumber: s.prNumber, headSha: s.headSha },
-				});
-			}
-			if (names.includes("gitlab_list_failed_jobs") && instanceId) {
-				const s = state(instanceId);
-				calls.unshift({
-					toolName: "gitlab_list_failed_jobs",
-					args: { projectKey: "repo", pipelineId: s.pipeline?.number },
-				});
-			}
-			return { calls };
-		},
-	});
+	const script: NonNullable<ExtensionIntegrationHarnessOptions["script"]> = (
+		instanceId,
+		promptText,
+		{ tools, history, cwd },
+	) => {
+		const names = tools.map((t) => t.name);
+		const prompt = `${history}\n${promptText}`;
+		const response = model.respond(JSON.stringify({ tools: names, prompt }));
+		if (!cwd) throw new Error("Missing checkout");
+		if (
+			(prompt.includes("Implement this requested change:") &&
+				prompt.includes("Follow this plan:")) ||
+			(names.includes("changes_ready") && repairMode === "change")
+		)
+			writeFileSync(path.join(cwd, "README.md"), `Repository revision ${++edit}\n`);
+		const calls = response.toolCalls ?? [];
+		if (names.includes("github_get_ci_diagnostics")) {
+			const s = state(instanceId);
+			calls.unshift({
+				name: "github_get_ci_diagnostics",
+				arguments: { projectKey: "repo", pullRequestNumber: s.prNumber, headSha: s.headSha },
+			});
+		}
+		if (names.includes("gitlab_list_failed_jobs")) {
+			const s = state(instanceId);
+			calls.unshift({
+				name: "gitlab_list_failed_jobs",
+				arguments: { projectKey: "repo", pipelineId: s.pipeline?.number },
+			});
+		}
+		return { tools: calls };
+	};
 	const processId = `${provider}_repo_change_process`;
+	const snapshot = (id: string) => harness.process(id).snapshot();
 	const state = (id: string) =>
 		readPublicationState(
-			JSON.parse(harness.ctx.deps.processes.getById(id)?.stateJson ?? "{}"),
+			JSON.parse(snapshot(id).process.stateJson ?? "{}"),
 			`${provider}RepoChange`,
 		);
-	await mkdir(path.join(root, "trees"), { recursive: true });
-	await mkdir(path.join(root, "workspaces"), { recursive: true });
-	async function start() {
+	onFinished(async () => {
+		await harness?.close();
+		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+	});
+	const flow =
+		provider === "github"
+			? createGitHubRepoChange({ docker: false })
+			: createGitLabRepoChange({ docker: false });
+	// Only this owned local composition replaces production credential delivery.
+	flow.process.repositoryCredentials = () => [];
+	const polling = createPollingTestExtension({ id: provider, version: "1.0.0" }, (api) => {
+		externalSources = api.require(coreHostCapabilities.serverSetup).externalSources;
 		github = new LocalGitHubAdapter({ root, baseUrl: "https://github.test", now: () => clock });
 		github.seed({ owner: "team", name: "repo", files: { "README.md": "Initial\n" } });
 		gitlab = new LocalGitLabAdapter(root);
 		if (!gitlab.state.projects.length) gitlab.addProject("team/subgroup/repo", bare);
-		const flow =
-			provider === "github"
-				? createGitHubRepoChange({ docker: false })
-				: createGitLabRepoChange({ docker: false });
-		// Only this owned local composition replaces production credential delivery.
-		flow.process.repositoryCredentials = () => [];
-		const polling = createPollingTestExtension({ id: provider, version: "1.0.0" }, (api) =>
-			provider === "github"
-				? setupGitHubIntegration(
-						api,
-						{ profiles: () => ["team"], client: () => github.client() },
-						{ now: () => clock },
-					)
-				: setupGitLabIntegration(
-						api,
-						{ profiles: () => ["team"], client: () => gitlab.client() },
-						{ now: () => clock },
-					),
-		);
-		pollProvider = () => polling.poll();
-		const ssh: LeitwerkExtensionModule = {
-			manifest: { id: "git-ssh", version: "1.0.0" },
-			setupServer(api) {
-				api.provide(gitSshIntegration, {
-					profiles: () => ["team"],
-					async preflight(input) {
-						if (input.repoLocator !== bare)
-							return {
-								ok: false as const,
-								access: "read" as const,
-								detail: "Unknown local repository",
-							};
-						git.run(bare, [
-							"push",
-							"--dry-run",
-							bare,
-							`${input.baseBranch}:refs/heads/leitwerk/preflight`,
-						]);
-						return { ok: true as const };
-					},
-				});
-			},
-		};
-		const catalog = await buildExtensionCatalogFromModules([
+		return provider === "github"
+			? setupGitHubIntegration(
+					api,
+					{ profiles: () => ["team"], client: () => github.client() },
+					{ now: () => clock },
+				)
+			: setupGitLabIntegration(
+					api,
+					{ profiles: () => ["team"], client: () => gitlab.client() },
+					{ now: () => clock },
+				);
+	});
+	const ssh: LeitwerkExtensionModule = {
+		manifest: { id: "git-ssh", version: "1.0.0" },
+		setupServer(api) {
+			api.provide(gitSshIntegration, {
+				profiles: () => ["team"],
+				async preflight(input) {
+					if (input.repoLocator !== bare)
+						return {
+							ok: false as const,
+							access: "read" as const,
+							detail: "Unknown local repository",
+						};
+					git.run(bare, [
+						"push",
+						"--dry-run",
+						bare,
+						`${input.baseBranch}:refs/heads/leitwerk/preflight`,
+					]);
+					return { ok: true as const };
+				},
+			});
+		},
+	};
+	harness = await createExtensionIntegrationHarness({
+		script,
+		extensions: [
 			codingExtension,
 			polling,
 			ssh,
@@ -209,53 +196,45 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 					server: true,
 				}),
 			},
-		]);
-		harness = await createIntegrationHarness({
-			extensionCatalog: catalog,
-			appOverrides: {
-				localWorkerSpawnImpl: createInProcessWorkerSpawn({
-					extensionCatalog: catalog,
-					piFactory: pi,
-				}),
+		],
+		models: [{ id: "fake", provider: "change-test-model", modelId: "fake" }],
+		defaultModel: "fake",
+		watchers: {
+			[processId]: {
+				use_leitwerk: {
+					enabled: true,
+					profile: "team",
+					poll_interval: "30s",
+					labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
+					...(provider === "gitlab" ? { projects: { include: ["team/subgroup/repo"] } } : {}),
+				},
 			},
-			configOverride(config) {
-				config.storage.sqlite_path = path.join(root, "state.sqlite");
-				config.storage.tree_files_dir = path.join(root, "trees");
-				config.storage.process_workspaces_dir = path.join(root, "workspaces");
-				config.pi.agent_dir = path.join(root, "pi-agent");
-				config.pi.model_profiles = [
-					{ id: "fake", provider: "change-test-model", model_id: "fake", thinking_level: "off" },
-				];
-				config.pi.process_title_generation.model_profile = "fake";
-				config.process_configs = {
-					[processId]: {
-						default_model_profile: "fake",
-						turn_configs: {},
-						watchers: {
-							use_leitwerk: {
-								enabled: true,
-								profile: "team",
-								poll_interval: "30s",
-								labels: { trigger: "use-leitwerk", done: "leitwerk-done" },
-								...(provider === "gitlab" ? { projects: { include: ["team/subgroup/repo"] } } : {}),
-							},
-						},
-					},
-				};
-			},
-		});
-	}
-	onFinished(async () => {
-		await harness?.ctx.app.close();
-		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		},
 	});
-	await start();
-	const driver = createProcessDriver(() => harness.ctx);
+	const waitForProcess = (
+		id: string,
+		predicate: (p: ReturnType<typeof snapshot>["process"]) => boolean,
+		description: string,
+	) =>
+		harness.process(id).waitFor(
+			({ process }) => {
+				if (process.lifecycleStatus === "error") throw new Error("Process entered error lifecycle");
+				return predicate(process);
+			},
+			{ description },
+		);
+	const wait = (id: string, turn: string | null, lifecycle = "waiting") =>
+		waitForProcess(
+			id,
+			(p) => p.selectedTurnId === turn && p.lifecycleStatus === lifecycle,
+			`${turn}/${lifecycle}`,
+		);
+	const action = (id: string, actionId: string) => harness.process(id).action(actionId);
 	const armed = async (id: string) => {
-		await driver.wait(id, "deliver_change");
+		await wait(id, "deliver_change");
 		await waitForValue(
 			() =>
-				(harness.ctx.deps.externalSourceService as CoreServerSetupDeps["externalSources"])
+				externalSources
 					.listArmed(provider === "github" ? GITHUB_PR_TERMINAL_KIND : GITLAB_MR_KIND)
 					.some((s) => s.instanceId === id),
 			Boolean,
@@ -264,11 +243,14 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 	};
 	const poll = async () => {
 		clock += 180000;
-		const result = (await pollProvider()) as { errors: string[] };
+		const result = await polling.poll();
 		expect(result.errors).toEqual([]);
 	};
 	return {
-		...driver,
+		wait,
+		waitForProcess,
+		action,
+		snapshot,
 		state,
 		armed,
 		poll,
@@ -301,35 +283,29 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				} else gitlab.createIssue(1, "Update readme");
 				await poll();
 				const process = await waitForValue(
-					() => harness.ctx.deps.processes.listAll().find((p) => p.processId === processId),
+					() => harness.processes().find((p) => p.processId === processId),
 					Boolean,
 					12000,
 				);
 				if (!process) throw new Error("No issue process");
 				id = process.id;
 			} else {
-				const response = await postImmediateLaunch(harness.address, `${processId}.ui_launcher`, {
-					launcherInput: {
+				id = (
+					await harness.launch(`${processId}.ui_launcher`, {
 						[`${provider}Profile`]: "team",
 						repository: provider === "github" ? "team/repo" : "1",
 						prompt: "Update readme",
-					},
-				});
-				const body = (await response.json()) as { process: { id: string } };
-				expect(response.status, JSON.stringify(body)).toBe(201);
-				id = body.process.id;
+					})
+				).id;
 			}
-			await driver.wait(id, "plan_decision");
-			await driver.action(id, "approve_plan");
-			await driver.wait(id, "implementation_decision");
-			await driver.action(id, "finalize_change");
+			await wait(id, "plan_decision");
+			await action(id, "approve_plan");
+			await wait(id, "implementation_decision");
+			await action(id, "finalize_change");
 			await armed(id);
 			return id;
 		},
-		async restart() {
-			await harness.ctx.app.close();
-			await start();
-		},
+		restart: () => harness.restart(),
 		failCi(id: string) {
 			const s = state(id);
 			if (provider === "github")
@@ -392,7 +368,7 @@ for (const provider of ["github", "gitlab"] as const)
 			expect(
 				f.git.run(f.bare, [
 					"show",
-					`${JSON.parse(f.harness.ctx.deps.processes.getById(id)?.paramsJson ?? "{}").workBranch}:README.md`,
+					`${JSON.parse(f.snapshot(id).process.paramsJson ?? "{}").workBranch}:README.md`,
 				]),
 			).toContain("Repository revision");
 			f.failCi(id);
@@ -406,14 +382,14 @@ for (const provider of ["github", "gitlab"] as const)
 			);
 			await f.armed(id);
 			expect(f.state(id).ciRecoveryCycles).toBe(1);
-			const before = f.harness.ctx.deps.turnRecords.listByInstance(id).map((t) => t.id);
+			const before = f.snapshot(id).turns.map((t) => t.id);
 			await f.restart();
 			await f.armed(id);
-			expect(f.harness.ctx.deps.turnRecords.listByInstance(id).map((t) => t.id)).toEqual(before);
+			expect(f.snapshot(id).turns.map((t) => t.id)).toEqual(before);
 			f.merge(id);
 			await f.poll();
 			await f.wait(id, null, "completed");
-			expect(f.harness.ctx.deps.projects.listByInstance(id)).toHaveLength(1);
+			expect(f.snapshot(id).projects).toHaveLength(1);
 		}, 45000);
 		it("launches one labeled issue and reconciles it after merge without duplicate writes", async ({
 			onTestFinished,
@@ -424,9 +400,7 @@ for (const provider of ["github", "gitlab"] as const)
 			const id = await f.launch(true);
 			await f.poll();
 			expect(
-				f.harness.ctx.deps.processes
-					.listAll()
-					.filter((p) => p.processId === `${provider}_repo_change_process`),
+				f.harness.processes().filter((p) => p.processId === `${provider}_repo_change_process`),
 			).toHaveLength(1);
 			f.merge(id);
 			await f.poll();
@@ -442,9 +416,9 @@ for (const provider of ["github", "gitlab"] as const)
 					labels: ["leitwerk-done"],
 				});
 			}
-			const writes = f.harness.ctx.deps.externalWrites.listByInstance(id);
+			const writes = f.snapshot(id).writeReceipts;
 			await f.restart();
-			expect(f.harness.ctx.deps.externalWrites.listByInstance(id)).toEqual(writes);
+			expect(f.snapshot(id).writeReceipts).toEqual(writes);
 		}, 45000);
 		it("settles feedback, preserves operator evidence over restart, and resumes waiting", async ({
 			onTestFinished,
@@ -495,7 +469,7 @@ for (const provider of ["github", "gitlab"] as const) {
 		await f.action(id, "resume_waiting");
 		await f.armed(id);
 		await f.poll();
-		expect(f.harness.ctx.deps.processes.getById(id)).toMatchObject({
+		expect(f.snapshot(id).process).toMatchObject({
 			selectedTurnId: "deliver_change",
 			lifecycleStatus: "waiting",
 		});

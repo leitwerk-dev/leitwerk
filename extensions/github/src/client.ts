@@ -27,7 +27,6 @@ export interface GitHubRepository {
 	/** @internal */
 	full_name: string;
 	/** @public */
-	/** @public */
 	owner: {
 		/** @public */
 		login: string;
@@ -63,12 +62,10 @@ export interface GitHubLabelEvent {
 	/** @internal */
 	event: string;
 	/** @public */
-	/** @public */
 	label?: {
 		/** @public */
 		name: string;
 	};
-	/** @public */
 	/** @public */
 	actor: {
 		/** @public */
@@ -121,7 +118,6 @@ export interface GitHubRelease {
 	prerelease: boolean;
 	/** @internal */
 	html_url: string;
-	/** @public */
 	/** @public */
 	assets: Array<{
 		/** @public */
@@ -529,7 +525,6 @@ export class GitHubClient extends RepositoryHttpClient {
 			name: string;
 			conclusion: string | null;
 			/** @public */
-			/** @public */
 			output?: {
 				/** @public */
 				title?: string;
@@ -571,7 +566,6 @@ export class GitHubClient extends RepositoryHttpClient {
 			name: string;
 			/** @public */
 			html_url: string;
-			/** @public */
 			/** @public */
 			log: {
 				/** @public */

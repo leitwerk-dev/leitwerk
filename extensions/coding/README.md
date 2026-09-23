@@ -27,7 +27,7 @@ The following exported declarations are `@public`:
 - `@leitwerk-dev/coding`: `codingActionIds`, `createRepositoryChangeProcess`, `default`.
 - `@leitwerk-dev/coding/auto-work-branch`: `buildAutoWorkBranchFromSeed`.
 - `@leitwerk-dev/coding/finalization-git`: `GitIdentity`, `commitAndPushWorkBranch`.
-- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
+- `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `RepositoryIssueOriginParams`, `RepositoryUiOriginParams`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
 - `@leitwerk-dev/coding/repository-change-publication`: `DeliveryState`, `PublicationContext`, `PublicationEvidence`, `PublicationFeedbackId`, `PublicationParams`, `PublicationPipeline`, `PublicationRequest`, `PublicationSource`, `PublicationState`, `RepositoryChangePublicationAdapter`, `applyPublicationEvidence`, `createRepositoryChangePublication`, `patchPublicationState`, `publicationObject`, `readPublicationState`.
 - `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeState`.
 

@@ -633,12 +633,7 @@ export async function createExtensionIntegrationHarness(
 		/** @public */
 		async function waitFor(
 			condition: (snapshot: TestObservation<ExtensionIntegrationSnapshot>) => boolean,
-			options: {
-				/** @public */
-				timeoutMs?: number;
-				/** @public */
-				description?: string;
-			} = {},
+			options: Parameters<ExtensionIntegrationProcess["waitFor"]>[1] = {},
 		) {
 			const deadline = Date.now() + (options.timeoutMs ?? 12000);
 			for (;;) {
@@ -678,7 +673,7 @@ export async function createExtensionIntegrationHarness(
 			/** @public */
 			id,
 			/** Establish correlated accepted records under exclusive server coordination. @public */
-			async seedAcceptedTurn(fixture: AcceptedTurnFixture) {
+			async seedAcceptedTurn(fixture) {
 				const ctx = context();
 				return ctx.deps.processOperations.runExclusive(id, async () => {
 					const process = ctx.deps.processes.getById(id);
@@ -817,13 +812,9 @@ export async function createExtensionIntegrationHarness(
 							});
 						if (running) repos.processes.update(id, { lifecycleStatus: "active" });
 						return observe({
-							/** @public */
 							id: turnId,
-							/** @public */
 							instanceId: id,
-							/** @public */
 							turnId: fixture.turnId,
-							/** @public */
 							artifact: running ? null : { kind: "turn_result" as const, turnRecordId: turnId },
 						});
 					});
@@ -834,7 +825,7 @@ export async function createExtensionIntegrationHarness(
 			/** Wait with a bounded deadline and final observations on failure. @public */
 			waitFor,
 			/** Execute one selected worker turn; resolves after durable completion or failure. @public */
-			async runTurn(script: IntegrationTurnScript = { tools: [] }) {
+			async runTurn(script = { tools: [] }) {
 				if (!manual) throw new Error("runTurn requires manual execution mode");
 				if (executing.has(id)) throw new Error(`A turn is already running for '${id}'`);
 				const before = snapshot();
@@ -871,22 +862,16 @@ export async function createExtensionIntegrationHarness(
 						? context().deps.turnAnnotations.findByKey(id, `turn_milestone:${record.id}`)
 						: null;
 					return observe({
-						/** @public */
 						turn: record ?? null,
-						/** @public */
 						outcome:
 							typeof milestone?.payload.outcome === "string" ? milestone.payload.outcome : null,
-						/** @public */
 						failure:
 							record?.errorSummary ??
 							(after.process.lifecycleStatus === "error"
 								? "Worker start failed before acceptance"
 								: null),
-						/** @public */
 						prompts: observations.get(id)?.prompts ?? [],
-						/** @public */
 						toolResults: observations.get(id)?.toolResults ?? [],
-						/** @public */
 						result:
 							record?.status === "succeeded" && record.turnResultMarkdown
 								? { kind: "turn_result" as const, turnRecordId: record.id }
@@ -899,12 +884,12 @@ export async function createExtensionIntegrationHarness(
 				}
 			},
 			/** Execute an application action. @public */
-			action: (actionId: string, input: Record<string, unknown> = {}) =>
+			action: (actionId, input = {}) =>
 				post(`${prefix}/actions/${encodeURIComponent(actionId)}`, { input }),
 			/** Retry the failed execution through the application command. @public */
 			retry: () => post(`${prefix}/retry`),
 			/** Queue an instruction using the application command and normal delivery. @public */
-			async supplyInput(input: IntegrationProcessInput) {
+			async supplyInput(input) {
 				const result = await context().deps.processEngine.queueInputs(id, [
 					{
 						source: "app_steer",
@@ -917,30 +902,13 @@ export async function createExtensionIntegrationHarness(
 				return snapshot();
 			},
 			/** Answer an open question request. @public */
-			answerQuestions: (
-				requestId: string,
-				answers: readonly {
-					/** @public */
-					selectedOptionIds: readonly string[];
-					/** @public */
-					freeText: string;
-					/** @public */
-					comment: string;
-				}[],
-			) =>
+			answerQuestions: (requestId, answers) =>
 				post(`${prefix}/question-requests/${encodeURIComponent(requestId)}/answers`, {
 					draft: answers,
 				}),
 			/** Resolve an open tool approval. @public */
-			respondToApproval: (
-				requestId: string,
-				response: {
-					/** @public */
-					action: "accept" | "feedback" | "decline";
-					/** @public */
-					feedback?: string;
-				},
-			) => post(`${prefix}/tool-approval-requests/${encodeURIComponent(requestId)}`, response),
+			respondToApproval: (requestId, response) =>
+				post(`${prefix}/tool-approval-requests/${encodeURIComponent(requestId)}`, response),
 		};
 	}
 	return {
@@ -951,7 +919,7 @@ export async function createExtensionIntegrationHarness(
 		/** Get a handle that remains valid across restart. @public */
 		process: processHandle,
 		/** Admit work through a registered UI launcher. @public */
-		async launch(id: string, input: Record<string, unknown>) {
+		async launch(id, input) {
 			const response = await postImmediateLaunch(context().config.server.base_url, id, {
 				launcherInput: input,
 			});
@@ -961,13 +929,7 @@ export async function createExtensionIntegrationHarness(
 			return processHandle(body.process.id);
 		},
 		/** Create validated business data and start an active position through the engine. @public */
-		async createProcess<TParams, TState>(
-			definition: ExtensionProcessDefinition<TParams, TState>,
-			input: Omit<ProcessFixtureOptions<TParams, TState>, "id" | "processId"> & {
-				/** @public */
-				projects?: readonly ProcessProject[];
-			} = {},
-		) {
+		async createProcess(definition, input = {}) {
 			if (catalog.processes.get(definition.id) !== definition)
 				throw new Error(`Process '${definition.id}' must be registered by an extension`);
 			const fixture = createProcessFixture(input, definition);

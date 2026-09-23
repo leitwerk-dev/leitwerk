@@ -32,35 +32,6 @@ export interface CompleteMappedItemInput {
 	turnRecordId: string;
 }
 
-function mapRun(row: typeof s.mappedLlmRuns.$inferSelect): MappedRun {
-	return {
-		id: row.id,
-		instanceId: row.instanceId,
-		turnId: row.turnId,
-		status: row.status as MappedRunStatus,
-		itemCount: row.itemCount,
-		nextIndex: row.nextIndex,
-		createdAt: row.createdAt,
-		updatedAt: row.updatedAt,
-	};
-}
-
-function mapItem(row: typeof s.mappedLlmItems.$inferSelect): MappedItem {
-	return {
-		runId: row.runId,
-		instanceId: row.instanceId,
-		itemIndex: row.itemIndex,
-		itemKey: row.itemKey,
-		label: row.label,
-		itemJson: row.itemJson,
-		status: row.status as MappedItem["status"],
-		outcome: row.outcome ?? null,
-		resultJson: row.resultJson ?? null,
-		turnRecordId: row.turnRecordId ?? null,
-		completedAt: row.completedAt ?? null,
-	};
-}
-
 /** @internal */
 export function createMappedLlmRunRepo(db: LeitwerkDb) {
 	return {
@@ -91,23 +62,23 @@ export function createMappedLlmRunRepo(db: LeitwerkDb) {
 					})
 					.run();
 			}
-			return mapRun(run);
+			return run;
 		},
 		/** @internal */
 		getById(id: string): MappedRun | null {
-			const row = db.select().from(s.mappedLlmRuns).where(eq(s.mappedLlmRuns.id, id)).get();
-			return row ? mapRun(row) : null;
+			return db.select().from(s.mappedLlmRuns).where(eq(s.mappedLlmRuns.id, id)).get() ?? null;
 		},
 		/** @internal */
 		getActiveByInstance(instanceId: string): MappedRun | null {
-			const row = db
-				.select()
-				.from(s.mappedLlmRuns)
-				.where(
-					and(eq(s.mappedLlmRuns.instanceId, instanceId), eq(s.mappedLlmRuns.status, "active")),
-				)
-				.get();
-			return row ? mapRun(row) : null;
+			return (
+				db
+					.select()
+					.from(s.mappedLlmRuns)
+					.where(
+						and(eq(s.mappedLlmRuns.instanceId, instanceId), eq(s.mappedLlmRuns.status, "active")),
+					)
+					.get() ?? null
+			);
 		},
 		/** @internal */
 		listByInstance(instanceId: string): MappedRun[] {
@@ -116,8 +87,7 @@ export function createMappedLlmRunRepo(db: LeitwerkDb) {
 				.from(s.mappedLlmRuns)
 				.where(eq(s.mappedLlmRuns.instanceId, instanceId))
 				.orderBy(asc(s.mappedLlmRuns.createdAt))
-				.all()
-				.map(mapRun);
+				.all();
 		},
 		/** @internal */
 		listItems(runId: string): MappedItem[] {
@@ -126,8 +96,7 @@ export function createMappedLlmRunRepo(db: LeitwerkDb) {
 				.from(s.mappedLlmItems)
 				.where(eq(s.mappedLlmItems.runId, runId))
 				.orderBy(asc(s.mappedLlmItems.itemIndex))
-				.all()
-				.map(mapItem);
+				.all();
 		},
 		/** @internal */
 		listItemsByInstance(instanceId: string): MappedItem[] {
@@ -135,17 +104,17 @@ export function createMappedLlmRunRepo(db: LeitwerkDb) {
 				.select()
 				.from(s.mappedLlmItems)
 				.where(eq(s.mappedLlmItems.instanceId, instanceId))
-				.all()
-				.map(mapItem);
+				.all();
 		},
 		/** @internal */
 		getItem(runId: string, itemIndex: number): MappedItem | null {
-			const row = db
-				.select()
-				.from(s.mappedLlmItems)
-				.where(and(eq(s.mappedLlmItems.runId, runId), eq(s.mappedLlmItems.itemIndex, itemIndex)))
-				.get();
-			return row ? mapItem(row) : null;
+			return (
+				db
+					.select()
+					.from(s.mappedLlmItems)
+					.where(and(eq(s.mappedLlmItems.runId, runId), eq(s.mappedLlmItems.itemIndex, itemIndex)))
+					.get() ?? null
+			);
 		},
 		/**
 		 * Records one item result and advances the run. Fails unless the item is the

@@ -1,12 +1,9 @@
-import { buildAutoWorkBranchFromSeed } from "@leitwerk-dev/coding/auto-work-branch";
-import { trimString } from "@leitwerk-dev/domain";
-import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
+import { createRepositoryChangeUiLauncher } from "@leitwerk-dev/coding/repository-change-launch";
+import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { GitHubGitIdentity, GitHubIntegration, GitHubRepository } from "@leitwerk-dev/github";
 import {
-	type LauncherValidationError,
 	type LaunchPreparationCheck,
 	type ProcessLaunchConfig,
-	type ProcessLauncherDefinition,
 	SafeLaunchPreparationError,
 } from "@leitwerk-dev/process-sdk";
 import { type GitHubRepoChangeParams, isIssueOrigin } from "./params.js";
@@ -105,33 +102,6 @@ export function createGitHubRepoChangeLauncher() {
 		return dependencies;
 	}
 
-	function sshPreparationCheck(
-		access: "read" | "write",
-		params: GitHubRepoChangeParams,
-	): LaunchPreparationCheck<GitHubRepoChangeParams> {
-		return {
-			id: `ssh_${access}`,
-			label: `Verify SSH ${access} access`,
-			async run({ signal, logger }) {
-				signal.throwIfAborted();
-				const result = await requireDependencies().gitSsh.preflight({
-					credentialRef: params.sshCredentialRef,
-					repoLocator: params.repoLocator,
-					baseBranch: params.baseBranch,
-					requireWrite: access === "write",
-				});
-				signal.throwIfAborted();
-				if (!result.ok) {
-					logger.warn(`Git SSH ${result.access} preflight failed: ${result.detail}`);
-					throw new SafeLaunchPreparationError(
-						`SSH ${result.access} access failed: ${result.detail}`,
-						`Authorize Git SSH profile '${params.sshCredentialRef}' for '${params.owner}/${params.repo}' with read/write access, then try again.`,
-					);
-				}
-			},
-		};
-	}
-
 	/** @public */
 	function githubRepositoryPreparationChecks(
 		_input: unknown,
@@ -156,17 +126,9 @@ export function createGitHubRepoChangeLauncher() {
 					}
 				},
 			},
-			sshPreparationCheck("read", params),
-			sshPreparationCheck("write", params),
+			createGitSshPreparationCheck("read", params, () => requireDependencies().gitSsh),
+			createGitSshPreparationCheck("write", params, () => requireDependencies().gitSsh),
 		];
-	}
-
-	function validationError(
-		fieldId: string,
-		message: string,
-		code: LauncherValidationError["code"] = "required",
-	): LauncherValidationError {
-		return { code, fieldId, message };
 	}
 
 	/** @public */
@@ -194,123 +156,19 @@ export function createGitHubRepoChangeLauncher() {
 		return github.client(profile).listRepositories();
 	}
 
-	const githubRepoChangeUiLauncher: ProcessLauncherDefinition<GitHubRepoChangeParams> = {
+	const githubRepoChangeUiLauncher = createRepositoryChangeUiLauncher({
 		id: githubRepoChangeUiLauncherId,
-		label: "GitHub Repo Change",
-		description: "Plan, implement, review, and publish a GitHub change without a source issue",
-		visibility: "ui",
-		ui: {
-			card: {
-				title: "GitHub Repo Change",
-				description: "Start a repository change and publish it as a GitHub pull request.",
-			},
-			launchConfigSchema: {
-				id: "github_repo_change_form",
-				title: "GitHub Repo Change",
-				fields: [
-					{
-						id: "githubProfile",
-						label: "GitHub profile",
-						kind: "select",
-						required: true,
-						description: "GitHub profile with server-configured CI and Git SSH access.",
-					},
-					{
-						id: "repository",
-						label: "Repository",
-						kind: "select",
-						required: true,
-						description: "Repository visible to the selected GitHub profile.",
-					},
-					{
-						id: "prompt",
-						label: "Requested change",
-						kind: "textarea",
-						required: true,
-						placeholder: "Describe the change to plan, implement, review, and publish.",
-					},
-				],
-				submitLabel: "Start change",
-			},
-			resolveDefaults() {
-				return {
-					githubProfile: (requireDependencies().github.profiles?.() ?? [])[0] ?? "",
-					repository: "",
-					prompt: "",
-				};
-			},
-			async resolveOptions(input) {
-				const { github } = requireDependencies();
-				const profile = trimString(input.githubProfile);
-				return {
-					githubProfile: (github.profiles?.() ?? []).map((value) => ({ value, label: value })),
-					repository: (await repositories(profile)).map((repository) => ({
-						value: repository.full_name,
-						label: repository.full_name,
-						description: repository.html_url,
-					})),
-				};
-			},
-			preparationChecks: githubRepositoryPreparationChecks,
-			resolveRelaunchInput(previousInput) {
-				return {
-					githubProfile: trimString(previousInput.githubProfile),
-					repository: trimString(previousInput.repository),
-					prompt: trimString(previousInput.prompt),
-				};
-			},
-			async resolveLaunchConfig(input) {
-				const profile = trimString(input.githubProfile);
-				const repositoryName = trimString(input.repository);
-				const prompt = trimString(input.prompt);
-				const errors: LauncherValidationError[] = [];
-				const invalid = (fieldId: string, message: string) => ({
-					ok: false as const,
-					errors: [validationError(fieldId, message, "custom_rule")],
-				});
-				const { github } = requireDependencies();
-				if (!profile) errors.push(validationError("githubProfile", "GitHub profile is required"));
-				else if (!(github.profiles?.() ?? []).includes(profile))
-					errors.push(
-						validationError("githubProfile", "GitHub profile is not available", "custom_rule"),
-					);
-				if (!repositoryName) errors.push(validationError("repository", "Repository is required"));
-				if (!prompt) errors.push(validationError("prompt", "Requested change is required"));
-				if (errors.length > 0) return { ok: false, errors };
-
-				const repository = (await repositories(profile)).find(
-					(candidate) => candidate.full_name === repositoryName,
-				);
-				if (!repository)
-					return invalid(
-						"repository",
-						"Repository is not available to the selected GitHub profile",
-					);
-
-				let binding: ReturnType<typeof resolveProfiles>;
-				try {
-					binding = resolveProfiles(profile);
-				} catch (error) {
-					return invalid("githubProfile", (error as Error).message);
-				}
-				const gitIdentity = await resolveGitHubGitIdentity(profile);
-				const workBranch = buildAutoWorkBranchFromSeed(
-					prompt,
-					`${repository.ssh_url}:${repository.default_branch}`,
-				);
-				const params = githubRepoChangeParams(repository, {
-					...binding,
-					profile,
-					prompt,
-					workBranch,
-				});
-				return {
-					ok: true,
-					launchConfig: githubRepoChangeLaunchConfig(params, prompt, gitIdentity),
-				};
-			},
-		},
-	};
+		provider: "GitHub",
+		providerId: "github",
+		assertConfigured: requireDependencies,
+		profiles: () => requireDependencies().github.profiles?.() ?? [],
+		repositories,
+		resolveProfiles,
+		resolveGitIdentity: resolveGitHubGitIdentity,
+		params: githubRepoChangeParams,
+		launchConfig: githubRepoChangeLaunchConfig,
+		preparationChecks: githubRepositoryPreparationChecks,
+	});
 
 	return {
 		/** @public */
