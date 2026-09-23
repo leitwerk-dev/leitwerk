@@ -50,6 +50,11 @@ describe("planProcessVolumeRetentionCleanup", () => {
 						lifecycleStatus: "aborted",
 						closedAt: "2026-05-01T00:00:00.000Z",
 					}),
+					process({
+						id: "aborted-within-error-retention",
+						lifecycleStatus: "aborted",
+						closedAt: "2026-06-09T12:00:00.000Z",
+					}),
 					process({ id: "active", lifecycleStatus: "active" }),
 				],
 			}),

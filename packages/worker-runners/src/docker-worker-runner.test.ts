@@ -187,6 +187,10 @@ describe("DockerWorkerRunner.start", () => {
 			expect(record?.spec.labels["leitwerk.dev/instance-id"]).toBe("proc-1");
 			expect(record?.spec.labels["leitwerk.dev/server-epoch"]).toBe("epoch-1");
 			expect(record?.spec.privileged).toBe(false);
+			expect(record?.spec.runtime).toBeUndefined();
+			expect(record?.spec.env.map((entry) => entry.split("=", 1)[0])).not.toContain(
+				"LEITWERK_PRIVATE_DOCKER",
+			);
 			expect(unit.replacementHandoff).toBe("stop-before-replacement");
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
@@ -245,20 +249,6 @@ describe("DockerWorkerRunner.start", () => {
 			await expect(
 				runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1", docker: true }, vol)),
 			).rejects.toThrow(/docker.private_daemon is not configured/);
-		} finally {
-			rmSync(hostRoot, { recursive: true, force: true });
-		}
-	});
-
-	it("leaves an ordinary worker without daemon mode or runtime overrides", async () => {
-		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
-		try {
-			const { engine, runner, volume } = bindRunner(hostRoot);
-			const vol = await volume.ensure("proc-1");
-			const unit = await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
-			const record = engine.containers.get(unit.unitId);
-			expect(record?.spec.privileged).toBe(false);
-			expect(record?.spec.runtime).toBeUndefined();
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}

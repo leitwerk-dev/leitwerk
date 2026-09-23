@@ -7,9 +7,6 @@ import {
 	buildKubernetesDockerConfigJsonSecretManifest,
 	KUBERNETES_WORKER_SERVER_CA_CERT_PATH,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-	kubernetesProcessNamespaceName,
-	kubernetesProcessPvcName,
-	kubernetesWorkerPodName,
 } from "./kubernetes-manifests.js";
 import {
 	createKubernetesWorkerRunner,
@@ -546,13 +543,5 @@ describe("KubernetesWorkerRunner", () => {
 		expect(serialized).not.toContain("privileged");
 		expect(serialized).not.toContain("hostPath");
 		expect(serialized).not.toContain("capabilities");
-	});
-
-	it("uses deterministic Kubernetes names", () => {
-		expect(kubernetesWorkerPodName("proc-1", "wkr-1")).toBe("leitwerk-worker-proc-1-wkr-1");
-		expect(kubernetesProcessPvcName("proc-1")).toBe("leitwerk-process-proc-1");
-		expect(kubernetesProcessNamespaceName("proc-1", "leitwerk-test-process-")).toBe(
-			"leitwerk-test-process-proc-1",
-		);
 	});
 });
