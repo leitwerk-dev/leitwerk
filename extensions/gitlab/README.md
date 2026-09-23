@@ -17,7 +17,7 @@ extensions:
 
 `base_url` must be an HTTPS origin without credentials, a query or a fragment. Supply a personal, project or group token with `api` and `write_repository` scopes and permission to push the selected source branches. Tokens stay on the server except for the selected repository's authenticated `worker.start` delivery. No separate Git credential configuration is needed. Missing tokens, identity or permissions are configuration errors.
 
-## Interface
+## Public interface
 
 - `GitLabClientLike` defines project/group discovery, MR metadata and paginated changes, branches/commits, pipelines, failed jobs, bounded traces, bot identity and notes. `GitLabClient` implements it using HTTPS, pagination and bounded transient read retries. Errors omit response bodies and credentials. Writes are reconciled by their caller rather than blindly repeated.
 - `gitlabIntegration` exposes `profiles()` and `client(profile)` through the SDK capability registry. `setupGitLabIntegration()` registers an explicit adapter for tools and external observations.
@@ -39,11 +39,32 @@ The MR external source can also observe review feedback using `feedback: { after
 
 The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.
 
+## Creating repository changes
+
+Load [gitlab-repo-change](../gitlab-repo-change/README.md) for UI and labeled-issue
+change workflows. Repository-only metadata `{ gitlab: { profile, projectId } }`
+permits identity resolution and MR creation. `gitlab_ensure_merge_request` validates
+the process branches, reconciles its remote marker through the durable write log,
+and pins `iid` through server project persistence. Existing MR-bound metadata and
+tool calls remain supported. MR-only tools reject missing bindings.
+
+Source-issue tools require the launch-pinned `issueIid`. Issue updates, comments,
+labels, MR creation, and feedback acknowledgements reconcile uncertain writes.
+`gitlab_list_merge_request_feedback` and `gitlab_acknowledge_feedback` expose the
+existing discussion and seen-reaction operations as project-bound tools.
+
+The issue watcher uses exact project/group selection and rechecks eligibility at
+launch. The MR source accepts optional `delivery` tracking to emit settled feedback,
+confirmed conflict evidence, and an observation cursor alongside existing MR and CI
+facts. Existing source callers retain their event kind and observation behavior.
+HTTPS preflight performs repository reads and a dry-run feature-branch push without
+putting credentials in URLs or command arguments.
+
 ## API support
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/gitlab`: `GitLabDiff`, `GitLabFeedback`, `GitLabIdentity`, `GitLabIntegration`, `GitLabJob`, `GitLabMergeRequest`, `GitLabObservation`, `GitLabProject`, `GitLabSelection`, `default`, `ensureGitLabSeenReaction`, `gitLabFeedbackReadyAt`, `gitlabExternal`, `gitlabIntegration`, `gitlabRepositoryCredentials`, `observationKey`, `observeMergeRequest`, `parseGitLabSelection`, `pendingGitLabFeedback`, `resolveGitLabBinding`, `selectGitLabProjects`.
+- `@leitwerk-dev/gitlab`: `GitLabDeliveryObservation`, `GitLabIssueWatcherEvent`, `gitlabIssueExternalId`, `gitlabIssueWatcherSource`, `GitLabDiff`, `GitLabFeedback`, `GitLabIdentity`, `GitLabIntegration`, `GitLabJob`, `GitLabMergeRequest`, `GitLabObservation`, `GitLabProject`, `GitLabSelection`, `default`, `ensureGitLabSeenReaction`, `gitLabFeedbackReadyAt`, `gitlabExternal`, `gitlabIntegration`, `gitlabRepositoryCredentials`, `observationKey`, `observeMergeRequest`, `parseGitLabSelection`, `pendingGitLabFeedback`, `resolveGitLabBinding`, `selectGitLabProjects`.
 - `@leitwerk-dev/gitlab/testing`: `GitLabClientLike`, `GitLabMergeRequest`, `GitLabPipeline`, `GitLabProject`, `LocalGitLabAdapter`, `setupGitLabIntegration`.
 
 Members have individual classifications; these exports do not make every member

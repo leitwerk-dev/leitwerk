@@ -175,6 +175,8 @@ mobile emulation or wheel input in mobile WebKit.
 Each browser run starts its own UI server on a free port.
 `npm run test:browser` prints its artifact directory under `test-results/`.
 Concurrent runs must preserve each other's traces and retry artifacts.
+Vite uses a separate optimized-dependency cache for each browser engine, or the
+explicit `LEITWERK_BROWSER_VITE_CACHE_DIR` when one is supplied.
 
 For manual source UI verification, run `npm run dev:sandbox`. See the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).

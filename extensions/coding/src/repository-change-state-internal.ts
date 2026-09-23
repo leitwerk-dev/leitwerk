@@ -3,14 +3,6 @@ import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 
 /** @public */
 export interface RepositoryChangeFinalizationState {
-	/** @internal */
-	expectedPostConflictHeadSha: string | null;
-	/** @internal */
-	usedConflictResolution: boolean;
-	/** @internal */
-	finalizationSummaryMarkdown: string | null;
-	/** @internal */
-	finalizedHeadSha: string | null;
 	/** @public */
 	generatedCommitMessage: string | null;
 }
@@ -19,19 +11,14 @@ export interface RepositoryChangeFinalizationState {
 export interface RepositoryChangeState extends StructuralProcessState {
 	/** @public */
 	finalization: RepositoryChangeFinalizationState;
-	/** Namespaced state owned by a caller-supplied publication workflow. @public */
+	/** Namespaced state owned by a caller-supplied publication workflow. */
+	/** @public */
 	extensionState?: Record<string, unknown>;
 }
 
 /** @internal */
 export function createEmptyRepositoryChangeFinalizationState(): RepositoryChangeFinalizationState {
-	return {
-		expectedPostConflictHeadSha: null,
-		usedConflictResolution: false,
-		finalizationSummaryMarkdown: null,
-		finalizedHeadSha: null,
-		generatedCommitMessage: null,
-	};
+	return { generatedCommitMessage: null };
 }
 
 function stringOrNull(value: unknown): string | null {
@@ -44,14 +31,7 @@ function toRecord(value: unknown): Record<string, unknown> {
 
 function parseFinalizationState(value: unknown): RepositoryChangeFinalizationState {
 	const record = toRecord(value);
-	return {
-		expectedPostConflictHeadSha: stringOrNull(record.expectedPostConflictHeadSha),
-		usedConflictResolution: record.usedConflictResolution === true,
-		finalizationSummaryMarkdown: stringOrNull(record.finalizationSummaryMarkdown),
-		finalizedHeadSha: stringOrNull(record.finalizedHeadSha),
-		// Backward-compatible decoding for state persisted before commit-message generation.
-		generatedCommitMessage: stringOrNull(record.generatedCommitMessage),
-	};
+	return { generatedCommitMessage: stringOrNull(record.generatedCommitMessage) };
 }
 
 /** @internal */
@@ -76,15 +56,5 @@ export function clearReviewRefs(
 	return {
 		...semanticEntryRefs,
 		review: null,
-	};
-}
-
-/** @internal */
-export function resetRepositoryChangeFinalizationState(
-	overrides: Partial<RepositoryChangeFinalizationState> = {},
-): RepositoryChangeFinalizationState {
-	return {
-		...createEmptyRepositoryChangeFinalizationState(),
-		...overrides,
 	};
 }

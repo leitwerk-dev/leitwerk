@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/dev-sandbox",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -38,11 +38,11 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/extension-runtime": "0.2.1",
-		"@leitwerk-dev/process-sdk": "0.2.1",
-		"@leitwerk-dev/server": "0.2.1",
-		"@leitwerk-dev/test-support": "0.2.1",
-		"@leitwerk-dev/worker": "0.2.1",
+		"@leitwerk-dev/extension-runtime": "0.3.0",
+		"@leitwerk-dev/process-sdk": "0.3.0",
+		"@leitwerk-dev/server": "0.3.0",
+		"@leitwerk-dev/test-support": "0.3.0",
+		"@leitwerk-dev/worker": "0.3.0",
 		"yaml": "^2.8.3"
 	},
 	"devDependencies": {

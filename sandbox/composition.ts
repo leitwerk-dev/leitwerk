@@ -8,11 +8,14 @@ import {
 	withSandboxLaunchers,
 } from "@leitwerk-dev/dev-sandbox";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import localRepoChange, { localRepoChangeProcess } from "@leitwerk-dev/local-repo-change";
 import models from "@leitwerk-dev/models";
 import ticketCreation from "@leitwerk-dev/ticket-creation";
 import { LocalTicketAdapter } from "@leitwerk-dev/ticket-creation/testing";
 import { Notebook, type NotebookSeed } from "./notebook.js";
+import {
+	sandboxRepositoryChangeProcess,
+	sandboxRepositoryChangeProcessId,
+} from "./repository-change-process.js";
 import { notebookScenarios, notebookScripts } from "./scenarios.js";
 
 export function createNotebookComposition(
@@ -32,7 +35,7 @@ export function createNotebookComposition(
 		const scenarios = notebookScenarios(notebook);
 		return {
 			processConfigs: Object.fromEntries(
-				["local_repo_change_process", "ticket_creation_process"].map((id) => [
+				[sandboxRepositoryChangeProcessId, "ticket_creation_process"].map((id) => [
 					id,
 					{ default_model_profile: input.modelProfileId, turn_configs: {} },
 				]),
@@ -40,7 +43,6 @@ export function createNotebookComposition(
 			development: {
 				extensions: [
 					"@leitwerk-dev/coding",
-					"@leitwerk-dev/local-repo-change",
 					"@leitwerk-dev/ticket-creation",
 					"@leitwerk-dev/models",
 				].map((name) => fileURLToPath(new URL("../", import.meta.resolve(name)))),
@@ -53,10 +55,10 @@ export function createNotebookComposition(
 					coding,
 					input.mode === "real" ? models : scriptedSandboxModel,
 					{
-						...localRepoChange,
+						manifest: { id: "sandbox-repository-change", version: "1.0.0" },
 						setupCatalog(api) {
 							api.registerProcess(
-								withSandboxLaunchers(localRepoChangeProcess, scenarios, {
+								withSandboxLaunchers(sandboxRepositoryChangeProcess, scenarios, {
 									ownLaunchers: "replace",
 								}),
 							);

@@ -17,6 +17,7 @@ const extension: LeitwerkExtensionModule = {
 	setupServer(api, config) {
 		const profiles = parseGitHubProfiles(config);
 		const integration: GitHubIntegration = {
+			profiles: () => [...profiles.keys()],
 			client(profile) {
 				const value = profiles.get(profile);
 				if (!value) throw new Error(`Unknown GitHub profile '${profile}'`);
@@ -53,6 +54,7 @@ export type {
 	GitHubGitIdentity,
 	GitHubIssue,
 	GitHubPullRequest,
+	GitHubRepository,
 } from "./client.js";
 export {
 	GITHUB_CHECKS_KIND,

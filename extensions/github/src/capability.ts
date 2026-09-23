@@ -7,6 +7,8 @@ export type GitHubClientLike = Pick<GitHubClient, keyof GitHubClient>;
 /** @public */
 export interface GitHubIntegration {
 	/** @public */
+	profiles?(): readonly string[];
+	/** @public */
 	client(profile: string): GitHubClientLike;
 }
 

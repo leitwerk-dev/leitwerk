@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/coding",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -39,17 +39,38 @@
 			"source": "./src/repository-change-launch.ts",
 			"import": "./dist/repository-change-launch.js",
 			"types": "./dist/repository-change-launch.d.ts"
+		},
+		"./turns/implement": {
+			"source": "./src/turns/implement.ts",
+			"import": "./dist/turns/implement.js",
+			"types": "./dist/turns/implement.d.ts"
+		},
+		"./turns/review-implementation": {
+			"source": "./src/turns/review-implementation.ts",
+			"import": "./dist/turns/review-implementation.js",
+			"types": "./dist/turns/review-implementation.d.ts"
+		},
+		"./turns/simplify-implementation": {
+			"source": "./src/turns/simplify-implementation.ts",
+			"import": "./dist/turns/simplify-implementation.js",
+			"types": "./dist/turns/simplify-implementation.d.ts"
+		},
+		"./repository-change-publication": {
+			"source": "./src/repository-change-publication.ts",
+			"import": "./dist/repository-change-publication.js",
+			"types": "./dist/repository-change-publication.d.ts"
 		}
 	},
 	"scripts": {
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.2.1",
-		"@leitwerk-dev/process-sdk": "0.2.1"
+		"@leitwerk-dev/domain": "0.3.0",
+		"@leitwerk-dev/process-sdk": "0.3.0",
+		"@leitwerk-dev/repository-rebase": "0.3.0"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/test-support": "0.2.1",
+		"@leitwerk-dev/test-support": "0.3.0",
 		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",

@@ -48,11 +48,9 @@ write receipts. External writes are durable and safe to retry.
 
 Delivery waits for Forgejo feedback and terminal events and Woodpecker results.
 Feedback settles for two minutes before revision in a fresh turn; polling defaults
-to 30 seconds. Only pipeline failures matching the current head trigger repair.
-Push pipelines must also match the work branch; pull-request pipelines may report
-the target branch. After three automatic CI cycles an operator must retry, resume
-waiting, or abort. The budget is cumulative: publication, operator retry, and
-resume waiting do not reset it. Success keeps delivery waiting for the PR outcome. Conflict evidence
+to 30 seconds. Only pipeline failures matching the current branch and head trigger
+repair. After three automatic CI cycles an operator must retry, resume waiting,
+or abort. Success keeps delivery waiting for the PR outcome. Conflict evidence
 permits one automatic repair per repository, PR, head, and base; publication uses
 the original-head lease after completing and verifying the rebase.
 
@@ -61,18 +59,6 @@ label, receives a comment, and closes. Closing an unmerged PR aborts delivery an
 leaves its source issue open after removing the trigger and commenting. Closing
 the source issue or removing its trigger aborts waiting delivery directly.
 UI-origin deliveries never require source issue access.
-
-Feedback that needs no change receives a reply without a new commit. Feedback
-that cannot be repaired waits for operator action with its evidence retained.
-Repair publication updates the existing PR. Source cancellation leaves it open.
-
-Restart resumes delivery from retained state. Consumed feedback and completed
-external writes are not repeated. A merge that occurs while the server is
-offline is reconciled when delivery resumes.
-
-At operator action, **Retry repair** retains the pending evidence. **Resume waiting**
-dismisses the pending feedback and adjustment, retaining accepted feedback cursors
-and remote delivery state while waiting for new evidence.
 
 ## Composition and compatibility
 
@@ -93,7 +79,8 @@ Stored process IDs, turn IDs, state under `extensionState.forgejoRepoChange`,
 subscriptions, project metadata, and external-write keys remain compatible with
 existing deliveries. Legacy issue parameters without `origin` remain readable.
 Forgejo and Woodpecker retain their documented persisted protocol identifiers.
-The separate `remote-repo-change` extension continues direct base-branch delivery.
+This process delivers through a Forgejo pull request; direct base-branch delivery is not provided.
+
 At operator action, **Retry repair** retains the pending evidence. **Resume waiting**
 dismisses the pending feedback and adjustment, retaining accepted feedback cursors
 and remote delivery state while waiting for new evidence.

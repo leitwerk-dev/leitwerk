@@ -1,0 +1,52 @@
+{
+	"name": "@leitwerk-dev/gitlab-repo-change",
+	"version": "0.3.0",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"discover": false
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
+	},
+	"dependencies": {
+		"@leitwerk-dev/coding": "0.3.0",
+		"@leitwerk-dev/external-writes": "0.3.0",
+		"@leitwerk-dev/process-sdk": "0.3.0",
+		"@leitwerk-dev/gitlab": "0.3.0",
+		"@leitwerk-dev/repository-rebase": "0.3.0"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/gitlab-repo-change"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts",
+		"!src/testing/**",
+		"!dist/testing/**"
+	]
+}

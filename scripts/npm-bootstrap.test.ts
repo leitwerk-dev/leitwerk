@@ -6,7 +6,6 @@ import {
 	readdirSync,
 	readFileSync,
 	rmSync,
-	statSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,18 +17,10 @@ import {
 	missingPackages,
 	needsPublisher,
 	publishBootstrap,
-	terminalCommand,
-	trustTranscript,
+	readPublishers,
 } from "./npm-bootstrap.mjs";
 
 const catalog = [{ name: "@leitwerk-dev/a" }, { name: "@leitwerk-dev/b" }];
-const publisher = {
-	type: "github",
-	repository: "leitwerk-dev/leitwerk",
-	file: "publish.yml",
-	environment: "npm-publish",
-	permissions: ["createPackage"],
-};
 
 describe("npm bootstrap safety (npm responses are substituted)", () => {
 	it("discovers public workspaces without requiring a build", () => {
@@ -69,8 +60,9 @@ describe("npm bootstrap safety (npm responses are substituted)", () => {
 		const publish = () =>
 			publishBootstrap(
 				[catalog[0].name],
-				(_command: string, args: string[], options: { cwd: string }) => {
+				(_command: string, args: string[], options: { cwd: string; stdio: string }) => {
 					directory = options.cwd;
+					expect(options.stdio).toBe("inherit");
 					expect(readdirSync(directory).sort()).toEqual(["README.md", "package.json"]);
 					expect(
 						JSON.parse(readFileSync(path.join(directory, "package.json"), "utf8")),
@@ -94,95 +86,188 @@ describe("npm bootstrap safety (npm responses are substituted)", () => {
 	});
 
 	it("validates all package names before the first write", () => {
-		let writes = 0;
+		const run = () => {
+			throw new Error("must not run");
+		};
+		expect(() => publishBootstrap([catalog[0].name, "foreign/package"], run)).toThrow(
+			"Invalid package name",
+		);
 		expect(() =>
-			publishBootstrap([catalog[0].name, "foreign/package"], () => {
-				writes++;
-				return { status: 0 };
-			}),
+			bootstrapPackages([...catalog, { name: "foreign/package" }], [catalog[0].name], run),
 		).toThrow("Invalid package name");
-		expect(writes).toBe(0);
 	});
 
-	it("checks conflicts before writes and resumes interrupted trust creation", () => {
-		const configured = new Map<string, typeof publisher>([
-			[catalog[1].name, { ...publisher, file: "other.yml" }],
-		]);
-		const writes: string[] = [];
-		let fail = true;
-		const run = (_command: string, args: string[]) => {
-			if (args[0] === "--version") return { status: 0, stdout: "11.16.0" };
-			if (args[1] === "list")
+	it("streams every npm command directly and leaves publisher confirmation to npm", () => {
+		const calls: string[][] = [];
+		bootstrapPackages(
+			catalog,
+			[catalog[1].name],
+			(command: string, args: string[], options: { stdio: string }) => {
+				expect(command).toBe("npm");
+				expect(options.stdio).toBe("inherit");
+				calls.push(args);
 				return {
 					status: 0,
-					stdout: configured.has(args[2]) ? JSON.stringify(configured.get(args[2])) : "",
+					get stdout(): never {
+						throw new Error("npm output must not be read");
+					},
 				};
+			},
+			() => [],
+		);
+		expect(calls[0][0]).toBe("publish");
+		expect(calls.slice(1)).toEqual(
+			catalog.map(({ name }) => [
+				"trust",
+				"github",
+				name,
+				"--repo",
+				"leitwerk-dev/leitwerk",
+				"--file",
+				"publish.yml",
+				"--env",
+				"npm-publish",
+				"--allow-publish",
+				"--registry",
+				"https://registry.npmjs.org/",
+			]),
+		);
+	});
+
+	it.each([1, null])("stops when npm trust exits unsuccessfully (%s)", (status) => {
+		const calls: string[][] = [];
+		expect(() =>
+			bootstrapPackages(
+				catalog,
+				[],
+				(_command: string, args: string[]) => {
+					calls.push(args);
+					return { status };
+				},
+				() => [],
+			),
+		).toThrow("rerun bootstrap to resume");
+		expect(calls).toHaveLength(1);
+	});
+
+	it("skips matching publishers, rejects conflicts before writes, and resumes partial setup", () => {
+		const publisher = {
+			type: "github",
+			claims: {
+				repository: "leitwerk-dev/leitwerk",
+				workflow_ref: { file: "publish.yml" },
+				environment: "npm-publish",
+			},
+			permissions: ["createPackage", "createStagedPackage"],
+		};
+		const configured = new Map<string, unknown[]>([[catalog[0].name, [publisher]]]);
+		const writes: string[] = [];
+		const lookup = (name: string) => configured.get(name) ?? [];
+		let fail = true;
+		const run = (_command: string, args: string[]) => {
 			writes.push(args[2]);
-			if (fail && args[2] === catalog[1].name) return { status: 1 };
-			configured.set(args[2], publisher);
+			if (fail) return { status: 1 };
+			configured.set(args[2], [publisher]);
 			return { status: 0 };
 		};
-		expect(() => bootstrapPackages(catalog, [], run)).toThrow("refusing to overwrite");
+		configured.set(catalog[1].name, [{ ...publisher, type: "gitlab" }]);
+		expect(() => bootstrapPackages(catalog, [], run, lookup)).toThrow("Conflicting");
 		expect(writes).toEqual([]);
-		configured.clear();
-		expect(() => bootstrapPackages(catalog, [], run)).toThrow("rerun bootstrap");
-		expect([...configured.keys()]).toEqual([catalog[0].name]);
-		writes.length = 0;
+		configured.delete(catalog[1].name);
+		expect(() => bootstrapPackages(catalog, [], run, lookup)).toThrow("rerun");
 		fail = false;
-		bootstrapPackages(catalog, [], run);
-		expect(writes).toEqual([catalog[1].name]);
-		expect([...configured.keys()]).toEqual(catalog.map(({ name }) => name));
+		bootstrapPackages(catalog, [], run, lookup);
+		expect(writes).toEqual([catalog[1].name, catalog[1].name]);
+		writes.length = 0;
+		bootstrapPackages(catalog, [], run, lookup);
+		expect(writes).toEqual([]);
+		for (const invalid of [null, [{}], [publisher, publisher], [{ ...publisher, permissions: [] }]])
+			expect(() => needsPublisher(invalid, catalog[0].name)).toThrow();
 	});
 
-	it("distinguishes known terminal/auth framing from malformed trust output", () => {
-		// Synthetic npm 11.16 protocol examples, not evidence of live authentication.
-		const auth = JSON.stringify({
-			title: "Authenticate your account at",
-			url: "https://example.invalid/auth",
-		});
-		const frame = (body: string) =>
-			`Script started on example [COMMAND="node -e 'console.log({example:true})'" <not executed on terminal>]\r\n${body}\r\nScript done on example [COMMAND_EXIT_CODE="0"]\r\n`;
-		expect(
-			needsPublisher(
-				trustTranscript(frame(`${auth}\nPress ENTER to open in the browser...`)),
-				catalog[0].name,
-			),
-		).toBe(true);
-		expect(
-			needsPublisher(
-				trustTranscript(frame(`\u001b[32m${JSON.stringify(publisher)}\u001b[0m`)),
-				catalog[0].name,
-			),
-		).toBe(false);
-		for (const malformed of [
-			"not JSON",
-			'{"type":',
-			"{broken}",
-			`${JSON.stringify(publisher)}\n${JSON.stringify(publisher)}`,
-		])
-			expect(() => needsPublisher(trustTranscript(frame(malformed)), catalog[0].name)).toThrow();
-	});
-});
-
-describe("real terminal adapter", () => {
-	it.each([0, 9])("provides a terminal and preserves child exit %s", (status) => {
-		let transcript = "";
-		const result = terminalCommand(
-			process.execPath,
-			[
-				"-e",
-				`console.log(JSON.stringify({stdin:process.stdin.isTTY,stdout:process.stdout.isTTY}));process.exit(${status})`,
-			],
-			{ stdio: ["inherit", "pipe", "inherit"] },
-			(command: string, args: string[]) => {
-				transcript = process.platform === "darwin" ? args[1] : args[args.length - 1];
-				expect(statSync(path.dirname(transcript)).mode & 0o777).toBe(0o700);
-				return spawnSync(command, args, { stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 });
+	it("reads only the dedicated JSON channel and rejects failed or invalid lookups", () => {
+		const name = catalog[0].name;
+		const run = (_command: string, _args: string[], options: { stdio: string[] }) => {
+			expect(options.stdio).toEqual(["inherit", "inherit", "inherit", "pipe"]);
+			return {
+				status: 0,
+				output: [null, null, null, JSON.stringify({ packageName: name, publishers: [] })],
+			};
+		};
+		expect(readPublishers(name, run, process.execPath)).toEqual([]);
+		for (const result of [
+			{ status: 1, output: [null, null, null, "{}"] },
+			{ status: 0, output: [null, null, null, "notice\n{}"] },
+			{ status: 0, output: [null, null, null, ""] },
+			{
+				status: 0,
+				output: [null, null, null, JSON.stringify({ packageName: "wrong", publishers: [] })],
 			},
+		])
+			expect(() => readPublishers(name, () => result, process.execPath)).toThrow();
+	});
+
+	it("keeps terminal diagnostics out of the adapter JSON channel", () => {
+		const root = mkdtempSync(path.join(tmpdir(), "npm-trust-adapter-"));
+		try {
+			mkdirSync(path.join(root, "bin"), { recursive: true });
+			mkdirSync(path.join(root, "lib/commands/trust"), { recursive: true });
+			writeFileSync(path.join(root, "package.json"), JSON.stringify({ version: "11.16.0" }));
+			writeFileSync(
+				path.join(root, "lib/commands/trust/list.js"),
+				`module.exports = class { displayResponseBody() {} };`,
+			);
+			const cli = path.join(root, "bin/npm-cli.js");
+			writeFileSync(
+				cli,
+				`
+				console.log('Press ENTER to open in the browser...');
+				console.error('npm notice any future diagnostic');
+				const List = require('../lib/commands/trust/list.js');
+				new List().displayResponseBody({body: [], packageName: process.argv[4]});
+			`,
+			);
+			expect(readPublishers(catalog[0].name, spawnSync, cli)).toEqual([]);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("reports package progress before authentication and after publisher setup", () => {
+		const messages: string[] = [];
+		bootstrapPackages(
+			catalog,
+			[],
+			(_command: string, args: string[]) => {
+				expect(messages.at(-1)).toContain(`${args[2]}: configuring trusted publisher...`);
+				return { status: 0 };
+			},
+			(name: string) => {
+				expect(messages.at(-1)).toContain(`${name}: checking trusted publisher...`);
+				return [];
+			},
+			(message: string) => messages.push(message),
 		);
-		expect(result.status).toBe(status);
-		if (status === 0) expect(JSON.parse(result.stdout)).toEqual({ stdin: true, stdout: true });
-		else expect(result.stdout).toBe("");
-		expect(existsSync(path.dirname(transcript))).toBe(false);
+		expect(messages).toEqual([
+			"[1/2] @leitwerk-dev/a: checking trusted publisher...",
+			"[1/2] @leitwerk-dev/a: publisher setup required",
+			"[2/2] @leitwerk-dev/b: checking trusted publisher...",
+			"[2/2] @leitwerk-dev/b: publisher setup required",
+			"[1/2] @leitwerk-dev/a: configuring trusted publisher...",
+			"[1/2] @leitwerk-dev/a: publisher configured",
+			"[2/2] @leitwerk-dev/b: configuring trusted publisher...",
+			"[2/2] @leitwerk-dev/b: publisher configured",
+		]);
+	});
+
+	it("propagates spawn errors", () => {
+		expect(() =>
+			bootstrapPackages(
+				catalog,
+				[],
+				() => ({ error: new Error("spawn failed") }),
+				() => [],
+			),
+		).toThrow("spawn failed");
 	});
 });

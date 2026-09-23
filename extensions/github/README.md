@@ -112,6 +112,18 @@ The local adapter supports `createIssue`, `setIssueLabel`, `setMembership`,
 `editFeedback` and `failNextResponse`. Membership, label events, feedback edits,
 write outcomes and Git history survive restart.
 
+## Repository change process
+
+Load [github-repo-change](../github-repo-change/README.md) to create changes from the
+UI or labeled issues. Server-created integrations enumerate available profiles;
+custom integrations may implement `profiles()` for launcher discovery.
+`github_get_ci_diagnostics` verifies the selected process branches and current PR
+head, then reads failed check annotations and Actions jobs. It returns at most ten
+failed check details and ten failed job logs, with 64 KiB per log and explicit
+truncation. Signed log downloads do not receive the API token. Actions read access
+is required. Existing check-source callers remain compatible; the optional
+`afterKey` suppresses a failure already consumed by a process.
+
 Tool authorization and retry edge cases use an in-memory provider boundary.
 The recovery integration exercises real Git and reopens both provider storage and
 SQLite receipts: a lost create response and subsequent restart must retain one PR
@@ -122,7 +134,7 @@ GitHub API compatibility.
 
 The following exported declarations are `@public`:
 
-- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_STATE_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubPullRequest`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
+- `@leitwerk-dev/github`: `GITHUB_CHECKS_KIND`, `GITHUB_ISSUE_CANCELLED_KIND`, `GITHUB_PR_FEEDBACK_KIND`, `GITHUB_PR_STATE_KIND`, `GITHUB_PR_TERMINAL_KIND`, `GitHubCheckSummary`, `GitHubGitIdentity`, `GitHubIntegration`, `GitHubIssue`, `GitHubPullRequest`, `GitHubRepository`, `default`, `githubExternal`, `githubIntegration`, `githubIssueWatcherSource`, `resolveGitHubProjectBinding`, `setupGitHubIntegration`.
 - `@leitwerk-dev/github/testing`: `LocalGitHubAdapter`, `LocalGitHubOptions`, `LocalGitHubRepository`, `LocalGitHubState`.
 
 Members have individual classifications; these exports do not make every member

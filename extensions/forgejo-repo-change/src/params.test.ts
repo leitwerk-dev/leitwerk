@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { forgejoRepoChangeParamsCodec, isIssueOrigin } from "./params.js";
 
 const common = {
-	launchKind: "requested_change",
 	repoLocator: "ssh://git@git.example.test/team/service.git",
 	baseBranch: "main",
 	workBranch: "leitwerk/issue-42",

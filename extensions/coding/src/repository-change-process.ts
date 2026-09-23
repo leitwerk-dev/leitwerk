@@ -19,13 +19,11 @@ import {
 	requestReviewChangesForm,
 	requestRevisionForm,
 } from "./actions.js";
-import { runDeterministicFinalization } from "./finalization-git-internal.js";
 import {
 	clearReviewRefs,
 	createEmptyRepositoryChangeFinalizationState,
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
-	resetRepositoryChangeFinalizationState,
 } from "./repository-change-state-internal.js";
 import {
 	buildGenerateCommitMessagePrompt,
@@ -33,18 +31,12 @@ import {
 } from "./turns/generate-commit-message.js";
 import { buildGeneratePlanPrompt } from "./turns/generate-plan.js";
 import { buildImplementPrompt } from "./turns/implement.js";
-import { buildResolveMergeConflictPrompt } from "./turns/resolve-merge-conflict.js";
 import { buildReviewImplementationPrompt } from "./turns/review-implementation.js";
 import { buildReviewPlanPrompt } from "./turns/review-plan.js";
 import { buildSimplifyImplementationPrompt } from "./turns/simplify-implementation.js";
 
 /** @public */
-export type RepositoryChangeParams = {
-	/** @internal */
-	launchKind: "requested_change" | "imported_plan";
-	/** @internal */
-	importedPlanMarkdown?: string;
-};
+export type RepositoryChangeParams = object;
 
 /** @public */
 export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeParams> {
@@ -61,8 +53,6 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 	/** @public */
 	finalizeForm: FormDefinition;
 	/** @public */
-	finalizationDescription: string;
-	/** @public */
 	repositoryCredentials?(input: {
 		/** @public */
 		params: TParams;
@@ -70,7 +60,7 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 		projects: readonly RepositoryCredentialProject[];
 	}): readonly RepositoryCredentialRequirement[];
 	/** @public */
-	publication?: {
+	publication: {
 		/** @public */
 		entryTurnId: string;
 		/** @public */
@@ -85,7 +75,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
 	const turnIds = {
-		importPlan: "import_plan",
 		generatePlan: "generate_plan",
 		planDecision: "plan_decision",
 		reviewPlan: "review_plan",
@@ -97,8 +86,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		simplifyImplementation: "simplify_implementation",
 		simplificationDecision: "simplification_decision",
 		generateCommitMessage: "generate_commit_message",
-		commitAndMerge: "commit_and_merge",
-		resolveMergeConflict: "resolve_merge_conflict",
 	} as const;
 
 	const products = {
@@ -106,21 +93,10 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		review: "review",
 		simplificationPlan: "simplification-plan",
 		implementationSummary: "implementation-summary",
-		mergeResolutionSummary: "merge-resolution-summary",
 		commitMessage: "commit-message",
 	} as const;
 
 	const implementationTurnAvailableTools = ["read", "bash", "edit", "write"] as const;
-
-	function resetFinalizationAfterMessage(
-		state: RepositoryChangeState,
-		overrides: Partial<RepositoryChangeState["finalization"]> = {},
-	) {
-		return resetRepositoryChangeFinalizationState({
-			generatedCommitMessage: state.finalization.generatedCommitMessage,
-			...overrides,
-		});
-	}
 
 	function hasResolvedTurnRecordRef(
 		ref: RepositoryChangeState["semanticEntryRefs"][keyof RepositoryChangeState["semanticEntryRefs"]],
@@ -337,7 +313,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			},
 		],
 		commentary:
-			"Merge this implementation, request another pass, simplify it, or run an automated review.",
+			"Publish this implementation, request another pass, simplify it, or run an automated review.",
 		actions: {
 			[codingActionIds.finalizeChange]: {
 				label: config.finalizeLabel,
@@ -489,34 +465,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		},
 	});
 
-	const importPlanTurn = flow
-		.automatic<TParams, RepositoryChangeState>(turnIds.importPlan)
-		.description("Import handoff plan")
-		.run((ctx) => {
-			const planMarkdown =
-				ctx.params.launchKind === "imported_plan"
-					? normalizeOptionalMarkdown(ctx.params.importedPlanMarkdown)
-					: null;
-			if (!planMarkdown) {
-				throw new Error("No importedPlanMarkdown is available to import");
-			}
-			return {
-				outcome: "imported",
-				params: { plan: planMarkdown },
-				markdown: planMarkdown,
-			};
-		})
-		.outcome("imported", (outcome) =>
-			outcome
-				.description("Imported a handoff plan and skipped replanning")
-				.markdown("plan", { description: "Imported handoff plan", publish: true })
-				.to(turnIds.implement)
-				.effect(({ ctx }) => ({
-					processPatch: { planRevision: ctx.process.planRevision + 1 },
-					state: clearReviewState(ctx.state),
-				})),
-		);
-
 	const generatePlanTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generatePlan)
 		.description("Plan")
@@ -656,7 +604,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.consume(products.plan)
 		.buildPrompt(buildGenerateCommitMessagePrompt)
 		.publish(products.commitMessage)
-		.to(config.publication?.entryTurnId ?? turnIds.commitAndMerge)
+		.to(config.publication.entryTurnId)
 		.state(({ ctx }) =>
 			patchRepositoryChangeState(ctx.state, {
 				finalization: {
@@ -666,70 +614,8 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			}),
 		);
 
-	const commitAndMergeTurn = flow
-		.automatic<TParams, RepositoryChangeState>(turnIds.commitAndMerge)
-		.description(config.finalizationDescription)
-		.run(runDeterministicFinalization)
-		.outcome("merge_conflict", (outcome) =>
-			outcome
-				.description("Deterministic merge hit conflicts and needs conflict resolution")
-				.requiredString("headSha", "The current HEAD sha while the merge conflict is active")
-				.stringArray("conflictedFiles", "Conflicted files that need resolution")
-				.string("fetchedBaseSha", "The fetched origin/<baseBranch> sha when available")
-				.to(turnIds.resolveMergeConflict)
-				.state(({ ctx }) =>
-					patchRepositoryChangeState(ctx.state, {
-						finalization: resetFinalizationAfterMessage(ctx.state),
-					}),
-				),
-		)
-		.outcome("finalized", (outcome) =>
-			outcome
-				.description("Deterministic finalization succeeded")
-				.requiredString("headSha", "The final HEAD sha")
-				.requiredString("mergeMode", "How origin/<baseBranch> was integrated")
-				.requiredString("pushTarget", "The final base-branch publish target")
-				.requiredBoolean("usedConflictResolution", "Whether the merge required conflict resolution")
-				.complete()
-				.state(({ ctx, event }) =>
-					patchRepositoryChangeState(ctx.state, {
-						finalization: resetFinalizationAfterMessage(ctx.state, {
-							usedConflictResolution:
-								event.params.usedConflictResolution === true ||
-								ctx.state.finalization.usedConflictResolution,
-							finalizationSummaryMarkdown: normalizeOptionalMarkdown(ctx.output?.content),
-							finalizedHeadSha: normalizeMessage(event.params.headSha),
-						}),
-					}),
-				),
-		);
-
-	const resolveMergeConflictTurn = flow
-		.llm<TParams, RepositoryChangeState>(turnIds.resolveMergeConflict)
-		.description("Resolve merge conflict")
-		.tools("read", "bash", "edit", "write")
-		.fullPrimary()
-		.startFromRoot()
-		.buildPrompt(buildResolveMergeConflictPrompt)
-		.outcomeTool("clean", (tool) =>
-			tool
-				.description("The merge conflict was resolved and the repository is clean")
-				.requiredString("headSha", "The post-resolution HEAD sha")
-				.to(turnIds.commitAndMerge)
-				.state(({ ctx, event }) =>
-					patchRepositoryChangeState(ctx.state, {
-						finalization: resetFinalizationAfterMessage(ctx.state, {
-							expectedPostConflictHeadSha: normalizeMessage(event.params.headSha),
-							usedConflictResolution: true,
-						}),
-					}),
-				),
-		)
-		.publish(products.mergeResolutionSummary);
-
 	const planFlow = flow
 		.fragment<TParams, RepositoryChangeState>("plan")
-		.turn(importPlanTurn)
 		.turn(generatePlanTurn)
 		.turn({ id: turnIds.planDecision, definition: planDecisionSpec })
 		.turn(reviewPlanTurn)
@@ -750,20 +636,16 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const finalizationFlow = flow
 		.fragment<TParams, RepositoryChangeState>("finalization")
 		.turn(generateCommitMessageTurn);
-	if (!config.publication) {
-		finalizationFlow.turn(commitAndMergeTurn).turn(resolveMergeConflictTurn);
-	}
 
 	const builder = flow
 		.process<TParams, RepositoryChangeState>(config.processId)
 		.displayName(config.displayName)
 		.entry(turnIds.generatePlan)
-		.alternateEntry(turnIds.importPlan)
 		.happyPath(
 			turnIds.generatePlan,
 			turnIds.implement,
 			turnIds.generateCommitMessage,
-			...(config.publication?.happyPath ?? [turnIds.commitAndMerge]),
+			...(config.publication.happyPath ?? [config.publication.entryTurnId]),
 		)
 		.piConfig({ sessionCwdTemplate: "{{{projectKey}}}" })
 		.codecs({
@@ -778,17 +660,17 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.use(planFlow)
 		.use(implementationFlow)
 		.use(finalizationFlow);
-	if (config.publication) builder.use(config.publication.fragment);
+	builder.use(config.publication.fragment);
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
 	if (config.launcher) builder.launcher(config.launcher);
 	const process = builder.define();
 	const decision = (id: string) =>
 		({
+			/** @public */
 			id,
 			...(process.turns.get(id)?.definition as HumanTurnDefinition),
 		}) as HumanTurnDefinition & {
-			/** @internal */
-			id: string;
+			/** @public */ id: string;
 		};
 	return {
 		/** @public */
