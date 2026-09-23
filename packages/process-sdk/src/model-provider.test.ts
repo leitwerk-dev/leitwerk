@@ -41,8 +41,8 @@ describe("provider option resolution", () => {
 		const choices = vi.fn();
 		const definition = defineProviderOptions<{ account: string }>({
 			fields: {
-				explicit: { label: "Explicit", required: true },
-				profile: { label: "Profile", required: true },
+				explicit: { label: "Explicit", required: true, defaultValue: "provider-explicit" },
+				profile: { label: "Profile", required: true, defaultValue: "provider-profile" },
 				provider: {
 					label: "Provider",
 					required: true,
@@ -58,7 +58,7 @@ describe("provider option resolution", () => {
 				definition,
 				config: { account: "provider-account" },
 				explicit: { explicit: "submitted" },
-				profileDefaults: { profile: "configured" },
+				profileDefaults: { explicit: "profile-explicit", profile: "configured" },
 			}),
 		).toEqual({
 			ok: true,

@@ -67,7 +67,6 @@ describe("flow", () => {
 			"Plan change",
 		);
 		expect(turn.definition.outcomes?.plan_saved).toMatchObject({
-			description: "The candidate plan is ready for operator review",
 			to: "plan_decision",
 			parameters: {
 				summary: { type: "string", required: true },

@@ -30,7 +30,12 @@ describe("routeTurnOutcomes", () => {
 
 		const routed = routeTurnOutcomes(base, { done: { to: "review" } });
 
-		expect(routed.outcomes?.done?.parameters).toEqual(base.outcomes?.done?.parameters);
+		expect(routed.outcomes?.done?.parameters).toEqual({
+			summary: { type: "string", description: "Summary", required: true },
+		});
+		expect(base.outcomes?.done?.parameters).toEqual({
+			summary: { type: "string", description: "Summary", required: true },
+		});
 		expect(routed.outcomes?.done?.to).toBe("review");
 	});
 
@@ -107,7 +112,9 @@ describe("routeTurnOutcomes", () => {
 		});
 
 		const outcome = routed.outcomes?.done;
-		expect(outcome?.parameters).toEqual(base.outcomes?.done?.parameters);
+		expect(outcome?.parameters).toEqual({
+			summary: { type: "string", description: "Summary", required: true },
+		});
 		expect(await outcome?.effect?.({ ctx: { state: { ready: false } } } as never)).toEqual({
 			state: { ready: true },
 		});
