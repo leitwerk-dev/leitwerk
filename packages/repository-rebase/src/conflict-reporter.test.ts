@@ -3,7 +3,7 @@ import {
 	type ExternalSourceArmingLike,
 	type ExternalSourceServiceLike,
 } from "@leitwerk-dev/process-sdk";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { conflictKey, createConflictReporter } from "./index.js";
 
 const conflict = {
@@ -34,15 +34,16 @@ const armed: ExternalSourceArmingLike = {
 };
 
 test("retries rejected fires, deduplicates accepted pairs and honors persisted keys", async () => {
-	let attempts = 0;
-	let observations = 0;
+	let current = armed;
+	const fire = vi.fn<ExternalSourceServiceLike["fire"]>(async () => ({ ok: true }));
+	fire.mockResolvedValueOnce({ ok: false });
+	const observe = vi.fn<NonNullable<ExternalSourceServiceLike["observe"]>>(async () => ({
+		ok: true,
+	}));
 	const sources: ExternalSourceServiceLike = {
-		listArmed: () => [armed],
-		fire: async () => ({ ok: ++attempts > 1 }),
-		observe: async () => {
-			observations++;
-			return { ok: true };
-		},
+		listArmed: () => [current],
+		fire,
+		observe,
 	};
 	const report = createExternalSourcePollReporter(sources, { created: [], errors: [] });
 	const reportConflict = createConflictReporter("forge");
@@ -58,8 +59,52 @@ test("retries rejected fires, deduplicates accepted pairs and honors persisted k
 			observation,
 		),
 	).toBe(false);
-	expect(attempts).toBe(2);
-	expect(observations).toBe(4);
+	expect(fire.mock.calls).toEqual([
+		[
+			{
+				instanceId: "process",
+				armingId: "sub",
+				event: { kind: "merge_conflict", conflict },
+				mergeKey: JSON.stringify(["owner", "repo", 1, "a".repeat(40), "b".repeat(40)]),
+			},
+		],
+		[
+			{
+				instanceId: "process",
+				armingId: "sub",
+				event: { kind: "merge_conflict", conflict },
+				mergeKey: JSON.stringify(["owner", "repo", 1, "a".repeat(40), "b".repeat(40)]),
+			},
+		],
+	]);
+	expect(observe).toHaveBeenCalledTimes(4);
+	for (const [input] of observe.mock.calls) {
+		expect(input).toMatchObject({
+			instanceId: "process",
+			armingId: "sub",
+			generation: "1",
+			observation: {
+				observedAt: "2026-09-21",
+				subject: "pr:1",
+				revision: "a".repeat(40),
+				links: [
+					{
+						id: "conflicting-pr",
+						label: "PR #1",
+						url: "https://example.test/pr/1",
+						kind: "pull_request",
+					},
+				],
+			},
+		});
+	}
+	current = { ...armed, generation: "2" };
+	expect(await reportConflict(report, current, conflict, null, observation)).toBe(true);
+	expect(await reportConflict(report, current, conflict, null, observation)).toBe(false);
+	expect(fire).toHaveBeenCalledTimes(3);
+	expect(fire.mock.calls[2]).toEqual(fire.mock.calls[1]);
+	expect(observe).toHaveBeenCalledTimes(6);
+	expect(observe.mock.calls.slice(4).map(([input]) => input.generation)).toEqual(["2", "2"]);
 });
 
 test("checks freshness again after observation completes", async () => {

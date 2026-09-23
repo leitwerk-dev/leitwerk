@@ -125,19 +125,25 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		expect(publishRebase(input).changed).toBe(true);
 	});
 	it("resumes an interrupted conflict, preserves authors and sign-offs, and retries publication after a lost response", () => {
-		const { input, path } = fixture();
+		const { input, path, root } = fixture();
+		git(path, "config", "user.name", "Repair Committer");
+		git(path, "config", "user.email", "repair@example.test");
 		expect(startRebase(input).status).toBe("rebasing");
 		expect(() => verifyRebase(input)).toThrow("incomplete");
 		expect(startRebase(input).originalHead).toBe(input.conflict.headSha);
 		resolve(input);
 		const result = verifyRebase(input);
 		expect(result.changed).toBe(true);
-		expect(git(path, "show", "-s", "--format=%an")).toBe("Original Author");
+		expect(git(path, "show", "-s", "--format=%an <%ae>")).toBe(
+			"Original Author <author@example.test>",
+		);
 		expect(git(path, "show", "-s", "--format=%B")).toContain(
 			"Signed-off-by: Original Author <author@example.test>",
 		);
 		expect(publishRebase(input).headSha).toBe(result.headSha);
+		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(result.headSha);
 		expect(publishRebase(input).headSha).toBe(result.headSha);
+		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(result.headSha);
 	});
 	it("rejects unresolved and dirty results", () => {
 		const { input, path } = fixture();
@@ -157,7 +163,9 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		git(other, "config", "user.email", "other@example.test");
 		git(other, "commit", "--allow-empty", "-m", "concurrent");
 		git(other, "push", "origin", "work");
+		const concurrentHead = git(other, "rev-parse", "HEAD");
 		expect(() => publishRebase(input)).toThrow("Concurrent remote change");
+		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(concurrentHead);
 	});
 	it("does not rewrite a stale conflict report that merges cleanly", () => {
 		const { input } = fixture(false);
@@ -165,16 +173,18 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		expect(publishRebase(input)).toMatchObject({ headSha: input.conflict.headSha, changed: false });
 	});
 	it("rebases clean but behind branches and publishes with the original lease", () => {
-		const { input, path } = fixture(false);
+		const { input, path, root } = fixture(false);
 		input.conflict.reason = "behind";
 		expect(startRebase(input).status).toBe("rebasing");
 		const result = publishRebase(input);
+		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(result.headSha);
 		expect(result.changed).toBe(true);
 		expect(git(path, "merge-base", "--is-ancestor", input.conflict.baseSha, result.headSha)).toBe(
 			"",
 		);
 		expect(readFileSync(join(path, "other"), "utf8")).toBe("base\n");
 		expect(publishRebase(input).headSha).toBe(result.headSha);
+		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(result.headSha);
 	});
 	it("does not rewrite a behind report when the base is already incorporated", () => {
 		const { input, path } = fixture(false);
@@ -188,12 +198,14 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 	it("retains the original head before rebase starts and rejects an aborted repair", () => {
 		const { input, path } = fixture();
 		prepareRebase(input);
+		expect(git(path, "rev-parse", "refs/leitwerk/rebase-original")).toBe(input.conflict.headSha);
 		expect(
 			JSON.parse(readFileSync(join(path, ".git/leitwerk-rebase.json"), "utf8")).originalHead,
 		).toBe(input.conflict.headSha);
 		startRebase(input);
 		git(path, "rebase", "--abort");
 		expect(() => verifyRebase(input)).toThrow();
+		expect(git(path, "rev-parse", "refs/leitwerk/rebase-original")).toBe(input.conflict.headSha);
 	});
 	it("rejects the wrong branch and remote changes before preparation", () => {
 		const { input, path } = fixture();
