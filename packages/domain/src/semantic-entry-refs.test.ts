@@ -3,7 +3,6 @@ import {
 	areSemanticEntryRefsEqual,
 	createEmptyProcessSemanticEntryRefs,
 	isProcessSemanticEntryRefKey,
-	PROCESS_SEMANTIC_ENTRY_REF_KEYS,
 	parseProcessSemanticEntryRefs,
 	parseSemanticEntryRef,
 } from "./semantic-entry-refs.js";
@@ -85,8 +84,8 @@ describe("parseProcessSemanticEntryRefs", () => {
 
 describe("isProcessSemanticEntryRefKey", () => {
 	it("recognizes supported semantic entry ref keys", () => {
-		for (const value of PROCESS_SEMANTIC_ENTRY_REF_KEYS) {
-			expect(isProcessSemanticEntryRefKey(value)).toBe(true);
+		for (const value of ["plan", "review", "currentPrimaryPathLeaf", "rootEntry"]) {
+			expect(isProcessSemanticEntryRefKey(value), value).toBe(true);
 		}
 		expect(isProcessSemanticEntryRefKey("notARef")).toBe(false);
 	});

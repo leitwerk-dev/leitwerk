@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildFailedTurnRecoveryMetadata,
-	createGenericFailedTurnRecoveryContext,
 	inferTerminalRecordingFailedTurnRecoveryContext,
 	readFailedTurnRecoveryContext,
 } from "./turn-recovery.js";
@@ -10,9 +9,11 @@ describe("turn recovery metadata", () => {
 	it("builds generic continue recovery metadata scoped to a turn record", () => {
 		const metadata = buildFailedTurnRecoveryMetadata("trn_1");
 
-		expect(readFailedTurnRecoveryContext(metadata, "trn_1")).toEqual(
-			createGenericFailedTurnRecoveryContext(),
-		);
+		expect(readFailedTurnRecoveryContext(metadata, "trn_1")).toEqual({
+			strategy: "continue",
+			suggestedContinuePrompt: "continue",
+			failureCode: "generic_continue",
+		});
 		expect(readFailedTurnRecoveryContext(metadata, "trn_other")).toBeNull();
 	});
 
@@ -22,7 +23,14 @@ describe("turn recovery metadata", () => {
 				errorSummary: "Server could not durably record worker turn outcome: invalid transition",
 				errorClass: "infrastructure",
 			}),
-		).toEqual(createGenericFailedTurnRecoveryContext());
+		).toEqual({
+			strategy: "continue",
+			suggestedContinuePrompt: "continue",
+			failureCode: "generic_continue",
+		});
+	});
+
+	it("does not infer continuation for unrelated infrastructure failures", () => {
 		expect(
 			inferTerminalRecordingFailedTurnRecoveryContext({
 				errorSummary: "Worker exited unexpectedly",

@@ -36,7 +36,7 @@ describe("ask_questions contract", () => {
 		]);
 	});
 
-	it("rejects empty and duplicate options and malformed answers", () => {
+	it("rejects duplicate option labels regardless of case or surrounding whitespace", () => {
 		expect(() =>
 			normalizeAskQuestionsInput({
 				questions: [
@@ -48,6 +48,9 @@ describe("ask_questions contract", () => {
 				],
 			}),
 		).toThrow(/duplicate option/);
+	});
+
+	it("rejects a question with neither a selected option nor free text", () => {
 		const questions = normalizeAskQuestionsInput({
 			questions: [{ question: "Pick", selection: "single", options: [{ label: "One" }] }],
 		});

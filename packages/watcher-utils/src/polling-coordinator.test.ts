@@ -30,17 +30,20 @@ describe("polling coordinator", () => {
 			pollInterval: () => "1s",
 		});
 
-		coordinator.start();
-		await vi.advanceTimersByTimeAsync(0);
+		try {
+			coordinator.start();
+			await vi.advanceTimersByTimeAsync(0);
 
-		expect(log.error).toHaveBeenCalledWith(
-			{ pollerId: "work-queue", durationMs: expect.any(Number), err: failure },
-			"Poll failed",
-		);
+			expect(log.error).toHaveBeenCalledWith(
+				{ pollerId: "work-queue", durationMs: expect.any(Number), err: failure },
+				"Poll failed",
+			);
 
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pollOnce).toHaveBeenCalledTimes(2);
-		coordinator.stop();
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(pollOnce).toHaveBeenCalledTimes(2);
+		} finally {
+			await coordinator.stop();
+		}
 	});
 
 	it("logs completed poll results containing operational errors", async () => {
@@ -55,17 +58,20 @@ describe("polling coordinator", () => {
 			pollInterval: () => "1s",
 		});
 
-		coordinator.start();
-		await vi.advanceTimersByTimeAsync(0);
+		try {
+			coordinator.start();
+			await vi.advanceTimersByTimeAsync(0);
 
-		expect(log.warn).toHaveBeenCalledWith(
-			{ pollerId: "work-queue", durationMs: expect.any(Number), result },
-			"Poll completed with errors",
-		);
-		coordinator.stop();
+			expect(log.warn).toHaveBeenCalledWith(
+				{ pollerId: "work-queue", durationMs: expect.any(Number), result },
+				"Poll completed with errors",
+			);
+		} finally {
+			await coordinator.stop();
+		}
 	});
 
-	it("rejects duplicate and late registrations", () => {
+	it("rejects duplicate and late registrations", async () => {
 		const coordinator = createPollingCoordinator(logger());
 		const registration = {
 			id: "work-queue",
@@ -75,10 +81,13 @@ describe("polling coordinator", () => {
 		};
 		coordinator.create(registration);
 		expect(() => coordinator.create(registration)).toThrow("Duplicate poller 'work-queue'");
-		coordinator.start();
-		expect(() => coordinator.create({ ...registration, id: "github" })).toThrow(
-			"after polling has started",
-		);
-		coordinator.stop();
+		try {
+			coordinator.start();
+			expect(() => coordinator.create({ ...registration, id: "github" })).toThrow(
+				"after polling has started",
+			);
+		} finally {
+			await coordinator.stop();
+		}
 	});
 });

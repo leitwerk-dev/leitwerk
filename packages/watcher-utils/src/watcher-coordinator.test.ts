@@ -158,6 +158,10 @@ describe("watcher-coordinator", () => {
 		);
 
 		expect(instanceId).toBe(process.id);
+		expect(harness.deps.processes.getById(process.id)).toMatchObject({
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
 		expect(harness.events.all().map((event) => event.eventType)).toContain("agent_created");
 		expect(harness.broadcasts.map((broadcast) => broadcast.type)).toContain("process.created");
 		expect(harness.workers.has(process.id)).toBe(true);
@@ -329,7 +333,7 @@ describe("watcher-coordinator", () => {
 		});
 
 		await runWatcherCompletionReconciliation({
-			candidates: [completed, failing],
+			candidates: [failing, completed],
 			result,
 			externalWrites,
 			async reconcile(process) {

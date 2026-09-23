@@ -11,13 +11,20 @@ import {
 	PROCESS_TURN_TYPES,
 	parseProcessSemanticEntryRefs,
 	parseSemanticEntryRef,
-	WORKER_ERROR_CLASSES,
 } from "./index.js";
 
 describe("domain-model", () => {
 	it("recognizes known worker error classes", () => {
-		for (const errorClass of WORKER_ERROR_CLASSES) {
-			expect(isWorkerErrorClass(errorClass)).toBe(true);
+		for (const errorClass of [
+			"llm_error",
+			"git_error",
+			"pi_crash",
+			"pipeline_error",
+			"infrastructure",
+			"protocol_error",
+			"operator_abort",
+		]) {
+			expect(isWorkerErrorClass(errorClass), errorClass).toBe(true);
 		}
 		expect(isWorkerErrorClass("not_an_error_class")).toBe(false);
 	});

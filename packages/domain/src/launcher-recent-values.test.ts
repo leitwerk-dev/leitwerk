@@ -9,7 +9,7 @@ describe("launcher recent values", () => {
 	it("normalizes trimmed unique values and respects the limit", () => {
 		expect(
 			normalizeLauncherRecentValues(
-				["  /tmp/repo-a  ", "/tmp/repo-b", "/tmp/repo-a", "", null, "/tmp/repo-c"],
+				["  /tmp/repo-a  ", "/tmp/repo-a", "", null, "/tmp/repo-b", "/tmp/repo-c"],
 				2,
 			),
 		).toEqual(["/tmp/repo-a", "/tmp/repo-b"]);

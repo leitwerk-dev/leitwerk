@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
 	normalizeLaunchModelConfigInput,
 	parseStrictInstanceTurnConfigsJson,
@@ -6,20 +6,21 @@ import {
 } from "./process-model-config.js";
 
 describe("process model configuration codecs", () => {
-	it("reports dotted and empty turn ids in malformed JSON entries", () => {
-		for (const turnId of ["turn.with.dot", ""]) {
-			expect(
-				parseStrictInstanceTurnConfigsJson("test_process", JSON.stringify({ [turnId]: [] })),
-			).toEqual({
-				ok: false,
-				error: {
-					code: "invalid_turn_configs_json",
-					processId: "test_process",
-					reason: "turn_config_not_object",
-					turnId,
-				},
-			});
-		}
+	it.each([
+		"turn.with.dot",
+		"",
+	])("reports turn id %j when its config is not an object", (turnId) => {
+		expect(
+			parseStrictInstanceTurnConfigsJson("test_process", JSON.stringify({ [turnId]: [] })),
+		).toEqual({
+			ok: false,
+			error: {
+				code: "invalid_turn_configs_json",
+				processId: "test_process",
+				reason: "turn_config_not_object",
+				turnId,
+			},
+		});
 	});
 
 	it("normalizes and serializes model configuration input", () => {
@@ -31,8 +32,8 @@ describe("process model configuration codecs", () => {
 			defaultModelProfileId: "first",
 			turnConfigs: { run: { modelProfileId: "second" } },
 		});
-		expect(serializeInstanceTurnConfigs(normalized.turnConfigs ?? {})).toBe(
-			JSON.stringify({ run: { modelProfileId: "second" } }),
-		);
+		const serialized = serializeInstanceTurnConfigs(normalized.turnConfigs ?? {});
+		assert(typeof serialized === "string", "Non-empty turn configuration must serialize to JSON");
+		expect(JSON.parse(serialized)).toEqual({ run: { modelProfileId: "second" } });
 	});
 });

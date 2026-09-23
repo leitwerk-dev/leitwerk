@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as repoLocator from "./repo-locator.js";
-
-afterEach(() => {
-	vi.restoreAllMocks();
-});
 
 describe("detectRepoLocatorKind", () => {
 	it.each([
@@ -38,19 +34,13 @@ describe("parseRepoLocator", () => {
 		expect(repoLocator.parseRepoLocator(value)).toBeNull();
 	});
 
-	it("trims the locator before returning it", () => {
-		expect(repoLocator.parseRepoLocator("  https://example.com/team/repo.git  ")).toEqual({
-			kind: "remote_url",
-			value: "https://example.com/team/repo.git",
-		});
-	});
-
-	it("uses trimmed input for kind detection and returned value", () => {
-		const trimmed = "../repo";
-
-		expect(repoLocator.parseRepoLocator(`  ${trimmed}  `)).toEqual({
-			kind: repoLocator.detectRepoLocatorKind(trimmed),
-			value: trimmed,
+	it.each([
+		["https://example.com/team/repo.git", "remote_url"],
+		["../repo", "local_path"],
+	] as const)("trims %s and classifies it as %s", (value, kind) => {
+		expect(repoLocator.parseRepoLocator(`  ${value}  `)).toEqual({
+			kind,
+			value,
 		});
 	});
 });
