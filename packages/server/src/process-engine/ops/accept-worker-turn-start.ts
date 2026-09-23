@@ -9,6 +9,8 @@ export interface AcceptWorkerTurnStartInput {
 	workerLeaseId: string;
 	startRecordId: string;
 	proposedTurnRecordId: string;
+	/** @internal */
+	onRecorded?: (turnRecordId: string) => void;
 }
 
 function receiptMatchesStart(
@@ -62,6 +64,9 @@ export const AcceptWorkerTurnStart = defineOperation<
 >({
 	kind: "accept_worker_turn_start",
 	label: "Accept worker turn start",
+	afterRecord(input, data) {
+		input.onRecorded?.(data.turnRecordId);
+	},
 	decide(ctx, input) {
 		if (
 			ctx.process.lifecycleStatus !== "active" ||

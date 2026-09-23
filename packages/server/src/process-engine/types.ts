@@ -375,6 +375,10 @@ export interface ProcessEngine {
 			/** @internal */
 			workerLeaseId: string;
 		},
+		options?: {
+			/** Runs after durable acceptance and lock release, before reactions. @internal */
+			onRecorded?: (turnRecordId: string) => void;
+		},
 	): Promise<
 		EngineResult<{
 			/** @internal */

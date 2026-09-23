@@ -59,7 +59,7 @@ export interface OperationSpec<TKind extends string, TInput extends OperationInp
 	/** @internal */
 	decide: DecideFunction<TInput, TData>;
 
-	/** Runs after the transaction and process lock complete, before reactions are dispatched. @internal */
+	/** Runs after durable recording and lock release, even if reaction derivation fails. @internal */
 	afterRecord?: AfterRecordFunction<TInput, TData>;
 	/** @internal */
 	messages?: OperationMessages | MessageResolver<TInput>;

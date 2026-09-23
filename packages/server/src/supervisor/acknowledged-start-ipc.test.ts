@@ -31,9 +31,10 @@ function setup() {
 	});
 	const workerId = "worker-1";
 	const lease = deps.leases.create({ instanceId: process.id, workerId, state: "bootstrapping" });
-	const acceptWorkerTurnStart = vi
-		.fn()
-		.mockResolvedValue({ ok: true, data: { turnRecordId: "turn-1" } });
+	const acceptWorkerTurnStart = vi.fn(async (_instanceId, _input, options) => {
+		options?.onRecorded?.("turn-1");
+		return { ok: true, data: { turnRecordId: "turn-1" } };
+	});
 	const callbacks = {
 		onWorkerTurnStartAccepted: vi.fn(),
 		onWorkerFailed: vi.fn(),
@@ -114,7 +115,7 @@ describe("acknowledged worker IPC", () => {
 		t.handler.handleMessage(start());
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(t.callbacks.onWorkerTurnStartAccepted).toHaveBeenCalledTimes(2);
-		t.acceptWorkerTurnStart.mockResolvedValueOnce({ ok: false });
+		t.acceptWorkerTurnStart.mockResolvedValueOnce({ ok: false, data: { turnRecordId: "turn-1" } });
 		t.handler.handleMessage(start());
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(t.callbacks.onWorkerFailed).toHaveBeenCalled();

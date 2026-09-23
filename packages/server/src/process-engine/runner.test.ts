@@ -192,9 +192,11 @@ describe("ProcessEngine runner", () => {
 		const finalizationError = new Error(
 			"could not derive result data from /repo/internal/finalizer.ts stack",
 		);
+		const afterRecord = vi.fn();
 		const FinalizationFails = defineOperation<"finalization_fails", { instanceId: string }, string>(
 			{
 				kind: "finalization_fails",
+				afterRecord,
 				decide() {
 					const writes = createWrites({
 						processPatch: { lifecycleStatus: "active" },
@@ -202,7 +204,7 @@ describe("ProcessEngine runner", () => {
 					});
 					return accept({
 						writes,
-						result: { ok: true, code: "accepted", message: "Accepted", data: "fallback" },
+						data: "fallback",
 						deriveData() {
 							throw finalizationError;
 						},
@@ -213,6 +215,7 @@ describe("ProcessEngine runner", () => {
 		const run = createEngineRunner(deps);
 
 		const result = await run(FinalizationFails, { instanceId: process.id });
+		expect(afterRecord).toHaveBeenCalledExactlyOnceWith({ instanceId: process.id }, "fallback");
 
 		expect(result).toMatchObject({
 			ok: false,

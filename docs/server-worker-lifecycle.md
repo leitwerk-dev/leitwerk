@@ -179,6 +179,12 @@ failure evidence.
 
 A watchdog reconciles an accepted turn that remains `running` beyond the heartbeat timeout while its worker reports `idle`. If the worker remains idle for another timeout after replay, the watchdog records an infrastructure failure and stops the worker so generic retry is available.
 
+Start acceptance is acknowledged after durable recording and lock release, before
+post-commit work. Later reaction or Launch Run projection failures do not revoke
+acceptance or suppress its acknowledgement. Replays do not create another attempt.
+Terminal recording recovery retains the worker lease identity admitted with the
+message; a late failure must not park a newer start owned by another execution.
+
 During an LLM turn, a declared integration tool uses
 `worker.integration_tool_request` / `worker.integration_tool_result`. The server checks
 the running turn record, selected turn, process project, and turn authorization before

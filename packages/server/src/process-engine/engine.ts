@@ -183,8 +183,8 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 			return maybeBroadcastErrorAttentionToast(result, { errorCode: payload.errorCode });
 		},
 
-		acceptWorkerTurnStart(instanceId, input) {
-			return run(AcceptWorkerTurnStart, { instanceId, ...input });
+		acceptWorkerTurnStart(instanceId, input, options) {
+			return run(AcceptWorkerTurnStart, { instanceId, ...input, onRecorded: options?.onRecorded });
 		},
 
 		async recordTurnOutcome(instanceId, payload, options) {
