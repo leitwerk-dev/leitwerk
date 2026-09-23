@@ -1,30 +1,22 @@
 import type { FutureExecution, ProcessInstance } from "@leitwerk-dev/domain";
-import type { FormDefinition, ProcessLauncherService } from "@leitwerk-dev/process-sdk";
+import type { ProcessLauncherService } from "@leitwerk-dev/process-sdk";
 import { parseFutureActionPayloadJson, parseFutureLaunchPayloadJson } from "@leitwerk-dev/protocol";
 import type {
 	FutureActionSummary,
 	FutureExecutionSummary,
 	FutureLaunchSummary,
-	ProcessActionSummary as HttpProcessActionSummary,
 	ScheduledActionDetail,
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { RepositoryBundle } from "./db/repositories.js";
-import type { ProcessActionRegistry } from "./process-action-registry.js";
+import { buildActionSummaryForProcess } from "./process-action-presenter.js";
+import {
+	listCurrentVisibleActions,
+	type ProcessOperatorAttentionDeps,
+} from "./process-operator-attention.js";
 
 export interface FutureExecutionPresenterDeps
 	extends Pick<RepositoryBundle, "futureExecutions" | "processes"> {
 	launcherService: ProcessLauncherService;
-	processActionRegistry?: ProcessActionRegistry;
-}
-
-export interface BuildScheduledActionSummaryDeps extends FutureExecutionPresenterDeps {
-	buildActionSummaryForProcess: (
-		process: ProcessInstance,
-		actionId: string,
-		action: { id: string; label: string; form?: FormDefinition },
-		labelOverride?: string | null,
-		overrides?: { supportsScheduling?: boolean },
-	) => HttpProcessActionSummary;
 }
 
 function futureSummaryState(execution: FutureExecution) {
@@ -126,7 +118,7 @@ export function buildFutureExecutionSummaries(
 }
 
 export function getScheduledActionDetailForProcess(
-	deps: BuildScheduledActionSummaryDeps,
+	deps: ProcessOperatorAttentionDeps,
 	process: ProcessInstance,
 ): ScheduledActionDetail | null {
 	if (!deps.processActionRegistry) {
@@ -152,10 +144,11 @@ export function getScheduledActionDetailForProcess(
 		actionLabel,
 		input: payload.input,
 		nextTurnModelProfileId: payload.nextTurnModelProfileId,
-		action: deps.buildActionSummaryForProcess(
+		action: buildActionSummaryForProcess(
+			deps,
 			process,
-			scheduledAction.actionId,
 			action,
+			listCurrentVisibleActions(deps, process).find((candidate) => candidate.id === action.id),
 			actionLabel,
 			{ supportsScheduling: true },
 		),
