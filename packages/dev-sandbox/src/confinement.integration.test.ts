@@ -39,8 +39,20 @@ test("excludes ambient provider, Pi, Git and Node overrides", () => {
 		GIT_CONFIG_COUNT: "1",
 		SSH_AUTH_SOCK: "/agent",
 	});
-	expect(env).toEqual(
-		expect.objectContaining({ HOME: "/local/session", GIT_ALLOW_PROTOCOL: "file" }),
+	expect(env).toMatchObject({
+		HOME: "/local/session",
+		TMPDIR: "/tmp",
+		GIT_ALLOW_PROTOCOL: "file",
+		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_CONFIG_GLOBAL: "/dev/null",
+		GIT_TERMINAL_PROMPT: "0",
+		GIT_AUTHOR_NAME: "Sandbox Developer",
+		GIT_AUTHOR_EMAIL: "developer@sandbox.invalid",
+		GIT_COMMITTER_NAME: "Sandbox Developer",
+		GIT_COMMITTER_EMAIL: "developer@sandbox.invalid",
+	});
+	expect(env.PATH?.split(path.delimiter)).toEqual(
+		expect.arrayContaining([path.dirname(process.execPath), "/bin"]),
 	);
 	for (const name of [
 		"GITHUB_TOKEN",
@@ -132,8 +144,11 @@ test("reset retains state when its supervisor does not acknowledge shutdown", as
 			expect(readFileSync(path.join(sandbox, mode, "owned"), "utf8")).toBe(`${mode} state`);
 		}
 	} finally {
-		child.kill("SIGKILL");
-		await once(child, "exit");
+		if (child.exitCode === null && child.signalCode === null) {
+			const exited = once(child, "exit");
+			child.kill("SIGKILL");
+			await exited;
+		}
 	}
 });
 
@@ -180,7 +195,13 @@ test("real mode requires a dedicated mode-0600 credential file and rejects symli
 	chmodSync(file, 0o644);
 	expect(() => sandboxConfig(input)).toThrow(/0600/);
 	chmodSync(file, 0o600);
-	expect(sandboxConfig(input).pi.model_profiles[0].id).toBe("sandbox-real");
+	const configured = sandboxConfig(input);
+	expect(configured.pi.model_profiles).toEqual([
+		{ id: "sandbox-real", provider: "test", model_id: "test", thinking_level: "off" },
+	]);
+	expect(configured.extensions.models).toEqual({
+		test: { api_key: "synthetic-dedicated-key" },
+	});
 	rmSync(file);
 	const outside = path.join(directory, "outside.json");
 	writeFileSync(outside, "{}", { mode: 0o600 });
