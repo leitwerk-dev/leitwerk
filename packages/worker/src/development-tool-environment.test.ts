@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	buildMiseSubprocessEnvironment,
 	DevelopmentToolPreparationError,
@@ -10,6 +10,18 @@ import {
 	PINNED_MISE_VERSION,
 	validateMiseVersion,
 } from "./development-tool-environment.js";
+
+const tempRoots: string[] = [];
+
+async function createTempRoot(prefix: string): Promise<string> {
+	const root = await mkdtemp(path.join(tmpdir(), prefix));
+	tempRoots.push(root);
+	return root;
+}
+
+afterEach(async () => {
+	await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+});
 
 const isolated = {
 	runner: "isolated" as const,
@@ -52,7 +64,7 @@ describe("development tool environment", () => {
 	});
 
 	it("does not restore ambient credentials when spawning mise", async () => {
-		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-env-test-"));
+		const root = await createTempRoot("leitwerk-mise-env-test-");
 		const command = path.join(root, "mise");
 		await writeFile(
 			command,
@@ -95,7 +107,7 @@ printf '{}\\n'
 	});
 
 	it("prepares repository roots sequentially and writes raw diagnostic output", async () => {
-		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-test-"));
+		const root = await createTempRoot("leitwerk-mise-test-");
 		const log = path.join(root, "calls.log");
 		const command = path.join(root, "mise");
 		await Promise.all([
@@ -137,7 +149,7 @@ printf '{"node":"26.3.0"}\\n'
 	});
 
 	it("reuses isolated mise state across replacement environment instances", async () => {
-		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-replacement-test-"));
+		const root = await createTempRoot("leitwerk-mise-replacement-test-");
 		const repository = path.join(root, "workspace", "repo");
 		const command = path.join(root, "mise");
 		const log = path.join(root, "reuse.log");
@@ -167,7 +179,7 @@ printf '{"node":"26.3.0"}\\n'
 	});
 
 	it("escalates cancellation to SIGKILL when mise ignores SIGTERM", async () => {
-		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-cancel-test-"));
+		const root = await createTempRoot("leitwerk-mise-cancel-test-");
 		const repository = path.join(root, "workspace", "repo");
 		const command = path.join(root, "mise");
 		await mkdir(repository, { recursive: true });
@@ -202,7 +214,7 @@ while :; do sleep 1; done
 		"cancel",
 		"timeout",
 	])("terminates installer descendants after mise exits on %s", async (reason) => {
-		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-mise-descendant-test-"));
+		const root = await createTempRoot("leitwerk-mise-descendant-test-");
 		const command = path.join(root, "mise");
 		const pidFile = path.join(root, "child.pid");
 		await writeFile(
@@ -256,7 +268,6 @@ child.on("message", () => console.log("started"));
 					/* The regression check already observed the child exit. */
 				}
 			}
-			await rm(root, { recursive: true, force: true });
 		}
 	}, 10_000);
 });

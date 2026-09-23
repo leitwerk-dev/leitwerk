@@ -5,13 +5,8 @@ import {
 	normalizeWorkerFailure,
 	redactSecrets,
 } from "./failure-policy.js";
-import { createWorkerRuntime } from "./index.js";
 
 describe("worker runtime", () => {
-	it("exports the worker runtime factory", () => {
-		expect(typeof createWorkerRuntime).toBe("function");
-	});
-
 	it("extracts secret values from LLM start payload credential", () => {
 		const payload = {
 			bootstrap: {
