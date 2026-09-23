@@ -88,15 +88,6 @@ describe("ipc-decode", () => {
 		}
 		const decoded = decodeServerToWorkerMessage(parsed.message);
 		expect(decoded).toEqual({ ok: true, message });
-		if (!decoded.ok) {
-			return;
-		}
-		expect(decoded.message.type).toBe("worker.start");
-		if (decoded.message.type !== "worker.start") {
-			return;
-		}
-		expect(decoded.message.payload.treePaths.workspaceRoot).toBe("/tmp/workspace");
-		expect(decoded.message.payload.resumeLeafEntryId).toBe("turn-1");
 	});
 
 	it("narrows turn acceptance, terminal acknowledgement, and credential frames", () => {
@@ -121,9 +112,9 @@ describe("ipc-decode", () => {
 			workerId: "wkr_1",
 			payload: { providerId: "openai", expectedRevision: 1, values: { apiKey: "secret" } },
 		});
-		expect(decodeServerToWorkerMessage(accepted).ok).toBe(true);
-		expect(decodeServerToWorkerMessage(terminal).ok).toBe(true);
-		expect(decodeWorkerToServerMessage(update).ok).toBe(true);
+		expect(decodeServerToWorkerMessage(accepted)).toEqual({ ok: true, message: accepted });
+		expect(decodeServerToWorkerMessage(terminal)).toEqual({ ok: true, message: terminal });
+		expect(decodeWorkerToServerMessage(update)).toEqual({ ok: true, message: update });
 	});
 
 	it("decodes integration-tool cancellation frames", () => {
@@ -166,14 +157,6 @@ describe("ipc-decode", () => {
 		}
 		const decoded = decodeWorkerToServerMessage(parsed.message);
 		expect(decoded).toEqual({ ok: true, message });
-		if (!decoded.ok) {
-			return;
-		}
-		expect(decoded.message.type).toBe("worker.turn_outcome");
-		if (decoded.message.type !== "worker.turn_outcome") {
-			return;
-		}
-		expect(decoded.message.payload.params.plan).toBe("Ship it");
 	});
 
 	it("rejects envelopes whose type is unknown for the decode direction", () => {

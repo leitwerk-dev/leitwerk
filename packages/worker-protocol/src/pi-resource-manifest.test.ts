@@ -51,5 +51,6 @@ describe("Pi resource manifest", () => {
 	it("provides canonical serialization and equality", () => {
 		expect(canonicalJsonStringify({ z: 1, a: { d: 2, c: 3 } })).toBe('{"a":{"c":3,"d":2},"z":1}');
 		expect(canonicalJsonEqual({ first: 1, second: 2 }, { second: 2, first: 1 })).toBe(true);
+		expect(canonicalJsonEqual({ nested: { value: 1 } }, { nested: { value: 2 } })).toBe(false);
 	});
 });
