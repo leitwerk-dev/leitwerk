@@ -9,8 +9,22 @@ const roots: string[] = [];
 const writableDirectories: string[] = [];
 
 afterEach(async () => {
-	await Promise.all(writableDirectories.splice(0).map((directory) => chmod(directory, 0o700)));
-	await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+	const permissions = await Promise.allSettled(
+		writableDirectories.splice(0).map(async (directory) => {
+			try {
+				await chmod(directory, 0o700);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			}
+		}),
+	);
+	const removals = await Promise.allSettled(
+		roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+	);
+	const errors = [...permissions, ...removals].flatMap((result) =>
+		result.status === "rejected" ? [result.reason] : [],
+	);
+	if (errors.length) throw new AggregateError(errors, "Transfer fixture cleanup failed");
 });
 
 async function fixture() {
@@ -68,6 +82,8 @@ describe("archive confinement and directory permissions", () => {
 		await chmod(sourceDirectory, 0o555);
 		writableDirectories.push(sourceDirectory);
 		const outputRoot = path.join(source.root, "output");
+		const importedDirectory = path.join(outputRoot, "workspace", "sub");
+		writableDirectories.push(importedDirectory);
 		await extractTransferArchive({
 			compressed: createTransferArchive({
 				...source,
@@ -75,8 +91,6 @@ describe("archive confinement and directory permissions", () => {
 			}),
 			outputRoot,
 		});
-		const importedDirectory = path.join(outputRoot, "workspace", "sub");
-		writableDirectories.push(importedDirectory);
 		expect(await readFile(path.join(importedDirectory, "file.txt"), "utf8")).toBe(
 			"retained content\n",
 		);
