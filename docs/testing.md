@@ -154,7 +154,9 @@ Firefox is the visual reference; compare identical viewport sizes. WebKit covers
 Safari's rendering engine, not native browser chrome or OS menus. Playwright does
 not support Firefox mobile emulation or wheel input in mobile WebKit.
 
-Each runner gets its own UI server, API port, and Vite cache. The browser command
+Browser tests serve the production UI bundle with Vite preview. Rebuild after UI
+changes; the preview server does not transform source files or provide hot reload.
+Each runner gets its own UI server and API port. The browser command
 prints an artifact directory under `test-results/`, with separate outputs per shard.
 Preserve traces and retry artifacts from concurrent runs. For manual source UI work,
 use `npm run dev:sandbox`; see the
