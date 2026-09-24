@@ -167,6 +167,8 @@ for (const line of input.split('\\n')) {
   const i = line.indexOf('=');
   if (i < 0) continue;
   const key = line.slice(0, i);
+  // Git >= 2.46 advertises repeatable capability[] lines; only single-valued keys are matched.
+  if (key.endsWith('[]')) continue;
   if (Object.hasOwn(fields, key)) process.exit(0);
   fields[key] = line.slice(i + 1);
 }

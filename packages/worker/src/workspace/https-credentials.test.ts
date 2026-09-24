@@ -64,6 +64,44 @@ describe("repository HTTPS credentials", () => {
 			git.cleanupRepositoryCredentials();
 		}
 	});
+	it("answers the capability advertisement newer Git clients send over HTTPS", () => {
+		const git = new NodeRunRootGitOps();
+		git.configureRepositoryCredentials([
+			{
+				projectKey: "repo",
+				kind: "git_https",
+				credentialRef: "https:fixture",
+				repositoryUrl: "https://forge.test/group/subgroup/repo.git",
+				username: "oauth2",
+				password: "unique-test-token",
+			},
+		]);
+		try {
+			const helper =
+				(repositoryGitSubprocessEnv("repo").GIT_CONFIG_VALUE_1 ?? "").match(
+					/'([^']+credential\.cjs)'$/,
+				)?.[1] ?? "";
+			const ask = (request: string) =>
+				execFileSync(process.execPath, [helper, "get"], {
+					input: request,
+					encoding: "utf8",
+					stdio: ["pipe", "pipe", "pipe"],
+				});
+			const request = [
+				"protocol=https",
+				"host=forge.test",
+				"path=group/subgroup/repo.git",
+				"capability[]=authtype",
+				"capability[]=state",
+				"",
+				"",
+			].join("\n");
+			expect(ask(request)).toContain("password=unique-test-token");
+			expect(ask(request.replace("host=forge.test", "host=other.test"))).toBe("");
+		} finally {
+			git.cleanupRepositoryCredentials();
+		}
+	});
 	it("cleans a partially materialized credential batch after a validation error", () => {
 		const git = new NodeRunRootGitOps();
 		expect(() =>
