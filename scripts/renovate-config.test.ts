@@ -15,7 +15,7 @@ describe("Renovate configuration", () => {
 		expect(config.lockFileMaintenance).toMatchObject({
 			enabled: true,
 			automerge: true,
-			minimumReleaseAge: "7 days",
+			minimumReleaseAge: "14 days",
 		});
 		expect(config.major).toMatchObject({
 			dependencyDashboardApproval: true,

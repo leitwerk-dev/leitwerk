@@ -92,4 +92,34 @@ Images support Linux `amd64` and `arm64`. The chart pins them by digest. The Git
 
 ## Dependency updates
 
-Renovate opens dependency-update PRs. Routine non-major updates become eligible for auto-merge once the dependency release is seven days old and checks pass. Major updates require maintainer approval. Security updates bypass the waiting period.
+Renovate opens dependency-update PRs after a 14-day release-age cooldown, following
+[Renovate’s recommendation](https://docs.renovatebot.com/upgrade-best-practices/#wait-two-weeks-before-automerging-third-party-dependencies).
+The cooldown applies to all routine dependency updates, including majors and
+weekly lockfile maintenance. Non-major updates become eligible for auto-merge
+after the cooldown and required checks pass. Major updates also require
+maintainer approval. Security updates bypass the waiting period.
+
+The **Dependency updates** workflow runs hourly on `main` and can be dispatched
+manually. It reads `renovate.json` from this repository and does not discover other
+repositories. The hourly schedule also covers Monday's lockfile-maintenance
+window in Europe/Berlin. Forks do not run the bot.
+
+Before the first run, add a `RENOVATE_TOKEN` Actions repository secret containing
+a dedicated bot account's classic personal access token with `public_repo` and
+`workflow` scopes. The account needs write access to `leitwerk-dev/leitwerk`.
+The workflow fails with a setup message if the secret is missing. Use this token
+instead of `GITHUB_TOKEN` so dependency PRs trigger validation automatically and
+can update GitHub Actions. Renew the secret before the token expires. Do not run
+a hosted Renovate installation alongside this workflow.
+
+To activate the existing auto-merge policy, enable **Allow auto-merge** in the
+repository settings and require **Full validation** and **Conventional PR title
+and DCO** in the branch rules for `main`. Keep those rules applicable to the bot;
+do not grant it a bypass. Any required human review still applies. Without
+auto-merge enabled, maintainers merge dependency PRs after the checks pass.
+
+Run the bot manually after setup:
+
+```bash
+gh workflow run renovate.yml --repo leitwerk-dev/leitwerk --ref main
+```
