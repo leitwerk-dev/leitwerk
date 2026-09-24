@@ -285,36 +285,45 @@ export function createIpcHandler(deps: IpcHandlerDeps, callbacks: IpcHandlerCall
 					break;
 				}
 				case "worker.turn_started": {
-					void deps.commands
-						.acceptWorkerTurnStart(instanceId, {
-							workerLeaseId: activeLease.id,
+					let accepted = false;
+					const onRecorded = (turnRecordId: string) => {
+						accepted = true;
+						eventIngestor.noteTurnStarted(instanceId, turnRecordId);
+						callbacks.onWorkerTurnStartAccepted?.(instanceId, workerId, {
 							startRecordId: msg.payload.startRecordId,
-							proposedTurnRecordId: msg.payload.proposedTurnRecordId,
-						})
-						.then((result) => {
-							if (!result.ok || !result.data) {
+							turnRecordId,
+						});
+					};
+					void deps.commands
+						.acceptWorkerTurnStart(
+							instanceId,
+							{
+								workerLeaseId: activeLease.id,
+								startRecordId: msg.payload.startRecordId,
+								proposedTurnRecordId: msg.payload.proposedTurnRecordId,
+							},
+							{ onRecorded },
+						)
+						.then(() => {
+							if (!accepted) {
 								callbacks.onWorkerFailed?.(instanceId, workerId, "Worker turn start was rejected");
 								return;
 							}
-							eventIngestor.noteTurnStarted(instanceId, result.data.turnRecordId);
-							// Acceptance persists the correlated turn record before launch projection.
 							launchCoordinator?.refresh(instanceId);
-							callbacks.onWorkerTurnStartAccepted?.(instanceId, workerId, {
-								startRecordId: msg.payload.startRecordId,
-								turnRecordId: result.data.turnRecordId,
-							});
 						})
-						.catch(() =>
-							callbacks.onWorkerFailed?.(instanceId, workerId, "Worker turn start failed"),
-						);
+						.catch(() => {
+							// Delivery/projection failures do not undo durable acceptance; replay is safe.
+							if (!accepted)
+								callbacks.onWorkerFailed?.(instanceId, workerId, "Worker turn start failed");
+						});
 					break;
 				}
 				case "worker.turn_outcome": {
-					turnRecorder.recordTurnOutcome(instanceId, workerId, msg.payload);
+					turnRecorder.recordTurnOutcome(instanceId, workerId, activeLease.id, msg.payload);
 					break;
 				}
 				case "worker.turn_failed": {
-					turnRecorder.recordTurnFailed(instanceId, workerId, msg.payload);
+					turnRecorder.recordTurnFailed(instanceId, workerId, activeLease.id, msg.payload);
 					break;
 				}
 				case "worker.lifecycle_parked": {

@@ -127,6 +127,7 @@ export function createWorkerTurnIpcRecorder(
 	const recoverRecordingFailure = async (input: {
 		instanceId: string;
 		workerId: string;
+		workerLeaseId: string;
 		turnRecordId: string;
 		terminalType: TerminalType;
 		failure: unknown;
@@ -147,6 +148,7 @@ export function createWorkerTurnIpcRecorder(
 				return;
 			}
 			const fallback = await deps.commands.recordWorkerFailure(input.instanceId, {
+				workerLeaseId: input.workerLeaseId,
 				errorCode: details.code,
 				message: `Server could not durably record worker turn ${input.terminalType}: ${details.message}`,
 				errorClass: "infrastructure",
@@ -180,6 +182,7 @@ export function createWorkerTurnIpcRecorder(
 	const recordTerminal = async <T>(input: {
 		instanceId: string;
 		workerId: string;
+		workerLeaseId: string;
 		turnRecordId: string;
 		terminalType: TerminalType;
 		record: () => Promise<T>;
@@ -204,6 +207,7 @@ export function createWorkerTurnIpcRecorder(
 		recordTurnOutcome(
 			instanceId: string,
 			workerId: string,
+			workerLeaseId: string,
 			payload: WorkerTurnOutcomePayload,
 		): void {
 			const { turnId, ...rest } = payload;
@@ -217,6 +221,7 @@ export function createWorkerTurnIpcRecorder(
 			void recordTerminal({
 				instanceId,
 				workerId,
+				workerLeaseId,
 				turnRecordId: rest.turnRecordId,
 				terminalType: "outcome",
 				record: () =>
@@ -236,12 +241,18 @@ export function createWorkerTurnIpcRecorder(
 				recoveryContext: createGenericFailedTurnRecoveryContext(),
 			});
 		},
-		recordTurnFailed(instanceId: string, workerId: string, payload: WorkerTurnFailedPayload): void {
+		recordTurnFailed(
+			instanceId: string,
+			workerId: string,
+			workerLeaseId: string,
+			payload: WorkerTurnFailedPayload,
+		): void {
 			const { errorClass, failureCode, failureDetails: details, ...rest } = payload;
 			if (errorClass !== undefined && !isWorkerErrorClass(errorClass)) {
 				void recoverRecordingFailure({
 					instanceId,
 					workerId,
+					workerLeaseId,
 					turnRecordId: rest.turnRecordId,
 					terminalType: "failure",
 					failure: new Error(`Invalid worker error class '${errorClass}'`),
@@ -260,6 +271,7 @@ export function createWorkerTurnIpcRecorder(
 			void recordTerminal({
 				instanceId,
 				workerId,
+				workerLeaseId,
 				turnRecordId: rest.turnRecordId,
 				terminalType: "failure",
 				record: () =>
