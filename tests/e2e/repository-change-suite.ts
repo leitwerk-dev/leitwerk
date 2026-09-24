@@ -294,17 +294,15 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		// A provider observation can start an automatic worker turn. Let it finish
 		// and rearm before the next remote edit/poll, as the real timer normally does.
 		await Promise.all(
-			harness.ctx.deps.processes
-				.listAll()
-				.map(async ({ id }) => {
-					const process = await driver.waitForProcess(
-						id,
-						(p) => p.lifecycleStatus !== "active" && p.lifecycleStatus !== "discovered",
-						"settled provider observation",
-					);
-					if (process.selectedTurnId === "deliver_change" && process.lifecycleStatus === "waiting")
-						await armed(id);
-				}),
+			harness.ctx.deps.processes.listAll().map(async ({ id }) => {
+				const process = await driver.waitForProcess(
+					id,
+					(p) => p.lifecycleStatus !== "active" && p.lifecycleStatus !== "discovered",
+					"settled provider observation",
+				);
+				if (process.selectedTurnId === "deliver_change" && process.lifecycleStatus === "waiting")
+					await armed(id);
+			}),
 		);
 	};
 	return {
