@@ -1210,6 +1210,7 @@ type ProcessUiSnapshotDeps = Pick<
 	| "inputs"
 	| "events"
 	| "turnRecords"
+	| "mappedRuns"
 	| "turnStarts"
 	| "turnAnnotations"
 	| "turnSummaries"
