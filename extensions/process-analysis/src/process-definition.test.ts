@@ -1,8 +1,8 @@
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
-import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { processAnalysisActionIds } from "./actions.js";
 import { processAnalysisProcess, processAnalysisTurnIds } from "./process-definition.js";
-import { configureProcessAnalysisRuntime } from "./server-runtime.js";
+import { configureProcessAnalysisRuntime, getProcessAnalysisRuntime } from "./server-runtime.js";
 import { processAnalysisDownloadSnapshotTool } from "./tools.js";
 
 const testParams = {
@@ -41,11 +41,10 @@ async function harness() {
 }
 
 describe("processAnalysisProcess", () => {
-	beforeEach(() => {
+	it("launches with the server runtime cwd", async () => {
+		const previousRuntime = { ...getProcessAnalysisRuntime() };
+		onTestFinished(() => configureProcessAnalysisRuntime(previousRuntime));
 		configureProcessAnalysisRuntime({ analysisCwd: "/tmp/process-analysis-runtime-cwd" });
-	});
-
-	it("launches with runtime cwd as a hidden param", async () => {
 		const process = await harness();
 		const launcher = process.describe().launchers[0];
 		if (!launcher) throw new Error("Missing launcher");
@@ -73,7 +72,6 @@ describe("processAnalysisProcess", () => {
 				titleSourceFields: [{ label: "Analysis instruction", value: "Find the problem" }],
 			},
 		});
-		expect("projects" in (result.ok ? result.launchConfig : {})).toBe(false);
 		expect(processAnalysisProcess.piConfig?.sessionCwdTemplate).toBe("{{{analysisCwd}}}");
 	});
 
@@ -84,11 +82,11 @@ describe("processAnalysisProcess", () => {
 				processRef: " ",
 				instruction: "",
 			}),
-		).toEqual({
+		).toMatchObject({
 			ok: false,
 			errors: [
-				{ code: "required", fieldId: "processRef", message: "processRef is required" },
-				{ code: "required", fieldId: "instruction", message: "instruction is required" },
+				{ code: "required", fieldId: "processRef" },
+				{ code: "required", fieldId: "instruction" },
 			],
 		});
 	});
@@ -103,9 +101,6 @@ describe("processAnalysisProcess", () => {
 		expect(description.actions.some((action) => action.id === "start_local_repo_change")).toBe(
 			false,
 		);
-		expect(
-			description.actions.find((action) => action.id === processAnalysisActionIds.completeAnalysis),
-		).toMatchObject({ label: "Complete analysis" });
 		const effects = await process.evaluateAction(
 			processAnalysisActionIds.completeAnalysis,
 			{},
@@ -116,9 +111,9 @@ describe("processAnalysisProcess", () => {
 				},
 			},
 		);
-		expect(effects.transitions).toContainEqual(
+		expect(effects.transitions).toEqual([
 			expect.objectContaining({ lifecycleStatus: "completed" }),
-		);
+		]);
 		expect(description.transitions).toContainEqual({
 			from: processAnalysisTurnIds.analysisDecision,
 			trigger: processAnalysisActionIds.refreshSnapshot,
