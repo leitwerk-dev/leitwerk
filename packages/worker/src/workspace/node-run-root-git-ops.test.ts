@@ -139,7 +139,7 @@ describe("NodeRunRootGitOps", () => {
 		}
 	});
 
-	it("clones real repos into the workspace and writes aggregated artifacts", async () => {
+	it("clones real repos onto the assigned work branch and writes aggregated artifacts", async () => {
 		const sourceRepo = createSourceRepo();
 		const workspaceRoot = createTempDir("node-run-root-git-ops-workspace");
 		const gitOps = new NodeRunRootGitOps();
@@ -159,6 +159,9 @@ describe("NodeRunRootGitOps", () => {
 		expect(result.ok).toBe(true);
 		expect(result.errors).toEqual([]);
 		expect(existsSync(path.join(workspaceRoot, "repo", ".git"))).toBe(true);
+		expect(git(path.join(workspaceRoot, "repo"), "symbolic-ref", "--short", "HEAD").trim()).toBe(
+			"feature/test",
+		);
 		expect(readFileSync(path.join(workspaceRoot, "AGENTS.md"), "utf8")).toContain("Repo guidance");
 		expect(result.loadedSkills).toEqual(["alpha"]);
 

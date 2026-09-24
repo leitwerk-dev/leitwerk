@@ -1,7 +1,7 @@
 import type { ProcessInput, ProcessInstance } from "@leitwerk-dev/domain";
 import type { IpcEnvelope } from "@leitwerk-dev/worker-protocol";
 import type { WorkerUnit, WorkerUnitDescriptor } from "@leitwerk-dev/worker-runners/types";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { RepositoryBundle } from "../../db/repositories.js";
 import type { WorkerHandle } from "../worker-supervisor.js";
 import { createWorkerUnitReclaimer } from "../worker-unit-reclaimer.js";
@@ -60,6 +60,7 @@ function createHarness(
 		descriptor?: WorkerUnitDescriptor;
 		modelPolicyFingerprint?: string | null;
 		currentExecution?: ProcessInstance["currentExecution"];
+		retrySleep?: (ms: number) => Promise<void>;
 	} = {},
 ) {
 	const descriptor = overrides.descriptor ?? {
@@ -114,7 +115,7 @@ function createHarness(
 	};
 	const unitReclaimer = createWorkerUnitReclaimer({
 		runner,
-		retry: { initialDelayMs: 1, maxDelayMs: 1 },
+		retry: { sleep: overrides.retrySleep },
 	});
 	const workers = new Map<string, WorkerHandle>();
 	const createdHandles: WorkerHandle[] = [];
@@ -152,6 +153,7 @@ function createHarness(
 		},
 		sendInputBatch,
 	});
+	onTestFinished(() => coordinator.clear("proc-1"));
 	return {
 		coordinator,
 		descriptor,
@@ -217,8 +219,7 @@ describe("createWorkerAdoptionCoordinator", () => {
 		await harness.coordinator.adoptRegisteredWorkers();
 		harness.coordinator.onHeartbeat("proc-1", "wkr-1", { lastSequenceConsumed: 2 });
 
-		expect(harness.inputs.markConsumed).toHaveBeenCalledWith("inp-1");
-		expect(harness.inputs.markConsumed).toHaveBeenCalledWith("inp-2");
+		expect(vi.mocked(harness.inputs.markConsumed).mock.calls).toEqual([["inp-1"], ["inp-2"]]);
 		expect(harness.sendInputBatch).toHaveBeenCalledWith("proc-1", harness.workers.get("proc-1"), [
 			expect.objectContaining({ inputId: "inp-3", sequence: 3 }),
 		]);
@@ -346,7 +347,8 @@ describe("createWorkerAdoptionCoordinator", () => {
 	});
 
 	it("continues adoption when stale cleanup fails and retries cleanup in the background", async () => {
-		const harness = createHarness();
+		const retry = Promise.withResolvers<void>();
+		const harness = createHarness({ retrySleep: () => retry.promise });
 		const stale = {
 			...harness.descriptor,
 			unitId: "unit-stale",
@@ -357,11 +359,15 @@ describe("createWorkerAdoptionCoordinator", () => {
 			.mockRejectedValueOnce(new Error("runtime cleanup unavailable"))
 			.mockResolvedValue(undefined);
 
-		await expect(harness.coordinator.adoptRegisteredWorkers()).resolves.toBeUndefined();
-
-		expect(harness.runner.adopt).toHaveBeenCalledWith(harness.descriptor);
-		expect(harness.workers.get("proc-1")?.workerId).toBe("wkr-1");
-		await vi.waitFor(() => expect(harness.runner.stop).toHaveBeenCalledTimes(2));
-		expect(harness.unitReclaimer.staleResourceBacklogCount()).toBe(0);
+		try {
+			await expect(harness.coordinator.adoptRegisteredWorkers()).resolves.toBeUndefined();
+			expect(harness.runner.adopt).toHaveBeenCalledWith(harness.descriptor);
+			expect(harness.workers.get("proc-1")?.workerId).toBe("wkr-1");
+			expect(harness.runner.stop).toHaveBeenCalledExactlyOnceWith(stale, { graceMs: 0 });
+		} finally {
+			retry.resolve();
+			await vi.waitFor(() => expect(harness.unitReclaimer.staleResourceBacklogCount()).toBe(0));
+		}
+		expect(harness.runner.stop).toHaveBeenCalledTimes(2);
 	});
 });

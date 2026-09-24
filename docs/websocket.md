@@ -1,14 +1,15 @@
-# Browser WebSocket Protocol
+# Browser WebSocket protocol
 
-Real-time client updates in Leitwerk are handled via a persistent WebSocket stream at `GET /ws`. This document defines how browser UI clients receive live assistant output, buffer frames during network reconnects, and invalidate HTTP queries when durable process state changes.
+Browser clients connect to `GET /ws` for live activity and invalidations. HTTP
+snapshots remain authoritative for durable state. This protocol is separate from
+[worker IPC](server-worker-lifecycle.md#4-ipc-protocol-message-reference).
 
----
+## Connection and envelope
 
-## 1. Connection & Message Envelope
-
-Clients connect to `GET /ws` using the `leitwerk/ws/v1` subprotocol. When authentication is enabled, connection upgrades require a valid session cookie and an `Origin` matching the configured application origin. API token Authorization headers are rejected on `/ws` in both authentication modes; use browser access. Worker connection and snapshot credentials remain separate.
-
-All server frames follow a unified message envelope:
+Use the `leitwerk/ws/v1` subprotocol. With authentication enabled, upgrades require
+a valid session cookie and an Origin matching the configured application origin.
+API token Authorization headers are rejected in both authentication modes.
+Worker connect and snapshot credentials do not authenticate browser clients.
 
 ```json
 {
@@ -21,71 +22,74 @@ All server frames follow a unified message envelope:
 }
 ```
 
-- `durability`: Classification (`durable` vs `ephemeral`) governing reconnect handling.
-- `instanceId`: Process ID associated with the frame (omitted for global system events).
-- `eventSequence`: Persisted ingestion sequence on live activity frames. It orders events even when timestamps are equal.
+`instanceId` is omitted for global events. Live activity also carries its persisted
+`eventSequence`; it orders events even when timestamps are equal.
 
----
+## Durability
 
-## 2. Durability & Reconnect Protocol
+| Classification | Examples | Client behavior |
+| --- | --- | --- |
+| `durable` | Process changes, worker state, input acknowledgements. | Invalidate and refetch the relevant HTTP read model. |
+| `ephemeral` | Compact summaries, text deltas, tool activity, liveness probes. | Apply live. Missed frames are not replayed by this connection. |
 
-Frames are classified into two durability categories:
+An ephemeral frame may describe activity retained by the server. The classification
+specifies delivery behavior, not whether the underlying fact is stored.
 
-| Durability | Purpose | Reconnect Handling |
-|---|---|---|
-| **`durable`** | Process status updates, worker state changes, input acknowledgements. | Invalidates client HTTP read models. HTTP snapshots remain authoritative. |
-| **`ephemeral`** | Compact turn summaries, reasoning deltas, tool updates, liveness probes. | Live-only. Dropped during network disconnections. |
+### Reconnect re-synchronization
 
-### Reconnect Re-synchronization
+1. Reconnect to `/ws`.
+2. Fetch relevant HTTP snapshots concurrently, including process `ui-snapshot`.
+3. Buffer updates during each fetch. Keep only the latest compact summary per turn;
+   retain detail frames only for an open reasoning view.
+4. Apply frames with `eventSequence > throughEventSequence` once, in order. Capture
+   the boundary alongside durable reads, before asynchronous session work. Unsequenced
+   metadata invalidations use `rebuiltAt`; timestamps do not order activity.
+5. Refresh expanded history only while it is open. Reject responses and frames for
+   another turn, retain visible content during recovery, and offer Retry on failure.
 
-When a browser client reconnects after network interruption:
+Do not fetch reasoning on load, hover, idle, or reconnect with its overlay closed.
+A direct reasoning link renders the shell first and loads detail independently.
+Compact refreshes cannot shorten expanded history. See [UI contracts](ui.md).
 
-1. Re-establishes WebSocket connection to `/ws`.
-2. Concurrently fetches relevant HTTP snapshots (such as `GET /api/processes/:id/ui-snapshot`).
-3. Buffers updates during each HTTP fetch. Compact summary frames replace earlier summaries for the same turn; only an open reasoning view retains detail frames.
-4. Applies frames with `eventSequence > throughEventSequence` once, in sequence order. Each boundary is captured alongside synchronous durable reads, before asynchronous session work. Timestamps remain presentation data; unsequenced metadata invalidations use the captured `rebuiltAt` boundary.
-5. Refreshes full reasoning only while the expanded view remains open. It retains visible content during recovery and provides Retry on failure. Requests and frames for another turn are rejected.
+Process diagnostics capture related database records and their presentation before
+loading the retained session tree. A process mutation during that load cannot mix
+database states within the response. The session tree is a separate snapshot;
+the response does not imply an atomic read across SQLite and session storage.
 
-The page never fetches reasoning details on load, hover, idle, or reconnect with the overlay closed. A direct reasoning link renders the shell first and starts its detail request independently. Ordinary compact snapshots cannot replace expanded history.
+## Server frames
 
----
+### Connection control
 
-## 3. Server Frame Reference
+- `hello` (`ephemeral`) confirms the connection and protocol version.
+- `pong` (`ephemeral`) responds to client `ping`.
 
-### Connection & Control Frames
+### Durable invalidations
 
-- **`hello` (`ephemeral`):** Confirms successful WebSocket connection and protocol version.
-- **`pong` (`ephemeral`):** Response to client `ping` liveness probe.
+- `process.created`, `process.updated`, `process.deleted`
+- `process.input.queued`, `process.input.acknowledged`
+- `project.updated`, `worker.state`, `future.updated`
+- `launch.updated`: contains `launchRunId` and nullable `instanceId`, not checklist
+  details. Refetch the launch-run read model.
 
-### Summary Invalidation Frames (`durable`)
+### Live and turn activity
 
-These frames notify clients that durable server state has changed, triggering invalidation or refetching of HTTP read models:
+| Frame | Contract |
+| --- | --- |
+| `primary_path.summary_updated` | Ephemeral bounded summary for one `turnRecordId`, with `throughEventSequence`. Replaces inline live state. |
+| `pi.stream.delta`, `pi.tool.started`, `pi.tool.completed`, `pi.usage`, `pi.error`, `pi.retry.*`, `pi.compaction.*` | Ephemeral recorded activity for expanded reasoning, correlated by turn record and event sequence. |
+| `primary_path.assistant_partial`, `primary_path.tool_call_started`, `primary_path.tool_call_completed`, `primary_path.usage_updated` | Full primary-path compatibility frames; compact pages use summary frames. |
+| `primary_path.turn_started`, `primary_path.assistant_committed` | Durable lifecycle updates. An open overlay follows the same record through completion. |
 
-- `process.created` / `process.updated` / `process.deleted`
-- `process.input.queued` / `process.input.acknowledged`
-- `project.updated` / `worker.state` / `future.updated`
-- `launch.updated` — carries `launchRunId` and nullable `instanceId`; the browser refetches the
-  authoritative launch-run read model. Checklist details never appear in the frame.
+## Reasoning detail
 
-### Streaming & Interactive Frames
+`GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` returns
+`state: "live" | "committed"` and `throughEventSequence`. Live responses include
+all recorded activity for that record, without a lookback limit.
 
-- **`primary_path.summary_updated` (`ephemeral`):** Complete bounded summary for one `turnRecordId`, with its `throughEventSequence`. Replaces inline live state.
-- **`pi.stream.delta`, `pi.tool.started`, `pi.tool.completed`, `pi.usage`, `pi.error`, `pi.retry.*`, `pi.compaction.*` (`ephemeral`):** Recorded activity for the expanded reasoning view, correlated by `turnRecordId` and `eventSequence`.
-- **`primary_path.assistant_partial`, `primary_path.tool_call_started`, `primary_path.tool_call_completed`, `primary_path.usage_updated`:** Full primary-path compatibility frames. The compact page uses summary frames.
-- **`primary_path.turn_started`, `primary_path.assistant_committed` (`durable`):** Turn lifecycle updates. An open overlay follows the same turn record through completion and loads its committed trace.
+Committed responses use the retained session tree plus operational events. If the
+event history contains assistant text, thinking, tool calls, or results missing
+from the tree, use that history while retaining session-derived prompt, missing
+usage, and diagnostics. A complete session remains authoritative when events add
+no activity. Failure before snapshot upload must not erase recorded history.
 
-`GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` returns `state: "live" | "committed"` and `throughEventSequence`. Live responses replay all recorded events for that exact turn record, without a lookback limit. Committed responses use the retained session tree plus recorded operational events. When recorded events contain assistant text, thinking, tool calls, or tool results missing from the retained tree, the response uses the recorded event history. It preserves the session-derived prompt, missing usage, and diagnostics. A complete session remains authoritative when recorded events add no activity. A worker failure before snapshot upload does not erase recorded history. Ship the protocol, server, migrations, and bundled UI together; no new configuration is required.
-
-### Worker connection recovery
-
-Worker reconnect timers keep the process alive, including before the first server
-connection. Explicit transport shutdown cancels pending retries. The server retains
-ownership of the startup deadline.
-
-Connection failures report the initial-connect or reconnect stage, attempt number,
-and an allowlisted transport error code or numeric WebSocket close code. Raw error
-messages, close reasons, URLs, and credentials are omitted. Workers log these
-summaries to stderr and retain the first failure plus latest observation in the
-Kubernetes termination message when available. The runner copies that message into
-the durable failure reason before reclaiming a terminated pod. Successful connection
-clears the retained diagnostic so a later failure does not inherit stale evidence.
+Deploy compatible protocol, server, database schema, and UI artifacts together.

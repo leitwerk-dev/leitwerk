@@ -13,6 +13,8 @@ import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildHomePath, navigate } from "../lib/router.svelte.js";
 import ProcessActionsMenu from "./ProcessActionsMenu.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 const defaultRetryConfig = {
 	launcherId: "test-launcher",
 	title: "Retry Title",
@@ -94,6 +96,7 @@ function mountSubject({
 			sessionTransfer,
 		},
 	});
+	mountedApps.push(app);
 
 	return { app, target };
 }
@@ -120,7 +123,8 @@ function getMenuItems(target: HTMLElement): string[] {
 	);
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 	vi.clearAllMocks();
 	resetDefaultMocks();
@@ -131,7 +135,7 @@ async function expectMenuItemsForLifecycleStatus(
 	expectedItems: string[],
 	unexpectedItems: string[] = [],
 ) {
-	const { app, target } = mountSubject({ lifecycleStatus });
+	const { target } = mountSubject({ lifecycleStatus });
 	await flush();
 
 	openMenu(target);
@@ -144,8 +148,6 @@ async function expectMenuItemsForLifecycleStatus(
 	for (const item of unexpectedItems) {
 		expect(items).not.toContain(item);
 	}
-
-	unmount(app);
 }
 
 describe("ProcessActionsMenu", () => {
@@ -166,7 +168,7 @@ describe("ProcessActionsMenu", () => {
 				await expectMenuItemsForLifecycleStatus(
 					lifecycleStatus,
 					["Retry as new process", "Delete process"],
-					["Abort process", "Abort and retry as new process"],
+					["Abort process", "Abort and retry as new process", "Create local transfer link"],
 				);
 			});
 		}
@@ -175,7 +177,7 @@ describe("ProcessActionsMenu", () => {
 	describe("delete", () => {
 		it("confirms permanent deletion and reports success", async () => {
 			const onDeleted = vi.fn();
-			const { app, target } = mountSubject({ onDeleted });
+			const { target } = mountSubject({ onDeleted });
 			openMenu(target);
 			await flush();
 
@@ -189,12 +191,11 @@ describe("ProcessActionsMenu", () => {
 			await flush();
 			expect(deleteProcess).toHaveBeenCalledWith("test-instance-id");
 			expect(onDeleted).toHaveBeenCalledOnce();
-			unmount(app);
 		});
 
 		it("keeps the confirmation open when deletion fails", async () => {
 			vi.mocked(deleteProcess).mockRejectedValueOnce(new Error("Cleanup failed"));
-			const { app, target } = mountSubject({ lifecycleStatus: "completed" });
+			const { target } = mountSubject({ lifecycleStatus: "completed" });
 			openMenu(target);
 			await flush();
 			clickButtonByText(target, "Delete process");
@@ -203,13 +204,12 @@ describe("ProcessActionsMenu", () => {
 			clickButtonByText(target, "Delete process");
 			await flush();
 			expect(target.querySelector('[role="alert"]')?.textContent).toContain("Cleanup failed");
-			unmount(app);
 		});
 	});
 
 	describe("menu trigger", () => {
 		it("names the process controlled by the gear icon button", async () => {
-			const { app, target } = mountSubject({ processLabel: "Shell cleanup" });
+			const { target } = mountSubject({ processLabel: "Shell cleanup" });
 			await flush();
 
 			const trigger = target.querySelector('[aria-label="Open actions for Shell cleanup"]');
@@ -220,12 +220,10 @@ describe("ProcessActionsMenu", () => {
 			expect(target.querySelector('[role="menu"]')?.getAttribute("aria-labelledby")).toBe(
 				trigger?.id,
 			);
-
-			unmount(app);
 		});
 
 		it("toggles menu open and closed", async () => {
-			const { app, target } = mountSubject();
+			const { target } = mountSubject();
 			await flush();
 
 			expect(target.querySelector('[role="menu"]')).toBeNull();
@@ -237,24 +235,20 @@ describe("ProcessActionsMenu", () => {
 			openMenu(target);
 			await flush();
 			expect(target.querySelector('[role="menu"]')).toBeNull();
-
-			unmount(app);
 		});
 
 		it("is disabled when disabled prop is true", async () => {
-			const { app, target } = mountSubject({ disabled: true });
+			const { target } = mountSubject({ disabled: true });
 			await flush();
 
 			const trigger = target.querySelector('button[aria-haspopup="menu"]') as HTMLButtonElement;
 			expect(trigger?.disabled).toBe(true);
-
-			unmount(app);
 		});
 	});
 
 	describe("retry actions", () => {
 		it("loads retry config and navigates to launcher setup when Retry is chosen", async () => {
-			const { app, target } = mountSubject();
+			const { target } = mountSubject();
 			await flush();
 
 			openMenu(target);
@@ -264,13 +258,9 @@ describe("ProcessActionsMenu", () => {
 
 			expect(fetchProcessRetryConfig).toHaveBeenCalledWith("test-instance-id");
 			expect(postProcessAbort).not.toHaveBeenCalled();
-			expect(setPendingRetryConfig).toHaveBeenCalledWith(
-				expect.objectContaining({ launcherId: "test-launcher", title: "Retry Title" }),
-			);
+			expect(setPendingRetryConfig).toHaveBeenCalledWith(defaultRetryConfig);
 			expect(buildHomePath).toHaveBeenCalledWith("test-launcher");
 			expect(navigate).toHaveBeenCalledWith("/?launcher=test-launcher");
-
-			unmount(app);
 		});
 
 		it("loads retry config before aborting during abort and retry", async () => {
@@ -288,7 +278,7 @@ describe("ProcessActionsMenu", () => {
 				callOrder.push("abort");
 			});
 
-			const { app, target } = mountSubject();
+			const { target } = mountSubject();
 			await flush();
 
 			openMenu(target);
@@ -299,19 +289,15 @@ describe("ProcessActionsMenu", () => {
 			await flush();
 
 			expect(callOrder).toEqual(["fetch", "abort"]);
-			expect(setPendingRetryConfig).toHaveBeenCalledWith(
-				expect.objectContaining({ launcherId: "test-launcher", title: "Retry Title" }),
-			);
+			expect(setPendingRetryConfig).toHaveBeenCalledWith(defaultRetryConfig);
 			expect(buildHomePath).toHaveBeenCalledWith("test-launcher");
 			expect(navigate).toHaveBeenCalledWith("/?launcher=test-launcher");
-
-			unmount(app);
 		});
 
 		it("does not abort during abort and retry when loading retry config fails", async () => {
 			vi.mocked(fetchProcessRetryConfig).mockRejectedValue(new Error("retry config unavailable"));
 
-			const { app, target } = mountSubject();
+			const { target } = mountSubject();
 			await flush();
 
 			openMenu(target);
@@ -325,14 +311,12 @@ describe("ProcessActionsMenu", () => {
 			expect(postProcessAbort).not.toHaveBeenCalled();
 			expect(setPendingRetryConfig).not.toHaveBeenCalled();
 			expect(target.textContent).toContain("retry config unavailable");
-
-			unmount(app);
 		});
 	});
 
 	describe("local session transfer", () => {
 		it("creates an expiring link only when a primary session exists", async () => {
-			const { app, target } = mountSubject({ hasSessionFile: true });
+			const { target } = mountSubject({ hasSessionFile: true });
 			await flush();
 			openMenu(target);
 			await flush();
@@ -349,11 +333,10 @@ describe("ProcessActionsMenu", () => {
 			const transferLink = target.querySelector(".transfer-link") as HTMLInputElement;
 			expect(transferLink.value).toContain("#token=secret-token");
 			expect(document.activeElement).toBe(transferLink);
-			unmount(app);
 		});
 
 		it("presents and cancels a transfer that still blocks manual turns", async () => {
-			const { app, target } = mountSubject({
+			const { target } = mountSubject({
 				sessionTransfer: {
 					attemptId: "tra_1",
 					phase: "scanning",
@@ -368,7 +351,6 @@ describe("ProcessActionsMenu", () => {
 			clickButtonByText(target, "Cancel transfer");
 			await flush();
 			expect(cancelSessionTransfer).toHaveBeenCalledWith("test-instance-id", "tra_1");
-			unmount(app);
 		});
 	});
 });

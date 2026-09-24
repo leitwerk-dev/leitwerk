@@ -53,15 +53,24 @@ async function transferFixture(
 	vi.stubEnv("PI_CODING_AGENT_DIR", agentDir);
 	await mkdir(workspace);
 	await writeFile(path.join(workspace, "work.txt"), "retained work");
+	const sourceHeader = {
+		type: "session",
+		version: 3,
+		id: "server-session",
+		timestamp: "2026-09-01T00:00:00.000Z",
+		cwd: workspace,
+		parentSession: "/source/parent-session.jsonl",
+	};
+	const sourceEntry = {
+		type: "message",
+		id: "message-1",
+		parentId: null,
+		timestamp: "2026-09-01T00:00:01.000Z",
+		message: { role: "user", content: "Retain this conversation.", timestamp: 1788220801000 },
+	};
 	await writeFile(
 		sessionFile,
-		`${JSON.stringify({
-			type: "session",
-			version: 3,
-			id: "server-session",
-			timestamp: "2026-09-01T00:00:00.000Z",
-			cwd: workspace,
-		})}\n`,
+		`${[sourceHeader, sourceEntry].map((entry) => JSON.stringify(entry)).join("\n")}\n`,
 	);
 	const preflight = await scanPortableWorkspace({ workspaceRoot: workspace, sessionFile });
 	const archive = await buffer(
@@ -135,6 +144,7 @@ async function transferFixture(
 	return {
 		root,
 		agentDir,
+		sourceEntry,
 		link,
 		rawLink,
 		requests,
@@ -157,7 +167,7 @@ async function commandHarness(fixture: Awaited<ReturnType<typeof transferFixture
 	const registeredHandler = handler;
 	let loader: CancellableLoader | undefined;
 	let progressClosed = false;
-	const notices: string[] = [];
+	const notices: { message: string; level: string }[] = [];
 	const switched: string[] = [];
 	const ctx = {
 		mode: "tui",
@@ -166,7 +176,7 @@ async function commandHarness(fixture: Awaited<ReturnType<typeof transferFixture
 		ui: {
 			input: async () => fixture.destination,
 			confirm: async () => true,
-			notify: (message: string) => notices.push(message),
+			notify: (message: string, level: string) => notices.push({ message, level }),
 			custom: (factory: Parameters<ExtensionCommandContext["ui"]["custom"]>[0]) =>
 				new Promise((resolve) => {
 					loader = factory(
@@ -250,9 +260,11 @@ it("keeps the cancellation view open until the importer has unwound", async () =
 		await running;
 	}
 	expect(command.progressClosed()).toBe(true);
-	expect(command.notices).toContain(
-		"Transfer cancelled. The link can be retried while it remains valid.",
-	);
+	expect(command.notices).toEqual([
+		{ message: expect.stringMatching(/cancelled/i), level: "info" },
+	]);
+	expect(command.notices[0].message).toMatch(/retr(?:y|ied)/i);
+	expect(command.notices[0].message).toMatch(/valid/i);
 	await expect(stat(fixture.destination)).rejects.toMatchObject({ code: "ENOENT" });
 });
 
@@ -264,6 +276,20 @@ it("opens and reopens a completed import while acknowledgement remains unavailab
 		await command.run();
 		await fixture.acknowledgementStarted;
 		expect(command.switched).toHaveLength(1);
+		const importedEntries = (await readFile(command.switched[0], "utf8"))
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line));
+		expect(importedEntries).toEqual([
+			{
+				type: "session",
+				version: 3,
+				id: "server-session",
+				timestamp: "2026-09-01T00:00:00.000Z",
+				cwd: fixture.destination,
+			},
+			fixture.sourceEntry,
+		]);
 		expect(await readFile(path.join(fixture.destination, "work.txt"), "utf8")).toBe(
 			"retained work",
 		);
@@ -275,7 +301,7 @@ it("opens and reopens a completed import while acknowledgement remains unavailab
 	}
 	await expect
 		.poll(() =>
-			command.notices.some((notice) => notice.includes("acknowledgement is still pending")),
+			command.notices.some((notice) => notice.message.includes("acknowledgement is still pending")),
 		)
 		.toBe(true);
 	await command.run();

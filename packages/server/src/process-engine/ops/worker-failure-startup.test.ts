@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import { WorkerFailure } from "./worker-failure.js";
 
@@ -77,6 +77,9 @@ describe("WorkerFailure startup correlation", () => {
 		if (decision.ok) {
 			expect(decision.writes.turnStartWrites).toEqual([]);
 			expect(decision.writes.changedFields).toEqual([]);
+			expect(decision.writes.processPatch).toEqual({});
+			expect(decision.writes.turnRecordWrites).toEqual([]);
+			expect(decision.writes.workerIntent).toBeUndefined();
 		}
 	});
 

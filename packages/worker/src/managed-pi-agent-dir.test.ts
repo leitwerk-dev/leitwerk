@@ -32,7 +32,7 @@ describe("managed Pi agent directory", () => {
 		).toThrow("Invalid managed Pi instance id");
 	});
 
-	it("writes declared credential files atomically with private permissions", async () => {
+	it("writes declared credential files with private permissions", async () => {
 		const agentDir = await root();
 		await writeManagedPiCredentialFiles(agentDir, [
 			{ path: "auth.json", content: '{"key":"secret"}' },

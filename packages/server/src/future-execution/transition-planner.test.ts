@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import {
 	applyFutureExecutionTransitionPlan,
 	planAdvanceFutureExecution,
@@ -34,7 +34,7 @@ describe("future execution transition planner", () => {
 		expect(applyFutureExecutionTransitionPlan(deps.futureExecutions, plan)).toEqual({
 			kind: "stale",
 		});
-		expect(deps.futureExecutions.getById(execution.id)).not.toBeNull();
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2026-04-25T11:00:00.000Z");
 	});
 
 	it("advances and retries the expected occurrence", () => {

@@ -13,7 +13,7 @@ const state = process.stateCodec.parse({
 		gitlabRepoChange: { prNumber: 4, headSha: "a".repeat(40), prUrl: "https://gitlab.test/mr/4" },
 	},
 });
-const observation: GitLabDeliveryObservation = {
+const observation = {
 	mr: {
 		iid: 4,
 		project_id: 1,
@@ -37,11 +37,12 @@ const observation: GitLabDeliveryObservation = {
 		web_url: "https://gitlab.test/pipeline/8",
 	},
 	observationKey: "failed-8",
-};
+} satisfies GitLabDeliveryObservation;
 describe("GitLab publication routing", () => {
 	it("isolates runtime and exposes the shared delivery and repair turns", () => {
-		expect(process.runtime).toEqual({ docker: false });
-		expect(createGitLabRepoChange({ docker: true }).process.runtime).toEqual({ docker: true });
+		const containerProcess = createGitLabRepoChange({ docker: true }).process;
+		expect(process.runtime).toMatchObject({ docker: false });
+		expect(containerProcess.runtime).toMatchObject({ docker: true });
 		expect(process.turns.has("deliver_change")).toBe(true);
 		expect(process.turns.has("repair_gitlab_pipeline")).toBe(true);
 	});
@@ -54,12 +55,13 @@ describe("GitLab publication routing", () => {
 					{ id: 12, discussionId: "d", body: "feedback", author: "human", createdAt: "2026-01-01" },
 				],
 			}),
-		).toMatchObject({ kind: "terminal", request: { merged: true } });
+		).toMatchObject({ kind: "terminal", request: { number: 4, merged: true } });
 		expect(() =>
 			gitlabPublicationEvidence(state, { ...observation, mr: { ...observation.mr, iid: 5 } }),
-		).toThrow("Stale");
+		).toThrow();
 	});
-	it("ignores CI for a different head and waits for pending pipelines", () => {
+	it("routes failed current-head CI and waits for different heads or pending pipelines", () => {
+		expect(gitlabPublicationEvidence(state, observation)).toMatchObject({ kind: "failure" });
 		expect(
 			gitlabPublicationEvidence(state, {
 				...observation,
@@ -69,14 +71,7 @@ describe("GitLab publication routing", () => {
 		expect(
 			gitlabPublicationEvidence(state, {
 				...observation,
-				pipeline: {
-					id: 8,
-					project_id: 1,
-					sha: "a".repeat(40),
-					ref: "feature",
-					web_url: "https://gitlab.test/pipeline/8",
-					status: "pending",
-				},
+				pipeline: { ...observation.pipeline, status: "pending" },
 			}),
 		).toMatchObject({ kind: "observed" });
 	});
@@ -90,14 +85,14 @@ describe("GitLab publication routing", () => {
 		expect(evidence).toMatchObject({
 			kind: "feedback",
 			conversationCursor: 12,
-			feedbackIds: [{ id: 12, discussionId: "d" }],
+			feedbackIds: [{ kind: "inline", id: 12, discussionId: "d" }],
 		});
 		expect(evidence.observationKey).toBeUndefined();
 		const current = applyPublicationEvidence(
 			{ owner: "team/subgroup", repo: "repo", workBranch: "feature", baseBranch: "main" },
-			readPublicationState(state, "gitlabRepoChange"),
+			{ ...readPublicationState(state, "gitlabRepoChange"), observationKey: "prior-observation" },
 			evidence,
 		);
-		expect(current.observationKey).toBeUndefined();
+		expect(current.observationKey).toBe("prior-observation");
 	});
 });

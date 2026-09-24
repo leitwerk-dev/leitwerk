@@ -24,8 +24,8 @@ function makeProcess(overrides: Partial<ProcessInstance> = {}): ProcessInstance 
 		modelProfileId: null,
 		paramsJson: null,
 		stateJson: null,
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
+		createdAt: "2026-01-01T00:00:00.000Z",
+		updatedAt: "2026-01-01T00:00:00.000Z",
 		...overrides,
 	};
 }
@@ -143,9 +143,7 @@ describe("watcher-coordinator", () => {
 				{ launcherId: "ticket.launcher", startTurnId: null },
 				"issue CLD-1",
 			),
-		).toThrowError(
-			"Watcher launcher 'ticket.launcher' did not declare a startTurnId for issue CLD-1",
-		);
+		).toThrowError(/ticket\.launcher.*startTurnId.*CLD-1/);
 	});
 
 	it("continues startup by creating event, starting process, broadcasting, and ensuring worker", async () => {
@@ -158,8 +156,32 @@ describe("watcher-coordinator", () => {
 		);
 
 		expect(instanceId).toBe(process.id);
-		expect(harness.events.all().map((event) => event.eventType)).toContain("agent_created");
-		expect(harness.broadcasts.map((broadcast) => broadcast.type)).toContain("process.created");
+		expect(harness.deps.processes.getById(process.id)).toMatchObject({
+			selectedTurnId: "generate_plan",
+			lifecycleStatus: "active",
+		});
+		expect(harness.events.all()).toEqual([
+			{
+				instanceId: process.id,
+				eventType: "agent_created",
+				data: { ticketIssueKey: "CLD-1" },
+			},
+		]);
+		expect(harness.broadcasts).toEqual([
+			{
+				type: "process.created",
+				instanceId: process.id,
+				payload: {
+					process: expect.objectContaining({
+						id: process.id,
+						selectedTurnId: "generate_plan",
+						lifecycleStatus: "active",
+					}),
+					processId: process.processId,
+					ticketIssueKey: "CLD-1",
+				},
+			},
+		]);
 		expect(harness.workers.has(process.id)).toBe(true);
 	});
 
@@ -329,7 +351,7 @@ describe("watcher-coordinator", () => {
 		});
 
 		await runWatcherCompletionReconciliation({
-			candidates: [completed, failing],
+			candidates: [failing, completed],
 			result,
 			externalWrites,
 			async reconcile(process) {
@@ -351,7 +373,12 @@ describe("watcher-coordinator", () => {
 
 		expect(result.labelExchanged).toEqual(["CLD-3"]);
 		expect(result.errors).toEqual(["CLD-4: label unavailable"]);
-		expect(externalWrites.all()).toHaveLength(1);
-		expect(externalWrites.all()[0]?.dedupKey).toBe("agt_complete:complete");
+		expect(externalWrites.all()).toEqual([
+			expect.objectContaining({
+				instanceId: "agt_complete",
+				dedupKey: "agt_complete:complete",
+				metadata: { ticketIssueKey: "CLD-3" },
+			}),
+		]);
 	});
 });

@@ -15,11 +15,15 @@ CI and publication workflows run `npm run api:check` as a required step after
 `@public`/`@internal` annotations and public signature dependencies. Both
 classifications remain in published declarations.
 
-Builds, tests, and browser installation use Node 26. Playwright 1.63 supports
-fresh browser archive extraction on Node 26.8.1, so the older temporary Node 24
-installer workaround is no longer needed. Validation installs Chromium, Firefox,
-and WebKit and runs the browser suite in all three engines. Browser installation
-retains a five-minute timeout.
+Builds, tests, and browser installation use Node 26. Validation runs Chromium,
+Firefox, and WebKit. See [Testing](testing.md) for local commands and scoped checks.
+CI also builds the documentation with strict link and anchor validation.
+
+PR validation warns when combined test runtime is at least 5% above the average
+of the last ten comparable successful `main` runs. Only test execution time counts,
+including browser tests. The warning appears in Actions annotations and the job
+summary; it does not fail validation. Comparison is skipped when timing data is
+unavailable or fewer than ten comparable runs exist.
 
 ## Publication safeguards
 
@@ -27,7 +31,7 @@ Stable publication accepts only releases created from a merged Release Please PR
 
 ## Retries
 
-Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. Stable npm verification polls missing versions every 15 seconds for ten minutes and lists any remaining at timeout. If an RC's release PR changes, start a new run.
+Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. Stable npm verification waits up to ten minutes for registry visibility and reports any missing versions. If an RC's release PR changes, start a new run.
 
 ## Registering new npm packages
 

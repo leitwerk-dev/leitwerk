@@ -1,15 +1,20 @@
-# Ubiquitous Language & Terminology
+# Terminology
 
-This document defines the ubiquitous language for Leitwerk. It is the authoritative reference for names across the system: if a concept has a standard name here, that exact term must be used in TypeScript types, database columns, API endpoints, and browser copy.
+Use these names consistently in contracts, code, and documentation. Backticks identify
+code names; operator-facing prose can say “process” rather than `ProcessInstance`.
+Behavioral rules belong in the linked references, not in a second glossary.
 
 ---
 
-## 1. Process & Execution Lifecycle
+## Process and execution
 
 | Term | Definition |
 |---|---|
-| **`ProcessInstance`** | Durable SQLite record representing a running or completed workflow execution (`id`, `selectedTurnId`, `lifecycleStatus`, `planRevision`). |
-| **`ProcessTurnRecord`** | Durable record of one turn execution attempt (`attempt`, `turnId`, `branchType`, `lifecycleStatus`). |
+| **Process / `ProcessInstance`** | One durable workflow execution, including its business position and lifecycle. |
+| **Turn** | A code-defined workflow step: LLM, automatic, human, or external. |
+| **Process project / `ProcessProject`** | Repository state for one component of a process. |
+| **Process input / `ProcessInput`** | A durably sequenced instruction submitted to a process. |
+| **Turn record / `ProcessTurnRecord`** | Durable record of one turn execution attempt, its outcome, and its lineage. |
 | **`lifecycleStatus`** | Coarse process state: `discovered`, `active`, `waiting`, `error`, `completed`, or `aborted`. |
 | **`selectedTurnId`** | Durable pointer to the active or awaited process turn. |
 | **`TurnStartRecord`** | Durable preparation for one worker-owned turn that reserves a turn-record id without creating an attempt until accepted. |
@@ -18,11 +23,12 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | **LLM preparation phase** | Optional deterministic phase inside an accepted LLM turn. It produces bounded prompt input and progress without creating a separate business turn. |
 | **`WorkerLease`** | Server-owned durable lifecycle and heartbeat record assigned to a physical worker instance. |
 | **`Prepared turn start`** | Read-only tree position prepared by a worker lease before server acceptance. |
-| **`Terminal acknowledgement`** | The final bounded turn executed after an accepted outcome tool to return results and complete worker execution cleanly. |
+| **Agent terminal acknowledgement** | Bounded final agent response after an accepted outcome tool; not a separate business turn. |
+| **Terminal fact acknowledgement** | `worker.turn_terminal_recorded`, confirming that the server durably recorded a correlated worker outcome or failure. |
 
 ---
 
-## 2. Agent Tools & Interactive Q&A
+## Tools and questions
 
 | Term | Definition |
 |---|---|
@@ -35,7 +41,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 
 ---
 
-## 3. Instance Tree & Workspace Architecture
+## Trees and workspaces
 
 | Term | Definition |
 |---|---|
@@ -43,7 +49,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | **Leaf Pointer** | Pointer referencing the active entry in the instance tree. |
 | **Primary Path** | Operator-facing main execution branch extending from the top-level entry to the active leaf pointer. |
 | **Root Branch** | Branch whose first entry is appended at the session root with `parentId: null`. |
-| **Review Branch** | Side branch forked for code review or analysis that can merge back into the primary path upon completion. |
+| **Review Branch** | Side branch for review or analysis. The process may restore the primary branch and pass the result back as input. |
 | **Pi Resource Snapshot** | Immutable, content-addressed non-secret package containing settings, models, extensions, skills, and prompts for worker materialization. |
 | **Workspace Clone** | Dedicated full Git repository clone checked out to a specific work branch (`feat/...`). |
 | **Local Session Transfer Grant** | Expiring, process-bound bearer capability minted without reading retained state. SQLite stores only its token hash. |
@@ -53,19 +59,19 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 
 ---
 
-## 4. Browser UI & Chronicle
+## Browser UI
 
 | Term | Definition |
 |---|---|
 | **Chronicle** | Main process timeline pane rendering streaming agent reasoning, tool execution logs, and published markdown products. |
-| **Turn Rail** | Right-hand navigation rail displaying the process outline, turn execution states, active leaf, and future turns. |
+| **Turn Rail** | Navigation beside the Chronicle showing turn history, current work, and the declared next turn. |
 | **Product** | Named markdown result published by a turn (e.g., `plan`, `review`) and consumed by subsequent turns. |
 | **Product Ref** | Durable pointer linking a published product name to its source turn record. |
 | **FIFO Input Queue** | Monotonically sequenced queue of text steering instructions submitted by operators and consumed sequentially by workers. |
 
 ---
 
-## 5. Skills & Catalog
+## Skills
 
 | Term | Definition |
 |---|---|
@@ -76,7 +82,7 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 
 ---
 
-## 6. Deprecated Terms & Anti-Patterns
+## Avoid ambiguous terms
 
 | Avoid | Use Instead | Reason |
 |---|---|---|
@@ -88,9 +94,12 @@ This document defines the ubiquitous language for Leitwerk. It is the authoritat
 | *Task* | **Turn** | Avoids confusion with background operational tasks or sub-tasks. |
 | *Task run* | **Turn record** | Accurately describes durable execution attempts. |
 
-## 7. Launch diagnostics
+## Launches
 
-- **Launch Run:** Durable, presentation-safe orchestration record for one launch or startup-retry attempt. It is not authoritative process-startup evidence.
+- **Launcher:** Input schema and resolution logic for starting a process.
+- **Watcher:** Extension-owned source that starts processes from external events.
+- **External action:** A subscribed event that advances an existing process.
+- **Launch Run:** Durable, presentation-safe progress record for one launch or startup-retry attempt. It is not authoritative process-startup evidence.
 - **Startup Attempt:** Process-detail projection of one turn start and its correlated worker lease, server-observed readiness, and accepted first turn.
 - **Launch checklist step:** Ordered operator-facing phase owned by the launch coordinator.
 - **Preparation check:** Optional launcher-owned validation that returns or throws a safe failure.

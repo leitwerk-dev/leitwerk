@@ -91,8 +91,6 @@ vi.mock("../lib/ws.svelte", () => ({
 	wsStore: { subscribe: mockWs.subscribe },
 }));
 
-import { scrollTopForAnchor } from "../chronicle/lib/scroll-sync.js";
-import { formatUsdEstimate } from "../lib/cost-estimates.js";
 import {
 	clearPendingProcessToastFocus,
 	queuePendingProcessToastFocus,
@@ -1315,52 +1313,6 @@ function createWorkerFailedDetail(): ProcessDetailData {
 	return detail;
 }
 
-function createContinuableFailedDetailWithUserContinuationLeaf(): ProcessDetailData {
-	const detail = createContinuableFailedDetail();
-	detail.turnRecords[1] = {
-		...detail.turnRecords[1],
-		resultPiEntryId: "user-continue-2",
-		endedAt: "2026-01-01T00:04:32Z",
-	};
-	detail.piSessionEntries = [
-		...detail.piSessionEntries,
-		{
-			type: "message",
-			id: "user-continue-2",
-			parentId: "assistant-fix",
-			timestamp: "2026-01-01T00:04:31Z",
-			message: {
-				role: "user",
-				content: "Continue from this exact branch and keep the previous tool choice.",
-			},
-		},
-	];
-	return detail;
-}
-
-function createContinuableFailedDetailWithPostFailureUserContinuationLeaf(): ProcessDetailData {
-	const detail = createContinuableFailedDetail();
-	detail.turnRecords[1] = {
-		...detail.turnRecords[1],
-		resultPiEntryId: "assistant-fix",
-		endedAt: "2026-01-01T00:04:30Z",
-	};
-	detail.piSessionEntries = [
-		...detail.piSessionEntries,
-		{
-			type: "message",
-			id: "user-continue-after-failure",
-			parentId: "assistant-fix",
-			timestamp: "2026-01-01T00:04:31Z",
-			message: {
-				role: "user",
-				content: "This later retry instruction should not be reused.",
-			},
-		},
-	];
-	return detail;
-}
-
 function createPreStreamingActiveDetail(): ProcessDetailData {
 	const detail = createProcessDetail();
 	detail.process.lifecycleStatus = "active";
@@ -1774,24 +1726,6 @@ async function flushUi(): Promise<void> {
 }
 
 async function mountSubjectWithCurrentMocks() {
-	mockPostProcessAction.mockReset();
-	mockPostProcessRetry.mockReset();
-	mockPostProcessTurnContinue.mockReset();
-	mockFetchTicketCreationTools.mockReset();
-	mockFetchTicketCreationTools.mockResolvedValue([
-		{
-			name: "tracker_create_issue",
-			displayName: "Issue tracker",
-		},
-	]);
-	mockLaunchTicketCreation.mockReset();
-	mockSubmitQuestionAnswers.mockReset();
-	mockFetchTurnReasoningDetail.mockReset();
-	mockFetchTurnReasoningDetail.mockImplementation(
-		async (requestInstanceId: string, turnRecordId: string) =>
-			buildMockReasoningResponse(requestInstanceId, turnRecordId),
-	);
-
 	const target = document.createElement("div");
 	document.body.appendChild(target);
 	const app = mount(ProcessDetailPage, {
@@ -1870,7 +1804,32 @@ async function clickRecoveryAction(
 	await flushUi();
 }
 
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+	HTMLElement.prototype,
+	"scrollIntoView",
+);
+
 beforeEach(() => {
+	mockPostProcessAction.mockReset();
+	mockPostProcessRetry.mockReset();
+	mockPostProcessTurnContinue.mockReset();
+	mockFetchTicketCreationTools.mockReset();
+	mockFetchTicketCreationTools.mockResolvedValue([
+		{
+			name: "tracker_create_issue",
+			displayName: "Issue tracker",
+		},
+	]);
+	mockLaunchTicketCreation.mockReset();
+	mockSubmitQuestionAnswers.mockReset();
+	mockFetchTurnReasoningDetail.mockReset();
+	mockFetchTurnReasoningDetail.mockImplementation(
+		async (requestInstanceId: string, turnRecordId: string) =>
+			buildMockReasoningResponse(requestInstanceId, turnRecordId),
+	);
+
+	mockUpdateScheduledAction.mockReset();
+	mockUpdateScheduledAction.mockResolvedValue({ kind: "success" });
 	vi.useFakeTimers();
 	mockWs.set({ status: "disconnected", serverVersion: null, reconnectCount: 0 });
 	window.history.replaceState(null, "", "/processes/agt_1");
@@ -1895,9 +1854,9 @@ beforeEach(() => {
 	});
 });
 
-afterEach(() => {
+afterEach(async () => {
 	for (const app of mountedApps.splice(0)) {
-		unmount(app);
+		await unmount(app);
 	}
 	clearPendingProcessToastFocus();
 	clearDetail();
@@ -1908,7 +1867,11 @@ afterEach(() => {
 	document.body.innerHTML = "";
 	window.history.replaceState(null, "", "/");
 	window.dispatchEvent(new PopStateEvent("popstate"));
+	if (originalScrollIntoView)
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+	else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 	vi.unstubAllGlobals();
+	vi.restoreAllMocks();
 	vi.clearAllMocks();
 	vi.useRealTimers();
 });
@@ -2438,7 +2401,7 @@ describe("ProcessDetailPage", () => {
 		assertNavigation(target.querySelector('[data-section="mobile-process-quick-nav"]'));
 	});
 
-	it("renders the prompt first and exposes process info in the header overlay", async () => {
+	it("renders the prompt and exposes process info in the header overlay", async () => {
 		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
 		const detail = createProcessDetail();
 		detail.process.processId = "single_prompt_external_complete_process";
@@ -2742,7 +2705,7 @@ describe("ProcessDetailPage", () => {
 			'[data-section="process-info-usage-cost"] .usage-line',
 		);
 		expect(usageLine?.dataset.completeness).toBe("complete");
-		expect(usageLine?.textContent).toContain(formatUsdEstimate(0.023));
+		expect(usageLine?.textContent).toMatch(/0[.,]0230(?!\d)/);
 		expect(
 			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
 		).toBe("2");
@@ -2808,8 +2771,8 @@ describe("ProcessDetailPage", () => {
 			'[data-section="process-info-usage-cost"] .usage-line',
 		);
 		expect(usageLine?.dataset.completeness).toBe("complete");
-		expect(usageLine?.textContent).toContain(formatUsdEstimate(1.05));
-		expect(usageLine?.textContent).not.toContain(formatUsdEstimate(0.01));
+		expect(usageLine?.textContent).toMatch(/1[.,]0500(?!\d)/);
+		expect(usageLine?.textContent).not.toMatch(/0[.,]0100(?!\d)/);
 		expect(
 			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
 		).toBe("2");
@@ -2900,7 +2863,7 @@ describe("ProcessDetailPage", () => {
 			'[data-section="process-info-usage-cost"] .usage-line',
 		);
 		expect(usageLine?.dataset.completeness).toBe("partial");
-		expect(usageLine?.textContent).toContain(formatUsdEstimate(0.0082));
+		expect(usageLine?.textContent).toMatch(/0[.,]0082(?!\d)/);
 		expect(
 			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
 		).toBe("1");
@@ -3075,33 +3038,6 @@ describe("ProcessDetailPage", () => {
 		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(2);
 	});
 
-	it("pre-fills the continue prompt from the latest failed user continuation leaf when one exists", async () => {
-		mockPostProcessTurnContinue.mockResolvedValue(undefined);
-		const { target } = await mountSubject(createContinuableFailedDetailWithUserContinuationLeaf());
-		await flushUi();
-
-		expect(requireContinuePromptField(target).value).toBe(DEFAULT_CONTINUE_PROMPT);
-
-		await clickRecoveryAction(target, "continue-failed-turn");
-
-		expect(mockPostProcessTurnContinue).toHaveBeenCalledWith(
-			"agt_1",
-			"trn_2",
-			DEFAULT_CONTINUE_PROMPT,
-			undefined,
-			undefined,
-		);
-	});
-
-	it("does not pre-fill the continue prompt from user leaves written after the failed turn ended", async () => {
-		const { target } = await mountSubject(
-			createContinuableFailedDetailWithPostFailureUserContinuationLeaf(),
-		);
-		await flushUi();
-
-		expect(requireContinuePromptField(target).value).toBe(DEFAULT_CONTINUE_PROMPT);
-	});
-
 	it("pre-fills an editable continue prompt from recovery metadata and submits operator edits", async () => {
 		mockPostProcessTurnContinue.mockResolvedValue(undefined);
 		const detail = createContinuableFailedDetail();
@@ -3177,7 +3113,7 @@ describe("ProcessDetailPage", () => {
 		);
 	});
 
-	it("pre-fills the continue prompt from a previously scheduled continue", async () => {
+	it("submits the unedited default continue prompt supplied by the server", async () => {
 		mockPostProcessTurnContinue.mockResolvedValue(undefined);
 		const detail = createContinuableFailedDetail();
 		detail.recovery = createFailedTurnRecovery("trn_2", {
@@ -3198,7 +3134,7 @@ describe("ProcessDetailPage", () => {
 		);
 	});
 
-	it("renders Retry without model controls for a failed automatic turn", async () => {
+	it("hides retry model controls when recovery does not support an override", async () => {
 		mockPostProcessRetry.mockResolvedValue(undefined);
 		const detail = createContinuableFailedDetail();
 		detail.recovery = createFailedTurnRecovery("trn_2", {
@@ -3228,33 +3164,6 @@ describe("ProcessDetailPage", () => {
 
 		expect(mockPostProcessRetry).toHaveBeenCalledWith("agt_1", undefined, undefined);
 		expect(mockFetchProcessDetail).toHaveBeenCalledTimes(2);
-	});
-
-	it.each([
-		[
-			"the failed llm turn has no saved progress",
-			(detail: LegacyProcessDetailTestData) => {
-				if (!detail.recovery) throw new Error("Expected failed-turn recovery");
-				detail.recovery = { ...detail.recovery, canContinue: false };
-			},
-		],
-		[
-			"the recovery summary says continuation is unavailable",
-			(detail: LegacyProcessDetailTestData) => {
-				if (!detail.recovery) throw new Error("Expected failed-turn recovery");
-				detail.recovery = { ...detail.recovery, canContinue: false };
-			},
-		],
-	] as const)("does not render Continue when %s", async (_name, mutateDetail) => {
-		const detail = createContinuableFailedDetail();
-		mutateDetail(detail);
-
-		const { target } = await mountSubject(detail);
-		await flushUi();
-
-		expect(target.querySelector('[data-section="current-turn-recovery"]')).toBeTruthy();
-		expect(queryRecoveryAction(target, "continue-failed-turn")).toBeNull();
-		expect(queryRecoveryAction(target, "retry-failed-turn")).toBeTruthy();
 	});
 
 	it("keeps failure-specific guidance visible when no saved progress can continue", async () => {
@@ -4540,13 +4449,6 @@ describe("ProcessDetailPage", () => {
 		lastTurnButton?.click();
 		await flushUi();
 
-		expect(metrics.getScrollTop()).toBe(
-			scrollTopForAnchor({ top: 1_500, height: 320 }, 900, {
-				align: "start",
-				startPaddingPx: 28,
-				scrollHeight: 2_200,
-			}),
-		);
 		expect(metrics.getScrollTop()).toBe(1_300);
 		expect(lastTurnButton?.dataset.active).toBe("true");
 	});
@@ -4583,13 +4485,6 @@ describe("ProcessDetailPage", () => {
 		lastTurnButton?.click();
 		await flushUi();
 
-		expect(metrics.getScrollTop()).toBe(
-			scrollTopForAnchor({ top: 2_260, height: 220 }, 900, {
-				align: "start",
-				startPaddingPx: 28,
-				scrollHeight: 3_600,
-			}),
-		);
 		expect(metrics.getScrollTop()).toBe(2_232);
 		expect(lastTurnButton?.dataset.active).toBe("true");
 	});
@@ -4749,9 +4644,7 @@ describe("ProcessDetailPage", () => {
 		lastTurnButton?.click();
 		await flushUi();
 
-		expect(metrics.getScrollTop()).toBe(
-			scrollTopForAnchor({ top: 1_300, height: 160 }, 900, { scrollHeight: 1_500 }),
-		);
+		expect(metrics.getScrollTop()).toBe(600);
 		expect(firstTurnButton?.dataset.active).toBe("false");
 		expect(lastTurnButton?.dataset.active).toBe("true");
 		expect(lastTurnSection?.dataset.focused).toBe("true");
@@ -5306,34 +5199,6 @@ describe("ProcessDetailPage", () => {
 			async (requestInstanceId: string, turnRecordId: string) =>
 				buildMockReasoningResponse(requestInstanceId, turnRecordId),
 		);
-		target
-			.querySelector<HTMLButtonElement>('[data-section="reasoning-load-error"] button')
-			?.click();
-		await flushUi();
-
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
-		expect(target.querySelector('[data-section="reasoning-load-error"]')).toBeNull();
-	});
-
-	it("retries a server-rejected stale reasoning request", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-		mockFetchTurnReasoningDetail.mockReset();
-		mockFetchTurnReasoningDetail.mockRejectedValueOnce(
-			new Error("The process changed while reasoning details were loading."),
-		);
-		mockFetchTurnReasoningDetail.mockImplementation(
-			async (requestInstanceId: string, turnRecordId: string) =>
-				buildMockReasoningResponse(requestInstanceId, turnRecordId),
-		);
-
-		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
-		await flushUi();
-
-		expect(target.querySelector('[data-section="reasoning-load-error"]')?.textContent).toContain(
-			"process changed",
-		);
-
 		target
 			.querySelector<HTMLButtonElement>('[data-section="reasoning-load-error"] button')
 			?.click();

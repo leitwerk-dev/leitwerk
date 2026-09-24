@@ -5,10 +5,10 @@ import type {
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { FutureExecutionLifecycle } from "../future-execution/index.js";
 import { loadProviderOptionChoices } from "../model-providers/provider-options.js";
+import { listVisibleActionsForProcess } from "../process-action-presenter.js";
 import { sendEngineFailure } from "./process-engine-http.js";
 import {
 	getProcessOrReply,
-	listVisibleActionsForProcess,
 	normalizeActionRequest,
 	normalizeContinueRequest,
 	normalizeRecoveryModelRequest,

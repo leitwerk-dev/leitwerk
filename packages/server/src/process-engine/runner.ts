@@ -216,14 +216,6 @@ export function createEngineRunner(
 		if (lockedOutcome.kind === "pre_commit_failed") {
 			return mapPreCommitFailure(lockedOutcome.failure, lockedOutcome.initialProcess);
 		}
-		if (lockedOutcome.kind === "post_commit_failed") {
-			return mapPostCommitFailure(
-				lockedOutcome.recorded as RecordedDecision<
-					OperationSpec<string, OperationInputBase, OperationData<TOp>>
-				>,
-				lockedOutcome.failure,
-			);
-		}
 
 		const { recorded } = lockedOutcome;
 		try {
@@ -236,6 +228,14 @@ export function createEngineRunner(
 				stage: "post_commit",
 				code: "after_record_callback_failed",
 			});
+		}
+		if (lockedOutcome.kind === "post_commit_failed") {
+			return mapPostCommitFailure(
+				lockedOutcome.recorded as RecordedDecision<
+					OperationSpec<string, OperationInputBase, OperationData<TOp>>
+				>,
+				lockedOutcome.failure,
+			);
 		}
 		try {
 			await deps.afterRecord?.(recorded.process);

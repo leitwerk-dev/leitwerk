@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { ADMIN_ACTOR, type ProcessInstance, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { type LaunchPreparationCheck, SafeLaunchPreparationError } from "@leitwerk-dev/process-sdk";
 import {
@@ -9,9 +6,8 @@ import {
 	serializeFutureActionPayload,
 	serializeFutureLaunchPayload,
 } from "@leitwerk-dev/protocol";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
-import { closeDatabase } from "./db/database.js";
 import { createExtensionHost } from "./extensions/extension-host.js";
 import { createFutureExecutionLifecycle } from "./future-execution/index.js";
 import { createLaunchPipeline } from "./launch-pipeline.js";
@@ -20,18 +16,9 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import type { ProcessEngine } from "./process-engine/types.js";
 import { createServerProcessModelPolicy } from "./process-model-policy/index.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
+import { createOwnedTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { createTestLaunchPlan } from "./test-helpers/process-model-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
-
-const testDatabases: Array<{ db: ReturnType<typeof createTestDeps>["db"]; root: string }> = [];
-
-afterEach(() => {
-	for (const fixture of testDatabases.splice(0)) {
-		closeDatabase(fixture.db);
-		rmSync(fixture.root, { recursive: true, force: true });
-	}
-});
 
 function createServiceHarness(
 	options: {
@@ -48,9 +35,7 @@ function createServiceHarness(
 		failProcessTitleQueue?: boolean;
 	} = {},
 ) {
-	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-future-lifecycle-"));
-	const deps = createTestDeps({ sqlitePath: path.join(root, "leitwerk.db") });
-	testDatabases.push({ db: deps.db, root });
+	const deps = createOwnedTestDeps();
 	const processOperations = createProcessOperationCoordinator();
 	const processGraphs = createDefaultTestProcessGraphRegistry();
 	const processModelPolicy = createServerProcessModelPolicy({
@@ -172,7 +157,7 @@ function createSchedulableActionRegistry(): ProcessActionRegistry {
 }
 
 function createDueLaunch(
-	deps: ReturnType<typeof createTestDeps>,
+	deps: ReturnType<typeof createOwnedTestDeps>,
 	overrides: Partial<Parameters<typeof deps.futureExecutions.create>[0]> = {},
 ) {
 	const launchPlan = createTestLaunchPlan({
@@ -202,7 +187,7 @@ function createDueLaunch(
 }
 
 function createDueAction(
-	deps: ReturnType<typeof createTestDeps>,
+	deps: ReturnType<typeof createOwnedTestDeps>,
 	process: ProcessInstance,
 	overrides: Partial<Parameters<typeof deps.futureExecutions.create>[0]> = {},
 ) {
@@ -224,13 +209,13 @@ function createDueAction(
 
 describe("FutureExecutionLifecycle", () => {
 	it("emits process-created extension events for launch-now requests", async () => {
-		const emittedEvents: string[] = [];
+		const emittedEvents: unknown[] = [];
 		const { service } = createServiceHarness({
 			extensionHost: {
 				on() {},
 				off() {},
-				emit: async (event) => {
-					emittedEvents.push(event);
+				emit: async (event, payload) => {
+					emittedEvents.push({ event, payload });
 				},
 			},
 		});
@@ -246,8 +231,10 @@ describe("FutureExecutionLifecycle", () => {
 			scheduleProvided: true,
 		});
 
-		expect(result.kind).toBe("launched");
-		expect(emittedEvents).toContain("process_created");
+		if (result.kind !== "launched") throw new Error("Expected launched process");
+		expect(emittedEvents).toMatchObject([
+			{ event: "process_created", payload: { instanceId: result.process.id } },
+		]);
 	});
 
 	it("records launcher recent values after successful launch-now requests", async () => {
@@ -870,6 +857,16 @@ describe("FutureExecutionLifecycle", () => {
 			});
 		} else {
 			expect(executeProcessAction).toHaveBeenCalledOnce();
+			expect(executeProcessAction).toHaveBeenCalledWith(
+				commandState.process?.id,
+				"approve_plan",
+				{ approved: true },
+				expect.objectContaining({
+					source: "scheduled",
+					scheduledExecutionId: execution.id,
+					consumeScheduledExecutionOnSuccess: true,
+				}),
+			);
 		}
 	});
 
@@ -985,6 +982,7 @@ describe("FutureExecutionLifecycle", () => {
 			kind: "no_work",
 		});
 		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2027-04-26T09:00:00.000Z");
 	});
 
 	it("retries a scheduled preparation rejection without creating a process", async () => {
@@ -1009,6 +1007,7 @@ describe("FutureExecutionLifecycle", () => {
 			kind: "retry_scheduled",
 		});
 		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2027-04-25T09:01:00.000Z");
 		expect(
 			deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
 		).toMatchObject({
@@ -1029,9 +1028,9 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 		const failing = createDueLaunch(deps);
-		const succeeding = createDueLaunch(deps);
+		const succeeding = createDueLaunch(deps, { nextRunAt: "2027-04-25T09:00:01.000Z" });
 
-		const result = await service.runDueWork(failing.nextRunAt);
+		const result = await service.runDueWork(succeeding.nextRunAt);
 
 		expect(result.items).toContainEqual({
 			futureExecutionId: failing.id,
@@ -1041,7 +1040,7 @@ describe("FutureExecutionLifecycle", () => {
 			futureExecutionId: succeeding.id,
 			kind: "durable_work_committed",
 		});
-		expect(deps.futureExecutions.getById(failing.id)).toMatchObject({ id: failing.id });
+		expect(deps.futureExecutions.getById(failing.id)?.nextRunAt).toBe("2027-04-25T09:01:01.000Z");
 		expect(deps.futureExecutions.getById(succeeding.id)).toBeNull();
 	});
 
@@ -1156,7 +1155,7 @@ describe("FutureExecutionLifecycle", () => {
 
 		const command = kind === "launch" ? startProcess : executeProcessAction;
 		expect(command).toHaveBeenCalledWith(
-			expect.any(String),
+			kind === "launch" ? deps.processes.listAll()[0]?.id : commandState.process?.id,
 			...(kind === "launch" ? ["run"] : ["approve_plan", { approved: true }]),
 			expect.objectContaining({ actor: ADMIN_ACTOR }),
 		);

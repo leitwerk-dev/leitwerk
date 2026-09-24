@@ -5,13 +5,8 @@ import {
 	normalizeWorkerFailure,
 	redactSecrets,
 } from "./failure-policy.js";
-import { createWorkerRuntime } from "./index.js";
 
 describe("worker runtime", () => {
-	it("exports the worker runtime factory", () => {
-		expect(typeof createWorkerRuntime).toBe("function");
-	});
-
 	it("extracts secret values from LLM start payload credential", () => {
 		const payload = {
 			bootstrap: {
@@ -36,8 +31,6 @@ describe("worker runtime", () => {
 		const message = "Failed to authenticate with token secret-token-123 and apiKey sk-proj-abc456";
 		const redacted = redactSecrets(message, secrets);
 		expect(redacted).toBe("Failed to authenticate with token <redacted> and apiKey <redacted>");
-		expect(redacted).not.toContain("secret-token-123");
-		expect(redacted).not.toContain("sk-proj-abc456");
 	});
 
 	it("normalizes accepted turn failures to one correlated failure and park disposition", () => {

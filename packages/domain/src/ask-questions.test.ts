@@ -21,8 +21,26 @@ describe("ask_questions contract", () => {
 				},
 			],
 		});
-		expect(questions[0]?.id).toBe("question_1");
-		expect(questions[0]?.options[1]?.id).toBe("question_1_option_2");
+		expect(questions).toEqual([
+			{
+				id: "question_1",
+				question: "Choose a strategy",
+				selection: "single",
+				options: [
+					{ id: "question_1_option_1", label: "Safe", details: "Small change" },
+					{ id: "question_1_option_2", label: "Bold", details: null },
+				],
+			},
+			{
+				id: "question_2",
+				question: "Which checks?",
+				selection: "multiple",
+				options: [
+					{ id: "question_2_option_1", label: "Unit", details: null },
+					{ id: "question_2_option_2", label: "System", details: null },
+				],
+			},
+		]);
 		const draft = emptyQuestionDrafts(questions);
 		draft[0] = {
 			...draft[0],
@@ -36,7 +54,7 @@ describe("ask_questions contract", () => {
 		]);
 	});
 
-	it("rejects empty and duplicate options and malformed answers", () => {
+	it("rejects duplicate option labels regardless of case or surrounding whitespace", () => {
 		expect(() =>
 			normalizeAskQuestionsInput({
 				questions: [
@@ -48,6 +66,9 @@ describe("ask_questions contract", () => {
 				],
 			}),
 		).toThrow(/duplicate option/);
+	});
+
+	it("rejects a question with neither a selected option nor free text", () => {
 		const questions = normalizeAskQuestionsInput({
 			questions: [{ question: "Pick", selection: "single", options: [{ label: "One" }] }],
 		});

@@ -1,114 +1,187 @@
-# Security & Authentication Boundaries
+# Security and authentication
 
-This document defines security boundaries, authentication models, and credential handling in Leitwerk. Read this page to understand how user authentication works, how secrets are encrypted in SQLite, and how container isolation protects worker execution.
+Authentication grants application-wide access. Leitwerk does not provide per-process
+permissions or tenant isolation. Workers and repository code are semi-trusted;
+credential routing is not isolation from code running as the same OS user.
+Configure network exposure and worker privileges accordingly.
 
----
+## Authentication models {#1-authentication-models}
 
-## 1. Authentication Models
+| Boundary | Credential and scope |
+| --- | --- |
+| Browser | One configured OIDC or native GitHub provider when authentication is enabled. Session tokens are hashed in SQLite. |
+| Application HTTP API | Browser access or an owner-equivalent API token; existing action and process gates still apply. |
+| Worker | Lease-scoped WebSocket connect token and snapshot bearer token. Both are hashed server-side and bound to the active lease. |
+| Local session transfer | Expiring, process-bound bearer grant and claim attempt, separate from browser cookies. |
 
-- **Web Authentication:** Disabled by default (`auth.enabled: false`). When enabled (`auth.enabled: true`), OIDC authenticates allowlisted identities via PKCE or native GitHub OAuth authenticates active members of one configured organization. Leitwerk stores only hashed session tokens in SQLite. Authentication applies globally (no per-process authorization or multi-tenant isolation).
-- **Worker Authentication:** Workers authenticate via lease-scoped WebSocket connect tokens and bearer snapshot tokens (`PUT /session-snapshot`). Tokens are bound to the active process lease and hashed server-side.
-- **Local Session Transfer:** An authenticated web operator can mint a one-hour bearer grant for a process with a primary session. The raw token appears only in the URL fragment and server responses; SQLite stores its SHA-256 hash. Bearer routes bypass cookie authentication but are bound to the exact origin, process, grant, and attempt. Non-loopback links require HTTPS, redirects are rejected, and generated origins come from `server.base_url` rather than request headers.
+Authentication is disabled by default. Enabled OIDC uses PKCE and allowlisted
+identity claims; native GitHub OAuth requires active membership in one configured
+organization. See [configuration](configuration.md#server-authentication-and-transport).
 
----
+Browser WebSockets require their own session/origin checks. Application API tokens,
+worker credentials, and transfer grants are not interchangeable.
 
-## 2. Secrets & Container Isolation
+## Secrets and isolation {#2-secrets-container-isolation}
 
-- **SQLite Secret Encryption:** Provider credentials stored in SQLite are encrypted using a 32-byte application key (`LEITWERK_CREDENTIAL_ENCRYPTION_KEY`). Raw secrets never appear in logs, process state, or session tree files.
-- **Admission policy:** The Helm chart owns Kubernetes admission-policy generation. See the [breaking API migration](kubernetes-deployment-guide.md#admission-policy-api-migration-breaking) for external deployment tools.
-- **Container Isolation:** Docker and Kubernetes container runtimes provide the production security boundary. Workers operate in isolated environments without direct database access. Kubernetes private-Docker Pods use only the operator-configured RuntimeClass and `hostUsers`; Leitwerk does not add privileged mode, host paths, host namespaces, a node runtime socket, or a TCP Docker listener. Explicit `kubernetes.docker.gvisor` mode omits `hostUsers`, adds SYS_ADMIN and NET_ADMIN inside the sandbox, and enables the verified Docker wrapper. Operators must select a verified runsc node. Only namespaces of Docker-requiring processes receive the Pod Security `privileged` admission label; the worker itself remains non-privileged. Other modes add no capabilities.
-- **Transfer Scope:** Export preflight is root-confined and accepts only regular files, directories, and relative symlinks that remain inside the workspace. Archives exclude provider, repository, Pi-agent, and runner credentials. Both peers enforce entry, logical-byte, and compressed-byte limits; local Pi verifies the final compressed SHA-256 before committing.
-- **Isolated Export Helpers:** Docker named-volume and Kubernetes PVC helpers receive only non-secret manifest and limit data plus one random export credential. The server keeps its SHA-256 hash, binds it to one live attempt, accepts one stream, and rechecks lease and deadline state on every helper request. Helpers mount only the process volume's `workspace/` and `tree/` directories read-only, plus an optional read-only server CA certificate. Pi-agent state and other process-volume directories are not mounted. Helpers receive no worker connection, model, provider, Forgejo, repository, Docker, or Kubernetes API credential, and wait for an active client stream before uploading. Docker named-volume exports require Engine 26.0 or newer (API 1.45+) for scoped volume mounts; unsupported APIs fail without a full-volume fallback.
-- **Repository Tool Configuration:** Opted-in mise configuration and plugins are trusted repository code. Initial installation precedes managed Pi credential materialization. Later preparation omits known credentials from the child environment but shares the worker filesystem and OS identity; it is not credential isolation. Authenticated private tool sources are unsupported. Mise output is stored verbatim in server diagnostic trace files and must be treated as sensitive.
-- **Frontend Sanitization:** Browser markdown rendering uses DOMPurify to sanitize HTML and block XSS constructs before inserting content into the Chronicle view.
+### Stored credentials
+
+Provider credentials in SQLite are encrypted with
+`LEITWERK_CREDENTIAL_ENCRYPTION_KEY`, the Base64 encoding of exactly 32 bytes.
+Preserve the key/database pairing in protected backups. Managed credential payloads
+are excluded from process state, session trees, and credential diagnostics.
+Raw tool output may still contain sensitive data; protect diagnostic traces.
+
+Model resource snapshots are immutable and non-secret. The current credential layer
+is delivered separately for each physical worker. Workers never import ambient Pi
+files or repository Pi extensions, prompts, or skills.
+
+### Worker authority
+
+Local workers run as the host user. Docker and Kubernetes provide the production
+container boundary, subject to selected runtime privileges. The Docker-backed server
+controls the host engine socket; do not treat that server as an unprivileged workload.
+
+Private Docker under the Docker runner requires either privileged mode, with broad
+host-kernel authority, or an installed `sysbox-runc` runtime. Kubernetes uses the
+operator-configured RuntimeClass and `hostUsers`. It does not add privileged mode,
+host paths, host namespaces, a host runtime socket, or a TCP Docker listener.
+
+Explicit gVisor mode omits `hostUsers`, adds SYS_ADMIN and NET_ADMIN inside the
+sandbox, and uses the verified Docker wrapper. Select a verified runsc node. Only
+Docker-requiring process namespaces receive the Pod Security `privileged` admission
+label; their worker remains non-privileged. Other Kubernetes modes add no capabilities.
+The Helm chart generates the admission policy.
+
+### Repository code and browser content
+
+Opted-in mise configuration and plugins are trusted repository code. Initial tool
+installation precedes managed Pi credential materialization. Later preparation
+omits known credentials from the child environment but shares the worker filesystem
+and OS identity; this is not credential isolation. Authenticated private tool sources
+are unsupported. Mise output is retained verbatim in diagnostic traces.
+
+Browser Markdown uses DOMPurify to sanitize HTML before rendering. Treat external
+text, model output, and destination prompt context as untrusted data, not instructions
+for server configuration or authorization.
+
+## Local session transfers
+
+An authenticated web operator may create a one-hour bearer grant for a process with
+a primary session. The raw token appears in the URL fragment and server responses;
+SQLite stores only its SHA-256 hash. Transfer routes bypass cookie authentication
+but are bound to the exact origin, process, grant, and attempt.
+
+Non-loopback links require HTTPS. Redirects are rejected. Link origins come from
+`server.base_url`, not request headers. Anyone holding the link may download the
+retained workspace and conversation; delivered bytes cannot be recalled.
+
+Export accepts regular files, directories, and relative symlinks confined to the
+workspace. It excludes managed credential directories and unrelated process-volume
+paths. This does not redact secrets that repository code or an operator wrote into
+workspace files or conversation text. Both peers enforce entry and byte limits;
+local import verifies compressed SHA-256 before committing.
+
+Isolated export helpers receive non-secret manifest/limit data and one random export
+credential. The server stores only its hash, binds it to a live attempt, permits one
+stream, and rechecks attempt liveness and deadline. Helpers receive no worker, model,
+repository, or container-engine credential.
+
+Docker named-volume and Kubernetes PVC helpers mount only `workspace/` and `tree/`
+read-only, plus an optional server CA. Pi-agent and tooling directories are not
+mounted. Helpers wait for an active client before uploading. Docker scoped mounts
+require Engine 26.0 / API 1.45 or newer; unsupported engines fail without a full-volume
+fallback. See [transfer storage](process-workspace.md#5-local-pi-session-transfer).
 
 ## Personal and anonymous API tokens
 
-API tokens authenticate as their owner for application HTTP APIs, including
-`/api/auth/me`. They grant the same application access as the owner's browser
-session. There are no token-specific repository or action grants. Existing
-process validation, model selection, action gates, scheduling, and actor
-attribution still apply.
+Tokens authenticate as their owner across application HTTP APIs, including
+`/api/auth/me`. They grant the same access as the owner's browser session, with no
+token-specific repository or action grants. Process validation, model selection,
+action gates, scheduling, and attribution still apply.
 
-Send exactly one `Authorization: Bearer lwk_pat_…` header, without a session
-cookie. Malformed, duplicate, unknown, expired, revoked, or ambiguous credentials
-are rejected without fallback, including when authentication is disabled.
-Tokens in query parameters, request bodies, or cookies do not authenticate.
-Browser WebSockets, token management, OAuth, and worker credentials remain
-separate authentication flows.
+Send exactly one `Authorization: Bearer lwk_pat_…` header without a session cookie.
+Malformed, duplicate, unknown, expired, revoked, or ambiguous credentials reject
+without fallback, including with authentication disabled. Query, body, and cookie
+tokens do not authenticate. Browser WebSockets, token management, OAuth, and worker
+credentials remain separate flows.
 
-With authentication enabled, token ownership comes from the current valid
-GitHub or OIDC session, including sessions created before upgrading. User tokens
-bind to their issuing provider ID and kind, OIDC issuer and identity claim, or
-GitHub organization. Removing or changing that identity configuration blocks
-the token. OIDC tokens also use the current allowlist. GitHub membership is
-checked at login, matching session behavior; issuance and bearer requests make
-no additional membership requests. Provider secrets are never part of the binding.
-Logout ends the browser session; it does not revoke tokens.
+### Ownership and provider changes
 
-With authentication disabled, every visitor manages one shared anonymous owner.
-Anonymous HTTP operations retain the existing admin actor for attribution. Each
-browser receives its own CSRF cookie, but this does not create a separate owner.
-User tokens cannot authenticate in this mode. Every startup with authentication
-enabled permanently revokes anonymous tokens, even if token support is disabled.
+With authentication enabled, a valid GitHub or OIDC session establishes ownership,
+including sessions created before upgrading. User tokens bind to the issuing provider
+ID/kind and OIDC issuer/identity claim or GitHub organization. Changing that identity
+configuration blocks the token. OIDC also checks the current allowlist.
+
+GitHub membership is checked at login, matching session behavior. Token issuance and
+bearer requests make no additional membership requests. Provider secrets are not part
+of the binding. Logout ends the browser session, not its API tokens.
+
+With authentication disabled, all visitors manage one anonymous owner. Anonymous HTTP
+operations retain the admin actor. Each browser has its own CSRF cookie, but not a
+separate owner. User tokens cannot authenticate in this mode. Every authentication-enabled
+startup permanently revokes anonymous tokens, even if token support is disabled.
 Turning authentication off again does not revive them.
 
-SQLite stores a public ID, display prefix, SHA-256 secret hash, explicit owner,
-provider binding, name, and lifecycle timestamps. The 32-byte random secret uses
-the `lwk_pat_` prefix and appears only in the creation response. Token management
-responses, including errors, use `Cache-Control: no-store`. Secrets never enter
-process state, worker inputs, browser persistence, or audit records. The UI holds
-a new secret only until dismissal or leaving the page; explicit copy writes it
-to the user's clipboard.
+### Storage, management, and audit
 
-Management mutations require the exact configured application Origin and a
-CSRF token bound to the browser session (or separate anonymous CSRF cookie).
-The management GET supplies that CSRF context. Cookies retain HttpOnly, SameSite
-Lax, and Secure on HTTPS. Bearer credentials cannot manage tokens.
+SQLite stores a public ID, prefix, SHA-256 secret hash, owner/provider binding, name,
+and lifecycle timestamps. The 32-byte random secret uses `lwk_pat_` and appears only
+in the creation response. Management responses, including errors, use
+`Cache-Control: no-store`. Secrets do not enter process state, worker inputs, browser
+persistence, or audit records. Explicit copying writes the secret to the user's clipboard.
 
-Structured `api_token_audit` records capture issuance, revocation, and final
-bearer request outcomes with request ID, timestamp, operation, actor/owner and
-public token ID when known, status, and process/action route identifiers. Unknown
-credentials have no trusted token ID. Credential headers, secret hashes, and
-secret response bodies are excluded.
+Management mutations require the configured application Origin and a CSRF token bound
+to the browser session or anonymous cookie. Management GET establishes that context.
+Cookies use HttpOnly, SameSite Lax, and Secure on HTTPS. Bearer credentials cannot
+manage tokens. See the [HTTP reference](api-tokens.md).
 
-Revocation blocks subsequent authentication. Accepted work and schedules retain
-their lifecycle and owner attribution; stop them through existing operations.
-To rotate, create a replacement, update the client, verify access, then revoke
-the old token.
+Structured `api_token_audit` records retain issuance, revocation, and final request
+outcomes with request ID, time, operation, actor/owner, known public token ID, status,
+and process/action route identifiers. Unknown credentials have no trusted token ID.
+Headers, secret hashes, and secret response bodies are excluded.
 
-### Migration and rollback
+Revocation blocks subsequent authentication; it does not cancel accepted work or
+schedules. Rotate by creating a replacement, updating and verifying the client, then
+revoking the old token.
 
-Startup backs up file-backed SQLite and applies the explicit
-`20260908_add_api_tokens` migration atomically. Existing sessions, processes, and
-encrypted credentials survive. To disable the feature, retain this binary and
-set `auth.api_tokens.enabled: false`. Listing and revocation remain available.
-The old binary rejects the new schema; reverting the binary is not a compatible
-rollback. Do not restore an old database to disable tokens, as that loses later
-process data.
+### Disable token access
+
+Set `auth.api_tokens.enabled: false` to disable issuance and bearer authentication
+while retaining listing and revocation. Keep a schema-compatible binary. Restoring
+an old database to disable tokens loses later process data. See the
+[backup procedure](operations.md).
 
 ## HTTPS repository authentication
 
-The credential provider authorizes an HTTPS origin; the server narrows it to the process project's exact repository URL. Userinfo, query strings, fragments and ambiguous paths are rejected. Fresh username/password material travels only in authenticated `worker.start`. The worker validates it against both the process declaration and authenticated project snapshots, then removes it from its retained runtime payload.
+The provider authorizes an HTTPS origin; the server narrows it to the exact project
+repository URL. Userinfo, query strings, fragments, and ambiguous paths are rejected.
+Fresh credentials travel only in authenticated `worker.start`, separately from
+non-secret snapshots. Bootstrap verifies process declarations and project snapshots.
 
-HTTPS credentials are materialized outside checkouts in a mode-0700 temporary directory. Secret files use 0600. An ephemeral Node Git credential helper answers only `get` requests for the exact HTTPS host, port and repository path. Trusted Git resets credential-helper configuration, enables path matching, disables redirects and disallows other transports. Tokens never appear in clone URLs, argv, Git configuration or ordinary tool environments. Worker cleanup removes the files and internal registrations, including partially materialized batches. As with SSH keys, this is credential routing within a semi-trusted worker, not isolation from code running as the same OS user.
+Credential files live outside checkouts in a 0700 temporary directory, with mode 0600.
+The Git helper answers only `get` for the exact host, port, and repository path.
+Trusted Git resets helper configuration, enables path matching, disables redirects,
+and disallows other transports. Tokens never appear in clone URLs, argv, Git config,
+or ordinary tool environments. Credentials are removed on worker shutdown or failed
+bootstrap. As with SSH, this is routing within a semi-trusted worker, not same-user isolation.
 
-### Docker registry credentials
+## Docker registry credentials
 
 [Operator-owned bindings](configuration.md#docker-registry-credentials) select
-credentials for Docker-enabled processes, never process parameters. Bindings control
-delivery, not registry-side account permissions.
+credentials for code-defined Docker-requiring processes, never from process params.
+Bindings govern delivery, not registry permissions. Each physical start resolves
+current credentials through authenticated IPC.
 
-Workers materialize Docker `config.json` in a private ephemeral directory (0700;
-file 0600), set `DOCKER_CONFIG`, and keep Buildx metadata under the tooling root.
-Shutdown and failed bootstrap remove credentials. Credential values and encoded
-auth are redacted from IPC diagnostics; credential payloads are removed from retained
-bootstrap state. Credential directories are outside process volumes and exports.
-See [worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).
+Workers use a private ephemeral `config.json` (directory 0700, file 0600) through
+`DOCKER_CONFIG`. Buildx metadata remains under the tooling root. Shutdown or failed
+bootstrap removes credentials. IPC diagnostics redact credential values and encoded
+auth. Credential payloads are removed from retained bootstrap state, and credential
+directories are outside process volumes and exports.
 
-`sanitizeWorkerSubprocessEnv(baseEnv?, overrides?)` is the supported environment
-boundary for ordinary worker subprocesses and pre-launch repository lookup. It
-filters after applying overrides, so overrides cannot restore stripped worker or
-provider credentials, Git configuration, SSH/askpass variables, or managed helper
-references. `repositoryGitSubprocessEnv(projectKey)` builds on this sanitizer and
-adds only the selected project's trusted Git credentials.
+## Subprocess environments
+
+`sanitizeWorkerSubprocessEnv(baseEnv?, overrides?)` filters ordinary worker subprocess
+and pre-launch repository lookup environments after applying overrides. Overrides
+cannot restore stripped worker/provider credentials, Git settings, SSH/askpass
+variables, or managed helpers. `repositoryGitSubprocessEnv(projectKey)` adds only
+the selected project's trusted Git credentials to that sanitized environment.

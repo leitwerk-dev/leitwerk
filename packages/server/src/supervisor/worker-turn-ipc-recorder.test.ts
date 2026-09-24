@@ -59,7 +59,7 @@ describe("worker turn IPC recording", () => {
 			message: "invalid plan outcome",
 		}));
 
-		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", outcome);
+		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", "lease_1", outcome);
 		await flushAsyncWork();
 
 		expect(harness.onTurnTerminalRecordingFailed).toHaveBeenCalledWith(
@@ -74,6 +74,7 @@ describe("worker turn IPC recording", () => {
 		expect(harness.recordWorkerFailure).toHaveBeenCalledWith(
 			"agt_1",
 			expect.objectContaining({
+				workerLeaseId: "lease_1",
 				errorClass: "infrastructure",
 				resultPiEntryId: "assistant_1",
 				recoveryContext: {
@@ -91,7 +92,7 @@ describe("worker turn IPC recording", () => {
 			throw new Error("database unavailable");
 		});
 
-		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", outcome);
+		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", "lease_1", outcome);
 		await flushAsyncWork();
 
 		expect(harness.onTurnTerminalRecordingFailed).toHaveBeenCalledWith(
@@ -117,7 +118,7 @@ describe("worker turn IPC recording", () => {
 			},
 		);
 
-		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", outcome);
+		harness.recorder.recordTurnOutcome("agt_1", "wkr_1", "lease_1", outcome);
 		await flushAsyncWork();
 
 		expect(harness.recordWorkerFailure).not.toHaveBeenCalled();

@@ -7,8 +7,9 @@ import {
 import { describe, expect, it } from "vitest";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { preflightScheduledActionRequest } from "./scheduled-action-preflight.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createTestProcessInstance } from "./test-helpers/process-model-fixtures.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
 function buildRegistry(
@@ -58,8 +59,8 @@ function buildRegistry(
 	});
 }
 
-function createPlanReviewProcess(deps = createTestDeps()) {
-	return deps.processes.create({
+function createPlanReviewProcess() {
+	return createTestProcessInstance({
 		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
@@ -69,7 +70,7 @@ function createPlanReviewProcess(deps = createTestDeps()) {
 
 describe("preflightScheduledActionRequest", () => {
 	it("uses the pure plan hook without running an execute hook", async () => {
-		const deps = createTestDeps();
+		const turnRecords = { getById: () => null };
 		let executed = 0;
 		const registry = buildRegistry({
 			id: "approve_plan",
@@ -88,18 +89,19 @@ describe("preflightScheduledActionRequest", () => {
 			processActionRegistry: registry,
 			process,
 			projects: [],
-			turnRecords: deps.turnRecords,
+			turnRecords,
 			actionId: "approve_plan",
 			actionInput: {},
 		});
 
-		expect(result.ok).toBe(true);
+		expect(result).toMatchObject({ ok: true, candidateSelectedTurnId: "implement" });
 		expect(executed).toBe(0);
 	});
 
 	it("validates required form fields before scheduling", async () => {
-		const deps = createTestDeps();
+		const turnRecords = { getById: () => null };
 		let executed = 0;
+		let planned = 0;
 		const registry = buildRegistry({
 			id: "request_revision",
 			label: "Request revision",
@@ -109,6 +111,7 @@ describe("preflightScheduledActionRequest", () => {
 				fields: [{ id: "message", label: "Message", kind: "textarea", required: true }],
 			},
 			plan: async (_input, ctx) => {
+				planned += 1;
 				await ctx.transition({ turnId: "implement", trigger: "plan_approved" });
 			},
 			execute: async () => {
@@ -122,7 +125,7 @@ describe("preflightScheduledActionRequest", () => {
 			processActionRegistry: registry,
 			process,
 			projects: [],
-			turnRecords: deps.turnRecords,
+			turnRecords,
 			actionId: "request_revision",
 			actionInput: {},
 		});
@@ -133,10 +136,11 @@ describe("preflightScheduledActionRequest", () => {
 			error: "Field 'message' is required",
 		});
 		expect(executed).toBe(0);
+		expect(planned).toBe(0);
 	});
 
 	it("rejects scheduling for actions without declarative scheduling support", async () => {
-		const deps = createTestDeps();
+		const turnRecords = { getById: () => null };
 		const registry = buildRegistry(
 			{
 				id: "approve_plan",
@@ -152,7 +156,7 @@ describe("preflightScheduledActionRequest", () => {
 			processActionRegistry: registry,
 			process,
 			projects: [],
-			turnRecords: deps.turnRecords,
+			turnRecords,
 			actionId: "approve_plan",
 			actionInput: {},
 		});
@@ -165,7 +169,7 @@ describe("preflightScheduledActionRequest", () => {
 	});
 
 	it("rejects schedulable actions that do not declare a pure plan hook", async () => {
-		const deps = createTestDeps();
+		const turnRecords = { getById: () => null };
 		const registry = buildRegistry({
 			id: "approve_plan",
 			label: "Approve plan",
@@ -179,7 +183,7 @@ describe("preflightScheduledActionRequest", () => {
 			processActionRegistry: registry,
 			process,
 			projects: [],
-			turnRecords: deps.turnRecords,
+			turnRecords,
 			actionId: "approve_plan",
 			actionInput: {},
 		});

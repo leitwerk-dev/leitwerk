@@ -42,13 +42,23 @@ it("captures a selected deployment without local Git and rejects a different ima
 	expect(result).toMatchObject({
 		namespace: "custom-namespace",
 		deployment: "custom-server",
-		annotations: { "leitwerk.dev/git-sha": "example-sha" },
+		deploymentUid: "deployment-uid",
+		serverImages: [{ name: "server", image: "example/server@sha256:abcd" }],
 		serverImageIds: [
 			{ pod: "custom-pod", podUid: "pod-uid", name: "server", imageId: "sha256:abcd" },
 		],
 	});
-	for (const line of readFileSync(calls, "utf8").trim().split("\n")) {
-		const args = JSON.parse(line);
+	expect(result).toHaveProperty("annotations", { "leitwerk.dev/git-sha": "example-sha" });
+	const requests: string[][] = readFileSync(calls, "utf8")
+		.trim()
+		.split("\n")
+		.map((line) => JSON.parse(line));
+	expect(requests).toHaveLength(2);
+	const deploymentRequest = requests.find((args) => args.includes("deployment"));
+	expect(deploymentRequest?.[deploymentRequest.indexOf("deployment") + 1]).toBe("custom-server");
+	const podRequest = requests.find((args) => args.includes("pods"));
+	expect(podRequest?.[podRequest.indexOf("-l") + 1]).toBe("app=custom-server");
+	for (const args of requests) {
 		expect(args).toContain("get");
 		expect(args).toContain("custom-namespace");
 		expect(args).toContain("/selected/config");

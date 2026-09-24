@@ -1,16 +1,28 @@
 # Testing
 
+Choose validation by the change and the smallest test boundary that verifies its
+behavior. Tests own individual coverage cases; this page owns commands, boundaries,
+and harness contracts.
+
 ## Validation
 
-A change is complete when `npm run test:full` passes. This gate runs lint, build,
-typechecking, and tests, including browser tests. Focused runs help diagnose
-failures but do not replace the full gate.
+| Change | Completion check |
+| --- | --- |
+| Application code, shared contracts, dependencies, or application build/test/runtime configuration | `npm run test:full`. Focused runs do not replace it. |
+| Documentation only, including `AGENTS.md` | Review the diff and consistency; use the documentation checks below when applicable. |
+| Standalone helper outside application build/test/runtime paths | Syntax and focused smoke checks. |
+| Changes confined to `tools/api-explorer-prototype/` | `npm run check --prefix tools/api-explorer-prototype`, plus browser/visual checks for UI changes. |
+
+The full gate runs lint, build, typechecking, and tests, including browser tests.
+Required pre-merge CI checks still apply to every contribution. CI separately runs
+`npm run api:check`; the local full gate does not include it.
 
 ```sh
 npm run test:full
+npm run build && npm run api:check
 ```
 
-Always rebuild before running Vitest directly or through a focused test command:
+Always rebuild before running Vitest directly or through a focused command:
 
 ```sh
 npm run build
@@ -19,199 +31,188 @@ npm run test:integration
 npm run test:e2e
 ```
 
-If a failure points into `dist/`, rebuild before debugging the implementation.
-Never edit generated files by hand.
+If a failure points into `dist/`, rebuild before debugging logic. Never edit generated
+files. Concurrent validation needs separate checkouts or worktrees with independent
+dependency installations and build outputs.
 
-CI runs `npm run api:check` separately after the full gate; local `test:full`
-does not include it. To check locally, run `npm run build && npm run api:check`.
-It checks release tags and signature dependencies and verifies that public and
-internal declarations survive the build.
-
-### Harness lifecycle compatibility
-
-For the next minor release, `createIntegrationHarness()` starts the full `AppContext`
-lifecycle by default whenever it binds a listener. Its returned address is applied before
-reconciliation for ephemeral unauthenticated loopback fixtures.
-Use `await harness.close()` for cleanup. Caller-owned temporary
-directories and compositions still belong in `finally` blocks, including startup failures.
-
-| Use | Options / behavior |
-|---|---|
-| Normal integration or UI fixture | Default: bind, reconcile, start services, become ready. |
-| Controlled restart or reconciliation test | `createIntegrationHarness({ listen: false, ... })`: prepare state, then call `ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true })`. The harness address becomes available after startup. |
-| Bind-only fixture | `backgroundServices: false`: raw listener, no reconciliation or background services. Close and recreate the context to use full startup. |
-| Injection-only fixture with no listener requested | `createIntegrationHarness({ listen: false, ... })` stays unbound with no background startup. Start the listener before launching local workers. |
-| Browser fixture | Full lifecycle; preserve the configured UI origin. |
-| Deployment preflight | Raw Fastify listener only; assert readiness remains false; clean up with `ctx.close()`. |
-
-Lifecycle tests exercise real HTTP/WebSocket draining, concurrent startup/shutdown,
-startup and cleanup failures, database ownership, and durable state across recreation.
-
-### Browser layout and behavior
-
-To validate external packages, extensions, and test roots in a development
-composition:
+To validate an external workspace with core:
 
 ```sh
-npm run test:full -- --composition=../private/leitwerk.composition.yaml
+npm run test:full -- --composition=../my-extensions/leitwerk.composition.yaml
 ```
 
-See [Development Compositions](development-composition.md).
-
-Concurrent full validations require separate checkouts or worktrees, each with
-its own dependency installation. Do not share `node_modules` or rebuild outputs
-that another run is testing.
-
-The full gate reports phase durations, also available in the GitHub Actions job
-summary. Use these measurements when investigating validation performance.
+See [Development compositions](development-composition.md). The full gate reports
+phase durations and test summaries. It prints the log directory for detailed output
+and replays the failed phase's output on failure. See [CI](ci.md#validation) for test
+runtime warnings.
 
 ## Test boundaries
 
-Use the smallest test boundary that can verify the behavior:
+| Boundary | Use it for |
+| --- | --- |
+| Unit | Pure rules, reducers, graph validation, and codecs without servers or workers. |
+| Package integration | Package contracts across the runtime boundaries they require. |
+| Extension | Extension behavior and external-provider adapters. |
+| System (`tests/`) | Workflows spanning packages; import through package specifiers. |
+| Browser | Layout and behavior that require a browser engine. |
 
-- Unit tests exercise pure rules, reducers, graph validation, and codecs without
-  starting servers or workers.
-- Package integration tests exercise package contracts with the required runtime
-  boundaries. Use synthetic processes for core runtime behavior.
-- Extension tests own extension behavior and integrations with external providers.
-- System tests under `tests/` exercise workflows across packages. Import through
-  package specifiers, such as `@leitwerk-dev/domain`.
-- Browser tests verify behavior and layout that depend on a browser.
+Core packages must not import extensions, including in tests or type imports. Use
+synthetic processes for core behavior, `FakeLlmProvider` for model boundaries, and
+extension-owned provider fakes. Avoid broad mocks and assertions tied to internal
+call sequences or incidental prompt wording.
 
-Core packages must not import extensions, including in tests or type imports.
-Use `FakeLlmProvider` and extension-owned fakes at external boundaries instead of
-broad mocks. Assert observable behavior; avoid assertions tied to prompt wording
-or internal call sequences.
-
-Test schema migrations against file-backed storage. Verify that durable data
-survives migration and reopening. Use generated fixtures, never real provider or
-repository credentials.
+Test schema migrations against file-backed storage and reopen it to verify durable
+data survives. Use generated fixtures, never real provider or repository credentials.
 
 ## Extension testing
 
-Use `createExtensionTestHarness` from `@leitwerk-dev/test-support/process` to
-inspect process descriptions and evaluate behavior without persistence. Supply a
-process definition, params, optional state, projects, and named markdown products.
-Each evaluation starts from that fixture; effects do not carry into later calls.
+Choose between two harnesses:
 
-`describe()` returns detached descriptions. `resolveLaunch()`, `prepareRelaunch()`,
-and `resolveWatcherLaunch()` evaluate launch behavior. `evaluateTurn()` runs
-preparation and the worker handler with scripted outcomes, recording prompts,
-tools, progress, completion, and parking. `evaluateAction()` and
-`evaluateOutcome()` report effects requested by handlers. Declarative transitions
-remain available through `describe()`; evaluating an outcome does not persist or
-apply them. The enclosing harness owns extension registration and lifecycle hooks
-and provides `callTool()`, `emit()`, and `close()`. `describeTools()` returns
-tool metadata; `writeReceipts()` returns recorded external writes, including
-writes preceding a failed invocation. Reuse a tool fixture's `invocationId` to
-test retries. Provider project bindings belong in project fixture metadata.
-`listToolDestinations()`, `resolveToolDestination()`, and
-`validateToolDestination()` exercise registered ticket destinations.
+| Harness | Contract |
+| --- | --- |
+| `createExtensionTestHarness` from `@leitwerk-dev/test-support/process` | Evaluate definitions and handlers without persistence. Each evaluation starts from its supplied fixture; effects do not carry into later calls. |
+| `createExtensionIntegrationHarness` from `@leitwerk-dev/test-support/integration` | Execute durable server/worker behavior with registered extensions, fake provider adapters, and scripted model responses. |
 
-Use `createExtensionIntegrationHarness` from
-`@leitwerk-dev/test-support/integration` for durable server and worker behavior.
-Register extensions and provider adapters, configure model profiles, and supply
-model tool scripts. Scripts receive the rendered prompt, declared tool descriptions,
-working directory, inherited branch text, and an opaque branch identity.
-Execution is automatic by default. `polling: "manual"` disables scheduled provider
-polling while preserving extension lifecycle hooks; call an extension-owned
-polling adapter explicitly. Watcher configuration belongs in `watchers`; host
-Docker preflight can use the `hostDocker` boundary. With `execution: "manual"`,
-`runTurn()` releases exactly one selected worker turn and waits for its durable
-outcome or failure. This includes automatic turns. Worker acceptance and stale
-outcome correlation still run through the application.
+### Definition and handler behavior
 
-Process handles expose application actions, retry, instruction delivery, question
-answers, and approval responses. `snapshot()` returns detached readonly process data, execution records, inputs,
-interactions, receipts, semantic events, annotations, rendered leaf results, and
-the workspace path;
-`waitFor()` has a bounded timeout and includes the final observation on failure.
-`request()` supports HTTP status and response assertions without exposing the
-server context. `restart()` retains file-backed storage and existing process
-handles. Its optional `whileStopped` callback can change an external fixture before
-reopening, and `extensionConfig` can replace extension wiring. `processes()`
-observes processes created by watchers. Always await `close()` to release resources and remove harness files.
+Supply a process definition, params, optional state, projects, and named markdown
+products. Inspect detached descriptions and evaluate launch, action, outcome, or
+turn behavior through the harness. Handler evaluation reports requested effects;
+it does not commit transitions. Inspect declarative routes in `describe()`.
 
-Use `createProcessFixture`, `createProjectFixture`, `createQuestionFixture`, and
-`createQuestionRequestFixture` from `@leitwerk-dev/test-support/fixtures` for
-independent deterministic data. Definition-aware process fixtures validate params,
-state, and declared turns. Question resolutions determine status and timestamps.
-Fixtures accept business data, not worker leases or execution pointers.
+Tool tests can inspect metadata and external-write receipts, including writes before
+a failed invocation. Reuse `invocationId` to exercise retry identity. Provider bindings
+belong in project fixture metadata, not handwritten execution contexts. The enclosing
+harness owns registration and lifecycle; always await `close()`.
 
-`seedAcceptedTurn()` creates correlated accepted execution records. A running
-fixture must match the selected turn. A successful historical fixture preserves
-business position and returns a turn-result artifact reference. Both reject live
-execution conflicts. Use real execution when assertions depend on worker tree
-entries or runtime resource materialization.
+See the [process harness API](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/test-support/src/process.ts)
+for supported operations and result types.
+
+### Durable execution
+
+Integration model scripts receive the rendered prompt, declared tools, working
+directory, inherited branch text, and opaque branch identity. Execution is automatic
+by default. Use `execution: "manual"` when `runTurn()` should release exactly one
+selected turn and wait for its durable outcome or failure, including automatic turns.
+Acceptance and stale-outcome checks still run through the application.
+
+Use `polling: "manual"` to disable scheduled polling while retaining extension
+lifecycle hooks, then invoke the extension-owned polling adapter explicitly. Put
+watcher settings in `watchers`; use the `hostDocker` boundary for host preflight.
+
+Process handles expose application actions and detached readonly snapshots.
+`waitFor()` is bounded and reports the final observation on timeout. `restart()`
+retains file-backed storage and existing process handles; its `whileStopped` callback
+can change an external fixture, and `extensionConfig` can replace wiring.
+`request()` exercises HTTP without exposing server internals. Await `close()` before
+releasing caller-owned fixtures.
+
+See the [integration harness API](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/test-support/src/integration.ts)
+for options and observations. Use fixture builders from `@leitwerk-dev/test-support/fixtures`
+for independent business data. Use real execution when checking worker tree entries
+or resource materialization; seeding accepted records is not execution.
+
+### Harness lifecycle
+
+`createIntegrationHarness()` starts the full `AppContext` lifecycle when binding.
+It applies an ephemeral loopback address before reconciliation for unauthenticated
+fixtures. Browser fixtures retain their configured UI origin.
+
+| Fixture | Setup |
+| --- | --- |
+| Normal integration/UI | Default: bind, reconcile, start services, become ready. |
+| Controlled startup/reconciliation | `listen: false`, prepare state, then call `ctx.listen(...)`. |
+| Bind-only | `backgroundServices: false`; readiness remains false. Recreate for full startup. |
+| Injection-only | `listen: false`; start a listener before launching local workers. |
+| Deployment preflight | Raw Fastify listener, no background services; readiness stays false. |
+
+Always await `close()` and release caller-owned directories/compositions in `finally`,
+including startup failure. See [AppContext](server-worker-lifecycle.md#appcontext-lifecycle)
+for listener options, ownership, concurrency, and failure semantics.
 
 ## Browser testing
 
-Install browser engines once:
+Install engines once, then build before running:
 
 ```sh
 npx playwright install chromium firefox webkit
-```
-
-On Linux, add `--with-deps` to install required system libraries. Rebuild before
-running the browser suite:
-
-```sh
 npm run build
 npm run test:browser
 ```
 
-The full gate runs Chromium, Firefox, and WebKit. To select one engine for a
-focused run, including tests from the active composition:
+On Linux, add `--with-deps` to browser installation for system libraries. The full gate
+runs all three engines concurrently, with two isolated shards per engine on hosts
+with at least six available CPUs and one shard per engine on smaller hosts. Layout
+checks run with the other tests in each engine. After building, a focused run may
+select one:
 
 ```sh
 LEITWERK_BROWSER_ENGINE=firefox npx playwright test
 ```
 
-Firefox is the visual reference. Compare layouts at matching viewport sizes.
-WebKit exercises Safari's rendering engine; screenshots do not cover native
-browser chrome or operating-system menus. Playwright does not support Firefox
-mobile emulation or wheel input in mobile WebKit.
+Firefox is the visual reference; compare identical viewport sizes. WebKit covers
+Safari's rendering engine, not native browser chrome or OS menus. Playwright does
+not support Firefox mobile emulation or wheel input in mobile WebKit.
 
-Each browser run starts its own UI server on a free port.
-`npm run test:browser` prints its artifact directory under `test-results/`.
-Concurrent runs must preserve each other's traces and retry artifacts.
-Vite uses a separate optimized-dependency cache for each browser engine, or the
-explicit `LEITWERK_BROWSER_VITE_CACHE_DIR` when one is supplied.
-
-For manual source UI verification, run `npm run dev:sandbox`. See the
+Each runner gets its own UI server, API port, and Vite cache. The browser command
+prints an artifact directory under `test-results/`, with separate outputs per shard.
+Preserve traces and retry artifacts from concurrent runs. For manual source UI work,
+use `npm run dev:sandbox`; see the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
+
+## Documentation
+
+Follow [WRITING.md](https://github.com/leitwerk-dev/leitwerk/blob/main/WRITING.md).
+Keep a contract in its owning page and link to it from walkthroughs. Optional
+extensions document their own behavior. Describe current contracts and operator
+tasks; do not turn reference pages into change logs.
+
+```sh
+python3 -m pip install -r requirements-docs.txt
+npm run docs:build
+npm run docs:serve
+```
+
+Check the rendered navigation, code, tables, and diagrams after structural changes.
+Strict site builds check local page links and anchors. They do not execute shell
+commands or establish that an installation works.
+
+The standalone example check compiles the tutorial, validates its graph and launcher,
+and checks local, Docker, and Kubernetes configuration with the current schema:
+
+```sh
+npm run build
+node --import tsx scripts/check-doc-examples.mjs
+```
+
+It does not call a model, start workers, or deploy containers. The Docker example
+also needs a focused `docker compose config --quiet` check using temporary placeholder
+secrets. A real deployment smoke check is separate and must use disposable storage.
 
 ## Failure diagnosis
 
-For intermittent failures, retain a separate log for each run. Compare the last
-started stage with subprocess exits and cleanup timestamps. A passing rerun does
-not rule out an ordering bug or resource leak.
-
-To collect repeated failures:
+Keep a separate log per run for intermittent failures. Compare the last started stage,
+subprocess exits, and shutdown timestamps. A passing rerun does not disprove an
+ordering bug or leak.
 
 ```sh
 bash scripts/collect-test-failures.sh --max-runs 50 --log-dir /tmp/leitwerk-failures
 ```
 
-The collector repeats the full gate until ten runs fail or the run limit is
-reached. Without `--max-runs`, it runs until ten failures are collected or it is
-interrupted. It saves complete logs, timeout excerpts, and `summary.tsv` in a
-fresh directory. Browser artifacts are not archived. Timeout classifications
-are triage hints, not diagnoses.
+The collector repeats the full gate until ten failures or the run limit. Without a
+limit it runs until ten failures or interruption. It writes full logs, excerpts, and
+`summary.tsv` to a fresh directory, but does not archive browser artifacts. Timeout
+classifications are hints, not diagnoses.
 
-Exit status 0 means ten failures were collected, not that validation passed.
-Status 1 means the run limit was reached first; status 2 indicates invalid
-arguments or directory setup failure. Interrupted runs stop the collector and
-do not count toward the failure total.
+Exit 0 means ten failures were collected, not validation passed. Exit 1 means the
+run limit came first; exit 2 means invalid arguments or setup failure. Interrupted
+runs do not count toward failures.
 
 ## Opt-in checks
 
-Live Docker-runtime checks require local or cluster infrastructure and run
-outside the full gate. See the
-[Docker-runtime guide](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md)
-for local Docker, Docker-host, Sysbox, and Kubernetes commands.
+Live Docker-runtime checks require infrastructure and run outside the full gate.
+See the [runtime guide](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md).
 
-Worker startup benchmarks against a real model or cluster are also opt-in.
-After building, run `npm run benchmark:worker-startup -- --help`. See the
-[benchmark command](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#worker-startup-benchmark)
-for configuration and reports.
+Worker startup benchmarks also require a real model or cluster. After building, run
+`npm run benchmark:worker-startup -- --help`; see the
+[benchmark reference](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#worker-startup-benchmark).

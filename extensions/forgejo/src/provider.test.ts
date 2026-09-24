@@ -9,7 +9,7 @@ import {
 	type ForgejoFeedbackSourceConfig,
 } from "./external.js";
 import { forgejoIssueWatcherSource } from "./issue-watcher.js";
-import { createForgejoProvider, matchesConfiguredRepository } from "./provider.js";
+import { createForgejoProvider } from "./provider.js";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -45,26 +45,12 @@ function providerFixture(input: {
 	} satisfies ForgejoIntegration;
 	return {
 		provider: createForgejoProvider(deps, integration),
+		client: input.client,
 		fire,
 		listBySource,
 		startWatcher,
 	};
 }
-
-it.each([
-	[["team/notebook"], [], "team/notebook", true],
-	[["team/notebook"], [], "team/service", false],
-	[[], ["team/notebook"], "team/notebook", false],
-	[[], ["team/notebook"], "team/service", true],
-	[["team/notebook"], ["team/notebook"], "team/notebook", false],
-] as const)("matches repository filters %j / %j for %s: %s", (include, exclude, full_name, expected) => {
-	expect(
-		matchesConfiguredRepository(
-			{ repositories: { include: [...include], exclude: [...exclude] } },
-			{ full_name } as never,
-		),
-	).toBe(expected);
-});
 
 describe("createForgejoProvider", () => {
 	const profile = { baseUrl: "https://git.example.test", token: "secret", botLogin: "leitwerk" };
@@ -115,22 +101,33 @@ describe("createForgejoProvider", () => {
 		},
 		launchModelConfig: { defaultModelProfileId: null, turnConfigs: {} },
 	};
-	const discoveryFixture = () =>
+	const discoveryFixture = (repositories = { include: [] as string[], exclude: [] as string[] }) =>
 		providerFixture({
 			armedByKind: {},
-			watchers: [watcher],
+			watchers: [{ ...watcher, config: { ...watcher.config, repositories } }],
 			client: {
-				listRepositories: vi.fn(async () => [repository]),
+				listRepositories: vi.fn(async () => [
+					repository,
+					...["blocked", "other"].map((name) => ({
+						...repository,
+						name,
+						full_name: `team/${name}`,
+					})),
+				]),
 				listOpenIssues: vi.fn(async () => [issue]),
 			},
 		});
 
-	it("delegates discovered work to the typed issue watcher's launch coordinator", async () => {
-		const { provider, listBySource, startWatcher } = discoveryFixture();
+	it.each([
+		{ include: ["team/service", "team/blocked"], exclude: ["team/blocked"] },
+		{ include: [], exclude: ["team/blocked", "team/other"] },
+	])("filters repositories before delegating discovered work: %j", async (repositories) => {
+		const { provider, client, listBySource, startWatcher } = discoveryFixture(repositories);
 
 		const result = await provider.poll();
 
 		expect(listBySource).toHaveBeenCalledWith(forgejoIssueWatcherSource);
+		expect(client.listOpenIssues).toHaveBeenCalledExactlyOnceWith("team", "service");
 		expect(startWatcher).toHaveBeenCalledWith(
 			expect.objectContaining({
 				processId: "forgejo_repo_change_process",
@@ -148,7 +145,7 @@ describe("createForgejoProvider", () => {
 	});
 
 	it("preserves process launch failure details in the poll result", async () => {
-		const { provider, startWatcher } = discoveryFixture();
+		const { provider, startWatcher } = discoveryFixture({ include: ["team/service"], exclude: [] });
 		startWatcher.mockResolvedValueOnce(watcherLaunchResult("Process startup failed."));
 
 		const result = await provider.poll();
@@ -165,29 +162,24 @@ describe("createForgejoProvider", () => {
 			armedByKind: { [FORGEJO_PR_FEEDBACK_KIND]: [armed] },
 			client: {
 				profile,
-				listPullRequestFeedback: vi.fn(async () => [
-					{
-						kind: "conversation",
-						id: 11,
-						body: "bot",
-						author: "leitwerk",
-						createdAt: "2026-08-10T12:01:00Z",
-					},
-					{
-						kind: "review",
-						id: 21,
-						body: "review",
-						author: "alice",
-						createdAt: "2026-08-10T12:02:00Z",
-					},
-					{
-						kind: "inline",
-						id: 32,
-						body: "inline",
-						author: "bob",
-						createdAt: "2026-08-10T12:03:00Z",
-					},
-				]),
+				listPullRequestFeedback: vi.fn(async () =>
+					(
+						[
+							["conversation", 10, "alice", "2026-08-10T12:00:00Z"],
+							["review", 20, "alice", "2026-08-10T12:00:00Z"],
+							["inline", 30, "alice", "2026-08-10T12:00:00Z"],
+							["conversation", 11, "leitwerk", "2026-08-10T12:01:00Z"],
+							["review", 21, "alice", "2026-08-10T12:02:00Z"],
+							["inline", 32, "bob", "2026-08-10T12:03:00Z"],
+						] as const
+					).map(([kind, id, author, createdAt]) => ({
+						kind,
+						id,
+						author,
+						createdAt,
+						body: "feedback",
+					})),
+				),
 			},
 		});
 

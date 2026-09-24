@@ -187,6 +187,10 @@ describe("DockerWorkerRunner.start", () => {
 			expect(record?.spec.labels["leitwerk.dev/instance-id"]).toBe("proc-1");
 			expect(record?.spec.labels["leitwerk.dev/server-epoch"]).toBe("epoch-1");
 			expect(record?.spec.privileged).toBe(false);
+			expect(record?.spec.runtime).toBeUndefined();
+			expect(record?.spec.env.map((entry) => entry.split("=", 1)[0])).not.toContain(
+				"LEITWERK_PRIVATE_DOCKER",
+			);
 			expect(unit.replacementHandoff).toBe("stop-before-replacement");
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
@@ -245,20 +249,6 @@ describe("DockerWorkerRunner.start", () => {
 			await expect(
 				runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1", docker: true }, vol)),
 			).rejects.toThrow(/docker.private_daemon is not configured/);
-		} finally {
-			rmSync(hostRoot, { recursive: true, force: true });
-		}
-	});
-
-	it("leaves an ordinary worker without daemon mode or runtime overrides", async () => {
-		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
-		try {
-			const { engine, runner, volume } = bindRunner(hostRoot);
-			const vol = await volume.ensure("proc-1");
-			const unit = await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
-			const record = engine.containers.get(unit.unitId);
-			expect(record?.spec.privileged).toBe(false);
-			expect(record?.spec.runtime).toBeUndefined();
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
@@ -349,7 +339,7 @@ describe("DockerWorkerRunner.stop", () => {
 });
 
 describe("DockerWorkerRunner.list (adoption scan)", () => {
-	it("returns descriptors for managed running containers", async () => {
+	it("returns only managed running containers without removing discovered units", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
 			const { engine, runner, volume } = bindRunner(hostRoot);
@@ -361,36 +351,27 @@ describe("DockerWorkerRunner.list (adoption scan)", () => {
 				),
 			);
 			const volB = await volume.ensure("proc-stale");
-			await runner.start(
+			const stale = await runner.start(
 				startInput(
 					{ instanceId: "proc-stale", workerId: "wkr-stale", serverEpoch: "epoch-1" },
 					volB,
 				),
 			);
 
-			const all = await runner.list();
-			expect(all.map((d) => d.unitId)).toContain(current.unitId);
-			expect(all).toHaveLength(2);
-			expect(engine.containers.size).toBe(2);
-		} finally {
-			rmSync(hostRoot, { recursive: true, force: true });
-		}
-	});
-
-	it("ignores unmanaged containers discovered on the daemon", async () => {
-		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
-		try {
-			const { engine, runner, volume } = bindRunner(hostRoot);
-			const vol = await volume.ensure("proc-1");
-			await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
 			engine.seedContainer({
 				id: "unrelated",
 				labels: { "com.example/role": "db" },
 				running: true,
 			});
-
-			const all = await runner.list();
-			expect(all.every((d) => d.instanceId === "proc-1")).toBe(true);
+			expect(
+				(await runner.list())
+					.sort((a, b) => a.workerId.localeCompare(b.workerId))
+					.map((unit) => [unit.unitId, unit.instanceId, unit.workerId, unit.observedState]),
+			).toEqual([
+				[current.unitId, "proc-current", "wkr-current", "running"],
+				[stale.unitId, "proc-stale", "wkr-stale", "running"],
+			]);
+			expect(engine.removeCalls).toEqual([]);
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}

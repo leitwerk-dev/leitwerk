@@ -34,9 +34,9 @@ describe("process graph product validation", () => {
 			},
 		});
 
-		expect(validateProcessGraphProducts(toProcessGraphView(process))).toContain(
-			"Turn 'consumer' consumes product 'message' that is never published by this process",
-		);
+		expect(validateProcessGraphProducts(toProcessGraphView(process))).toEqual([
+			expect.stringMatching(/'consumer'.*'message'.*never published/),
+		]);
 	});
 
 	it("treats automatic outcome-level product publication as a graph publisher", () => {

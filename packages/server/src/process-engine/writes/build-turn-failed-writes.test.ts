@@ -1,6 +1,6 @@
 import { createGenericFailedTurnRecoveryContext } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { buildTurnFailedWrites } from "./build-turn-failed-writes.js";
 
 const genericRecoveryContext = createGenericFailedTurnRecoveryContext();
@@ -59,6 +59,7 @@ describe("buildTurnFailedWrites", () => {
 				},
 			},
 		]);
+		expect(planned.processPatch).not.toHaveProperty("selectedTurnId");
 		expect(planned.processPatch).toMatchObject({
 			lifecycleStatus: "error",
 			metadata: {

@@ -13,7 +13,7 @@ class FakeExportHelper implements ExportHelperUnit {
 	removeCalls = 0;
 	removed = false;
 	failures = 0;
-	removalGate: Promise<void> | undefined;
+	removalGate: ReturnType<typeof Promise.withResolvers<void>> | undefined;
 
 	wait() {
 		return this.exit.promise;
@@ -21,7 +21,7 @@ class FakeExportHelper implements ExportHelperUnit {
 
 	async remove(): Promise<void> {
 		this.removeCalls += 1;
-		await this.removalGate;
+		await this.removalGate?.promise;
 		if (this.failures > 0) {
 			this.failures -= 1;
 			throw new Error("Temporary runner API failure");
@@ -31,8 +31,14 @@ class FakeExportHelper implements ExportHelperUnit {
 	}
 }
 
-afterEach(() => {
-	vi.useRealTimers();
+let cleanup: (() => Promise<void>) | undefined;
+afterEach(async () => {
+	try {
+		await cleanup?.();
+	} finally {
+		cleanup = undefined;
+		vi.useRealTimers();
+	}
 });
 
 async function fixture(helper: FakeExportHelper) {
@@ -61,6 +67,14 @@ async function fixture(helper: FakeExportHelper) {
 		async reconcileHelpers() {},
 	});
 	const controller = new AbortController();
+	cleanup = async () => {
+		helper.removalGate?.resolve();
+		helper.exit.resolve({ exitCode: 0 });
+		controller.abort();
+		upload.destroy();
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.runOnlyPendingTimersAsync();
+	};
 	const prepared = await exporter.prepare({
 		instanceId: manifest.instanceId,
 		manifest,
@@ -101,8 +115,7 @@ describe("export helper cleanup", () => {
 	it("shares in-flight removal across cancellation, stream closure, and helper exit", async () => {
 		vi.useFakeTimers();
 		const helper = new FakeExportHelper();
-		const gate = Promise.withResolvers<void>();
-		helper.removalGate = gate.promise;
+		helper.removalGate = Promise.withResolvers<void>();
 		const { controller } = await fixture(helper);
 		controller.abort();
 		helper.exit.resolve({ exitCode: 1 });
@@ -110,7 +123,7 @@ describe("export helper cleanup", () => {
 		expect(helper.removeCalls).toBe(1);
 		expect(helper.removed).toBe(false);
 
-		gate.resolve();
+		helper.removalGate.resolve();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(helper.removeCalls).toBe(1);
 		expect(helper.removed).toBe(true);

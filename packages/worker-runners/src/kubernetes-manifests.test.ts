@@ -108,8 +108,8 @@ describe("Kubernetes manifest builders", () => {
 			"leitwerk.dev/component": "server-ca",
 			"leitwerk.dev/instance-id": "PROC_1",
 		});
-		expect(manifest.data[KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY]).toContain(
-			"BEGIN CERTIFICATE",
+		expect(manifest.data[KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY]).toBe(
+			"-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n",
 		);
 	});
 

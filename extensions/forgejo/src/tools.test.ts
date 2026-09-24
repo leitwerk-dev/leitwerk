@@ -11,7 +11,7 @@ import { registerForgejoTools } from "./tools.js";
 async function setup(client: Record<string, unknown>, enabled = true) {
 	const integration = {
 		profiles: () => ["primary"],
-		client: () => client as unknown as ForgejoClient,
+		client: vi.fn((_profile: string) => client as unknown as ForgejoClient),
 	} satisfies ForgejoIntegration;
 	const projects = {
 		update: vi.fn((_id: string, input: Record<string, unknown>) => ({ id: "project-1", ...input })),
@@ -32,7 +32,7 @@ async function setup(client: Record<string, unknown>, enabled = true) {
 		],
 	});
 	onTestFinished(() => test.close());
-	return { test, projects };
+	return { test, projects, selectClient: integration.client };
 }
 
 function fixture(destination: Record<string, unknown>): ExtensionToolFixture {
@@ -89,7 +89,7 @@ describe("Forgejo server tools", () => {
 			created = true;
 			return payload ? remote : "result";
 		});
-		const { test } = await setup({
+		const { test, selectClient } = await setup({
 			listIssueComments: async () => (created ? [remote] : []),
 			getIssue: async () => remote,
 			getPullRequest: async () => remote,
@@ -111,8 +111,15 @@ describe("Forgejo server tools", () => {
 			numberName,
 			...Object.keys(payload ?? {}),
 		]);
-		const args = { [numberName]: 7, ...payload };
+		const args = {
+			[numberName]: 7,
+			...payload,
+			owner: "other",
+			repo: "elsewhere",
+			profile: "foreign",
+		};
 		const result = await test.callTool(name, args, ctx);
+		expect(selectClient).toHaveBeenCalledWith("primary");
 		expect(result).toEqual(payload ? ("patch" in payload ? { ok: true } : remote) : "result");
 		expect(read).toHaveBeenCalledWith(
 			"team",

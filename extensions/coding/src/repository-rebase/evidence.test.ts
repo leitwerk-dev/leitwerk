@@ -35,7 +35,7 @@ registerHooks({ resolve(specifier, context, next) {
  if (/child_process|git-binary|\\/git\\.|\\/prompt\\./.test(specifier)) throw new Error('Unexpected execution dependency: ' + specifier);
  return next(specifier, context);
 }});
-const root = await import('@leitwerk-dev/repository-rebase');
+const root = await import('@leitwerk-dev/coding/repository-rebase');
 if (root.prepareRebase || root.rebasePrompt || !root.validateConflict) throw new Error('Invalid evidence entrypoint');`;
 	expect(() =>
 		execFileSync(process.execPath, ["--input-type=module", "-e", script], {

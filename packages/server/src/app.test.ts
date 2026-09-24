@@ -193,6 +193,7 @@ describe("createAppContext", () => {
 			ctx.projectMutations.update(project.id, { externalId: "43" });
 
 			const projectFrames = frames.filter((frame) => frame.type === "project.updated");
+			expect(projectFrames).toHaveLength(1);
 			expect(projectFrames.at(-1)).toMatchObject({
 				instanceId: process.id,
 				payload: {
@@ -246,11 +247,12 @@ describe("createAppContext", () => {
 			},
 		]);
 		ctx = await createLocalApp({ extensionCatalog });
+		let starting: ReturnType<typeof ctx.listen> | undefined;
 		try {
 			expect((await ctx.app.inject({ url: "/api/health" })).statusCode).toBe(200);
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 
-			const starting = ctx.listen();
+			starting = ctx.listen();
 			await Promise.resolve();
 			expect((await ctx.app.inject({ url: "/api/ready" })).statusCode).toBe(503);
 			releaseStart();
@@ -262,6 +264,7 @@ describe("createAppContext", () => {
 			expect(ctx.isReady()).toBe(false);
 		} finally {
 			releaseStart();
+			await starting;
 			await ctx.close();
 		}
 	});

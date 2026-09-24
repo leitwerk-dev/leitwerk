@@ -42,9 +42,16 @@ describe("createWorkerUnitReclaimer", () => {
 			.mockRejectedValueOnce(new Error("container removal failed"))
 			.mockResolvedValue(undefined);
 		const observedExit = vi.fn();
+		const retryEntered = Promise.withResolvers<void>();
+		const retry = Promise.withResolvers<void>();
 		const reclaimer = createWorkerUnitReclaimer({
 			runner: { stop },
-			retry: { initialDelayMs: 1, maxDelayMs: 1 },
+			retry: {
+				sleep: () => {
+					retryEntered.resolve();
+					return retry.promise;
+				},
+			},
 		});
 		const unit = workerUnit((listener) => {
 			exitListener = listener;
@@ -52,11 +59,16 @@ describe("createWorkerUnitReclaimer", () => {
 		reclaimer.observeExit(unit, observedExit);
 
 		exitListener?.({ exitCode: 1, signal: null, reason: "Failed" });
-		await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(1));
-		expect(observedExit).not.toHaveBeenCalled();
-
-		await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
-		expect(observedExit).toHaveBeenCalledWith({
+		try {
+			await retryEntered.promise;
+			expect(stop).toHaveBeenCalledExactlyOnceWith(unit, { graceMs: 0 });
+			expect(observedExit).not.toHaveBeenCalled();
+		} finally {
+			retry.resolve();
+			await vi.waitFor(() => expect(reclaimer.staleResourceBacklogCount()).toBe(0));
+		}
+		expect(stop).toHaveBeenCalledTimes(2);
+		expect(observedExit).toHaveBeenCalledExactlyOnceWith({
 			exitCode: 1,
 			signal: null,
 			reason: "Failed",
@@ -69,20 +81,25 @@ describe("createWorkerUnitReclaimer", () => {
 			.mockRejectedValueOnce(new Error("runtime unavailable"))
 			.mockResolvedValue(undefined);
 		const warn = vi.fn();
+		const retry = Promise.withResolvers<void>();
 		const reclaimer = createWorkerUnitReclaimer({
 			runner: { stop },
 			logger: { warn },
-			retry: { initialDelayMs: 1, maxDelayMs: 1 },
+			retry: { sleep: () => retry.promise },
 		});
 		const unit = workerUnit(() => {});
 
-		await reclaimer.reclaim(unit, "startup_stale");
-		expect(reclaimer.staleResourceBacklogCount()).toBe(1);
-		expect(() => reclaimer.assertProcessReclaimed("proc-1")).toThrow("still being removed");
-		expect(() => reclaimer.assertProcessReclaimed("proc-2")).not.toThrow();
-		await vi.waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
+		try {
+			await reclaimer.reclaim(unit, "startup_stale");
+			expect(reclaimer.staleResourceBacklogCount()).toBe(1);
+			expect(() => reclaimer.assertProcessReclaimed("proc-1")).toThrow("still being removed");
+			expect(() => reclaimer.assertProcessReclaimed("proc-2")).not.toThrow();
+		} finally {
+			retry.resolve();
+			await vi.waitFor(() => expect(reclaimer.staleResourceBacklogCount()).toBe(0));
+		}
+		expect(stop).toHaveBeenCalledTimes(2);
 
-		expect(reclaimer.staleResourceBacklogCount()).toBe(0);
 		expect(() => reclaimer.assertProcessReclaimed("proc-1")).not.toThrow();
 		expect(warn).toHaveBeenCalledWith(
 			expect.objectContaining({ staleResourceBacklogCount: 1 }),

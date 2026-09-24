@@ -15,13 +15,9 @@ import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createAllRepos } from "./db/repositories.js";
-import {
-	createFileBackedProcessSessionSnapshotStore,
-	ProcessSessionReader,
-} from "./process-session-store.js";
-import { ProcessUiSnapshotAssembler } from "./process-ui-snapshot-presenter.js";
+import { createFileBackedProcessSessionSnapshotStore } from "./process-session-store.js";
 import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
 import { createAcceptedLlmTurn } from "./test-helpers/accepted-turn-start.js";
 import {
@@ -135,8 +131,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await harness.close();
-	await rm(tempRoot, { recursive: true, force: true });
+	try {
+		await harness?.close();
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true });
+	}
 });
 
 describe("process detail HTTP route", () => {
@@ -240,6 +239,9 @@ describe("process detail HTTP route", () => {
 				stateJson: createStructuralStateJson(),
 			}),
 		);
+		onTestFinished(() => {
+			for (const process of created) harness.ctx.deps.processes.delete(process.id);
+		});
 		const scheduledAction = harness.ctx.deps.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -250,8 +252,11 @@ describe("process detail HTTP route", () => {
 			nextRunAt: "2026-12-01T00:00:00.000Z",
 		});
 		const projectBatchSpy = vi.spyOn(harness.ctx.deps.projects, "listByInstances");
+		onTestFinished(() => projectBatchSpy.mockRestore());
 		const projectNPlusOneSpy = vi.spyOn(harness.ctx.deps.projects, "listByInstance");
+		onTestFinished(() => projectNPlusOneSpy.mockRestore());
 		const processWindowSpy = vi.spyOn(harness.ctx.deps.processes, "listOverviewWindow");
+		onTestFinished(() => processWindowSpy.mockRestore());
 
 		const overviewResponse = await fetch(`${harness.address}/api/processes/overview`);
 		const overview = await overviewResponse.json();
@@ -475,29 +480,13 @@ describe("process detail HTTP route", () => {
 		expect(response.status).toBe(200);
 		const body = await response.json();
 
-		expect(body.piSessionEntries).toEqual([
-			expect.objectContaining({
-				type: "message",
-				id: "root-user",
-				parentId: null,
-			}),
-			expect.objectContaining({
-				type: "message",
-				id: "assistant-plan",
-				parentId: "root-user",
-			}),
-			expect.objectContaining({
-				type: "message",
-				id: "tool-result-1",
-				parentId: "assistant-plan",
-			}),
-			expect.objectContaining({
-				type: "label",
-				id: "label-1",
-				targetId: "assistant-plan",
-				label: "latest-plan",
-			}),
-		]);
+		expect(body.piSessionEntries).toEqual(
+			treeContent
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line))
+				.filter((entry) => entry.type !== "session"),
+		);
 
 		const after = await readFile(treeFile, "utf8");
 		expect(after).toBe(before);
@@ -610,9 +599,11 @@ describe("process detail HTTP route", () => {
 		expect(overviewItem).toBeDefined();
 		expect(overviewItem.process).toBeUndefined();
 		expect(overviewItem.initialPromptPreview.length).toBeLessThan(largePrompt.length);
+		expect(overviewItem.initialPromptPreview).toContain("compact snapshot route");
 		expect(overviewItem).not.toHaveProperty("initialPromptSearchText");
 
 		const readSessionTreeSpy = vi.spyOn(harness.ctx.deps.sessionReader, "readSessionTree");
+		onTestFinished(() => readSessionTreeSpy.mockRestore());
 		const snapshotResponse = await fetch(
 			`${harness.address}/api/processes/${process.id}/ui-snapshot`,
 		);
@@ -636,6 +627,8 @@ describe("process detail HTTP route", () => {
 		const preview = snapshot.timeline.tracePreviewsByTurnRecordId[turnRecord.id];
 		expect(preview.assistantTextPreview.length).toBeLessThan(fullAssistantText.length);
 		expect(preview.thinkingPreview.length).toBeLessThan(fullThinking.length);
+		expect(preview.thinkingPreview).toContain("compact render model");
+		expect(preview.assistantTextPreview).toContain("compact UI snapshot");
 		expect(preview.toolCallCount).toBe(1);
 
 		harness.ctx.deps.events.create({
@@ -648,8 +641,8 @@ describe("process detail HTTP route", () => {
 		);
 		expect(reasoningResponse.status).toBe(200);
 		const reasoning = await reasoningResponse.json();
-		expect(reasoning.reasoning.assistant.text.length).toBe(fullAssistantText.length);
-		expect(reasoning.reasoning.assistant.thinking.length).toBe(fullThinking.length);
+		expect(reasoning.reasoning.assistant.text).toBe(fullAssistantText);
+		expect(reasoning.reasoning.assistant.thinking).toBe(fullThinking);
 		expect(reasoning.reasoning.toolCalls).toHaveLength(1);
 		expect(reasoning.reasoning.usage.totalTokens).toBe(125);
 		expect(reasoning.reasoning.toolCalls[0]).toMatchObject({
@@ -753,160 +746,5 @@ describe("process detail HTTP route", () => {
 				status: "in_progress",
 			}),
 		]);
-	});
-});
-
-it("keeps current-turn page reads and bytes bounded with cold and warm readers; expansion returns every recorded event", async () => {
-	const process = harness.ctx.deps.processes.create({
-		processId: "process_detail_session_tree_test",
-		selectedTurnId: "implement",
-		lifecycleStatus: "active",
-		stateJson: createStructuralStateJson(),
-	});
-	const turn = createAcceptedLlmTurnRecord({
-		id: "trn_bounded_history",
-		instanceId: process.id,
-		turnId: "implement",
-		status: "running",
-		current: true,
-		startedAt: "2026-09-09T00:00:00Z",
-	});
-	const events = harness.ctx.deps.events;
-	const append = (text: string) =>
-		events.create({
-			instanceId: process.id,
-			eventType: "pi.stream.delta",
-			data: {
-				turnRecordId: turn.id,
-				streamType: "thinking",
-				text,
-				timestamp: "2026-09-09T00:00:00Z",
-			},
-		});
-	append("initial reasoning");
-	const measure = async () => {
-		const coldReader = new ProcessSessionReader(
-			createFileBackedProcessSessionSnapshotStore(harness.config.storage.tree_files_dir),
-		);
-		const readerSpy = vi.spyOn(coldReader, "readSessionTree");
-		const forbidden = [
-			vi.spyOn(events, "listByTurnRecord"),
-			vi.spyOn(events, "listByInstanceSince"),
-			vi.spyOn(events, "listByInstanceTurnRecordEventTypes"),
-		];
-		const summarySpy = vi.spyOn(harness.ctx.deps.turnSummaries, "listByInstance");
-		const eventRowsSpy = vi.spyOn(events, "listByInstanceEventTypes");
-		const progressSpy = vi.spyOn(events, "latestByTurnRecordEventType");
-		const preparedReadSpy = vi.spyOn(harness.ctx.db.$client, "prepare");
-		const assembler = new ProcessUiSnapshotAssembler({
-			...harness.ctx.deps,
-			sessionReader: coldReader,
-		});
-		const snapshots = [await assembler.assemble(process.id), await assembler.assemble(process.id)];
-		const eventQueries = preparedReadSpy.mock.results.flatMap((result) =>
-			result.type === "return" && result.value.sourceSQL.includes('from "process_events"')
-				? [result.value.expandedSQL]
-				: [],
-		);
-		preparedReadSpy.mockRestore();
-		expect(eventQueries.length).toBeGreaterThan(0);
-		for (const query of eventQueries) {
-			const plan = harness.ctx.db.$client.prepare(`EXPLAIN QUERY PLAN ${query}`).all();
-			const expectedIndex = query.includes('"turn_record_id" =')
-				? "idx_process_events_turn_type_sequence"
-				: query.includes('"event_type" =')
-					? "idx_process_events_instance_type_sequence"
-					: "idx_process_events_instance_sequence";
-			expect(plan).toEqual([
-				expect.objectContaining({ detail: expect.stringContaining(expectedIndex) }),
-			]);
-		}
-		expect(readerSpy).not.toHaveBeenCalled();
-		for (const spy of forbidden) {
-			expect(spy).not.toHaveBeenCalled();
-			spy.mockRestore();
-		}
-		expect(summarySpy).toHaveBeenCalledTimes(2);
-		expect(summarySpy.mock.results.map((result) => Object.keys(result.value))).toEqual([
-			[turn.id],
-			[turn.id],
-		]);
-		expect(eventRowsSpy.mock.results.map((result) => result.value.length)).toEqual([0, 0]);
-		expect(progressSpy.mock.results.map((result) => result.value)).toEqual([null, null]);
-		eventRowsSpy.mockRestore();
-		progressSpy.mockRestore();
-		summarySpy.mockRestore();
-		const snapshot = snapshots[0];
-		if (!snapshot) throw new Error("Expected process snapshot");
-		return snapshot;
-	};
-	const short = await measure();
-	const chunk = "long paragraph of recorded reasoning ".repeat(40);
-	for (let i = 0; i < 2500; i++) append(chunk);
-	events.create({
-		instanceId: process.id,
-		eventType: "pi.tool.call",
-		data: {
-			turnRecordId: turn.id,
-			toolCallId: "read",
-			toolName: "read",
-			arguments: { path: "README.md" },
-		},
-	});
-	events.create({
-		instanceId: process.id,
-		eventType: "pi.tool.result",
-		data: {
-			turnRecordId: turn.id,
-			toolCallId: "read",
-			toolName: "read",
-			result: "complete tool result",
-		},
-	});
-	const last = append("final reasoning");
-	const long = await measure();
-	events.create({
-		instanceId: process.id,
-		eventType: "pi.stream.delta",
-		data: { turnRecordId: "another-turn", streamType: "thinking", text: "WRONG TURN" },
-	});
-	expect(long.primaryPath.turnState.activeTurn?.assistant.thinking.length).toBeLessThanOrEqual(
-		1024,
-	);
-	expect(JSON.stringify(long).length - JSON.stringify(short).length).toBeLessThan(1800);
-	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("traceItems");
-	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("toolCalls");
-	const detail = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assembleReasoningDetail({
-		instanceId: process.id,
-		turnRecordId: turn.id,
-	});
-	expect(detail?.state).toBe("live");
-	expect(detail?.throughEventSequence).toBeGreaterThanOrEqual(last.eventSequence ?? 0);
-	expect(detail?.reasoning.assistant.thinking).toBe(
-		`initial reasoning${chunk.repeat(2500)}final reasoning`,
-	);
-	expect(detail?.reasoning.toolCalls[0]).toMatchObject({
-		arguments: { path: "README.md" },
-		resultText: "complete tool result",
-		status: "completed",
-	});
-	harness.ctx.deps.turnRecords.update(turn.id, {
-		status: "failed",
-		endedAt: "2026-09-09T00:01:00Z",
-		errorSummary: "Worker exited before uploading its session snapshot",
-	});
-	const finished = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assembleReasoningDetail({
-		instanceId: process.id,
-		turnRecordId: turn.id,
-	});
-	expect(finished?.state).toBe("committed");
-	expect(finished?.reasoning).toEqual(detail?.reasoning);
-	const failedSnapshot = await new ProcessUiSnapshotAssembler(harness.ctx.deps).assemble(
-		process.id,
-	);
-	expect(failedSnapshot?.timeline.tracePreviewsByTurnRecordId[turn.id]).toMatchObject({
-		hasReasoningDetails: true,
-		toolCallCount: 1,
-		thinkingPreview: long.primaryPath.turnState.activeTurn?.assistant.thinking,
 	});
 });

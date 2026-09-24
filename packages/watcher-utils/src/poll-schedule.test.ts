@@ -10,5 +10,6 @@ test("reserves caller keys before work, using injected time and duration fallbac
 	now = 1000;
 	expect(due("two", "1s")).toBe(true);
 	expect(due("one")).toBe(false);
-	expect(due("one", "30s", 30000)).toBe(true);
+	expect(due("one", "30s", 29_999)).toBe(false);
+	expect(due("one", "30s", 30_000)).toBe(true);
 });

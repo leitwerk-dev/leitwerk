@@ -1,41 +1,30 @@
 # Process SDK
 
-The **Process SDK** (`@leitwerk-dev/process-sdk`) is the TypeScript framework for building custom processes, turn graphs, launchers, and UI extensions in Leitwerk. This guide walks through packaging an extension, defining turn graphs with the `flow` builder, routing state with products, and exposing launchers to the operator dashboard.
+`@leitwerk-dev/process-sdk` defines processes, turns, launchers, and extension
+contracts. Start with [Write your first process](first-process.md) for a complete
+example. This page is the reference for authors; snippets illustrate individual
+APIs and assume the surrounding process, types, and adapters already exist.
 
 ## API compatibility
 
 Published declarations use `@public` for supported APIs and `@internal` for
-implementation APIs. Both remain importable, callable, and fully typed. These
-tags describe compatibility; they do not restrict access. Each exposed member
-has its own tag. A public interface, class, or capability does not make all of
-its members public. Re-exports retain the declaration's classification.
+implementation APIs. Both remain importable, callable, and fully typed. The tags
+state compatibility, not access restrictions. Each member has its own tag;
+a public interface does not make every member public. Re-exports retain the
+original classification.
 
 Breaking a public API requires release notes and a minor version bump during
-`0.x`, or a major bump from `1.0`. Removing a public API's tag is also a breaking
-change. Later disappearance of consumer usage does not withdraw this promise.
-Internal APIs can change without that compatibility promise.
-
-The initial classification uses actual code in the current `leitwerk-private`,
-`leitwerk-public`, and `leitwerk-rsnc` working trees: runtime code, tests, type
-references, supplied contracts, development scripts, and extension composition
-loading. Named supporting types are public where needed by public signatures.
-Documentation and Leitwerk's own calls do not independently establish support.
-Generated files, dependencies, and vendored core checkouts are excluded.
-
-For example, `ServerExtensionAPI.get`, `require`, `provide`, `tool`, and `onStop`
-are public; `onStart` is internal. `PiPromptOptions.tools` is public, while
-`shouldBlockToolCall`, `suspendPromptGuards`, and `terminalAcknowledgement` are
-internal. Forwarding an options object does not consume all its members.
+`0.x`, or a major bump from `1.0`. Removing its public tag also breaks that
+contract, even when current consumers no longer use it. Internal APIs have no
+such compatibility promise.
 
 Run `leitwerk-dev api:check --workspace PATH` from an installed
-`@leitwerk-dev/dev-tools` package to check an extension workspace. It verifies
-classification completeness, conflicting tags, and public signature
-dependencies. Internal API calls are allowed. The check needs no consumer
-checkout.
+`@leitwerk-dev/dev-tools` package to check classifications and public signature
+dependencies. Internal API calls are allowed. No consumer checkout is required.
 
-## Extension Package
+## Extension package
 
-Every extension is a TypeScript package that points to its source and build files in `package.json`:
+An extension package declares its development and built entry points:
 
 ```json
 {
@@ -49,94 +38,77 @@ Every extension is a TypeScript package that points to its source and build file
 }
 ```
 
-- **`source`:** Loaded directly during development (`npm run dev`) so you can edit TypeScript without re-building.
-- **`import`:** Loaded from `./dist` in production builds.
+Source development loads `source`; production loads `import`. Declare dependencies
+in the package and build the production entry before loading it. Add the package
+to `extension_loading.sources`; relative paths resolve from the configuration
+file's directory. See [Development compositions](development-composition.md) for
+independent workspaces and released-package development.
 
-Add your extension path to `leitwerk.yaml` under `extension_loading.sources` for Leitwerk to load it at startup.
+## Registering the extension (`src/index.ts`)
 
-## Extension Structure
-
-A typical extension directory is laid out as follows:
-
-```
-my-extension/
-├── package.json
-├── src/
-│   ├── index.ts          # Main extension entrypoint
-│   ├── my-process.ts     # Process definition and turn graph
-│   └── codecs.ts         # Params & State JSON codecs
-└── tsconfig.json
-```
-
-## Defining a Process (`src/my-process.ts`)
-
-Define your turn graph using the `flow` builder:
+Export a `LeitwerkExtensionModule`. Register definitions in `setupCatalog` and
+server-owned integrations in `setupServer`:
 
 ```ts
-// src/my-process.ts
-import { flow } from "@leitwerk-dev/process-sdk";
-import { paramsCodec, stateCodec } from "./codecs.js";
+import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import { myProcess } from "./my-process.js";
 
-const implement = flow
-  .llm<Params, State>("implement")
-  .description("Implement requested change")
-  .tools("read", "bash", "edit", "write")
-  .integrationTools("repository_get_change", "pipeline_get_step_logs")
-  .freshPrimary()
-  .buildPrompt((ctx) => `Implement this task:\n${ctx.params.prompt}`)
-  .publish("summary")
-  .to("review");
-
-export const myProcess = flow
-  .process<Params, State>("my_custom_process")
-  .displayName("My Custom Process")
-  .entry("implement")
-  .happyPath("implement")
-  .codecs({ params: paramsCodec, state: stateCodec })
-  .initialState(() => ({ summary: null }))
-  .runtime({ developmentTools: true, docker: true })
-  .use(flow.fragment<Params, State>("main").turn(implement))
-  .define();
+export default {
+  manifest: { id: "my-extension", version: "1.0.0" },
+  setupCatalog(api) {
+    api.registerProcess(myProcess);
+  },
+} satisfies LeitwerkExtensionModule;
 ```
 
-`.tools(...)` enables worker-local workspace primitives. `.integrationTools(...)`
-authorizes extension-defined, server-executed tools for every invocation of that turn.
-`.resolveIntegrationTools((params, state) => ...)` constrains them from validated durable
-process data at worker start. Extension setup
-registers those tools with `ServerExtensionAPI.tool(...)`; names must be lowercase
-snake case, globally unique, available at server startup, and distinct from Pi built-ins,
-framework tools, and the turn's outcome tools. `.runtime({ developmentTools: true })` opts the
-process into mise preparation. Mise reads stock repository configuration at each declared
-repository root before worker readiness and turn acceptance. The capability defaults to false;
-process definitions do not declare tool names or versions.
+Model provider sets resolve before server setup. Each provider parses only its
+owner-supplied configuration fragment. See [extension-defined providers](models.md#extension-defined-providers).
+Browser result renderers use a separate [UI manifest](extension-ui.md).
 
-`.runtime({ docker: true })` requires a Docker realization from the selected runner. The local
-runner requires `local_worker.allow_host_docker: true` and a successful `docker info` preflight.
-The Docker runner requires `docker.private_daemon.isolation`. Kubernetes requires a complete
-`kubernetes.docker` block and operator-installed runtime infrastructure. Launch rejects an
-unavailable requirement before creating durable process state.
+## Turn types
 
-Workers receive only public tool declarations
-and proxy calls over authenticated IPC. `execute(ctx, args)` receives `ctx.signal`; pass it
-to provider calls so stopping the turn cancels in-flight server work.
-`RepositoryIssue` and `RepositoryPullRequest` describe shared repository response fields; extensions may re-export them under provider-specific names or extend them for provider-specific fields.
-`IntegrationHttpClient` shares authenticated HTTP, JSON/204 handling, `writeJson(path, method, body, signal?)`, and array pagination; extensions supply headers, API prefixes, page sizes, and endpoint methods.
-`RepositoryHttpClient` adds common issue/comment and pull-request endpoints; extensions retain path encoding and provider-specific operations.
-`parseRepositoryPullRequestConfig`, `parseRepositoryFeedbackConfig`, and `parseRepositoryIssueCancelledConfig` parse shared polling fields, returning `null` for missing or wrongly typed required fields. They default polling to `30s`, feedback cursors to zero, and the quiet period to 120 seconds; extensions retain authorization and event policy.
+A process declares its graph in code. Configuration supplies runtime defaults;
+it does not define turns, transitions, actions, or completion policy.
 
-`repositoryFeedbackBatch(unseen, config, now)` returns feedback IDs, advanced cursors, and their merge key, or `null` while empty or within the quiet period. Callers filter authorization and unseen IDs first.
-`defineExternalActionSource<TConfig>(metadata)` creates a generic resolver-based source factory. Each call retains the metadata and resolver, creates an empty config, and sets `inputMode: "none"`.
-`createExternalSourcePollReporter(sources, result, { forwardGeneration: true })` includes nonempty arming generations in fired events. The default preserves generation-free delivery; freshness checks remain the caller's responsibility.
+| Builder | Execution |
+| --- | --- |
+| `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. `.forEach(...)` runs it sequentially for frozen items. |
+| `flow.automatic` | Runs deterministic TypeScript in a worker. Server operations require authorized integration tools. |
+| `flow.human` | Waits for an operator action or a declared external action. |
+| `flow.external` | Waits for a declared external source. |
 
-`parseRepositoryIssueWatcherConfig(raw, legacyType, distinctLabels?)` and `presentRepositoryIssueWatcherConfig` share issue watcher parsing and presentation. Parsing trims strings, validates positive durations and repository filters, and parses launch settings. Distinct trigger/done labels are opt-in; extensions keep their source IDs and event types. `matchesRepository(config, repository)` applies their include/exclude filters; exclusions win.
+Declare all route targets and product publishers in the same process definition.
+Use `.happyPath(...)` to identify its expected successful route for navigation;
+it does not override transitions. A process with multiple repositories still has
+one instance and one persisted execution tree.
 
-Use `structuralStateCodec` for state containing only semantic and product refs; it parses with
-`parseStructuralProcessState` and serializes unchanged. Use `emptyParamsCodec` for empty params.
+### Workspace tools and runtime requirements
+
+`.tools(...)` enables worker-local primitives. `.integrationTools(...)` authorizes
+server-executed tools. `.resolveIntegrationTools((params, state) => ...)` can
+constrain authorization using validated process data at worker start.
+See [Agent tools](agent-tools.md) for naming, cancellation, and replay rules.
+
+`.runtime({ developmentTools: true })` opts into mise preparation at each declared
+repository root before worker readiness and turn acceptance. It defaults to false.
+Processes do not declare tool versions; repository mise configuration does.
+See [workspace preparation](process-workspace.md#2-repository-management).
+
+`.runtime({ docker: true })` requires a Docker realization from the selected runner:
+
+| Runner | Requirement |
+| --- | --- |
+| Local | `local_worker.allow_host_docker: true` and a successful `docker info` preflight. |
+| Docker | `docker.private_daemon.isolation` set to the selected isolation mode. |
+| Kubernetes | Complete `kubernetes.docker` wiring and operator-installed runtime infrastructure. |
+
+Launch rejects unavailable requirements before creating a process. Kubernetes
+configuration does not install or verify the node runtime infrastructure.
 
 ### Process storage sizing
 
-An extension can derive new Kubernetes process-volume capacity from its own
-server configuration. Register a synchronous resolver with the flow builder:
+A process may derive new Kubernetes process-volume capacity from extension-owned
+server configuration:
 
 ```ts
 .resolveStorageSize(({ params, projects }) =>
@@ -144,77 +116,23 @@ server configuration. Register a synchronous resolver with the flow builder:
 )
 ```
 
-Here `serverConfiguration.storageSizeFor` is extension-owned code, not an SDK
-method. The same `resolveStorageSize` field is available on `defineProcess`.
-The resolver receives codec-validated process params and the instance's persisted
-projects. Return a positive Kubernetes quantity such as `128Mi`, `1Gi`, or `50Gi`,
-or `undefined` to use the global default. The returned size covers the whole process
-volume; core does not sum repository sizes or interpret extension settings.
+`serverConfiguration.storageSizeFor` is extension code, not an SDK method. The
+same `resolveStorageSize` field exists on `defineProcess`. It receives validated
+params and persisted projects. Return a positive Kubernetes quantity, such as
+`128Mi` or `1Gi`, or `undefined` for the global default. The size covers the whole
+process volume, not individual repositories.
 
-The server invokes the resolver before provisioning on Kubernetes worker starts,
-after extension server setup. Read validated server configuration through the
-extension's own closure. Keep the resolver side-effect free; it may run again on
-retry or replacement. Exceptions and invalid results fail startup. An explicit
-`process_configs.<processId>.storage_size` bypasses the resolver. Local and Docker
-runners never invoke it. Existing PVCs remain unchanged regardless of later results.
-See [storage configuration](configuration.md#per-process-storage-size).
-
-## Registering the Extension (`src/index.ts`)
-
-Export the extension entrypoint to register your process with Leitwerk:
-
-```ts
-// src/index.ts
-import { defineExtension } from "@leitwerk-dev/process-sdk";
-import { myProcess } from "./my-process.js";
-
-export default defineExtension({
-  manifest: {
-    id: "my-extension",
-    name: "My Custom Extension",
-    version: "1.0.0",
-  },
-  setup(api) {
-    api.process(myProcess);
-  },
-});
-```
-
-### Model provider sets
-
-An extension exposes all of its model providers through one owner-scoped resolver. It can return one fixed provider, as Codex Nifto does, or instantiate multiple providers from extension configuration, as the models extension does:
-
-```ts
-export default {
-  manifest,
-  modelProviders: defineModelProviders((rawConfig) => [
-    { definition: customModelProvider, rawConfig },
-  ]),
-};
-```
-
-Provider sets resolve before server setup. Each definition parses only its returned `rawConfig` fragment. Custom endpoints that use Pi's standard APIs contribute a credential-blind `models.json` document through `configuredPiProvider()`; current credentials are delivered separately through managed credential files.
-
-### Turn Types
-
-Every step in a process graph is a **Turn**:
-
-- **`flow.llm` (LLM Turn):** Optionally prepares deterministic inputs, then prompts the AI agent in a worker workspace with active tools (`read`, `bash`, `edit`, `write`). With `.forEach(...)`, it runs once per frozen item.
-- **`flow.automatic` (Worker Automatic Turn):** Runs deterministic TypeScript code inside worker workspace clones. Server-owned operations are available only through explicitly authorized integration tools.
-- **`flow.human` (Human Turn):** Pauses execution and waits for operator actions on the web dashboard.
+The resolver is synchronous and side-effect free. It runs before Kubernetes
+provisioning, after server setup, and may run again on replacement or retry.
+Exceptions and invalid results fail startup. An explicit
+`process_configs.<processId>.storage_size` bypasses it. Local and Docker runners
+never invoke it. Existing PVCs are not resized or recreated. See
+[storage selection](configuration.md#per-process-storage-size).
 
 ### LLM-turn preparation
 
-Server extensions use `commands.retryProcess(instanceId)` to recover the current failed
-startup or accepted turn. A preparation or bootstrap failure replaces the current start
-record without creating a turn attempt. The engine validates its identity and lifecycle
-under the process lock; a concurrent Stop or changed start rejects the stale retry.
-An accepted failed turn retains normal turn-retry behavior.
-
-Use `.prepare(...)` when deterministic mechanics exist only to supply one LLM turn. Preparation
-runs after turn-start acceptance and before Pi receives a prompt. It shares the turn's authorized
-integration tools, may publish a progress report, and returns bounded JSON data through
-`ctx.prepared`:
+Use `.prepare(...)` for deterministic work that exists only to supply one LLM
+turn. It runs after acceptance and before prompt evaluation:
 
 ```ts
 const analyze = flow
@@ -226,19 +144,23 @@ const analyze = flow
       title: "Analysis preparation",
       steps: [{ id: "download", label: "Download snapshot", status: "in_progress" }],
     });
-    return ctx.callIntegrationTool("download_snapshot", { processRef: ctx.params.processRef });
+    await ctx.callIntegrationTool("download_snapshot", { processRef: ctx.params.processRef });
+    return { instructions: "Inspect the downloaded snapshot." };
   })
-  .buildPrompt((ctx) => `Analyze ${ctx.prepared.snapshotDir}`)
+  .buildPrompt((ctx) => ctx.prepared.instructions)
   .publish("analysis")
   .to("analysis_decision");
 ```
 
-Preparation has no outcome or route. A preparation failure fails the owning LLM turn before Pi
-starts. Retry runs preparation again. A replacement worker and Continue reuse the durable
-checkpoint when the server received it; preparation must remain deterministic and external
-writes must remain idempotent. The result must be JSON-serializable and at most 64 KiB. Do not
-use preparation for an independently reviewable artifact, decision, wait, or business operation.
-Those remain turns.
+Preparation has no outcome or route. Its result must be non-secret,
+JSON-serializable, and at most 64 KiB. Failure fails the owning turn before the
+model is prompted. Retry runs preparation again. Continue and replacement workers
+reuse the checkpoint when one reached the server; otherwise preparation may run
+again. Keep preparation deterministic and external writes idempotent.
+
+Use a separate turn for an independently reviewable artifact, decision, wait, or
+business operation. See [acceptance and recovery](server-worker-lifecycle.md#5-start-acceptance-recovery-invariants)
+for the runtime contract.
 
 ### Mapped LLM turns
 
@@ -285,8 +207,8 @@ An item outcome declares parameters and `.yield(...)` only. It cannot route, cha
 process state, or publish a product. Definitions that declare these operations are
 invalid. `yield` runs on the server with the item and validated outcome parameters.
 Its value must pass `resultCodec`; a failure or a `SafeOutcomePlanningError` rejects
-the outcome without recording a result. Each item's result markdown comes from the outcome's reserved
-`markdown` argument.
+the outcome without recording a result. Each item's result markdown comes from the
+outcome's reserved `markdown` argument.
 
 After the last item, `collect` receives the results in item order and returns the
 new state. Then the collection route applies: `.to(turnId)`, `.complete()`,
@@ -298,254 +220,186 @@ are never re-run. Each item start resolves the model independently, so an unavai
 model parks the process at that item. Abort ends the run. Re-entering the turn after
 another route starts a new run with fresh items.
 
-### Ticket creation adapters
+## Passing data between turns (products)
 
-A ticket adapter registers a normal integration tool with
-`capability.kind: "ticket_creation"`. The capability also names the code-defined
-`processId` and `startTurnId` used for the derived process; core does not privilege a
-fixed process graph. The tool returns `{ externalId, url, result? }`, uses the execution
-context idempotency key for its external write, and reconciles ambiguous provider
-outcomes before retrying.
+A **product** is a named markdown result published by one turn and consumed by another.
 
-Adapters that can target more than one destination attach a destination
-provider to the capability. `list()` returns browser-safe destination summaries
-for the derived process. The worker receives those summaries as a server-added
-required `destinationId` tool argument and asks the operator when the target is
-ambiguous. Immediately before approval, `resolve()` converts the opaque choice
-into an immutable, JSON-serializable snapshot. The server passes that snapshot
-to the tool as `ctx.ticketDestination`; workers never receive adapter credentials.
-`validate()` remains available for compatible launches that already carry a
-snapshot. `parseJsonData(value, message?)` validates and detaches JSON data;
-it rejects cycles, non-finite numbers, non-plain objects and symbol-keyed objects.
+| Method | Contract |
+| --- | --- |
+| `.publish("plan")` | Replaces the named product when the turn completes. |
+| `.consume("plan")` | Requires the product before the turn runs; exposes it as `ctx.input.plan`. |
+| `.optionalConsume("plan")` | Uses the product when present. |
 
-```ts
-api.tool({
-  name: "tracker_create_ticket",
-  description: "Create a tracker ticket",
-  parameters: {
-    type: "object",
-    properties: { title: { type: "string" }, body: { type: "string" } },
-    required: ["title", "body"],
-  },
-  capability: {
-    kind: "ticket_creation",
-    displayName: "Tracker",
-    processId: "tracker_ticket_process",
-    startTurnId: "draft_ticket",
-    titlePath: "/title",
-    descriptionPath: "/body",
-    destinations: trackerDestinations,
-  },
-  async execute(ctx, args) {
-    // Validate ctx.ticketDestination, perform one durable external write,
-    // and return the standard receipt.
-  },
-});
-```
+Required and optional products both need a declared publisher. Definition and
+extension loading apply the same graph validation. LLM and automatic outcomes may
+publish markdown parameters. Publishing a product retains a reference to its
+source turn record; it does not copy an arbitrary mutable prompt context.
 
-Destination summaries may contain an opaque id, display name, group, and short
-description. Snapshot `data` is adapter-owned durable state. `agentContext` is
-untrusted text included in the ticket agent prompt and must not contain secrets.
+## Human review turns & actions
 
-## Passing Data Between Turns (Products)
-
-A **Product** is a named markdown artifact published by one turn and consumed by another:
+A human turn identifies its result with `.reviewProduct(...)` and declares actions:
 
 ```ts
-// Turn 1: Generates and publishes the "plan" product
-const generatePlan = flow
-  .llm<Params, State>("generate_plan")
-  .publish("plan")
-  .to("review_plan");
-
-// Turn 2: Consumes the "plan" product in its prompt context
-const implement = flow
-  .llm<Params, State>("implement")
-  .consume("plan")
-  .buildPrompt((ctx) => `Implement this plan:\n\n${ctx.input.plan}`)
-  .publish("summary")
-  .to("plan_decision");
-```
-
-- **`.publish("productName")`:** Replaces the named product in process state upon turn completion.
-- **`.consume("productName")`:** Requires the product to exist before the turn runs, making it accessible via `ctx.input[productName]`.
-- **`.optionalConsume("productName")`:** Consumes the product only if present.
-
-Flow definition and extension loading use the same graph product validation. Both required and optional products must have a declared publisher; LLM and automatic outcomes can publish markdown parameters.
-
-## Human Review Turns & Actions
-
-A `flow.human` turn pauses execution until an operator acts in the web UI. Review turns identify their artifact directly through `reviewProduct`; there is no separate review classification in process state.
-
-```ts
-const planDecision = flow
-  .human<Params, State>("plan_decision")
-  .description("Review implementation plan")
-  .reviewProduct("plan")
-  .action("approve", (action) => action.label("Approve Plan").to("implement"))
-  .action("request_revision", (action) =>
-    action
-      .label("Request Revision")
-      .form({
-        id: "revision_form",
-        title: "Revision Feedback",
-        fields: [
-          {
-            id: "message",
-            label: "Feedback Notes",
-            kind: "textarea",
-            primaryPrompt: true,
-            required: true,
-            publish: true,
-          },
-        ],
-      })
-      .to("generate_plan"),
+const decision = flow
+  .human<Params, State>("review")
+  .description("Review the draft")
+  .reviewProduct("draft")
+  .action("accept", (action) => action.label("Accept").complete())
+  .action("revise", (action) =>
+    action.label("Request revision").form({
+      id: "revision",
+      title: "Revision instructions",
+      fields: [{
+        id: "message", label: "Instructions", kind: "textarea",
+        primaryPrompt: true, required: true, publish: true,
+      }],
+    }).to("draft"),
   );
 ```
 
-## Process Launchers & Triggers
+There is no separate review classification in process state. Generic Retry and
+Continue are recovery operations, not process-defined actions. Server extensions
+use `commands.retryProcess(instanceId)` for the current failed startup or accepted
+turn; stale retries are rejected under the process lock.
 
-Every process requires a way to be launched (constructing its initial parameters and git repository context).
+## Process launchers & triggers
 
-### 1. Launchers (`api.launcher`)
+### Launchers
 
-A **Launcher** defines the canonical field schema and resolution logic for starting a process. Client interfaces—including the Web UI dashboard, extension-provided chat adapters, and CLI tools—read this schema to prompt operators for inputs:
+A process's `.launcher(...)` declares a UI card, input schema, and
+`ui.resolveLaunchConfig(input, context)`. A successful resolution returns
+`{ ok: true, launchConfig }`; validation returns `{ ok: false, errors }` with field
+errors. The launch configuration identifies the process, validated params, optional
+projects, and initial turn. See the [complete example](first-process.md).
 
-```ts
-// Registered inside setup(api) in src/index.ts
-api.launcher({
-  id: "my_process_launcher",
-  displayName: "Run Custom Task",
-  description: "Start a custom AI coding task on a local repo",
-  processId: "my_custom_process",
-  fields: [
-    { id: "prompt", label: "Task Prompt", kind: "textarea", required: true },
-    { id: "repoLocator", label: "Repository Path", kind: "text", required: true },
-  ],
-  resolveLaunchConfig: async (input) => ({
-    processId: "my_custom_process",
-    params: { prompt: input.fields.prompt },
-    projects: [
-      { key: "repo", repoLocator: input.fields.repoLocator, baseBranch: "main" },
-    ],
-  }),
-});
-```
+Launcher schemas also support trusted operator channels. A channel must use server
+launch admission; it must not invoke the raw process executor.
 
-### 2. Programmatic launcher admission
+### Programmatic launcher admission
 
-Trusted operator-channel extensions start processes through
-`deps.launchRuns.startProgrammatic(...)`. The operation accepts launcher input, optional model,
-skill, title, and bounded non-secret process metadata, plus a required caller idempotency key. The
-server creates the `LaunchRun`, repeats launcher resolution and preparation checks, prepares the
-launch plan, and commits through the shared pipeline. Extensions never call the raw process launch
-executor or supply a `launchRunId`.
+`deps.launchRuns.startProgrammatic(...)` accepts launcher input, optional model,
+skill, title, bounded non-secret process metadata, and a required caller idempotency
+key. The server resolves and checks the launcher again, prepares the launch plan,
+and commits through the shared pipeline. Callers do not choose a `launchRunId`.
 
-The call returns after process commit so the channel can report the process link. Worker startup
-remains asynchronous and is established only by lease, readiness, bootstrap, and accepted-turn
-evidence. A returned process remains authoritative even when the result also contains a follow-up
-error.
+The call returns after process commit. Worker startup remains asynchronous. A
+returned process stays authoritative even if a follow-up reaction fails; report
+that process rather than creating a replacement. See
+[launch progress](server-worker-lifecycle.md#7-launch-progress).
 
-### 3. Watchers (`api.watcher`)
+### Watchers
 
-A **Watcher** monitors an extension-owned event source and constructs launch configs without human interaction. The extension owns its typed source, configuration parser, presentation, polling, and provider adapter. See [Watchers](watchers.md) for the source, process binding, and configuration contracts.
+Watchers start processes from external events. The source extension owns parsing,
+presentation, polling, and provider policy. The server owns launch admission and
+deduplication. See [Watchers](watchers.md).
 
-### External Actions
+### External actions
 
-An **External Action** arms a provider trigger while a human or worker automatic turn remains selected and waiting (for example, waiting for a change request to merge or review feedback):
+An external action advances an existing process while a human or automatic turn
+remains selected and waiting:
 
 ```ts
-const reviewTurn = flow
+const review = flow
   .human<Params, State>("implementation_review")
   .description("Review implementation")
   .externalAction(
     "change_merged",
     codeHostExternal.changeMerged({ projectKey: "app" }),
-    (external) => external.label("Merge request merged").complete(),
+    (action) => action.label("Merge request merged").complete(),
   );
 ```
 
-An automatic outcome can call `.wait()` to keep the automatic turn selected with
-`lifecycleStatus = "waiting"`. External actions remain dormant while the automatic handler
-runs. They arm after the waiting outcome is durable and then appear as active external triggers
-in the process UI. They can restart that turn, route to another business turn, complete, or
-abort without adding a synthetic wait turn.
+An automatic outcome can `.wait()` without introducing a synthetic wait turn.
+External actions arm only after that waiting outcome is durable, not while the
+handler runs. They may restart the turn, route to another turn, complete, or abort.
 
-Use `.when(({ params, state, process, projects }) => boolean)` for an external action that is
-valid only in part of the process state. A false condition excludes the action from provider
-armings and from the selected-turn UI snapshot. Keep provider-specific matching in the source
-resolver; use `when` for process-owned routing scope.
+Use `.when(({ params, state, process, projects }) => boolean)` for process-owned
+routing conditions. False excludes the action from both provider subscriptions and
+the selected-turn UI. Provider-specific event matching stays in the source resolver.
 
 ### Turn progress
 
-Worker automatic handlers and LLM preparation phases can replace their operator-facing progress snapshot with
-`ctx.reportProgress(...)`. A report contains an ordered list of stable step ids, labels, and
-`incomplete`, `in_progress`, `completed`, or `failed` statuses. It may also contain HTTPS links
-to pull requests, merge requests, commits, or pipelines. Reports are execution visibility, not
-process turns, products, or business state.
+Automatic handlers and LLM preparation replace their progress snapshot with
+`ctx.reportProgress(...)`. Reports have ordered stable step IDs, labels, and
+`incomplete`, `in_progress`, `completed`, or `failed` states. Optional HTTPS links
+identify related pull requests, merge requests, commits, or pipelines.
 
-The server persists each correlated snapshot as a turn event and broadcasts a durable refresh
-signal. It rejects malformed reports, unsafe links, stale turn-record ids, and updates for turns
-that are no longer running. If an automatic handler or LLM preparation throws, Leitwerk changes
-its current `in_progress` step to `failed` with the safe error summary before recording the turn
-failure.
+Reports are execution visibility, not turns, products, or proof that an operation
+occurred. The server rejects malformed reports, unsafe links, stale turn IDs, and
+updates to non-running turns. A thrown handler error marks its current in-progress
+step failed before recording the turn failure.
+
+Result publication can include `resultSummary` through `markdown_result`,
+`WorkerCompleteInput`, or an outcome's `resultSummaryParameter`. Omitting it remains
+valid. A result summary describes the result; `TurnProgressReport.summary` describes
+an attempt or wait.
 
 ### Launch preparation checks
 
-A UI launcher may return ordered `preparationChecks`. Each check has a stable unique id, an
-operator label, and an asynchronous `run` function. The server launch pipeline owns checklist state.
-A check returns on success or throws `SafeLaunchPreparationError` with bounded remediation.
-The context supplies cancellation, the resolved launch configuration, and a safe logger. It does
-not grant checklist mutation or ambient credentials. Launchers without checks receive the core
-launch checklist.
+UI launchers and watchers may return ordered `preparationChecks`. Each has a stable
+unique ID, operator label, and asynchronous `run` function. Return on success or
+throw `SafeLaunchPreparationError` with safe remediation. The context provides
+cancellation, the resolved configuration, and safe logging, not credentials or
+checklist mutation. Launchers without checks receive the core checklist.
 
-Watcher definitions use the same preparation-check contract. Polling providers submit watcher
-events and stable idempotency through the server-owned launch-run service; they do not supply
-launch-plan or process-executor services. Watcher admission supplies the stable event key and
-source policy. The shared launch pipeline then resolves the event, executes checks, prepares model
-selections, and commits the process with the watcher deduplication key.
+### External observations
 
-Result publication accepts an optional `resultSummary`: `markdown_result`, automatic
-`WorkerCompleteInput`, and outcome declarations using `resultSummaryParameter`.
-Omitting it keeps existing publication valid. The server retains it in the turn
-milestone annotation. `TurnProgressReport.summary` explains the attempt or wait;
-progress is a snapshot, not proof that an operation occurred.
+A source may define pure `describeEvent(event)` output: `summary`, optional
+`markdown`, and `links`. Consumption persists a valid description. Invalid or failed
+optional descriptions do not block event consumption.
 
-External sources may define a pure `describeEvent(event)` returning `summary`,
-optional `markdown`, and `links`. Consumption persists the returned description.
-Server providers may call `externalSources.observe` with the arming's captured
-`generation`, an observation (`summary`, `links`, `observedAt`, opaque `subject`
-and `revision`), or `refreshError`. Observation writes never fire transitions.
+Providers may call `externalSources.observe` with the captured subscription
+`generation`, an observation, or `refreshError`. Observations include `summary`,
+`links`, `observedAt`, and opaque `subject` and `revision`. They never fire transitions.
+Timestamps must be valid; HTTP(S) links need unique IDs and must not contain
+credentials. Rejected reports preserve the last known facts. See
+[subscription generations](watchers.md#subscription-generations).
 
-External observation reports require a valid observation timestamp and uniquely identified HTTP(S)
-links without embedded credentials. Invalid reports are rejected without replacing the last known
-facts. Invalid or failing optional event descriptions are omitted; they do not block event consumption.
+## Ticket creation adapters
+
+An integration tool with `capability.kind: "ticket_creation"` names the code-defined
+`processId` and `startTurnId` for a derived draft process. Core does not supply a
+privileged ticket graph. Startup rejects enabled capabilities whose process or
+entry turn is missing.
+
+The tool returns `{ externalId, url, result? }`, uses its execution context's
+idempotency key, and reconciles ambiguous provider writes. A capability may also
+provide destinations:
+
+- `list()` supplies browser-safe IDs, names, groups, and descriptions.
+- The worker chooses an opaque `destinationId`, asking the operator when ambiguous.
+- Immediately before approval, `resolve()` creates an immutable JSON snapshot.
+- The tool receives that snapshot as `ctx.ticketDestination`, never worker-supplied credentials.
+- `validate()` supports launches already carrying a snapshot.
+
+Snapshot `data` is adapter-owned durable state. Its `agentContext` is untrusted
+prompt text and must not contain secrets. The server commits the child relation
+with the process; parent lifecycle operations do not cascade to the child. See
+[tool approvals](agent-tools.md#tool-approvals).
 
 ## Repository HTTPS credentials
 
-`RepositoryCredentialProvider` is a discriminated union of `git_ssh` and `git_https`. HTTPS providers resolve `{ origin, username, password }`; processes declare only `{ projectKey, kind, credentialRef }`. The server verifies the project locator against the provider origin and adds the exact credential-free HTTPS repository URL to `WorkerGitHttpsCredential`. A project has one credential kind. SSH providers retain their private-key and pinned-known-hosts contract.
+Processes declare only `{ projectKey, kind, credentialRef }`. Credential providers
+resolve `git_ssh` or `git_https` material on the server. HTTPS providers authorize an
+origin; the server narrows it to the exact credential-free project URL. Each project
+has one credential kind. SSH retains pinned known-host verification.
 
-Trusted Git calls use `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`. Ordinary tool commands use `sanitizeWorkerSubprocessEnv()`, which removes internal helper references, Git credential configuration, askpass/SSH agent variables and server token, API-key, password and secret variables. Credentials must never enter process params, state, projects or session trees.
+Trusted Git uses `repositoryGitSubprocessEnv(projectKey)` and `repositoryGitArgs()`.
+Ordinary subprocesses use `sanitizeWorkerSubprocessEnv()`. Never put credentials in
+params, state, projects, or session trees. See [security](security.md#https-repository-authentication).
 
 ## Testing process definitions
 
-Use the supported [extension testing harnesses](testing.md#extension-testing) to
-inspect descriptions, evaluate handlers with independent fixtures, and execute
-server/worker behavior. Extension tests should assert observations instead of
-constructing SDK contexts or inspecting handler registries. Keep prompt and state
-helper tests in the extension that owns those helpers.
-
-Startup compatibility migrations can rewrite encoded process params through
-the server-setup capability’s `processes.update(instanceId, { paramsJson })`
-method, alongside persisted state and position. Run
-such migrations during extension setup, before background services start.
-Use codec parsing to validate compatibility before writing.
+Use the [extension testing harnesses](testing.md#extension-testing) to inspect
+process descriptions, evaluate handlers with independent fixtures, and exercise
+durable server/worker behavior. Assert observations instead of constructing SDK
+contexts or inspecting handler registries. Keep extension-specific prompt and
+state tests with their owner.
 
 ## Typed external writes
 
 `ctx.externalWrites.ensure(identity, operation)` returns the remote value after
-recording the write. The server supplies storage and process identity.
+recording the write. The server supplies storage and process identity:
 
 ```ts
 return ctx.externalWrites.ensure(
@@ -562,68 +416,36 @@ return ctx.externalWrites.ensure(
 
 | Phase | Required behavior |
 | --- | --- |
-| `before_execute` | Find the remote object before creating or updating it. |
-| `after_execute_error` | Recover the object after an execution error. |
+| `before_execute` | Find the remote object or requested state before writing. |
+| `after_execute_error` | Recover the object or requested state after an execution error. |
 | `already_recorded` | Fetch the current object without repeating the write. |
 
 Use stable markers or provider identifiers. Reads must include closed objects and
 completed writes. For updates, compare all requested fields, including normalized
-labels, before execution and after errors. On logged replay, fetch the current
-object without reapplying the patch; later edits must survive.
+labels, before execution and after errors. Logged replay fetches the current object
+without reapplying the patch; later edits must survive.
 
 Return `null` only when no matching object or requested state exists. Propagate
-authentication, transport, and other lookup errors. A lookup failure before execution prevents the write.
-A logged write whose remote object cannot be recovered fails without recreating it.
-If execution fails, reconciliation runs once more. No match rethrows the execution
-error. If recovery or recording also fails, an `AggregateError` contains both errors
-and has the execution error as its `cause`.
+lookup errors. A lookup failure before execution prevents the write. A logged write
+whose remote object cannot be recovered fails without recreating it.
 
-Metadata extraction and durable recording must succeed before the call returns.
-A recording failure does not repeat execution. A later call reconciles again.
-Calls serialize by repository object and deduplication key within one server
-process. Separate servers, repository objects, and keys are not coordinated.
+After execution failure, reconciliation runs once more. No match rethrows the
+execution error. If recovery or recording also fails, an `AggregateError` contains
+both errors and retains the execution error as its `cause`.
+
+Metadata extraction and durable recording must succeed before returning. A recording
+failure does not repeat execution; a later call reconciles again. Calls serialize
+by repository object and deduplication key within one server process. Separate
+servers, repository objects, and keys are not coordinated.
 
 Use `logOnly` when an operation has no recoverable remote identity:
 
 ```ts
 await ctx.externalWrites.logOnly(identity, async () => {
   await restartPipeline();
-  return { pipelineId, diagnosis }; // durable metadata
+  return { pipelineId, diagnosis };
 });
 ```
 
-`logOnly` returns `void`. A recorded write skips execution. It cannot recover a
-lost response or remote success followed by a recording failure.
-
-To migrate from `ensureWrite`, use the context methods above instead of passing a
-repository and process ID. Replace `createWriteIdentity` with an object literal.
-`ensure` returns the remote value directly; neither method returns execution status
-or a deduplication key. The package root supports `ExternalWrites`, `WriteIdentity`,
-and `WriteOperation`; `/internal` is not a supported extension API.
-
-Existing durable records and remote markers remain valid. Historical unmarked
-writes may not be recoverable. No schema or configuration change is required.
-
-## Shared integration operations
-
-The SDK supports repository feedback normalization and quiet-period batching,
-repository watcher/source configuration parsing, watcher presentation, and repository
-matching. Their exported input and result types are part of the supported API.
-Extensions remain responsible for authorization and provider-specific filtering.
-Parsing defaults, feedback cursors, and merge keys are shared across callers.
-
-`IntegrationHttpError` exposes its HTTP `status`; `objectArg`, `stringArg`,
-`numberArg`, `parseJsonData`, and `repositoryHttpsUrl` provide shared boundary
-validation. `ServerExtensionAPI.logger` and its `info`, `warn`, and `error` methods
-are optional.
-
-`createExternalSourcePollReporter` returns `ExternalSourcePollReporter`. Its
-`isCurrent(kind, armed)` compares the process, arming id, generation, and resolved
-value after provider I/O. Supplying `currentKinds` also checks freshness before
-`fire` and `observe`. Omit it to retain caller-managed freshness checks.
-`forwardGeneration` defaults to false. Observation is a no-op when the source
-service lacks observation support or the captured subscription lacks a generation.
-
-Use `recordConfirmedWrite` from `@leitwerk-dev/external-writes` to record an
-already-confirmed remote object without repeating the remote operation. It returns
-`{ recorded, dedupKey }`; `ensureWrite` continues to return `{ performed, dedupKey }`.
+`logOnly` returns `void`. A recorded write skips execution. It cannot recover a lost
+response or remote success followed by recording failure.

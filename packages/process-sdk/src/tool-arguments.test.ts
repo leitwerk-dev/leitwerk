@@ -5,7 +5,11 @@ it.each([null, undefined, [], "text", 1, true])("rejects non-object arguments: %
 	expect(() => objectArg(value, "Invalid binding")).toThrow("Invalid binding");
 });
 
-it.each([undefined, ["number"], []])("keeps explicit required fields: %j", (required) => {
+it.each([
+	{ required: undefined, expectedRequired: ["projectKey", "number", "note"] },
+	{ required: ["number"], expectedRequired: ["projectKey", "number"] },
+	{ required: [], expectedRequired: ["projectKey"] },
+])("keeps explicit required fields: $required", ({ required, expectedRequired }) => {
 	const properties = { number: { type: "integer" }, note: { type: "string" } };
 	expect(projectParameters(properties, required)).toEqual({
 		type: "object",
@@ -13,6 +17,6 @@ it.each([undefined, ["number"], []])("keeps explicit required fields: %j", (requ
 			projectKey: { type: "string", description: "Current process project key" },
 			...properties,
 		},
-		required: ["projectKey", ...(required ?? ["number", "note"])],
+		required: expectedRequired,
 	});
 });

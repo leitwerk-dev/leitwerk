@@ -60,7 +60,16 @@ describe("parsePiSessionTreeContent", () => {
 
 		expect(tree.treeFile).toBe("agt_1");
 		expect(tree.header).toMatchObject({ id: "sess_1", cwd: "/tmp/project", version: 3 });
-		expect(tree.entries).toHaveLength(2);
+		expect(tree.entries).toMatchObject([
+			{ message: { role: "user", content: "Plan this change" } },
+			{
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "## Plan\n\n- Inspect the repo" }],
+					usage: { input: 12, output: 4, totalTokens: 16 },
+				},
+			},
+		]);
 		expect(tree.leafId).toBe(tree.entries[1]?.id ?? null);
 		expect(tree.entries[0]?.id).toEqual(expect.any(String));
 		expect(tree.entries[0]?.id.length).toBeGreaterThan(0);

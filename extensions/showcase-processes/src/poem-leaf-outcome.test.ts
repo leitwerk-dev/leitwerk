@@ -26,10 +26,6 @@ describe("poem leaf outcome helpers", () => {
 			resolvePoemLeafMarkdown({
 				turnResultMarkdown: "# Final\n\nPrimary path wins",
 				leafEntry: {
-					id: "assistant-1",
-					parentId: "user-1",
-					type: "assistant",
-					timestamp: "2026-04-18T10:00:00.000Z",
 					message: { role: "assistant", content: "# Leaf\n\nFallback" },
 				},
 			}),
@@ -38,10 +34,6 @@ describe("poem leaf outcome helpers", () => {
 			resolvePoemLeafMarkdown({
 				turnResultMarkdown: null,
 				leafEntry: {
-					id: "assistant-2",
-					parentId: "user-1",
-					type: "assistant",
-					timestamp: "2026-04-18T10:01:00.000Z",
 					message: { role: "assistant", content: "# Leaf\n\nFallback" },
 				},
 			}),

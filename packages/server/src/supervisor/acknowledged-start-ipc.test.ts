@@ -1,7 +1,8 @@
 import type { WorkerBootstrapReceipt } from "@leitwerk-dev/domain";
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it, vi } from "vitest";
-import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
+import { createSelectedTurnStart } from "../test-helpers/unit-deps.js";
 import { createIpcHandler } from "./ipc-handler.js";
 
 function receipt(startRecordId: string, leaseId: string): WorkerBootstrapReceipt {
@@ -31,9 +32,10 @@ function setup() {
 	});
 	const workerId = "worker-1";
 	const lease = deps.leases.create({ instanceId: process.id, workerId, state: "bootstrapping" });
-	const acceptWorkerTurnStart = vi
-		.fn()
-		.mockResolvedValue({ ok: true, data: { turnRecordId: "turn-1" } });
+	const acceptWorkerTurnStart = vi.fn(async (_instanceId, _input, options) => {
+		options?.onRecorded?.("turn-1");
+		return { ok: true, data: { turnRecordId: "turn-1" } };
+	});
 	const callbacks = {
 		onWorkerTurnStartAccepted: vi.fn(),
 		onWorkerFailed: vi.fn(),
@@ -87,6 +89,7 @@ describe("acknowledged worker IPC", () => {
 		t.handler.handleMessage(ready());
 		t.handler.handleMessage(ready());
 		expect(t.deps.leases.getByInstance(t.process.id)?.bootstrapReceipt).toEqual(payload.receipt);
+		expect(t.callbacks.onWorkerFailed).not.toHaveBeenCalled();
 		t.handler.handleMessage(
 			createIpcMessage({
 				type: "worker.ready",
@@ -96,7 +99,8 @@ describe("acknowledged worker IPC", () => {
 				payload: { ...payload, receipt: { ...payload.receipt, receiptEpoch: "changed" } },
 			}),
 		);
-		expect(t.callbacks.onWorkerFailed).toHaveBeenCalled();
+		expect(t.callbacks.onWorkerFailed).toHaveBeenCalledOnce();
+		expect(t.deps.leases.getByInstance(t.process.id)?.bootstrapReceipt).toEqual(payload.receipt);
 	});
 
 	it("acknowledges accepted/replayed starts and rejects a failed acceptance", async () => {
@@ -114,7 +118,7 @@ describe("acknowledged worker IPC", () => {
 		t.handler.handleMessage(start());
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(t.callbacks.onWorkerTurnStartAccepted).toHaveBeenCalledTimes(2);
-		t.acceptWorkerTurnStart.mockResolvedValueOnce({ ok: false });
+		t.acceptWorkerTurnStart.mockResolvedValueOnce({ ok: false, data: { turnRecordId: "turn-1" } });
 		t.handler.handleMessage(start());
 		await new Promise((resolve) => setImmediate(resolve));
 		expect(t.callbacks.onWorkerFailed).toHaveBeenCalled();

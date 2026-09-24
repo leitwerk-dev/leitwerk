@@ -98,7 +98,7 @@ describe("turn semantics", () => {
 		});
 
 		expect(validateLlmTurnDefinition("implement", turn)).toEqual([
-			"LLM turn 'implement' cannot declare both outcomes and turnEnd",
+			expect.stringMatching(/'implement'.*outcomes.*turnEnd/),
 		]);
 	});
 
@@ -307,9 +307,7 @@ describe("turn semantics", () => {
 	it("rejects automatic turns without a declared completion path", () => {
 		expect(
 			validateAutomaticTurnDefinition("commit_and_merge", makeAutomaticTurn({ outcomes: {} })),
-		).toEqual([
-			"Automatic turn 'commit_and_merge' must declare at least one outcome tool or a turnEnd result",
-		]);
+		).toEqual([expect.stringMatching(/'commit_and_merge'.*outcome.*turnEnd/)]);
 	});
 
 	it("validates human and external turns", () => {
@@ -381,21 +379,23 @@ describe("turn semantics", () => {
 				}),
 			),
 		).toEqual(
-			expect.arrayContaining(["Human turn 'plan_review' contains duplicate external trigger ids"]),
+			expect.arrayContaining([expect.stringMatching(/'plan_review'.*duplicate external trigger/)]),
 		);
 	});
 
 	it.each([
-		["message", "message"],
-		["", ""],
-		["second", "first", "second", "first"],
-	])("reports the first duplicate notes field in %j", (...ids) => {
+		{ ids: ["message", "message"], duplicateId: "message" },
+		{ ids: ["", ""], duplicateId: "" },
+		{ ids: ["unique", "second", "first", "second", "first"], duplicateId: "second" },
+	])("reports the first duplicate notes field in $ids", ({ ids, duplicateId }) => {
 		expect(
 			validateHumanTurnDefinition(
 				"plan_review",
 				makeHumanTurn({ notesFields: ids.map((id) => ({ id, label: id })) }),
 			),
-		).toEqual([`Human turn 'plan_review' contains duplicate notes field id '${ids[0]}'`]);
+		).toEqual([
+			expect.stringMatching(new RegExp(`'plan_review'.*duplicate notes field id '${duplicateId}'`)),
+		]);
 	});
 
 	it("rejects invalid external turn definitions", () => {
@@ -408,8 +408,8 @@ describe("turn semantics", () => {
 			],
 		});
 		expect(validateExternalTurnDefinition("await_external_completion", turn)).toEqual([
-			"External turn 'await_external_completion' source transition 0 must declare a non-empty kind",
-			"External turn 'await_external_completion' source transition 0 must declare exactly one target",
+			expect.stringMatching(/'await_external_completion'.*transition 0.*non-empty kind/),
+			expect.stringMatching(/'await_external_completion'.*transition 0.*exactly one target/),
 		]);
 	});
 

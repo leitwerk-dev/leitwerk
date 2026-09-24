@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { buildProcessAttentionToast } from "./process-operator-attention.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 
 function createProcess(server: (api: ReturnType<typeof createServerProcessBuilder>) => void) {
 	return defineProcess({

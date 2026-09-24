@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { WorkerBootstrapReceipt } from "@leitwerk-dev/domain";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createAes256GcmCredentialCipher } from "./credential-cipher.js";
-import { createInMemoryDatabase, type LeitwerkDb } from "./database.js";
+import { closeDatabase, createInMemoryDatabase, type LeitwerkDb } from "./database.js";
 import { createProcessInstanceRepo } from "./process-instance-repo.js";
 import { createProviderCredentialRepo } from "./provider-credential-repo.js";
 import { createTurnStartRecordRepo } from "./turn-start-record-repo.js";
@@ -13,6 +13,7 @@ let db: LeitwerkDb;
 beforeEach(() => {
 	db = createInMemoryDatabase();
 });
+afterEach(() => closeDatabase(db));
 
 function client(): DatabaseSync {
 	return (db as unknown as { $client: DatabaseSync }).$client;
@@ -23,7 +24,7 @@ describe("turn-start persistence", () => {
 		const processes = createProcessInstanceRepo(db);
 		const starts = createTurnStartRecordRepo(db);
 		const process = processes.create({ processId: "test_process", lifecycleStatus: "active" });
-		const start = starts.create({
+		const input = {
 			instanceId: process.id,
 			turnId: "generate",
 			turnType: "llm",
@@ -52,9 +53,10 @@ describe("turn-start persistence", () => {
 					piSettings: { packages: [] },
 				},
 			},
-		});
+		} satisfies Parameters<typeof starts.create>[0];
+		const start = starts.create(input);
+		expect(starts.getById(start.id)).toMatchObject(input);
 
-		expect(starts.getById(start.id)).toEqual(start);
 		expect(
 			processes.update(process.id, {
 				currentExecution: { kind: "worker_start", id: start.id },

@@ -64,7 +64,7 @@ function policy(): ServerProcessModelPolicy {
 }
 
 describe("model availability recovery", () => {
-	it("replaces only eligible current pre-acceptance availability failures", async () => {
+	it("retries a current pre-acceptance availability failure", async () => {
 		const retryStartup = vi.fn(async () => ({
 			ok: true as const,
 			process: process(),
@@ -72,7 +72,7 @@ describe("model availability recovery", () => {
 		}));
 		const recovered = await recoverModelAvailabilityFailures({
 			processes: { listAll: () => [process()] },
-			turnStarts: { getById: () => start("model_unavailable") },
+			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
 			commands: { retryStartup },
 			policy: policy(),
 			availability,
@@ -90,7 +90,7 @@ describe("model availability recovery", () => {
 		}));
 		await recoverModelAvailabilityFailures({
 			processes: { listAll: () => [process()] },
-			turnStarts: { getById: () => start("model_unavailable") },
+			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
 			commands: { retryStartup },
 			policy: policy(),
 			availability,
@@ -110,13 +110,14 @@ describe("model availability recovery", () => {
 		}));
 		const recovered = await recoverModelAvailabilityFailures({
 			processes: { listAll: () => [process()] },
-			turnStarts: { getById: () => start("model_unavailable") },
+			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
 			commands: { retryStartup },
 			policy: policy(),
 			availability,
 			cause: "availability_transition",
 			logger: { warn },
 		});
+		expect(retryStartup).toHaveBeenCalledExactlyOnceWith("p1", "s1");
 		expect(recovered).toBe(0);
 		expect(warn).not.toHaveBeenCalled();
 	});
@@ -125,7 +126,7 @@ describe("model availability recovery", () => {
 		const retryStartup = vi.fn();
 		await recoverModelAvailabilityFailures({
 			processes: { listAll: () => [process()] },
-			turnStarts: { getById: () => start("provider_preflight_failed") },
+			turnStarts: { getById: (id) => (id === "s1" ? start("provider_preflight_failed") : null) },
 			commands: { retryStartup },
 			policy: policy(),
 			availability,

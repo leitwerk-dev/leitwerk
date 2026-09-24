@@ -1,14 +1,17 @@
-# Process Workspace & Storage Layout
+# Process workspace
 
-Every Leitwerk process instance owns a dedicated workspace directory and a durable JSONL instance tree. While coding workflows populate this directory with full project repository clones, non-repository or tool-based workflows may operate without local clones or direct filesystem access. This document details how workspace storage, aggregated instructions, skills, and agent execution trees are laid out and managed across worker restarts.
+Each process owns workspace storage and, when it uses Pi, an instance tree. Coding
+processes use full repository clones; other processes may need no repositories.
+Storage survives worker replacement, but process volumes need independent backups
+to survive volume loss. See [Backup and upgrades](operations.md).
 
 ---
 
-## 1. Workspace Layouts
+## Workspace layouts {#1-workspace-layouts}
 
 The physical layout of process storage depends on the configured worker runner environment.
 
-### Local & Development Runner Layout
+### Local runner
 
 When running locally or during automated testing, workspaces and tree files live under server-configured paths on the host filesystem:
 
@@ -18,12 +21,12 @@ When running locally or during automated testing, workspaces and tree files live
 ├── <project-key>/            # Full Git clone for a specific project component (optional)
 └── .leitwerk/
     ├── components.json       # Component locator and branch mapping metadata
-    └── skills/               # Aggregated workspace skills
+    └── skills/               # Managed attached skills
 
 <storage.tree_files_dir>/<instanceId>.jsonl  # Execution tree containing all turn interactions
 ```
 
-### Isolated Container Layout (Docker & Kubernetes)
+### Docker and Kubernetes
 
 Isolated worker runners (Docker containers or Kubernetes pods) mount persistent process storage at `/state/`:
 
@@ -41,8 +44,8 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 └── tmp/                     # Temporary execution artifacts
 ```
 
-> [!NOTE]
-> Physical workers upload JSONL session snapshots to the server via `PUT /session-snapshot` so the server can compute browser read models without inspecting Docker volumes or Kubernetes PVCs directly.
+Workers upload JSONL snapshots through `PUT /internal/workers/:instanceId/session-snapshot`.
+The server builds browser read models from retained snapshots, not by reading live worker volumes.
 
 ### Process volume capacity
 
@@ -52,9 +55,13 @@ no capacity quota. See [storage configuration](configuration.md#per-process-stor
 
 ---
 
-## 2. Repository Management
+## Repository management {#2-repository-management}
 
-A Leitwerk process can target zero, one, or multiple repositories. When repositories are declared, Leitwerk creates a full Git clone for each repository checked out to its assigned work branch. Workspace preparation fails if any clone, checkout, branch creation, manifest write, or aggregate write fails. The worker must not report readiness or start a turn with a partial workspace. A later retry repairs missing or stale components before reporting readiness. Processes that do not target repositories run without local clones or filesystem dependencies.
+A process can target zero, one, or several repositories. Each declared repository
+gets a full clone checked out to its assigned work branch. Clone, checkout, branch,
+manifest, or aggregate failure fails preparation. Workers cannot report readiness
+or accept a turn with a partial workspace. Retry repairs missing or stale components
+before reporting readiness.
 
 A process may opt into development-tool preparation. The worker then runs stock `mise install`
 and `mise ls --current --json` sequentially at each repository root in repository-key order. It
@@ -67,7 +74,7 @@ that outlive mise. The worker waits for termination before finishing preparation
 
 ---
 
-## 3. Resource Aggregation
+## Resource aggregation {#3-resource-aggregation}
 
 During worker bootstrap, Leitwerk aggregates instructions and agent capabilities into the workspace:
 
@@ -76,9 +83,9 @@ During worker bootstrap, Leitwerk aggregates instructions and agent capabilities
 
 ---
 
-## 4. Pi Session Tree (`.jsonl`)
+## Pi session tree
 
-The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<storage.tree_files_dir>/<instanceId>.jsonl`). Workers stream session snapshots to the server via `PUT /session-snapshot` after key turn events so the server can render UI read models. Parsed session reads and raw session downloads verify the snapshot generation and retry concurrent replacement up to three total attempts. Other read errors propagate without retry.
+The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<storage.tree_files_dir>/<instanceId>.jsonl`). Workers upload snapshots after the events defined by the [snapshot contract](server-worker-lifecycle.md#6-session-snapshot-uploads). Reads verify the snapshot generation and retry concurrent replacement up to three total attempts; other read errors propagate.
 
 ```text
                [Root Entry (parentId: null)]
@@ -98,7 +105,7 @@ The instance tree is the Pi session file (`/state/tree/primary.jsonl` or `<stora
 
 ---
 
-## 5. Local Pi Session Transfer
+## Local Pi session transfer {#5-local-pi-session-transfer}
 
 An authenticated operator can create an expiring local-transfer link from a process with a primary Pi session. Link creation only stores a hashed bearer grant; workspace reading starts when local Pi claims it.
 
@@ -108,7 +115,7 @@ Local import preserves regular files, executable modes, timestamps, and confined
 
 Independent root branches remain valid in the imported tree. Local session switching does not wait for server acknowledgement. A completed receipt lets the operator reopen the local session and retry acknowledgement with the same link without copying again.
 
-## 6. Storage Retention, Backup & Cleanup
+## Retention and deletion
 
 Process storage persists across physical-worker replacement and remains available while the process is retained. Kubernetes Docker processes keep daemon data under `/state/tooling/docker` on the same single process PVC; replacement waits for the old Pod to disappear before starting another daemon. This lifecycle persistence is not disaster-recovery durability. Leitwerk does not manage process-volume backup or restoration. Server-owned durable state remains the Leitwerk-managed disaster-recovery boundary.
 
@@ -116,9 +123,13 @@ Private-daemon startup may retry once after an early exit. Retry and startup fai
 
 Operators may independently snapshot or back up process volumes and are responsible for retention and restore testing. Without that protection, losing a process volume can lose unpushed repository changes and tooling state that the server database cannot reconstruct. Pi resource bundles are content-addressed and are not overwritten or garbage-collected independently, but they share the process volume's loss model. A retry resolves the latest authorized resources. It reuses the digest when their content is unchanged and adds a new bundle when their content changed.
 
-- **Retention Thresholds:** Storage is retained after process completion or error according to `workers.cleanup.completed_process_retention` and `workers.cleanup.error_process_retention` before worker volumes are released. Retention controls cleanup timing; it does not create a backup.
+- **Retention:** The [configured retention periods](configuration.md#storage-and-retention) control when completed, errored, or aborted process storage is released. They do not create backups.
 - **Explicit Deletion:** Deleting a process (`DELETE /api/processes/:id`) revokes transfer grants and immediately purges all managed workspace storage, session tree files, stored result images, and Kubernetes process namespaces.
 
 ### HTTPS clones
 
-Full process clones may use credential-free HTTPS locators. Their owning integration derives a repository credential reference from its API profile; the server resolves and scopes `git_https` material for worker bootstrap. Only trusted Git invocations receive the ephemeral repository-specific helper. Ordinary subprocesses receive sanitized environments, and repository configuration contains no token or helper path. See [Security](security.md#https-repository-authentication).
+Clones may use credential-free HTTPS locators. The owning integration derives a
+credential reference; the server resolves and scopes it for bootstrap. Trusted Git
+receives the repository-specific helper, while ordinary subprocesses receive a
+sanitized environment. Repository configuration contains no token or helper path.
+See [Security](security.md#https-repository-authentication).

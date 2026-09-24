@@ -1,312 +1,316 @@
-# Configuration Reference
+# Configuration
 
-**Leitwerk** is configured through `leitwerk.yaml` (or custom paths set by `LEITWERK_CONFIG_PATH`), environment variables, and extension options. This guide provides a complete reference for server network options, OIDC authentication, internal TLS, storage retention, LLM model profiles, worker runners, and extension loading.
+Configure Leitwerk in `leitwerk.yaml`. Configuration supplies wiring, credentials,
+model catalogs, and runtime defaults. Process types, turns, transitions, actions,
+and completion rules belong in code.
 
----
+Start with [local setup](introduction.md), [Docker](docker-deployment-guide.md), or
+[Kubernetes](kubernetes-deployment-guide.md). The tables below describe built-in
+defaults, which may differ from
+[`leitwerk.yaml.example`](https://github.com/leitwerk-dev/leitwerk/blob/main/leitwerk.yaml.example).
+Do not use placeholder worker images or an in-memory database for a durable deployment.
 
-## 1. Loading & Environment Overrides
+## Loading and changes
 
-Leitwerk loads built-in defaults overlaid with settings from `leitwerk.yaml`.
+The server overlays YAML on built-in defaults. Arrays replace their defaults;
+they are not appended. An explicitly supplied `worker_runtime_profiles` map
+replaces the default profile map.
 
-### Environment Variables
+`LEITWERK_CONFIG_PATH` selects the configuration file. Without it, the server looks
+for `./leitwerk.yaml`, then `~/.leitwerk/leitwerk.yaml`. Relative extension source
+paths resolve from that file's directory. Use absolute storage paths in deployments.
 
-| Variable | Purpose | Default |
-|---|---|---|
-| `LEITWERK_CONFIG_PATH` | Path to your `leitwerk.yaml` file. | `./leitwerk.yaml` |
-| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | Base64 encoding of exactly 32 bytes for SQLite credential encryption (generate with `openssl rand -base64 32`). | None (Required) |
-| `HOST` | Bind IP address for the server. | `127.0.0.1` |
-| `PORT` | HTTP port for the server. | `3000` |
-| `LEITWERK_BASE_URL` | Public base URL for HTTP and WebSocket auth. | `http://localhost:3000` |
+| Environment variable | Effect | Default |
+| --- | --- | --- |
+| `LEITWERK_CONFIG_PATH` | Configuration path. | Search paths above. |
+| `LEITWERK_CREDENTIAL_ENCRYPTION_KEY` | Base64 encoding of exactly 32 bytes; required to read or write stored credentials. | None. |
+| `HOST` | Overrides `server.host`. | Configured host. |
+| `PORT` | Overrides `server.port`. | Configured port. |
+| `LEITWERK_BASE_URL` | Overrides `server.base_url`. | Configured URL. |
 
-### Programmatic listener options
+Restart the production server after changing YAML. Source development preflights
+configuration changes and restarts the development session. Saving a production
+file is not a live-reload API.
 
-`AppContext.listen({ host?, port?, useBoundAddressAsBaseUrl? })` defaults to
-`server.host` and `server.port`. Port `0` requests an ephemeral port. The returned
-`ServerListenResult` contains the actual `address` and `port`, preserving TLS and IPv6
-URL formatting. Binding preserves `server.base_url` by default.
+Settings captured by a physical worker remain fixed until replacement. Model
+selection changes affect future LLM calls, never the call in flight. Storage sizes
+and StorageClasses apply only to new claims. Retention changes do not make backups.
 
-Unauthenticated loopback fixtures can set `useBoundAddressAsBaseUrl: true` to replace
-`server.base_url` after binding and before reconciliation. Authenticated or non-loopback
-use rejects before binding because authentication captures its origin at context creation.
-This is an API option, not a configuration key. Browser fixtures retain their configured UI
-origin instead.
+## Server, authentication, and transport
 
-### Reload Classes
-- **Immediate:** Takes effect immediately when `leitwerk.yaml` is saved (e.g., worker pool limits).
-- **Future:** Applies to future process launches or LLM turns.
-- **Restart:** Requires a server restart (e.g., bind host/port, database paths, runner type).
+| Key | Type / default | Contract |
+| --- | --- | --- |
+| `server.host` | String; `127.0.0.1` | Listener address. Use `0.0.0.0` inside a container. |
+| `server.port` | Number; `8080` | Listener port. |
+| `server.base_url` | URL; `http://127.0.0.1:8080` | Public application origin for authentication and generated links. |
+| `server.websocket.heartbeat_interval` | Duration; `10s` | Browser heartbeat interval. |
+| `server.websocket.client_timeout` | Duration; `30s` | Browser liveness timeout. |
+| `server.websocket.toast_ttl` | Duration; `6s` | Notification display duration. |
+| `auth.enabled` | Boolean; `false` | Enables the application-wide login boundary. |
+| `auth.providers` | Provider list; none | Configure one OIDC or native GitHub provider. |
+| `auth.allowlist` | String list; none | Allowed OIDC identity-claim values; GitHub uses organization membership. |
+| `auth.session.cookie_name` | String; `leitwerk_session` | Browser session cookie name. |
+| `auth.session.ttl` | Duration; `7d` | Browser session lifetime. |
+| `internal_tls.enabled` | Boolean; `false` | Enables TLS for the server listener used by workers. |
+| `internal_tls.cert_file`, `internal_tls.key_file` | PEM file paths; none | Required when internal TLS is enabled. |
 
----
+Non-loopback authentication and session-transfer origins require HTTPS. Generated
+links use `server.base_url`, not request `Host` or forwarding headers. Public
+HTTPS termination and worker trust configuration are separate concerns.
 
-## 2. Server, Authentication & Transport
+OIDC provider fields are `id`, `kind: oidc`, `issuer`, `client_id`, `client_secret`,
+and optional `redirect_uri`, `scopes`, and `identity_claim`. Native GitHub fields
+are `id: github`, `kind: oauth2`, `client_id`, `client_secret`, `organization`, and
+optional `redirect_uri`. Register `<server.base_url>/auth/callback` with GitHub;
+its `read:org` scope permits private organization membership checks.
 
-Configure network binding, OIDC authentication, and internal transport TLS:
+Worker CA trust belongs in `docker.server_ca_file` or
+`kubernetes.server_ca_file`, not `internal_tls`. Worker client certificates are not
+supported; `internal_tls.client_ca_file` is rejected. See [Security](security.md).
 
-```yaml
-server:
-  host: 0.0.0.0
-  port: 3000
-  base_url: https://leitwerk.example.com
+### API token policy
 
-auth:
-  enabled: true
-  providers:
-    - id: github
-      kind: oauth2
-      client_id: leitwerk-client
-      client_secret: replace-me
-      organization: example-org
+| Key under `auth.api_tokens` | Type / default | Contract |
+| --- | --- | --- |
+| `enabled` | Boolean; `true` | Enables issuance and bearer authentication. |
+| `default_ttl` | Positive duration; `7d` | Expiry when the creation request omits it. |
+| `max_ttl` | Positive duration; `90d` | Maximum dated expiry; must be at least the default TTL. |
+| `allow_no_expiry` | Boolean; `true` | Allows explicit `expiresAt: null`. |
 
-internal_tls:
-  enabled: true
-  server_ca_file: /etc/leitwerk/ca.crt
-```
+These settings apply independently of `auth.enabled`. A dated expiry must be after
+creation and within the maximum TTL. Disabling tokens retains metadata listing and
+revocation; it does not delete records. Authentication-enabled startup permanently
+revokes anonymous tokens even when token support is disabled. See
+[token ownership and rollback](security.md#personal-and-anonymous-api-tokens).
 
-- `auth.enabled`: When true, protects `/api/*` and `/ws` behind configured authentication.
-- OIDC providers authorize identities through `auth.allowlist`. The native GitHub OAuth provider instead requires active membership in its configured organization and requests `read:org` so private membership works.
-- GitHub OAuth Apps must register `<server.base_url>/auth/callback` as their callback URL.
-- `internal_tls.enabled`: Enforces encrypted HTTPS/WSS transport between server and worker pods.
+## Storage and retention
 
----
+| Key | Type / default | Contract |
+| --- | --- | --- |
+| `storage.sqlite_path` | Path; `:memory:` | Durable state database. Set a file path for retained work. |
+| `storage.process_workspaces_dir` | Path; `/tmp/leitwerk/workspaces` | Host workspaces for local execution. |
+| `storage.tree_files_dir` | Path; `/tmp/leitwerk/trees` | Server-owned session snapshots and diagnostics. |
+| `workers.cleanup.completed_process_retention` | Duration; `168h` | Retention before completed process-volume cleanup. |
+| `workers.cleanup.error_process_retention` | Duration; `720h` | Retention for errored or aborted process volumes. |
+| `workers.cleanup.transient_ttl` | Duration; `1h` | Retention for transient resources. |
+| `session_transfer.max_entries` | Positive integer; `250000` | Manifest, workspace, and session entry limit. |
+| `session_transfer.max_logical_bytes` | Positive integer; `21474836480` | Expanded regular-file byte limit. |
+| `session_transfer.max_compressed_bytes` | Positive integer; `10737418240` | Compressed transfer byte limit. |
 
-## 3. Storage & Retention
-
-Configure database paths and worker storage retention:
-
-```yaml
-storage:
-  sqlite_path: ./data/leitwerk.sqlite
-  process_workspaces_dir: ./data/workspaces
-  tree_files_dir: ./data/trees
-
-session_transfer:
-  max_entries: 250000
-  max_logical_bytes: 21474836480
-  max_compressed_bytes: 10737418240
-
-workers:
-  cleanup:
-    completed_process_retention: 24h
-    error_process_retention: 168h
-```
-
-- `storage.sqlite_path`: Path to SQLite database holding durable process state. Existing ticket-destination history is retained. The `20260823_add_ticket_destination_recents` migration backs up databases that lack the history table before adding it.
-- `session_transfer.max_entries`: Maximum manifest, workspace, and session entries accepted by one transfer.
-- `session_transfer.max_logical_bytes`: Maximum expanded regular-file bytes, enforced during server preflight and local extraction.
-- `session_transfer.max_compressed_bytes`: Maximum compressed bytes, enforced by the server relay and local importer.
-- Worker diagnostic traces are appended verbatim to `<storage.tree_files_dir>/diagnostic-traces/<instance-id>.log`.
-- `workers.cleanup.completed_process_retention`: Duration to retain completed process storage before automatic volume cleanup.
-- `workers.cleanup.error_process_retention`: Duration to retain errored or aborted process storage for diagnostics.
-
-Retention controls when process volumes are removed. Leitwerk does not back them up or restore them. Its managed disaster-recovery workflow covers server-owned durable state. Operators may independently protect process volumes and are responsible for retention and restore testing; without that protection, volume loss can discard unpushed workspace changes and process-local tooling state.
+Session transfers enforce limits on both export and import. Worker diagnostic traces
+are stored verbatim under `diagnostic-traces/` in the tree directory; treat them as
+sensitive. Retention controls deletion, not protection from volume loss. See
+[Backup and upgrades](operations.md) and [workspace layout](process-workspace.md).
 
 ### Per-process storage size
 
-```yaml
-process_configs:
-  poem_creator_process:
-    storage_size: 128Mi
-  forgejo_repo_change_process:
-    storage_size: 1Gi
-```
+`process_configs.<processId>.storage_size` requests new Kubernetes PVC capacity.
+Use a positive Kubernetes quantity such as `128Mi`, `1Gi`, or `50Gi`. Invalid
+quantities fail validation.
 
-`process_configs.<processId>.storage_size` sets the requested capacity of a new
-Kubernetes process PVC. Use a positive Kubernetes quantity such as `128Mi`, `1Gi`,
-or `50Gi`. Invalid quantities fail configuration validation.
+Selection order:
 
-Selection order is the explicit process setting, the process definition's
-server-side `resolveStorageSize({ params, projects })`, then
-`kubernetes.process_volume.size` (default `20Gi`). An extension may use its own
-validated repository configuration to return a size, or return `undefined` for the
-global default. Explicit process settings bypass the resolver. Invalid resolver
-results fail worker startup; they do not fall back silently.
+1. Explicit process setting.
+2. The process definition's server-side `resolveStorageSize({ params, projects })`.
+3. `kubernetes.process_volume.size`, default `20Gi`.
 
-Existing PVCs keep their size across retries and server or worker replacement.
-Changing configuration never expands, shrinks, or recreates them. StorageClass
-selection remains independent of size, including Docker-compatible process storage.
-The request covers the whole process volume, including repositories, session trees,
-and tooling. It is not a repository download-size estimate or an application quota.
-Local and Docker runners ignore this setting and do not invoke the resolver; their
-directories and ordinary Docker volumes consume space as written.
+Explicit settings bypass the resolver. Invalid resolver results fail worker startup;
+they do not silently fall back. The size covers the whole process volume, including
+repositories, trees, and tooling. It is not a repository download estimate or quota.
 
-A PVC request is a minimum: storage providers and existing available PVs may supply
-more capacity. For minimum allocation with varied process sizes, leave volume
-pre-provisioning disabled; its global-size PVs can otherwise satisfy smaller claims.
+Existing PVCs keep their capacity across retries and replacement. Configuration
+never expands, shrinks, or recreates them. Local and Docker runners ignore this
+setting and never invoke the resolver. StorageClass selection is independent.
 
-Transfer links use `server.base_url` as their fixed origin. Non-loopback deployments must configure an HTTPS URL; request `Host` and forwarding headers cannot change the generated link origin.
-
----
-
-## 4. Worker Runners & Supervision
-
-Configure worker execution runtimes and process concurrency limits:
-
-```yaml
-development_tools:
-  install_timeout: 30m
-  local:
-    mise_command: mise
-
-workers:
-  runner: docker # docker | kubernetes | local
-  max_parallel_processes: 5
-  startup_timeout: 45s
-  heartbeat_interval: 15s
-
-local_worker:
-  command: node
-  args: ["@leitwerk-dev/worker/worker-entry"]
-  allow_host_docker: false
-
-docker:
-  socket: unix:///var/run/docker.sock
-  network: leitwerk
-  server_url: http://leitwerk-server:8080
-  private_daemon:
-    isolation: privileged # privileged | sysbox-runc
-
-kubernetes:
-  server_namespace: leitwerk-system
-  default_worker_runtime_profile: standard
-  pod:
-    host_aliases:
-      - ip: 192.0.2.10
-        hostnames: [model-api.example.test]
-  image_pull_secrets: [private-registry-pull]
-  image_pull_secret_copies:
-    - source_name: private-registry-pull
-      target_name: private-registry-pull
-```
-
-- `workers.runner`: Selects container runner adapter (`docker`, `kubernetes`, or `local`).
-- `workers.max_parallel_processes`: Maximum concurrent worker processes, including in-flight allocations. Additional starts wait in a FIFO capacity queue and resume automatically when a slot opens. Queue waiting does not consume the worker startup timeout.
-- `workers.heartbeat_interval`: Heartbeat cadence supplied to every LLM and automatic worker.
-- `workers.stale_heartbeat_timeout`: Server failure threshold. Set it comfortably above the heartbeat interval.
-- `development_tools.install_timeout`: Hard deadline for each opted-in repository's mise preparation. Defaults to `30m`.
-- `development_tools.local.mise_command`: Host mise command used by local workers. It is validated only when an opted-in process starts.
-- `local_worker.allow_host_docker`: Acknowledges that Docker processes inherit the host Docker context and credentials. Launch admission and worker startup each run `docker info` within `workers.startup_timeout`; the worker check is also bounded by its remaining startup deadline. A timeout kills the probe and rejects the launch or worker start.
-- `docker.private_daemon.isolation`: Selects exactly one private-daemon isolation. `privileged` grants broad host-kernel authority. `sysbox-runc` requires that runtime on the Docker host. Neither mode mounts the host runtime socket.
-- `kubernetes.server_namespace`: Management namespace housing the server Deployment.
-- `kubernetes.docker`: Trusted RuntimeClass, `hostUsers`, and process StorageClass wiring for process definitions that declare `runtime.docker`. RuntimeClass and StorageClass are required. Set `gvisor: true` for the verified runsc Docker wrapper; omit `host_users` in this mode. It adds SYS_ADMIN and NET_ADMIN inside the sandbox, without privileged mode. Other runtimes require an explicit `host_users` boolean. Docker process namespaces receive the Pod Security `privileged` admission label to permit these guest capabilities, and scheduling must select a node with the verified runsc handler. Ordinary processes ignore this block.
-- `kubernetes.pod.host_aliases`: Optional validated IPv4/IPv6 address and DNS-hostname mappings rendered into every dynamic worker Pod's `spec.hostAliases`.
-- `kubernetes.image_pull_secrets`: Secret names referenced by worker Pods.
-- `kubernetes.image_pull_secret_copies`: Named `kubernetes.io/dockerconfigjson` Secrets copied from the server namespace into each process namespace. Only `.dockerconfigjson` is copied.
-- `workers.default_runtime_profile` (or `kubernetes.default_worker_runtime_profile`): Selects the trusted image used by isolated session-export helpers as well as the default worker image. The image must contain Leitwerk's bundled helper entrypoint; production references should be digest-pinned.
-
-Worker launch configuration is immutable for a physical worker. Changes affect only newly created workers. Recycle existing workers explicitly when a change must apply immediately. Docker process state lives at `/state/tooling/docker` in the process volume and survives worker replacement. Kubernetes Docker processes use the configured RuntimeClass and Docker process StorageClass; the runner does not preflight cluster runtime infrastructure.
-
-Private Docker workers use `unix:///var/run/docker.sock`. The container entrypoint overrides `DOCKER_HOST` and removes `DOCKER_CONTEXT`, `DOCKER_TLS`, `DOCKER_TLS_VERIFY`, and `DOCKER_CERT_PATH` inherited from the image. The worker bootstrap sets `DOCKER_CONFIG` to its private ephemeral credential directory. Local workers retain their host Docker context; Docker-enabled starts also use the server-delivered credential configuration.
-
-Private worker Docker daemons use the `overlay2` storage driver. The process volume must support OverlayFS with the selected kernel and container runtime. Before activation, verify image builds, nested container execution, and retained image reuse after worker replacement using the [runtime canaries](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md). A backing filesystem name alone does not establish compatibility.
-
-Before upgrading existing private Docker workers, check their active storage driver with `docker info --format '{{.Driver}}'`. Verify replacement with the candidate image for existing `overlay2` stores. Processes using another driver must finish under the previous image before switching; any data migration requires a separate operation. Retaining the data directory does not make another driver's images and containers usable by `overlay2`.
-
-An early private-daemon exit permits one retry within the same startup deadline. Both attempts use the existing Docker data directory. Startup failure never deletes or resets retained Docker data.
-
----
-
-## 5. Model Profiles, Pi Runtime & Extensions
-
-Configure LLM model catalogs, Pi agent settings, and extension loading:
-
-```yaml
-pi:
-  agent_dir: /var/lib/leitwerk/pi-agent
-  model_profiles:
-    - id: gpt_sol_high
-      provider: openai
-      model_id: gpt-5.6-sol
-      thinking_level: high
-
-extension_loading:
-  sources:
-    - ./extensions/models
-    - ./extensions/showcase-processes
-
-extensions:
-  models:
-    openai:
-      api_key: env:OPENAI_API_KEY
-    anthropic:
-      api_key: env:ANTHROPIC_API_KEY
-    azure-openai-responses:
-      api_key: env:AZURE_OPENAI_API_KEY
-      base_url: env:AZURE_OPENAI_ENDPOINT
-```
-- `pi.model_profiles`: Catalog of LLM models made available to process definitions.
-- `extension_loading.sources`: Extension package paths loaded during server startup. Load `./extensions/models` for standard API-key providers and configuration-defined custom gateways.
-- `extensions.models.<provider>.base_url`: Optional non-secret HTTP(S) endpoint for a standard provider. Literal URLs and `env:VARIABLE` references are accepted. The normalized endpoint is used by workers and server-side model calls such as process-title generation.
-
-Development compositions may add extension sources from a separate npm workspace without changing production configuration. See [Development Compositions](development-composition.md).
-
-Provider-backed watchers live under the target process configuration. See
-[Process Watchers](watchers.md) for an extension-owned source example. Profile secrets remain
-server-only; LLM turns access providers through declared integration tools.
-
-## API token policy
-
-```yaml
-auth:
-  api_tokens:
-    enabled: true
-    default_ttl: 7d
-    max_ttl: 90d
-    allow_no_expiry: true
-```
-
-These defaults apply independently of `auth.enabled`. Durations must be positive,
-valid durations; the default cannot exceed the maximum. Creation without
-`expiresAt` uses the default TTL. An explicit ISO date-time must be after creation
-and within the maximum TTL. Expiry takes effect at that timestamp. Explicit
-`expiresAt: null` requests no expiration and requires `allow_no_expiry: true`.
-
-Setting `enabled: false` blocks creation and bearer authentication while retaining
-browser metadata listing and revocation. It never removes records or suppresses
-the permanent anonymous-token revocation on authentication-enabled startup.
-See [security](security.md#personal-and-anonymous-api-tokens) for provider binding,
-anonymous ownership, and rollback.
+A PVC request is a minimum; a provider or available PV may supply more. Leave
+pre-provisioning disabled when varied process sizes need minimum allocation:
+pre-provisioned global-size volumes can satisfy smaller claims.
 
 ### Pre-provisioned Kubernetes volumes
 
-Set `kubernetes.process_volume.pre_provision: { count: 8 }` to keep fresh volumes
-ready in the named `storage_class_name`. Omit it to disable. With Helm, also set
-`kubernetes.processVolume.preProvision.enabled=true` and its `count`; the chart
-adds the required PV and StorageClass permissions. Existing config Secrets must
-contain the server setting too.
+Set `kubernetes.process_volume.pre_provision: { count: 8 }` to maintain fresh volumes
+in `storage_class_name`. Omit it to disable. With Helm, also set
+`kubernetes.processVolume.preProvision.enabled=true` and its `count` to grant the
+required PV and StorageClass permissions. Existing config Secrets need the server
+setting too.
 
-The server uses temporary StorageClasses, PVCs and worker-image Pods to provision
-storage before process launch. The driver must support dynamic filesystem
-provisioning through a copy of its StorageClass and rebinding retained PVs.
-Driver parameters, annotations, topology and PV sources are preserved; no host
-paths or CSI-specific volume handles are constructed by Leitwerk. Preparation
-uses the worker node selector and tolerations, so topology-bound volumes may not
-serve workers scheduled elsewhere. Docker's separate process class is unaffected.
+The driver must support dynamic filesystem provisioning through a copied StorageClass
+and rebinding retained PVs. Preparation uses worker node selection and tolerations;
+topology-bound volumes may not serve other nodes. Docker's separate process
+StorageClass is unaffected. Pool misses use normal dynamic provisioning.
 
-Pool misses use normal dynamic provisioning. Each unused volume consumes the
-storage and billing resources of an ordinary volume. Only fresh preparation
-claims are released into the pool; process volumes are never recycled.
+Unused volumes consume normal storage and billing resources. Process volumes are
+never recycled. Set `count: 0` to stop replenishment and let prepared volumes drain.
+Reducing the count does not delete them. Before removing the setting or changing
+class, wait for preparation PVCs in the server namespace to disappear. Inspect
+`leitwerk.dev/volume-pool` resources and server warnings if preparation stalls;
+do not clear process claim references to resolve ownership conflicts.
 
-Set `count: 0` to stop replenishment while completing pending preparation. Existing
-volumes drain through normal use; reducing the count never deletes them. Before
-removing the setting or changing class, allow preparation PVCs in the server
-namespace to disappear. Inspect resources labelled `leitwerk.dev/volume-pool` and
-server warnings if preparation stalls. Unrecoverable ownership conflicts require
-operator inspection; do not clear process claim references.
+## Worker supervision
+
+| Key under `workers` | Type / default | Contract |
+| --- | --- | --- |
+| `runner` | `docker`, `kubernetes`, or `local`; `docker` | Selects execution environment. Local is development/test only. |
+| `default_runtime_profile` | Profile ID; `generic` | Fallback image profile. Configure a real image. |
+| `max_parallel_processes` | Number; `8` | Counts allocated workers and in-flight allocations. Excess starts queue FIFO. |
+| `startup_timeout` | Duration; `30s` | Startup deadline after capacity admission; excludes queue time. |
+| `shutdown_grace_period` | Duration; `15s` | Grace period for shutdown. |
+| `heartbeat_interval` | Duration; `5s` | Cadence supplied to LLM and automatic workers. |
+| `stale_heartbeat_timeout` | Duration; `30s` | Failure threshold; keep comfortably above heartbeat cadence. |
+| `turn_max_duration` | Duration; `30m` | Maximum turn duration. |
+| `turn_inactivity_timeout` | Duration; `5m` | Turn inactivity deadline. |
+| `turn_abort_grace_period` | Duration; `5s` | Grace period after turn interruption. |
+| `resume_on_boot` | Boolean; `true` | Reconcile retained active starts at startup. |
+| `idle_worker_ttl` | Duration; `0s` | Retention of idle physical workers. |
+| `session_snapshot_max_size_bytes` | Positive integer; `134217728` | Maximum session snapshot HTTP upload. |
+| `log_worker_events_to_stdout` | Boolean; `false` | Mirrors raw worker events for diagnostics; can be noisy and sensitive. |
+
+See [lifecycle](server-worker-lifecycle.md) for acceptance, queueing, and recovery.
+
+### Worker runtime profiles
+
+`worker_runtime_profiles.<id>` defines `image`, optional `image_pull_policy`, and
+optional `resources.requests` and `resources.limits`, each with string `cpu` and
+`memory` quantities. Legacy `resources.cpu` and `resources.memory` mean limits.
+Kubernetes forwards requests independently of limits.
+
+Selection order is process `worker_runtime_profile`, component
+`worker_runtime_profile`, then the runner default. Conflicting component profiles
+are rejected. Kubernetes uses `kubernetes.default_worker_runtime_profile` before
+`workers.default_runtime_profile`. Local execution ignores image/resource settings.
+
+Default runner images also execute isolated session-export helpers and must contain
+Leitwerk's bundled helper. Pin production images by digest and keep server/worker
+versions compatible. Repository content must never select an image.
+
+### Local runner
+
+| Key | Default | Contract |
+| --- | --- | --- |
+| `local_worker.command` | `node` | Worker executable. Source development supplies its own source entry. |
+| `local_worker.args` | `["@leitwerk-dev/worker/worker-entry"]` | Arguments passed to the executable. |
+| `local_worker.allow_host_docker` | `false` | Acknowledges host Docker authority for Docker-requiring processes. |
+| `development_tools.install_timeout` | `30m` | Per-repository mise preparation deadline for opted-in processes. |
+| `development_tools.local.mise_command` | `mise` | Host mise executable; checked when an opted-in process starts. |
+
+Docker-enabled local starts run `docker info` at launch and worker bootstrap, bounded
+by the startup deadline. Local workers retain the host Docker context and credentials;
+this is not container isolation.
+
+### Docker runner
+
+| Key under `docker` | Default | Contract |
+| --- | --- | --- |
+| `socket` | `unix:///var/run/docker.sock` | Server access to the host container engine. |
+| `network` | `leitwerk` | Shared private server/worker network. |
+| `server_url` | `http://leitwerk-server:8080` | Stable internal address reachable from workers. |
+| `server_ca_file` | None | Host-visible CA path for internal TLS. |
+| `process_volume.mode` | `bind` | `bind` or `named_volume`. |
+| `process_volume.host_root` | `/var/lib/leitwerk/processes` | Host root for bind volumes. |
+| `process_volume.mount_path` | `/state` | Worker mount. |
+| `private_daemon.isolation` | None | Required for Docker-requiring processes: `privileged` or `sysbox-runc`. |
+
+`privileged` grants broad host-kernel authority. `sysbox-runc` requires that runtime
+on the Docker host. Neither mounts the host engine socket into the worker.
+
+### Kubernetes runner
+
+| Key under `kubernetes` | Default | Contract |
+| --- | --- | --- |
+| `server_namespace` | `leitwerk-system` | Server management namespace. |
+| `process_namespace_prefix` | `leitwerk-process-` | Prefix for per-process namespaces. |
+| `server_url` | `http://leitwerk-server.leitwerk-system.svc.cluster.local:8080` | Worker-reachable server URL; match your Service name. |
+| `server_ca_file` | None | Server-local CA copied into process namespaces. |
+| `api_server_url` | In-cluster API | Optional Kubernetes API override. |
+| `default_worker_runtime_profile` | `generic` | Runner default profile. |
+| `worker_service_account` | `leitwerk-worker` | ServiceAccount used by workers. |
+| `process_volume.storage_class_name` | Cluster default | Ordinary process storage. |
+| `process_volume.size` | `20Gi` | Fallback capacity for new claims. |
+| `process_volume.access_modes` | `[ReadWriteOnce]` | PVC access modes. |
+| `process_volume.mount_path` | `/state` | Worker mount. |
+| `pod.node_selector`, `pod.annotations` | Empty maps | Worker scheduling and metadata. |
+| `pod.tolerations` | Empty list | Worker tolerations. |
+| `pod.host_aliases` | Empty list | Valid IPv4/IPv6 `ip` and nonempty DNS `hostnames`. |
+| `image_pull_secrets` | Empty list | Secret names referenced by worker Pods. |
+| `image_pull_secret_copies` | Empty list | Explicit `source_name` / `target_name` pairs copied from the server namespace. |
+
+Pull-secret copies accept only `kubernetes.io/dockerconfigjson` and copy only
+`.dockerconfigjson`. Match the copy names in Helm values to grant access.
+
+For Docker-requiring processes, `kubernetes.docker` needs `runtime_class_name` and
+`process_storage_class_name`. Set `gvisor: true` for the verified runsc wrapper and
+omit `host_users`; other runtimes need an explicit `host_users` boolean. Operators
+must install and select the runtime and compatible nodes. Ordinary processes ignore
+this block. See [isolation boundaries](security.md#2-secrets-container-isolation).
+
+Optional `kubernetes.docker.network` supplies trusted `bridge_cidr`, `address_pools`
+(`base`, `size`), and `dns`. Unknown fields and pool sizes smaller than their base
+prefix are rejected. Existing PVC StorageClasses are never migrated.
+
+### Private Docker state
+
+Private daemons use `overlay2` and retain data at `/state/tooling/docker`. The process
+volume, kernel, and runtime must support OverlayFS together. Verify builds, nested
+containers, and image reuse after replacement using the
+[runtime canaries](https://github.com/leitwerk-dev/leitwerk/blob/main/scripts/docker-runtime/README.md).
+A filesystem name alone does not establish compatibility.
+
+Private workers use the local Unix socket, not inherited Docker endpoint settings.
+Registry credentials use a private ephemeral `DOCKER_CONFIG`. One early daemon-exit
+retry is allowed within the same deadline; failures never reset retained data.
+See [upgrade precautions](operations.md#upgrade-and-rollback) for existing stores.
 
 ### Docker registry credentials
 
-`docker_registries.profiles` holds server-only registry host, username and password
-records. `process_bindings` maps trusted process IDs to profile IDs. Only processes
-whose code declares `runtime.docker` receive these credentials through authenticated
-`worker.start`; process parameters cannot select profiles. Each physical start
-resolves current configuration anew. Duplicate registry hosts in a binding fail
-validation. Bindings control delivery, not registry-side account permissions.
+`docker_registries.profiles.<id>` supplies `registry`, `username`, and `password`.
+`docker_registries.process_bindings.<processId>` lists profile IDs. Duplicate
+registry hosts in a binding fail validation.
 
-See [security guarantees](security.md#docker-registry-credentials) and
-[worker delivery and compatibility](server-worker-lifecycle.md#docker-registry-credentials).
+Only code-defined Docker-requiring processes receive credentials, resolved anew for
+each physical start. Process parameters cannot select profiles. Bindings control
+delivery, not registry-side permissions. See [credential security](security.md#docker-registry-credentials).
 
-Worker runtime profiles accept CPU/memory `resources.requests` independently of
-limits. Kubernetes forwards requests to Pods. `kubernetes.docker.network` carries
-trusted `bridge_cidr`, `address_pools` and `dns` into dockerd flags. StorageClass
-selection applies only when creating a claim; existing claims are not migrated.
-**Breaking validation change:** address-pool sizes smaller than their base prefix are rejected at server startup, rather than worker startup. `dockerNetworkArgs()` now rejects unknown network/pool fields instead of ignoring them; valid configurations and public signatures are unchanged.
+## Models, resources, and process defaults
+
+| Key | Default | Contract |
+| --- | --- | --- |
+| `pi.agent_dir` | `~/.pi/leitwerk` | Managed resource/credential root; ambient Pi files are ignored. |
+| `pi.model_profiles` | Empty list | Named model choices; see [Models](models.md). |
+| `pi.system_prompt_template` | Built-in prompt | Global Mustache system-prompt template. |
+| `pi.process_title_generation.model_profile` | `null` | Optional configured profile for server-side titles. |
+| `pi.process_title_generation.retry` | `max_attempts: 6`, `base_delay: 5s`, `max_delay: 5m` | Title retry policy; attempts include the first call. |
+| `pi.retry` | `enabled: true`, `max_retries: 3`, `base_delay: 2s` | Pi retry settings for newly created sessions. |
+| `pi.retry.provider` | `timeout: null`, `max_retries: null`, `max_retry_delay: 60s` | Null defers to provider SDK defaults. |
+| `extension_loading.sources` | Empty list | Extension package paths or names. |
+| `extensions.<extensionId>` | Empty map | Owner-parsed extension configuration; see that extension's README. |
+
+`process_configs.<processId>` may set `default_model_profile`, nonempty
+`allowed_model_profiles`, per-turn `turn_configs.<turnId>.model_profile`,
+`worker_runtime_profile`, `storage_size`, and extension-owned `watchers` blocks.
+Its `pi` block may set `system_prompt_template` and `append_system_prompt_template`.
+Profile references must exist, and restrictions apply to defaults and overrides.
+See [selection order](models.md#profile-resolution) and [Watchers](watchers.md).
+
+## Repository and skill catalogs
+
+`components.<key>` defines `repo`, `default_branch`, and optional
+`worker_runtime_profile`. Processes may target zero, one, or several components.
+
+`skill_repositories` is a list of `id`, `url`, `ref`, optional `label`, and `path`
+(default `skills`). Descendant skill directories are available for operator-managed
+installation. Launches pin selected active revisions rather than importing mutable
+repository resources into a running worker.
+
+`commit_messages.templates.<id>.rules` defines formatting instructions.
+`default_template` selects the fallback, or null uses built-in guidance.
+`repositories` maps normalized locators to template IDs and takes precedence over
+the fallback. The selected rules are pinned at launch.
+
+`notifications.all` and `notifications.debug` accept `enabled`, `type`, and `url`.
+`notifications.squad` accepts `enabled`, `type`, `routing_field`, and a `routes` map
+whose values contain `url`. Defaults disable all channels and use `teams_webhook`
+with empty URLs/routes. The consuming integration owns delivery behavior.
+
+`sandbox.enabled` defaults to false and `sandbox.profile` to an empty string.
+These legacy blocks do not define process behavior. The source UI sandbox uses its
+own [development workflow](development-composition.md#source-sandbox-compositions).

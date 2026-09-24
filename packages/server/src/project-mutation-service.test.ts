@@ -1,14 +1,19 @@
 import type { WsFrame } from "@leitwerk-dev/protocol";
 import { describe, expect, it, vi } from "vitest";
 import { createProjectMutationService } from "./project-mutation-service.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 
 describe("ProjectMutationService", () => {
 	it("commits project changes before emitting project.updated", () => {
 		const deps = createTestDeps();
 		const frames: WsFrame[] = [];
+		const observedProjects: unknown[] = [];
 		vi.spyOn(deps.broadcaster, "broadcast").mockImplementation((frame) => {
 			frames.push(frame);
+			if (frame.type === "project.updated")
+				observedProjects.push(
+					deps.projects.getByInstanceAndKey(frame.instanceId ?? "", frame.payload.projectId),
+				);
 		});
 		const onProjectMutated = vi.fn();
 		const service = createProjectMutationService({ ...deps, onProjectMutated });
@@ -23,35 +28,26 @@ describe("ProjectMutationService", () => {
 		});
 		const updated = service.update(project.id, { pipelineStatus: "passed" });
 
-		expect(deps.projects.getById(project.id)?.pipelineStatus).toBe("passed");
 		expect(updated?.pipelineStatus).toBe("passed");
+		expect(observedProjects).toEqual([
+			expect.objectContaining({ id: project.id, pipelineStatus: null }),
+			expect.objectContaining({ id: project.id, pipelineStatus: "passed" }),
+		]);
 		expect(onProjectMutated).toHaveBeenCalledTimes(2);
 		expect(onProjectMutated).toHaveBeenLastCalledWith(
 			expect.objectContaining({ id: project.id, pipelineStatus: "passed" }),
 		);
-		expect(frames.filter((frame) => frame.type === "project.updated")).toEqual([
-			expect.objectContaining({
+		expect(frames).toMatchObject([
+			{
 				type: "project.updated",
 				instanceId: process.id,
-				payload: expect.objectContaining({
-					projectId: "app",
-					project: expect.objectContaining({
-						key: "app",
-						pipelineStatus: null,
-					}),
-				}),
-			}),
-			expect.objectContaining({
+				payload: { projectId: "app", project: { pipelineStatus: null } },
+			},
+			{
 				type: "project.updated",
 				instanceId: process.id,
-				payload: expect.objectContaining({
-					projectId: "app",
-					project: expect.objectContaining({
-						key: "app",
-						pipelineStatus: "passed",
-					}),
-				}),
-			}),
+				payload: { projectId: "app", project: { pipelineStatus: "passed" } },
+			},
 		]);
 	});
 

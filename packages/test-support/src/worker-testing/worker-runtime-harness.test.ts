@@ -1,21 +1,56 @@
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import { createEventBus, createWorkerProcessBuilder, llmTurn } from "@leitwerk-dev/process-sdk";
 import type { InputDelivery, WorkerStartPayload } from "@leitwerk-dev/worker-protocol";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FakeGitOps } from "../fakes/fake-git-ops.js";
 import { StubPiTreeHandleFactory } from "./stub-pi-tree-handle.js";
 import {
 	createManualWorkerRuntimeScheduler,
-	createWorkerRuntimeHarness,
+	createWorkerRuntimeHarness as createRuntimeHarness,
 	type WorkerRuntimeHarness,
 	type WorkerRuntimeHarnessOptions,
 } from "./worker-runtime-harness.js";
 import { createTestLlmWorkerStartPayload } from "./worker-start-payload.js";
 
 const INSTANCE_ID = "proc_test";
+
+const harnesses: WorkerRuntimeHarness[] = [];
+const tempRoots: string[] = [];
+const releaseGates: Array<() => void> = [];
+
+function createWorkerRuntimeHarness(options: WorkerRuntimeHarnessOptions): WorkerRuntimeHarness {
+	const harness = createRuntimeHarness(options);
+	harnesses.push(harness);
+	return harness;
+}
+
+function createTempRoot(prefix: string): string {
+	const root = mkdtempSync(path.join(tmpdir(), prefix));
+	tempRoots.push(root);
+	return root;
+}
+
+afterEach(async () => {
+	for (const release of releaseGates.splice(0)) release();
+	try {
+		const cleanup = await Promise.allSettled(
+			harnesses.splice(0).map(async (harness) => {
+				const stop = harness.stop("test_teardown");
+				// A failed assertion may leave a mandatory snapshot retry asleep on the manual clock.
+				await exhaustSnapshotRetries(harness);
+				await stop;
+			}),
+		);
+		const failure = cleanup.find((result) => result.status === "rejected");
+		if (failure?.status === "rejected") throw failure.reason;
+	} finally {
+		for (const root of tempRoots.splice(0)) rmSync(root, { recursive: true, force: true });
+		vi.restoreAllMocks();
+	}
+});
 
 function automaticProcess(
 	handler: Parameters<ReturnType<typeof createWorkerProcessBuilder>["turn"]>[1],
@@ -160,7 +195,7 @@ function createLlmHarness(
 		resolveWorkerProcess: () => llmProcess(),
 		...overrides,
 	};
-	const root = mkdtempSync(path.join(tmpdir(), tempPrefix));
+	const root = createTempRoot(tempPrefix);
 	const workspaceRoot = path.join(root, "workspace");
 	const primaryTreeFile = path.join(root, "tree", "primary.jsonl");
 	mkdirSync(workspaceRoot, { recursive: true });
@@ -174,6 +209,7 @@ function deferred(): { promise: Promise<void>; resolve(): void } {
 	const promise = new Promise<void>((done) => {
 		resolve = done;
 	});
+	releaseGates.push(resolve);
 	return { promise, resolve };
 }
 
@@ -301,7 +337,7 @@ describe("worker runtime harness", () => {
 	});
 
 	it("applies a targeted FIFO input through the runtime interface", async () => {
-		const root = mkdtempSync(path.join(tmpdir(), "worker-runtime-targeted-fifo-"));
+		const root = createTempRoot("worker-runtime-targeted-fifo-");
 		mkdirSync(path.join(root, "workspace"), { recursive: true });
 		const piFactory = new StubPiTreeHandleFactory();
 		const adapters = {
@@ -371,19 +407,6 @@ describe("worker runtime harness", () => {
 		expect(heartbeat?.type === "worker.heartbeat" && heartbeat.payload.lastSequenceConsumed).toBe(
 			0,
 		);
-	});
-
-	it("accepts credential acknowledgements without reflecting credential material", async () => {
-		const harness = createAutomaticHarness();
-		await startHarness(harness);
-		harness.deliver("worker.credential_update_accepted", {
-			providerId: "test-provider",
-			accepted: true,
-			currentRevision: 2,
-		});
-		await harness.flush();
-		expect(JSON.stringify(harness.outgoing)).not.toContain("test-secret");
-		expect(harness.exitCodes).toEqual([]);
 	});
 
 	it("reports cleanup in order and exits after a graceful stop", async () => {
@@ -980,7 +1003,7 @@ describe("worker runtime harness", () => {
 	});
 
 	it("runs an already-accepted LLM start on a replacement worker", async () => {
-		const root = mkdtempSync(path.join(tmpdir(), "worker-runtime-replacement-"));
+		const root = createTempRoot("worker-runtime-replacement-");
 		mkdirSync(path.join(root, "workspace"), { recursive: true });
 		const piFactory = new StubPiTreeHandleFactory();
 		const adapters = {

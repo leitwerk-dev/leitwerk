@@ -1,6 +1,6 @@
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "./database.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAllRepos } from "./repositories.js";
 import { skillRevisionDependencies } from "./schema.js";
 
@@ -52,9 +52,12 @@ describe("skill repository", () => {
 
 		repos.skills.reconcile([]);
 		expect(repos.skills.listAvailable()).toEqual([]);
-		expect(
-			repos.processSkills.listResourceLayers(firstProcess.id).map(({ bundle }) => bundle.digest),
-		).toEqual([first.digest]);
+		expect(repos.processSkills.listResourceLayers(firstProcess.id)).toEqual([
+			{
+				bundle: { digest: first.digest, bytes: Buffer.from(first.bytes) },
+				owner: { kind: "skill", ownerExtensionId: null, packageName: null },
+			},
+		]);
 		expect(
 			repos.processSkills.listResourceLayers(secondProcess.id).map(({ bundle }) => bundle.digest),
 		).toEqual([second.digest]);
@@ -202,33 +205,5 @@ describe("skill repository", () => {
 				expect.objectContaining({ id: "remote", registrationKind: "catalog" }),
 			]),
 		);
-	});
-
-	it("loads resource layers for a process's pinned revisions", () => {
-		const repos = createAllRepos(createInMemoryDatabase());
-		const bundle = createCanonicalPiResourceBundle([
-			{ path: "skills/review/SKILL.md", content: Buffer.from("review") },
-		]);
-		repos.skills.reconcile([
-			{
-				skillId: "review",
-				label: "Review",
-				description: null,
-				bundle,
-				sourceRevision: null,
-			},
-		]);
-		const process = repos.processes.create({
-			processId: "test_process",
-			lifecycleStatus: "active",
-		});
-		repos.processSkills.attach(process.id, repos.skills.resolveActive(["review"]));
-
-		expect(repos.processSkills.listResourceLayers(process.id)).toEqual([
-			{
-				bundle: { digest: bundle.digest, bytes: Buffer.from(bundle.bytes) },
-				owner: { kind: "skill", ownerExtensionId: null, packageName: null },
-			},
-		]);
 	});
 });

@@ -1,8 +1,8 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import { describe, expect, it, vi } from "vitest";
 import { reconcilePersistedProcessModelIntegrity } from "./process-model-integrity-reconciler.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createTestModelPolicy } from "./test-helpers/process-model-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 describe("persisted process model startup reconciliation", () => {
 	it("parks malformed open processes without rewriting their model state", async () => {

@@ -4,8 +4,8 @@ import path from "node:path";
 import { WORKER_RESULT_IMAGE_WORKER_ID_HEADER } from "@leitwerk-dev/worker-protocol";
 import Fastify, { type FastifyInstance } from "fastify";
 import sharp from "sharp";
-import { afterEach, describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { closeDatabase, createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import { ResultImageStore } from "../result-image-store.js";
@@ -22,10 +22,15 @@ const PNG = await sharp({
 	.png()
 	.toBuffer();
 const tempRoots: string[] = [];
+const apps: ReturnType<typeof Fastify>[] = [];
+const databases: ReturnType<typeof createInMemoryDatabase>[] = [];
 
 async function createHarness(options?: { installParser?: (app: FastifyInstance) => void }) {
 	const app = Fastify({ logger: false });
-	const repos = createAllRepos(createInMemoryDatabase());
+	apps.push(app);
+	const db = createInMemoryDatabase();
+	databases.push(db);
+	const repos = createAllRepos(db);
 	const process = repos.processes.create({ processId: "test_process", lifecycleStatus: "active" });
 	const token = createWorkerConnectToken();
 	const lease = repos.leases.create({
@@ -102,6 +107,8 @@ function uploadHeaders(token: string) {
 }
 
 afterEach(async () => {
+	await Promise.all(apps.splice(0).map((app) => app.close()));
+	for (const db of databases.splice(0)) closeDatabase(db);
 	for (const root of tempRoots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -135,11 +142,22 @@ describe("result image routes", () => {
 			"cache-control": "private, no-store",
 		});
 		expect(get.rawPayload).toEqual(PNG);
-		await app.close();
 	});
 
 	it("authenticates before buffering and enforces turn correlation", async () => {
-		const { app, repos, process, turn, token } = await createHarness();
+		const parsed = vi.fn();
+		const { app, repos, process, turn, token } = await createHarness({
+			installParser(server) {
+				server.addContentTypeParser(
+					"application/octet-stream",
+					{ parseAs: "buffer" },
+					(_request, body, done) => {
+						parsed();
+						done(null, body);
+					},
+				);
+			},
+		});
 		const url = `/internal/workers/${process.id}/turn-records/${turn.id}/result-images`;
 		expect(
 			(
@@ -151,6 +169,7 @@ describe("result image routes", () => {
 				})
 			).statusCode,
 		).toBe(401);
+		expect(parsed).not.toHaveBeenCalled();
 		const otherStart = repos.turnStarts.create({
 			id: "tsr_other",
 			instanceId: process.id,
@@ -175,26 +194,20 @@ describe("result image routes", () => {
 				})
 			).statusCode,
 		).toBe(409);
-		await app.close();
+		expect(parsed).toHaveBeenCalledOnce();
 	});
 
 	it("rejects a worker lease replaced while the image body is being decoded", async () => {
-		let parserEntered!: () => void;
-		const entered = new Promise<void>((resolve) => {
-			parserEntered = resolve;
-		});
-		let releaseParser!: () => void;
-		const parserGate = new Promise<void>((resolve) => {
-			releaseParser = resolve;
-		});
+		const entered = Promise.withResolvers<void>();
+		const parserGate = Promise.withResolvers<void>();
 		const { app, repos, process, turn, token } = await createHarness({
 			installParser: (server) => {
 				server.addContentTypeParser(
 					"application/octet-stream",
 					{ parseAs: "buffer" },
 					(_request, body, done) => {
-						parserEntered();
-						void parserGate.then(() => done(null, body));
+						entered.resolve();
+						void parserGate.promise.then(() => done(null, body));
 					},
 				);
 			},
@@ -205,38 +218,34 @@ describe("result image routes", () => {
 			headers: uploadHeaders(token),
 			payload: PNG,
 		});
-		await entered;
-		const oldLease = repos.leases.getByInstance(process.id);
-		if (!oldLease) throw new Error("Expected active worker lease");
-		repos.leases.update(oldLease.id, { state: "exited", exitedAt: new Date().toISOString() });
-		const replacementToken = createWorkerConnectToken();
-		repos.leases.create({
-			instanceId: process.id,
-			workerId: "wkr_2",
-			state: "busy",
-			serverEpoch: "epoch-1",
-			snapshotTokenHash: hashWorkerConnectToken(replacementToken),
-		});
-		releaseParser();
-
+		try {
+			await entered.promise;
+			const oldLease = repos.leases.getByInstance(process.id);
+			if (!oldLease) throw new Error("Expected active worker lease");
+			repos.leases.update(oldLease.id, { state: "exited", exitedAt: new Date().toISOString() });
+			const replacementToken = createWorkerConnectToken();
+			repos.leases.create({
+				instanceId: process.id,
+				workerId: "wkr_2",
+				state: "busy",
+				serverEpoch: "epoch-1",
+				snapshotTokenHash: hashWorkerConnectToken(replacementToken),
+			});
+		} finally {
+			parserGate.resolve();
+			await upload;
+		}
 		expect((await upload).statusCode).toBe(409);
-		await app.close();
 	});
 
 	it("holds process coordination through the image write", async () => {
 		const { app, repos, process, turn, token, store, processOperations } = await createHarness();
-		let enteredPut!: () => void;
-		const putEntered = new Promise<void>((resolve) => {
-			enteredPut = resolve;
-		});
-		let releasePut!: () => void;
-		const putGate = new Promise<void>((resolve) => {
-			releasePut = resolve;
-		});
+		const putEntered = Promise.withResolvers<void>();
+		const putGate = Promise.withResolvers<void>();
 		const originalPut = store.put.bind(store);
 		store.put = async (input) => {
-			enteredPut();
-			await putGate;
+			putEntered.resolve();
+			await putGate.promise;
 			return originalPut(input);
 		};
 
@@ -246,19 +255,21 @@ describe("result image routes", () => {
 			headers: uploadHeaders(token),
 			payload: PNG,
 		});
-		await putEntered;
 		let turnFinished = false;
-		const finishTurn = processOperations.runExclusive(process.id, () => {
-			turnFinished = true;
-			repos.processes.update(process.id, { currentExecution: null });
-		});
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(turnFinished).toBe(false);
-
-		releasePut();
+		let finishTurn: Promise<unknown> | undefined;
+		try {
+			await putEntered.promise;
+			finishTurn = processOperations.runExclusive(process.id, () => {
+				turnFinished = true;
+				repos.processes.update(process.id, { currentExecution: null });
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(turnFinished).toBe(false);
+		} finally {
+			putGate.resolve();
+			await Promise.all([upload, finishTurn]);
+		}
 		expect((await upload).statusCode).toBe(201);
-		await finishTurn;
 		expect(turnFinished).toBe(true);
-		await app.close();
 	});
 });

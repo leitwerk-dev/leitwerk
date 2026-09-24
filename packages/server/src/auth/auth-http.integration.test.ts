@@ -2,9 +2,9 @@ import cookie from "@fastify/cookie";
 import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
 import { type AppContext, createAppContext, getDefaultConfig } from "../index.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
 import { setCookieValues, testAuthConfig } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
@@ -17,6 +17,7 @@ function createOidcClient(options: {
 	state?: string;
 	claims?: Record<string, unknown>;
 	startError?: Error;
+	callbackError?: Error;
 }): OidcClient {
 	return {
 		async createAuthorizationRequest(provider) {
@@ -32,6 +33,7 @@ function createOidcClient(options: {
 			};
 		},
 		async exchangeCallback() {
+			if (options.callbackError) throw options.callbackError;
 			if (!options.claims) {
 				throw new Error("not used");
 			}
@@ -128,12 +130,13 @@ describe("auth HTTP guard", () => {
 
 	it("returns a generic error when login initialization fails", async () => {
 		const { app } = await createAuthRouteHarness({
-			oidcClient: createOidcClient({ startError: new Error("provider discovery failed") }),
+			oidcClient: createOidcClient({ startError: new Error("private-provider-discovery-detail") }),
 		});
 
 		const response = await app.inject({ method: "GET", url: "/auth/login" });
 
 		expect(response.statusCode).toBe(503);
+		expect(response.body).not.toContain("private-provider-discovery-detail");
 		expect(response.json()).toMatchObject({ error: expect.any(String) });
 	});
 
@@ -172,7 +175,7 @@ describe("auth HTTP guard", () => {
 		const { app } = await createAuthRouteHarness({
 			oidcClient: createOidcClient({
 				state: "state-3",
-				claims: { preferred_username: "mallory" },
+				callbackError: new Error("private-provider-callback-detail"),
 			}),
 		});
 		const loginResponse = await app.inject({ method: "GET", url: "/auth/login" });
@@ -187,6 +190,7 @@ describe("auth HTTP guard", () => {
 		});
 
 		expect(callbackResponse.statusCode).toBe(403);
+		expect(callbackResponse.body).not.toContain("private-provider-callback-detail");
 		expect(callbackResponse.json()).toMatchObject({ error: expect.any(String) });
 		expect(
 			setCookieValues(callbackResponse.headers["set-cookie"]).some((value) =>

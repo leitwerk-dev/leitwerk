@@ -107,7 +107,7 @@ describe("local transfer state", () => {
 		);
 	});
 
-	it("atomically promotes recovery state into a token-free completion receipt", async () => {
+	it("persists private recovery state and promotes it into a token-free completion receipt", async () => {
 		const agent = await root();
 		const state = new LocalTransferState(agent);
 		await state.begin(link, {
@@ -115,15 +115,45 @@ describe("local transfer state", () => {
 			temporaryDirectory: "/tmp/importing",
 			ownerId: "owner-1",
 		});
+		const recordsRoot = path.join(agent, "leitwerk-session-transfer", "transfers");
+		const names = await readdir(recordsRoot);
+		expect(names).toHaveLength(1);
+		const recordFile = path.join(recordsRoot, names[0]);
+		const recoveryJson = await readFile(recordFile, "utf8");
+		expect(recoveryJson).not.toContain(link.token);
+		expect((await stat(recordFile)).mode & 0o777).toBe(0o600);
+		expect(JSON.parse(recoveryJson)).toMatchObject({
+			phase: "temporary",
+			origin: link.origin,
+			grantId: link.grantId,
+			attemptId: "tra_1",
+			temporaryDirectory: "/tmp/importing",
+			ownerId: "owner-1",
+		});
 		expect(await state.receipt(link)).toBeNull();
+		const completedAt = "2026-09-01T00:00:00.000Z";
 		await state.complete(link, {
 			destination: "/tmp/project",
 			sessionPath: "/tmp/session.jsonl",
-			completedAt: new Date().toISOString(),
+			completedAt,
 		});
 		const receipt = await state.receipt(link);
-		expect(receipt?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
+		expect(receipt).toEqual({
+			version: 1,
+			origin: link.origin,
+			grantId: link.grantId,
+			tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+			attemptId: "tra_1",
+			destination: "/tmp/project",
+			sessionPath: "/tmp/session.jsonl",
+			completedAt,
+		});
 		expect(JSON.stringify(receipt)).not.toContain(link.token);
+		const completedJson = await readFile(recordFile, "utf8");
+		expect(completedJson).not.toContain(link.token);
+		expect(JSON.parse(completedJson)).toMatchObject({ ...receipt, phase: "completed" });
+		expect((await stat(recordFile)).mode & 0o777).toBe(0o600);
+		expect(await readdir(recordsRoot)).toEqual(names);
 	});
 
 	it("preserves completed destinations and sessions while cleaning commit metadata", async () => {

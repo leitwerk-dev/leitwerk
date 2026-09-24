@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { AgentSession, AgentSessionEvent } from "@earendil-works/pi-coding-agent";
 import type {
 	PiCustomTool,
@@ -14,12 +17,14 @@ import {
 	StubPiTreeHandle,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	SdkPiTreeHandle,
 	TERMINAL_ACKNOWLEDGEMENT_INSTRUCTION,
 	translateAgentSessionEventEnvelope,
 } from "./pi-adapter.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 function piEventsFromAgentSessionEvent(
 	event: AgentSessionEvent,
@@ -2195,7 +2200,6 @@ describe("SdkPiTreeHandle", () => {
 		expect(receivedDiagnosticCodes).toEqual(["pi.queue_update"]);
 		expect(warnSpy).toHaveBeenCalledWith("Pi event subscriber failed", expect.any(Error));
 		expect(warnSpy).toHaveBeenCalledWith("Pi diagnostic subscriber failed", expect.any(Error));
-		warnSpy.mockRestore();
 	});
 
 	it("closes by unsubscribing the shared session listener and disposing the session", async () => {
@@ -2533,6 +2537,12 @@ describe("StubPiTreeHandle", () => {
 	});
 });
 
+function temporaryTreeFile() {
+	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-stub-pi-test-"));
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+	return path.join(root, "tree.jsonl");
+}
+
 describe("StubPiTreeHandleFactory", () => {
 	it("forwards toolCallScriptResolver to created handles", async () => {
 		const factory = new StubPiTreeHandleFactory({
@@ -2543,7 +2553,7 @@ describe("StubPiTreeHandleFactory", () => {
 		});
 		const handle = (await factory.createPrimaryTreeHandle({
 			instanceId: "ag1",
-			treeFile: "/tmp/tree.jsonl",
+			treeFile: temporaryTreeFile(),
 			workspaceRoot: "/tmp/ws",
 			resume: false,
 		})) as StubPiTreeHandle;
@@ -2566,7 +2576,7 @@ describe("StubPiTreeHandleFactory", () => {
 	});
 
 	it("reopens the same persisted stub tree when a handle is resumed", async () => {
-		const treeFile = `/tmp/resume-tree-${Math.random().toString(36).slice(2)}.jsonl`;
+		const treeFile = temporaryTreeFile();
 		const factory = new StubPiTreeHandleFactory();
 		const firstHandle = (await factory.createPrimaryTreeHandle({
 			instanceId: "ag1",
@@ -2599,7 +2609,7 @@ describe("StubPiTreeHandleFactory", () => {
 	});
 
 	it("persists stub tree state across factory instances for fresh-worker resumes", async () => {
-		const treeFile = `/tmp/resume-cross-factory-${Math.random().toString(36).slice(2)}.jsonl`;
+		const treeFile = temporaryTreeFile();
 		const firstFactory = new StubPiTreeHandleFactory();
 		const firstHandle = (await firstFactory.createPrimaryTreeHandle({
 			instanceId: "ag1",

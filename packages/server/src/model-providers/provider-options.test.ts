@@ -45,6 +45,12 @@ describe("provider option server wrappers", () => {
 				profileDefaults: { account: "profile-default" },
 			}),
 		).toEqual({ ok: true, value: { account: "not-in-dynamic-choices" } });
+		expect(
+			resolveRegisteredProviderOptions({
+				provider,
+				profileDefaults: { account: "profile-default" },
+			}),
+		).toEqual({ ok: true, value: { account: "profile-default" } });
 		expect(resolveRegisteredProviderOptions({ provider })).toEqual({
 			ok: true,
 			value: { account: "provider-default" },

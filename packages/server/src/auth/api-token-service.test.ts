@@ -1,7 +1,7 @@
 import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
-import { assert, describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
+import { assert, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createAllRepos } from "../db/repositories.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { resolveApiTokenPolicy, tokenExpiry } from "./api-token-policy.js";
 import { createAuthService } from "./auth-service.js";
 import { testAuthConfig } from "./auth-test-helpers.js";
@@ -15,10 +15,12 @@ function harness(config = testAuthConfig(), repos = createAllRepos(createInMemor
 describe("API token policy", () => {
 	it("defaults dated tokens, permits explicit no expiration and enforces boundaries", () => {
 		const policy = resolveApiTokenPolicy();
-		const now = Date.now();
+		const now = Date.parse("2026-01-01T00:00:00.000Z");
 		expect(tokenExpiry(policy, undefined, now)).toBe(new Date(now + 7 * 86400000).toISOString());
 		expect(tokenExpiry(policy, null, now)).toBeNull();
-		expect(tokenExpiry(policy, new Date(now + policy.maxTtlMs).toISOString(), now)).toBeTruthy();
+		expect(tokenExpiry(policy, new Date(now + policy.maxTtlMs).toISOString(), now)).toBe(
+			new Date(now + policy.maxTtlMs).toISOString(),
+		);
 		for (const value of [
 			"bad",
 			"1",
@@ -147,6 +149,9 @@ describe("API token ownership and lifecycle", () => {
 		expect(service.resolve(two.secret).actor?.id).toBe(b.id);
 	});
 	it("expires exactly at expiry and never revives revoked anonymous tokens across auth toggles", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		onTestFinished(() => vi.useRealTimers());
 		const config = testAuthConfig({ auth: { enabled: false } });
 		const { service, repos } = harness(config);
 		const owner = service.ownerForActor(ADMIN_ACTOR);
@@ -165,6 +170,9 @@ describe("API token ownership and lifecycle", () => {
 			revokedAt: null,
 			expiresAt: new Date().toISOString(),
 		});
+		vi.setSystemTime(new Date("2025-12-31T23:59:59.999Z"));
+		expect(service.resolve(`lwk_pat_${"a".repeat(43)}`).actor).toEqual(ADMIN_ACTOR);
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 		expect(service.resolve(`lwk_pat_${"a".repeat(43)}`).actor).toBeNull();
 	});
 });

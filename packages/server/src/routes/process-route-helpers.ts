@@ -8,7 +8,6 @@ import {
 } from "@leitwerk-dev/domain";
 import type { ProcessModelSelectionServiceLike } from "@leitwerk-dev/process-sdk";
 import {
-	type FormDefinition,
 	findUiLauncherById,
 	isLlmTurnDefinition,
 	type OutcomeToolParameterSpec,
@@ -29,12 +28,9 @@ import {
 import type {
 	LauncherModelConfigSchema,
 	LauncherMutationResponseBody,
-	ProcessActionPreviewSummary,
-	ProcessActionSummary,
 	ProcessLaunchConfigurationView,
 	ProcessRunDetailsView,
 	ProcessRunTurnView,
-	ScheduledActionDetail,
 	ScheduledActionMutationResponseBody,
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
@@ -53,7 +49,7 @@ import type {
 } from "../future-execution/index.js";
 import {
 	buildFutureExecutionListView,
-	getScheduledActionDetailForProcess as getPresentedScheduledActionDetailForProcess,
+	getScheduledActionDetailForProcess,
 } from "../future-execution-presenter.js";
 import type { LaunchCoordinator } from "../launch-coordinator.js";
 import { normalizeSubmittedProcessTitle } from "../launch-title.js";
@@ -74,11 +70,7 @@ import { getProcessGraph, type ProcessGraphRegistry } from "../process-graph.js"
 import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
 import { presentLauncherModelConfigSchema } from "../process-model-policy-presenter.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
-import {
-	getSelectedTurnSummaryForProcess,
-	listCurrentVisibleActions,
-	listVisibleActionsForProcess as listVisibleAttentionActionsForProcess,
-} from "../process-operator-attention.js";
+import { getSelectedTurnSummaryForProcess } from "../process-operator-attention.js";
 import type { ProcessQuestionService } from "../process-question-service.js";
 import type { ProcessSessionReader } from "../process-session-store.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
@@ -181,7 +173,7 @@ export interface RouteDeps
 	sessionTransferService?: SessionTransferService;
 }
 
-export function routeConfig(deps: RouteDeps): LeitwerkConfig {
+export function routeConfig(deps: Pick<RouteDeps, "config">): LeitwerkConfig {
 	return deps.config ?? getDefaultConfig();
 }
 
@@ -258,7 +250,7 @@ export function buildProcessLaunchConfigurationView(
 }
 
 export function buildProcessRunDetailsView(
-	deps: RouteDeps,
+	deps: Pick<RouteDeps, "config" | "processActionRegistry" | "processGraphs">,
 	process: ProcessInstance,
 	projects: readonly ProcessProject[],
 ): ProcessRunDetailsView {
@@ -342,60 +334,10 @@ export function buildProcessRunDetailsView(
 	};
 }
 
-export function actionHasPurePlan(
-	deps: RouteDeps,
+export function processDefinesLeafOutcome(
+	deps: Pick<RouteDeps, "processUiRegistry">,
 	process: ProcessInstance,
-	actionId: string,
 ): boolean {
-	const action = deps.processActionRegistry?.getAction(process.processId, actionId);
-	return typeof action?.plan === "function";
-}
-
-export function buildActionSummaryForProcess(
-	deps: RouteDeps,
-	process: ProcessInstance,
-	actionId: string,
-	action: {
-		id: string;
-		label: string;
-		form?: FormDefinition;
-	},
-	labelOverride?: string | null,
-	overrides: { supportsScheduling?: boolean } = {},
-): ProcessActionSummary {
-	const visibleAction = listCurrentVisibleActions(deps, process).find(
-		(candidate) => candidate.id === actionId,
-	);
-	const preview =
-		visibleAction?.preview ??
-		deps.processActionRegistry?.resolveActionPreview(process.processId, process, actionId) ??
-		null;
-	const supportsScheduling =
-		overrides.supportsScheduling ??
-		Boolean(
-			actionHasPurePlan(deps, process, actionId) &&
-				deps.processActionRegistry?.resolveActionScheduling(process.processId, process, actionId),
-		);
-	return buildProcessActionSummary(action, labelOverride ?? visibleAction?.label ?? action.label, {
-		description: visibleAction?.description ?? null,
-		preview: buildProcessActionPreviewSummary(deps, preview, process),
-		supportsScheduling,
-		supportsNextTurnModelOverride: previewSupportsNextTurnModelOverride(
-			deps,
-			process,
-			actionId,
-			preview,
-		),
-	});
-}
-
-export function listVisibleActionsForProcess(deps: RouteDeps, process: ProcessInstance) {
-	return listVisibleAttentionActionsForProcess(deps, process).map((action) =>
-		buildActionSummaryForProcess(deps, process, action.id, action, action.label),
-	);
-}
-
-export function processDefinesLeafOutcome(deps: RouteDeps, process: ProcessInstance): boolean {
 	return deps.processUiRegistry?.getLeafOutcomeDefinition(process.processId) != null;
 }
 
@@ -602,107 +544,6 @@ export function normalizeRecoveryModelRequest(
 		expectedShape: "{ nextTurnModelProfileId, providerOptions }",
 	});
 	return parsed.ok ? { ok: true, request: parsed.request } : parsed;
-}
-
-export function buildProcessActionPreviewSummary(
-	deps: RouteDeps,
-	preview: {
-		candidateSelectedTurnId: string | null;
-		lifecycleStatus?: string | null;
-	} | null,
-	process: ProcessInstance,
-): ProcessActionPreviewSummary | null {
-	if (!preview) {
-		return null;
-	}
-	if (!preview.candidateSelectedTurnId) {
-		return {
-			kind: "terminal",
-			turnId: null,
-			turnKind: null,
-			description: preview.lifecycleStatus === "aborted" ? "Abort process" : "Complete process",
-		};
-	}
-	const turnDef = deps.processActionRegistry?.getTurnDefinition(
-		process.processId,
-		preview.candidateSelectedTurnId,
-	);
-	if (!turnDef) {
-		return null;
-	}
-	return {
-		kind: "turn",
-		turnId: preview.candidateSelectedTurnId,
-		turnKind: turnDef.kind,
-		description: turnDef.description,
-	};
-}
-
-export function previewSupportsNextTurnModelOverride(
-	deps: RouteDeps,
-	process: ProcessInstance,
-	actionId: string,
-	preview: { candidateSelectedTurnId: string | null } | null,
-): boolean {
-	if (!preview?.candidateSelectedTurnId) {
-		return false;
-	}
-	if (!actionHasPurePlan(deps, process, actionId)) {
-		return false;
-	}
-	const turnDef = deps.processActionRegistry?.getTurnDefinition(
-		process.processId,
-		preview.candidateSelectedTurnId,
-	);
-	return Boolean(turnDef && isLlmTurnDefinition(turnDef));
-}
-
-export function buildProcessActionSummary(
-	action: {
-		id: string;
-		label: string;
-		form?: FormDefinition;
-	},
-	labelOverride?: string | null,
-	opts: {
-		description?: string | null;
-		preview?: ProcessActionPreviewSummary | null;
-		supportsScheduling?: boolean;
-		supportsNextTurnModelOverride?: boolean;
-	} = {},
-): ProcessActionSummary {
-	return {
-		id: action.id,
-		label: labelOverride?.trim() ? labelOverride : action.label,
-		description: opts.description ?? null,
-		preview: opts.preview ?? null,
-		supportsScheduling: opts.supportsScheduling === true,
-		supportsNextTurnModelOverride: opts.supportsNextTurnModelOverride === true,
-		...(action.form
-			? {
-					form: {
-						id: action.form.id,
-						title: action.form.title,
-						submitLabel: action.form.submitLabel,
-						fields: action.form.fields.map((field) => ({ ...field })),
-					},
-				}
-			: {}),
-	};
-}
-
-export function getScheduledActionDetailForProcess(
-	deps: RouteDeps,
-	process: ProcessInstance,
-): ScheduledActionDetail | null {
-	return getPresentedScheduledActionDetailForProcess(
-		{
-			...deps,
-			buildActionSummaryForProcess: (process, actionId, action, labelOverride, overrides) =>
-				buildActionSummaryForProcess(deps, process, actionId, action, labelOverride, overrides),
-		},
-		process,
-	);
 }
 
 export function buildLauncherModelConfigSchema(

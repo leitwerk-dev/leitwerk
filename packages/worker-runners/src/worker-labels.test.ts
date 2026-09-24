@@ -5,7 +5,6 @@ import {
 	isManagedWorkerUnitLabels,
 	managedProcessNamespaceLabelSelector,
 	managedWorkerLabelSelector,
-	PROCESS_NAMESPACE_COMPONENT_VALUE,
 	PROCESS_VOLUME_COMPONENT_VALUE,
 	parseWorkerUnitIdentity,
 	WORKER_LABEL_COMPONENT,
@@ -60,9 +59,10 @@ describe("parseWorkerUnitIdentity", () => {
 
 describe("managedWorkerLabelSelector", () => {
 	it("selects only managed worker units", () => {
-		const selector = managedWorkerLabelSelector();
-		const matching = buildWorkerUnitLabels(identity);
-		expect(Object.entries(selector).every(([key, value]) => matching[key] === value)).toBe(true);
+		expect(managedWorkerLabelSelector()).toEqual({
+			"leitwerk.dev/managed-by": "leitwerk",
+			"leitwerk.dev/component": "worker",
+		});
 	});
 });
 
@@ -82,11 +82,9 @@ describe("buildProcessResourceLabels", () => {
 	});
 
 	it("selects process namespaces", () => {
-		const selector = managedProcessNamespaceLabelSelector();
-		const matching = buildProcessResourceLabels({
-			instanceId: "proc-1",
-			component: PROCESS_NAMESPACE_COMPONENT_VALUE,
+		expect(managedProcessNamespaceLabelSelector()).toEqual({
+			"leitwerk.dev/managed-by": "leitwerk",
+			"leitwerk.dev/component": "process-namespace",
 		});
-		expect(Object.entries(selector).every(([key, value]) => matching[key] === value)).toBe(true);
 	});
 });

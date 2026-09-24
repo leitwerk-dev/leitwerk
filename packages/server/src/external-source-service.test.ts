@@ -14,9 +14,9 @@ import { createEngineRunner } from "./process-engine/runner.js";
 import type { ProcessEngine } from "./process-engine/types.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFakeWorkerSupervisor } from "./test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const stateCodec = {
 	parse(value: unknown): Record<string, unknown> {
@@ -643,7 +643,8 @@ it.each([
 	const recorded = deps.turnAnnotations
 		.listByInstance(process.id)
 		.find((item) => item.annotationType === "external_trigger");
-	expect(recorded?.payload.eventDescription).toBeUndefined();
+	expect(recorded).toBeDefined();
+	expect(recorded?.payload).not.toHaveProperty("eventDescription");
 });
 
 it("rejects a captured event after its subscription changes without queuing it", async () => {

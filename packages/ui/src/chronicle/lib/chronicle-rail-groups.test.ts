@@ -108,10 +108,12 @@ describe("turn rail history", () => {
 		items[4].status = "in_progress";
 		expect(buildChronicleRailRows(items).map((row) => row.kind)).toEqual(["repeated", "item"]);
 		items[2].shape = "square";
-		expect(buildChronicleRailRows(items).every((row) => row.kind === "item")).toBe(true);
-		expect(
-			buildChronicleRailRows([items[0], pending, items[1]]).every((row) => row.kind === "item"),
-		).toBe(true);
+		expect(buildChronicleRailRows(items)).toMatchObject(
+			items.map((item) => ({ kind: "item", item })),
+		);
+		expect(buildChronicleRailRows([items[0], pending, items[1]])).toMatchObject(
+			[items[0], pending, items[1]].map((item) => ({ kind: "item", item })),
+		);
 	});
 	it("matches turn identity rather than labels and leaves partial cycles visible", () => {
 		const items = history(["A", "B", "A", "B", "A"]);

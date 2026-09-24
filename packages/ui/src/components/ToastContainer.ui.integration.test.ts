@@ -7,10 +7,13 @@ import { clearPendingProcessToastFocus } from "../lib/process-toast-focus.svelte
 import { dismissToast, pushToast, toastStore } from "../lib/toasts.svelte.js";
 import ToastContainer from "./ToastContainer.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 function mountSubject() {
 	const target = document.createElement("div");
 	document.body.appendChild(target);
 	const app = mount(ToastContainer, { target });
+	mountedApps.push(app);
 	return { app, target };
 }
 
@@ -33,7 +36,8 @@ describe("ToastContainer", () => {
 		window.history.replaceState(null, "", "/");
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		for (const app of mountedApps.splice(0)) await unmount(app);
 		resetToasts();
 		clearPendingProcessToastFocus();
 		document.body.innerHTML = "";
@@ -42,7 +46,7 @@ describe("ToastContainer", () => {
 	});
 
 	it("renders an open affordance for actionable toasts", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		pushToast({
 			instanceId: "agt_1",
 			level: "warn",
@@ -57,12 +61,10 @@ describe("ToastContainer", () => {
 		expect(openButton).toBeTruthy();
 		expect(openButton?.textContent).toContain("Action required");
 		expect(openButton?.textContent).toContain("Review implementation needs a decision");
-
-		unmount(app);
 	});
 
 	it("dismisses the newest toast when Escape is pressed", async () => {
-		const { app } = mountSubject();
+		mountSubject();
 		pushToast({
 			instanceId: "agt_1",
 			level: "warn",
@@ -86,7 +88,5 @@ describe("ToastContainer", () => {
 
 		expect(get(toastStore)).toHaveLength(1);
 		expect(get(toastStore)[0]?.message).toBe("First");
-
-		unmount(app);
 	});
 });

@@ -23,7 +23,6 @@
 	"extensions/telegram": "0.3.0",
 	"packages/dev-sandbox": "0.3.0",
 	"extensions/ticket-creation": "0.3.0",
-	"packages/repository-rebase": "0.3.0",
 	"extensions/forgejo": "0.3.0",
 	"extensions/github": "0.3.0",
 	"extensions/woodpecker": "0.3.0",

@@ -370,7 +370,11 @@ describe("startup evidence", () => {
 		expect(projected).toMatchObject({ status: "failed" });
 		expect(projected.steps).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ status: "failed", safeSummary: "Safe startup failure" }),
+				expect.objectContaining({
+					id: "start_worker",
+					status: "failed",
+					safeSummary: "Safe startup failure",
+				}),
 			]),
 		);
 	});

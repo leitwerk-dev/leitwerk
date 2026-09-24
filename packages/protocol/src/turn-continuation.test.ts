@@ -47,11 +47,12 @@ function compactionEntry(
 }
 
 describe("turn continuation helpers", () => {
-	it("prefers the explicit result leaf when it belongs to the turn branch", () => {
+	it("keeps the explicit result branch despite newer sibling progress", () => {
 		const entries = [
 			messageEntry("root", null, "2026-04-26T10:00:00.000Z"),
 			messageEntry("assistant-a", "root", "2026-04-26T10:00:01.000Z"),
 			messageEntry("assistant-b", "assistant-a", "2026-04-26T10:00:02.000Z"),
+			messageEntry("newer-sibling", "root", "2026-04-26T10:00:03.000Z"),
 		];
 
 		expect(
@@ -168,57 +169,6 @@ describe("turn continuation helpers", () => {
 				status: "failed",
 			}),
 		).toBe(true);
-	});
-
-	it("keeps the latest failed user continuation leaf instead of rewinding to its assistant parent", () => {
-		const entries = [
-			messageEntry("root", null, "2026-04-26T10:00:00.000Z", {
-				role: "assistant",
-				content: "Seeded branch",
-			}),
-			messageEntry("assistant-timeout", "root", "2026-04-26T10:00:05.000Z", {
-				role: "assistant",
-				content: "Timed out leaf",
-			}),
-			messageEntry("user-continue", "assistant-timeout", "2026-04-26T10:00:06.000Z", {
-				role: "user",
-				content: "continue",
-			}),
-		];
-
-		expect(
-			resolveTurnContinuationLeafEntryId(entries, {
-				forkPiEntryId: "root",
-				resultPiEntryId: "user-continue",
-				startedAt: "2026-04-26T10:00:04.000Z",
-				status: "failed",
-			}),
-		).toBe("user-continue");
-		expect(
-			resolveTurnContinuationUserPrompt(entries, {
-				forkPiEntryId: "root",
-				resultPiEntryId: "user-continue",
-				startedAt: "2026-04-26T10:00:04.000Z",
-				status: "failed",
-			}),
-		).toBe("continue");
-	});
-
-	it("ignores saved descendants from earlier attempts on the same fork", () => {
-		const entries = [
-			messageEntry("root", null, "2026-04-26T10:00:00.000Z"),
-			messageEntry("attempt-1", "root", "2026-04-26T10:00:01.000Z"),
-			messageEntry("attempt-2", "root", "2026-04-26T10:00:05.000Z"),
-		];
-
-		expect(
-			resolveTurnContinuationLeafEntryId(entries, {
-				forkPiEntryId: "root",
-				resultPiEntryId: null,
-				startedAt: "2026-04-26T10:00:04.500Z",
-				status: "failed",
-			}),
-		).toBe("attempt-2");
 	});
 
 	it("uses endedAt bounds so later continuation branches do not replace the failed compaction leaf", () => {

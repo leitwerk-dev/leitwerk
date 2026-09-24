@@ -19,6 +19,9 @@ async function fakeGit(): Promise<string> {
 	await writeFile(
 		binary,
 		`#!/bin/sh
+case " $* " in
+  *" push "*) case " $* " in *" --dry-run "*) ;; *) exit 97 ;; esac ;;
+esac
 case "$*" in
   *deny-read*) echo "repository key is not authorized to read" >&2; exit 128 ;;
   *push*deny-write*) echo "repository key is read-only" >&2; exit 128 ;;
@@ -31,7 +34,7 @@ exit 0
 }
 
 describe("git ssh profiles", () => {
-	it("parses pinned profiles without exposing them through a catalog", () => {
+	it("parses pinned credential material", () => {
 		const profiles = parseProfiles({
 			credentials: { default: { private_key: key, known_hosts: "git.example ssh-ed25519 AAAA" } },
 		});
@@ -44,39 +47,23 @@ describe("git ssh profiles", () => {
 	it("checks SSH read and write authorization without pushing", async () => {
 		const gitBinary = await fakeGit();
 		const material = { privateKey: key, knownHosts: "git.example ssh-ed25519 AAAA" };
-		await expect(
-			preflightGitSshAccess(
-				{
-					repoLocator: "ssh://git@git.example/allowed.git",
-					baseBranch: "main",
-					requireWrite: true,
-				},
-				material,
-				gitBinary,
-			),
-		).resolves.toEqual({ ok: true });
-		await expect(
-			preflightGitSshAccess(
-				{
-					repoLocator: "ssh://git@git.example/deny-read.git",
-					baseBranch: "main",
-					requireWrite: true,
-				},
-				material,
-				gitBinary,
-			),
-		).resolves.toMatchObject({ ok: false, access: "read" });
-		await expect(
-			preflightGitSshAccess(
-				{
-					repoLocator: "ssh://git@git.example/deny-write.git",
-					baseBranch: "main",
-					requireWrite: true,
-				},
-				material,
-				gitBinary,
-			),
-		).resolves.toMatchObject({ ok: false, access: "write" });
+		for (const [repository, expected] of [
+			["allowed", { ok: true }],
+			["deny-read", { ok: false, access: "read" }],
+			["deny-write", { ok: false, access: "write" }],
+		] as const) {
+			await expect(
+				preflightGitSshAccess(
+					{
+						repoLocator: `ssh://git@git.example/${repository}.git`,
+						baseBranch: "main",
+						requireWrite: true,
+					},
+					material,
+					gitBinary,
+				),
+			).resolves.toMatchObject(expected);
+		}
 	});
 
 	it("requires a key and pinned hosts", () => {
@@ -99,7 +86,12 @@ describe("git ssh profiles", () => {
 		await writeFile(
 			join(directory, "ssh"),
 			`#!/bin/sh
-if [ "$1" = "-F" ] && [ "$2" = "/dev/null" ] && [ "$3" = "-i" ] && [ -f "$4" ]; then
+for option in "$@"; do
+  case "$option" in UserKnownHostsFile=*) hosts_path="\${option#UserKnownHostsFile=}" ;; esac
+done
+if [ "$1" = "-F" ] && [ "$2" = "/dev/null" ] && [ "$3" = "-i" ] &&
+   [ "$(cat "$4")" = '${key}' ] &&
+   [ "$(cat "$hosts_path")" = "git.example.invalid ssh-ed25519 AAAA" ]; then
   echo "managed-profile-selected" >&2
 fi
 exit 1

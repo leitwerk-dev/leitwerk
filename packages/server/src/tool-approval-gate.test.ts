@@ -1,33 +1,40 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { closeDatabase } from "./db/database.js";
 import { commitWrites } from "./process-engine/writes/commit-writes.js";
 import { createWrites } from "./process-engine/writes/writes.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
 
+function createGateFixture() {
+	const repos = createTestDeps();
+	const process = repos.processes.create({
+		processId: "approval_process",
+		selectedTurnId: "run",
+		lifecycleStatus: "active",
+	});
+	const turn = repos.turnRecords.create({
+		instanceId: process.id,
+		turnId: "run",
+		status: "running",
+	});
+	const gate = createToolApprovalGate({
+		repos,
+		processOperations: createProcessOperationCoordinator(),
+	});
+	onTestFinished(() => {
+		gate.cancelTurn(process.id, turn.id);
+		closeDatabase(repos.db);
+	});
+	return { repos, process, turn, gate };
+}
+
 describe("tool approval gate", () => {
 	it.each([
 		"accepted",
 		"cancelled",
 	] as const)("settles every replayed waiter when %s", async (outcome) => {
-		const repos = createTestDeps();
-		const process = repos.processes.create({
-			processId: "approval_process",
-			selectedTurnId: "run",
-			lifecycleStatus: "active",
-		});
-		const turn = repos.turnRecords.create({
-			id: "replayed-turn",
-			instanceId: process.id,
-			turnId: "run",
-			turnType: "llm",
-			status: "running",
-			pathType: "primary",
-		});
-		const gate = createToolApprovalGate({
-			repos,
-			processOperations: createProcessOperationCoordinator(),
-		});
+		const { process, turn, gate } = createGateFixture();
 		const requestInput = {
 			instanceId: process.id,
 			turnRecordId: turn.id,
@@ -55,24 +62,7 @@ describe("tool approval gate", () => {
 		]);
 	});
 	it("does not reuse approval for a different tool call in the same turn", async () => {
-		const repos = createTestDeps();
-		const process = repos.processes.create({
-			processId: "approval_process",
-			selectedTurnId: "run",
-			lifecycleStatus: "active",
-		});
-		const turnRecord = repos.turnRecords.create({
-			id: "turn-1",
-			instanceId: process.id,
-			turnId: "run",
-			turnType: "llm",
-			status: "running",
-			pathType: "primary",
-		});
-		const gate = createToolApprovalGate({
-			repos,
-			processOperations: createProcessOperationCoordinator(),
-		});
+		const { repos, process, turn: turnRecord, gate } = createGateFixture();
 		const first = gate.review({
 			instanceId: process.id,
 			turnRecordId: turnRecord.id,
@@ -113,21 +103,7 @@ describe("tool approval gate", () => {
 		"superseded",
 		"succeeded",
 	] as const)("cancels approvals and settles waiters when the turn becomes %s without worker cancellation", async (status) => {
-		const repos = createTestDeps();
-		const process = repos.processes.create({
-			processId: "approval_process",
-			selectedTurnId: "run",
-			lifecycleStatus: "active",
-		});
-		const turn = repos.turnRecords.create({
-			instanceId: process.id,
-			turnId: "run",
-			status: "running",
-		});
-		const gate = createToolApprovalGate({
-			repos,
-			processOperations: createProcessOperationCoordinator(),
-		});
+		const { repos, process, turn, gate } = createGateFixture();
 		const pending = gate.review({
 			instanceId: process.id,
 			turnRecordId: turn.id,
@@ -157,21 +133,7 @@ describe("tool approval gate", () => {
 		"feedback",
 		"declined",
 	] as const)("rejects a stale %s decision after a replacement turn starts", async (kind) => {
-		const repos = createTestDeps();
-		const process = repos.processes.create({
-			processId: "approval_process",
-			selectedTurnId: "run",
-			lifecycleStatus: "active",
-		});
-		const original = repos.turnRecords.create({
-			instanceId: process.id,
-			turnId: "run",
-			status: "running",
-		});
-		const gate = createToolApprovalGate({
-			repos,
-			processOperations: createProcessOperationCoordinator(),
-		});
+		const { repos, process, turn: original, gate } = createGateFixture();
 		const pending = gate.review({
 			instanceId: process.id,
 			turnRecordId: original.id,

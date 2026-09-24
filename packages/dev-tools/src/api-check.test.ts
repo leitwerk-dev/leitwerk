@@ -47,9 +47,11 @@ describe("API classification", () => {
 			"@example/child/src/index.ts#Shared",
 			"@example/child/src/index.ts#Shared.unused",
 		]);
-		expect(surface.exports.get("@example/root#Shared")).toEqual(
-			surface.exports.get("@example/child#Shared"),
-		);
+		for (const route of ["@example/root#Shared", "@example/child#Shared"]) {
+			expect(surface.exports.get(route)?.map((item) => item.id)).toEqual([
+				"@example/child/src/index.ts#Shared",
+			]);
+		}
 	});
 
 	it("requires individual tags, checks conflicts and signature dependencies across re-exports", () => {

@@ -3,7 +3,8 @@ import { createTestQuestion } from "@leitwerk-dev/test-support/fixtures";
 import { IPC_PROTOCOL_VERSION, type IpcEnvelope } from "@leitwerk-dev/worker-protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTestIpcHandler } from "../test-helpers/ipc-handler-harness.js";
-import { createTestDeps, type TestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
+import type { TestDeps } from "../test-helpers/unit-deps.js";
 
 let t: TestDeps;
 
@@ -1216,6 +1217,14 @@ describe("createIpcHandler", () => {
 		);
 
 		expect(
+			t.events.listByInstance(process.id, 10).find((event) => event.eventType === "worker.trace")
+				?.data,
+		).toMatchObject({
+			code: "pi.retry_scheduled",
+			turnRecordId: "trn_retry_live",
+			details: { attempt: 1, maxAttempts: 3, delayMs: 2000 },
+		});
+		expect(
 			frames.some((frame) => frame.type === "process.toast" && frame.instanceId === process.id),
 		).toBe(false);
 	});
@@ -1292,7 +1301,7 @@ describe("createIpcHandler", () => {
 		);
 	});
 
-	it("records turn starts before outcomes and finalizes successful turn records", async () => {
+	it("records successful outcomes and acknowledges terminal replay for an accepted turn", async () => {
 		const process = t.processes.create({
 			processId: "ticket_issue_process",
 			selectedTurnId: "generate_plan",

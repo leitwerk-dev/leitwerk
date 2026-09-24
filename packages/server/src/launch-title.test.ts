@@ -43,7 +43,7 @@ describe("normalizeProcessTitleInput", () => {
 		const title = normalizeProcessTitleInput(
 			"Implement a very long process title that keeps rambling past what should be persisted in compact operator-facing process lists",
 		);
-		expect(title).not.toBeNull();
+		expect(title).toContain("Implement a very long process title that keeps rambling");
 		expect(title?.length).toBeLessThanOrEqual(MAX_PROCESS_TITLE_LENGTH);
 		expect(title?.endsWith("…")).toBe(true);
 	});

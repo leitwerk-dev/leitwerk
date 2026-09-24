@@ -2,6 +2,8 @@ import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChronicleLeafOutcomeItem } from "../lib/chronicle-projection.js";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 const { mockLoadLeafOutcomeRenderer } = vi.hoisted(() => ({
 	mockLoadLeafOutcomeRenderer: vi.fn(),
 }));
@@ -83,7 +85,8 @@ async function waitForAssertion(assertion: () => void, timeoutMs = 2_000): Promi
 	throw lastError instanceof Error ? lastError : new Error("Timed out waiting for assertion");
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	mockLoadLeafOutcomeRenderer.mockReset();
 	document.body.innerHTML = "";
 	vi.useRealTimers();
@@ -104,12 +107,12 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps({ props: null }),
 		});
+		mountedApps.push(app);
 
 		await waitForAssertion(() =>
 			expect(target.querySelector('[data-warning-code="invalid_renderer_payload"]')).not.toBeNull(),
 		);
 		expect(mockLoadLeafOutcomeRenderer).not.toHaveBeenCalled();
-		unmount(app);
 	});
 
 	it("surfaces loader failures as inline warning blocks", async () => {
@@ -129,6 +132,7 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps(),
 		});
+		mountedApps.push(app);
 
 		await waitForAssertion(() =>
 			expect(
@@ -136,7 +140,6 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			).not.toBeNull(),
 		);
 		await waitForAssertion(() => expect(target.textContent).toContain("Module import exploded"));
-		unmount(app);
 	});
 
 	it("clears transient min-height once a renderer is ready", async () => {
@@ -181,6 +184,7 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps(),
 		});
+		mountedApps.push(app);
 
 		await waitForAssertion(() =>
 			expect(target.querySelector('[data-role="leaf-outcome-renderer-host"]')).not.toBeNull(),
@@ -194,60 +198,6 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 		await Promise.resolve();
 		expect(host.style.minHeight).toBe("");
 		expect(host.textContent).toContain("Ready renderer");
-		unmount(app);
-	});
-
-	it("keeps a synchronously ready renderer mounted after the readiness timeout window", async () => {
-		vi.useFakeTimers();
-		const tagName = "o2-test-sync-ready-timeout-host";
-		defineCustomElement(
-			tagName,
-			class extends HTMLElement {
-				connectedCallback() {
-					this.textContent = "Ready renderer";
-					this.dispatchEvent(
-						new CustomEvent("o2-leaf-outcome-ready", { bubbles: true, composed: true }),
-					);
-				}
-			},
-		);
-		mockLoadLeafOutcomeRenderer.mockResolvedValue({
-			ok: true,
-			descriptor: {
-				ok: true,
-				rendererId: "test:renderer",
-				kind: "custom_element",
-				tagName,
-				modulePath: "assets/sync-ready-timeout.js",
-				rendererApiVersion: 1,
-				extensionManifestId: "test-extension",
-				moduleUrl: "/ext-ui/test-extension/assets/sync-ready-timeout.js",
-			},
-		});
-		const { default: ChronicleLeafOutcomeRendererHost } = await import(
-			"./ChronicleLeafOutcomeRendererHost.svelte"
-		);
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(ChronicleLeafOutcomeRendererHost, {
-			target,
-			props: rendererHostProps(),
-		});
-
-		await vi.advanceTimersByTimeAsync(1_001);
-
-		const host = target.querySelector<HTMLElement>('[data-role="leaf-outcome-renderer-host"]');
-		expect(host).not.toBeNull();
-		if (!host) {
-			throw new Error("Expected renderer host to mount");
-		}
-		expect(host.dataset.rendererState).toBe("ready");
-		expect(
-			target.querySelector('[data-warning-code="renderer_did_not_signal_readiness"]'),
-		).toBeNull();
-		expect(target.textContent).toContain("Ready renderer");
-		unmount(app);
 	});
 
 	it("keeps a synchronously ready renderer mounted across remounts", async () => {
@@ -257,6 +207,7 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			tagName,
 			class extends HTMLElement {
 				connectedCallback() {
+					this.textContent = "Ready renderer";
 					this.dispatchEvent(
 						new CustomEvent("o2-leaf-outcome-ready", { bubbles: true, composed: true }),
 					);
@@ -282,28 +233,31 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 		const target = document.createElement("div");
 		document.body.appendChild(target);
 
-		const mountHost = () =>
-			mount(ChronicleLeafOutcomeRendererHost, {
+		const mountHost = () => {
+			const app = mount(ChronicleLeafOutcomeRendererHost, {
 				target,
 				props: rendererHostProps(),
 			});
+			mountedApps.push(app);
+			return app;
+		};
 
 		let app = mountHost();
 		await vi.advanceTimersByTimeAsync(1_001);
 		let host = target.querySelector<HTMLElement>('[data-role="leaf-outcome-renderer-host"]');
 		expect(host?.dataset.rendererState).toBe("ready");
-		expect(target.querySelector(tagName)).not.toBeNull();
-		unmount(app);
+		expect(target.querySelector(tagName)?.textContent).toBe("Ready renderer");
+		await unmount(app);
+		mountedApps.splice(mountedApps.indexOf(app), 1);
 
 		app = mountHost();
 		await vi.advanceTimersByTimeAsync(1_001);
 		host = target.querySelector<HTMLElement>('[data-role="leaf-outcome-renderer-host"]');
 		expect(host?.dataset.rendererState).toBe("ready");
-		expect(target.querySelector(tagName)).not.toBeNull();
+		expect(target.querySelector(tagName)?.textContent).toBe("Ready renderer");
 		expect(
 			target.querySelector('[data-warning-code="renderer_did_not_signal_readiness"]'),
 		).toBeNull();
-		unmount(app);
 	});
 
 	it("passes the markdown runtime helper into custom elements", async () => {
@@ -360,12 +314,14 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps(),
 		});
+		mountedApps.push(app);
 
-		await waitForAssertion(() => expect(target.textContent).toContain("Rendered from runtime"));
+		await waitForAssertion(() =>
+			expect(target.querySelector("h2")?.textContent).toContain("Rendered from runtime"),
+		);
 		expect(
 			target.querySelector('[data-warning-code="missing_markdown_runtime_helper"]'),
 		).toBeNull();
-		unmount(app);
 	});
 
 	it("passes same-origin server helpers into custom elements", async () => {
@@ -430,10 +386,10 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps(),
 		});
+		mountedApps.push(app);
 
 		await waitForAssertion(() => expect(target.textContent).toContain("/api/processes/agt_test"));
 		expect(target.querySelector('[data-warning-code="missing_server_runtime_helper"]')).toBeNull();
-		unmount(app);
 	});
 
 	it("renders a readiness-timeout warning when the custom element never signals ready", async () => {
@@ -470,12 +426,12 @@ describe("ChronicleLeafOutcomeRendererHost", () => {
 			target,
 			props: rendererHostProps(),
 		});
+		mountedApps.push(app);
 
 		await Promise.resolve();
 		await vi.advanceTimersByTimeAsync(1_001);
 		expect(
 			target.querySelector('[data-warning-code="renderer_did_not_signal_readiness"]'),
 		).not.toBeNull();
-		unmount(app);
 	});
 });

@@ -1,6 +1,6 @@
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
-import { describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { closeDatabase, createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
 import { createSkillCatalogService } from "./catalog-service.js";
 
@@ -20,7 +20,9 @@ function importedSkill(revision: string) {
 
 describe("skill catalog service", () => {
 	it("preserves partial results, exposes updates, and keeps installed skills after remote removal", async () => {
-		const repos = createAllRepos(createInMemoryDatabase());
+		const db = createInMemoryDatabase();
+		onTestFinished(() => closeDatabase(db));
+		const repos = createAllRepos(db);
 		let revision = "revision-1";
 		let remoteSkills = [importedSkill(revision)];
 		const service = createSkillCatalogService({
@@ -36,7 +38,9 @@ describe("skill catalog service", () => {
 		});
 
 		const first = await service.refresh();
-		expect(first.availableSkills).toHaveLength(1);
+		expect(first.availableSkills).toEqual([
+			expect.objectContaining({ id: "review", repositoryId: "shared" }),
+		]);
 		expect(first.repositories.find((repository) => repository.id === "broken")?.error).toBe(
 			"repository unavailable",
 		);
@@ -64,7 +68,9 @@ describe("skill catalog service", () => {
 	});
 
 	it("removes never-installed candidates after repository configuration is removed", () => {
-		const repos = createAllRepos(createInMemoryDatabase());
+		const db = createInMemoryDatabase();
+		onTestFinished(() => closeDatabase(db));
+		const repos = createAllRepos(db);
 		repos.skills.mergeCatalog("removed", [importedSkill("revision-1")]);
 		const service = createSkillCatalogService({ repositories: [], repos });
 
@@ -73,7 +79,9 @@ describe("skill catalog service", () => {
 	});
 
 	it("scopes duplicate remote ids by repository and rejects configuration-managed collisions", async () => {
-		const repos = createAllRepos(createInMemoryDatabase());
+		const db = createInMemoryDatabase();
+		onTestFinished(() => closeDatabase(db));
+		const repos = createAllRepos(db);
 		const candidateA = importedSkill("one");
 		const candidateB = importedSkill("two");
 		repos.skills.mergeCatalog("one", [candidateA]);
@@ -93,7 +101,9 @@ describe("skill catalog service", () => {
 		);
 		expect(() => service.register("one", "review")).not.toThrow();
 
-		const configuredRepos = createAllRepos(createInMemoryDatabase());
+		const configuredDb = createInMemoryDatabase();
+		onTestFinished(() => closeDatabase(configuredDb));
+		const configuredRepos = createAllRepos(configuredDb);
 		configuredRepos.skills.mergeCatalog("one", [candidateA]);
 		configuredRepos.skills.reconcile([
 			{

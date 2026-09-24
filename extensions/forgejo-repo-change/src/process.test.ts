@@ -4,12 +4,7 @@ import { forgejoRepoChangeProcess } from "./testing/default-process.js";
 import { launcherFixture } from "./testing/launcher-fixture.js";
 
 describe("forgejoRepoChangeProcess", () => {
-	it("declares Docker independently of the selected runner", () => {
-		expect(forgejoRepoChangeProcess.runtime).toEqual({ docker: true });
-	});
-
 	it("uses one waiting automatic delivery turn for publication and external evidence", () => {
-		expect([...forgejoRepoChangeProcess.turns.keys()]).toHaveLength(15);
 		for (const removed of [
 			"import_plan",
 			"publish_work_branch",

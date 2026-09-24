@@ -1,16 +1,18 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
-import { closeDatabase, createDatabase, initializeSchema } from "./database.js";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
+import { closeDatabase, initializeSchema } from "./database.js";
 import { createAllRepos } from "./repositories.js";
+
+const { createDatabase, closeOwnedSqlite, openOwnedSqlite } = createOwnedDatabaseScope();
 
 it("migrates file storage without rewriting existing durable tables and retains first evidence", () => {
 	const root = mkdtempSync(join(tmpdir(), "startup-migration-"));
 	const sqlitePath = join(root, "state.sqlite");
 	try {
-		const sqlite = new DatabaseSync(sqlitePath);
+		const sqlite = openOwnedSqlite(sqlitePath);
 		initializeSchema(sqlite, { sqlitePath });
 		sqlite.exec(
 			"INSERT INTO process_instances(id, process_id, created_at, updated_at) VALUES ('p', 'test', '2026-09-11', '2026-09-11'); DROP TABLE startup_observations;",
@@ -42,13 +44,14 @@ it("migrates file storage without rewriting existing durable tables and retains 
 			observation,
 		]);
 		closeDatabase(reopened);
-		const check = new DatabaseSync(sqlitePath);
+		const check = openOwnedSqlite(sqlitePath);
 		expect(check.prepare("SELECT * FROM process_instances").all()).toEqual(before);
 		check.close();
 		expect(readdirSync(join(root, "backups")).filter((name) => name.endsWith(".bak"))).toHaveLength(
 			1,
 		);
 	} finally {
+		closeOwnedSqlite();
 		rmSync(root, { recursive: true, force: true });
 	}
 });

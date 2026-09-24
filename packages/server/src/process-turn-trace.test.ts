@@ -326,8 +326,8 @@ describe("process turn trace projection", () => {
 			},
 		});
 
-		expect(trace?.assistant.text.length).toBeGreaterThan(0);
-		expect(trace?.assistant.thinking.length).toBeGreaterThan(0);
+		expect(trace?.assistant.text).toBe("Done.");
+		expect(trace?.assistant.thinking).toBe("Inspect first.\nCheck the result.\n");
 		expect(trace?.piInput?.parts.map((part) => part.text)).toEqual([
 			"Do the work",
 			"Use the saved context",
@@ -488,8 +488,10 @@ describe("process turn trace projection", () => {
 
 		expect(preview.assistantTextPreview.length).toBeLessThan(trace.assistant.text.length);
 		expect(preview.assistantTextTruncated).toBe(true);
+		expect(preview.assistantTextPreview).toContain("A".repeat(100));
 		expect(preview.thinkingPreview.length).toBeLessThan(trace.assistant.thinking.length);
 		expect(preview.thinkingPreviewTruncated).toBe(true);
+		expect(preview.thinkingPreview).toContain("step 198\nstep 199");
 	});
 
 	it("indexes a large multi-turn tree once and isolates changed previews", () => {

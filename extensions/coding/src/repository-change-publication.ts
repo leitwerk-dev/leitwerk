@@ -5,15 +5,11 @@ import {
 	type FlowAutomaticRunContext,
 	flow,
 } from "@leitwerk-dev/process-sdk";
-import {
-	type ConflictEvidence,
-	conflictKey,
-	validateConflict,
-} from "@leitwerk-dev/repository-rebase";
-import { publishRebase, startRebase } from "@leitwerk-dev/repository-rebase/git";
-import { rebasePrompt } from "@leitwerk-dev/repository-rebase/prompt";
 import { commitAndPushWorkBranch, type GitIdentity } from "./finalization-git.js";
 import type { RepositoryChangeState } from "./repository-change-state.js";
+import { publishRebase, startRebase } from "./repository-rebase/git.js";
+import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
+import { rebasePrompt } from "./repository-rebase/prompt.js";
 
 export {
 	pullRequestPublicationCallbacks,

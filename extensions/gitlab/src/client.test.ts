@@ -1,6 +1,7 @@
 import type { ExternalWrites } from "@leitwerk-dev/external-writes";
-import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { bindExternalWrites } from "@leitwerk-dev/external-writes/internal";
+import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
+import { describe, expect, it, vi } from "vitest";
 import {
 	GitLabClient,
 	type GitLabClientLike,
@@ -14,24 +15,9 @@ import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
 import { ensureGitLabComment, ensureGitLabSeenReaction } from "./tools.js";
 
-async function writeHarness(execute: (writes: ExternalWrites) => Promise<unknown>) {
-	const harness = await createExtensionTestHarness({
-		extensions: [
-			{
-				manifest: { id: "gitlab-write-test", version: "1" },
-				setupServer(api) {
-					api.tool({
-						name: "write",
-						description: "Exercise the GitLab write boundary",
-						parameters: {},
-						execute: (ctx) => execute(ctx.externalWrites),
-					});
-				},
-			},
-		],
-	});
-	onTestFinished(() => harness.close());
-	return harness;
+function writeHarness<T>(execute: (writes: ExternalWrites) => Promise<T>) {
+	const writes = bindExternalWrites(createInMemoryExternalWriteLog(), "process");
+	return () => execute(writes);
 }
 
 const profile = { baseUrl: "https://forge.test", token: "secret-token" };
@@ -103,13 +89,11 @@ describe("GitLab boundary", () => {
 			iid: 1,
 			noteId: 42,
 		};
-		const harness = await writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
-		await harness.callTool("write", {});
-		const reads = request.mock.calls.length;
-		await harness.callTool("write", {});
-		expect(request).toHaveBeenCalledTimes(reads + 2);
-		const reopened = await writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
-		await reopened.callTool("write", {});
+		const harness = writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
+		await harness();
+		await harness();
+		const reopened = writeHarness((writes) => ensureGitLabSeenReaction({ ...input, writes }));
+		await reopened();
 		expect(posts).toBe(1);
 		expect(reactions).toHaveLength(2);
 	});
@@ -141,13 +125,13 @@ describe("GitLab boundary", () => {
 			writeKey: "feedback:42",
 			body: "Addressed in commit abc; CI passed.",
 		};
-		const harness = await writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
-		const first = await harness.callTool("write", {});
+		const harness = writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
+		const first = await harness();
 		expect(first).toMatchObject({ marker: expect.any(String) });
-		expect(notes[0]?.body).toContain((first as { marker: string }).marker);
-		await harness.callTool("write", {});
-		const reopened = await writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
-		await reopened.callTool("write", {});
+		expect(notes[0]?.body).toContain(first.marker);
+		await harness();
+		const reopened = writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
+		await reopened();
 		expect(posts).toBe(1);
 	});
 	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {
@@ -227,7 +211,7 @@ describe("GitLab boundary", () => {
 		expect(calls[3]).not.toContain("membership=true");
 		expect(JSON.stringify(client)).not.toContain(profile.token);
 	});
-	it("retries transient reads and bounds trace bytes without reading the entire response", async () => {
+	it("retries transient reads and caps returned trace bytes", async () => {
 		const sleep = vi.fn(async () => {});
 		const request = vi
 			.fn()
@@ -244,7 +228,10 @@ describe("GitLab boundary", () => {
 		);
 		await expect(
 			new GitLabClient(profile, { fetch: request as typeof fetch }).addNote(7, 1, "hello"),
-		).rejects.toThrow("GitLab request failed (503)");
+		).rejects.toMatchObject({
+			status: 503,
+			message: expect.not.stringMatching(/secret-token|internal error/),
+		});
 		expect(request).toHaveBeenCalledTimes(1);
 	});
 	it("requires a safe origin and usable authenticated bot identity", async () => {
@@ -303,7 +290,7 @@ describe("GitLab boundary", () => {
 		} as unknown as GitLabClientLike;
 		expect((await observeMergeRequest(client, 7, 1)).pipeline?.status).toBe("running");
 	});
-	it("uses selector union, subgroup exclusions and stable ID deduplication", async () => {
+	it("deduplicates overlapping selectors and applies project/subgroup exclusions", async () => {
 		const control = { id: 1, path_with_namespace: "team/platform/services/control" };
 		const other = { id: 2, path_with_namespace: "team/platform/services/other" };
 		const excluded = { id: 3, path_with_namespace: "team/platform/private/service" };

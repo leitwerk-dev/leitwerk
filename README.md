@@ -2,7 +2,7 @@
 
 > The control unit for AI-driven software delivery.
 
-![Leitwerk](images/leitwerk.png)
+![Leitwerk](docs/images/leitwerk.png)
 
 `Leitwerk` is a process-centric control plane around embedded [Pi](https://pi.dev) workers. The server owns durable state. Production workers execute selected turns in Docker containers or Kubernetes pods. The UI shows every process in one shared shell.
 
@@ -71,20 +71,13 @@ Common entry points:
 
 ## Quick Start
 
-Prerequisites: Node.js 26.x, npm, and Pi credentials/config for at least one model profile.
+Follow [Run your first process](docs/introduction.md) for prerequisites, local-worker
+configuration, model credentials, and the first launch. Leitwerk manages Pi resources;
+workers do not import your ambient Pi directory.
 
-```bash
-npm install
-cp leitwerk.yaml.example leitwerk.yaml
-mkdir -p ~/.pi/leitwerk
-npm run dev
-```
-
-Put the Pi files workers need in `~/.pi/leitwerk`, for example `auth.json`, `models.json`, and `settings.json`. Local workers set `PI_CODING_AGENT_DIR` from `pi.agent_dir`; they intentionally ignore your ambient `~/.pi/agent`.
-
-The example config loads `./extensions/models` and `./extensions/showcase-processes`. Open the Vite URL printed by `npm run dev`, then start **Poem Creator** or **Single Prompt** from the launcher page. The example also configures a filesystem watcher for `poem_creator_process`, so writing a prompt into `/tmp/create-poem` starts a new poem flow and the **Watchers** page shows the registered watcher.
-
-For Ollama/local-model setup, non-default config paths (`LEITWERK_CONFIG_PATH=/absolute/path.yaml`), and process-specific model profiles, see [docs/configuration.md](docs/configuration.md).
+For container isolation, use the [Docker](docs/docker-deployment-guide.md) or
+[Kubernetes](docs/kubernetes-deployment-guide.md) guide. See
+[Operate a process](docs/operator-guide.md) for reviews, Retry, Continue, and stopping work.
 
 ## Contributing
 

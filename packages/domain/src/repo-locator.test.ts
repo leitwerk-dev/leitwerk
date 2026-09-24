@@ -1,9 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import * as repoLocator from "./repo-locator.js";
-
-afterEach(() => {
-	vi.restoreAllMocks();
-});
 
 describe("detectRepoLocatorKind", () => {
 	it.each([
@@ -13,6 +9,7 @@ describe("detectRepoLocatorKind", () => {
 		["~/src/repo", "local_path"],
 		["./repo", "local_path"],
 		["../repo", "local_path"],
+		["/tmp/repo", "local_path"],
 	] as const)("classifies %s as %s", (value, expectedKind) => {
 		expect(repoLocator.detectRepoLocatorKind(value)).toBe(expectedKind);
 	});
@@ -25,6 +22,7 @@ describe("detectRepoLocatorKind", () => {
 		"C:\\Users\\dev\\repo",
 		"https://example.com",
 		"file://server/share/repo",
+		"not a locator",
 		"owner/repo",
 		"foo/bar",
 		"https:foo/bar",
@@ -38,19 +36,13 @@ describe("parseRepoLocator", () => {
 		expect(repoLocator.parseRepoLocator(value)).toBeNull();
 	});
 
-	it("trims the locator before returning it", () => {
-		expect(repoLocator.parseRepoLocator("  https://example.com/team/repo.git  ")).toEqual({
-			kind: "remote_url",
-			value: "https://example.com/team/repo.git",
-		});
-	});
-
-	it("uses trimmed input for kind detection and returned value", () => {
-		const trimmed = "../repo";
-
-		expect(repoLocator.parseRepoLocator(`  ${trimmed}  `)).toEqual({
-			kind: repoLocator.detectRepoLocatorKind(trimmed),
-			value: trimmed,
+	it.each([
+		["https://example.com/team/repo.git", "remote_url"],
+		["../repo", "local_path"],
+	] as const)("trims %s and classifies it as %s", (value, kind) => {
+		expect(repoLocator.parseRepoLocator(`  ${value}  `)).toEqual({
+			kind,
+			value,
 		});
 	});
 });
@@ -58,7 +50,7 @@ describe("parseRepoLocator", () => {
 describe("assertRepoLocator", () => {
 	it("throws a helpful error for invalid values", () => {
 		expect(() => repoLocator.assertRepoLocator(" ", "component.repoLocator")).toThrowError(
-			"component.repoLocator must be a remote URL or local filesystem path",
+			/component\.repoLocator/,
 		);
 	});
 

@@ -6,6 +6,9 @@ import {
 	createRemoteRepoChangeFixture,
 	type RemoteRepoChangeFixture,
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
+
+const seed = useRemoteRepoChangeSeed();
 
 async function publishIssue(f: RemoteRepoChangeFixture) {
 	const id = await f.publishChange(await f.exposeTriggeredIssue());
@@ -18,7 +21,7 @@ async function publishIssue(f: RemoteRepoChangeFixture) {
 }
 
 it("closing an unmerged issue-origin PR removes the trigger, comments once, and leaves the issue open", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	const id = await publishIssue(f);
 	await f.markPullRequestClosed();
 	await f.waitForTurn(id, null, "aborted");
@@ -43,7 +46,7 @@ it("closing an unmerged issue-origin PR removes the trigger, comments once, and 
 }, 15_000);
 
 it("source cancellation aborts waiting delivery without another worker turn or reconciliation write", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	const id = await publishIssue(f);
 	const workerTurns = () =>
 		f.harness

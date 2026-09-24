@@ -7,9 +7,6 @@ import {
 	buildKubernetesDockerConfigJsonSecretManifest,
 	KUBERNETES_WORKER_SERVER_CA_CERT_PATH,
 	KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-	kubernetesProcessNamespaceName,
-	kubernetesProcessPvcName,
-	kubernetesWorkerPodName,
 } from "./kubernetes-manifests.js";
 import {
 	createKubernetesWorkerRunner,
@@ -58,7 +55,7 @@ function startInput(overrides: Partial<StartWorkerInput>, volume: VolumeRef): St
 }
 
 describe("Kubernetes ProcessVolume", () => {
-	it("copies only dockerconfigjson registry data before provisioning a worker volume", async () => {
+	it("projects registry authentication into the process namespace before provisioning a worker volume", async () => {
 		const client = new FakeKubernetesApiClient();
 		await client.ensureDockerConfigJsonSecret(
 			buildKubernetesDockerConfigJsonSecretManifest({
@@ -294,7 +291,9 @@ describe("KubernetesWorkerRunner", () => {
 			await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
 
 			const configMap = client.configMaps.get("leitwerk-test-process-proc-1/leitwerk-server-ca");
-			expect(configMap?.data["server-ca.pem"]).toContain("BEGIN CERTIFICATE");
+			expect(configMap?.data["server-ca.pem"]).toBe(
+				"-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n",
+			);
 			const pod = client.pods.get("leitwerk-test-process-proc-1/leitwerk-worker-proc-1-wkr-1");
 			expect(pod?.spec.containers[0]?.env).toContainEqual({
 				name: "NODE_EXTRA_CA_CERTS",
@@ -546,13 +545,5 @@ describe("KubernetesWorkerRunner", () => {
 		expect(serialized).not.toContain("privileged");
 		expect(serialized).not.toContain("hostPath");
 		expect(serialized).not.toContain("capabilities");
-	});
-
-	it("uses deterministic Kubernetes names", () => {
-		expect(kubernetesWorkerPodName("proc-1", "wkr-1")).toBe("leitwerk-worker-proc-1-wkr-1");
-		expect(kubernetesProcessPvcName("proc-1")).toBe("leitwerk-process-proc-1");
-		expect(kubernetesProcessNamespaceName("proc-1", "leitwerk-test-process-")).toBe(
-			"leitwerk-test-process-proc-1",
-		);
 	});
 });

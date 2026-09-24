@@ -25,8 +25,7 @@
 		"@leitwerk-dev/git-ssh": "0.3.0",
 		"@leitwerk-dev/process-sdk": "0.3.0",
 		"@leitwerk-dev/forgejo": "0.3.0",
-		"@leitwerk-dev/woodpecker": "0.3.0",
-		"@leitwerk-dev/repository-rebase": "0.3.0"
+		"@leitwerk-dev/woodpecker": "0.3.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

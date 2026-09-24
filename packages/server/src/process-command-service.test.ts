@@ -12,10 +12,10 @@ import { getProcessGraph } from "./process-graph.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFilesystemSessionReader } from "./process-session-store.js";
 import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { defineGraphFixtureProcess } from "./test-helpers/process-binding-fixtures.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
 const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
@@ -920,6 +920,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			processGraphs,
 		});
 
+		const originalTurn = deps.turnRecords.getById("trn_impl_failed_1");
+		const originalEvents = deps.events.listByInstance(process.id);
 		const result = await commands.recordWorkerFailure(process.id, {
 			errorCode: "process_exited",
 			message: "Duplicate worker failure",
@@ -933,15 +935,17 @@ describe("createProcessEngine retry lifecycle effects", () => {
 		expect(supervisor.stopCalls).toEqual([]);
 		expect(supervisor.spawnCalls).toEqual([]);
 		expect(supervisor.callLog).toEqual([]);
+		expect(deps.turnRecords.getById("trn_impl_failed_1")).toEqual(originalTurn);
+		expect(deps.events.listByInstance(process.id)).toEqual(originalEvents);
 	});
 });
 
 describe("createProcessEngine queued input lifecycle effects", () => {
-	it("queues inputs through the lifecycle applier and returns the persisted inputs", async () => {
+	it("queues ordinary and targeted inputs and returns their persisted values", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
 			processId: "ticket_issue_process",
-			selectedTurnId: "generate_plan",
+			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
 		const commands = createProcessEngine({
@@ -953,35 +957,6 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 
 		const result = await commands.queueInputs(process.id, [
 			{ source: "app_steer", kind: "instruction", bodyMarkdown: "Please revise" },
-		]);
-
-		expect(result.ok).toBe(true);
-		if (!result.ok) return;
-		expect(result.data).toHaveLength(1);
-		expect(result.data[0]).toMatchObject({
-			instanceId: process.id,
-			source: "app_steer",
-			kind: "instruction",
-			bodyMarkdown: "Please revise",
-		});
-		expect(deps.inputs.listByInstance(process.id)).toHaveLength(1);
-	});
-
-	it("persists queued input targets when provided", async () => {
-		const deps = createTestDeps();
-		const process = deps.processes.create({
-			processId: "ticket_issue_process",
-			selectedTurnId: "run_llm_review",
-			lifecycleStatus: "active",
-		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
-		});
-
-		const result = await commands.queueInputs(process.id, [
 			{
 				source: "action_prompt",
 				kind: "instruction",
@@ -992,68 +967,52 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
-		expect(result.data[0]).toMatchObject({
-			target: { semanticRef: "review" },
-			bodyMarkdown: "Make the review more concrete.",
-		});
-	});
-
-	it("rejects targeted queued inputs whose kind is not instruction", async () => {
-		const deps = createTestDeps();
-		const process = deps.processes.create({
-			processId: "ticket_issue_process",
-			selectedTurnId: "run_llm_review",
-			lifecycleStatus: "active",
-		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
-		});
-
-		const result = await commands.queueInputs(process.id, [
-			{
-				source: "action_prompt",
-				kind: "system_event",
-				target: { semanticRef: "review" },
-				bodyMarkdown: "invalid",
-			},
-		]);
-
-		expect(result.ok).toBe(false);
-		if (result.ok) return;
-		expect(result.code).toBe("invalid_process_input");
-		expect(result.message).toContain("requires kind 'instruction'");
-	});
-
-	it("rejects targeted queued inputs with blank bodyMarkdown", async () => {
-		const deps = createTestDeps();
-		const process = deps.processes.create({
-			processId: "ticket_issue_process",
-			selectedTurnId: "run_llm_review",
-			lifecycleStatus: "active",
-		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
-		});
-
-		const result = await commands.queueInputs(process.id, [
+		expect(result.data).toMatchObject([
+			{ source: "app_steer", kind: "instruction", bodyMarkdown: "Please revise" },
 			{
 				source: "action_prompt",
 				kind: "instruction",
 				target: { semanticRef: "review" },
-				bodyMarkdown: "   ",
+				bodyMarkdown: "Make the review more concrete.",
+			},
+		]);
+		expect(deps.inputs.listByInstance(process.id)).toEqual(result.data);
+	});
+
+	it.each([
+		{ kind: "system_event" as const, bodyMarkdown: "invalid" },
+		{ kind: "instruction" as const, bodyMarkdown: "   " },
+	])("rejects invalid targeted queued input $kind/$bodyMarkdown", async ({
+		kind,
+		bodyMarkdown,
+	}) => {
+		const deps = createTestDeps();
+		const process = deps.processes.create({
+			processId: "ticket_issue_process",
+			selectedTurnId: "run_llm_review",
+			lifecycleStatus: "active",
+		});
+		const commands = createProcessEngine({
+			...deps,
+			processOperations: createProcessOperationCoordinator(),
+			getSupervisor: () => createFakeSupervisor(),
+			processGraphs,
+		});
+
+		const result = await commands.queueInputs(process.id, [
+			{
+				source: "action_prompt",
+				kind,
+				target: { semanticRef: "review" },
+				bodyMarkdown,
 			},
 		]);
 
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.code).toBe("invalid_process_input");
-		expect(result.message).toContain("requires a non-empty bodyMarkdown");
+		expect(deps.inputs.listByInstance(process.id)).toEqual([]);
+		expect(deps.processes.getById(process.id)).toEqual(process);
 	});
 
 	it("rejects queued inputs while a scheduled action is pending", async () => {
@@ -1086,7 +1045,8 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 		expect(result.ok).toBe(false);
 		if (result.ok) return;
 		expect(result.code).toBe("scheduled_action_locked");
-		expect(result.message).toMatch(/locked until the scheduled action runs/i);
+		expect(deps.inputs.listByInstance(process.id)).toEqual([]);
+		expect(deps.processes.getById(process.id)).toEqual(process);
 	});
 });
 
@@ -1892,6 +1852,7 @@ describe("createProcessEngine future action cleanup", () => {
 
 		expect(result.ok).toBe(true);
 		expect(deps.futureExecutions.getById(scheduledAction.id)).toBeNull();
+		expect(deps.processes.getById(process.id)?.selectedTurnId).toBe("implement");
 	});
 
 	describe("attention toasts", () => {

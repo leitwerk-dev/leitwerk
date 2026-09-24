@@ -53,6 +53,18 @@ describe("GitHub OAuth client", () => {
 
 		expect(result.claims).toMatchObject({ login: "alice", name: "Alice A." });
 		expect(fetchMock).toHaveBeenCalledTimes(3);
+		const [tokenUrl, tokenInit] = fetchMock.mock.calls[0];
+		expect(tokenUrl).toBe("https://github.com/login/oauth/access_token");
+		expect(tokenInit?.method).toBe("POST");
+		expect(Object.fromEntries(new URLSearchParams(String(tokenInit?.body)))).toMatchObject({
+			client_id: "github-client",
+			client_secret: "github-secret",
+			code: "code-1",
+			redirect_uri: provider.redirect_uri,
+		});
+		expect(fetchMock.mock.calls[1]?.[0]).toBe("https://api.github.com/user");
+		for (const [, init] of fetchMock.mock.calls.slice(1))
+			expect(new Headers(init?.headers).get("authorization")).toBe("Bearer access-token");
 		expect(fetchMock.mock.calls[2]?.[0]).toBe(
 			"https://api.github.com/user/memberships/orgs/leitwerk-dev",
 		);

@@ -10,6 +10,7 @@ describe("cron utility", () => {
 	it("supports weekday ranges that include sunday as 7", () => {
 		const next = nextCronOccurrenceUtc("0 9 * * 6-7", new Date("2026-04-24T08:45:00.000Z"));
 		expect(next).toBe("2026-04-25T09:00:00.000Z");
+		expect(nextCronOccurrenceUtc("0 9 * * 6-7", new Date(next))).toBe("2026-04-26T09:00:00.000Z");
 	});
 
 	it("computes the next matching UTC occurrence", () => {

@@ -29,11 +29,16 @@ describe("server extension test harness helpers", () => {
 	});
 
 	it("wires extension setup and captures lifecycle hooks", async () => {
+		const lifecycle: string[] = [];
 		const extension: LeitwerkExtensionModule = {
 			manifest: { id: "test-extension", version: "0.1.0" },
 			setupServer(api) {
-				api.onStart(() => {});
-				api.onStop(() => {});
+				api.onStart(() => {
+					lifecycle.push("start");
+				});
+				api.onStop(() => {
+					lifecycle.push("stop");
+				});
 			},
 		};
 
@@ -41,6 +46,10 @@ describe("server extension test harness helpers", () => {
 
 		expect(harness.startHooks).toHaveLength(1);
 		expect(harness.stopHooks).toHaveLength(1);
+		expect(lifecycle).toEqual([]);
+		await harness.startHooks[0]?.();
+		await harness.stopHooks[0]?.();
+		expect(lifecycle).toEqual(["start", "stop"]);
 		expect(harness.serverSetup.serverBaseUrl).toBe("https://leitwerk.example");
 	});
 });

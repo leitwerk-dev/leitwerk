@@ -1,15 +1,21 @@
 # Watchers
 
-**Watchers** enable event-driven process creation. Core stores watcher configuration and connects a configured watcher to a process definition; the extension that supplies the watcher source owns its schema, validation, presentation, polling, event type, and provider behavior.
+A watcher starts a process from an external event. An external action advances a
+process that already exists. Both use extension-owned sources; core does not define
+a fixed provider catalog.
 
-## Watchers vs. External Actions
+| Responsibility | Owner |
+| --- | --- |
+| Source schema, parsing, presentation, polling, event selection | Source extension. |
+| Binding a source to process params and an entry turn | Process definition. |
+| Configuration storage, launch admission, and durable deduplication | Server. |
 
-- **Watchers (process creation):** discover external events and create new process instances.
-- **External actions (in-flight execution):** advance an existing process when an external condition is met. See [Process SDK](process-sdk.md#external-actions).
+See [external actions](process-sdk.md#external-actions) for in-flight routing.
 
-## Defining a watcher source
+## Define a source
 
-An extension defines a typed source once and shares that object between process definitions and its provider adapter:
+Share one typed source object between process definitions and the provider adapter.
+This fragment assumes the extension supplies `parseQueueConfig` and the SDK imports:
 
 ```ts
 interface QueueConfig {
@@ -22,11 +28,10 @@ interface QueueEvent {
   summary: string;
 }
 
-export const queueSource = defineProcessWatcherSource<QueueConfig, QueueEvent>({
+const queueSource = defineProcessWatcherSource<QueueConfig, QueueEvent>({
   id: "acme.work_queue",
   label: "Work queue",
   parseConfig(raw) {
-    // The extension validates its raw configuration here.
     const { config, launch } = parseQueueConfig(raw);
     return {
       config,
@@ -43,31 +48,36 @@ export const queueSource = defineProcessWatcherSource<QueueConfig, QueueEvent>({
 });
 ```
 
-Core treats the YAML block as opaque data and calls the source parser after the extension catalog is loaded. Parser errors retain the full `process_configs.<processId>.watchers.<watcherId>` path.
+Core treats the watcher YAML as opaque until the catalog is loaded, then calls the
+source parser. Errors retain the full
+`process_configs.<processId>.watchers.<watcherId>` path.
 
-## Declaring a process watcher
+## Bind a process
 
-The process definition binds a watcher ID and launch resolver to the extension-owned source:
+Use `.watcher(...)` on the process builder. The surrounding definition must supply
+its codecs, state, and turns:
 
 ```ts
-watchers(api) {
-  api.watcher({
-    id: "incoming_work",
-    label: "Incoming work",
-    description: "Launches a process for discovered work",
-    source: queueSource,
-    resolveLaunchConfig: async (item) => ({
-      processId: "work_process",
-      params: { itemId: item.itemId, summary: item.summary },
-      externalId: item.itemId,
-    }),
-  });
-}
+.watcher({
+  id: "incoming_work",
+  label: "Incoming work",
+  description: "Start work from the queue",
+  source: queueSource,
+  resolveLaunchConfig: async (item) => ({
+    processId: "work_process",
+    params: { itemId: item.itemId, summary: item.summary },
+    externalId: item.itemId,
+  }),
+})
 ```
+
+Watchers may return the same ordered
+[preparation checks](process-sdk.md#launch-preparation-checks) as UI launchers.
 
 ## Configuration
 
-Watcher configuration remains colocated with its process configuration. Every field inside the watcher block is defined by the source extension; there is no core watcher type discriminator.
+Configure the code-defined watcher under its process. There is no core source-type
+discriminator; every field inside the block belongs to the source extension:
 
 ```yaml
 process_configs:
@@ -76,82 +86,60 @@ process_configs:
       incoming_work:
         enabled: true
         queue: READY
-        poll_interval: 30s
 ```
 
-Sources using `parseProcessWatcherLaunchModelConfig` also accept launch-time skills:
+Sources using `parseProcessWatcherLaunchModelConfig` can also parse `launch.skills`
+and model selections inside that block. Before creation, the server resolves each
+skill ID to an active revision and pins it. Unknown or inactive skills reject launch.
 
-```yaml
-launch:
-  skills:
-    - code-review
-```
+## Poll and admit events
 
-Before process creation, the server resolves each id to its active revision and pins the
-immutable selections to the process. An unknown or inactive skill rejects the launch.
+The provider retrieves registrations through
+`deps.processWatchers.listBySource(queueSource)` and registers polling with
+`deps.polling.create(...)`. Poller IDs are unique. The server starts polling after
+extension setup, prevents overlapping scheduled passes, and stops it on shutdown.
+A rejected pass logs its error; a completed pass with reported errors logs the result.
+Tests or explicit fixtures may call `poller.poll()` without owning the timer lifecycle.
 
-The provider adapter obtains only registrations for its exact typed source and registers
-its polling work with the server:
+For each eligible event, request admission:
 
 ```ts
-const watchers = deps.processWatchers?.listBySource(queueSource) ?? [];
-const poller = deps.polling.create({
-  id: "acme-work-queue",
-  pollInterval: () => "5s",
-  isEnabled: () => true,
-  async pollOnce() {
-    const result = emptyPollResult();
-    for (const watcher of watchers) {
-      const launch = await deps.launchRuns.startWatcher(watcher, event, {
-        idempotencyKey: stableSourceEventKey(watcher, event),
-      });
-      if (launch.process) {
-        await consumeSourceEvent(event);
-        result.created.push(launch.process.id);
-      } else if (launch.error) {
-        result.errors.push(`${watcher.processId}:${watcher.watcherId}:${launch.error}`);
-      } else {
-        result.skipped.push(`${watcher.processId}:${watcher.watcherId}`);
-      }
-    }
-    return result;
-  },
+const admission = await deps.launchRuns.startWatcher(watcher, event, {
+  idempotencyKey: stableSourceEventKey(watcher, event),
 });
+if (admission.process) {
+  await acknowledgeSourceEvent(event);
+}
 ```
 
-The server starts registered pollers after extension setup and stops them during
-shutdown. Poller IDs must be unique. Scheduled passes do not overlap. A rejected pass
-is logged with the full error. A completed pass with a non-empty `errors` array is logged
-with the complete result. Providers may call `poller.poll()` directly in tests or explicit
-fixtures, but do not own scheduled polling lifecycle. `createPollSchedule(now?)` from
-`watcher-utils` reserves per-key deadlines; callers retain ownership of keys and intervals.
-`createExternalSourcePollReporter(...).poll(kind, read)` visits armed sources sequentially and collects per-source errors; the callback owns filtering and scheduling.
+The provider owns the two functions shown here. Acknowledge or consume the source
+only after process creation has committed; keep failed admissions available for
+retry. External acknowledgement writes must themselves be retry-safe.
 
 ## Idempotency and deduplication
 
-Provider adapters should use stable external identifiers so repeated polls do not create duplicate active work. Watcher callers provide only the registered watcher, event intent, idempotency key, and optional actor attribution; the server-owned coordinator supplies launch-plan and process-executor dependencies. Watcher admission keeps the event key stable across retries. An uncommitted failed launch run may yield the key to a new attempt; once a run has a process, it remains authoritative. The shared server launch pipeline executes the admitted attempt and keeps the event key as the process handoff deduplication key.
+Use a stable source-event key across retries. Callers supply only the registration,
+event intent, key, and optional actor; they do not receive the raw process executor
+or supply launch-plan dependencies.
 
-External mutations must follow the
-[external-write contract](process-sdk.md#typed-external-writes). Retries and
-restarts reconcile remote identity before repeating a write.
+An uncommitted failed Launch Run may yield the key to a new attempt. Once an attempt
+has committed a process, later polls return that attempt instead of creating another
+one. The server retains the event key as the process handoff deduplication key.
+See [launch progress](server-worker-lifecycle.md#7-launch-progress).
 
-If a trigger disappears or closes externally, the owning extension decides how to reconcile that state.
+Provider mutations follow the [external-write contract](process-sdk.md#typed-external-writes).
+If a trigger disappears or closes externally, its extension owns reconciliation policy.
 
 ### Subscription generations
 
-Providers can pass the captured `generation` from `listArmed` to `fire`.
-The server checks it under the process operation lock. A superseded subscription
-returns `external_source_superseded` without recording a turn or queuing an
-event. Calls that omit a generation retain the existing queueing contract.
-Observations require their captured generation and never change process state.
+For external actions, providers may pass the captured `generation` from `listArmed`
+to `fire`. The server checks it under the process lock. A superseded subscription
+returns `external_source_superseded` without recording a turn or queuing an event.
+Omitting the generation retains the generation-free queueing contract. Observations
+require a captured generation and never change process position.
 
-`createPollSchedule` is a supported watcher utility. The caller owns scheduling
-keys and may inject a clock. Each admitted poll reserves its next deadline before
-work starts; invalid durations use the existing 30-second fallback. Server polling
-lifecycle remains behind `deps.polling.create`.
-
-Source poll reporters expose `isCurrent` for freshness checks after provider I/O.
-GitHub checks its live source kinds before observation or firing and forwards the
-captured generation. Other providers retain their existing queueing policy.
-Filesystem trigger reading and consumption belong to the showcase extension;
-trigger files are consumed only after successful admission.
+Recheck freshness after provider I/O before observing or firing. The SDK poll reporter
+supports this check, but providers retain event-selection and scheduling policy.
+See the [source reporter API](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/process-sdk/src/external-source-poll.ts)
+and [watcher utilities](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/watcher-utils/README.md).
+Provider-specific policies belong in their extension READMEs.

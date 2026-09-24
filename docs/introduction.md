@@ -1,47 +1,104 @@
-# Introduction
+# Run your first process
 
-Leitwerk manages step-by-step AI workflows—from code implementation and pull requests to issue triage and review—for software engineering teams.
+Run Leitwerk from a source checkout, then use **Single Prompt** to complete one LLM turn.
+This setup uses local workers. They run as your OS user and are not an isolation boundary.
+For container isolation, use the [Docker](docker-deployment-guide.md) or
+[Kubernetes](kubernetes-deployment-guide.md) guide.
 
-A central server saves task progress and streams live updates to a web dashboard. Workers run AI agents in isolated environments to execute code changes, manage tracker items, run tests, and update merge requests. Humans can watch progress, guide the agent, or retry failed steps.
+## Prerequisites
 
-## Key Features
+- macOS or Linux, Git, Node.js 26.x, and npm.
+- A checkout of this repository.
+- Access to a model provider. The example below uses an OpenAI API key; substitute
+  another configured [model provider](models.md) if needed.
 
-- **Code-Defined Processes:** Build custom AI workflows using TypeScript, controlling exact step-by-step turns and transitions.
-- **Pluggable Integrations:** Connect issue trackers, VCS providers, and internal APIs through extensions.
-- **Custom Outcome Tools:** Give AI agents turn-specific tools to report results, request human feedback, or trigger next steps.
-- **Automated Watchers:** Trigger new AI workflows automatically when external queues or pull requests change.
-- **Flexible Execution:** Run workers locally, in Docker containers, or on Kubernetes pods.
+For a UI-only demonstration without provider credentials, use `npm run dev:sandbox`
+after installing dependencies. See the
+[sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
 
-## System Components
+## Configure local execution
 
-- **Server:** Owns durable state in SQLite, manages task coordination, and executes safe external API writes.
-- **Worker:** Runs AI agents inside isolated workspace clones to write code and execute tests.
-- **Browser UI:** Streams real-time WebSocket updates, task chronicles, and steering controls to operators.
-- **Extensions:** TypeScript modules that define custom processes, external-system integrations, and turn outcome tools.
+From the repository root:
 
-## Built-in Examples
+```sh
+npm ci
+cp leitwerk.yaml.example leitwerk.yaml
+chmod 600 leitwerk.yaml
+```
 
-### Forgejo Repository Change (`forgejo_repo_change_process`)
-The Forgejo Repo Change process automates coding tasks from a UI request or a labeled Forgejo issue.
+Edit the existing sections in `leitwerk.yaml`; do not append duplicate YAML keys:
 
-- **Planning & Implementation:** Leitwerk creates a feature branch in a workspace clone, generates a plan, and implements the approved change.
-- **Provider Delivery:** The process pushes the branch, opens a pull request, observes review and CI signals, and waits for the provider to report the terminal outcome.
+```yaml
+workers:
+  runner: local
 
-### Process Analysis (`process-analysis`)
-The Process Analysis extension inspects an existing process without changing it.
+pi:
+  agent_dir: ~/.pi/leitwerk
+  model_profiles:
+    - id: example_model
+      provider: openai
+      model_id: gpt-4o
 
-- **Deep Analysis:** A dedicated analysis process downloads a process snapshot, diagnoses failures, or drafts implementation guidance.
-- **Read-Only Follow-Up:** Operators can refine the analysis, ask follow-up questions, or refresh the snapshot. The process does not launch a repository-change process.
+extensions:
+  models:
+    openai:
+      api_key: env:OPENAI_API_KEY
+```
 
-### Showcase Processes & Watchers (`showcase-processes`)
-The Showcase extension provides zero-dependency demo workflows for local testing when running `npm run dev`.
+Keep the example's `storage` paths and `extension_loading.sources`, which load the
+models and showcase extensions. Choose a model ID your provider account can use.
+The profile ID is your own name for that selection.
 
-- **Watcher-Launched Tasks:** Demonstrates how external triggers start new processes automatically. For instance, a filesystem watcher monitors `/tmp/create-poem` and launches a new process instance the moment a prompt file is written.
-- **External Action Triggers:** Shows how external files or tools steer active processes. Dropping feedback into `/tmp/poem-review-{instanceId}` triggers follow-up turns where operators can accept, request changes on, or dismiss incoming review notes.
+Set `OPENAI_API_KEY` in the launching shell through your usual secret manager.
+Leitwerk uses it to initialize the encrypted server credential store. An existing
+stored credential takes precedence on restart.
 
-## Next Steps
+Generate an encryption key once for this local database:
 
-- **Run Leitwerk Locally:** Execute `npm run dev` to launch the local server, web dashboard, and showcase processes.
-- **Build a Custom Process:** Use the [Process SDK](process-sdk.md) to define custom turn graphs and outcome tools.
+```sh
+mkdir -p .leitwerk
+(set -C; umask 077; openssl rand -base64 32 > .leitwerk/credential-key)
+read -r LEITWERK_CREDENTIAL_ENCRYPTION_KEY < .leitwerk/credential-key
+export LEITWERK_CREDENTIAL_ENCRYPTION_KEY
+```
 
-Use **API tokens** in the account menu to connect HTTP clients with your existing application access. See [security](security.md#personal-and-anonymous-api-tokens) for ownership and credential boundaries.
+Do not repeat key generation for an existing database. Retain the same key across
+restarts and protect it with your backups. Never commit it.
+
+Workers use Leitwerk-managed resources under `pi.agent_dir`. They do not import
+your ambient `~/.pi/agent` files. Configure providers through Leitwerk rather than
+copying an ambient Pi credential directory.
+
+## Start and launch
+
+```sh
+npm run dev
+```
+
+Open the Vite URL printed by the command. On the launcher page:
+
+1. Choose **Single Prompt**.
+2. Enter a short instruction, such as “Explain what a code review checks.”
+3. Select `example_model` and submit.
+4. Follow startup and output in the process timeline, called the **Chronicle**.
+
+The process completes when the assistant finishes. Its recorded output remains
+available in the Chronicle. To try a human decision, launch **Poem Creator** and
+review its draft. These are optional
+[showcase processes](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/showcase-processes/README.md),
+not special cases in the runtime.
+
+Stop the development server with Ctrl+C. Restart it from the same directory with
+the same configuration and encryption key.
+
+## If it does not start
+
+| Symptom | Check |
+| --- | --- |
+| No launchers | Keep the showcase extension in `extension_loading.sources`. Paths resolve from the configuration file's directory. |
+| Model unavailable | Check the provider extension, model ID, credentials, and encryption key. See [Models](models.md). |
+| Worker image or Docker error | Set `workers.runner: local` for this walkthrough. |
+| Credential decryption error | Restore the key associated with this database. Do not delete the database to bypass the error. |
+| Failed startup or turn | Open the failure details, fix the cause, then use the offered recovery action. See [Operate a process](operator-guide.md#recover-failed-work). |
+
+Next: [operate a process](operator-guide.md) or [write your own](first-process.md).

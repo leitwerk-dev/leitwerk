@@ -7,6 +7,9 @@ import {
 	type RemoteRepoChangeFixture,
 	remoteState,
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
+
+const seed = useRemoteRepoChangeSeed();
 
 function state(f: RemoteRepoChangeFixture, id: string) {
 	const process = f.harness.process(id).snapshot().process;
@@ -23,7 +26,7 @@ async function publish(f: RemoteRepoChangeFixture) {
 }
 
 it("UI publication retains provider bindings and reasoning, completes without an issue, and replays on a fresh branch", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	const project = f.harness.process(id).snapshot().projects[0];
@@ -51,14 +54,21 @@ it("UI publication retains provider bindings and reasoning, completes without an
 	expect(reasoning.json().reasoning.assistant.thinking).toContain("Plan the manifest change");
 	await f.markPullRequestMerged();
 	await f.waitForCompleted(id);
-	expect(f.forgejo.issues).toHaveLength(0);
+	expect(
+		f.forgejo.calls.filter((call) =>
+			["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
+		),
+	).toEqual([]);
 	const replay = await f.launchTicketlessChange("Update the service image");
 	expect(replay).not.toBe(id);
 	expect(f.harness.process(replay).snapshot().projects[0].workBranch).not.toBe(pr.head.ref);
 }, 30000);
 
 it("batches conversation, inline and review feedback into a fresh revision and retains replies after restart", async () => {
-	const f = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome: "changes_ready" });
+	const f = await createRemoteRepoChangeFixture(undefined, {
+		feedbackOutcome: "changes_ready",
+		seed: seed(),
+	});
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	const feedback = (["conversation", "inline", "review"] as const).map((kind) =>
@@ -98,7 +108,7 @@ it("batches conversation, inline and review feedback into a fresh revision and r
 }, 30000);
 
 it("diagnoses CI and explicitly restarts through a durable write without republishing or restarting again after app restart", async () => {
-	const f = await createRemoteRepoChangeFixture(undefined, { ciRestart: true });
+	const f = await createRemoteRepoChangeFixture(undefined, { ciRestart: true, seed: seed() });
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	await f.publishPipeline({
@@ -133,7 +143,7 @@ it("diagnoses CI and explicitly restarts through a durable write without republi
 }, 30000);
 
 it("rebases a conflicting base after app restart and publishes with the retained original-head lease", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	const id = await publish(f);
 	const pr = structuredClone(f.forgejo.pullRequest());
 	await f.restart();

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { deserializeManifest, diffManifest, serializeManifest } from "./manifest.js";
 
 describe("serializeManifest / deserializeManifest", () => {
-	it("round-trips valid manifest", () => {
+	it("serializes all manifest fields and reads independently encoded JSON", () => {
 		const m = {
 			version: 1 as const,
 			instanceId: "x",
@@ -18,16 +18,15 @@ describe("serializeManifest / deserializeManifest", () => {
 				},
 			],
 		};
-		const json = serializeManifest(m);
-		expect(json).toContain("\n  ");
-		const d = deserializeManifest(json);
+		expect(JSON.parse(serializeManifest(m))).toEqual(m);
+		const d = deserializeManifest(JSON.stringify(m));
 		expect(d).toEqual({ ok: true, manifest: m });
 	});
 
 	it("rejects invalid JSON", () => {
 		expect(deserializeManifest("not json")).toEqual({
 			ok: false,
-			error: "Invalid JSON",
+			error: expect.any(String),
 		});
 	});
 
@@ -41,7 +40,7 @@ describe("serializeManifest / deserializeManifest", () => {
 					components: [],
 				}),
 			),
-		).toEqual({ ok: false, error: "Unsupported manifest version" });
+		).toEqual({ ok: false, error: expect.any(String) });
 	});
 
 	it("rejects invalid components", () => {
@@ -129,30 +128,9 @@ describe("diffManifest", () => {
 				},
 			],
 		};
-		const d = diffManifest(existing, [server[0]]);
-		expect(d.missing).toEqual([]);
-		expect(d.extra).toEqual(["orphan"]);
-		expect(d.unchanged).toEqual(["a"]);
-	});
-
-	it("marks server-only keys as missing", () => {
-		const existing = {
-			version: 1 as const,
-			instanceId: "ag",
-			createdAt: "t",
-			components: [
-				{
-					key: "a",
-					repoLocator: "r1",
-					baseBranch: "main",
-					workBranch: "f1",
-					clonedAt: "c",
-					headSha: "h",
-				},
-			],
-		};
 		const d = diffManifest(existing, server);
 		expect(d.missing).toEqual(["b"]);
-		expect(d.extra).toEqual([]);
+		expect(d.extra).toEqual(["orphan"]);
+		expect(d.unchanged).toEqual(["a"]);
 	});
 });

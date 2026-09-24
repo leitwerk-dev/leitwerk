@@ -1,12 +1,13 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { createDiagnosticTraceWriter } from "./diagnostic-trace-writer.js";
 
 describe("diagnostic trace writer", () => {
 	it("appends worker trace text verbatim to a private process log", async () => {
 		const root = await mkdtemp(path.join(tmpdir(), "leitwerk-diagnostic-trace-"));
+		onTestFinished(() => rm(root, { recursive: true, force: true }));
 		const writer = createDiagnosticTraceWriter(root);
 		writer.append("agt_1", "token=unredacted\n");
 		writer.append("agt_1", "next chunk\n");

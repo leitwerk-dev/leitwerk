@@ -7,7 +7,7 @@ import {
 	commitProcessLaunch,
 	createProcessFromLaunchPlan,
 } from "./process-launch-executor.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 
 function withStartFailure(deps: ReturnType<typeof createTestDeps>) {
 	return {
@@ -70,7 +70,7 @@ describe("process launch durable boundary", () => {
 		expect(deps.processes.listAll()).toHaveLength(0);
 	});
 
-	it("rejects watcher-selected skills that are unknown or inactive before creation", async () => {
+	it("rejects watcher-selected skills that are unknown before creation", async () => {
 		const deps = createTestDeps();
 		const result = await createProcessFromLaunchPlan(deps, {
 			...createLaunchPlan(),
@@ -94,7 +94,14 @@ describe("process launch durable boundary", () => {
 
 		expect(deps.processes.getById(commit.process.id)).toEqual(commit.process);
 		expect(deps.projects.listByInstance(commit.process.id)).toEqual(commit.projects);
-		expect(commit.projects).toHaveLength(1);
+		expect(commit.projects).toEqual([
+			expect.objectContaining({
+				key: "app",
+				repoLocator: "https://example.com/app.git",
+				baseBranch: "main",
+				workBranch: "feature/demo",
+			}),
+		]);
 	});
 
 	it("commits a derived relation with its child process", async () => {
@@ -191,7 +198,7 @@ describe("process launch durable boundary", () => {
 			commitProcessLaunch(deps, createLaunchPlan(), plan, [], undefined, run.id),
 		).toThrow("Future execution changed");
 		expect(deps.processes.listAll()).toHaveLength(0);
-		expect(deps.futureExecutions.getById(execution.id)).not.toBeNull();
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2026-04-25T11:00:00.000Z");
 		expect(deps.launchRuns.getById(run.id)?.instanceId).toBeNull();
 		expect(deps.launchRuns.getReplay(run.id)).toEqual({ original: "uncommitted input" });
 	});

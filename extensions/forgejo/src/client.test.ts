@@ -109,19 +109,7 @@ describe("ForgejoClient", () => {
 
 	it("creates issues with Forgejo label ids", async () => {
 		const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-			Response.json(
-				{
-					number: 7,
-					title: "Ticket",
-					body: "Description",
-					state: "open",
-					html_url: "https://git.example.test/team/repo/issues/7",
-					updated_at: "2026-08-23T00:00:00Z",
-					user: { login: "leitwerk" },
-					labels: [],
-				},
-				{ status: 201 },
-			),
+			Response.json({ number: 7 }, { status: 201 }),
 		);
 		vi.stubGlobal("fetch", fetch);
 		await client.createIssue("team", "repo", {
@@ -176,17 +164,26 @@ describe("ForgejoClient", () => {
 		const feedback = await client.listPullRequestFeedback("team", "repo", 9);
 
 		expect(feedback).toMatchObject([
-			{ kind: "conversation", id: 10, author: "alice" },
+			{
+				kind: "conversation",
+				id: 10,
+				author: "alice",
+				body: "Conversation",
+				createdAt: "2026-08-10T10:00:00Z",
+			},
 			{
 				kind: "review",
 				id: 20,
 				author: "bob",
+				body: "Review",
 				createdAt: "2026-08-10T10:01:00Z",
 			},
 			{
 				kind: "inline",
 				id: 30,
 				author: "carol",
+				body: "Inline",
+				createdAt: "2026-08-10T10:02:00Z",
 				path: "src/a.ts",
 				line: 4,
 				position: 4,

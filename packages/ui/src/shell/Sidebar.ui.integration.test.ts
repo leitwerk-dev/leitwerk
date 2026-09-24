@@ -166,9 +166,9 @@ function click(element: Element | null) {
 	element?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 }
 
-afterEach(() => {
+afterEach(async () => {
 	for (const app of mountedApps.splice(0)) {
-		unmount(app);
+		await unmount(app);
 	}
 	document.body.innerHTML = "";
 	resetMocks();
@@ -331,7 +331,7 @@ describe("Sidebar", () => {
 				id: "fut_1",
 				kind: "action",
 				scheduleKind: "once",
-				nextRunAt: "2026-01-01T13:05:00Z",
+				nextRunAt: new Date(2026, 0, 1, 13, 5).toISOString(),
 				title: "Approve patch",
 				instanceId: "agt_1",
 				actionLabel: "Approve patch",
@@ -342,8 +342,7 @@ describe("Sidebar", () => {
 		await flush();
 
 		const futureRowSecondary = target.querySelector<HTMLElement>(".future-row .row-meta");
-		expect(futureRowSecondary?.textContent).toContain(":");
-		expect(futureRowSecondary?.textContent).not.toMatch(/\b[ap]m\b/i);
+		expect(futureRowSecondary?.textContent).toContain("13:05");
 	});
 
 	it("opens scheduled launches as selected detail rows without inline actions", async () => {
@@ -400,7 +399,7 @@ describe("Sidebar", () => {
 		);
 		expect(row?.querySelector(".row-meta")?.textContent).toBe("Run turn");
 		expect(row?.querySelector(".row-status-dot.running")).toBeTruthy();
-		expect(row?.querySelector("time")?.getAttribute("datetime")).toBeTruthy();
+		expect(row?.querySelector("time")?.getAttribute("datetime")).toBe("2026-01-01T00:00:00Z");
 		expect(row?.getAttribute("title")).toContain("Poem Creator");
 		expect(row?.textContent).not.toContain("preview");
 	});

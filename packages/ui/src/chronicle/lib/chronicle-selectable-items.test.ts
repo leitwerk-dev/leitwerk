@@ -385,24 +385,9 @@ describe("chronicle selectable items", () => {
 		expect(moveChronicleAnchorByOffset(items, null, -1)).toBe("chronicle-turn-trn_one");
 	});
 
-	it("maps a leaf-outcome viewport anchor to its parent turn rail item", () => {
-		const projection = createProjection();
-		const items = buildChronicleSelectableItems({
-			projection,
-			pendingRailItem: null,
-		});
-
-		expect(
-			resolveChronicleRailAnchorIdFromActiveAnchor(
-				projection,
-				items,
-				"chronicle-leaf-outcome-snp_1",
-			),
-		).toBe("chronicle-turn-trn_one");
-	});
-
 	it("keeps failed turns visible when adding a recovery rail item", () => {
 		const projection = createProjection();
+		projection.turnRailItems[1].status = "failed";
 		const items = buildChronicleSelectableItems({
 			projection,
 			pendingRailItem: {

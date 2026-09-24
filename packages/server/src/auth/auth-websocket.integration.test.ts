@@ -3,10 +3,10 @@ import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import WebSocket from "ws";
-import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
 import { registerWebsocket } from "../server-bootstrap/register-websocket.js";
 import { createWorkerWebSocketIpcManager } from "../supervisor/worker-websocket-ipc.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createBroadcaster } from "../ws/broadcast.js";
 import { createAuthService } from "./auth-service.js";
 import { testAuthConfig } from "./auth-test-helpers.js";
@@ -32,7 +32,10 @@ async function expectRejectedWebsocketWithHeaders(
 ): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
 		const ws = new WebSocket(url, headers ? { headers } : undefined);
-		const timer = setTimeout(() => reject(new Error("websocket did not close")), 2000);
+		const timer = setTimeout(() => {
+			ws.terminate();
+			reject(new Error("websocket did not close"));
+		}, 2000);
 		ws.once("open", () => {
 			clearTimeout(timer);
 			ws.close();
@@ -99,7 +102,11 @@ describe("auth WebSocket guard", () => {
 			const hello = JSON.parse(await waitForMessage(ws)) as { type: string };
 			expect(hello.type).toBe("hello");
 		} finally {
-			ws.close();
+			await new Promise<void>((resolve) => {
+				if (ws.readyState === WebSocket.CLOSED) return resolve();
+				ws.once("close", resolve);
+				ws.terminate();
+			});
 		}
 	});
 	it.each([

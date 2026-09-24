@@ -10,13 +10,13 @@ import { commitProcessLaunch } from "./process-launch-executor.js";
 import { createServerProcessModelPolicy } from "./process-model-policy/index.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFakeWorkerSupervisor } from "./test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import {
 	createFixtureAutomaticTurn,
 	createFixtureHumanTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 function setup(startTurnId: string | null = "requested_start") {
 	const deps = createTestDeps();

@@ -59,23 +59,33 @@ it.each([
 	await mkdir(path.join(source, "repo"));
 	await writeFile(path.join(source, "repo", "run"), "content", { mode: 0o755 });
 	await symlink("repo/run", path.join(source, "link"));
-	await chmod(source, mode);
-	await utimes(source, new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z"));
-	const before = await stat(source);
-	await reserveWorkspaceDestination(destination, marker);
-	const metadata = await populateWorkspaceDestination(source, destination);
-	expect(await readFile(path.join(destination, "repo", "run"), "utf8")).toBe("content");
-	expect((await stat(path.join(destination, "repo", "run"))).mode & 0o777).toBe(0o755);
-	expect(await readlink(path.join(destination, "link"))).toBe("repo/run");
-	expect((await stat(destination)).mode & 0o777).toBe(0o700);
-	expect(await readFile(path.join(destination, marker.name), "utf8")).toBe("owner-1\n");
-	await rm(path.join(destination, marker.name));
-	await restoreWorkspaceMetadata(destination, metadata);
-	expect((await stat(destination)).mode).toBe(before.mode);
-	expect((await stat(destination)).mtimeMs).toBe(before.mtimeMs);
-	expect(await readdir(source)).toEqual([]);
-	await chmod(source, 0o700);
-	await chmod(destination, 0o700);
+	try {
+		await chmod(source, mode);
+		await utimes(source, new Date("2026-01-01T00:00:00Z"), new Date("2026-01-02T00:00:00Z"));
+		const before = await stat(source);
+		await reserveWorkspaceDestination(destination, marker);
+		const metadata = await populateWorkspaceDestination(source, destination);
+		expect(await readFile(path.join(destination, "repo", "run"), "utf8")).toBe("content");
+		expect((await stat(path.join(destination, "repo", "run"))).mode & 0o777).toBe(0o755);
+		expect(await readlink(path.join(destination, "link"))).toBe("repo/run");
+		expect((await stat(destination)).mode & 0o777).toBe(0o700);
+		expect(await readFile(path.join(destination, marker.name), "utf8")).toBe("owner-1\n");
+		await rm(path.join(destination, marker.name));
+		await restoreWorkspaceMetadata(destination, metadata);
+		expect((await stat(destination)).mode).toBe(before.mode);
+		expect((await stat(destination)).mtimeMs).toBe(before.mtimeMs);
+		expect(await readdir(source)).toEqual([]);
+	} finally {
+		await Promise.all(
+			[source, destination].map(async (directory) => {
+				try {
+					await chmod(directory, 0o700);
+				} catch (error) {
+					if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+				}
+			}),
+		);
+	}
 });
 
 it("recovers both staged and moved files after an interrupted workspace population", async () => {

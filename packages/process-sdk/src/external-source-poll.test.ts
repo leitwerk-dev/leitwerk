@@ -56,13 +56,16 @@ test.each([
 	"instanceId",
 ] as const)("rejects changed %s after provider I/O", async (field) => {
 	const f = fixture(true, ["forge"]);
+	const visited: string[] = [];
 	await f.report.poll("forge", async (armed) => {
+		visited.push(armed.id);
 		await Promise.resolve();
 		f.setLive([{ ...armed, [field]: field === "resolved" ? { head: "b" } : "changed" }]);
 		expect(f.report.isCurrent("forge", armed)).toBe(false);
 		expect(await f.report.fire(armed, {}, "key")).toBe(false);
 		await f.report.observe(armed, { refreshError: "stale" });
 	});
+	expect(visited).toEqual(["subscription"]);
 	expect(f.fires).toEqual([]);
 	expect(f.observations).toEqual([]);
 	expect(f.result).toEqual({ created: [], errors: [] });

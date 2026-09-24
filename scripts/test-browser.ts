@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync } from "node:fs";
+import { availableParallelism } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { runCommand } from "./run-command.js";
@@ -25,30 +26,28 @@ function main() {
 		LEITWERK_BROWSER_OUTPUT_ROOT: outputRoot,
 		NODE_OPTIONS: [process.env.NODE_OPTIONS, "--no-deprecation"].filter(Boolean).join(" "),
 	};
-	// Firefox's layout check still runs after every other engine has finished.
+	// Separate runners isolate the API/UI ports, Vite cache, and artifacts.
+	// Keep one shard per engine on smaller hosts to avoid resource contention.
+	const shardCount = availableParallelism() >= 6 ? 2 : 1;
+	const runners = ["chromium", "firefox", "webkit"].flatMap((engine) =>
+		Array.from({ length: shardCount }, (_, index) => {
+			const name = `${engine}-${index + 1}`;
+			return {
+				name,
+				command: `LEITWERK_BROWSER_ENGINE=${engine} LEITWERK_BROWSER_OUTPUT_NAME=${name} playwright test --shard=${index + 1}/${shardCount}`,
+			};
+		}),
+	);
 	runCommand(
 		"npx",
 		[
 			"concurrently",
 			"--kill-others-on-fail",
 			"--names",
-			"chromium,firefox,webkit",
-			"LEITWERK_BROWSER_ENGINE=chromium playwright test",
-			"LEITWERK_BROWSER_ENGINE=firefox playwright test --grep-invert=waiting.composer.preserves.the.Firefox.layout",
-			"LEITWERK_BROWSER_ENGINE=webkit playwright test",
+			runners.map(({ name }) => name).join(","),
+			...runners.map(({ command }) => command),
 		],
 		{ env },
-	);
-	runCommand(
-		"npx",
-		["playwright", "test", "--grep=waiting.composer.preserves.the.Firefox.layout"],
-		{
-			env: {
-				...env,
-				LEITWERK_BROWSER_ENGINE: "firefox",
-				LEITWERK_BROWSER_OUTPUT_NAME: "firefox-layout",
-			},
-		},
 	);
 }
 

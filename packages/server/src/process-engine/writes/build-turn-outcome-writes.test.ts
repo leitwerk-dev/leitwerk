@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { buildProcessActionRegistry } from "../../process-action-registry.js";
 import { getProcessGraph } from "../../process-graph.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { defineGraphFixtureProcess } from "../../test-helpers/process-binding-fixtures.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
 import {
@@ -18,7 +19,6 @@ import {
 	createPlanSavedOutcomeTools,
 	createTestLlmTurn,
 } from "../../test-helpers/turn-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildTurnOutcomeWrites } from "./build-turn-outcome-writes.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
@@ -355,7 +355,7 @@ describe("buildTurnOutcomeWrites", () => {
 		]);
 	});
 
-	it("records unrouted outcomes without reconciling the worker", async () => {
+	it("rejects outcomes not declared by the selected turn", async () => {
 		const { deps, process } = createAgent({
 			processId: "mr_polish_process",
 			selectedTurnId: "fix_build",

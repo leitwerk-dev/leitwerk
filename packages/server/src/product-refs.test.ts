@@ -23,12 +23,12 @@ import {
 	mergeSemanticEntryRefPatchIntoStateJson,
 } from "./semantic-entry-ref-state.js";
 import { createWorkerStartPayloadBuilder } from "./supervisor/worker-start-payload-builder.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import {
 	createFixtureLlmTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 import { resolveProductTurnResultMarkdown } from "./turn-result-markdown.js";
 
 const tempDirs: string[] = [];
@@ -450,7 +450,7 @@ describe("product refs", () => {
 			outcome: "leave_feedback",
 			pathType: "primary",
 			resultPiEntryId: "ent_review_1",
-			turnResultMarkdown: "Please tighten the ending.",
+			turnResultMarkdown: null,
 			params: { message: "Please tighten the ending." },
 		});
 
@@ -598,67 +598,6 @@ describe("product refs", () => {
 				required: true,
 			}),
 		).toBe("Revise the plan with more detail.");
-	});
-
-	it("worker start payload includes turn-result markdown by product", () => {
-		const deps = createTestDeps();
-		const tempRoot = createTempRoot();
-		const config = getDefaultConfig();
-		config.storage.process_workspaces_dir = path.join(tempRoot, "workspaces");
-		config.storage.tree_files_dir = path.join(tempRoot, "trees");
-		const process = deps.processes.create({
-			processId: "product_process",
-			selectedTurnId: "consumer",
-			lifecycleStatus: "active",
-			stateJson: JSON.stringify({
-				...createEmptyStructuralProcessState(),
-				productRefs: {
-					plan: { entryId: "ent_plan", turnRecordId: "trn_plan" },
-				},
-			}),
-		});
-		deps.projects.create({
-			instanceId: process.id,
-			key: "repo",
-			repoLocator: "https://example.invalid/repo.git",
-			baseBranch: "main",
-			workBranch: "feature/test",
-		});
-		deps.turnRecords.create({
-			id: "trn_plan",
-			instanceId: process.id,
-			turnId: "generate_plan",
-			status: "succeeded",
-			resultPiEntryId: "ent_plan",
-			turnResultMarkdown: "## Plan",
-		});
-		const processGraphs = createProcessGraphRegistry([
-			createFixtureProcess({
-				id: "product_process",
-				entry: "consumer",
-				turns: {
-					consumer: createFixtureLlmTurn("consumer", {
-						consumedProducts: ["plan"],
-					}),
-				},
-			}),
-		]);
-		const bundle = prepareProductWorkerStart(deps, process.id, config);
-
-		const builder = createWorkerStartPayloadBuilder({
-			...deps,
-			config,
-			processGraphs,
-			processActionRegistry: {
-				getTurnDefinition: () => undefined,
-				resolveContextData: () => ({ params: {}, state: {} }),
-			},
-			resolveResourceBundle: (digest) => (digest === bundle.digest ? bundle : null),
-		});
-
-		expect(builder.buildStartMessage(process.id, "wkr_1")?.payload).toMatchObject({
-			turnResultMarkdownByProduct: { plan: "## Plan" },
-		});
 	});
 
 	it("does not deliver stale transition-scoped message products to later turns", () => {

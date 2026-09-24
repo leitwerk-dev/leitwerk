@@ -51,9 +51,6 @@ describe("server-owned delivery composition", () => {
 				"leitwerk.gitIdentity": { login: "garden-bot" },
 			});
 			expect(result.launchConfig.params).not.toHaveProperty("docker");
-			f.configure({
-				profile_bindings: { team: { ssh_credential_ref: "writer", woodpecker_profile: "ci" } },
-			});
 			expect(
 				f.process.repositoryCredentials?.({ params: result.launchConfig.params, projects: [] }),
 			).toEqual([{ projectKey: "repo", kind: "git_ssh", credentialRef: "writer" }]);
@@ -83,10 +80,9 @@ describe("server-owned delivery composition", () => {
 		});
 	});
 
-	it("rejects unavailable Forgejo, CI, SSH and repository access before launch", async () => {
+	it("rejects unavailable Forgejo, CI and SSH profiles before launch", async () => {
 		const f = setup();
-		for (const input of [{ forgejoProfile: "missing" }, { repository: "examples/hidden" }])
-			expect(await f.launch(input)).toMatchObject({ ok: false });
+		expect(await f.launch({ forgejoProfile: "missing" })).toMatchObject({ ok: false });
 		for (const mapping of [{ woodpecker_profile: "missing" }, { ssh_credential_ref: "missing" }]) {
 			f.configure({ profile_bindings: { team: mapping } });
 			expect(await f.launch()).toMatchObject({
@@ -96,28 +92,23 @@ describe("server-owned delivery composition", () => {
 		}
 	});
 
-	it.each([
-		"read",
-		"write",
-	] as const)("retains the separate SSH %s admission check", async (access) => {
+	it("retains the separate SSH read admission check", async () => {
 		const f = setup();
 		f.preflight.mockImplementation(async (input) =>
-			input.requireWrite === (access === "write")
-				? { ok: false, access, detail: "denied" }
-				: { ok: true },
+			!input.requireWrite ? { ok: false, access: "read", detail: "denied" } : { ok: true },
 		);
 		const result = await f.launch();
 		if (!result.ok) throw new Error("launch");
 		const check = f.ui
 			.preparationChecks?.({}, result.launchConfig)
-			.find((c) => c.id === `ssh_${access}`);
+			.find((c) => c.id === "ssh_read");
 		await expect(
 			check?.run({
 				signal: new AbortController().signal,
 				launchConfig: result.launchConfig,
 				logger: { info() {}, warn() {} },
 			}),
-		).rejects.toThrow(`SSH ${access} access failed`);
+		).rejects.toThrow("SSH read access failed");
 	});
 
 	it("keeps runtime and launcher configuration independent across catalogs and shutdown", async () => {

@@ -1,0 +1,33 @@
+name: leitwerk-local
+
+services:
+  leitwerk-server:
+    image: leitwerk-server:${REVISION:?Set REVISION in .env}
+    env_file:
+      - ./secrets/credentials.env
+    environment:
+      LEITWERK_CONFIG_PATH: /etc/leitwerk/leitwerk.yaml
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./config/leitwerk.yaml:/etc/leitwerk/leitwerk.yaml:ro
+      - ./state:/state
+    networks:
+      - leitwerk
+    restart: unless-stopped
+
+  web:
+    image: caddy:2@sha256:844f60b64e4724a5aa8245e019dace0d3f199f7433ce6c57676cb30a920dbad9
+    ports:
+      - "127.0.0.1:18080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./ui:/srv:ro
+    networks:
+      - leitwerk
+    restart: unless-stopped
+
+networks:
+  leitwerk:
+    name: leitwerk
+    driver: bridge

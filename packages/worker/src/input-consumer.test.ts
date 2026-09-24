@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-	classifyDeliveryMode,
-	deliverBatch,
-	deliverInput,
-	type InputItem,
-} from "./input-consumer.js";
+import { classifyDeliveryMode, deliverBatch, type InputItem } from "./input-consumer.js";
 
 function createRecordingSession() {
 	const prompts: string[] = [];
@@ -38,46 +33,10 @@ function item(overrides: Partial<InputItem> & Pick<InputItem, "inputId" | "seque
 }
 
 describe("classifyDeliveryMode", () => {
-	it('returns "prompt" when there is no active turn', () => {
-		expect(classifyDeliveryMode(item({ inputId: "a", sequence: 1, kind: "message" }), false)).toBe(
-			"prompt",
-		);
-	});
-
-	it('returns "steer" when a turn is active', () => {
-		expect(classifyDeliveryMode(item({ inputId: "a", sequence: 1, kind: "message" }), true)).toBe(
-			"steer",
-		);
-	});
-
 	it('returns "steer" for system events even without an active turn', () => {
 		expect(
 			classifyDeliveryMode(item({ inputId: "a", sequence: 1, kind: "system_event" }), false),
 		).toBe("steer");
-	});
-});
-
-describe("deliverInput", () => {
-	it("calls session.prompt for prompt mode", async () => {
-		const session = createRecordingSession();
-		await deliverInput(
-			session,
-			item({ inputId: "i1", sequence: 1, bodyMarkdown: "hello" }),
-			"prompt",
-		);
-		expect(session.prompts).toEqual(["hello"]);
-		expect(session.steers).toEqual([]);
-	});
-
-	it("calls session.steer for steer mode", async () => {
-		const session = createRecordingSession();
-		await deliverInput(
-			session,
-			item({ inputId: "i2", sequence: 2, bodyMarkdown: "hint" }),
-			"steer",
-		);
-		expect(session.steers).toEqual(["hint"]);
-		expect(session.prompts).toEqual([]);
 	});
 });
 

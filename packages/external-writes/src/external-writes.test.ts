@@ -33,7 +33,8 @@ function createWriteLogRepo(
 }
 describe("logOnly", () => {
 	it("performs the async write on first call and skips the duplicate", async () => {
-		const repo = createWriteLogRepo();
+		const state = new Map<string, ExternalWriteLogRecordInput>();
+		const repo = createWriteLogRepo(state);
 		const identity = id("type.beta", "beta:1");
 		let callCount = 0;
 
@@ -49,6 +50,7 @@ describe("logOnly", () => {
 		expect(first).toBeUndefined();
 		expect(second).toBeUndefined();
 		expect(callCount).toBe(1);
+		expect([...state.values()]).toEqual([{ instanceId, ...identity, metadata: { ok: true } }]);
 	});
 });
 
@@ -80,7 +82,7 @@ it("deduplicates by key alone across fresh repository instances", () => {
 function reconciliationFixture(state = new Map<string, ExternalWriteLogRecordInput>()) {
 	const repo = createWriteLogRepo(state);
 	const identity = id("test.create", "remote:1");
-	let remote: { id: number } | null = null;
+	let remote: { id: number; title?: string } | null = null;
 	let executions = 0;
 	const phases: string[] = [];
 	const operation = {
@@ -105,7 +107,7 @@ function reconciliationFixture(state = new Map<string, ExternalWriteLogRecordInp
 		get executions() {
 			return executions;
 		},
-		set remote(value: { id: number } | null) {
+		set remote(value: { id: number; title?: string } | null) {
 			remote = value;
 		},
 	};
@@ -115,7 +117,8 @@ describe("typed reconciliation", () => {
 	it("executes, records metadata and recovers the typed value on replay", async () => {
 		const f = reconciliationFixture();
 		expect(await f.run()).toEqual({ id: 42 });
-		expect(await f.run()).toEqual({ id: 42 });
+		f.remote = { id: 42, title: "Edited remotely" };
+		expect(await f.run()).toEqual({ id: 42, title: "Edited remotely" });
 		expect(f.state.get("remote:1")?.metadata).toEqual({ remoteId: 42 });
 		expect(f.phases).toEqual(["before_execute", "already_recorded"]);
 		expect(f.executions).toBe(1);
@@ -125,6 +128,9 @@ describe("typed reconciliation", () => {
 		f.remote = { id: 9 };
 		expect(await f.run()).toMatchObject({ id: 9 });
 		expect(f.executions).toBe(0);
+		expect([...f.state.values()]).toEqual([
+			{ instanceId, ...f.identity, metadata: { remoteId: 9 } },
+		]);
 	});
 	it("never recreates a logged object that disappeared", async () => {
 		const f = reconciliationFixture();
@@ -190,7 +196,9 @@ describe("typed reconciliation", () => {
 			f.repo.record = () => {
 				throw recovery;
 			};
-		await expect(f.run()).rejects.toMatchObject({
+		const result = f.run();
+		await expect(result).rejects.toBeInstanceOf(AggregateError);
+		await expect(result).rejects.toMatchObject({
 			errors: [execution, recovery],
 			cause: execution,
 		});

@@ -9,22 +9,46 @@ import type {
 	ProcessDiagnosticsData,
 	ProcessRetryConfig,
 } from "@leitwerk-dev/protocol/http-contracts";
+import { getScheduledActionDetailForProcess } from "../future-execution-presenter.js";
+import { listVisibleActionsForProcess } from "../process-action-presenter.js";
 import { buildProcessFlowViewForProcess, serializeProcessGraph } from "../process-graph.js";
 import { presentProcessModelConfiguration } from "../process-model-policy-presenter.js";
 import { getProcessDisplayName } from "../process-operator-attention.js";
 import {
 	buildProcessLaunchConfigurationView,
 	buildProcessRunDetailsView,
-	getScheduledActionDetailForProcess,
 	getSelectedTurnSummaryForProcess,
-	listVisibleActionsForProcess,
 	mergeProcessEventWindowsAscending,
 	processDefinesLeafOutcome,
 	type RouteDeps,
 } from "./process-route-helpers.js";
 
+type ProcessDiagnosticsDeps = Pick<
+	RouteDeps,
+	| "processes"
+	| "projects"
+	| "inputs"
+	| "events"
+	| "leafOutcomeSnapshots"
+	| "turnRecords"
+	| "turnStarts"
+	| "turnAnnotations"
+	| "leases"
+	| "processSkills"
+	| "futureExecutions"
+	| "processGraphs"
+	| "processActionRegistry"
+	| "processUiRegistry"
+	| "processModelPolicy"
+	| "modelStatusCache"
+	| "launcherService"
+	| "sessionReader"
+	| "toolRenderers"
+	| "config"
+>;
+
 export class ProcessDiagnosticsAssembler {
-	constructor(private readonly deps: RouteDeps) {}
+	constructor(private readonly deps: ProcessDiagnosticsDeps) {}
 
 	async assembleDetail(instanceId: string): Promise<ProcessDiagnosticsData | null> {
 		const process = this.deps.processes.getById(instanceId);
@@ -32,7 +56,6 @@ export class ProcessDiagnosticsAssembler {
 			return null;
 		}
 		const projects = this.deps.projects.listByInstance(instanceId);
-		const piSessionTree = await this.deps.sessionReader.readPiSessionTree(instanceId);
 		const recentEvents = this.deps.events.listByInstance(instanceId, 500);
 		const retainedOperationalEvents = this.deps.events.listByInstanceEventTypes(
 			instanceId,
@@ -47,7 +70,9 @@ export class ProcessDiagnosticsAssembler {
 				availability: this.deps.modelStatusCache.snapshot(),
 			}),
 		);
-		return {
+		// Capture durable facts and their derived presentation before session I/O yields
+		// to a concurrent process mutation. The session tree is a separate snapshot.
+		const detail: Omit<ProcessDiagnosticsData, "piSessionEntries"> = {
 			process,
 			projects,
 			inputs: this.deps.inputs.listByInstance(instanceId),
@@ -59,7 +84,6 @@ export class ProcessDiagnosticsAssembler {
 			processDisplayName: getProcessDisplayName(this.deps, process.processId),
 			processGraph: serializeProcessGraph(this.deps.processGraphs, process.processId),
 			processFlow: buildProcessFlowViewForProcess(this.deps.processGraphs, process.processId),
-			piSessionEntries: piSessionTree.entries,
 			definesLeafOutcome: processDefinesLeafOutcome(this.deps, process),
 			selectedTurn: getSelectedTurnSummaryForProcess(this.deps, process),
 			scheduledAction: getScheduledActionDetailForProcess(this.deps, process),
@@ -69,6 +93,8 @@ export class ProcessDiagnosticsAssembler {
 			actions: listVisibleActionsForProcess(this.deps, process),
 			toolRenderers: [...(this.deps.toolRenderers?.values() ?? [])],
 		};
+		const piSessionTree = await this.deps.sessionReader.readPiSessionTree(instanceId);
+		return { ...detail, piSessionEntries: piSessionTree.entries };
 	}
 
 	async assembleRetryConfig(instanceId: string): Promise<ProcessRetryConfig | null> {

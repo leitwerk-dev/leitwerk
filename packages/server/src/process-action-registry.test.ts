@@ -8,7 +8,6 @@ import { collectProcessActionPlan } from "./process-engine/writes/build-process-
 import { getProcessGraph } from "./process-graph.js";
 import { defineGraphFixtureProcess } from "./test-helpers/process-binding-fixtures.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
 const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
@@ -314,7 +313,7 @@ function collectPlan(
 		projects: [makeFakeProject(process.id)],
 		processGraphs,
 		...registry.resolveContextData(process.processId, process),
-		turnRecords: createTestDeps().turnRecords,
+		turnRecords: { getById: () => null },
 		action: getActionOrThrow(registry, process.processId, actionId),
 		input,
 		isVisible: true,
@@ -340,7 +339,7 @@ describe("ProcessActionRegistry", () => {
 		expect(registry.getAction("unknown_process", "do_thing")).toBeUndefined();
 	});
 
-	it("does not surface standalone actions outside a current human turn", () => {
+	it("does not surface standalone actions absent from the selected human turn", () => {
 		const registry = buildRegistry({
 			processes: [
 				makeProcess({

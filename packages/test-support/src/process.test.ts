@@ -125,7 +125,17 @@ describe("supported process harness", () => {
 			await harness.callTool("save", {}, fixture);
 			expect(harness.writeReceipts()).toHaveLength(1);
 			await harness.callTool("save", {}, { ...fixture, invocationId: "next" });
-			expect(before).toHaveLength(1);
+			const firstReceipt = {
+				instanceId: "one",
+				writeType: "save",
+				dedupKey: "retry",
+				metadata: { value: "saved" },
+			};
+			expect(before).toEqual([firstReceipt]);
+			expect(harness.writeReceipts()).toEqual([
+				firstReceipt,
+				{ ...firstReceipt, dedupKey: "next" },
+			]);
 			expect(Object.isFrozen(before[0])).toBe(true);
 			expect(harness.describeTools()).toEqual([
 				{ name: "save", description: "Save", parameters: {} },
@@ -143,25 +153,39 @@ describe("supported process harness", () => {
 			.process("automatic_fixture")
 			.displayName("Automatic")
 			.entry("finish")
-			.codecs({ params: emptyParamsCodec, state: codec })
-			.initialState(() => ({}))
+			.codecs({
+				params: emptyParamsCodec,
+				state: { parse: (value) => value as { count: number }, serialize: (value) => value },
+			})
+			.initialState(() => ({ count: 0 }))
 			.turn(
 				flow
-					.automatic("finish")
+					.automatic<Record<string, never>, { count: number }>("finish")
 					.description("Finish")
 					.run(() => ({ outcome: "done", markdown: "Result" }))
-					.outcome("done", (outcome) => outcome.description("Done").complete()),
+					.outcome("done", (outcome) =>
+						outcome
+							.description("Done")
+							.complete()
+							.state(({ ctx }) => {
+								ctx.state.count += 1;
+								return ctx.state;
+							}),
+					),
 			)
 			.define();
 		const test = await createExtensionTestHarness();
 		try {
-			const process = test.process(processDefinition);
+			const fixture = { state: { count: 4 } };
+			const process = test.process(processDefinition, fixture);
 			expect((await process.evaluateTurn("finish")).completed).toEqual([
 				{ outcome: "done", markdown: "Result" },
 			]);
-			expect(await process.evaluateOutcome("finish", { outcome: "done" })).toEqual(
-				await process.evaluateOutcome("finish", { outcome: "done" }),
-			);
+			for (let evaluation = 0; evaluation < 2; evaluation++) {
+				const result = await process.evaluateOutcome("finish", { outcome: "done" });
+				expect(result.transitions).toEqual([{ state: { count: 5 } }]);
+				expect(fixture).toEqual({ state: { count: 4 } });
+			}
 		} finally {
 			await test.close();
 		}
@@ -181,6 +205,9 @@ describe("supported process harness", () => {
 							api.onStop(() => {
 								throw new Error("cleanup");
 							});
+							api.onStop(() => {
+								calls.push("last");
+							});
 							api.onStart(() => {
 								throw new Error("startup");
 							});
@@ -189,7 +216,7 @@ describe("supported process harness", () => {
 				],
 			}),
 		).rejects.toThrow("startup");
-		expect(calls).toEqual(["first"]);
+		expect(calls.sort()).toEqual(["first", "last"]);
 	});
 });
 

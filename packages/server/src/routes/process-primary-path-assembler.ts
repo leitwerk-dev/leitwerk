@@ -1,40 +1,35 @@
-import type {
-	ProcessInstance,
-	ProcessTurnAnnotation,
-	ProcessTurnRecord,
-} from "@leitwerk-dev/domain";
 import { PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES } from "@leitwerk-dev/protocol";
 import {
 	buildPrimaryPathSnapshotFromTree,
 	type PrimaryPathSnapshotProjectionInput,
 } from "../primary-path-snapshot.js";
 import { resolveCurrentExecutionTurnRecordId } from "../process-execution.js";
-import type { ProcessSessionTreeReadResult } from "../process-session-store.js";
 import {
 	mergeProcessEventWindowsAscending,
 	PRIMARY_PATH_ACTIVE_TURN_EVENT_LIMIT,
 	type RouteDeps,
 } from "./process-route-helpers.js";
 
-export type CapturedPrimaryPathState = PrimaryPathSnapshotProjectionInput;
+type ProcessPrimaryPathDeps = Pick<
+	RouteDeps,
+	| "processes"
+	| "turnRecords"
+	| "turnStarts"
+	| "events"
+	| "leases"
+	| "turnAnnotations"
+	| "sessionReader"
+>;
 
 export class ProcessPrimaryPathAssembler {
-	constructor(private readonly deps: RouteDeps) {}
+	constructor(private readonly deps: ProcessPrimaryPathDeps) {}
 
-	capture(
-		instanceId: string,
-		overrides: {
-			process?: ProcessInstance;
-			turnRecords?: readonly ProcessTurnRecord[];
-			turnAnnotations?: readonly ProcessTurnAnnotation[];
-			workerLease?: PrimaryPathSnapshotProjectionInput["workerLease"];
-		} = {},
-	): CapturedPrimaryPathState | null {
-		const process = overrides.process ?? this.deps.processes.getById(instanceId);
+	private capture(instanceId: string): PrimaryPathSnapshotProjectionInput | null {
+		const process = this.deps.processes.getById(instanceId);
 		if (!process) {
 			return null;
 		}
-		const turnRecords = overrides.turnRecords ?? this.deps.turnRecords.listByInstance(process.id);
+		const turnRecords = this.deps.turnRecords.listByInstance(process.id);
 		const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, this.deps.turnStarts);
 		const activeTurnRecord = currentTurnRecordId
 			? turnRecords.find(
@@ -63,23 +58,12 @@ export class ProcessPrimaryPathAssembler {
 		return {
 			process,
 			currentExecutionTurnRecordId: currentTurnRecordId,
-			workerLease:
-				overrides.workerLease !== undefined
-					? overrides.workerLease
-					: this.deps.leases.getByInstance(process.id),
+			workerLease: this.deps.leases.getByInstance(process.id),
 			turnRecords,
-			turnAnnotations:
-				overrides.turnAnnotations ?? this.deps.turnAnnotations.listByInstance(process.id),
+			turnAnnotations: this.deps.turnAnnotations.listByInstance(process.id),
 			events,
 			eventWindowTruncated,
 		};
-	}
-
-	project(captured: CapturedPrimaryPathState, session: ProcessSessionTreeReadResult) {
-		return buildPrimaryPathSnapshotFromTree({
-			...captured,
-			tree: session.parsedTree,
-		});
 	}
 
 	async assemble(instanceId: string) {
@@ -88,6 +72,6 @@ export class ProcessPrimaryPathAssembler {
 			return null;
 		}
 		const session = await this.deps.sessionReader.readSessionTree(instanceId);
-		return this.project(captured, session);
+		return buildPrimaryPathSnapshotFromTree({ ...captured, tree: session.parsedTree });
 	}
 }

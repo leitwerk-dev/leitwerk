@@ -1,7 +1,18 @@
-import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
+import { createHash, randomBytes } from "node:crypto";
+import {
+	chmod,
+	mkdir,
+	mkdtemp,
+	readFile,
+	readlink,
+	rm,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { buffer } from "node:stream/consumers";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -47,8 +58,14 @@ describe("session transfer format", () => {
 		expect(
 			parseTransferLink(
 				"https://leitwerk.example/api/session-transfers/agt_1/trg_1#token=abcdefghijklmnopqrstuvwxyz123456",
-			).token,
-		).toBe("abcdefghijklmnopqrstuvwxyz123456");
+			),
+		).toEqual({
+			origin: "https://leitwerk.example",
+			instanceId: "agt_1",
+			grantId: "trg_1",
+			token: "abcdefghijklmnopqrstuvwxyz123456",
+			grantUrl: "https://leitwerk.example/api/session-transfers/agt_1/trg_1",
+		});
 		expect(() =>
 			parseTransferLink(
 				"http://leitwerk.example/api/session-transfers/agt_1/trg_1#token=abcdefghijklmnopqrstuvwxyz123456",
@@ -64,14 +81,23 @@ describe("session transfer format", () => {
 		).toThrow("invalid instance id");
 	});
 
-	it("validates helper specs with the shared transfer schemas", async () => {
-		const { manifest } = await fixture();
+	it("validates helper specs with the shared transfer schemas", () => {
+		const manifest: LeitwerkTransferManifestV1 = {
+			version: 1,
+			instanceId: "agt_1",
+			createdAt: "2026-09-01T00:00:00.000Z",
+			session: { sourceCwd: "/source/workspace", cwdRelativeToWorkspace: "." },
+			projects: [],
+		};
 		expect(
 			parseSessionTransferHelperSpec({
 				manifest,
 				limits: { maxEntries: 10, maxLogicalBytes: 20, maxCompressedBytes: 30 },
 			}),
-		).toMatchObject({ manifest, limits: { maxEntries: 10 } });
+		).toEqual({
+			manifest,
+			limits: { maxEntries: 10, maxLogicalBytes: 20, maxCompressedBytes: 30 },
+		});
 		expect(() =>
 			parseSessionTransferHelperSpec({
 				manifest,
@@ -82,6 +108,7 @@ describe("session transfer format", () => {
 
 	it("round-trips regular files, modes, and safe symlinks through tar.zstd", async () => {
 		const source = await fixture();
+		await chmod(path.join(source.workspace, "repo", "dirty.txt"), 0o755);
 		const preflight = await scanPortableWorkspace({
 			workspaceRoot: source.workspace,
 			sessionFile: source.session,
@@ -93,14 +120,24 @@ describe("session transfer format", () => {
 			preflight,
 		});
 		const output = path.join(source.root, "output");
-		const result = await extractTransferArchive({ compressed: archive, outputRoot: output });
-		expect(result.manifest.instanceId).toBe("agt_1");
+		const compressed = await buffer(archive);
+		const result = await extractTransferArchive({
+			compressed: Readable.from([compressed]),
+			outputRoot: output,
+		});
+		expect(result.manifest).toEqual(source.manifest);
+		expect(await readFile(path.join(output, "session.jsonl"), "utf8")).toBe(
+			await readFile(source.session, "utf8"),
+		);
 		expect(await readFile(path.join(output, "workspace", "repo", "dirty.txt"), "utf8")).toBe(
 			"working tree\n",
 		);
 		expect(await readlink(path.join(output, "workspace", "repo", "safe-link"))).toBe("dirty.txt");
-		expect(result.compressedBytes).toBeGreaterThan(0);
-		expect(result.streamSha256).toMatch(/^[a-f0-9]{64}$/);
+		expect((await stat(path.join(output, "workspace", "repo", "dirty.txt"))).mode & 0o777).toBe(
+			0o755,
+		);
+		expect(result.compressedBytes).toBe(compressed.length);
+		expect(result.streamSha256).toBe(createHash("sha256").update(compressed).digest("hex"));
 	});
 
 	it("rejects symlinks that escape the workspace during preflight", async () => {
@@ -133,7 +170,9 @@ describe("session transfer format", () => {
 		"during streaming",
 	])("rejects the compressed stream when cancelled %s", async (timing) => {
 		const source = await fixture();
-		await writeFile(path.join(source.workspace, "large.bin"), randomBytes(2 * 1024 * 1024));
+		if (timing === "during streaming") {
+			await writeFile(path.join(source.workspace, "large.bin"), randomBytes(2 * 1024 * 1024));
+		}
 		const preflight = await scanPortableWorkspace({
 			workspaceRoot: source.workspace,
 			sessionFile: source.session,

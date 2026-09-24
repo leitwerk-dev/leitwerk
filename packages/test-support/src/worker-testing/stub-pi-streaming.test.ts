@@ -3,7 +3,38 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { expect, it } from "vitest";
-import { StubPiTreeHandleFactory } from "./stub-pi-tree-handle.js";
+import { StubPiTreeHandleFactory as BaseStubPiTreeHandleFactory } from "./stub-pi-tree-handle.js";
+
+const handles = new Set<
+	Awaited<ReturnType<BaseStubPiTreeHandleFactory["createPrimaryTreeHandle"]>>
+>();
+const releaseGates: Array<() => void> = [];
+
+class StubPiTreeHandleFactory extends BaseStubPiTreeHandleFactory {
+	override async createPrimaryTreeHandle(
+		options: Parameters<BaseStubPiTreeHandleFactory["createPrimaryTreeHandle"]>[0],
+	) {
+		const handle = await super.createPrimaryTreeHandle(options);
+		handles.add(handle);
+		const close = handle.close.bind(handle);
+		handle.close = async () => {
+			await close();
+			handles.delete(handle);
+		};
+		return handle;
+	}
+}
+
+async function cleanup(root: string): Promise<void> {
+	for (const release of releaseGates.splice(0)) release();
+	try {
+		const results = await Promise.allSettled([...handles].map((handle) => handle.close()));
+		const failure = results.find((result) => result.status === "rejected");
+		if (failure?.status === "rejected") throw failure.reason;
+	} finally {
+		await rm(root, { recursive: true, force: true });
+	}
+}
 
 it("records SDK-readable input, reasoning and tool results across fresh factories", async () => {
 	const root = await mkdtemp(path.join(tmpdir(), "pi-trace-test-"));
@@ -26,8 +57,10 @@ it("records SDK-readable input, reasoning and tool results across fresh factorie
 			options,
 		);
 		const deltas: unknown[] = [];
+		const toolCalls: string[] = [];
 		handle.subscribe((event) => {
 			if (event.type === "stream.delta") deltas.push(event.data);
+			if (event.type === "tool.call") toolCalls.push(String(event.data.toolCallId));
 		});
 		const result = await handle.promptCustom(
 			{
@@ -53,6 +86,8 @@ it("records SDK-readable input, reasoning and tool results across fresh factorie
 			{ streamType: "thinking", text: "Keep the update focused.\n" },
 			{ streamType: "text", text: "Preparing the update.\n" },
 		]);
+		expect(toolCalls).toHaveLength(1);
+		expect(toolCalls[0]).not.toBe("");
 		const manager = SessionManager.open(options.treeFile);
 		expect(manager.getLeafId()).toBe(result.resultEntryId);
 		expect(manager.getEntries()).toEqual(
@@ -70,7 +105,7 @@ it("records SDK-readable input, reasoning and tool results across fresh factorie
 				expect.objectContaining({
 					message: expect.objectContaining({
 						role: "toolResult",
-						toolCallId: "tool-2",
+						toolCallId: toolCalls[0],
 						content: [{ type: "text", text: "Saved the weekly review" }],
 						isError: false,
 					}),
@@ -83,10 +118,12 @@ it("records SDK-readable input, reasoning and tool results across fresh factorie
 		expect(resumed.getBranch()).toHaveLength(manager.getEntries().length);
 		const next = await resumed.prompt("Follow up");
 		expect(next.startLeafId).toBe(result.resultEntryId);
-		expect(next.resultEntryId).toBe("turn-3");
+		expect(next.resultEntryId).not.toBe(result.resultEntryId);
+		expect(resumed.getLeafId()).toBe(next.resultEntryId);
+		expect(resumed.getBranch().map((entry) => entry.id)).toContain(result.resultEntryId);
 		await resumed.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 
@@ -114,12 +151,15 @@ it("retains legacy stub sessions when enabling trace recording", async () => {
 			recordSessionTrace: true,
 		}).createPrimaryTreeHandle({ treeFile, workspaceRoot: root, resume: true });
 		expect(handle.getEntry(entry.id)).toEqual(entry);
-		expect((await handle.prompt("Next turn")).resultEntryId).toBe("turn-8");
+		const next = await handle.prompt("Next turn");
+		expect(next.startLeafId).toBe(entry.id);
+		expect(next.resultEntryId).not.toBe(entry.id);
+		expect(handle.getLeafId()).toBe(next.resultEntryId);
 		await handle.close();
 		expect(SessionManager.open(treeFile).getEntry(entry.id)).toEqual(entry);
 		expect((await readFile(treeFile, "utf8")).split("\n").length).toBeGreaterThan(2);
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 
@@ -160,7 +200,7 @@ it("correlates asynchronous scripts to their process and resumes persisted seque
 		]);
 		await resumed.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 it("aborts an interactive tool using its correlated call context", async () => {
@@ -175,6 +215,11 @@ it("aborts an interactive tool using its correlated call context", async () => {
 			treeFile: path.join(root, "tree"),
 			resume: false,
 		});
+		const toolCalls: string[] = [];
+		handle.subscribe((event) => {
+			if (event.type === "tool.call") toolCalls.push(String(event.data.toolCallId));
+		});
+		let executedToolCallId: string | undefined;
 		let started!: () => void;
 		const entered = new Promise<void>((resolve) => {
 			started = resolve;
@@ -186,7 +231,7 @@ it("aborts an interactive tool using its correlated call context", async () => {
 					description: "Wait for input",
 					parameters: {},
 					async execute(_args, context) {
-						expect(context?.toolCallId).toBe("tool-1");
+						executedToolCallId = context?.toolCallId;
 						if (!context) throw new Error("Missing context");
 						return new Promise((_resolve, reject) => {
 							context.signal.addEventListener("abort", () => reject(context.signal.reason), {
@@ -202,9 +247,12 @@ it("aborts an interactive tool using its correlated call context", async () => {
 		await entered;
 		await handle.abortTurn();
 		await outcome;
+		expect(toolCalls).toHaveLength(1);
+		expect(executedToolCallId).toBeTruthy();
+		expect(executedToolCallId).toBe(toolCalls[0]);
 		await handle.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 
@@ -244,7 +292,7 @@ it.each([
 		expect(handle.getLeafId()).toBe(result.resultEntryId);
 		await handle.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 
@@ -263,9 +311,11 @@ it.each([
 			resume: false,
 		});
 		const events: string[] = [];
+		let startedTurnId: string | undefined;
 		let stopped: Promise<void> | undefined;
 		handle.subscribe((event) => {
 			events.push(event.type);
+			if (event.type === "turn.start") startedTurnId = event.turnId;
 			if (event.type === "stream.delta")
 				stopped = operation === "abort" ? handle.abortTurn() : handle.close();
 		});
@@ -275,7 +325,8 @@ it.each([
 		await stopped;
 		expect(events).not.toContain("turn.end");
 		const manager = SessionManager.open(path.join(root, "tree.jsonl"));
-		expect(manager.getEntry("turn-1")).toBeUndefined();
+		if (!startedTurnId) throw new Error("Missing turn.start event");
+		expect(manager.getEntry(startedTurnId)).toBeUndefined();
 		expect(manager.getEntries()).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -285,7 +336,7 @@ it.each([
 		);
 		if (operation === "abort") await handle.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });
 
@@ -300,6 +351,7 @@ it("rejects a cancelled turn after its asynchronous resolver returns", async () 
 		const pending = new Promise<void>((resolve) => {
 			release = resolve;
 		});
+		releaseGates.push(release);
 		const handle = await new StubPiTreeHandleFactory({
 			async toolCallScriptResolver() {
 				entered();
@@ -312,8 +364,10 @@ it("rejects a cancelled turn after its asynchronous resolver returns", async () 
 			resume: false,
 		});
 		const events: string[] = [];
+		let startedTurnId: string | undefined;
 		handle.subscribe((event) => {
 			events.push(event.type);
+			if (event.type === "turn.start") startedTurnId = event.turnId;
 		});
 		const turn = handle.prompt("Input");
 		const rejected = expect(turn).rejects.toThrow("aborted");
@@ -322,9 +376,10 @@ it("rejects a cancelled turn after its asynchronous resolver returns", async () 
 		release();
 		await rejected;
 		expect(events).toEqual(["turn.start"]);
-		expect(handle.getEntry("turn-1")).toBeUndefined();
+		if (!startedTurnId) throw new Error("Missing turn.start event");
+		expect(handle.getEntry(startedTurnId)).toBeUndefined();
 		await handle.close();
 	} finally {
-		await rm(root, { recursive: true, force: true });
+		await cleanup(root);
 	}
 });

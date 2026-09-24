@@ -1,34 +1,9 @@
-import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
+import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
 import { createWorkerProcessBuilder } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import type { PreparedAutomaticSession } from "./bootstrap-session.js";
 import { executeSelectedTurn } from "./turn-execution.js";
-
-function processSnapshot(): ProcessInstance {
-	return {
-		id: "proc_1",
-		processId: "test_process",
-		selectedTurnId: "run",
-		lifecycleStatus: "active",
-		currentExecution: { kind: "worker_start", id: "start_1" },
-		planRevision: 0,
-		title: null,
-		externalId: null,
-		externalUrl: null,
-		metadata: {},
-		defaultModelProfileId: null,
-		initialDefaultModelProfileId: null,
-		turnConfigsJson: null,
-		selectedTurnModelProfileId: null,
-		selectedTurnModelSource: null,
-		paramsJson: "{}",
-		stateJson: "{}",
-		createdAt: new Date(),
-		updatedAt: new Date(),
-		closedAt: null,
-	};
-}
 
 function automaticProcess(
 	handler: Parameters<ReturnType<typeof createWorkerProcessBuilder>["turn"]>[1],
@@ -73,7 +48,14 @@ function execute(
 ) {
 	const session = {
 		resolvedWorkerProcess: process,
-		processSnapshot: processSnapshot(),
+		processSnapshot: createTestProcessInstance({
+			id: "proc_1",
+			processId: "test_process",
+			selectedTurnId: "run",
+			currentExecution: { kind: "worker_start", id: "start_1" },
+			paramsJson: "{}",
+			stateJson: "{}",
+		}),
 		projectSnapshots: [],
 		kind: "automatic",
 		selectedTurnId: "run",

@@ -7,6 +7,8 @@ describe("LLM turn preparation checkpoints", () => {
 			ok: true,
 			data: { snapshot: { path: "/tmp/snapshot" } },
 		});
+		expect(normalizeTurnPreparationData("é".repeat(32_767))).toMatchObject({ ok: true });
+		expect(normalizeTurnPreparationData("é".repeat(32_768))).toEqual({ ok: false });
 		expect(normalizeTurnPreparationData(undefined)).toEqual({ ok: false });
 		expect(normalizeTurnPreparationData({ value: BigInt(1) })).toEqual({ ok: false });
 	});
@@ -51,5 +53,12 @@ describe("LLM turn preparation checkpoints", () => {
 				data: { snapshotDir: "/tmp/other" },
 			}),
 		).toBe(false);
+		expect(events).toEqual([
+			{
+				instanceId: "agt_1",
+				eventType: "turn.prepared",
+				data: { turnRecordId: "trn_1", data: { snapshotDir: "/tmp/snapshot" } },
+			},
+		]);
 	});
 });

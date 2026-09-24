@@ -1,0 +1,47 @@
+server:
+  host: 0.0.0.0
+  port: 8080
+  base_url: http://127.0.0.1:18080
+
+storage:
+  sqlite_path: /state/leitwerk.sqlite
+  process_workspaces_dir: /state/workspaces
+  tree_files_dir: /state/trees
+
+auth:
+  enabled: false
+
+workers:
+  runner: docker
+  default_runtime_profile: generic
+
+docker:
+  socket: unix:///var/run/docker.sock
+  network: leitwerk
+  server_url: http://leitwerk-server:8080
+  process_volume:
+    mode: named_volume
+    host_root: /var/lib/leitwerk/processes
+    mount_path: /state
+
+worker_runtime_profiles:
+  generic:
+    # Replace REVISION with the revision used to build both images.
+    image: leitwerk-worker-generic:REVISION
+
+pi:
+  agent_dir: /state/pi
+  model_profiles:
+    - id: example_model
+      provider: openai
+      model_id: gpt-4o
+
+extension_loading:
+  sources:
+    - /app/extensions/models
+    - /app/extensions/showcase-processes
+
+extensions:
+  models:
+    openai:
+      api_key: env:OPENAI_API_KEY

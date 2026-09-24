@@ -1,8 +1,8 @@
 import cookie from "@fastify/cookie";
 import Fastify from "fastify";
 import { expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { registerApiTokenAudit } from "./api-token-audit.js";
 import { createAuthService } from "./auth-service.js";
 import { testAuthConfig } from "./auth-test-helpers.js";

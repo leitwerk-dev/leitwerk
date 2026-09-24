@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createInMemoryDatabase } from "./database.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAllRepos } from "./repositories.js";
 
 describe("launcher recent value repository", () => {
@@ -11,6 +11,17 @@ describe("launcher recent value repository", () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 		const repos = createAllRepos(createInMemoryDatabase());
+		repos.launcherRecentValues.recordValue({
+			launcherId: "launcher-a",
+			fieldId: "prompt",
+			value: "retained prompt",
+		});
+		const otherLauncher = repos.launcherRecentValues.recordValue({
+			launcherId: "launcher-b",
+			fieldId: "repoLocator",
+			value: "/tmp/retained",
+		});
+		vi.advanceTimersByTime(1000);
 		for (const value of ["/tmp/a", "/tmp/b", "/tmp/c", "/tmp/d"]) {
 			repos.launcherRecentValues.recordValue({
 				launcherId: "launcher-a",
@@ -20,7 +31,9 @@ describe("launcher recent value repository", () => {
 			});
 			vi.advanceTimersByTime(1_000);
 		}
-		const original = repos.launcherRecentValues.listByLauncher("launcher-a")[2];
+		const original = repos.launcherRecentValues
+			.listByLauncher("launcher-a")
+			.find((entry) => entry.value === "/tmp/b");
 		const replay = repos.launcherRecentValues.recordValue({
 			launcherId: "launcher-a",
 			fieldId: "repoLocator",
@@ -31,6 +44,7 @@ describe("launcher recent value repository", () => {
 
 		expect(
 			repos.launcherRecentValues.listByLauncher("launcher-a").map((entry) => entry.value),
-		).toEqual(["/tmp/b", "/tmp/d", "/tmp/c"]);
+		).toEqual(["/tmp/b", "/tmp/d", "/tmp/c", "retained prompt"]);
+		expect(repos.launcherRecentValues.listByLauncher("launcher-b")).toEqual([otherLauncher]);
 	});
 });

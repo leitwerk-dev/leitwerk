@@ -1,8 +1,16 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { ResultImageStore } from "./result-image-store.js";
 
 function createStore(rootDir: string): ResultImageStore {
@@ -12,6 +20,7 @@ function createStore(rootDir: string): ResultImageStore {
 describe("ResultImageStore", () => {
 	it("atomically stores images by their content hash", async () => {
 		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-result-store-content-"));
+		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 		const store = createStore(root);
 		const bytes = Buffer.from([137, 80, 78, 71]);
 		const input = {
@@ -27,6 +36,9 @@ describe("ResultImageStore", () => {
 
 		expect(first.imageId).toBe(`img_${createHash("sha256").update(bytes).digest("hex")}.png`);
 		expect(retry).toEqual(first);
+		expect(readFileSync(path.join(root, "prc_1", "trn_1", first.imageId))).toEqual(
+			Buffer.from([137, 80, 78, 71]),
+		);
 		expect(different.imageId).not.toBe(first.imageId);
 		expect(names.sort()).toEqual([different.imageId, first.imageId].sort());
 		expect(names.some((name) => name.endsWith(".tmp"))).toBe(false);
@@ -34,6 +46,7 @@ describe("ResultImageStore", () => {
 
 	it("deletes expired and orphaned process image directories", async () => {
 		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-result-store-cleanup-"));
+		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 		for (const id of ["retained", "expired", "deleted"]) {
 			mkdirSync(path.join(root, id), { recursive: true });
 			writeFileSync(path.join(root, id, "sentinel"), id);

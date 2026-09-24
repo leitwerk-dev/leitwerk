@@ -213,6 +213,21 @@ describe("Kubernetes volume pre-provisioning", () => {
 		const { pv } = await provision(api, sources[0]);
 		await pool(api, 0).reconcile(signal);
 		expect(pv.spec.persistentVolumeReclaimPolicy).toBe("Retain");
+		await pool(api, 0).reconcile(signal); // remove preparation Pod
+		await pool(api, 0).reconcile(signal); // remove preparation PVC
+		pv.status = { phase: "Released" };
+		await pool(api, 0).reconcile(signal); // unbind
+		expect(pv.spec.claimRef).toBeUndefined();
+		pv.status = { phase: "Available" };
+		await pool(api, 0).reconcile(signal); // remove staging class
+		await pool(api, 0).reconcile(signal); // publish
+		expect(pv.spec).toMatchObject({
+			storageClassName: "storage",
+			persistentVolumeReclaimPolicy: "Delete",
+		});
+		await pool(api, 0).reconcile(signal); // do not replenish after preparation finishes
+		expect([...api.classes.keys()]).toEqual(["storage"]);
+		expect([...api.objects.keys()]).toEqual(["persistentvolumes//volume"]);
 		const empty = new PoolApi();
 		await pool(empty, 0).reconcile(signal);
 		expect(empty.classes.size).toBe(1);
@@ -234,9 +249,9 @@ describe("Kubernetes volume pre-provisioning", () => {
 		pod.status = { phase: "Failed" };
 		await pool(api).reconcile(signal);
 		await pool(api).reconcile(signal);
-		expect((await api.get("pods", "server", claim.metadata.name))?.metadata.uid).not.toBe(
-			pod.metadata.uid,
-		);
+		const replacement = await api.get("pods", "server", claim.metadata.name);
+		expect(replacement).not.toBeNull();
+		expect(replacement?.metadata.uid).not.toBe(pod.metadata.uid);
 		expect(
 			(await api.get("persistentvolumeclaims", "server", claim.metadata.name))?.metadata.uid,
 		).toBe(claim.metadata.uid);

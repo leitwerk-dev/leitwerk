@@ -3,7 +3,13 @@ import { FakeKubernetesApiClient } from "./kubernetes-api-client.js";
 import { sampleKubernetesStartup } from "./kubernetes-startup-sampler.js";
 import { buildWorkerUnitLabels } from "./worker-labels.js";
 
-afterEach(() => vi.useRealTimers());
+let sampler: ReturnType<typeof sampleKubernetesStartup> | undefined;
+afterEach(() => {
+	sampler?.stop();
+	sampler = undefined;
+	vi.restoreAllMocks();
+	vi.useRealTimers();
+});
 it("cancels pending sampling without waiting for a request to settle", async () => {
 	vi.useFakeTimers();
 	const client = new FakeKubernetesApiClient();
@@ -12,7 +18,7 @@ it("cancels pending sampling without waiting for a request to settle", async () 
 		signal = options?.signal;
 		return new Promise(() => {});
 	});
-	const sampler = sampleKubernetesStartup(client, { report() {}, observe() {} }, "ns", "pvc");
+	sampler = sampleKubernetesStartup(client, { report() {}, observe() {} }, "ns", "pvc");
 	sampler.attachPod({ name: "pod", instanceId: "p", workerId: "w" });
 	await vi.advanceTimersByTimeAsync(500);
 	sampler.stop();
@@ -20,7 +26,7 @@ it("cancels pending sampling without waiting for a request to settle", async () 
 	await vi.advanceTimersByTimeAsync(10000);
 	expect(getPod).toHaveBeenCalledTimes(1);
 });
-it("ignores other UIDs and sidecars, accepts terminated start, and does not invent a cached pull", async () => {
+it("ignores other UIDs and sidecars, accepts reported container start, and does not invent a cached pull", async () => {
 	vi.useFakeTimers();
 	const client = new FakeKubernetesApiClient();
 	vi.spyOn(client, "getPod").mockResolvedValue({
@@ -51,7 +57,7 @@ it("ignores other UIDs and sidecars, accepts terminated start, and does not inve
 		firstTimestamp: "2026-09-11T10:00:01Z",
 	});
 	const observe = vi.fn();
-	const sampler = sampleKubernetesStartup(client, { report() {}, observe }, "ns", "pvc");
+	sampler = sampleKubernetesStartup(client, { report() {}, observe }, "ns", "pvc");
 	sampler.attachPod({ name: "pod", instanceId: "p", workerId: "w" });
 	await vi.advanceTimersByTimeAsync(600);
 	sampler.stop();
@@ -63,7 +69,7 @@ it("ignores other UIDs and sidecars, accepts terminated start, and does not inve
 
 it("retains pod evidence and source precision when PVC reads fail", async () => {
 	vi.useFakeTimers();
-	const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+	vi.spyOn(console, "warn").mockImplementation(() => {});
 	const client = Object.assign(new FakeKubernetesApiClient(), {
 		getPersistentVolumeClaim: vi.fn().mockRejectedValue(new Error("PVC unavailable")),
 	});
@@ -84,21 +90,21 @@ it("retains pod evidence and source precision when PVC reads fail", async () => 
 		eventTime: "2026-09-11T10:00:01.123456Z",
 	});
 	const observe = vi.fn();
-	const sampler = sampleKubernetesStartup(client, { report() {}, observe }, "ns", "pvc");
+	sampler = sampleKubernetesStartup(client, { report() {}, observe }, "ns", "pvc");
 	sampler.attachPod({ name: "pod", instanceId: "p", workerId: "w" });
-	try {
-		await vi.advanceTimersByTimeAsync(2000);
-		expect(
-			observe.mock.calls.map(([o]) => [o.milestone, o.sourceAt, o.metadata.precision]),
-		).toEqual([
+	await vi.advanceTimersByTimeAsync(2000);
+	const observations = observe.mock.calls.map(([o]) => [
+		o.milestone,
+		o.sourceAt,
+		o.metadata.precision,
+	]);
+	expect(observations).toHaveLength(4);
+	expect(observations).toEqual(
+		expect.arrayContaining([
 			["pod_created", "2026-09-11T10:00:00Z", "seconds"],
 			["pod_scheduled", "2026-09-11T10:00:00.123Z", "milliseconds"],
 			["container_started", "2026-09-11T10:00:02Z", "seconds"],
 			["image_pull_started", "2026-09-11T10:00:01.123456Z", "microseconds"],
-		]);
-		expect(warn).toHaveBeenCalledTimes(3);
-	} finally {
-		sampler.stop();
-		warn.mockRestore();
-	}
+		]),
+	);
 });

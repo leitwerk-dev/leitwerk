@@ -94,17 +94,23 @@ describe("AppContext lifecycle", () => {
 		});
 		const starting = ctx.listen();
 		const rejected = expect(starting).rejects.toThrow("interrupted");
-		await entered.promise;
-		const closing = ctx.close();
-		expect(ctx.close()).toBe(closing);
-		expect(ctx.isReady()).toBe(false);
-		expect(stopped).not.toHaveBeenCalled();
-		gate.resolve();
-		await Promise.all([closing, rejected]);
-		expect(later).not.toHaveBeenCalled();
-		expect(stopped).toHaveBeenCalledTimes(1);
-		expect(ctx.close()).toBe(closing);
-		await expect(ctx.listen()).rejects.toThrow("closed");
+		try {
+			await entered.promise;
+			const closing = ctx.close();
+			expect(ctx.close()).toBe(closing);
+			expect(ctx.isReady()).toBe(false);
+			expect(stopped).not.toHaveBeenCalled();
+			gate.resolve();
+			await Promise.all([closing, rejected]);
+			expect(later).not.toHaveBeenCalled();
+			expect(stopped).toHaveBeenCalledTimes(1);
+			expect(ctx.close()).toBe(closing);
+			await expect(ctx.listen()).rejects.toThrow("closed");
+		} finally {
+			gate.resolve();
+			await Promise.allSettled([starting, rejected]);
+			await ctx.close();
+		}
 	});
 
 	it("supports close before listen and rejects adoption of a raw listener", async () => {
@@ -188,20 +194,30 @@ describe("AppContext lifecycle", () => {
 			expect(ctx.deps.processes.listAll()).toEqual([]);
 			return "finished";
 		});
-		const { address } = await ctx.listen();
-		const ws = new WebSocket(`${address.replace("http:", "ws:")}/ws`);
-		await new Promise<void>((resolve, reject) => {
-			ws.once("open", resolve);
-			ws.once("error", reject);
-		});
-		const disconnected = new Promise<void>((resolve) => ws.once("close", () => resolve()));
-		const request = fetch(`${address}/slow`).then((response) => response.text());
-		await entered.promise;
-		const closing = ctx.close();
-		expect(ctx.isReady()).toBe(false);
-		gate.resolve();
-		expect(await request).toBe("finished");
-		await Promise.all([closing, disconnected]);
+		let ws: WebSocket | undefined;
+		let request: Promise<string> | undefined;
+		try {
+			const { address } = await ctx.listen();
+			const socket = new WebSocket(`${address.replace("http:", "ws:")}/ws`);
+			ws = socket;
+			await new Promise<void>((resolve, reject) => {
+				socket.once("open", resolve);
+				socket.once("error", reject);
+			});
+			const disconnected = new Promise<void>((resolve) => socket.once("close", () => resolve()));
+			request = fetch(`${address}/slow`).then((response) => response.text());
+			await entered.promise;
+			const closing = ctx.close();
+			expect(ctx.isReady()).toBe(false);
+			gate.resolve();
+			expect(await request).toBe("finished");
+			await Promise.all([closing, disconnected]);
+		} finally {
+			gate.resolve();
+			ws?.terminate();
+			if (request) await Promise.allSettled([request]);
+			await ctx.close();
+		}
 	});
 
 	it("waits for in-flight polling before closing the database", async () => {
@@ -224,12 +240,17 @@ describe("AppContext lifecycle", () => {
 			});
 		});
 		readAfterStop = () => expect(ctx.deps.processes.listAll()).toEqual([]);
-		await ctx.listen();
-		await entered.promise;
-		const closing = ctx.close();
-		gate.resolve();
-		await closing;
-		expect(() => ctx.deps.processes.listAll()).toThrow();
+		try {
+			await ctx.listen();
+			await entered.promise;
+			const closing = ctx.close();
+			gate.resolve();
+			await closing;
+			expect(() => ctx.deps.processes.listAll()).toThrow();
+		} finally {
+			gate.resolve();
+			await ctx.close();
+		}
 	});
 
 	it("formats an IPv6 loopback URL", async () => {
