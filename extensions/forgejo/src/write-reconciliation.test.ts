@@ -141,6 +141,7 @@ it("recovers replies only in the original inline review and path", async () => {
 	const correct: Record<string, unknown>[] = [
 		parent,
 		{ ...parent, id: 11, line: 99, body: marker },
+		{ ...parent, id: 12, path: "b.ts", body: marker },
 	];
 	vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
 		if (url.includes("/reviews/1/comments")) {
