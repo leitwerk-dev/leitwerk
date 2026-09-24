@@ -142,7 +142,7 @@ npm run test:browser
 
 On Linux, add `--with-deps` to browser installation for system libraries. The full gate
 runs all three engines concurrently, with two isolated shards per engine on hosts
-with at least six available CPUs and one shard per engine on smaller hosts. Layout
+with at least four available CPUs and one shard per engine on smaller hosts. Layout
 checks run with the other tests in each engine. After building, a focused run may
 select one:
 
