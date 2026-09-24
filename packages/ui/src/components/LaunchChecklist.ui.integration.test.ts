@@ -8,6 +8,8 @@ import { fetchLaunchRun } from "../lib/api.js";
 import { dispatchLaunchUpdated } from "../lib/launch-updates.js";
 import LaunchChecklist from "./LaunchChecklist.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 vi.mock("../lib/api.js", () => ({
 	fetchLaunchRun: vi.fn(),
 }));
@@ -48,7 +50,8 @@ async function flush(): Promise<void> {
 	await Promise.resolve();
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 	vi.clearAllMocks();
 });
@@ -65,6 +68,7 @@ describe("LaunchChecklist", () => {
 			target,
 			props: { launchRunId: "launch-1" },
 		});
+		mountedApps.push(component);
 		await vi.waitFor(() => expect(fetchLaunchRun).toHaveBeenCalledTimes(1));
 
 		dispatchLaunchUpdated({
@@ -78,6 +82,5 @@ describe("LaunchChecklist", () => {
 
 		expect(target.textContent).toContain("New launch state");
 		expect(target.textContent).not.toContain("Stale launch state");
-		unmount(component);
 	});
 });

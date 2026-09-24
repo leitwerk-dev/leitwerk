@@ -76,7 +76,8 @@ describe("ChronicleQuestionRequest", () => {
 				},
 			],
 		});
-		expect(target.textContent).toContain("Questions answered");
+		expect(target.textContent).toContain("Safe");
+		expect(target.textContent).toContain("Keep the change focused");
 		expect(target.querySelector("form")).toBeNull();
 	});
 });

@@ -18,6 +18,8 @@ import { consumePendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildHomePath, navigate } from "../lib/router.svelte";
 import HomePage from "./HomePage.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 const launcherModelConfigSchema = {
 	availableProfiles: [
 		{
@@ -231,8 +233,10 @@ async function waitForSelector(
 	throw new Error(`Timed out waiting for selector: ${selector}`);
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
+	vi.mocked(navigate).mockReset();
 	vi.clearAllMocks();
 	resetDefaultMocks();
 });
@@ -243,13 +247,12 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target, props: { launcherId: null } });
+		mountedApps.push(app);
 		await flush();
 
 		expect(target.querySelector('[data-section="process-gallery"]')).not.toBeNull();
 		expect(target.querySelector('[data-section="launcher-form"]')).toBeNull();
 		expect(target.querySelectorAll("[data-process-card-id]").length).toBe(2);
-
-		unmount(app);
 	});
 
 	it("renders launcher setup from a deep link and includes the process flow", async () => {
@@ -257,6 +260,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target, props: { launcherId: "launcher-a" } });
+		mountedApps.push(app);
 		await flush();
 
 		expect(target.querySelector('[data-section="process-configure"]')).not.toBeNull();
@@ -264,8 +268,6 @@ describe("HomePage", () => {
 		const flow = target.querySelector('[data-section="process-flow-diagram"]');
 		expect(flow).not.toBeNull();
 		expect(flow?.querySelector('[data-flow-turn-id="draft_plan"]')).not.toBeNull();
-
-		unmount(app);
 	});
 
 	it("falls back to the gallery when a deep-linked launcher is unavailable", async () => {
@@ -273,13 +275,12 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target, props: { launcherId: "missing-launcher" } });
+		mountedApps.push(app);
 		await flush();
 
 		expect(target.querySelector('[data-section="process-gallery"]')).not.toBeNull();
 		expect(target.querySelector('[data-state="launcher-unavailable"]')).not.toBeNull();
 		expect(target.querySelector('[data-section="launcher-form"]')).toBeNull();
-
-		unmount(app);
 	});
 
 	it("selecting a gallery card navigates to that launcher setup", async () => {
@@ -287,6 +288,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target, props: { launcherId: null } });
+		mountedApps.push(app);
 		await flush();
 
 		(target.querySelector('[data-launcher-id="launcher-a"]') as HTMLButtonElement | null)?.click();
@@ -294,11 +296,13 @@ describe("HomePage", () => {
 
 		expect(buildHomePath).toHaveBeenCalledWith("launcher-a");
 		expect(navigate).toHaveBeenCalledWith("/?launcher=launcher-a");
-
-		unmount(app);
 	});
 
 	it("stores a newly scheduled launch before navigating to its detail route", async () => {
+		let storeAtNavigation: unknown;
+		vi.mocked(navigate).mockImplementation(() => {
+			storeAtNavigation = get(futureExecutions);
+		});
 		const scheduledLaunch = {
 			id: "fut_scheduled_1",
 			kind: "launch" as const,
@@ -324,6 +328,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target, props: { launcherId: "launcher-a" } });
+		mountedApps.push(app);
 		await flush();
 
 		setInputValue(
@@ -356,7 +361,7 @@ describe("HomePage", () => {
 			?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
 		await flush();
 
-		expect(get(futureExecutions)).toContainEqual({
+		expect(storeAtNavigation).toContainEqual({
 			id: scheduledLaunch.id,
 			kind: scheduledLaunch.kind,
 			scheduleKind: scheduledLaunch.scheduleKind,
@@ -372,8 +377,6 @@ describe("HomePage", () => {
 			initialPromptPreview: null,
 		});
 		expect(navigate).toHaveBeenCalledWith("/future-launches/fut_scheduled_1");
-
-		unmount(app);
 	});
 
 	it("clears retry prefill state when backing out and choosing another launcher", async () => {
@@ -391,6 +394,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target });
+		mountedApps.push(app);
 		await flush();
 
 		const initialInput = (await waitForSelector(
@@ -444,8 +448,6 @@ describe("HomePage", () => {
 		expect(returnedInput.value).toBe("/default/a");
 		expect(returnedInput.value).not.toBe("/retry/a");
 		expect(returnedTitleInput.value).toBe("Default Title A");
-
-		unmount(app);
 	});
 
 	it("auto-opens advanced model config when retry state includes turn overrides", async () => {
@@ -484,6 +486,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target });
+		mountedApps.push(app);
 		await flush();
 
 		const summaryCard = (await waitForSelector(
@@ -503,8 +506,6 @@ describe("HomePage", () => {
 		expect(turnList.dataset.overrideCount).toBe("1");
 		expect(turnGroup.dataset.effectiveSource).toBe("instance_turn_config");
 		expect(turnGroup.dataset.effectiveProfileId).toBe("local_qwen");
-
-		unmount(app);
 	});
 
 	it("keeps per-step settings collapsed when retry state only changes the process default", async () => {
@@ -541,6 +542,7 @@ describe("HomePage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(HomePage, { target });
+		mountedApps.push(app);
 		await flush();
 
 		const summaryCard = (await waitForSelector(
@@ -555,7 +557,5 @@ describe("HomePage", () => {
 		expect(summaryCard.dataset.customizationMode).toBe("default_only");
 		expect(defaultGroup.dataset.effectiveSource).toBe("instance_default");
 		expect(defaultGroup.dataset.effectiveProfileId).toBe("local_qwen");
-
-		unmount(app);
 	});
 });

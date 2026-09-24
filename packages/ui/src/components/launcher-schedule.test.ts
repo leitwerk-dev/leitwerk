@@ -13,7 +13,10 @@ describe("launcher schedule helpers", () => {
 		const originalIso = new Date(2026, 3, 24, 18, 45, 0, 0).toISOString();
 		const parts = isoToLocalScheduleDateTimeParts(originalIso);
 
-		expect(localScheduleDateTimePartsToIso(parts)).toBe(originalIso);
+		expect(parts).toEqual({ date: "2026-04-24", time: "18:45" });
+		expect(localScheduleDateTimePartsToIso({ date: "2026-04-24", time: "18:45" })).toBe(
+			originalIso,
+		);
 	});
 
 	it("returns null when either the date or time is missing", () => {

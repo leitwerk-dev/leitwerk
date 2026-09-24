@@ -19,14 +19,14 @@ function createJsonResponse(body: unknown, status = 200): Response {
 
 function installCustomElementsRegistry() {
 	const registry = new Map<string, CustomElementConstructor>();
-	(globalThis as { customElements?: unknown }).customElements = {
+	vi.stubGlobal("customElements", {
 		get(name: string) {
 			return registry.get(name);
 		},
 		define(name: string, ctor: CustomElementConstructor) {
 			registry.set(name, ctor);
 		},
-	};
+	});
 	return registry;
 }
 
@@ -42,7 +42,7 @@ async function loadModules(): Promise<RuntimeModules> {
 
 afterEach(() => {
 	resetUiRuntimeTransport();
-	delete (globalThis as { customElements?: unknown }).customElements;
+	vi.unstubAllGlobals();
 });
 
 describe("loadLeafOutcomeRenderer", () => {
@@ -80,9 +80,12 @@ describe("loadLeafOutcomeRenderer", () => {
 		]);
 		const second = await modules.loadLeafOutcomeRenderer("test:cached");
 
-		expect(concurrent).toMatchObject({ ok: true });
-		expect(first).toMatchObject({ ok: true });
-		expect(second).toMatchObject({ ok: true });
+		expect(first).toMatchObject({
+			ok: true,
+			descriptor: { rendererId: "test:cached", tagName: "o2-test-cached" },
+		});
+		expect(concurrent).toEqual(first);
+		expect(second).toEqual(first);
 		expect(fetchCount).toBe(1);
 		expect(importCount).toBe(1);
 	});

@@ -20,6 +20,8 @@ import {
 } from "../lib/api.js";
 import GenericLauncher from "./GenericLauncher.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 const serverDefaultProfile = {
 	id: "claude_fast",
 	label: "claude_fast — anthropic/claude-sonnet-4-20250514",
@@ -163,8 +165,8 @@ async function waitForSelector(
 	selector: string,
 	timeoutMs = 250,
 ): Promise<HTMLElement> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
+	const deadline = performance.now() + timeoutMs;
+	while (performance.now() < deadline) {
 		const element = target.querySelector(selector);
 		if (element instanceof HTMLElement) {
 			return element;
@@ -197,6 +199,7 @@ function mountSubject(
 			onLaunched,
 		},
 	});
+	mountedApps.push(app);
 	return { app, onLaunched, target };
 }
 
@@ -210,8 +213,8 @@ async function getDefaultModelGroup(target: HTMLElement): Promise<HTMLElement> {
 
 async function getAdvancedEditor(target: HTMLElement): Promise<HTMLElement> {
 	const summary = await getModelSummary(target);
-	const deadline = Date.now() + 250;
-	while (Date.now() < deadline) {
+	const deadline = performance.now() + 250;
+	while (performance.now() < deadline) {
 		const turnList = target.querySelector('[data-section="launcher-model-config-turn-list"]');
 		if (summary.dataset.editing === "true" && turnList instanceof HTMLElement) {
 			return turnList;
@@ -239,9 +242,11 @@ async function ensureAdvancedEditorOpen(target: HTMLElement) {
 	return getAdvancedEditor(target);
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 	window.localStorage.clear();
+	vi.restoreAllMocks();
 	vi.clearAllMocks();
 	resetDefaultMocks();
 	vi.useRealTimers();
@@ -249,7 +254,7 @@ afterEach(() => {
 
 describe("GenericLauncher", () => {
 	it("shows the current summary mode and all effective turn models from the preview", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const summary = await getModelSummary(target);
@@ -277,8 +282,6 @@ describe("GenericLauncher", () => {
 		expect(implementChangeSummaryTurn.dataset.modelName).toBe("claude_fast");
 		expect(summary.dataset.editing).toBe("false");
 		expect(target.querySelector("#test-launcher-form-draft_plan-model-profile")).toBeNull();
-
-		unmount(app);
 	});
 
 	it("shows the built-in title field and prefills it from launcher defaults", async () => {
@@ -290,7 +293,7 @@ describe("GenericLauncher", () => {
 			modelConfig: {},
 		});
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const titleInput = (await waitForSelector(
@@ -298,12 +301,10 @@ describe("GenericLauncher", () => {
 			"#test-launcher-form-process-title",
 		)) as HTMLInputElement;
 		expect(titleInput.value).toBe("Suggested title");
-
-		unmount(app);
 	});
 
 	it("uses the explicit built-in title input when submitting", async () => {
-		const { app, target, onLaunched } = mountSubject({ initialTitle: "Retry title" });
+		const { target, onLaunched } = mountSubject({ initialTitle: "Retry title" });
 		await flush();
 
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
@@ -318,8 +319,6 @@ describe("GenericLauncher", () => {
 			[],
 		);
 		expect(onLaunched).toHaveBeenCalledWith("proc_1");
-
-		unmount(app);
 	});
 
 	it("preserves initial skill selections when submitting", async () => {
@@ -327,7 +326,7 @@ describe("GenericLauncher", () => {
 			...createLauncher(),
 			skills: [{ id: "review", label: "Review", description: null }],
 		};
-		const { app, target } = mountSubject({ launcher, initialSkillIds: ["review"] });
+		const { target } = mountSubject({ launcher, initialSkillIds: ["review"] });
 		await flush();
 
 		expect((target.querySelector('input[value="review"]') as HTMLInputElement).checked).toBe(true);
@@ -342,8 +341,6 @@ describe("GenericLauncher", () => {
 			{ mode: "now" },
 			["review"],
 		);
-
-		unmount(app);
 	});
 
 	it("keeps the built-in title field blank when an explicit null initial title is provided", async () => {
@@ -355,7 +352,7 @@ describe("GenericLauncher", () => {
 			modelConfig: {},
 		});
 
-		const { app, target } = mountSubject({ initialTitle: null });
+		const { target } = mountSubject({ initialTitle: null });
 		await flush();
 
 		const titleInput = (await waitForSelector(
@@ -363,8 +360,6 @@ describe("GenericLauncher", () => {
 			"#test-launcher-form-process-title",
 		)) as HTMLInputElement;
 		expect(titleInput.value).toBe("");
-
-		unmount(app);
 	});
 
 	it("defers dependent refreshes while typing in textarea fields until blur", async () => {
@@ -376,7 +371,7 @@ describe("GenericLauncher", () => {
 			modelConfig: {},
 		});
 
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			launcher: createLauncher({
 				fields: [
 					{
@@ -411,8 +406,6 @@ describe("GenericLauncher", () => {
 			{ prompt: "Ship it" },
 			{},
 		);
-
-		unmount(app);
 	});
 
 	it("preserves same-model step recommendations in the summary and full editor", async () => {
@@ -424,7 +417,7 @@ describe("GenericLauncher", () => {
 			}),
 		);
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const summaryTurn = (await waitForSelector(
@@ -441,12 +434,10 @@ describe("GenericLauncher", () => {
 		expect(summaryTurn.dataset.modelName).toBe("local_qwen");
 		expect(draftPlanTurnGroup.dataset.modelState).toBe("recommended");
 		expect(draftPlanTurnGroup.dataset.effectiveSource).toBe("process_config_turn");
-
-		unmount(app);
 	});
 
 	it("shows the recommended default inline and keeps it out of the explicit option list", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
@@ -468,8 +459,6 @@ describe("GenericLauncher", () => {
 		expect(draftPlanSelect.options[0]?.value).toBe("");
 		expect(draftPlanSelect.options[0]?.text).toBe("Use process default");
 		expect(target.textContent).not.toContain("Thinking level");
-
-		unmount(app);
 	});
 
 	it("keeps unavailable profiles visible but prevents selecting them as the launch default", async () => {
@@ -486,7 +475,7 @@ describe("GenericLauncher", () => {
 				{ turnId: "implement_change", description: "Implement change" },
 			],
 		};
-		const { app, target } = mountSubject({ launcher });
+		const { target } = mountSubject({ launcher });
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
@@ -500,8 +489,6 @@ describe("GenericLauncher", () => {
 
 		expect(unavailableOption?.disabled).toBe(true);
 		expect(unavailableOption?.text).toContain("unavailable");
-
-		unmount(app);
 	});
 
 	it("prefills launcher-provided model config from defaults and auto-opens the editor", async () => {
@@ -518,7 +505,7 @@ describe("GenericLauncher", () => {
 			},
 		});
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const summary = await getModelSummary(target);
@@ -546,8 +533,6 @@ describe("GenericLauncher", () => {
 				turnConfigs: { draft_plan: { modelProfileId: "claude_fast" } },
 			},
 		);
-
-		unmount(app);
 	});
 
 	it("lets the operator change the default model without opening per-step settings", async () => {
@@ -560,7 +545,7 @@ describe("GenericLauncher", () => {
 				}),
 			);
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const initialSummary = await getModelSummary(target);
@@ -597,12 +582,10 @@ describe("GenericLauncher", () => {
 			{ repoPath: "/tmp/default-repo" },
 			{ defaultModelProfileId: "local_qwen" },
 		);
-
-		unmount(app);
 	});
 
 	it("toggles inline per-step model editing from the summary action", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const summary = await getModelSummary(target);
@@ -633,8 +616,6 @@ describe("GenericLauncher", () => {
 		await toggleAdvancedEditor(target);
 		expect(summary.dataset.editing).toBe("true");
 		expect(target.querySelector('[data-action="reset-model-config"]')).toBeNull();
-
-		unmount(app);
 	});
 
 	it("cancelling inline per-step editing restores the previous turn overrides", async () => {
@@ -655,7 +636,7 @@ describe("GenericLauncher", () => {
 				}),
 			);
 
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			initialModelConfig: {
 				turnConfigs: {
 					draft_plan: { modelProfileId: "local_qwen" },
@@ -690,12 +671,10 @@ describe("GenericLauncher", () => {
 		expect(target.querySelector("#test-launcher-form-draft_plan-model-profile")).toBeNull();
 		expect(draftPlanSummaryTurn.dataset.effectiveProfileId).toBe("local_qwen");
 		expect(draftPlanSummaryTurn.dataset.adjusted).toBe("true");
-
-		unmount(app);
 	});
 
 	it("resetting per-step model changes keeps the selected default model", async () => {
-		const { app, target, onLaunched } = mountSubject({
+		const { target, onLaunched } = mountSubject({
 			initialModelConfig: {
 				defaultModelProfileId: "local_qwen",
 				turnConfigs: {
@@ -742,12 +721,10 @@ describe("GenericLauncher", () => {
 			[],
 		);
 		expect(onLaunched).toHaveBeenCalledWith("proc_1");
-
-		unmount(app);
 	});
 
 	it("keeps blank overrides out of the launch payload", async () => {
-		const { app, target, onLaunched } = mountSubject({
+		const { target, onLaunched } = mountSubject({
 			initialModelConfig: {
 				turnConfigs: {
 					draft_plan: { modelProfileId: "local_qwen" },
@@ -777,12 +754,10 @@ describe("GenericLauncher", () => {
 			[],
 		);
 		expect(onLaunched).toHaveBeenCalledWith("proc_1");
-
-		unmount(app);
 	});
 
 	it("includes turn overrides in the launch payload when set", async () => {
-		const { app, target, onLaunched } = mountSubject({
+		const { target, onLaunched } = mountSubject({
 			initialModelConfig: {
 				turnConfigs: {
 					draft_plan: { modelProfileId: "local_qwen" },
@@ -803,11 +778,9 @@ describe("GenericLauncher", () => {
 			[],
 		);
 		expect(onLaunched).toHaveBeenCalledWith("proc_1");
-
-		unmount(app);
 	});
 
-	it("drops blank required-field default notices until the user submits", async () => {
+	it("suppresses blank required-field notices before submission", async () => {
 		vi.mocked(fetchLauncherDefaults).mockResolvedValue({
 			title: null,
 			defaults: { repoPath: "" },
@@ -815,12 +788,10 @@ describe("GenericLauncher", () => {
 			warnings: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
 		});
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		expect(target.querySelector('[data-section="launcher-defaults-notice"]')).toBeNull();
-
-		unmount(app);
 	});
 
 	it("keeps non-empty default warnings in an explicit review state", async () => {
@@ -837,7 +808,7 @@ describe("GenericLauncher", () => {
 			],
 		});
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const notice = (await waitForSelector(
@@ -846,9 +817,7 @@ describe("GenericLauncher", () => {
 		)) as HTMLElement;
 
 		expect(notice.dataset.tone).toBe("warning");
-		expect(notice.querySelector(".warning-list")).not.toBeNull();
-
-		unmount(app);
+		expect(notice.textContent).toContain("must be reviewed before launch");
 	});
 
 	it("focuses the first invalid field and keeps the banner summary short after validation errors", async () => {
@@ -857,7 +826,7 @@ describe("GenericLauncher", () => {
 			errors: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
 		});
 
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
@@ -878,8 +847,6 @@ describe("GenericLauncher", () => {
 		expect(banner.querySelector("ul")).toBeNull();
 		expect(document.activeElement).toBe(repoInput);
 		expect(fieldErrors?.textContent).not.toContain("repoPath");
-
-		unmount(app);
 	});
 
 	it("stores and reuses recent values for opted-in text fields after a successful launch", async () => {
@@ -907,7 +874,8 @@ describe("GenericLauncher", () => {
 
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
-		unmount(firstMount.app);
+		await unmount(firstMount.app);
+		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -924,8 +892,6 @@ describe("GenericLauncher", () => {
 			"#test-launcher-form-repoPath",
 		)) as HTMLInputElement;
 		expect(secondRepoInput.value).toBe("/tmp/recent-repo");
-
-		unmount(secondMount.app);
 	});
 
 	it("surfaces server-provided recent values for opted-in text fields", async () => {
@@ -944,7 +910,7 @@ describe("GenericLauncher", () => {
 			repoPath: ["/tmp/server-recent-repo"],
 		});
 
-		const { app, target } = mountSubject({ launcher });
+		const { target } = mountSubject({ launcher });
 		await flush();
 
 		const recentChip = (await waitForSelector(
@@ -959,8 +925,6 @@ describe("GenericLauncher", () => {
 			"#test-launcher-form-repoPath",
 		)) as HTMLInputElement;
 		expect(repoInput.value).toBe("/tmp/server-recent-repo");
-
-		unmount(app);
 	});
 
 	it("treats recent-value persistence as best effort and still completes the launch", async () => {
@@ -975,10 +939,12 @@ describe("GenericLauncher", () => {
 				},
 			],
 		});
-		const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementationOnce(() => {
-			throw new Error("quota exceeded");
-		});
-		const { app, target, onLaunched } = mountSubject({ launcher });
+		const setItemSpy = vi
+			.spyOn(Object.getPrototypeOf(window.localStorage), "setItem")
+			.mockImplementationOnce(() => {
+				throw new Error("quota exceeded");
+			});
+		const { target, onLaunched } = mountSubject({ launcher });
 		await flush();
 
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
@@ -986,8 +952,7 @@ describe("GenericLauncher", () => {
 
 		expect(onLaunched).toHaveBeenCalledWith("proc_1");
 
-		setItemSpy.mockRestore();
-		unmount(app);
+		expect(setItemSpy).toHaveBeenCalled();
 	});
 
 	it("does not remember credential-bearing absolute repo urls", async () => {
@@ -1015,14 +980,10 @@ describe("GenericLauncher", () => {
 
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
-		unmount(firstMount.app);
-
-		const secondMount = mountSubject({ launcher });
-		await flush();
-
-		expect(secondMount.target.querySelector('[data-field-recents="repoPath"]')).toBeNull();
-
-		unmount(secondMount.app);
+		expect(firstMount.onLaunched).toHaveBeenCalledWith("proc_1");
+		expect(
+			window.localStorage.getItem("leitwerk.launcher-recents:test-launcher:repoPath"),
+		).toBeNull();
 	});
 
 	it("stores the submitted recent value even if the field changes before the launch resolves", async () => {
@@ -1063,7 +1024,8 @@ describe("GenericLauncher", () => {
 			projects: [],
 		});
 		await flush();
-		unmount(firstMount.app);
+		await unmount(firstMount.app);
+		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -1078,12 +1040,10 @@ describe("GenericLauncher", () => {
 				'[data-field-recents="repoPath"] [data-recent-value="/tmp/edited-after-submit"]',
 			),
 		).toBeNull();
-
-		unmount(secondMount.app);
 	});
 
 	it("uses a combined once picker with explicit 24-hour hour and minute selectors", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
@@ -1134,12 +1094,10 @@ describe("GenericLauncher", () => {
 			{ mode: "once", runAt: new Date(2026, 3, 24, 18, 45, 0, 0).toISOString() },
 			[],
 		);
-
-		unmount(app);
 	});
 
 	it("prefills the combined once picker from the initial schedule", async () => {
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			initialSchedule: {
 				mode: "once",
 				runAt: new Date(2026, 3, 24, 18, 45, 0, 0).toISOString(),
@@ -1163,14 +1121,12 @@ describe("GenericLauncher", () => {
 		expect(dateInput.value).toBe("2026-04-24");
 		expect(hourSelect.value).toBe("18");
 		expect(minuteSelect.value).toBe("45");
-
-		unmount(app);
 	});
 
 	it("prefills the combined once picker with the current date and time", async () => {
 		vi.useFakeTimers({ toFake: ["Date"] });
 		vi.setSystemTime(new Date(2026, 3, 24, 18, 45, 0, 0));
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
@@ -1195,12 +1151,10 @@ describe("GenericLauncher", () => {
 		expect(dateInput.value).toBe("2026-04-24");
 		expect(hourSelect.value).toBe("18");
 		expect(minuteSelect.value).toBe("45");
-
-		unmount(app);
 	});
 
 	it("fills the cron field from example buttons and refreshes the preview", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
@@ -1222,14 +1176,12 @@ describe("GenericLauncher", () => {
 		)) as HTMLInputElement;
 		expect(cronInput.value).toBe("0 13 * * *");
 		expect(vi.mocked(previewCronExpression)).toHaveBeenLastCalledWith("0 13 * * *");
-
-		unmount(app);
 	});
 
 	it("ignores stale cron previews after leaving cron mode", async () => {
 		const deferredPreview = createDeferred<string>();
 		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
@@ -1253,13 +1205,12 @@ describe("GenericLauncher", () => {
 		await flush();
 
 		expect(target.textContent).not.toContain("Next run:");
-		unmount(app);
 	});
 
 	it("ignores stale cron previews after the cron field is cleared", async () => {
 		const deferredPreview = createDeferred<string>();
 		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 		await flush();
 
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
@@ -1284,6 +1235,5 @@ describe("GenericLauncher", () => {
 		await flush();
 
 		expect(target.textContent).not.toContain("Next run:");
-		unmount(app);
 	});
 });

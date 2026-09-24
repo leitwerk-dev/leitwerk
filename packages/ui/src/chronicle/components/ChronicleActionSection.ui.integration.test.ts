@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import ChronicleActionSection from "./ChronicleActionSection.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 function createAction(overrides: Partial<ProcessActionSummary> = {}): ProcessActionSummary {
 	return {
 		id: "request_revision",
@@ -152,6 +154,7 @@ function mountSubject(
 		},
 		context: new Map(),
 	});
+	mountedApps.push(app);
 	return {
 		app,
 		target,
@@ -161,6 +164,11 @@ function mountSubject(
 	};
 }
 
+const originalScrollIntoView = Object.getOwnPropertyDescriptor(
+	HTMLElement.prototype,
+	"scrollIntoView",
+);
+
 beforeEach(() => {
 	Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
 		configurable: true,
@@ -168,22 +176,25 @@ beforeEach(() => {
 	});
 });
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
+	if (originalScrollIntoView)
+		Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+	else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
 	document.body.innerHTML = "";
 });
 
 describe("ChronicleActionSection", () => {
 	it("expands the exact inline action through the canonical transition", async () => {
-		const { app, target, onExpandActionForm } = mountSubject();
+		const { target, onExpandActionForm } = mountSubject();
 
 		target.querySelector<HTMLButtonElement>('[data-action-id="request_revision"]')?.click();
 
 		expect(onExpandActionForm).toHaveBeenCalledWith("request_revision");
-		await unmount(app);
 	});
 
 	it("hides the model override selector unless the action can select an llm turn", async () => {
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			actionOverrides: {
 				preview: {
 					kind: "terminal",
@@ -197,11 +208,10 @@ describe("ChronicleActionSection", () => {
 		});
 
 		expect(target.querySelector('select[id$="__next-turn-model-profile"]')).toBeNull();
-		unmount(app);
 	});
 
 	it("hides the override and submits when the preview is not applicable", async () => {
-		const { app, target, onRunAction } = mountSubject({
+		const { target, onRunAction } = mountSubject({
 			initialValue: "Please tighten the rollout summary.",
 			selectedModelOverrideValue: "gpt-5-mini",
 			modelPreview: {
@@ -222,11 +232,10 @@ describe("ChronicleActionSection", () => {
 		expect(onRunAction).toHaveBeenCalledWith(
 			expect.objectContaining({ supportsNextTurnModelOverride: true }),
 		);
-		unmount(app);
 	});
 
 	it("shows the resolved model helper for the blank option", async () => {
-		const { app, target } = mountSubject();
+		const { target } = mountSubject();
 
 		await Promise.resolve();
 		await Promise.resolve();
@@ -238,17 +247,15 @@ describe("ChronicleActionSection", () => {
 		expect(select?.options[0]?.textContent).toContain("claude-sonnet-4");
 		expect(helper?.textContent).toContain("claude-sonnet-4");
 		expect(helper?.dataset.tone).toBe("muted");
-		unmount(app);
 	});
 
-	it("shows a non-blocking warning for cache-sensitive model switches", async () => {
-		const { app, target } = mountSubject({ selectedModelOverrideValue: "gpt-5-mini" });
+	it("shows a warning for cache-sensitive model switches", async () => {
+		const { target } = mountSubject({ selectedModelOverrideValue: "gpt-5-mini" });
 
 		await Promise.resolve();
 		await Promise.resolve();
 
 		expect(target.querySelector('[data-section="action-model-switch-warning"]')).toBeTruthy();
-		unmount(app);
 	});
 
 	it("suppresses the warning for explicit same-model picks and root-start turns", async () => {
@@ -267,12 +274,10 @@ describe("ChronicleActionSection", () => {
 		expect(
 			rootStart.target.querySelector('[data-section="action-model-switch-warning"]'),
 		).toBeNull();
-		unmount(sameModel.app);
-		unmount(rootStart.app);
 	});
 
 	it("shows inline model-resolution errors", async () => {
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			modelPreview: createModelPreview({
 				resolvedModel: {
 					status: "error",
@@ -289,11 +294,10 @@ describe("ChronicleActionSection", () => {
 		const helper = target.querySelector<HTMLElement>('[data-section="action-model-helper"]');
 		expect(helper?.dataset.tone).toBe("error");
 		expect(helper?.textContent).toContain("resolver exploded");
-		unmount(app);
 	});
 
 	it("shows a loading note when the preview is still refreshing", async () => {
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			modelPreview: null,
 			modelPreviewLoading: true,
 		});
@@ -302,6 +306,5 @@ describe("ChronicleActionSection", () => {
 		await Promise.resolve();
 
 		expect(target.querySelector('[data-section="action-model-loading"]')).toBeTruthy();
-		unmount(app);
 	});
 });

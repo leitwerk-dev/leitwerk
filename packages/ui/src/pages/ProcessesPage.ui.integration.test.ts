@@ -149,8 +149,8 @@ beforeEach(() => {
 	window.localStorage.clear();
 });
 
-afterEach(() => {
-	for (const app of mountedApps.splice(0)) unmount(app);
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 	resetMocks();
 });
@@ -176,17 +176,17 @@ describe("ProcessesPage", () => {
 		await flush();
 
 		setSearch(target, "archive");
-		await new Promise((resolve) => setTimeout(resolve, 190));
-
-		expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
-			limit: 100,
-			query: "archive",
-			status: "all",
-			processType: "",
-			sortKey: "timeline",
-			sortDirection: "desc",
-		});
-		expect(itemIds(target).sort()).toEqual(["agt_prompt", "agt_title", "fut_1"]);
+		await vi.waitFor(() =>
+			expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
+				limit: 100,
+				query: "archive",
+				status: "all",
+				processType: "",
+				sortKey: "timeline",
+				sortDirection: "desc",
+			}),
+		);
+		expect(itemIds(target)).toEqual(["agt_title", "agt_prompt", "fut_1"]);
 
 		click(target.querySelector('[data-item-id="agt_title"] a'));
 		expect(mocks.navigate).toHaveBeenCalledWith("/processes/agt_title");
@@ -209,16 +209,16 @@ describe("ProcessesPage", () => {
 		select.value = "ticket_issue_process";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-
-		expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
-			limit: 100,
-			query: "",
-			status: "needs_attention",
-			processType: "ticket_issue_process",
-			sortKey: "timeline",
-			sortDirection: "desc",
-		});
+		await vi.waitFor(() =>
+			expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
+				limit: 100,
+				query: "",
+				status: "needs_attention",
+				processType: "ticket_issue_process",
+				sortKey: "timeline",
+				sortDirection: "desc",
+			}),
+		);
 		expect(readProcessBrowserView(window.localStorage)).toEqual({
 			status: "needs_attention",
 			processType: "ticket_issue_process",
@@ -241,16 +241,16 @@ describe("ProcessesPage", () => {
 
 		const target = mountSubject();
 		await flush();
-		await new Promise((resolve) => setTimeout(resolve, 5));
-
-		expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
-			limit: 100,
-			query: "",
-			status: "completed",
-			processType: "removed_process",
-			sortKey: "title",
-			sortDirection: "asc",
-		});
+		await vi.waitFor(() =>
+			expect(mocks.loadProcessBrowse).toHaveBeenLastCalledWith({
+				limit: 100,
+				query: "",
+				status: "completed",
+				processType: "removed_process",
+				sortKey: "title",
+				sortDirection: "asc",
+			}),
+		);
 		expect(
 			target.querySelector('[data-filter-status="completed"]')?.getAttribute("aria-pressed"),
 		).toBe("true");

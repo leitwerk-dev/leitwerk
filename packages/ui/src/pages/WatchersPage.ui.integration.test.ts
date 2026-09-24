@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchWatchers } from "../lib/api.js";
 import WatchersPage from "./WatchersPage.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 vi.mock("../lib/api.js", () => ({
 	fetchWatchers: vi.fn(),
 }));
@@ -61,7 +63,8 @@ async function flush() {
 	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 	vi.clearAllMocks();
 });
@@ -73,6 +76,7 @@ describe("WatchersPage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(WatchersPage, { target });
+		mountedApps.push(app);
 		await flush();
 
 		expect(target.textContent).toContain("Watchers");
@@ -80,7 +84,6 @@ describe("WatchersPage", () => {
 		expect(target.textContent).toContain("/tmp/create-poem");
 		expect(target.textContent).toContain("Ticket Issue Watcher");
 		expect(target.textContent).toContain("Forbidden labels");
-		unmount(app);
 	});
 
 	it("renders an empty state when no watchers are configured", async () => {
@@ -89,9 +92,9 @@ describe("WatchersPage", () => {
 		document.body.appendChild(target);
 
 		const app = mount(WatchersPage, { target });
+		mountedApps.push(app);
 		await flush();
 
 		expect(target.textContent).toContain("No watchers are currently registered.");
-		unmount(app);
 	});
 });
