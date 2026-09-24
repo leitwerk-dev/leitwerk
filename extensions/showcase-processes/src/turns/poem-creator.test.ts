@@ -9,6 +9,25 @@ import {
 } from "./poem-creator.js";
 
 describe("poem creator turn prompts", () => {
+	it("defines the poem review turn with no_issues and leave_feedback only", () => {
+		const turn = poemCreatorProcess.turns.get("review_poem_draft")?.definition;
+		expect(turn?.kind).toBe("llm");
+		if (turn?.kind !== "llm") {
+			throw new Error("expected review_poem_draft to be an LLM turn");
+		}
+		expect(Object.keys(turn.outcomes ?? {}).sort()).toEqual(["leave_feedback", "no_issues"]);
+		expect(turn.resultSemanticRef).toBe("review");
+		expect(turn.turnResultMarkdown).toBeUndefined();
+		expect(turn.outcomes?.no_issues).toMatchObject({
+			publishedProduct: "review",
+			turnResultMarkdownParameter: "review",
+		});
+		expect(turn.outcomes?.leave_feedback).toMatchObject({
+			publishedProduct: "message",
+			turnResultMarkdownParameter: "message",
+		});
+	});
+
 	it("includes the requested poem subject", () => {
 		const prompt = buildDraftPoemInstruction("SENTINEL_POEM_SUBJECT");
 

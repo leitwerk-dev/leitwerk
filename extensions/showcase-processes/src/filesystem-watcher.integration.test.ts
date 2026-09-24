@@ -9,6 +9,7 @@ import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	type IntegrationHarness,
+	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import { describe, expect, it } from "vitest";
 import showcaseProcessesExtension from "./index.js";
@@ -26,24 +27,6 @@ const extensionCatalog = buildExtensionCatalogFromModules([
 	showcaseProcessesExtension,
 	filesystemWatcherFixtureProviderExtension,
 ]);
-
-async function waitFor<T>(
-	read: () => T,
-	predicate: (value: T) => boolean,
-	timeoutMs = 5_000,
-): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	while (true) {
-		const value = read();
-		if (predicate(value)) {
-			return value;
-		}
-		if (Date.now() >= deadline) {
-			throw new Error("timed out waiting for filesystem watcher condition");
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-}
 
 function listPoemProcesses(harness: IntegrationHarness<Record<string, never>>): ProcessInstance[] {
 	return harness.ctx.deps.processes
@@ -103,7 +86,7 @@ describe("showcase filesystem watcher", () => {
 				inProcessWorkers: true,
 			});
 
-			const process = await waitFor(
+			const process = await waitForValue(
 				() => listPoemProcesses(harness)[0] ?? null,
 				(candidate) =>
 					candidate !== null &&
@@ -115,7 +98,7 @@ describe("showcase filesystem watcher", () => {
 				prompt: "Write a short poem about rain over Berlin.",
 			});
 			expect(listPoemProcesses(harness)).toHaveLength(1);
-			await waitFor(
+			await waitForValue(
 				() => existsSync(filePath),
 				(exists) => exists === false,
 			);
@@ -142,11 +125,11 @@ describe("showcase filesystem watcher", () => {
 				localWorkerSpawnImpl: failingSpawn,
 			});
 
-			const createdProcess = await waitFor(
+			const createdProcess = await waitForValue(
 				() => listPoemProcesses(harness)[0] ?? null,
-				(candidate) => candidate !== null,
+				(candidate) => candidate?.lifecycleStatus === "error",
 			);
-			await waitFor(
+			await waitForValue(
 				() => existsSync(filePath),
 				(exists) => exists === false,
 			);
