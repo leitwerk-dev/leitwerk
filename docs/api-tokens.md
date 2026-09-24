@@ -1,9 +1,35 @@
-# API token HTTP API
+# API tokens
+
+Use an API token to call application HTTP endpoints without a browser session.
+A token has its owner's application access, not a separate set of grants.
+
+## Create and use a token
+
+Open **API tokens** from the account menu, or visit `/account/api-tokens`. Supply
+a name and choose the default expiry, a local date/time, 30 minutes, or no expiry
+when policy allows. Copy the secret before leaving the page; it cannot be retrieved
+again. Reloading or dismissing the result clears it from the UI.
+
+Load the token into your client's secret configuration, then send it in a header:
+
+```sh
+curl --fail -H "Authorization: Bearer $LEITWERK_API_TOKEN" \
+  "$LEITWERK_URL/api/auth/me"
+```
+
+Set `LEITWERK_URL` to your application origin. Never put the token in a URL. The
+account page lists token identity, lifecycle, and last-use metadata, and supports
+individual or confirmed owner-wide revocation even when issuance is disabled.
+In anonymous mode, every visitor manages the same token list.
+
+## Application authentication
 
 Application requests accept one `Authorization: Bearer lwk_pat_…` header without
 a session cookie. A token acts as its owner across application HTTP endpoints,
 including reads, immediate actions, model changes, and schedules. Existing
 application gates still apply. Never put the token in a URL.
+
+## Management HTTP API
 
 Management uses browser access: a valid session when authentication is enabled,
 or shared anonymous access when disabled. Every management route rejects

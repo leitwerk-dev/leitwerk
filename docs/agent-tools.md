@@ -1,151 +1,119 @@
-# Agent Tools & Outcomes
+# Agent tools
 
-In Leitwerk, AI agents interact with workspace repositories, process state, and external services through **Agent Tools**. Tools fall into four distinct categories:
+A turn exposes only the tools declared for its work. Leitwerk distinguishes local
+workspace operations, server-owned integrations, interactive questions, and terminal
+outcomes.
 
-1. **Built-in Primitives:** Core workspace tools (`read`, `bash`, `edit`, `write`) for inspecting files, running shell commands, and editing code.
-2. **Integration Tools:** Extension-provided tools for interacting with external services during execution (authored by an extension; not a fixed in-tree catalog).
-3. **Interactive Tools:** The `ask_questions` tool, used by agents to pause execution and ask human operators structured questions during a turn.
-4. **Outcome Tools:** Terminal tools that return typed data, publish markdown products, and transition process state to the next step.
+| Category | Purpose | Ends the turn? |
+| --- | --- | --- |
+| Workspace primitives | Read and change files or run commands in the worker. | No. |
+| Integration tools | Call an extension-owned external service through the server. | No. |
+| `ask_questions` | Ask the operator structured questions. | No. |
+| Outcome tools | Publish typed results and select the next route. | Yes. |
 
-## 1. Built-in Primitives
+## Workspace primitives {#1-built-in-primitives}
 
-Each LLM turn explicitly declares which built-in workspace primitives the AI agent can invoke while running:
+An LLM turn opts into `read`, `bash`, `edit`, and `write` with `.tools(...)`:
 
 ```ts
-const implement = flow
-  .llm<Params, State>("implement")
-  .tools("read", "bash", "edit", "write") // Active built-in primitives for this turn
-  .buildPrompt((ctx) => `Implement task: ${ctx.params.prompt}`);
+flow.llm<Params, State>("implement")
+  .description("Implement the change")
+  .tools("read", "bash", "edit", "write")
+  .buildPrompt((ctx) => ctx.params.prompt);
 ```
 
-The four built-in primitives control workspace access:
+This and subsequent snippets show individual APIs, not complete processes. See
+[Write your first process](first-process.md) for packaging and graph construction.
 
-- **`read`:** Reads file contents within the workspace repository.
-- **`bash`:** Executes shell commands (such as `git diff`, `rg`, `tree`, or test commands). Used in read-only mode during inspection turns (planning, code review, triage).
-- **`edit`:** Modifies existing files within the workspace repository.
-- **`write`:** Creates new files or overwrites existing files.
+Grant only the required tools. Shell access is authority to execute commands, not
+a read-only guarantee. Local execution has no container isolation. Ordinary tool
+environments exclude worker IPC credentials and managed Git authentication settings.
+They do not inherit the worker service's `NODE_ENV`; commands can set it explicitly.
+See [security boundaries](security.md).
 
-Repository shell commands do not inherit the worker service's `NODE_ENV`. This lets tools
-such as Vitest select their normal test mode even when the worker image runs in production.
-Commands can explicitly set `NODE_ENV=production` when needed. Worker IPC credentials and
-internal Git authentication settings are excluded from the shell environment.
+## Integration tools {#2-integration-tools}
 
-## 2. Integration Tools
-
-Integration extensions define server tools for external services. The example below is an
-extension-author pattern, not a fixed in-tree provider catalog:
+Register tools in the owning extension's `setupServer`:
 
 ```ts
-// Registered inside setupServer(api) in an integration extension
 api.tool({
   name: "tracker_get_issue",
   description: "Read an external issue",
   parameters: {
     type: "object",
-    properties: {
-      issueKey: { type: "string", description: "External issue key" },
-    },
+    properties: { issueKey: { type: "string" } },
     required: ["issueKey"],
   },
-  execute: async (ctx, params) =>
-    trackerClient.getIssue(params.issueKey, { signal: ctx.signal }),
+  execute: async (ctx, args) =>
+    trackerClient.getIssue(args.issueKey, { signal: ctx.signal }),
 });
-
-flow.llm("inspect_issue")
-  .description("Inspect the source issue")
-  .integrationTools("tracker_get_issue");
 ```
 
-Integration tools run in the server process. LLM and worker automatic turns declare
-authorized names with `.integrationTools(...)`. Workers receive only each tool's name,
-description, and parameter schema. The server accepts a call only from the current turn
-record and only for a tool authorized by that turn. Provider credentials stay on the server.
-Names must not collide with Pi built-ins, framework tools, or an outcome tool on the turn.
-SDK helpers `stringArg(args, name)` and `numberArg(args, name)` require a nonempty trimmed
-string and a positive integer, respectively. Invalid arguments throw an error naming the field.
-`objectArg(value, message?)` requires a non-null, non-array object and preserves the supplied error message.
-`projectParameters(properties, required?)` adds the required `projectKey` string to an object
-schema. Other properties are required by default; pass their required names to keep some optional.
+A turn authorizes names with `.integrationTools(...)`. Names must be lowercase
+snake case, globally unique, registered at startup, and distinct from Pi built-ins,
+framework tools, and the turn's outcome tools. Workers receive names, descriptions,
+and schemas; provider credentials stay on the server.
 
-`resolveRepositoryProjectBinding(ctx, provider, legacyMetadataKey?)` validates project ownership
-and nonempty `owner`, `repo`, and `profile` metadata. Without a legacy key, a missing profile
-uses `${provider}Profile` from process parameters. With a legacy key, only absent provider
-metadata uses that legacy binding and process profile. Explicit malformed metadata is rejected.
-`normalizeRepositoryFeedback(kind, item)` normalizes common forge feedback fields and returns
-`null` for empty bodies or missing identities. Extensions retain provider-specific fields.
-`createExternalSourcePollReporter(sources, result)` records fire results and attaches arming
-identity to observations. Extensions still own scheduling, event selection, and stale-source checks.
+The server checks the current turn record, selected turn, project, and authorization
+before dispatch. Reconnect replays the same invocation identity. Mutating tools must
+use the [external-write contract](process-sdk.md#typed-external-writes); replay must
+not duplicate provider writes.
 
-Reconnects replay a call with the same idempotency key. Mutating tools must use
-`ctx.externalWrites.ensure()` or `ctx.externalWrites.logOnly()` under the
-[external-write contract](process-sdk.md#typed-external-writes). When a turn stops,
-the server aborts `ctx.signal`; tools must pass it to cancellable provider calls.
+When a turn stops, the server aborts `ctx.signal`. Pass it to cancellable provider
+operations. A provider write already committed cannot be rolled back by cancellation.
+Automatic turns and LLM preparation use `ctx.callIntegrationTool(name, args)` with
+the same authorization, replay, and cancellation rules.
 
-Authors register tools for the external systems their extension owns, such as issue trackers,
-VCS providers, and internal APIs. The monorepo does not define a fixed integration catalog.
-Automatic turns and LLM preparation phases invoke a declared tool with
-`ctx.callIntegrationTool(name, args)`. Calls use the same turn-record authorization, replay
-identity, cancellation, and credential isolation as agent-initiated LLM integration-tool calls.
+There is no fixed core integration catalog. Extensions own provider schemas,
+authorization policy, response validation, and provider-specific behavior.
 
-A tool marked with `capability.kind: "ticket_creation"` can back the generic derived-ticket
-route. Its extension registers the code-defined `processId` and `startTurnId` on the capability;
-core does not select a fixed process graph. After server extensions register their
-tools, startup validates that every enabled ticket capability names a composed
-process and an existing entry turn. Missing composition fails startup with the
-tool, process and turn identifiers. Disable an optional ticket adapter to omit it. The route admits the child through an idempotent durable
-launch run and commits the child relation in the same transaction as the process. The tool must return the standard
-`{ externalId, url, result? }` receipt. An optional
-destination provider lists sanitized choices for the derived process. The server adds the
-opaque choice to the worker's tool declaration and resolves it into a server-owned snapshot
-immediately before approval. The adapter receives that snapshot as `ctx.ticketDestination`;
-destination credentials never enter the worker or browser.
+### Tool approvals
 
-Tool approvals belong to the current accepted turn record. Ending that turn cancels its
-open approvals even when the worker exits without sending cancellation. Decisions for an
-older attempt are rejected. Declining an approval aborts only its still-current turn's
-process; a concurrent retry cannot be aborted by that stale decision.
+Approvals belong to the accepted turn record. Ending that turn cancels open approvals,
+including when a worker exits without sending cancellation. Decisions for an older
+attempt are rejected. Declining an approval aborts only its still-current process;
+a stale decision cannot abort a concurrent retry.
 
-## 3. Interactive Tools (`ask_questions`)
+A capability-marked ticket tool can create a reviewed draft process. Its enabled
+capability must identify an existing process and entry turn at startup. Destinations
+are server-resolved, and the final receipt must identify the remote ticket. See
+[ticket adapters](process-sdk.md#ticket-creation-adapters).
 
-Unlike terminal outcome tools, **Interactive Tools** do not end the turn. They allow agents to pause and gather operator feedback mid-execution.
+## Interactive questions {#3-interactive-tools-ask_questions}
 
-Call `.askQuestions()` on an LLM turn builder to enable the sequential `ask_questions` tool:
+Enable `.askQuestions()` on an LLM turn to expose sequential `ask_questions` calls.
+The agent supplies prepared options, recommendations, and explanations. The tool
+returns `{ answers: string[] }` after the operator responds.
+
+The request is a durable pause within the active turn. Answering resumes the same
+context; it neither completes the turn nor starts a new attempt. See the
+[operator guide](operator-guide.md#review-and-guide).
+
+## Outcome tools {#4-terminal-outcome-tools}
+
+An outcome tool finishes the LLM turn with typed parameters and a declared route:
 
 ```ts
-const planTurn = flow
-  .llm<Params, State>("plan")
-  .askQuestions() // Opt-in to interactive human Q&A
-  .publish("plan")
-  .to("plan_decision");
-```
-
-- **Structured Options:** The agent specifies prepared options with recommended choices and explanations for each question.
-- **Operator Selection:** The tool returns `{ answers: string[] }` chosen by the human operator on the web dashboard.
-- **In-Turn Resume:** Execution resumes within the same turn without resetting context or completing the turn.
-
-## 4. Terminal Outcome Tools
-
-An **Outcome Tool** finishes an LLM turn by returning typed data, publishing markdown results, and selecting the next process route:
-
-```ts
-const verifyBuild = flow
-  .llm<Params, State>("verify_build")
+flow.llm<Params, State>("verify_build")
+  .description("Verify the build")
+  .buildPrompt(() => "Check the build and report its outcome.")
+  .tools("read", "bash")
   .outcomeTool("build_passing", (tool) =>
-    tool
-      .description("Build and unit tests pass cleanly")
-      .complete(), // Completes the process instance
+    tool.description("Build and tests pass").complete(),
   )
   .outcomeTool("build_failing", (tool) =>
-    tool
-      .description("Build or tests failed")
-      .requiredString("summary", "Summary of test failures")
-      .to("fix_build"), // Transitions to fix_build turn
+    tool.description("Build or tests failed")
+      .requiredString("summary", "Failure summary")
+      .to("fix_build"),
   );
 ```
 
-### Terminal Acknowledgement
+The surrounding process must define `fix_build`. Outcome tools are registered only
+while their turn is active. After accepting an outcome, the worker records the
+parameters and result, gives the agent a bounded terminal acknowledgement instruction,
+and ends the turn. Successful execution then follows `.to(...)`, `.complete()`, or
+the other declared route.
 
-When an outcome tool is called successfully:
-1. The worker records the typed parameters and published markdown.
-2. The agent receives a terminal instruction (`Outcome accepted successfully. Reply only with "done"`).
-3. The turn ends deterministically and triggers the declared transition (`.to(...)` or `.complete()`).
+This agent acknowledgement is distinct from the server's durable
+`worker.turn_terminal_recorded` acknowledgement. See
+[turn publication](server-worker-lifecycle.md#5-start-acceptance-recovery-invariants).

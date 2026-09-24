@@ -1,0 +1,11 @@
+:8080 {
+	@backend path /api/* /auth/* /ws /ext-ui/*
+	handle @backend {
+		reverse_proxy leitwerk-server:8080
+	}
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

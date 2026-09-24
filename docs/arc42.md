@@ -1,229 +1,182 @@
 # Architecture
 
-`Leitwerk` is the control unit for AI-driven software delivery. It is a process-centric control plane: the server owns all durable SQLite state, disposable workers execute step-by-step turns inside isolated git workspace clones, and the browser UI renders server-owned read models.
+The server owns durable process state. Workers execute assigned turns and report
+results. The browser displays server-owned state and submits operator commands.
+Start with the [overview](overview.md) for the product model; this page describes
+the boundaries maintainers must preserve.
 
-## 1 Introduction & Goals
+## 1 Introduction and goals
 
-Leitwerk orchestrates multi-turn AI workflows—from issue implementation and change-request polishing to local repository changes and cross-process handovers—with complete visibility, crash recovery, and human steering.
+Leitwerk coordinates code-defined AI workflows with human decisions and external
+integrations. Its main quality goals are:
 
-### 1.1 Requirements Overview
+| Goal | Architectural response |
+| --- | --- |
+| Extensibility | Load processes, tools, providers, and watchers through extension contracts. |
+| Visibility | Retain execution history and stream current activity to the browser. |
+| Recovery | Reconcile durable process and worker state after interruption. |
+| Isolation | Separate worker execution from server storage and credentials. |
+| Ordered mutation | Sequence process inputs and serialize lifecycle changes per process. |
 
-- **Durable Process Control:** Manage multi-step AI coding workflows that survive server restarts and worker crashes.
-- **Isolated Execution:** Run worker-owned turns inside isolated containers (Docker, Kubernetes) or local subprocesses.
-- **Human Steering:** Expose live WebSocket chronicles, review forms, and manual action steering to operators.
-- **Code-Defined Extensibility:** Allow teams to build custom process graphs, watchers, and outcome tools using TypeScript extensions.
+Operators launch, review, and recover work. Extension authors define business
+behavior. Core maintainers own coordination, persistence, transport, and the shared UI.
 
-### 1.2 Quality Goals
+## 2 Constraints
 
-| Priority | Goal | Description |
-|---|---|---|
-| 1 | **Extensibility** | Process graphs, launchers, watchers, and tools are code-defined via TypeScript SDK. |
-| 1 | **Visibility** | Operators can inspect process state, worker output, and turn lineage in real time. |
-| 2 | **Recovery** | Active processes survive server restarts and worker crashes without state loss. |
-| 2 | **Isolation** | Worker execution is isolated in containers to constrain the blast radius of LLM errors. |
-| 3 | **Determinism** | Processes consume durable inputs in strict FIFO order under exclusive process locks. |
+- POSIX environments only: macOS and Linux, not Windows.
+- Core packages under `packages/` never import extensions, including in tests or types.
+- The server is the only SQLite writer. Workers never access the database.
+- Each process has one durable instance tree, even with several repositories or components.
+- Per-process lifecycle mutations run under exclusive coordination. Extension reactions
+  emitted during a mutation run after the lock is released.
+- Configuration provides wiring and runtime defaults, not process graphs or actions.
+- The deployment uses one server. Per-tenant isolation and multi-server coordination
+  are not implied by authentication or idempotency.
 
-### 1.3 Stakeholders
+The implementation uses Fastify, SQLite with Drizzle and `node:sqlite`, a Svelte 5
+browser UI, and the Pi coding-agent SDK in workers.
 
-**Operators & Developers**  
-Launch, monitor, steer, review, and recover AI processes via the Web UI or Telegram.
-
-**Process & Extension Authors**  
-Build custom processes, outcome tools, watchers, and external integrations using the Process SDK.
-
-**System Developers**  
-Maintain and extend the Leitwerk control plane, ProcessEngine, IPC protocol, and worker supervisors.
-
-## 2 Architecture Constraints
-
-- **Platform Target:** POSIX environments (macOS/Linux) only. Windows is not supported.
-- **Monorepo Package Boundaries:** Core packages under `packages/` must **never** import from `extensions/`.
-- **State Ownership:** The server is the exclusive source of truth for durable SQLite state. Workers are disposable and **never** access SQLite directly; all state flows over IPC.
-- **Concurrency & Mutations:** Per-process state mutations run under server-side exclusive locks. Extension events emitted during mutations are deferred until after commit.
-- **Technology Stack:**
-  - **Server:** Fastify (HTTP + WebSocket via `@fastify/websocket`).
-  - **Browser UI:** Svelte 5 SPA built with Vite.
-  - **Database:** SQLite with Drizzle ORM + `node:sqlite` (synchronous).
-  - **Worker Runtime:** `@earendil-works/pi-coding-agent` SDK embedded in worker processes.
-
-## 3 System Scope and Context
+## 3 Context
 
 ```mermaid
-C4Context
-  title System Context Diagram
-
-  Person(operator, "Operator", "User")
-
-  System_Boundary(b0, "Leitwerk Control Plane") {
-    System(browserUI, "Browser UI", "Svelte 5 SPA")
-    System(server, "Leitwerk Server", "Fastify & SQLite")
-    System(worker, "Worker Runtime", "Disposable Runner")
-  }
-
-  System_Ext(externalSystems, "External Systems", "Issue trackers / code hosts")
-  System_Ext(llmProvider, "LLM Provider", "OpenAI / Anthropic")
-
-  Rel(operator, browserUI, "Uses", "HTTP / WS")
-  Rel(browserUI, server, "Commands", "HTTP / WS")
-  Rel(server, worker, "Supervises", "IPC / WS")
-  Rel(server, externalSystems, "External Writes", "REST")
-  Rel(externalSystems, server, "Watchers", "Poll")
-  Rel(worker, llmProvider, "Prompts", "REST")
+flowchart LR
+    people[People] <--> browser[Browser UI]
+    browser <-->|HTTP and WebSocket| server[Server]
+    server <-->|Authenticated worker protocol| worker[Worker]
+    server <--> tools[Team tools]
+    worker <--> models[Model providers]
+    worker <--> repos[Repository clones]
+    server --> state[(SQLite and retained snapshots)]
 ```
 
-| Actor / System | Role |
-|---|---|
-| **Operator** | Launches, reviews, steers, retries, and aborts processes via UI or Telegram. |
-| **Browser UI** | Renders HTTP snapshots and applies real-time WebSocket chronicles. |
-| **Server** | Owns durable state, ProcessEngine mutations, supervision, and safe external writes. |
-| **Worker** | Executes worker-owned turns inside isolated workspace clones and uploads tree snapshots. |
-| **External Systems** | Issue trackers and VCS providers monitored by extension-owned automated watchers and actions. |
-| **LLM Provider** | Executes Pi model requests (e.g., OpenAI, Anthropic, Ollama). |
+Extensions connect team tools through server-owned integration calls and polling.
+Workers receive only the tools and credential material authorized for their work.
+Repository code and model output are not trusted server configuration.
 
-## 4 Solution Strategy
+## 4 Solution strategy
 
-- **Functional Core, Imperative Shell:** Core process graph definitions, turn outcome transitions, and state reducers are pure and side-effect free. Fastify server handlers, worker drivers, and extension watchers form the imperative shell that orchestrates I/O and external writes.
-- **Server-Owned Durable State:** SQLite is the single source of truth for process instances, turn records, input queues, and worker leases. Workers execute statelessly and communicate strictly via IPC.
-- **Disposable Worker Isolation:** Execution turns run inside dedicated git repository clones inside isolated Docker containers or Kubernetes pods to constrain the blast radius of LLM actions.
-- **Dynamic Extension Catalog:** Process definitions, watchers, outcome tools, and custom UI components are loaded dynamically via TypeScript extensions (`jiti`), keeping core packages extension-agnostic.
+Keep decisions pure where possible: graph validation, transition rules, and read-model
+projection do not perform external writes. Server handlers, worker drivers, and
+extension event handlers coordinate I/O around those rules.
 
-## 5 Building Block View
+Workers are disposable execution units, not owners of business state. Their retained
+workspace and tooling can survive replacement, but that storage still needs independent
+protection from loss. See [backup boundaries](operations.md).
 
-### 5.1 Monorepo Package Boundaries
+## 5 Building blocks
 
-Core packages under `packages/` maintain strict boundaries and **never** import from `extensions/`:
+| Boundary | Responsibility |
+| --- | --- |
+| `domain` | Durable entities and pure domain rules. |
+| `protocol` | HTTP, browser frames, forms, launchers, and read-model contracts. |
+| `worker-protocol` | Server-worker messages and snapshot exchange. |
+| `process-sdk` | Code-defined processes and extension contracts. |
+| `extension-runtime` | Discover extensions and assemble their catalogs and hosts. |
+| `watcher-utils`, `external-writes` | Polling coordination and retry-safe external writes. |
+| `worker-runners` | Local, Docker, and Kubernetes execution and read-only export. |
+| `session-transfer`, `pi-session-transfer` | Portable exports and local Pi import/recovery. |
+| `server`, `worker`, `ui` | Runtime composition and interaction. |
 
-| Package | Responsibility |
-|---|---|
-| `domain` | Pure durable entity types (`ProcessInstance`, `ProcessTurnRecord`, `WorkerLease`). |
-| `protocol` | HTTP, browser WebSocket, form, launcher, and read-model contracts. |
-| `worker-protocol` | Server-worker IPC envelopes, codecs, transport constants, and snapshot exchange. |
-| `process-sdk` | Fluent authoring API (`flow`) for process definitions, turns, and tools. |
-| `extension-runtime` | Config-driven extension discovery, catalog loading, and host assembly. |
-| `watcher-utils` | Provider-neutral watcher polling and reconciliation utilities. |
-| `external-writes` | Idempotent external-write coordination (`ctx.externalWrites.ensure`). |
-| `session-transfer` | Portable manifest, path validation, tar+Zstandard streaming, limits, and Pi-session rewriting. |
-| `pi-session-transfer` | Interactive local Pi import, atomic recovery records, and session switching. |
-| `worker-runners` | Local, Docker, and Kubernetes execution and read-only process-export adapters. |
-| `server`, `worker`, `ui` | Composition shells for the Fastify server, worker process, and Svelte 5 UI. |
+Provider and process behavior belongs to its extension, not to a privileged core
+integration. UI extensions use [bounded renderer slots](extension-ui.md), not
+arbitrary replacement of the application shell.
 
-## 6 Runtime View
+## 6 Runtime view
 
-### 6.1 Process Launch Phase
+### Launch
 
-1. **Source Admission:** UI, trusted programmatic, watcher, and due-schedule adapters apply source-specific resolution, deduplication, and scheduling policy. Trusted extensions submit launcher input and an idempotency key through launch admission; the raw process executor remains server-internal.
-2. **Shared Launch Pipeline:** The server records a durable `LaunchRun`, validates the request, runs ordered preparation checks, and prepares models and skills. Immediate HTTP launches use `POST /api/launchers/:launcherId/launch-runs`. `POST /api/launchers/:launcherId/future-launches` persists future launches without creating a startup checklist. `future-execution/launch-lifecycle.ts` owns future-launch creation and revision; future actions remain in the future-execution facade.
-3. **Durable Seeding:** `ProcessLaunchExecutor` validates final pre-commit requirements, creates the process and repository state, and correlates the launch run in one transaction. A scheduled occurrence is consumed or advanced in the same transaction.
-4. **Post-Commit Reaction:** After commit and lock release, the server broadcasts process creation and schedules worker activation for the primary entry turn. Reaction failure does not erase the committed process.
-5. **Startup Projection:** One canonical server projector interprets durable process, turn-start, lease, readiness, and accepted-turn evidence. Launch runs consume this projection for their checklist but never own startup truth; missed refresh notifications are repaired when a launch run is read.
+1. A UI, programmatic, watcher, or scheduled source supplies launch intent and its
+   admission policy, including idempotency where required.
+2. The server creates a durable Launch Run, validates input, runs preparation checks,
+   and resolves model and skill selections.
+3. Process creation and correlated scheduling/deduplication records commit atomically.
+4. Reactions run after commit and lock release. Failure here does not erase the process.
+5. Startup proceeds asynchronously. Lease, readiness, and accepted-turn records establish
+   startup facts; a Launch Run reports them but does not own that truth.
 
-### 6.2 Turn Execution Phase
+### Turn
 
-1. **Turn Preparation (`TurnStartRecord`):** ProcessEngine prepares the selected turn, reserves a `turnRecordId`, and issues a worker lease.
-2. **Worker Acceptance:** The physical worker adopts the lease and acknowledges `worker.turn_started`. The server creates the `ProcessTurnRecord` and increments its attempt counter.
-3. **Turn Execution & Tool Calls:** The worker executes code or prompts Pi in the workspace clone. An authored LLM preparation phase completes and checkpoints its bounded JSON result before Pi is prompted. Active turn tools (outcome tools, `ask_questions`) run in-flight.
-4. **Snapshot Upload & Outcome Commit:** Before completing, the worker uploads the latest JSONL tree snapshot. The server commits the outcome (`worker.turn_outcome`), updates process state, and broadcasts WebSocket updates.
+1. A `TurnStartRecord` reserves one turn-record identity without counting an attempt.
+2. Worker acceptance creates the turn record and increments its attempt exactly once.
+3. The worker executes the authorized automatic or LLM turn. Optional LLM preparation
+   checkpoints bounded JSON before prompting the model.
+4. The server records a correlated outcome or failure. LLM terminal publication requires
+   a session snapshot and durable acknowledgement.
 
-### 6.3 Local Session Transfer
+See [Server and worker lifecycle](server-worker-lifecycle.md) for the protocol and
+[LLM turn flow](llm-turn.md) for the sequence through browser updates.
 
-1. **Grant:** An authenticated operator mints a hashed, expiring bearer grant without reading retained files.
-2. **Queue and Reservation:** Local Pi claims the grant. The durable attempt waits behind accepted work and automatic successors, then reserves the stable process under the same per-process coordinator.
-3. **Read-only Export:** The server removes the writable worker lease, preflights only the process workspace and primary session, and streams a bounded portable archive while hashing compressed bytes.
-4. **Local Commit:** Pi extracts into an owned temporary directory, compares the durable server digest, and validates Git and a V3 Pi session. It reserves a fresh destination exclusively, moves the verified workspace entries into it, and writes the local Pi session. An atomic completion receipt commits the import before acknowledgement. Interrupted imports retain ownership markers for recovery.
+### Process position and failure
 
-### 6.4 Process Lifecycle State Transitions
+`selectedTurnId` identifies business position. `lifecycleStatus` describes whether
+the process is discovered, active, waiting, errored, completed, or aborted.
+A failure preserves the selected turn and records an error; it does not route to
+a synthetic failed turn. Only completed and aborted are terminal process states.
 
-A process position consists of `selectedTurnId` plus `lifecycleStatus`. `error` is orthogonal to business position (a turn failure keeps `selectedTurnId` unchanged and moves status to `error`):
+Retry starts a new attempt or recovers an unaccepted start. Continue is available
+only for eligible saved LLM progress. Neither operation adds a process-defined action.
 
-```mermaid
-stateDiagram-v2
-    [*] --> discovered
-    discovered --> active: Turn started
-    active --> waiting: Human review turn selected
-    active --> active: LLM / Automatic turn step
-    active --> error: Turn failure or timeout
-    waiting --> active: Operator action submitted
-    error --> active: Operator Retry or Continue
-    active --> completed: Process reached terminal outcome
-    active --> aborted: Operator abort action
-    waiting --> aborted: Operator abort action
-    completed --> [*]
-    aborted --> [*]
-```
+### Local session transfer
 
-## 7 Deployment View
+An operator creates an expiring bearer grant. A claim waits for accepted work and
+automatic successors to become quiescent, then reserves the process while a read-only
+export streams the workspace and primary session. Local import validates the archive
+and commits a recoverable receipt. Local work then uses local Pi configuration, not
+the server process. See [workspace transfer](process-workspace.md#5-local-pi-session-transfer).
 
-Leitwerk workers can be deployed using three distinct runner adapters:
+## 7 Deployment
 
-- **Docker Runner (Production Default):** Spawns worker containers per process on a shared private Docker bridge network.
-- **Kubernetes Runner:** Spawns worker pods in isolated Kubernetes process namespaces (see [Kubernetes](kubernetes-deployment-guide.md)).
-- **Local Runner:** Spawns same-host worker subprocesses (used for local development via `npm run dev`).
+| Runner | Use | Boundary |
+| --- | --- | --- |
+| Local | Development and tests | Host subprocess; no container isolation. |
+| Docker | Single-machine deployment | Worker container and retained process volume. |
+| Kubernetes | Cluster deployment | Worker Pod in a process namespace with a retained PVC. |
 
-Kubernetes volume capacity is selected at creation; existing allocations survive worker
-replacement unchanged. See [storage configuration](configuration.md#per-process-storage-size).
+Container isolation depends on operator-selected privileges and runtimes. Private
+Docker can require broad authority; it is not a guarantee against all host effects.
+See [Security](security.md), [Docker](docker-deployment-guide.md), and
+[Kubernetes](kubernetes-deployment-guide.md).
 
-## 8 Cross-Cutting Concepts
+## 8 Cross-cutting contracts
 
-### 8.1 Error Model & Orthogonal Failure Position
-Error is orthogonal to business position. When a turn fails or times out, `selectedTurnId` remains unchanged while `lifecycleStatus` transitions to `error`. A failed turn record is logged. Recovery commands (`Retry` or `Continue`) operate directly on failed turn lineages without mutating process graphs.
+| Contract | Canonical reference |
+| --- | --- |
+| Acceptance, stale outcome rejection, retry, snapshots | [Worker lifecycle](server-worker-lifecycle.md) |
+| Idempotent external writes and reconciliation | [Process SDK](process-sdk.md#typed-external-writes) |
+| Managed, content-addressed non-secret Pi resources | [Process workspace](process-workspace.md#3-resource-aggregation) |
+| Credential delivery and trust boundaries | [Security](security.md) |
+| Browser snapshot authority and reconnect ordering | [WebSocket protocol](websocket.md) |
+| Storage migration and disaster recovery | [Backup and upgrades](operations.md) |
 
-### 8.2 Idempotent External Writes
+## 9 Decisions
 
-External mutations use `ctx.externalWrites.ensure()` to recover remote objects
-before execution, after execution errors, and on logged replay. A logged write
-without a recoverable remote object fails without repeating the mutation. Ticket
-adapters return a receipt backed by remote identity; a durable record alone is
-insufficient.
+SQLite gives the singleton server one durable transaction boundary. Workers exchange
+facts over authenticated IPC rather than accessing storage. Full repository clones
+keep component work independent of host worktrees. Extension contracts keep provider
+and business behavior outside core packages.
 
-Calls sharing a repository object and deduplication key serialize within one server
-process. This does not coordinate separate servers. Operations without recoverable
-remote identity use `ctx.externalWrites.logOnly()`, which cannot recover lost
-responses or remote success followed by recording failure. See the
-[SDK contract](process-sdk.md#typed-external-writes).
+## 10 Quality scenarios
 
-### 8.3 Turn-Record Correlation
-Every worker outcome message carries `turnRecordId` and `turnId`. The server rejects outcomes that do not match the current expected turn record, preventing stale or abandoned worker branches from mutating state.
+These are design expectations, not latency benchmarks or a test inventory:
 
-### 8.4 Content-Addressed Pi Resource Snapshots
-The server builds immutable, content-addressed Pi resource bundles. Physical workers verify and materialize snapshots below the managed `pi.agent_dir`, ensuring workers never access ambient host files or unverified skills.
+- A repeated start acknowledgement does not create a second turn attempt.
+- A stale worker outcome cannot mutate a newer attempt.
+- Restart reconciles retained state without resetting configured storage.
+- Browser reconnect rebuilds authoritative state and applies only newer live events.
+- Repeating an external write reconciles remote identity instead of duplicating it.
 
-## 9 Architecture Decisions
+Recovery preserves committed server state and available checkpoints. It does not
+promise recovery of unuploaded output or lost process volumes.
 
-- **Process-Centric Control Plane:** The server is the exclusive source of truth for durable state; workers are disposable execution units.
-- **Fastify & Svelte 5 Stack:** Fastify provides high-performance REST and WebSocket servers; Svelte 5 SPA provides real-time UI chronicles.
-- **SQLite & Drizzle ORM:** Synchronous `node:sqlite` ensures atomic, crash-safe state transactions.
-- **Pi Coding Agent SDK:** `@earendil-works/pi-coding-agent` is embedded in workers as the core LLM execution engine.
+## 11 Limits
 
-## 10 Quality Scenarios
+Authentication is application-wide; it does not provide tenant isolation. External-write
+serialization is scoped to one server process. Arbitrary process-to-process creation
+is not supported. The constrained, operator-initiated ticket draft relation does not
+imply a general child-process API. Parent lifecycle operations do not cascade to it.
+See [Future work](future.md).
 
-| ID | Quality Goal | Scenario |
-|---|---|---|
-| SC1 | **Extensibility** | A developer creates a new TypeScript extension with custom process graphs and outcome tools in under an hour using `@leitwerk-dev/process-sdk`. |
-| SC2 | **Visibility** | An operator monitors a running process; live WebSocket updates render worker tool calls and chronicles in under 500ms. |
-| SC3 | **Recovery** | The server process is hard-killed during an active worker turn. Upon restart, the server recovers durable SQLite state, re-adopts or respawns the worker, and resumes without progress loss. |
-| SC4 | **Isolation** | An LLM agent generates invalid shell commands or errors inside a worker turn. The container boundary prevents host filesystem or SQLite corruption. |
-| SC5 | **Determinism** | Multiple inputs arrive simultaneously. ProcessEngine queues inputs in FIFO order and processes mutations sequentially under exclusive locks. |
+## 12 Terminology
 
-## 11 Risks and Technical Debt
-
-- **API tokens:** Dedicated SQLite storage and migration support owner-equivalent application HTTP access. The HTTP boundary resolves session, API token, or shared anonymous context; browser-only management and WebSockets remain separate. See [security](security.md#personal-and-anonymous-api-tokens).
-- **Single-Provider SSO:** Current authentication supports one configured OIDC provider or native GitHub OAuth organization attribution; tenant isolation and per-process multi-tenant authorization remain future work.
-- **Derived Process Creation:** Arbitrary process-to-process spawning remains out of scope. The server supports the constrained, UI-initiated `ticket_creation` relation: the Launch Coordinator admits an idempotent durable `LaunchRun`, atomically commits the code-defined child and relation registered by the selected ticket capability, and then starts its entry turn using a durable result and immutable parent context. A ticket adapter may list sanitized destinations for that child. The server resolves the child's opaque destination choice into a server-owned snapshot immediately before approval and exposes it to the authorized integration tool without exposing credentials. Parent lifecycle operations never cascade to the child.
-
-## 12 Glossary
-
-- **ProcessInstance:** Durable record of process position (`selectedTurnId`, `lifecycleStatus`, `params`, `state`).
-- **ProcessTurnRecord:** Execution lineage entry tracking turn attempts, outcome tools, and Pi entry provenance.
-- **WorkerLease:** Server-owned lease record tracking worker assignment, heartbeats, and supervision.
-- **Product:** Named markdown artifact published by one turn and consumed by another.
-- **Launcher:** Canonical field schema and resolution logic for starting a process instance.
-- **Watcher:** Event-driven background trigger that monitors external systems and triggers a launcher.
-- **LaunchRun:** Durable, presentation-safe progress record for one launch attempt.
-
-The server's Launch Coordinator is the single launch orchestration seam. UI, watcher, scheduled,
-and startup-retry origins create Launch Runs through it. It sequences launcher checks, model and
-skill preparation, process creation, title work, runner startup, worker readiness, and first-turn
-acceptance. The process-detail read model independently projects startup from the correlated turn
-start, worker lease, server-observed readiness, and accepted turn; Launch Run ordering cannot
-select process startup state. Callers observe the durable HTTP read model and `launch.updated`
-invalidations rather than runner mechanics.
+Use the shared [terminology](ubiquitous_language.md). Definitions belong there;
+protocol and behavioral rules belong in the references above.

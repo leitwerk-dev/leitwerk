@@ -6,6 +6,13 @@ docs_dir: docs
 site_dir: site
 strict: true
 
+validation:
+  nav:
+    omitted_files: warn
+  links:
+    not_found: warn
+    anchors: warn
+
 use_directory_urls: true
 
 theme:
@@ -67,7 +74,8 @@ markdown_extensions:
       line_spans: __span
       pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.snippets
+  - pymdownx.snippets:
+      check_paths: true
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -78,28 +86,34 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Introduction: introduction.md
-  - Overview:
-      - Architecture: arc42.md
-      - Terminology: ubiquitous_language.md
-  - Runtime:
-      - Server / worker lifecycle: server-worker-lifecycle.md
-      - LLM turn flow: llm-turn.md
-      - Process workspace: process-workspace.md
-      - WebSocket: websocket.md
-      - UI chronicle: ui.md
-  - Authoring:
+  - Start:
+      - Overview: overview.md
+      - Run your first process: introduction.md
+  - Use:
+      - Operate a process: operator-guide.md
+      - API tokens: api-tokens.md
+  - Build:
+      - Write your first process: first-process.md
       - Process SDK: process-sdk.md
       - Agent tools: agent-tools.md
       - Watchers: watchers.md
-  - Operations:
+      - Extension UI renderers: extension-ui.md
+  - Operate:
       - Configuration: configuration.md
-      - Development compositions: development-composition.md
       - Models: models.md
       - Local Docker deployment: docker-deployment-guide.md
       - Kubernetes deployment: kubernetes-deployment-guide.md
-      - Testing: testing.md
-      - CI and publishing: ci.md
       - Security: security.md
-      - API tokens: api-tokens.md
-      - Future: future.md
+      - Backup and upgrades: operations.md
+  - Contribute:
+      - Architecture: arc42.md
+      - Terminology: ubiquitous_language.md
+      - Server and worker lifecycle: server-worker-lifecycle.md
+      - LLM turn flow: llm-turn.md
+      - Process workspace: process-workspace.md
+      - Browser WebSocket protocol: websocket.md
+      - UI contracts: ui.md
+      - Development compositions: development-composition.md
+      - Testing: testing.md
+      - CI and releases: ci.md
+      - Future work: future.md

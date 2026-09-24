@@ -1,72 +1,63 @@
-# Server and Worker Lifecycle
+# Server and worker lifecycle
 
-Worker processes in Leitwerk operate under strict server supervision: the server owns desired lifecycle state in SQLite, while physical worker runners execute state transitions, report interaction facts, and upload session snapshots. This reference details how workers connect, adopt running containers, process turns, and recover from failures.
+The server owns durable process and worker state. Workers execute accepted turns,
+report facts, and upload session snapshots. This reference owns acceptance,
+supervision, launch evidence, and recovery contracts. See [LLM turn flow](llm-turn.md)
+for the end-to-end sequence and [operations](operations.md) for deployment recovery.
 
 ## AppContext lifecycle
 
-`createAppContext()` acquires resources without binding or starting background services.
-Use `ctx.listen(options?)` for startup and `ctx.close()` for shutdown. `listen()` binds,
-optionally applies the fixture base URL, reconciles durable state, adopts workers, and runs
-start hooks in their registered order. It resolves with `{ address, port }` only after
-`/api/ready` can return 200. Unknown workers receive retryable reconnect responses until
-startup adoption and reconciliation finish.
+`createAppContext()` acquires resources without binding or starting background work.
+`ctx.listen({ host?, port?, useBoundAddressAsBaseUrl? })` binds, reconciles durable
+state, adopts workers, and runs start hooks in order. It resolves with the actual
+`{ address, port }` only when `/api/ready` can return 200. Unknown workers receive
+retryable responses until adoption and reconciliation finish.
 
-Concurrent startup calls share the startup operation. The first `listen()` fixes binding
-options; later optionless or matching calls reuse the listener. Conflicting explicit options
-reject without disrupting it. A manually bound Fastify listener cannot be adopted by
-`ctx.listen()`.
+Host and port default to configuration; port `0` requests an ephemeral port.
+Binding preserves `server.base_url`. Unauthenticated loopback fixtures may set
+`useBoundAddressAsBaseUrl: true` before reconciliation. Authenticated or non-loopback
+use rejects before binding; browser fixtures retain their configured UI origin.
 
-`close()` immediately clears readiness and prevents startup. It waits for the active startup
-step, skips later steps, then uses Fastify's shutdown hooks to stop services and workers,
-drain HTTP requests, close WebSockets, and close the context-owned database. Local workers
-receive `shutdownAll("server_shutdown")`; isolated workers detach. Maintenance shutdown
-waits for active polling, scheduling, model refresh, retention work, and aborted session
-export preparation. Every stop hook is
-attempted in reverse order even if another fails. Cleanup errors are reported together.
-Repeated close calls share one settled result and never repeat cleanup side effects.
-Injected databases remain open; durable process, workspace, and tree data remain intact.
+Concurrent startup calls share one operation. The first fixes binding options;
+later matching or optionless calls reuse it. Conflicting explicit options reject
+without disrupting the listener. Raw `app.listen()` is bind-only: readiness remains
+false and `ctx.listen()` cannot adopt it later.
 
-Bind, reconciliation, and start-hook failures close the context automatically. A new context
-is required to retry. Startup errors remain the primary error; when cleanup also fails, an
-`AggregateError` retains the startup error as its cause. Construction failures release
-resources acquired before the failure.
+`ctx.close()` clears readiness immediately, prevents further startup, drains active
+work and requests, and closes context-owned resources. Local workers stop; isolated
+workers detach. Stop hooks run in reverse order, all are attempted, and errors are
+reported together. Concurrent or repeated closes share the same result. Injected
+databases remain caller-owned; durable process, workspace, and tree data are retained.
+Direct `app.close()` uses the same shutdown contract.
 
-The context lifecycle API is `listen()` and `close()`. **Breaking change:**
-`startBackgroundServices()` and `stopBackgroundServices()` have been removed.
-Migrate startup to `listen()` and shutdown to `close()`; restarting a closed context
-requires creating a new one. Services cannot be stopped independently of the context.
-
-`AppContext` no longer exposes the extension catalog. Compositions own catalogs they
-supply; test extension loading through its registered behavior. The unused `createApp()`
-wrapper is removed; use `createAppContext()` and its lifecycle methods.
-
-Raw `app.listen()` remains available for bind-only controlled tests and deployment
-preflight; it leaves readiness false and cannot later transition to full context startup.
-Direct `app.close()` uses the same cleanup hooks.
+Construction or startup failure releases acquired resources. A failed or closed
+context cannot restart; create a new one. If shutdown also fails, the startup error
+remains the cause of the aggregate error. See [testing](testing.md#harness-lifecycle)
+for fixture setup.
 
 ---
 
-## 1. Responsibilities & Ownership Boundaries
+## Responsibilities and ownership
 
-### Server Ownership
+### Server
 - **Durable State:** Exclusive owner of SQLite (`ProcessInstance`, `ProcessTurnRecord`, `WorkerLease`, annotations).
 - **ProcessEngine Operations:** Serializes process state mutations, resolves graph transitions, and manages database transactions.
 - **Worker Supervision:** Manages worker leases, adoption, heartbeats, and runner container/pod allocation.
 - **Input Sequencing:** Receives and sequence-numbers FIFO steering inputs from operators.
 - **External Integration:** Manages watchers, arms external actions, and executes safe external API writes (`ctx.externalWrites.ensure`).
 
-### Worker Ownership
+### Worker
 - **Isolated Execution:** Manages one worker runtime assigned to one active process instance.
 - **Pi Agent Execution:** Bootstraps Pi coding agents, manages execution trees, and handles LLM sessions.
 - **Workspace Management:** Clones full Git repositories, checks out work branches, and aggregates `AGENTS.md` and skills.
 - **Fact & Log Reporting:** Streams interaction events (`worker.event`), turn outcomes, and session tree snapshots to the server.
 
-> [!IMPORTANT]
-> Workers **never** access SQLite directly. All durable state changes flow over authenticated WebSocket IPC (`/internal/workers/connect`) or snapshot HTTP endpoints (`PUT /session-snapshot`).
+Workers **never** access SQLite directly. State changes flow over authenticated
+WebSocket IPC (`/internal/workers/connect`) or `PUT /internal/workers/:instanceId/session-snapshot`.
 
 ---
 
-## 2. Worker Runners & Isolation Contracts
+## Worker runners {#2-worker-runners-isolation-contracts}
 
 The supervisor separates durable lease state from physical execution through `WorkerRunner`.
 
@@ -75,8 +66,6 @@ The supervisor separates durable lease state from physical execution through `Wo
 | **Docker** | Container isolation per process | Mounts `ProcessVolume` at `/state` | Production single-machine |
 | **Kubernetes** | Pod per process in dedicated namespace; optional operator-selected RuntimeClass for private Docker | Mounts PVC at `/state` | Production cloud-native |
 | **Local** | Node.js subprocess (no container isolation) | Server directory paths | Local development & testing |
-
-Docker runners use the typed `DockerEngineClient` operations. The HTTP adapter maps each operation directly to its endpoint; transport and JSON decoding errors reject the operation's promise.
 
 Before starting isolated runners (Docker or Kubernetes), the supervisor invokes `ProcessVolume.ensure(instanceId, requirements)` and passes the returned volume reference to `WorkerRunner.start(...)`. Isolated runners must not create process storage implicitly. Kubernetes selects the configured Docker process StorageClass when `requirements.docker` is true.
 `requirements.size` supplies new PVC capacity, resolved before provisioning; resolution
@@ -90,11 +79,15 @@ A terminal worker observation triggers immediate, idempotent removal of its runt
 
 `ProcessStateExporter` is a separate, read-only runner seam for local session transfer. An attempt waits behind the accepted execution chain under the per-process operation coordinator. At quiescence, the server stops the idle worker, confirms that no writable worker lease remains, and holds the reservation through preflight and streaming. The exporter resolves or provisions its runner-specific storage from the process id. It never starts an agent turn or receives model, provider, or repository credentials. Cancellation, lease expiry, hard deadline, deletion, and stream completion release the reservation. Cancelled and failed attempts remain terminal when pending exporter work finishes. Ending a stream closes its source as well as the relay.
 
-Local and Docker bind-volume exporters read confined host paths. Docker named-volume exports run a short-lived container with only the volume's `workspace/` and `tree/` subdirectories mounted read-only. Kubernetes exports run a short-lived Pod in the process namespace with the same two read-only PVC subdirectory mounts; normal scheduler and volume attachment rules determine placement after the worker Pod is gone. Helpers may also mount the server CA certificate read-only. Other process-volume directories remain inaccessible. Isolated helpers use the runner's default trusted image, are labelled `session-export-helper` rather than `worker`, and cannot enter worker adoption. Missing helper image, server URL, or relay configuration fails runner construction. Startup reconciliation removes stale helpers.
+Export helpers are not workers and cannot enter worker adoption. Startup removes
+stale helpers; missing image, server URL, or relay configuration rejects runner
+construction. Helpers use the runner's trusted default image and expose only the
+read-only workspace/tree scope described in [Security](security.md#2-secrets-container-isolation).
+Kubernetes scheduling and volume attachment occur after the writable worker is gone.
 
 ---
 
-## 3. Worker Lease Lifecycle States
+## Worker lease states
 
 Durable worker leases transition through distinct lifecycle states owned exclusively by the server:
 
@@ -134,11 +127,13 @@ This keeps image pulls and workspace preparation outside the heartbeat timeout.
 
 ---
 
-## 4. IPC Protocol & Message Reference
+## Worker IPC {#4-ipc-protocol-message-reference}
 
-All worker communication occurs over WebSocket (`/internal/workers/connect`) using `@leitwerk-dev/worker-protocol`:
+Worker messages use WebSocket (`/internal/workers/connect`) and
+`@leitwerk-dev/worker-protocol`. Deploy matching server and worker artifacts;
+the current worker API version is `2026-09-16`.
 
-### Server -> Worker Messages
+### Server to worker
 - **`worker.start`:** Supply process state, prepared turn start, non-secret runtime settings, authorized integration-tool declarations, and any LLM resource snapshot or model-provider credentials. Durable credentials carry a numbered revision. Generated bootstrap-only material carries a null revision and is materialized for the worker without enabling credential refresh. External integration credentials remain server-only. Runtime settings apply to LLM and automatic workers.
 - **`worker.turn_start_accepted`:** Acknowledge worker acceptance and authorize turn execution.
 - **`worker.turn_terminal_recorded`:** Confirm that a correlated turn outcome or failure is durable. The worker retains and replays the terminal fact until this acknowledgement arrives.
@@ -147,7 +142,7 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 - **`worker.stop`:** Request graceful worker cleanup and transport termination.
 - **`worker.abort_turn`:** Out-of-band message interrupting active LLM execution immediately.
 
-### Worker -> Server Messages
+### Worker to server
 - **`worker.hello`:** Report worker identity and API version compatibility.
 - **`worker.ready`:** Report workspace bootstrap completion, workspace facts, and loaded resource provenance.
 - **`worker.turn_started`:** Request server acceptance of reserved turn-record identity.
@@ -159,9 +154,21 @@ All worker communication occurs over WebSocket (`/internal/workers/connect`) usi
 - **`worker.turn_failed`:** Report turn execution failure or error details.
 - **`worker.cleanup_completed`:** Confirm graceful cleanup completion.
 
+### Worker connection recovery
+
+Reconnect timers keep the worker alive, including before its first connection.
+Explicit transport shutdown cancels retries; the server owns the startup deadline.
+
+Failures report the connection stage, attempt number, and an allowlisted transport
+or numeric WebSocket close code. Raw errors, close reasons, URLs, and credentials
+are omitted. Workers emit safe summaries to stderr and, on Kubernetes, retain the
+first failure and latest observation in the termination message. The runner records
+that diagnostic before reclaiming the Pod. Successful connection clears stale
+failure evidence.
+
 ---
 
-## 5. Start Acceptance & Recovery Invariants
+## Acceptance and recovery {#5-start-acceptance-recovery-invariants}
 
 1. **`TurnStartRecord` Reservation:** A worker start prepares a `TurnStartRecord` in SQLite before worker execution begins. This reserves the turn-record ID but is **not** an attempt.
 2. **`worker.turn_started` Acceptance:** The worker bootstraps every declared workspace repository, resolves the Pi resource bundle from delivered bytes or the process volume, verifies and persists it, and sends `worker.turn_started`. A clone, checkout, branch, manifest, or workspace aggregate failure fails bootstrap; the worker does not report readiness or request turn acceptance with a partial workspace. The worker MUST NOT execute LLM prompts or automatic handlers until receiving `worker.turn_start_accepted`.
@@ -196,7 +203,7 @@ it to run again.
 
 ---
 
-## 6. Session Snapshot Uploads
+## Session snapshots {#6-session-snapshot-uploads}
 
 The worker's JSONL tree file records full agent interaction history. Workers upload snapshot files to the server via:
 
@@ -213,40 +220,43 @@ Automatic sessions do not upload snapshots. LLM sessions use these rules:
 
 Mandatory upload failures become infrastructure failures. Best-effort failures allow the pending lifecycle operation to continue. A successful upload does not complete terminal publication: the worker keeps the terminal fact pending until the server acknowledges its durable recording.
 
-## 7. Launch progress
+## Launch progress {#7-launch-progress}
 
-Every launch attempt has a durable `LaunchRun`. UI, trusted programmatic, watcher, and
-due-schedule adapters own source-specific admission, resolution, deduplication, and scheduling
-policy. Programmatic callers provide launcher input and an idempotency key; they never call the
-raw process executor or choose a Launch Run id. One server-owned launch pipeline sequences
-validation, ordered preparation checks, model and skill preparation, and process commit. Process creation and scheduled occurrence disposition commit atomically.
-The server attaches the process id in that commit. Pre-commit failures create no process;
-post-commit reaction failures retain and correlate the committed process. Launch Runs report
-orchestration progress, but they are not process-startup evidence.
-The process-detail API derives startup history from a `TurnStartRecord`, its correlated
-`WorkerLease`, server-observed connection and readiness timestamps, and the accepted first turn.
-A successful startup requires all of those records to agree. Runner observers expose only
-`preparing_runtime`, `allocating_runtime`, and `starting_runtime`, and workers may send
-`worker.bootstrap_progress` phases, but incoming phases are not launch-run truth. The server first
-persists the corresponding lease timestamp, start state, accepted turn record, or title-job state,
-then asks the launch coordinator to refresh from durable evidence. One pure startup-evidence
-projector supplies both process startup history and launch checklist projection. The coordinator
-persists and broadcasts only a changed projection. Reading a launch run performs the same
-projection, repairing a missed event-triggered refresh. On restart, incomplete runs reconcile
-from durable process, lease, title-job, readiness, turn-start, and turn records. Before process creation, UI
-and trusted programmatic launches resume from a server-private replay payload stored outside the
-launch read model and deleted when coordination finishes. After process creation,
-recovery uses durable facts and does not repeat process creation.
-The process-creation transaction also records the requested initial turn and actor in private
-replay storage. If the server stops before selecting that turn, recovery selects it under the
-process lock only while the process remains unstarted. Recovery never repeats process-created
-extension reactions or overwrites a turn selection or abort that already committed. Plans without
-an initial turn, or with an initial human or external turn, complete startup without starting a worker.
-The private replay is deleted when coordination finishes. Duplicate incomplete Launch Runs for one
-process are cancelled during reconciliation and never select the startup shown on process
-detail. The latest startup-retry run is authoritative; without a retry, the latest `createdAt` and
-then id wins deterministically. Watcher retries retain one stable idempotency key for the latest attempt. Once an attempt
-commits a process, later polls return that attempt instead of creating incomplete launch runs.
+Every launch attempt has a durable `LaunchRun`. UI, trusted programmatic, watcher,
+and scheduled sources supply their admission, resolution, deduplication, and scheduling
+policy. They do not call the raw process executor or choose a Launch Run ID.
+
+The shared server pipeline validates, runs ordered preparation checks, prepares models
+and skills, and commits the process. Process creation, launch correlation, and scheduled
+occurrence disposition commit atomically. Pre-commit failure creates no process;
+post-commit reaction failure retains the committed process.
+
+Launch Runs report orchestration progress, not process-startup truth. Both checklist
+and process-detail startup use one projection of the `TurnStartRecord`, correlated
+lease, server-observed connection/readiness, and accepted first turn. Those records
+must agree. Runner phases (`preparing_runtime`, `allocating_runtime`,
+`starting_runtime`) and `worker.bootstrap_progress` do not establish success alone.
+Persist the evidence before publishing a changed projection. Reading a Launch Run
+repairs missed refresh notifications from the same durable facts.
+
+### Launch recovery
+
+Before process creation, UI and trusted programmatic launches resume from private
+replay data, never from a browser read model. After commit, recovery uses durable
+facts without creating the process again. Private replay is removed when coordination
+finishes.
+
+The initial turn and actor are retained with creation. Recovery may select that turn
+under the process lock only while the process remains unstarted. It never repeats
+process-created extension reactions or overwrites a committed turn selection or abort.
+A launch without an initial turn, or with an initial human/external turn, can finish
+startup without a worker.
+
+Reconciliation cancels duplicate incomplete Launch Runs for one process. The latest
+startup retry wins; without a retry, order by `createdAt`, then ID. This selection
+does not choose process-detail startup evidence. Watcher retries retain a stable
+idempotency key; once an attempt commits a process, later polls return it rather
+than creating new incomplete runs.
 
 Worker readiness requires successful Pi version validation and SDK preparation.
 SDK loading failures fail managed bootstrap.
@@ -276,14 +286,11 @@ overlap and must not be added into an exclusive breakdown. PVC binding uses a
 last-not-bound/first-bound sampling window, with a missing lower bound when no
 unbound state was observed. The upper bound is not the exact binding time.
 
-Optional Kubernetes volume pre-provisioning runs inside the server's background
-lifecycle. Preparation uses temporary claims and Pods without worker credentials.
-The server retains each fresh PV, waits for its preparation Pod and claim to be
-deleted, then waits for `Available` before publishing it under the process
-StorageClass with its original reclaim policy. UID and resource-version checks
-protect every PV change. A different claim UID permanently ends pool ownership.
-Kubernetes objects record progress across server restarts; filling the pool never
-blocks readiness or normal process allocation. See [configuration](configuration.md#pre-provisioned-kubernetes-volumes).
+Optional volume pre-provisioning never blocks server readiness or ordinary process
+allocation. Only fresh, unclaimed volumes enter the pool. Ownership changes end
+pool ownership, and progress survives server restart. See
+[configuration](configuration.md#pre-provisioned-kubernetes-volumes) for driver
+requirements, permissions, and safe draining.
 
 Outcome and external-action annotations retain selected target and reserved start
 and turn-record identifiers in the transition transaction. A reserved identifier
@@ -292,25 +299,37 @@ identifiers and retry parents; timestamps do not establish causal links.
 Observation annotations replace one snapshot per resolved subscription generation,
 retain the last successful facts across refresh failures, and reject stale writes.
 
+### Launch HTTP boundary
+
+| Operation | Route | Accepted schedule mode |
+| --- | --- | --- |
+| Immediate launch | `POST /api/launchers/:launcherId/launch-runs` | `now` |
+| Save future work | `POST /api/launchers/:launcherId/future-launches` | `once` or `cron` |
+
+Other modes return 400 before admission. Saving future work does not create a Launch
+Run or startup checklist. Revising future work to `now` repeats launcher preparation
+checks and admits a Launch Run. Process creation consumes the future launch atomically;
+a preparation failure preserves it for a later revision or run.
+
 ## Repository credentials on worker start
 
-Worker API `2026-09-15` adds the `git_https` repository credential variant. Server and worker image compatibility labels use the same version; older workers must be upgraded together with the server. Repository credentials are resolved afresh for each physical worker start and delivered through authenticated IPC, separately from immutable non-secret snapshots. Bootstrap checks project/ref/kind identity and exact HTTPS repository scope. Materialized helpers live outside the checkout and are disposed with the worker; retained process state and runtime payloads contain no secret material. Existing `git_ssh` delivery remains supported.
+Repository credentials are resolved anew for each physical worker start and
+sent through authenticated IPC, separately from non-secret resource snapshots.
+Bootstrap verifies project, reference, credential kind, and exact HTTPS scope.
+Both `git_ssh` and `git_https` are supported. Credentials remain outside checkouts
+and retained runtime payloads. See [security](security.md#https-repository-authentication).
 
 ### Docker registry credentials
 
 Each physical start resolves current [registry bindings](configuration.md#docker-registry-credentials)
 and delivers credentials through authenticated `worker.start` only to processes
 whose code declares `runtime.docker`. See [credential cleanup and security](security.md#docker-registry-credentials).
-Server and worker images must use worker API `2026-09-16` together.
 
 ## Worker capacity admission
 
 `max_parallel_processes` counts allocated workers and in-flight allocations. When
 all slots are occupied, worker requests enter a FIFO queue and return immediately;
-launching does not fail and does not hold the process operation open. **Breaking change:**
-`WorkerSupervisor.spawnWorker()` now returns `Promise<WorkerHandle | undefined>`;
-callers must handle `undefined` as queued admission rather than expecting a capacity
-error or an immediate handle. Startup
+launching does not fail and does not hold the process operation open. Startup
 evidence shows “Waiting for worker capacity.” A queued request creates neither a
 worker lease nor a turn attempt. The worker startup timeout begins at admission,
 not while waiting for capacity.

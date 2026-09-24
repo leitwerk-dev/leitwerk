@@ -1,328 +1,218 @@
-# UI Architecture & Layout
+# UI contracts
 
-Process controls use the shared `ui-button` treatment: 44px minimum height,
-consistent typography, and visible keyboard focus. Confirmation buttons name
-what they do. Process information and reasoning use the same header scale and
-Close control. Modal dialogs retain the user's input after a failed request;
-issue creation explains that it starts a draft for review before publication.
-Reasoning sections and repository details stay within the dialog width. Long
-arguments, error messages, repository URLs, and paths wrap on narrow screens.
+The UI displays server-owned process state and submits commands. HTTP snapshots
+establish durable state; WebSocket frames update live activity or invalidate those
+snapshots. This page defines interaction and rendering behavior for contributors.
+For everyday use, see [Operate a process](operator-guide.md).
 
-Chrome, Firefox, and Safari share the same layout and control styling, with
-Firefox as the visual reference. Shared CSS removes native button, text-field,
-and single-select chrome. Checkboxes and radio buttons use shared marks and
-dimensions. Single selects reserve space for a consistent chevron
-and honor their authored padding and height; the compact decision selector is
-48px high, including when the chronicle is scrolled to the top. Selects retain
-native keyboard and menu behavior. Forced-color mode restores native controls.
-Date and time fields match adjacent text-field heights while retaining native
-editors. Skill filters use defined grid tracks, so native option sizing cannot
-change the space available for search. Failed-turn toggles fit their header slot
-at mobile widths. Ticket approvals use shared buttons and an authored feedback
-field, including consistent borders, padding, and disabled states.
-Opening an action form focuses its first field without overriding the chronicle's
-chosen scroll position. Navigation to an open action targets the form itself.
-Rail selection survives delayed programmatic scroll events; manual scrolling
-updates the selection when the viewport leaves that target.
+## Chronicle and Turn Rail {#1-chronicle-turn-rail-layout}
 
-Startup history, turn progress, and launch progress share `ProgressChecklistRows`.
-Expanded turn progress uses the `ProgressChecklist` panel. Rows preserve their recorded order,
-labels, details, and states. Text and static symbols identify pending, active,
-complete, failed, skipped, and superseded steps. Each startup-history and
-turn-progress checklist is labelled by its own heading. Narrow containers wrap
-status labels below their step text.
+Process detail has three regions:
 
-Waiting processes show the events that can continue them. Listening details are
-collapsed by default; failed checks remain visible. Watcher cards show their
-purpose, enabled state, process, and target before configuration details.
+- **Sidebar:** Active and scheduled processes, account controls, and help. Active rows
+  show title, status, update time, and current turn. Scheduled rows show their schedule.
+  Narrow viewports use a closed-by-default navigation drawer.
+- **Turn Rail:** History, current work, and the next turn on the declared happy path.
+  Narrow viewports expose it through the process navigation sheet.
+- **Chronicle:** Recorded turns, results, live activity, questions, and action forms.
 
-The Leitwerk user interface provides real-time visibility and steering control over running AI workflows. This guide explains the three core UI concepts: the Chronicle timeline and Turn Rail layout, live streaming text overlays, and custom extension UI slots.
+Turn labels and `plannedNextTurn` come from the process definition. Recorded human
+outcomes retain the decision taken; absent decision evidence displays Completed,
+not an inferred approval. Navigation selection is independent of current process state.
 
----
+Completed turns use check markers. Running turns use filled blue markers; waiting
+turns use amber clocks; future turns use neutral outlines. Failure has an explicit
+marker and label. Text and symbols carry state without depending on color.
 
-## 1. Chronicle & Turn Rail Layout
+A process summary shows its full text and update time. Dismiss hides it only for
+that process in the current browser, including after reload. **Process info → Show
+process summary** restores it. If browser storage is unavailable, dismissal lasts
+for the current page. This preference never changes process state.
 
-The process detail view is organized into three distinct visual regions:
+### External waits
 
-- **Sidebar:** Left navigation pane listing active and scheduled processes for quick switching. The expanded pane is 240px wide. Active rows show a status dot, title and relative update time above the current turn; each row is limited to two lines with full details on hover. Scheduled rows use a title and schedule line. Its footer shows the current user and a menu for API tokens, keyboard help, and Leitwerk-session logout. When authentication is disabled, it shows Anonymous with API tokens and help; logout is hidden. Narrow viewports expose the same navigation in a closed-by-default drawer from a sticky shell bar.
-- **Turn Rail:** Vertical navigation beside the Chronicle, listing completed turns, current work, and its next turn on the declared happy path. Narrow viewports open the same rail in the process navigation sheet.
-- **Chronicle:** Main timeline feed rendering live agent reasoning, tool execution logs (bash commands, file diffs), published products, and interactive action controls.
+A wait belongs to its recorded turn only when that turn is the latest execution.
+If another turn has run since, show the current wait after it as a separate section
+and navigation row. Never attach a new wait to an old execution merely because
+both use the same turn definition. A wait without a recorded turn has its own row.
 
-The UI snapshot supplies turn labels from the owning process definition and a
-`plannedNextTurn` from its declared happy path, including human decisions.
-Recorded outcomes retain the action that was taken. Completed human turns show
-the recorded decision, such as Approved or Adjust, beside their elapsed time.
-Turns without a recorded decision use Completed. Completed turns use circular
-check markers. Running turns use filled blue markers; current
-turns awaiting a decision, external update, or scheduled action use filled amber
-clock markers. Both keep stronger titles while the operator browses history.
-Future turns use neutral outlines. Failed turns retain an explicit error marker
-and label. Navigation selection is separate from the process's current state.
+Listening details are collapsed by default, with event and failed-listener counts.
+Expanded details show each description, observation, status, and polling information
+together. Failed checks remain visible. Observation timestamps are distinct from
+refresh errors. No observation reads **Status not yet observed**.
 
-The process summary above the Chronicle shows its complete text and update timestamp
-in a compact row that wraps as needed. It has no expand/collapse control or truncation. Dismiss hides the row
-for that process in the current browser, including after reload. **Process info →
-Show process summary** restores it. The preference uses browser storage, never
-process state, and does not hide summaries for other processes or browsers. If
-storage is unavailable, dismissal still works for the current page.
+### Folded history
 
-External waiting belongs to its recorded turn in both the Chronicle and
-the rail only when that turn is the latest execution. If another turn has run since,
-the current wait appears after it as a separate section and navigation row. That row keeps the turn title and shows Waiting for an event with the
-amber clock. Selecting it reaches the embedded waiting disclosure. Scrolling
-through the turn or its result highlights the same row. A wait without a recorded
-turn keeps its own navigation row.
+Consecutive completed cycles may fold into **Earlier updates**, showing sequence,
+completed-step count, and recorded decision/event labels. Repeated labels show a
+count. Missing labels never imply a cause or successful repair. **History spans**
+measures first start to last finish, including gaps; use days and hours beyond a day.
+Failed, running, and waiting turns never fold. Keep the latest result next to its decision.
 
-Consecutive completed cycles fold into **Earlier updates**, with the sequence,
-completed-step count, and recorded event or decision labels. Repeated labels include
-their count. Missing labels do not imply a cause or a successful repair. **History spans**
-measures the first start to the last finish, including gaps; spans over a day use days and hours. The latest
-result stays beside its pending decision. Failed, running, and waiting turns never fold.
-Expanding a group reveals ordinary turn rows on the same rail, within a box whose
-width stays fixed. The Chronicle retains the full history. Selecting a hidden
-turn from the Chronicle or its keyboard navigation expands the containing group.
-Scrolling or navigating to a turn outside that group collapses it again;
-moving between turns within the group keeps it open. Returning to the group
-reveals its history again.
-Arrow keys move through visible rail controls; Enter or Space toggles a group,
-and Left or Right collapses or expands it.
+Selecting a hidden turn expands its group. Navigating or scrolling outside the group
+collapses it; movement within the group keeps it open. The Chronicle retains the full
+history. Arrow keys move among visible rail controls; Enter/Space toggles a group and
+Left/Right collapses or expands it. Expansion must not change the rail's width.
 
-### Chronicle hierarchy
+Retry history uses explicit parent record IDs, not timestamps or repeated turn names.
+Earlier attempts start collapsed. Selecting a historical attempt reveals it; scrolling
+alone does not expand retry history. Users may collapse it even while selected.
 
-Completed turns use compact cards with the turn title and recorded model profile beneath it.
-LLM cards share one sparkle icon. Reported cost replaces inline token counts; unavailable cost
-is omitted. Timestamp and duration stay together at the right of each header, followed by a
-reserved disclosure slot. **Turn details** opens the full turn details from the right of the
-card footer; chronicle turns do not use overflow menus.
+## Results and turn details {#chronicle-hierarchy}
 
-Prompts appear only when recorded, as a subdued row after the result and any current questions or recovery controls. Selecting the row opens
-the full turn input. Input details include user messages and Pi custom messages
-(including identified Leitwerk prompts); custom-message details stay outside the
-displayed input, just as they stay outside model context. Results use a stronger
-surface and typography. The latest result expands
-in place; earlier results have a preview and an expand/collapse control. Short historical
-outputs without prompts remain plain, complete sentences. Durable results remain visible even
-when their text matches the assistant's final answer. A ready leaf outcome still owns its
-result rendering, so it does not duplicate the turn result.
+Turn cards identify the turn, recorded model, time, and duration. Completed LLM cards
+share an icon; available cost appears instead of inline token counts. Omit unavailable
+cost. **Turn details** opens the complete details; turn cards do not use overflow menus.
 
-**Show reasoning** sits immediately before **Turn details** in completed and live card
-footers. Both use the same muted text-link style, without a disclosure chevron.
-Missing reasoning adds no empty panel or link. Live reasoning and streamed responses
-remain visible above the footer. Turn questions keep their answer forms in the chronicle
-and their read-only summaries in turn details.
+Results are more prominent than prompts. Show a prompt row only when input was
+recorded; opening it reveals full input. User and Pi custom messages are included,
+but custom-message details stay outside displayed input, as they do outside model
+context. Full prompts preserve Markdown whitespace; only previews collapse it.
 
-Successful startup attempts collapse to an outcome and completed-check count. Successful
-preparation becomes **Workspace prepared**, with its ordered checks available on disclosure.
-Failed or unfinished checks remain expanded; created-change links remain visible. Operator
-and external events use the same compact header with quieter surfaces.
-Expanding workspace checks leaves the adjacent result actions in their original position.
-On narrow cards with a reasoning link, footer actions occupy the first row and workspace
-checks expand below them. Show reasoning and Turn details stay together when actions wrap.
+Historical results lead with the supplied summary or a bounded paragraph preview.
+**In this result** exposes headings, including validation and limitations, before
+expansion. Older reports may use standalone labels before lists. **Read full result**
+and **Show summary** switch views. Do not infer validation verdicts from prose or
+repeat a summary already at the start of the result.
 
-When a turn waits for external events and has no operator action, its recorded card
-contains the waiting status only if no later turn has run. A single collapsed disclosure shows the event count and any
-failed-listener count. Expanding it shows each event's description, status, and polling
-details together. If the selected turn has no recorded card or another turn has run since,
-the waiting section remains at the end of the chronicle. Repeated turn definitions do not
-reuse an earlier execution's card for a new wait. Operator decisions keep their separate action surface.
+Keep the latest full result and current recovery controls expanded. Durable results
+remain visible even when they match the assistant's final answer. A leaf-outcome
+renderer owns its result; do not render a second copy at turn level.
 
-A failed turn contains its recovery controls in the same card. Its header retains the turn
-icon, recorded metadata, timestamp, and duration, with a failure marker and disclosure.
-The failure message is prominent; technical details and retry model settings are collapsed
-by default. Retry explains that it starts a new attempt. Continuation remains available only
-when saved progress supports it. Collapsing the card or retry options preserves entered
-instructions and settings; navigating to the failed turn reveals its controls again.
+**Show reasoning** and **Turn details** stay together in card footers and use the
+same text-link treatment. Missing reasoning adds no empty panel. Current question
+forms stay in the Chronicle; turn details contain read-only summaries.
 
-**Create issue** is an action on a durable result. Opening ticket creation does not append an
-issue-creation event to the parent history. While browsing away from a pending action, the
-separate bottom composer names the required decision and retains the shared action draft.
-**View context** returns to the current action; **Options** opens its canonical detailed form.
-On narrow viewports, the chronicle reserves visible space for the composer, including Send.
+## Failed work
+
+Recovery controls belong to the failed turn card. Keep the error prominent and
+technical details and retry-model settings collapsed by default. Retry explains
+that it starts another attempt. Continue is offered only when retained progress
+supports it.
+
+Collapsing a card, retry settings, or an action form must preserve entered instructions
+and settings. Navigating back reveals the controls. Historical failures remain
+visible after recovery; repeated business turns are not retry attempts.
+
+## Live output and reasoning {#4-live-streaming-text-overlays}
+
+The browser displays live output without fetching a full process snapshot for each
+update. Durable state replaces the live projection when available. Follow output
+only while the reader is already at the bottom; inspecting history must not force
+them back to current work.
+
+The inline reasoning preview reserves four wrapped lines and displays the newest
+nonblank lines with preceding paragraph context. Short content reserves the same
+height. It has a static live indicator and **Show reasoning**, no nested scrollbar
+or animation. Full reasoning preserves whitespace.
+
+The initial snapshot contains compact active-turn state, not `TurnTraceSnapshot`.
+Do not prefetch detail history on load, hover, idle, or while its overlay is closed.
+Opening reasoning starts an independent request; slow details must not block the
+shell or controls. A direct reasoning link also renders the shell first.
+
+Expanded history stays visible through reconnect and turn completion. Loading is
+quiet; failures offer inline Retry. Reconnect refreshes full history only while open,
+and compact snapshots cannot shorten it. Full history means all server-recorded
+activity for the selected turn record. A crash before snapshot upload must not erase
+recorded activity. See [WebSocket ordering](websocket.md#reconnect-re-synchronization).
+
+## Progress and startup {#6-turn-progress}
+
+Startup, launch, automatic-turn, and LLM-preparation progress use the same ordered
+checklist presentation. Each panel has its own heading. Text and symbols identify
+pending, active, completed, failed, skipped, and superseded states. Narrow layouts
+wrap labels rather than clipping them. Related links appear under **Created changes**.
+
+Successful startup collapses to its outcome and completed-check count. Successful
+preparation becomes **Workspace prepared**, with its ordered checks available on
+disclosure. Failed or unfinished checks remain expanded; created-change links stay
+visible. Expanding checks does not displace adjacent result actions.
+
+Progress is a reported snapshot. A step still active when an attempt ends displays
+**Interrupted** after failure/supersession or **Final status not recorded** after
+success. Details preserve the original report; future steps stay incomplete.
+Related resources do not establish which attempt created them. Operator and external
+events show their recorded time, not a transaction duration; missing attribution
+remains unspecified.
+
+### Launch checklist {#7-launch-checklist}
+
+Immediate launch replaces the submit area with a durable checklist and retains the
+draft in memory. Navigate when the run gains an `instanceId`; process detail then
+shows startup projected from correlated turn-start, worker lease, readiness, and
+acceptance records. It never chooses a Launch Run as process-startup evidence.
+Scheduled submission saves future work without a startup checklist. See the
+[launch HTTP contract](server-worker-lifecycle.md#launch-http-boundary).
+
+The four startup phases are Request worker, Start worker, Prepare runtime, and Start
+first turn. Show elapsed time for active phases between updates; stop timers on
+completion or failure. Missing observations show unavailable timing, not zero.
+Worker-ready duration excludes the subsequent model response wait. Storage, scheduling,
+and image startup stay grouped until separately observed.
+
+Timers must not announce every second to screen readers. Status changes do retain
+live announcements. Failed attempts remain visible after recovery. Terminal launch
+runs collapse to a summary; selecting a failed summary expands it again.
+
+Optional `startup.workerStarts` is diagnostic data, not extra startup UI steps. Its
+physical leases, observations, runtime metadata, and clock-labelled intervals retain
+missing/invalid durations as null. See [startup observations](server-worker-lifecycle.md#durable-startup-observations).
+
+## Questions and actions
+
+Answer open questions in the Chronicle. Answered and cancelled questions remain
+visible through follow-ups and turn completion. Reasoning details show read-only
+summaries, even when no trace exists, and never duplicate the answer form.
+
+A new question notifies without changing scroll or focus. Opening the notification
+closes blocking detail overlays and focuses the active form. Opening other action
+forms focuses the first field without overriding the chosen Chronicle position.
+
+While browsing away from a pending decision, the bottom composer names it and retains
+the shared draft. **View context** returns to the action; **Options** opens the
+canonical detailed form. Narrow viewports reserve enough visible space for Send.
+
+### Ticket creation {#2-ticket-creation-modal}
+
+**Create issue** operates on a durable result. The initial dialog asks what to create
+and selects an adapter only when several are available; it does not preview the
+result or request a destination. Opening it does not append a parent-history event.
+
+The server snapshots parent context and sanitized destinations, then admits a derived
+draft process. That process resolves ambiguous choices with the operator. External-write
+approval displays the resolved destination separately from the tool arguments.
+
+## Interaction and accessibility
+
+Controls have visible keyboard focus and at least 44px button height. Confirmation
+buttons name their operation. Dialogs preserve drafts after failed requests. Long
+arguments, errors, repository URLs, and paths wrap within the available width.
+
+Chrome, Firefox, and Safari share layout and control styling; Firefox is the visual
+reference. Native keyboard, select-menu, and date/time editing behavior remain usable.
+Forced-color mode restores native controls. Meaning must not depend on color or icons
+alone. Use [browser validation](testing.md#browser-testing) for these behaviors.
 
 ### Route scroll ownership
 
-`RouteViewport` owns scrolling for every standard route. It provides a contained route scroller in the fixed desktop shell and yields to document scrolling below the mobile shell breakpoint. Route pages must not add competing viewport-level `overflow` or `overscroll-behavior` rules. Nested task surfaces such as the Chronicle, modal lists, and desktop split panes may own bounded scrolling.
+Standard routes have one viewport-level scroller: contained in the desktop shell,
+document scrolling on mobile. Pages must not introduce competing viewport overflow
+rules. Bounded surfaces such as modal lists and split panes may scroll independently.
+Process detail remains contained so the Chronicle owns its timeline scrolling.
 
-Process detail is a workspace route. Its `RouteViewport` remains contained so the Chronicle can own timeline scrolling.
+Programmatic scroll events must not undo rail selection. Manual scrolling updates
+selection when leaving the target. Fragment, relative, and same-origin links use
+the current tab. Cross-origin links have a visible external marker, accessible
+resource label and new-tab announcement, plus `rel="noopener noreferrer"`.
+Managed result images may open in a secured new tab without an external marker.
 
-Fragment, relative, and same-origin links navigate in the current tab. Cross-origin links use the
-shared external-link presentation: a visible external marker, an accessible resource label and
-new-tab announcement, `target="_blank"`, and `rel="noopener noreferrer"`. Resource labels distinguish
-issues, pull requests, merge requests, and other known destinations. Managed result images are an
-intentional same-origin exception: opening the full image uses a secured new tab without marking the
-artifact as external.
+## Other surfaces
 
----
-
-## 2. Ticket creation modal
-
-Operators can derive a ticket from a durable turn result or leaf outcome. The
-initial dialog asks what issue to create and selects a capability-marked ticket
-adapter only when more than one is available. It does not preview the result or
-ask for a destination. The server snapshots the parent context and sanitized
-destination summaries before admitting the derived process through an idempotent durable launch run.
-
-The derived process refines the ticket in the normal process UI. It chooses a
-destination from the operator's instructions or asks when the target is ambiguous.
-The server resolves that opaque choice into a fresh destination snapshot. The
-external-write approval names the destination separately from the proposed tool
-arguments so the operator can verify both before accepting the write.
-
-Question requests appear inside their turn's supporting detail section. Open requests are answered in
-the Chronicle; answered and cancelled requests remain visible while follow-up questions are open
-and after the turn ends. The reasoning-details overlay shows read-only question summaries even
-when the turn has no recorded trace, and does not duplicate the answer form. Live question
-updates refresh the current process view without a browser reload.
-New requests, including follow-ups, notify the operator through a question toast without changing
-their scroll position or focus. Opening that notification closes blocking detail overlays and
-focuses the active question form.
-
-## 3. Local session transfer
-
-A process with a primary Pi session exposes **More actions → Create local transfer link**. Link creation is explicit and never starts export work. The panel presents the complete bearer URL for copying, a one-hour expiry, and a warning that anyone holding it can download the retained workspace and conversation.
-
-While local Pi waits for accepted work, scans, or streams, process detail shows the non-secret phase and explains that new manual turns are blocked. An authenticated operator can cancel before streaming finishes. Once all bytes are delivered, process mutations are unblocked; the status remains visible as awaiting local acknowledgement and does not claim that delivered bytes can be recalled.
-
-## 4. Live Streaming Text Overlays
-
-When an AI agent is actively executing a turn, text tokens stream over the WebSocket directly into active Chronicle turn blocks:
-
-- **Ephemeral Text Streaming:** Streaming text deltas append directly to local Svelte reactive stores for zero-latency UI updates without refetching full process snapshots.
-- **Durable Synchronization:** When a turn completes, a durable server snapshot arrives, seamlessly replacing ephemeral text deltas with the final turn record.
-- **Scroll Anchoring:** The timeline automatically scrolls to follow live agent output while allowing operators to scroll up to inspect past history without being forced back to the bottom.
-
----
-
-## 5. Extension UI Renderers
-
-Process extensions can ship browser UI as custom elements that render leaf outcomes (and related Chronicle slots) for domain-specific props.
-
-### 1. Point `package.json` at a UI manifest
-
-Declare a `leitwerk.ui` block next to the extension entry. Source lane and built lane each get a path:
-
-```json
-{
-  "name": "@example/acme-process",
-  "leitwerk": {
-    "extension": {
-      "source": "./src/index.ts",
-      "import": "./dist/index.js"
-    },
-    "ui": {
-      "source": "./src/ui/manifest.json",
-      "import": "./dist/ui/manifest.json"
-    }
-  }
-}
-```
-
-### 2. Map renderer ids to custom elements
-
-The manifest lists renderers by stable id. Each entry is a `custom_element` with a tag name and module path:
-
-```json
-{
-  "apiVersion": 1,
-  "extensionManifestId": "acme-process",
-  "renderers": {
-    "@example/acme-process:acme_process.leaf_outcome": {
-      "kind": "custom_element",
-      "tagName": "acme-process-leaf-outcome",
-      "module": "./leaf-outcome-element.ts",
-      "rendererApiVersion": 1
-    }
-  }
-}
-```
-
-Durable leaf-outcome captures reference the same `rendererId`. The UI loads the module from the extension UI catalog and defines the custom element when the Chronicle needs that slot. `protocol` owns renderer and browser-module wire schemas; manifest validation and supported-version checks remain with the catalog and UI host, respectively.
-
-- **Bounded Insertion:** Custom renderers stay inside Chronicle leaf-outcome hosts; they do not own global shell navigation.
-
----
-
-## 6. Turn progress
-
-Automatic turns and LLM preparation phases may expose a durable ordered progress report in their
-Chronicle cluster. Process startup history uses the same checklist layout, typography, spacing,
-and status treatment as these progress reports. The UI names every step state, highlights the
-current step, preserves failed steps beside generic recovery controls, and lists created pull
-requests, merge requests, commits, or pipelines under **Created changes**. Historical reports
-remain part of their owning turn attempt. Status text and symbols carry the meaning without
-relying on color.
-
-## 7. Launch checklist
-
-An immediate launcher submission uses `POST /api/launchers/:launcherId/launch-runs`, replaces its
-submit area with the durable launch checklist, and keeps the entered draft in memory. Scheduled
-submissions use `POST /api/launchers/:launcherId/future-launches`; saving a future launch does not
-create a launch run or startup checklist. The browser navigates when the run gains an `instanceId`; the
-process detail then renders authoritative startup history inside the Chronicle. Text and symbols
-name every state. The current step uses the operational accent. Failed steps show bounded
-remediation and the existing recovery action. Process detail never selects a Launch Run to infer
-startup: it uses the correlated worker start, lease, readiness observation, and accepted first turn.
-Startup rows retain observed phase durations: Request worker, Start worker (allocation through
-connection), Prepare runtime (workspace, tools and provider), and Start first turn. The active phase
-and overall startup show elapsed time even between server updates. Completed and failed phases
-stop their timers. Missing historical observations show unavailable timing, never a fabricated zero.
-Storage provisioning, scheduling and image startup remain grouped until separately observed.
-Worker-ready duration excludes the subsequent model response wait. The timer text does not trigger
-screen-reader announcements every second; status changes retain their live announcements.
-A failed attempt remains visible after recovery. Terminal launcher runs collapse to an expandable
-summary; failed runs expand again when the operator selects the summary.
-
-The launch-run route accepts only `schedule.mode = "now"`; the future-launch route accepts only
-`"once"` and `"cron"`. Other modes return `400` before admission. Updating a future launch to
-`"now"` admits a launch run and repeats launcher preparation checks. The future launch is consumed
-atomically with process creation; a preparation failure preserves it for a later revision or run.
-
-## API tokens account page
-
-Open **API tokens** in the account menu or visit `/account/api-tokens`. Create a
-named token with the configured default expiry, a chosen local date/time, a
-30-minute expiry, or no expiration when allowed. The new secret is displayed
-once with explicit copy feedback. Save it before dismissal or leaving the page;
-reloading cannot retrieve it.
-
-The list shows public ID/prefix, name, creation, expiry, last use, and revocation
-status. Revoke individually or confirm revocation of all current-owner tokens.
-Listing and revocation remain usable when issuance is disabled. In anonymous
-mode, every visitor shares and manages the same token list.
-
-## Reasoning preview and expanded history
-
-The inline reasoning preview reserves four wrapped text lines at a fixed height. It shows the newest nonblank lines, retaining preceding paragraph context as new text arrives. Short content uses the same reserved height. Token updates are continuous, with one subdued static live indicator and an Show reasoning control. The preview has no nested scrollbar, animation, or hidden-history footer. Full reasoning preserves original whitespace.
-
-The initial snapshot carries a compact active-turn type, separate from `TurnTraceSnapshot`. The browser retains bounded inline state while the overlay is closed and never prefetches detail history. Opening the overlay starts an independent request; a slow request cannot block the page shell or controls. Reconnect refreshes full history only while the overlay remains open.
-
-Expanded history remains visible during recovery and turn completion. A quiet loading status reports recovery; actual failures offer an inline Retry action. The overlay preserves the reader's position and follows new output only while the reader is already at the bottom. Full history means all server-recorded activity for the selected turn record. A finished turn without a session preview uses its persisted compact summary, so a worker crash does not replace recorded reasoning with an empty preview.
-
-The process UI snapshot API optionally includes `startup.workerStarts` for timing
-analysis. Each entry identifies a physical lease and its initial accepted turn,
-with durable observations, non-secret runtime metadata and clock-labelled
-intervals. Missing endpoints and invalid ordering have null durations. Source
-precision accompanies Kubernetes observations; binding timestamps are sampling
-bounds. This diagnostic collection does not change the four-step startup UI.
-
-Chronicle progress is a reported snapshot. Related resources do not establish which
-attempt created them. When an attempt ends, an active reported step displays
-“Interrupted” after failure or supersession, or “Final status not recorded” after
-success. Details retain the original report; future steps remain incomplete.
-Operator and external-event entries show their recorded time without transaction
-duration. Missing attribution remains unspecified. Full prompts retain Markdown
-whitespace; only overview previews collapse whitespace.
-
-Adjacent failed attempts form retry history only through explicit parent record
-identifiers. Earlier attempts start collapsed. Selecting a historical attempt in
-navigation reveals its history; scrolling alone does not expand it. Users can
-collapse the history even while a historical attempt is selected. Repeated business
-turns remain separate from retries. Historical
-results lead with the supplied summary or a bounded paragraph preview. An **In this result**
-outline exposes headings, including validation and limitations, before expansion. Short
-standalone labels before lists are included for older reports. **Read full result** opens
-the original report; **Show summary** returns to its overview. The UI does not infer
-validation verdicts from prose. A summary already at the start of the report is not
-rendered twice. Retry groups show **Earlier attempts** and the recorded failed-attempt count. The latest full result and current recovery controls remain expanded.
-External observations show their recorded time separately from refresh failures.
-A missing observation reads “Status not yet observed.”
+- Watcher cards show purpose, enabled state, process, and target before configuration.
+- [API token management](api-tokens.md) lives in the account menu. Anonymous mode shares
+  one token owner and omits logout; authenticated logout ends only the browser session.
+- [Local session transfer](operator-guide.md#transfer-a-session-to-local-pi) presents the
+  full bearer link, expiry, and download warning. Progress never implies that delivered
+  bytes can be recalled.
+- [Extension renderers](extension-ui.md) remain bounded to their supported slots.

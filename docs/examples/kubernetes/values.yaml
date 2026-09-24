@@ -1,0 +1,15 @@
+fullnameOverride: leitwerk
+
+server:
+  existingConfigSecret: leitwerk-config
+  credentialEncryption:
+    existingSecret: leitwerk-encryption-key
+  extraEnvFrom:
+    - secretRef:
+        name: leitwerk-provider
+  storage:
+    retain: true
+
+# Serves the built UI and forwards browser requests to the server.
+gateway:
+  enabled: true
