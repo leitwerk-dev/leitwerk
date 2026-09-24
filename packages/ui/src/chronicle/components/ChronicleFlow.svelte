@@ -113,6 +113,7 @@ const retryGroups = $derived(
 					turnId: item.turnId,
 					parentTurnRecordId: item.parentTurnRecordId,
 					failed: item.kind === "turn_cluster" && Boolean(item.failure),
+					itemKey: item.iteration?.itemKey,
 				}
 			: null,
 	),

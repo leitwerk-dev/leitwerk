@@ -102,8 +102,11 @@ extensions:
   - ./extensions/example
 test_roots:
   - ./tests
+sandboxes:
+  example: ./sandbox/example/composition.ts
 ```
 
+The optional `sandboxes` map names [sandbox compositions](#source-sandbox-compositions).
 Paths are relative to the manifest. `workspace_root` defaults to its directory;
 `runtime_config` is required. Optional `leitwerk.root` must identify the checkout
 executing the command. Extension entries may be paths or installed package names;
@@ -141,6 +144,14 @@ for command and hook contracts.
 `npm run dev:sandbox` starts the public source sandbox without provider credentials.
 Custom compositions supply their catalog, scenarios, scripted Pi, controls, and
 provider fixtures. Keep extension behavior outside core packages.
+
+Extension workspaces declare sandbox compositions in the manifest. With the local
+core selected, `leitwerk-dev sandbox` starts the only declared sandbox; use
+`--sandbox=NAME` when several are declared. Launcher options such as `--llm=real`
+and `reset` pass through. The sandbox runs in the foreground; Ctrl-C shuts it down.
+Keep local settings in `.leitwerk/sandbox/<name>.yaml`, not tracked files. Depend on a
+released `@leitwerk-dev/dev-sandbox` matching the other `@leitwerk-dev/*` pins, not a
+`file:` link into the checkout.
 
 The source sandbox requires a core checkout; installed packages do not include its
 supervisor, UI source, or built-in scenarios. Follow the

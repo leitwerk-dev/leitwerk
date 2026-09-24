@@ -160,7 +160,7 @@ describe("turn semantics", () => {
 							changes: {
 								type: "array",
 								description: "Nested changes",
-								items: { type: "array" as never },
+								items: { type: "tuple" as never },
 							},
 						},
 					},

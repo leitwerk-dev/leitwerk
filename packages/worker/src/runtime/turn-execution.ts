@@ -125,6 +125,7 @@ export async function executeSelectedTurn(
 		turnResultMarkdownBySemanticRef: input.session.turnResultMarkdownBySemanticRef,
 		turnResultMarkdownByProduct: input.session.turnResultMarkdownByProduct,
 		workspaceRoot: input.session.workspaceRoot,
+		...(input.session.iteration ? { iteration: input.session.iteration } : {}),
 		...(selectedTurnType === "automatic"
 			? {
 					reportProgress,

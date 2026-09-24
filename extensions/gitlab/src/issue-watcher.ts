@@ -15,7 +15,6 @@ export interface GitLabIssueWatcherConfig extends GitLabSelection {
 	/** @public */
 	pollInterval: string;
 	/** @public */
-	/** @public */
 	labels: {
 		/** @public */ trigger: string /** @public */;
 		/** @public */
@@ -30,7 +29,6 @@ export interface GitLabIssueWatcherEvent {
 	repository: GitLabProject;
 	/** @public */
 	issue: GitLabIssue;
-	/** @public */
 	/** @public */
 	labels: {
 		/** @public */ trigger: string /** @public */;
@@ -96,17 +94,16 @@ export function createGitLabIssueDiscovery(
 			if (!watcher.enabled) continue;
 			const key = `${watcher.processId}:${watcher.watcherId}`;
 			const c = watcher.config;
+			const eligible = (issue: GitLabIssue) =>
+				issue.state === "opened" &&
+				issue.labels.includes(c.labels.trigger) &&
+				!issue.labels.includes(c.labels.done);
 			if ((due.get(key) ?? 0) > now()) continue;
 			due.set(key, now() + parseDurationMs(c.pollInterval, 30000));
 			const client = integration.client(c.profile);
 			for (const repository of await selectGitLabProjects(client, c))
 				for (const issue of await client.listIssues(repository.id)) {
-					if (
-						issue.state !== "opened" ||
-						!issue.labels.includes(c.labels.trigger) ||
-						issue.labels.includes(c.labels.done)
-					)
-						continue;
+					if (!eligible(issue)) continue;
 					const id = gitlabIssueExternalId(client.baseUrl, repository.id, issue.iid);
 					if (deps.processes.listAll().some((p) => p.externalId === id)) {
 						result.skipped.push(id);
@@ -126,11 +123,7 @@ export function createGitLabIssueDiscovery(
 										label: "Recheck GitLab source issue",
 										async run() {
 											const fresh = await client.getIssue(repository.id, issue.iid);
-											if (
-												fresh.state !== "opened" ||
-												!fresh.labels.includes(c.labels.trigger) ||
-												fresh.labels.includes(c.labels.done)
-											)
+											if (!eligible(fresh))
 												throw new Error("GitLab source issue eligibility changed before launch");
 										},
 									},

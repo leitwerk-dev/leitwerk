@@ -346,7 +346,6 @@ export class GitLabClient {
 	constructor(
 		profile: GitLabProfile,
 		/** @public */
-		/** @public */
 		options: {
 			/** @internal */
 			fetch?: typeof fetch;
@@ -449,7 +448,6 @@ export class GitLabClient {
 		id: number,
 		iid: number,
 		/** @public */
-		/** @public */
 		patch: {
 			/** @public */
 			labels?: string;
@@ -469,7 +467,6 @@ export class GitLabClient {
 		return this.request(`${projectPath(id)}/issues/${iid}/notes`, signal, { body });
 	}
 	/** @public */
-	/** @public */
 	listLabels(
 		id: number,
 		signal?: AbortSignal,
@@ -480,7 +477,6 @@ export class GitLabClient {
 	> {
 		return this.pages(`${projectPath(id)}/labels`, signal);
 	}
-	/** @public */
 	/** @public */
 	createLabel(
 		id: number,
@@ -506,7 +502,6 @@ export class GitLabClient {
 	/** @public */
 	createMergeRequest(
 		id: number,
-		/** @public */
 		/** @public */
 		input: {
 			/** @public */
@@ -738,7 +733,6 @@ export class GitLabClient {
 		job: number,
 		maxBytes = 65_536,
 		signal?: AbortSignal,
-		/** @public */
 		/** @public */
 	): Promise<{
 		/** @public */

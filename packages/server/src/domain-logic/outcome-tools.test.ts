@@ -184,6 +184,52 @@ describe("turn-outcomes", () => {
 			expect(invalid?.code).toBe("invalid_scores");
 		});
 
+		it("validates required fields and rejects undeclared fields in object-array items", () => {
+			const candidateTurn = createTestLlmTurn("find_candidates", {
+				candidates_ready: {
+					description: "Candidates ready",
+					parameters: {
+						candidates: {
+							type: "array",
+							description: "Candidates",
+							required: true,
+							minItems: 1,
+							items: {
+								type: "object",
+								properties: {
+									pattern: { type: "string" },
+									evidenceRefs: {
+										type: "array",
+										minItems: 1,
+										items: { type: "string" },
+									},
+								},
+								required: ["pattern", "evidenceRefs"],
+								additionalProperties: false,
+							},
+						},
+					},
+				},
+			});
+			const validate = (candidates: unknown) =>
+				validateTurnOutcome(
+					{
+						instanceId: "agent",
+						turnRecordId: "turn",
+						turnId: "find_candidates",
+						outcome: "candidates_ready",
+						params: { candidates },
+					},
+					candidateTurn,
+				);
+			expect(validate([{ pattern: "failure", evidenceRefs: ["ev-1"] }])).toBeNull();
+			expect(validate([{ pattern: "failure" }])?.code).toBe("invalid_candidates");
+			expect(
+				validate([{ pattern: "failure", evidenceRefs: ["ev-1"], unexpected: true }])?.code,
+			).toBe("invalid_candidates");
+			expect(validate([{ pattern: "failure", evidenceRefs: [] }])?.code).toBe("invalid_candidates");
+		});
+
 		it.each([
 			[{}, "summary_required"],
 			[{ summary: "" }, "summary_required"],

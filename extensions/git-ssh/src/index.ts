@@ -1,7 +1,9 @@
 import {
 	coreHostCapabilities,
 	createCapabilityToken,
+	type LaunchPreparationCheck,
 	type LeitwerkExtensionModule,
+	SafeLaunchPreparationError,
 } from "@leitwerk-dev/process-sdk";
 import { parseProfiles, preflightGitSshAccess } from "./git-ssh-internal.js";
 
@@ -46,6 +48,48 @@ export interface GitSshIntegration {
 	profiles(): readonly string[];
 	/** @public */
 	preflight(input: GitSshAuthorizationPreflightInput): Promise<GitSshAuthorizationPreflightResult>;
+}
+
+/** Shared repository launch check; integration lookup stays lazy across reconfiguration. @internal */
+export function createGitSshPreparationCheck<
+	P extends {
+		/** @internal */
+		sshCredentialRef: string;
+		/** @internal */
+		repoLocator: string;
+		/** @internal */
+		baseBranch: string;
+		/** @internal */
+		owner: string;
+		/** @internal */
+		repo: string;
+	},
+>(
+	access: "read" | "write",
+	params: P,
+	integration: () => GitSshIntegration,
+): LaunchPreparationCheck<P> {
+	return {
+		id: `ssh_${access}`,
+		label: `Verify SSH ${access} access`,
+		async run({ signal, logger }) {
+			signal.throwIfAborted();
+			const result = await integration().preflight({
+				credentialRef: params.sshCredentialRef,
+				repoLocator: params.repoLocator,
+				baseBranch: params.baseBranch,
+				requireWrite: access === "write",
+			});
+			signal.throwIfAborted();
+			if (!result.ok) {
+				logger.warn(`Git SSH ${result.access} preflight failed: ${result.detail}`);
+				throw new SafeLaunchPreparationError(
+					`SSH ${result.access} access failed: ${result.detail}`,
+					`Authorize Git SSH profile '${params.sshCredentialRef}' for '${params.owner}/${params.repo}' with read/write access, then try again.`,
+				);
+			}
+		},
+	};
 }
 
 /** @public */

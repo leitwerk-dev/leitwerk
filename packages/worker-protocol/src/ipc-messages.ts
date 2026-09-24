@@ -206,6 +206,22 @@ export interface IntegrationToolDeclaration {
 	parameters: Record<string, unknown>;
 }
 
+/** Active frozen item of a mapped LLM turn; the run manifest is never sent. @internal */
+export interface WorkerMappedItem {
+	/** @internal */
+	runId: string;
+	/** @internal */
+	itemKey: string;
+	/** @internal */
+	itemLabel: string;
+	/** @internal */
+	itemIndex: number;
+	/** @internal */
+	itemCount: number;
+	/** Codec-serialized item value. @internal */
+	item: unknown;
+}
+
 /** @internal */
 interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	/** @internal */
@@ -250,6 +266,8 @@ interface WorkerStartPayloadBase extends WorkerRuntimeContextSnapshot {
 	developmentTools?: DevelopmentToolsStartConfig;
 	/** Non-secret declarations authorized for the selected LLM turn. @internal */
 	integrationTools?: IntegrationToolDeclaration[];
+	/** Present when the start executes one item of a mapped LLM turn. @internal */
+	iteration?: WorkerMappedItem;
 }
 
 /** @internal */

@@ -15,6 +15,11 @@
 			"source": "./src/index.ts",
 			"import": "./dist/index.js",
 			"types": "./dist/index.d.ts"
+		},
+		"./composition": {
+			"source": "./src/composition.ts",
+			"import": "./dist/composition.js",
+			"types": "./dist/composition.d.ts"
 		}
 	},
 	"scripts": {

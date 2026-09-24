@@ -1,5 +1,6 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
+	type AutomaticOutcomeBuilder,
 	type ExternalActionSource,
 	type FlowAutomaticRunContext,
 	flow,
@@ -9,6 +10,14 @@ import type { RepositoryChangeState } from "./repository-change-state.js";
 import { publishRebase, startRebase } from "./repository-rebase/git.js";
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
 import { rebasePrompt } from "./repository-rebase/prompt.js";
+
+export {
+	pullRequestPublicationCallbacks,
+	pullRequestPublicationSources,
+	readPullRequestFeedback,
+	reconcilePullRequestSourceIssue,
+	resolvePullRequestGitIdentity,
+} from "./pull-request-publication-internal.js";
 
 /** @public */
 export interface PublicationRequest {
@@ -389,7 +398,6 @@ function deliveryProgress(value: PublicationState, label: string, activeStepId?:
 export function createRepositoryChangePublication<P extends PublicationParams>(
 	adapter: RepositoryChangePublicationAdapter<P>,
 ) {
-	const applyEvidence = applyPublicationEvidence;
 	const ids = adapter.ids;
 	const publication = flow.fragment<P, RepositoryChangeState>(`${adapter.namespace}-publication`);
 	const remote = (state: RepositoryChangeState) => readPublicationState(state, adapter.namespace);
@@ -431,7 +439,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			if (current.pendingEvidence) {
 				const evidence = current.pendingEvidence;
 				const needsOperator = evidence.kind === "failure" && current.ciRecoveryCycles >= 3;
-				current = applyEvidence(ctx.params, current, evidence, !needsOperator);
+				current = applyPublicationEvidence(ctx.params, current, evidence, !needsOperator);
 				current.pendingEvidence = null;
 				if (evidence.kind === "cancelled") return result("aborted");
 				if (evidence.kind === "failure")
@@ -504,47 +512,27 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			update({ delivery: { stage: "awaiting" } });
 			ctx.reportProgress(deliveryProgress(current, adapter.label, "await_evidence"));
 			return result("awaiting");
-		})
-		.outcome("awaiting", (outcome) =>
-			outcome
-				.description("Delivery is waiting for external evidence")
-				.object("nextState")
-				.wait()
-				.state(({ event }) => event.params.nextState as RepositoryChangeState),
+		});
+	const outcome = (o: AutomaticOutcomeBuilder<P, RepositoryChangeState>, description: string) =>
+		o
+			.description(description)
+			.object("nextState")
+			.state(({ event }) => event.params.nextState as RepositoryChangeState);
+	delivery
+		.outcome("awaiting", (o) => outcome(o, "Delivery is waiting for external evidence").wait())
+		.outcome("feedback_ready", (o) =>
+			outcome(o, "Pull request feedback is acknowledged and ready for revision").to(ids.feedback),
 		)
-		.outcome("feedback_ready", (outcome) =>
-			outcome
-				.description("Pull request feedback is acknowledged and ready for revision")
-				.object("nextState")
-				.to(ids.feedback)
-				.state(({ event }) => event.params.nextState as RepositoryChangeState),
-		)
-		.outcome("completed", (outcome) =>
-			outcome
-				.description("Merged pull request was reconciled")
-				.object("nextState")
-				.complete()
-				.state(({ event }) => event.params.nextState as RepositoryChangeState),
-		)
-		.outcome("aborted", (outcome) =>
-			outcome
-				.description("Closed pull request was reconciled")
-				.object("nextState")
-				.lifecycleStatus("aborted")
-				.state(({ event }) => event.params.nextState as RepositoryChangeState),
+		.outcome("completed", (o) => outcome(o, "Merged pull request was reconciled").complete())
+		.outcome("aborted", (o) =>
+			outcome(o, "Closed pull request was reconciled").lifecycleStatus("aborted"),
 		);
-	for (const [outcome, target] of [
+	for (const [name, target] of [
 		["ci_ready", ids.ciRepair],
 		["conflict_ready", ids.feedback],
 		["operator_action", ids.operator],
 	] as const) {
-		delivery.outcome(outcome, (o) =>
-			o
-				.description("Route observed delivery evidence")
-				.object("nextState")
-				.to(target)
-				.state(({ event }) => event.params.nextState as RepositoryChangeState),
-		);
+		delivery.outcome(name, (o) => outcome(o, "Route observed delivery evidence").to(target));
 	}
 	for (const source of adapter.sources) {
 		const attach = (id: string, operator: boolean) =>
@@ -574,7 +562,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 							input.state,
 							source.kind === "observation"
 								? { pendingEvidence: evidence }
-								: applyEvidence(input.params, current, evidence, !operator),
+								: applyPublicationEvidence(input.params, current, evidence, !operator),
 						),
 					};
 				});

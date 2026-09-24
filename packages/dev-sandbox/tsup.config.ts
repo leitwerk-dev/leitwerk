@@ -6,6 +6,7 @@ export default workspaceBuild({
 		"src/launcher-entry.ts",
 		"src/storage.ts",
 		"src/storage-entry.ts",
+		"src/testing.ts",
 		"src/backend.ts",
 		"src/preflight.ts",
 	],

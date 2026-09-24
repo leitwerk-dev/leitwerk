@@ -29,6 +29,7 @@ import { hasErrorCode, isEnoent } from "@leitwerk-dev/process-sdk";
 import { resolvePiAgentDir } from "@leitwerk-dev/process-sdk/pi-config";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import type { WorkerMappedItem } from "@leitwerk-dev/worker-protocol";
 import type { ManagedPiResourceManifest } from "./managed-pi-bootstrap.js";
 import {
 	assertResultStayedOnExecutionBranch,
@@ -77,6 +78,8 @@ export interface PiTreeHandleOptions {
 	configSnapshot?: ConfigSnapshot;
 	/** @internal */
 	modelProfileId?: string | null;
+	/** Active mapped-turn item, for test doubles that script per-item behavior. @internal */
+	iteration?: WorkerMappedItem;
 	/** @internal */
 	piConfig?: {
 		/** @internal */

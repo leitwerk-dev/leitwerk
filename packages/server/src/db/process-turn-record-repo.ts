@@ -1,4 +1,5 @@
 import type {
+	MappedTurnItemRef,
 	ModelSelectionProvenance,
 	ProcessTurnRecord,
 	ProcessTurnRecordPathType,
@@ -10,7 +11,7 @@ import type {
 import { asc, desc, eq } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now } from "./repo-helpers.js";
+import { generateId, mappedItemRef, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 /** @internal */
@@ -50,6 +51,8 @@ export interface UpdateProcessTurnRecordInput {
 	/** @internal */
 	modelSelectionProvenance?: ModelSelectionProvenance | null;
 	/** @internal */
+	iteration?: MappedTurnItemRef | null;
+	/** @internal */
 	turnResultMarkdown?: string | null;
 	/** @internal */
 	errorSummary?: string | null;
@@ -81,6 +84,7 @@ function rowToProcessTurnRecord(row: typeof s.turnRecords.$inferSelect): Process
 						source: row.modelSelectionSource as ModelSelectionProvenance["source"],
 					}
 				: null,
+		iteration: mappedItemRef(row),
 		turnResultMarkdown: row.turnResultMarkdown ?? null,
 		errorSummary: row.errorSummary ?? null,
 		errorClass: (row.errorClass as WorkerErrorClass | null | undefined) ?? null,
@@ -116,6 +120,9 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 				errorClass: input.errorClass ?? null,
 				startedAt: input.startedAt ?? now(),
 				endedAt: input.endedAt ?? null,
+				mappedRunId: input.iteration?.runId ?? null,
+				mappedItemKey: input.iteration?.itemKey ?? null,
+				mappedItemIndex: input.iteration?.itemIndex ?? null,
 			};
 			db.insert(s.turnRecords).values(values).run();
 			return rowToProcessTurnRecord(values);

@@ -96,7 +96,10 @@ no extensions. `createNotebookComposition(seed)` accepts a notebook name and see
 files; initialization creates real Git history once. Custom compositions export a
 `SandboxCompositionFactory` and can be selected through
 `LEITWERK_SANDBOX_COMPOSITION_ENTRY`; `LEITWERK_SANDBOX_WORKSPACE_ROOT` selects a
-workspace with a `package.json`. No discovery mechanism is involved.
+workspace with a `package.json`. Alternatively, `--composition=PATH` reads the
+workspace root and named entries from a manifest's `sandboxes` map, and
+`--sandbox=NAME` selects one when it declares several. No discovery mechanism is
+involved.
 
 Startup is source-only and requires this checkout's supervisor and UI tooling.
 The package does not include these built-in scenarios or offer installed-release

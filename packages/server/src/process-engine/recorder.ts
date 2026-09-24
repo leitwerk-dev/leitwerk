@@ -13,6 +13,7 @@ import { evaluateAtStableAvailabilityRevision } from "../process-model-policy/in
 import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
 import type { Decision, Reaction } from "./decision.js";
 import { logProcessEngineError, publicInternalEngineFailureMessage } from "./internal-failures.js";
+import { planMappedTurnEntries } from "./mapped-turns.js";
 import type {
 	OperationData,
 	OperationInput,
@@ -161,6 +162,17 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 	 * commits all writes in one SQLite transaction, then derives a complete
 	 * reaction list for the post-commit stage.
 	 */
+	const mappedPlan = await planMappedTurnEntries({
+		processGraphs: deps.processGraphs,
+		registry: deps.getProcessActionRegistry?.(),
+		mappedRuns: deps.mappedRuns,
+		projects: deps.projects,
+		process: initialProcess,
+		writes: decision.writes,
+	});
+	if (!mappedPlan.ok) {
+		return { ok: false, stage: "pre_commit", code: mappedPlan.code, message: mappedPlan.message };
+	}
 	const baselineWrites = structuredClone(decision.writes);
 	const runModelPreparation = async (availability: ModelStatusCacheSnapshot) => {
 		const candidateProcess: ProcessInstance = {

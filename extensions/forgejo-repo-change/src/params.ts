@@ -1,10 +1,10 @@
 import {
 	createRepositoryChangeParamsCodec,
-	normalizeRepositoryChangeParamsInput,
+	normalizeRepositoryIssueChangeParams,
 	type RepositoryChangeLaunchParams,
-	repositoryChangeParamsRecord,
+	type RepositoryIssueOriginParams,
+	type RepositoryUiOriginParams,
 } from "@leitwerk-dev/coding/repository-change-launch";
-import { trimString } from "@leitwerk-dev/domain";
 
 /** @public */
 interface ForgejoRepoChangeCommonParams {
@@ -21,32 +21,10 @@ interface ForgejoRepoChangeCommonParams {
 }
 
 /** @public */
-export interface ForgejoIssueOriginParams {
-	/** @internal */
-	origin: "issue";
-	/** @internal */
-	issueNumber: number;
-	/** @internal */
-	issueUrl: string;
-	/** @internal */
-	triggerLabel: string;
-	/** @internal */
-	doneLabel: string;
-}
+export interface ForgejoIssueOriginParams extends RepositoryIssueOriginParams {}
 
 /** @public */
-export interface ForgejoUiOriginParams {
-	/** @internal */
-	origin: "ui";
-	/** @internal */
-	issueNumber: null;
-	/** @internal */
-	issueUrl: null;
-	/** @internal */
-	triggerLabel: null;
-	/** @internal */
-	doneLabel: null;
-}
+export interface ForgejoUiOriginParams extends RepositoryUiOriginParams {}
 
 /** @public */
 export type ForgejoRepoChangeParams = RepositoryChangeLaunchParams<
@@ -64,50 +42,12 @@ export function isIssueOrigin(
 export const forgejoRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<ForgejoRepoChangeParams>({
 		normalize(value) {
-			const shared = normalizeRepositoryChangeParamsInput(value, "Forgejo Repo Change");
-			const record = repositoryChangeParamsRecord(value, "Forgejo Repo Change");
-			const text = (name: string) => {
-				const value = trimString(record[name]);
-				if (!value) throw new Error(`Forgejo Repo Change requires ${name}`);
-				return value;
-			};
-
-			const common = {
-				...shared,
-				forgejoProfile: text("forgejoProfile"),
-				woodpeckerProfile: text("woodpeckerProfile"),
-				sshCredentialRef: text("sshCredentialRef"),
-				owner: text("owner"),
-				repo: text("repo"),
-			};
-			const origin = trimString(record.origin);
-			if (origin === "ui") {
-				return {
-					...common,
-					origin: "ui" as const,
-					issueNumber: null,
-					issueUrl: null,
-					triggerLabel: null,
-					doneLabel: null,
-				};
-			}
-			if (origin && origin !== "issue") {
-				throw new Error("Forgejo Repo Change requires a valid origin");
-			}
-
-			if (
-				typeof record.issueNumber !== "number" ||
-				!Number.isInteger(record.issueNumber) ||
-				record.issueNumber <= 0
-			)
-				throw new Error("Forgejo Repo Change requires issueNumber");
-			return {
-				...common,
-				origin: "issue" as const,
-				issueNumber: record.issueNumber,
-				issueUrl: text("issueUrl"),
-				triggerLabel: text("triggerLabel"),
-				doneLabel: text("doneLabel"),
-			};
+			return normalizeRepositoryIssueChangeParams(value, "Forgejo Repo Change", [
+				"forgejoProfile",
+				"woodpeckerProfile",
+				"sshCredentialRef",
+				"owner",
+				"repo",
+			]);
 		},
 	});

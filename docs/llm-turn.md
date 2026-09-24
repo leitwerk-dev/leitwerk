@@ -17,6 +17,14 @@ the failed attempt's checkpoint; Retry creates a new attempt and runs preparatio
 checkpoint reached the server before a worker failure, deterministic preparation may run again.
 Preparation failure records the owning LLM turn as failed without prompting Pi.
 
+## Mapped turns
+
+Entering a mapped LLM turn freezes an ordered list of items in a durable run. Items
+execute sequentially, each requiring start acceptance. An item result commits atomically
+with the next item's start or, for the last item, with the collected state and route.
+An outcome is accepted only for the current accepted turn record and the run's current
+item. Workers receive only the active item, not the full run.
+
 ## Durable path
 
 These messages use ProcessEngine operations:

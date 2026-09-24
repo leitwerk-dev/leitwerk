@@ -1,10 +1,10 @@
 import {
 	createRepositoryChangeParamsCodec,
-	normalizeRepositoryChangeParamsInput,
+	normalizeRepositoryIssueChangeParams,
 	type RepositoryChangeLaunchParams,
-	repositoryChangeParamsRecord,
+	type RepositoryIssueOriginParams,
+	type RepositoryUiOriginParams,
 } from "@leitwerk-dev/coding/repository-change-launch";
-import { trimString } from "@leitwerk-dev/domain";
 
 /** @public */
 interface GitHubRepoChangeCommonParams {
@@ -19,32 +19,10 @@ interface GitHubRepoChangeCommonParams {
 }
 
 /** @public */
-export interface GitHubIssueOriginParams {
-	/** @public */
-	origin: "issue";
-	/** @public */
-	issueNumber: number;
-	/** @public */
-	issueUrl: string;
-	/** @public */
-	triggerLabel: string;
-	/** @public */
-	doneLabel: string;
-}
+export interface GitHubIssueOriginParams extends RepositoryIssueOriginParams {}
 
 /** @public */
-export interface GitHubUiOriginParams {
-	/** @public */
-	origin: "ui";
-	/** @public */
-	issueNumber: null;
-	/** @public */
-	issueUrl: null;
-	/** @public */
-	triggerLabel: null;
-	/** @public */
-	doneLabel: null;
-}
+export interface GitHubUiOriginParams extends RepositoryUiOriginParams {}
 
 /** @public */
 export type GitHubRepoChangeParams = RepositoryChangeLaunchParams<
@@ -62,49 +40,11 @@ export function isIssueOrigin(
 export const githubRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<GitHubRepoChangeParams>({
 		normalize(value) {
-			const shared = normalizeRepositoryChangeParamsInput(value, "GitHub Repo Change");
-			const record = repositoryChangeParamsRecord(value, "GitHub Repo Change");
-			const text = (name: string) => {
-				const value = trimString(record[name]);
-				if (!value) throw new Error(`GitHub Repo Change requires ${name}`);
-				return value;
-			};
-
-			const common = {
-				...shared,
-				githubProfile: text("githubProfile"),
-				sshCredentialRef: text("sshCredentialRef"),
-				owner: text("owner"),
-				repo: text("repo"),
-			};
-			const origin = trimString(record.origin);
-			if (origin === "ui") {
-				return {
-					...common,
-					origin: "ui" as const,
-					issueNumber: null,
-					issueUrl: null,
-					triggerLabel: null,
-					doneLabel: null,
-				};
-			}
-			if (origin && origin !== "issue") {
-				throw new Error("GitHub Repo Change requires a valid origin");
-			}
-
-			if (
-				typeof record.issueNumber !== "number" ||
-				!Number.isInteger(record.issueNumber) ||
-				record.issueNumber <= 0
-			)
-				throw new Error("GitHub Repo Change requires issueNumber");
-			return {
-				...common,
-				origin: "issue" as const,
-				issueNumber: record.issueNumber,
-				issueUrl: text("issueUrl"),
-				triggerLabel: text("triggerLabel"),
-				doneLabel: text("doneLabel"),
-			};
+			return normalizeRepositoryIssueChangeParams(value, "GitHub Repo Change", [
+				"githubProfile",
+				"sshCredentialRef",
+				"owner",
+				"repo",
+			]);
 		},
 	});

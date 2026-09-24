@@ -18,8 +18,14 @@ export type ChronicleRailRow =
 	| { kind: "item"; id: string; item: ChronicleSelectableItem }
 	| ChronicleRepeatedTurns;
 
+/** Distinct mapped items are separate business work and never fold into history. */
 function isHistoricalTurn(item: ChronicleSelectableItem): item is ChronicleSelectableTurnItem {
-	return item.kind === "turn" && item.status === "completed" && item.shape !== "square";
+	return (
+		item.kind === "turn" &&
+		item.status === "completed" &&
+		item.shape !== "square" &&
+		!item.iteration
+	);
 }
 
 /** Fold consecutive complete cycles; keep the latest result beside its pending decision. */
@@ -38,6 +44,7 @@ export function buildChronicleRailRows(
 						turnId: record.turnId,
 						parentTurnRecordId: record.parentTurnRecordId,
 						failed: record.outcome === "failed",
+						itemKey: record.iteration?.itemKey,
 					}
 				: null;
 		});

@@ -18,6 +18,7 @@ export interface ChronicleTurnRailItem {
 	presentation: ChronicleTurnPresentation;
 	hierarchy: "primary" | "secondary";
 	kindLabel: string;
+	iteration?: TurnRecordView["iteration"];
 }
 
 export interface ChronicleCompletedTurnSection {
@@ -38,6 +39,21 @@ export interface ChronicleLiveTailModel {
 
 export function formatChronicleTurnLabel(value: string): string {
 	return formatTurnId(value);
+}
+
+/** Mapped item titles carry operator-authored labels and are shown verbatim. */
+export function formatChronicleTurnTitle(
+	turnRecord: Pick<TurnRecordView, "displayTurn" | "iteration">,
+): string {
+	return turnRecord.iteration
+		? turnRecord.displayTurn
+		: formatChronicleTurnLabel(turnRecord.displayTurn);
+}
+
+export function formatChronicleIterationProgress(
+	iteration: NonNullable<TurnRecordView["iteration"]>,
+): string {
+	return `Item ${iteration.index + 1} of ${iteration.count}`;
 }
 
 export function getChronicleTurnPresentation(
@@ -109,7 +125,7 @@ export function buildChronicleTurnRailItem(turnRecord: TurnRecordView): Chronicl
 	return {
 		turnRecordId: turnRecord.id,
 		turnId: turnRecord.turnId,
-		title: formatChronicleTurnLabel(turnRecord.displayTurn),
+		title: formatChronicleTurnTitle(turnRecord),
 		turnLabel: turnRecord.turnId,
 		status: turnRecord.status,
 		createdAt: turnRecord.createdAt,
@@ -117,5 +133,6 @@ export function buildChronicleTurnRailItem(turnRecord: TurnRecordView): Chronicl
 		presentation: getChronicleTurnPresentation(turnRecord),
 		hierarchy: getChronicleTurnHierarchy(turnRecord),
 		kindLabel: getChronicleTurnKindLabel(turnRecord),
+		...(turnRecord.iteration ? { iteration: turnRecord.iteration } : {}),
 	};
 }

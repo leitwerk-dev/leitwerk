@@ -132,7 +132,11 @@ export type {
 	WorkerRunHandle,
 	WorkerTurnHandler,
 } from "./extension-api.js";
-export { findUiLauncherById, SafeLaunchPreparationError } from "./extension-api.js";
+export {
+	findUiLauncherById,
+	SafeLaunchPreparationError,
+	SafeOutcomePlanningError,
+} from "./extension-api.js";
 export { defineExternalActionSource } from "./external-action-source.js";
 export {
 	createExternalSourcePollReporter,
@@ -142,11 +146,17 @@ export {
 	AutomaticOutcomeBuilder,
 	createFlowPromptContext,
 	type FlowAutomaticRunContext,
+	type FlowForEachOptions,
 	FlowFragmentBuilder,
 	type FlowLlmPreparationContext,
+	type FlowMappedPreparationContext,
+	type FlowMappedPromptContext,
 	type FlowPromptContext,
 	flow,
 	HumanFlowBuilder,
+	MappedCollectBuilder,
+	MappedLlmFlowBuilder,
+	MappedOutcomeBuilder,
 } from "./flow.js";
 export { atomicWriteUtf8, hasErrorCode, isEnoent, isPathInside } from "./fs-utils.js";
 export {
@@ -168,6 +178,23 @@ export {
 	normalizeLeafOutcomeCaptureResult,
 	validateLeafOutcomeCaptureResult,
 } from "./leaf-outcomes.js";
+export {
+	collectMappedResults,
+	type FrozenMappedItem,
+	freezeMappedItems,
+	MAPPED_COLLECT_TRIGGER,
+	type MappedCollect,
+	type MappedItemInput,
+	type MappedItemYield,
+	type MappedLlmTurnSpec,
+	type MappedOutcomeContext,
+	type MappedSnapshotInput,
+	type MappedTurnItemContext,
+	type MappedTurnIteration,
+	type MappedTurnServerContext,
+	type MappedYieldInput,
+	yieldMappedItemResult,
+} from "./mapped-turn.js";
 export {
 	builtinPiProvider,
 	type ConfiguredProviderModel,
@@ -299,6 +326,7 @@ export {
 } from "./turn-semantics.js";
 export type {
 	EventBus,
+	OutcomeToolArrayItemSpec,
 	OutcomeToolParameterSpec,
 	OutcomeToolSpec,
 	PiCustomMessageInput,

@@ -109,6 +109,8 @@ export interface RouteDeps
 		| "transaction"
 	> {
 	/** @internal */
+	mappedRuns?: RepositoryBundle["mappedRuns"];
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
 	/** @public */
 	externalSourceService?: Pick<

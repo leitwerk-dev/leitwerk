@@ -131,7 +131,13 @@ function validateOutcomeTurnResultContract<TParams = unknown, TState = unknown>(
 }
 
 function isValidOutcomeToolArrayItemType(type: unknown): boolean {
-	return type === "string" || type === "number" || type === "boolean" || type === "object";
+	return (
+		type === "string" ||
+		type === "number" ||
+		type === "boolean" ||
+		type === "object" ||
+		type === "array"
+	);
 }
 
 function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
@@ -321,7 +327,76 @@ export function validateLlmTurnDefinition<
 	}
 
 	errors.push(...validateOutcomeToolParameters("LLM", turnId, declaredOutcomes));
+	errors.push(...validateMappedTurn(turnId, turnDef));
 
+	return errors;
+}
+
+function validateMappedTurn<TOutcome extends string, TParams, TState>(
+	turnId: string,
+	turnDef: LlmTurnDefinition<TOutcome, TParams, TState>,
+): string[] {
+	const mapped = turnDef.forEach;
+	if (mapped === undefined) return [];
+	const errors: string[] = [];
+	for (const name of ["items", "key", "collect"] as const) {
+		if (typeof mapped[name] !== "function") {
+			errors.push(`Mapped turn '${turnId}' must declare ${name}`);
+		}
+	}
+	for (const name of ["itemCodec", "resultCodec"] as const) {
+		const codec = mapped[name];
+		if (typeof codec?.parse !== "function" || typeof codec?.serialize !== "function") {
+			errors.push(`Mapped turn '${turnId}' must declare ${name}`);
+		}
+	}
+	if (turnDef.turnEnd) {
+		errors.push(`Mapped turn '${turnId}' must finish items through outcome tools`);
+	}
+	if (turnDef.publishedProduct) {
+		errors.push(`Mapped turn '${turnId}' cannot publish a product from item turns`);
+	}
+	const outcomes = Object.entries(turnDef.outcomes ?? {}) as Array<
+		[string, ProcessToolOutcomeSpec<TParams, TState>]
+	>;
+	if (outcomes.length === 0) {
+		errors.push(`Mapped turn '${turnId}' must declare at least one outcome tool`);
+	}
+	for (const [outcomeId, spec] of outcomes) {
+		if (
+			"branches" in spec ||
+			spec.to !== undefined ||
+			spec.complete !== undefined ||
+			spec.lifecycleStatus !== undefined ||
+			spec.effect !== undefined ||
+			spec.lifecycleIntent !== undefined ||
+			spec.publishedProduct !== undefined
+		) {
+			errors.push(
+				`Mapped turn '${turnId}' outcome '${outcomeId}' cannot route, change state, or publish`,
+			);
+		}
+		if (typeof mapped.yields?.[outcomeId] !== "function") {
+			errors.push(`Mapped turn '${turnId}' outcome '${outcomeId}' must declare a yield`);
+		}
+	}
+	for (const outcomeId of Object.keys(mapped.yields ?? {})) {
+		if (!Object.hasOwn(turnDef.outcomes ?? {}, outcomeId)) {
+			errors.push(`Mapped turn '${turnId}' yields undeclared outcome '${outcomeId}'`);
+		}
+	}
+	const routing = mapped.routing;
+	if (routing?.kind === "static") {
+		if ((routing.to === undefined) === (routing.lifecycleStatus === undefined)) {
+			errors.push(`Mapped turn '${turnId}' collection must declare exactly one target`);
+		}
+	} else if (routing?.kind === "branches") {
+		if (Object.keys(routing.branches).length === 0 || typeof routing.choose !== "function") {
+			errors.push(`Mapped turn '${turnId}' collection routing needs branches and a chooser`);
+		}
+	} else {
+		errors.push(`Mapped turn '${turnId}' must declare a collection route`);
+	}
 	return errors;
 }
 

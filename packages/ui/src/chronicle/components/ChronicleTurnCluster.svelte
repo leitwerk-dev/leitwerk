@@ -5,6 +5,7 @@ import { formatTurnId } from "../../lib/format.js";
 import { markdownToPlainText, truncateText } from "../../lib/markdown.js";
 import type { ChronicleTurnClusterItem } from "../lib/chronicle-projection.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
+import { formatChronicleIterationProgress } from "../lib/chronicle-view-model.js";
 import { formatChronicleCost, formatChronicleDuration } from "../lib/formatting.js";
 import { presentTurnResult } from "../lib/result-presentation.js";
 import ChronicleCreateIssueButton from "./ChronicleCreateIssueButton.svelte";
@@ -72,6 +73,7 @@ const resultHeadings = $derived(
 );
 const metadata = $derived(
 	[
+		cluster.iteration ? formatChronicleIterationProgress(cluster.iteration) : null,
 		cluster.modelProfileId,
 		cluster.usage?.cost ? formatChronicleCost(cluster.usage.cost.total) : null,
 	]
@@ -105,6 +107,7 @@ function openDetails() {
 	data-turn-id={cluster.turnId}
 	data-turn-record-id={cluster.turnRecordId}
 	data-turn-kind={cluster.turnPresentation}
+	data-item-key={cluster.iteration?.itemKey}
 >
 	<ChronicleEntryHeader title={cluster.title} {kind} failed={isFailed} metadata={metadata || null} timestamp={cluster.createdAt} duration={kind === "operator" || kind === "external" ? null : formatChronicleDuration(cluster.facts.startedAt, cluster.facts.endedAt)}>
 		{#snippet controls()}
