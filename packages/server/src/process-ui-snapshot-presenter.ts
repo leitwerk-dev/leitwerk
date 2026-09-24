@@ -55,8 +55,10 @@ import {
 } from "@leitwerk-dev/protocol";
 import type { SessionSummary } from "./db/turn-summary-repo.js";
 import { normalizeExternalObservation } from "./external-source-reporting.js";
+import { getScheduledActionDetailForProcess } from "./future-execution-presenter.js";
 import { physicalWorkerStarts } from "./physical-worker-starts.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
+import { listVisibleActionsForProcess } from "./process-action-presenter.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess, getProcessGraph } from "./process-graph.js";
 import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js";
@@ -70,9 +72,7 @@ import {
 import {
 	buildProcessLaunchConfigurationView,
 	buildProcessRunDetailsView,
-	getScheduledActionDetailForProcess,
 	getSelectedTurnSummaryForProcess,
-	listVisibleActionsForProcess,
 	processDefinesLeafOutcome,
 	type RouteDeps,
 } from "./routes/process-route-helpers.js";
@@ -101,7 +101,7 @@ function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
 }
 
 function compactDetailEvents(
-	deps: RouteDeps,
+	deps: Pick<RouteDeps, "events">,
 	instanceId: string,
 	turnRecords: readonly ProcessTurnRecord[],
 ): ProcessEvent[] {
@@ -1203,8 +1203,37 @@ export function buildProcessUiSnapshotProjections(input: {
 	};
 }
 
+type ProcessUiSnapshotDeps = Pick<
+	RouteDeps,
+	| "processes"
+	| "projects"
+	| "inputs"
+	| "events"
+	| "turnRecords"
+	| "turnStarts"
+	| "turnAnnotations"
+	| "turnSummaries"
+	| "leafOutcomeSnapshots"
+	| "questionRequests"
+	| "toolApprovalRequests"
+	| "leases"
+	| "startupObservations"
+	| "futureExecutions"
+	| "processGraphs"
+	| "processActionRegistry"
+	| "processUiRegistry"
+	| "processModelPolicy"
+	| "modelStatusCache"
+	| "launcherService"
+	| "sessionReader"
+	| "sessionTransferService"
+	| "externalSourceService"
+	| "toolRenderers"
+	| "config"
+>;
+
 export class ProcessUiSnapshotAssembler {
-	constructor(private readonly deps: RouteDeps) {}
+	constructor(private readonly deps: ProcessUiSnapshotDeps) {}
 
 	async assemble(instanceId: string): Promise<ProcessDetailUiSnapshotResponseBody | null> {
 		const process = this.deps.processes.getById(instanceId);

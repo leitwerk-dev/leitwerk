@@ -51,6 +51,11 @@ Do not fetch reasoning on load, hover, idle, or reconnect with its overlay close
 A direct reasoning link renders the shell first and loads detail independently.
 Compact refreshes cannot shorten expanded history. See [UI contracts](ui.md).
 
+Process diagnostics capture related database records and their presentation before
+loading the retained session tree. A process mutation during that load cannot mix
+database states within the response. The session tree is a separate snapshot;
+the response does not imply an atomic read across SQLite and session storage.
+
 ## Server frames
 
 ### Connection control
