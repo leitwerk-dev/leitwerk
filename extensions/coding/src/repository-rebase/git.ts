@@ -50,19 +50,16 @@ function git(input: RebaseInput, ...args: string[]): string {
 function area(input: RebaseInput): string {
 	return git(input, "rev-parse", "--absolute-git-dir");
 }
-function active(input: RebaseInput): boolean {
-	return ["rebase-merge", "rebase-apply"].some((name) => existsSync(join(area(input), name)));
+function active(gitDir: string): boolean {
+	return ["rebase-merge", "rebase-apply"].some((name) => existsSync(join(gitDir, name)));
 }
-function recordPath(input: RebaseInput): string {
-	return join(area(input), "leitwerk-rebase.json");
-}
-function save(input: RebaseInput, record: RebaseRecord): void {
-	const path = recordPath(input);
+function save(gitDir: string, record: RebaseRecord): void {
+	const path = join(gitDir, "leitwerk-rebase.json");
 	writeFileSync(`${path}.tmp`, JSON.stringify(record), { mode: 0o600 });
 	renameSync(`${path}.tmp`, path);
 }
-function read(input: RebaseInput): RebaseRecord | null {
-	const file = recordPath(input);
+function read(gitDir: string): RebaseRecord | null {
+	const file = join(gitDir, "leitwerk-rebase.json");
 	return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as RebaseRecord) : null;
 }
 function requireBranch(input: RebaseInput): void {
@@ -110,9 +107,8 @@ function verifyCurrentBase(input: RebaseInput, record: RebaseRecord): void {
 		"origin",
 		`+refs/heads/${input.conflict.baseBranch}:refs/leitwerk/rebase-base`,
 	);
-	const currentBase = git(input, "rev-parse", "refs/leitwerk/rebase-base");
 	// A fast-forward is compatible with captured preparation; a rewritten base is not.
-	git(input, "merge-base", "--is-ancestor", record.baseSha, currentBase);
+	git(input, "merge-base", "--is-ancestor", record.baseSha, "refs/leitwerk/rebase-base");
 }
 
 function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: string): void {
@@ -123,13 +119,14 @@ function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: stri
 
 /** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. @internal */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
-	const old = read(input);
+	const gitDir = area(input);
+	const old = read(gitDir);
 	requireTarget(input, old?.key === conflictKey(input.conflict) ? old : null);
 	if (old?.key === conflictKey(input.conflict)) {
 		verifyCurrentBase(input, old);
 		return old;
 	}
-	if (active(input)) throw new Error("An unrelated rebase is already in progress");
+	if (active(gitDir)) throw new Error("An unrelated rebase is already in progress");
 	requireBranch(input);
 	requireClean(input);
 	git(
@@ -139,12 +136,15 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 		`+refs/heads/${input.workBranch}:refs/leitwerk/rebase-head`,
 		`+refs/heads/${input.conflict.baseBranch}:refs/leitwerk/rebase-base`,
 	);
-	if (
-		git(input, "rev-parse", "refs/leitwerk/rebase-head") !== input.conflict.headSha ||
-		git(input, "rev-parse", "HEAD") !== input.conflict.headSha
-	)
+	const [remoteSha, headSha, baseSha] = git(
+		input,
+		"rev-parse",
+		"refs/leitwerk/rebase-head",
+		"HEAD",
+		"refs/leitwerk/rebase-base",
+	).split("\n");
+	if (remoteSha !== input.conflict.headSha || headSha !== input.conflict.headSha)
 		throw new Error("Tracked branch changed before repair");
-	const baseSha = git(input, "rev-parse", "refs/leitwerk/rebase-base");
 	// Use the current fetched base, retaining the provider pair for deduplication.
 	git(input, "merge-base", "--is-ancestor", input.conflict.baseSha, baseSha);
 	const record: RebaseRecord = {
@@ -158,13 +158,14 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 		baseBranch: input.conflict.baseBranch,
 	};
 	git(input, "update-ref", "refs/leitwerk/rebase-original", record.originalHead);
-	save(input, record);
+	save(gitDir, record);
 	return record;
 }
 /** @internal */
 export function startRebase(input: RebaseInput): RebaseRecord {
 	const record = prepareRebase(input);
-	if (active(input)) return record;
+	const gitDir = area(input);
+	if (active(gitDir)) return record;
 	if (record.status === "clean") return record;
 	requireBranch(input);
 	requireClean(input);
@@ -173,17 +174,17 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	try {
 		verifyNoRepairNeeded(input, record.originalHead, record.baseSha);
 		record.status = "clean";
-		save(input, record);
+		save(gitDir, record);
 		return record;
 	} catch (error) {
 		if ((error as { status?: number }).status !== 1) throw error;
 	}
 	record.status = "rebasing";
-	save(input, record);
+	save(gitDir, record);
 	try {
 		git(input, "rebase", "--rebase-merges", record.baseSha);
 	} catch (error) {
-		if (!active(input)) throw error;
+		if (!active(gitDir)) throw error;
 	}
 	return record;
 }
@@ -198,11 +199,12 @@ export function verifyRebase(input: RebaseInput): {
 	/** @internal */
 	baseSha: string;
 } {
-	const record = read(input);
+	const gitDir = area(input);
+	const record = read(gitDir);
 	if (!record || record.key !== conflictKey(input.conflict))
 		throw new Error("Missing matching rebase metadata");
 	requireTarget(input, record);
-	if (active(input)) throw new Error("Rebase is incomplete");
+	if (active(gitDir)) throw new Error("Rebase is incomplete");
 	requireBranch(input);
 	requireClean(input);
 	const headSha = git(input, "rev-parse", "HEAD");
@@ -224,7 +226,8 @@ export function verifyRebase(input: RebaseInput): {
 /** @internal */
 export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebase> {
 	const result = verifyRebase(input);
-	const record = read(input);
+	const gitDir = area(input);
+	const record = read(gitDir);
 	if (!record) throw new Error("Missing matching rebase metadata");
 	verifyCurrentBase(input, record);
 	const remote = remoteHead(input);

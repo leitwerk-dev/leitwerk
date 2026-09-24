@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { afterAll, describe, expect, it, onTestFinished } from "vitest";
 import {
 	prepareRebase,
 	publishRebase,
@@ -35,9 +35,15 @@ function git(path: string, ...args: string[]) {
 		stdio: ["ignore", "pipe", "pipe"],
 	}).trim();
 }
-function fixture(conflicting = true) {
-	const root = mkdtempSync(join(tmpdir(), "rebase-test-"));
-	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+const templates = new Map<boolean, ReturnType<typeof createTemplate>>();
+const templateRoot = mkdtempSync(join(tmpdir(), "rebase-templates-"));
+afterAll(() => {
+	rmSync(templateRoot, { recursive: true, force: true });
+	templates.clear();
+});
+
+function createTemplate(conflicting: boolean) {
+	const root = mkdtempSync(join(templateRoot, "repo-"));
 	git(root, "init", "--bare", "remote.git");
 	git(root, "clone", "remote.git", "work");
 	const path = join(root, "work");
@@ -48,7 +54,6 @@ function fixture(conflicting = true) {
 		writeFileSync(join(path, file), content);
 		git(path, "add", ".");
 		git(path, "commit", "-m", message, ...args);
-		git(path, "push", "origin", "HEAD");
 	}
 	git(path, "checkout", "-b", "main");
 	commitFile("file", "original\n", "initial");
@@ -59,6 +64,23 @@ function fixture(conflicting = true) {
 	commitFile(conflicting ? "file" : "other", "base\n", "base");
 	const baseSha = git(path, "rev-parse", "HEAD");
 	git(path, "checkout", "work");
+	git(path, "push", "origin", "main", "work");
+	return { root, headSha, baseSha };
+}
+
+function fixture(conflicting = true) {
+	let template = templates.get(conflicting);
+	if (!template) {
+		template = createTemplate(conflicting);
+		templates.set(conflicting, template);
+	}
+	const root = mkdtempSync(join(tmpdir(), "rebase-test-"));
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+	// Copy both repositories, including Git objects, so repair and remote mutation
+	// never touch the templates or another scenario's checkout/remote.
+	cpSync(template.root, root, { recursive: true });
+	const path = join(root, "work");
+	git(path, "remote", "set-url", "origin", join(root, "remote.git"));
 	const input: RebaseInput = {
 		projectKey: "repo",
 		path,
@@ -69,8 +91,8 @@ function fixture(conflicting = true) {
 			prNumber: 1,
 			headBranch: "work",
 			baseBranch: "main",
-			headSha,
-			baseSha,
+			headSha: template.headSha,
+			baseSha: template.baseSha,
 			url: "https://git.test/owner/repo/pulls/1",
 		},
 	};
@@ -86,7 +108,7 @@ function resolve(input: RebaseInput) {
 describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 	it("rejects changed origin and push endpoints after preparation", () => {
 		const { input, path, root } = fixture(false);
-		startRebase(input);
+		prepareRebase(input);
 		git(path, "remote", "set-url", "--push", "origin", join(root, "elsewhere.git"));
 		expect(() => publishRebase(input)).toThrow("origin changed");
 		git(path, "config", "--unset", "remote.origin.pushurl");
@@ -101,7 +123,7 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 	});
 	it("rejects changed evidence branches and wrong branches after preparation", () => {
 		const { input, path } = fixture(false);
-		startRebase(input);
+		prepareRebase(input);
 		expect(() =>
 			prepareRebase({ ...input, conflict: { ...input.conflict, headBranch: "other" } }),
 		).toThrow("tracked work branch");
