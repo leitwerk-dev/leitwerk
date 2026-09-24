@@ -339,7 +339,7 @@ describe("DockerWorkerRunner.stop", () => {
 });
 
 describe("DockerWorkerRunner.list (adoption scan)", () => {
-	it("returns descriptors for managed running containers", async () => {
+	it("returns only managed running containers without removing discovered units", async () => {
 		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
 		try {
 			const { engine, runner, volume } = bindRunner(hostRoot);
@@ -351,36 +351,27 @@ describe("DockerWorkerRunner.list (adoption scan)", () => {
 				),
 			);
 			const volB = await volume.ensure("proc-stale");
-			await runner.start(
+			const stale = await runner.start(
 				startInput(
 					{ instanceId: "proc-stale", workerId: "wkr-stale", serverEpoch: "epoch-1" },
 					volB,
 				),
 			);
 
-			const all = await runner.list();
-			expect(all.map((d) => d.unitId)).toContain(current.unitId);
-			expect(all).toHaveLength(2);
-			expect(engine.containers.size).toBe(2);
-		} finally {
-			rmSync(hostRoot, { recursive: true, force: true });
-		}
-	});
-
-	it("ignores unmanaged containers discovered on the daemon", async () => {
-		const hostRoot = mkdtempSync(path.join(tmpdir(), "orch-docker-"));
-		try {
-			const { engine, runner, volume } = bindRunner(hostRoot);
-			const vol = await volume.ensure("proc-1");
-			await runner.start(startInput({ instanceId: "proc-1", workerId: "wkr-1" }, vol));
 			engine.seedContainer({
 				id: "unrelated",
 				labels: { "com.example/role": "db" },
 				running: true,
 			});
-
-			const all = await runner.list();
-			expect(all.every((d) => d.instanceId === "proc-1")).toBe(true);
+			expect(
+				(await runner.list())
+					.sort((a, b) => a.workerId.localeCompare(b.workerId))
+					.map((unit) => [unit.unitId, unit.instanceId, unit.workerId, unit.observedState]),
+			).toEqual([
+				[current.unitId, "proc-current", "wkr-current", "running"],
+				[stale.unitId, "proc-stale", "wkr-stale", "running"],
+			]);
+			expect(engine.removeCalls).toEqual([]);
 		} finally {
 			rmSync(hostRoot, { recursive: true, force: true });
 		}
