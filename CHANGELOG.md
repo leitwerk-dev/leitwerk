@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.0...v0.3.1) (2026-09-24)
+
+
+### Features
+
+* **process-sdk:** support structured outcome parameters and prepared data ([#106](https://github.com/leitwerk-dev/leitwerk/issues/106)) ([c44a4b7](https://github.com/leitwerk-dev/leitwerk/commit/c44a4b72918b728328e5fce86dac514218b68866))
+
+
+### Bug Fixes
+
+* **server:** capture consistent process diagnostics and simplify presentation ([#110](https://github.com/leitwerk-dev/leitwerk/issues/110)) ([f64c034](https://github.com/leitwerk-dev/leitwerk/commit/f64c0343991ab475b446f3a40c128b1204af9ada))
+* **server:** preserve worker correlation and durable start acknowledgements ([#111](https://github.com/leitwerk-dev/leitwerk/issues/111)) ([a2fb5a7](https://github.com/leitwerk-dev/leitwerk/commit/a2fb5a737cc4ed0660d5eb478aa45494633a8249))
+* **worker:** accept Git HTTPS capability advertisements ([#108](https://github.com/leitwerk-dev/leitwerk/issues/108)) ([515774b](https://github.com/leitwerk-dev/leitwerk/commit/515774b9729c80ec8853b9ac0fd1878f3ad2ed3e))
+
 ## [0.3.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.2.1...v0.3.0) (2026-09-22)
 
 

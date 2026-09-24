@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/woodpecker",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -25,10 +25,10 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.3.0",
-		"@leitwerk-dev/process-sdk": "0.3.0",
-		"@leitwerk-dev/watcher-utils": "0.3.0",
-		"@leitwerk-dev/test-support": "0.3.0"
+		"@leitwerk-dev/domain": "0.3.1",
+		"@leitwerk-dev/process-sdk": "0.3.1",
+		"@leitwerk-dev/watcher-utils": "0.3.1",
+		"@leitwerk-dev/test-support": "0.3.1"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1",
