@@ -1,15 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	remoteRepoChangeFixtureConstants as constants,
 	createRemoteRepoChangeFixture,
 	type RemoteRepoChangeFixture,
 	remoteState,
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
-import { TemporaryGitRemote } from "./testing/remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
 
 function processInstances(fixture: RemoteRepoChangeFixture): ProcessInstance[] {
 	return fixture.harness.processes().filter((process) => process.processId === constants.processId);
@@ -112,23 +109,9 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 // CI load. Individual driver waits remain bounded.
 describe("Forgejo repository-change composed integration", () => {
 	let fixture: RemoteRepoChangeFixture | null = null;
-	let seed: TemporaryGitRemote;
-	let seedRoot: string;
-	beforeAll(async () => {
-		seedRoot = await mkdtemp(path.join(tmpdir(), "leitwerk-forgejo-seed-"));
-		seed = new TemporaryGitRemote(seedRoot);
-	});
-	afterAll(async () => {
-		try {
-			if (!seed) return;
-			expect(seed.branches()).toEqual(["main"]);
-			expect(seed.head("main")).toBe(seed.initialSha);
-		} finally {
-			if (seedRoot) await rm(seedRoot, { recursive: true, force: true });
-		}
-	});
+	const seed = useRemoteRepoChangeSeed();
 	const createFixture: typeof createRemoteRepoChangeFixture = (preflight, options) =>
-		createRemoteRepoChangeFixture(preflight, { ...options, seed });
+		createRemoteRepoChangeFixture(preflight, { ...options, seed: seed() });
 
 	it("reconciles a closed UI pull request without a source issue and preserves aborted status after restart", async () => {
 		const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});

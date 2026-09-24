@@ -1,7 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, type TestContext, vi } from "vitest";
 import {
 	buildMiseSubprocessEnvironment,
 	DevelopmentToolPreparationError,
@@ -11,17 +11,14 @@ import {
 	validateMiseVersion,
 } from "./development-tool-environment.js";
 
-const tempRoots: string[] = [];
-
-async function createTempRoot(prefix: string): Promise<string> {
+async function createTempRoot(
+	prefix: string,
+	onTestFinished: TestContext["onTestFinished"],
+): Promise<string> {
 	const root = await mkdtemp(path.join(tmpdir(), prefix));
-	tempRoots.push(root);
+	onTestFinished(() => rm(root, { recursive: true, force: true }));
 	return root;
 }
-
-afterEach(async () => {
-	await Promise.all(tempRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
-});
 
 const isolated = {
 	runner: "isolated" as const,
@@ -63,8 +60,8 @@ describe("development tool environment", () => {
 		);
 	});
 
-	it("does not restore ambient credentials when spawning mise", async () => {
-		const root = await createTempRoot("leitwerk-mise-env-test-");
+	it("does not restore ambient credentials when spawning mise", async ({ onTestFinished }) => {
+		const root = await createTempRoot("leitwerk-mise-env-test-", onTestFinished);
 		const command = path.join(root, "mise");
 		await writeFile(
 			command,
@@ -106,8 +103,10 @@ printf '{}\\n'
 		]);
 	});
 
-	it("prepares repository roots sequentially and writes raw diagnostic output", async () => {
-		const root = await createTempRoot("leitwerk-mise-test-");
+	it("prepares repository roots sequentially and writes raw diagnostic output", async ({
+		onTestFinished,
+	}) => {
+		const root = await createTempRoot("leitwerk-mise-test-", onTestFinished);
 		const log = path.join(root, "calls.log");
 		const command = path.join(root, "mise");
 		await Promise.all([
@@ -148,8 +147,10 @@ printf '{"node":"26.3.0"}\\n'
 		expect(evidence.repositories[0].tools).toEqual([{ name: "node", version: "26.3.0" }]);
 	});
 
-	it("reuses isolated mise state across replacement environment instances", async () => {
-		const root = await createTempRoot("leitwerk-mise-replacement-test-");
+	it("reuses isolated mise state across replacement environment instances", async ({
+		onTestFinished,
+	}) => {
+		const root = await createTempRoot("leitwerk-mise-replacement-test-", onTestFinished);
 		const repository = path.join(root, "workspace", "repo");
 		const command = path.join(root, "mise");
 		const log = path.join(root, "reuse.log");
@@ -178,8 +179,11 @@ printf '{"node":"26.3.0"}\\n'
 		expect(await readFile(log, "utf8")).toBe("cold\nwarm\n");
 	});
 
-	it("escalates cancellation to SIGKILL when mise ignores SIGTERM", async () => {
-		const root = await createTempRoot("leitwerk-mise-cancel-test-");
+	it.concurrent("escalates cancellation to SIGKILL when mise ignores SIGTERM", async ({
+		expect,
+		onTestFinished,
+	}) => {
+		const root = await createTempRoot("leitwerk-mise-cancel-test-", onTestFinished);
 		const repository = path.join(root, "workspace", "repo");
 		const command = path.join(root, "mise");
 		await mkdir(repository, { recursive: true });
@@ -210,16 +214,15 @@ while :; do sleep 1; done
 		expect(Date.now() - startedAt).toBeLessThan(5_000);
 	}, 10_000);
 
-	it.each([
-		"cancel",
-		"timeout",
-	])("terminates installer descendants after mise exits on %s", async (reason) => {
-		const root = await createTempRoot("leitwerk-mise-descendant-test-");
-		const command = path.join(root, "mise");
-		const pidFile = path.join(root, "child.pid");
-		await writeFile(
-			command,
-			`#!${process.execPath}
+	it.concurrent.for(["cancel", "timeout"])(
+		"terminates installer descendants after mise exits on %s",
+		async (reason, { expect, onTestFinished }) => {
+			const root = await createTempRoot("leitwerk-mise-descendant-test-", onTestFinished);
+			const command = path.join(root, "mise");
+			const pidFile = path.join(root, "child.pid");
+			await writeFile(
+				command,
+				`#!${process.execPath}
 const { spawn } = require("node:child_process");
 const { writeFileSync } = require("node:fs");
 if (process.argv[2] === "--version") { console.log("mise ${PINNED_MISE_VERSION}"); process.exit(); }
@@ -227,47 +230,49 @@ const child = spawn(process.execPath, ["-e", 'process.on("SIGTERM", () => {}); p
 writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));
 child.on("message", () => console.log("started"));
 `,
-		);
-		await chmod(command, 0o755);
-		const abort = new AbortController();
-		let childPid: number | undefined;
-		try {
-			const preparation = new MiseDevelopmentToolEnvironment({ PATH: "/usr/bin:/bin" }).prepare({
-				config: {
-					...isolated,
-					miseCommand: command,
-					processStorageRoot: root,
-					installTimeoutMs: reason === "timeout" ? 1_000 : 10_000,
-				},
-				repositories: [{ repositoryKey: "repo", workingDirectory: root }],
-				signal: abort.signal,
-				onDiagnosticTrace(text) {
-					if (reason === "cancel" && text.includes("started")) abort.abort();
-				},
-			});
-			await expect(preparation).rejects.toMatchObject({
-				code: reason === "cancel" ? "cancelled" : "timeout",
-			});
-			childPid = Number(await readFile(pidFile, "utf8"));
-			await expect
-				.poll(() => {
+			);
+			await chmod(command, 0o755);
+			const abort = new AbortController();
+			let childPid: number | undefined;
+			try {
+				const preparation = new MiseDevelopmentToolEnvironment({ PATH: "/usr/bin:/bin" }).prepare({
+					config: {
+						...isolated,
+						miseCommand: command,
+						processStorageRoot: root,
+						installTimeoutMs: reason === "timeout" ? 1_000 : 10_000,
+					},
+					repositories: [{ repositoryKey: "repo", workingDirectory: root }],
+					signal: abort.signal,
+					onDiagnosticTrace(text) {
+						if (reason === "cancel" && text.includes("started")) abort.abort();
+					},
+				});
+				await expect(preparation).rejects.toMatchObject({
+					code: reason === "cancel" ? "cancelled" : "timeout",
+				});
+				childPid = Number(await readFile(pidFile, "utf8"));
+				await expect
+					.poll(() => {
+						try {
+							process.kill(childPid as number, 0);
+							return true;
+						} catch {
+							return false;
+						}
+					})
+					.toBe(false);
+			} finally {
+				childPid ??= await readFile(pidFile, "utf8").then(Number, () => undefined);
+				if (childPid) {
 					try {
-						process.kill(childPid as number, 0);
-						return true;
+						process.kill(childPid, "SIGKILL");
 					} catch {
-						return false;
+						/* The regression check already observed the child exit. */
 					}
-				})
-				.toBe(false);
-		} finally {
-			childPid ??= await readFile(pidFile, "utf8").then(Number, () => undefined);
-			if (childPid) {
-				try {
-					process.kill(childPid, "SIGKILL");
-				} catch {
-					/* The regression check already observed the child exit. */
 				}
 			}
-		}
-	}, 10_000);
+		},
+		10_000,
+	);
 });

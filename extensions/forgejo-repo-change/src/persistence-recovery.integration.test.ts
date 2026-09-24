@@ -6,6 +6,9 @@ import {
 	type RemoteRepoChangeFixture,
 	remoteState,
 } from "./testing/remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
+
+const seed = useRemoteRepoChangeSeed();
 
 async function reopenLegacyDelivery(f: RemoteRepoChangeFixture, id: string, issueOrigin: boolean) {
 	const retained = f.harness.process(id).snapshot().process;
@@ -59,7 +62,7 @@ async function reopenLegacyDelivery(f: RemoteRepoChangeFixture, id: string, issu
 }
 
 it("reopens armed UI delivery with legacy project bindings and repairs CI using retained profiles", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	onTestFinished(() => f.close());
 	const id = await f.publishChange(await f.launchTicketlessChange("Update the service image"));
 	const pr = f.forgejo.pullRequest();
@@ -89,7 +92,7 @@ it("reopens armed UI delivery with legacy project bindings and repairs CI using 
 }, 30_000);
 
 it("reconciles an offline merge for a legacy issue delivery once after subscription rearming", async () => {
-	const f = await createRemoteRepoChangeFixture();
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed() });
 	onTestFinished(() => f.close());
 	const id = await f.publishChange(await f.exposeTriggeredIssue());
 	const pr = f.forgejo.pullRequest();

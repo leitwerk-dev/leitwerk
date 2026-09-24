@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { ADMIN_ACTOR, type ProcessInstance, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { type LaunchPreparationCheck, SafeLaunchPreparationError } from "@leitwerk-dev/process-sdk";
 import {
@@ -9,9 +6,8 @@ import {
 	serializeFutureActionPayload,
 	serializeFutureLaunchPayload,
 } from "@leitwerk-dev/protocol";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
-import { closeDatabase } from "./db/database.js";
 import { createExtensionHost } from "./extensions/extension-host.js";
 import { createFutureExecutionLifecycle } from "./future-execution/index.js";
 import { createLaunchPipeline } from "./launch-pipeline.js";
@@ -20,18 +16,9 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import type { ProcessEngine } from "./process-engine/types.js";
 import { createServerProcessModelPolicy } from "./process-model-policy/index.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
+import { createOwnedTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { createTestLaunchPlan } from "./test-helpers/process-model-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
-
-const testDatabases: Array<{ db: ReturnType<typeof createTestDeps>["db"]; root: string }> = [];
-
-afterEach(() => {
-	for (const fixture of testDatabases.splice(0)) {
-		closeDatabase(fixture.db);
-		rmSync(fixture.root, { recursive: true, force: true });
-	}
-});
 
 function createServiceHarness(
 	options: {
@@ -48,9 +35,7 @@ function createServiceHarness(
 		failProcessTitleQueue?: boolean;
 	} = {},
 ) {
-	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-future-lifecycle-"));
-	const deps = createTestDeps({ sqlitePath: path.join(root, "leitwerk.db") });
-	testDatabases.push({ db: deps.db, root });
+	const deps = createOwnedTestDeps();
 	const processOperations = createProcessOperationCoordinator();
 	const processGraphs = createDefaultTestProcessGraphRegistry();
 	const processModelPolicy = createServerProcessModelPolicy({
@@ -172,7 +157,7 @@ function createSchedulableActionRegistry(): ProcessActionRegistry {
 }
 
 function createDueLaunch(
-	deps: ReturnType<typeof createTestDeps>,
+	deps: ReturnType<typeof createOwnedTestDeps>,
 	overrides: Partial<Parameters<typeof deps.futureExecutions.create>[0]> = {},
 ) {
 	const launchPlan = createTestLaunchPlan({
@@ -202,7 +187,7 @@ function createDueLaunch(
 }
 
 function createDueAction(
-	deps: ReturnType<typeof createTestDeps>,
+	deps: ReturnType<typeof createOwnedTestDeps>,
 	process: ProcessInstance,
 	overrides: Partial<Parameters<typeof deps.futureExecutions.create>[0]> = {},
 ) {

@@ -4,12 +4,15 @@ import {
 	createRemoteRepoChangeFixture,
 	remoteState,
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
+
+const seed = useRemoteRepoChangeSeed();
 
 it.each([
 	"no_changes",
 	"cannot_repair",
 ] as const)("feedback %s returns to waiting without publishing a change", async (feedbackOutcome) => {
-	const fixture = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome });
+	const fixture = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome, seed: seed() });
 	const id = await fixture.launchTicketlessChange("Update the service image");
 	await fixture.publishChange(id);
 	const pr = fixture.forgejo.pullRequest();
