@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
 	remoteRepoChangeFixtureConstants as constants,
 	createRemoteRepoChangeFixture,
@@ -129,69 +129,56 @@ describe("Forgejo repository-change composed integration", () => {
 	});
 	const createFixture: typeof createRemoteRepoChangeFixture = (preflight, options) =>
 		createRemoteRepoChangeFixture(preflight, { ...options, seed });
-	afterEach(async () => {
-		await fixture?.close();
-		fixture = null;
-	});
 
-	it.each([
-		["markPullRequestMerged", "completed"],
-		["markPullRequestClosed", "aborted"],
-	] as const)(
-		"reconciles a UI pull request via %s without a source issue",
-		async (terminal, lifecycleStatus) => {
-			const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});
-			fixture = await createFixture(dockerPreflight);
-			const instanceId = await fixture.launchTicketlessChange("Update the service image");
-			const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
-			// Admission and actual in-process worker startup both reach the simulated Docker boundary.
-			expect(dockerPreflight.mock.calls.length).toBeGreaterThanOrEqual(2);
-			expect(dockerPreflight.mock.calls.every(([timeoutMs]) => timeoutMs > 0)).toBe(true);
-			const params = JSON.parse(planDecision.paramsJson ?? "{}") as Record<string, unknown>;
-			expect(planDecision).toMatchObject({ externalId: null, externalUrl: null });
-			expect(params).toMatchObject({
-				origin: "ui",
-				issueNumber: null,
-				issueUrl: null,
-				baseBranch: "main",
-				prompt: "Update the service image",
-			});
-			expect(String(params.workBranch)).toMatch(
-				/^update-the-service-image-[0-9a-f]{3}-[0-9a-f]{12}$/,
-			);
+	it("reconciles a closed UI pull request without a source issue and preserves aborted status after restart", async () => {
+		const dockerPreflight = vi.fn(async (_timeoutMs: number) => {});
+		fixture = await createFixture(dockerPreflight);
+		const instanceId = await fixture.launchTicketlessChange("Update the service image");
+		const planDecision = await fixture.waitForTurn(instanceId, "plan_decision");
+		// Admission and actual in-process worker startup both reach the simulated Docker boundary.
+		expect(dockerPreflight.mock.calls.length).toBeGreaterThanOrEqual(2);
+		expect(dockerPreflight.mock.calls.every(([timeoutMs]) => timeoutMs > 0)).toBe(true);
+		const params = JSON.parse(planDecision.paramsJson ?? "{}") as Record<string, unknown>;
+		expect(planDecision).toMatchObject({ externalId: null, externalUrl: null });
+		expect(params).toMatchObject({
+			origin: "ui",
+			issueNumber: null,
+			issueUrl: null,
+			baseBranch: "main",
+			prompt: "Update the service image",
+		});
+		expect(String(params.workBranch)).toMatch(
+			/^update-the-service-image-[0-9a-f]{3}-[0-9a-f]{12}$/,
+		);
 
-			await fixture.approvePlan(instanceId);
-			await fixture.approveImplementation(instanceId);
-			await fixture.waitForTurn(instanceId, "deliver_change");
-			expect(fixture.forgejo.pullRequest()).toMatchObject({
-				head: { ref: params.workBranch },
-				base: { ref: "main" },
-			});
-			await fixture[terminal]();
-			await fixture.waitForTurn(instanceId, null, lifecycleStatus);
-			expect(
-				fixture.forgejo.calls.filter((call) =>
-					["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
-				),
-			).toEqual([]);
-			expect(fixture.forgejo.comments()).toEqual([]);
-			expect(fixture.forgejo.issues).toHaveLength(0);
-			if (terminal === "markPullRequestClosed") {
-				const writes = fixture.harness.process(instanceId).snapshot().writeReceipts;
-				await fixture.restart();
-				await fixture.pollFeedback();
-				expect(processInstances(fixture)).toHaveLength(1);
-				expect(fixture.harness.process(instanceId).snapshot().process).toMatchObject({
-					lifecycleStatus: "aborted",
-					selectedTurnId: null,
-				});
-				expect(fixture.harness.process(instanceId).snapshot().writeReceipts).toEqual(writes);
-				expect(fixture.subscriptions(instanceId)).toEqual([]);
-				expect(fixture.forgejo.issues).toHaveLength(0);
-			}
-		},
-		30_000,
-	);
+		await fixture.approvePlan(instanceId);
+		await fixture.approveImplementation(instanceId);
+		await fixture.waitForTurn(instanceId, "deliver_change");
+		expect(fixture.forgejo.pullRequest()).toMatchObject({
+			head: { ref: params.workBranch },
+			base: { ref: "main" },
+		});
+		await fixture.markPullRequestClosed();
+		await fixture.waitForTurn(instanceId, null, "aborted");
+		expect(
+			fixture.forgejo.calls.filter((call) =>
+				["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
+			),
+		).toEqual([]);
+		expect(fixture.forgejo.comments()).toEqual([]);
+		expect(fixture.forgejo.issues).toHaveLength(0);
+		const writes = fixture.harness.process(instanceId).snapshot().writeReceipts;
+		await fixture.restart();
+		await fixture.pollFeedback();
+		expect(processInstances(fixture)).toHaveLength(1);
+		expect(fixture.harness.process(instanceId).snapshot().process).toMatchObject({
+			lifecycleStatus: "aborted",
+			selectedTurnId: null,
+		});
+		expect(fixture.harness.process(instanceId).snapshot().writeReceipts).toEqual(writes);
+		expect(fixture.subscriptions(instanceId)).toEqual([]);
+		expect(fixture.forgejo.issues).toHaveLength(0);
+	}, 30_000);
 
 	it("launches without Docker and publishes with a non-default pinned bot identity", async () => {
 		const preflight = vi.fn(async () => {

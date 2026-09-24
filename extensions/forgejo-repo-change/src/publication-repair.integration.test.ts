@@ -51,7 +51,11 @@ it("UI publication retains provider bindings and reasoning, completes without an
 	expect(reasoning.json().reasoning.assistant.thinking).toContain("Plan the manifest change");
 	await f.markPullRequestMerged();
 	await f.waitForCompleted(id);
-	expect(f.forgejo.issues).toHaveLength(0);
+	expect(
+		f.forgejo.calls.filter((call) =>
+			["getIssue", "updateIssue", "addIssueComment"].includes(call.method),
+		),
+	).toEqual([]);
 	const replay = await f.launchTicketlessChange("Update the service image");
 	expect(replay).not.toBe(id);
 	expect(f.harness.process(replay).snapshot().projects[0].workBranch).not.toBe(pr.head.ref);
