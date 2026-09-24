@@ -30,15 +30,16 @@ const armed: ExternalSourceArmingLike = {
 	processId: "definition",
 	turnId: "turn",
 	externalActionId: "action",
-	source: { kind: "forge" },
+	source: { kind: "forge", config: {} },
 };
 
 test("retries rejected fires, deduplicates accepted pairs and honors persisted keys", async () => {
 	let current = armed;
-	const fire = vi.fn<ExternalSourceServiceLike["fire"]>(async () => ({ ok: true }));
-	fire.mockResolvedValueOnce({ ok: false });
+	const fire = vi.fn<ExternalSourceServiceLike["fire"]>(async () => ({ ok: true, process: null }));
+	fire.mockResolvedValueOnce({ ok: false, stage: "pre_commit", error: "Rejected fixture event" });
 	const observe = vi.fn<NonNullable<ExternalSourceServiceLike["observe"]>>(async () => ({
 		ok: true,
+		process: null,
 	}));
 	const sources: ExternalSourceServiceLike = {
 		listArmed: () => [current],
@@ -114,12 +115,12 @@ test("checks freshness again after observation completes", async () => {
 		listArmed: () => [current],
 		fire: async () => {
 			attempts++;
-			return { ok: true };
+			return { ok: true, process: null };
 		},
 		observe: async () => {
 			await Promise.resolve();
 			current = { ...armed, generation: "2" };
-			return { ok: true };
+			return { ok: true, process: null };
 		},
 	};
 	const report = createExternalSourcePollReporter(sources, { created: [], errors: [] });

@@ -1,7 +1,7 @@
+import { conflictKey } from "@leitwerk-dev/coding/repository-rebase";
 import { FORGEJO_PR_CONFLICT_KIND, setupForgejoIntegration } from "@leitwerk-dev/forgejo";
 import { GITHUB_PR_STATE_KIND, setupGitHubIntegration } from "@leitwerk-dev/github";
 import type { CoreServerSetupDeps, ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
-import { conflictKey } from "@leitwerk-dev/repository-rebase";
 import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 

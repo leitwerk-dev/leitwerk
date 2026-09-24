@@ -1,10 +1,10 @@
+import { type ConflictEvidence, conflictKey } from "@leitwerk-dev/coding/repository-rebase";
 import {
 	type CoreServerSetupDeps,
 	createExternalSourcePollReporter,
 	type ExternalActionSource,
 	type ExternalSourceArmingLike,
 } from "@leitwerk-dev/process-sdk";
-import { type ConflictEvidence, conflictKey } from "@leitwerk-dev/repository-rebase";
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";

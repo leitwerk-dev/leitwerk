@@ -59,6 +59,11 @@
 			"source": "./src/repository-change-publication.ts",
 			"import": "./dist/repository-change-publication.js",
 			"types": "./dist/repository-change-publication.d.ts"
+		},
+		"./repository-rebase": {
+			"source": "./src/repository-rebase/index.ts",
+			"import": "./dist/repository-rebase/index.js",
+			"types": "./dist/repository-rebase/index.d.ts"
 		}
 	},
 	"scripts": {
@@ -66,8 +71,7 @@
 	},
 	"dependencies": {
 		"@leitwerk-dev/domain": "0.2.1",
-		"@leitwerk-dev/process-sdk": "0.2.1",
-		"@leitwerk-dev/repository-rebase": "0.2.1"
+		"@leitwerk-dev/process-sdk": "0.2.1"
 	},
 	"devDependencies": {
 		"@leitwerk-dev/test-support": "0.2.1",

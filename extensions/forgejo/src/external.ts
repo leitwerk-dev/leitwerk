@@ -1,5 +1,5 @@
+import { describeConflict } from "@leitwerk-dev/coding/repository-rebase";
 import { defineExternalActionSource } from "@leitwerk-dev/process-sdk";
-import { describeConflict } from "@leitwerk-dev/repository-rebase";
 
 /** @internal */
 export const FORGEJO_PR_CONFLICT_KIND = "@leitwerk-private/forgejo.pr_conflict";

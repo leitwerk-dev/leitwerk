@@ -161,13 +161,6 @@ function checkCoreIntegrationNames(rootDir) {
 	const extensions = new Set([...SOURCE_FILE_EXTENSIONS, ".sql", ".json", ".md"]);
 	const violations = [];
 	for (const filePath of walkFilesWithExtensions(packagesDir, extensions)) {
-		// Optional rebase evidence preserves its public provider discriminator. This
-		// pure entrypoint normalizes provider data; extension imports remain forbidden.
-		if (
-			path.relative(rootDir, filePath) ===
-			path.join("packages", "repository-rebase", "src", "index.ts")
-		)
-			continue;
 		for (const [index, line] of readFileSync(filePath, "utf8").split("\n").entries()) {
 			if (!CORE_INTEGRATION_NAME_PATTERN.test(line)) continue;
 			violations.push(

@@ -6,18 +6,18 @@ import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 
 import { type ConflictEvidence, conflictKey } from "./index.js";
 
-/** @public */
+/** @internal */
 export interface RebaseInput {
-	/** @public */
+	/** @internal */
 	projectKey: string;
-	/** @public */
+	/** @internal */
 	path: string;
-	/** @public */
+	/** @internal */
 	workBranch: string;
-	/** @public */
+	/** @internal */
 	conflict: ConflictEvidence;
 }
-/** @public */
+/** @internal */
 interface RebaseRecord {
 	/** @internal */
 	key: string;
@@ -161,7 +161,7 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 	save(input, record);
 	return record;
 }
-/** @public */
+/** @internal */
 export function startRebase(input: RebaseInput): RebaseRecord {
 	const record = prepareRebase(input);
 	if (active(input)) return record;
@@ -187,9 +187,9 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	}
 	return record;
 }
-/** @public */
+/** @internal */
 export function verifyRebase(input: RebaseInput): {
-	/** @public */
+	/** @internal */
 	headSha: string;
 	/** @internal */
 	changed: boolean;
@@ -221,7 +221,7 @@ export function verifyRebase(input: RebaseInput): {
 		baseSha: record.baseSha,
 	};
 }
-/** @public */
+/** @internal */
 export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebase> {
 	const result = verifyRebase(input);
 	const record = read(input);

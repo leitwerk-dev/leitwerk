@@ -98,7 +98,6 @@
 				"@leitwerk-dev/telegram",
 				"@leitwerk-dev/dev-sandbox",
 				"@leitwerk-dev/ticket-creation",
-				"@leitwerk-dev/repository-rebase",
 				"@leitwerk-dev/forgejo",
 				"@leitwerk-dev/github",
 				"@leitwerk-dev/woodpecker",
@@ -235,11 +234,6 @@
 		},
 		"extensions/ticket-creation": {
 			"component": "@leitwerk-dev/ticket-creation",
-			"skip-github-release": true,
-			"skip-changelog": true
-		},
-		"packages/repository-rebase": {
-			"component": "@leitwerk-dev/repository-rebase",
 			"skip-github-release": true,
 			"skip-changelog": true
 		},

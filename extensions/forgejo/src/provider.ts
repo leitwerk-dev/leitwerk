@@ -1,3 +1,4 @@
+import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/coding/repository-rebase";
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	type CoreServerSetupDeps,
@@ -10,7 +11,6 @@ import {
 	type RegisteredProcessWatcherLike,
 	repositoryFeedbackBatch,
 } from "@leitwerk-dev/process-sdk";
-import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { ForgejoIntegration } from "./capability.js";
 import type { ForgejoIssue, ForgejoRepository } from "./client.js";
