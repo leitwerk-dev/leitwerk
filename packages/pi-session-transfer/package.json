@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/pi-session-transfer",
-	"version": "0.2.1",
+	"version": "0.3.0",
 	"description": "Import a Leitwerk process workspace and Pi conversation into local Pi",
 	"repository": {
 		"type": "git",
@@ -22,7 +22,7 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/session-transfer": "0.2.1"
+		"@leitwerk-dev/session-transfer": "0.3.0"
 	},
 	"peerDependencies": {
 		"@earendil-works/pi-coding-agent": "*",

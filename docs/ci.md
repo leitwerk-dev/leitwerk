@@ -35,11 +35,11 @@ Release PRs run **npm package registration**. If names are missing, its summary 
 npm run publish:bootstrap
 ```
 
-Requires npm 11.16+, the macOS/Linux `script` utility, and `npm login` with 2FA enabled. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
+Requires npm 11.16+ within npm 11 and `npm login` with 2FA enabled. Run from an interactive terminal on macOS/Linux. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
 
-Reruns skip matching publishers and resume incomplete setup. Conflicting publishers and unrecognized trust output stop setup. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
+Reruns skip registered package names and matching publishers, and resume incomplete trust setup. Conflicting publishers stop setup before writes; they are never overwritten. Authentication prompts, notices, and writes go directly to the terminal. Read-only publisher checks use a separate structured JSON channel, not parsed terminal output. The adapter uses npm 11's internal trust-list response API; unsupported versions or malformed responses fail closed. Review npm's confirmation prompts for new publishers. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
 
-Bootstrap changes also need an authorized live acceptance check: complete interactive bootstrap, inspect the registry's tags and publisher settings, rerun to confirm no changes, and publish through the configured GitHub workflow. Local tests do not establish npm authentication or OIDC compatibility. Do not create packages or change trust settings merely to run the automated suite.
+Bootstrap changes also need an authorized live acceptance check: complete interactive bootstrap, inspect the registry's tags and publisher settings, rerun to confirm no writes, and publish through the configured GitHub workflow. Local tests do not establish npm authentication or OIDC compatibility. Do not create packages or change trust settings merely to run the automated suite.
 
 ## Running an RC
 
