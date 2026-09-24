@@ -207,10 +207,6 @@ function toJsonValue(value: unknown, context: string): string {
 	if (json === undefined) {
 		throw new SafeOutcomePlanningError("invalid_mapped_value", `${context} is not JSON`);
 	}
-	const reparsed = JSON.parse(json) as unknown;
-	if (JSON.stringify(reparsed) !== json) {
-		throw new SafeOutcomePlanningError("invalid_mapped_value", `${context} is not JSON`);
-	}
 	return json;
 }
 
@@ -295,11 +291,6 @@ export function freezeMappedItems<TParams, TState>(
 	};
 }
 
-/** Parses one serialized item through the item codec. @internal */
-export function parseMappedItem<TItem>(spec: { itemCodec: Codec<TItem> }, item: unknown): TItem {
-	return spec.itemCodec.parse(item);
-}
-
 /** Maps one item outcome to its serialized, codec-validated result. @internal */
 export async function yieldMappedItemResult<TParams, TState>(input: {
 	/** @internal */
@@ -320,7 +311,7 @@ export async function yieldMappedItemResult<TParams, TState>(input: {
 			`Mapped turn '${input.turnId}' has no result for outcome '${input.event.outcome}'`,
 		);
 	}
-	const item = parseMappedItem(input.spec, input.iteration.item);
+	const item = input.spec.itemCodec.parse(input.iteration.item);
 	const value = await yieldResult({
 		ctx: {
 			...input.ctx,

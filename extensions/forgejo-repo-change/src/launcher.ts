@@ -1,15 +1,14 @@
-import { createRepositoryChangeUiLauncher } from "@leitwerk-dev/coding/repository-change-launch";
+import {
+	createRepositoryChangeUiLauncher,
+	repositoryVisibilityCheck,
+} from "@leitwerk-dev/coding/repository-change-launch";
 import type {
 	ForgejoGitIdentity,
 	ForgejoIntegration,
 	ForgejoRepository,
 } from "@leitwerk-dev/forgejo";
 import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
-import {
-	type LaunchPreparationCheck,
-	type ProcessLaunchConfig,
-	SafeLaunchPreparationError,
-} from "@leitwerk-dev/process-sdk";
+import type { LaunchPreparationCheck, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
 import type { WoodpeckerIntegration } from "@leitwerk-dev/woodpecker";
 import { type ForgejoRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
@@ -119,24 +118,11 @@ export function createForgejoRepoChangeLauncher() {
 		{ params }: ProcessLaunchConfig<ForgejoRepoChangeParams>,
 	): readonly LaunchPreparationCheck<ForgejoRepoChangeParams>[] {
 		return [
-			{
-				id: "repository_visibility",
-				label: "Check repository visibility",
-				async run({ signal }) {
-					signal.throwIfAborted();
-					const repositoryName = `${params.owner}/${params.repo}`;
-					const visible = (await repositories(params.forgejoProfile)).some(
-						(candidate) => candidate.full_name === repositoryName,
-					);
-					signal.throwIfAborted();
-					if (!visible) {
-						throw new SafeLaunchPreparationError(
-							"Repository is not visible",
-							"Grant the selected Forgejo profile access to the repository, then try again.",
-						);
-					}
-				},
-			},
+			repositoryVisibilityCheck("Forgejo", async () =>
+				(await repositories(params.forgejoProfile)).some(
+					(candidate) => candidate.full_name === `${params.owner}/${params.repo}`,
+				),
+			),
 			createGitSshPreparationCheck("read", params, () => requireDependencies().gitSsh),
 			createGitSshPreparationCheck("write", params, () => requireDependencies().gitSsh),
 		];

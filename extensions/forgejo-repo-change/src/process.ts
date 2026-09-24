@@ -13,11 +13,7 @@ import {
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { forgejoExternal, forgejoIssueWatcherSource } from "@leitwerk-dev/forgejo";
 import { woodpeckerExternal } from "@leitwerk-dev/woodpecker";
-import {
-	type createForgejoRepoChangeLauncher,
-	forgejoRepoChangeLaunchConfig,
-	forgejoRepoChangeParams,
-} from "./launcher.js";
+import type { createForgejoRepoChangeLauncher } from "./launcher.js";
 import {
 	type ForgejoRepoChangeParams,
 	forgejoRepoChangeParamsCodec,
@@ -152,28 +148,7 @@ export function createForgejoRepoChangeProcess(
 		description: "Launch a remote repository change for Forgejo issues carrying the trigger label",
 		source: forgejoIssueWatcherSource,
 		preparationChecks: launcher.preparationChecks,
-		async resolveLaunchConfig({ profile, repository, issue, labels }) {
-			const issueNumber = issue.number;
-			const title = issue.title.trim();
-			const body = issue.body?.trim() ?? "";
-			const issueUrl = issue.html_url;
-			const binding = launcher.resolveProfiles(profile);
-			const gitIdentity = await launcher.resolveGitIdentity(profile);
-			const params: ForgejoRepoChangeParams = {
-				...forgejoRepoChangeParams(repository, {
-					...binding,
-					profile,
-					workBranch: `leitwerk/issue-${issueNumber}`,
-					prompt: `${title}${body ? `\n\n${body}` : ""}`,
-				}),
-				origin: "issue",
-				issueNumber,
-				issueUrl,
-				triggerLabel: labels.trigger,
-				doneLabel: labels.done,
-			};
-			return forgejoRepoChangeLaunchConfig(params, title, gitIdentity);
-		},
+		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
 	});
 
 	const definition = createRepositoryChangeProcess<ForgejoRepoChangeParams>({

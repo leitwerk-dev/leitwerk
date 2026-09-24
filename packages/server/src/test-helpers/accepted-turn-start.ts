@@ -2,15 +2,32 @@ import type { ResolvedTurnStart } from "@leitwerk-dev/domain";
 import type { AppContext } from "../app.js";
 
 /** @internal */
-export function createAcceptedLlmTurn(
-	ctx: AppContext | null,
-	input: Parameters<AppContext["deps"]["turnRecords"]["create"]>[0] & {
+type AcceptedTurnRepos = Pick<
+	AppContext["deps"],
+	"processes" | "turnRecords" | "turnStarts" | "leases"
+>;
+
+/** @internal */
+type AcceptedTurnContext = {
+	/** @internal */
+	deps: AcceptedTurnRepos;
+};
+
+/** Compatibility name for existing LLM fixtures. @internal */
+export const createAcceptedLlmTurn = createAcceptedWorkerTurn;
+/** Compatibility name for existing LLM starts. @internal */
+export const createAcceptedLlmTurnStart = createAcceptedWorkerTurnStart;
+
+/** @internal */
+export function createAcceptedWorkerTurn(
+	ctx: AcceptedTurnContext | null,
+	input: Parameters<AcceptedTurnRepos["turnRecords"]["create"]>[0] & {
 		/** @internal */
 		id: string;
 		/** @internal */
-		turnType: "llm";
+		turnType: "llm" | "automatic";
 	},
-	options: Parameters<typeof createAcceptedLlmTurnStart>[3] & {
+	options: Parameters<typeof createAcceptedWorkerTurnStart>[3] & {
 		/** @internal */
 		current?: boolean;
 		/** @internal */
@@ -18,24 +35,25 @@ export function createAcceptedLlmTurn(
 	} = {},
 ) {
 	if (!ctx) throw new Error("Server context not initialized");
+	const { deps: repos } = ctx;
 	const current = options.current ?? input.status === "running";
-	const lease = ctx.deps.leases.create({
+	const lease = repos.leases.create({
 		instanceId: input.instanceId,
 		workerId: options.workerId ?? `wkr_${input.id}`,
 		state: current ? (input.status === "failed" ? "failed" : "busy") : "exited",
 	});
-	const start = createAcceptedLlmTurnStart(ctx, input, lease.id, options);
-	const record = ctx.deps.turnRecords.create({
+	const start = createAcceptedWorkerTurnStart(ctx, input, lease.id, options);
+	const record = repos.turnRecords.create({
 		...input,
 		turnStartRecordId: start.id,
 		acceptedWorkerLeaseId: lease.id,
 	});
 	if (current) {
-		ctx.deps.processes.update(input.instanceId, {
+		repos.processes.update(input.instanceId, {
 			currentExecution: { kind: "worker_start", id: start.id },
 		});
 	} else {
-		ctx.deps.leases.update(lease.id, {
+		repos.leases.update(lease.id, {
 			exitedAt: input.endedAt ?? input.startedAt ?? new Date().toISOString(),
 		});
 	}
@@ -43,9 +61,11 @@ export function createAcceptedLlmTurn(
 }
 
 /** @internal */
-export function createAcceptedLlmTurnStart(
-	ctx: AppContext,
+function createAcceptedWorkerTurnStart(
+	ctx: AcceptedTurnContext,
 	input: {
+		/** @internal */
+		turnType?: "llm" | "automatic";
 		/** @internal */
 		id: string;
 		/** @internal */
@@ -80,27 +100,31 @@ export function createAcceptedLlmTurnStart(
 		id: options.id ?? `tsr_${input.id}`,
 		instanceId: input.instanceId,
 		turnId: input.turnId,
-		turnType: "llm",
+		turnType: input.turnType ?? "llm",
 		proposedTurnRecordId: input.id,
 		startKind: "selected_turn",
 		recoveryTurnRecordId: null,
 		continuation: null,
 		state: {
 			kind: "accepted",
-			start: options.preparedStart ?? {
-				kind: "llm",
-				model: options.model ?? {
-					profileId: "fixture-profile",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					thinkingLevel: "off",
-				},
-				providerOptions: {},
-				providerWorkerConfig: null,
-				piResourceSnapshotDigest: options.piResourceSnapshotDigest ?? "fixture-resource-digest",
-				workerRuntimeProfileId: options.workerRuntimeProfileId ?? "local",
-				piSettings: {},
-			},
+			start:
+				input.turnType === "automatic"
+					? { kind: "automatic" }
+					: (options.preparedStart ?? {
+							kind: "llm",
+							model: options.model ?? {
+								profileId: "fixture-profile",
+								providerId: "fixture-provider",
+								modelId: "fixture-model",
+								thinkingLevel: "off",
+							},
+							providerOptions: {},
+							providerWorkerConfig: null,
+							piResourceSnapshotDigest:
+								options.piResourceSnapshotDigest ?? "fixture-resource-digest",
+							workerRuntimeProfileId: options.workerRuntimeProfileId ?? "local",
+							piSettings: {},
+						}),
 			turnRecordId: input.id,
 			acceptedWorkerLeaseId,
 		},

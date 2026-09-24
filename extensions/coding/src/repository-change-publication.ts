@@ -402,7 +402,6 @@ function deliveryProgress(value: PublicationState, label: string, activeStepId?:
 export function createRepositoryChangePublication<P extends PublicationParams>(
 	adapter: RepositoryChangePublicationAdapter<P>,
 ) {
-	const applyEvidence = applyPublicationEvidence;
 	const ids = adapter.ids;
 	const publication = flow.fragment<P, RepositoryChangeState>(`${adapter.namespace}-publication`);
 	const remote = (state: RepositoryChangeState) => readPublicationState(state, adapter.namespace);
@@ -444,7 +443,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			if (current.pendingEvidence) {
 				const evidence = current.pendingEvidence;
 				const needsOperator = evidence.kind === "failure" && current.ciRecoveryCycles >= 3;
-				current = applyEvidence(ctx.params, current, evidence, !needsOperator);
+				current = applyPublicationEvidence(ctx.params, current, evidence, !needsOperator);
 				current.pendingEvidence = null;
 				if (evidence.kind === "cancelled") return result("aborted");
 				if (evidence.kind === "failure")
@@ -567,7 +566,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 							input.state,
 							source.kind === "observation"
 								? { pendingEvidence: evidence }
-								: applyEvidence(input.params, current, evidence, !operator),
+								: applyPublicationEvidence(input.params, current, evidence, !operator),
 						),
 					};
 				});

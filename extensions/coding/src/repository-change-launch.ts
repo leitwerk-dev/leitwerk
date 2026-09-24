@@ -9,7 +9,11 @@ export type {
 export {
 	createRepositoryChangeParamsCodec,
 	normalizeRepositoryChangeParamsInput,
+	normalizeRepositoryIssueChangeParams,
 	normalizeRepositoryIssueOrigin,
 	repositoryChangeParamsRecord,
 } from "./repository-change-launch-internal.js";
-export { createRepositoryChangeUiLauncher } from "./repository-change-ui-launcher-internal.js";
+export {
+	createRepositoryChangeUiLauncher,
+	repositoryVisibilityCheck,
+} from "./repository-change-ui-launcher-internal.js";

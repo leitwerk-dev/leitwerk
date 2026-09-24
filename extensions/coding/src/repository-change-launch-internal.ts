@@ -109,6 +109,28 @@ export function normalizeRepositoryChangeParamsInput(
 	};
 }
 
+/** Normalize issue-capable repository params with provider-owned required text fields. @internal */
+export function normalizeRepositoryIssueChangeParams<K extends string>(
+	value: unknown,
+	displayName: string,
+	fields: readonly K[],
+): NormalizedRepositoryChangeParamsInput &
+	Record<K, string> &
+	(RepositoryIssueOriginParams | RepositoryUiOriginParams) {
+	const shared = normalizeRepositoryChangeParamsInput(value, displayName);
+	const record = repositoryChangeParamsRecord(value, displayName);
+	const text = (name: string) => {
+		const value = trimString(record[name]);
+		if (!value) throw new Error(`${displayName} requires ${name}`);
+		return value;
+	};
+	return {
+		...shared,
+		...(Object.fromEntries(fields.map((name) => [name, text(name)])) as Record<K, string>),
+		...normalizeRepositoryIssueOrigin(record, displayName, text),
+	};
+}
+
 /** @public */
 export function createRepositoryChangeParamsCodec<T extends RepositoryChangeParamsBase>(input: {
 	/** @public */

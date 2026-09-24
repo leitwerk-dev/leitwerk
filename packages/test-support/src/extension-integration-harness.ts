@@ -3,7 +3,6 @@ import type { ExtensionTestCapability } from "./test-capability.js";
 export type { ExtensionTestCapability } from "./test-capability.js";
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type {
 	Actor,
@@ -18,7 +17,11 @@ import {
 	type ExtensionProcessDefinition,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
-import { createAcceptedLlmTurn, prepareAcceptedFixtureStart } from "@leitwerk-dev/server/testing";
+import {
+	createAcceptedWorkerTurn,
+	prepareAcceptedFixtureStart,
+} from "@leitwerk-dev/server/testing";
+import { persistPiResourceBundleForStart } from "@leitwerk-dev/worker";
 import { postImmediateLaunch } from "./http-launch.js";
 import { createPersistentIntegrationFixture } from "./integration-harness.js";
 import { observe, type TestObservation } from "./observations.js";
@@ -462,10 +465,7 @@ export async function createExtensionIntegrationHarness(
 	});
 	const manual = options.execution === "manual";
 	let closed = false;
-	const pending = new Map<
-		string,
-		{ turnId: string; resolve(): void; reject(error: Error): void }
-	>();
+	const pending = new Map<string, { turnId: string; resolve(): void }>();
 	const permits = new Set<string>();
 	const executing = new Set<string>();
 	const scripts = new Map<string, IntegrationTurnScript>();
@@ -572,7 +572,6 @@ export async function createExtensionIntegrationHarness(
 										pending.delete(id);
 										resolve();
 									},
-									reject,
 								});
 							})
 					: undefined,
@@ -705,8 +704,20 @@ export async function createExtensionIntegrationHarness(
 									catalog.piContributions,
 								)
 							: null;
+					const turnId = `trn_${randomUUID()}`;
+					if (prepared)
+						await persistPiResourceBundleForStart({
+							bundlesDir: path.join(
+								ctx.config.storage.process_workspaces_dir,
+								id,
+								".leitwerk",
+								"pi-resource-bundles",
+							),
+							startRecordId: `tsr_${turnId}`,
+							digest: prepared.bundle.digest,
+							deliveredBundle: prepared.bundle.bytes,
+						});
 					return ctx.deps.transaction((repos) => {
-						const turnId = `trn_${randomUUID()}`;
 						const timestamp = new Date().toISOString();
 						const input = {
 							id: turnId,
@@ -726,77 +737,11 @@ export async function createExtensionIntegrationHarness(
 							turnResultMarkdown:
 								fixture.execution.status === "succeeded" ? fixture.execution.markdown : null,
 						};
-						if (turn.kind === "llm") {
-							if (!prepared) throw new Error("Missing fixture preparation");
-							const bundleDir = path.join(
-								ctx.config.storage.process_workspaces_dir,
-								id,
-								".leitwerk",
-								"pi-resource-bundles",
-							);
-							mkdirSync(path.join(bundleDir, "starts"), { recursive: true, mode: 0o700 });
-							writeFileSync(
-								path.join(bundleDir, `${prepared.bundle.digest}.tar`),
-								prepared.bundle.bytes,
-								{ mode: 0o600 },
-							);
-							writeFileSync(
-								path.join(bundleDir, "starts", `tsr_${turnId}.json`),
-								JSON.stringify({
-									startRecordId: `tsr_${turnId}`,
-									digest: prepared.bundle.digest,
-									persistedAt: timestamp,
-								}),
-								{ mode: 0o600 },
-							);
-
-							createAcceptedLlmTurn(
-								{
-									...ctx,
-									deps: {
-										...ctx.deps,
-										processes: repos.processes,
-										turnRecords: repos.turnRecords,
-										turnStarts: repos.turnStarts,
-										leases: repos.leases,
-									},
-								},
-								{ ...input, turnType: "llm", modelProfileId: prepared.start.model.profileId },
-								{ current: running, preparedStart: prepared?.start },
-							);
-						} else {
-							const lease = repos.leases.create({
-								instanceId: id,
-								workerId: `wkr_${randomUUID()}`,
-								state: running ? "busy" : "exited",
-							});
-							const start = repos.turnStarts.create({
-								instanceId: id,
-								turnId: fixture.turnId,
-								turnType: "automatic",
-								proposedTurnRecordId: turnId,
-								startKind: "selected_turn",
-								recoveryTurnRecordId: null,
-								continuation: null,
-								state: {
-									kind: "accepted",
-									start: { kind: "automatic" },
-									turnRecordId: turnId,
-									acceptedWorkerLeaseId: lease.id,
-								},
-							});
-							repos.turnRecords.create({
-								...input,
-								turnType: "automatic",
-								turnStartRecordId: start.id,
-								acceptedWorkerLeaseId: lease.id,
-							});
-							if (running)
-								repos.processes.update(id, {
-									currentExecution: { kind: "worker_start", id: start.id },
-								});
-							else repos.leases.update(lease.id, { exitedAt: timestamp });
-						}
+						createAcceptedWorkerTurn(
+							{ deps: repos },
+							{ ...input, turnType: turn.kind, modelProfileId: prepared?.start.model.profileId },
+							{ current: running, preparedStart: prepared?.start },
+						);
 						if (fixture.execution.status === "succeeded")
 							repos.turnAnnotations.create({
 								instanceId: id,

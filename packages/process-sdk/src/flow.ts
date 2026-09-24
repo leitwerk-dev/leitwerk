@@ -719,15 +719,19 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	}
 
 	/** @internal */
-	protected publishedMarkdownFields() {
-		return this.publishedMarkdownParameter
-			? {
-					/** @internal */
-					publishedProduct: this.publishedMarkdownParameter,
-					/** @internal */
-					turnResultMarkdownParameter: this.publishedMarkdownParameter,
-				}
-			: {};
+	protected buildParameterSpec(kind: string): ProcessToolOutcomeSpec<TParams, TState> {
+		if (!this.outcomeDescription) throw new Error(`${kind} must declare .description(...)`);
+		return {
+			description: this.outcomeDescription,
+			parameters: this.parameters,
+			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
+			...(this.publishedMarkdownParameter
+				? {
+						publishedProduct: this.publishedMarkdownParameter,
+						turnResultMarkdownParameter: this.publishedMarkdownParameter,
+					}
+				: {}),
+		};
 	}
 
 	/** @public */
@@ -903,18 +907,13 @@ export class OutcomeToolBuilder<
 
 	/** @internal */
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
-		if (!this.outcomeDescription) {
-			throw new Error("LLM outcome tool must declare .description(...)");
-		}
+		const parameters = this.buildParameterSpec("LLM outcome tool");
 		if (this.stateRouting && this.hasRoute()) {
 			throw new Error("State-routed outcome cannot declare another route");
 		}
 		const stateRouting = this.stateRouting;
 		return {
-			description: this.outcomeDescription,
-			parameters: this.parameters,
-			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
-			...this.publishedMarkdownFields(),
+			...parameters,
 			...(stateRouting
 				? {
 						branches: Object.fromEntries(
@@ -951,9 +950,7 @@ export class AutomaticOutcomeBuilder<
 
 	/** @internal */
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
-		if (!this.outcomeDescription) {
-			throw new Error("Automatic outcome must declare .description(...)");
-		}
+		const parameters = this.buildParameterSpec("Automatic outcome");
 		const configuredEffect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		const effect = this.waits
 			? async (
@@ -967,10 +964,7 @@ export class AutomaticOutcomeBuilder<
 				}
 			: configuredEffect;
 		return {
-			description: this.outcomeDescription,
-			parameters: this.parameters,
-			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
-			...this.publishedMarkdownFields(),
+			...parameters,
 			...this.buildRouteTarget(),
 			...(effect ? { effect } : {}),
 		};

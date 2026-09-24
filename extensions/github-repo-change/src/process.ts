@@ -12,11 +12,7 @@ import {
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { githubExternal, githubIssueWatcherSource } from "@leitwerk-dev/github";
-import {
-	type createGitHubRepoChangeLauncher,
-	githubRepoChangeLaunchConfig,
-	githubRepoChangeParams,
-} from "./launcher.js";
+import type { createGitHubRepoChangeLauncher } from "./launcher.js";
 import {
 	type GitHubRepoChangeParams,
 	githubRepoChangeParamsCodec,
@@ -150,28 +146,7 @@ export function createGitHubRepoChangeProcess(
 		description: "Launch a remote repository change for GitHub issues carrying the trigger label",
 		source: githubIssueWatcherSource,
 		preparationChecks: launcher.preparationChecks,
-		async resolveLaunchConfig({ profile, repository, issue, labels }) {
-			const issueNumber = issue.number;
-			const title = issue.title.trim();
-			const body = issue.body?.trim() ?? "";
-			const issueUrl = issue.html_url;
-			const binding = launcher.resolveProfiles(profile);
-			const gitIdentity = await launcher.resolveGitIdentity(profile);
-			const params: GitHubRepoChangeParams = {
-				...githubRepoChangeParams(repository, {
-					...binding,
-					profile,
-					workBranch: `leitwerk/issue-${issueNumber}`,
-					prompt: `${title}${body ? `\n\n${body}` : ""}`,
-				}),
-				origin: "issue",
-				issueNumber,
-				issueUrl,
-				triggerLabel: labels.trigger,
-				doneLabel: labels.done,
-			};
-			return githubRepoChangeLaunchConfig(params, title, gitIdentity);
-		},
+		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
 	});
 
 	const definition = createRepositoryChangeProcess<GitHubRepoChangeParams>({
