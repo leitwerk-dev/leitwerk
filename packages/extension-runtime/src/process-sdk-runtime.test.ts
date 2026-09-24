@@ -235,16 +235,13 @@ describe("process builders", () => {
 		const builder = createServerProcessBuilder<{ mode: string }, { attempts: number }>();
 		const outcomeHandler = vi.fn();
 		const cleanupHandler = vi.fn();
-		builder.action({
-			id: "retry",
-			label: "Retry",
-			plan: async () => {},
-		});
+		const plan = vi.fn();
+		builder.action({ id: "retry", label: "Retry", plan });
 		builder.onTurnOutcome("run_llm_review", outcomeHandler);
 		builder.onCleanup(cleanupHandler);
 
 		const definition = builder.getDefinition();
-		expect(definition.actions.get("retry")?.label).toBe("Retry");
+		expect(definition.actions.get("retry")).toEqual({ id: "retry", label: "Retry", plan });
 		expect(definition.turnOutcomeHandlers.get("run_llm_review")).toEqual([outcomeHandler]);
 		expect(definition.cleanupHandlers).toEqual([cleanupHandler]);
 	});
@@ -265,14 +262,15 @@ describe("process builders", () => {
 
 	it("collects explicit side-effect execute-only actions", () => {
 		const builder = createServerProcessBuilder();
+		const execute = vi.fn();
 		builder.action({
 			id: "send_notification",
 			label: "Send notification",
 			executionMode: "side_effect",
-			execute: async () => {},
+			execute,
 		});
 
-		expect([...builder.getDefinition().actions.keys()]).toEqual(["send_notification"]);
+		expect(builder.getDefinition().actions.get("send_notification")?.execute).toBe(execute);
 	});
 
 	it("rejects invalid action previews on server actions", () => {
@@ -307,17 +305,12 @@ describe("process builders", () => {
 
 	it("collects a single leaf outcome definition", () => {
 		const builder = createUiProcessBuilder();
-		builder.leafOutcome({
+		const capture = vi.fn();
+		builder.leafOutcome({ rendererId: "test:details.leaf_outcome", capture });
+		expect(builder.getDefinition().leafOutcome).toEqual({
 			rendererId: "test:details.leaf_outcome",
-			capture: () => ({
-				rendererId: "test:details.leaf_outcome",
-				props: { title: "Leaf" },
-				fallbackMarkdown: "## Leaf",
-			}),
+			capture,
 		});
-
-		const definition = builder.getDefinition();
-		expect(definition.leafOutcome?.rendererId).toBe("test:details.leaf_outcome");
 	});
 
 	it("rejects duplicate or invalid leaf outcome definitions and validates capture results", () => {
@@ -612,7 +605,7 @@ describe("process builders", () => {
 describe("runWorkerTurnForTest", () => {
 	it("runs worker turns without the worker host", async () => {
 		const handler = vi.fn(async (run) => {
-			await run.turn(
+			const turn = await run.turn(
 				llmTurn({
 					availableTools: [],
 					description: "Verify",
@@ -628,12 +621,13 @@ describe("runWorkerTurnForTest", () => {
 					},
 				}),
 			);
+			expect(turn).toEqual({ outcome: "build_passing", params: { summary: "passed" } });
 			run.park("manual_follow_up");
 		});
 
 		const result = await runWorkerTurnForTest(handler, {
 			process: createTestProcessInstance({ selectedTurnId: "verify_build" }),
-			turnResults: [{ outcome: "build_passing", params: {} }],
+			turnResults: [{ outcome: "build_passing", params: { summary: "passed" } }],
 		});
 
 		expect(result.turnCalls).toEqual([{ turnId: "verify_build", options: undefined }]);
@@ -929,11 +923,12 @@ describe("extension catalog test helpers", () => {
 });
 
 describe("extension host setup", () => {
-	it("runs server setup hooks in catalog dependency order", async () => {
+	it("awaits server setup hooks in catalog dependency order", async () => {
 		const calls: string[] = [];
 		const dependency: LeitwerkExtensionModule = {
 			manifest: { id: "ticket", version: "0.1.0" },
 			async setupServer() {
+				await Promise.resolve();
 				calls.push("ticket");
 			},
 		};

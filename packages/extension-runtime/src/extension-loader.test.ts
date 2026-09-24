@@ -225,7 +225,7 @@ describe("resolveExtensionEntries", () => {
 		expect(entry.pi?.serverEntryPath).toBe(path.join(pkgDir, "dist", "pi-server.js"));
 	});
 
-	it("rejects Pi entries and resources outside their owning package", async () => {
+	it("rejects a Pi worker entry outside its owning package", async () => {
 		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
 		const root = await createWorkspace();
 		await createExtensionPackage(root, {
