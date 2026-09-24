@@ -92,7 +92,12 @@ Images support Linux `amd64` and `arm64`. The chart pins them by digest. The Git
 
 ## Dependency updates
 
-Renovate opens dependency-update PRs. Routine non-major updates become eligible for auto-merge once the dependency release is seven days old and checks pass. Major updates require maintainer approval. Security updates bypass the waiting period.
+Renovate opens dependency-update PRs after a 14-day release-age cooldown, following
+[Renovate’s recommendation](https://docs.renovatebot.com/upgrade-best-practices/#wait-two-weeks-before-automerging-third-party-dependencies).
+The cooldown applies to all routine dependency updates, including majors and
+weekly lockfile maintenance. Non-major updates become eligible for auto-merge
+after the cooldown and required checks pass. Major updates also require
+maintainer approval. Security updates bypass the waiting period.
 
 The **Dependency updates** workflow runs hourly on `main` and can be dispatched
 manually. It reads `renovate.json` from this repository and does not discover other
