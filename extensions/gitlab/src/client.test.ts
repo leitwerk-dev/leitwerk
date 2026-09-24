@@ -13,7 +13,13 @@ import {
 } from "./client.js";
 import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
-import { ensureGitLabComment, ensureGitLabSeenReaction } from "./tools.js";
+import {
+	ensureGitLabComment,
+	ensureGitLabInlineComment,
+	ensureGitLabSeenReaction,
+	gitLabCommentMarker,
+	updateGitLabComment,
+} from "./tools.js";
 
 function writeHarness<T>(execute: (writes: ExternalWrites) => Promise<T>) {
 	const writes = bindExternalWrites(createInMemoryExternalWriteLog(), "process");
@@ -133,6 +139,92 @@ describe("GitLab boundary", () => {
 		const reopened = writeHarness((writes) => ensureGitLabComment({ ...input, writes }));
 		await reopened();
 		expect(posts).toBe(1);
+	});
+	it("updates a retry-safe comment in place and preserves its marker", async () => {
+		const marker = gitLabCommentMarker({
+			baseUrl: profile.baseUrl,
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			writeKey: "review",
+		});
+		const notes = [{ id: 42, body: `Review in progress.\n\n${marker}` }];
+		const request = vi.fn(async (_url: URL | Request | string, options?: RequestInit) => {
+			if (options?.method === "PUT") {
+				notes[0] = { id: 42, body: JSON.parse(String(options.body)).body };
+				return Response.json(notes[0]);
+			}
+			return Response.json(notes);
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			writeKey: "review",
+			body: "Review in progress.",
+		};
+		await updateGitLabComment({ ...input, body: "Review complete." });
+		expect(notes[0]?.body).toBe(`Review complete.\n\n${marker}`);
+		await updateGitLabComment({ ...input, body: "Review complete." });
+		expect(request.mock.calls.filter(([, options]) => options?.method === "PUT")).toHaveLength(1);
+	});
+	it("creates one retry-safe inline discussion at the requested diff line", async () => {
+		const discussions: Array<{ id: string; notes: Array<{ id: number; body: string }> }> = [];
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
+			const pathname = new URL(String(url)).pathname;
+			if (pathname.endsWith("/diffs"))
+				return Response.json([
+					{
+						old_path: "src/auth.ts",
+						new_path: "src/auth.ts",
+						diff: "@@ -41,1 +41,2 @@",
+						new_file: false,
+						deleted_file: false,
+						renamed_file: false,
+					},
+				]);
+			if (options?.method === "POST") {
+				posts++;
+				const payload = JSON.parse(String(options.body));
+				expect(payload.position).toEqual({
+					position_type: "text",
+					base_sha: "base",
+					start_sha: "start",
+					head_sha: "head",
+					old_path: "src/auth.ts",
+					new_path: "src/auth.ts",
+					new_line: 42,
+				});
+				const discussion = { id: "thread", notes: [{ id: 1, body: payload.body }] };
+				discussions.push(discussion);
+				return Response.json(discussion);
+			}
+			return Response.json(discussions);
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			writeKey: "review:f1",
+			body: "**MAJOR** Token written to logs.",
+			path: "src/auth.ts",
+			line: 42,
+			side: "new" as const,
+			baseSha: "base",
+			startSha: "start",
+			headSha: "head",
+		};
+		const harness = await writeHarness((writes) => ensureGitLabInlineComment({ ...input, writes }));
+		await harness.callTool("write", {});
+		const reopened = await writeHarness((writes) =>
+			ensureGitLabInlineComment({ ...input, writes }),
+		);
+		await reopened.callTool("write", {});
+		expect(posts).toBe(1);
+		expect(discussions[0]?.notes[0]?.body).toContain("<!-- leitwerk:gitlab:");
 	});
 	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {
 		const note = (id: number, extra = {}) => ({

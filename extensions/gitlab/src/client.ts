@@ -249,6 +249,25 @@ export interface GitLabDiscussion {
 		};
 	})[];
 }
+/** @internal */
+export interface GitLabDiscussionPosition {
+	/** @internal */
+	position_type: "text";
+	/** @internal */
+	base_sha: string;
+	/** @internal */
+	start_sha: string;
+	/** @internal */
+	head_sha: string;
+	/** @internal */
+	old_path: string;
+	/** @internal */
+	new_path: string;
+	/** @internal */
+	old_line?: number;
+	/** @internal */
+	new_line?: number;
+}
 /** @public */
 export interface GitLabIdentity {
 	/** @public */
@@ -635,6 +654,20 @@ export class GitLabClient {
 		);
 	}
 	/** @internal */
+	listDiscussions(id: number, iid: number, signal?: AbortSignal): Promise<GitLabDiscussion[]> {
+		return this.pages(`${mrPath(id, iid)}/discussions`, signal);
+	}
+	/** @internal */
+	addDiscussion(
+		id: number,
+		iid: number,
+		body: string,
+		position: GitLabDiscussionPosition,
+		signal?: AbortSignal,
+	): Promise<GitLabDiscussion> {
+		return this.request(`${mrPath(id, iid)}/discussions`, signal, { body, position });
+	}
+	/** @internal */
 	replyToDiscussion(
 		id: number,
 		iid: number,
@@ -711,6 +744,16 @@ export class GitLabClient {
 	addNote(id: number, iid: number, body: string, signal?: AbortSignal): Promise<GitLabNote> {
 		return this.request(`${mrPath(id, iid)}/notes`, signal, { body });
 	}
+	/** @internal */
+	updateNote(
+		id: number,
+		iid: number,
+		noteId: number,
+		body: string,
+		signal?: AbortSignal,
+	): Promise<GitLabNote> {
+		return this.request(`${mrPath(id, iid)}/notes/${noteId}`, signal, { body }, "PUT");
+	}
 	/** @public */
 	async resolveGitIdentity(signal?: AbortSignal): Promise<GitLabIdentity> {
 		const user = await this.request<{
@@ -780,6 +823,8 @@ export type GitLabClientLike = Pick<
 	| "preflightRepository"
 	| "addNote"
 	| "addNoteReaction"
+	| "addDiscussion"
+	| "updateNote"
 	| "baseUrl"
 	| "getBranch"
 	| "getChanges"
@@ -794,6 +839,7 @@ export type GitLabClientLike = Pick<
 	| "listFailedJobs"
 	| "listGroupProjects"
 	| "listMergeRequestFeedback"
+	| "listDiscussions"
 	| "listMergeRequestPipelines"
 	| "listMergeRequests"
 	| "listNoteReactions"
