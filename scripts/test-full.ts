@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import process from "node:process";
 import { activateDevelopmentComposition } from "./development-composition.ts";
+import { writeTimingReport } from "./test-runtime.mjs";
 import { validationEnvironment } from "./validation-environment.ts";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -45,6 +46,7 @@ for (const phase of phases) {
 
 const totalSeconds = (performance.now() - startedAt) / 1000;
 console.info(`[test:full] complete in ${totalSeconds.toFixed(1)}s`);
+writeTimingReport(process.env.LEITWERK_TEST_TIMINGS_FILE, timings);
 if (process.env.GITHUB_STEP_SUMMARY) {
 	appendFileSync(
 		process.env.GITHUB_STEP_SUMMARY,

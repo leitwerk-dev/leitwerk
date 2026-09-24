@@ -19,6 +19,12 @@ Builds, tests, and browser installation use Node 26. Validation runs Chromium,
 Firefox, and WebKit. See [Testing](testing.md) for local commands and scoped checks.
 CI also builds the documentation with strict link and anchor validation.
 
+PR validation warns when combined test runtime is at least 5% above the average
+of the last ten comparable successful `main` runs. Only test execution time counts,
+including browser tests. The warning appears in Actions annotations and the job
+summary; it does not fail validation. Comparison is skipped when timing data is
+unavailable or fewer than ten comparable runs exist.
+
 ## Publication safeguards
 
 Stable publication accepts only releases created from a merged Release Please PR on `main`. RC publication accepts only the validated revision of an open release PR. Both use main-only publishing environments and short-lived npm credentials.

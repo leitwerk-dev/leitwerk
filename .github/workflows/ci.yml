@@ -33,6 +33,9 @@ jobs:
   validate:
     name: Full validation
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -76,6 +79,8 @@ jobs:
 
       - name: Run full test gate
         run: npm run test:full
+        env:
+          LEITWERK_TEST_TIMINGS_FILE: ${{ runner.temp }}/test-runtime.json
 
       - name: Check API classification and interface reports
         run: npm run api:check
@@ -85,3 +90,22 @@ jobs:
 
       - name: Dry-run npm package contents
         run: npm run publish:dry-run
+
+      - name: Save main test timings
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-runtime-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-runtime.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Compare test runtime with main
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 5
+        run: node scripts/test-runtime.mjs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LEITWERK_TEST_TIMINGS_FILE: ${{ runner.temp }}/test-runtime.json

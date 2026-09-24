@@ -43,6 +43,7 @@ npm run test:full -- --composition=../my-extensions/leitwerk.composition.yaml
 
 See [Development compositions](development-composition.md). The full gate reports
 phase durations locally and in CI; use them when investigating performance.
+See [CI](ci.md#validation) for test runtime warnings.
 
 ## Test boundaries
 
