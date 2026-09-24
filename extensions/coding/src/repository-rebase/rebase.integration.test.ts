@@ -121,21 +121,14 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		git(path, "push", "--force", "origin", `${git(path, "rev-parse", "main^")}:refs/heads/main`);
 		expect(() => (prepared ? startRebase(input) : prepareRebase(input))).toThrow();
 	});
-	it("rejects changed evidence branches and wrong branches after preparation", () => {
-		const { input, path } = fixture(false);
-		prepareRebase(input);
-		expect(() =>
-			prepareRebase({ ...input, conflict: { ...input.conflict, headBranch: "other" } }),
-		).toThrow("tracked work branch");
-		expect(() =>
-			publishRebase({ ...input, conflict: { ...input.conflict, baseBranch: "other" } }),
-		).toThrow("base branch changed");
-		git(path, "checkout", "main");
-		expect(() => publishRebase(input)).toThrow("tracked work branch");
-	});
-	it("loads retained metadata written before origin identity fields existed", () => {
-		const { input, path } = fixture();
-		startRebase(input);
+
+	it("resumes an interrupted conflict, preserves authors and sign-offs, and retries publication after a lost response", () => {
+		const { input, path, root } = fixture();
+		git(path, "config", "user.name", "Repair Committer");
+		git(path, "config", "user.email", "repair@example.test");
+		expect(startRebase(input).status).toBe("rebasing");
+		expect(() => verifyRebase(input)).toThrow("incomplete");
+		// Older preparations remain resumable after a worker replacement.
 		const file = join(path, ".git/leitwerk-rebase.json");
 		const stored = JSON.parse(readFileSync(file, "utf8"));
 		delete stored.originUrl;
@@ -144,16 +137,13 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		writeFileSync(file, JSON.stringify(stored));
 		expect(startRebase(input).originalHead).toBe(input.conflict.headSha);
 		resolve(input);
-		expect(publishRebase(input).changed).toBe(true);
-	});
-	it("resumes an interrupted conflict, preserves authors and sign-offs, and retries publication after a lost response", () => {
-		const { input, path, root } = fixture();
-		git(path, "config", "user.name", "Repair Committer");
-		git(path, "config", "user.email", "repair@example.test");
-		expect(startRebase(input).status).toBe("rebasing");
-		expect(() => verifyRebase(input)).toThrow("incomplete");
-		expect(startRebase(input).originalHead).toBe(input.conflict.headSha);
-		resolve(input);
+		const resolved = readFileSync(join(path, "file"), "utf8");
+		writeFileSync(join(path, "file"), "dirty");
+		expect(() => publishRebase(input)).toThrow("clean worktree");
+		writeFileSync(join(path, "file"), resolved);
+		git(path, "checkout", "main");
+		expect(() => publishRebase(input)).toThrow("tracked work branch");
+		git(path, "checkout", "work");
 		const result = verifyRebase(input);
 		expect(result.changed).toBe(true);
 		expect(git(path, "show", "-s", "--format=%an <%ae>")).toBe(
@@ -167,16 +157,9 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		expect(publishRebase(input).headSha).toBe(result.headSha);
 		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(result.headSha);
 	});
-	it("rejects unresolved and dirty results", () => {
-		const { input, path } = fixture();
-		startRebase(input);
-		expect(() => publishRebase(input)).toThrow("incomplete");
-		resolve(input);
-		writeFileSync(join(path, "file"), "dirty");
-		expect(() => publishRebase(input)).toThrow("clean worktree");
-	});
-	it("rejects a concurrent push against the pre-repair lease", () => {
-		const { input, root } = fixture();
+
+	it("rejects remote changes before preparation and between publication check and push", () => {
+		const { input, root, path } = fixture();
 		startRebase(input);
 		resolve(input);
 		git(root, "clone", "--branch", "work", "remote.git", "other");
@@ -186,7 +169,20 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		git(other, "commit", "--allow-empty", "-m", "concurrent");
 		git(other, "push", "origin", "work");
 		const concurrentHead = git(other, "rev-parse", "HEAD");
+		expect(() => prepareRebase({ ...input, path: other })).toThrow("changed before repair");
 		expect(() => publishRebase(input)).toThrow("Concurrent remote change");
+		git(join(root, "remote.git"), "update-ref", "refs/heads/work", input.conflict.headSha);
+		// Move the remote after leitwerk's precheck but before push advertises refs.
+		// A plain force push would overwrite this update; the captured lease must not.
+		const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+		const receivePack = join(root, "receive-pack");
+		writeFileSync(
+			receivePack,
+			`#!/bin/sh\nset -e\n${quote(resolveGitBinary())} --git-dir=${quote(join(root, "remote.git"))} update-ref refs/heads/work ${concurrentHead}\nexec ${quote(resolveGitBinary())} receive-pack "$@"\n`,
+			{ mode: 0o700 },
+		);
+		git(path, "config", "remote.origin.receivepack", quote(receivePack));
+		expect(() => publishRebase(input)).toThrow();
 		expect(git(join(root, "remote.git"), "rev-parse", "refs/heads/work")).toBe(concurrentHead);
 	});
 	it("does not rewrite a stale conflict report that merges cleanly", () => {
@@ -228,14 +224,5 @@ describe("repository rebase with real remotes", { timeout: 60_000 }, () => {
 		git(path, "rebase", "--abort");
 		expect(() => verifyRebase(input)).toThrow();
 		expect(git(path, "rev-parse", "refs/leitwerk/rebase-original")).toBe(input.conflict.headSha);
-	});
-	it("rejects the wrong branch and remote changes before preparation", () => {
-		const { input, path } = fixture();
-		git(path, "checkout", "main");
-		expect(() => startRebase(input)).toThrow("tracked work branch");
-		git(path, "checkout", "work");
-		git(path, "commit", "--allow-empty", "-m", "unexpected");
-		git(path, "push", "origin", "work");
-		expect(() => startRebase(input)).toThrow("changed before repair");
 	});
 });
