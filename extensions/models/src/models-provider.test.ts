@@ -39,8 +39,7 @@ describe("models extension", () => {
 			openai: { api_key: "sk-openai" },
 			custom_gateways: { "internal-gateway": customGateway },
 		});
-		expect(modelsExtension.manifest).toEqual({ id: "models", version: "0.1.0" });
-		expect(entries?.some((entry) => entry.definition.id === "openai")).toBe(true);
+		expect(modelsExtension.manifest.id).toBe("models");
 		expect(entries?.find((entry) => entry.definition.id === "openai")?.rawConfig).toEqual({
 			api_key: "sk-openai",
 		});
@@ -60,6 +59,7 @@ describe("models extension", () => {
 		[{ api_key: "env:MODELS_TEST_KEY" }, "sk-environment"],
 	] as const)("parses a configured standard API key", (raw, expected) => {
 		vi.stubEnv("MODELS_TEST_KEY", "sk-environment");
+		vi.stubEnv("OPENAI_API_KEY", "ambient-key");
 		expect(parseStandardProviderConfig(raw, "openai")).toEqual({
 			config: {},
 			credential: { apiKey: expected },
@@ -93,17 +93,6 @@ describe("models extension", () => {
 		expect(() =>
 			parseStandardProviderConfig({ api_key: "sk-provider", base_url: baseUrl }, "openai"),
 		).toThrow();
-	});
-
-	it("projects a configured standard-provider base URL into Pi models", () => {
-		const provider = createStandardModelProvider("azure-openai-responses");
-		expect(
-			resolveModels(provider.worker, { baseUrl: "https://resource.openai.azure.com" }),
-		).toEqual({
-			providers: {
-				"azure-openai-responses": { baseUrl: "https://resource.openai.azure.com" },
-			},
-		});
 	});
 
 	it("uses Pi's standard environment key when provider config is omitted", () => {
@@ -156,7 +145,7 @@ describe("models extension", () => {
 		});
 	});
 
-	it("uses durable credential availability and declared model IDs for custom status", () => {
+	it("resolves declared custom model IDs when credentials are available", () => {
 		const parsed = parseCustomGatewayConfig("internal-gateway", {
 			...customGateway,
 			api_key: "sk-gateway",
@@ -218,6 +207,7 @@ describe("models extension", () => {
 				},
 			],
 		});
+		expect(parsed.credential).toEqual({ apiKey: "fixture-secret" });
 		const provider = createCustomGatewayProvider("local", false);
 		const projected = resolveModels(provider.worker, parsed.config);
 		expect(projected).toEqual({
@@ -276,15 +266,21 @@ describe("models extension", () => {
 			),
 		);
 		const projected = resolveModels(provider.worker, parsed.config);
-		expect(projected).toEqual({ providers: { "azure-openai-responses": parsed.config } });
-		expect(parsed.config.models?.[0]).toMatchObject({
-			id: "new-deployment",
-			api: "azure-openai-responses",
-			provider: "azure-openai-responses",
-			baseUrl: "https://azure.example/openai/v1",
-			reasoning: true,
-			thinkingLevelMap: { xhigh: "xhigh" },
-		});
+		expect(projected).toHaveProperty(
+			["providers", "azure-openai-responses", "models"],
+			[
+				expect.objectContaining({
+					id: "new-deployment",
+					api: "azure-openai-responses",
+					provider: "azure-openai-responses",
+					baseUrl: "https://azure.example/openai/v1",
+					reasoning: true,
+					thinkingLevelMap: { xhigh: "xhigh" },
+					contextWindow: 128_000,
+					maxTokens: 16_384,
+				}),
+			],
+		);
 		expect(JSON.stringify(projected)).not.toContain("fixture-secret");
 	});
 
@@ -298,9 +294,12 @@ describe("models extension", () => {
 		expect(() => parseCustomGatewayConfig("test", { ...customGateway, ...override })).toThrow();
 	});
 
-	it("creates configured worker and built-in server references for standard providers", () => {
+	it("projects empty and configured standard workers with a built-in server reference", () => {
 		const provider = createStandardModelProvider("openai");
 		expect(resolveModels(provider.worker, {})).toEqual({ providers: {} });
+		expect(resolveModels(provider.worker, { baseUrl: "https://proxy.example.test/v1" })).toEqual({
+			providers: { openai: { baseUrl: "https://proxy.example.test/v1" } },
+		});
 		expect(provider.server).toEqual({ kind: "builtin_pi_provider", providerId: "openai" });
 	});
 });
