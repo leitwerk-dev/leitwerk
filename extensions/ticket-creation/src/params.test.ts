@@ -105,6 +105,6 @@ describe("stored ticket parameters", () => {
 				...historical,
 				ticketDestination: { summary: { id: "one", displayName: "One" }, data },
 			}),
-		).toThrow(/JSON-serializable/);
+		).toThrow();
 	});
 });

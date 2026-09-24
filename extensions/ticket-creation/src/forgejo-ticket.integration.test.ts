@@ -40,14 +40,6 @@ async function fixture(options: { clarifyDestination?: boolean } = {}) {
 				.publish("saved")
 				.complete(),
 		)
-		.turn(
-			flow
-				.llm<{ prompt: string }, Record<string, never>>("new_parent_result")
-				.description("New result")
-				.buildPrompt((ctx) => ctx.params.prompt)
-				.publish("saved")
-				.complete(),
-		)
 		.server((api) =>
 			api.action({
 				id: "change_instructions",
@@ -241,7 +233,7 @@ it("retries an interrupted approval, reconciles a lost response, and retains the
 	const captured = (f.snapshot(id).params as { context: unknown }).context;
 	await f.parent.action("change_instructions", { prompt: "Changed parent instructions" });
 	await f.parent.seedAcceptedTurn({
-		turnId: "new_parent_result",
+		turnId: "retained_result",
 		execution: {
 			status: "succeeded",
 			outcome: "saved",
