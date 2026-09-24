@@ -109,19 +109,6 @@ describe("Telegram HTML markdown rendering", () => {
 			].join("\n\n"),
 		});
 
-		const html = parts
-			.filter((part) => part.kind === "html")
-			.map((part) => part.html)
-			.join("\n");
-		const visuals = parts.filter((part) => part.kind !== "html");
-		expect(html).toContain("Result text");
-		expect(html).toContain("Other turn");
-		expect(html).not.toContain("Evidence");
-		expect(html).not.toContain("flowchart");
-		expect(visuals).toEqual([
-			{ kind: "image", imageId: "img_1.png", alt: "Evidence" },
-			{ kind: "mermaid", source: "flowchart LR\n  A --> B" },
-		]);
 		expect(parts).toEqual([
 			{ kind: "html", html: "Result text" },
 			{ kind: "image", imageId: "img_1.png", alt: "Evidence" },
@@ -147,9 +134,7 @@ describe("Telegram HTML markdown rendering", () => {
 
 	it("renders long markdown without truncating it", () => {
 		const rendered = renderMarkdownToTelegramHtml("<&".repeat(100));
-		expect(rendered.length).toBeGreaterThan(20);
-		expect(rendered).toContain("&lt;&amp;");
-		expect(rendered).not.toContain("…");
+		expect(rendered).toBe("&lt;&amp;".repeat(100));
 	});
 
 	it("preserves supported markup in long rendered markdown", () => {

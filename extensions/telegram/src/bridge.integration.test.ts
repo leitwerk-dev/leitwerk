@@ -64,22 +64,6 @@ async function recoveryProcess(recovered = false) {
 	return structuredClone(process.snapshot().process);
 }
 
-type MutableTelegramBridgeInternals = {
-	processModelSelection: ProcessModelSelectionServiceLike | null;
-	input: {
-		config: TelegramExtensionConfig;
-		deps: {
-			processes: {
-				getById: (id: string) => ReturnType<typeof createProcessFixture> | null;
-			};
-		};
-	};
-};
-
-function bridgeInternals(bridge: TelegramBridge): MutableTelegramBridgeInternals {
-	return bridge as unknown as MutableTelegramBridgeInternals;
-}
-
 type ProcessLaunchPlanModelConfig = {
 	defaultModelProfileId?: string | null;
 	turnConfigs?: Record<string, { modelProfileId?: string | null }>;
@@ -115,6 +99,7 @@ function createDeps(input: {
 		get(instanceId: string, turnRecordId: string, imageId: string): Promise<Uint8Array | null>;
 	};
 	processQuestions?: CoreServerSetupDeps["processQuestions"];
+	processModelSelection?: ProcessModelSelectionServiceLike;
 }) {
 	const processEvents: Array<{
 		instanceId: string;
@@ -153,6 +138,7 @@ function createDeps(input: {
 		processActions: { listVisibleActions: () => input.actions ?? [], executeAction },
 		...(input.resultImages ? { resultImages: input.resultImages } : {}),
 		...(input.processQuestions ? { processQuestions: input.processQuestions } : {}),
+		...(input.processModelSelection ? { processModelSelection: input.processModelSelection } : {}),
 	});
 	return {
 		deps,
@@ -312,6 +298,7 @@ async function setupLaunchBridge(
 		modelSchema?: LauncherModelConfigSchemaLike | null;
 		modelPreview?: LauncherModelConfigPreviewLike | null;
 		prepareLaunchPlan?: ReturnType<typeof vi.fn>;
+		config?: TelegramExtensionConfig;
 	} = {},
 ) {
 	const launchedProcess = createProcessFixture({
@@ -382,7 +369,7 @@ async function setupLaunchBridge(
 		launchPlans: { prepare: prepareLaunchPlan },
 		launchRuns: { startProgrammatic },
 	});
-	const bridge = new TelegramBridge({ config: testConfig(), deps, client });
+	const bridge = new TelegramBridge({ config: options.config ?? testConfig(), deps, client });
 	const events = await createExtensionTestHarness({
 		extensions: [
 			{
@@ -553,7 +540,11 @@ async function setupActionModelSelection(
 		input.process ??
 		createProcessFixture({ position: { lifecycleStatus: "waiting", selectedTurnId: null } });
 	const harness = await setupBridge(
-		{ process, actions: input.actions ?? [approveAction] },
+		{
+			process,
+			actions: input.actions ?? [approveAction],
+			processModelSelection: input.selection ?? modelSelection(),
+		},
 		testConfig({
 			...input.config,
 			actionModelSelection: {
@@ -562,7 +553,6 @@ async function setupActionModelSelection(
 			},
 		}),
 	);
-	bridgeInternals(harness.bridge).processModelSelection = input.selection ?? modelSelection();
 	await harness.events.emit("process_created", {
 		instanceId: process.id,
 		process,
@@ -1689,22 +1679,13 @@ describe("TelegramBridge", () => {
 		);
 	});
 
-	it("prompts for model selection with an enabled service and llm_turn action", async () => {
-		const harness = await setupActionModelSelection();
-
-		await clickButton(harness.client, callbackData(harness.client, "Approve"));
-
-		// Should prompt for model, not execute immediately
-		expect(harness.executeAction).not.toHaveBeenCalled();
-		expect(harness.client.sentMessages.at(-1)?.text).toContain("Next-turn model for");
-	});
-
 	it("selects model profile via button and passes nextTurnModelProfileId", async () => {
 		const harness = await setupActionModelSelection();
 
 		// Trigger model prompt
 		await clickButton(harness.client, callbackData(harness.client, "Approve"));
 		expect(harness.executeAction).not.toHaveBeenCalled();
+		expect(harness.client.sentMessages.at(-1)?.text).toContain("Next-turn model for");
 
 		// Click the local_qwen button
 		await clickButton(harness.client, callbackData(harness.client, "local_qwen"));
@@ -1919,12 +1900,10 @@ describe("model filtering via allowedModelProfileIds", () => {
 	});
 
 	it("shows only allowed profiles in launch model editing", async () => {
-		const { bridge, client } = await setupLaunchBridge({ modelSchema: testModelSchema() });
-		// Override bridge config with filtering
-		bridgeInternals(bridge).input = {
-			...bridgeInternals(bridge).input,
+		const { client } = await setupLaunchBridge({
+			modelSchema: testModelSchema(),
 			config: testConfig({ allowedModelProfileIds: ["claude_fast"] }),
-		};
+		});
 
 		await completeLaunchFormToReview(client);
 		expect(client.sentMessages.at(-1)?.text).toContain("Model setup");
@@ -1943,16 +1922,18 @@ describe("turn-started model label", () => {
 		const process = createProcessFixture({
 			position: { lifecycleStatus: "active", selectedTurnId: null },
 		});
-		const harness = await setupBridge({ process });
-		bridgeInternals(harness.bridge).processModelSelection = modelSelection({
-			profiles: [
-				{
-					id: modelProfileId,
-					label: "DeepSeek V4 Flash",
-					description: "fast",
-					availability: "available",
-				},
-			],
+		const harness = await setupBridge({
+			process,
+			processModelSelection: modelSelection({
+				profiles: [
+					{
+						id: modelProfileId,
+						label: "DeepSeek V4 Flash",
+						description: "fast",
+						availability: "available",
+					},
+				],
+			}),
 		});
 		await harness.events.emit("process_created", {
 			instanceId: process.id,
@@ -2122,9 +2103,7 @@ describe("turn path type in outcome and actions prompt", () => {
 			},
 		});
 
-		const waitingProcess = { ...process, lifecycleStatus: "waiting" as const };
-		const originalGetById = bridgeInternals(harness.bridge).input.deps.processes.getById;
-		bridgeInternals(harness.bridge).input.deps.processes.getById = () => waitingProcess;
+		process.lifecycleStatus = "waiting";
 
 		await harness.events.emit("turn_outcome", {
 			instanceId: process.id,
@@ -2134,8 +2113,6 @@ describe("turn path type in outcome and actions prompt", () => {
 			params: {},
 			turnResultMarkdown: "Looks good.",
 		});
-
-		bridgeInternals(harness.bridge).input.deps.processes.getById = originalGetById;
 
 		const actionsMessage = harness.client.sentMessages.at(-1);
 		expect(actionsMessage?.text).toContain("Approve");

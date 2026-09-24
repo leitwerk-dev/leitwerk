@@ -14,10 +14,7 @@ afterEach(() => {
 describe("normalizeTelegramConfig", () => {
 	it("is disabled by default", () => {
 		const result = normalizeTelegramConfig(undefined);
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.enabled).toBe(false);
-		}
+		expect(result).toMatchObject({ ok: true, config: { enabled: false } });
 	});
 
 	it("resolves tokens from the configured environment variable", () => {
@@ -28,12 +25,10 @@ describe("normalizeTelegramConfig", () => {
 			allow_user_ids: [123],
 			delivery: { forum_chat_id: "-1001" },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.botToken).toBe("token");
-			expect(result.config.allowUserIds).toEqual([123]);
-			expect(result.config.delivery.forumChatId).toBe("-1001");
-		}
+		expect(result).toMatchObject({
+			ok: true,
+			config: { botToken: "token", allowUserIds: [123], delivery: { forumChatId: "-1001" } },
+		});
 	});
 
 	it("supports literal bot tokens in leitwerk yaml", () => {
@@ -43,10 +38,7 @@ describe("normalizeTelegramConfig", () => {
 			allow_user_ids: [123],
 			delivery: { forum_chat_id: "-1001" },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.botToken).toBe("yaml-token");
-		}
+		expect(result).toMatchObject({ ok: true, config: { botToken: "yaml-token" } });
 	});
 
 	it("uses the environment token before the literal bot token when both are configured", () => {
@@ -58,10 +50,7 @@ describe("normalizeTelegramConfig", () => {
 			allow_user_ids: [123],
 			delivery: { forum_chat_id: "-1001" },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.botToken).toBe("env-token");
-		}
+		expect(result).toMatchObject({ ok: true, config: { botToken: "env-token" } });
 	});
 
 	it("falls back to a literal bot token when the configured environment variable is unset", () => {
@@ -73,24 +62,19 @@ describe("normalizeTelegramConfig", () => {
 			allow_user_ids: [123],
 			delivery: { forum_chat_id: "-1001" },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.botToken).toBe("yaml-token");
-		}
+		expect(result).toMatchObject({ ok: true, config: { botToken: "yaml-token" } });
 	});
 
 	it("reports all required enabled-config errors", () => {
 		const result = normalizeTelegramConfig({ enabled: true });
-		expect(result.ok).toBe(false);
-		if (!result.ok) {
-			expect(result.errors).toEqual(
-				expect.arrayContaining([
-					expect.stringContaining("bot_token"),
-					expect.stringContaining("allow_user_ids"),
-					expect.stringContaining("forum_chat_id"),
-				]),
-			);
-		}
+		expect(result).toMatchObject({
+			ok: false,
+			errors: expect.arrayContaining([
+				expect.stringContaining("bot_token"),
+				expect.stringContaining("allow_user_ids"),
+				expect.stringContaining("forum_chat_id"),
+			]),
+		});
 	});
 
 	it("normalizes allowlisted user ids and clamps markdown length", () => {
@@ -101,11 +85,10 @@ describe("normalizeTelegramConfig", () => {
 			delivery: { forum_chat_id: "-1001" },
 			markdown: { max_chars: 50_000 },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.allowUserIds).toEqual([123, 456]);
-			expect(result.config.markdown.maxChars).toBe(4096);
-		}
+		expect(result).toMatchObject({
+			ok: true,
+			config: { allowUserIds: [123, 456], markdown: { maxChars: 4096 } },
+		});
 	});
 
 	it("defaults allowed_model_profile_ids to an empty array", () => {
@@ -115,10 +98,7 @@ describe("normalizeTelegramConfig", () => {
 			allow_user_ids: [123],
 			delivery: { forum_chat_id: "-1001" },
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.allowedModelProfileIds).toEqual([]);
-		}
+		expect(result).toMatchObject({ ok: true, config: { allowedModelProfileIds: [] } });
 	});
 
 	it("normalizes allowed_model_profile_ids with deduplication", () => {
@@ -135,13 +115,10 @@ describe("normalizeTelegramConfig", () => {
 				"",
 			],
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.allowedModelProfileIds).toEqual([
-				"deepseek-v4-flash",
-				"deepseek-v4-pro",
-			]);
-		}
+		expect(result).toMatchObject({
+			ok: true,
+			config: { allowedModelProfileIds: ["deepseek-v4-flash", "deepseek-v4-pro"] },
+		});
 	});
 
 	it("rejects non-array allowed_model_profile_ids as empty", () => {
@@ -152,9 +129,6 @@ describe("normalizeTelegramConfig", () => {
 			delivery: { forum_chat_id: "-1001" },
 			allowed_model_profile_ids: "not-an-array",
 		});
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.config.allowedModelProfileIds).toEqual([]);
-		}
+		expect(result).toMatchObject({ ok: true, config: { allowedModelProfileIds: [] } });
 	});
 });
