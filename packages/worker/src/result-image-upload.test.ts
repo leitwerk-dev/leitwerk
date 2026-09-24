@@ -1,13 +1,15 @@
-import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createUploadResultImagesTool } from "./result-image-upload.js";
 
 const PNG = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
 
 function workspace(): string {
-	return mkdtempSync(path.join(tmpdir(), "leitwerk-result-images-test-"));
+	const root = mkdtempSync(path.join(tmpdir(), "leitwerk-result-images-test-"));
+	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
+	return root;
 }
 function success(imageId: string): Response {
 	return Response.json(

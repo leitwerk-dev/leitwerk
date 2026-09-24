@@ -65,7 +65,7 @@ afterEach(async () => {
 });
 
 describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
-	it("preflights standard Pi resources and reports verified loaded provenance", async () => {
+	it("preflights standard Pi resources and reports loaded provenance", async () => {
 		const root = await createTempRoot();
 		const agentDir = path.join(root, "agent");
 		const workspaceRoot = path.join(root, "workspace");

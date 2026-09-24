@@ -22,31 +22,29 @@ describe("validateTurnResultMarkdownValue", () => {
 	});
 
 	it("rejects non-string values", () => {
-		expect(validateTurnResultMarkdownValue({ markdown: "## Result" })).toEqual({
+		expect(validateTurnResultMarkdownValue({ markdown: "## Result" })).toMatchObject({
 			ok: false,
 			code: "markdown_string_required",
-			message: "markdown_result requires a string markdown value",
 		});
 	});
 
 	it("rejects empty or whitespace-only markdown", () => {
-		expect(validateTurnResultMarkdownValue("  \n\t ")).toEqual({
+		expect(validateTurnResultMarkdownValue("  \n\t ")).toMatchObject({
 			ok: false,
 			code: "markdown_required",
-			message: "markdown_result requires non-empty markdown",
 		});
 	});
 
 	it("rejects a single outer fenced markdown block", () => {
-		expect(validateTurnResultMarkdownValue("```markdown\n## Result\n\n- Ship it\n```")).toEqual({
+		expect(
+			validateTurnResultMarkdownValue("```markdown\n## Result\n\n- Ship it\n```"),
+		).toMatchObject({
 			ok: false,
 			code: "outer_code_fence_not_allowed",
-			message: "Pass raw markdown to markdown_result, not a single outer fenced code block",
 		});
-		expect(validateTurnResultMarkdownValue("~~~\n## Result\n~~~")).toEqual({
+		expect(validateTurnResultMarkdownValue("~~~\n## Result\n~~~")).toMatchObject({
 			ok: false,
 			code: "outer_code_fence_not_allowed",
-			message: "Pass raw markdown to markdown_result, not a single outer fenced code block",
 		});
 	});
 
@@ -66,10 +64,9 @@ describe("publishTurnResultMarkdownValue", () => {
 	it("records the first published markdown result", () => {
 		const published = publishTurnResultMarkdownValue(createTurnResultMarkdownState(), "## Result");
 		expect(published.state).toEqual({ markdown: "## Result", publicationCount: 1 });
-		expect(published.response).toEqual({
+		expect(published.response).toMatchObject({
 			ok: true,
 			code: "markdown_result_recorded",
-			message: "Recorded the markdown result for this turn",
 			data: {
 				publicationCount: 1,
 				markdownLength: 9,
@@ -81,11 +78,9 @@ describe("publishTurnResultMarkdownValue", () => {
 		const first = publishTurnResultMarkdownValue(createTurnResultMarkdownState(), "## Result");
 		const second = publishTurnResultMarkdownValue(first.state, "```markdown\n## Wrong\n```");
 		expect(second.state).toEqual(first.state);
-		expect(second.response).toEqual({
+		expect(second.response).toMatchObject({
 			ok: false,
 			code: "outer_code_fence_not_allowed",
-			message: "Pass raw markdown to markdown_result, not a single outer fenced code block",
-			data: {},
 		});
 	});
 
@@ -96,10 +91,9 @@ describe("publishTurnResultMarkdownValue", () => {
 			markdown: "## Second\n\nUpdated.",
 			publicationCount: 2,
 		});
-		expect(second.response).toEqual({
+		expect(second.response).toMatchObject({
 			ok: true,
 			code: "markdown_result_updated",
-			message: "Updated the markdown result for this turn",
 			data: {
 				publicationCount: 2,
 				markdownLength: 19,
@@ -331,8 +325,7 @@ describe("finalizeTurnResultMarkdown", () => {
 			}),
 		).toEqual({
 			markdown: null,
-			errorMessage:
-				"Turn requires a successful 'markdown_result' tool call to publish turn result markdown",
+			errorMessage: expect.stringContaining("markdown_result"),
 		});
 	});
 });

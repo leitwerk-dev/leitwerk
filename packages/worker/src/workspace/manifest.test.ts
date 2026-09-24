@@ -128,30 +128,9 @@ describe("diffManifest", () => {
 				},
 			],
 		};
-		const d = diffManifest(existing, [server[0]]);
-		expect(d.missing).toEqual([]);
-		expect(d.extra).toEqual(["orphan"]);
-		expect(d.unchanged).toEqual(["a"]);
-	});
-
-	it("marks server-only keys as missing", () => {
-		const existing = {
-			version: 1 as const,
-			instanceId: "ag",
-			createdAt: "t",
-			components: [
-				{
-					key: "a",
-					repoLocator: "r1",
-					baseBranch: "main",
-					workBranch: "f1",
-					clonedAt: "c",
-					headSha: "h",
-				},
-			],
-		};
 		const d = diffManifest(existing, server);
 		expect(d.missing).toEqual(["b"]);
-		expect(d.extra).toEqual([]);
+		expect(d.extra).toEqual(["orphan"]);
+		expect(d.unchanged).toEqual(["a"]);
 	});
 });

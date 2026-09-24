@@ -1,5 +1,5 @@
-import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
+import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
 import { createWorkerProcessBuilder, type LlmTurnDefinition } from "@leitwerk-dev/process-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { PreparedLlmSession } from "./bootstrap-session.js";
@@ -8,31 +8,6 @@ const executeLlmTurn = vi.fn();
 vi.mock("./llm-turn-execution.js", () => ({ executeLlmTurn }));
 
 const { executeSelectedTurn } = await import("./turn-execution.js");
-
-function processSnapshot(): ProcessInstance {
-	return {
-		id: "proc_1",
-		processId: "test_process",
-		selectedTurnId: "analyze",
-		lifecycleStatus: "active",
-		currentExecution: { kind: "worker_start", id: "start_1" },
-		planRevision: 0,
-		title: null,
-		externalId: null,
-		externalUrl: null,
-		metadata: {},
-		defaultModelProfileId: null,
-		initialDefaultModelProfileId: null,
-		turnConfigsJson: null,
-		selectedTurnModelProfileId: null,
-		selectedTurnModelSource: null,
-		paramsJson: "{}",
-		stateJson: "{}",
-		createdAt: new Date(),
-		updatedAt: new Date(),
-		closedAt: null,
-	};
-}
 
 function llmProcess(definition: LlmTurnDefinition): ResolvedWorkerProcess {
 	const builder = createWorkerProcessBuilder();
@@ -53,7 +28,14 @@ function llmProcess(definition: LlmTurnDefinition): ResolvedWorkerProcess {
 function session(process: ResolvedWorkerProcess, checkpoint?: unknown): PreparedLlmSession {
 	return {
 		resolvedWorkerProcess: process,
-		processSnapshot: processSnapshot(),
+		processSnapshot: createTestProcessInstance({
+			id: "proc_1",
+			processId: "test_process",
+			selectedTurnId: "analyze",
+			currentExecution: { kind: "worker_start", id: "start_1" },
+			paramsJson: "{}",
+			stateJson: "{}",
+		}),
 		projectSnapshots: [],
 		kind: "llm",
 		selectedTurnId: "analyze",
