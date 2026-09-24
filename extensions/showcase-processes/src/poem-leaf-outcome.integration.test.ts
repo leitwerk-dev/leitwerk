@@ -60,152 +60,62 @@ async function runPoemAutoReview(harness: ExtensionIntegrationHarness, instanceI
 }
 
 describe("poem leaf outcome adoption", () => {
-	it.skip("captures structured poem renderer props from the real poem creator process", async () => {
+	it.each([
+		{
+			script: {
+				outcome: "leave_feedback",
+				summary: "The poem needs revision before publication.",
+				feedback: "Sharpen the closing image and brighten the rhythm.",
+			},
+			suffix:
+				"## Review\n\nThe poem needs revision before publication.\n\n## Review feedback\n\nSharpen the closing image and brighten the rhythm.",
+			feedback: "## Review feedback\n\nSharpen the closing image and brighten the rhythm.",
+		},
+		{
+			script: { outcome: "no_issues", summary: "The revised poem is ready to publish." },
+			suffix: "## LLM Opinion\n\nThe revised poem is ready to publish.",
+			feedback: null,
+		},
+	] as const)("captures a review-leaf snapshot with $script.outcome", async ({
+		script,
+		suffix,
+		feedback,
+	}) => {
+		const reviewPrompts: ReviewPromptCapture[] = [];
+		const poemMarkdown =
+			"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring";
 		const harness = await createShowcaseHarness({
-			script: createPoemSnapshotScript([
-				"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-			]),
+			script: createPoemSnapshotScript([poemMarkdown], script, { reviewPrompts }),
 		});
-
 		try {
 			const { instanceId, prompt } = await launchPoemProcess(harness);
 			await waitForValue(
 				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
 			);
-			await waitForValue(
-				() => harness.process(instanceId).snapshot().process,
-				(process) =>
-					process?.selectedTurnId === "poem_review" && process.lifecycleStatus === "waiting",
+			await runPoemAutoReview(harness, instanceId);
+			const snapshots = await waitForValue(
+				() => harness.process(instanceId).snapshot().leafOutcomes,
+				(items) => items.length === 2,
 			);
-
-			expect(harness.process(instanceId).snapshot().leafOutcomes).toEqual([
+			expect(snapshots[0]?.leafEntryId).not.toBe(snapshots[1]?.leafEntryId);
+			if (script.outcome === "leave_feedback") {
+				expect(reviewPrompts).toHaveLength(1);
+				expect(reviewPrompts[0]?.promptText).toContain("Poem draft to review:");
+				expect(reviewPrompts[0]?.promptText).toContain(poemMarkdown);
+			}
+			expect(snapshots[1]).toEqual(
 				expect.objectContaining({
-					rendererId: "@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome",
-					schemaVersion: 1,
-					fallbackMarkdown:
-						"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
+					fallbackMarkdown: `${poemMarkdown}\n\n${suffix}`,
 					props: {
 						prompt,
-						markdown:
-							"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
+						markdown: poemMarkdown,
 						title: "Berlin Release",
 						stanzas: [
 							["Tin rooftops glimmer", "Release wires sing"],
 							["Deploy lights gather", "At the edge of spring"],
 						],
-					},
-				}),
-			]);
-		} finally {
-			await harness.close();
-		}
-	});
-
-	it("captures a review-leaf snapshot with the poem plus LLM findings", async () => {
-		const reviewPrompts: ReviewPromptCapture[] = [];
-		const poemMarkdown =
-			"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring";
-		const harness = await createShowcaseHarness({
-			script: createPoemSnapshotScript(
-				[poemMarkdown],
-				{
-					outcome: "leave_feedback",
-					summary: "The poem needs revision before publication.",
-					feedback: "Sharpen the closing image and brighten the rhythm.",
-				},
-				{ reviewPrompts },
-			),
-		});
-
-		try {
-			const { instanceId } = await launchPoemProcess(harness);
-			await waitForValue(
-				() => harness.process(instanceId).snapshot().leafOutcomes,
-				(snapshots) => snapshots.length === 1,
-			);
-
-			await runPoemAutoReview(harness, instanceId);
-
-			const snapshots = await waitForValue(
-				() => harness.process(instanceId).snapshot().leafOutcomes,
-				(items) => items.length === 2,
-			);
-			expect(snapshots[0]?.leafEntryId).not.toBe(snapshots[1]?.leafEntryId);
-			expect(reviewPrompts).toHaveLength(1);
-			expect(reviewPrompts[0]?.promptText).toContain("Poem draft to review:");
-			expect(reviewPrompts[0]?.promptText).toContain(poemMarkdown);
-			expect(snapshots[1]).toEqual(
-				expect.objectContaining({
-					fallbackMarkdown:
-						"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring\n\n## Review\n\nThe poem needs revision before publication.\n\n## Review feedback\n\nSharpen the closing image and brighten the rhythm.",
-					props: {
-						prompt: "Write a short poem about Berlin rooftops and release trains at dusk.",
-						markdown:
-							"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-						title: "Berlin Release",
-						stanzas: [
-							["Tin rooftops glimmer", "Release wires sing"],
-							["Deploy lights gather", "At the edge of spring"],
-						],
-						review: {
-							outcome: "leave_feedback",
-							summary: "The poem needs revision before publication.",
-							feedback: "## Review feedback\n\nSharpen the closing image and brighten the rhythm.",
-						},
-					},
-				}),
-			);
-		} finally {
-			await harness.close();
-		}
-	}, 15_000);
-
-	it("captures a review-leaf snapshot with the poem plus an LLM no-issues opinion", async () => {
-		const harness = await createShowcaseHarness({
-			script: createPoemSnapshotScript(
-				[
-					"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-				],
-				{
-					outcome: "no_issues",
-					summary: "The revised poem is ready to publish.",
-				},
-			),
-		});
-
-		try {
-			const { instanceId } = await launchPoemProcess(harness);
-			await waitForValue(
-				() => harness.process(instanceId).snapshot().leafOutcomes,
-				(snapshots) => snapshots.length === 1,
-			);
-
-			await runPoemAutoReview(harness, instanceId);
-
-			const snapshots = await waitForValue(
-				() => harness.process(instanceId).snapshot().leafOutcomes,
-				(items) => items.length === 2,
-			);
-			expect(snapshots[0]?.leafEntryId).not.toBe(snapshots[1]?.leafEntryId);
-			expect(snapshots[1]).toEqual(
-				expect.objectContaining({
-					fallbackMarkdown:
-						"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring\n\n## LLM Opinion\n\nThe revised poem is ready to publish.",
-					props: {
-						prompt: "Write a short poem about Berlin rooftops and release trains at dusk.",
-						markdown:
-							"# Berlin Release\n\nTin rooftops glimmer<br>Release wires sing\n\nDeploy lights gather<br>At the edge of spring",
-						title: "Berlin Release",
-						stanzas: [
-							["Tin rooftops glimmer", "Release wires sing"],
-							["Deploy lights gather", "At the edge of spring"],
-						],
-						review: {
-							outcome: "no_issues",
-							summary: "The revised poem is ready to publish.",
-							feedback: null,
-						},
+						review: { outcome: script.outcome, summary: script.summary, feedback },
 					},
 				}),
 			);
@@ -223,10 +133,23 @@ describe("poem leaf outcome adoption", () => {
 		});
 
 		try {
-			const { instanceId } = await launchPoemProcess(harness);
-			await waitForValue(
+			const { instanceId, prompt } = await launchPoemProcess(harness);
+			const initial = await waitForValue(
 				() => harness.process(instanceId).snapshot().leafOutcomes,
 				(snapshots) => snapshots.length === 1,
+			);
+			expect(initial[0]).toEqual(
+				expect.objectContaining({
+					rendererId: "@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome",
+					schemaVersion: 1,
+					fallbackMarkdown: "# First Platform\n\nTin rooftops glimmer<br>Signals softly rise",
+					props: {
+						prompt,
+						markdown: "# First Platform\n\nTin rooftops glimmer<br>Signals softly rise",
+						title: "First Platform",
+						stanzas: [["Tin rooftops glimmer", "Signals softly rise"]],
+					},
+				}),
 			);
 
 			const actionResponse = await http(

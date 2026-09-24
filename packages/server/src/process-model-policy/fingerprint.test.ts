@@ -15,8 +15,10 @@ describe("server process model policy fingerprint", () => {
 		const start = createTestTurnStart();
 		const original = policy.fingerprint({ process, currentStart: start });
 		const revisionChanged = structuredClone(start);
-		if (revisionChanged.state.kind === "starting" && revisionChanged.state.start.kind === "llm")
-			revisionChanged.state.start.availabilityRevision = 99;
+		if (revisionChanged.state.kind !== "starting" || revisionChanged.state.start.kind !== "llm") {
+			throw new Error("Expected a starting LLM fixture");
+		}
+		revisionChanged.state.start.availabilityRevision = 99;
 		expect(policy.fingerprint({ process, currentStart: revisionChanged })).toBe(original);
 		expect(policy.fingerprint({ process, currentStart: { ...start, id: "s2" } })).not.toBe(
 			original,

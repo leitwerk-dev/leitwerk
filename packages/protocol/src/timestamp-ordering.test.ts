@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { compareTimestampStrings, happenedOnOrAfterStart } from "./timestamp-ordering.js";
 
 describe("timestamp ordering helpers", () => {
-	it("orders parseable timestamps chronologically", () => {
+	it("orders parseable timestamps chronologically across time zones", () => {
 		expect(
-			compareTimestampStrings("2026-04-26T10:00:00.000Z", "2026-04-26T10:00:01.000Z"),
+			compareTimestampStrings("2026-04-26T10:00:00.000Z", "2026-04-26T09:00:01.000-01:00"),
 		).toBeLessThan(0);
 		expect(
-			compareTimestampStrings("2026-04-26T10:00:01.000Z", "2026-04-26T10:00:00.000Z"),
+			compareTimestampStrings("2026-04-26T09:00:01.000-01:00", "2026-04-26T10:00:00.000Z"),
 		).toBeGreaterThan(0);
 	});
 

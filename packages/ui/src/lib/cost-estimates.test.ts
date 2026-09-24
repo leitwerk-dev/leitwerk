@@ -36,7 +36,7 @@ describe("cost estimate formatting", () => {
 		expect(title).toContain("Requests: 2");
 		expect(title).toContain("Max single-request input: 90");
 		expect(title).toContain("hidden prior branch entries");
-		expect(title).toContain(formatUsdEstimate(exampleUsage.cost?.total ?? 0));
-		expect(formatUsdEstimate(0.75)).not.toEqual(formatUsdEstimate(0.5));
+		expect(title).toMatch(/0[.,]7500(?!\d)/);
+		expect(formatUsdEstimate(0.5)).toMatch(/0[.,]5000(?!\d)/);
 	});
 });

@@ -6,13 +6,13 @@ import type {
 } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import {
 	createDefaultTestProcessGraphRegistry,
 	createFixtureLlmTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import { commitWrites } from "../writes/commit-writes.js";
 import { AcceptWorkerTurnStart } from "./accept-worker-turn-start.js";

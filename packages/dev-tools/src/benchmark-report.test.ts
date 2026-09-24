@@ -62,7 +62,9 @@ describe("startup benchmark reports", () => {
 		expect(imageCohort(worker(["image_pull_started", "image_pull_finished"]))).toBe("pulled");
 	});
 	it("uses server receipt time and reports missing or reversed milestones", () => {
-		const startup = { workerStarts: [worker(["first_text"])] };
+		const initial = worker(["first_text"]);
+		initial.observations[0].sourceAt = "2026-09-15T00:00:00.250Z";
+		const startup = { workerStarts: [initial] };
 		expect(
 			launchTimings({ createdAt: "2026-09-15T00:00:00Z" }, startup).launchToFirstText.durationMs,
 		).toBe(1000);

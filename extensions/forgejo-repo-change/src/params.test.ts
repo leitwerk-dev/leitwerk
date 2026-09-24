@@ -30,7 +30,7 @@ describe("Forgejo repository-change params", () => {
 			);
 	});
 
-	it("round-trips a UI launch without issue metadata", () => {
+	it("parses a UI launch without issue metadata", () => {
 		const parsed = forgejoRepoChangeParamsCodec.parse({
 			...common,
 			origin: "ui",

@@ -2,12 +2,12 @@ import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import { createFakeWorkerSupervisor } from "../test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import {
 	createFixtureAutomaticTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { createProcessEngine } from "./engine.js";
 
 function setup(kind: "bootstrap_failed" | "preparation_failed" = "bootstrap_failed") {

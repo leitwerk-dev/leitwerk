@@ -1,7 +1,7 @@
 import { buildFailedTurnRecoveryMetadata as genericFailedTurnRecovery } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildContinueFailedTurnWrites } from "./build-continue-failed-turn-writes.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createTestProcessInstance } from "../test-helpers/process-model-fixtures.js";
 import { RepositoryCredentialService } from "./service.js";
 
 describe("RepositoryCredentialService", () => {
@@ -51,7 +52,22 @@ it("authorizes HTTPS material against the project's origin and derives the exact
 			},
 		],
 	};
-	expect(() => service.validateLaunch(input)).not.toThrow();
+	service.validateLaunch(input);
+	expect(
+		service.resolveWorkerCredentials({
+			process: createTestProcessInstance({ processId: process.id, paramsJson: "{}" }),
+			projects: input.projects.map((project) => ({ ...project, workBranch: null })),
+		}),
+	).toEqual([
+		{
+			projectKey: "repo",
+			kind: "git_https",
+			credentialRef: "https:fixture",
+			repositoryUrl: "https://forge.test/group/subgroup/repo.git",
+			username: "oauth2",
+			password: "test-token",
+		},
+	]);
 	expect(() =>
 		service.validateLaunch({
 			...input,

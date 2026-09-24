@@ -97,51 +97,38 @@ describe("worker WebSocket IPC route", () => {
 		try {
 			await waitForOpen(ws);
 			ws.send(server.token);
-			ws.send(
-				serializeMessage(
-					createIpcMessage({
-						type: "worker.heartbeat",
-						instanceId: "proc_1",
-						workerId: "wkr_1",
-						messageId: "hb-1",
-						payload: {
-							state: "idle",
-							lastSequenceConsumed: 0,
-							currentSelectedTurnId: null,
-						},
-					}),
-				),
-			);
-
-			await expect(envelopePromise).resolves.toMatchObject({
+			const heartbeat = createIpcMessage({
 				type: "worker.heartbeat",
+				instanceId: "proc_1",
+				workerId: "wkr_1",
 				messageId: "hb-1",
+				payload: { state: "idle", lastSequenceConsumed: 0, currentSelectedTurnId: null },
 			});
+			ws.send(serializeMessage(heartbeat));
+			await expect(envelopePromise).resolves.toEqual(heartbeat);
 
-			server.manager.send(
-				"proc_1",
-				"wkr_1",
-				createIpcMessage({
-					type: "input.batch",
-					instanceId: "proc_1",
-					workerId: "wkr_1",
-					messageId: "input-1",
-					payload: {
-						inputs: [
-							{
-								inputId: "inp_1",
-								sequence: 1,
-								source: "test",
-								kind: "operator_message",
-								target: null,
-								receivedAt: new Date(0).toISOString(),
-								bodyMarkdown: "hello",
-							},
-						],
-					},
-				}),
-			);
-			await expect(waitForMessage(ws)).resolves.toContain('"type":"input.batch"');
+			const batch = createIpcMessage({
+				type: "input.batch",
+				instanceId: "proc_1",
+				workerId: "wkr_1",
+				messageId: "input-1",
+				payload: {
+					inputs: [
+						{
+							inputId: "inp_1",
+							sequence: 1,
+							source: "test",
+							kind: "operator_message",
+							target: null,
+							receivedAt: new Date(0).toISOString(),
+							bodyMarkdown: "hello",
+						},
+					],
+				},
+			});
+			const received = waitForMessage(ws);
+			server.manager.send("proc_1", "wkr_1", batch);
+			expect(JSON.parse(await received)).toEqual(batch);
 			expect(callbacks.onInvalidOutput).not.toHaveBeenCalled();
 			expect(callbacks.onRuntimeError).not.toHaveBeenCalled();
 		} finally {

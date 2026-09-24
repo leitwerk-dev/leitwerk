@@ -1,24 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { mapWorkerEventToWsType } from "./protocol.js";
-import { isStreamableEvent, STREAMABLE_WORKER_EVENT_TYPES } from "./streamable-events.js";
+import { isStreamableEvent } from "./streamable-events.js";
 
-describe("isStreamableEvent", () => {
-	it("accepts the browser-projected Pi event subset", () => {
-		expect(isStreamableEvent("pi.stream.delta")).toBe(true);
-		expect(isStreamableEvent("pi.tool.call")).toBe(true);
-		expect(isStreamableEvent("pi.usage")).toBe(true);
+describe("browser-projected worker events", () => {
+	it.each([
+		["pi.stream.delta", "pi.stream.delta"],
+		["pi.turn.start", "pi.stream.started"],
+		["pi.turn.end", "pi.stream.completed"],
+		["pi.tool.call", "pi.tool.started"],
+		["pi.tool.result", "pi.tool.completed"],
+		["pi.label.changed", "pi.label.changed"],
+		["pi.error", "pi.error"],
+		["pi.retry.start", "pi.retry.start"],
+		["pi.retry.end", "pi.retry.end"],
+		["pi.usage", "pi.usage"],
+		["pi.compaction.start", "pi.compaction.start"],
+		["pi.compaction.end", "pi.compaction.end"],
+	])("streams %s as %s", (workerType, browserType) => {
+		expect(isStreamableEvent(workerType)).toBe(true);
+		expect(mapWorkerEventToWsType(workerType)).toBe(browserType);
 	});
 
-	it("rejects diagnostics and non-streamed Pi events", () => {
-		expect(isStreamableEvent("worker.trace")).toBe(false);
-		expect(isStreamableEvent("pi.tool.update")).toBe(false);
-		expect(isStreamableEvent("pi.unknown_future_event")).toBe(false);
-	});
-
-	it("keeps streamability and worker-to-WebSocket mapping in parity", () => {
-		for (const eventType of STREAMABLE_WORKER_EVENT_TYPES) {
-			expect(isStreamableEvent(eventType)).toBe(true);
-			expect(mapWorkerEventToWsType(eventType)).not.toBeNull();
-		}
+	it.each([
+		"worker.trace",
+		"pi.tool.update",
+		"pi.unknown_future_event",
+	])("does not stream %s", (eventType) => {
+		expect(isStreamableEvent(eventType)).toBe(false);
 	});
 });

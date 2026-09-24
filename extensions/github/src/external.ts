@@ -1,8 +1,8 @@
+import { describeConflict } from "@leitwerk-dev/coding/repository-rebase";
 import {
 	defineExternalActionSource,
 	type ExternalEventDescription,
 } from "@leitwerk-dev/process-sdk";
-import { describeConflict } from "@leitwerk-dev/repository-rebase";
 
 /** @internal */
 export const GITHUB_PR_STATE_KIND = "@leitwerk-private/github.pr_state";

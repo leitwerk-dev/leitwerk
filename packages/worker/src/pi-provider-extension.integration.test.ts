@@ -65,7 +65,7 @@ afterEach(async () => {
 });
 
 describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
-	it("preflights standard Pi resources and reports verified loaded provenance", async () => {
+	it("preflights standard Pi resources and reports loaded provenance", async () => {
 		const root = await createTempRoot();
 		const agentDir = path.join(root, "agent");
 		const workspaceRoot = path.join(root, "workspace");
@@ -158,43 +158,46 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 			server.listen(0, "127.0.0.1", resolve);
 		});
 
-		const root = await createTempRoot();
-		const agentDir = path.join(root, "agent");
-		const workspaceRoot = path.join(root, "workspace");
-		await Promise.all([
-			mkdir(workspaceRoot, { recursive: true }),
-			mkdir(agentDir, { recursive: true }),
-		]);
-		await writeFile(path.join(agentDir, "auth.json"), "{}\n");
-		const address = server.address() as AddressInfo;
-		await writePiExtension(
-			agentDir,
-			providerExtensionSource(`http://127.0.0.1:${address.port}/v1`),
-		);
-
-		const handle = await new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
-			instanceId: "pi-provider-extension-test",
-			treeFile: path.join(root, "tree.jsonl"),
-			workspaceRoot,
-			resume: false,
-			configSnapshot: createConfig(agentDir),
-			modelProfileId: "extension-profile",
-		});
-
 		try {
-			await expect(handle.prompt("Authenticate this request")).resolves.toBeDefined();
-			expect(authorization).toBe("Bearer test-key");
-			expect(handle.getBranch()).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({
-						type: "model_change",
-						provider: "extension-provider",
-						modelId: "extension-model",
-					}),
-				]),
+			const root = await createTempRoot();
+			const agentDir = path.join(root, "agent");
+			const workspaceRoot = path.join(root, "workspace");
+			await Promise.all([
+				mkdir(workspaceRoot, { recursive: true }),
+				mkdir(agentDir, { recursive: true }),
+			]);
+			await writeFile(path.join(agentDir, "auth.json"), "{}\n");
+			const address = server.address() as AddressInfo;
+			await writePiExtension(
+				agentDir,
+				providerExtensionSource(`http://127.0.0.1:${address.port}/v1`),
 			);
+
+			const handle = await new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
+				instanceId: "pi-provider-extension-test",
+				treeFile: path.join(root, "tree.jsonl"),
+				workspaceRoot,
+				resume: false,
+				configSnapshot: createConfig(agentDir),
+				modelProfileId: "extension-profile",
+			});
+
+			try {
+				await expect(handle.prompt("Authenticate this request")).resolves.toBeDefined();
+				expect(authorization).toBe("Bearer test-key");
+				expect(handle.getBranch()).toEqual(
+					expect.arrayContaining([
+						expect.objectContaining({
+							type: "model_change",
+							provider: "extension-provider",
+							modelId: "extension-model",
+						}),
+					]),
+				);
+			} finally {
+				await handle.close();
+			}
 		} finally {
-			await handle.close();
 			await new Promise<void>((resolve, reject) =>
 				server.close((error) => (error ? reject(error) : resolve())),
 			);

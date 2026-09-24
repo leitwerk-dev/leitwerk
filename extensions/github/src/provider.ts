@@ -1,6 +1,6 @@
+import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/coding/repository-rebase";
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
-import { conflictEvidence, createConflictReporter } from "@leitwerk-dev/repository-rebase";
 import { createPollSchedule, emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import type { GitHubIntegration } from "./capability.js";
 import {

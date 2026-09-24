@@ -1,8 +1,17 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	realpathSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import codingExtension, { codingActionIds } from "@leitwerk-dev/coding";
+import { patchPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import {
 	FORGEJO_ISSUE_CANCELLED_KIND,
@@ -19,6 +28,7 @@ import gitSshExtension from "@leitwerk-dev/git-ssh";
 import {
 	type CoreServerSetupDeps,
 	coreHostCapabilities,
+	createEmptyStructuralProcessState,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
 import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
@@ -210,6 +220,110 @@ function forgejoFixture(git: TemporaryGitRemote, botLogin = "leitwerk-bot") {
 			return pr;
 		},
 	};
+}
+
+async function seedPublishedDelivery(
+	deps: CoreServerSetupDeps,
+	temporaryGit: TemporaryGitRemote,
+	forgejo: ReturnType<typeof forgejoFixture>,
+) {
+	const root = temporaryGit.root;
+	// Publication is covered by workflow tests. Only seed its preconditions;
+	// feedback, worker turns, source rearming and restart remain real.
+	const workBranch = "leitwerk/seeded-delivery";
+	const checkout = path.join(root, "published-seed");
+	temporaryGit.local.run(temporaryGit.barePath, ["clone", temporaryGit.barePath, checkout]);
+	temporaryGit.local.run(checkout, ["checkout", "-b", workBranch]);
+	const manifest = path.join(checkout, "k8s/deployment.yaml");
+	writeFileSync(manifest, readFileSync(manifest, "utf8").replace("service:old", "service:new"));
+	temporaryGit.local.run(checkout, ["commit", "-am", "feat: update service deployment image"]);
+	temporaryGit.local.run(checkout, ["push", "origin", workBranch]);
+	const client = forgejo.client(PROFILE);
+	const pr = await client.createPullRequest(OWNER, REPO, {
+		title: "Update the service image",
+		body: "Published change",
+		head: workBranch,
+		base: "main",
+	});
+	const identity = await client.resolveGitIdentity(PROFILE);
+	const process = deps.processes.create({
+		processId: PROCESS_ID,
+		title: "Update the service image",
+		selectedTurnId: "deliver_change",
+		lifecycleStatus: "waiting",
+		paramsJson: JSON.stringify({
+			repoLocator: temporaryGit.barePath,
+			baseBranch: "main",
+			workBranch,
+			prompt: "Update the service image",
+			owner: OWNER,
+			repo: REPO,
+			forgejoProfile: PROFILE,
+			woodpeckerProfile: PROFILE,
+			sshCredentialRef: PROFILE,
+			origin: "ui",
+			issueNumber: null,
+			issueUrl: null,
+			triggerLabel: null,
+			doneLabel: null,
+		}),
+		stateJson: JSON.stringify(
+			patchPublicationState(
+				{
+					...createEmptyStructuralProcessState(),
+					finalization: {
+						generatedCommitMessage: "feat: update service deployment image",
+					},
+				},
+				"forgejoRepoChange",
+				{
+					headSha: temporaryGit.head(workBranch),
+					prNumber: pr.number,
+					prUrl: pr.html_url,
+					delivery: { stage: "awaiting", issueLinked: false },
+				},
+			),
+		),
+	});
+	deps.projects.create({
+		instanceId: process.id,
+		key: "repo",
+		repoLocator: temporaryGit.barePath,
+		baseBranch: "main",
+		workBranch,
+		metadata: {
+			forgejo: { owner: OWNER, repo: REPO, profile: PROFILE },
+			woodpecker: { owner: OWNER, repo: REPO, profile: PROFILE },
+			"leitwerk.gitIdentity": identity,
+		},
+	});
+	if (!deps.processWorkspacesDir) throw new Error("Missing process workspace storage");
+	const workspace = path.join(deps.processWorkspacesDir, process.id);
+	mkdirSync(path.join(workspace, ".leitwerk"), { recursive: true });
+	// A published delivery retains its checkout at the published head. Without its
+	// manifest, first worker startup would recreate the branch from the base.
+	renameSync(checkout, path.join(workspace, "repo"));
+	const createdAt = new Date().toISOString();
+	writeFileSync(
+		path.join(workspace, ".leitwerk/components.json"),
+		JSON.stringify({
+			version: 1,
+			instanceId: process.id,
+			createdAt,
+			components: [
+				{
+					key: "repo",
+					repoLocator: temporaryGit.barePath,
+					baseBranch: "main",
+					workBranch,
+					clonedAt: createdAt,
+					headSha: temporaryGit.head(workBranch),
+				},
+			],
+		}),
+	);
+	writeFileSync(path.join(workspace, "AGENTS.md"), "");
+	return process.id;
 }
 
 export interface PipelineFixture extends WoodpeckerPipeline {
@@ -460,6 +574,7 @@ export async function createRemoteRepoChangeFixture(
 		docker?: boolean;
 		botLogin?: string;
 		seed?: TemporaryGitRemote;
+		seedPublishedDelivery?: boolean;
 	} = {},
 ) {
 	const root = await mkdtemp(path.join(tmpdir(), FIXTURE_PREFIX));
@@ -503,6 +618,7 @@ export async function createRemoteRepoChangeFixture(
 		}
 
 		let sources: CoreServerSetupDeps["externalSources"] | undefined;
+		let seededDeliveryId: string | undefined;
 		let legacySetup: { id: string; issueOrigin: boolean } | undefined;
 		const extensionConfig = {
 			"git-ssh": {
@@ -522,10 +638,13 @@ export async function createRemoteRepoChangeFixture(
 				fixtureModelProviderExtension,
 				{
 					manifest: { id: "remote-change-observation", version: "1" },
-					setupServer(api) {
+					async setupServer(api) {
 						const deps = api.get(coreHostCapabilities.serverSetup);
 						if (!deps || Array.isArray(deps)) throw new Error("Missing server setup");
 						sources = deps.externalSources;
+						if (options.seedPublishedDelivery && !seededDeliveryId) {
+							seededDeliveryId = await seedPublishedDelivery(deps, temporaryGit, forgejo);
+						}
 						if (legacySetup) {
 							const retained = deps.processes
 								.listAll()
@@ -626,6 +745,11 @@ export async function createRemoteRepoChangeFixture(
 		};
 		return {
 			harness: test,
+			async seededDelivery() {
+				if (!seededDeliveryId) throw new Error("No seeded delivery configured");
+				await waitForTurn(seededDeliveryId, "deliver_change");
+				return seededDeliveryId;
+			},
 			get forgejo() {
 				return forgejo;
 			},

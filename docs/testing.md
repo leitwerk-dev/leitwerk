@@ -42,7 +42,9 @@ npm run test:full -- --composition=../my-extensions/leitwerk.composition.yaml
 ```
 
 See [Development compositions](development-composition.md). The full gate reports
-phase durations locally and in CI; use them when investigating performance.
+phase durations and test summaries. It prints the log directory for detailed output
+and replays the failed phase's output on failure. See [CI](ci.md#validation) for test
+runtime warnings.
 
 ## Test boundaries
 
@@ -139,7 +141,10 @@ npm run test:browser
 ```
 
 On Linux, add `--with-deps` to browser installation for system libraries. The full gate
-runs all three engines. After building, a focused run may select one:
+runs all three engines concurrently, with two isolated shards per engine on hosts
+with at least six available CPUs and one shard per engine on smaller hosts. Layout
+checks run with the other tests in each engine. After building, a focused run may
+select one:
 
 ```sh
 LEITWERK_BROWSER_ENGINE=firefox npx playwright test
@@ -149,7 +154,8 @@ Firefox is the visual reference; compare identical viewport sizes. WebKit covers
 Safari's rendering engine, not native browser chrome or OS menus. Playwright does
 not support Firefox mobile emulation or wheel input in mobile WebKit.
 
-Each run gets its own UI server and prints an artifact directory under `test-results/`.
+Each runner gets its own UI server, API port, and Vite cache. The browser command
+prints an artifact directory under `test-results/`, with separate outputs per shard.
 Preserve traces and retry artifacts from concurrent runs. For manual source UI work,
 use `npm run dev:sandbox`; see the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).

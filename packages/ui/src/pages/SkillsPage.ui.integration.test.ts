@@ -320,6 +320,7 @@ describe("SkillsPage", () => {
 		);
 		await flush();
 		expect(document.activeElement?.textContent).toBe("Remove");
+		expect(removeSkill).not.toHaveBeenCalled();
 		click(
 			[...target.querySelectorAll("button")].find((button) => button.textContent === "Remove") ??
 				null,
@@ -379,7 +380,7 @@ describe("SkillsPage", () => {
 		);
 		await flush();
 
-		expect(fetchInstalledSkillDetail).toHaveBeenCalledTimes(2);
+		expect(registerSkill).toHaveBeenCalledWith("shared", "review");
 		expect(target.textContent).toContain("Skill updated.");
 		expect(target.textContent).toContain("new");
 	});

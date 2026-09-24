@@ -90,7 +90,7 @@ describe("createWoodpeckerProvider", () => {
 		expect(fire).not.toHaveBeenCalled();
 	});
 
-	it("waits indefinitely while the newest matching pipeline is running", async () => {
+	it("waits while the newest matching pipeline is running", async () => {
 		const { provider, fire } = fixture([pipeline(), pipeline({ number: 9, status: "running" })]);
 
 		await provider.poll();
@@ -98,7 +98,7 @@ describe("createWoodpeckerProvider", () => {
 		expect(fire).not.toHaveBeenCalled();
 	});
 
-	it("does not poll a CI source already satisfied for the current head", async () => {
+	it("does not fire a disabled CI source", async () => {
 		const { provider, fire } = fixture([pipeline({ status: "success" })], { disabled: true });
 
 		await provider.poll();

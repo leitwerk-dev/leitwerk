@@ -27,7 +27,7 @@ describeSmoke("DockerEngineHttpClient smoke", () => {
 			expect(inspect.id).toBe(id);
 		} finally {
 			await engine.stopContainer(id, { timeoutSeconds: 1 }).catch(() => {});
-			await engine.removeContainer(id, { force: true }).catch(() => {});
+			await engine.removeContainer(id, { force: true });
 		}
 	});
 });

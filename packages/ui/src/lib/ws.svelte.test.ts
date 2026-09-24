@@ -69,10 +69,14 @@ const HEARTBEAT_INTERVAL_MS = 1_000;
 const HEARTBEAT_TIMEOUT_MS = 500;
 const RECONNECT_DELAY_MS = 200;
 
+let currentWs: typeof import("./ws.svelte.js") | undefined;
+const originalVisibility = Object.getOwnPropertyDescriptor(document, "visibilityState");
+
 async function importWsModule() {
 	// Fresh module per test so the module-level socket/timers reset.
 	vi.resetModules();
-	return await import("./ws.svelte.js");
+	currentWs = await import("./ws.svelte.js");
+	return currentWs;
 }
 
 describe("ws heartbeat and recovery", () => {
@@ -89,6 +93,10 @@ describe("ws heartbeat and recovery", () => {
 	});
 
 	afterEach(() => {
+		currentWs?.disconnect();
+		currentWs = undefined;
+		if (originalVisibility) Object.defineProperty(document, "visibilityState", originalVisibility);
+		else Reflect.deleteProperty(document, "visibilityState");
 		vi.useRealTimers();
 		clearConfig();
 	});
@@ -107,8 +115,6 @@ describe("ws heartbeat and recovery", () => {
 		vi.advanceTimersByTime(HEARTBEAT_INTERVAL_MS);
 		expect(socket.pings).toHaveLength(2);
 		expect(socket.closed).toBe(false);
-
-		ws.disconnect();
 	});
 
 	it("force-closes and reconnects when no message arrives within the timeout", async () => {
@@ -129,8 +135,6 @@ describe("ws heartbeat and recovery", () => {
 		// onclose schedules a reconnect after the configured delay.
 		vi.advanceTimersByTime(RECONNECT_DELAY_MS);
 		expect(FakeWebSocket.instances).toHaveLength(2);
-
-		ws.disconnect();
 	});
 
 	it("resets the watchdog when an inbound pong arrives", async () => {
@@ -148,8 +152,6 @@ describe("ws heartbeat and recovery", () => {
 		// Advancing past the original timeout no longer closes the socket.
 		vi.advanceTimersByTime(HEARTBEAT_TIMEOUT_MS);
 		expect(socket.closed).toBe(false);
-
-		ws.disconnect();
 	});
 
 	it("increments reconnectCount after a forced reconnect so pages reload", async () => {
@@ -167,8 +169,6 @@ describe("ws heartbeat and recovery", () => {
 		const second = FakeWebSocket.instances[1];
 		second.open();
 		expect(get(ws.wsStore).reconnectCount).toBe(1);
-
-		ws.disconnect();
 	});
 
 	it("forces a reconnect when the tab becomes visible and the socket is dead", async () => {
@@ -190,8 +190,6 @@ describe("ws heartbeat and recovery", () => {
 
 		// A fresh socket is created to reload state.
 		expect(FakeWebSocket.instances).toHaveLength(2);
-
-		ws.disconnect();
 	});
 
 	it("pings an open socket on focus to probe liveness", async () => {
@@ -202,8 +200,6 @@ describe("ws heartbeat and recovery", () => {
 
 		window.dispatchEvent(new Event("focus"));
 		expect(socket.pings).toHaveLength(1);
-
-		ws.disconnect();
 	});
 
 	it("forces a reconnect when the network comes back online and the socket is dead", async () => {
@@ -215,8 +211,6 @@ describe("ws heartbeat and recovery", () => {
 
 		window.dispatchEvent(new Event("online"));
 		expect(FakeWebSocket.instances).toHaveLength(2);
-
-		ws.disconnect();
 	});
 
 	it("ignores a late onclose from a stale socket after recovery replaces it", async () => {
@@ -246,8 +240,6 @@ describe("ws heartbeat and recovery", () => {
 		// No spurious reconnect should be scheduled by the stale callback.
 		vi.advanceTimersByTime(RECONNECT_DELAY_MS);
 		expect(FakeWebSocket.instances).toHaveLength(2);
-
-		ws.disconnect();
 	});
 
 	it("stops the heartbeat and removes listeners on disconnect", async () => {

@@ -1,18 +1,13 @@
-import type { ProcessEvent } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import {
 	buildLiveTurnProjectionFromEvents,
 	snapshotLiveTurnProjection,
 } from "./live-turn-projection.js";
 
-function event(input: ProcessEvent): ProcessEvent {
-	return input;
-}
-
 describe("live-turn-projection", () => {
 	it("orders same-timestamp events by persisted creation time", () => {
 		const projection = buildLiveTurnProjectionFromEvents([
-			event({
+			{
 				id: "evt_3",
 				instanceId: "agt_1",
 				eventType: "pi.stream.delta",
@@ -23,8 +18,8 @@ describe("live-turn-projection", () => {
 					timestamp: "2026-01-01T00:00:01Z",
 				},
 				createdAt: "2026-01-01T00:00:02Z",
-			}),
-			event({
+			},
+			{
 				id: "evt_2",
 				instanceId: "agt_1",
 				eventType: "pi.tool.call",
@@ -36,8 +31,8 @@ describe("live-turn-projection", () => {
 					timestamp: "2026-01-01T00:00:01Z",
 				},
 				createdAt: "2026-01-01T00:00:01.500Z",
-			}),
-			event({
+			},
+			{
 				id: "evt_1",
 				instanceId: "agt_1",
 				eventType: "pi.stream.delta",
@@ -48,7 +43,7 @@ describe("live-turn-projection", () => {
 					timestamp: "2026-01-01T00:00:01Z",
 				},
 				createdAt: "2026-01-01T00:00:01Z",
-			}),
+			},
 		]);
 
 		expect(snapshotLiveTurnProjection(projection)).toMatchObject({
@@ -63,71 +58,50 @@ describe("live-turn-projection", () => {
 		});
 	});
 
-	it("adds retry, error, and compaction events to the live trace", () => {
+	it.each([
+		{
+			eventType: "pi.error",
+			data: { message: "server_error" },
+			severity: "error",
+			messageParts: ["server_error"],
+		},
+		{
+			eventType: "pi.retry.start",
+			data: { attempt: 1, maxAttempts: 3, delayMs: 2000 },
+			severity: "warning",
+			messageParts: ["1/3", "2000"],
+		},
+		{
+			eventType: "pi.compaction.end",
+			data: { reason: "overflow", willRetry: true },
+			severity: "success",
+			messageParts: ["overflow", "continue automatically"],
+		},
+	])("presents $eventType as a $severity trace event", ({
+		eventType,
+		data,
+		severity,
+		messageParts,
+	}) => {
 		const projection = buildLiveTurnProjectionFromEvents([
-			event({
-				id: "evt_error",
-				instanceId: "agt_1",
-				eventType: "pi.error",
-				data: {
-					turnRecordId: "trn_1",
-					message: "server_error",
-					timestamp: "2026-01-01T00:00:01Z",
-				},
+			{
+				id: "event",
+				instanceId: "process",
+				eventType,
+				data,
 				createdAt: "2026-01-01T00:00:01Z",
-			}),
-			event({
-				id: "evt_retry",
-				instanceId: "agt_1",
-				eventType: "pi.retry.start",
-				data: {
-					turnRecordId: "trn_1",
-					attempt: 1,
-					maxAttempts: 3,
-					delayMs: 2000,
-					timestamp: "2026-01-01T00:00:02Z",
-				},
-				createdAt: "2026-01-01T00:00:02Z",
-			}),
-			event({
-				id: "evt_compaction",
-				instanceId: "agt_1",
-				eventType: "pi.compaction.end",
-				data: {
-					turnRecordId: "trn_1",
-					reason: "overflow",
-					willRetry: true,
-					timestamp: "2026-01-01T00:00:03Z",
-				},
-				createdAt: "2026-01-01T00:00:03Z",
-			}),
+			},
 		]);
-
-		expect(snapshotLiveTurnProjection(projection).traceItems).toEqual([
-			expect.objectContaining({
-				kind: "operational_event",
-				eventType: "pi.error",
-				severity: "error",
-				message: "server_error",
-			}),
-			expect.objectContaining({
-				kind: "operational_event",
-				eventType: "pi.retry.start",
-				severity: "warning",
-				message: "Retry 1/3 scheduled in 2000ms.",
-			}),
-			expect.objectContaining({
-				kind: "operational_event",
-				eventType: "pi.compaction.end",
-				severity: "success",
-				message: "Pi compacted context (overflow). Pi will continue automatically.",
-			}),
-		]);
+		const trace = snapshotLiveTurnProjection(projection).traceItems;
+		expect(trace).toMatchObject([{ kind: "operational_event", eventType, severity }]);
+		for (const text of messageParts) {
+			expect(trace[0]).toMatchObject({ message: expect.stringContaining(text) });
+		}
 	});
 
 	it("aggregates cumulative usage and cost across multiple pi.usage events", () => {
 		const projection = buildLiveTurnProjectionFromEvents([
-			event({
+			{
 				id: "evt_usage_1",
 				instanceId: "agt_1",
 				eventType: "pi.usage",
@@ -149,8 +123,8 @@ describe("live-turn-projection", () => {
 					timestamp: "2026-01-01T00:00:02Z",
 				},
 				createdAt: "2026-01-01T00:00:02Z",
-			}),
-			event({
+			},
+			{
 				id: "evt_usage_2",
 				instanceId: "agt_1",
 				eventType: "pi.usage",
@@ -172,7 +146,7 @@ describe("live-turn-projection", () => {
 					timestamp: "2026-01-01T00:00:03Z",
 				},
 				createdAt: "2026-01-01T00:00:03Z",
-			}),
+			},
 		]);
 
 		expect(snapshotLiveTurnProjection(projection).usage).toEqual({

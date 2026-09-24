@@ -3,6 +3,7 @@ import {
 	createExtensionIntegrationHarness,
 	type ExtensionIntegrationHarness,
 	type ExtensionIntegrationHarnessOptions,
+	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import singlePromptExtension from "../index.js";
 
@@ -71,35 +72,34 @@ export async function http(test: ExtensionIntegrationHarness, url: string, init:
 	return { status: response.statusCode, json: response.json };
 }
 
-/** Observe asynchronous launch admission without exposing server state. */
-export async function launchRequest(
+/** Admit a launch and observe its process without requiring a transient lifecycle state. */
+export async function launchProcess(
 	test: ExtensionIntegrationHarness,
-	url: string,
-	init: RequestInit,
-): Promise<{ status: number; json(): unknown }> {
+	launcherId: string,
+	launcherInput: { prompt: string },
+	defaultModelProfileId: string,
+) {
 	const admitted = await test.request({
 		method: "POST",
-		url,
+		url: `/api/launchers/${launcherId}/launch-runs`,
 		headers: { "idempotency-key": crypto.randomUUID() },
-		payload: { ...JSON.parse(String(init.body)), schedule: { mode: "now" } },
+		payload: { launcherInput, modelConfig: { defaultModelProfileId }, schedule: { mode: "now" } },
 	});
-	if (admitted.statusCode !== 202) return { status: admitted.statusCode, json: admitted.json };
+	if (admitted.statusCode !== 202) throw new Error(`Launch admission failed: ${admitted.body}`);
 	const { launchRunId } = admitted.json<{ launchRunId: string }>();
-	const deadline = Date.now() + 12000;
-	for (;;) {
-		const response = await test.request({ url: `/api/launch-runs/${launchRunId}` });
-		const { launchRun } = response.json<{
-			launchRun: { status: string; instanceId: string | null };
-		}>();
-		if (launchRun.instanceId) {
-			const snapshot = test.process(launchRun.instanceId).snapshot();
-			return {
-				status: launchRun.status === "failed" ? 200 : 201,
-				json: () => ({ process: snapshot.process, projects: snapshot.projects }),
-			};
-		}
-		if (launchRun.status === "failed" || Date.now() >= deadline)
-			throw new Error(`Launch did not commit: ${response.body}`);
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
+	const launchRun = await waitForValue(
+		async () => {
+			const response = await test.request({ url: `/api/launch-runs/${launchRunId}` });
+			const { launchRun } = response.json<{
+				launchRun: { status: string; instanceId: string | null };
+			}>();
+			if (launchRun.status === "failed" && !launchRun.instanceId)
+				throw new Error(`Launch did not commit: ${response.body}`);
+			return launchRun;
+		},
+		(run) => run.instanceId !== null,
+		12000,
+	);
+	if (!launchRun.instanceId) throw new Error("Missing launched process");
+	return test.process(launchRun.instanceId).snapshot().process;
 }

@@ -12,7 +12,6 @@ import {
 	createWorkerProcessBuilder,
 	defineProcess,
 	defineProcessWatcherSource,
-	getProcessGraph,
 	humanTurn,
 	llmTurn,
 	MARKDOWN_RESULT_TOOL_NAME,
@@ -65,6 +64,7 @@ describe("createEventBus", () => {
 		bus.on("e", good);
 
 		expect(() => bus.emit("e", null)).not.toThrow();
+		expect(bad).toHaveBeenCalledWith(null);
 		expect(good).toHaveBeenCalledWith(null);
 	});
 });
@@ -140,8 +140,8 @@ describe("buildWorkerRuntimeDefinition", () => {
 		const runtime = buildWorkerRuntimeDefinition(process, {
 			params: { flag: true },
 			state: { attempts: 0 },
-			paramsJson: JSON.stringify({ flag: false }),
-			stateJson: JSON.stringify({ attempts: 7 }),
+			paramsJson: JSON.stringify({ flag: 0 }),
+			stateJson: JSON.stringify({ attempts: "7" }),
 		});
 
 		expect(runtime).toMatchObject({
@@ -181,34 +181,6 @@ describe("buildWorkerRuntimeDefinition", () => {
 		});
 
 		expect(runtime).toBeUndefined();
-	});
-
-	it("allows outcome tools without graph targets to stay on the current turn", () => {
-		const stayProcess = defineProcess<Record<string, never>, Record<string, never>>({
-			id: "stay_process",
-			displayName: "Stay Process",
-			entry: "inspect",
-			paramsCodec: { parse: () => ({}), serialize: (value) => value },
-			stateCodec: { parse: () => ({}), serialize: (value) => value },
-			initialState: () => ({}),
-			turns: {
-				inspect: llmTurn({
-					availableTools: [],
-					description: "Inspect",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "inspect",
-					outcomes: {
-						parked: { description: "Park", parameters: {} },
-					},
-				}),
-			},
-		});
-
-		expect(
-			getProcessGraph(new Map([[stayProcess.id, stayProcess]]), stayProcess.id).turns.get("inspect")
-				?.transitions,
-		).toEqual([{ nextTurnId: "inspect", outcome: "parked" }]);
 	});
 
 	it("returns undefined when the worker definition has no start node", () => {
@@ -263,16 +235,13 @@ describe("process builders", () => {
 		const builder = createServerProcessBuilder<{ mode: string }, { attempts: number }>();
 		const outcomeHandler = vi.fn();
 		const cleanupHandler = vi.fn();
-		builder.action({
-			id: "retry",
-			label: "Retry",
-			plan: async () => {},
-		});
+		const plan = vi.fn();
+		builder.action({ id: "retry", label: "Retry", plan });
 		builder.onTurnOutcome("run_llm_review", outcomeHandler);
 		builder.onCleanup(cleanupHandler);
 
 		const definition = builder.getDefinition();
-		expect(definition.actions.get("retry")?.label).toBe("Retry");
+		expect(definition.actions.get("retry")).toEqual({ id: "retry", label: "Retry", plan });
 		expect(definition.turnOutcomeHandlers.get("run_llm_review")).toEqual([outcomeHandler]);
 		expect(definition.cleanupHandlers).toEqual([cleanupHandler]);
 	});
@@ -293,14 +262,15 @@ describe("process builders", () => {
 
 	it("collects explicit side-effect execute-only actions", () => {
 		const builder = createServerProcessBuilder();
+		const execute = vi.fn();
 		builder.action({
 			id: "send_notification",
 			label: "Send notification",
 			executionMode: "side_effect",
-			execute: async () => {},
+			execute,
 		});
 
-		expect([...builder.getDefinition().actions.keys()]).toEqual(["send_notification"]);
+		expect(builder.getDefinition().actions.get("send_notification")?.execute).toBe(execute);
 	});
 
 	it("rejects invalid action previews on server actions", () => {
@@ -335,17 +305,12 @@ describe("process builders", () => {
 
 	it("collects a single leaf outcome definition", () => {
 		const builder = createUiProcessBuilder();
-		builder.leafOutcome({
+		const capture = vi.fn();
+		builder.leafOutcome({ rendererId: "test:details.leaf_outcome", capture });
+		expect(builder.getDefinition().leafOutcome).toEqual({
 			rendererId: "test:details.leaf_outcome",
-			capture: () => ({
-				rendererId: "test:details.leaf_outcome",
-				props: { title: "Leaf" },
-				fallbackMarkdown: "## Leaf",
-			}),
+			capture,
 		});
-
-		const definition = builder.getDefinition();
-		expect(definition.leafOutcome?.rendererId).toBe("test:details.leaf_outcome");
 	});
 
 	it("rejects duplicate or invalid leaf outcome definitions and validates capture results", () => {
@@ -407,9 +372,11 @@ describe("process builders", () => {
 		const catalog = await buildExtensionCatalogFromModules([extension]);
 		expect(catalog.toolRenderers.get(MARKDOWN_RESULT_TOOL_NAME)).toMatchObject({
 			toolName: MARKDOWN_RESULT_TOOL_NAME,
+			fields: [{ kind: "markdown", source: "arguments", path: "markdown" }],
 		});
 		expect(catalog.toolRenderers.get("publish_review")).toMatchObject({
 			toolName: "publish_review",
+			fields: [{ kind: "markdown", source: "arguments", path: "reviewMarkdown" }],
 		});
 	});
 
@@ -451,7 +418,7 @@ describe("process builders", () => {
 		).rejects.toThrow(`Tool renderer '${MARKDOWN_RESULT_TOOL_NAME}' is already registered`);
 	});
 
-	it("collects launcher definitions", () => {
+	it("collects launcher definitions", async () => {
 		const builder = createProcessLauncherBuilder<{ repoPath: string }>();
 		builder.launcher({
 			id: "local_repo_ui",
@@ -478,7 +445,15 @@ describe("process builders", () => {
 		});
 
 		const definition = builder.getDefinition();
-		expect(definition.launchers.has("local_repo_ui")).toBe(true);
+		const launcher = definition.launchers.get("local_repo_ui");
+		expect(launcher?.ui.launchConfigSchema).toMatchObject({
+			id: "local_repo_form",
+			fields: [{ id: "repoPath", kind: "text", required: true }],
+		});
+		expect(await launcher?.ui.resolveLaunchConfig({ repoPath: "/tmp/repo" }, {})).toEqual({
+			ok: true,
+			launchConfig: { processId: "test_process", params: { repoPath: "/tmp/repo" } },
+		});
 	});
 
 	it("rejects non-UI launcher visibility", () => {
@@ -542,7 +517,7 @@ describe("process builders", () => {
 		).toThrow(/already registered/);
 	});
 
-	it("builds process launchers from process definitions", () => {
+	it("builds process launchers from process definitions", async () => {
 		const process: ExtensionProcessDefinition<{ repoPath: string }, Record<string, never>> = {
 			id: "test_process",
 			displayName: "Test Process",
@@ -576,10 +551,15 @@ describe("process builders", () => {
 		};
 
 		const built = buildProcessLaunchersForTest(process);
-		expect(built?.launchers.has("local_repo_ui")).toBe(true);
+		const launcher = built?.launchers.get("local_repo_ui");
+		expect(launcher?.ui.launchConfigSchema).toMatchObject({ id: "f", fields: [] });
+		expect(await launcher?.ui.resolveLaunchConfig({}, {})).toEqual({
+			ok: true,
+			launchConfig: { processId: "test_process", params: { repoPath: "/tmp/p" } },
+		});
 	});
 
-	it("collects and validates process watchers", () => {
+	it("collects process watcher definitions", async () => {
 		const builder = createProcessWatcherBuilder<{ repoPath: string }>();
 		builder.watcher({
 			id: "fs_repo",
@@ -592,7 +572,12 @@ describe("process builders", () => {
 			}),
 		});
 
-		expect(builder.getDefinition().watchers.has("fs_repo")).toBe(true);
+		const watcher = builder.getDefinition().watchers.get("fs_repo");
+		expect(watcher?.source).toMatchObject({ id: "test_source" });
+		expect(await watcher?.resolveLaunchConfig({}, {})).toEqual({
+			processId: "test_process",
+			params: { repoPath: "/tmp/repo" },
+		});
 	});
 
 	it("rejects duplicate process watcher ids", () => {
@@ -620,7 +605,7 @@ describe("process builders", () => {
 describe("runWorkerTurnForTest", () => {
 	it("runs worker turns without the worker host", async () => {
 		const handler = vi.fn(async (run) => {
-			await run.turn(
+			const turn = await run.turn(
 				llmTurn({
 					availableTools: [],
 					description: "Verify",
@@ -636,12 +621,13 @@ describe("runWorkerTurnForTest", () => {
 					},
 				}),
 			);
+			expect(turn).toEqual({ outcome: "build_passing", params: { summary: "passed" } });
 			run.park("manual_follow_up");
 		});
 
 		const result = await runWorkerTurnForTest(handler, {
 			process: createTestProcessInstance({ selectedTurnId: "verify_build" }),
-			turnResults: [{ outcome: "build_passing", params: {} }],
+			turnResults: [{ outcome: "build_passing", params: { summary: "passed" } }],
 		});
 
 		expect(result.turnCalls).toEqual([{ turnId: "verify_build", options: undefined }]);
@@ -774,7 +760,7 @@ describe("extension catalog test helpers", () => {
 		);
 	});
 
-	it("rejects processes whose transitions reference undeclared turns", async () => {
+	it("rejects authored transitions on process turn bindings", async () => {
 		const valid = defineProcess({
 			id: "invalid_turn_ref_process",
 			displayName: "Invalid Turn Ref",
@@ -937,11 +923,12 @@ describe("extension catalog test helpers", () => {
 });
 
 describe("extension host setup", () => {
-	it("runs server setup hooks in catalog dependency order", async () => {
+	it("awaits server setup hooks in catalog dependency order", async () => {
 		const calls: string[] = [];
 		const dependency: LeitwerkExtensionModule = {
 			manifest: { id: "ticket", version: "0.1.0" },
 			async setupServer() {
+				await Promise.resolve();
 				calls.push("ticket");
 			},
 		};

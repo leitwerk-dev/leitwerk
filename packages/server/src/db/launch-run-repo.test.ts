@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "./database.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAllRepos } from "./repositories.js";
 
 describe("launch run repository", () => {

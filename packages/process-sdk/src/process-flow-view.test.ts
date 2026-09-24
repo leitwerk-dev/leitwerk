@@ -224,7 +224,7 @@ describe("buildProcessFlowView", () => {
 		expect(view.spine).toEqual(["draft"]);
 	});
 
-	it("carries turn types and descriptions onto nodes and falls back to the turn id", () => {
+	it("carries the automatic turn type and description onto its node", () => {
 		const process = defineFlow({
 			entry: "draft",
 			happyPath: ["draft", "merge"],

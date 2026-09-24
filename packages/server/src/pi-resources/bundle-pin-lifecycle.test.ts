@@ -1,6 +1,6 @@
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createPiResourceBundleCache } from "./bundle-cache.js";
 import { createPiResourceBundlePinReconciler } from "./bundle-pin-lifecycle.js";
 
@@ -38,7 +38,7 @@ function createStartingLlmProcess(digest: string, deps = createTestDeps()) {
 }
 
 describe("Pi resource bundle pin lifecycle", () => {
-	it("pins only a current starting or accepted running LLM start", () => {
+	it("pins a current starting LLM start and releases it after bootstrap failure", () => {
 		const deps = createTestDeps();
 		const cache = createPiResourceBundleCache();
 		const bundle = createCanonicalPiResourceBundle([

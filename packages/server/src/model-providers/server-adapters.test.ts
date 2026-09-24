@@ -63,6 +63,10 @@ describe("model provider server adapters", () => {
 			expect.objectContaining({
 				providerId: "provider",
 				modelId: "model",
+				prompt: "prompt",
+				systemPrompt: "system",
+				maxTokens: 48,
+				request: { maxRetryDelayMs: 1_000 },
 				secrets: { token: "second" },
 				config: { baseUrl: "https://configured.example" },
 			}),

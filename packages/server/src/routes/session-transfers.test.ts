@@ -36,6 +36,7 @@ describe("session transfer routes", () => {
 		});
 
 		expect(response.statusCode).toBe(201);
+		expect(createGrant).toHaveBeenCalledExactlyOnceWith("agt_1");
 		expect(response.json()).toEqual({
 			transferUrl: "https://leitwerk.example/api/session-transfers/agt_1/trg_1#token=secret-token",
 			expiresAt: "2026-09-01T01:00:00.000Z",

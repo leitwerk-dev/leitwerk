@@ -6,15 +6,13 @@ import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
+import { createTestProcessInstance } from "../../test-helpers/process-model-fixtures.js";
 import { buildTurnSelectionWrites } from "./build-turn-selection-writes.js";
 
 const registry = createDefaultTestProcessGraphRegistry();
 
-function createProcess(
-	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
-) {
-	return createTestDeps().processes.create({
+function createProcess(overrides: Parameters<typeof createTestProcessInstance>[0]) {
+	return createTestProcessInstance({
 		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
@@ -77,7 +75,7 @@ describe("buildTurnSelectionWrites", () => {
 				},
 			}),
 		]);
-		const process = createTestDeps().processes.create({
+		const process = createTestProcessInstance({
 			processId: "automatic_process",
 			selectedTurnId: "implementation_decision",
 			lifecycleStatus: "waiting",

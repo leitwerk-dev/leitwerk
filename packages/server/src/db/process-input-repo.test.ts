@@ -58,7 +58,7 @@ describe("process input actor attribution", () => {
 		expect(inputs.listByInstance(instanceId)[0]?.actor).toEqual(actor);
 	});
 
-	it("backfills legacy rows that predate the actor column to the system actor", () => {
+	it("decodes retained rows with an empty actor to the system actor", () => {
 		const inputs = createProcessInputRepo(db);
 		const instanceId = createProcess();
 		const sqlite = (db as unknown as { $client: import("node:sqlite").DatabaseSync }).$client;

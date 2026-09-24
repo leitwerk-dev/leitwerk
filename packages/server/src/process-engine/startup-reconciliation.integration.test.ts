@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "../config/index.js";
 import {
 	createPiResourceBundleCache,
@@ -6,16 +6,18 @@ import {
 } from "../pi-resources/index.js";
 import { buildProcessActionRegistry } from "../process-action-registry.js";
 import { createFakeWorkerSupervisor } from "../test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
+import { createTestTurnStart } from "../test-helpers/process-model-fixtures.js";
 import { createTestLlmTurn } from "../test-helpers/turn-fixtures.js";
-import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart } from "../test-helpers/unit-deps.js";
 import { reconcileProcessesOnStartup } from "./startup-reconciliation.js";
 
 describe("reconcileProcessesOnStartup", () => {
-	it("resumes an LLM start when its bundle is absent from the server cache", async () => {
+	it("resumes an isolated LLM start from its volume when the server bundle cache is empty", async () => {
 		const deps = createTestDeps();
 		const processDef = createFixtureProcess({
 			id: "startup_missing_bundle_process",
@@ -48,16 +50,19 @@ describe("reconcileProcessesOnStartup", () => {
 			},
 		});
 		const supervisor = createFakeWorkerSupervisor();
+		const config = getDefaultConfig();
+		config.workers.runner = "docker";
+		const recordWorkerFailure = vi.fn();
 
 		await reconcileProcessesOnStartup({
-			config: getDefaultConfig(),
+			config,
 			processes: deps.processes,
 			leases: deps.leases,
 			turnStarts: deps.turnStarts,
 			turnRecords: deps.turnRecords,
 			broadcaster: deps.broadcaster,
 			supervisor,
-			commands: {},
+			commands: { recordWorkerFailure },
 			bundlePins: createPiResourceBundlePinReconciler({
 				turnStarts: deps.turnStarts,
 				turnRecords: deps.turnRecords,
@@ -68,6 +73,7 @@ describe("reconcileProcessesOnStartup", () => {
 
 		expect(deps.processes.getById(process.id)?.lifecycleStatus).toBe("active");
 		expect(supervisor.spawnCalls).toEqual([process.id]);
+		expect(recordWorkerFailure).not.toHaveBeenCalled();
 	});
 
 	it("reclaims stale leases and resumes active processes without an adopted worker", async () => {
@@ -111,7 +117,7 @@ describe("reconcileProcessesOnStartup", () => {
 		expect(supervisor.spawnCalls).toEqual([process.id]);
 	});
 
-	it("keeps a compatible adopted worker that already uses the runtime model fallback", async () => {
+	it("keeps an already adopted worker for a resumable current start", async () => {
 		const deps = createTestDeps();
 		const processDef = createFixtureProcess({
 			id: "startup_model_fallback_process",
@@ -127,9 +133,17 @@ describe("reconcileProcessesOnStartup", () => {
 			lifecycleStatus: "active",
 		});
 		const config = getDefaultConfig();
-		config.pi.model_profiles = config.pi.model_profiles.filter(
-			(profile) => profile.id !== "claude_fast",
-		);
+		const start = createSelectedTurnStart(deps, {
+			instanceId: process.id,
+			turnId: "llm_turn",
+			turnType: "llm",
+			proposedTurnRecordId: "trn_adopted",
+			state: createTestTurnStart().state,
+		});
+		expect(deps.processes.getById(process.id)?.currentExecution).toEqual({
+			kind: "worker_start",
+			id: start.id,
+		});
 		const supervisor = createFakeWorkerSupervisor([process.id]);
 
 		await reconcileProcessesOnStartup({

@@ -1,15 +1,13 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import {
-	closeDatabase,
-	createDatabase,
-	DatabaseSchemaMismatchError,
-	initializeSchema,
-} from "./database.js";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
+import { closeDatabase, DatabaseSchemaMismatchError, initializeSchema } from "./database.js";
+
+const { createDatabase, closeOwnedSqlite, openOwnedSqlite } = createOwnedDatabaseScope();
 
 function columnNames(sqlite: DatabaseSync, table: string): string[] {
 	return (sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(
@@ -28,7 +26,7 @@ function tableNames(sqlite: DatabaseSync): string[] {
 }
 
 function openBaseline(): DatabaseSync {
-	const sqlite = new DatabaseSync(":memory:");
+	const sqlite = openOwnedSqlite(":memory:");
 	sqlite.exec("PRAGMA foreign_keys = ON");
 	initializeSchema(sqlite);
 	return sqlite;
@@ -152,9 +150,8 @@ describe("fresh SQLite baseline", () => {
 			expect.arrayContaining(["current_worker_start_id"]),
 		);
 		expect(columnNames(sqlite, "process_instances")).not.toContain("current_server_turn_record_id");
-		expect(columnNames(sqlite, "process_instances")).not.toEqual(
-			expect.arrayContaining(["current_turn_record_id", "failed_turn_record_id"]),
-		);
+		for (const column of ["current_turn_record_id", "failed_turn_record_id"])
+			expect(columnNames(sqlite, "process_instances")).not.toContain(column);
 		const foreignKeys = sqlite.prepare("PRAGMA foreign_key_list(turn_records)").all() as Array<{
 			table: string;
 			from: string;
@@ -177,21 +174,34 @@ describe("fresh SQLite baseline", () => {
 		sqlite.close();
 	});
 
-	it("reopens an unchanged baseline without rewriting it", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-baseline-"));
+	it("reopens an unchanged baseline preserving data without a migration backup", () => {
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-baseline-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
+		const initial = createDatabase({ sqlitePath, enableWAL: false });
+		insertProcess(initial.$client, "baseline-process");
+		const before = initial.$client
+			.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
+			.all();
+		closeDatabase(initial);
 		const reopened = createDatabase({ sqlitePath, enableWAL: false });
-		expect(reopened).toBeDefined();
+		expect(reopened.$client.prepare("SELECT id, process_id FROM process_instances").all()).toEqual([
+			{ id: "baseline-process", process_id: "test_process" },
+		]);
+		expect(
+			reopened.$client
+				.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name")
+				.all(),
+		).toEqual(before);
+		expect(existsSync(path.join(tempRoot, "backups"))).toBe(false);
 		closeDatabase(reopened);
 	});
 });
 
 describe("SQL-backed skill migration", () => {
 	it("backs up a file-backed database and preserves existing process data", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-skill-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-skill-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -224,7 +234,7 @@ describe("SQL-backed skill migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", String(backupName)), {
 			readOnly: true,
 		});
 		expect(tableNames(backup)).not.toContain("skills");
@@ -236,9 +246,9 @@ describe("SQL-backed skill migration", () => {
 	});
 
 	it("normalizes an already-created development catalog without losing entries", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-catalog-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-catalog-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -267,9 +277,9 @@ describe("SQL-backed skill migration", () => {
 
 describe("process launch intent migration", () => {
 	it("backs up a file-backed database and preserves existing processes", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-launch-intent-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-launch-intent-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -307,7 +317,7 @@ describe("process launch intent migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", String(backupName)), {
 			readOnly: true,
 		});
 		expect(columnNames(backup, "process_instances")).not.toContain("launch_intent_json");
@@ -319,9 +329,9 @@ describe("process launch intent migration", () => {
 
 describe("worker startup observation migration", () => {
 	it("backs up a file-backed database and preserves existing leases", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-worker-startup-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-worker-startup-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -360,9 +370,9 @@ describe("worker startup observation migration", () => {
 
 describe("process model policy migration", () => {
 	it("backs up and preserves file-backed provenance data", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-model-policy-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-model-policy-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -404,7 +414,7 @@ describe("process model policy migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", String(backupName)), {
 			readOnly: true,
 		});
 		expect(columnNames(backup, "process_instances")).not.toContain("selected_turn_model_kind");
@@ -449,9 +459,9 @@ describe("provider credential migration", () => {
 	});
 
 	it("backs up and automatically migrates the known file-backed schema", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-provider-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-provider-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		replaceProviderCredentialsWithPreviousSchema(seed);
@@ -467,7 +477,7 @@ describe("provider credential migration", () => {
 			name.endsWith(".bak"),
 		);
 		expect(backupName).toBeDefined();
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", String(backupName)), {
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", String(backupName)), {
 			readOnly: true,
 		});
 		expect(columnNames(backup, "provider_credentials")).toContain("credential_schema_version");
@@ -478,9 +488,9 @@ describe("provider credential migration", () => {
 
 describe("process tool approval request migration", () => {
 	it("accepts a migrated column appended by SQLite", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-tool-approval-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-tool-approval-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		initializeSchema(seed, { sqlitePath });
 		const currentSql = seed
 			.prepare(
@@ -506,9 +516,9 @@ describe("process tool approval request migration", () => {
 
 describe("process question request migration", () => {
 	it("backs up existing data, adds the table, and preserves requests across reopen", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-question-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		insertProcess(seed, "question-process");
@@ -571,9 +581,9 @@ describe("process question request migration", () => {
 	});
 
 	it("removes obsolete draft state and preserves durable requests", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-draft-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-question-draft-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = ON");
 		initializeSchema(seed, { sqlitePath });
 		insertProcess(seed, "question-process");
@@ -627,9 +637,8 @@ describe("process question request migration", () => {
 
 		const migrated = createDatabase({ sqlitePath, enableWAL: false });
 		const sqlite = (migrated as unknown as { $client: DatabaseSync }).$client;
-		expect(columnNames(sqlite, "process_question_requests")).not.toEqual(
-			expect.arrayContaining(["worker_lease_id", "draft_json", "draft_revision"]),
-		);
+		for (const column of ["worker_lease_id", "draft_json", "draft_revision"])
+			expect(columnNames(sqlite, "process_question_requests")).not.toContain(column);
 		expect(
 			sqlite
 				.prepare(
@@ -656,9 +665,9 @@ describe("process question request migration", () => {
 	});
 
 	it("rolls back the migration when foreign-key validation fails", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-question-migration-rollback-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-question-migration-rollback-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const seed = new DatabaseSync(sqlitePath);
+		const seed = openOwnedSqlite(sqlitePath);
 		seed.exec("PRAGMA foreign_keys = OFF");
 		initializeSchema(seed, { sqlitePath });
 		seed.exec(`
@@ -688,7 +697,7 @@ describe("process question request migration", () => {
 
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(/foreign-key violation/);
 
-		const unchanged = new DatabaseSync(sqlitePath);
+		const unchanged = openOwnedSqlite(sqlitePath);
 		expect(columnNames(unchanged, "process_question_requests")).toEqual(
 			expect.arrayContaining(["worker_lease_id", "draft_json", "draft_revision"]),
 		);
@@ -703,9 +712,9 @@ describe("process question request migration", () => {
 
 describe("unknown schema rejection", () => {
 	it("rejects an old schema without migrating, importing, backing up, or resetting it", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-old-epoch-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-old-epoch-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
-		const old = new DatabaseSync(sqlitePath);
+		const old = openOwnedSqlite(sqlitePath);
 		old.exec("CREATE TABLE process_instances (id text PRIMARY KEY, durable_marker text)");
 		old.prepare("INSERT INTO process_instances VALUES ('old', 'preserve-me')").run();
 		old.close();
@@ -713,7 +722,7 @@ describe("unknown schema rejection", () => {
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
 			DatabaseSchemaMismatchError,
 		);
-		const unchanged = new DatabaseSync(sqlitePath);
+		const unchanged = openOwnedSqlite(sqlitePath);
 		expect(unchanged.prepare("SELECT * FROM process_instances").all()).toEqual([
 			{ id: "old", durable_marker: "preserve-me" },
 		]);
@@ -722,11 +731,11 @@ describe("unknown schema rejection", () => {
 		unchanged.close();
 	});
 
-	it("rejects unknown tables and index drift in an otherwise current database", () => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-unknown-schema-"));
+	it("rejects unknown tables in an otherwise current database", () => {
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-unknown-schema-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const changed = new DatabaseSync(sqlitePath);
+		const changed = openOwnedSqlite(sqlitePath);
 		changed.exec("CREATE TABLE operator_unknown (id text PRIMARY KEY)");
 		changed.close();
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
@@ -769,11 +778,11 @@ describe("server-automatic removal migration", () => {
 		false,
 		true,
 	])("aborts in-flight execution, converts history, and preserves unrelated data (older migrations: %s)", (olderMigrations) => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-server-automatic-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-server-automatic-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
 
-		const legacy = new DatabaseSync(sqlitePath);
+		const legacy = openOwnedSqlite(sqlitePath);
 		restoreLegacyExecutionSchema(legacy);
 		if (olderMigrations) {
 			legacy.exec(`
@@ -803,7 +812,7 @@ describe("server-automatic removal migration", () => {
 
 		const migrated = createDatabase({ sqlitePath, enableWAL: false });
 		closeDatabase(migrated);
-		const sqlite = new DatabaseSync(sqlitePath);
+		const sqlite = openOwnedSqlite(sqlitePath);
 		expect(columnNames(sqlite, "process_instances")).not.toContain("current_server_turn_record_id");
 		expect(
 			sqlite
@@ -845,10 +854,10 @@ describe("server-automatic removal migration", () => {
 		"DROP INDEX idx_process_instances_process",
 		"CREATE TRIGGER operator_trigger AFTER UPDATE ON process_instances BEGIN SELECT 1; END",
 	])("rejects unknown source drift and preserves operator data: %s", (driftSql) => {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-server-automatic-drift-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-server-automatic-drift-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const legacy = new DatabaseSync(sqlitePath);
+		const legacy = openOwnedSqlite(sqlitePath);
 		restoreLegacyExecutionSchema(legacy);
 		insertProcess(legacy, "operator-process");
 		legacy.exec(`
@@ -867,7 +876,7 @@ describe("server-automatic removal migration", () => {
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
 			DatabaseSchemaMismatchError,
 		);
-		const preserved = new DatabaseSync(sqlitePath);
+		const preserved = openOwnedSqlite(sqlitePath);
 		expect(
 			preserved.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all(),
 		).toEqual(beforeSchema);
@@ -881,10 +890,10 @@ describe("server-automatic removal migration", () => {
 
 describe("session transfer migrations", () => {
 	function openFile(): { sqlitePath: string; sqlite: DatabaseSync; tempRoot: string } {
-		const tempRoot = mkdtempSync(path.join(tmpdir(), "leitwerk-session-transfer-migration-"));
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-session-transfer-migration-"));
 		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const sqlite = new DatabaseSync(sqlitePath);
+		const sqlite = openOwnedSqlite(sqlitePath);
 		insertProcess(sqlite, "retained-process");
 		return { sqlitePath, sqlite, tempRoot };
 	}
@@ -919,7 +928,7 @@ describe("session transfer migrations", () => {
 		sqlite.exec("DROP TABLE session_transfer_attempts; DROP TABLE session_transfer_grants;");
 		sqlite.close();
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const upgraded = new DatabaseSync(sqlitePath);
+		const upgraded = openOwnedSqlite(sqlitePath);
 		expect(tableNames(upgraded)).toContain("session_transfer_attempts");
 		expect(tableNames(upgraded)).toContain("session_transfer_grants");
 		expect(upgraded.prepare("SELECT id FROM process_instances").all()).toEqual([
@@ -931,7 +940,7 @@ describe("session transfer migrations", () => {
 		);
 		expect(backupName).toBeDefined();
 		if (!backupName) throw new Error("Expected a migration backup");
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", backupName));
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", backupName));
 		expect(tableNames(backup)).not.toContain("session_transfer_grants");
 		expect(backup.prepare("SELECT id FROM process_instances").all()).toEqual([
 			{ id: "retained-process" },
@@ -953,7 +962,7 @@ describe("session transfer migrations", () => {
 		} = legacyAttempt;
 		sqlite.close();
 		closeDatabase(createDatabase({ sqlitePath, enableWAL: false }));
-		const upgraded = new DatabaseSync(sqlitePath);
+		const upgraded = openOwnedSqlite(sqlitePath);
 		expect(upgraded.prepare("SELECT * FROM session_transfer_grants").all()).toEqual(grants);
 		expect(upgraded.prepare("SELECT * FROM session_transfer_attempts").all()).toEqual([attempt]);
 		expect(upgraded.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
@@ -963,7 +972,7 @@ describe("session transfer migrations", () => {
 		);
 		expect(backupName).toBeDefined();
 		if (!backupName) throw new Error("Expected a migration backup");
-		const backup = new DatabaseSync(path.join(tempRoot, "backups", backupName));
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", backupName));
 		expect(
 			backup
 				.prepare(
@@ -991,7 +1000,7 @@ describe("session transfer migrations", () => {
 		expect(() => createDatabase({ sqlitePath, enableWAL: false })).toThrow(
 			DatabaseSchemaMismatchError,
 		);
-		const preserved = new DatabaseSync(sqlitePath);
+		const preserved = openOwnedSqlite(sqlitePath);
 		expect(
 			preserved.prepare("SELECT type, name, sql FROM sqlite_master ORDER BY type, name").all(),
 		).toEqual(beforeSchema);
@@ -1112,3 +1121,12 @@ describe("execution lineage constraints", () => {
 		sqlite.close();
 	});
 });
+
+function createTempRoot(prefix: string) {
+	const root = mkdtempSync(prefix);
+	onTestFinished(() => {
+		closeOwnedSqlite();
+		rmSync(root, { recursive: true, force: true });
+	});
+	return root;
+}

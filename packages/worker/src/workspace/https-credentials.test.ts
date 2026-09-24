@@ -102,7 +102,7 @@ describe("repository HTTPS credentials", () => {
 			git.cleanupRepositoryCredentials();
 		}
 	});
-	it("cleans a partially materialized credential batch after a validation error", () => {
+	it("rejects invalid HTTPS credentials without retaining a Git helper", () => {
 		const git = new NodeRunRootGitOps();
 		expect(() =>
 			git.configureRepositoryCredentials([

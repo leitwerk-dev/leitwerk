@@ -89,7 +89,7 @@ describe("createGitHubProvider", () => {
 	});
 });
 
-it("observes pending, failure, repair and success across revisions without firing unsubscribed checks", async () => {
+it("observes failure and success across revisions without firing unsubscribed checks", async () => {
 	let now = 0;
 	let revision = "a";
 	let status: "pending" | "failure" | "success" = "pending";

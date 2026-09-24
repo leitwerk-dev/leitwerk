@@ -64,11 +64,21 @@ describe("commitAndPushWorkBranch", () => {
 		expect(result.pushTarget).toBe("origin/feature/test");
 		expect(git(remoteDir, "rev-parse", "refs/heads/main")).toBe(mainSha);
 		expect(git(remoteDir, "rev-parse", "refs/heads/feature/test")).toBe(result.headSha);
+		expect(git(remoteDir, "show", "refs/heads/feature/test:feature.txt")).toBe("remote change");
+		expect(git(remoteDir, "log", "-1", "--format=%s", "refs/heads/feature/test")).toBe(
+			"feat: publish remote change",
+		);
+		expect(
+			git(remoteDir, "log", "-1", "--format=%an%n%ae%n%cn%n%ce", "refs/heads/feature/test"),
+		).toBe(
+			"Leitwerk Bot\nleitwerk-bot@noreply.example.test\nLeitwerk Bot\nleitwerk-bot@noreply.example.test",
+		);
 		expect(git(repoDir, "status", "--short")).toBe("");
 	});
 
 	it("rejects an unexpected checked-out branch", () => {
-		const { repoDir } = createWorkspace();
+		const repoDir = tempDir("coding-feature-mismatch");
+		git(repoDir, "init", "--initial-branch=feature/test");
 		expect(() =>
 			commitAndPushWorkBranch({
 				repoPath: repoDir,
@@ -76,6 +86,6 @@ describe("commitAndPushWorkBranch", () => {
 				commitMessage: "feat: publish remote change",
 				gitIdentity: { name: "Leitwerk Bot", email: "bot@example.test" },
 			}),
-		).toThrow("Expected");
+		).toThrow(/feature\/other.*feature\/test/);
 	});
 });

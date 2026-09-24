@@ -102,9 +102,22 @@ describe("worker capacity queue", () => {
 
 	it("awaits reserved work on shutdown, discards queued work, and rejects new requests", async () => {
 		const f = fixture();
+		const allocation = Promise.withResolvers<string>();
+		f.start.mockImplementationOnce(() => allocation.promise);
 		const first = f.request("one");
-		void f.request("two");
-		await Promise.all([first, f.queue.stop()]);
+		await f.request("two");
+		let stopped = false;
+		const stopping = f.queue.stop().then(() => {
+			stopped = true;
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(0);
+			expect(f.start).toHaveBeenCalledExactlyOnceWith("one");
+			expect(stopped).toBe(false);
+		} finally {
+			allocation.resolve("one");
+			await Promise.all([first, stopping]);
+		}
 		f.active.clear();
 		f.queue.wake();
 		await vi.runAllTimersAsync();

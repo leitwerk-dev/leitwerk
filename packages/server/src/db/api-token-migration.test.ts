@@ -2,14 +2,16 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
 import { createAuthService } from "../auth/auth-service.js";
 import { testAuthConfig } from "../auth/auth-test-helpers.js";
 import { hashOpaqueToken } from "../auth/auth-tokens.js";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
 import { createAes256GcmCredentialCipher } from "./credential-cipher.js";
-import { closeDatabase, createDatabase, initializeSchema } from "./database.js";
+import { closeDatabase, initializeSchema } from "./database.js";
 import { createAllRepos } from "./repositories.js";
+
+const { createDatabase, closeOwnedSqlite, openOwnedSqlite } = createOwnedDatabaseScope();
 
 it("migrates legacy storage with sessions, processes and encrypted credentials; preserves token revocation after restart", () => {
 	const root = mkdtempSync(join(tmpdir(), "leitwerk-api-token-migration-"));
@@ -63,11 +65,12 @@ it("migrates legacy storage with sessions, processes and encrypted credentials; 
 		expect(restarted.apiTokens.list(owner)[0].revokedAt).not.toBeNull();
 		closeDatabase(db);
 	} finally {
+		closeOwnedSqlite();
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 it("the explicit operator migration matches the current schema", () => {
-	const sqlite = new DatabaseSync(":memory:");
+	const sqlite = openOwnedSqlite(":memory:");
 	try {
 		initializeSchema(sqlite);
 		sqlite.exec("DROP TABLE api_tokens");

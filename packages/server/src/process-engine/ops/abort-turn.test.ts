@@ -4,8 +4,8 @@ import { getProcessGraph } from "../../process-graph.js";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
 import type { WorkerSupervisor } from "../../supervisor/worker-supervisor.js";
 import { createFakeWorkerSupervisor } from "../../test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { createProcessEngine } from "../engine.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();

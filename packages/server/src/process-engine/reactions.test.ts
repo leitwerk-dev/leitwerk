@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { dispatchReactions } from "./reactions.js";
 import type { ProcessEngineDeps, RecordedDecision } from "./types.js";
 
@@ -103,12 +103,14 @@ describe("ProcessEngine reactions", () => {
 	});
 
 	it("logs and continues when extension event handlers fail", async () => {
+		const delivered: string[] = [];
 		const loggedErrors: Record<string, unknown>[] = [];
 		const process = createTestDeps().processes.create({ processId: "ticket_issue_process" });
 		const deps = createDeps({
 			extensionHost: {
-				emit: async () => {
-					throw new Error("extension delivery failed");
+				emit: async (event: string) => {
+					if (event === "process_created") throw new Error("extension delivery failed");
+					delivered.push(event);
 				},
 			} as never,
 			logger: {
@@ -128,10 +130,18 @@ describe("ProcessEngine reactions", () => {
 						payload: { instanceId: process.id, process, projects: [] },
 					},
 				},
+				{
+					kind: "extension_event",
+					event: {
+						type: "process_updated",
+						payload: { instanceId: process.id, process, changedFields: [] },
+					},
+				},
 			]),
 		);
 
 		expect(result).toEqual({ ok: true });
+		expect(delivered).toEqual(["process_updated"]);
 		expect(loggedErrors).toEqual([
 			expect.objectContaining({
 				code: "extension_event_failed",
@@ -275,6 +285,10 @@ describe("ProcessEngine reactions", () => {
 		);
 		await Promise.resolve();
 
+		onTestFinished(async () => {
+			releaseFirstStop();
+			await Promise.allSettled([stopping, restarting]);
+		});
 		expect(calls).toEqual(["stop:prior_turn_waiting", "kill"]);
 		await expect(Promise.all([stopping, restarting])).resolves.toEqual([
 			{ ok: true },

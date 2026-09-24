@@ -70,6 +70,11 @@ describe("worker container entrypoint", () => {
 		const daemon = child();
 		const worker = child();
 		const runtime = deps([daemon, worker]);
+		let spawnsAtReadiness = 0;
+		runtime.dockerInfo.mockImplementation(async () => {
+			await Promise.resolve();
+			spawnsAtReadiness = runtime.spawn.mock.calls.length;
+		});
 		const env = {
 			LEITWERK_PRIVATE_DOCKER: "1",
 			DOCKER_HOST: "tcp://external-daemon:2376",
@@ -102,6 +107,7 @@ describe("worker container entrypoint", () => {
 		expect(env.DOCKER_HOST).toBe("tcp://external-daemon:2376");
 		exit(worker, 0);
 		await expect(running).resolves.toBe(0);
+		expect(spawnsAtReadiness).toBe(1);
 	});
 
 	it.each([
@@ -138,17 +144,6 @@ describe("worker container entrypoint", () => {
 		expect(daemon.kill).toHaveBeenCalled();
 		expect(runtime.dockerInfo).toHaveBeenCalledOnce();
 		expect(runtime.spawn).toHaveBeenCalledTimes(2);
-	});
-
-	it("waits for daemon readiness before starting the worker", async () => {
-		const daemon = child();
-		const worker = child();
-		const runtime = deps([daemon, worker]);
-		const running = runWorkerContainerEntrypoint({ LEITWERK_PRIVATE_DOCKER: "1" }, runtime);
-		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(2));
-		expect(runtime.dockerInfo).toHaveBeenCalled();
-		exit(worker, 0);
-		await expect(running).resolves.toBe(0);
 	});
 
 	it("stops pending readiness on SIGTERM without resetting data or spawning again", async () => {

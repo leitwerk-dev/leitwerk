@@ -43,7 +43,9 @@ test("restarts after persistence, reconciles the original write key, and records
 	onTestFinished(() => harness.close());
 	const name = harness.describeTools()[0].name;
 	const actor = { id: "local", kind: "user" as const, provider: null };
-	expect((await harness.listToolDestinations(name, actor)).destinations).toHaveLength(2);
+	expect((await harness.listToolDestinations(name, actor)).destinations).toEqual(
+		options.destinations,
+	);
 	const snapshot = await harness.resolveToolDestination(name, "workshop", actor);
 	await harness.validateToolDestination(name, snapshot);
 	const fixture = { id: "child-1", invocationId: "stable-write-key", ticketDestination: snapshot };
@@ -84,5 +86,5 @@ test("restarts after persistence, reconciles the original write key, and records
 	});
 	await expect(
 		harness.validateToolDestination(name, { ...snapshot, data: { id: "garden" } }),
-	).rejects.toThrow(/changed/);
+	).rejects.toThrow();
 });

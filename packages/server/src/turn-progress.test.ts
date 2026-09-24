@@ -47,12 +47,19 @@ describe("turn progress reports", () => {
 		expect(recordTurnProgress(deps, { instanceId: "agt_1", turnRecordId: "trn_1", report })).toBe(
 			true,
 		);
-		expect(events).toHaveLength(1);
-		expect(broadcasts).toHaveLength(1);
+
 		expect(recordTurnProgress(deps, { instanceId: "agt_1", turnRecordId: "stale", report })).toBe(
 			false,
 		);
-		expect(events).toHaveLength(1);
+		expect(events).toEqual([
+			{
+				instanceId: "agt_1",
+				eventType: "turn.progress",
+				data: { turnRecordId: "trn_1", revision: 1, report },
+			},
+		]);
+
+		expect(broadcasts).toHaveLength(1);
 	});
 
 	it("rejects duplicate steps and unsafe links", () => {

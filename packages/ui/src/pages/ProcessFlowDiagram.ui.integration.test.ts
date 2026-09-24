@@ -5,6 +5,8 @@ import { flushSync, mount, unmount } from "svelte";
 import { afterEach, describe, expect, it } from "vitest";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
+const mountedApps: Array<ReturnType<typeof mount>> = [];
+
 const flowView: ProcessFlowView = {
 	processId: "local_repo_change_process",
 	entryTurnIds: ["generate_plan"],
@@ -82,16 +84,18 @@ function mountSubject(props: Record<string, unknown>) {
 	const target = document.createElement("div");
 	document.body.appendChild(target);
 	const app = mount(ProcessFlowDiagram, { target, props });
+	mountedApps.push(app);
 	return { app, target };
 }
 
-afterEach(() => {
+afterEach(async () => {
+	for (const app of mountedApps.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 });
 
 describe("ProcessFlowDiagram", () => {
 	it("renders only the spine and the completed end state in happy mode", () => {
-		const { app, target } = mountSubject({ flow: flowView, mode: "happy" });
+		const { target } = mountSubject({ flow: flowView, mode: "happy" });
 
 		const diagram = target.querySelector('[data-section="process-flow-diagram"]');
 		expect(diagram?.getAttribute("data-flow-mode")).toBe("happy");
@@ -107,12 +111,10 @@ describe("ProcessFlowDiagram", () => {
 		// The completed terminal closes the happy path; abort is not shown here.
 		expect(target.querySelector('[data-flow-end-state="completed"]')).toBeTruthy();
 		expect(target.querySelector('[data-flow-end-state="aborted"]')).toBeNull();
-
-		unmount(app);
 	});
 
 	it("renders a connected SVG graph with nodes and edges in full mode", () => {
-		const { app, target } = mountSubject({ flow: flowView, mode: "full" });
+		const { target } = mountSubject({ flow: flowView, mode: "full" });
 
 		const diagram = target.querySelector('[data-section="process-flow-diagram"]');
 		expect(diagram?.getAttribute("data-flow-mode")).toBe("full");
@@ -140,13 +142,11 @@ describe("ProcessFlowDiagram", () => {
 		expect(edge).toBeTruthy();
 		expect(edge?.getAttribute("d")?.length ?? 0).toBeGreaterThan(0);
 		expect(edge?.getAttribute("marker-end")).toMatch(/url\(#.+arrow-forward\)/);
-
-		unmount(app);
 	});
 
 	it("uses unique SVG marker ids for separate full diagram instances", () => {
-		const first = mountSubject({ flow: flowView, mode: "full" });
-		const second = mountSubject({ flow: flowView, mode: "full" });
+		mountSubject({ flow: flowView, mode: "full" });
+		mountSubject({ flow: flowView, mode: "full" });
 
 		const markerIds = [...document.querySelectorAll("marker.flow-marker")]
 			.map((marker) => marker.id)
@@ -160,13 +160,10 @@ describe("ProcessFlowDiagram", () => {
 			expect(referencedId).toBeTruthy();
 			expect(markerIds).toContain(referencedId);
 		}
-
-		unmount(first.app);
-		unmount(second.app);
 	});
 
 	it("collapses to the happy strip with a disclosure toggle when expandable", () => {
-		const { app, target } = mountSubject({ flow: flowView, mode: "happy", expandable: true });
+		const { target } = mountSubject({ flow: flowView, mode: "happy", expandable: true });
 
 		const disclosure = target.querySelector('[data-section="process-flow-disclosure"]');
 		expect(disclosure).toBeTruthy();
@@ -198,20 +195,16 @@ describe("ProcessFlowDiagram", () => {
 		flushSync();
 		expect(target.querySelector("svg.flow-svg")).toBeNull();
 		expect(target.querySelector('[data-flow-mode="happy"]')).toBeTruthy();
-
-		unmount(app);
 	});
 
 	it("renders nothing when no flow view is provided", () => {
-		const { app, target } = mountSubject({ mode: "full" });
+		const { target } = mountSubject({ mode: "full" });
 
 		expect(target.querySelector('[data-section="process-flow-diagram"]')).toBeNull();
-
-		unmount(app);
 	});
 
 	it("reads the flow view from a launcher summary", () => {
-		const { app, target } = mountSubject({
+		const { target } = mountSubject({
 			launcher: {
 				id: "launcher",
 				processId: "local_repo_change_process",
@@ -229,12 +222,10 @@ describe("ProcessFlowDiagram", () => {
 			node.getAttribute("data-flow-turn-id"),
 		);
 		expect(renderedTurns).toEqual(["generate_plan", "implement", "commit_and_merge"]);
-
-		unmount(app);
 	});
 
 	it("gives the full chart a key and an accessible summary", () => {
-		const { app, target } = mountSubject({ flow: flowView, mode: "full" });
+		const { target } = mountSubject({ flow: flowView, mode: "full" });
 
 		// A legend explains the visual language instead of leaving it implicit.
 		const legend = target.querySelector(".flow-legend");
@@ -256,7 +247,5 @@ describe("ProcessFlowDiagram", () => {
 		const planNode = target.querySelector('g[data-flow-turn-id="generate_plan"]');
 		expect(planNode?.getAttribute("role")).toBe("listitem");
 		expect(planNode?.getAttribute("aria-label")).toContain("Draft plan");
-
-		unmount(app);
 	});
 });

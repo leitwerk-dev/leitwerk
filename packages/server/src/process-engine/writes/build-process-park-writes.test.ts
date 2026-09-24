@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
+import { createTestProcessInstance } from "../../test-helpers/process-model-fixtures.js";
 import { buildParkProcessWrites } from "./build-process-park-writes.js";
 
-function createProcess(
-	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
-) {
-	return createTestDeps().processes.create({
+function createProcess(overrides: Parameters<typeof createTestProcessInstance>[0]) {
+	return createTestProcessInstance({
 		processId: "ticket_issue_process",
 		selectedTurnId: "implement",
 		lifecycleStatus: "active",
@@ -29,6 +27,7 @@ describe("buildParkProcessWrites", () => {
 
 		expect("ok" in planned).toBe(false);
 		if ("ok" in planned) return;
+		expect(planned.processPatch).not.toHaveProperty("selectedTurnId");
 		expect(planned.processPatch).toMatchObject({ lifecycleStatus: "error" });
 		expect(planned.workerIntent).toEqual({
 			kind: "stop_with_reason",

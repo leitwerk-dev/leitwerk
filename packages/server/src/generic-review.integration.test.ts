@@ -348,7 +348,7 @@ afterAll(async () => {
 });
 
 describe("generic review integration", () => {
-	it("runs planning -> llm_review -> human_review -> implementing without parallel review state", async () => {
+	it("runs planning -> llm_review -> human_review -> implementing through one selected-turn progression", async () => {
 		const workerHandles = new Map<
 			string,
 			{
@@ -456,7 +456,6 @@ describe("generic review integration", () => {
 				current?.selectedTurnId === "run_llm_review" &&
 				current.currentExecution?.kind === "worker_start",
 		);
-		expect(JSON.parse(llmReviewProcess?.stateJson ?? "null")).toMatchObject({});
 		const reviewExecution = llmReviewProcess?.currentExecution;
 		expect(reviewExecution).toMatchObject({ kind: "worker_start" });
 		if (reviewExecution?.kind !== "worker_start") {
@@ -519,11 +518,10 @@ describe("generic review integration", () => {
 			}),
 		);
 
-		const humanReviewProcess = await waitFor(
+		await waitFor(
 			() => app.ctx.deps.processes.getById(process.id),
 			(current) => current?.lifecycleStatus === "waiting",
 		);
-		expect(JSON.parse(humanReviewProcess?.stateJson ?? "null")).toMatchObject({});
 		expect(workerHandles.has(process.id)).toBe(false);
 
 		const response = await fetch(
@@ -532,11 +530,10 @@ describe("generic review integration", () => {
 		);
 		expect(response.status).toBe(200);
 
-		const implementingProcess = await waitFor(
+		await waitFor(
 			() => app.ctx.deps.processes.getById(process.id),
 			(current) => current?.selectedTurnId === "implement",
 		);
-		expect(JSON.parse(implementingProcess?.stateJson ?? "null")).toMatchObject({});
 		expect(workerHandles.has(process.id)).toBe(true);
 	});
 
@@ -918,6 +915,9 @@ describe("generic review integration", () => {
 		const secondBody = await secondResponse.json();
 		expect(secondResponse.status).toBe(409);
 		expect(secondBody.code).toBe("action_locked_by_schedule");
+		expect(app.ctx.deps.futureExecutions.getById(firstBody.scheduledAction.id)).toMatchObject({
+			nextRunAt: firstRunAt,
+		});
 		expect(app.ctx.deps.processes.getById(process.id)?.selectedTurnId).toBe("plan_review");
 	});
 
@@ -1046,6 +1046,12 @@ describe("generic review integration", () => {
 			nextRunAt: runAt,
 			actionId: "request_revision",
 		});
+		expect(
+			JSON.parse(
+				app.ctx.deps.futureExecutions.getById(scheduledBody.scheduledAction.id)?.payloadJson ??
+					"null",
+			),
+		).toMatchObject({ input: { message: "Please tighten the rollback section even more." } });
 		expect(app.ctx.deps.turnAnnotations.listByInstance(process.id)).toEqual([]);
 		expect(app.ctx.deps.futureExecutions.getById(scheduledBody.scheduledAction.id)).not.toBeNull();
 	});
@@ -1106,7 +1112,8 @@ describe("generic review integration", () => {
 			expect(response.status).toBe(200);
 			expect(body.scheduledAction?.id).toBe(scheduled.id);
 			expect(body.scheduledAction?.actionId).toBe("approve_plan");
-			expect(body.scheduledAction?.actionLabel).toBe(body.scheduledAction?.action.label);
+			expect(body.scheduledAction?.actionLabel).toBe("Approve plan");
+			expect(body.scheduledAction?.action.label).toBe("Approve plan");
 		} finally {
 			app.ctx.deps.futureExecutions.delete(scheduled.id);
 		}

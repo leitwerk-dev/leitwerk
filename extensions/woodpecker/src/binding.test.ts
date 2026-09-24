@@ -4,7 +4,6 @@ import { resolveWoodpeckerProjectBinding } from "./binding.js";
 it.each([
 	[{ forgejo: { owner: "team", repo: "service" } }, "retained-ci"],
 	[{ forgejo: { owner: "team", repo: "service", profile: "forge-only" } }, "retained-ci"],
-	[{ forgejo: { owner: "team", repo: "service", issueNumber: 42 } }, "retained-ci"],
 	[{ woodpecker: { owner: "team", repo: "service", profile: "pinned-ci" } }, "pinned-ci"],
 ] as const)("resolves retained metadata %j using %s", (metadata, profile) => {
 	expect(

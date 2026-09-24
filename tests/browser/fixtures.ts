@@ -1,10 +1,14 @@
+import type { SpawnOptions, spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { AppContext, LeitwerkConfig } from "@leitwerk-dev/server";
 import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
-import { createInProcessWorkerSpawn } from "@leitwerk-dev/test-support/worker-testing";
+import {
+	createInProcessWorkerSpawn,
+	type StubToolCallScriptResolver,
+} from "@leitwerk-dev/test-support/worker-testing";
 import { test as base, expect, type Locator, type Page } from "@playwright/test";
 
 const API_PORT = Number(process.env.LEITWERK_BROWSER_API_PORT);
@@ -17,7 +21,24 @@ export interface BrowserServerOptions {
 		tempRoot: string,
 	) => ExtensionCatalog | Promise<ExtensionCatalog>;
 	useInProcessWorker?: boolean;
+	toolCallScriptResolver?: StubToolCallScriptResolver;
 	extensionLoadingStartDir?: string;
+}
+
+function browserWorkerSpawn(
+	extensionCatalog: ExtensionCatalog,
+	options: BrowserServerOptions,
+): typeof spawn {
+	const spawnWorker = createInProcessWorkerSpawn({
+		extensionCatalog,
+		toolCallScriptResolver: options.toolCallScriptResolver,
+	});
+	// The public UI origin belongs to Vite, which does not proxy the internal worker route.
+	return ((command: string, args: readonly string[], spawnOptions: SpawnOptions) =>
+		spawnWorker(command, args, {
+			...spawnOptions,
+			env: { ...spawnOptions.env, LEITWERK_SERVER_URL: `http://127.0.0.1:${API_PORT}` },
+		})) as typeof spawn;
 }
 
 export interface BrowserServer {
@@ -59,7 +80,9 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 					extensionCatalog,
 					extensionUiRuntimeLane: "dist",
 					...(browserServerOptions.useInProcessWorker
-						? { localWorkerSpawnImpl: createInProcessWorkerSpawn({ extensionCatalog }) }
+						? {
+								localWorkerSpawnImpl: browserWorkerSpawn(extensionCatalog, browserServerOptions),
+							}
 						: {}),
 					...(browserServerOptions.extensionLoadingStartDir
 						? { extensionLoadingStartDir: browserServerOptions.extensionLoadingStartDir }

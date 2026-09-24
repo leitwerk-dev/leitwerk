@@ -19,7 +19,7 @@ import { captureLeafOutcomeSnapshot } from "./leaf-outcome-snapshot-capture.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { createFilesystemSessionReader } from "./process-session-store.js";
 import { buildProcessUiRegistry } from "./process-ui-registry.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 
 const tempDirs: string[] = [];
 
@@ -177,7 +177,7 @@ describe("captureLeafOutcomeSnapshot", () => {
 		const turnRecord = deps.turnRecords.create({
 			id: "trn_skip_capture",
 			instanceId: process.id,
-			turnId: "capture_leaf",
+			turnId,
 			status: "succeeded",
 			pathType: "primary",
 			resultPiEntryId: "assistant-leaf",
@@ -243,7 +243,7 @@ describe("captureLeafOutcomeSnapshot", () => {
 		const turnRecord = deps.turnRecords.create({
 			id: "trn_invalid_capture",
 			instanceId: process.id,
-			turnId: "capture_leaf",
+			turnId,
 			status: "succeeded",
 			pathType: "primary",
 			resultPiEntryId: "assistant-leaf",

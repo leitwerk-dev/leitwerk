@@ -124,11 +124,7 @@ truncation. Signed log downloads do not receive the API token. Actions read acce
 is required. Existing check-source callers remain compatible; the optional
 `afterKey` suppresses a failure already consumed by a process.
 
-Tool authorization and retry edge cases use an in-memory provider boundary.
-The recovery integration exercises real Git and reopens both provider storage and
-SQLite receipts: a lost create response and subsequent restart must retain one PR
-and the same receipt. This verifies local persistence and tool wiring, not live
-GitHub API compatibility.
+Local adapter behavior does not establish live GitHub API compatibility.
 
 ## API support
 

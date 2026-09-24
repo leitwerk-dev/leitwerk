@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
@@ -15,12 +15,13 @@ import {
 } from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
-	type StubPiTreeHandle,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it, onTestFinished } from "vitest";
 import type { AppOptions } from "./app.js";
 import type { LeitwerkConfig } from "./config/index.js";
+import { closeDatabase, createDatabase } from "./db/database.js";
+import { createAllRepos } from "./db/repositories.js";
 import { createAcceptedLlmTurnStart } from "./test-helpers/accepted-turn-start.js";
 
 const startupPlanTurn = llmTurn<Record<string, never>, Record<string, never>>({
@@ -244,7 +245,7 @@ describe("startup reconciliation", () => {
 		expect(reopened.ctx.deps.turnRecords.listByInstance(process.id)).toEqual(records);
 	});
 
-	it("keeps process detail durable across restart and auto-resumes active work on boot", async () => {
+	it("keeps process detail durable across restart when startup recovery parks in error", async () => {
 		const { config, open, close } = createPersistentFixture();
 		const firstHarness = await open(config);
 
@@ -304,6 +305,18 @@ describe("startup reconciliation", () => {
 		});
 
 		await close();
+		const offline = createDatabase({ sqlitePath: config.storage.sqlite_path });
+		try {
+			const leaseRepo = createAllRepos(offline).leases;
+			const lease = leaseRepo
+				.listByInstance(process.id)
+				.find((lease) => lease.workerId === "wkr_trn_stale_startup");
+			if (!lease) throw new Error("Expected seeded lease");
+			leaseRepo.update(lease.id, { state: "busy", exitedAt: null });
+			expect(leaseRepo.listActive().map((item) => item.id)).toContain(lease.id);
+		} finally {
+			closeDatabase(offline);
+		}
 
 		const secondHarness = await open(config);
 		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
@@ -313,6 +326,11 @@ describe("startup reconciliation", () => {
 				.listActive()
 				.find((lease) => lease.workerId === "wkr_trn_stale_startup"),
 		).toBeUndefined();
+		expect(
+			secondHarness.ctx.deps.leases
+				.listByInstance(process.id)
+				.find((lease) => lease.workerId === "wkr_trn_stale_startup"),
+		).toMatchObject({ state: "exited", exitedAt: expect.any(String) });
 		const reconciled = await waitFor(
 			() => secondHarness.ctx.deps.processes.getById(process.id),
 			(value) => value?.lifecycleStatus === "error",
@@ -361,108 +379,87 @@ describe("startup reconciliation", () => {
 		expect(secondHarness.ctx.deps.processes.getById(process.id)?.lifecycleStatus).toBe("error");
 	});
 
-	it.skip("keeps the persisted active leaf when startup resume continues a running turn", async () => {
+	it("preserves saved active-leaf progress when a dead accepted worker cannot recover its resource bundle", async () => {
 		const { config, open, close } = createPersistentFixture();
-		const sharedPiFactory = new StubPiTreeHandleFactory();
-		const sharedSpawnImpl = createInProcessWorkerSpawn({
-			extensionCatalog: extensionCatalogPromise,
-			piFactory: sharedPiFactory,
-		});
-		const firstHarness = await open(config, {
-			localWorkerSpawnImpl: sharedSpawnImpl,
-		});
-
-		const process = firstHarness.ctx.deps.processes.create({
+		const first = await open(config);
+		const process = first.ctx.deps.processes.create({
 			processId: "startup_test_process",
 			selectedTurnId: "startup_plan_turn",
 			lifecycleStatus: "active",
 		});
-		const workspaceRoot = path.join(config.storage.process_workspaces_dir, process.id);
-		const treeFile = path.join(config.storage.tree_files_dir, `${process.id}.jsonl`);
-		mkdirSync(workspaceRoot, { recursive: true });
-		const seededHandle = (await sharedPiFactory.createPrimaryTreeHandle({
+		seedAcceptedWorkerTurn(first, {
 			instanceId: process.id,
-			treeFile,
-			workspaceRoot,
-			resume: false,
-		})) as StubPiTreeHandle;
-		await seededHandle.prompt("Seed previous completed turn");
-		const previousLeafId = seededHandle.getLeafId();
-		await seededHandle.prompt("Seed active turn kickoff");
-		const activeLeafId = seededHandle.getLeafId();
-		const rootEntryId = previousLeafId
-			? (seededHandle.getBranch(previousLeafId)[0]?.id ?? null)
-			: null;
-		if (!previousLeafId || !activeLeafId || !rootEntryId) {
-			throw new Error("expected seeded tree entries for startup resume test");
-		}
-		await seededHandle.close();
-
-		firstHarness.ctx.deps.turnRecords.create({
-			id: "trn_startup_previous_leaf",
-			instanceId: process.id,
+			turnRecordId: "trn_saved_progress",
 			turnId: "startup_plan_turn",
-			status: "succeeded",
-			pathType: "primary",
-			resultPiEntryId: previousLeafId,
+			resourceDigest: "missing-saved-progress-bundle",
 		});
-		seedAcceptedWorkerTurn(firstHarness, {
-			instanceId: process.id,
-			turnRecordId: "trn_startup_running_leaf",
-			turnId: "startup_plan_turn",
-		});
-		firstHarness.ctx.deps.processes.update(process.id, {
-			stateJson: JSON.stringify({
-				semanticEntryRefs: {
-					rootEntry: { entryId: rootEntryId, turnRecordId: null },
-					currentPrimaryPathLeaf: {
-						entryId: previousLeafId,
-						turnRecordId: "trn_startup_previous_leaf",
-					},
+		const stateJson = JSON.stringify({
+			semanticEntryRefs: {
+				rootEntry: { entryId: "root", turnRecordId: null },
+				currentPrimaryPathLeaf: {
+					entryId: "saved-active-leaf",
+					turnRecordId: "trn_saved_progress",
 				},
-			}),
+			},
 		});
-
+		first.ctx.deps.processes.update(process.id, { stateJson });
+		mkdirSync(config.storage.tree_files_dir, { recursive: true });
+		const treeFile = path.join(config.storage.tree_files_dir, `${process.id}.jsonl`);
+		const savedTree = `${[
+			{
+				type: "session",
+				version: 3,
+				id: "saved-session",
+				timestamp: "2026-01-01T00:00:00.000Z",
+				cwd: "/tmp/saved-workspace",
+			},
+			{
+				type: "message",
+				id: "root",
+				parentId: null,
+				timestamp: "2026-01-01T00:00:01.000Z",
+				message: { role: "user", content: "Preserve this request" },
+			},
+			{
+				type: "message",
+				id: "saved-active-leaf",
+				parentId: "root",
+				timestamp: "2026-01-01T00:00:02.000Z",
+				message: {
+					role: "assistant",
+					content: [{ type: "text", text: "Saved partial progress" }],
+				},
+			},
+		]
+			.map((entry) => JSON.stringify(entry))
+			.join("\n")}\n`;
+		writeFileSync(treeFile, savedTree);
+		expect(first.ctx.deps.turnRecords.getById("trn_saved_progress")?.status).toBe("running");
 		await close();
-
-		const secondHarness = await open(config, {
-			localWorkerSpawnImpl: sharedSpawnImpl,
-		});
-		await secondHarness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
-
-		const resumedTurn = await waitFor(
-			() => secondHarness.ctx.deps.turnRecords.getById("trn_startup_running_leaf"),
-			(turnRecord) => turnRecord?.status === "succeeded" || turnRecord?.status === "failed",
+		const second = await open(config);
+		await second.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
+		const failed = await waitFor(
+			() => second.ctx.deps.turnRecords.getById("trn_saved_progress"),
+			(record) => record?.status === "failed",
 		);
-		expect(resumedTurn?.status).toBe("succeeded");
-		expect(
-			secondHarness.ctx.deps.turnRecords
-				.listByInstance(process.id)
-				.map((turnRecord) => turnRecord.id)
-				.sort(),
-		).toEqual(["trn_startup_previous_leaf", "trn_startup_running_leaf"]);
-		expect(secondHarness.ctx.deps.processes.getById(process.id)).toMatchObject({
-			id: process.id,
-			currentExecution: null,
+		expect(failed).toMatchObject({
+			id: "trn_saved_progress",
+			status: "failed",
+			errorSummary: expect.stringMatching(/resource bundle.*unavailable/i),
 		});
-		expect(secondHarness.ctx.deps.processes.getById(process.id)?.lifecycleStatus).not.toBe("error");
-
-		const resumedHandle = sharedPiFactory.sessions.at(-1);
-		expect(resumedHandle?.isResumed).toBe(true);
-		expect(resumedHandle?.prompts).toEqual([]);
-		expect(resumedHandle?.getLeafId()).toBe("turn-4");
 		expect(
-			resumedHandle?.getBranch(resumedHandle.getLeafId() ?? undefined).map((entry) => entry.id),
-		).toEqual(["user-1", "turn-1", "user-2", "turn-2", "user-3", "turn-4"]);
-		expect(resumedHandle?.getBranch(activeLeafId).map((entry) => entry.id)).toEqual([
-			"user-1",
-			"turn-1",
-			"user-2",
-			"turn-2",
-		]);
+			second.ctx.deps.turnRecords.listByInstance(process.id).map((record) => record.id),
+		).toEqual(["trn_saved_progress"]);
+		expect(second.ctx.deps.processes.getById(process.id)).toMatchObject({
+			selectedTurnId: "startup_plan_turn",
+			lifecycleStatus: "error",
+			currentExecution: { kind: "worker_start", id: "tsr_trn_saved_progress" },
+			stateJson,
+		});
+		expect(readFileSync(treeFile, "utf8")).toBe(savedTree);
 	});
 
-	it("uses the current default without rewriting historical process or turn models", async () => {
+	it("preserves historical process and turn model selections when the catalog default changes", async () => {
 		const { config: initialConfig, createConfig, open, close } = createPersistentFixture();
 		const firstHarness = await open(initialConfig);
 

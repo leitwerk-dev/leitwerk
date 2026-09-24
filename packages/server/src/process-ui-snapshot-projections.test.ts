@@ -193,7 +193,12 @@ describe("process usage estimates", () => {
 			totalLlmTurnCount: 2,
 			coveredTurnCount: 2,
 			isPartial: false,
-			usage: { input: 180, output: 50, totalTokens: 230 },
+			usage: {
+				input: 180,
+				output: 50,
+				totalTokens: 230,
+				cost: { input: 0.75, output: 0.375, total: 1.125 },
+			},
 		});
 	});
 

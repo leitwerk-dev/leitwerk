@@ -24,7 +24,8 @@ it("correlates diagnostics with the PR revision and bounds signed job logs witho
 			return Response.json({
 				workflow_runs: [
 					{ id: 23, head_sha: head, head_branch: "feature", conclusion: "failure" },
-					{ id: 99, head_sha: "stale", head_branch: "other", conclusion: "failure" },
+					{ id: 99, head_sha: "stale", head_branch: "feature", conclusion: "failure" },
+					{ id: 100, head_sha: head, head_branch: "other", conclusion: "failure" },
 				],
 			});
 		if (u.pathname.endsWith("/runs/23/jobs"))
@@ -46,7 +47,7 @@ it("correlates diagnostics with the PR revision and bounds signed job logs witho
 		botLogin: "bot",
 	});
 	const result = await client.getCiDiagnostics("team", "repo", 1, head);
-	expect(result.checks[0].annotations).toHaveLength(1);
+	expect(result.checks[0].annotations).toEqual([{ path: "test.ts", message: "Mismatch" }]);
 	expect(result.jobs).toHaveLength(1);
 	expect(result.jobs[0].log).toEqual({ text: "x".repeat(65536), truncated: true });
 	request.mockClear();

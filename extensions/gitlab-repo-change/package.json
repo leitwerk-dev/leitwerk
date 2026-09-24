@@ -23,8 +23,7 @@
 		"@leitwerk-dev/coding": "0.3.0",
 		"@leitwerk-dev/external-writes": "0.3.0",
 		"@leitwerk-dev/process-sdk": "0.3.0",
-		"@leitwerk-dev/gitlab": "0.3.0",
-		"@leitwerk-dev/repository-rebase": "0.3.0"
+		"@leitwerk-dev/gitlab": "0.3.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

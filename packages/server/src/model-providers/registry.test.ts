@@ -147,6 +147,13 @@ describe("model provider registry", () => {
 			definitions: [definition],
 			piContributions: [
 				{
+					ownerExtensionId: "other",
+					packageName: "@test/other",
+					workerEntryPath: "/other-worker.js",
+					serverEntryPath: "/other-server.js",
+					resources: { skillDirectories: [], promptDirectories: [] },
+				},
+				{
 					ownerExtensionId: "owner",
 					packageName: "@test/owner",
 					workerEntryPath: "/worker.js",

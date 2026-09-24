@@ -1,16 +1,11 @@
-import type { ProcessEvent } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import { buildUsageSnapshotsByTurnRecordId } from "./usage-by-turn-record.js";
-
-function event(input: ProcessEvent): ProcessEvent {
-	return input;
-}
 
 describe("buildUsageSnapshotsByTurnRecordId", () => {
 	it("aggregates usage events by durable turn record id", () => {
 		expect(
 			buildUsageSnapshotsByTurnRecordId([
-				event({
+				{
 					id: "evt_1",
 					instanceId: "agt_1",
 					eventType: "pi.usage",
@@ -31,8 +26,8 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						},
 					},
 					createdAt: "2026-01-01T00:00:01.000Z",
-				}),
-				event({
+				},
+				{
 					id: "evt_2",
 					instanceId: "agt_1",
 					eventType: "pi.usage",
@@ -53,8 +48,8 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						},
 					},
 					createdAt: "2026-01-01T00:00:02.000Z",
-				}),
-				event({
+				},
+				{
 					id: "evt_3",
 					instanceId: "agt_1",
 					eventType: "pi.usage",
@@ -67,7 +62,7 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						totalTokens: 15,
 					},
 					createdAt: "2026-01-01T00:00:03.000Z",
-				}),
+				},
 			]),
 		).toEqual({
 			trn_1: {
@@ -103,7 +98,7 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 	it("keeps explicit zero-usage telemetry as a covered zero-cost turn", () => {
 		expect(
 			buildUsageSnapshotsByTurnRecordId([
-				event({
+				{
 					id: "evt_zero",
 					instanceId: "agt_1",
 					eventType: "pi.usage",
@@ -123,7 +118,7 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						},
 					},
 					createdAt: "2026-01-01T00:00:01.000Z",
-				}),
+				},
 			]),
 		).toEqual({
 			trn_zero: {
@@ -148,7 +143,7 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 	it("ignores usage events that are not correlated to a durable turn record id", () => {
 		expect(
 			buildUsageSnapshotsByTurnRecordId([
-				event({
+				{
 					id: "evt_1",
 					instanceId: "agt_1",
 					eventType: "pi.usage",
@@ -160,8 +155,8 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						totalTokens: 120,
 					},
 					createdAt: "2026-01-01T00:00:01.000Z",
-				}),
-				event({
+				},
+				{
 					id: "evt_2",
 					instanceId: "agt_1",
 					eventType: "pi.stream.delta",
@@ -170,7 +165,7 @@ describe("buildUsageSnapshotsByTurnRecordId", () => {
 						text: "hello",
 					},
 					createdAt: "2026-01-01T00:00:02.000Z",
-				}),
+				},
 			]),
 		).toEqual({});
 	});

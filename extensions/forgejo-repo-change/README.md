@@ -87,10 +87,10 @@ and remote delivery state while waiting for new evidence.
 
 ## Integration tests
 
-The composed workflow tests copy a pristine Git seed into an independent repository
-per scenario and use in-memory SQLite. They retain real Git, HTTP actions and worker
+The composed workflow tests copy a pristine Git seed into independent repositories
+and own their storage per scenario. They retain real Git, HTTP actions and worker
 IPC without repeating repository initialization. Failures report process and turn
-state before cleanup. File-backed persistence is covered separately below.
+state before cleanup.
 
 ## Restart verification
 

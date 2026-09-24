@@ -49,7 +49,7 @@ describe("GitHubClient", () => {
 		);
 	});
 
-	it("summarizes pending, successful, and failed Actions checks", async () => {
+	it("summarizes failed Actions checks alongside successful checks", async () => {
 		const fetch = vi.fn().mockResolvedValue(
 			Response.json({
 				check_runs: [

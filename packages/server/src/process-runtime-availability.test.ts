@@ -41,6 +41,7 @@ describe("process runtime availability", () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "local";
 		config.workers.startup_timeout = "750ms";
+		expect(config.local_worker).toBeDefined();
 		if (config.local_worker) config.local_worker.allow_host_docker = true;
 		const dockerInfo = vi.fn().mockResolvedValue(undefined);
 		await assertProcessRuntimeAvailable(
@@ -56,6 +57,7 @@ describe("process runtime availability", () => {
 		await expect(
 			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
 		).rejects.toThrow(/private_daemon/);
+		expect(config.docker).toBeDefined();
 		if (config.docker) config.docker.private_daemon = { isolation: "privileged" };
 		await expect(
 			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
@@ -65,6 +67,7 @@ describe("process runtime availability", () => {
 	it("makes only Docker processes unavailable for incomplete Kubernetes Docker wiring", async () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.docker = { runtime_class_name: "leitwerk-sysbox" };
 		}
@@ -98,6 +101,7 @@ describe("process runtime availability", () => {
 	it("accepts complete Kubernetes Docker wiring without cluster preflight", async () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.docker = {
 				runtime_class_name: "leitwerk-sysbox",

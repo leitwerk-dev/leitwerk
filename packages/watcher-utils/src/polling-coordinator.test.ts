@@ -30,17 +30,20 @@ describe("polling coordinator", () => {
 			pollInterval: () => "1s",
 		});
 
-		coordinator.start();
-		await vi.advanceTimersByTimeAsync(0);
+		try {
+			coordinator.start();
+			await vi.advanceTimersByTimeAsync(0);
 
-		expect(log.error).toHaveBeenCalledWith(
-			{ pollerId: "work-queue", durationMs: expect.any(Number), err: failure },
-			"Poll failed",
-		);
+			expect(log.error).toHaveBeenCalledWith(
+				{ pollerId: "work-queue", durationMs: expect.any(Number), err: failure },
+				expect.any(String),
+			);
 
-		await vi.advanceTimersByTimeAsync(1_000);
-		expect(pollOnce).toHaveBeenCalledTimes(2);
-		coordinator.stop();
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(pollOnce).toHaveBeenCalledTimes(2);
+		} finally {
+			await coordinator.stop();
+		}
 	});
 
 	it("logs completed poll results containing operational errors", async () => {
@@ -55,17 +58,20 @@ describe("polling coordinator", () => {
 			pollInterval: () => "1s",
 		});
 
-		coordinator.start();
-		await vi.advanceTimersByTimeAsync(0);
+		try {
+			coordinator.start();
+			await vi.advanceTimersByTimeAsync(0);
 
-		expect(log.warn).toHaveBeenCalledWith(
-			{ pollerId: "work-queue", durationMs: expect.any(Number), result },
-			"Poll completed with errors",
-		);
-		coordinator.stop();
+			expect(log.warn).toHaveBeenCalledWith(
+				{ pollerId: "work-queue", durationMs: expect.any(Number), result },
+				expect.any(String),
+			);
+		} finally {
+			await coordinator.stop();
+		}
 	});
 
-	it("rejects duplicate and late registrations", () => {
+	it("rejects duplicate and late registrations", async () => {
 		const coordinator = createPollingCoordinator(logger());
 		const registration = {
 			id: "work-queue",
@@ -74,11 +80,47 @@ describe("polling coordinator", () => {
 			pollInterval: () => "1s",
 		};
 		coordinator.create(registration);
-		expect(() => coordinator.create(registration)).toThrow("Duplicate poller 'work-queue'");
-		coordinator.start();
-		expect(() => coordinator.create({ ...registration, id: "github" })).toThrow(
-			"after polling has started",
-		);
-		coordinator.stop();
+		expect(() => coordinator.create(registration)).toThrow(/work-queue/);
+		try {
+			coordinator.start();
+			expect(() => coordinator.create({ ...registration, id: "github" })).toThrow(/github/);
+		} finally {
+			await coordinator.stop();
+		}
+	});
+
+	it("coalesces scheduled and explicit polls and drains work before shutdown", async () => {
+		vi.useFakeTimers();
+		const pending = Promise.withResolvers<ReturnType<typeof emptyPollResult>>();
+		const result = emptyPollResult();
+		const pollOnce = vi.fn(() => pending.promise);
+		const coordinator = createPollingCoordinator(logger());
+		const poller = coordinator.create({
+			id: "work-queue",
+			pollOnce,
+			isEnabled: () => true,
+			pollInterval: () => "1s",
+		});
+		try {
+			coordinator.start();
+			const explicitPoll = poller.poll();
+			await vi.advanceTimersByTimeAsync(2_000);
+			expect(pollOnce).toHaveBeenCalledTimes(1);
+
+			let stopped = false;
+			const stopping = coordinator.stop().then(() => {
+				stopped = true;
+			});
+			await vi.advanceTimersByTimeAsync(0);
+			expect(stopped).toBe(false);
+			pending.resolve(result);
+			await expect(explicitPoll).resolves.toBe(result);
+			await stopping;
+			await vi.advanceTimersByTimeAsync(2_000);
+			expect(pollOnce).toHaveBeenCalledTimes(1);
+		} finally {
+			pending.resolve(result);
+			await coordinator.stop();
+		}
 	});
 });

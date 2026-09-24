@@ -15,7 +15,7 @@ import {
 	createIntegrationHarness,
 	type IntegrationHarness,
 } from "@leitwerk-dev/test-support/integration";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createAllRepos } from "./db/repositories.js";
 import { createFileBackedProcessSessionSnapshotStore } from "./process-session-store.js";
 import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
@@ -131,8 +131,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await harness.close();
-	await rm(tempRoot, { recursive: true, force: true });
+	try {
+		await harness?.close();
+	} finally {
+		await rm(tempRoot, { recursive: true, force: true });
+	}
 });
 
 describe("process detail HTTP route", () => {
@@ -236,6 +239,9 @@ describe("process detail HTTP route", () => {
 				stateJson: createStructuralStateJson(),
 			}),
 		);
+		onTestFinished(() => {
+			for (const process of created) harness.ctx.deps.processes.delete(process.id);
+		});
 		const scheduledAction = harness.ctx.deps.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -246,8 +252,11 @@ describe("process detail HTTP route", () => {
 			nextRunAt: "2026-12-01T00:00:00.000Z",
 		});
 		const projectBatchSpy = vi.spyOn(harness.ctx.deps.projects, "listByInstances");
+		onTestFinished(() => projectBatchSpy.mockRestore());
 		const projectNPlusOneSpy = vi.spyOn(harness.ctx.deps.projects, "listByInstance");
+		onTestFinished(() => projectNPlusOneSpy.mockRestore());
 		const processWindowSpy = vi.spyOn(harness.ctx.deps.processes, "listOverviewWindow");
+		onTestFinished(() => processWindowSpy.mockRestore());
 
 		const overviewResponse = await fetch(`${harness.address}/api/processes/overview`);
 		const overview = await overviewResponse.json();
@@ -471,29 +480,13 @@ describe("process detail HTTP route", () => {
 		expect(response.status).toBe(200);
 		const body = await response.json();
 
-		expect(body.piSessionEntries).toEqual([
-			expect.objectContaining({
-				type: "message",
-				id: "root-user",
-				parentId: null,
-			}),
-			expect.objectContaining({
-				type: "message",
-				id: "assistant-plan",
-				parentId: "root-user",
-			}),
-			expect.objectContaining({
-				type: "message",
-				id: "tool-result-1",
-				parentId: "assistant-plan",
-			}),
-			expect.objectContaining({
-				type: "label",
-				id: "label-1",
-				targetId: "assistant-plan",
-				label: "latest-plan",
-			}),
-		]);
+		expect(body.piSessionEntries).toEqual(
+			treeContent
+				.trim()
+				.split("\n")
+				.map((line) => JSON.parse(line))
+				.filter((entry) => entry.type !== "session"),
+		);
 
 		const after = await readFile(treeFile, "utf8");
 		expect(after).toBe(before);
@@ -606,9 +599,11 @@ describe("process detail HTTP route", () => {
 		expect(overviewItem).toBeDefined();
 		expect(overviewItem.process).toBeUndefined();
 		expect(overviewItem.initialPromptPreview.length).toBeLessThan(largePrompt.length);
+		expect(overviewItem.initialPromptPreview).toContain("compact snapshot route");
 		expect(overviewItem).not.toHaveProperty("initialPromptSearchText");
 
 		const readSessionTreeSpy = vi.spyOn(harness.ctx.deps.sessionReader, "readSessionTree");
+		onTestFinished(() => readSessionTreeSpy.mockRestore());
 		const snapshotResponse = await fetch(
 			`${harness.address}/api/processes/${process.id}/ui-snapshot`,
 		);
@@ -632,6 +627,8 @@ describe("process detail HTTP route", () => {
 		const preview = snapshot.timeline.tracePreviewsByTurnRecordId[turnRecord.id];
 		expect(preview.assistantTextPreview.length).toBeLessThan(fullAssistantText.length);
 		expect(preview.thinkingPreview.length).toBeLessThan(fullThinking.length);
+		expect(preview.thinkingPreview).toContain("compact render model");
+		expect(preview.assistantTextPreview).toContain("compact UI snapshot");
 		expect(preview.toolCallCount).toBe(1);
 
 		harness.ctx.deps.events.create({
@@ -644,8 +641,8 @@ describe("process detail HTTP route", () => {
 		);
 		expect(reasoningResponse.status).toBe(200);
 		const reasoning = await reasoningResponse.json();
-		expect(reasoning.reasoning.assistant.text.length).toBe(fullAssistantText.length);
-		expect(reasoning.reasoning.assistant.thinking.length).toBe(fullThinking.length);
+		expect(reasoning.reasoning.assistant.text).toBe(fullAssistantText);
+		expect(reasoning.reasoning.assistant.thinking).toBe(fullThinking);
 		expect(reasoning.reasoning.toolCalls).toHaveLength(1);
 		expect(reasoning.reasoning.usage.totalTokens).toBe(125);
 		expect(reasoning.reasoning.toolCalls[0]).toMatchObject({

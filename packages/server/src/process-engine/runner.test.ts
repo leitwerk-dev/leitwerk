@@ -1,21 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 import { createWrites } from "../process-engine/writes/writes.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { accept, reject } from "./decision.js";
 import { defineOperation } from "./operation.js";
 import { createEngineRunner } from "./runner.js";
 import type { ProcessEngineDeps } from "./types.js";
 
-function createDeps(overrides: Partial<ProcessEngineDeps> = {}): ProcessEngineDeps {
-	const deps = createTestDeps();
+function createDeps(
+	overrides: Partial<ProcessEngineDeps> & { base?: ReturnType<typeof createTestDeps> } = {},
+): ProcessEngineDeps {
+	const { base, ...engineOverrides } = overrides;
+	const deps = base ?? createTestDeps();
 	return {
 		...deps,
 		processOperations: createProcessOperationCoordinator(),
 		getSupervisor: () => undefined,
 		processGraphs: createDefaultTestProcessGraphRegistry(),
-		...overrides,
+		...engineOverrides,
 	};
 }
 
@@ -54,7 +57,7 @@ describe("ProcessEngine runner", () => {
 			decide,
 		});
 		const run = createEngineRunner(
-			createDeps({ ...base, isNewTurnBlocked: (instanceId) => instanceId === process.id }),
+			createDeps({ base, isNewTurnBlocked: (instanceId) => instanceId === process.id }),
 		);
 
 		expect(await run(NewTurn, { instanceId: process.id })).toMatchObject({
@@ -71,7 +74,7 @@ describe("ProcessEngine runner", () => {
 		const process = base.processes.create({ processId: "ticket_issue_process" });
 		let transactionCalls = 0;
 		const deps = createDeps({
-			...base,
+			base,
 			transaction: ((callback: Parameters<typeof base.transaction>[0]) => {
 				transactionCalls += 1;
 				return base.transaction(callback);
@@ -98,7 +101,7 @@ describe("ProcessEngine runner", () => {
 		const logger = createTestLogger();
 		const thrown = new Error("secret provider token");
 		const deps = createDeps({
-			...base,
+			base,
 			transaction: ((callback: Parameters<typeof base.transaction>[0]) => {
 				transactionCalls += 1;
 				return base.transaction(callback);
@@ -140,7 +143,7 @@ describe("ProcessEngine runner", () => {
 			"SQLITE_BUSY: database unavailable at /private/tmp/leitwerk.sqlite\n    at Database.prepare (/repo/internal.js:10:5)",
 		);
 		const deps = createDeps({
-			...base,
+			base,
 			transaction: (() => {
 				throw databaseError;
 			}) as typeof base.transaction,
@@ -350,7 +353,7 @@ describe("ProcessEngine runner", () => {
 		let observedLockedDuringSpawn: boolean | null = null;
 		const order: string[] = [];
 		const deps = createDeps({
-			...base,
+			base,
 			processOperations: {
 				async runExclusive(_instanceId, callback) {
 					locked = true;

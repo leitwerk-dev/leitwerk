@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CoreServerSetupDeps, ExternalSourceArmingLike } from "@leitwerk-dev/process-sdk";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	createFileExternalSourceProvider,
 	FILE_EXTERNAL_INSTRUCTION_KIND,
@@ -27,14 +27,6 @@ function createDeps(input: { armings: ExternalSourceArmingLike[]; fires: unknown
 }
 
 describe("file external source provider", () => {
-	beforeEach(() => {
-		vi.useRealTimers();
-	});
-
-	afterEach(() => {
-		vi.useRealTimers();
-	});
-
 	it("resolves instance-specific paths from source templates", () => {
 		const source = fileExternal.instruction({
 			path: "/tmp/poem-review-{instanceId}",
@@ -42,6 +34,7 @@ describe("file external source provider", () => {
 			consume: "delete",
 		});
 
+		expect(source.kind).toBe(FILE_EXTERNAL_INSTRUCTION_KIND);
 		expect(
 			source.resolve?.({
 				process: { id: "agt_a" } as never,
@@ -113,7 +106,9 @@ describe("file external source provider", () => {
 		}
 	});
 
-	it("honors per-arming poll intervals", async () => {
+	it("honors per-arming poll intervals", async ({ onTestFinished }) => {
+		const clock = vi.spyOn(Date, "now").mockReturnValue(1000);
+		onTestFinished(() => clock.mockRestore());
 		const dir = await mkdtemp(path.join(tmpdir(), "o2-file-external-interval-"));
 		try {
 			const triggerPath = path.join(dir, "trigger");
@@ -144,18 +139,12 @@ describe("file external source provider", () => {
 			await provider.poll();
 			expect(fires).toHaveLength(1);
 
-			await new Promise((resolve) => setTimeout(resolve, 60));
+			clock.mockReturnValue(1060);
 			await provider.poll();
 			expect(fires).toHaveLength(2);
 		} finally {
 			await rm(dir, { recursive: true, force: true });
 		}
-	});
-
-	it("uses the instruction source kind for armings", () => {
-		expect(
-			fileExternal.instruction({ path: "/tmp/x", pollInterval: "1s", consume: "delete" }).kind,
-		).toBe(FILE_EXTERNAL_INSTRUCTION_KIND);
 	});
 });
 

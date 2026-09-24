@@ -4,6 +4,7 @@ import { buildManagedResultImagePath, parseManagedResultImagePath } from "./work
 describe("managed result image paths", () => {
 	it("builds and parses the shared path contract", () => {
 		const path = buildManagedResultImagePath("prc_1", "trn_1", "img_1.png");
+		expect(path).toBe("/api/processes/prc_1/turn-records/trn_1/result-images/img_1.png");
 		expect(parseManagedResultImagePath(path)).toEqual({
 			instanceId: "prc_1",
 			turnRecordId: "trn_1",

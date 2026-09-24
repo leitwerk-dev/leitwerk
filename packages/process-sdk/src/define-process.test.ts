@@ -307,6 +307,7 @@ describe("defineProcess", () => {
 			},
 		});
 
+		expect(process.entryTurnId).toBe("console");
 		expect(process.turns.get("console")?.definition).toMatchObject({ kind: "human" });
 		expect(
 			getProcessGraph(new Map([[process.id, process]]), process.id).turns.get("console"),
@@ -428,7 +429,8 @@ describe("defineProcess", () => {
 		expect(transitions).toEqual([{ turnId: "deliver", trigger: "automatic" }]);
 	});
 
-	it("allows custom worker overrides for compiled turns", () => {
+	it("allows custom worker overrides for compiled turns", async () => {
+		let overrideCalled = false;
 		const process = defineProcess({
 			id: "worker_override_process",
 			displayName: "Worker Override",
@@ -454,7 +456,9 @@ describe("defineProcess", () => {
 				}),
 			},
 			worker(api) {
-				api.turn("draft", async () => {});
+				api.turn("draft", async () => {
+					overrideCalled = true;
+				});
 			},
 		});
 
@@ -462,6 +466,8 @@ describe("defineProcess", () => {
 		expect(worker?.turns.has("draft")).toBe(true);
 		expect(worker?.turns.has("finalize")).toBe(true);
 		expect(worker?.turns.size).toBe(2);
+		await worker?.turns.get("draft")?.({} as never);
+		expect(overrideCalled).toBe(true);
 	});
 
 	it("auto-registers owned turns when the process is registered", async () => {
@@ -536,8 +542,8 @@ describe("defineProcess", () => {
 
 		const server = buildServerProcessForTest(process);
 		const action = server?.actions.get("retry");
-		expect(action).toBeDefined();
-		if (!action?.plan) return;
+		expect(action?.plan).toBeDefined();
+		if (!action?.plan) throw new Error("Expected shared action plan");
 
 		const transitions: Array<Record<string, unknown>> = [];
 		await action.plan(
@@ -1065,32 +1071,6 @@ describe("defineProcess", () => {
 				},
 			}),
 		).toThrow(/does not match a compiled transition/);
-	});
-
-	it("allows human entry turns", () => {
-		const process = defineProcess({
-			id: "human_entry_process",
-			displayName: "Human Entry",
-			entry: "review",
-			paramsCodec: emptyParamsCodec,
-			stateCodec,
-			initialState: () => ({ branch: "draft" }),
-			turns: {
-				review: humanTurn({
-					description: "Review",
-					actions: {
-						approve: {
-							label: "Approve",
-							acceptanceState: "accepted",
-							complete: true,
-						},
-					},
-				}),
-			},
-		});
-
-		expect(process.entryTurnId).toBe("review");
-		expect(process.turns.get("review")?.definition.kind).toBe("human");
 	});
 
 	it("does not parse params or initial state during compilation", () => {

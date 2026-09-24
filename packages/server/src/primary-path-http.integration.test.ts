@@ -65,8 +65,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	await harness.close();
-	rmSync(tempRoot, { recursive: true, force: true });
+	try {
+		await harness?.close();
+	} finally {
+		rmSync(tempRoot, { recursive: true, force: true });
+	}
 });
 
 function createPrimaryPathStateJson() {
@@ -554,7 +557,9 @@ describe("primary-path snapshot HTTP route", () => {
 			turnRecordId: "trn_running_truncated",
 			eventWindowTruncated: true,
 		});
-		expect(body.turnState.activeTurn.assistant.text).toContain("chunk-500");
+		expect(body.turnState.activeTurn.assistant.text).toBe(
+			Array.from({ length: 500 }, (_, index) => `chunk-${index + 1} `).join(""),
+		);
 	});
 
 	it("includes annotations for the current running non-primary turn record", async () => {

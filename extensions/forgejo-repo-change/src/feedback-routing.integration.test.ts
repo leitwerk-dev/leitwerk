@@ -4,14 +4,20 @@ import {
 	createRemoteRepoChangeFixture,
 	remoteState,
 } from "./testing/diagnosed-remote-repo-change-fixture.js";
+import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
+
+const seed = useRemoteRepoChangeSeed();
 
 it.each([
 	"no_changes",
 	"cannot_repair",
 ] as const)("feedback %s returns to waiting without publishing a change", async (feedbackOutcome) => {
-	const fixture = await createRemoteRepoChangeFixture(undefined, { feedbackOutcome });
-	const id = await fixture.launchTicketlessChange("Update the service image");
-	await fixture.publishChange(id);
+	const fixture = await createRemoteRepoChangeFixture(undefined, {
+		feedbackOutcome,
+		seed: seed(),
+		seedPublishedDelivery: true,
+	});
+	const id = await fixture.seededDelivery();
 	const pr = fixture.forgejo.pullRequest();
 	const head = pr.head.sha;
 	const history = fixture.git.log(pr.head.ref);
@@ -39,7 +45,9 @@ it.each([
 		expect(fixture.harness.process(id).snapshot().turns).toEqual(turns);
 		expect(fixture.harness.process(id).snapshot().writeReceipts).toEqual(writes);
 		await fixture.action(id, "resume_waiting");
-	} else {
+	}
+	const waiting = await fixture.waitForTurn(id, "deliver_change");
+	if (feedbackOutcome === "no_changes") {
 		await waitForValue(
 			() => fixture.forgejo.replies.length,
 			(count) => count === 1,
@@ -51,7 +59,6 @@ it.each([
 			kind: "conversation",
 		});
 	}
-	const waiting = await fixture.waitForTurn(id, "deliver_change");
 	expect(remoteState(waiting)).toMatchObject({
 		headSha: head,
 		conversationCursor: feedback.id,

@@ -29,6 +29,12 @@ describe("parseInstanceTree", () => {
 			{ type: "session", version: 3, id: "sess", timestamp: "2026-01-01T00:00:00.000Z" },
 			{ type: "message", id: "entry-1", parentId: null, timestamp: "2026-01-01T00:00:01.000Z" },
 			{
+				type: "message",
+				id: "entry-2",
+				parentId: "entry-1",
+				timestamp: "2026-01-01T00:00:01.500Z",
+			},
+			{
 				type: "label",
 				id: "label-1",
 				parentId: "entry-1",

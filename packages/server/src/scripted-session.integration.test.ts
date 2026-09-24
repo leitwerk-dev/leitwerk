@@ -153,7 +153,8 @@ it("retains long streamed output and thinking in session files and durable turn 
 	await f.wait("completed");
 	const records = f.ctx.deps.turnRecords.listByInstance(f.id);
 	expect(records).toHaveLength(1);
-	expect(records[0].turnResultMarkdown?.length).toBeGreaterThan(20000);
+	expect(textChunks.join("").length).toBeGreaterThan(20000);
+	expect(records[0].turnResultMarkdown).toBe(textChunks.join("").trim());
 	const response = await f.ctx.app.inject(`/api/processes/${f.id}/session`);
 	expect(response.statusCode, response.body).toBe(200);
 	expect(response.body).toContain("Observation 80");

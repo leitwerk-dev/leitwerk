@@ -1,5 +1,5 @@
 import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	createIntegrationToolRequestService,
 	IntegrationToolRegistry,
@@ -231,6 +231,14 @@ describe("IntegrationToolRegistry", () => {
 	it("resolves and validates adapter-owned ticket destinations", async () => {
 		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const validate = vi.fn(async () => undefined);
+		const list = vi.fn(async () => ({
+			destinations: [{ id: "repo-1", displayName: "team/repo" }],
+			warnings: ["one profile is unavailable"],
+		}));
+		const resolve = vi.fn(async () => ({
+			summary: { id: "repo-1", displayName: "team/repo" },
+			data: { repositoryId: 1 },
+		}));
 		registry.register({
 			name: "tracker_create",
 			description: "Create tracker item",
@@ -240,14 +248,8 @@ describe("IntegrationToolRegistry", () => {
 				displayName: "Tracker",
 				...ticketProcess,
 				destinations: {
-					list: async () => ({
-						destinations: [{ id: "repo-1", displayName: "team/repo" }],
-						warnings: ["one profile is unavailable"],
-					}),
-					resolve: async () => ({
-						summary: { id: "repo-1", displayName: "team/repo" },
-						data: { repositoryId: 1 },
-					}),
+					list,
+					resolve,
 					validate,
 				},
 			},
@@ -263,6 +265,8 @@ describe("IntegrationToolRegistry", () => {
 			snapshot,
 		);
 		expect(validate).toHaveBeenCalledWith(snapshot);
+		expect(list).toHaveBeenCalledWith({ actor });
+		expect(resolve).toHaveBeenCalledWith({ actor, destinationId: "repo-1" });
 	});
 
 	it("adds deferred destination choices to child-process tool declarations", () => {
@@ -361,6 +365,11 @@ describe("IntegrationToolRegistry", () => {
 			process: { id: "process" },
 			idempotencyKey,
 		} as never);
+		void pending.catch(() => undefined);
+		onTestFinished(async () => {
+			registry.cancel(idempotencyKey);
+			await Promise.allSettled([pending]);
+		});
 		await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
 
 		expect(registry.cancel(idempotencyKey)).toBe(true);
@@ -422,7 +431,7 @@ describe("integration tool request service", () => {
 		});
 	});
 
-	it("rejects stale, unauthorized, and unknown-project calls before execution", async () => {
+	it("rejects a stale selected-turn call before execution", async () => {
 		const registry = new IntegrationToolRegistry(createInMemoryExternalWriteLog());
 		const execute = registerEcho(registry);
 		const base = {

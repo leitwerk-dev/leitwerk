@@ -5,8 +5,8 @@ import { createProcessEngine } from "./process-engine/engine.js";
 import { getProcessGraph } from "./process-graph.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const CHANNEL_ACTOR: Actor = {
 	id: "channel",
@@ -104,6 +104,7 @@ describe("actor attribution on queued inputs", () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.data[0]?.actor).toEqual(CHANNEL_ACTOR);
+		expect(deps.inputs.listByInstance(process.id)[0]?.actor).toEqual(CHANNEL_ACTOR);
 	});
 
 	it("defaults to the system actor when no actor is supplied", async () => {
@@ -122,6 +123,7 @@ describe("actor attribution on queued inputs", () => {
 		expect(result.ok).toBe(true);
 		if (!result.ok) return;
 		expect(result.data[0]?.actor).toEqual(SYSTEM_ACTOR);
+		expect(deps.inputs.listByInstance(process.id)[0]?.actor).toEqual(SYSTEM_ACTOR);
 	});
 });
 
@@ -232,32 +234,6 @@ describe("actor attribution on lifecycle events", () => {
 		});
 	});
 
-	it("stamps the actor into process action event data", async () => {
-		const deps = createTestDeps();
-		const process = deps.processes.create({
-			processId: "ticket_issue_process",
-			selectedTurnId: "generate_plan",
-			lifecycleStatus: "active",
-		});
-		const commands = createEngine(deps, {
-			processActionRegistry: createAttributionActionRegistry(),
-		});
-
-		const result = await commands.executeProcessAction(
-			process.id,
-			"record_decision",
-			{},
-			{ actor: ADMIN_ACTOR },
-		);
-
-		expect(result.ok).toBe(true);
-		const actionEvent = deps.events
-			.listByInstance(process.id, 10)
-			.find((event) => event.eventType === "process_action_executed");
-		expect(actionEvent?.data.actor).toEqual(ADMIN_ACTOR);
-		expect(actionEvent?.data.actionId).toBe("record_decision");
-	});
-
 	it("does not persist submitted action field values in process action events", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
@@ -280,6 +256,7 @@ describe("actor attribution on lifecycle events", () => {
 		const actionEvent = deps.events
 			.listByInstance(process.id, 10)
 			.find((event) => event.eventType === "process_action_executed");
+		expect(actionEvent?.data.actionId).toBe("record_decision");
 		expect(actionEvent?.data).not.toHaveProperty("submittedFields");
 		expect(actionEvent?.data.actor).toEqual(ADMIN_ACTOR);
 	});

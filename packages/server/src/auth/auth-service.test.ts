@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
-import { createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import type { AuthClient } from "./auth-client.js";
 import { resolveAuthConfig } from "./auth-config.js";
 import { actorFromOidcClaims, createAuthService } from "./auth-service.js";
@@ -41,10 +41,16 @@ describe("auth config resolution", () => {
 
 describe("OIDC actor derivation", () => {
 	it("uses the configured identity claim and namespaces the actor by provider", () => {
-		const provider = resolveAuthConfig(testAuthConfig()).providers[0];
+		const provider = resolveAuthConfig(testAuthConfig({ provider: { identity_claim: "email" } }))
+			.providers[0];
 		const actor = actorFromOidcClaims({
 			provider,
-			claims: { preferred_username: "alice", name: "Alice A." },
+			claims: {
+				email: "alice",
+				preferred_username: "wrong-default",
+				sub: "wrong-sub",
+				name: "Alice A.",
+			},
 		});
 		expect(actor).toEqual({
 			id: "identity:alice",

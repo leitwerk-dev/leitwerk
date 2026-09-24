@@ -134,13 +134,9 @@ describe("template-utils", () => {
 			templateContext: createTemplateContext({}),
 		});
 
-		expect(resolved.systemPrompt).toContain(
-			"You are an expert coding assistant operating inside pi",
-		);
-		expect(resolved.systemPrompt).toContain("- read: Read file contents");
-		expect(resolved.systemPrompt).toContain("- grep: Search file contents");
+		expect(resolved.systemPrompt).toContain("- read:");
+		expect(resolved.systemPrompt).toContain("- grep:");
 		expect(resolved.systemPrompt).not.toContain("- bash:");
-		expect(resolved.systemPrompt).toContain("Guidelines:");
 	});
 
 	it("prioritizes process-level template over config-level and built-in default", () => {

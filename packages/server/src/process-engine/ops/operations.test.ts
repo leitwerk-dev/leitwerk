@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { ProcessActionRegistry } from "../../process-action-registry.js";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import {
 	createDefaultTestProcessGraphRegistry,
 	createFixtureLlmTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import {
 	AbortProcess,
@@ -127,7 +127,7 @@ describe("ProcessEngine operation decisions", () => {
 		expect(decision).toMatchObject({ ok: false, code: "invalid_transition" });
 	});
 
-	it("ContinueFailedTurn rejects failed turns without recovery metadata", async () => {
+	it("ContinueFailedTurn rejects a failed turn without saved continuation progress", async () => {
 		const deps = createDeps();
 		const process = deps.processes.create({
 			processId: "ticket_issue_process",
@@ -272,7 +272,9 @@ describe("ProcessEngine operation decisions", () => {
 
 		expect(decision.ok).toBe(true);
 		if (!decision.ok) return;
-		expect(decision.writes.processPatch.stateJson).toContain("leaf_1");
+		expect(JSON.parse(decision.writes.processPatch.stateJson ?? "{}")).toMatchObject({
+			semanticEntryRefs: { currentPrimaryPathLeaf: { entryId: "leaf_1", turnRecordId: "trn_1" } },
+		});
 	});
 
 	it("TurnOutcome rejects missing required turn-result markdown before applying an outcome", async () => {

@@ -4,12 +4,12 @@ import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "./test-helpers/process-fixtures.js";
 import { createTestLlmTurn } from "./test-helpers/turn-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const activeTurnChangeProcess = createFixtureProcess({
 	id: "active_turn_change_process",
@@ -43,7 +43,7 @@ const processActionRegistry = buildProcessActionRegistry({
 });
 
 describe("createProcessEngine active-turn reconciliation", () => {
-	it("reconciles active automatic -> active llm transitions when a worker already exists", async () => {
+	it("carries the preparation restart intent from an automatic outcome into the existing worker", async () => {
 		const deps = createTestDeps();
 		const process = deps.processes.create({
 			processId: activeTurnChangeProcess.id,

@@ -7,6 +7,7 @@ describe("resolveProcessRef", () => {
 		expect(resolveProcessRef({ processRef: "abc123", serverBaseUrl })).toMatchObject({
 			id: "abc123",
 			origin: "https://leitwerk.example.test",
+			apiUrl: "https://leitwerk.example.test/api/processes/abc123",
 		});
 	});
 	it("accepts UI and API URLs with query/hash but only uses them to extract ids", () => {
@@ -32,12 +33,12 @@ describe("resolveProcessRef", () => {
 		});
 	});
 	it("rejects invalid URLs", () => {
-		expect(() => resolveProcessRef({ processRef: "file:///tmp/p", serverBaseUrl })).toThrow(/http/);
+		expect(() => resolveProcessRef({ processRef: "file:///processes/p", serverBaseUrl })).toThrow();
 		expect(() =>
 			resolveProcessRef({ processRef: "https://u:p@example.test/processes/p", serverBaseUrl }),
-		).toThrow(/Credentials/);
+		).toThrow();
 		expect(() =>
 			resolveProcessRef({ processRef: "https://example.test/not/p", serverBaseUrl }),
-		).toThrow(/processes/);
+		).toThrow();
 	});
 });

@@ -1,7 +1,7 @@
 import { createEmptyStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import { WS_PRIMARY_PATH_TYPES } from "@leitwerk-dev/protocol";
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { commitWrites, deriveReactions } from "./commit-writes.js";
 import { createWrites, type Writes } from "./writes.js";
 
@@ -198,7 +198,9 @@ describe("record writes", () => {
 			annotationKey: "turn_milestone:trn_existing",
 		});
 		const events = deps.events.listByInstance(process.id, 10);
-		expect(events.filter((event) => event.eventType !== "turn.lifecycle")).toHaveLength(1);
+		expect(
+			events.filter((event) => event.eventType === "turn_selected").map((event) => event.data),
+		).toEqual([{ fromTurnId: "generate_plan", toTurnId: "plan_review" }]);
 		expect(
 			events.filter((event) => event.eventType === "turn.lifecycle").map((event) => event.data),
 		).toEqual([
@@ -212,7 +214,9 @@ describe("record writes", () => {
 				status: "ready",
 			}),
 		]);
-		expect(deps.inputs.listByInstance(process.id)).toHaveLength(1);
+		expect(deps.inputs.listByInstance(process.id)).toMatchObject([
+			{ source: "app_steer", kind: "instruction", bodyMarkdown: "Please revise" },
+		]);
 		expect(broadcasts.map((entry) => entry.type)).toEqual(
 			expect.arrayContaining(["process.event", "process.updated", "process.input.queued"]),
 		);

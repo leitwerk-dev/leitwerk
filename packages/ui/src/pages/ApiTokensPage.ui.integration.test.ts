@@ -25,6 +25,7 @@ const data = {
 	csrfToken: "csrf",
 };
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 let app: ReturnType<typeof mount> | undefined;
 async function render() {
 	const target = document.createElement("div");
@@ -48,6 +49,8 @@ afterEach(async () => {
 	if (app) await unmount(app);
 	app = undefined;
 	document.body.innerHTML = "";
+	if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+	else Reflect.deleteProperty(navigator, "clipboard");
 	vi.resetAllMocks();
 });
 it("shows anonymous ownership, metadata, expiration choices and revoke-all confirmation", async () => {
@@ -84,6 +87,7 @@ it("holds the new secret only for once-only display and gives copy success/failu
 	button(target, "Copy token").click();
 	await flush();
 	expect(target.textContent).toContain("Copied to clipboard");
+	expect(copy).toHaveBeenCalledWith("lwk_pat_once_only");
 	copy.mockRejectedValueOnce(new Error("denied"));
 	button(target, "Copy token").click();
 	await flush();

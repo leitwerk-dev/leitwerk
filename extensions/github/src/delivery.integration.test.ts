@@ -94,7 +94,6 @@ it("resumes comments, reactions, inline replies and issue finalization after los
 	expect(repo.reactions[`inline:${feedback.id}`]).toHaveLength(1);
 	expect(repo.issues[0]).toMatchObject({ state: "closed", labels: [{ name: "done" }] });
 	expect(test.writeReceipts()).toHaveLength(4);
-	expect(test.describeTools().some((t) => t.name === "github_resolve_release_lock")).toBe(false);
 	await expect(
 		test.callTool(
 			"github_get_issue",

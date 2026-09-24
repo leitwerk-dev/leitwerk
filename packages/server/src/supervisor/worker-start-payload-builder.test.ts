@@ -1,8 +1,9 @@
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createSelectedTurnStart, createTestDeps } from "../test-helpers/unit-deps.js";
+import { createSelectedTurnStart } from "../test-helpers/unit-deps.js";
 import {
 	buildWorkerConfigSnapshot,
 	createWorkerStartPayloadBuilder,

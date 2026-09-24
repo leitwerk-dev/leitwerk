@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { poemCreatorProcess } from "./process-definition.js";
-import { createShowcaseHarness, http, launchRequest } from "./testing/harness.js";
+import { waitForValue } from "@leitwerk-dev/test-support/integration";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished } from "vitest";
+import { createShowcaseHarness, http, launchProcess } from "./testing/harness.js";
 
 async function createLeaveFeedbackReviewHarness() {
 	return createShowcaseHarness({
@@ -53,24 +53,6 @@ async function createFileTriggerHarness(paths: {
 	});
 }
 
-async function waitFor<T>(
-	read: () => T,
-	predicate: (value: T) => boolean,
-	timeoutMs = 5_000,
-): Promise<T> {
-	const deadline = Date.now() + timeoutMs;
-	while (true) {
-		const value = read();
-		if (predicate(value)) {
-			return value;
-		}
-		if (Date.now() >= deadline) {
-			throw new Error("timed out waiting for single prompt condition");
-		}
-		await new Promise((resolve) => setTimeout(resolve, 25));
-	}
-}
-
 let harness: Awaited<ReturnType<typeof createShowcaseHarness>>;
 
 beforeAll(async () => {
@@ -82,25 +64,6 @@ afterAll(async () => {
 });
 
 describe("single prompt extension", () => {
-	it("defines the poem review turn with no_issues and leave_feedback only", () => {
-		const turn = poemCreatorProcess.turns.get("review_poem_draft")?.definition;
-		expect(turn?.kind).toBe("llm");
-		if (turn?.kind !== "llm") {
-			throw new Error("expected review_poem_draft to be an LLM turn");
-		}
-		expect(Object.keys(turn.outcomes ?? {}).sort()).toEqual(["leave_feedback", "no_issues"]);
-		expect(turn.resultSemanticRef).toBe("review");
-		expect(turn.turnResultMarkdown).toBeUndefined();
-		expect(turn.outcomes?.no_issues).toMatchObject({
-			publishedProduct: "review",
-			turnResultMarkdownParameter: "review",
-		});
-		expect(turn.outcomes?.leave_feedback).toMatchObject({
-			publishedProduct: "message",
-			turnResultMarkdownParameter: "message",
-		});
-	});
-
 	it("lists all UI launchers and resolves defaults/options from configured model profiles", async () => {
 		const listResponse = await http(harness, `/api/launchers`);
 		const listBody = await listResponse.json();
@@ -193,32 +156,19 @@ describe("single prompt extension", () => {
 	});
 
 	it("runs a launched single prompt once and completes on turn end without a done tool", async () => {
-		const launchResponse = await launchRequest(
+		const launched = await launchProcess(
 			harness,
-			`/api/launchers/single_prompt_process.single_prompt_ui/launch-runs`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					launcherInput: {
-						prompt: "Say hello.",
-					},
-					modelConfig: {
-						defaultModelProfileId: "local_qwen",
-					},
-				}),
-			},
+			"single_prompt_process.single_prompt_ui",
+			{ prompt: "Say hello." },
+			"local_qwen",
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
-		expect(launchBody.process).toMatchObject({
+		expect(launched).toMatchObject({
 			processId: "single_prompt_process",
-			lifecycleStatus: "active",
 			defaultModelProfileId: "local_qwen",
 		});
 
-		const process = await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		const process = await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => value?.lifecycleStatus === "completed",
 		);
 		expect(process).toMatchObject({
@@ -226,7 +176,7 @@ describe("single prompt extension", () => {
 			defaultModelProfileId: "local_qwen",
 		});
 
-		const turnRecords = harness.process(launchBody.process.id).snapshot().turns;
+		const turnRecords = harness.process(launched.id).snapshot().turns;
 		expect(turnRecords).toHaveLength(1);
 		expect(turnRecords[0]).toMatchObject({
 			turnId: "run_single_prompt",
@@ -235,32 +185,19 @@ describe("single prompt extension", () => {
 	});
 
 	it("runs a launched single prompt that explicitly requires the done tool", async () => {
-		const launchResponse = await launchRequest(
+		const launched = await launchProcess(
 			harness,
-			`/api/launchers/single_prompt_with_tool_process.single_prompt_with_tool_ui/launch-runs`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					launcherInput: {
-						prompt: "Say hello, then confirm completion.",
-					},
-					modelConfig: {
-						defaultModelProfileId: "claude_fast",
-					},
-				}),
-			},
+			"single_prompt_with_tool_process.single_prompt_with_tool_ui",
+			{ prompt: "Say hello, then confirm completion." },
+			"claude_fast",
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
-		expect(launchBody.process).toMatchObject({
+		expect(launched).toMatchObject({
 			processId: "single_prompt_with_tool_process",
-			lifecycleStatus: "active",
 			defaultModelProfileId: "claude_fast",
 		});
 
-		const process = await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		const process = await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => value?.lifecycleStatus === "completed",
 		);
 		expect(process).toMatchObject({
@@ -268,7 +205,7 @@ describe("single prompt extension", () => {
 			defaultModelProfileId: "claude_fast",
 		});
 
-		const turnRecords = harness.process(launchBody.process.id).snapshot().turns;
+		const turnRecords = harness.process(launched.id).snapshot().turns;
 		expect(turnRecords).toHaveLength(1);
 		expect(turnRecords[0]).toMatchObject({
 			turnId: "run_single_prompt_with_tool",
@@ -278,6 +215,7 @@ describe("single prompt extension", () => {
 
 	it("waits on an external turn and completes when the configured prompt-complete file is written", async () => {
 		const dir = await mkdtemp(path.join(tmpdir(), "o2-showcase-processes-file-trigger-"));
+		onTestFinished(() => rm(dir, { recursive: true, force: true }));
 		const poemReviewPath = path.join(dir, "poem_review");
 		const completePromptPath = path.join(dir, "complete_prompt");
 		const fileTriggerHarness = await createFileTriggerHarness({
@@ -285,28 +223,16 @@ describe("single prompt extension", () => {
 			completePromptPath,
 		});
 		try {
-			const launchResponse = await launchRequest(
+			const launched = await launchProcess(
 				fileTriggerHarness,
-				`/api/launchers/single_prompt_external_complete_process.single_prompt_external_complete_ui/launch-runs`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						launcherInput: {
-							prompt: "Say hello, then wait for the external completion trigger.",
-						},
-						modelConfig: {
-							defaultModelProfileId: "local_qwen",
-						},
-					}),
-				},
+				"single_prompt_external_complete_process.single_prompt_external_complete_ui",
+				{ prompt: "Say hello, then wait for the external completion trigger." },
+				"local_qwen",
 			);
-			const launchBody = await launchResponse.json();
-			expect(launchResponse.status).toBe(201);
-			expect(launchBody.process.processId).toBe("single_prompt_external_complete_process");
+			expect(launched.processId).toBe("single_prompt_external_complete_process");
 
-			const waitingProcess = await waitFor(
-				() => fileTriggerHarness.process(launchBody.process.id).snapshot().process,
+			const waitingProcess = await waitForValue(
+				() => fileTriggerHarness.process(launched.id).snapshot().process,
 				(value) =>
 					value?.selectedTurnId === "await_external_prompt_completion" &&
 					value?.lifecycleStatus === "waiting",
@@ -315,8 +241,8 @@ describe("single prompt extension", () => {
 				selectedTurnId: "await_external_prompt_completion",
 				lifecycleStatus: "waiting",
 			});
-			await waitFor(
-				() => fileTriggerHarness.process(launchBody.process.id).snapshot().events,
+			await waitForValue(
+				() => fileTriggerHarness.process(launched.id).snapshot().events,
 				(events) =>
 					events.some(
 						(event) =>
@@ -325,10 +251,7 @@ describe("single prompt extension", () => {
 					),
 			);
 
-			const detailResponse = await http(
-				fileTriggerHarness,
-				`/api/processes/${launchBody.process.id}`,
-			);
+			const detailResponse = await http(fileTriggerHarness, `/api/processes/${launched.id}`);
 			const detailBody = await detailResponse.json();
 			expect(detailResponse.status).toBe(200);
 			expect(detailBody.selectedTurn).toMatchObject({
@@ -343,9 +266,9 @@ describe("single prompt extension", () => {
 
 			await writeFile(completePromptPath, "complete\n", "utf8");
 
-			const completedProcess = await waitFor(
+			const completedProcess = await waitForValue(
 				() => ({
-					process: fileTriggerHarness.process(launchBody.process.id).snapshot().process,
+					process: fileTriggerHarness.process(launched.id).snapshot().process,
 					fileRemoved: !existsSync(completePromptPath),
 				}),
 				(value) =>
@@ -358,7 +281,7 @@ describe("single prompt extension", () => {
 				lifecycleStatus: "completed",
 			});
 			const externalTurnRecords = fileTriggerHarness
-				.process(launchBody.process.id)
+				.process(launched.id)
 				.snapshot()
 				.turns.filter((turnRecord) => turnRecord.turnType === "external");
 			expect(externalTurnRecords).toHaveLength(1);
@@ -367,17 +290,17 @@ describe("single prompt extension", () => {
 				turnType: "external",
 				status: "succeeded",
 			});
-			expect(fileTriggerHarness.process(launchBody.process.id).snapshot().annotations).toEqual(
+			expect(fileTriggerHarness.process(launched.id).snapshot().annotations).toEqual(
 				expect.arrayContaining([expect.objectContaining({ annotationType: "external_trigger" })]),
 			);
 		} finally {
 			await fileTriggerHarness.close();
-			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
 	it("triggers poem revisions from the configured poem-review file and removes the file", async () => {
 		const dir = await mkdtemp(path.join(tmpdir(), "o2-poem-review-trigger-"));
+		onTestFinished(() => rm(dir, { recursive: true, force: true }));
 		const poemReviewPath = path.join(dir, "poem_review");
 		const completePromptPath = path.join(dir, "complete_prompt");
 		const fileTriggerHarness = await createFileTriggerHarness({
@@ -385,31 +308,19 @@ describe("single prompt extension", () => {
 			completePromptPath,
 		});
 		try {
-			const launchResponse = await launchRequest(
+			const launched = await launchProcess(
 				fileTriggerHarness,
-				`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						launcherInput: {
-							prompt: "Write a short poem about rain over Berlin rooftops.",
-						},
-						modelConfig: {
-							defaultModelProfileId: "local_qwen",
-						},
-					}),
-				},
+				"poem_creator_process.poem_creator_ui",
+				{ prompt: "Write a short poem about rain over Berlin rooftops." },
+				"local_qwen",
 			);
-			const launchBody = await launchResponse.json();
-			expect(launchResponse.status).toBe(201);
 
-			await waitFor(
-				() => fileTriggerHarness.process(launchBody.process.id).snapshot().process,
+			await waitForValue(
+				() => fileTriggerHarness.process(launched.id).snapshot().process,
 				(value) => value?.selectedTurnId === "poem_review" && value?.lifecycleStatus === "waiting",
 			);
-			await waitFor(
-				() => fileTriggerHarness.process(launchBody.process.id).snapshot().events,
+			await waitForValue(
+				() => fileTriggerHarness.process(launched.id).snapshot().events,
 				(events) =>
 					events.some(
 						(event) =>
@@ -418,10 +329,7 @@ describe("single prompt extension", () => {
 					),
 			);
 
-			const detailResponse = await http(
-				fileTriggerHarness,
-				`/api/processes/${launchBody.process.id}`,
-			);
+			const detailResponse = await http(fileTriggerHarness, `/api/processes/${launched.id}`);
 			const detailBody = await detailResponse.json();
 			expect(detailResponse.status).toBe(200);
 			expect(detailBody.selectedTurn).toMatchObject({
@@ -438,11 +346,11 @@ describe("single prompt extension", () => {
 
 			await writeFile(poemReviewPath, "Make the imagery softer and more twilight-heavy.", "utf8");
 
-			const afterRevision = await waitFor(
+			const afterRevision = await waitForValue(
 				() => ({
-					process: fileTriggerHarness.process(launchBody.process.id).snapshot().process,
-					turnRecords: fileTriggerHarness.process(launchBody.process.id).snapshot().turns,
-					annotations: fileTriggerHarness.process(launchBody.process.id).snapshot().annotations,
+					process: fileTriggerHarness.process(launched.id).snapshot().process,
+					turnRecords: fileTriggerHarness.process(launched.id).snapshot().turns,
+					annotations: fileTriggerHarness.process(launched.id).snapshot().annotations,
 					fileRemoved: !existsSync(poemReviewPath),
 				}),
 				(value) =>
@@ -477,7 +385,6 @@ describe("single prompt extension", () => {
 			);
 		} finally {
 			await fileTriggerHarness.close();
-			await rm(dir, { recursive: true, force: true });
 		}
 	});
 
@@ -489,32 +396,19 @@ describe("single prompt extension", () => {
 		const defaultsBody = await defaultsResponse.json();
 		expect(defaultsResponse.status).toBe(200);
 
-		const launchResponse = await launchRequest(
+		const launched = await launchProcess(
 			harness,
-			`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					launcherInput: {
-						prompt: "",
-					},
-					modelConfig: {
-						defaultModelProfileId: "claude_fast",
-					},
-				}),
-			},
+			"poem_creator_process.poem_creator_ui",
+			{ prompt: "" },
+			"claude_fast",
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
-		expect(launchBody.process).toMatchObject({
+		expect(launched).toMatchObject({
 			processId: "poem_creator_process",
-			lifecycleStatus: "active",
 			defaultModelProfileId: "claude_fast",
 		});
 
-		const firstHumanReview = await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		const firstHumanReview = await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => {
 				if (!value || value.lifecycleStatus !== "waiting") {
 					return false;
@@ -529,13 +423,10 @@ describe("single prompt extension", () => {
 			prompt: defaultsBody.defaults.prompt,
 		});
 
-		const workspaceRoot = harness.process(launchBody.process.id).snapshot().workspaceRoot;
+		const workspaceRoot = harness.process(launched.id).snapshot().workspaceRoot;
 		expect(existsSync(workspaceRoot)).toBe(true);
 
-		const initialActionsResponse = await http(
-			harness,
-			`/api/processes/${launchBody.process.id}/actions`,
-		);
+		const initialActionsResponse = await http(harness, `/api/processes/${launched.id}/actions`);
 		const initialActionsBody = await initialActionsResponse.json();
 		expect(initialActionsResponse.status).toBe(200);
 		expect(initialActionsBody.actions).toEqual(
@@ -570,7 +461,7 @@ describe("single prompt extension", () => {
 			preview: expect.objectContaining({ turnId: "review_poem_draft", turnKind: "llm" }),
 		});
 
-		const firstTurnRecords = harness.process(launchBody.process.id).snapshot().turns;
+		const firstTurnRecords = harness.process(launched.id).snapshot().turns;
 		expect(firstTurnRecords).toHaveLength(1);
 		expect(firstTurnRecords[0]).toMatchObject({
 			turnId: "draft_poem",
@@ -582,19 +473,19 @@ describe("single prompt extension", () => {
 
 		const runReviewResponse = await http(
 			harness,
-			`/api/processes/${launchBody.process.id}/actions/run_poem_auto_review`,
+			`/api/processes/${launched.id}/actions/run_poem_auto_review`,
 			{ method: "POST" },
 		);
 		expect(runReviewResponse.status).toBe(200);
 
-		const afterAutoAcceptedReview = await waitFor(
+		const afterAutoAcceptedReview = await waitForValue(
 			() => ({
-				process: harness.process(launchBody.process.id).snapshot().process,
+				process: harness.process(launched.id).snapshot().process,
 				draftCount: harness
-					.process(launchBody.process.id)
+					.process(launched.id)
 					.snapshot()
 					.turns.filter((turnRecord) => turnRecord.turnId === "draft_poem").length,
-				inputs: harness.process(launchBody.process.id).snapshot().inputs,
+				inputs: harness.process(launched.id).snapshot().inputs,
 			}),
 			(value) => {
 				if (
@@ -622,13 +513,13 @@ describe("single prompt extension", () => {
 		expect(afterAutoAcceptedReview.inputs).toHaveLength(0);
 		const llmReviewTurnRecordIds = new Set(
 			harness
-				.process(launchBody.process.id)
+				.process(launched.id)
 				.snapshot()
 				.turns.filter((tr) => tr.turnId === "review_poem_draft")
 				.map((tr) => tr.id),
 		);
 		const llmReviewToolCalls = harness
-			.process(launchBody.process.id)
+			.process(launched.id)
 			.snapshot()
 			.events.filter(
 				(event) =>
@@ -639,10 +530,7 @@ describe("single prompt extension", () => {
 			.map((event) => String((event.data as { name?: string }).name));
 		expect(llmReviewToolCalls).toEqual(["no_issues"]);
 
-		const reviewActionsResponse = await http(
-			harness,
-			`/api/processes/${launchBody.process.id}/actions`,
-		);
+		const reviewActionsResponse = await http(harness, `/api/processes/${launched.id}/actions`);
 		const reviewActionsBody = await reviewActionsResponse.json();
 		expect(reviewActionsResponse.status).toBe(200);
 		expect(reviewActionsBody.actions).toEqual(
@@ -652,14 +540,13 @@ describe("single prompt extension", () => {
 				expect.objectContaining({ id: "run_poem_auto_review", label: "Run automated review" }),
 			]),
 		);
-		expect(reviewActionsBody.actions).not.toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ id: "accept_poem_review" }),
-				expect.objectContaining({ id: "request_poem_review_changes" }),
-			]),
-		);
+		expect(
+			reviewActionsBody.actions.filter((action: { id: string }) =>
+				["accept_poem_review", "request_poem_review_changes"].includes(action.id),
+			),
+		).toEqual([]);
 
-		const reviewTurnRecords = harness.process(launchBody.process.id).snapshot().turns;
+		const reviewTurnRecords = harness.process(launched.id).snapshot().turns;
 		expect(reviewTurnRecords).toHaveLength(3);
 		expect(reviewTurnRecords).toEqual(
 			expect.arrayContaining([
@@ -683,13 +570,13 @@ describe("single prompt extension", () => {
 
 		const completeResponse = await http(
 			harness,
-			`/api/processes/${launchBody.process.id}/actions/complete_poem`,
+			`/api/processes/${launched.id}/actions/complete_poem`,
 			{ method: "POST" },
 		);
 		expect(completeResponse.status).toBe(200);
 
-		const completedProcess = await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		const completedProcess = await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => value?.lifecycleStatus === "completed",
 		);
 		expect(completedProcess).toMatchObject({
@@ -698,34 +585,22 @@ describe("single prompt extension", () => {
 	});
 
 	it("schedules poem review-loop actions while rejecting terminal poem completion scheduling", async () => {
-		const launchResponse = await launchRequest(
+		const launched = await launchProcess(
 			harness,
-			`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					launcherInput: {
-						prompt: "Write a short poem about sunrise over the city skyline.",
-					},
-					modelConfig: {
-						defaultModelProfileId: "local_qwen",
-					},
-				}),
-			},
+			"poem_creator_process.poem_creator_ui",
+			{ prompt: "Write a short poem about sunrise over the city skyline." },
+			"local_qwen",
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
 
-		await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => value?.selectedTurnId === "poem_review" && value?.lifecycleStatus === "waiting",
 		);
 
 		const runReviewAt = new Date(Date.now() + 60_000).toISOString();
 		const reviewScheduleResponse = await http(
 			harness,
-			`/api/processes/${launchBody.process.id}/actions/run_poem_auto_review`,
+			`/api/processes/${launched.id}/actions/run_poem_auto_review`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -755,12 +630,11 @@ describe("single prompt extension", () => {
 		});
 
 		const scheduledAction = reviewScheduleBody.scheduledAction;
-		expect(scheduledAction.actionId).toBe("run_poem_auto_review");
 		await http(harness, `/api/future-executions/${scheduledAction.id}`, { method: "DELETE" });
 
 		const scheduleResponse = await http(
 			harness,
-			`/api/processes/${launchBody.process.id}/actions/complete_poem`,
+			`/api/processes/${launched.id}/actions/complete_poem`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -783,27 +657,15 @@ describe("single prompt extension", () => {
 		try {
 			issuesHarness = await createLeaveFeedbackReviewHarness();
 
-			const launchResponse = await launchRequest(
+			const launched = await launchProcess(
 				issuesHarness,
-				`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						launcherInput: {
-							prompt: "Write a short poem about cloud software under an evening sky.",
-						},
-						modelConfig: {
-							defaultModelProfileId: "claude_fast",
-						},
-					}),
-				},
+				"poem_creator_process.poem_creator_ui",
+				{ prompt: "Write a short poem about cloud software under an evening sky." },
+				"claude_fast",
 			);
-			const launchBody = await launchResponse.json();
-			expect(launchResponse.status).toBe(201);
 
-			await waitFor(
-				() => issuesHarness?.process(launchBody.process.id).snapshot().process,
+			await waitForValue(
+				() => issuesHarness?.process(launched.id).snapshot().process,
 				(value) => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
@@ -814,13 +676,13 @@ describe("single prompt extension", () => {
 
 			const runReviewResponse = await http(
 				issuesHarness,
-				`/api/processes/${launchBody.process.id}/actions/run_poem_auto_review`,
+				`/api/processes/${launched.id}/actions/run_poem_auto_review`,
 				{ method: "POST" },
 			);
 			expect(runReviewResponse.status).toBe(200);
 
-			const humanReviewOfReview = await waitFor(
-				() => issuesHarness?.process(launchBody.process.id).snapshot().process,
+			const humanReviewOfReview = await waitForValue(
+				() => issuesHarness?.process(launched.id).snapshot().process,
 				(value) => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
@@ -834,13 +696,13 @@ describe("single prompt extension", () => {
 			});
 			const llmReviewTurnRecordIds = new Set(
 				issuesHarness
-					.process(launchBody.process.id)
+					.process(launched.id)
 					.snapshot()
 					.turns.filter((tr) => tr.turnId === "review_poem_draft")
 					.map((tr) => tr.id),
 			);
 			const llmReviewToolCalls = issuesHarness
-				.process(launchBody.process.id)
+				.process(launched.id)
 				.snapshot()
 				.events.filter(
 					(event) =>
@@ -851,10 +713,7 @@ describe("single prompt extension", () => {
 				.map((event) => String((event.data as { name?: string }).name));
 			expect(llmReviewToolCalls).toEqual(["leave_feedback"]);
 
-			const processDetailResponse = await http(
-				issuesHarness,
-				`/api/processes/${launchBody.process.id}`,
-			);
+			const processDetailResponse = await http(issuesHarness, `/api/processes/${launched.id}`);
 			const processDetailBody = await processDetailResponse.json();
 			expect(processDetailResponse.status).toBe(200);
 			expect(processDetailBody.toolRenderers).toEqual(
@@ -870,7 +729,7 @@ describe("single prompt extension", () => {
 
 			const reviewActionsResponse = await http(
 				issuesHarness,
-				`/api/processes/${launchBody.process.id}/actions`,
+				`/api/processes/${launched.id}/actions`,
 			);
 			const reviewActionsBody = await reviewActionsResponse.json();
 			expect(reviewActionsResponse.status).toBe(200);
@@ -900,24 +759,24 @@ describe("single prompt extension", () => {
 				]),
 			);
 
-			const reviewTurnRecords = issuesHarness.process(launchBody.process.id).snapshot().turns;
+			const reviewTurnRecords = issuesHarness.process(launched.id).snapshot().turns;
 			expect(reviewTurnRecords).toHaveLength(3);
 
 			const acceptReviewResponse = await http(
 				issuesHarness,
-				`/api/processes/${launchBody.process.id}/actions/accept_poem_review`,
+				`/api/processes/${launched.id}/actions/accept_poem_review`,
 				{ method: "POST" },
 			);
 			expect(acceptReviewResponse.status).toBe(200);
 
-			const afterAcceptedReview = await waitFor(
+			const afterAcceptedReview = await waitForValue(
 				() => ({
-					process: issuesHarness?.process(launchBody.process.id).snapshot().process,
+					process: issuesHarness?.process(launched.id).snapshot().process,
 					draftCount: issuesHarness
-						?.process(launchBody.process.id)
+						?.process(launched.id)
 						.snapshot()
 						.turns.filter((turnRecord) => turnRecord.turnId === "draft_poem").length,
-					inputs: issuesHarness?.process(launchBody.process.id).snapshot().inputs ?? [],
+					inputs: issuesHarness?.process(launched.id).snapshot().inputs ?? [],
 				}),
 				(value) => {
 					if (
@@ -934,7 +793,7 @@ describe("single prompt extension", () => {
 				lifecycleStatus: "waiting",
 			});
 			expect(afterAcceptedReview.inputs).toEqual([]);
-			const afterAcceptTurnRecords = issuesHarness.process(launchBody.process.id).snapshot().turns;
+			const afterAcceptTurnRecords = issuesHarness.process(launched.id).snapshot().turns;
 			const acceptedReviewDrafts = afterAcceptTurnRecords.filter(
 				(turnRecord) => turnRecord.turnId === "draft_poem",
 			);
@@ -960,33 +819,21 @@ describe("single prompt extension", () => {
 	});
 
 	it("supports a human revision loop for poem creator before returning to review", async () => {
-		const launchResponse = await launchRequest(
+		const launched = await launchProcess(
 			harness,
-			`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					launcherInput: {
-						prompt: "Write a short poem about crafting cloud software at dusk.",
-					},
-					modelConfig: {
-						defaultModelProfileId: "local_qwen",
-					},
-				}),
-			},
+			"poem_creator_process.poem_creator_ui",
+			{ prompt: "Write a short poem about crafting cloud software at dusk." },
+			"local_qwen",
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
 
-		await waitFor(
-			() => harness.process(launchBody.process.id).snapshot().process,
+		await waitForValue(
+			() => harness.process(launched.id).snapshot().process,
 			(value) => value?.lifecycleStatus === "waiting",
 		);
 
 		const revisionResponse = await http(
 			harness,
-			`/api/processes/${launchBody.process.id}/actions/request_poem_revision`,
+			`/api/processes/${launched.id}/actions/request_poem_revision`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -999,11 +846,11 @@ describe("single prompt extension", () => {
 		);
 		expect(revisionResponse.status).toBe(200);
 
-		const rerun = await waitFor(
+		const rerun = await waitForValue(
 			() => ({
-				process: harness.process(launchBody.process.id).snapshot().process,
+				process: harness.process(launched.id).snapshot().process,
 				draftCount: harness
-					.process(launchBody.process.id)
+					.process(launched.id)
 					.snapshot()
 					.turns.filter((turnRecord) => turnRecord.turnId === "draft_poem").length,
 			}),
@@ -1022,9 +869,8 @@ describe("single prompt extension", () => {
 			lifecycleStatus: "waiting",
 			defaultModelProfileId: "local_qwen",
 		});
-		expect(JSON.parse(rerun.process?.stateJson ?? "null")).toMatchObject({});
 
-		const turnRecords = harness.process(launchBody.process.id).snapshot().turns;
+		const turnRecords = harness.process(launched.id).snapshot().turns;
 		const draftTurnRecords = turnRecords.filter((turnRecord) => turnRecord.turnId === "draft_poem");
 		expect(draftTurnRecords).toHaveLength(2);
 		expect(draftTurnRecords[1]).toMatchObject({
@@ -1047,27 +893,15 @@ describe("single prompt extension", () => {
 		try {
 			issuesHarness = await createLeaveFeedbackReviewHarness();
 
-			const launchResponse = await launchRequest(
+			const launched = await launchProcess(
 				issuesHarness,
-				`/api/launchers/poem_creator_process.poem_creator_ui/launch-runs`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						launcherInput: {
-							prompt: "Write a short poem about rain over Berlin rooftops.",
-						},
-						modelConfig: {
-							defaultModelProfileId: "claude_fast",
-						},
-					}),
-				},
+				"poem_creator_process.poem_creator_ui",
+				{ prompt: "Write a short poem about rain over Berlin rooftops." },
+				"claude_fast",
 			);
-			const launchBody = await launchResponse.json();
-			expect(launchResponse.status).toBe(201);
 
-			await waitFor(
-				() => issuesHarness?.process(launchBody.process.id).snapshot().process,
+			await waitForValue(
+				() => issuesHarness?.process(launched.id).snapshot().process,
 				(value) => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
@@ -1078,13 +912,13 @@ describe("single prompt extension", () => {
 
 			const runReviewResponse = await http(
 				issuesHarness,
-				`/api/processes/${launchBody.process.id}/actions/run_poem_auto_review`,
+				`/api/processes/${launched.id}/actions/run_poem_auto_review`,
 				{ method: "POST" },
 			);
 			expect(runReviewResponse.status).toBe(200);
 
-			await waitFor(
-				() => issuesHarness?.process(launchBody.process.id).snapshot().process,
+			await waitForValue(
+				() => issuesHarness?.process(launched.id).snapshot().process,
 				(value) => {
 					if (!value || value.lifecycleStatus !== "waiting") {
 						return false;
@@ -1093,7 +927,7 @@ describe("single prompt extension", () => {
 				},
 			);
 
-			const recordsAfterFirstReview = issuesHarness.process(launchBody.process.id).snapshot().turns;
+			const recordsAfterFirstReview = issuesHarness.process(launched.id).snapshot().turns;
 			const firstDraft = recordsAfterFirstReview.find(
 				(turnRecord) => turnRecord.turnId === "draft_poem",
 			);
@@ -1107,7 +941,7 @@ describe("single prompt extension", () => {
 
 			const requestChangesResponse = await http(
 				issuesHarness,
-				`/api/processes/${launchBody.process.id}/actions/request_poem_review_changes`,
+				`/api/processes/${launched.id}/actions/request_poem_review_changes`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1121,15 +955,15 @@ describe("single prompt extension", () => {
 			);
 			expect(requestChangesResponse.status).toBe(200);
 
-			const afterRerun = await waitFor(
+			const afterRerun = await waitForValue(
 				() => ({
-					process: issuesHarness?.process(launchBody.process.id).snapshot().process,
+					process: issuesHarness?.process(launched.id).snapshot().process,
 					reviewTurns: issuesHarness
-						?.process(launchBody.process.id)
+						?.process(launched.id)
 						.snapshot()
 						.turns.filter((turnRecord) => turnRecord.turnId === "review_poem_draft"),
 					draftTurns: issuesHarness
-						?.process(launchBody.process.id)
+						?.process(launched.id)
 						.snapshot()
 						.turns.filter((turnRecord) => turnRecord.turnId === "draft_poem"),
 				}),
@@ -1151,7 +985,6 @@ describe("single prompt extension", () => {
 				pathType: "root_branch",
 				forkPiEntryId: firstReview?.resultPiEntryId,
 			});
-			expect(JSON.parse(afterRerun.process?.stateJson ?? "null")).toMatchObject({});
 		} finally {
 			if (issuesHarness) {
 				await issuesHarness.close();

@@ -48,6 +48,17 @@ it("keeps concurrent async traces separate and bounds retained events", async ()
 			traceTestSubprocess("second command", () => 2);
 		}),
 	]);
+	for (const [trace, operation] of [
+		[first, "first command"],
+		[second, "second command"],
+	] as const) {
+		expect(JSON.parse(trace.format()).events).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ stage: "subprocess.start", operation }),
+				expect.objectContaining({ stage: "subprocess.exit", operation, status: 0 }),
+			]),
+		);
+	}
 	expect(first.format()).not.toContain("second command");
 	expect(second.format()).not.toContain("first command");
 	for (let i = 0; i < 600; i++) first.mark(`stage-${i}`);

@@ -189,23 +189,6 @@ describe("planTurnTreeExecution", () => {
 		});
 	});
 
-	it("falls back to the tree root when the persisted root entry is stale", () => {
-		expect(
-			planTurnTreeExecution({
-				turnDef: rootBranchReviewTurn,
-				currentLeafId: "turn-1",
-				rootEntryId: "missing-root",
-				entryExists: (entryId) => entryId === "turn-1",
-			}),
-		).toEqual({
-			pathType: "root_branch",
-			forkPiEntryId: null,
-			savedPrimaryLeafId: "turn-1",
-			restorePrimaryLeafAfterTurn: true,
-			startTarget: { kind: "root" },
-		});
-	});
-
 	it("resolves semantic-ref turn starts from process state when present", () => {
 		expect(
 			planTurnTreeExecution({

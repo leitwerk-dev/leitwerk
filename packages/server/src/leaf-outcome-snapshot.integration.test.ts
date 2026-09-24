@@ -201,10 +201,11 @@ const captureErrorExtension: LeitwerkExtensionModule = {
 };
 
 afterEach(async () => {
-	while (harnesses.length > 0) {
-		const harness = harnesses.pop();
-		await harness?.close();
-	}
+	const results = await Promise.allSettled(harnesses.splice(0).map((harness) => harness.close()));
+	const failures = results.flatMap((result) =>
+		result.status === "rejected" ? [result.reason] : [],
+	);
+	if (failures.length) throw new AggregateError(failures, "Leaf snapshot fixture cleanup failed");
 });
 
 function baseStateJson(
@@ -474,7 +475,7 @@ describe("leaf outcome snapshot capture", () => {
 		]);
 	});
 
-	it("preserves turn-record capture context when recordTurnOutcome creates the missing row", async () => {
+	it("prefers recorded payload markdown over different tree leaf fallback during capture", async () => {
 		const harness = await createIntegrationHarness({
 			extensionCatalog: buildExtensionCatalogFromModules([captureSuccessExtension]),
 		});
@@ -522,8 +523,7 @@ describe("leaf outcome snapshot capture", () => {
 			pathType: "primary",
 			forkPiEntryId: "root-user",
 			resultPiEntryId: "assistant-created",
-			turnResultMarkdown:
-				"## Payload markdown\n\nCaptured from the synthetic completed turn record.",
+			turnResultMarkdown: "## Payload markdown\n\nCaptured from the accepted turn outcome.",
 			rootEntryId: "root-user",
 		});
 
@@ -532,8 +532,7 @@ describe("leaf outcome snapshot capture", () => {
 			expect.objectContaining({
 				id: "trn_missing",
 				status: "succeeded",
-				turnResultMarkdown:
-					"## Payload markdown\n\nCaptured from the synthetic completed turn record.",
+				turnResultMarkdown: "## Payload markdown\n\nCaptured from the accepted turn outcome.",
 			}),
 		);
 		expect(harness.ctx.deps.leafOutcomeSnapshots.listByInstance(process.id)).toEqual([
@@ -541,8 +540,7 @@ describe("leaf outcome snapshot capture", () => {
 				leafEntryId: "assistant-created",
 				turnRecordId: "trn_missing",
 				status: "ready",
-				fallbackMarkdown:
-					"## Payload markdown\n\nCaptured from the synthetic completed turn record.",
+				fallbackMarkdown: "## Payload markdown\n\nCaptured from the accepted turn outcome.",
 			}),
 		]);
 	});

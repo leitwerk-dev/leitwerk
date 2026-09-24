@@ -10,7 +10,7 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import Fastify from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "../db/database.js";
+import { closeDatabase, createInMemoryDatabase } from "../db/database.js";
 import { createAllRepos } from "../db/repositories.js";
 import { createFileBackedProcessSessionSnapshotStore } from "../process-session-store.js";
 import {
@@ -20,6 +20,8 @@ import {
 import { registerInternalWorkerSessionSnapshotRoutes } from "./internal-worker-session-snapshot.js";
 
 const tempRoots: string[] = [];
+const apps: ReturnType<typeof Fastify>[] = [];
+const databases: ReturnType<typeof createInMemoryDatabase>[] = [];
 
 async function createTempRoot(): Promise<string> {
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-snapshot-route-"));
@@ -29,16 +31,20 @@ async function createTempRoot(): Promise<string> {
 
 async function createHarness(maxSnapshotBytes = 64) {
 	const app = Fastify({ logger: false });
+	apps.push(app);
 	const db = createInMemoryDatabase();
+	databases.push(db);
 	const repos = createAllRepos(db);
 	const process = repos.processes.create({ processId: "test_process", lifecycleStatus: "active" });
 	const token = createWorkerConnectToken();
+	const connectToken = createWorkerConnectToken();
 	repos.leases.create({
 		instanceId: process.id,
 		workerId: "wkr_1",
 		state: "idle",
 		serverEpoch: "epoch-1",
 		snapshotTokenHash: hashWorkerConnectToken(token),
+		connectTokenHash: hashWorkerConnectToken(connectToken),
 	});
 	const sessionSnapshots = createFileBackedProcessSessionSnapshotStore(await createTempRoot());
 	registerInternalWorkerSessionSnapshotRoutes({
@@ -51,7 +57,7 @@ async function createHarness(maxSnapshotBytes = 64) {
 		sessionSnapshots,
 		maxSnapshotBytes,
 	});
-	return { app, repos, process, sessionSnapshots, token };
+	return { app, repos, process, sessionSnapshots, token, connectToken };
 }
 
 function seedAcceptedAutomaticTurn(
@@ -112,6 +118,8 @@ function snapshotHeaders(input: {
 }
 
 afterEach(async () => {
+	await Promise.all(apps.splice(0).map((app) => app.close()));
+	for (const db of databases.splice(0)) closeDatabase(db);
 	for (const root of tempRoots.splice(0)) {
 		await rm(root, { recursive: true, force: true });
 	}
@@ -142,22 +150,20 @@ describe("internal worker session snapshot routes", () => {
 		expect(firstPut.statusCode).toBe(204);
 		expect(secondPut.statusCode).toBe(204);
 		expect(await sessionSnapshots.readRawSnapshot(process.id)).toBe(second);
-		await app.close();
 	});
 
 	it("rejects the WebSocket connect token for snapshot authentication", async () => {
-		const { app, process } = await createHarness();
+		const { app, process, connectToken } = await createHarness();
 		const content = `${JSON.stringify({ ok: true })}\n`;
 
 		const response = await app.inject({
 			method: "PUT",
 			url: `/internal/workers/${process.id}/session-snapshot`,
-			headers: snapshotHeaders({ token: "websocket-token" }),
+			headers: snapshotHeaders({ token: connectToken }),
 			payload: content,
 		});
 
 		expect(response.statusCode).toBe(403);
-		await app.close();
 	});
 
 	it("rejects stale workers, replaced-worker tokens, malformed JSONL, and oversized uploads", async () => {
@@ -193,19 +199,18 @@ describe("internal worker session snapshot routes", () => {
 			serverEpoch: "epoch-1",
 			snapshotTokenHash: hashWorkerConnectToken(replacementToken),
 		});
-		const oldWorkerAfterReplacement = await app.inject({
+		const replacedToken = await app.inject({
 			method: "PUT",
 			url: `/internal/workers/${process.id}/session-snapshot`,
-			headers: snapshotHeaders({ token, workerId: "wkr_1" }),
+			headers: snapshotHeaders({ token, workerId: "wkr_2" }),
 			payload: content,
 		});
 
 		expect(staleWorker.statusCode).toBe(409);
 		expect(malformed.statusCode).toBe(400);
 		expect(oversized.statusCode).toBe(413);
-		expect(oldWorkerAfterReplacement.statusCode).toBe(409);
+		expect(replacedToken.statusCode).toBe(403);
 		expect(await sessionSnapshots.readRawSnapshot(process.id)).toBeNull();
-		await app.close();
 	});
 
 	it("requires the supplied turn record id to match the process current turn", async () => {
@@ -236,7 +241,6 @@ describe("internal worker session snapshot routes", () => {
 		expect(wrongTurn.statusCode).toBe(409);
 		expect(matchingTurn.statusCode).toBe(204);
 		expect(await sessionSnapshots.readRawSnapshot(process.id)).toBe(content);
-		await app.close();
 	});
 
 	it("records managed skill reads with their session timestamp", async () => {
@@ -286,7 +290,6 @@ describe("internal worker session snapshot routes", () => {
 		const detail = repos.skills.getInstalledDetail("review");
 		expect(detail?.usage.invokedAllTime).toBe(1);
 		expect(detail?.processes[0]?.lastInvokedAt).toBe(invokedAt);
-		await app.close();
 	});
 
 	it("accepts an uncorrelated final snapshot while the active worker is draining", async () => {
@@ -306,6 +309,5 @@ describe("internal worker session snapshot routes", () => {
 
 		expect(response.statusCode).toBe(204);
 		expect(await sessionSnapshots.readRawSnapshot(process.id)).toBe(content);
-		await app.close();
 	});
 });

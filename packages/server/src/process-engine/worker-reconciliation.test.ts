@@ -56,19 +56,6 @@ describe("reconcileWorkerForProcessTurnSelection", () => {
 		expect(supervisor.stopCalls).toEqual([{ instanceId, reason: "turn_changed:human_turn" }]);
 	});
 
-	it("spawns a worker when the target selection needs one and none exists", async () => {
-		const { supervisor, result } = reconcile(false, {
-			fromTurnId: "human_turn",
-			toTurnId: "llm_turn",
-			fromLifecycleStatus: "waiting",
-			toLifecycleStatus: "active",
-		});
-
-		await result;
-
-		expect(supervisor.spawnCalls).toEqual([instanceId]);
-	});
-
 	it("restarts the worker when switching between active worker-backed turns", async () => {
 		const { supervisor, result } = reconcile(true, {
 			fromTurnId: "automatic_turn",

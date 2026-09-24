@@ -225,7 +225,7 @@ describe("resolveExtensionEntries", () => {
 		expect(entry.pi?.serverEntryPath).toBe(path.join(pkgDir, "dist", "pi-server.js"));
 	});
 
-	it("rejects Pi entries and resources outside their owning package", async () => {
+	it("rejects a Pi worker entry outside its owning package", async () => {
 		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
 		const root = await createWorkspace();
 		await createExtensionPackage(root, {
@@ -260,12 +260,12 @@ describe("importExtensionModules", () => {
 describe("buildExtensionCatalog", () => {
 	it("orders present optional dependencies before capability consumers", async () => {
 		const token = createCapabilityToken<string>("test:optional-owner");
+		const observed: unknown[] = [];
 		const consumer = createLoadedExtensionModuleForTest({
 			manifest: { id: "consumer", version: "1", optional: ["owner"] },
 			setupCatalog(api) {
 				const { get, require: requireCapability } = api;
-				expect(get(token)).toBe("available");
-				expect(requireCapability(token)).toBe("available");
+				observed.push(get(token), requireCapability(token));
 			},
 		});
 		const owner = createLoadedExtensionModuleForTest({
@@ -276,6 +276,7 @@ describe("buildExtensionCatalog", () => {
 		});
 
 		const catalog = await buildExtensionCatalog([consumer, owner]);
+		expect(observed).toEqual(["available", "available"]);
 		const { get, require: requireCapability } = catalog;
 		expect(get(token)).toBe("available");
 		expect(requireCapability(token)).toBe("available");
