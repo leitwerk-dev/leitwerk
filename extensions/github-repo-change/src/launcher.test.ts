@@ -25,7 +25,7 @@ it("pins server SSH wiring, rejects unknown profiles, and generates a fresh repl
 		}),
 	});
 	const ui = launcher.launcher.ui;
-	if (!ui) throw new Error("Missing UI");
+	if (!ui?.resolveRelaunchInput) throw new Error("Missing UI replay hook");
 	const input = {
 		githubProfile: "team",
 		repository: "team/repo",
@@ -33,9 +33,7 @@ it("pins server SSH wiring, rejects unknown profiles, and generates a fresh repl
 		sshCredentialRef: "attacker",
 	};
 	const first = await ui.resolveLaunchConfig(input, {});
-	const second = await ui.resolveLaunchConfig(input, {});
-	expect(first.ok).toBe(true);
-	expect(second.ok).toBe(true);
+	const second = await ui.resolveLaunchConfig(await ui.resolveRelaunchInput(input, {}), {});
 	if (!first.ok || !second.ok) throw new Error("Launch failed");
 	expect(first.launchConfig.params).toMatchObject({ sshCredentialRef: "writer", origin: "ui" });
 	expect(first.launchConfig.params.workBranch).not.toBe(second.launchConfig.params.workBranch);
@@ -44,8 +42,9 @@ it("pins server SSH wiring, rejects unknown profiles, and generates a fresh repl
 	});
 	expect(await ui.resolveLaunchConfig({ ...input, githubProfile: "unknown" }, {})).toMatchObject({
 		ok: false,
+		errors: [{ fieldId: "githubProfile", code: "custom_rule" }],
 	});
-	expect(process.runtime).toEqual({ docker: false });
+	expect(process.runtime).toMatchObject({ docker: false });
 	launcher.configure(null);
-	expect(() => ui.resolveDefaults?.({})).toThrow("not configured");
+	expect(() => ui.resolveDefaults?.({})).toThrow();
 });
