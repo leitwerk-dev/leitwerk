@@ -601,15 +601,27 @@ async function wheelToBoundary(
 	thresholdPx = 50,
 	position: "center" | "top" = "center",
 ) {
-	for (let attempt = 0; attempt < 30; attempt += 1) {
-		const metrics = await getScrollMetrics(locator);
-		const remaining = boundary === "top" ? metrics.scrollTop : bottomGap(metrics);
-		if (remaining <= thresholdPx) {
-			return metrics;
-		}
-		await wheelAtLocator(page, locator, boundary === "top" ? -1200 : 1200, position);
-		await page.waitForTimeout(40);
-	}
+	// Keep native wheel input, but cover the remaining distance in one gesture.
+	// Poll the boundary so an intercepted wheel fails here instead of silently
+	// returning a viewport that never reached the requested position.
+	await expect
+		.poll(
+			async () => {
+				const metrics = await getScrollMetrics(locator);
+				const remaining = boundary === "top" ? metrics.scrollTop : bottomGap(metrics);
+				if (remaining > thresholdPx) {
+					await wheelAtLocator(
+						page,
+						locator,
+						(boundary === "top" ? -1 : 1) * Math.max(1200, remaining),
+						position,
+					);
+				}
+				return remaining;
+			},
+			{ timeout: 5_000, intervals: [50, 100] },
+		)
+		.toBeLessThanOrEqual(thresholdPx);
 	return getScrollMetrics(locator);
 }
 
@@ -642,7 +654,7 @@ async function wheelToApproxScrollTop(
 		if (Math.abs(remaining) <= 150) return metrics;
 		// Wheel dispatch does not await scrolling. Avoid queued input and overshoot
 		// by waiting for each movement to settle before choosing the next delta.
-		await wheelAtLocator(page, locator, Math.max(-900, Math.min(900, remaining)), position);
+		await wheelAtLocator(page, locator, remaining, position);
 		await expect
 			.poll(async () => Math.abs((await getScrollMetrics(locator)).scrollTop - metrics.scrollTop))
 			.toBeGreaterThan(1);
@@ -780,8 +792,6 @@ test.describe("rail scroll-anchor behavior", () => {
 		await expect(actionRequiredButton).toHaveClass(/is-active/);
 
 		await firstTurnButton.click();
-
-		await page.waitForTimeout(100);
 
 		// The clicked turn button should now be the only active rail item.
 		await expect(actionRequiredButton).not.toHaveClass(/is-active/);
@@ -1031,12 +1041,11 @@ test.describe("chronicle scroll behavior", () => {
 		await expect(livePreview).toContainText("Thought line");
 
 		emitThinkingDelta(process.id, runningTurnId, "New live thought after render.\n");
-		await page.waitForTimeout(300);
+		await expect(livePreview).toContainText("New live thought after render.");
 
 		await expect(
 			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
 		).toHaveCount(0);
-		await expect(livePreview).toContainText("New live thought after render.");
 	});
 
 	test("keeps the outer chronicle manually scrollable while live reasoning streams", async ({
@@ -1053,8 +1062,9 @@ test.describe("chronicle scroll behavior", () => {
 		await page.waitForTimeout(150);
 
 		emitThinkingDelta(process.id, runningTurnId, "More streamed reasoning after page scroll.\n");
-		await page.waitForTimeout(300);
 		await expect(livePreview).toContainText("More streamed reasoning after page scroll.");
+		// Observe after rendering too: streaming must not trigger a delayed snap-back.
+		await page.waitForTimeout(300);
 
 		const afterMetrics = await getScrollMetrics(chronicleScroll);
 
@@ -1209,7 +1219,9 @@ test.describe("chronicle scroll behavior", () => {
 
 		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-		await page.waitForTimeout(500);
+		await expect
+			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
+			.toBeLessThan(200);
 		const actionSection = page.locator('[data-section="leaf-outcome-actions"]');
 		await expect(actionSection).toBeInViewport();
 		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(200);
@@ -1230,7 +1242,9 @@ test.describe("chronicle scroll behavior", () => {
 
 		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-		await page.waitForTimeout(500);
+		await expect
+			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
+			.toBeLessThan(200);
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
 		await page.waitForTimeout(200);
 		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);

@@ -3,7 +3,10 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import codingExtension from "@leitwerk-dev/coding";
-import { readPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
+import {
+	patchPublicationState,
+	readPublicationState,
+} from "@leitwerk-dev/coding/repository-change-publication";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { GITHUB_PR_TERMINAL_KIND, setupGitHubIntegration } from "@leitwerk-dev/github";
@@ -15,7 +18,13 @@ import {
 	setupGitLabIntegration,
 } from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
-import type { CoreServerSetupDeps, LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import {
+	type CapabilityToken,
+	type CoreServerSetupDeps,
+	coreHostCapabilities,
+	createEmptyStructuralProcessState,
+	type LeitwerkExtensionModule,
+} from "@leitwerk-dev/process-sdk";
 import {
 	createPollingTestExtension,
 	FakeLlmProvider,
@@ -148,7 +157,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		);
 	await mkdir(path.join(root, "trees"), { recursive: true });
 	await mkdir(path.join(root, "workspaces"), { recursive: true });
-	async function start() {
+	async function start(listen = true) {
 		github = new LocalGitHubAdapter({ root, baseUrl: "https://github.test", now: () => clock });
 		github.seed({ owner: "team", name: "repo", files: { "README.md": "Initial\n" } });
 		gitlab = new LocalGitLabAdapter(root);
@@ -159,19 +168,34 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				: createGitLabRepoChange({ docker: false });
 		// Only this owned local composition replaces production credential delivery.
 		flow.process.repositoryCredentials = () => [];
-		const polling = createPollingTestExtension({ id: provider, version: "1.0.0" }, (api) =>
-			provider === "github"
+		const polling = createPollingTestExtension({ id: provider, version: "1.0.0" }, (api) => {
+			const deps = api.get(coreHostCapabilities.serverSetup);
+			if (!deps || Array.isArray(deps)) throw new Error("Missing server setup capability");
+			// Drive the real provider's poll explicitly. A scheduled poll can otherwise
+			// coalesce with our call before newly added evidence is visible, leaving
+			// the test waiting for the next five-second timer tick.
+			const manualDeps: CoreServerSetupDeps = {
+				...deps,
+				polling: { create: ({ pollOnce }) => ({ poll: pollOnce }) },
+			};
+			const manualApi = {
+				...api,
+				get<T>(token: CapabilityToken<T>): T | T[] | undefined {
+					return token === coreHostCapabilities.serverSetup ? (manualDeps as T) : api.get(token);
+				},
+			};
+			return provider === "github"
 				? setupGitHubIntegration(
-						api,
+						manualApi,
 						{ profiles: () => ["team"], client: () => github.client() },
 						{ now: () => clock },
 					)
 				: setupGitLabIntegration(
-						api,
+						manualApi,
 						{ profiles: () => ["team"], client: () => gitlab.client() },
 						{ now: () => clock },
-					),
-		);
+					);
+		});
 		pollProvider = () => polling.poll();
 		const ssh: LeitwerkExtensionModule = {
 			manifest: { id: "git-ssh", version: "1.0.0" },
@@ -211,6 +235,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			},
 		]);
 		harness = await createIntegrationHarness({
+			listen,
 			extensionCatalog: catalog,
 			appOverrides: {
 				localWorkerSpawnImpl: createInProcessWorkerSpawn({
@@ -249,7 +274,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		await harness?.ctx.app.close();
 		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 	});
-	await start();
+	await start(false);
 	const driver = createProcessDriver(() => harness.ctx);
 	const armed = async (id: string) => {
 		await driver.wait(id, "deliver_change");
@@ -266,6 +291,19 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		clock += 180000;
 		const result = (await pollProvider()) as { errors: string[] };
 		expect(result.errors).toEqual([]);
+		// A provider observation can start an automatic worker turn. Let it finish
+		// and rearm before the next remote edit/poll, as the real timer normally does.
+		await Promise.all(
+			harness.ctx.deps.processes
+				.listAll()
+				.map(({ id }) =>
+					driver.waitForProcess(
+						id,
+						(p) => p.lifecycleStatus !== "active" && p.lifecycleStatus !== "discovered",
+						"settled provider observation",
+					),
+				),
+		);
 	};
 	return {
 		...driver,
@@ -292,6 +330,11 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			repairMode = mode;
 		},
 		async launch(issueOrigin = false) {
+			await harness.ctx.listen({
+				host: "127.0.0.1",
+				port: 0,
+				useBoundAddressAsBaseUrl: true,
+			});
 			let id: string;
 			if (issueOrigin) {
 				if (provider === "github") {
@@ -325,6 +368,132 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			await driver.action(id, "finalize_change");
 			await armed(id);
 			return id;
+		},
+		async seedDelivery(issueOrigin = false, ciRecoveryCycles = 0) {
+			// Only delivery preconditions are seeded. Discovery/publication have full
+			// workflow cases; evidence, repair and operator actions use real handlers.
+			const workBranch = "leitwerk/seeded-delivery";
+			git.run(bare, ["branch", workBranch, "main"]);
+			const headSha = git.run(bare, ["rev-parse", workBranch]).trim();
+			let issueNumber: number | null = null;
+			let issueUrl: string | null = null;
+			if (issueOrigin) {
+				if (provider === "github") {
+					const repo = github.repo("team", "repo");
+					const issue = github.createIssue(repo, { title: "Update readme" });
+					github.setIssueLabel(repo, issue.number, "use-leitwerk", "developer");
+					issueNumber = issue.number;
+					issueUrl = issue.html_url;
+				} else {
+					const issue = gitlab.createIssue(1, "Update readme");
+					issueNumber = issue.iid;
+					issueUrl = issue.web_url;
+				}
+			}
+			const request =
+				provider === "github"
+					? await github.client().createPullRequest("team", "repo", {
+							title: "Update readme",
+							body: "Published change",
+							head: workBranch,
+							base: "main",
+						})
+					: gitlab.openMr(gitlab.state.projects[0], workBranch);
+			const prNumber = "number" in request ? request.number : request.iid;
+			const prUrl = "html_url" in request ? request.html_url : request.web_url;
+			const params = {
+				repoLocator: bare,
+				baseBranch: "main",
+				workBranch,
+				prompt: "Update readme",
+				owner: provider === "github" ? "team" : "team/subgroup",
+				repo: "repo",
+				origin: issueOrigin ? "issue" : "ui",
+				issueNumber,
+				issueUrl,
+				triggerLabel: issueOrigin ? "use-leitwerk" : null,
+				doneLabel: issueOrigin ? "leitwerk-done" : null,
+				...(provider === "github"
+					? { githubProfile: "team", sshCredentialRef: "team" }
+					: { gitlabProfile: "team", gitlabOrigin: "https://gitlab.test", projectId: 1 }),
+			};
+			const process = harness.ctx.deps.processes.create({
+				processId,
+				title: "Update readme",
+				selectedTurnId: "deliver_change",
+				lifecycleStatus: "waiting",
+				externalId: issueOrigin
+					? provider === "github"
+						? `github:team/repo#${issueNumber}`
+						: `gitlab:https://gitlab.test:1#${issueNumber}`
+					: null,
+				externalUrl: issueUrl,
+				paramsJson: JSON.stringify(params),
+				stateJson: JSON.stringify(
+					patchPublicationState(
+						{
+							...createEmptyStructuralProcessState(),
+							finalization: { generatedCommitMessage: "docs: update readme" },
+						},
+						`${provider}RepoChange`,
+						{
+							headSha,
+							prNumber,
+							prUrl,
+							ciRecoveryCycles,
+							delivery: { stage: "awaiting", issueLinked: issueOrigin },
+						},
+					),
+				),
+			});
+			const identity =
+				provider === "github"
+					? await github.client().resolveGitIdentity("team")
+					: await gitlab.client().resolveGitIdentity();
+			harness.ctx.deps.projects.create({
+				instanceId: process.id,
+				key: "repo",
+				repoLocator: bare,
+				baseBranch: "main",
+				workBranch,
+				metadata: {
+					"leitwerk.gitIdentity": {
+						provider,
+						profile: "team",
+						name: identity.name,
+						email: identity.email,
+						login: "login" in identity ? identity.login : identity.username,
+					},
+					...(provider === "github"
+						? {
+								github: {
+									profile: "team",
+									owner: "team",
+									repo: "repo",
+									...(issueOrigin ? { issueNumber } : {}),
+								},
+							}
+						: {
+								gitlab: {
+									profile: "team",
+									projectId: 1,
+									iid: prNumber,
+									...(issueOrigin ? { issueIid: issueNumber } : {}),
+								},
+							}),
+				},
+			});
+			// Startup must recover the persisted waiting delivery and arm its sources.
+			await harness.ctx.listen({
+				host: "127.0.0.1",
+				port: 0,
+				useBoundAddressAsBaseUrl: true,
+			});
+			await armed(process.id);
+			// Consume the initial healthy observation before testing new evidence.
+			await poll();
+			await armed(process.id);
+			return process.id;
 		},
 		async restart() {
 			await harness.ctx.app.close();
@@ -381,7 +550,8 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		},
 	};
 }
-for (const provider of ["github", "gitlab"] as const)
+/** @internal */
+export function repositoryChangeTests(provider: Provider) {
 	describe(`${provider} repository change`, () => {
 		it("publishes from the UI, repairs exact-head CI, and completes after a file-backed restart", async ({
 			onTestFinished,
@@ -450,7 +620,7 @@ for (const provider of ["github", "gitlab"] as const)
 			onTestFinished,
 		}) => {
 			const f = await fixture(provider, onTestFinished);
-			const id = await f.launch();
+			const id = await f.seedDelivery();
 			f.setRepair("operator");
 			f.feedback(id);
 			await f.poll();
@@ -468,29 +638,28 @@ for (const provider of ["github", "gitlab"] as const)
 		}, 45000);
 	});
 
-for (const provider of ["github", "gitlab"] as const) {
-	it(`${provider}: stops after three automatic CI repairs and does not replay dismissed evidence`, async ({
+	it(`${provider}: allows the third automatic CI repair, refuses a fourth, and does not replay dismissed evidence`, async ({
 		onTestFinished,
 	}) => {
 		const f = await fixture(provider, onTestFinished);
-		const id = await f.launch();
-		for (let cycle = 1; cycle <= 3; cycle++) {
-			const head = f.state(id).headSha;
-			f.failCi(id);
-			await f.poll();
-			await f.waitForProcess(
-				id,
-				(p) =>
-					readPublicationState(JSON.parse(p.stateJson ?? "{}"), `${provider}RepoChange`).headSha !==
-					head,
-				"new CI repair head",
-			);
-			await f.armed(id);
-			expect(f.state(id).ciRecoveryCycles).toBe(cycle);
-		}
+		const id = await f.seedDelivery(false, 2);
+		const head = f.state(id).headSha;
+		f.failCi(id);
+		await f.poll();
+		await f.waitForProcess(
+			id,
+			(p) =>
+				readPublicationState(JSON.parse(p.stateJson ?? "{}"), `${provider}RepoChange`).headSha !==
+				head,
+			"new CI repair head",
+		);
+		await f.armed(id);
+		expect(f.state(id).ciRecoveryCycles).toBe(3);
+		const repairedHead = f.state(id).headSha;
 		f.failCi(id);
 		await f.poll();
 		await f.wait(id, "ci_operator_action");
+		expect(f.state(id).headSha).toBe(repairedHead);
 		expect(f.state(id).ciRecoveryCycles).toBe(3);
 		await f.action(id, "resume_waiting");
 		await f.armed(id);
@@ -504,7 +673,7 @@ for (const provider of ["github", "gitlab"] as const) {
 		onTestFinished,
 	}) => {
 		const f = await fixture(provider, onTestFinished);
-		const id = await f.launch(true);
+		const id = await f.seedDelivery(true);
 		if (provider === "github")
 			f.github.setIssueLabel(f.repo, f.repo.issues[0].number, "use-leitwerk", "developer", false);
 		else {
