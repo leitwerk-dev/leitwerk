@@ -4,13 +4,13 @@ import {
 	globSync,
 	mkdtempSync,
 	readFileSync,
+	realpathSync,
 	rmSync,
 	writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripVTControlCharacters } from "node:util";
 
 const registry = "https://registry.npmjs.org/";
 const version = "0.0.0-bootstrap.0";
@@ -80,9 +80,9 @@ export function bootstrapInstructions(missing) {
 				]
 			: ["All workspace package names are registered on npm."]),
 		"",
-		"The bootstrap command also configures stable publishing with `npm trust`: `leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`. Requires npm 11.16+ and an npm login with 2FA enabled.",
-		"Existing matching publishers are retained; conflicting publishers are never overwritten. Rerun the command to resume interrupted setup.",
-		"Package existence does not verify trusted-publisher settings. The local bootstrap command checks them for every package; the unauthenticated CI check cannot.",
+		"The bootstrap command also configures stable publishing with `npm trust`: `leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`. Requires npm 11.16+ within npm 11 and an npm login with 2FA enabled.",
+		"Matching publishers are skipped; conflicting publishers stop setup without being changed. Rerun to resume interrupted setup.",
+		"Authentication and writes run directly in the terminal. Publisher checks use a separate structured JSON channel. CI checks registration only.",
 		"",
 	].join("\n");
 }
@@ -121,137 +121,81 @@ export function publishBootstrap(names, run = spawnSync) {
 	}
 }
 
-function trustCommand(args, run, capture = false) {
-	const result = run("npm", [...args, "--registry", registry], {
-		encoding: "utf8",
-		stdio: capture ? ["inherit", "pipe", "inherit"] : "inherit",
-	});
+function trustCommand(args, run) {
+	const result = run("npm", [...args, "--registry", registry], { stdio: "inherit" });
 	if (result.error) throw result.error;
 	if (result.status !== 0)
 		throw new Error(`npm ${args.join(" ")} failed; rerun bootstrap to resume`);
-	return result.stdout?.trim() ?? "";
 }
 
-export function needsPublisher(output, name) {
-	if (!output) return true; // npm trust list --json prints nothing when no trust exists.
-	const config = JSON.parse(output);
+export function readPublishers(name, run = spawnSync, npmCli = process.env.npm_execpath) {
+	if (!npmCli) throw new Error("Run bootstrap through npm run publish:bootstrap");
+	const result = run(
+		process.execPath,
+		[
+			"--require",
+			fileURLToPath(new URL("./npm-trust-json.cjs", import.meta.url)),
+			realpathSync(npmCli),
+			"trust",
+			"list",
+			name,
+			"--registry",
+			registry,
+		],
+		{ stdio: ["inherit", "inherit", "inherit", "pipe"], encoding: "utf8" },
+	);
+	if (result.error) throw result.error;
+	if (result.status !== 0) throw new Error(`npm trust list failed for ${name}; rerun to resume`);
+	const response = JSON.parse(result.output[3]);
+	if (response?.packageName !== name || !Array.isArray(response.publishers))
+		throw new Error(`Invalid structured npm trust response for ${name}`);
+	return response.publishers;
+}
+
+export function needsPublisher(publishers, name) {
+	if (!Array.isArray(publishers)) throw new Error(`Invalid npm trust response for ${name}`);
+	if (publishers.length === 0) return true;
+	const config = publishers[0];
 	if (
-		config.type !== "github" ||
-		config.repository !== "leitwerk-dev/leitwerk" ||
-		config.file !== "publish.yml" ||
-		config.environment !== "npm-publish" ||
-		!config.permissions?.includes("createPackage")
+		publishers.length !== 1 ||
+		config?.type !== "github" ||
+		config.claims?.repository !== "leitwerk-dev/leitwerk" ||
+		config.claims?.workflow_ref?.file !== "publish.yml" ||
+		config.claims?.environment !== "npm-publish" ||
+		!Array.isArray(config.permissions) ||
+		!config.permissions.includes("createPackage")
 	)
 		throw new Error(`Conflicting trusted publisher for ${name}; refusing to overwrite it`);
 	return false;
 }
 
-export function trustTranscript(transcript) {
-	// util-linux records the command in its header; it may itself contain braces.
-	// Remove script framing before looking for npm's JSON objects.
-	const text = stripVTControlCharacters(transcript).replace(
-		/^Script (?:started|done)(?: on [^\r\n]*)?\r?$/gm,
-		"",
-	);
-	const configurations = [];
-	let framing = "";
-	let previousEnd = 0;
-	// npm emits a JSON object per publisher, plus optional browser-auth metadata.
-	for (let start = text.indexOf("{"); start !== -1; start = text.indexOf("{", start)) {
-		framing += text.slice(previousEnd, start);
-		let depth = 0;
-		let quoted = false;
-		let escaped = false;
-		let end = start;
-		for (; end < text.length; end++) {
-			const char = text[end];
-			if (quoted) {
-				if (escaped) escaped = false;
-				else if (char === "\\") escaped = true;
-				else if (char === '"') quoted = false;
-			} else if (char === '"') quoted = true;
-			else if (char === "{") depth++;
-			else if (char === "}" && --depth === 0) break;
-		}
-		if (end === text.length) throw new Error("Incomplete npm trust response");
-		const value = JSON.parse(text.slice(start, end + 1));
-		if (!(typeof value.title === "string" && typeof value.url === "string" && !value.type)) {
-			configurations.push(value);
-		}
-		start = end + 1;
-		previousEnd = start;
-	}
-	framing += text.slice(previousEnd);
-	// Only known terminal/authentication framing may accompany npm's JSON.
-	// Unknown output must not turn into permission to create a publisher.
-	const unexpected = framing
-		.replaceAll("^D\b\b", "") // BSD script echoes EOF when its input is closed.
-		.replaceAll("Press ENTER to open in the browser...", "")
-		.replace(/This operation requires a one-time password\.\s*Enter OTP:\s*\d{6}/g, "")
-		.trim();
-	if (unexpected)
-		throw new Error("Unexpected npm trust output; refusing to infer publisher settings");
-	if (configurations.length > 1) throw new Error("Unexpected multiple npm trust configurations");
-	return configurations.length ? JSON.stringify(configurations[0]) : "";
-}
-
-export function terminalCommand(
-	command,
-	args,
-	options,
+export function bootstrapPackages(
+	catalog,
+	missing,
 	run = spawnSync,
-	platform = process.platform,
+	lookup = readPublishers,
+	report = console.info,
 ) {
-	if (!Array.isArray(options.stdio)) return run(command, args, options);
-	if (!["darwin", "linux"].includes(platform))
-		throw new Error("Bootstrap supports macOS and Linux only");
-	const directory = mkdtempSync(path.join(tmpdir(), "leitwerk-npm-trust-"));
-	const transcript = path.join(directory, "output");
-	try {
-		// Keep npm's stdin AND stdout attached to a terminal: otplease refuses 2FA otherwise.
-		// The private temporary directory protects browser-auth URLs in the transcript.
-		const quote = (arg) => `'${arg.replaceAll("'", "'\\''")}'`;
-		const scriptArgs =
-			platform === "darwin"
-				? ["-q", transcript, command, ...args]
-				: ["-q", "-e", "-c", [command, ...args].map(quote).join(" "), transcript];
-		const result = run("script", scriptArgs, {
-			stdio: "inherit",
-			env: { ...process.env, NO_COLOR: "1" },
-		});
-		return {
-			...result,
-			stdout: result.status === 0 ? trustTranscript(readFileSync(transcript, "utf8")) : "",
-		};
-	} finally {
-		rmSync(directory, { recursive: true, force: true });
-	}
-}
-
-export function bootstrapPackages(catalog, missing, run = terminalCommand) {
-	const result = run("npm", ["--version"], { encoding: "utf8" });
-	const match = /^(\d+)\.(\d+)\.(\d+)$/u.exec(result.stdout?.trim() ?? "");
-	if (
-		result.status !== 0 ||
-		!match ||
-		Number(match[1]) < 11 ||
-		(Number(match[1]) === 11 && Number(match[2]) < 16)
-	) {
-		throw new Error("Bootstrap requires npm 11.16+ (npm install -g npm@11.16.0)");
-	}
+	// Validate every name and check existing publishers before the first external write.
+	for (const { name } of catalog) bootstrapManifest(name);
+	for (const name of missing) bootstrapManifest(name);
 	const pending = [];
-	// Check all existing publishers before creating packages or trust relationships.
-	for (const { name } of catalog) {
-		bootstrapManifest(name);
-		if (
-			missing.includes(name) ||
-			needsPublisher(trustCommand(["trust", "list", name, "--json"], run, true), name)
-		) {
+	for (const [index, { name }] of catalog.entries()) {
+		const progress = `[${index + 1}/${catalog.length}] ${name}`;
+		report(`${progress}: checking trusted publisher...`);
+		if (missing.includes(name)) {
 			pending.push(name);
+			report(`${progress}: registration and publisher setup required`);
+		} else if (needsPublisher(lookup(name), name)) {
+			pending.push(name);
+			report(`${progress}: publisher setup required`);
+		} else {
+			report(`${progress}: matching publisher; skipped`);
 		}
 	}
 	publishBootstrap(missing, run);
-	for (const name of pending) {
+	for (const [index, name] of pending.entries()) {
+		report(`[${index + 1}/${pending.length}] ${name}: configuring trusted publisher...`);
 		trustCommand(
 			[
 				"trust",
@@ -264,10 +208,10 @@ export function bootstrapPackages(catalog, missing, run = terminalCommand) {
 				"--env",
 				"npm-publish",
 				"--allow-publish",
-				"--yes",
 			],
 			run,
 		);
+		report(`[${index + 1}/${pending.length}] ${name}: publisher configured`);
 	}
 }
 
