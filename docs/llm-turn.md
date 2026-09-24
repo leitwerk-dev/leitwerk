@@ -19,12 +19,11 @@ Preparation failure records the owning LLM turn as failed without prompting Pi.
 
 ## Mapped turns
 
-A mapped LLM turn records one run per entry and one row per frozen item. Each item uses
-the ordinary start, acceptance, and outcome path; its start and turn record carry the run
-id, item key, and item index. An item outcome commits its result together with the next
-item's start, or, for the last item, with the collected state and the collection route.
-Outcome correlation still requires the current accepted turn record, and the item must be
-the run's current item. Worker payloads carry only the active item, never the run.
+Entering a mapped LLM turn freezes an ordered list of items in a durable run. Items
+execute sequentially, each requiring start acceptance. An item result commits atomically
+with the next item's start or, for the last item, with the collected state and route.
+An outcome is accepted only for the current accepted turn record and the run's current
+item. Workers receive only the active item, not the full run.
 
 ## Durable path
 

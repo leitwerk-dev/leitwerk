@@ -12,20 +12,19 @@ and scenario counters. Use `StubToolCallScriptResolver`,
 `launch` callback. Use it only in a development composition; SDK definition identity
 and turn semantics are retained. The process's own launchers remain available unless
 `{ ownLaunchers: "replace" }` hides them. Repeated calls replace earlier scenarios.
-A scenario may instead set `launcherId` to admit through an existing launcher, such
-as a production launcher simulating an external trigger.
+A scenario may instead set `launcherId` to use an existing launcher.
 
 `POST /__local/scenarios` accepts `{ name, requestId, input? }` and admits the launch
 through `/api/launchers/.../launch-runs` with `requestId` as its idempotency key.
 Optional `prepareLaunch(requestId, input)` seeds adapters and returns launcher input.
-Replays repeat the request id, so it must reconcile its own durable writes. Throw
+It may run again with the same request id; its durable writes must be idempotent. Throw
 `SandboxControlError(status, message)` to reject a request. Startup delays belong to
 scenario registrations. Controls may emit local events and invoke `/__local/poll`;
 they must not assign process lifecycle state.
 
-`scriptedSandboxModel` supplies the scripted model provider matching the profile
-configured by `sandboxConfig`; use it in scripted mode. `readSandboxSettings(input,
-name)` reads composition-owned local settings, such as webhooks, from
+In scripted mode, use `scriptedSandboxModel` with the profile configured by
+`sandboxConfig`. `readSandboxSettings(input, name)` reads local composition settings,
+such as webhooks, from
 `<workspace>/.leitwerk/sandbox/<name>.yaml`. The file must have mode `0600`. Reset
 retains it, and preflight reads the same file.
 
@@ -37,15 +36,13 @@ composition-owned page at `/__local`. `/__local/state` contains scenario
 descriptions, processes and configured URLs alongside composition-owned state.
 Controls accept only same-origin browser requests. Listeners use `127.0.0.1`.
 
-`/testing` provides `startSandboxHarness(factory)` for integration tests. It starts a
-scripted composition on an ephemeral port with disposable storage and supplies
-`restart`, `admitScenario`, `controlState` and `stop`.
+Use `startSandboxHarness(factory)` from `@leitwerk-dev/dev-sandbox/testing` to test a
+scripted composition with an ephemeral port and disposable storage.
 
 The `/launcher` export provides `launchSandbox({ publicRoot, workspaceRoot,
 compositionEntry })`. It requires the public source checkout and its installed
 development dependencies. The composition entry exports its factory as default.
-Each storage directory records its composition entry; starting another composition
-on it fails until reset.
+A storage directory cannot be reused for another composition until reset.
 This release does not provide installed-package sandbox startup. The CLI invokes
 the public development supervisor, including configuration reloads and custom
 backend/preflight entries. `/preflight` validates with disposable application,

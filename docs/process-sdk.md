@@ -242,11 +242,10 @@ Those remain turns.
 
 ### Mapped LLM turns
 
-Use `.forEach(...)` when one LLM turn must run once for each item of a list, such as
-investigating each candidate of a shortlist. The turn stays one node in the business
-graph. Items run one at a time, each as its own turn record, Chronicle card, and rail
-entry. Each item's outcome yields a typed result; `.collect(...)` combines all results
-and routes once.
+Use `.forEach(...)` to run an LLM turn once per item, such as each candidate in a
+shortlist. The turn remains one graph node. Items run sequentially, each with its own
+turn record, Chronicle card, and rail entry. Each outcome yields a typed result;
+`.collect(...)` combines the results and routes once.
 
 ```ts
 const investigate = flow
@@ -283,11 +282,10 @@ active item: `ctx.item`, `ctx.itemKey`, `ctx.itemLabel`, `ctx.itemIndex`, and
 `ctx.itemCount` in `prepare` and `buildPrompt`.
 
 An item outcome declares parameters and `.yield(...)` only. It cannot route, change
-process state, or publish a product; the builder omits those methods and runtime
-validation rejects hand-authored definitions that declare them. `yield` runs on the
-server with the item and the validated outcome parameters. Its value must pass
-`resultCodec`; a failure or a `SafeOutcomePlanningError` rejects the outcome without
-recording a result. Each item's result markdown comes from the outcome's reserved
+process state, or publish a product. Definitions that declare these operations are
+invalid. `yield` runs on the server with the item and validated outcome parameters.
+Its value must pass `resultCodec`; a failure or a `SafeOutcomePlanningError` rejects
+the outcome without recording a result. Each item's result markdown comes from the outcome's reserved
 `markdown` argument.
 
 After the last item, `collect` receives the results in item order and returns the

@@ -137,14 +137,12 @@ sandboxes:
 
 With the local core selected, `leitwerk-dev sandbox` starts the only declared
 sandbox. `--sandbox=NAME` selects one of several; launcher options such as
-`--llm=real` and `reset` pass through. The command runs the checkout's
-`scripts/sandbox/cli.ts --composition=<manifest>` in the foreground, so the launcher
-receives interrupts directly and keeps its shutdown record. Keep sandbox
-settings in `.leitwerk/sandbox/<name>.yaml`, never in tracked files. Depend on a
-released `@leitwerk-dev/dev-sandbox` that matches your other `@leitwerk-dev/*`
-pins, not on a `file:` link into the checkout. This phase supports source
-development only; an installed package does not contain the supervisor, UI source
-or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
+`--llm=real` and `reset` pass through. The sandbox runs in the foreground;
+Ctrl-C shuts it down. Keep local sandbox settings in
+`.leitwerk/sandbox/<name>.yaml`, never in tracked files. Depend on a released
+`@leitwerk-dev/dev-sandbox` that matches your other `@leitwerk-dev/*` pins, not on a
+`file:` link into the checkout. Sandbox startup requires the source checkout;
+installed packages do not include the supervisor, UI source, or built-in scenarios. See the [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
 and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md).
 
 ### Portable API evidence
