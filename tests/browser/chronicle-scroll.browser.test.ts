@@ -1,3 +1,4 @@
+import path from "node:path";
 import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
 	createRepositoryChangeParamsCodec,
@@ -14,11 +15,14 @@ import {
 } from "@leitwerk-dev/protocol";
 import type { AppContext } from "@leitwerk-dev/server";
 import showcaseProcesses from "@leitwerk-dev/showcase-processes";
+import { fixtureModelProviders, postImmediateLaunch } from "@leitwerk-dev/test-support";
 import type { Locator, Page } from "@playwright/test";
 import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
+import { fixtureModelProfile } from "./showcase-model-fixture.js";
 
 let ctx: AppContext | null = null;
+let reviewResponse: Promise<void> | undefined;
 
 const browserRepositoryChangeProcessId = "browser_repository_change_process";
 const browserPublicationTurnId = "browser_publish";
@@ -55,12 +59,27 @@ const browserRepositoryChangeProcess = createRepositoryChangeProcess({
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-chronicle-scroll-browser-",
-		configure: (config) => {
+		configure: (config, root) => {
+			config.storage.process_workspaces_dir = path.join(root, "workspaces");
+			config.storage.tree_files_dir = path.join(root, "trees");
+			config.pi.agent_dir = path.join(root, "pi");
+			config.workers.runner = "local";
 			config.extension_loading.sources = ["./extensions/showcase-processes"];
+			config.pi.model_profiles = [fixtureModelProfile];
+			config.process_configs = {
+				poem_creator_process: { default_model_profile: fixtureModelProfile.id },
+			};
 		},
 		createExtensionCatalog: () =>
 			buildExtensionCatalogFromModules([
-				showcaseProcesses,
+				{
+					...showcaseProcesses,
+					modelProviders: fixtureModelProviders({
+						id: fixtureModelProfile.provider,
+						modelId: fixtureModelProfile.model_id,
+						piProvider: "openai",
+					}),
+				},
 				{
 					manifest: { id: "browser-repository-change", version: "1.0.0" },
 					setupCatalog(api) {
@@ -69,6 +88,24 @@ test.use({
 				},
 			]),
 		useInProcessWorker: true,
+		toolCallScriptResolver: async ({ tools }) => {
+			if (tools.every((tool) => tool.name === "upload_result_images")) {
+				return {
+					calls: [],
+					textChunks: ["# A garden poem\n\nThe garden wakes beneath the sun."],
+				};
+			}
+			if (!reviewResponse || !tools.some((tool) => tool.name === "no_issues")) {
+				throw new Error(
+					`Unexpected browser fixture model call: ${tools.map((tool) => tool.name).join(", ")}`,
+				);
+			}
+			await reviewResponse;
+			return {
+				toolName: "no_issues",
+				args: { summary: "The poem is ready.", review: "The poem is ready." },
+			};
+		},
 		extensionLoadingStartDir: process.cwd(),
 	},
 });
@@ -675,53 +712,19 @@ async function waitForRunningTurnId(instanceId: string, turnId: string, timeoutM
 		})();
 		if (currentTurnRecordId) {
 			const currentTurn = ctx?.deps.turnRecords.getById(currentTurnRecordId) ?? null;
-			if (currentTurn?.turnId === turnId) {
+			if (currentTurn?.turnId === turnId && currentTurn.status === "running") {
 				return currentTurnRecordId;
 			}
 		}
 		await new Promise((resolve) => setTimeout(resolve, 50));
 	}
-	throw new Error(`Timed out waiting for running turn ${turnId} on process ${instanceId}`);
-}
-
-function synthesizeRunningReviewTurn(instanceId: string) {
-	if (!ctx) {
-		throw new Error("Server context not initialized");
-	}
-	const runningTurnId = `trn_synth_review_${instanceId}`;
-	const turnRecord = createAcceptedLlmTurn({
-		id: runningTurnId,
-		instanceId,
-		turnId: "review_poem_draft",
-		turnType: "llm",
-		status: "running",
-		pathType: "leaf_branch",
-		turnResultMarkdown: null,
-		startedAt: new Date().toISOString(),
-		endedAt: null,
-	});
-	const updatedProcess = ctx.deps.processes.update(instanceId, {
-		selectedTurnId: "review_poem_draft",
-		lifecycleStatus: "active",
-	});
-	ctx.broadcaster.broadcast(
-		createDurableWsFrame({
-			type: "process.updated",
-			payload: {
-				process: updatedProcess,
-				changedFields: ["selectedTurnId", "lifecycleStatus", "currentExecution"],
-			},
-			instanceId,
-		}),
+	const process = ctx?.deps.processes.getById(instanceId);
+	const turns = ctx?.deps.turnRecords
+		.listByInstance(instanceId)
+		.map(({ turnId, status, errorSummary }) => ({ turnId, status, errorSummary }));
+	throw new Error(
+		`Timed out waiting for accepted running turn ${turnId}: ${JSON.stringify({ selectedTurnId: process?.selectedTurnId, lifecycleStatus: process?.lifecycleStatus, turns })}`,
 	);
-	ctx.broadcaster.sendDurable(
-		WS_PRIMARY_PATH_TYPES.TURN_STARTED,
-		{
-			turnRecord,
-		},
-		instanceId,
-	);
-	return runningTurnId;
 }
 
 async function selectCollapsedRailTurn(page: Page, turnRecordId: string) {
@@ -773,7 +776,9 @@ test.describe("rail scroll-anchor behavior", () => {
 		).toBeVisible();
 	});
 
-	test("clicking turn button moves the active rail highlight", async ({ page }) => {
+	test("clicking a completed turn transfers the active highlight and positions its saved result near the top", async ({
+		page,
+	}) => {
 		const process = createWaitingPoemProcess("RAIL-TURN-CLEAR-001", false);
 
 		createPoemHistory(process.id);
@@ -791,7 +796,18 @@ test.describe("rail scroll-anchor behavior", () => {
 
 		await expect(actionRequiredButton).toHaveClass(/is-active/);
 
+		const turnRecordId = await firstTurnButton.getAttribute("data-turn-record-id");
+		if (!turnRecordId) throw new Error("Expected a historical turn record id");
 		await firstTurnButton.click();
+		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+		await expect(async () => {
+			const result = await relativeBounds(
+				chronicleScroll,
+				`[data-section="chronicle-turn"][data-turn-record-id="${turnRecordId}"] [data-section="turn-result"]`,
+			);
+			expect(result.top).toBeGreaterThanOrEqual(0);
+			expect(result.top).toBeLessThanOrEqual(80);
+		}).toPass({ timeout: 5_000 });
 
 		// The clicked turn button should now be the only active rail item.
 		await expect(actionRequiredButton).not.toHaveClass(/is-active/);
@@ -811,20 +827,20 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-section="chronicle-flow"]');
 
 		const secondTurnButton = await selectCollapsedRailTurn(page, secondTurnRecordId);
-		await page.waitForTimeout(100);
-
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const first = await relativeBounds(
-			chronicleScroll,
-			`[data-section="chronicle-turn"][data-turn-record-id="${firstTurnRecordId}"]`,
-		);
-		const second = await relativeBounds(
-			chronicleScroll,
-			`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
-		);
-		expect(second.top).toBeGreaterThanOrEqual(0);
-		expect(second.top).toBeLessThanOrEqual(80);
-		expect(first.bottom).toBeLessThanOrEqual(80);
+		await expect(async () => {
+			const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+			const first = await relativeBounds(
+				chronicleScroll,
+				`[data-section="chronicle-turn"][data-turn-record-id="${firstTurnRecordId}"]`,
+			);
+			const second = await relativeBounds(
+				chronicleScroll,
+				`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
+			);
+			expect(second.top).toBeGreaterThanOrEqual(0);
+			expect(second.top).toBeLessThanOrEqual(80);
+			expect(first.bottom).toBeLessThanOrEqual(80);
+		}).toPass({ timeout: 5_000 });
 		await expect(secondTurnButton).toHaveClass(/is-active/);
 	});
 
@@ -841,16 +857,16 @@ test.describe("rail scroll-anchor behavior", () => {
 		await page.waitForSelector('[data-section="leaf-outcome"]');
 
 		const secondTurnButton = await selectCollapsedRailTurn(page, secondTurnRecordId);
-		await page.waitForTimeout(100);
-
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const position = await relativeBounds(
-			chronicleScroll,
-			`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
-		);
-		expect(position.top).toBeGreaterThanOrEqual(0);
-		expect(position.top).toBeLessThanOrEqual(96);
-		expect(position.top).toBeLessThan(position.clientHeight / 3);
+		await expect(async () => {
+			const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+			const position = await relativeBounds(
+				chronicleScroll,
+				`[data-section="chronicle-turn"][data-turn-record-id="${secondTurnRecordId}"]`,
+			);
+			expect(position.top).toBeGreaterThanOrEqual(0);
+			expect(position.top).toBeLessThanOrEqual(96);
+			expect(position.top).toBeLessThan(position.clientHeight / 3);
+		}).toPass({ timeout: 5_000 });
 		await expect(secondTurnButton).toHaveClass(/is-active/);
 	});
 
@@ -877,35 +893,6 @@ test.describe("rail scroll-anchor behavior", () => {
 
 		expect(layout.detailHeight).toBeGreaterThan(0);
 		expect(layout.scrollHeight).toBeLessThanOrEqual(layout.clientHeight + 1);
-	});
-
-	test("clicking a completed turn keeps its saved result fully visible near the top", async ({
-		page,
-	}) => {
-		const process = createWaitingPoemProcess("RAIL-TURN-RESULT-001", false);
-
-		createPoemHistory(process.id);
-
-		await page.goto(`/processes/${process.id}`);
-		await page.waitForSelector('[data-page="process-detail"]');
-		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const firstTurnButton = page.locator(".rail-item[data-turn-record-id]").first();
-		const turnRecordId = await firstTurnButton.getAttribute("data-turn-record-id");
-		if (!turnRecordId) {
-			throw new Error("Expected first turn button to include a turn record id");
-		}
-
-		await firstTurnButton.click();
-		await page.waitForTimeout(100);
-
-		const resultPosition = await relativeBounds(
-			chronicleScroll,
-			`[data-section="chronicle-turn"][data-turn-record-id="${turnRecordId}"] [data-section="turn-result"]`,
-		);
-		expect(resultPosition.top).toBeGreaterThanOrEqual(0);
-		expect(resultPosition.top).toBeLessThanOrEqual(80);
 	});
 });
 
@@ -1147,50 +1134,82 @@ test.describe("chronicle scroll behavior", () => {
 	test("keeps the outer chronicle scrollable through auto-review placeholder-to-streaming transition", async ({
 		page,
 	}) => {
-		const { process } = createPoemReviewWaitingProcess("SCROLL-AUTO-REVIEW-TRANSITION-001");
+		if (!ctx) throw new Error("Server context not initialized");
+		const response = await postImmediateLaunch(
+			`http://127.0.0.1:${process.env.LEITWERK_BROWSER_API_PORT}`,
+			"poem_creator_process.poem_creator_ui",
+			{ launcherInput: { prompt: "Write a garden poem." }, modelConfig: {} },
+		);
+		expect(response.status, await response.clone().text()).toBe(201);
+		const { process: launched } = (await response.json()) as { process: { id: string } };
+		await expect
+			.poll(() => ({
+				selectedTurnId: ctx?.deps.processes.getById(launched.id)?.selectedTurnId,
+				lifecycleStatus: ctx?.deps.processes.getById(launched.id)?.lifecycleStatus,
+				errors: ctx?.deps.turnRecords
+					.listByInstance(launched.id)
+					.map((t) => t.errorSummary)
+					.filter(Boolean),
+			}))
+			.toEqual({ selectedTurnId: "poem_review", lifecycleStatus: "waiting", errors: [] });
+		createPoemHistory(launched.id, 5);
 
-		await page.goto(`/processes/${process.id}`);
+		await page.goto(`/processes/${launched.id}`);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]');
 
-		const runAutoReviewButton = page.locator('[data-action-id="run_poem_auto_review"]');
-		await expect(runAutoReviewButton).toBeVisible();
-		await runAutoReviewButton.click();
+		const review = Promise.withResolvers<void>();
+		reviewResponse = review.promise;
+		try {
+			const runAutoReviewButton = page.locator('[data-action-id="run_poem_auto_review"]');
+			await expect(runAutoReviewButton).toBeVisible();
+			await runAutoReviewButton.click();
+			await page
+				.locator("form")
+				.getByRole("button", { name: "Run automated review", exact: true })
+				.click();
 
-		const runningTurnId = await waitForRunningTurnId(process.id, "review_poem_draft", 1_500).catch(
-			() => synthesizeRunningReviewTurn(process.id),
-		);
+			const runningTurnId = await waitForRunningTurnId(launched.id, "review_poem_draft");
 
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		const liveTail = page.locator('[data-section="live-tail"][data-turn-id="review_poem_draft"]');
-		await expect(liveTail).toBeVisible();
-		await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
-		await expect(liveTail).toBeInViewport();
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
-		).toHaveCount(0);
-		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-		await page.waitForTimeout(150);
-		const waitingScrollMetrics = await getScrollMetrics(chronicleScroll);
-		expect(waitingScrollMetrics.scrollTop).toBeLessThan(50);
+			const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
+			const liveTail = page.locator('[data-section="live-tail"][data-turn-id="review_poem_draft"]');
+			await expect(liveTail).toBeVisible();
+			await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
+			await expect(liveTail).toBeInViewport();
+			await expect(
+				page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
+			).toHaveCount(0);
+			await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
+			await page.waitForTimeout(150);
+			const waitingScrollMetrics = await getScrollMetrics(chronicleScroll);
+			expect(waitingScrollMetrics.scrollTop).toBeLessThan(50);
 
-		emitThinkingDelta(process.id, runningTurnId, "Streaming thought 1 after placeholder.\n");
-		await page.waitForSelector('[data-section="live-tail"] [data-section="thinking-preview"]');
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
-		).toHaveCount(0);
-		await page.waitForTimeout(150);
+			emitThinkingDelta(launched.id, runningTurnId, "Streaming thought 1 after placeholder.\n");
+			await page.waitForSelector('[data-section="live-tail"] [data-section="thinking-preview"]');
+			await expect(
+				page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
+			).toHaveCount(0);
+			await page.waitForTimeout(150);
 
-		await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
-		await page.waitForTimeout(100);
-		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(100);
+			await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
+			await page.waitForTimeout(100);
+			expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(100);
 
-		emitThinkingDelta(process.id, runningTurnId, "Streaming thought 2 while still running.\n");
-		await page.waitForTimeout(150);
+			emitThinkingDelta(launched.id, runningTurnId, "Streaming thought 2 while still running.\n");
+			await page.waitForTimeout(150);
 
-		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-		await page.waitForTimeout(150);
-		const finalMetrics = await getScrollMetrics(chronicleScroll);
-		expect(finalMetrics.scrollTop).toBeLessThan(50);
+			await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
+			await page.waitForTimeout(150);
+			const finalMetrics = await getScrollMetrics(chronicleScroll);
+			expect(finalMetrics.scrollTop).toBeLessThan(50);
+		} finally {
+			// Dispose the streamed view before releasing the model during fixture cleanup.
+			try {
+				await page.close();
+			} finally {
+				review.resolve();
+				reviewResponse = undefined;
+			}
+		}
 	});
 
 	test("can scroll up during live render while turn is running", async ({ page }) => {
