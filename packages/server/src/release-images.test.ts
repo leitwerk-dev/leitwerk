@@ -18,7 +18,7 @@ describe("release image definitions", () => {
 		expect(dockerfile).toContain("ARG MISE_VERSION=2026.8.14");
 		expect(dockerfile).toMatch(/amd64\) mise_arch=x64; mise_sha=[a-f0-9]{64}/u);
 		expect(dockerfile).toMatch(/arm64\) mise_arch=arm64; mise_sha=[a-f0-9]{64}/u);
-		expect(dockerfile).toContain("ARG DOCKER_IO_VERSION=");
+		expect(dockerfile).toMatch(/^ARG DOCKER_IO_VERSION=\d+\.\d+\.\d+[^\s]*$/m);
 		expect(dockerfile).toContain("docker --version");
 		expect(dockerfile).toContain("dockerd --version");
 		expect(dockerfile).toContain('CMD ["/usr/local/bin/node", "dist/container-entry-main.js"]');

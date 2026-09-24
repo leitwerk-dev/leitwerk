@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { describe, expect, it } from "vitest";
@@ -79,6 +80,13 @@ describe("OpenID client", () => {
 				"http://localhost:8080/auth/callback",
 			);
 			expect(redirectUrl.searchParams.get("scope")).toBe("openid profile");
+			expect(request.state).not.toBe("");
+			expect(redirectUrl.searchParams.get("state")).toBe(request.state);
+			expect(request.pkceVerifier).not.toBe("");
+			expect(redirectUrl.searchParams.get("code_challenge_method")).toBe("S256");
+			expect(redirectUrl.searchParams.get("code_challenge")).toBe(
+				createHash("sha256").update(request.pkceVerifier).digest("base64url"),
+			);
 		} finally {
 			await oidcServer.close();
 		}

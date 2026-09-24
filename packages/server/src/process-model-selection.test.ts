@@ -4,7 +4,7 @@ import {
 	defineProcess,
 	type ProcessActionDefinition,
 } from "@leitwerk-dev/process-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import { createEmptyParsedInstanceTree } from "./instance-tree.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
@@ -282,6 +282,8 @@ describe("process model selection", () => {
 	});
 
 	it("uses current tree entry existence for warm-cache projection", async () => {
+		const clock = vi.spyOn(Date, "now").mockReturnValue(Date.parse(record.endedAt!) + 60_000);
+		onTestFinished(() => clock.mockRestore());
 		const state = createEmptyStructuralProcessState();
 		state.semanticEntryRefs.rootEntry = { entryId: "root", turnRecordId: null };
 		state.semanticEntryRefs.currentPrimaryPathLeaf = {

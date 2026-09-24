@@ -26,7 +26,7 @@ function parseFutureLaunchPayloadOrThrow(payloadJson: string) {
 function createGeneratorHarness(
 	options: {
 		titleText?: string;
-		delayMs?: number;
+		blockGeneration?: boolean;
 		configure?: (config: ReturnType<typeof getDefaultConfig>) => void;
 	} = {},
 ) {
@@ -38,7 +38,9 @@ function createGeneratorHarness(
 	config.pi.process_title_generation.model_profile = "claude_fast";
 	options.configure?.(config);
 	const titleText = options.titleText ?? "Generated process title";
-	const delayMs = options.delayMs ?? 0;
+	const generationEntered = Promise.withResolvers<void>();
+	const generationGate = Promise.withResolvers<void>();
+	if (!options.blockGeneration) generationGate.resolve();
 	let activeRequests = 0;
 	let maxActiveRequests = 0;
 	let completionCallCount = 0;
@@ -52,9 +54,8 @@ function createGeneratorHarness(
 			completionCallCount += 1;
 			activeRequests += 1;
 			maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
-			if (delayMs > 0) {
-				await new Promise((resolve) => setTimeout(resolve, delayMs));
-			}
+			generationEntered.resolve();
+			await generationGate.promise;
 			activeRequests -= 1;
 			return titleText;
 		},
@@ -103,6 +104,7 @@ function createGeneratorHarness(
 	});
 
 	onTestFinished(async () => {
+		generationGate.resolve();
 		try {
 			await generator.close?.();
 		} finally {
@@ -113,6 +115,8 @@ function createGeneratorHarness(
 	return {
 		deps,
 		generator,
+		generationEntered: generationEntered.promise,
+		releaseGeneration: generationGate.resolve,
 		getCompletionCallCount() {
 			return completionCallCount;
 		},
@@ -236,7 +240,12 @@ describe("createProcessTitleGenerator", () => {
 		);
 		await harness.generator.close?.();
 		expect(harness.getCompletionCallCount()).toBe(1);
-		expect(harness.getLastGenerationInput()?.maxTokens).toBe(48);
+		expect(harness.getLastGenerationInput()).toMatchObject({
+			maxTokens: 48,
+			provider: "anthropic",
+			modelId: "claude-test",
+			prompt: expect.stringContaining("Implement a collapsible sidebar for the process list."),
+		});
 		expect(harness.emittedExtensionEvents).toContainEqual({
 			event: "process_updated",
 			payload: expect.objectContaining({
@@ -274,7 +283,10 @@ describe("createProcessTitleGenerator", () => {
 	});
 
 	it("does not overwrite a scheduled launch payload after it has changed", async () => {
-		const harness = createGeneratorHarness({ titleText: "Generated future title", delayMs: 20 });
+		const harness = createGeneratorHarness({
+			titleText: "Generated future title",
+			blockGeneration: true,
+		});
 		const originalPayloadJson = serializeFutureLaunchPayload({
 			launcherInput: { repoPath: "/tmp/repo" },
 			modelConfig: {},
@@ -295,6 +307,7 @@ describe("createProcessTitleGenerator", () => {
 			expectedPayloadJson: originalPayloadJson,
 		});
 
+		await harness.generationEntered;
 		harness.deps.futureExecutions.update(futureExecution.id, {
 			payloadJson: serializeFutureLaunchPayload({
 				launcherInput: { repoPath: "/tmp/repo" },
@@ -309,6 +322,7 @@ describe("createProcessTitleGenerator", () => {
 			}),
 		});
 
+		harness.releaseGeneration();
 		await waitFor(
 			() => harness.getCompletionCallCount(),
 			(value) => value === 1,
@@ -365,7 +379,7 @@ describe("createProcessTitleGenerator", () => {
 	it("runs title generations serially", async () => {
 		const harness = createGeneratorHarness({
 			titleText: "Generated process title",
-			delayMs: 20,
+			blockGeneration: true,
 		});
 		const processes = [
 			harness.deps.processes.create(createLaunchPlan().processInput),
@@ -380,6 +394,9 @@ describe("createProcessTitleGenerator", () => {
 			});
 		}
 
+		await harness.generationEntered;
+		expect(harness.getCompletionCallCount()).toBe(1);
+		harness.releaseGeneration();
 		await waitFor(
 			() => processes.map((process) => harness.deps.processes.getById(process.id)?.title),
 			(titles) => titles.every((title) => title === "Generated process title"),

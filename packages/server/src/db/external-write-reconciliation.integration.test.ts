@@ -6,8 +6,11 @@ import {
 	ExternalWriteMissingRemoteError,
 } from "@leitwerk-dev/external-writes/internal";
 import { expect, it } from "vitest";
-import { closeDatabase, createDatabase } from "./database.js";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
+import { closeDatabase } from "./database.js";
 import { createAllRepos } from "./repositories.js";
+
+const { createDatabase, closeOwnedSqlite } = createOwnedDatabaseScope();
 
 it("retains receipts after reopening SQLite and never recreates a logged remote object", async () => {
 	const root = mkdtempSync(join(tmpdir(), "external-write-"));
@@ -49,7 +52,7 @@ it("retains receipts after reopening SQLite and never recreates a logged remote 
 		).rejects.toBeInstanceOf(ExternalWriteMissingRemoteError);
 		expect(creations).toBe(1);
 	} finally {
-		closeDatabase(db);
+		closeOwnedSqlite();
 		rmSync(root, { recursive: true, force: true });
 	}
 });

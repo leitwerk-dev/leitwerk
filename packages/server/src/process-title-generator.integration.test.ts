@@ -233,10 +233,15 @@ describe("process title generator retries", () => {
 				);
 				expect(observation.systemPrompt).not.toContain("expert coding assistant");
 				expect(observation.messages).toEqual([expect.objectContaining({ role: "user" })]);
+				expect(JSON.stringify(observation.messages)).toContain(
+					"Implement a collapsible sidebar for the process list.",
+				);
 				expect(observation.tools).toEqual([]);
 				expect(observation.modelMaxTokens).toBe(48);
 				expect(observation).not.toHaveProperty("reasoning");
 				expect(observation.apiKey).toBe("stored-key");
+				expect(observation.sessionId).toEqual(expect.any(String));
+				expect(observation.sessionId).not.toBe("");
 				expect(observation.env).toEqual({ TITLE_ENV: "managed" });
 			}
 			expect(observations[0]?.sessionId).not.toBe(observations[1]?.sessionId);
@@ -285,7 +290,9 @@ describe("process title generator retries", () => {
 	});
 
 	it("does not overwrite a manual title added before the retry runs", async () => {
+		let nowMs = Date.parse("2026-08-23T00:00:00.000Z");
 		const harness = createGeneratorHarness({
+			now: () => new Date(nowMs),
 			outcomes: [
 				{ kind: "throw", error: new Error("temporary timeout") },
 				{ kind: "return", title: "Generated retry title" },
@@ -306,6 +313,7 @@ describe("process title generator retries", () => {
 				(job) => job?.status === "pending" && job.attemptCount === 1,
 			);
 			harness.deps.processes.update(process.id, { title: "Manual title" });
+			nowMs += 100;
 
 			await waitFor(
 				() =>

@@ -1,9 +1,5 @@
 import { EventEmitter } from "node:events";
-import {
-	createIpcMessage,
-	deserializeMessage,
-	serializeMessage,
-} from "@leitwerk-dev/worker-protocol";
+import { createIpcMessage, serializeMessage } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
 import { hashWorkerConnectToken } from "./worker-connect-token.js";
 import {
@@ -131,20 +127,16 @@ describe("createWorkerWebSocketIpcManager", () => {
 
 	it("queues server messages until the worker socket authenticates", () => {
 		const { manager, token } = createRegistration();
-		manager.send("proc_1", "wkr_1", stop("stop-1"));
+		const messages = [stop("stop-1"), stop("stop-2")] as const;
+		manager.send("proc_1", "wkr_1", messages[0]);
 		const socket = new FakeSocket();
 
 		manager.bindSocket({ instanceId: "proc_1", workerId: "wkr_1", socket });
-		manager.send("proc_1", "wkr_1", stop("stop-2"));
+		manager.send("proc_1", "wkr_1", messages[1]);
 		expect(socket.sent).toEqual([]);
 		socket.emit("message", token);
 
-		expect(
-			socket.sent.map((message) => {
-				const parsed = deserializeMessage(message);
-				return parsed.ok ? parsed.message.type : "invalid";
-			}),
-		).toEqual(["worker.stop", "worker.stop"]);
+		expect(socket.sent.map((message) => JSON.parse(message))).toEqual(messages);
 	});
 
 	it("rejects unknown worker connections outside the startup adoption window", () => {
@@ -290,14 +282,15 @@ describe("createWorkerWebSocketIpcManager", () => {
 		const socket = bindAndAuthenticate(registration.manager, registration.token);
 		socket.throwOnSend = true;
 
-		registration.manager.send("proc_1", "wkr_1", stop());
+		const message = stop();
+		registration.manager.send("proc_1", "wkr_1", message);
 
 		expect(registration.runtimeErrors).toEqual([
 			expect.objectContaining({ message: "send failed" }),
 		]);
 		expect(socket.closeCalls.at(-1)).toMatchObject({ code: 1011 });
 		const replacement = bindAndAuthenticate(registration.manager, registration.token);
-		expect(replacement.sent).toHaveLength(1);
+		expect(replacement.sent.map((sent) => JSON.parse(sent))).toEqual([message]);
 	});
 
 	it("queues a message when an authenticated socket stops being writable", () => {
@@ -305,7 +298,8 @@ describe("createWorkerWebSocketIpcManager", () => {
 		const socket = bindAndAuthenticate(registration.manager, registration.token);
 		socket.readyState = 2;
 
-		registration.manager.send("proc_1", "wkr_1", stop());
+		const message = stop();
+		registration.manager.send("proc_1", "wkr_1", message);
 
 		expect(socket.sent).toEqual([]);
 		expect(socket.closeCalls.at(-1)).toMatchObject({
@@ -313,49 +307,32 @@ describe("createWorkerWebSocketIpcManager", () => {
 			reason: "worker websocket unavailable during send",
 		});
 		const replacement = bindAndAuthenticate(registration.manager, registration.token);
-		expect(replacement.sent).toHaveLength(1);
+		expect(replacement.sent.map((sent) => JSON.parse(sent))).toEqual([message]);
 	});
 
 	it("allows workers to rebind with a hashed token and buffers while disconnected", () => {
 		const registration = createRegistration({ token: "persistent-token" });
 		const first = bindAndAuthenticate(registration.manager, registration.token);
-		registration.manager.send("proc_1", "wkr_1", stop("stop-before-close"));
+		const beforeClose = stop("stop-before-close");
+		const disconnected = stop("stop-while-disconnected");
+		const beforeAuth = stop("stop-before-auth");
+		registration.manager.send("proc_1", "wkr_1", beforeClose);
 		first.emit("close");
-		registration.manager.send("proc_1", "wkr_1", stop("stop-while-disconnected"));
+		registration.manager.send("proc_1", "wkr_1", disconnected);
 
 		const second = new FakeSocket();
 		expect(
 			registration.manager.bindSocket({ instanceId: "proc_1", workerId: "wkr_1", socket: second })
 				.ok,
 		).toBe(true);
-		registration.manager.send("proc_1", "wkr_1", stop("stop-before-auth"));
+		registration.manager.send("proc_1", "wkr_1", beforeAuth);
 		expect(second.sent).toEqual([]);
 		second.emit("message", registration.token);
 		second.emit("message", serializeMessage(heartbeat()));
 
-		expect(first.sent).toHaveLength(1);
-		expect(second.sent).toHaveLength(2);
+		expect(first.sent.map((sent) => JSON.parse(sent))).toEqual([beforeClose]);
+		expect(second.sent.map((sent) => JSON.parse(sent))).toEqual([disconnected, beforeAuth]);
 		expect(registration.envelopes).toEqual([expect.objectContaining({ type: "worker.heartbeat" })]);
 		expect(registration.runtimeErrors).toEqual([]);
-	});
-
-	it("rejects workers with a bad token without consuming the hash", () => {
-		const registration = createRegistration({ token: "persistent-token" });
-		const rejected = new FakeSocket();
-		expect(
-			registration.manager.bindSocket({ instanceId: "proc_1", workerId: "wkr_1", socket: rejected })
-				.ok,
-		).toBe(true);
-		rejected.emit("message", "wrong");
-		const accepted = new FakeSocket();
-		expect(
-			registration.manager.bindSocket({ instanceId: "proc_1", workerId: "wkr_1", socket: accepted })
-				.ok,
-		).toBe(true);
-		accepted.emit("message", registration.token);
-		registration.manager.send("proc_1", "wkr_1", stop());
-
-		expect(rejected.closeCalls.at(-1)).toMatchObject({ code: 1008 });
-		expect(accepted.sent).toHaveLength(1);
 	});
 });

@@ -5,16 +5,14 @@ import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
+import { createTestProcessInstance } from "../../test-helpers/process-model-fixtures.js";
 import { buildServerTransitionWrites } from "./build-server-transition-writes.js";
 
 const registry = createDefaultTestProcessGraphRegistry();
 const implementationState = { readyForHumanReview: true };
 
-function createProcess(
-	overrides: Parameters<ReturnType<typeof createTestDeps>["processes"]["create"]>[0],
-) {
-	return createTestDeps().processes.create({
+function createProcess(overrides: Parameters<typeof createTestProcessInstance>[0]) {
+	return createTestProcessInstance({
 		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "active",
@@ -51,7 +49,7 @@ describe("buildServerTransitionWrites", () => {
 				turns: { automatic_turn: createFixtureAutomaticTurn() },
 			}),
 		]);
-		const process = createTestDeps().processes.create({
+		const process = createTestProcessInstance({
 			processId: "automatic_reentry_process",
 			selectedTurnId: "automatic_turn",
 			lifecycleStatus: "waiting",

@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { PreparedDeferredProcessActivation } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it, vi } from "vitest";
+import { closeDatabase } from "../db/database.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createOwnedTestDeps } from "../test-helpers/owned-test-deps.js";
 import {
 	createDefaultTestProcessGraphRegistry,
 	createFixtureProcess,
@@ -13,7 +15,7 @@ import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { createProcessEngine } from "./engine.js";
 import type { ProcessEngineDeps } from "./types.js";
 
-function setup(overrides: Partial<ProcessEngineDeps> = {}, base = createTestDeps()) {
+function setup(overrides: Partial<ProcessEngineDeps> = {}, base = createOwnedTestDeps()) {
 	const deps: ProcessEngineDeps = {
 		...base,
 		processOperations: createProcessOperationCoordinator(),
@@ -232,12 +234,17 @@ describe("ProcessEngine deferred process activation", () => {
 	it("persists an atomic activation in file-backed SQLite", async () => {
 		const root = mkdtempSync(join(tmpdir(), "leitwerk-deferred-activation-"));
 		const sqlitePath = join(root, "leitwerk.sqlite");
+		let current: ReturnType<typeof createTestDeps> | undefined;
 		try {
-			const s = setup({}, createTestDeps({ sqlitePath }));
+			current = createTestDeps({ sqlitePath });
+			const s = setup({}, current);
 			const result = await s.engine.activateDeferredProcess(s.process.id, s.prepared);
 			expect(result.ok).toBe(true);
 
+			closeDatabase(current.db);
+			current = undefined;
 			const reopened = createTestDeps({ sqlitePath });
+			current = reopened;
 			expect(reopened.processes.getById(s.process.id)).toMatchObject({
 				paramsJson: s.prepared.paramsJson,
 				selectedTurnId: s.prepared.selectedTurnId,
@@ -254,6 +261,7 @@ describe("ProcessEngine deferred process activation", () => {
 				]),
 			);
 		} finally {
+			if (current) closeDatabase(current.db);
 			rmSync(root, { recursive: true, force: true });
 		}
 	});

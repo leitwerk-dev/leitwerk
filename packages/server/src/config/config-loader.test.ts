@@ -199,6 +199,7 @@ describe("validateConfig", () => {
 
 	it("accepts incomplete Kubernetes Docker wiring for per-process availability checks", () => {
 		const config = kubernetesConfig();
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.docker = { runtime_class_name: "leitwerk-sysbox" };
 		}
@@ -208,6 +209,7 @@ describe("validateConfig", () => {
 
 	it.each([20, 24])("validates Kubernetes Docker names and address-pool prefix %s", (size) => {
 		const config = kubernetesConfig();
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.docker = {
 				runtime_class_name: "Invalid_Name",
@@ -235,6 +237,7 @@ describe("validateConfig", () => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
 		config.worker_runtime_profiles = {};
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.server_url = "not-a-url";
 			config.kubernetes.server_namespace = "Invalid_Namespace";
@@ -260,6 +263,7 @@ describe("validateConfig", () => {
 
 	it("accepts IPv4 and IPv6 worker Pod host aliases", () => {
 		const config = kubernetesConfig();
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.pod.host_aliases = [
 				{ ip: "192.0.2.10", hostnames: ["model-api.example.test", "models.example.test"] },
@@ -276,6 +280,7 @@ describe("validateConfig", () => {
 		[[{ ip: "192.0.2.10", hostnames: ["Not a hostname"] }], "hostname"],
 	] as const)("rejects malformed worker Pod host aliases", (hostAliases, expected) => {
 		const config = kubernetesConfig();
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) config.kubernetes.pod.host_aliases = hostAliases;
 
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([
@@ -285,6 +290,7 @@ describe("validateConfig", () => {
 
 	it("rejects Kubernetes server namespaces that use the process namespace prefix", () => {
 		const config = kubernetesConfig();
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.server_namespace = "leitwerk-process-system";
 			config.kubernetes.process_namespace_prefix = "leitwerk-process-";
@@ -351,6 +357,7 @@ describe("validateConfig", () => {
 		"sysbox-runc",
 	] as const)("accepts Docker private daemon isolation %s", (isolation) => {
 		const config = getDefaultConfig();
+		expect(config.docker).toBeDefined();
 		if (config.docker) config.docker.private_daemon = { isolation };
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
@@ -370,6 +377,7 @@ describe("validateConfig", () => {
 			cert_file: "/etc/tls/server.crt",
 			key_file: "/etc/tls/server.key",
 		};
+		expect(config.docker).toBeDefined();
 		if (config.docker) {
 			config.docker.server_url = "https://leitwerk-server:8080";
 			config.docker.server_ca_file = "/etc/tls/ca.crt";
@@ -427,6 +435,7 @@ describe("validateConfig", () => {
 			cert_file: "/etc/tls/server.crt",
 			key_file: "/etc/tls/server.key",
 		};
+		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.server_url =
 				"https://leitwerk-server.leitwerk-system.svc.cluster.local:8080";
@@ -438,6 +447,7 @@ describe("validateConfig", () => {
 
 	it("rejects https worker URLs when the internal listener is not serving TLS", () => {
 		const config = getDefaultConfig();
+		expect(config.docker).toBeDefined();
 		if (config.docker) {
 			config.docker.server_url = "https://leitwerk-server:8080";
 		}

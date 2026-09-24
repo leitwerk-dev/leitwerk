@@ -7,12 +7,12 @@ import type {
 	ServerProcessModelPolicy,
 } from "../process-model-policy/index.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
 import {
 	createTestModelPolicy,
 	createTestTurnStart,
 } from "../test-helpers/process-model-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { accept } from "./decision.js";
 import { defineOperation } from "./operation.js";
 import { record } from "./recorder.js";
@@ -268,7 +268,7 @@ describe("ProcessEngine recorder", () => {
 		expect(result.recorded.data.map((input) => input.bodyMarkdown)).toEqual(["First", "Second"]);
 	});
 
-	it("parks an invalid LLM model configuration without launching a worker", async () => {
+	it("parks an invalid LLM model configuration as a failed preparation", async () => {
 		const deps = createDeps({
 			processModelPolicy: createModelPolicyStub(() => ({
 				ok: false,

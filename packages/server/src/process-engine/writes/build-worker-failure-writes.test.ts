@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import { buildWorkerFailureWrites } from "./build-worker-failure-writes.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
@@ -60,6 +60,7 @@ describe("buildWorkerFailureWrites", () => {
 				}),
 			]),
 		);
+		expect(planned.processPatch).not.toHaveProperty("selectedTurnId");
 		expect(planned.processPatch).toMatchObject({
 			lifecycleStatus: "error",
 			metadata: {

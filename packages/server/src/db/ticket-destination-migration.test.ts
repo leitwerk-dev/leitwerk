@@ -1,10 +1,12 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { closeDatabase, createDatabase, initializeSchema } from "./database.js";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
+import { closeDatabase, initializeSchema } from "./database.js";
 import { createAllRepos } from "./repositories.js";
+
+const { createDatabase, closeOwnedSqlite, openOwnedSqlite } = createOwnedDatabaseScope();
 
 describe("ticket destination history compatibility", () => {
 	for (const retainedHistory of [false, true]) {
@@ -12,7 +14,7 @@ describe("ticket destination history compatibility", () => {
 			const root = mkdtempSync(path.join(tmpdir(), "leitwerk-ticket-history-"));
 			const sqlitePath = path.join(root, "leitwerk.sqlite");
 			try {
-				const seed = new DatabaseSync(sqlitePath);
+				const seed = openOwnedSqlite(sqlitePath);
 				initializeSchema(seed, { sqlitePath });
 				seed.exec(`
 					INSERT INTO process_instances (id, process_id, created_at, updated_at)
@@ -56,7 +58,7 @@ describe("ticket destination history compatibility", () => {
 						name.endsWith(".bak"),
 					);
 					expect(backups).toHaveLength(1);
-					const backup = new DatabaseSync(path.join(root, "backups", backups[0]), {
+					const backup = openOwnedSqlite(path.join(root, "backups", backups[0]), {
 						readOnly: true,
 					});
 					try {
@@ -73,6 +75,7 @@ describe("ticket destination history compatibility", () => {
 					}
 				}
 			} finally {
+				closeOwnedSqlite();
 				rmSync(root, { recursive: true, force: true });
 			}
 		});

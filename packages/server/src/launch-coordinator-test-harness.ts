@@ -1,6 +1,6 @@
 import { type LaunchRun, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
-import { expect, vi } from "vitest";
-import { createInMemoryDatabase } from "./db/database.js";
+import { expect, onTestFinished, vi } from "vitest";
+import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
 import { createAllRepos } from "./db/repositories.js";
 import { createLaunchCoordinator } from "./launch-coordinator.js";
 import { createLaunchPipeline, initialLaunchSteps } from "./launch-pipeline.js";
@@ -48,7 +48,9 @@ export function createCoordinatorHarness(
 		processLaunches?: Record<string, unknown>;
 	} = {},
 ) {
-	const repos = createAllRepos(createInMemoryDatabase());
+	const db = createInMemoryDatabase();
+	onTestFinished(() => closeDatabase(db));
+	const repos = createAllRepos(db);
 	const broadcaster = { sendDurable: vi.fn() } as never;
 	const resolvedLauncher = {
 		processId: "demo",
@@ -121,7 +123,9 @@ export function createCoordinatorHarness(
 export function createWatcherHarness(
 	overrides: { launchPlans?: unknown; processLaunches?: unknown } = {},
 ) {
-	const repos = createAllRepos(createInMemoryDatabase());
+	const db = createInMemoryDatabase();
+	onTestFinished(() => closeDatabase(db));
+	const repos = createAllRepos(db);
 	const process = repos.processes.create({
 		processId: "demo",
 		selectedTurnId: "start",

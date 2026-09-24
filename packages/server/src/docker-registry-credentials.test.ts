@@ -49,6 +49,7 @@ describe("server-owned Docker credentials", () => {
 		expect(validateConfig(source)).toEqual([]);
 		expect(JSON.stringify(buildWorkerConfigSnapshot(source))).not.toContain("docker_registries");
 		expect(JSON.stringify(sanitizeConfigForLogging(source))).not.toContain(credential.password);
+		expect(JSON.stringify(sanitizeConfigForLogging(source))).not.toContain("other-secret");
 		source.docker_registries.profiles.approved.registry = "https://registry.example/repository";
 		expect(validateConfig(source).length).toBeGreaterThan(0);
 	});

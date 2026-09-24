@@ -157,49 +157,61 @@ describe("session transfer service", () => {
 	it("waits for aborted exporter preparation before shutdown completes", async () => {
 		const { repos, process, service, prepare } = harness();
 		const preparation = Promise.withResolvers<Awaited<ReturnType<typeof prepare>>>();
-		prepare.mockImplementationOnce(() => preparation.promise);
-		const createdGrant = await grant(service, process.id);
-		const started = service.startAttempt({
-			instanceId: process.id,
-			grantId: createdGrant.grantId,
-			token: createdGrant.rawToken,
-		});
-		if (started.kind !== "created") throw new Error("Expected attempt");
-		await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
-		let stopped = false;
-		const stopping = service.stop().then(() => {
-			stopped = true;
-		});
-		await new Promise<void>((resolve) => setImmediate(resolve));
-		expect(stopped).toBe(false);
-		preparation.reject(new Error("export aborted"));
-		await stopping;
-		expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("failed");
+		void preparation.promise.catch(() => undefined);
+		try {
+			prepare.mockImplementationOnce(() => preparation.promise);
+			const createdGrant = await grant(service, process.id);
+			const started = service.startAttempt({
+				instanceId: process.id,
+				grantId: createdGrant.grantId,
+				token: createdGrant.rawToken,
+			});
+			if (started.kind !== "created") throw new Error("Expected attempt");
+			await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+			let stopped = false;
+			const stopping = service.stop().then(() => {
+				stopped = true;
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
+			expect(stopped).toBe(false);
+			preparation.reject(new Error("export aborted"));
+			await stopping;
+			expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("failed");
+		} finally {
+			preparation.reject(new Error("fixture cleanup"));
+			await service.stop();
+		}
 	});
 
 	it("does not revive a cancelled attempt when exporter preparation finishes", async () => {
 		const { repos, process, service, prepare, streamBody } = harness();
 		const preparation = Promise.withResolvers<Awaited<ReturnType<typeof prepare>>>();
-		prepare.mockImplementationOnce(() => preparation.promise);
-		const createdGrant = await grant(service, process.id);
-		const started = service.startAttempt({
-			instanceId: process.id,
-			grantId: createdGrant.grantId,
-			token: createdGrant.rawToken,
-		});
-		if (started.kind !== "created") throw new Error("Expected attempt");
-		await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
-		expect(service.cancelForWeb(process.id, started.attempt.id)?.phase).toBe("cancelled");
+		void preparation.promise.catch(() => undefined);
+		try {
+			prepare.mockImplementationOnce(() => preparation.promise);
+			const createdGrant = await grant(service, process.id);
+			const started = service.startAttempt({
+				instanceId: process.id,
+				grantId: createdGrant.grantId,
+				token: createdGrant.rawToken,
+			});
+			if (started.kind !== "created") throw new Error("Expected attempt");
+			await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce());
+			expect(service.cancelForWeb(process.id, started.attempt.id)?.phase).toBe("cancelled");
 
-		preparation.resolve({
-			manifest: prepare.mock.calls[0]?.[0].manifest,
-			preflight: { entriesTotal: 2, logicalBytesTotal: 42 },
-			stream: () => Readable.from([streamBody]),
-		});
-		await new Promise<void>((resolve) => setImmediate(resolve));
+			preparation.resolve({
+				manifest: prepare.mock.calls[0]?.[0].manifest,
+				preflight: { entriesTotal: 2, logicalBytesTotal: 42 },
+				stream: () => Readable.from([streamBody]),
+			});
+			await new Promise<void>((resolve) => setImmediate(resolve));
 
-		expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("cancelled");
-		expect(service.activeForProcess(process.id)).toBeNull();
+			expect(repos.sessionTransfers.getAttempt(started.attempt.id)?.phase).toBe("cancelled");
+			expect(service.activeForProcess(process.id)).toBeNull();
+		} finally {
+			preparation.reject(new Error("fixture cleanup"));
+			await service.stop();
+		}
 	});
 
 	it("closes the export source without replacing cancellation with a stream failure", async () => {

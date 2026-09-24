@@ -1,10 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
-import { createInMemoryDatabase } from "./db/database.js";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
 import { createAllRepos } from "./db/repositories.js";
 import { createLaunchPipeline, failLaunchRun, initialLaunchSteps } from "./launch-pipeline.js";
 
 function fixture() {
-	const repos = createAllRepos(createInMemoryDatabase());
+	const db = createInMemoryDatabase();
+	onTestFinished(() => closeDatabase(db));
+	const repos = createAllRepos(db);
 	const broadcaster = { sendDurable: vi.fn() } as never;
 	return {
 		repos,
@@ -102,7 +104,12 @@ describe("LaunchPipeline", () => {
 				expect.objectContaining({ id: "create_process", status: "completed" }),
 			]),
 		});
-		expect(broadcaster.sendDurable).toHaveBeenCalled();
+		if (result.kind !== "committed") throw new Error("Expected committed process");
+		expect(broadcaster.sendDurable).toHaveBeenLastCalledWith(
+			"launch.updated",
+			{ launchRunId: first.launchRunId, instanceId: result.process.id },
+			result.process.id,
+		);
 	});
 
 	it("retains a committed process when its reaction fails", async () => {

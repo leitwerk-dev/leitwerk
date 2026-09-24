@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { planProcessAction } from "./process-action-planner.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createTestProcessInstance } from "./test-helpers/process-model-fixtures.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
 function buildRegistry(action: ProcessActionDefinition) {
@@ -56,8 +56,7 @@ function buildRegistry(action: ProcessActionDefinition) {
 }
 
 function createPlanReviewProcess() {
-	const deps = createTestDeps();
-	return deps.processes.create({
+	return createTestProcessInstance({
 		processId: "ticket_issue_process",
 		selectedTurnId: "plan_review",
 		lifecycleStatus: "waiting",
@@ -122,7 +121,14 @@ describe("planProcessAction", () => {
 
 		expect(result).toMatchObject({ ok: true, candidateSelectedTurnId: "plan_review" });
 		if (!result.ok) return;
-		expect(result.writes.queuedInputs).toHaveLength(1);
+		expect(result.writes.queuedInputs).toEqual([
+			{
+				source: "action_prompt",
+				kind: "instruction",
+				bodyMarkdown: "Keep going",
+				target: { semanticRef: "currentPrimaryPathLeaf" },
+			},
+		]);
 	});
 
 	it("rejects pure planning when the action only declares execute", async () => {

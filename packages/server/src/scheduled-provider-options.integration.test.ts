@@ -11,8 +11,8 @@ import { createServerProcessModelPolicy } from "./process-model-policy/index.js"
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFakeWorkerSupervisor } from "./test-helpers/fake-worker-supervisor.js";
 import { ownedProviderSet } from "./test-helpers/model-provider-fixtures.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 function setup(options: { defaultAccount?: () => string | undefined } = {}) {
 	const deps = createTestDeps();
@@ -85,7 +85,10 @@ function setup(options: { defaultAccount?: () => string | undefined } = {}) {
 	return { deps, commands, modelStatusCache, supervisor };
 }
 
-async function executeDueApproval(harness: ReturnType<typeof setup>) {
+async function executeDueApproval(
+	harness: ReturnType<typeof setup>,
+	afterStored: () => void = () => {},
+) {
 	await harness.modelStatusCache.refresh();
 	const process = harness.deps.processes.create({
 		processId: "ticket_issue_process",
@@ -103,6 +106,7 @@ async function executeDueApproval(harness: ReturnType<typeof setup>) {
 		payloadJson: "{}",
 		nextRunAt: "2026-04-25T09:00:00.000Z",
 	});
+	afterStored();
 	const result = await harness.commands.executeProcessAction(
 		process.id,
 		"plan_approved",
@@ -120,8 +124,9 @@ describe("scheduled action provider-option preparation", () => {
 	it("resolves a provider default when the scheduled action executes, not when it is stored", async () => {
 		let account = "when-scheduled";
 		const harness = setup({ defaultAccount: () => account });
-		account = "when-executed";
-		const { process, result, scheduled } = await executeDueApproval(harness);
+		const { process, result, scheduled } = await executeDueApproval(harness, () => {
+			account = "when-executed";
+		});
 
 		expect(result.ok).toBe(true);
 		expect(harness.deps.futureExecutions.getById(scheduled.id)).toBeNull();

@@ -1,12 +1,12 @@
 import { builtinPiProvider, defineModelProvider } from "@leitwerk-dev/process-sdk";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import {
 	createAes256GcmCredentialCipher,
 	createCredentialCipherFromBase64,
 	createUnavailableCredentialCipher,
 } from "../db/credential-cipher.js";
-import { createInMemoryDatabase } from "../db/database.js";
+import { closeDatabase, createInMemoryDatabase } from "../db/database.js";
 import { createProviderCredentialRepo } from "../db/provider-credential-repo.js";
 import * as schema from "../db/schema.js";
 import { ownedProviderSet } from "../test-helpers/model-provider-fixtures.js";
@@ -42,6 +42,7 @@ function credentialProvider() {
 
 function fixture() {
 	const db = createInMemoryDatabase();
+	onTestFinished(() => closeDatabase(db));
 	const definition = credentialProvider();
 	const registry = createModelProviderRegistry({
 		sets: [ownedProviderSet(definition)],

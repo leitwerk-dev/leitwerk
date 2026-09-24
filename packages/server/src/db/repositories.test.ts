@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "../launch-title.js";
 import { closeDatabase, createInMemoryDatabase, type LeitwerkDb } from "./database.js";
 import {
@@ -111,6 +111,9 @@ describe("ProcessInstanceRepo", () => {
 	});
 
 	it("sets closedAt once when a process becomes terminal", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		onTestFinished(() => vi.useRealTimers());
 		const repo = createProcessInstanceRepo(db);
 		const process = repo.create({
 			processId: "ticket_issue_process",
@@ -122,20 +125,26 @@ describe("ProcessInstanceRepo", () => {
 			selectedTurnId: null,
 			lifecycleStatus: "completed",
 		});
+		vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
 		const renamed = repo.update(process.id, { title: "Generated after completion" });
 
-		expect(terminal?.closedAt).toEqual(expect.any(String));
+		expect(terminal?.closedAt).toBe("2026-01-01T00:00:00.000Z");
 		expect(renamed?.closedAt).toBe(terminal?.closedAt);
-		expect(renamed?.updatedAt).not.toBeNull();
+		expect(renamed?.updatedAt).toBe("2026-01-01T00:00:01.000Z");
 	});
 
 	it("lists all processes ordered by updatedAt desc", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		onTestFinished(() => vi.useRealTimers());
 		const repo = createProcessInstanceRepo(db);
-		repo.create({ processId: "ticket_issue_process", lifecycleStatus: "discovered" });
-		repo.create({ processId: "mr_polish_process", lifecycleStatus: "active" });
-
-		const all = repo.listAll();
-		expect(all).toHaveLength(2);
+		const older = repo.create({ processId: "ticket_issue_process", lifecycleStatus: "discovered" });
+		vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
+		const newer = repo.create({ processId: "mr_polish_process", lifecycleStatus: "active" });
+		expect(repo.listAll().map((p) => p.id)).toEqual([newer.id, older.id]);
+		vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
+		repo.update(older.id, { title: "Updated last" });
+		expect(repo.listAll().map((p) => p.id)).toEqual([older.id, newer.id]);
 	});
 
 	it("deletes an process instance", () => {
@@ -324,17 +333,17 @@ describe("ProcessInputRepo", () => {
 
 		inputs.create({
 			instanceId: process.id,
-			sequence: 1,
-			source: "app_steer",
-			kind: "instruction",
-			bodyMarkdown: "First input",
-		});
-		inputs.create({
-			instanceId: process.id,
 			sequence: 2,
 			source: "external_comment",
 			kind: "instruction",
 			bodyMarkdown: "Second input",
+		});
+		inputs.create({
+			instanceId: process.id,
+			sequence: 1,
+			source: "app_steer",
+			kind: "instruction",
+			bodyMarkdown: "First input",
 		});
 
 		const all = inputs.listByInstance(process.id);
@@ -474,6 +483,9 @@ describe("ProcessEventRepo", () => {
 	});
 
 	it("lists events since a timestamp with optional event-type prefix filtering", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		onTestFinished(() => vi.useRealTimers());
 		const processes = createProcessInstanceRepo(db);
 		const events = createProcessEventRepo(db);
 		const process = processes.create({
@@ -481,27 +493,21 @@ describe("ProcessEventRepo", () => {
 			lifecycleStatus: "active",
 		});
 
-		events.create({
-			instanceId: process.id,
-			eventType: "process.event",
-			data: { createdAt: "a" },
-		});
+		events.create({ instanceId: process.id, eventType: "pi.tool.call", data: { name: "old" } });
+		vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
+		const sinceSecondEvent = "2026-01-01T00:00:01.000Z";
+		events.create({ instanceId: process.id, eventType: "process.event", data: {} });
 		events.create({
 			instanceId: process.id,
 			eventType: "pi.stream.delta",
 			data: { text: "hello" },
 		});
+		vi.setSystemTime(new Date("2026-01-01T00:00:02.000Z"));
 		events.create({
 			instanceId: process.id,
 			eventType: "pi.tool.call",
 			data: { name: "run_tests" },
 		});
-
-		const all = events.listByInstance(process.id, 10).slice().reverse();
-		const sinceSecondEvent = all[1]?.createdAt;
-		if (!sinceSecondEvent) {
-			throw new Error("expected created second event timestamp");
-		}
 
 		const piEvents = events.listByInstanceSince(process.id, sinceSecondEvent, {
 			limit: 10,
@@ -804,6 +810,9 @@ describe("WorkerLeaseRepo", () => {
 	});
 
 	it("updates heartbeat", () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+		onTestFinished(() => vi.useRealTimers());
 		const processes = createProcessInstanceRepo(db);
 		const leases = createWorkerLeaseRepo(db);
 		const process = processes.create({
@@ -812,10 +821,11 @@ describe("WorkerLeaseRepo", () => {
 		});
 
 		leases.create({ instanceId: process.id, workerId: "wrk_test1", state: "busy" });
+		vi.setSystemTime(new Date("2026-01-01T00:00:01.000Z"));
 		expect(leases.updateHeartbeat("wrk_test1")).toBe(true);
-
-		const updated = leases.listActive().find((lease) => lease.workerId === "wrk_test1");
-		expect(updated?.lastHeartbeatAt).not.toBeNull();
+		expect(
+			leases.listActive().find((lease) => lease.workerId === "wrk_test1")?.lastHeartbeatAt,
+		).toBe("2026-01-01T00:00:01.000Z");
 	});
 
 	it("lists active (non-exited) leases", () => {

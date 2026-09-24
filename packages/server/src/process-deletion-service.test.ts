@@ -1,16 +1,16 @@
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { Actor } from "@leitwerk-dev/domain";
 import type { ProcessVolume } from "@leitwerk-dev/worker-runners";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createProcessDeletionService } from "./process-deletion-service.js";
 import type { ProcessEngine } from "./process-engine/types.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFileBackedProcessSessionSnapshotStore } from "./process-session-store.js";
 import { ResultImageStore } from "./result-image-store.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 
 const ACTOR: Actor = { id: "operator", source: "auth" };
 
@@ -25,6 +25,7 @@ async function makeService(
 ) {
 	const deps = createTestDeps();
 	const root = await mkdtemp(path.join(os.tmpdir(), "leitwerk-process-delete-"));
+	onTestFinished(() => rm(root, { recursive: true, force: true }));
 	const snapshots = createFileBackedProcessSessionSnapshotStore(path.join(root, "sessions"));
 	const images = new ResultImageStore({ rootDir: path.join(root, "images") });
 	const stopWorker = options.stopWorker ?? vi.fn(async () => undefined);
@@ -61,9 +62,13 @@ describe("process deletion service", () => {
 			mimeType: "image/png",
 		});
 		const frames: string[] = [];
+		const observedProcesses: unknown[] = [];
 		fixture.deps.broadcaster.addClient({
 			readyState: 1,
-			send: (frame) => frames.push(frame),
+			send: (frame) => {
+				frames.push(frame);
+				observedProcesses.push(fixture.deps.processes.getById(process.id));
+			},
 			on: () => undefined,
 		});
 
@@ -74,6 +79,7 @@ describe("process deletion service", () => {
 		expect(await fixture.images.get(process.id, "turn_1", image.imageId)).toBeNull();
 		expect(deleteProcessResources).toHaveBeenCalledWith(process.id);
 		expect(release).not.toHaveBeenCalled();
+		expect(observedProcesses).toEqual([null]);
 		expect(JSON.parse(frames.at(-1) ?? "{}")).toMatchObject({
 			type: "process.deleted",
 			instanceId: process.id,

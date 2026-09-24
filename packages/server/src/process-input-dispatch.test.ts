@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { createInMemoryDatabase, type LeitwerkDb } from "./db/database.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { closeDatabase, createInMemoryDatabase, type LeitwerkDb } from "./db/database.js";
 import { createProcessInputRepo, createProcessInstanceRepo } from "./db/repositories.js";
 import {
 	buildInputQueuedFrames,
@@ -9,11 +9,13 @@ import {
 
 let db: LeitwerkDb;
 
-beforeEach(() => {
-	db = createInMemoryDatabase();
-});
-
 describe("persistQueuedProcessInputs", () => {
+	beforeEach(() => {
+		db = createInMemoryDatabase();
+	});
+	afterEach(() => {
+		closeDatabase(db);
+	});
 	it("returns empty when there is nothing to persist", () => {
 		const inputs = createProcessInputRepo(db);
 		const created = persistQueuedProcessInputs(inputs, "agt_missing", []);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { resolveAcceptedTurnStartReplay } from "./accepted-turn-start-replay.js";
 
 function setup() {

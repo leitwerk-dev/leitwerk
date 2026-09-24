@@ -224,13 +224,13 @@ function createDueAction(
 
 describe("FutureExecutionLifecycle", () => {
 	it("emits process-created extension events for launch-now requests", async () => {
-		const emittedEvents: string[] = [];
+		const emittedEvents: unknown[] = [];
 		const { service } = createServiceHarness({
 			extensionHost: {
 				on() {},
 				off() {},
-				emit: async (event) => {
-					emittedEvents.push(event);
+				emit: async (event, payload) => {
+					emittedEvents.push({ event, payload });
 				},
 			},
 		});
@@ -246,8 +246,10 @@ describe("FutureExecutionLifecycle", () => {
 			scheduleProvided: true,
 		});
 
-		expect(result.kind).toBe("launched");
-		expect(emittedEvents).toContain("process_created");
+		if (result.kind !== "launched") throw new Error("Expected launched process");
+		expect(emittedEvents).toMatchObject([
+			{ event: "process_created", payload: { instanceId: result.process.id } },
+		]);
 	});
 
 	it("records launcher recent values after successful launch-now requests", async () => {
@@ -870,6 +872,16 @@ describe("FutureExecutionLifecycle", () => {
 			});
 		} else {
 			expect(executeProcessAction).toHaveBeenCalledOnce();
+			expect(executeProcessAction).toHaveBeenCalledWith(
+				commandState.process?.id,
+				"approve_plan",
+				{ approved: true },
+				expect.objectContaining({
+					source: "scheduled",
+					scheduledExecutionId: execution.id,
+					consumeScheduledExecutionOnSuccess: true,
+				}),
+			);
 		}
 	});
 
@@ -985,6 +997,7 @@ describe("FutureExecutionLifecycle", () => {
 			kind: "no_work",
 		});
 		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2027-04-26T09:00:00.000Z");
 	});
 
 	it("retries a scheduled preparation rejection without creating a process", async () => {
@@ -1009,6 +1022,7 @@ describe("FutureExecutionLifecycle", () => {
 			kind: "retry_scheduled",
 		});
 		expect(deps.processes.listAll()).toHaveLength(0);
+		expect(deps.futureExecutions.getById(execution.id)?.nextRunAt).toBe("2027-04-25T09:01:00.000Z");
 		expect(
 			deps.launchRuns.getByIdempotencyKey(`scheduled:${execution.id}:${execution.nextRunAt}`),
 		).toMatchObject({
@@ -1029,9 +1043,9 @@ describe("FutureExecutionLifecycle", () => {
 			},
 		});
 		const failing = createDueLaunch(deps);
-		const succeeding = createDueLaunch(deps);
+		const succeeding = createDueLaunch(deps, { nextRunAt: "2027-04-25T09:00:01.000Z" });
 
-		const result = await service.runDueWork(failing.nextRunAt);
+		const result = await service.runDueWork(succeeding.nextRunAt);
 
 		expect(result.items).toContainEqual({
 			futureExecutionId: failing.id,
@@ -1041,7 +1055,7 @@ describe("FutureExecutionLifecycle", () => {
 			futureExecutionId: succeeding.id,
 			kind: "durable_work_committed",
 		});
-		expect(deps.futureExecutions.getById(failing.id)).toMatchObject({ id: failing.id });
+		expect(deps.futureExecutions.getById(failing.id)?.nextRunAt).toBe("2027-04-25T09:01:01.000Z");
 		expect(deps.futureExecutions.getById(succeeding.id)).toBeNull();
 	});
 
@@ -1156,7 +1170,7 @@ describe("FutureExecutionLifecycle", () => {
 
 		const command = kind === "launch" ? startProcess : executeProcessAction;
 		expect(command).toHaveBeenCalledWith(
-			expect.any(String),
+			kind === "launch" ? deps.processes.listAll()[0]?.id : commandState.process?.id,
 			...(kind === "launch" ? ["run"] : ["approve_plan", { approved: true }]),
 			expect.objectContaining({ actor: ADMIN_ACTOR }),
 		);

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import { importSkillRepository } from "./source-importer.js";
 
@@ -57,27 +58,43 @@ describe("skill repository import", () => {
 			"fixture",
 		]);
 
+		const { stdout: head } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
 		const imported = await importSkillRepository({
 			id: "shared",
 			url: root,
 			ref: "HEAD",
 		});
 
+		expect(imported.commit).toBe(head.trim());
 		expect(imported.skills).toEqual([
 			expect.objectContaining({
 				skillId: "review",
 				label: "Review changes",
 				description: "Review a branch",
 				sourcePath: "skills/engineering/review",
-				sourceRevision: imported.commit,
+				sourceRevision: head.trim(),
 			}),
 			expect.objectContaining({
 				skillId: "planning",
 				label: "Planning",
 				description: null,
 				sourcePath: "skills/productivity/planning",
-				sourceRevision: imported.commit,
+				sourceRevision: head.trim(),
 			}),
+		]);
+		const review = imported.skills.find((skill) => skill.skillId === "review");
+		if (!review) throw new Error("Expected imported review skill");
+		expect(
+			verifyCanonicalPiResourceBundle(review.bundle.bytes).map((file) => ({
+				path: file.path,
+				content: Buffer.from(file.content).toString(),
+			})),
+		).toEqual([
+			{
+				path: "skills/review/SKILL.md",
+				content: "---\nname: Review changes\ndescription: Review a branch\n---\n# Review\n",
+			},
+			{ path: "skills/review/references/rules.md", content: "Rules\n" },
 		]);
 	});
 
@@ -103,6 +120,7 @@ describe("skill repository import", () => {
 			"fixture",
 		]);
 
+		const { stdout: head } = await execFileAsync("git", ["-C", root, "rev-parse", "HEAD"]);
 		const imported = await importSkillRepository({
 			id: "impeccable",
 			url: root,
@@ -110,6 +128,7 @@ describe("skill repository import", () => {
 			path: ".pi/skills/impeccable",
 		});
 
+		expect(imported.commit).toBe(head.trim());
 		expect(imported.skills).toEqual([
 			expect.objectContaining({
 				skillId: "impeccable",

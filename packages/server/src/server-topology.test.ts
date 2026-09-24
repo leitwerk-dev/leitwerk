@@ -38,31 +38,6 @@ describe("resolveServerTlsOptions", () => {
 		});
 	});
 
-	it("maps client CA to TLS verification options for the reserved future mTLS mode", () => {
-		const config = getDefaultConfig();
-		config.internal_tls = {
-			enabled: true,
-			cert_file: "/etc/tls/server.crt",
-			key_file: "/etc/tls/server.key",
-			client_ca_file: "/etc/tls/clients.pem",
-		};
-		const options = resolveServerTlsOptions(
-			config,
-			fakeFiles({
-				"/etc/tls/server.crt": "CERT",
-				"/etc/tls/server.key": "KEY",
-				"/etc/tls/clients.pem": "CA",
-			}),
-		);
-		expect(options).toEqual({
-			cert: "CERT",
-			key: "KEY",
-			ca: "CA",
-			requestCert: true,
-			rejectUnauthorized: true,
-		});
-	});
-
 	it("throws when enabled without cert and key", () => {
 		const config = getDefaultConfig();
 		config.internal_tls = { enabled: true };

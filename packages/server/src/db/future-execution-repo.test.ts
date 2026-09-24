@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInMemoryDatabase } from "./database.js";
+import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createFutureExecutionRepo, createProcessInstanceRepo } from "./repositories.js";
 
 describe("future execution repo", () => {

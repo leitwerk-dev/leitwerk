@@ -1,14 +1,14 @@
 import { serializeFutureLaunchPayload } from "@leitwerk-dev/protocol";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { projectLaunchPlanModelState } from "./future-execution/model-projection.js";
 import { reconcileFutureExecutionModelBlocks } from "./future-execution/reconciliation.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import {
 	createModelAvailabilitySnapshot,
 	createTestLaunchPlan,
 	createTestModelPolicy,
 } from "./test-helpers/process-model-fixtures.js";
-import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 function availability(value: "available" | "unavailable", revision: number) {
 	return createModelAvailabilitySnapshot(
@@ -51,6 +51,9 @@ describe("future execution lifecycle model reconciliation", () => {
 	});
 
 	it("backfills null selections, emits updates, and preserves an unchanged detectedAt", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		onTestFinished(() => vi.useRealTimers());
+		vi.setSystemTime(new Date("2026-04-25T10:00:00.000Z"));
 		const deps = createTestDeps();
 		const {
 			policy,
@@ -82,8 +85,11 @@ describe("future execution lifecycle model reconciliation", () => {
 			modelSelection: { modelProfileId: "first", provenance: { kind: "inherited" } },
 			blockedReason: { code: "model_unavailable" },
 		});
-		const detectedAt = blocked?.blockedReason?.detectedAt;
+		const detectedAt = "2026-04-25T10:00:00.000Z";
+		expect(blocked?.blockedReason?.detectedAt).toBe(detectedAt);
+		expect(broadcast).toHaveBeenCalledTimes(1);
 		const calls = broadcast.mock.calls.length;
+		vi.setSystemTime(new Date("2026-04-25T11:00:00.000Z"));
 		await reconcileFutureExecutionModelBlocks({
 			...base,
 			availability: availability("unavailable", 1),

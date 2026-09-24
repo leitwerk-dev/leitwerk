@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../../test-helpers/unit-deps.js";
 import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import { RetryStartup } from "./retry-startup.js";
 

@@ -4,7 +4,7 @@ import Fastify from "fastify";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import { createProcessQuestionService } from "../process-question-service.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { registerProcessQuestionRoutes } from "./process-questions.js";
 import type { RouteDeps } from "./process-route-helpers.js";
 
@@ -95,6 +95,9 @@ describe("process question routes", () => {
 			answeredBy: actor,
 		});
 		expect(repeated.statusCode).toBe(409);
+		expect(h.deps.questionRequests.getById(h.request.id)?.answers).toEqual([
+			"Safe\nContext: Prefer the smaller change",
+		]);
 		expect(h.questionResponse).toHaveBeenCalledTimes(1);
 		expect(h.questionResponse).toHaveBeenCalledWith(
 			h.process.id,

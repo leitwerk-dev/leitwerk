@@ -352,6 +352,7 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 	expect(long.primaryPath.turnState.activeTurn?.assistant.thinking.length).toBeLessThanOrEqual(
 		1024,
 	);
+	expect(long.primaryPath.turnState.activeTurn?.assistant.thinking).toContain("final reasoning");
 	expect(JSON.stringify(long).length - JSON.stringify(short).length).toBeLessThan(1800);
 	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("traceItems");
 	expect(long.primaryPath.turnState.activeTurn).not.toHaveProperty("toolCalls");

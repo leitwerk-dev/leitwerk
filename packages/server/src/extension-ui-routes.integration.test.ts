@@ -15,10 +15,12 @@ const fixtures: TempExtensionUiPackageFixture[] = [];
 const harnesses: Array<IntegrationHarness<Record<string, never>>> = [];
 
 afterEach(async () => {
-	for (const harness of harnesses.splice(0)) {
-		await harness.close();
-	}
-	await Promise.all(fixtures.splice(0).map((fixture) => fixture.cleanup()));
+	const closed = await Promise.allSettled(harnesses.splice(0).map((harness) => harness.close()));
+	const removed = await Promise.allSettled(fixtures.splice(0).map((fixture) => fixture.cleanup()));
+	const errors = [...closed, ...removed].flatMap((result) =>
+		result.status === "rejected" ? [result.reason] : [],
+	);
+	if (errors.length) throw new AggregateError(errors, "Extension UI fixture cleanup failed");
 });
 
 describe("extension UI renderer routes", () => {
@@ -143,7 +145,12 @@ describe("extension UI renderer routes", () => {
 	});
 
 	it("returns structured not-found responses and blocks traversal outside the asset root", async () => {
-		const fixture = await createTempExtensionUiPackage();
+		const fixture = await createTempExtensionUiPackage({
+			assetFiles: {
+				"dist/ui/assets/leaf-outcome.js": "export {};",
+				"dist/private.txt": "outside-root-private-sentinel",
+			},
+		});
 		fixtures.push(fixture);
 		const extensionCatalog = await buildExtensionCatalog([
 			createLoadedExtensionModuleForTest(createTestExtensionUiModule(), {
@@ -171,8 +178,14 @@ describe("extension UI renderer routes", () => {
 
 		const traversalAttempt = await harness.ctx.app.inject({
 			method: "GET",
-			url: "/ext-ui/test-extension/../package.json",
+			url: "/ext-ui/test-extension/%2e%2e%2fprivate.txt",
 		});
 		expect(traversalAttempt.statusCode).toBe(404);
+		expect(traversalAttempt.body).not.toContain("outside-root-private-sentinel");
+		const safeAsset = await harness.ctx.app.inject({
+			url: "/ext-ui/test-extension/assets/leaf-outcome.js",
+		});
+		expect(safeAsset.statusCode).toBe(200);
+		expect(safeAsset.body).toBe("export {};");
 	});
 });

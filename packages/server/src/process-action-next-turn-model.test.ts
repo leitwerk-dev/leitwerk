@@ -3,7 +3,7 @@ import {
 	createEmptyStructuralProcessState,
 	type LlmTurnDefinition,
 } from "@leitwerk-dev/process-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildProcessActionNextTurnModelSummary } from "./process-action-next-turn-model.js";
 import { createTestTurnRecord } from "./test-helpers/process-model-fixtures.js";
 
@@ -32,18 +32,6 @@ const implementFast = {
 	context: "full",
 	prompt: async () => "implement",
 	outcomes: { done: { description: "done", parameters: {} } },
-} satisfies LlmTurnDefinition;
-
-const reviewFromFallback = {
-	...implementFast,
-	id: "review_from_fallback",
-	description: "Review from fallback",
-	startFrom: {
-		kind: "semantic_ref",
-		ref: "review",
-		fallback: { kind: "session_root" },
-	},
-	prompt: async () => "review",
 } satisfies LlmTurnDefinition;
 
 const turnRecord = createTestTurnRecord({
@@ -136,28 +124,33 @@ describe("buildProcessActionNextTurnModelSummary", () => {
 		});
 	});
 
-	it("uses the route-supplied entry existence check when evaluating cache-sensitive starts", () => {
-		const summary = buildProcessActionNextTurnModelSummary({
-			process: createProcess({
-				stateJson: JSON.stringify(
-					createPreviewState({
-						semanticEntryRefs: {
-							rootEntry: { entryId: "missing-root", turnRecordId: null },
-							currentPrimaryPathLeaf: { entryId: "root-user", turnRecordId: null },
-							review: null,
-						},
-					}),
-				),
-			}),
-			candidateTurnDef: reviewFromFallback,
-			resolvedModel: resolvedClaudeFast,
-			entryExists: (entryId) => entryId === "root-user",
+	it("uses the route-supplied entry existence check for warm continuation context", () => {
+		const process = createProcess({
+			stateJson: JSON.stringify(
+				createPreviewState({
+					semanticEntryRefs: {
+						rootEntry: { entryId: "root-user", turnRecordId: null },
+						currentPrimaryPathLeaf: { entryId: "previous-leaf", turnRecordId: turnRecord.id },
+					},
+				}),
+			),
 		});
-
-		expect(summary?.warmPromptCache).toBeUndefined();
+		const project = (entryExists: (id: string) => boolean) =>
+			buildProcessActionNextTurnModelSummary({
+				process,
+				candidateTurnDef: implementFast,
+				resolvedModel: resolvedClaudeFast,
+				turnRecords: { getById: () => turnRecord, listByInstance: () => [turnRecord] },
+				turnStarts: { getById: () => createTurnStart() },
+				now: () => Date.parse("2026-01-01T00:02:00.000Z"),
+				entryExists,
+			});
+		expect(project(() => true).warmPromptCache?.previousModelProfileId).toBe("claude_fast");
+		expect(project((id) => id === "root-user").warmPromptCache).toBeUndefined();
 	});
 
-	it("compares warm continuation context by provider/model and ignores thinking level", () => {
+	it("delegates compatibility using the durably executed provider and model", () => {
+		const resolveCompatibleModelProfileIds = vi.fn(() => ["claude_fast", "claude_thinking"]);
 		const record = turnRecord;
 		const process = createProcess({
 			defaultModelProfileId: "other",
@@ -185,9 +178,13 @@ describe("buildProcessActionNextTurnModelSummary", () => {
 			turnRecords: { getById: () => record, listByInstance: () => [record] },
 			turnStarts: { getById: () => createTurnStart() },
 			now: () => Date.parse("2026-01-01T00:31:00.000Z"),
-			resolveCompatibleModelProfileIds: () => ["claude_fast", "claude_thinking"],
+			resolveCompatibleModelProfileIds,
 		});
 
+		expect(resolveCompatibleModelProfileIds).toHaveBeenCalledWith(
+			"fixture-provider",
+			"fixture-model",
+		);
 		expect(summary?.resolvedModel.modelProfileId).toBe("other");
 		expect(summary?.warmPromptCache).toEqual({
 			previousModelProfileId: "claude_fast",
@@ -196,7 +193,10 @@ describe("buildProcessActionNextTurnModelSummary", () => {
 		});
 	});
 
-	it("uses the durably executed model when the historical profile configuration changed", () => {
+	it("returns compatibility resolved for the durably executed model", () => {
+		const resolveCompatibleModelProfileIds = vi.fn((providerId: string, modelId: string) =>
+			providerId === "fixture-provider" && modelId === "fixture-model" ? ["claude_equivalent"] : [],
+		);
 		const record = turnRecord;
 		const summary = buildProcessActionNextTurnModelSummary({
 			process: createProcess({
@@ -217,7 +217,7 @@ describe("buildProcessActionNextTurnModelSummary", () => {
 			turnRecords: { getById: () => record, listByInstance: () => [record] },
 			turnStarts: { getById: () => createTurnStart() },
 			now: () => Date.parse("2026-01-01T00:02:00.000Z"),
-			resolveCompatibleModelProfileIds: () => ["claude_equivalent"],
+			resolveCompatibleModelProfileIds,
 		});
 
 		expect(summary?.warmPromptCache?.compatibleModelProfileIds).toEqual(["claude_equivalent"]);

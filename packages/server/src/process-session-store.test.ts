@@ -71,62 +71,23 @@ afterEach(async () => {
 	}
 });
 
+function testTree(entryId: string): string {
+	return jsonl(
+		{ type: "session", version: 3, id: "sess", timestamp: "2026-01-01T00:00:00.000Z" },
+		{ type: "message", id: entryId, parentId: null, timestamp: "2026-01-01T00:00:01.000Z" },
+	);
+}
+
 describe("ProcessSessionReader caching", () => {
-	it("reuses the parsed instance tree while the signature is unchanged", async () => {
+	it("reuses the parsed tree until its signature changes", async () => {
 		const controllable = createControllableSource();
-		controllable.set(
-			"agt_1",
-			"sig-1",
-			jsonl(
-				{ type: "session", version: 3, id: "sess", timestamp: "2026-01-01T00:00:00.000Z" },
-				{
-					type: "message",
-					id: "entry-1",
-					parentId: null,
-					timestamp: "2026-01-01T00:00:01.000Z",
-				},
-			),
-		);
+		controllable.set("agt_1", "sig-1", testTree("entry-1"));
 		const reader = new ProcessSessionReader(controllable.source);
 
 		const first = await reader.readInstanceTree("agt_1");
-		const second = await reader.readInstanceTree("agt_1");
-
-		expect(first).toBe(second);
+		expect(await reader.readInstanceTree("agt_1")).toBe(first);
 		expect(controllable.loadCount("agt_1")).toBe(1);
-	});
-
-	it("re-parses the instance tree when the signature changes", async () => {
-		const controllable = createControllableSource();
-		controllable.set(
-			"agt_1",
-			"sig-1",
-			jsonl(
-				{ type: "session", version: 3, id: "sess", timestamp: "2026-01-01T00:00:00.000Z" },
-				{
-					type: "message",
-					id: "entry-1",
-					parentId: null,
-					timestamp: "2026-01-01T00:00:01.000Z",
-				},
-			),
-		);
-		const reader = new ProcessSessionReader(controllable.source);
-
-		const first = await reader.readInstanceTree("agt_1");
-		controllable.set(
-			"agt_1",
-			"sig-2",
-			jsonl(
-				{ type: "session", version: 3, id: "sess", timestamp: "2026-01-01T00:00:00.000Z" },
-				{
-					type: "message",
-					id: "entry-2",
-					parentId: null,
-					timestamp: "2026-01-01T00:00:02.000Z",
-				},
-			),
-		);
+		controllable.set("agt_1", "sig-2", testTree("entry-2"));
 		const second = await reader.readInstanceTree("agt_1");
 
 		expect([...first.entriesById.keys()]).toEqual(["entry-1"]);
@@ -136,27 +97,25 @@ describe("ProcessSessionReader caching", () => {
 
 	it("returns an empty tree and drops the cache when the session disappears", async () => {
 		const controllable = createControllableSource();
-		controllable.set(
-			"agt_1",
-			"sig-1",
-			jsonl({
-				type: "message",
-				id: "entry-1",
-				parentId: null,
-				timestamp: "2026-01-01T00:00:01.000Z",
-			}),
-		);
+		controllable.set("agt_1", "sig-1", testTree("entry-1"));
 		const reader = new ProcessSessionReader(controllable.source);
 
-		await reader.readInstanceTree("agt_1");
+		const initial = await reader.readInstanceTree("agt_1");
+		expect([...initial.entriesById.keys()]).toEqual(["entry-1"]);
 		controllable.clear("agt_1");
 		const afterRemoval = await reader.readInstanceTree("agt_1");
 
 		expect(afterRemoval.entriesById.size).toBe(0);
+		controllable.set("agt_1", "sig-1", testTree("replacement"));
+		expect([...(await reader.readInstanceTree("agt_1")).entriesById.keys()]).toEqual([
+			"replacement",
+		]);
+		expect(controllable.loadCount("agt_1")).toBe(1);
 	});
 
 	it("deduplicates concurrent parses for the same signature", async () => {
-		let releaseLoad: (() => void) | null = null;
+		const gate = Promise.withResolvers<void>();
+		const entered = Promise.withResolvers<void>();
 		let loads = 0;
 		const source: ProcessSessionSource = {
 			async readSnapshotHandle(): Promise<ProcessSessionSnapshotHandle> {
@@ -164,25 +123,9 @@ describe("ProcessSessionReader caching", () => {
 					signature: "sig-1",
 					async load() {
 						loads += 1;
-						await new Promise<void>((resolve) => {
-							releaseLoad = resolve;
-						});
-						return jsonl(
-							{
-								type: "session",
-								version: 3,
-								id: "sess_1",
-								timestamp: "2026-01-01T00:00:00.000Z",
-								cwd: "/tmp",
-							},
-							{
-								type: "message",
-								id: "entry-1",
-								parentId: null,
-								timestamp: "2026-01-01T00:00:01.000Z",
-								message: { role: "user", content: "hi" },
-							},
-						);
+						entered.resolve();
+						await gate.promise;
+						return testTree("entry-1");
 					},
 				};
 			},
@@ -191,14 +134,18 @@ describe("ProcessSessionReader caching", () => {
 
 		const instanceTreePromise = reader.readInstanceTree("agt_1");
 		const piTreePromise = reader.readPiSessionTree("agt_1");
-		await Promise.resolve();
-		expect(loads).toBe(1);
-		releaseLoad?.();
-		const [instanceTree, piTree] = await Promise.all([instanceTreePromise, piTreePromise]);
-
-		expect([...instanceTree.entriesById.keys()]).toEqual(["entry-1"]);
-		expect(piTree.entries.map((entry) => entry.id)).toEqual(["entry-1"]);
-		expect(loads).toBe(1);
+		try {
+			await entered.promise;
+			expect(loads).toBe(1);
+			gate.resolve();
+			const [instanceTree, piTree] = await Promise.all([instanceTreePromise, piTreePromise]);
+			expect([...instanceTree.entriesById.keys()]).toEqual(["entry-1"]);
+			expect(piTree.entries.map((entry) => entry.id)).toEqual(["entry-1"]);
+			expect(loads).toBe(1);
+		} finally {
+			gate.resolve();
+			await Promise.allSettled([instanceTreePromise, piTreePromise]);
+		}
 	});
 
 	it("reuses the parsed Pi session tree while the signature is unchanged", async () => {

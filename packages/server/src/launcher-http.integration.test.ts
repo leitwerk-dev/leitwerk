@@ -13,7 +13,7 @@ import {
 	type IntegrationHarness,
 	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "./launch-title.js";
 
 function parseFutureLaunchPayloadOrThrow(payloadJson: string) {
@@ -405,74 +405,56 @@ function futureIso(minutesAhead = 24 * 60): string {
 	return new Date(Date.now() + minutesAhead * 60_000).toISOString();
 }
 
-async function testFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-	const url = String(input);
-	if (!url.includes("/api/launchers/") || !url.endsWith("/future-launches") || !init?.body) {
-		return globalThis.fetch(input, init);
-	}
-	const submitted = JSON.parse(String(init.body)) as { schedule?: { mode?: string } };
-	if (submitted.schedule?.mode !== "now" && submitted.schedule !== undefined) {
-		return globalThis.fetch(input, init);
-	}
-	const admitted = await globalThis.fetch(url.replace(/\/future-launches$/, "/launch-runs"), {
+async function submitImmediateLaunch(url: string, init: RequestInit): Promise<Response> {
+	return fetch(url, {
 		...init,
 		headers: {
 			...Object.fromEntries(new Headers(init.headers).entries()),
 			"idempotency-key": crypto.randomUUID(),
 		},
 	});
-	const admittedBody = (await admitted.json()) as { launchRunId?: string };
-	if (admitted.status !== 202 || !admittedBody.launchRunId) {
-		return new Response(JSON.stringify(admittedBody), {
-			status: admitted.status,
-			headers: { "content-type": "application/json" },
+}
+
+async function readLaunchRun(response: Response, expectedStatus: "completed" | "failed") {
+	expect(response.status, await response.clone().text()).toBe(202);
+	const admission = (await response.json()) as { launchRunId: string };
+	expect(admission.launchRunId).toEqual(expect.any(String));
+	let lastRun: LaunchRun | undefined;
+	try {
+		lastRun = await waitFor(
+			async () => {
+				const runResponse = await fetch(
+					`${new URL(response.url).origin}/api/launch-runs/${admission.launchRunId}`,
+				);
+				expect(runResponse.status).toBe(200);
+				lastRun = ((await runResponse.json()) as { launchRun: LaunchRun }).launchRun;
+				return lastRun;
+			},
+			(run) => ["completed", "failed", "cancelled"].includes(run.status),
+		);
+	} catch (error) {
+		throw new Error(`Launch did not reach its expected outcome: ${JSON.stringify(lastRun)}`, {
+			cause: error,
 		});
 	}
-	let launchRun: LaunchRun;
-	for (;;) {
-		const response = await globalThis.fetch(
-			`${new URL(url).origin}/api/launch-runs/${admittedBody.launchRunId}`,
-		);
-		const body = (await response.json()) as { launchRun: LaunchRun };
-		if (body.launchRun.instanceId || ["failed", "cancelled"].includes(body.launchRun.status)) {
-			launchRun = body.launchRun;
-			break;
-		}
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
-	if (!launchRun.instanceId) {
-		const failure = launchRun.steps.find((step) => step.status === "failed");
-		return new Response(
-			JSON.stringify({
-				errors: [
-					{
-						code: failure?.id ?? "launch_failed",
-						message: failure?.safeSummary ?? "Launch failed",
-					},
-				],
-			}),
-			{ status: 400, headers: { "content-type": "application/json" } },
-		);
-	}
-	const detailResponse = await globalThis.fetch(
+	expect(lastRun.id).toBe(admission.launchRunId);
+	expect(lastRun.status).toBe(expectedStatus);
+	return lastRun;
+}
+
+async function readLaunchProcess(url: string, launchRun: LaunchRun) {
+	expect(launchRun.instanceId).toEqual(expect.any(String));
+	const detailResponse = await fetch(
 		`${new URL(url).origin}/api/processes/${launchRun.instanceId}`,
 	);
-	const detail = (await detailResponse.json()) as {
-		process: unknown;
-		projects?: unknown[];
-	};
-	const failed = launchRun.status === "failed";
-	const failure = launchRun.steps.find((step) => step.status === "failed");
-	return new Response(
-		JSON.stringify({
-			process: detail.process,
-			projects: detail.projects ?? [],
-			...(failed
-				? { error: failure?.safeSummary ?? "Process was created, but startup failed" }
-				: {}),
-		}),
-		{ status: failed ? 200 : 201, headers: { "content-type": "application/json" } },
-	);
+	expect(detailResponse.status).toBe(200);
+	const detail = await detailResponse.json();
+	expect(detail.process.id).toBe(launchRun.instanceId);
+	return detail;
+}
+
+async function readCompletedLaunch(response: Response) {
+	return readLaunchProcess(response.url, await readLaunchRun(response, "completed"));
 }
 
 async function createTitleTestHarness(
@@ -623,7 +605,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("lists UI-visible launchers with model-config schema metadata", async () => {
-		const response = await testFetch(`${harness.address}/api/launchers`);
+		const response = await fetch(`${harness.address}/api/launchers`);
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
@@ -659,7 +641,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("resolves launcher defaults and options", async () => {
-		const defaultsResponse = await testFetch(
+		const defaultsResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/defaults`,
 		);
 		const defaultsBody = await defaultsResponse.json();
@@ -670,7 +652,7 @@ describe("launcher HTTP routes", () => {
 			prompt: "Ship it",
 		});
 
-		const optionsResponse = await testFetch(
+		const optionsResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/options`,
 			{
 				method: "POST",
@@ -689,7 +671,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("does not surface field-validation warnings for incomplete launcher defaults", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.partial_defaults_ui/defaults`,
 		);
 		const body = await response.json();
@@ -700,7 +682,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("prefills launcher-provided model config in launcher defaults", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.prefilled_model_ui/defaults`,
 		);
 		const body = await response.json();
@@ -735,7 +717,7 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(
+			const response = await fetch(
 				`${restrictedHarness.address}/api/launchers/launcher_test_process.prefilled_model_ui/defaults`,
 			);
 			const body = await response.json();
@@ -758,8 +740,8 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("lets launch requests clear a prefilled launcher model config", async () => {
-		const response = await testFetch(
-			`${harness.address}/api/launchers/launcher_test_process.prefilled_model_ui/future-launches`,
+		const response = await submitImmediateLaunch(
+			`${harness.address}/api/launchers/launcher_test_process.prefilled_model_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -773,9 +755,8 @@ describe("launcher HTTP routes", () => {
 				}),
 			},
 		);
-		const body = await response.json();
+		const body = await readCompletedLaunch(response);
 
-		expect(response.status).toBe(201);
 		expect(body.process).toMatchObject({
 			defaultModelProfileId: null,
 			turnConfigsJson: null,
@@ -783,7 +764,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("builds a model preview from launcher input, config defaults, and turn selectors", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/model-config-preview`,
 			{
 				method: "POST",
@@ -827,7 +808,7 @@ describe("launcher HTTP routes", () => {
 				initialModelProfileId: "local_qwen",
 			},
 		};
-		const previewResponse = await testFetch(
+		const previewResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/model-config-preview`,
 			{
 				method: "POST",
@@ -843,16 +824,16 @@ describe("launcher HTTP routes", () => {
 			profile: { id: "local_qwen" },
 		});
 
-		const launchResponse = await testFetch(
-			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+		const launchResponse = await submitImmediateLaunch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify(request),
 			},
 		);
-		const launchBody = await launchResponse.json();
-		expect(launchResponse.status).toBe(201);
+		const launchBody = await readCompletedLaunch(launchResponse);
+
 		expect(launchBody.process.defaultModelProfileId).toBe("local_qwen");
 	});
 
@@ -874,7 +855,7 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(
+			const response = await fetch(
 				`${configuredHarness.address}/api/launchers/launcher_test_process.local_repo_ui/model-config-preview`,
 				{
 					method: "POST",
@@ -913,7 +894,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("treats selected launch-time defaults as instance-level preview inputs", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/model-config-preview`,
 			{
 				method: "POST",
@@ -954,7 +935,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("rejects invalid model-config preview requests", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/model-config-preview`,
 			{
 				method: "POST",
@@ -978,7 +959,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("returns 404 for unknown launcher ids", async () => {
-		const response = await testFetch(`${harness.address}/api/launchers/unknown-launcher/defaults`);
+		const response = await fetch(`${harness.address}/api/launchers/unknown-launcher/defaults`);
 		const body = await response.json();
 
 		expect(response.status).toBe(404);
@@ -986,7 +967,7 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("returns 400 for non-object launcher options input", async () => {
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/options`,
 			{
 				method: "POST",
@@ -1001,8 +982,8 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("rejects mixed flat and wrapped launcher request bodies", async () => {
-		const response = await testFetch(
-			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+		const response = await submitImmediateLaunch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1018,22 +999,22 @@ describe("launcher HTTP routes", () => {
 		expect(body.error).toContain("launcher request body must use");
 	});
 
-	it("returns structured validation errors for invalid launch input", async () => {
-		const response = await testFetch(
-			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+	it("records validation failure for admitted invalid launch input", async () => {
+		const response = await submitImmediateLaunch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
 				body: JSON.stringify({ launcherInput: { prompt: "Ship it" } }),
 			},
 		);
-		const body = await response.json();
+		const launchRun = await readLaunchRun(response, "failed");
 
-		expect(response.status).toBe(400);
-		expect(body.errors).toEqual([
+		expect(launchRun.instanceId).toBeNull();
+		expect(launchRun.steps.filter((step) => step.status === "failed")).toMatchObject([
 			{
-				code: "validate_request",
-				message: "Review the highlighted launcher fields and try again.",
+				id: "validate_request",
+				safeSummary: "Review the highlighted launcher fields and try again.",
 			},
 		]);
 	});
@@ -1054,8 +1035,8 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(
-				`${restrictedHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${restrictedHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1068,20 +1049,22 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const launchRun = await readLaunchRun(response, "failed");
 
-			expect(response.status).toBe(400);
-			expect(body.errors).toHaveLength(1);
-			expect(body.errors[0]).toEqual({
-				code: "resolve_models_skills",
-				message: "Review the launch configuration and try again.",
-			});
+			expect(launchRun.instanceId).toBeNull();
+			expect(launchRun.steps.filter((step) => step.status === "failed")).toMatchObject([
+				{
+					id: "resolve_models_skills",
+					safeSummary: "Review the launch configuration and try again.",
+				},
+			]);
+			expect(restrictedHarness.ctx.deps.processes.listAll()).toEqual([]);
 		} finally {
 			await restrictedHarness.close();
 		}
 	});
 
-	it("rejects disallowed turn-definition models before persisting a started process", async () => {
+	it("rejects disallowed launch-request turn-model overrides before persisting a started process", async () => {
 		const restrictedHarness = await createIntegrationHarness({
 			extensionCatalog: buildExtensionCatalogFromModules([
 				fixedModelLauncherExtension,
@@ -1100,8 +1083,8 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(
-				`${restrictedHarness.address}/api/launchers/fixed_model_launcher_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${restrictedHarness.address}/api/launchers/fixed_model_launcher_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1118,13 +1101,13 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const launchRun = await readLaunchRun(response, "failed");
 
-			expect(response.status).toBe(400);
-			expect(body.errors).toEqual([
+			expect(launchRun.instanceId).toBeNull();
+			expect(launchRun.steps.filter((step) => step.status === "failed")).toMatchObject([
 				{
-					code: "resolve_models_skills",
-					message: "Review the launch configuration and try again.",
+					id: "resolve_models_skills",
+					safeSummary: "Review the launch configuration and try again.",
 				},
 			]);
 			expect(restrictedHarness.ctx.deps.processes.listAll()).toEqual([]);
@@ -1134,8 +1117,8 @@ describe("launcher HTTP routes", () => {
 	});
 
 	it("creates a process instance and projects from a resolved launcher", async () => {
-		const response = await testFetch(
-			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+		const response = await submitImmediateLaunch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
@@ -1148,9 +1131,8 @@ describe("launcher HTTP routes", () => {
 				}),
 			},
 		);
-		const body = await response.json();
+		const body = await readCompletedLaunch(response);
 
-		expect(response.status).toBe(201);
 		expect(body.process).toMatchObject({
 			processId: "launcher_test_process",
 			lifecycleStatus: "discovered",
@@ -1184,7 +1166,7 @@ describe("launcher HTTP routes", () => {
 		expect(persistedProjects).toHaveLength(1);
 		expect(persistedProjects[0]?.metadata).toEqual(expect.objectContaining({ source: "ui" }));
 
-		const detailResponse = await testFetch(`${harness.address}/api/processes/${body.process.id}`);
+		const detailResponse = await fetch(`${harness.address}/api/processes/${body.process.id}`);
 		const detailBody = await detailResponse.json();
 		expect(detailResponse.status).toBe(200);
 		expect(detailBody.launchConfiguration).toMatchObject({
@@ -1211,7 +1193,7 @@ describe("launcher HTTP routes", () => {
 			],
 		});
 
-		const recentsResponse = await testFetch(
+		const recentsResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/recent-values`,
 		);
 		const recentsBody = await recentsResponse.json();
@@ -1222,8 +1204,8 @@ describe("launcher HTTP routes", () => {
 	it("persists a generated process title for immediate launches", async () => {
 		const titledHarness = await createTitleTestHarness("Generated immediate title");
 		try {
-			const response = await testFetch(
-				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1236,9 +1218,8 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const body = await readCompletedLaunch(response);
 
-			expect(response.status).toBe(201);
 			expect([null, "Generated immediate title"]).toContain(body.process.title);
 			await waitFor(
 				() => titledHarness.ctx.deps.processes.getById(body.process.id)?.title,
@@ -1249,39 +1230,11 @@ describe("launcher HTTP routes", () => {
 		}
 	});
 
-	it("keeps an explicitly submitted process title for immediate launches and skips title generation", async () => {
-		const titledHarness = await createTitleTestHarness("Generated immediate title");
-		try {
-			const response = await testFetch(
-				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						title: "Explicit launch title",
-						launcherInput: {
-							repoPath: "/tmp/repo",
-							baseBranch: "develop",
-							prompt: "Implement the change",
-						},
-					}),
-				},
-			);
-			const body = await response.json();
-
-			expect(response.status).toBe(201);
-			expect(body.process.title).toBe("Explicit launch title");
-			expect(titledHarness.getQueueCounts().process).toBe(0);
-		} finally {
-			await titledHarness.close();
-		}
-	});
-
 	it("normalizes explicitly submitted process titles before persistence", async () => {
 		const titledHarness = await createTitleTestHarness("Generated immediate title");
 		try {
-			const response = await testFetch(
-				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1295,11 +1248,9 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const body = await readCompletedLaunch(response);
 
-			expect(response.status).toBe(201);
 			expect(body.process.title).toBe("Explicit launch title");
-			expect(titledHarness.getQueueCounts().process).toBe(0);
 		} finally {
 			await titledHarness.close();
 		}
@@ -1308,8 +1259,8 @@ describe("launcher HTTP routes", () => {
 	it("returns the submitted title in retry config for launched UI processes", async () => {
 		const titledHarness = await createTitleTestHarness("Generated retry title");
 		try {
-			const launchResponse = await testFetch(
-				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const launchResponse = await submitImmediateLaunch(
+				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1323,10 +1274,9 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const launchBody = await launchResponse.json();
-			expect(launchResponse.status).toBe(201);
+			const launchBody = await readCompletedLaunch(launchResponse);
 
-			const retryResponse = await testFetch(
+			const retryResponse = await fetch(
 				`${titledHarness.address}/api/processes/${launchBody.process.id}/retry-config`,
 			);
 			const retryBody = await retryResponse.json();
@@ -1350,7 +1300,7 @@ describe("launcher HTTP routes", () => {
 		const titledHarness = await createTitleTestHarness("Generated scheduled title");
 		try {
 			const runAt = futureIso();
-			const response = await testFetch(
+			const response = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1389,11 +1339,11 @@ describe("launcher HTTP routes", () => {
 		}
 	});
 
-	it("keeps an explicitly submitted process title for scheduled launches and skips title generation", async () => {
+	it("preserves an explicitly submitted title in scheduled launch requests", async () => {
 		const titledHarness = await createTitleTestHarness("Generated scheduled title");
 		try {
 			const runAt = futureIso();
-			const response = await testFetch(
+			const response = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1425,7 +1375,6 @@ describe("launcher HTTP routes", () => {
 							.title
 					: null,
 			).toBe("Explicit scheduled title");
-			expect(titledHarness.getQueueCounts().future).toBe(0);
 		} finally {
 			await titledHarness.close();
 		}
@@ -1435,7 +1384,7 @@ describe("launcher HTTP routes", () => {
 		const titledHarness = await createTitleTestHarness("Generated scheduled title");
 		try {
 			const runAt = futureIso();
-			const response = await testFetch(
+			const response = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1466,8 +1415,9 @@ describe("launcher HTTP routes", () => {
 			expect(body.futureExecution.launchTitle?.length).toBeLessThanOrEqual(
 				MAX_PROCESS_TITLE_LENGTH,
 			);
+			expect(storedTitle).toContain("Explicit scheduled title that keeps rambling");
+			expect(body.futureExecution.launchTitle).toBe(storedTitle);
 			expect(storedTitle?.length).toBeLessThanOrEqual(MAX_PROCESS_TITLE_LENGTH);
-			expect(titledHarness.getQueueCounts().future).toBe(0);
 		} finally {
 			await titledHarness.close();
 		}
@@ -1477,7 +1427,7 @@ describe("launcher HTTP routes", () => {
 		const initialProcessCount = harness.ctx.deps.processes.listAll().length;
 		const initialFutureCount = harness.ctx.deps.futureExecutions.listAll().length;
 		const runAt = futureIso();
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 			{
 				method: "POST",
@@ -1510,7 +1460,7 @@ describe("launcher HTTP routes", () => {
 	it("rejects unknown schedule modes instead of treating them as immediate launches", async () => {
 		const initialProcessCount = harness.ctx.deps.processes.listAll().length;
 		const initialFutureCount = harness.ctx.deps.futureExecutions.listAll().length;
-		const response = await testFetch(
+		const response = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 			{
 				method: "POST",
@@ -1548,7 +1498,7 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(`${harness.address}/api/processes`);
+			const response = await fetch(`${harness.address}/api/processes`);
 			const body = await response.json();
 
 			expect(response.status).toBe(200);
@@ -1567,8 +1517,11 @@ describe("launcher HTTP routes", () => {
 		}
 	});
 
-	it("previews the next cron run in UTC", async () => {
-		const response = await testFetch(`${harness.address}/api/future-executions/cron-preview`, {
+	it("previews the next weekday cron run in UTC after Friday's occurrence", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		onTestFinished(() => vi.useRealTimers());
+		vi.setSystemTime("2026-04-24T10:00:00.000Z");
+		const response = await fetch(`${harness.address}/api/future-executions/cron-preview`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
 			body: JSON.stringify({ expression: "0 9 * * 1-5" }),
@@ -1576,13 +1529,13 @@ describe("launcher HTTP routes", () => {
 		const body = await response.json();
 
 		expect(response.status).toBe(200);
-		expect(body.nextRunAt).toEqual(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T09:00:00\.000Z$/));
+		expect(body.nextRunAt).toBe("2026-04-27T09:00:00.000Z");
 	});
 
 	it("keeps the existing schedule when updating a scheduled launch without resubmitting schedule", async () => {
 		const initialProcessCount = harness.ctx.deps.processes.listAll().length;
 		const runAt = futureIso();
-		const scheduledResponse = await testFetch(
+		const scheduledResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 			{
 				method: "POST",
@@ -1602,7 +1555,7 @@ describe("launcher HTTP routes", () => {
 		const scheduledBody = await scheduledResponse.json();
 		expect(scheduledResponse.status).toBe(201);
 
-		const updateResponse = await testFetch(
+		const updateResponse = await fetch(
 			`${harness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 			{
 				method: "PUT",
@@ -1623,13 +1576,18 @@ describe("launcher HTTP routes", () => {
 			nextRunAt: runAt,
 			scheduleKind: "once",
 		});
+		const retained = harness.ctx.deps.futureExecutions.getById(scheduledBody.futureExecution.id);
+		expect(parseFutureLaunchPayloadOrThrow(retained?.payloadJson ?? "").launcherInput).toEqual({
+			repoPath: "/tmp/updated-scheduled-repo",
+			prompt: "Implement later with edits",
+		});
 		expect(harness.ctx.deps.processes.listAll()).toHaveLength(initialProcessCount);
 	});
 
 	it("keeps the submitted title when updating only the schedule", async () => {
 		const titledHarness = await createTitleTestHarness("Generated scheduled title");
 		try {
-			const scheduledResponse = await testFetch(
+			const scheduledResponse = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1661,7 +1619,7 @@ describe("launcher HTTP routes", () => {
 			);
 
 			const updatedRunAt = futureIso(48 * 60);
-			const updateResponse = await testFetch(
+			const updateResponse = await fetch(
 				`${titledHarness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 				{
 					method: "PUT",
@@ -1697,7 +1655,7 @@ describe("launcher HTTP routes", () => {
 			(launchPlan) => `Generated: ${launchPlan.titleSourceFields?.[0]?.value ?? "missing"}`,
 		);
 		try {
-			const scheduledResponse = await testFetch(
+			const scheduledResponse = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1728,7 +1686,7 @@ describe("launcher HTTP routes", () => {
 				(value) => value === "Generated: Original prompt",
 			);
 
-			const updateResponse = await testFetch(
+			const updateResponse = await fetch(
 				`${titledHarness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 				{
 					method: "PUT",
@@ -1777,7 +1735,7 @@ describe("launcher HTTP routes", () => {
 
 	it("uses the stored launcher payload when a scheduled launch is run now without resubmitting fields", async () => {
 		const runAt = futureIso();
-		const scheduledResponse = await testFetch(
+		const scheduledResponse = await fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 			{
 				method: "POST",
@@ -1789,7 +1747,7 @@ describe("launcher HTTP routes", () => {
 						baseBranch: "develop",
 					},
 					modelConfig: {
-						defaultModelProfileId: harness.ctx.config.pi.model_profiles[0]?.id ?? undefined,
+						defaultModelProfileId: "local_qwen",
 					},
 					schedule: {
 						mode: "once",
@@ -1801,7 +1759,7 @@ describe("launcher HTTP routes", () => {
 		const scheduledBody = await scheduledResponse.json();
 		expect(scheduledResponse.status).toBe(201);
 
-		const runNowResponse = await testFetch(
+		const runNowResponse = await fetch(
 			`${harness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 			{
 				method: "PUT",
@@ -1812,7 +1770,17 @@ describe("launcher HTTP routes", () => {
 		const runNowBody = await runNowResponse.json();
 
 		expect(runNowResponse.status).toBe(200);
-		expect(runNowBody.process).toMatchObject({ processId: "launcher_test_process" });
+		expect(runNowBody.process).toMatchObject({
+			processId: "launcher_test_process",
+			defaultModelProfileId: "local_qwen",
+		});
+		expect(
+			JSON.parse(harness.ctx.deps.processes.getById(runNowBody.process.id)?.paramsJson ?? "{}"),
+		).toMatchObject({
+			prompt: "Use the original payload",
+			repoPath: "/tmp/repo-run-now-from-stored-payload",
+			baseBranch: "develop",
+		});
 		expect(runNowBody.projects).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({
@@ -1829,7 +1797,7 @@ describe("launcher HTTP routes", () => {
 			(launchPlan) => `Generated: ${launchPlan.titleSourceFields?.[0]?.value ?? "missing"}`,
 		);
 		try {
-			const scheduledResponse = await testFetch(
+			const scheduledResponse = await fetch(
 				`${titledHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1860,7 +1828,7 @@ describe("launcher HTTP routes", () => {
 				(value) => value === "Generated: Original prompt",
 			);
 
-			const runNowResponse = await testFetch(
+			const runNowResponse = await fetch(
 				`${titledHarness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 				{
 					method: "PUT",
@@ -1906,7 +1874,7 @@ describe("launcher HTTP routes", () => {
 
 		try {
 			const runAt = futureIso();
-			const scheduledResponse = await testFetch(
+			const scheduledResponse = await fetch(
 				`${failingHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
 				{
 					method: "POST",
@@ -1927,7 +1895,7 @@ describe("launcher HTTP routes", () => {
 			const scheduledBody = await scheduledResponse.json();
 			expect(scheduledResponse.status).toBe(201);
 
-			const runNowResponse = await testFetch(
+			const runNowResponse = await fetch(
 				`${failingHarness.address}/api/future-executions/${scheduledBody.futureExecution.id}/launch`,
 				{
 					method: "PUT",
@@ -1944,7 +1912,11 @@ describe("launcher HTTP routes", () => {
 			);
 			const runNowBody = await runNowResponse.json();
 			expect(runNowResponse.status).toBe(200);
-			expect(runNowBody.process).toMatchObject({ processId: "launcher_test_process" });
+			expect(runNowBody.process.processId).toBe("launcher_test_process");
+			await waitFor(
+				() => failingHarness.ctx.deps.processes.getById(runNowBody.process.id)?.lifecycleStatus,
+				(status) => status === "error",
+			);
 			expect(
 				failingHarness.ctx.deps.futureExecutions.getById(scheduledBody.futureExecution.id),
 			).toBeNull();
@@ -1953,7 +1925,7 @@ describe("launcher HTTP routes", () => {
 		}
 	});
 
-	it("returns partial-success failure details when process creation succeeds but worker start fails", async () => {
+	it("retains the process and failed launch step when worker start fails after admission", async () => {
 		const failingSpawn = (() => {
 			throw new Error("spawn failed intentionally");
 		}) as typeof spawn;
@@ -1965,8 +1937,8 @@ describe("launcher HTTP routes", () => {
 		});
 
 		try {
-			const response = await testFetch(
-				`${failingHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${failingHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -1979,12 +1951,12 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const launchRun = await readLaunchRun(response, "failed");
+			const body = await readLaunchProcess(response.url, launchRun);
 
-			expect(response.status).toBe(200);
-			expect(body.error).toBe(
-				"Process was created, but the worker could not be started cleanly. Review the process error and retry startup.",
-			);
+			expect(launchRun.steps.filter((step) => step.status === "failed")).toMatchObject([
+				{ id: "start_worker" },
+			]);
 			expect(body.process).toMatchObject({
 				processId: "launcher_test_process",
 				selectedTurnId: "launcher_plan_turn",
@@ -2044,8 +2016,8 @@ describe("launcher HTTP routes", () => {
 				configOverride: applyLauncherModelConfig,
 			});
 			const { ctx } = startHarness;
-			const response = await testFetch(
-				`${startHarness.address}/api/launchers/launcher_test_process.local_repo_ui/future-launches`,
+			const response = await submitImmediateLaunch(
+				`${startHarness.address}/api/launchers/launcher_test_process.local_repo_ui/launch-runs`,
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -2058,9 +2030,8 @@ describe("launcher HTTP routes", () => {
 					}),
 				},
 			);
-			const body = await response.json();
+			const body = await readCompletedLaunch(response);
 
-			expect(response.status).toBe(201);
 			expect(body.process).toMatchObject({
 				processId: "launcher_test_process",
 			});

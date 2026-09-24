@@ -92,10 +92,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-	if (harness) {
-		await harness.close();
+	try {
+		await harness?.close();
+	} finally {
+		if (tempRoot) rmSync(tempRoot, { recursive: true, force: true });
 	}
-	rmSync(tempRoot, { recursive: true, force: true });
 });
 
 function requireHarness(): IntegrationHarness {

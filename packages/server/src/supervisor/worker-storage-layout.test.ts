@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import {
 	createLocalWorkerStorageLayout,
@@ -13,6 +13,7 @@ import {
 describe("local worker storage layout", () => {
 	it("uses server-owned workspace and tree directories and creates the workspace", () => {
 		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-storage-layout-"));
+		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 		const layout = createLocalWorkerStorageLayout({
 			processWorkspacesDir: path.join(root, "workspaces"),
 			treeFilesDir: path.join(root, "trees"),
@@ -37,6 +38,7 @@ describe("local worker storage layout", () => {
 
 	it("marks local starts as resumable when a server snapshot already exists", () => {
 		const root = mkdtempSync(path.join(tmpdir(), "leitwerk-storage-layout-"));
+		onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 		const treeFile = path.join(root, "trees", "agt_1.jsonl");
 		mkdirSync(path.dirname(treeFile), { recursive: true });
 		writeFileSync(treeFile, "{}\n", "utf8");

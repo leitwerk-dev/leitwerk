@@ -1,6 +1,6 @@
 import { type LaunchRun, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { type ProcessLaunchPlan, SafeLaunchPreparationError } from "@leitwerk-dev/process-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
 	createCoordinatorHarness,
 	createWatcherHarness,
@@ -199,8 +199,9 @@ describe("LaunchCoordinator reconciliation", () => {
 		await harness.coordinator.reconcileIncomplete();
 
 		expect(harness.commitPreparedLaunch).toHaveBeenCalledOnce();
+		expect(harness.repos.processes.listAll()).toHaveLength(1);
 		expect(harness.repos.launchRuns.getById(run.id)).toMatchObject({
-			instanceId: expect.stringMatching(/^agt_/),
+			instanceId: harness.repos.processes.listAll()[0]?.id,
 			status: "completed",
 		});
 		expect(harness.repos.launchRuns.getReplay(run.id)).toBeNull();
@@ -472,6 +473,7 @@ describe("LaunchCoordinator reconciliation", () => {
 
 		await coordinator.reconcileIncomplete();
 
+		expect(repos.launchRuns.getById(expectedId as string)).toMatchObject({ id: expectedId });
 		expect(repos.launchRuns.getById(expectedId as string)?.status).not.toBe("cancelled");
 		expect(
 			duplicates.filter(
@@ -483,8 +485,12 @@ describe("LaunchCoordinator reconciliation", () => {
 	});
 
 	it("prefers the latest startup retry over newer non-retry runs", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		onTestFinished(() => vi.useRealTimers());
+		vi.setSystemTime("2026-01-01T00:00:00.000Z");
 		const { coordinator, process, repos } = createWatcherHarness();
 		const retry = await coordinator.retryStartup(process.id, SYSTEM_ACTOR);
+		vi.setSystemTime("2026-01-01T00:00:01.000Z");
 		const newer = repos.launchRuns.create({
 			launcherId: "demo.ui",
 			origin: "ui",
@@ -498,6 +504,10 @@ describe("LaunchCoordinator reconciliation", () => {
 
 		await coordinator.reconcileIncomplete();
 
+		expect(repos.launchRuns.getById(retry.launchRunId)).toMatchObject({
+			createdAt: "2026-01-01T00:00:00.000Z",
+		});
+		expect(newer.createdAt).toBe("2026-01-01T00:00:01.000Z");
 		expect(repos.launchRuns.getById(retry.launchRunId)?.status).not.toBe("cancelled");
 		expect(repos.launchRuns.getById(newer.id)?.status).toBe("cancelled");
 	});

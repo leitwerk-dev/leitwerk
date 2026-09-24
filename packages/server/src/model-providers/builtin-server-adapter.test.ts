@@ -45,8 +45,16 @@ describe("built-in Pi server adapter", () => {
 		).toBe("Generated title");
 		expect(completeSimple).toHaveBeenCalledWith(
 			{ ...model, baseUrl: "https://gateway.example.com/v1" },
-			expect.any(Object),
-			expect.objectContaining({ apiKey: "secret" }),
+			{
+				systemPrompt: "Return a title",
+				messages: [{ role: "user", content: "Name this process", timestamp: expect.any(Number) }],
+			},
+			expect.objectContaining({
+				apiKey: "secret",
+				maxTokens: 32,
+				reasoning: "high",
+				maxRetryDelayMs: 1_000,
+			}),
 		);
 	});
 

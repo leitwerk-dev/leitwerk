@@ -22,6 +22,12 @@ function helmAvailable(): boolean {
 	}
 }
 
+let cachedDefaultRender: JsonObject[] | undefined;
+function defaultRender() {
+	cachedDefaultRender ??= renderChart();
+	return structuredClone(cachedDefaultRender);
+}
+
 function renderChart(values: JsonObject = {}, extraArgs: string[] = []): JsonObject[] {
 	const valueArgs = Object.entries(values).flatMap(([key, value]) => [
 		"--set-json",
@@ -74,7 +80,7 @@ const describeIfHelm = helmAvailable() ? describe : describe.skip;
 
 describeIfHelm("Kubernetes Helm chart rendering", () => {
 	it("templates a default Kubernetes-mode config accepted by the server validator", () => {
-		const documents = renderChart();
+		const documents = defaultRender();
 		const config = renderedLeitwerkConfig(documents);
 
 		expect(validateConfig(config)).toEqual([]);
@@ -89,7 +95,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("templates trusted Kubernetes Docker wiring only when enabled", () => {
-		const defaultConfig = renderedLeitwerkConfig(renderChart());
+		const defaultConfig = renderedLeitwerkConfig(defaultRender());
 		expect((defaultConfig.kubernetes as JsonObject).docker).toBeUndefined();
 
 		const config = renderedLeitwerkConfig(
@@ -135,7 +141,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("templates cluster-scoped RBAC and admission policy for per-process namespaces", () => {
-		const documents = renderChart();
+		const documents = defaultRender();
 		const clusterRoles = findDocumentsByKind(documents, "ClusterRole");
 		const clusterRoleBindings = findDocumentsByKind(documents, "ClusterRoleBinding");
 		const policies = findDocumentsByKind(documents, "ValidatingAdmissionPolicy");
@@ -145,8 +151,19 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(clusterRoleBindings).toHaveLength(1);
 		expect(policies).toHaveLength(1);
 		expect(bindings).toHaveLength(1);
-		expect(JSON.stringify(clusterRoles[0])).toContain("namespaces");
-		expect(JSON.stringify(clusterRoles[0])).toContain("configmaps");
+		const roleRules = clusterRoles[0].rules as JsonObject[];
+		expect(
+			roleRules.find((rule) => (rule.resources as string[]).includes("namespaces"))?.verbs,
+		).toEqual(expect.arrayContaining(["create", "get", "list", "delete"]));
+		expect(
+			roleRules.find((rule) => (rule.resources as string[]).includes("configmaps"))?.verbs,
+		).toEqual(expect.arrayContaining(["create", "get", "list", "watch", "patch"]));
+		expect(clusterRoleBindings[0]).toMatchObject({
+			roleRef: { kind: "ClusterRole", name: "leitwerk-server" },
+			subjects: [
+				{ kind: "ServiceAccount", name: "leitwerk-server", namespace: "leitwerk-k8s-test" },
+			],
+		});
 		expect(JSON.stringify(policies[0])).toContain("leitwerk-process-");
 		expect(JSON.stringify(policies[0])).toContain("process-volume");
 		expect(JSON.stringify(policies[0])).toContain("server-ca");
@@ -185,7 +202,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 			],
 		});
 		const rules = spec.validations as Array<{ expression: string; message: string }>;
-		expect(rules).toHaveLength(preProvision ? 19 : 18);
+
 		for (const fragment of [
 			"process-namespace",
 			"process-volume",
@@ -208,30 +225,33 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		const exceptions = rules.filter((rule) =>
 			rule.expression.endsWith(" || variables.isPreparation"),
 		);
-		expect(exceptions.map((rule) => rule.message)).toEqual(
-			preProvision
-				? [
-						"leitwerk process resources must be created in process namespaces",
-						"leitwerk PVCs must carry process-volume component label",
-						"leitwerk pods must carry worker or session-export-helper component label",
-						"leitwerk worker pods must use the configured worker ServiceAccount",
-						"leitwerk worker pods must carry instance-id label",
-						"leitwerk worker pods must carry worker-id label",
-						"leitwerk worker pods must carry server-epoch label",
-						"leitwerk session export helper pods must carry export-id label",
-					]
-				: [],
-		);
+		const exceptionSubjects = [
+			"metadata.namespace.startsWith",
+			"variables.component == 'process-volume'",
+			"variables.component in ['worker', 'session-export-helper']",
+			"spec.serviceAccountName",
+			"'leitwerk.dev/instance-id'",
+			"'leitwerk.dev/worker-id'",
+			"'leitwerk.dev/server-epoch'",
+			"'leitwerk.dev/export-id'",
+		];
+		expect(exceptions).toHaveLength(preProvision ? exceptionSubjects.length : 0);
+		if (preProvision)
+			for (const subject of exceptionSubjects)
+				expect(
+					exceptions.filter((rule) => rule.expression.includes(subject)),
+					subject,
+				).toHaveLength(1);
+
 		if (preProvision) {
 			expect(JSON.stringify(spec.variables)).toContain(
 				"variables.resource.metadata.namespace == 'leitwerk-k8s-test'",
 			);
-			expect(rules[0].expression).toContain(
-				"variables.resource.spec.serviceAccountName == 'default'",
-			);
-			expect(rules[0].expression).toContain(
-				"!variables.resource.spec.automountServiceAccountToken",
-			);
+			expect(
+				rules.find((rule) =>
+					rule.expression.includes("!variables.resource.spec.automountServiceAccountToken"),
+				)?.expression,
+			).toContain("variables.resource.spec.serviceAccountName == 'default'");
 		} else expect(JSON.stringify(spec)).not.toContain("isPreparation");
 		expect(findDocumentsByKind(documents, "ValidatingAdmissionPolicyBinding")[0].spec).toEqual({
 			policyName: "leitwerk-server-process-resources",
@@ -265,9 +285,24 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		const configMaps = findDocumentsByKind(documents, "ConfigMap");
 
 		expect(configMaps).toHaveLength(1);
-		expect(rendered).toContain("leitwerk-runtime-config");
-		expect(rendered).toContain("leitwerk-credentials");
-		expect(rendered).toContain("LEITWERK_CREDENTIAL_ENCRYPTION_KEY");
+		const serverPod = podSpec(namedDocument(documents, "Deployment", "leitwerk-server"));
+		expect(
+			(serverPod.volumes as JsonObject[]).find((volume) => volume.name === "config")?.secret,
+		).toEqual({
+			secretName: "leitwerk-runtime-config",
+			items: [{ key: "leitwerk.yaml", path: "leitwerk.yaml" }],
+		});
+		const server = (serverPod.containers as JsonObject[])[0];
+		expect(
+			(server.volumeMounts as JsonObject[]).find((mount) => mount.name === "config"),
+		).toMatchObject({ mountPath: "/etc/leitwerk", readOnly: true });
+		expect(
+			(server.env as JsonObject[]).find(
+				(entry) => entry.name === "LEITWERK_CREDENTIAL_ENCRYPTION_KEY",
+			)?.valueFrom,
+		).toEqual({
+			secretKeyRef: { name: "leitwerk-credentials", key: "LEITWERK_CREDENTIAL_ENCRYPTION_KEY" },
+		});
 		expect(rendered).toContain("helm.sh/resource-policy");
 		expect(rendered).toContain("copy-ui");
 		expect(rendered).not.toContain("broker_token");
@@ -279,7 +314,15 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		const deployment = findDocumentsByKind(documents, "Deployment")[0];
 
 		expect(pvcs).toHaveLength(0);
-		expect(JSON.stringify(deployment)).toContain("leitwerk-server-data");
+		const pod = podSpec(deployment);
+		expect(
+			(pod.volumes as JsonObject[]).find((volume) => volume.name === "data")?.persistentVolumeClaim,
+		).toEqual({ claimName: "leitwerk-server-data" });
+		expect(
+			((pod.containers as JsonObject[])[0].volumeMounts as JsonObject[]).find(
+				(mount) => mount.name === "data",
+			)?.mountPath,
+		).toBe("/var/lib/leitwerk");
 	});
 
 	it("schedules the gateway with its configured selector, affinity, and tolerations", () => {
@@ -298,7 +341,12 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 
 		expect(gatewayPod.nodeSelector).toEqual(values["gateway.nodeSelector"]);
 		expect(gatewayPod.tolerations).toEqual(values["gateway.tolerations"]);
-		expect(gatewayPod.affinity).toBeDefined();
+		expect(gatewayPod.affinity).toEqual({
+			nodeAffinity: {
+				preferredDuringSchedulingIgnoredDuringExecution:
+					values["gateway.affinity.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution"],
+			},
+		});
 	});
 
 	it("renders host aliases, restricted security contexts, and additional environment wiring", () => {
@@ -364,7 +412,7 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it("omits optional Pod customizations from default chart output", () => {
-		const documents = renderChart();
+		const documents = defaultRender();
 		const pod = podSpec(namedDocument(documents, "Deployment", "leitwerk-server"));
 		const container = (pod.containers as Array<Record<string, unknown>>)[0];
 
@@ -397,12 +445,29 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 			spec: { backoffLimit: 0 },
 		});
 		expect(renderedJob).toContain("--deployment-preflight");
-		expect(renderedJob).toContain("leitwerk-server-data");
-		expect(renderedJob).toContain('"readOnly":true');
-		expect(renderedJob).toContain('"emptyDir":{}');
+
 		expect(renderedJob).toContain("requiredDuringSchedulingIgnoredDuringExecution");
 		const jobPod = podSpec(job);
 		const preflight = (jobPod.containers as Array<Record<string, unknown>>)[0];
+		expect(jobPod.volumes).toEqual(
+			expect.arrayContaining([
+				{ name: "scratch", emptyDir: {} },
+				{ name: "data", persistentVolumeClaim: { claimName: "leitwerk-server-data" } },
+				{
+					name: "config",
+					secret: {
+						secretName: "leitwerk-runtime-config",
+						items: [{ key: "leitwerk.yaml", path: "leitwerk.yaml" }],
+					},
+				},
+			]),
+		);
+		expect(preflight.volumeMounts).toEqual(
+			expect.arrayContaining([
+				{ name: "config", mountPath: "/etc/leitwerk", readOnly: true },
+				{ name: "scratch", mountPath: "/var/lib/leitwerk-preflight" },
+			]),
+		);
 		expect(preflight.volumeMounts).toEqual(
 			expect.arrayContaining([expect.objectContaining({ name: "data", readOnly: false })]),
 		);

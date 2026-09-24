@@ -1,5 +1,5 @@
 import Fastify from "fastify";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import type { SkillCatalogService } from "../skills/catalog-service.js";
 import { registerSkillRoutes } from "./skills.js";
 
@@ -17,6 +17,7 @@ function service(): SkillCatalogService {
 describe("skill routes", () => {
 	it("uses separate remote and installed resources", async () => {
 		const app = Fastify({ logger: false });
+		onTestFinished(() => app.close());
 		const catalog = service();
 		registerSkillRoutes(app, { skillCatalog: catalog });
 
@@ -36,11 +37,11 @@ describe("skill routes", () => {
 		expect(catalog.register).toHaveBeenCalledWith("shared", "review");
 		expect(remove.statusCode).toBe(204);
 		expect(catalog.remove).toHaveBeenCalledWith("review");
-		await app.close();
 	});
 
-	it("returns conflicts for ambiguous or configuration-managed registration", async () => {
+	it("returns conflicts for configuration-managed registration", async () => {
 		const app = Fastify({ logger: false });
+		onTestFinished(() => app.close());
 		const catalog = service();
 		vi.mocked(catalog.register).mockImplementation(() => {
 			throw new Error("Skill 'review' is managed by configuration");
@@ -53,6 +54,5 @@ describe("skill routes", () => {
 		});
 
 		expect(response.statusCode).toBe(409);
-		await app.close();
 	});
 });

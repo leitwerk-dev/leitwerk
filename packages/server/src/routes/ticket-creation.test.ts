@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import { createProcessEngine } from "../process-engine/engine.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { createToolApprovalGate } from "../tool-approval-gate.js";
 import type { RouteDeps } from "./process-route-helpers.js";
 import { registerTicketCreationRoutes } from "./ticket-creation.js";
@@ -198,6 +198,10 @@ describe("ticket creation routes", () => {
 		const params = JSON.parse(launchPlan.processInput.paramsJson);
 		expect(launchPlan.processInput.metadata).toEqual({
 			_leitwerk: { requiresExternalReceipt: true },
+		});
+		expect(params.context).toMatchObject({
+			focusedResult: "Durable result",
+			additionalInstructions: "Create an issue for the mobile composer",
 		});
 		expect(params.ticketDestination).toBeUndefined();
 		expect(params.ticketDestinations).toEqual([{ id: "repo-1", displayName: "team/repo" }]);

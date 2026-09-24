@@ -2,8 +2,11 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { closeDatabase, createDatabase, initializeSchema } from "./database.js";
+import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
+import { closeDatabase, initializeSchema } from "./database.js";
 import { createAllRepos } from "./repositories.js";
+
+const { createDatabase, closeOwnedSqlite } = createOwnedDatabaseScope();
 
 function makeLegacy(db: ReturnType<typeof createDatabase>) {
 	db.$client.exec(`DROP TABLE turn_summaries; DROP TABLE session_summaries;
@@ -65,6 +68,10 @@ describe("reasoning summary migration", () => {
 			});
 			expect(third.eventSequence).toBe(3);
 			const summary = repos.turnSummaries.get("turn");
+			expect(summary).toMatchObject({
+				throughEventSequence: 3,
+				usage: { input: 7, output: 3, totalTokens: 10 },
+			});
 			closeDatabase(db);
 			db = createDatabase({ sqlitePath });
 			expect(createAllRepos(db).turnSummaries.get("turn")).toEqual(summary);
@@ -72,6 +79,7 @@ describe("reasoning summary migration", () => {
 				expect(readdirSync(join(root, "backups")).some((name) => name.endsWith(".bak"))).toBe(true);
 			closeDatabase(db);
 		} finally {
+			closeOwnedSqlite();
 			rmSync(root, { recursive: true, force: true });
 		}
 	});

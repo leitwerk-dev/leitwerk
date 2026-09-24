@@ -99,20 +99,21 @@ describe("Pi resource snapshot assembly", () => {
 		);
 		const files = extractedFiles(assembled.bundle.bytes);
 
-		expect([...files.keys()]).toEqual([
-			"APPEND_SYSTEM.md",
-			"SYSTEM.md",
-			"extensions/000-first.js",
-			"extensions/020-last.js",
-			"generated.json",
-			"models.json",
-			"prompts/explain.md",
-			"settings.json",
-			"skills/review/SKILL.md",
-			"skills/review/references/rules.md",
-		]);
+		expect(
+			Object.fromEntries([...files].map(([name, bytes]) => [name, Buffer.from(bytes).toString()])),
+		).toEqual({
+			"APPEND_SYSTEM.md": "Append prompt",
+			"SYSTEM.md": "System prompt",
+			"extensions/000-first.js": expect.any(String),
+			"extensions/020-last.js": expect.any(String),
+			"generated.json": expect.any(String),
+			"models.json": expect.any(String),
+			"prompts/explain.md": "Explain {{topic}}\n",
+			"settings.json": expect.any(String),
+			"skills/review/SKILL.md": "# Review\n",
+			"skills/review/references/rules.md": "Rules\n",
+		});
 		const firstWrapper = Buffer.from(files.get("extensions/000-first.js") ?? []).toString();
-		expect(firstWrapper).toContain("as default}");
 		expect(firstWrapper).toContain("generated.json");
 		expect(firstWrapper).not.toContain("@leitwerk-dev/process-sdk");
 		expect(JSON.parse(Buffer.from(files.get("settings.json") ?? []).toString())).toEqual({
@@ -195,7 +196,7 @@ describe("Pi resource snapshot assembly", () => {
 		).rejects.toThrow(/content digest mismatch/);
 	});
 
-	it("produces identical bytes regardless of JSON key and directory creation order", async () => {
+	it("produces identical bytes when JSON settings key order changes", async () => {
 		const root = await tempDirectory();
 		const prompts = path.join(root, "prompts");
 		await mkdir(prompts);
@@ -250,7 +251,7 @@ describe("Pi resource snapshot assembly", () => {
 		const entry = path.join(root, "pi-worker.ts");
 		await writeFile(
 			entry,
-			`export default (pi, ctx) => pi.events.emit("contribution", { model: ctx.model, option: ctx.options.account, config: ctx.workerConfig.endpoint, secret: ctx.secrets.require("token") });`,
+			`export default (pi, ctx) => pi.events.emit("contribution", { model: ctx.model, option: ctx.options.preferredAccount, config: ctx.workerConfig.endpoint, secret: ctx.secrets.require("token") });`,
 		);
 		const assembled = await assemblePiResourceSnapshot(
 			assemblyInput([contribution({ owner: "provider", workerEntryPath: entry })]),
@@ -273,7 +274,7 @@ describe("Pi resource snapshot assembly", () => {
 		expect(events).toEqual([
 			{
 				model: { providerId: "provider", modelId: "model" },
-				option: undefined,
+				option: "team",
 				config: "https://provider.invalid",
 				secret: "secret",
 			},

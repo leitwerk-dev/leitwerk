@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTestIpcHandler } from "../test-helpers/ipc-handler-harness.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
+import { createOwnedTestDeps as createTestDeps } from "../test-helpers/owned-test-deps.js";
 import { startStaleHeartbeatWatchdog } from "./stale-heartbeat-watchdog.js";
 
 function flushAsyncWork() {
@@ -232,16 +232,17 @@ describe("startStaleHeartbeatWatchdog", () => {
 		await flushAsyncWork();
 
 		expect(deps.leases.getByInstance(process.id)?.state).toBe("failed");
-		expect(kill).toHaveBeenCalled();
-		expect(
-			frames.some(
-				(frame) =>
-					typeof frame === "object" &&
-					frame !== null &&
-					"type" in frame &&
-					(frame as { type?: string }).type === "process.toast",
-			),
-		).toBe(true);
+		expect(deps.processes.getById(process.id)).toMatchObject({
+			lifecycleStatus: "error",
+			selectedTurnId: "generate_plan",
+		});
+		expect(kill).toHaveBeenCalledOnce();
+		expect(frames).toContainEqual(
+			expect.objectContaining({
+				type: "process.toast",
+				instanceId: process.id,
+			}),
+		);
 		watchdog.stop();
 	});
 });
