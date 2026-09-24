@@ -24,7 +24,10 @@ describe("WoodpeckerClient", () => {
 		).toThrow(/HTTPS/);
 	});
 
-	it("bounds step logs by lines and UTF-8 bytes", async () => {
+	it.each([
+		[100, "line\n🙂🙂🙂"],
+		[9, "🙂🙂"],
+	] as const)("bounds step logs by lines and UTF-8 bytes (maxBytes: %i)", async (maxBytes, logs) => {
 		const encode = (value: string) => btoa(String.fromCharCode(...new TextEncoder().encode(value)));
 		vi.stubGlobal(
 			"fetch",
@@ -41,10 +44,7 @@ describe("WoodpeckerClient", () => {
 			token: "token",
 		});
 
-		const result = await client.getStepLogs(4, 12, 7, 2, 9);
-
-		expect(result.logs).toBe("🙂🙂");
-		expect(result.truncated).toBe(true);
+		expect(await client.getStepLogs(4, 12, 7, 2, maxBytes)).toEqual({ logs, truncated: true });
 	});
 
 	it("uses the Woodpecker 3 pipeline restart endpoint", async () => {
