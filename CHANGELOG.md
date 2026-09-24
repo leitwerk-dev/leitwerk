@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.2.1...v0.3.0) (2026-09-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **coding:** add GitHub and GitLab repository change flows ([#97](https://github.com/leitwerk-dev/leitwerk/issues/97))
+
+### Features
+
+* **coding:** add GitHub and GitLab repository change flows ([#97](https://github.com/leitwerk-dev/leitwerk/issues/97)) ([7b8efa7](https://github.com/leitwerk-dev/leitwerk/commit/7b8efa7d7bd0d2cbddf6427b2f4d365934b23858))
+* support gVisor Docker and GitLab repair workflows ([#103](https://github.com/leitwerk-dev/leitwerk/issues/103)) ([fd799eb](https://github.com/leitwerk-dev/leitwerk/commit/fd799eb65527564efc1a5cb3bdffe409354a5e7b))
+
+
+### Bug Fixes
+
+* **ci:** make npm bootstrap trust checks idempotent ([8b395c8](https://github.com/leitwerk-dev/leitwerk/commit/8b395c84368230173a6497652a5d1f80bc7ab1c2))
+
 ## [0.2.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.2.0...v0.2.1) (2026-09-21)
 
 
