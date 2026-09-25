@@ -41,6 +41,8 @@ import type {
 	ProcessDiagnosticsResponseBody,
 	ProcessesOverviewResponseBody,
 	ProcessLaunchRunsResponseBody,
+	ProcessModelConfigPatch,
+	ProcessModelConfigResponseBody,
 	ProcessOverviewItem,
 	ProcessRetryConfig,
 	ProcessRetryConfigResponseBody,
@@ -870,4 +872,17 @@ export async function fetchExecutionInspection<S extends keyof InspectionSection
 				: `Couldn't load ${section}: ${response.status}`,
 		);
 	return readJsonObject<InspectionSections[S]>(response, "Malformed inspection response");
+}
+
+export async function updateProcessModelConfig(
+	instanceId: string,
+	patch: ProcessModelConfigPatch,
+	preview = false,
+) {
+	return requestStatusJson<ProcessModelConfigResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/model-config${preview ? "/preview" : ""}`,
+		preview ? "Couldn't preview model settings" : "Couldn't save model settings",
+		"Malformed model configuration response",
+		jsonRequestInit(preview ? "POST" : "PATCH", patch),
+	);
 }

@@ -35,6 +35,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 	availability: ModelStatusCacheSnapshot;
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
 	profileIds?: ReadonlySet<string>;
+	instanceId?: string;
 	broadcaster: Broadcaster;
 	processTitles?: ProcessTitleGenerator;
 	asOf: string;
@@ -42,6 +43,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 	let changed = 0;
 	const effects: PostCommitEffect[] = [];
 	for (const candidate of input.futureExecutions.listAll()) {
+		if (input.instanceId && candidate.instanceId !== input.instanceId) continue;
 		if (
 			candidate.modelSelection &&
 			input.profileIds &&
@@ -98,6 +100,14 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
+			if (
+				current.kind === "action" &&
+				current.modelSelection?.provenance.source !== "action_override" &&
+				current.modelSelection?.provenance.source !== "launch_override"
+			) {
+				await projectCurrent();
+				return;
+			}
 			if (!current.modelSelection) {
 				await projectCurrent();
 				if (!current.modelSelection) return;

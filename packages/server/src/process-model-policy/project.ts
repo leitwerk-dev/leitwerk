@@ -1,5 +1,5 @@
 import { type ProcessSelectedTurnModelSource, trimToNull } from "@leitwerk-dev/domain";
-import { resolveTurn } from "./evaluate.js";
+import { resolveDefault, resolveTurn } from "./evaluate.js";
 import {
 	existingTurnSelectionFromProcess,
 	modelConfigurationFromLaunchInput,
@@ -57,14 +57,14 @@ function defaultProjection(
 			(profile) => !policy?.allowedProfileIds || policy.allowedProfileIds.has(profile.id),
 		)?.id ?? null;
 	const instanceId = configuration.defaultProfileId ?? null;
-	const effective = instanceId ?? processConfigId ?? catalogId;
+	const effective = resolveDefault(snapshot, configuration).selection?.modelProfileId ?? null;
 	return {
 		processConfigModelProfileId: processConfigId,
 		instanceModelProfileId: instanceId,
 		effectiveModelProfileId: effective,
 		source: instanceId
 			? "instance"
-			: processConfigId
+			: processConfigId && effective === processConfigId
 				? "process_config"
 				: catalogId
 					? "catalog_default"
@@ -169,13 +169,28 @@ export function projectPolicy(
 	const turns = [...(policy?.llmTurnIds ?? [])].map((turnId) => {
 		const instanceModelProfileId = configuration.turnProfileIds.get(turnId) ?? null;
 		const processConfigModelProfileId = trimToNull(policy?.turnProfileIds[turnId]);
+		const resolved = resolveTurn(
+			snapshot,
+			configuration,
+			turnId,
+			"resolve",
+			{ kind: "none" },
+			{ kind: "inherit" },
+			request.availability,
+		);
 		return {
 			turnId,
+			effectiveModelProfileId: resolved.selection?.modelProfileId ?? null,
+			effectiveSource: resolved.selection?.provenance.source ?? "none",
 			description: policy?.turnDescriptions[turnId] ?? turnId,
 			pathType: policy?.turnPathTypes[turnId] ?? "primary",
 			processConfigModelProfileId,
 			instanceModelProfileId,
-			effectiveConfiguredModelProfileId: instanceModelProfileId ?? processConfigModelProfileId,
+			fixedModelProfileId: policy?.purposeProfileIdsByTurn[turnId] ?? null,
+			effectiveConfiguredModelProfileId:
+				policy?.purposeProfileIdsByTurn[turnId] ??
+				instanceModelProfileId ??
+				processConfigModelProfileId,
 			source: instanceModelProfileId
 				? ("instance" as const)
 				: processConfigModelProfileId
@@ -183,30 +198,19 @@ export function projectPolicy(
 					: ("default" as const),
 		};
 	});
-	const selected =
-		selectedTurn.kind === "selected"
-			? resolveTurn(
-					snapshot,
-					configuration,
-					selectedTurn.turnId,
-					"continue",
-					selectedTurn,
-					{ kind: "inherit" },
-					request.availability,
-				)
-			: null;
+
 	return {
 		state: { kind: "ready" },
 		profiles,
 		defaultModel,
 		turns,
 		effectiveSelectedTurn:
-			selectedTurn.kind === "selected" && selected?.selection
+			selectedTurn.kind === "selected"
 				? {
 						turnId: selectedTurn.turnId,
 						description: policy?.turnDescriptions[selectedTurn.turnId] ?? selectedTurn.turnId,
-						modelProfileId: selected.selection.modelProfileId,
-						source: selected.selection.provenance.source,
+						modelProfileId: selectedTurn.selection.modelProfileId,
+						source: selectedTurn.selection.provenance.source,
 					}
 				: null,
 	};

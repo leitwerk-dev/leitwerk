@@ -664,6 +664,7 @@ function createProcessDetail(): LegacyProcessDetailTestData {
 		actions: [],
 		toolRenderers: [],
 		modelConfiguration: {
+			state: { kind: "ready" },
 			availableProfiles: [],
 			effectiveSelectedTurn: null,
 			defaultModel: {

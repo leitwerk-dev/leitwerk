@@ -178,7 +178,13 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 				(candidateProcess.lifecycleStatus === "active" &&
 					initialProcess.lifecycleStatus !== "active") ||
 				Object.hasOwn(decision.metadata ?? {}, "nextTurnModelProfileId"));
-		if (!candidateProcess.selectedTurnId) {
+		if (
+			!candidateProcess.selectedTurnId &&
+			!(
+				candidateProcess.lifecycleStatus === "discovered" &&
+				candidateProcess.selectedTurnModelSource === "launch_override"
+			)
+		) {
 			applyProcessPatchField(decision.writes, initialProcess, "selectedTurnModelProfileId", null);
 			applyProcessPatchField(decision.writes, initialProcess, "selectedTurnModelKind", null);
 			applyProcessPatchField(decision.writes, initialProcess, "selectedTurnModelSource", null);

@@ -8,6 +8,7 @@ import type { ProcessDetailData } from "../../../lib/api.js";
 import { buildInspectorPath, type InspectorTarget } from "../../../lib/router-logic.js";
 import ProcessFlowDiagram from "../../ProcessFlowDiagram.svelte";
 import InspectionEvidence from "./InspectionEvidence.svelte";
+import ProcessModelEditor from "./ProcessModelEditor.svelte";
 
 let {
 	detail,
@@ -114,7 +115,7 @@ function sourceLabel(source: string) {
   {:else if target.section === "inputs"}
     <section><h2>Original request</h2>{#if request}<ChronicleMarkdown markdown={request} /><InspectionEvidence label="Raw original request" evidence={{state:"recorded", value:request}} />{:else}<p class="note">No original request was recorded.</p>{/if}</section>
     <section><h2>Recorded launch parameters</h2>{#if detail.launchConfiguration.paramsParseError}<p class="notice">{detail.launchConfiguration.paramsParseError}</p>{/if}<dl>{#each parameters as parameter (parameter.fieldId)}<div><dt>{parameter.label}</dt><dd>{parameter.value ?? "Not set"}</dd></div>{:else}<div><dd>No additional launch parameters recorded.</dd></div>{/each}</dl><InspectionEvidence label="Raw launch values" evidence={{state:"recorded", value:Object.fromEntries(detail.launchConfiguration.parameters.map(parameter => [parameter.fieldId, parameter.rawValue ?? parameter.value]))}} /></section>
-    <section><h2>Model defaults and overrides</h2><dl><div><dt>Default at creation</dt><dd>{detail.process.initialDefaultModelProfileId ?? "Not recorded"}</dd></div><div><dt>Current default</dt><dd>{detail.modelConfiguration.defaultModel.effectiveModelProfileId ?? "Not configured"}</dd></div><div><dt>Current default source</dt><dd>{sourceLabel(detail.modelConfiguration.defaultModel.source)}</dd></div>{#each detail.modelConfiguration.turns as turn (turn.turnId)}<div><dt>{turn.description}</dt><dd>{turn.effectiveConfiguredModelProfileId ?? "Uses the default"}<span class="note"> · {sourceLabel(turn.source)}</span></dd></div>{/each}</dl><p class="note">Mutable settings affect future calls. Inspect an execution for its recorded model and instructions.</p></section>
+    <section><h2>Model defaults and overrides</h2><ProcessModelEditor {detail} /></section>
     <InspectionEvidence label="Launcher and infrastructure details" evidence={{state:"recorded", value:{launcherId:detail.launchConfiguration.launcherId, launcher:detail.launchConfiguration.launcherLabel, form:detail.launchConfiguration.launcherSchemaTitle, projects:detail.launchConfiguration.projects}}} />
   {:else if target.section === "context-map"}
     <section class="context-map-section">

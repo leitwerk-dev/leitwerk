@@ -440,7 +440,10 @@ export function createFutureExecutionExecutor(deps: FutureExecutionExecutorDeps)
 					return;
 				}
 				if (
-					!latest.modelSelection &&
+					(!latest.modelSelection ||
+						(latest.kind === "action" &&
+							latest.modelSelection.provenance.source !== "action_override" &&
+							latest.modelSelection.provenance.source !== "launch_override")) &&
 					deps.processGraphs &&
 					deps.processActionRegistry &&
 					deps.turnRecords

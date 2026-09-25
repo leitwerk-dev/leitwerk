@@ -265,3 +265,11 @@ Managed result images may open in a secured new tab without an external marker.
   full bearer link, expiry, and download warning. Progress never implies that delivered
   bytes can be recalled.
 - [Extension renderers](extension-ui.md) remain bounded to their supported slots.
+
+The process inspector's **Inputs & configuration → Model defaults and overrides**
+section provides an inline **Edit models** form for nonterminal processes. It uses
+server previews, shows inherited choices and marks fixed system models read-only.
+**Save changes** applies only edited values to future executions, including scheduled
+actions that inherit settings. **Cancel** discards the draft. Live process updates
+and failed requests retain unsaved edits; saving disables duplicate submissions and
+refreshes process details. Active execution labels continue to show recorded models.

@@ -208,7 +208,8 @@ export function resolveTurn(
 		existingSelection.kind === "selected" &&
 		(mode === "initial" || mode === "retry" || mode === "continue") &&
 		existingSelection.turnId === turnId &&
-		existingSelection.selection.provenance.kind === "explicit"
+		(existingSelection.selection.provenance.source === "action_override" ||
+			existingSelection.selection.provenance.source === "launch_override")
 	)
 		return validateSelection(
 			snapshot,
