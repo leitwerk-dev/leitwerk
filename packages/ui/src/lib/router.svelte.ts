@@ -17,6 +17,7 @@ import { matchRoute } from "./router-logic.js";
 
 interface NavigateOptions {
 	replace?: boolean;
+	state?: unknown;
 }
 
 function readCurrentLocationPath(): string {
@@ -44,9 +45,9 @@ export function followLink(event: MouseEvent, to: string): void {
 
 export function navigate(to: string, options: NavigateOptions = {}) {
 	if (options.replace) {
-		history.replaceState(null, "", to);
+		history.replaceState(options.state ?? null, "", to);
 	} else {
-		history.pushState(null, "", to);
+		history.pushState(options.state ?? null, "", to);
 	}
 	currentLocationPath.set(readCurrentLocationPath());
 }

@@ -130,6 +130,9 @@ const processLabel = $derived(
 );
 
 const chronicleScroll = createProcessDetailChronicleScroll({
+	get suspended() {
+		return hasBlockingDetailOverlay;
+	},
 	get instanceId() {
 		return instanceId;
 	},
@@ -214,6 +217,21 @@ function openDetailedActionForm(actionId: string) {
 		actionsController.expandActionForm(actionId);
 	}
 	void tick().then(() => chronicleScroll.jumpToAnchor(CHRONICLE_ACTION_SECTION_ANCHOR_ID));
+}
+
+export function reveal(target: { turnRecordId?: string; turnId?: string }) {
+	const recordId =
+		target.turnRecordId ?? detail?.timeline.turns.find((turn) => turn.turnId === target.turnId)?.id;
+	const item = railItems.find((item) => item.kind === "turn" && item.turnRecordId === recordId);
+	if (!item) return;
+	chronicleScroll.jumpToAnchor(item.anchorId);
+	void tick().then(() => {
+		const anchor = document.getElementById(item.anchorId);
+		if (anchor) {
+			anchor.tabIndex = -1;
+			anchor.focus({ preventScroll: true });
+		}
+	});
 }
 
 function handleWindowKeydown(event: KeyboardEvent) {

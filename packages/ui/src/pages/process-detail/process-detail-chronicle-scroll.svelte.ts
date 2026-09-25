@@ -32,6 +32,7 @@ import {
 } from "./process-detail-chronicle-dom.js";
 
 interface ProcessDetailChronicleScrollArgs {
+	readonly suspended?: boolean;
 	get instanceId(): string;
 	get detail(): ProcessDetailData | null;
 	get projection(): ChronicleProjection;
@@ -178,6 +179,15 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	const chronicleLayoutScheduler = createFrameScheduler(runChronicleLayoutPass);
 	const initialBottomPinScheduler = createFrameScheduler(() => continueInitialBottomPin());
 
+	$effect(() => {
+		if (!args.suspended) return;
+		shouldFollowLiveTail = false;
+		hasObservedManualChronicleScroll = true;
+		stopInitialBottomPin();
+		activeAnchorSyncScheduler.cancel();
+		chronicleLayoutScheduler.cancel();
+	});
+
 	const showJumpToLatest = $derived.by(() => {
 		if (!args.detail || args.projection.timelineItems.length === 0) {
 			return false;
@@ -288,7 +298,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	});
 
 	$effect(() => {
-		const viewport = args.viewport;
+		const viewport = args.suspended ? null : args.viewport;
 		_anchorLayoutSignature;
 		if (!viewport) {
 			return;
@@ -303,7 +313,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	});
 
 	$effect(() => {
-		const viewport = args.viewport;
+		const viewport = args.suspended ? null : args.viewport;
 		_anchorLayoutSignature;
 		if (!viewport) {
 			isLayoutObserverReady = false;
@@ -391,6 +401,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	});
 
 	function runChronicleLayoutPass(viewport: HTMLDivElement) {
+		if (args.suspended) return;
 		if (args.viewport !== viewport) {
 			return;
 		}
@@ -426,6 +437,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function scheduleInitialBottomPin(options: { force?: boolean } = {}) {
+		if (args.suspended) return;
 		if (!isInitializingToBottom) {
 			return;
 		}
@@ -433,6 +445,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function continueInitialBottomPin() {
+		if (args.suspended) return;
 		if (!isInitializingToBottom) {
 			return;
 		}
@@ -561,6 +574,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function syncActiveAnchorFromViewportNow() {
+		if (args.suspended) return;
 		const viewport = args.viewport;
 		if (!viewport) {
 			activeAnchorId = null;
@@ -598,6 +612,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function pinChronicleToBottomNow() {
+		if (args.suspended) return;
 		if (!args.viewport) {
 			return;
 		}
@@ -718,6 +733,7 @@ export function createProcessDetailChronicleScroll(args: ProcessDetailChronicleS
 	}
 
 	function handleScroll() {
+		if (args.suspended) return;
 		if (args.viewport) observeViewportLayout(args.viewport);
 		const viewportMetrics = getChronicleViewportMetrics(args.viewport);
 		const isProgrammaticScrollAtTarget =
