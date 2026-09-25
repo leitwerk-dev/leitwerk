@@ -153,5 +153,15 @@ export function createInspectorNavigation(args: {
 			},
 		};
 	}
-	return { visit, back, showChronicle, save, restoreRoute, observe };
+	return {
+		visit,
+		back,
+		showChronicle,
+		save,
+		restoreRoute,
+		observe,
+		restoreContent() {
+			restore(viewport(), state()?.reading ?? positions.get(args.path));
+		},
+	};
 }

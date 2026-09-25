@@ -1,3 +1,4 @@
+import type { ProcessEvent } from "@leitwerk-dev/domain";
 import {
 	applyPiEventToLiveTurnProjection,
 	createMutableLiveTurnProjection,
@@ -23,6 +24,7 @@ const PI_EVENT_TYPES: Record<string, string> = {
 
 /** Owns expanded history only. HTTP recovery replaces its base, then replays later frames once. */
 export class ReasoningHistory {
+	private inspectionEvents = new Map<number, ProcessEvent>();
 	private projection = createMutableLiveTurnProjection();
 	private boundary = 0;
 	private buffered = new Map<number, WsFrame>();
@@ -41,9 +43,17 @@ export class ReasoningHistory {
 		this.pending = false;
 		this.buffered.clear();
 	}
-	accept(response: TurnReasoningDetailResponseBody): TurnTraceSnapshot {
+	accept(
+		response: TurnReasoningDetailResponseBody & { events?: ProcessEvent[] },
+	): TurnTraceSnapshot {
 		if (response.instanceId !== this.instanceId || response.turnRecordId !== this.turnRecordId)
 			throw new Error("Reasoning response belongs to another turn");
+		if (response.events)
+			this.inspectionEvents = new Map(
+				response.events.flatMap((event) =>
+					event.eventSequence === undefined ? [] : [[event.eventSequence, event]],
+				),
+			);
 		this.projection = createMutableLiveTurnProjection();
 		this.projection.assistant = { ...response.reasoning.assistant };
 		this.projection.traceItems = response.reasoning.traceItems.map((item) => ({ ...item }));
@@ -81,6 +91,14 @@ export class ReasoningHistory {
 	private apply(frame: WsFrame): boolean {
 		if (this.committed || frame.eventSequence === undefined || frame.eventSequence <= this.boundary)
 			return false;
+		this.inspectionEvents.set(frame.eventSequence, {
+			id: `event:${frame.eventSequence}`,
+			instanceId: this.instanceId,
+			eventSequence: frame.eventSequence,
+			eventType: PI_EVENT_TYPES[frame.type],
+			data: frame.payload as Record<string, unknown>,
+			createdAt: frame.sentAt,
+		});
 		applyPiEventToLiveTurnProjection(this.projection, {
 			eventType: PI_EVENT_TYPES[frame.type],
 			data: frame.payload as Record<string, unknown>,
@@ -88,6 +106,11 @@ export class ReasoningHistory {
 		});
 		this.boundary = frame.eventSequence;
 		return true;
+	}
+	events(): ProcessEvent[] {
+		return [...this.inspectionEvents.values()].sort(
+			(a, b) => (a.eventSequence ?? 0) - (b.eventSequence ?? 0),
+		);
 	}
 	snapshot(): TurnTraceSnapshot {
 		return snapshotTurnTrace(this.projection, this.piInput);

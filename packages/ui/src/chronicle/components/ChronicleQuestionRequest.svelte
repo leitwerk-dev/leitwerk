@@ -60,7 +60,7 @@ async function submit() {
 }
 </script>
 
-<section class="question-request" id={`question-request-${request.id}`} data-question-request-id={request.id}>
+<section class="question-request" id={`${mode === "trace" ? "question-trace" : "question-request"}-${request.id}`} data-question-request-id={request.id}>
 	<div class="question-heading">
 		<h4>{request.status === "open" ? "Waiting for your answers" : request.status === "answered" ? "Questions answered" : "Question request interrupted"}</h4>
 		<p>{request.status === "open" ? "The active turn will continue here after you send the complete set." : "This durable record belongs to the turn’s reasoning history."}</p>

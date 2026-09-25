@@ -840,3 +840,34 @@ export async function previewCronExpression(expression: string): Promise<string>
 	}
 	return body.nextRunAt;
 }
+
+export interface InspectionSections {
+	summary: import("@leitwerk-dev/protocol").ExecutionInspectionSummary;
+	trace: import("@leitwerk-dev/protocol").ExecutionInspectionTrace;
+	context: import("@leitwerk-dev/protocol").ExecutionInspectionContext;
+	configuration: import("@leitwerk-dev/protocol").ExecutionInspectionConfiguration;
+}
+export async function fetchExecutionInspection<S extends keyof InspectionSections>(
+	instanceId: string,
+	turnRecordId: string,
+	section: S,
+	target: { entryId?: string; itemId?: string; boundaryFor?: string } = {},
+	signal?: AbortSignal,
+): Promise<InspectionSections[S]> {
+	const params = new URLSearchParams({ section });
+	for (const key of ["entryId", "itemId", "boundaryFor"] as const)
+		if (target[key]) params.set(key, target[key]);
+	const response = await getFetchImpl()(
+		resolveApiUrl(
+			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/inspection?${params}`,
+		),
+		{ signal },
+	);
+	if (!response.ok)
+		throw new Error(
+			response.status === 404
+				? "This execution is unavailable or does not belong to this process."
+				: `Couldn't load ${section}: ${response.status}`,
+		);
+	return readJsonObject<InspectionSections[S]>(response, "Malformed inspection response");
+}

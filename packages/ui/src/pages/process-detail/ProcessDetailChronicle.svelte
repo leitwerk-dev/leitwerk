@@ -64,7 +64,7 @@ interface Props {
 	persistedModelSelectionWarning?: string | null;
 	jumpToLatestLabel: string;
 	onDismissLaunchWarning: () => void;
-	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
 	onCloseBlockingDetailOverlays: () => void;
 	isProcessInfoOpen: boolean;
 	onToggleProcessInfo: () => void;

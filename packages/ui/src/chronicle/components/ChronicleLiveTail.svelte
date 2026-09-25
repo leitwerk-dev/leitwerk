@@ -12,7 +12,7 @@ interface Props {
 	liveTail: ChronicleLiveTailItem;
 	questionRequests?: readonly ProcessQuestionRequest[];
 	isFocused: boolean;
-	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
 	onAbortTurn?: (() => Promise<void> | void) | null;
 	abortBusy?: boolean;
 	abortError?: string | null;
@@ -156,7 +156,7 @@ const screenReaderStatus = $derived.by(() => {
 		{/if}
 		{#if liveTail.turnType === "llm" || hasReasoning}
 			<div class="live-footer">
-				{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+				{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId, "reasoning")} />{/if}
 				{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
 			</div>
 		{/if}

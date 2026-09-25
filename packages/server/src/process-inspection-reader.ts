@@ -230,7 +230,23 @@ export class ProcessInspectionReader {
 			state: "unavailable",
 			reason: "The requested item is unavailable or does not belong to this execution",
 		} as const;
-		const itemId = target.entryId ? `entry:${target.entryId}` : target.itemId;
+		let itemId = target.entryId ? `entry:${target.entryId}` : target.itemId;
+		if (itemId === "input")
+			itemId =
+				messages.find((message) => message.role === "user" || message.role === "system")?.id ??
+				itemId;
+		if (itemId === "reasoning")
+			itemId =
+				messages
+					.flatMap((message) => message.blocks)
+					.find((block) => block.content.type === "thinking")?.id ??
+				events
+					.filter(
+						(event) =>
+							event.eventType === "pi.stream.delta" && event.data.streamType === "thinking",
+					)
+					.map((event) => `event:${event.eventSequence}`)[0] ??
+				itemId;
 		if (itemId) {
 			const message = messages.find(
 				(message) =>

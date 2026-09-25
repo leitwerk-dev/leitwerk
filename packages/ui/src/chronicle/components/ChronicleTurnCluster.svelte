@@ -21,7 +21,7 @@ interface Props {
 	isFocused: boolean;
 	compressHistory?: boolean;
 	questionRequests?: readonly ProcessQuestionRequest[];
-	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 	recoveryContent?: Snippet;
 	waitingContent?: Snippet;
@@ -177,22 +177,22 @@ function openDetails() {
 	{@render waitingContent?.()}
 
 	{#if prompt}
-		<button class="prompt-row" type="button" data-section="turn-prompt" aria-label={`View prompt for ${cluster.title}`} onclick={openDetails}>
+		<button class="prompt-row" type="button" data-section="turn-prompt" aria-label={`View prompt for ${cluster.title}`} onclick={() => onOpenReasoningDetails(cluster.turnRecordId, "input")}>
 			<span class="prompt-label">Prompt</span>
 			<span class="prompt-preview">{truncateText(markdownToPlainText(prompt), 240)}</span>
 			<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
 		</button>
 	{/if}
 
-	{#if isLlm || hasReasoning || (compactResult && onDraftTicket)}
+	{#if cluster.turnRecordId}
 		<div class="cluster-support" class:has-reasoning={hasReasoning}>
 			<div class="support-progress">{#if progress && isLlm}<ChronicleTurnProgress report={progress.report} attemptStatus={progress.attemptStatus} recordedAt={progress.recordedAt} compact />{/if}</div>
 			<div class="footer-actions">
 				{#if compactResult && onDraftTicket}<ChronicleCreateIssueButton {onDraftTicket} artifact={{ kind: "turn_result", turnRecordId: cluster.turnRecordId }} />{/if}
-				{#if isLlm || hasReasoning}
+				{#if cluster.turnRecordId}
 					<div class="turn-info-actions">
-						{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={cluster.title} onClick={openDetails} />{/if}
-						{#if isLlm}<ChronicleTurnDetailsButton title={cluster.title} onClick={openDetails} />{/if}
+						{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={cluster.title} onClick={() => onOpenReasoningDetails(cluster.turnRecordId, "reasoning")} />{/if}
+						<ChronicleTurnDetailsButton title={cluster.title} onClick={openDetails} />
 					</div>
 				{/if}
 			</div>

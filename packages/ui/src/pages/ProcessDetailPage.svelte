@@ -332,8 +332,8 @@ function closeProcessInfoOverlay() {
 function closeBlockingDetailOverlays() {
 	if (inspectorTarget) inspectorNavigation.showChronicle();
 }
-function openReasoningDetails(turnRecordId: string) {
-	inspectorNavigation.visit({ scope: "execution", turnRecordId, section: "trace" });
+function openReasoningDetails(turnRecordId: string, itemId?: string) {
+	inspectorNavigation.visit({ scope: "execution", turnRecordId, section: "trace", itemId });
 }
 </script>
 
@@ -392,6 +392,7 @@ function openReasoningDetails(turnRecordId: string) {
   {#if inspectorTarget}
     <ProcessInspector {instanceId} target={inspectorTarget} detail={$detailState.data} error={$detailState.error}
       onNavigate={inspectorNavigation.visit} onBack={inspectorNavigation.back} onChronicle={inspectorNavigation.showChronicle}
+      onReady={inspectorNavigation.restoreContent}
       onShowSummary={waitingReport && summaryDismissed ? showSummary : undefined} />
   {/if}
 </div>

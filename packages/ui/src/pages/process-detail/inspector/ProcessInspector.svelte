@@ -1,10 +1,15 @@
 <script lang="ts">
+import ChronicleUsageStats from "../../../chronicle/components/ChronicleUsageStats.svelte";
 import type { ProcessDetailData } from "../../../lib/api.js";
 import {
 	buildInspectorPath,
 	type InspectorRoute,
 	type InspectorTarget,
 } from "../../../lib/router-logic.js";
+import { createToolRendererIndex } from "../../../lib/tool-call-rendering.js";
+import { wsStore } from "../../../lib/ws.svelte.js";
+import ExecutionDetails from "./ExecutionDetails.svelte";
+import { createInspectionData } from "./inspection-data.svelte.js";
 
 interface Props {
 	instanceId: string;
@@ -17,7 +22,52 @@ interface Props {
 	onShowSummary?: () => void;
 	onReady?: () => void;
 }
-let { instanceId, target, detail, error, onNavigate, onBack, onChronicle }: Props = $props();
+let {
+	instanceId,
+	target,
+	detail,
+	error,
+	onNavigate,
+	onBack,
+	onChronicle,
+	onShowSummary,
+	onReady = () => {},
+}: Props = $props();
+const refreshKey = $derived(
+	JSON.stringify([
+		detail?.timeline.turns.find(
+			(turn) => target.scope === "execution" && turn.id === target.turnRecordId,
+		)?.status,
+		detail?.session.signature,
+		$wsStore.reconnectCount,
+	]),
+);
+const data = createInspectionData({
+	get instanceId() {
+		return instanceId;
+	},
+	get target() {
+		return target;
+	},
+	get refreshKey() {
+		return refreshKey;
+	},
+	ready() {
+		onReady();
+	},
+});
+const execution = $derived(data.summary?.execution);
+const step = $derived(
+	detail?.processFlow.nodes.find(
+		(node) => node.turnId === (target.scope === "step" ? target.turnId : execution?.turnId),
+	),
+);
+const source = $derived(
+	data.summary?.origin.conversation.state === "recorded"
+		? data.summary.origin.conversation.value
+		: null,
+);
+const renderers = $derived(createToolRendererIndex(detail?.toolRenderers ?? []));
 const sections = $derived(
 	target.scope === "execution"
 		? [
@@ -55,8 +105,15 @@ function sectionTarget(section: string): InspectorTarget {
       <button class="ui-button" onclick={onBack}>Back</button>
       <button class="ui-button" onclick={() => onChronicle()}>Show in chronicle</button>
     </div>
-    <p class="breadcrumbs">{detail?.process.title ?? detail?.processDisplayName ?? instanceId}{#if target.scope === "execution"}<span aria-hidden="true"> / </span>Execution{:else if target.scope === "step"}<span aria-hidden="true"> / </span>Workflow step{/if}</p>
-    <h1 id="inspector-heading" tabindex="-1">{target.scope === "execution" ? target.turnRecordId : target.scope === "step" ? target.turnId : "Process inspector"}</h1>
+    <p class="breadcrumbs"><button class="breadcrumb" onclick={() => onNavigate({scope:"process", section:"overview"})}>{detail?.process.title ?? detail?.processDisplayName ?? instanceId}</button>{#if target.scope === "execution" && execution}<span aria-hidden="true"> / </span><button class="breadcrumb" onclick={() => onNavigate({scope:"step", turnId:execution.turnId})}>{step?.description ?? execution.turnId}</button><span aria-hidden="true"> / </span>Execution{:else if target.scope === "step"}<span aria-hidden="true"> / </span>Workflow step{/if}</p>
+    <div class="identity-row"><h1 id="inspector-heading" tabindex="-1">{target.scope === "execution" ? `${step?.description ?? execution?.turnId ?? "Execution"}${execution ? ` · Attempt ${execution.attempt}` : ""}` : target.scope === "step" ? step?.description ?? target.turnId : "Process inspector"}</h1>
+    {#if target.scope === "execution"}<div class="execution-nav"><button class="ui-button" aria-label="Previous execution" disabled={!data.summary?.previousTurnRecordId} onclick={() => data.summary?.previousTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.previousTurnRecordId, section:target.section})}>Previous</button><button class="ui-button" aria-label="Next execution" disabled={!data.summary?.nextTurnRecordId} onclick={() => data.summary?.nextTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.nextTurnRecordId, section:target.section})}>Next</button></div>{/if}</div>
+    {#if target.scope === "execution"}
+      <p class="execution-facts"><code>{target.turnRecordId}</code>{#if execution}<span>{execution.turnType} · {execution.status}</span><time datetime={execution.startedAt}>{new Date(execution.startedAt).toLocaleString()}</time>{#if execution.endedAt}<span>{Math.max(0, Math.round((Date.parse(execution.endedAt) - Date.parse(execution.startedAt))/1000))}s</span>{/if}{/if}
+      {#if data.summary?.model.state === "recorded"}<span>{data.summary.model.value.provider} / {data.summary.model.value.id}</span>{/if}
+      {#if data.summary?.usage}<ChronicleUsageStats usage={data.summary.usage} />{/if}</p>
+      <div class="context-summary"><p>{data.summary?.origin.summary ?? data.summaryError ?? "Loading context origin…"}</p><div>{#if source?.turnRecordId}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:source.turnRecordId ?? "", section:"trace", entryId:source.entryId, boundaryFor:target.turnRecordId})}>Open source boundary</button>{/if}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:target.turnRecordId, section:"context"})}>Inspect context</button></div></div>
+    {/if}
     <nav aria-label="Inspector sections">
       {#each sections as [id, label] (id)}
         {@const next = sectionTarget(id)}
@@ -68,11 +125,17 @@ function sectionTarget(section: string): InspectorTarget {
     {#if target.scope === "invalid"}<p role="status">{target.reason}</p>
     {:else if error}<p role="status">{error}</p>
     {:else if !detail}<p role="status">Loading process…</p>
+    {:else if target.scope === "execution"}
+      <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle()} {onReady} />
     {:else}<p role="status">The selected {target.scope} is ready for inspection.</p>{/if}
   </div>
 </section>
 
 <style>
+.breadcrumb {border:0; padding:0; background:transparent; color:var(--chronicle-accent); font:inherit; cursor:pointer; text-decoration:underline; text-underline-offset:3px;}
+.identity-row {display:flex; justify-content:space-between; align-items:start; gap:var(--space-md); flex-wrap:wrap;} .execution-nav {display:flex; gap:var(--space-xs);}
+.execution-facts {display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-xs) var(--space-md); margin:var(--space-sm) 0; font-size:var(--type-caption); color:var(--chronicle-text-muted); font-variant-numeric:tabular-nums;}
+.context-summary {display:flex; gap:var(--space-sm) var(--space-md); align-items:baseline; justify-content:space-between; flex-wrap:wrap; padding:var(--space-sm) var(--space-md); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm); font-size:var(--type-body-sm); margin-top:var(--space-sm);} .context-summary p {margin:0; overflow-wrap:anywhere;} .context-summary > div {display:flex; gap:var(--space-md); flex-wrap:wrap;}
 .inspector {display:flex; flex-direction:column; height:100%; min-height:0; min-width:0; background:var(--chronicle-card-surface); color:var(--chronicle-text);}
 .inspector-header {flex:none; padding:var(--space-lg) var(--space-xl) 0; border-bottom:1px solid var(--chronicle-border);}
 .inspector-controls {display:flex; justify-content:space-between; gap:var(--space-sm); margin-bottom:var(--space-md);}
