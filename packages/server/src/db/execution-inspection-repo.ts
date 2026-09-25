@@ -4,6 +4,7 @@ import type {
 	ExecutionInspectionRecord,
 	InspectionContextObservation,
 } from "@leitwerk-dev/domain";
+import type { InspectionConfigurationRevision } from "@leitwerk-dev/protocol";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { executionInspections, inspectionContents } from "./schema.js";
@@ -39,6 +40,35 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 		return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, unpack(item)]));
 	}
 	return {
+		/** Model identities without loading retained prompts or message contents. @internal */
+		modelInputs(
+			instanceId: string,
+			turnRecordId: string,
+		): Pick<InspectionConfigurationRevision, "id" | "timestamp" | "boundaryEntryId" | "model">[] {
+			return db
+				.select({
+					id: executionInspections.id,
+					timestamp: executionInspections.capturedAt,
+					boundaryEntryId: sql<
+						string | null
+					>`json_extract(${executionInspections.factJson}, '$.boundaryEntryId')`,
+					model: sql<string>`json_extract(${executionInspections.factJson}, '$.model')`,
+				})
+				.from(executionInspections)
+				.where(
+					and(
+						eq(executionInspections.instanceId, instanceId),
+						eq(executionInspections.turnRecordId, turnRecordId),
+						sql`json_extract(${executionInspections.factJson}, '$.kind') = 'model_input'`,
+					),
+				)
+				.orderBy(asc(executionInspections.sequence))
+				.all()
+				.map((row) => ({
+					...row,
+					model: JSON.parse(row.model) as InspectionConfigurationRevision["model"],
+				}));
+		},
 		/** @internal */
 		append(input: Omit<ExecutionInspectionRecord, "sequence">): "stored" | "replay" {
 			return db.transaction(() => {

@@ -4,6 +4,7 @@ import type {
 } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { buildFutureExecutionSummaries } from "../future-execution-presenter.js";
+import { ProcessInspectionReader } from "../process-inspection-reader.js";
 import { getProcessDisplayName } from "../process-operator-attention.js";
 import {
 	buildProcessBrowse,
@@ -20,6 +21,25 @@ export function registerProcessDetailRoutes(app: FastifyInstance, deps: RouteDep
 	const diagnosticsAssembler = new ProcessDiagnosticsAssembler(deps);
 	const primaryPathAssembler = new ProcessPrimaryPathAssembler(deps);
 	const uiSnapshotAssembler = new ProcessUiSnapshotAssembler(deps);
+	const inspection = new ProcessInspectionReader(deps);
+	app.get<{
+		Params: { instanceId: string; turnRecordId: string };
+		Querystring: { section?: string; entryId?: string; itemId?: string; boundaryFor?: string };
+	}>("/api/processes/:instanceId/turn-records/:turnRecordId/inspection", async (req, reply) => {
+		const { instanceId, turnRecordId } = req.params;
+		const section = req.query.section ?? "summary";
+		if (!["summary", "trace", "context", "configuration"].includes(section))
+			return reply.code(400).send({ error: "Unknown inspection section" });
+		const body =
+			section === "trace"
+				? await inspection.trace(instanceId, turnRecordId, req.query)
+				: section === "context"
+					? await inspection.context(instanceId, turnRecordId)
+					: section === "configuration"
+						? inspection.configuration(instanceId, turnRecordId)
+						: inspection.summary(instanceId, turnRecordId);
+		return body ?? reply.code(404).send({ error: "Execution not found in this process" });
+	});
 
 	app.get("/api/processes", async () => {
 		const instances = deps.processes.listAll();

@@ -1205,6 +1205,7 @@ export function buildProcessUiSnapshotProjections(input: {
 
 type ProcessUiSnapshotDeps = Pick<
 	RouteDeps,
+	| "executionInspections"
 	| "processes"
 	| "projects"
 	| "inputs"
@@ -1355,7 +1356,8 @@ export class ProcessUiSnapshotAssembler {
 			instanceTree: presentProcessInstanceTree({
 				process,
 				turnRecords,
-				turnAnnotations,
+				leases: workerLeases,
+				observations: this.deps.executionInspections.listContextFacts(instanceId),
 				turnDetails: runDetails.turns,
 				currentPiEntryId: session?.leafId ?? null,
 			}),

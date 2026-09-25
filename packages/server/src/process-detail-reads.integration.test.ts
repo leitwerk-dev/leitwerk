@@ -388,3 +388,24 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 		thinkingPreview: long.primaryPath.turnState.activeTurn?.assistant.thinking,
 	});
 });
+
+it("opens inspection summary without reading sessions or immutable content", async () => {
+	const { ProcessInspectionReader } = await import("./process-inspection-reader.js");
+	const { deps } = fixture;
+	const process = deps.processes.create({
+		processId: "ticket_issue_process",
+		stateJson: createStructuralStateJson(),
+	});
+	const turn = deps.turnRecords.create({
+		instanceId: process.id,
+		turnId: "generate_plan",
+		status: "failed",
+	});
+	const session = vi.spyOn(deps.sessionReader, "readSessionTree");
+	const contents = vi.spyOn(deps.executionInspections, "list");
+	expect(new ProcessInspectionReader(deps).summary(process.id, turn.id)?.execution.id).toBe(
+		turn.id,
+	);
+	expect(session).not.toHaveBeenCalled();
+	expect(contents).not.toHaveBeenCalled();
+});

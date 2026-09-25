@@ -214,7 +214,11 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 			const projectionData = appliedProjectionEvent.canonicalData;
 			const enrichedData: Record<string, unknown> =
 				currentTurnRecordId && !readWsEventNonEmptyString(projectionData.turnRecordId)
-					? { ...projectionData, turnRecordId: currentTurnRecordId }
+					? {
+							...projectionData,
+							turnRecordId: currentTurnRecordId,
+							workerLeaseId: deps.leases?.getByInstance(instanceId)?.id ?? null,
+						}
 					: projectionData;
 			const currentSelectedTurnId = payload.selectedTurnId ?? process.selectedTurnId ?? null;
 			const normalizedTimestamp = eventTimestamp(enrichedData);

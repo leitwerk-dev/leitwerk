@@ -1544,6 +1544,12 @@ export type InstanceTreeTurnResultState = "succeeded" | "failed" | "aborted" | "
 /** Redacted, semantic process history. Pi message/activity categories are never exposed. @internal */
 export interface InstanceTreeNodeSummary {
 	/** @internal */
+	turnId?: string;
+	/** @internal */
+	turnType?: ProcessTurnRecord["turnType"];
+	/** @internal */
+	origin?: import("./execution-inspection.js").ExecutionContextOrigin;
+	/** @internal */
 	id: string;
 	/** @internal */
 	parentId: string | null;
@@ -2428,3 +2434,4 @@ export type {
 	ApiTokensResponseBody,
 	CreateApiTokenResponseBody,
 } from "./api-token-contracts.js";
+export type * from "./execution-inspection.js";
