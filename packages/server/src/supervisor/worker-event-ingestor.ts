@@ -21,6 +21,7 @@ import type { RepositoryBundle } from "../db/repositories.js";
 import { recordTurnPreparation } from "../turn-preparation.js";
 import { recordTurnProgress } from "../turn-progress.js";
 import type { Broadcaster } from "../ws/broadcast.js";
+import { ingestExecutionInspection } from "./execution-inspection-ingestor.js";
 import { recordInitialTurnObservation } from "./startup-observer.js";
 
 /** @internal */
@@ -48,6 +49,7 @@ export interface WorkerEventLogEntry {
 export interface WorkerEventIngestorDeps
 	extends Pick<RepositoryBundle, "processes" | "events" | "turnRecords"> {
 	leases?: RepositoryBundle["leases"];
+	executionInspections?: RepositoryBundle["executionInspections"];
 	startupObservations?: RepositoryBundle["startupObservations"];
 	broadcaster: Broadcaster;
 	workerEventLogger?: (entry: WorkerEventLogEntry) => void;
@@ -171,6 +173,18 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 			}
 
 			if (suppliedTurnRecordId && suppliedTurnRecordId !== currentTurnRecordId) return;
+			if (payload.eventType === "execution.inspection") {
+				if (suppliedTurnRecordId && deps.executionInspections && deps.leases)
+					ingestExecutionInspection(
+						{
+							executionInspections: deps.executionInspections,
+							turnRecords: deps.turnRecords,
+							leases: deps.leases,
+						},
+						{ instanceId, workerId, turnRecordId: suppliedTurnRecordId, capture: data.capture },
+					);
+				return;
+			}
 			if (payload.eventType === "turn.progress") {
 				const reportedTurnRecordId = readWsEventNonEmptyString(data.turnRecordId);
 				if (!reportedTurnRecordId || reportedTurnRecordId !== currentTurnRecordId) return;

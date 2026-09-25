@@ -794,6 +794,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		);
 		const ipcHandler = createIpcHandler(
 			{
+				executionInspections: baseDeps.executionInspections,
 				startupObservations: baseDeps.startupObservations,
 				processes: baseDeps.processes,
 				getLaunchCoordinator: () => launchCoordinator,
@@ -909,6 +910,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		}
 		markStartup("worker_runner");
 		supervisor = createWorkerSupervisor({
+			executionInspections: baseDeps.executionInspections,
 			startupObservations: baseDeps.startupObservations,
 			config: supervisorConfig,
 			processGraphs,

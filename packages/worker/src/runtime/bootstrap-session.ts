@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type {
+	InspectionProduct,
 	PreparedTurnStart,
 	ProcessInstance,
 	ProcessProject,
@@ -39,6 +40,7 @@ interface PreparedSessionBase {
 	workspaceRoot: string;
 	turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
 	turnResultMarkdownByProduct?: Record<string, string>;
+	inspectionProducts?: InspectionProduct[];
 	settings: WorkerRuntimeSettings;
 	integrationTools: NonNullable<WorkerStartPayload["integrationTools"]>;
 }
@@ -110,6 +112,7 @@ function validatePreparedSession(input: {
 		workspaceRoot: payload.treePaths.workspaceRoot,
 		turnResultMarkdownBySemanticRef: payload.turnResultMarkdownBySemanticRef,
 		turnResultMarkdownByProduct: payload.turnResultMarkdownByProduct,
+		inspectionProducts: payload.inspectionProducts,
 		settings,
 		integrationTools: payload.integrationTools ?? [],
 	};

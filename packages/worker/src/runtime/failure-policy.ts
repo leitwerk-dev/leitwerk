@@ -86,6 +86,13 @@ export function extractSecretValuesFromPayload(
 		}
 	}
 	for (const value of extractDockerRegistrySecretValues(payload)) secrets.add(value);
+	for (const credential of payload.repositoryCredentials ?? []) {
+		const value = credential.kind === "git_ssh" ? credential.privateKey : credential.password;
+		if (value) {
+			secrets.add(value);
+			secrets.add(encodeURIComponent(value));
+		}
+	}
 	return Array.from(secrets);
 }
 

@@ -12,6 +12,8 @@ export interface PiEventReporterOptions {
 	reporter: Pick<WorkerIpcReporter, "workerEvent" | "workerTrace" | "workerError">;
 	emitExtensionEvent?(event: string, payload: unknown): void;
 	getCurrentSelectedTurnId?(): string | null;
+	getCurrentTurnRecordId?(): string | null;
+	reportInspection?(capture: unknown, turnRecordId: string): void;
 	getSessionTainted?(): boolean;
 	onLifecycleObservation?(kind: "pi_turn_started" | "pi_turn_ended"): void;
 }
@@ -112,6 +114,12 @@ export function createPiEventReporter(options: PiEventReporterOptions): PiEventR
 	return {
 		attach(piHandle) {
 			piHandle.subscribe((event) => {
+				if (event.type === "inspection") {
+					const turnRecordId = options.getCurrentTurnRecordId?.();
+					if (turnRecordId && !options.getSessionTainted?.())
+						options.reportInspection?.(event.data.capture, turnRecordId);
+					return;
+				}
 				if (event.type === "turn.start") {
 					options.onLifecycleObservation?.("pi_turn_started");
 					resetPiRetryState();

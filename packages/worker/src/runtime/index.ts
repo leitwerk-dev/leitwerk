@@ -1,3 +1,4 @@
+import { redactInspectionEvidence } from "@leitwerk-dev/domain";
 import type { ServerToWorkerMessage } from "@leitwerk-dev/worker-protocol";
 import { MiseDevelopmentToolEnvironment } from "../development-tool-environment.js";
 import { deliverBatch } from "../input-consumer.js";
@@ -9,7 +10,11 @@ import { resolveRootEntryIdFromHandle } from "../turn-tree-strategy.js";
 import { createWorkerIpcReporter } from "../worker-ipc-reporter.js";
 import type { WorkerRuntimeOptions, WorkerRuntimeTimer } from "./adapters.js";
 import { sampleCredentialFiles, WorkerLiveResources } from "./bootstrap-session.js";
-import { extractDockerRegistrySecretValues, redactSecrets } from "./failure-policy.js";
+import {
+	extractDockerRegistrySecretValues,
+	extractSecretValuesFromPayload,
+	redactSecrets,
+} from "./failure-policy.js";
 import {
 	createInitialWorkerRuntimeState,
 	reduceWorkerRuntime,
@@ -45,6 +50,12 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	const sampleCredentials = adapters.sampleCredentials ?? sampleCredentialFiles;
 	const ipc: WorkerIpc = adapters.transport;
 	const deliveredSecrets = new Set<string>();
+	const inspectionSecrets = new Set<string>();
+	const redactInspectionText = (text: string) =>
+		redactSecrets(
+			text,
+			[...inspectionSecrets].sort((a, b) => b.length - a.length),
+		);
 	const redact = (text: string) =>
 		redactSecrets(
 			text,
@@ -86,6 +97,18 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		reporter,
 		emitExtensionEvent,
 		getCurrentSelectedTurnId: () => state.session?.selectedTurnId ?? null,
+		getCurrentTurnRecordId: () => (state.phase.kind === "active" ? state.phase.turnRecordId : null),
+		reportInspection(capture, turnRecordId) {
+			reporter.project({
+				kind: "protocol",
+				type: "worker.event",
+				payload: {
+					eventType: "execution.inspection",
+					selectedTurnId: state.session?.selectedTurnId ?? null,
+					data: { turnRecordId, capture: redactInspectionEvidence(capture, redactInspectionText) },
+				},
+			});
+		},
 		getSessionTainted: () => state.sessionTainted,
 		onLifecycleObservation(kind) {
 			dispatch({ kind });
@@ -237,7 +260,20 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 							resultImageTools: adapters.resultImageTools,
 							signal,
 							emit(emission) {
-								if (emission.kind === "session_tainted") {
+								if (emission.kind === "inspection") {
+									reporter.project({
+										kind: "protocol",
+										type: "worker.event",
+										payload: {
+											eventType: "execution.inspection",
+											selectedTurnId: command.session.selectedTurnId,
+											data: {
+												turnRecordId: emission.turnRecordId,
+												capture: redactInspectionEvidence(emission.capture, redactInspectionText),
+											},
+										},
+									});
+								} else if (emission.kind === "session_tainted") {
 									complete({ kind: "session_tainted", reason: emission.reason });
 								} else if (emission.kind === "trace") {
 									reporter.workerTrace(emission.payload, command.session.selectedTurnId);
@@ -288,13 +324,15 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 				return;
 			case "sample_credentials":
 				void sampleCredentials(command.descriptor)
-					.then((sample) =>
+					.then((sample) => {
+						for (const value of Object.values(sample.values))
+							if (value) inspectionSecrets.add(value);
 						complete({
 							kind: "credential_sampled",
 							providerId: command.descriptor.providerId,
 							...sample,
-						}),
-					)
+						});
+					})
 					.catch((error) =>
 						complete({
 							kind: "credential_sample_failed",
@@ -374,9 +412,12 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	};
 
 	const receive = (message: ServerToWorkerMessage): void => {
-		if (message.type === "worker.start")
+		if (message.type === "worker.start") {
+			for (const secret of extractSecretValuesFromPayload(message.payload))
+				inspectionSecrets.add(secret);
 			for (const secret of extractDockerRegistrySecretValues(message.payload))
 				deliveredSecrets.add(secret);
+		}
 		if (message.type === "worker.integration_tool_result") {
 			integrationToolBridge.handle(message);
 			return;

@@ -151,6 +151,21 @@ while retaining listing and revocation. Keep a schema-compatible binary. Restori
 an old database to disable tokens loses later process data. See the
 [backup procedure](operations.md).
 
+## Execution inspection evidence
+
+Inspection retains model-facing messages and instructions, which may contain
+operator or repository content. It uses the same authenticated process access as
+the chronicle. Workers capture only the assembled prompt, selected model identity,
+tool declarations, managed context-file content, and explicit source references;
+they do not inspect credential files, provider options, or arbitrary environment
+variables. Known delivered provider, repository, and registry secrets are redacted
+before inspection IPC. Redacted fields remain explicitly marked in durable evidence.
+
+The server validates the accepted execution and reporting lease before persisting
+observations. Expanded inspection content is separate from ordinary event logs and
+WebSocket frames. Immutable content is deduplicated in SQLite, independent of the
+resource-bundle cache. Current configuration cannot fill gaps in historical evidence.
+
 ## HTTPS repository authentication
 
 The provider authorizes an HTTPS origin; the server narrows it to the exact project

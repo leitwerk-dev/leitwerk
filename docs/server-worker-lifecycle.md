@@ -209,6 +209,16 @@ it to run again.
 
 ---
 
+## Execution inspection
+
+Execution inspection observations are accepted only from the live lease for the
+record's accepted start. Each observation has an idempotency identity; replay cannot
+replace its content. Replacement workers append model-input and supplied-context
+revisions to the same execution. The server retains immutable content separately
+from observation references, so recorded instructions survive restart and resource
+cache eviction. The inspection migration adds tables without resetting existing
+process, event, or session state.
+
 ## Session snapshots {#6-session-snapshot-uploads}
 
 The worker's JSONL tree file records full agent interaction history. Workers upload snapshot files to the server via:

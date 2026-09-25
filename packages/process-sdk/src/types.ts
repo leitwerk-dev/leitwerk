@@ -191,6 +191,7 @@ export interface PiTurnExecutionResult {
 
 /** @internal */
 export type PiEventType =
+	| "inspection"
 	| "turn.start"
 	| "turn.end"
 	| "stream.delta"

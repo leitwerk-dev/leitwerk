@@ -262,6 +262,22 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 	function buildWorkerRuntimeContextSnapshot(process: ProcessInstance, start: TurnStartRecord) {
 		const turnResultMarkdownBySemanticRef = buildTurnResultMarkdownBySemanticRef(process, deps);
 		const turnResultMarkdownByProduct = buildTurnResultMarkdownByProduct(process, deps);
+		const productRefs = parseProductRefsFromStateJsonLenient(process.stateJson);
+		const inspectionProducts = Object.entries(turnResultMarkdownByProduct ?? {}).flatMap(
+			([name, content]) => {
+				const ref = productRefs[name];
+				return ref?.turnRecordId
+					? [
+							{
+								name,
+								producerTurnRecordId: ref.turnRecordId,
+								entryId: ref.entryId,
+								content: { state: "recorded" as const, value: content },
+							},
+						]
+					: [];
+			},
+		);
 		const prepared =
 			start.state.kind === "starting" ||
 			start.state.kind === "accepted" ||
@@ -279,6 +295,7 @@ export function createWorkerStartPayloadBuilder(deps: WorkerStartPayloadBuilderD
 			projectSnapshots: buildProjectSnapshots(process.id),
 			...(turnResultMarkdownBySemanticRef ? { turnResultMarkdownBySemanticRef } : {}),
 			...(turnResultMarkdownByProduct ? { turnResultMarkdownByProduct } : {}),
+			inspectionProducts,
 		};
 	}
 

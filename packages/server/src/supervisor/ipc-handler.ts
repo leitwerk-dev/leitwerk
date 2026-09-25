@@ -48,6 +48,8 @@ export interface IpcHandlerDeps
 	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
 	/** @internal */
+	executionInspections?: RepositoryBundle["executionInspections"];
+	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 	/** @internal */
 	processQuestions?: ProcessQuestionService;

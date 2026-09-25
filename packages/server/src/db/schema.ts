@@ -23,6 +23,33 @@ export const startupObservations = sqliteTable(
 	(t) => [uniqueIndex("idx_startup_observations_lease_milestone").on(t.workerLeaseId, t.milestone)],
 );
 
+export const inspectionContents = sqliteTable("inspection_contents", {
+	digest: text("digest").primaryKey(),
+	contentJson: text("content_json").notNull(),
+});
+
+export const executionInspections = sqliteTable(
+	"execution_inspections",
+	{
+		sequence: integer("sequence").primaryKey({ autoIncrement: true }),
+		id: text("id").notNull(),
+		instanceId: text("instance_id")
+			.notNull()
+			.references(() => processInstances.id, { onDelete: "cascade" }),
+		turnRecordId: text("turn_record_id")
+			.notNull()
+			.references(() => turnRecords.id, { onDelete: "cascade" }),
+		startRecordId: text("start_record_id").notNull(),
+		workerLeaseId: text("worker_lease_id").notNull(),
+		capturedAt: text("captured_at").notNull(),
+		factJson: text("fact_json").notNull(),
+	},
+	(t) => [
+		uniqueIndex("idx_execution_inspections_id").on(t.id),
+		index("idx_execution_inspections_turn").on(t.instanceId, t.turnRecordId),
+	],
+);
+
 export const processInstances = sqliteTable(
 	"process_instances",
 	{

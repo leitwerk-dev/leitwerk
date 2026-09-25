@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { TurnProgressReport } from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
@@ -96,6 +97,46 @@ export async function executeSelectedTurn(
 	}
 	const handler = resolvedWorkerProcess.definition.turns.get(currentTurnId);
 	if (!handler) throw new Error(`Validated turn handler '${currentTurnId}' is unavailable`);
+	const supplyId = randomUUID();
+	input.emit({
+		kind: "inspection",
+		turnRecordId: input.turnRecordId,
+		capture: {
+			id: supplyId,
+			version: 1,
+			timestamp: input.scheduler.now().toISOString(),
+			fact: {
+				kind: "supplied_context",
+				origin: input.session.kind === "llm" ? input.session.preparedTurnStart : null,
+				products: input.session.inspectionProducts ?? [],
+			},
+		},
+	});
+	const products = input.session.turnResultMarkdownByProduct;
+	const observedProducts = products
+		? Object.fromEntries(Object.keys(products).map((name) => [name, products[name]]))
+		: undefined;
+	const consumedProducts = new Set<string>();
+	for (const name of Object.keys(observedProducts ?? {})) {
+		Object.defineProperty(observedProducts, name, {
+			enumerable: true,
+			get() {
+				if (consumedProducts.has(name)) return products?.[name];
+				consumedProducts.add(name);
+				input.emit({
+					kind: "inspection",
+					turnRecordId: input.turnRecordId,
+					capture: {
+						id: `${supplyId}:product:${name}`,
+						version: 1,
+						timestamp: input.scheduler.now().toISOString(),
+						fact: { kind: "product_consumed", supplyId, name },
+					},
+				});
+				return products?.[name];
+			},
+		});
+	}
 	let automaticIntegrationCallIndex = 0;
 	let latestProgressReport: TurnProgressReport | null = null;
 	const reportProgress = (report: TurnProgressReport) => {
@@ -123,7 +164,7 @@ export async function executeSelectedTurn(
 		params: resolvedWorkerProcess.params,
 		state: resolvedWorkerProcess.state,
 		turnResultMarkdownBySemanticRef: input.session.turnResultMarkdownBySemanticRef,
-		turnResultMarkdownByProduct: input.session.turnResultMarkdownByProduct,
+		turnResultMarkdownByProduct: observedProducts,
 		workspaceRoot: input.session.workspaceRoot,
 		...(selectedTurnType === "automatic"
 			? {

@@ -45,6 +45,20 @@ a canonical identity across reconnects.
 
 Runtime events do not enter ProcessEngine because they do not change durable business position.
 
+`execution.inspection` observations use the same IPC path but are retained separately
+from diagnostic logs and browser stream frames. After acceptance, the worker records
+supplied product versions and reads of those products. Each Pi model call records
+the effective model-facing context after conversion and tool assembly: model,
+ordered messages, system prompt, appended instructions, loaded context files, and
+available tool definitions. Provider request options and renderer-only details are
+excluded. This is a model-context record, not a provider-wire request.
+
+Each call is a separate revision. Compaction, continuation, and worker replacement
+do not overwrite earlier evidence. Session entry identities correlate committed
+messages with live activity where the SDK exposes them; ambiguous conversion
+matches retain content without claiming an entry identity. Missing historical
+evidence is never reconstructed from current workflow configuration.
+
 Session-global Pi events and unknown SDK events are stored as `worker.trace`, not turn-local `pi.*` activity.
 
 ## Sequence

@@ -1,5 +1,6 @@
 import type {
 	CurrentExecutionRef,
+	InspectionProduct,
 	NormalizedQuestion,
 	PreparedTurnStart,
 	ProcessInputTarget,
@@ -111,6 +112,8 @@ export interface WorkerRuntimeContextSnapshot {
 	turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
 	/** @internal */
 	turnResultMarkdownByProduct?: Record<string, string>;
+	/** Exact versions in turnResultMarkdownByProduct, captured when supplied. @internal */
+	inspectionProducts?: InspectionProduct[];
 }
 
 /** @internal */

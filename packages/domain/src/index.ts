@@ -82,6 +82,7 @@ export {
 	SYSTEM_ACTOR,
 	WORKER_ERROR_CLASSES,
 } from "./domain-model.js";
+export * from "./execution-inspection.js";
 export {
 	addLauncherRecentValue,
 	DEFAULT_LAUNCHER_RECENT_VALUE_LIMIT,
