@@ -4,12 +4,12 @@ import type {
 } from "@leitwerk-dev/protocol/http-contracts";
 
 const NODE_WIDTH = 196;
-const NODE_HEIGHT = 68;
-const LANE_LABEL_WIDTH = 126;
-export const INSTANCE_TREE_COLUMN_GAP = 160;
-const LANE_GAP = 72;
-const HORIZONTAL_MARGIN = 24;
-const VERTICAL_MARGIN = 60;
+const NODE_HEIGHT = 48;
+const LANE_LABEL_WIDTH = 112;
+export const INSTANCE_TREE_COLUMN_GAP = 128;
+const LANE_GAP = 48;
+const HORIZONTAL_MARGIN = 16;
+const VERTICAL_MARGIN = 48;
 
 export interface InstanceTreeLayoutNode extends InstanceTreeNodeSummary {
 	x: number;
@@ -136,6 +136,25 @@ export function layoutInstanceTree(
 		return result;
 	}
 	const layoutNodes = sorted.map(position);
+	// Labelled cross-lane inputs need more headroom than an ordinary context row.
+	const laneGaps = Array.from({ length: nextLane }, () => LANE_GAP);
+	for (const target of layoutNodes) {
+		const labelledInputs = edgeSummaries.filter((edge) => {
+			if (edge.targetNodeId !== target.id || (!edge.actionLabel && !edge.productLabels.length))
+				return false;
+			const source = positioned.get(edge.sourceNodeId);
+			return source && (source.lane !== target.lane || edge.productLabels.length > 0);
+		}).length;
+		if (labelledInputs)
+			laneGaps[target.lane] = Math.max(laneGaps[target.lane], labelledInputs * 60 + 12);
+	}
+	const laneOffsets: number[] = [];
+	let nextY = Math.max(VERTICAL_MARGIN, laneGaps[0]);
+	for (let lane = 0; lane < nextLane; lane++) {
+		laneOffsets[lane] = nextY + NODE_HEIGHT / 2;
+		nextY += NODE_HEIGHT + (laneGaps[lane + 1] ?? VERTICAL_MARGIN);
+	}
+	for (const node of layoutNodes) node.y = laneOffsets[node.lane];
 	const edges = edgeSummaries
 		.map((edge) => {
 			const source = positioned.get(edge.sourceNodeId);
@@ -162,7 +181,7 @@ export function layoutInstanceTree(
 			(maxRank + 1) * NODE_WIDTH +
 			maxRank * INSTANCE_TREE_COLUMN_GAP +
 			(edges.some((edge) => edge.endState) ? 100 : 0),
-		height: VERTICAL_MARGIN * 2 + nextLane * NODE_HEIGHT + Math.max(0, nextLane - 1) * LANE_GAP,
+		height: nextY,
 		laneCount: nextLane,
 		nodes: layoutNodes,
 		edges,

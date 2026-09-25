@@ -4,6 +4,7 @@ let nextTreeDiagramId = 0;
 
 <script lang="ts">
 import type { ProcessInstanceTreeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
+import { tick } from "svelte";
 import type { ChronicleSelectableItem } from "../chronicle/lib/chronicle-selectable-items.js";
 import {
 	INSTANCE_TREE_COLUMN_GAP,
@@ -32,6 +33,48 @@ const laneStarts = $derived(layout?.nodes.filter((node) => node.startsLane) ?? [
 const branchPoints = $derived(
 	layout?.nodes.filter((node) => node.childCount > 1).length ?? 0,
 );
+let viewport = $state<HTMLDivElement>();
+let zoom = $state(1);
+const selectedNode = $derived(layout?.nodes.find((node) => node.id === selectedTurnRecordId));
+
+function showSelected() {
+	if (!viewport || !selectedNode) return;
+	viewport.scrollTo({
+		left: (selectedNode.x + selectedNode.width / 2) * zoom <= viewport.clientWidth
+			? 0 : selectedNode.x * zoom - viewport.clientWidth / 2,
+		top: selectedNode.y * zoom - viewport.clientHeight / 2,
+	});
+}
+
+$effect(() => {
+	const container = viewport;
+	const selected = selectedTurnRecordId;
+	if (!container || !selected) return;
+	let cancelled = false;
+	void tick().then(() => { if (!cancelled) showSelected(); });
+	return () => { cancelled = true; };
+});
+
+async function setZoom(next: number) {
+	if (!viewport) return;
+	const x = (viewport.scrollLeft + viewport.clientWidth / 2) / zoom;
+	const y = (viewport.scrollTop + viewport.clientHeight / 2) / zoom;
+	zoom = Math.max(0.05, Math.min(2, next));
+	await tick();
+	viewport.scrollTo({left: x * zoom - viewport.clientWidth / 2, top: y * zoom - viewport.clientHeight / 2});
+}
+
+async function fitMap() {
+	if (!viewport || !layout) return;
+	await setZoom(Math.min(1, (viewport.clientWidth - 16) / layout.width, (viewport.clientHeight - 16) / layout.height));
+	viewport.scrollTo({left:0, top:0});
+}
+
+async function revealSelected() {
+	zoom = 1;
+	await tick();
+	showSelected();
+}
 
 function path(points: readonly { x: number; y: number }[]): string {
 	return points
@@ -98,14 +141,24 @@ const accessibleDescription = $derived.by(() => {
 </script>
 
 {#if layout}
+	<div class="conversation-tree">
+	<div class="tree-toolbar">
 	<p class="summary-detail">
 		{layout.nodes.length} executions · {layout.laneCount} contexts · {branchPoints} branch
 		{branchPoints === 1 ? "point" : "points"}
 	</p>
-	<div class="tree-viewport" data-section="conversation-tree-diagram">
+	<div class="tree-controls" role="group" aria-label="Map navigation">
+		<button class="ui-button" aria-label="Zoom out" disabled={zoom <= 0.05} onclick={() => setZoom(zoom / 1.5)}>−</button>
+		<output aria-label="Map zoom">{Math.round(zoom * 100)}%</output>
+		<button class="ui-button" aria-label="Zoom in" disabled={zoom >= 2} onclick={() => setZoom(zoom * 1.5)}>+</button>
+		<button class="ui-button" onclick={fitMap}>Fit map</button>
+		{#if selectedNode}<button class="ui-button" onclick={revealSelected}>Show selected</button>{/if}
+	</div>
+	</div>
+	<div class="tree-viewport" bind:this={viewport} data-section="conversation-tree-diagram" role="region" aria-label="Conversation map" tabindex="0">
 		<svg
-			width={layout.width}
-			height={layout.height}
+			width={layout.width * zoom}
+			height={layout.height * zoom}
 			viewBox={`0 0 ${layout.width} ${layout.height}`}
 			role="group"
 			aria-labelledby={`${markerId}-title ${markerId}-description`}
@@ -167,13 +220,15 @@ const accessibleDescription = $derived.by(() => {
 				>
 					<title>{marker(node)}</title>
 					<rect width={node.width} height={node.height} rx="9" />
-					<text class="node-title" x={node.width / 2} y="38" text-anchor="middle">
+					<text class="node-title" x={node.width / 2} y={node.height / 2 + 4} text-anchor="middle">
 						{rail?.title ?? node.label}
 					</text>
 					{#if node.childCount > 1}
 						<text class="badge branch-badge" x={node.width - 58} y="-8">Branch</text>
 					{/if}
-					{#if node.isCurrent}
+					{#if node.id === selectedTurnRecordId}
+						<text class="badge selected-badge" x={node.width / 2} y={node.height + 17} text-anchor="middle">Selected{node.isCurrent ? " · Current" : node.resultState === "failed" ? " · Failed" : ""}</text>
+					{:else if node.isCurrent}
 						<text class="badge current-badge" x={node.width - 62} y={node.height + 17}>Current</text>
 					{:else if node.resultState === "failed"}
 						<text class="badge failed-badge" x={node.width - 52} y={node.height + 17}>Failed</text>
@@ -230,10 +285,17 @@ const accessibleDescription = $derived.by(() => {
 			{/each}
 		</svg>
 	</div>
+	</div>
 {/if}
 
 <style>
  .tree-node[role="button"] {cursor:pointer;} .tree-node[role="button"]:focus {outline:none;} .tree-node[role="button"]:focus-visible rect, .tree-node.selected rect {stroke:var(--chronicle-accent); stroke-width:3;}
+	.conversation-tree {display:flex; flex-direction:column; flex:1; min-height:0; gap:var(--space-xs);}
+	.tree-toolbar {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-xs) var(--space-md);}
+	.tree-controls {display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-2xs);}
+	.tree-controls output {min-width:3rem; text-align:center; font-size:var(--type-caption); font-variant-numeric:tabular-nums;}
+	.tree-controls .ui-button {padding-inline:var(--space-xs);}
+	.tree-controls [aria-label="Zoom in"],.tree-controls [aria-label="Zoom out"] {min-width:44px; font-size:var(--type-title-sm);}
 	.summary-detail {
 		margin: 0;
 		color: var(--chronicle-text-muted);
@@ -243,9 +305,10 @@ const accessibleDescription = $derived.by(() => {
 	}
 
 	.tree-viewport {
+		flex: 1;
 		overflow: auto;
-		max-height: 58vh;
-		min-height: 240px;
+		min-height: 160px;
+		overscroll-behavior: contain;
 		border: 1px solid var(--chronicle-border);
 		border-radius: var(--radius-md);
 		background: color-mix(in srgb, var(--chronicle-panel-muted) 45%, white);
@@ -253,8 +316,8 @@ const accessibleDescription = $derived.by(() => {
 
 	svg {
 		display: block;
-		min-width: 100%;
 	}
+	.tree-viewport:focus-visible {outline:2px solid var(--chronicle-accent); outline-offset:2px;}
 
 	.edge {
 		fill: none;
@@ -367,6 +430,7 @@ const accessibleDescription = $derived.by(() => {
 		stroke: var(--chronicle-danger);
 		stroke-width: 2;
 	}
+	.tree-node.selected rect {stroke:var(--chronicle-accent); stroke-width:3;}
 
 	.badge {
 		font-size: var(--type-label);
@@ -384,6 +448,7 @@ const accessibleDescription = $derived.by(() => {
 	.failed-badge {
 		fill: var(--chronicle-danger) !important;
 	}
+	.selected-badge {fill:var(--chronicle-accent) !important;}
 
 	.lane-label text {
 		fill: var(--chronicle-text-muted);

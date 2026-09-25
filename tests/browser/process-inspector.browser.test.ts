@@ -199,6 +199,8 @@ for (const width of [1280, 390])
 		await expect(inspector.getByRole("button", { name: "Copy input message" })).toBeVisible();
 		await inspector.getByRole("button", { name: "View in context map" }).click();
 		await expect(page).toHaveURL(new RegExp(`section=context-map&turnRecordId=${source.id}`));
+		await expect(inspector.locator('.tree-node[aria-pressed="true"]')).toBeInViewport();
+		await inspector.getByRole("button", { name: "List", exact: true }).click();
 		await expect(inspector.locator(".context-list li.selected")).toContainText("Run Prompt");
 		await expectNoPageOverflow(page);
 		expect(await scroll.evaluate((element) => element.clientHeight)).toBeGreaterThan(100);
@@ -226,6 +228,73 @@ for (const width of [1280, 390])
 
 		await expectNoPageOverflow(page);
 	});
+
+for (const width of [1280, 390]) {
+	test(`keeps a long context map navigable without page scrolling at ${width}px`, async ({
+		page,
+		leitwerk,
+	}) => {
+		await page.setViewportSize({ width, height: 844 });
+		const process = leitwerk.ctx.deps.processes.create({
+			processId: "single_prompt_process",
+			title: "Many independent executions",
+			lifecycleStatus: "completed",
+			selectedTurnId: null,
+			externalId: "tracker:demo/project#42",
+			externalUrl: "https://issues.example.test/demo/42",
+		});
+		const records = Array.from({ length: 30 }, (_, index) =>
+			leitwerk.ctx.deps.turnRecords.create({
+				instanceId: process.id,
+				turnId: "delivery",
+				turnType: "human",
+				status: "succeeded",
+				startedAt: new Date(Date.UTC(2026, 8, 1, 10, index)).toISOString(),
+				endedAt: new Date(Date.UTC(2026, 8, 1, 10, index, 1)).toISOString(),
+			}),
+		);
+		const selected = records[records.length - 1];
+		const base = `/processes/${process.id}`;
+		await page.goto(`${base}?inspect=process&section=overview`);
+		const inspector = page.locator('[data-section="process-inspector"]');
+		const source = inspector.getByRole("link", { name: /tracker:demo\/project#42/ });
+		await expect(source).toHaveAttribute("href", "https://issues.example.test/demo/42");
+		await expect(source).toHaveAttribute("target", "_blank");
+		await expect(inspector.getByRole("link", { name: /Open source/ })).toHaveCount(0);
+		await page.goto(`${base}?inspect=process&section=context-map&turnRecordId=${selected.id}`);
+		const node = inspector.locator('.tree-node[aria-pressed="true"]');
+		await expect(node).toBeInViewport();
+		await expect(inspector.locator(".context-list")).toHaveCount(0);
+		const pane = page.locator('[data-role="inspector-scroll"]');
+		await expect
+			.poll(() => pane.evaluate((element) => element.scrollHeight - element.clientHeight))
+			.toBeLessThanOrEqual(2);
+		await inspector.getByRole("button", { name: "Fit map", exact: true }).click();
+		await expect
+			.poll(async () => Number.parseInt(await inspector.getByLabel("Map zoom").innerText(), 10))
+			.toBeLessThan(100);
+		const map = inspector.getByRole("region", { name: "Conversation map", exact: true });
+		await expect
+			.poll(() => map.evaluate((element) => element.scrollHeight - element.clientHeight))
+			.toBeLessThanOrEqual(2);
+		await inspector.getByRole("button", { name: "Zoom in", exact: true }).click();
+		await inspector.getByRole("button", { name: "Show selected", exact: true }).click();
+		await expect(inspector.getByLabel("Map zoom")).toHaveText("100%");
+		await expect(node).toBeInViewport();
+		await inspector.getByRole("button", { name: "List", exact: true }).click();
+		const selectedItem = inspector.locator(".context-list li.selected");
+		await expect(selectedItem).toBeInViewport();
+		await expect(map).toHaveCount(0);
+		await expectNoPageOverflow(page);
+		await selectedItem.getByRole("button").focus();
+		await page.keyboard.press("Enter");
+		await expect(page).toHaveURL(
+			(url) =>
+				url.searchParams.get("inspect") === "execution" &&
+				url.searchParams.get("turnRecordId") === selected.id,
+		);
+	});
+}
 
 test("keeps the shell usable for invalid, absent and failed evidence, and ignores an old selection", async ({
 	page,

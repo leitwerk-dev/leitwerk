@@ -16,10 +16,10 @@ Use the incumbent Public Sans heading, body, and caption scales. White working s
 
 Process sections are Overview, Workflow, Inputs & configuration, and Context map:
 
-- Overview groups run facts, usage coverage, recorded repositories, and deliverable links. Repository configuration does not imply that a repository changed; partial usage remains explicit.
+- Overview groups compact label/value facts, usage coverage, recorded repositories, and deliverable links. The source identifier and project labels carry their external links directly. Repository configuration does not imply that a repository changed; partial usage remains explicit.
 - Workflow presents the current graph and a text list of steps. Step references expose purpose, contracts, model policy, tool declarations, instructions, and possible transitions. Current definitions are labeled explicitly, including the absence of a launch-time graph snapshot.
 - Inputs & configuration leads with the full original request, followed by recorded launch parameters, model defaults and overrides, and infrastructure details. Separate the default at creation from mutable current settings.
-- Context map pairs the diagram with a readable ancestry list. Conversation inheritance and supplied products remain distinct. An unconnected execution can have unknown context.
+- Context map offers Map and List as alternate views within the available evidence pane. The compact diagram opens at the selected execution, with zoom, Fit map, and Show selected controls; the list also reveals that selection on arrival. Broader map explanations use a disclosure. Conversation inheritance and supplied products remain distinct. An unconnected execution can have unknown context.
 
 Execution sections are Trace, Context, and Configuration:
 
@@ -37,6 +37,6 @@ The chronicle stays mounted, hidden, and inert while inspection is open. Its aut
 
 ## Responsive behavior
 
-The mobile inspector remains contained below the global shell bar. Its identity, context summary, and section links wrap above the evidence pane, which retains its own scrolling. At 720px and below, header and evidence padding tighten, facts and step lists become one column, and definition labels stack above their values. Section links keep a 44px minimum height. Workflow and context diagrams retain their accompanying text lists for narrow-screen investigation.
+The mobile inspector remains contained below the global shell bar. Its identity, context summary, and section links wrap above the evidence pane, which retains its own scrolling. At 720px and below, header and evidence padding tighten, facts and step lists become one column, and definition labels stack above their values. Overview fact labels remain beside their values; repository branch facts sit beneath their repository. Section links and map controls keep a 44px minimum height. The context diagram and its alternative list each scroll within the remaining space, keeping view and navigation controls reachable.
 
 No unresolved surface decision remains.

@@ -90,7 +90,8 @@ inert; their drafts and disclosure state survive inspection.
 
 Process sections are **Overview**, **Workflow**, **Inputs & configuration**, and
 **Context map**. Overview retains usage coverage, recorded repository facts and
-resource links. Inputs shows the original request before launch parameters and
+resource links. Source identifiers and project labels link directly to their external
+resources. Inputs shows the original request before launch parameters and
 mutable model settings. Workflow and step contracts describe the current definition.
 They are not a launch-time configuration snapshot. Step links reveal matching
 executions in the Chronicle without adding another execution table.
@@ -104,7 +105,9 @@ Context separates inherited conversation, supplied product versions and local in
 Source links open the recorded boundary and mark **Context inherited through here**;
 activity after that boundary was not inherited. Fresh context excludes inherited
 conversation but can still receive products and instructions. The context map shows
-recorded conversation and product relationships, with a keyboard list alternative.
+recorded conversation and product relationships. Map and List are alternate views
+within the evidence pane, both opening at the selected execution. Zoom and Fit map
+help navigate large graphs; Show selected restores the selected node at readable size.
 Chronological proximity, repeated step names and decision/retry links do not establish
 context inheritance. Legacy branch messages with unknown ownership remain readable in
 a separate collapsed reference; they are not presented as this execution’s inputs.
