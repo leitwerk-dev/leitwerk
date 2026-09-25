@@ -17,6 +17,8 @@ import {
 type Mode = "happy" | "full";
 
 interface Props {
+	onSelectTurn?: (turnId: string) => void;
+	selectedTurnId?: string;
 	/** Provide either a launcher (gallery/setup) or a flow view directly (detail page). */
 	launcher?: UiLauncherSummary;
 	flow?: ProcessFlowView;
@@ -30,7 +32,7 @@ interface Props {
 	expandable?: boolean;
 }
 
-let { launcher, flow, mode = "happy", compact = false, expandable = false }: Props = $props();
+let { launcher, flow, mode = "happy", compact = false, expandable = false, onSelectTurn, selectedTurnId }: Props = $props();
 
 let expanded = $state(false);
 
@@ -260,7 +262,11 @@ const accessibleSummary = $derived.by(() => {
 						data-flow-turn-id={node.kind === "turn" ? node.id : undefined}
 						data-flow-end-state={node.kind === "end" ? node.lifecycleStatus : undefined}
 						data-flow-node-role={node.role ?? undefined}
-						role="listitem"
+						role={onSelectTurn && node.kind === "turn" ? "button" : "listitem"}
+            tabindex={onSelectTurn && node.kind === "turn" ? 0 : undefined}
+            class:selected={node.id === selectedTurnId}
+            onclick={() => {if (node.kind === "turn") onSelectTurn?.(node.id);}}
+            onkeydown={(event) => {if (node.kind === "turn" && (event.key === "Enter" || event.key === " ")) {event.preventDefault(); onSelectTurn?.(node.id);}}}
 						aria-label={nodeAriaLabel(node)}
 					>
 						{#if node.kind === "turn" && node.turnType}
@@ -361,6 +367,7 @@ const accessibleSummary = $derived.by(() => {
 {/if}
 
 <style>
+ .flow-box[role="button"] {cursor:pointer;} .flow-box[role="button"]:focus {outline:none;} .flow-box[role="button"]:focus-visible .flow-box-rect, .flow-box.selected .flow-box-rect {stroke:var(--chronicle-accent); stroke-width:3;}
 	/* Progressive-disclosure: body plus a static caret pinned top-right */
 	.flow-disclosure {
 		display: flex;

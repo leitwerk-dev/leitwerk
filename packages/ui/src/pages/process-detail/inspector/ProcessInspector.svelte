@@ -10,6 +10,7 @@ import { createToolRendererIndex } from "../../../lib/tool-call-rendering.js";
 import { wsStore } from "../../../lib/ws.svelte.js";
 import ExecutionDetails from "./ExecutionDetails.svelte";
 import { createInspectionData } from "./inspection-data.svelte.js";
+import ProcessReference from "./ProcessReference.svelte";
 
 interface Props {
 	instanceId: string;
@@ -127,7 +128,7 @@ function sectionTarget(section: string): InspectorTarget {
     {:else if !detail}<p role="status">Loading process…</p>
     {:else if target.scope === "execution"}
       <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle()} {onReady} />
-    {:else}<p role="status">The selected {target.scope} is ready for inspection.</p>{/if}
+    {:else}<ProcessReference {detail} {target} {onNavigate} {onChronicle} {onShowSummary} />{/if}
   </div>
 </section>
 

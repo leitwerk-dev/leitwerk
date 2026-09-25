@@ -18,7 +18,7 @@ export interface InstanceTreeLayoutNode extends InstanceTreeNodeSummary {
 	height: number;
 	lane: number;
 	startsLane: boolean;
-	contextOrigin: "fresh" | "previous" | null;
+	contextOrigin: "fresh" | "previous" | "unknown" | "not_applicable" | null;
 	childCount: number;
 	isCurrent: boolean;
 }
@@ -94,11 +94,14 @@ export function layoutInstanceTree(
 	const positioned = new Map<string, InstanceTreeLayoutNode>();
 	const ranks = new Map<string, number>();
 	let nextLane = 0;
+	const visiting = new Set<string>();
 	function position(node: InstanceTreeNodeSummary): InstanceTreeLayoutNode {
 		const existing = positioned.get(node.id);
 		if (existing) return existing;
 		const parentNode = node.parentId ? byId.get(node.parentId) : undefined;
-		const parent = parentNode ? position(parentNode) : undefined;
+		visiting.add(node.id);
+		const parent = parentNode && !visiting.has(parentNode.id) ? position(parentNode) : undefined;
+		visiting.delete(node.id);
 		const siblings = node.parentId ? (childrenByParent.get(node.parentId) ?? []) : [];
 		const startsLane = !parent || node.pathType === "leaf_branch" || siblings[0]?.id !== node.id;
 		const lane = startsLane ? nextLane++ : parent.lane;
@@ -116,7 +119,16 @@ export function layoutInstanceTree(
 			height: NODE_HEIGHT,
 			lane,
 			startsLane,
-			contextOrigin: startsLane ? (parent ? "previous" : "fresh") : null,
+			contextOrigin: startsLane
+				? node.origin?.conversation.state === "not_applicable"
+					? "not_applicable"
+					: parent
+						? "previous"
+						: node.origin?.conversation.state === "recorded" &&
+								node.origin.conversation.value === null
+							? "fresh"
+							: "unknown"
+				: null,
 			childCount: childrenByParent.get(node.id)?.length ?? 0,
 			isCurrent: node.id === currentLeafId,
 		};

@@ -12,11 +12,13 @@ import {
 } from "../lib/instance-tree-layout";
 
 interface Props {
+	onSelectExecution?: (turnRecordId: string) => void;
+	selectedTurnRecordId?: string;
 	tree: ProcessInstanceTreeResponseBody;
 	railItems: readonly ChronicleSelectableItem[];
 }
 
-let { tree, railItems }: Props = $props();
+let { tree, railItems, onSelectExecution, selectedTurnRecordId }: Props = $props();
 const railByRecord = $derived(
 	new Map(
 		railItems
@@ -97,7 +99,7 @@ const accessibleDescription = $derived.by(() => {
 
 {#if layout}
 	<p class="summary-detail">
-		{layout.nodes.length} model inputs · {layout.laneCount} contexts · {branchPoints} branch
+		{layout.nodes.length} executions · {layout.laneCount} contexts · {branchPoints} branch
 		{branchPoints === 1 ? "point" : "points"}
 	</p>
 	<div class="tree-viewport" data-section="conversation-tree-diagram">
@@ -105,7 +107,7 @@ const accessibleDescription = $derived.by(() => {
 			width={layout.width}
 			height={layout.height}
 			viewBox={`0 0 ${layout.width} ${layout.height}`}
-			role="img"
+			role="group"
 			aria-labelledby={`${markerId}-title ${markerId}-description`}
 		>
 			<title id={`${markerId}-title`}>Conversation input lineage</title>
@@ -139,7 +141,7 @@ const accessibleDescription = $derived.by(() => {
 				<g class="lane-label" transform={`translate(16 ${node.y - 13})`}>
 					<text class="lane-number" y="0">Context {index + 1}</text>
 					<text class:previous={node.contextOrigin === "previous"} y="20">
-						{node.contextOrigin === "previous" ? "Previous context" : "Fresh context"}
+						{node.contextOrigin === "previous" ? "Inherited context" : node.contextOrigin === "fresh" ? "No inheritance" : node.contextOrigin === "not_applicable" ? "No model context" : "Origin unknown"}
 					</text>
 				</g>
 			{/each}
@@ -148,6 +150,13 @@ const accessibleDescription = $derived.by(() => {
 				{@const rail = railByRecord.get(node.id)}
 				<g
 					class="tree-node"
+          role={onSelectExecution ? "button" : undefined}
+          tabindex={onSelectExecution ? 0 : undefined}
+          aria-label={marker(node)}
+          aria-pressed={onSelectExecution ? node.id === selectedTurnRecordId : undefined}
+          class:selected={node.id === selectedTurnRecordId}
+          onclick={() => onSelectExecution?.(node.id)}
+          onkeydown={(event) => {if (event.key === "Enter" || event.key === " ") {event.preventDefault(); onSelectExecution?.(node.id);}}}
 					class:branch={node.childCount > 1}
 					class:current={node.isCurrent}
 					class:failed={node.resultState === "failed"}
@@ -224,6 +233,7 @@ const accessibleDescription = $derived.by(() => {
 {/if}
 
 <style>
+ .tree-node[role="button"] {cursor:pointer;} .tree-node[role="button"]:focus {outline:none;} .tree-node[role="button"]:focus-visible rect, .tree-node.selected rect {stroke:var(--chronicle-accent); stroke-width:3;}
 	.summary-detail {
 		margin: 0;
 		color: var(--chronicle-text-muted);

@@ -518,6 +518,10 @@ export type ProcessRunToolView = {
 
 /** @internal */
 export type ProcessRunTurnView = {
+	/** Current definition schema, not an execution snapshot. @internal */
+	definitionContract?: unknown;
+	/** @internal */
+	integrationToolNames?: readonly string[];
 	/** @internal */
 	turnId: string;
 	/** @internal */
@@ -548,6 +552,8 @@ export type ProcessRunDetailsView = {
 
 /** @internal */
 export interface ProcessLaunchConfigurationParameterView {
+	/** Presentation-safe original value. @internal */
+	rawValue?: unknown;
 	/** @internal */
 	fieldId: string;
 	/** @internal */
