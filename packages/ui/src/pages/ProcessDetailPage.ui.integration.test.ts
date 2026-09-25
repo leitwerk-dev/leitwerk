@@ -28,7 +28,7 @@ const {
 	mockFetchProcessActionModelPreview,
 	mockFetchProcessDetail,
 	mockFetchTicketCreationTools,
-	mockFetchTurnReasoningDetail,
+	mockFetchInspectionTrace,
 	mockWs,
 	mockPostProcessAction,
 	mockPostProcessRetry,
@@ -41,7 +41,7 @@ const {
 	mockFetchProcessActionModelPreview: vi.fn(),
 	mockFetchProcessDetail: vi.fn(),
 	mockFetchTicketCreationTools: vi.fn(),
-	mockFetchTurnReasoningDetail: vi.fn(),
+	mockFetchInspectionTrace: vi.fn(),
 	mockWs: (() => {
 		let state = {
 			status: "disconnected" as "connecting" | "connected" | "disconnected",
@@ -77,7 +77,15 @@ vi.mock("../lib/api", () => ({
 		compactTestDetail(await mockFetchProcessDetail(...args)),
 	fetchProcessesList: vi.fn().mockResolvedValue({ processes: [], futureExecutions: [] }),
 	fetchTicketCreationTools: mockFetchTicketCreationTools,
-	fetchTurnReasoningDetail: mockFetchTurnReasoningDetail,
+	fetchExecutionInspection: async (
+		instanceId: string,
+		recordId: string,
+		section: string,
+		...rest: unknown[]
+	) =>
+		section === "summary"
+			? buildMockInspectionSummary(instanceId, recordId)
+			: mockFetchInspectionTrace(instanceId, recordId, section, ...rest),
 	postProcessAction: mockPostProcessAction,
 	postProcessRetry: mockPostProcessRetry,
 	postProcessTurnContinue: mockPostProcessTurnContinue,
@@ -484,11 +492,13 @@ type LegacyProcessDetailTestData = Omit<ProcessDetailData, "primaryPath"> & {
 	piSessionEntries: PiSessionEntry[];
 };
 
+let inspectionSource: LegacyProcessDetailTestData;
 const compactFixtureFactory = createCompactProcessDetailFixtureFactory();
 
 function compactTestDetail(
 	input: ProcessDetailData | LegacyProcessDetailTestData,
 ): ProcessDetailData {
+	if ("turnRecords" in input) inspectionSource = input;
 	const compacted = compactFixtureFactory.compact(input);
 	return {
 		...compacted,
@@ -518,8 +528,88 @@ function createFailedTurnRecovery(
 	};
 }
 
+function buildMockInspectionSummary(instanceId: string, turnRecordId: string) {
+	const record = inspectionSource.turnRecords.find((record) => record.id === turnRecordId);
+	const active = inspectionSource.primaryPath.turnState.activeTurn;
+	const execution =
+		record ??
+		(active?.turnRecordId === turnRecordId
+			? {
+					id: turnRecordId,
+					turnId: active.turnId,
+					turnType: "llm",
+					status: "running",
+					attemptNumber: 1,
+					startedAt: "2026-01-01T00:03:00Z",
+					endedAt: null,
+				}
+			: null);
+	if (!execution) throw new Error("Execution not found");
+	const ids = inspectionSource.turnRecords.map((record) => record.id);
+	const index = ids.indexOf(turnRecordId);
+	return {
+		instanceId,
+		execution,
+		origin: {
+			summary: "Context origin not recorded",
+			authoredMode: { state: "not_recorded", reason: "Legacy fixture" },
+			startTarget: { state: "not_recorded", reason: "Legacy fixture" },
+			conversation: { state: "not_recorded", reason: "Legacy fixture" },
+			structuralPath: "primary",
+		},
+		startKind: { state: "not_recorded", reason: "Legacy fixture" },
+		model: { state: "not_recorded", reason: "Legacy fixture" },
+		usage: compactFixtureFactory.reasoningResponse(instanceId, turnRecordId).reasoning.usage,
+		previousTurnRecordId: ids[index - 1] ?? null,
+		nextTurnRecordId: ids[index + 1] ?? null,
+		modelInputCount: 0,
+	};
+}
 function buildMockReasoningResponse(requestInstanceId: string, turnRecordId: string) {
-	return compactFixtureFactory.reasoningResponse(requestInstanceId, turnRecordId);
+	const response = compactFixtureFactory.reasoningResponse(requestInstanceId, turnRecordId);
+	const messages: import("@leitwerk-dev/protocol").InspectionTraceMessage[] = [];
+	const add = (
+		role: string,
+		id: string,
+		blocks: import("@leitwerk-dev/protocol").PiSessionContentBlock[],
+	) =>
+		messages.push({
+			id,
+			entryId: id,
+			aliases: [],
+			role,
+			timestamp: "2026-01-01T00:00:00Z",
+			blocks: blocks.map((content, index) => ({ id: id + ":" + index, content })),
+			toolCallId: null,
+			toolName: null,
+			isError: false,
+		});
+	if (response.reasoning.piInput)
+		add("user", turnRecordId + ":input", [
+			{ type: "text", text: response.reasoning.piInput.fullPrompt },
+		]);
+	const blocks: import("@leitwerk-dev/protocol").PiSessionContentBlock[] = [];
+	if (response.reasoning.assistant.thinking)
+		blocks.push({ type: "thinking", thinking: response.reasoning.assistant.thinking });
+	if (response.reasoning.assistant.text)
+		blocks.push({ type: "text", text: response.reasoning.assistant.text });
+	for (const tool of response.reasoning.toolCalls)
+		blocks.push({
+			type: "toolCall",
+			id: tool.toolCallId,
+			name: tool.toolName,
+			arguments: tool.arguments ?? {},
+		});
+	if (blocks.length) add("assistant", turnRecordId + ":assistant", blocks);
+	return {
+		...response,
+		messages,
+		events: [],
+		annotations: [],
+		output: null,
+		target: null,
+		inheritedBoundary: null,
+	};
 }
 
 function createProcessDetail(): LegacyProcessDetailTestData {
@@ -638,7 +728,7 @@ const secondReasoningFullPrompt = [
 	"Patch the implementation and report the result.",
 ].join("\n");
 
-function createReasoningOverlayDetail(): ProcessDetailData {
+function createInspectionDetail(): ProcessDetailData {
 	const detail = createProcessDetail();
 	detail.turnRecords = [
 		{
@@ -979,7 +1069,7 @@ function setSingleTextareaActionForm(
 }
 
 function createActionRequiredDetail(): ProcessDetailData {
-	const detail = createReasoningOverlayDetail();
+	const detail = createInspectionDetail();
 	detail.actions = [
 		{
 			id: "approve_patch",
@@ -1144,7 +1234,7 @@ function createBlockedScheduledActionRailDetail(): ProcessDetailData {
 }
 
 function createExternalTriggerRailDetail(): ProcessDetailData {
-	const detail = createReasoningOverlayDetail();
+	const detail = createInspectionDetail();
 	detail.process.selectedTurnId = "await_review_file";
 	detail.process.lifecycleStatus = "waiting";
 	detail.selectedTurn = {
@@ -1195,7 +1285,7 @@ function createAbortedDetail(): ProcessDetailData {
 }
 
 function createContinuableFailedDetail(): ProcessDetailData {
-	const detail = createReasoningOverlayDetail();
+	const detail = createInspectionDetail();
 	detail.process.selectedTurnId = "implement_fix";
 	detail.process.lifecycleStatus = "error";
 	detail.process.currentExecution = { kind: "worker_start", id: "tsr_2" };
@@ -1214,7 +1304,7 @@ function createContinuableFailedDetail(): ProcessDetailData {
 }
 
 function createContinuableFailedDetailWithHistoricalLeafOutcome(): ProcessDetailData {
-	const detail = createReasoningOverlayDetail();
+	const detail = createInspectionDetail();
 	detail.process.selectedTurnId = "implement_fix";
 	detail.process.lifecycleStatus = "error";
 	detail.process.currentExecution = { kind: "worker_start", id: "tsr_3" };
@@ -1284,7 +1374,7 @@ function createContinuableFailedDetailWithHistoricalLeafOutcome(): ProcessDetail
 }
 
 function createWorkerFailedDetail(): ProcessDetailData {
-	const detail = createReasoningOverlayDetail();
+	const detail = createInspectionDetail();
 	detail.process.selectedTurnId = "generate_plan";
 	detail.process.lifecycleStatus = "error";
 	detail.process.currentExecution = null;
@@ -1722,7 +1812,7 @@ async function flushUi(): Promise<void> {
 		}
 		await Promise.resolve();
 	}
-	await Promise.resolve();
+	for (let i = 0; i < 10; i++) await Promise.resolve();
 }
 
 async function mountSubjectWithCurrentMocks() {
@@ -1822,8 +1912,8 @@ beforeEach(() => {
 	]);
 	mockLaunchTicketCreation.mockReset();
 	mockSubmitQuestionAnswers.mockReset();
-	mockFetchTurnReasoningDetail.mockReset();
-	mockFetchTurnReasoningDetail.mockImplementation(
+	mockFetchInspectionTrace.mockReset();
+	mockFetchInspectionTrace.mockImplementation(
 		async (requestInstanceId: string, turnRecordId: string) =>
 			buildMockReasoningResponse(requestInstanceId, turnRecordId),
 	);
@@ -1892,34 +1982,34 @@ describe("ProcessDetailPage", () => {
 		const answer = live?.querySelector(".live-result p")?.textContent ?? "";
 		expect(answer).toContain("Latest response.");
 		expect(answer.length).toBeLessThanOrEqual(1024);
-		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+		expect(mockFetchInspectionTrace).not.toHaveBeenCalled();
 	});
 
 	it("loads live history only on expansion and reconnects only while it stays open", async () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+		expect(mockFetchInspectionTrace).not.toHaveBeenCalled();
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 1 });
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).not.toHaveBeenCalled();
+		expect(mockFetchInspectionTrace).not.toHaveBeenCalled();
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(1);
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(1);
 		const restored = buildMockReasoningResponse("agt_1", "trn_live");
 		const pending = createDeferred<typeof restored>();
-		mockFetchTurnReasoningDetail.mockImplementationOnce(() => pending.promise);
+		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 2 });
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
-		expect(target.textContent).toContain("Loading reasoning");
-		target.querySelector<HTMLButtonElement>('[data-action="close-reasoning-overlay"]')?.click();
+		expect(target.querySelector("[data-section=process-inspector]")).toBeTruthy();
+		target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.click();
 		await flushUi();
 		pending.resolve(restored);
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 3 });
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
 	});
 
 	it("keeps the overlay open when completion overtakes a delayed live recovery response", async () => {
@@ -1927,17 +2017,17 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 		const stale = buildMockReasoningResponse("agt_1", "trn_live");
 		const pending = createDeferred<typeof stale>();
-		mockFetchTurnReasoningDetail.mockImplementationOnce(() => pending.promise);
+		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		const committed = compactTestDetail(createCommittedReasoningTransitionDetail());
 		detailState.set({ data: committed, loading: false, error: null, loadedAtMs: Date.now() });
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
 		stale.reasoning.assistant.thinking = "Stale live response";
 		pending.resolve(stale);
 		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		expect(target.textContent).toContain("Nothing should disappear after commit.");
 		expect(target.textContent).not.toContain("Stale live response");
 	});
@@ -2184,7 +2274,7 @@ describe("ProcessDetailPage", () => {
 		const sheet = target.querySelector<HTMLElement>('[data-section="mobile-process-quick-nav"]');
 		expect(sheet?.tagName).toBe("DIALOG");
 		expect(sheet?.querySelector('[data-section="turn-rail-list"]')).toBeTruthy();
-		expect(sheet?.textContent).toContain("Process info");
+		expect(sheet?.textContent).toContain("Inspect process");
 		expect(
 			sheet?.querySelector<HTMLButtonElement>('[aria-label^="Open actions for"]'),
 		).toBeTruthy();
@@ -2401,7 +2491,7 @@ describe("ProcessDetailPage", () => {
 		assertNavigation(target.querySelector('[data-section="mobile-process-quick-nav"]'));
 	});
 
-	it("renders the prompt and exposes process info in the header overlay", async () => {
+	it("renders the prompt and exposes process info in the inspector", async () => {
 		vi.setSystemTime(new Date("2026-01-01T00:10:00Z"));
 		const detail = createProcessDetail();
 		detail.process.processId = "single_prompt_external_complete_process";
@@ -2489,59 +2579,14 @@ describe("ProcessDetailPage", () => {
 		);
 		expect(disclosure?.querySelectorAll("details")).toHaveLength(0);
 
-		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
-		) as HTMLButtonElement | undefined;
-		expect(processInfoButton).toBeTruthy();
-		processInfoButton?.click();
+		[...target.querySelectorAll<HTMLButtonElement>("button")]
+			.find((button) => button.textContent?.trim() === "Inspect process")
+			?.click();
 		await flushUi();
-
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-		const overviewPanel = target.querySelector<HTMLElement>(
-			'[data-section="process-info-overview"]',
-		);
-		expect(overviewPanel?.hidden).toBe(false);
-
-		const turnsTab = Array.from(target.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
-			(button) => button.textContent?.trim() === "Turns",
-		);
-		expect(turnsTab).toBeTruthy();
-		turnsTab?.click();
-		await flushUi();
-
-		const turnsPanel = target.querySelector<HTMLElement>('[data-section="process-info-turns"]');
-		expect(turnsPanel?.hidden).toBe(false);
-		expect(turnsPanel?.textContent).toContain("Available Pi tools");
-		expect(turnsPanel?.textContent).toContain("plan_saved");
-		expect(turnsPanel?.textContent).toContain("Short summary of the plan");
-
-		const generatePlanToolHeader = target.querySelector<HTMLElement>(
-			'[data-section="process-info-turn-tools"] [data-turn-id="generate_plan"] .turn-tool-header',
-		);
-		expect(generatePlanToolHeader?.textContent).toContain("deepseek-v4-pro-xhigh");
-		expect(generatePlanToolHeader?.textContent).toContain("Configuration file");
-		expect(generatePlanToolHeader?.textContent).toContain("Pi: read, bash");
-		expect(generatePlanToolHeader?.textContent).toContain("Outcomes: plan_saved");
-
-		const advancedTab = Array.from(target.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(
-			(button) => button.textContent?.trim() === "Advanced",
-		);
-		expect(advancedTab).toBeTruthy();
-		advancedTab?.click();
-		await flushUi();
-
-		const advancedPanel = target.querySelector<HTMLElement>(
-			'[data-section="process-info-advanced"]',
-		);
-		expect(advancedPanel?.hidden).toBe(false);
-		expect(advancedPanel?.textContent).toContain("System prompt");
-		expect(advancedPanel?.textContent).toContain("You are a careful coding assistant.");
-		expect(advancedPanel?.textContent).toContain("Launch model");
-		expect(advancedPanel?.textContent).toContain("Default at creation");
-		expect(advancedPanel?.textContent).toContain("gpt-5.5-medium");
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 	});
 
-	it("shows launcher config repository settings in the process info overlay", async () => {
+	it("shows launcher config repository settings in the process inspector", async () => {
 		const detail = createProcessDetail();
 		detail.process.processId = "local_repo_change_process";
 		detail.process.metadata = { launcherId: "local_repo_change_process.ui_launcher" };
@@ -2581,20 +2626,20 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		processInfoButton?.click();
 		await flushUi();
 
 		const launchInputsTab = Array.from(
-			target.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
-		).find((button) => button.textContent?.trim() === "Launch inputs");
+			target.querySelectorAll<HTMLAnchorElement>('[aria-label="Inspector sections"] a'),
+		).find((button) => button.textContent?.trim() === "Inputs & configuration");
 		expect(launchInputsTab).toBeTruthy();
 		launchInputsTab?.click();
 		await flushUi();
 
 		const launcherConfigSection = target.querySelector<HTMLElement>(
-			'[data-section="process-info-launch-config"]',
+			'[data-role="inspector-scroll"]',
 		);
 		expect(launcherConfigSection?.hidden).toBe(false);
 		expect(launcherConfigSection?.textContent).toContain("Local Repo Change");
@@ -2605,7 +2650,6 @@ describe("ProcessDetailPage", () => {
 		expect(launcherConfigSection?.textContent).toContain(
 			"display-launcher-config-in-process-467-c65d919d0bb3",
 		);
-		expect(launcherConfigSection?.textContent).toContain("Remote URL");
 	});
 
 	it("does not warn about blocked saved model configuration on closed processes", async () => {
@@ -2622,18 +2666,18 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(detail);
 		await flushUi();
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		processInfoButton?.click();
 		await flushUi();
 		const launchInputsTab = Array.from(
-			target.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
-		).find((button) => button.textContent?.trim() === "Launch inputs");
+			target.querySelectorAll<HTMLAnchorElement>('[aria-label="Inspector sections"] a'),
+		).find((button) => button.textContent?.trim() === "Inputs & configuration");
 		launchInputsTab?.click();
 		await flushUi();
 
 		const launcherConfigSection = target.querySelector<HTMLElement>(
-			'[data-section="process-info-launch-config"]',
+			'[data-role="inspector-scroll"]',
 		);
 		expect(launcherConfigSection?.textContent).not.toContain(
 			"Saved model configuration needs attention",
@@ -2696,23 +2740,19 @@ describe("ProcessDetailPage", () => {
 		expect(target.textContent).not.toContain("Estimated spend so far");
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		processInfoButton?.click();
 		await flushUi();
 
-		const usageLine = target.querySelector<HTMLElement>(
-			'[data-section="process-info-usage-cost"] .usage-line',
-		);
-		expect(usageLine?.dataset.completeness).toBe("complete");
+		const usageLine = target.querySelector<HTMLElement>('[data-role="inspector-scroll"]');
+		expect(usageLine?.textContent).not.toContain("Partial totals");
 		expect(usageLine?.textContent).toMatch(/0[.,]0230(?!\d)/);
-		expect(
-			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
-		).toBe("2");
+		expect(usageLine?.textContent).toContain("2/");
 	});
 
 	it("builds the overall estimate from committed turn usage when raw diagnostics are sparse", async () => {
-		const detail = createReasoningOverlayDetail();
+		const detail = createInspectionDetail();
 		const planUsage = detail.piSessionEntries.find((entry) => entry.id === "assistant-plan")
 			?.message?.usage;
 		const implementUsage = detail.piSessionEntries.find((entry) => entry.id === "assistant-fix")
@@ -2762,20 +2802,16 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		processInfoButton?.click();
 		await flushUi();
 
-		const usageLine = target.querySelector<HTMLElement>(
-			'[data-section="process-info-usage-cost"] .usage-line',
-		);
-		expect(usageLine?.dataset.completeness).toBe("complete");
+		const usageLine = target.querySelector<HTMLElement>('[data-role="inspector-scroll"]');
+		expect(usageLine?.textContent).not.toContain("Partial totals");
 		expect(usageLine?.textContent).toMatch(/1[.,]0500(?!\d)/);
 		expect(usageLine?.textContent).not.toMatch(/0[.,]0100(?!\d)/);
-		expect(
-			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
-		).toBe("2");
+		expect(usageLine?.textContent).toContain("2/");
 		expect(target.querySelector('[data-field="missing-usage-turn-count"]')).toBeNull();
 	});
 
@@ -2854,22 +2890,16 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		processInfoButton?.click();
 		await flushUi();
 
-		const usageLine = target.querySelector<HTMLElement>(
-			'[data-section="process-info-usage-cost"] .usage-line',
-		);
-		expect(usageLine?.dataset.completeness).toBe("partial");
+		const usageLine = target.querySelector<HTMLElement>('[data-role="inspector-scroll"]');
+		expect(usageLine?.textContent).toContain("Partial totals");
 		expect(usageLine?.textContent).toMatch(/0[.,]0082(?!\d)/);
-		expect(
-			target.querySelector<HTMLElement>('[data-field="covered-turn-count"]')?.dataset.value,
-		).toBe("1");
-		expect(
-			target.querySelector<HTMLElement>('[data-field="missing-usage-turn-count"]')?.dataset.value,
-		).toBe("1");
+		expect(usageLine?.textContent).toContain("1/");
+		expect(usageLine?.textContent).toContain("1 missing usage");
 	});
 
 	it("uses the committed session tree user message for the displayed prompt", async () => {
@@ -2929,7 +2959,7 @@ describe("ProcessDetailPage", () => {
 		);
 		reasoningButton?.click();
 		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
 		expect(target.textContent).toContain("Nothing should disappear after commit.");
 		expect(target.querySelector('[data-section="live-tail"]')).toBeTruthy();
@@ -2942,7 +2972,7 @@ describe("ProcessDetailPage", () => {
 		});
 		await flushUi();
 
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
 		expect(target.textContent).toContain("Nothing should disappear after commit.");
 		expect(target.querySelector('[data-section="live-tail"]')).toBeNull();
@@ -3328,9 +3358,7 @@ describe("ProcessDetailPage", () => {
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
 		await flushUi();
 
-		expect(
-			target.querySelector('[role="dialog"][aria-labelledby="reasoning-details-title-trn_2"]'),
-		).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 	});
 
 	it("keeps the failed-turn rail item active while the viewport is focused on the failed turn", async () => {
@@ -3406,7 +3434,7 @@ describe("ProcessDetailPage", () => {
 			?.click();
 		await flushUi();
 
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
+		const overlay = target.querySelector<HTMLElement>('[data-section="process-inspector"]');
 		expect(overlay).toBeTruthy();
 		expect(overlay?.querySelector("[data-question-request-id='qst_1']")).toBeTruthy();
 		expect(overlay?.querySelector("form")).toBeNull();
@@ -3442,10 +3470,10 @@ describe("ProcessDetailPage", () => {
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		const closeOverlay = target.querySelector<HTMLButtonElement>(
-			'[data-action="close-reasoning-overlay"]',
+			'[data-action="show-in-chronicle"]',
 		);
 		expect(closeOverlay).toBeTruthy();
-		expect(document.activeElement).toBe(closeOverlay);
+		expect(document.activeElement).toBe(target.querySelector("#inspector-heading"));
 		const previousScrollTop = metrics.getScrollTop();
 		vi.mocked(HTMLElement.prototype.scrollIntoView).mockClear();
 
@@ -3492,10 +3520,10 @@ describe("ProcessDetailPage", () => {
 		expect(answeredQuestion?.querySelector("form")).toBeNull();
 		expect(liveReasoning?.querySelectorAll("form")).toHaveLength(1);
 		expect(liveReasoning?.contains(followUp)).toBe(true);
-		expect(document.activeElement).toBe(closeOverlay);
+		expect(document.activeElement).toBe(target.querySelector("#inspector-heading"));
 		expect(metrics.getScrollTop()).toBe(previousScrollTop);
 		expect(HTMLElement.prototype.scrollIntoView).not.toHaveBeenCalled();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		const notification = get(toastStore).find(
 			(toast) => toast.dedupeKey === "question-request:qst_2",
 		);
@@ -3507,7 +3535,7 @@ describe("ProcessDetailPage", () => {
 		openToast(notification.id);
 		await flushUi();
 
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
 		expect(
 			target.querySelector("[data-question-request-id='qst_2']")?.contains(document.activeElement),
 		).toBe(true);
@@ -3628,7 +3656,7 @@ describe("ProcessDetailPage", () => {
 		expect(processErrorSection?.dataset.focused).toBe("true");
 	});
 
-	it("closes the process info overlay before applying action-required toast focus", async () => {
+	it("closes the process inspector before applying action-required toast focus", async () => {
 		const { target, viewport } = await mountSubject(createActionRequiredDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_400 });
 		await flushUi();
@@ -3642,12 +3670,12 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
+			(button) => button.textContent?.trim() === "Inspect process",
 		) as HTMLButtonElement | undefined;
 		expect(processInfoButton).toBeTruthy();
 		processInfoButton?.click();
 		await flushUi();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 
 		queuePendingProcessToastFocus({
 			instanceId: "agt_1",
@@ -3662,12 +3690,12 @@ describe("ProcessDetailPage", () => {
 		const actionSection = target.querySelector<HTMLElement>(
 			'[data-section="leaf-outcome-actions"]',
 		);
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
 		expect(actionButton?.dataset.active).toBe("true");
 		expect(actionSection?.dataset.focused).toBe("true");
 	});
 
-	it("closes the reasoning overlay before applying failed-step toast focus", async () => {
+	it("closes the execution inspector before applying failed-step toast focus", async () => {
 		const { target, viewport } = await mountSubject(createContinuableFailedDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 4_000 });
 		await flushUi();
@@ -3686,7 +3714,7 @@ describe("ProcessDetailPage", () => {
 		expect(detailButtons.length).toBeGreaterThan(0);
 		detailButtons[detailButtons.length - 1]?.click();
 		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 
 		queuePendingProcessToastFocus({
 			instanceId: "agt_1",
@@ -3701,7 +3729,7 @@ describe("ProcessDetailPage", () => {
 		const failedTurnSection = target.querySelector<HTMLElement>(
 			'[data-section="chronicle-turn"][data-turn-record-id="trn_2"]',
 		);
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
 		expect(failedTurnButton?.dataset.active).toBe("true");
 		expect(failedTurnSection?.dataset.focused).toBe("true");
 	});
@@ -4398,7 +4426,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("uses the current scroll anchor for reasoning shortcuts instead of a prior rail click", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_200 });
 		await flushUi();
 		installAnchorLayoutMetrics(target, {
@@ -4427,14 +4455,12 @@ describe("ProcessDetailPage", () => {
 
 		window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
 		await flushUi();
-		const reasoningDialog = target.querySelector<HTMLElement>(
-			'[role="dialog"][aria-labelledby="reasoning-details-title-trn_1"]',
-		);
+		const reasoningDialog = target.querySelector<HTMLElement>('[data-section="process-inspector"]');
 		expect(reasoningDialog).toBeTruthy();
 	});
 
 	it("jumps immediately to the clicked rail anchor near the top of the chronicle", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_200 });
 		await flushUi();
 		installAnchorLayoutMetrics(target, {
@@ -4454,7 +4480,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("focuses the turn result when clicking a turn rail item", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 3_600 });
 		await flushUi();
 		installAnchorLayoutMetrics(target, {
@@ -4494,7 +4520,7 @@ describe("ProcessDetailPage", () => {
 			childInstanceId: "agt_ticket",
 			relation: { id: "rel_1" },
 		});
-		const { target } = await mountSubject(createReasoningOverlayDetail());
+		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
 
 		const createIssueButton = target.querySelector<HTMLButtonElement>(
@@ -4530,7 +4556,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("keeps historical turn results compressed until the user explicitly expands them", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_200 });
 		await flushUi();
 		installAnchorLayoutMetrics(target, {
@@ -4621,7 +4647,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("keeps the clicked last turn active when the viewport clamps at the bottom", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 1_500 });
 		await flushUi();
 		installAnchorLayoutMetrics(target, {
@@ -4651,7 +4677,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("coalesces chronicle mutation and resize layout work into one animation frame", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_200 });
 		await flushUi();
 		const layouts = {
@@ -4696,7 +4722,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("updates the active rail state when the chronicle container resizes without another scroll event", async () => {
-		const { target, viewport } = await mountSubject(createReasoningOverlayDetail());
+		const { target, viewport } = await mountSubject(createInspectionDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_200 });
 		await flushUi();
 		const layouts = {
@@ -4903,223 +4929,6 @@ describe("ProcessDetailPage", () => {
 		expect(lastTurnButton?.dataset.active).toBe("false");
 	});
 
-	it("supports process detail overlay deep links", async () => {
-		window.history.replaceState(null, "", "/processes/agt_1?overlay=process-info");
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-		expect(
-			target.querySelector('[data-section="process-detail-overlay-frame"]')?.parentElement,
-		).toBe(target.querySelector('[data-page="process-detail"]'));
-	});
-
-	it("supports reasoning detail overlay deep links", async () => {
-		window.history.replaceState(null, "", "/processes/agt_1?overlay=reasoning&turnRecordId=trn_1");
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
-		expect(overlay).toBeTruthy();
-		expect(overlay?.textContent).toContain("First prompt input");
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-	});
-
-	it("ignores unavailable reasoning detail deep links without clearing the URL", async () => {
-		window.history.replaceState(
-			null,
-			"",
-			"/processes/agt_1?overlay=reasoning&turnRecordId=missing-turn",
-		);
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=missing-turn");
-	});
-
-	it("keeps process detail overlay state in the URL", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		const replaceStateSpy = vi.spyOn(window.history, "replaceState");
-		const pushStateSpy = vi.spyOn(window.history, "pushState");
-		const processInfoButton = Array.from(target.querySelectorAll("button")).find(
-			(button) => button.textContent?.trim() === "Process info",
-		) as HTMLButtonElement | undefined;
-		processInfoButton?.focus();
-		processInfoButton?.click();
-		await flushUi();
-		expect(window.location.search).toBe("?overlay=process-info");
-		expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/processes/agt_1?overlay=process-info");
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		replaceStateSpy.mockClear();
-		pushStateSpy.mockClear();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-		expect((target.querySelector(".page-shell") as HTMLElement | null)?.inert).toBe(true);
-		expect(document.activeElement).toBe(
-			target.querySelector<HTMLButtonElement>(
-				'.process-info-overlay [aria-label="Close process info"]',
-			),
-		);
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
-		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
-		expect(window.location.search).toBe("?overlay=process-info");
-
-		target
-			.querySelector<HTMLButtonElement>(".process-detail-overlay-backdrop")
-			?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-		await flushUi();
-		expect(window.location.search).toBe("");
-		expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/processes/agt_1");
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		replaceStateSpy.mockClear();
-		pushStateSpy.mockClear();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-		expect((target.querySelector(".page-shell") as HTMLElement | null)?.inert).not.toBe(true);
-		expect(document.activeElement).toBe(processInfoButton);
-
-		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
-		await flushUi();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_1");
-		expect(replaceStateSpy).toHaveBeenCalledWith(
-			null,
-			"",
-			"/processes/agt_1?overlay=reasoning&turnRecordId=trn_1",
-		);
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		replaceStateSpy.mockClear();
-		pushStateSpy.mockClear();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-		await flushUi();
-		expect(window.location.search).toBe("");
-		expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/processes/agt_1");
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
-		replaceStateSpy.mockRestore();
-		pushStateSpy.mockRestore();
-	});
-
-	it("replaces a closed deep-linked overlay URL so Back will not reopen it", async () => {
-		window.history.replaceState(null, "", "/");
-		window.history.pushState(null, "", "/processes/agt_1?overlay=process-info");
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-		const historyLengthWithDeepLink = window.history.length;
-		const replaceStateSpy = vi.spyOn(window.history, "replaceState");
-		const pushStateSpy = vi.spyOn(window.history, "pushState");
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-		await flushUi();
-		expect(window.location.pathname).toBe("/processes/agt_1");
-		expect(window.location.search).toBe("");
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-		expect(replaceStateSpy).toHaveBeenCalledWith(null, "", "/processes/agt_1");
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		expect(window.history.length).toBe(historyLengthWithDeepLink);
-		replaceStateSpy.mockRestore();
-		pushStateSpy.mockRestore();
-	});
-
-	it("updates reasoning overlay deep links during turn navigation without stacking overlay history", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		const pushStateSpy = vi.spyOn(window.history, "pushState");
-		const replaceStateSpy = vi.spyOn(window.history, "replaceState");
-		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			'[data-action="open-reasoning-details"]',
-		);
-		detailButtons[1]?.click();
-		await flushUi();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_2");
-		expect(replaceStateSpy).toHaveBeenCalledWith(
-			null,
-			"",
-			"/processes/agt_1?overlay=reasoning&turnRecordId=trn_2",
-		);
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		pushStateSpy.mockClear();
-		replaceStateSpy.mockClear();
-
-		target.querySelector<HTMLButtonElement>('[data-action="reasoning-overlay-prev"]')?.click();
-		await flushUi();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_1");
-		expect(replaceStateSpy).toHaveBeenCalledWith(
-			null,
-			"",
-			"/processes/agt_1?overlay=reasoning&turnRecordId=trn_1",
-		);
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		pushStateSpy.mockClear();
-		replaceStateSpy.mockClear();
-
-		target.querySelector<HTMLButtonElement>('[data-action="reasoning-overlay-next"]')?.click();
-		await flushUi();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_2");
-		expect(replaceStateSpy).toHaveBeenCalledWith(
-			null,
-			"",
-			"/processes/agt_1?overlay=reasoning&turnRecordId=trn_2",
-		);
-		expect(pushStateSpy).not.toHaveBeenCalled();
-		pushStateSpy.mockClear();
-		replaceStateSpy.mockClear();
-
-		pushStateSpy.mockRestore();
-		replaceStateSpy.mockRestore();
-	});
-
-	it("restores process detail overlays from browser history events", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		window.history.replaceState(null, "", "/processes/agt_1?overlay=process-info");
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-
-		window.history.replaceState(null, "", "/processes/agt_1?overlay=reasoning&turnRecordId=trn_1");
-		window.dispatchEvent(new PopStateEvent("popstate"));
-		await flushUi();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
-	});
-
-	it("supports i and r detail-view shortcuts", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
-		await flushUi();
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "i" }));
-		await flushUi();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeTruthy();
-		expect(window.location.search).toBe("?overlay=process-info");
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-		await flushUi();
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-		expect(window.location.search).toBe("");
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "r" }));
-		await flushUi();
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
-		expect(overlay).toBeTruthy();
-		expect(overlay?.textContent).toContain("Second prompt input");
-		expect(target.querySelector('[data-section="process-info-overlay"]')).toBeNull();
-		expect(window.location.search).toBe("?overlay=reasoning&turnRecordId=trn_2");
-	});
-
 	it("replaces a synthetic in-progress turn when a live turn starts", async () => {
 		const detail = compactTestDetail(createProcessDetail());
 		const priorTurn = detail.timeline.turns[0];
@@ -5181,35 +4990,35 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("waits for an explicit retry after reasoning detail loading fails", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
+		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
-		mockFetchTurnReasoningDetail.mockReset();
-		mockFetchTurnReasoningDetail.mockRejectedValue(new Error("Temporary reasoning failure"));
+		mockFetchInspectionTrace.mockReset();
+		mockFetchInspectionTrace.mockRejectedValue(new Error("Temporary reasoning failure"));
 
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		await flushUi();
 
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(1);
-		expect(target.querySelector('[data-section="reasoning-load-error"]')?.textContent).toContain(
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(1);
+		expect(target.querySelector('[data-section="inspection-load-error"]')?.textContent).toContain(
 			"Temporary reasoning failure",
 		);
 
-		mockFetchTurnReasoningDetail.mockImplementation(
+		mockFetchInspectionTrace.mockImplementation(
 			async (requestInstanceId: string, turnRecordId: string) =>
 				buildMockReasoningResponse(requestInstanceId, turnRecordId),
 		);
 		target
-			.querySelector<HTMLButtonElement>('[data-section="reasoning-load-error"] button')
+			.querySelector<HTMLButtonElement>('[data-section="inspection-load-error"] button')
 			?.click();
 		await flushUi();
 
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
-		expect(target.querySelector('[data-section="reasoning-load-error"]')).toBeNull();
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
+		expect(target.querySelector('[data-section="inspection-load-error"]')).toBeNull();
 	});
 
 	it("does not apply a reasoning response from an older session signature", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
+		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
 		const staleResponse = buildMockReasoningResponse("agt_1", "trn_1");
 		staleResponse.reasoning = {
@@ -5222,8 +5031,8 @@ describe("ProcessDetailPage", () => {
 		};
 		const pendingStaleResponse = createDeferred<typeof staleResponse>();
 		let reasoningCallCount = 0;
-		mockFetchTurnReasoningDetail.mockReset();
-		mockFetchTurnReasoningDetail.mockImplementation(
+		mockFetchInspectionTrace.mockReset();
+		mockFetchInspectionTrace.mockImplementation(
 			async (requestInstanceId: string, turnRecordId: string) => {
 				reasoningCallCount += 1;
 				return reasoningCallCount === 1
@@ -5235,7 +5044,7 @@ describe("ProcessDetailPage", () => {
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 
-		const freshDetail = createReasoningOverlayDetail();
+		const freshDetail = createInspectionDetail();
 		const freshAssistant = freshDetail.piSessionEntries.find(
 			(entry) => entry.id === "assistant-plan",
 		);
@@ -5254,7 +5063,7 @@ describe("ProcessDetailPage", () => {
 		});
 		await flushUi();
 
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledTimes(2);
+		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
 		expect(target.textContent).toContain("Fresh session reasoning wins.");
 
 		pendingStaleResponse.resolve(staleResponse);
@@ -5265,7 +5074,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("keeps compact tool-only and truncated reasoning previews inspectable", async () => {
-		const detail = compactTestDetail(createReasoningOverlayDetail());
+		const detail = compactTestDetail(createInspectionDetail());
 		detail.timeline.tracePreviewsByTurnRecordId = {
 			trn_1: {
 				turnRecordId: "trn_1",
@@ -5307,97 +5116,17 @@ describe("ProcessDetailPage", () => {
 		}
 		detailButtons[1]?.click();
 		await flushUi();
-		expect(mockFetchTurnReasoningDetail).toHaveBeenCalledWith(
+		expect(mockFetchInspectionTrace).toHaveBeenCalledWith(
 			"agt_1",
 			"trn_2",
-			null,
+			"trace",
+			expect.objectContaining({ itemId: "reasoning" }),
 			expect.any(AbortSignal),
 		);
 	});
 
-	it("opens the reasoning details overlay as a flat operational trace with prompt copy and turn navigation", async () => {
-		const writeText = vi.fn().mockResolvedValue(undefined);
-		vi.stubGlobal("navigator", { clipboard: { writeText } });
-		const detail = createReasoningOverlayDetail();
-		detail.runDetails = {
-			...detail.runDetails,
-			turns: detail.runDetails.turns.map((turn) =>
-				turn.turnId === "implement_fix"
-					? {
-							...turn,
-							outcomeActions: [{ name: "finish_work", description: "Finish", parameters: [] }],
-						}
-					: turn,
-			),
-		};
-		const { target } = await mountSubject(detail);
-		await flushUi();
-
-		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			'[data-action="open-reasoning-details"]',
-		);
-		expect(detailButtons).toHaveLength(2);
-
-		detailButtons[1]?.click();
-		await flushUi();
-
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
-		expect(overlay).toBeTruthy();
-		expect(overlay?.querySelector('[data-section="reasoning-overlay-meta"]')).toBeNull();
-		expect(overlay?.textContent).not.toContain("Triggering input");
-		expect(overlay?.querySelector('[data-section="reasoning-run-summary"]')?.textContent).toContain(
-			"gpt-5-mini",
-		);
-		const turnFactsText = overlay?.querySelector(
-			'[data-section="reasoning-turn-facts"]',
-		)?.textContent;
-		expect(turnFactsText).toContain("read, bash, edit");
-		expect(turnFactsText).toContain("finish_work");
-		expect(
-			overlay?.querySelector('[data-section="reasoning-overlay-pi-input"]')?.textContent,
-		).toContain("Second prompt input");
-		expect(overlay?.querySelector('[data-highlight="user-input"]')?.textContent).toBe(
-			"Second prompt input",
-		);
-		expect(overlay?.textContent).toContain("Need to patch the implementation.");
-		expect(overlay?.textContent).toContain("↑980");
-		expect(overlay?.textContent ?? "").toMatch(/(?:💾)?14\s*written/);
-
-		const copyButton = overlay?.querySelector<HTMLButtonElement>('[data-action="copy-pi-input"]');
-		copyButton?.click();
-		await flushUi();
-		const copiedPrompt = writeText.mock.calls[0]?.[0] ?? "";
-		expect(copiedPrompt).toBe(secondReasoningFullPrompt);
-		expect(copiedPrompt).not.toContain(detail.runDetails.systemPrompt ?? "");
-		expect(copiedPrompt).not.toContain(detail.runDetails.appendSystemPrompt ?? "");
-		expect(copyButton?.textContent).toContain("Copied");
-
-		const previousButton = overlay?.querySelector<HTMLButtonElement>(
-			'[data-action="reasoning-overlay-prev"]',
-		);
-		previousButton?.click();
-		await flushUi();
-		expect(overlay?.textContent).toContain("First prompt input");
-		expect(overlay?.textContent).toContain("Need to inspect the repo.");
-		expect(overlay?.textContent).toContain("claude-sonnet-4");
-		expect(overlay?.textContent).toContain("↑1.2k");
-		expect(overlay?.textContent).toContain("⚡12");
-		expect(overlay?.textContent).toContain("read");
-
-		const nextButton = overlay?.querySelector<HTMLButtonElement>(
-			'[data-action="reasoning-overlay-next"]',
-		);
-		nextButton?.click();
-		await flushUi();
-		expect(overlay?.textContent).toContain("Second prompt input");
-
-		window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
-	});
-
 	it("expands built-in tool calls with session-tree details and highlights truncated results", async () => {
-		const detail = createReasoningOverlayDetail();
+		const detail = createInspectionDetail();
 		const toolResultEntry = detail.piSessionEntries.find((entry) => entry.id === "tool-result-1");
 		if (!toolResultEntry?.message) {
 			throw new Error("Expected tool result fixture entry");
@@ -5452,97 +5181,65 @@ describe("ProcessDetailPage", () => {
 		expect(toolDetails?.textContent).not.toContain("tool-result-1");
 		expect(toolDetails?.textContent).not.toContain("response_too_large");
 	});
+});
 
-	it("opens reasoning details for a turn that has Pi input but no recorded reasoning", async () => {
-		const detail = createReasoningOverlayDetail();
-		detail.piSessionEntries = detail.piSessionEntries.map((entry) =>
-			entry.id === "assistant-fix"
-				? {
-						...entry,
-						message: {
-							role: "assistant",
-							content: [{ type: "text", text: "" }],
-							usage: entry.message?.usage,
-						},
-					}
-				: entry,
-		);
-		detail.primaryPath.primaryPathEntries =
-			detail.piSessionEntries as PrimaryPathSnapshot["primaryPathEntries"];
-
-		const { target } = await mountSubject(detail);
+describe("inspector return and direct routes", () => {
+	it("keeps recovery drafts, scroll and focus while inspecting a process", async () => {
+		const { target, viewport } = await mountSubject(createContinuableFailedDetail());
+		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 4000 });
 		await flushUi();
-
-		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			'[data-action="open-turn-details"]',
-		);
-		expect(detailButtons).toHaveLength(2);
-		detailButtons[1]?.click();
+		const field = editContinuePrompt(target, "Keep the saved recovery draft.");
+		metrics.setScrollTop(650);
+		field.focus();
+		field.dispatchEvent(new KeyboardEvent("keydown", { key: "i", bubbles: true }));
 		await flushUi();
-
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
-		expect(
-			overlay?.querySelector('[data-section="reasoning-overlay-pi-input"]')?.textContent,
-		).toContain("Second prompt input");
-		expect(
-			overlay?.querySelector('[data-section="reasoning-overlay-trace"]')?.textContent,
-		).toContain("No reasoning details were recorded");
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
+		const inspect = [...target.querySelectorAll<HTMLButtonElement>("button")].find(
+			(button) => button.textContent?.trim() === "Inspect process",
+		);
+		inspect?.focus();
+		inspect?.click();
+		await flushUi();
+		expect(target.querySelector<HTMLElement>(".page-shell")?.hidden).toBe(true);
+		expect(target.querySelector<HTMLElement>(".page-shell")?.inert).toBe(true);
+		target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.click();
+		await flushUi();
+		expect(requireContinuePromptField(target).value).toBe("Keep the saved recovery draft.");
+		expect(metrics.getScrollTop()).toBe(650);
+		expect(document.activeElement).toBe(inspect);
 	});
-
-	it("shows quiet reasoning detail empty states for unavailable prompt data and no active tools", async () => {
-		const detail = createReasoningOverlayDetail();
-		detail.runDetails = {
-			...detail.runDetails,
-			turns: detail.runDetails.turns.map((turn) =>
-				turn.turnId === "implement_fix" ? { ...turn, activePiToolNames: [] } : turn,
-			),
-		};
-		detail.piSessionEntries = detail.piSessionEntries
-			.filter((entry) => entry.id !== "user-fix-prompt")
-			.map((entry) =>
-				entry.id === "assistant-fix" ? { ...entry, parentId: "tool-result-1" } : entry,
-			);
-		detail.primaryPath.primaryPathEntries =
-			detail.piSessionEntries as PrimaryPathSnapshot["primaryPathEntries"];
-
-		const { target } = await mountSubject(detail);
+	it.each([
+		"?inspect=process&section=overview",
+		"?inspect=step&turnId=generate_plan",
+		"?inspect=execution&turnRecordId=trn_1&section=trace",
+		"?inspect=execution",
+	])("renders a directly addressed shell: %s", async (query) => {
+		window.history.replaceState(null, "", "/processes/agt_1" + query);
+		window.dispatchEvent(new PopStateEvent("popstate"));
+		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
-
-		const detailButtons = target.querySelectorAll<HTMLButtonElement>(
-			'[data-action="open-reasoning-details"]',
-		);
-		detailButtons[1]?.click();
-		await flushUi();
-
-		const overlay = target.querySelector<HTMLElement>('[data-section="reasoning-details-overlay"]');
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		expect(
-			overlay?.querySelector('[data-section="reasoning-overlay-pi-input"]')?.textContent,
-		).toContain("No Pi input was recorded");
-		expect(overlay?.querySelector('[data-section="reasoning-turn-facts"]')?.textContent).toContain(
-			"None",
-		);
+			target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.disabled,
+		).toBe(false);
 	});
-
-	it("closes the reasoning details overlay when the backdrop is pressed", async () => {
-		const { target } = await mountSubject(createReasoningOverlayDetail());
+	it("copies the full recorded input without current system settings", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		vi.stubGlobal("navigator", { clipboard: { writeText } });
+		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
-
-		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
+		target.querySelectorAll<HTMLButtonElement>('[data-action="open-turn-details"]')[1]?.click();
 		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeTruthy();
-
-		target
-			.querySelector<HTMLButtonElement>(".process-detail-overlay-backdrop")
-			?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		target.querySelector<HTMLButtonElement>('[aria-label="Copy input message"]')?.click();
 		await flushUi();
-		expect(target.querySelector('[data-section="reasoning-details-overlay"]')).toBeNull();
+		expect(writeText).toHaveBeenCalledWith(secondReasoningFullPrompt);
 	});
 });
 
 describe("browser-local process summary", () => {
 	const preferenceKey = "leitwerk:process-summary:hidden:agt_1";
 	function summaryDetail() {
-		const detail = compactTestDetail(createReasoningOverlayDetail());
+		const detail = compactTestDetail(createInspectionDetail());
 		const turn = detail.timeline.turns[0];
 		detail.process.lifecycleStatus = "waiting";
 		detail.process.selectedTurnId = turn.turnId;

@@ -875,6 +875,8 @@ it("serves compact inspection before expanded evidence and validates exact sourc
 		(await get(first.id, `?section=trace&entryId=inspect-result&boundaryFor=${child.id}`)).target
 			.state,
 	).toBe("unavailable");
+	// Later publication must not change the version already supplied to the child.
+	repos.turnRecords.update(first.id, { turnResultMarkdown: "Newly published product" });
 	expect((await get(child.id, "?section=context")).products.value).toEqual([
 		expect.objectContaining({
 			producerTurnRecordId: first.id,
@@ -886,6 +888,11 @@ it("serves compact inspection before expanded evidence and validates exact sourc
 	expect(configuration.revisions.value[0]).toMatchObject({
 		model: { id: "old-model" },
 		systemPrompt: { state: "redacted" },
+	});
+	const blockId = source.messages[0].blocks[0].id;
+	expect((await get(first.id, `?section=trace&itemId=${blockId}`)).target).toEqual({
+		state: "available",
+		itemId: blockId,
 	});
 	expect((await get(child.id, "?section=configuration")).revisions.state).toBe("not_recorded");
 	expect((await get(automatic.id, "?section=configuration")).revisions.state).toBe(

@@ -21,7 +21,7 @@ interface Props {
 	onBack: () => void;
 	onChronicle: (target?: { turnRecordId?: string; turnId?: string }) => void;
 	onShowSummary?: () => void;
-	onReady?: () => void;
+	onReady?: () => boolean | void;
 }
 let {
 	instanceId,
@@ -104,16 +104,16 @@ function sectionTarget(section: string): InspectorTarget {
   <header class="inspector-header">
     <div class="inspector-controls">
       <button class="ui-button" onclick={onBack}>Back</button>
-      <button class="ui-button" onclick={() => onChronicle()}>Show in chronicle</button>
+      <button class="ui-button" data-action="show-in-chronicle" onclick={() => onChronicle()}>Show in chronicle</button>
     </div>
     <p class="breadcrumbs"><button class="breadcrumb" onclick={() => onNavigate({scope:"process", section:"overview"})}>{detail?.process.title ?? detail?.processDisplayName ?? instanceId}</button>{#if target.scope === "execution" && execution}<span aria-hidden="true"> / </span><button class="breadcrumb" onclick={() => onNavigate({scope:"step", turnId:execution.turnId})}>{step?.description ?? execution.turnId}</button><span aria-hidden="true"> / </span>Execution{:else if target.scope === "step"}<span aria-hidden="true"> / </span>Workflow step{/if}</p>
-    <div class="identity-row"><h1 id="inspector-heading" tabindex="-1">{target.scope === "execution" ? `${step?.description ?? execution?.turnId ?? "Execution"}${execution ? ` · Attempt ${execution.attempt}` : ""}` : target.scope === "step" ? step?.description ?? target.turnId : "Process inspector"}</h1>
+    <div class="identity-row"><h1 id="inspector-heading" tabindex="-1">{target.scope === "execution" ? `${step?.description ?? execution?.turnId ?? "Execution"}${execution ? ` · Attempt ${execution.attemptNumber}` : ""}` : target.scope === "step" ? step?.description ?? target.turnId : "Process inspector"}</h1>
     {#if target.scope === "execution"}<div class="execution-nav"><button class="ui-button" aria-label="Previous execution" disabled={!data.summary?.previousTurnRecordId} onclick={() => data.summary?.previousTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.previousTurnRecordId, section:target.section})}>Previous</button><button class="ui-button" aria-label="Next execution" disabled={!data.summary?.nextTurnRecordId} onclick={() => data.summary?.nextTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.nextTurnRecordId, section:target.section})}>Next</button></div>{/if}</div>
     {#if target.scope === "execution"}
       <p class="execution-facts"><code>{target.turnRecordId}</code>{#if execution}<span>{execution.turnType} · {execution.status}</span><time datetime={execution.startedAt}>{new Date(execution.startedAt).toLocaleString()}</time>{#if execution.endedAt}<span>{Math.max(0, Math.round((Date.parse(execution.endedAt) - Date.parse(execution.startedAt))/1000))}s</span>{/if}{/if}
       {#if data.summary?.model.state === "recorded"}<span>{data.summary.model.value.provider} / {data.summary.model.value.id}</span>{/if}
       {#if data.summary?.usage}<ChronicleUsageStats usage={data.summary.usage} />{/if}</p>
-      <div class="context-summary"><p>{data.summary?.origin.summary ?? data.summaryError ?? "Loading context origin…"}</p><div>{#if source?.turnRecordId}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:source.turnRecordId ?? "", section:"trace", entryId:source.entryId, boundaryFor:target.turnRecordId})}>Open source boundary</button>{/if}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:target.turnRecordId, section:"context"})}>Inspect context</button></div></div>
+      <div class="context-summary"><p>{data.summary?.origin.summary ?? data.summaryError ?? "Loading context origin…"}</p><div>{#if source?.turnRecordId}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:source.turnRecordId ?? "", section:"trace", entryId:source.entryId, boundaryFor:target.turnRecordId})}>Open source boundary</button>{/if}<button class="breadcrumb" onclick={() => onNavigate({scope:"process", section:"context-map", turnRecordId:target.turnRecordId})}>View in context map</button></div></div>
     {/if}
     <nav aria-label="Inspector sections">
       {#each sections as [id, label] (id)}
@@ -122,7 +122,7 @@ function sectionTarget(section: string): InspectorTarget {
       {/each}
     </nav>
   </header>
-  <div class="inspector-scroll" data-role="inspector-scroll" tabindex="0" aria-label="Inspector evidence">
+  <div class="inspector-scroll" data-role="inspector-scroll" role="region" tabindex="0" aria-label="Inspector evidence">
     {#if target.scope === "invalid"}<p role="status">{target.reason}</p>
     {:else if error}<p role="status">{error}</p>
     {:else if !detail}<p role="status">Loading process…</p>
@@ -138,15 +138,16 @@ function sectionTarget(section: string): InspectorTarget {
 .execution-facts {display:flex; align-items:center; flex-wrap:wrap; gap:var(--space-xs) var(--space-md); margin:var(--space-sm) 0; font-size:var(--type-caption); color:var(--chronicle-text-muted); font-variant-numeric:tabular-nums;}
 .context-summary {display:flex; gap:var(--space-sm) var(--space-md); align-items:baseline; justify-content:space-between; flex-wrap:wrap; padding:var(--space-sm) var(--space-md); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm); font-size:var(--type-body-sm); margin-top:var(--space-sm);} .context-summary p {margin:0; overflow-wrap:anywhere;} .context-summary > div {display:flex; gap:var(--space-md); flex-wrap:wrap;}
 .inspector {display:flex; flex-direction:column; height:100%; min-height:0; min-width:0; background:var(--chronicle-card-surface); color:var(--chronicle-text);}
-.inspector-header {flex:none; padding:var(--space-lg) var(--space-xl) 0; border-bottom:1px solid var(--chronicle-border);}
-.inspector-controls {display:flex; justify-content:space-between; gap:var(--space-sm); margin-bottom:var(--space-md);}
-.breadcrumbs {margin:0 0 var(--space-xs); font-size:var(--type-body-sm); color:var(--chronicle-text-muted); overflow-wrap:anywhere;}
+.inspector-header {flex:none; padding:var(--space-md) var(--space-xl) 0; border-bottom:1px solid var(--chronicle-border);}
+.inspector-controls {display:flex; justify-content:space-between; gap:var(--space-sm); margin-bottom:var(--space-sm);}
+.breadcrumbs {display:flex; align-items:baseline; flex-wrap:wrap; gap:var(--space-xs); margin:0 0 var(--space-xs); font-size:var(--type-body-sm); color:var(--chronicle-text-muted); overflow-wrap:anywhere;}
 h1 {margin:0; font-size:var(--type-title-md); font-weight:650; line-height:1.4; overflow-wrap:anywhere;}
-nav {display:flex; flex-wrap:wrap; gap:var(--space-xs) var(--space-lg); margin-top:var(--space-lg);}
+nav {display:flex; flex-wrap:wrap; gap:var(--space-xs) var(--space-lg); margin-top:var(--space-md);}
 nav a {color:var(--chronicle-text-muted); text-decoration:none; padding:var(--space-sm) 0; border-bottom:2px solid transparent; font-size:var(--type-body-sm); font-weight:600;}
 nav a[aria-current] {color:var(--chronicle-accent); border-bottom-color:var(--chronicle-accent);}
 nav a:hover {color:var(--chronicle-text);}
 a:focus-visible, h1:focus-visible {outline:2px solid var(--chronicle-accent); outline-offset:4px;}
 .inspector-scroll {flex:1; min-height:0; min-width:0; overflow:auto; padding:var(--space-lg) var(--space-xl) var(--space-xl); overscroll-behavior:contain; scrollbar-gutter:stable;}
+@media(max-width:960px) {.inspector {height:calc(100dvh - 84px - env(safe-area-inset-top));}}
 @media(max-width:720px) {.inspector-header {padding:var(--space-md) var(--space-sm) 0;} .inspector-scroll {padding:var(--space-md) var(--space-sm);} nav {gap:var(--space-sm); margin-top:var(--space-sm);} nav a {font-size:var(--type-caption); min-height:44px; display:flex; align-items:center;} }
 </style>

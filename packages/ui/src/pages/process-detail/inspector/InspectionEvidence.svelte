@@ -39,9 +39,8 @@ async function copy() {
 </details>
 <style>
 .evidence {border:1px solid var(--chronicle-border); border-radius:var(--radius-sm); min-width:0; background:var(--chronicle-card-surface);}
-summary {display:flex; justify-content:space-between; gap:var(--space-sm); align-items:baseline; padding:var(--space-sm) var(--space-md); cursor:pointer; font-weight:600; font-size:var(--type-body-sm);}
-summary::before {content:"+"; font-size:1rem; flex:none;} .evidence[open] > summary::before {content:"−";}
-summary span:first-child {flex:1;} .evidence-state {font-weight:400; color:var(--chronicle-text-muted); font-size:var(--type-caption);}
+summary {display:list-item; padding:var(--space-sm) var(--space-md); cursor:pointer; font-weight:600; font-size:var(--type-body-sm);}
+.evidence-state {float:right; margin-left:var(--space-sm); font-weight:400; color:var(--chronicle-text-muted); font-size:var(--type-caption);}
 summary:focus-visible {outline:2px solid var(--chronicle-accent); outline-offset:2px;}
 .evidence-body {display:grid; gap:var(--space-sm); padding:0 var(--space-md) var(--space-md);}
 button {justify-self:start;} pre {margin:0; white-space:pre-wrap; overflow-wrap:anywhere; font-family:var(--font-mono); font-size:var(--type-caption); line-height:1.65; max-height:36rem; overflow:auto;}

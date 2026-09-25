@@ -20,14 +20,12 @@ export function inspectionActivity(
 	const operations: InspectionActivity[] = [];
 	let assistant: InspectionTraceMessage | null = null;
 	let previousTurn: unknown;
-	const hasCommittedAssistant =
-		trace.state === "committed" && messages.some((m) => m.role === "assistant");
 	for (const event of events) {
 		const id = `event:${event.eventSequence ?? event.id}`;
 		const data = event.data;
 		const type = event.eventType;
 		if (type === "pi.stream.delta") {
-			if (hasCommittedAssistant || aliases.has(id)) continue;
+			if (aliases.has(id)) continue;
 			if (!assistant || previousTurn !== data.turnId) {
 				assistant = {
 					id,
@@ -58,7 +56,7 @@ export function inspectionActivity(
 			["pi.tool.call", "pi.tool.started", "pi.tool.result", "pi.tool.completed"].includes(type)
 		) {
 			assistant = null;
-			if (hasCommittedAssistant || aliases.has(id)) continue;
+			if (aliases.has(id)) continue;
 			const tool = live?.toolCalls.find((tool) => tool.toolCallId === data.toolCallId);
 			if (!tool) continue;
 			const result = type === "pi.tool.result" || type === "pi.tool.completed";
@@ -110,5 +108,11 @@ export function inspectionActivity(
 		const event = events.find((event) => `event:${event.eventSequence}` === selected);
 		if (event) operations.push({ kind: "event", id: selected, timestamp: event.createdAt, event });
 	}
-	return [...result, ...operations].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+	const sequence = (item: InspectionActivity) =>
+		item.id.startsWith("event:") ? Number(item.id.slice(6)) : null;
+	return [...result, ...operations].sort((a, b) => {
+		const left = sequence(a),
+			right = sequence(b);
+		return left !== null && right !== null ? left - right : a.timestamp.localeCompare(b.timestamp);
+	});
 }

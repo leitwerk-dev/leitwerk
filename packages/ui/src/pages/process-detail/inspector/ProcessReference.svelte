@@ -69,7 +69,7 @@ function sourceLabel(source: string) {
       <section><h2>Purpose</h2><p>{node.description}</p><code>{node.turnId}</code></section>
       <button class="ui-button" onclick={() => onChronicle({turnId:node.turnId})}>Reveal matching executions in chronicle</button>
       <section><h2>Input and output contracts</h2>
-        {#if definition}<dl><div><dt>Declared inputs</dt><dd>{definition.consumedProducts.join(", ") || "No named products declared"}</dd></div><div><dt>Published products</dt><dd>{definition.publishedProducts.join(", ") || "No named products declared"}</dd></div></dl><p class="note">Declarations describe possible inputs. Execution Context shows which versions were actually supplied.</p>
+        {#if definition}<dl><div><dt>Declared inputs</dt><dd>{(definition.consumedProducts ?? []).join(", ") || "No named products declared"}</dd></div><div><dt>Published products</dt><dd>{(definition.publishedProducts ?? []).join(", ") || "No named products declared"}</dd></div></dl><p class="note">Declarations describe possible inputs. Execution Context shows which versions were actually supplied.</p>
           {#if definition.definitionContract}<InspectionEvidence label="Current step contract" evidence={{state:"recorded", value:definition.definitionContract}} />{/if}
           {#each definition.outcomeActions as outcome (outcome.name)}<InspectionEvidence label={`${outcome.name} · ${outcome.description}`} evidence={{state:"recorded", value:outcome.parameters}} id={`contract:${node.turnId}:${outcome.name}`} />{/each}
         {:else}<p class="note">No inspectable input or output schema is exposed by this definition.</p>{/if}

@@ -16,6 +16,19 @@ let {
 	toolRendererIndex?: Record<string, ToolCallRendererDefinition>;
 	onLink?: (id: string) => void;
 } = $props();
+let copied = $state(false);
+async function copy() {
+	try {
+		await navigator.clipboard.writeText(
+			message.blocks
+				.map((block) => (block.content.type === "text" ? block.content.text : ""))
+				.join("\n"),
+		);
+		copied = true;
+	} catch {
+		copied = false;
+	}
+}
 const label = $derived(
 	message.role === "user"
 		? "Input"
@@ -27,7 +40,8 @@ const label = $derived(
 );
 </script>
 <article class="message" data-inspection-item={message.id} data-role={message.role}>
-  <header><h3>{label}{#if message.isError} · Failed{/if}</h3>{#if onLink}<button class="item-link" onclick={() => onLink?.(message.id)} aria-label={`Link to ${label}`}>Link</button>{/if}</header>
+  <header><h3>{label}{#if message.isError} · Failed{/if}</h3><div class="message-actions">{#if message.role === "user"}<button class="item-link" onclick={copy} aria-label="Copy input message">{copied ? "Copied" : "Copy"}</button>{/if}{#if onLink}<button class="item-link" onclick={() => onLink?.(message.id)} aria-label={`Link to ${label}`}>Link</button>{/if}</div></header>
+  {#if message.id.startsWith("event:")}<p class="block-label">Recorded activity · session entry correlation unavailable</p>{/if}
   {#each message.blocks as block (block.id)}
     <div data-inspection-item={block.id} class="message-block">
       {#if block.content.type === "thinking"}
@@ -46,6 +60,7 @@ const label = $derived(
 </article>
 <style>
 .message {padding:var(--space-lg) 0; border-bottom:1px solid var(--chronicle-border); min-width:0; overflow-wrap:anywhere;}
+.message-actions {display:flex; gap:var(--space-sm);}
 header {display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); margin-bottom:var(--space-sm);} h3 {margin:0; font-size:var(--type-body); font-weight:650;}
 .message-block + .message-block {margin-top:var(--space-md);} .block-label {margin:0 0 var(--space-xs); color:var(--chronicle-text-muted); font-size:var(--type-caption);}
 pre {white-space:pre-wrap; overflow-wrap:anywhere; margin:0; padding:var(--space-md); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm); font-size:var(--type-caption); line-height:1.65; max-height:32rem; overflow:auto;}

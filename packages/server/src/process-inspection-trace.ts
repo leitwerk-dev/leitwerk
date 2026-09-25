@@ -69,14 +69,24 @@ function blocks(messageId: string, content: unknown): InspectionTraceBlock[] {
 export function buildInspectionTraceMessages(input: {
 	tree: ReadonlyPiSessionTree;
 	record: ProcessTurnRecord;
+	scope?: "execution" | "unassigned_branch";
 	owner(entryId: string): string | null;
 	captures: readonly ExecutionInspectionRecord[];
 	events: readonly ProcessEvent[];
 }): InspectionTraceMessage[] {
 	const messages: InspectionTraceMessage[] = [];
 	const included = new Set<string>();
-	for (const entry of input.tree.entries) {
-		if (input.owner(entry.id) !== input.record.id) continue;
+	const unassigned = input.scope === "unassigned_branch";
+	const entries = unassigned
+		? input.record.resultPiEntryId
+			? input.tree.getBranch(input.record.resultPiEntryId)
+			: []
+		: input.tree.entries;
+	for (const entry of entries) {
+		if (unassigned) {
+			if (input.owner(entry.id) !== null || !["message", "custom_message"].includes(entry.type))
+				continue;
+		} else if (input.owner(entry.id) !== input.record.id) continue;
 		const message =
 			entry.type === "message"
 				? entry.message
@@ -103,8 +113,20 @@ export function buildInspectionTraceMessages(input: {
 						.filter((event) => {
 							if (event.data.workerLeaseId !== link.workerLeaseId || event.data.turnId !== piTurnId)
 								return false;
-							if (message.role === "assistant") return event.eventType === "pi.stream.delta";
-							return message.role === "toolResult" && event.data.toolCallId === record.toolCallId;
+							if (message.role === "assistant")
+								return (
+									event.eventType === "pi.stream.delta" ||
+									(["pi.tool.call", "pi.tool.started"].includes(event.eventType) &&
+										Array.isArray(record.content) &&
+										record.content.some(
+											(block) => block.type === "toolCall" && block.id === event.data.toolCallId,
+										))
+								);
+							return (
+								message.role === "toolResult" &&
+								["pi.tool.result", "pi.tool.completed"].includes(event.eventType) &&
+								event.data.toolCallId === record.toolCallId
+							);
 						})
 						.map((event) => `event:${event.eventSequence}`)
 				: [];
@@ -121,6 +143,7 @@ export function buildInspectionTraceMessages(input: {
 		});
 		included.add(entry.id);
 	}
+	if (unassigned) return messages;
 	// Prompt evidence is available before the next session upload. Do not copy
 	// inherited messages out of a model input into this execution's activity.
 	for (const capture of input.captures) {

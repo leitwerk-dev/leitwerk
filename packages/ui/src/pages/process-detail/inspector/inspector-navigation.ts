@@ -71,6 +71,8 @@ export function createInspectorNavigation(args: {
 	reveal(target: { turnRecordId?: string; turnId?: string }): void;
 }) {
 	const positions = new Map<string, ReadingPosition>();
+	let restoredPath: string | null = null;
+	let pendingPosition: ReadingPosition | null | undefined;
 	const viewport = () =>
 		document.querySelector<HTMLElement>(
 			args.route ? '[data-role="inspector-scroll"]' : '[data-role="chronicle-scroll"]',
@@ -130,6 +132,8 @@ export function createInspectorNavigation(args: {
 		else showChronicle();
 	}
 	async function restoreRoute() {
+		restoredPath = null;
+		pendingPosition = state()?.reading ?? positions.get(args.path);
 		await tick();
 		const current = state();
 		if (args.route) {
@@ -161,7 +165,10 @@ export function createInspectorNavigation(args: {
 		restoreRoute,
 		observe,
 		restoreContent() {
-			restore(viewport(), state()?.reading ?? positions.get(args.path));
+			if (restoredPath === args.path) return false;
+			restoredPath = args.path;
+			restore(viewport(), pendingPosition);
+			return Boolean(pendingPosition);
 		},
 	};
 }

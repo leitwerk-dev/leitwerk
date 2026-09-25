@@ -256,7 +256,9 @@ export class ProcessInspectionReader {
 			);
 			const event = events.find((event) => `event:${event.eventSequence}` === itemId);
 			targetState =
-				message || event ? { state: "available", itemId: message?.id ?? itemId } : unavailable;
+				message || event
+					? { state: "available", itemId: message?.aliases.includes(itemId) ? message.id : itemId }
+					: unavailable;
 		}
 		if (target.boundaryFor) {
 			const child = this.selected(instanceId, target.boundaryFor);
@@ -286,6 +288,14 @@ export class ProcessInspectionReader {
 		return {
 			...history,
 			messages,
+			unassignedMessages: buildInspectionTraceMessages({
+				tree: session.piTree,
+				record,
+				scope: "unassigned_branch",
+				captures: [],
+				events: [],
+				owner: lineage.owner,
+			}),
 			events,
 			annotations,
 			output: record.turnResultMarkdown,

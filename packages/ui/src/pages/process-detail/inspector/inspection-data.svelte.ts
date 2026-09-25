@@ -17,6 +17,7 @@ export function createInspectionData(args: {
 	let expanded = $state.raw<Partial<InspectionSections>>({});
 	let error = $state<string | null>(null);
 	let loading = $state(false);
+	let loadedTraceTarget = $state("");
 	let live = $state.raw<TurnTraceSnapshot | null>(null);
 	let events = $state.raw<ProcessEvent[]>([]);
 	let activity = $state(0);
@@ -40,6 +41,7 @@ export function createInspectionData(args: {
 			generation++;
 			return;
 		}
+		const targetKey = JSON.stringify(target);
 		const instanceId = args.instanceId;
 		const key = `${instanceId}/${target.turnRecordId}`;
 		controller?.abort();
@@ -85,10 +87,11 @@ export function createInspectionData(args: {
 			if (target.section === "trace" && "reasoning" in value && history) {
 				live = history.accept(value);
 				events = history.events();
+				loadedTraceTarget = targetKey;
 			}
 			loading = false;
 			await tick();
-			if (current()) args.ready();
+			if (current() && target.section !== "trace") args.ready();
 		} catch (cause) {
 			if (!current()) return;
 			history?.failedRequest();
@@ -121,6 +124,9 @@ export function createInspectionData(args: {
 		},
 		get error() {
 			return error;
+		},
+		get loadedTraceTarget() {
+			return loadedTraceTarget;
 		},
 		get loading() {
 			return loading;

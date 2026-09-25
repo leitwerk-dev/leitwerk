@@ -68,7 +68,7 @@ it("replaces live aliases with the committed message and retains uncorrelated ev
 				isError: false,
 			},
 		],
-		target: { state: "available", itemId: "event:2" },
+		target: null,
 	};
 	const activity = inspectionActivity(
 		committed,
@@ -76,4 +76,13 @@ it("replaces live aliases with the committed message and retains uncorrelated ev
 		null,
 	);
 	expect(activity.map((item) => item.id)).toEqual(["entry:a", "event:2"]);
+});
+
+it("orders durable activity by event sequence when timestamps coincide", () => {
+	const earlier = { ...delta(1, "text", "Before"), eventType: "pi.error" };
+	const later = { ...delta(2, "text", "After"), createdAt: earlier.createdAt };
+	expect(inspectionActivity(trace, [earlier, later], null).map((item) => item.id)).toEqual([
+		"event:1",
+		"event:2",
+	]);
 });

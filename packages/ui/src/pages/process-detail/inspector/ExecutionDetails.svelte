@@ -25,7 +25,7 @@ let {
 	questions: readonly ProcessQuestionRequest[];
 	onNavigate: (target: InspectorTarget) => void;
 	onChronicle: () => void;
-	onReady: () => void;
+	onReady: () => boolean | void;
 } = $props();
 let root: HTMLDivElement | undefined = $state();
 let following = $state(false);
@@ -60,16 +60,27 @@ $effect(() => {
 $effect(() => {
 	const response = trace;
 	const key = selectedKey;
-	if (!response || target.section !== "trace" || positioned === key) return;
+	if (
+		!response ||
+		data.loadedTraceTarget !== key ||
+		target.section !== "trace" ||
+		positioned === key
+	)
+		return;
 	positioned = key;
 	void tick().then(() => {
 		if (key !== selectedKey) return;
+		if (onReady()) return;
 		if (response.target?.state === "available") {
+			const targetId = response.target.itemId;
+			const message = activity.find(
+				(item) => item.kind === "message" && item.message.aliases.includes(targetId),
+			);
 			const selected = [
 				...(root?.querySelectorAll<HTMLElement>("[data-inspection-item]") ?? []),
-			].find((el) => el.dataset.inspectionItem === response.target?.itemId);
-			selected?.scrollIntoView({ block: "start" });
-		} else onReady();
+			].find((el) => el.dataset.inspectionItem === (message?.id ?? targetId));
+			selected?.scrollIntoView?.({ block: "start" });
+		}
 	});
 });
 function observe(element: HTMLElement) {
@@ -101,18 +112,25 @@ function source(turnRecordId: string, entryId: string, boundaryFor?: string) {
 	});
 }
 function item(id: string) {
-	onNavigate({ ...target, section: "trace", itemId: id, entryId: undefined });
+	onNavigate({
+		...target,
+		section: "trace",
+		itemId: id,
+		entryId: undefined,
+		boundaryFor: undefined,
+	});
 }
 function eventLabel(event: ProcessEvent) {
 	return event.eventType.replace(/^pi\./, "").replaceAll(/[._]/g, " ");
 }
 </script>
 <div class="execution-details" bind:this={root} use:observe>
-  {#if data.error}<div role="status" class="load-error"><p>{data.error}</p><button class="ui-button" onclick={data.retry}>Retry</button></div>{/if}
+  {#if data.error}<div role="status" class="load-error" data-section="inspection-load-error"><p>{data.error}</p><button class="ui-button" onclick={data.retry}>Retry</button></div>{/if}
   {#if data.loading && !data.expanded[target.section]}<p class="loading" role="status">Loading {target.section}…</p>{/if}
   {#if target.section === "trace" && trace}
     {#if trace.state === "live"}<div class="live-controls"><span role="status">{newActivity ? "New activity available" : following ? "Following live" : "Live execution"}</span><button class="ui-button" onclick={follow} disabled={following}>Follow live</button></div>{/if}
     {#if trace.target?.state === "unavailable"}<p class="notice" role="status">{trace.target.reason}</p>{/if}
+    {#if data.summary?.execution.turnType === "llm" && data.summary.modelInputCount === 0 && !trace.messages.some(message => message.role === "user")}<p class="note">No model input was recorded for this execution.</p>{/if}
     {#if activity.length === 0}<p class="notice">No trace activity was recorded for this execution.</p>{/if}
     {#each activity as activityItem (activityItem.id)}
       {#if activityItem.kind === "message"}
@@ -124,6 +142,7 @@ function eventLabel(event: ProcessEvent) {
         </div>
       {/if}
     {/each}
+    {#if trace.unassignedMessages?.length}<details data-disclosure-key="unassigned-session"><summary>Unassigned session history · ownership not recorded</summary><p class="note">These messages are retained on this session branch. Their execution ownership is unknown; they are not evidence of this execution’s input or inherited context.</p>{#each trace.unassignedMessages as message (message.id)}<InspectionMessage {message} />{/each}</details>{/if}
     {#each trace.annotations as annotation (annotation.id)}<InspectionEvidence label={annotation.annotationType.replaceAll("_", " ")} evidence={{state:"recorded", value:annotation.payload}} id={annotation.id} />{/each}
     {#each questions as request (request.id)}<ChronicleQuestionRequest {request} mode="trace" />{#if request.status === "open"}<button class="ui-button" onclick={onChronicle}>Answer in chronicle</button>{/if}{/each}
     {#if trace.output}<section class="section" data-inspection-item="output"><h2>Execution output</h2><ChronicleMarkdown markdown={trace.output} /></section>{/if}
@@ -145,7 +164,7 @@ function eventLabel(event: ProcessEvent) {
         {/each}
       {:else}<p class="note">{context.products.reason}</p>{/if}
     </section>
-    <section class="section"><h2>Model inputs</h2>
+    <section class="section"><h2>{data.summary?.execution.turnType === "llm" ? "Model inputs" : "Inputs"}</h2>
       {#if "value" in context.modelInputs}
         {#each context.modelInputs.value as revision, index (revision.id)}
           <details class="revision" data-disclosure-key={revision.id} open={index === 0}><summary>Model call {index + 1} · {revision.model.id} · {revision.timestamp}</summary>
@@ -157,10 +176,10 @@ function eventLabel(event: ProcessEvent) {
       {:else}<p class="note">{context.modelInputs.reason}</p>{/if}
       {#each context.inputMessages as message (message.id)}<InspectionMessage {message} />{/each}
     </section>
-    <section class="section"><h2>Instructions</h2><button class="text-link" onclick={() => onNavigate({...target, section:"configuration"})}>Read recorded system prompt, instructions and context files</button></section>
+    {#if data.summary?.execution.turnType === "llm"}<section class="section"><h2>Instructions</h2><button class="text-link" onclick={() => onNavigate({...target, section:"configuration"})}>Read recorded system prompt, instructions and context files</button></section>{/if}
   {:else if target.section === "configuration" && configuration}
-    <InspectionEvidence label="Recorded model selection" evidence={data.summary?.execution.modelProfileId ? {state:"recorded", value:{profileId:data.summary.execution.modelProfileId, startKind:data.summary.startKind}} : {state:"not_recorded", reason:"Model selection provenance was not recorded"}} />
-    <p class="note">Model-facing configuration retained at each model call. Available tools can differ from tools actually called in Trace.</p>
+    {#if data.summary?.execution.turnType === "llm"}<InspectionEvidence label="Recorded model selection" evidence={data.summary?.execution.modelProfileId ? {state:"recorded", value:{profileId:data.summary.execution.modelProfileId, provenance:data.summary.execution.modelSelectionProvenance ?? {state:"not_recorded", reason:"Selection source was not recorded"}, startKind:data.summary.startKind}} : {state:"not_recorded", reason:"Model selection provenance was not recorded"}} />
+    <p class="note">Model-facing configuration retained at each model call. Available tools can differ from tools actually called in Trace.</p>{/if}
     {#if "value" in configuration.revisions}
       {#each configuration.revisions.value as revision, index (revision.id)}
         <section class="section" data-inspection-item={revision.id}><h2>Model call {index + 1}</h2><p>{revision.model.provider} / {revision.model.id} · {revision.model.thinkingLevel ?? "Thinking level not recorded"}</p><p class="note">{revision.timestamp}</p>
@@ -176,7 +195,7 @@ function eventLabel(event: ProcessEvent) {
 </div>
 <style>
 .execution-details {max-width:960px; margin:0 auto; min-width:0; overflow-wrap:anywhere; display:grid; gap:var(--space-md);}
-.section {display:grid; gap:var(--space-sm); padding:var(--space-md) 0; min-width:0;} h2 {margin:0; font-size:var(--type-title-sm); font-weight:650;} p {margin:0; font-size:var(--type-body-sm); line-height:1.65;} .note {color:var(--chronicle-text-muted);}
+.section {display:grid; gap:var(--space-sm); padding:var(--space-sm) 0; min-width:0;} h2 {margin:0; font-size:var(--type-title-sm); font-weight:650;} p {margin:0; font-size:var(--type-body-sm); line-height:1.65;} .note {color:var(--chronicle-text-muted);}
 .section > button {justify-self:start;} .facts {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-sm); margin-top:var(--space-sm);}
 .boundary {padding:var(--space-md); background:var(--chronicle-accent-soft); color:var(--chronicle-accent); font-weight:650; border:1px solid var(--chronicle-border); border-radius:var(--radius-sm);} .boundary span {display:block; font-weight:400; color:var(--chronicle-text-muted);}
 .notice, .loading {padding:var(--space-md); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm);}
