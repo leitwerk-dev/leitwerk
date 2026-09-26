@@ -1,4 +1,5 @@
 import { normalize } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import type {
 	Actor,
 	ProcessInstance,
@@ -249,9 +250,11 @@ export function createScopedSettingsService(input: {
 			},
 		];
 		for (const scopeType of definition.scopes) {
-			const subjectId = scopeType === "instance" ? instance.id : context[scopeType];
-			if (!subjectId || subjectId === omitSubject) continue;
-			const subject = requireSubject(subjectId);
+			const contextId = scopeType === "instance" ? instance.id : context[scopeType];
+			if (!contextId) continue;
+			const subject = requireSubject(contextId);
+			const subjectId = subject.id;
+			if (subjectId === omitSubject) continue;
 			if (subject.scopeType !== scopeType)
 				throw new SettingsError(`Scope '${subjectId}' does not belong to '${scopeType}'`);
 			const row =
@@ -290,17 +293,44 @@ export function createScopedSettingsService(input: {
 		return repos.transaction((tx) => {
 			const repo = tx.scopedSettings;
 			let previous = repo.findIdentity(subjectInput.scopeType, subjectInput.identity);
+			const candidates = new Map<string, SettingsSubject>();
+			if (previous) candidates.set(previous.id, previous);
 			for (const alias of aliases) {
 				const known = repo.findAlias(alias);
 				if (!known) continue;
-				if (previous && previous.id !== known.id)
-					throw new SettingsError(`Repository alias '${alias}' has conflicting identities`, 409);
 				if (known.identity !== subjectInput.identity && !known.identity.startsWith("locator:"))
 					throw new SettingsError(
 						`Repository alias '${alias}' belongs to another provider identity`,
 						409,
 					);
-				previous ??= known;
+				candidates.set(known.id, known);
+			}
+			previous ??= [...candidates.values()].sort((a, b) => a.id.localeCompare(b.id))[0];
+			// Only provider-verified aliases can coalesce previously unrecognized locators.
+			if (candidates.size > 1) {
+				if (subjectInput.identity.startsWith("locator:"))
+					throw new SettingsError("Repository aliases require a verified provider identity", 409);
+				const overrides = new Map<string, SettingsOverride>();
+				for (const candidate of candidates.values()) {
+					for (const row of repo.listOverrides(candidate.id)) {
+						if (row.reset) continue;
+						const saved = overrides.get(row.key);
+						if (
+							saved &&
+							(saved.mode !== row.mode ||
+								saved.schemaVersion !== row.schemaVersion ||
+								!isDeepStrictEqual(saved.value, row.value))
+						)
+							throw new SettingsError(
+								`Repository aliases have conflicting overrides for '${row.key}'. Compare /settings?scope=${saved.subjectId} and /settings?scope=${row.subjectId}; make the values and modes agree or use inherited value on one scope, then refresh repositories.`,
+								409,
+							);
+						overrides.set(row.key, row);
+					}
+				}
+				for (const candidate of candidates.values())
+					if (previous && candidate.id !== previous.id)
+						repo.mergeLocatorSubject(candidate.id, previous.id);
 			}
 			const context = subjectInput.context ?? previous?.context ?? {};
 			for (const [type, id] of Object.entries(context))
@@ -547,7 +577,15 @@ export function createScopedSettingsService(input: {
 	function discoverLocal() {
 		for (const [key, component] of Object.entries(input.config.components))
 			repository({ key, repoLocator: component.repo });
-		for (const project of repos.projects.listAll()) repository(project);
+		for (const project of repos.projects.listAll()) {
+			try {
+				repository(project);
+			} catch (error) {
+				// Retained conflicts block affected execution, while Settings must stay
+				// available so the operator can correct the competing overrides.
+				if (!(error instanceof SettingsError) || error.statusCode !== 409) throw error;
+			}
+		}
 	}
 	discoverLocal();
 	const resolver: ScopedSettingsResolver = {
@@ -625,6 +663,7 @@ export function createScopedSettingsService(input: {
 			);
 			return preview(change.subjectId, {
 				...change,
+				subjectId: requireSubject(change.subjectId).id,
 				value,
 				revision: 0,
 				schemaVersion: definition.schemaVersion,

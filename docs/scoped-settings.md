@@ -23,8 +23,13 @@ and explicit integration discovery. A provider origin and stable repository ID
 identify a provider repository; verified clone URLs are aliases. A local or
 unrecognized repository uses its normalized locator. Core does not guess that
 different transports, paths, or symlinks identify the same repository. Discovery
-can promote a locator subject to a provider identity without losing its overrides.
-Conflicting identities require correction instead of silently merging settings.
+can promote locator subjects to one verified provider identity without losing
+their overrides. Old scope IDs continue to resolve through retained redirects;
+prepared snapshots remain unchanged. Merging advances override revisions so an
+open editor must accept the current revision before saving. Matching overrides
+are retained once. Conflicting values block merging and identify the scopes to
+correct: make the overrides agree or reset one to inheritance, then refresh.
+Distinct provider identities are never merged.
 
 A launcher may bind `primaryRepositoryKey`. Single-repository launches infer their
 primary repository. Unbound multi-repository processes use Instance model defaults

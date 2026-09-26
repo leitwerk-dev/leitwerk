@@ -17,6 +17,161 @@ import {
 } from "./test-helpers/scoped-settings-fixtures.js";
 
 describe("scoped settings", () => {
+	it.each([
+		false,
+		true,
+	])("coalesces verified clone aliases and retains old scope IDs (known provider: %s)", async (knownProvider) => {
+		const { settings, repos } = await createSettingsFixture();
+		const aliases = ["git@example.org:team/repo.git", "https://example.org/team/repo.git"];
+		const identity = 'provider:["https://example.org","42"]';
+		const provider = knownProvider
+			? settings.discover({ scopeType: "repository", identity, label: "team/repo" })
+			: null;
+		const subjects = aliases.map((alias) =>
+			settings.discover({
+				scopeType: "repository",
+				identity: `locator:${alias}`,
+				label: alias,
+				aliases: [alias],
+			}),
+		);
+		const change = {
+			key: repositoryInstructions.key,
+			value: "Repository guidance",
+			mode: "append" as const,
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		};
+		for (const subject of subjects) settings.write({ ...change, subjectId: subject.id });
+		settings.write({
+			...change,
+			subjectId: subjects[1].id,
+			key: model.key,
+			mode: "replace",
+			value: "second",
+		});
+		const merged = settings.discover({
+			scopeType: "repository",
+			identity,
+			label: "team/repo",
+			aliases,
+		});
+		if (provider) expect(merged.id).toBe(provider.id);
+		expect(
+			settings.listScopes().subjects.filter((subject) => subject.scopeType === "repository"),
+		).toHaveLength(1);
+		for (const original of subjects) {
+			expect(repos.scopedSettings.getSubject(original.id)?.id).toBe(merged.id);
+			expect(settings.resolve(model, { repository: original.id }).value).toBe("second");
+			expect(settings.resolve(repositoryInstructions, { repository: original.id }).value).toBe(
+				"Code instructions\n\nRepository guidance",
+			);
+			expect(() =>
+				settings.write({ ...change, subjectId: original.id, expectedRevision: 1 }),
+			).toThrow("changed since");
+			const preview = await settings.preview(original.id);
+			expect(preview.subject.id).toBe(merged.id);
+			expect(
+				preview.fields.find((field) => field.key === repositoryInstructions.key)?.override?.actor,
+			).toEqual(ADMIN_ACTOR);
+		}
+		const row = repos.scopedSettings.getOverride(merged.id, repositoryInstructions.key);
+		if (!row) throw new Error("Missing merged override");
+		const preview = await settings.previewDraft({
+			...change,
+			subjectId: subjects[1].id,
+			value: "Updated guidance",
+		});
+		expect(
+			preview.fields.find((field) => field.key === repositoryInstructions.key)?.effective?.value,
+		).toContain("Updated guidance");
+		settings.write({
+			...change,
+			subjectId: subjects[1].id,
+			value: "Updated guidance",
+			expectedRevision: row.revision,
+		});
+		expect(
+			settings.resolve(repositoryInstructions, { repository: subjects[0].id }).value,
+		).toContain("Updated guidance");
+		const beforeRediscovery = repos.scopedSettings.listOverrides();
+		settings.discover({
+			scopeType: "repository",
+			identity,
+			label: "renamed",
+			aliases: [...aliases].reverse(),
+		});
+		expect(repos.scopedSettings.listOverrides()).toEqual(beforeRediscovery);
+	});
+	it.each([
+		"value",
+		"mode",
+		"schema",
+	])("keeps conflicting %s overrides intact until the operator resolves them", async (conflict) => {
+		const { settings, repos, config, catalog } = await createSettingsFixture();
+		const aliases = ["git@example.org:team/repo.git", "https://example.org/team/repo.git"];
+		const subjects = aliases.map((alias) =>
+			settings.discover({
+				scopeType: "repository",
+				identity: `locator:${alias}`,
+				label: alias,
+				aliases: [alias],
+			}),
+		);
+		for (const [index, subject] of subjects.entries())
+			repos.scopedSettings.write({
+				subjectId: subject.id,
+				key: repositoryInstructions.key,
+				value: conflict === "value" ? String(index) : "same",
+				mode: conflict === "mode" && index === 1 ? "replace" : "append",
+				reset: false,
+				schemaVersion: conflict === "schema" ? index + 1 : 1,
+				expectedRevision: 0,
+				actor: ADMIN_ACTOR,
+			});
+		const input = {
+			scopeType: "repository",
+			identity: 'provider:["https://example.org","42"]',
+			label: "team/repo",
+			aliases,
+		};
+		const before = repos.scopedSettings.listOverrides();
+		expect(() => settings.discover(input)).toThrow(`Compare /settings?scope=${subjects[0].id}`);
+		expect(repos.scopedSettings.listOverrides()).toEqual(before);
+		expect(repos.scopedSettings.findAlias(aliases[0])?.id).toBe(subjects[0].id);
+		const process = repos.processes.create({
+			processId: "settings_process",
+			selectedTurnId: "run",
+		});
+		repos.projects.create({
+			instanceId: process.id,
+			key: "repo",
+			repoLocator: aliases[0],
+			baseBranch: "main",
+			metadata: {
+				settingsRepository: { origin: "https://example.org", repositoryId: 42, aliases },
+			},
+		});
+		const restarted = createScopedSettingsService({ repos, config, catalog });
+		expect(
+			restarted.listScopes().subjects.filter((subject) => subject.scopeType === "repository"),
+		).toHaveLength(2);
+		expect(() => restarted.capture(process, "run")).toThrow("conflicting overrides");
+		settings.write({
+			subjectId: subjects[1].id,
+			key: repositoryInstructions.key,
+			value: null,
+			mode: "replace",
+			reset: true,
+			expectedRevision: 1,
+			actor: ADMIN_ACTOR,
+		});
+		expect(() => settings.discover(input)).not.toThrow();
+		expect(restarted.capture(process, "run")?.instructions[0].setting.value).toBe(
+			`Code instructions\n\n${conflict === "value" ? "0" : "same"}`,
+		);
+	});
 	it("resolves named compound scopes in declaration order, supports empty replacement and reset revisions", async () => {
 		const { settings } = await createSettingsFixture();
 		const issueType = settings.discover({

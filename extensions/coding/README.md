@@ -76,8 +76,9 @@ Instance → Repository. Model null delegates to YAML and the allowed catalog;
 explicit process/action choices take precedence. Instructions append by default,
 or replace inherited blocks when selected. Empty replacement clears them.
 
-Plan uses `coding.planning`; implementation and commit-message generation use
-`coding.implementation`; plan review, implementation review, and simplification
+Plan uses `coding.planning`; implementation, commit-message generation, feedback
+revisions, CI repairs, and rebase repairs use `coding.implementation`;
+plan review, implementation review, and simplification
 use `coding.review`. Each new step captures current values. Prepared starts and
 worker recovery retain their snapshots. Multi-repository instruction blocks are
 labelled separately; model defaults use the primary repository.

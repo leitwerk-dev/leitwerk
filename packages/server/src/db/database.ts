@@ -50,6 +50,7 @@ const ALL_TABLES = [
 	schema.settingsSubjects,
 	schema.settingsAliases,
 	schema.settingsOverrides,
+	schema.settingsSubjectRedirects,
 	schema.startupObservations,
 	schema.processInstances,
 	schema.launchRuns,
@@ -368,6 +369,15 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 				schema.settingsOverrides,
 			])
 				createTableWithIndexes(sqlite, table);
+		},
+	},
+	{
+		id: "20260926_add_settings_subject_redirects",
+		tableNames: ["settings_subject_redirects"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) && existingTableSql(sqlite, "settings_subject_redirects") === null,
+		apply(sqlite) {
+			createTableWithIndexes(sqlite, schema.settingsSubjectRedirects);
 		},
 	},
 	{

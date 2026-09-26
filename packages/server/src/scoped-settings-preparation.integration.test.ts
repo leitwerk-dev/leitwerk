@@ -87,6 +87,71 @@ async function setup() {
 }
 
 describe("scoped settings at the turn preparation boundary", () => {
+	it.each([
+		repositoryInstructions,
+		model,
+	])("recovers corrected $key settings on an operator startup retry", async (definition) => {
+		const { store, repos, catalog, config, policy, settings, deps, write } = await setup();
+		const registry = buildProcessActionRegistry(catalog);
+		const supervisor = createFakeWorkerSupervisor();
+		const commands = createProcessEngine({
+			...store,
+			config,
+			processOperations: createProcessOperationCoordinator(),
+			getSupervisor: () => supervisor,
+			processGraphs: catalog.processes,
+			getProcessActionRegistry: () => registry,
+			processModelPolicy: policy,
+			getModelAvailabilitySnapshot: () => deps.modelStatusCache.snapshot(),
+			prepareTurnStarts: (process, writes, options) =>
+				prepareCreatedTurnStarts(deps, process, writes, options),
+		});
+		const process = repos.processes.create({
+			processId: "settings_process",
+			selectedTurnId: "review",
+			lifecycleStatus: "waiting",
+			stateJson: "{}",
+			paramsJson: "{}",
+		});
+		repos.scopedSettings.write({
+			subjectId: "instance",
+			key: definition.key,
+			value: definition.defaultValue,
+			schemaVersion: 2,
+			mode: "replace",
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		});
+		expect((await commands.executeProcessAction(process.id, "proceed", {})).ok).toBe(true);
+		const first = repos.turnStarts.listByInstance(process.id)[0];
+		expect(first.state).toMatchObject({
+			kind: "preparation_failed",
+			code: "invalid_model_configuration",
+		});
+		expect((await commands.retryStartup(process.id, first.id)).ok).toBe(true);
+		const blockedProcess = repos.processes.getById(process.id);
+		if (blockedProcess?.currentExecution?.kind !== "worker_start") throw new Error("Missing start");
+		const blocked = repos.turnStarts.getById(blockedProcess.currentExecution.id);
+		if (!blocked) throw new Error("Missing blocked start");
+		expect(blocked.state).toMatchObject({
+			kind: "preparation_failed",
+			code: "invalid_model_configuration",
+		});
+		write(definition.key, definition.key === model.key ? "second" : "Corrected instructions");
+		expect((await commands.retryStartup(process.id, blocked.id)).ok).toBe(true);
+		const recovered = repos.processes.getById(process.id);
+		if (recovered?.currentExecution?.kind !== "worker_start") throw new Error("Missing start");
+		expect(recovered.lifecycleStatus).toBe("active");
+		expect(repos.turnStarts.getById(recovered.currentExecution.id)?.state).toMatchObject({
+			kind: "starting",
+			start: { scopedSettings: settings.capture(recovered, "run", definition.key === model.key) },
+		});
+		expect(repos.turnStarts.getById(first.id)?.state).toEqual(first.state);
+		expect(repos.turnRecords.listByInstance(process.id)).toEqual([
+			expect.objectContaining({ turnId: "review", turnType: "human", status: "succeeded" }),
+		]);
+	});
 	it("captures model and instructions together, retains recovery snapshots, and resolves edits for a new operator retry", async () => {
 		const { repos, write, prepare, deps, policy } = await setup();
 		const process = repos.processes.create({

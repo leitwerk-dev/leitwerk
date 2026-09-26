@@ -5,7 +5,7 @@ import type {
 	SettingsSubject,
 } from "@leitwerk-dev/domain";
 import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
-import { and, eq } from "drizzle-orm";
+import { and, eq, notInArray } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -63,12 +63,41 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 	return {
 		/** @internal */
 		listSubjects(): SettingsSubject[] {
-			return db.select().from(s.settingsSubjects).all().map(subject);
+			return db
+				.select()
+				.from(s.settingsSubjects)
+				.where(
+					notInArray(
+						s.settingsSubjects.id,
+						db
+							.select({ id: s.settingsSubjectRedirects.subjectId })
+							.from(s.settingsSubjectRedirects),
+					),
+				)
+				.all()
+				.map(subject);
 		},
 		/** @internal */
 		getSubject(id: string): SettingsSubject | null {
-			const row = db.select().from(s.settingsSubjects).where(eq(s.settingsSubjects.id, id)).get();
-			return row ? subject(row) : null;
+			const visited = new Set<string>();
+			while (!visited.has(id)) {
+				visited.add(id);
+				const redirect = db
+					.select()
+					.from(s.settingsSubjectRedirects)
+					.where(eq(s.settingsSubjectRedirects.subjectId, id))
+					.get();
+				if (!redirect) {
+					const row = db
+						.select()
+						.from(s.settingsSubjects)
+						.where(eq(s.settingsSubjects.id, id))
+						.get();
+					return row ? subject(row) : null;
+				}
+				id = redirect.canonicalSubjectId;
+			}
+			throw new Error("Cyclic settings subject redirects");
 		},
 		/** @internal */
 		findIdentity(scopeType: string, identity: string): SettingsSubject | null {
@@ -82,7 +111,7 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 					),
 				)
 				.get();
-			return row ? subject(row) : null;
+			return row ? this.getSubject(row.id) : null;
 		},
 		/** @internal */
 		findAlias(alias: string): SettingsSubject | null {
@@ -123,15 +152,26 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 		},
 		/** @internal */
 		listOverrides(subjectId?: string): SettingsOverride[] {
+			const canonicalId = subjectId ? (this.getSubject(subjectId)?.id ?? subjectId) : undefined;
 			return db
 				.select()
 				.from(s.settingsOverrides)
-				.where(subjectId ? eq(s.settingsOverrides.subjectId, subjectId) : undefined)
+				.where(
+					canonicalId
+						? eq(s.settingsOverrides.subjectId, canonicalId)
+						: notInArray(
+								s.settingsOverrides.subjectId,
+								db
+									.select({ id: s.settingsSubjectRedirects.subjectId })
+									.from(s.settingsSubjectRedirects),
+							),
+				)
 				.all()
 				.map(override);
 		},
 		/** @internal */
 		getOverride(subjectId: string, key: string): SettingsOverride | null {
+			subjectId = this.getSubject(subjectId)?.id ?? subjectId;
 			const row = db
 				.select()
 				.from(s.settingsOverrides)
@@ -143,7 +183,7 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 		write(input: SettingsWrite): SettingsOverride | null {
 			const ts = now();
 			const values = {
-				subjectId: input.subjectId,
+				subjectId: this.getSubject(input.subjectId)?.id ?? input.subjectId,
 				key: input.key,
 				valueJson: JSON.stringify(input.value),
 				mode: input.mode,
@@ -161,7 +201,7 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 					.set(update)
 					.where(
 						and(
-							eq(s.settingsOverrides.subjectId, input.subjectId),
+							eq(s.settingsOverrides.subjectId, values.subjectId),
 							eq(s.settingsOverrides.key, input.key),
 							eq(s.settingsOverrides.revision, input.expectedRevision),
 						),
@@ -177,6 +217,51 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 				.returning()
 				.get();
 			return row ? override(row) : null;
+		},
+		/** Call inside a transaction after verifying that active overrides agree. @internal */
+		mergeLocatorSubject(sourceId: string, targetId: string): void {
+			const source = this.getSubject(sourceId);
+			const target = this.getSubject(targetId);
+			if (
+				!source ||
+				!target ||
+				source.id === target.id ||
+				source.scopeType !== "repository" ||
+				target.scopeType !== "repository" ||
+				!source.identity.startsWith("locator:")
+			)
+				throw new Error("Only distinct locator subjects can merge into a repository");
+			for (const incoming of this.listOverrides(source.id)) {
+				const current = this.getOverride(target.id, incoming.key);
+				const retained = current && !current.reset ? current : incoming;
+				const values = {
+					subjectId: target.id,
+					key: retained.key,
+					valueJson: JSON.stringify(retained.value),
+					mode: retained.mode,
+					reset: retained.reset,
+					schemaVersion: retained.schemaVersion,
+					revision: Math.max(incoming.revision, current?.revision ?? 0) + 1,
+					createdAt: retained.createdAt,
+					updatedAt: now(),
+					actorJson: JSON.stringify(retained.actor),
+				};
+				db.insert(s.settingsOverrides)
+					.values(values)
+					.onConflictDoUpdate({
+						target: [s.settingsOverrides.subjectId, s.settingsOverrides.key],
+						set: values,
+					})
+					.run();
+			}
+			db.update(s.settingsAliases)
+				.set({ subjectId: target.id })
+				.where(eq(s.settingsAliases.subjectId, source.id))
+				.run();
+			// Keep original subjects and overrides for historical references and attribution.
+			db.insert(s.settingsSubjectRedirects)
+				.values({ subjectId: source.id, canonicalSubjectId: target.id })
+				.run();
 		},
 	};
 }

@@ -30,7 +30,7 @@ const extension: LeitwerkExtensionModule = {
 						if (repo.id === undefined) continue;
 						subjects.push({
 							scopeType: "repository",
-							identity: repositorySettingsIdentity("https://github.com", repo.id),
+							identity: repositorySettingsIdentity(repo.html_url, repo.id),
 							label: repo.full_name,
 							aliases: [repo.ssh_url, ...(repo.clone_url ? [repo.clone_url] : [])],
 						});

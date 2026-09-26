@@ -18,11 +18,50 @@ function state(f: RemoteRepoChangeFixture, id: string) {
 }
 
 async function publish(f: RemoteRepoChangeFixture) {
+	for (const [key, value] of [
+		["coding.repository_instructions", "Preserve repository compatibility during repairs"],
+		["coding.implementation_model", "remote-change-fixture-model"],
+	]) {
+		const saved = await f.harness.request({
+			method: "PUT",
+			url: "/api/settings/overrides",
+			payload: { subjectId: "instance", key, value, mode: "replace", expectedRevision: 0 },
+		});
+		expect(saved.statusCode).toBe(200);
+	}
 	const id = await f.launchTicketlessChange("Update the service image", {
 		docker: false,
 		sshCredentialRef: "untrusted",
 	});
 	return f.publishChange(id);
+}
+
+async function expectRepairSettings(f: RemoteRepoChangeFixture, id: string, turnId: string) {
+	const response = await f.harness.request({ url: `/api/settings/processes/${id}` });
+	expect(response.statusCode).toBe(200);
+	expect(response.json().captured).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				turnId,
+				settings: expect.objectContaining({
+					purpose: "coding.implementation",
+					values: expect.arrayContaining([
+						expect.objectContaining({
+							key: "coding.implementation_model",
+							value: "remote-change-fixture-model",
+						}),
+					]),
+					instructions: expect.arrayContaining([
+						expect.objectContaining({
+							setting: expect.objectContaining({
+								value: "Preserve repository compatibility during repairs",
+							}),
+						}),
+					]),
+				}),
+			}),
+		]),
+	);
 }
 
 it("UI publication retains provider bindings and reasoning, completes without an issue, and replays on a fresh branch", async () => {
@@ -88,6 +127,7 @@ it("batches conversation, inline and review feedback into a fresh revision and r
 	const turns = f.harness.process(id).snapshot().turns;
 	const original = turns.find((turn) => turn.turnId === "implement");
 	const revisions = turns.filter((turn) => turn.turnId === "revise_from_pull_request_feedback");
+	await expectRepairSettings(f, id, "revise_from_pull_request_feedback");
 	expect(original).toBeDefined();
 	expect(revisions).toHaveLength(1);
 	expect(revisions[0].id).not.toBe(original?.id);
@@ -128,6 +168,7 @@ it("diagnoses CI and explicitly restarts through a durable write without republi
 	await f.waitForTurn(id, "deliver_change");
 	expect(state(f, id).headSha).toBe(pr.head.sha);
 	const calls = f.woodpecker.calls.map((call) => call.method);
+	await expectRepairSettings(f, id, "repair_woodpecker_pipeline");
 	expect(calls.indexOf("getStepLogs")).toBeGreaterThanOrEqual(0);
 	expect(calls.indexOf("restartPipeline")).toBeGreaterThan(calls.indexOf("getStepLogs"));
 	expect(calls.filter((method) => method === "restartPipeline")).toHaveLength(1);
@@ -152,6 +193,7 @@ it("rebases a conflicting base after app restart and publishes with the retained
 	const head = await f.waitForHeadChange(id, pr.head.sha);
 	await f.waitForTurn(id, "deliver_change");
 	expect(f.git.local.isAncestor(f.git.barePath, baseSha, head)).toBe(true);
+	await expectRepairSettings(f, id, "revise_from_pull_request_feedback");
 	const manifest = f.git.show(head, "k8s/deployment.yaml");
 	expect(manifest).toContain("Base update: preserve deployment notes");
 	expect(manifest).toContain("image: example/service:new");

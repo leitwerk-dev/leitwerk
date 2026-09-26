@@ -19,7 +19,7 @@ async function load(id = selected, background = false) {
 	const token = ++loadId;
 	if (!background) loading = true;
 	error = "";
-	if (preview?.subject.id !== id) preview = null;
+	if (!background && preview?.subject.id !== id) preview = null;
 	try {
 		const result = await fetchSettingsPreview(id);
 		if (token === loadId) preview = result;
@@ -60,13 +60,13 @@ onMount(() => {
 <div class="settings-page">
 	<header><h1>Settings</h1><p>Defaults shared across this installation. Changes apply when a new step is prepared, including operator retries.</p></header>
 	<div class="scope-controls"><div><label for="settings-scope">Apply settings to</label><select id="settings-scope" bind:value={selected} onchange={() => load(selected)}>
-		{#if !scopes}<option value={selected}>{selected === "instance" ? "Instance" : "Loading scope…"}</option>{/if}
+		{#if !scopes?.subjects.some((subject) => subject.id === selected)}<option value={selected}>{preview?.subject.label ?? (selected === "instance" ? "Instance" : "Loading scope…")}</option>{/if}
 		{#each scopes?.subjects ?? [] as subject (subject.id)}<option value={subject.id}>{subject.scopeType === "instance" ? "Instance" : `${subject.label}${subject.active ? "" : " (inactive)"}`}</option>{/each}
 	</select></div><button type="button" onclick={refresh}>Refresh repositories</button></div>
 	{#if error}<p role="alert" class="error">{error}</p><button type="button" onclick={() => load()}>Try again</button>{/if}
 	{#if loading}<p role="status">Loading settings…</p>
 	{:else if preview}
-		{#key preview.subject.id}
+		{#key selected}
 			{#each groups as group}<section class="purpose" aria-label={group}><h2>{group}</h2>{#each preview.fields.filter((field) => field.form.group === group) as field (field.key)}<SettingsField {field} subjectId={preview.subject.id} onSaved={(result) => { preview = result; }} />{/each}</section>{/each}
 		{/key}
 		{#if !preview.fields.length && !preview.inactive.length}<p>No installed extension declares settings for this scope.</p>{/if}

@@ -913,6 +913,15 @@ export const settingsAliases = sqliteTable("settings_aliases", {
 		.references(() => settingsSubjects.id),
 });
 
+export const settingsSubjectRedirects = sqliteTable("settings_subject_redirects", {
+	subjectId: text("subject_id")
+		.primaryKey()
+		.references(() => settingsSubjects.id),
+	canonicalSubjectId: text("canonical_subject_id")
+		.notNull()
+		.references(() => settingsSubjects.id),
+});
+
 export const settingsOverrides = sqliteTable(
 	"settings_overrides",
 	{
