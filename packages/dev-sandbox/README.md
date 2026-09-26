@@ -45,3 +45,7 @@ the ordinary Pi SDK and preserves process runtime requirements. Supply dedicated
 `providers` (the models extension configuration). Production credentials are never
 read. Ports default to UI `5173` and backend `18082`; use `--ui-port` and
 `--backend-port` to choose strict alternative ports.
+
+Scripted mode exposes `sandbox` and `sandbox-alternate` profiles backed by the same
+scripted provider. Use them to exercise instance model editing and inheritance
+without real model credentials.

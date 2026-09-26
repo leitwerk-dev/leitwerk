@@ -93,17 +93,21 @@ describe("layoutInstanceTree", () => {
 		);
 	});
 
-	it("starts root turns on separate fresh rows and preserves product edges", () => {
+	it("keeps unproven root origins unknown on separate rows and preserves product edges", () => {
 		const layout = layoutInstanceTree(
 			[node("plan", null, "1"), node("implement", null, "2")],
 			"implement",
 			[edge("plan", "implement", "product")],
 		);
 		const [plan, implement] = layout?.nodes ?? [];
-		expect(plan?.contextOrigin).toBe("fresh");
-		expect(implement?.contextOrigin).toBe("fresh");
+		expect(plan?.contextOrigin).toBe("unknown");
+		expect(implement?.contextOrigin).toBe("unknown");
 		expect(implement?.lane).not.toBe(plan?.lane);
 		expect(implement?.x).toBe(plan?.x);
 		expect(layout?.edges[0]).toMatchObject({ productLabels: ["Plan"] });
 	});
+});
+
+it("handles a damaged cyclic legacy graph without recursive failure", () => {
+	expect(layoutInstanceTree([node("a", "b"), node("b", "a")], null)?.nodes).toHaveLength(2);
 });

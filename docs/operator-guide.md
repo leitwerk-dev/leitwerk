@@ -31,6 +31,30 @@ older failed attempts may be collapsed; expand them to inspect earlier work.
 Progress checklists are reports, not proof that a linked resource was created by
 that attempt.
 
+## Inspect an execution
+
+Choose **Turn details** to open Trace, Context and Configuration. **Show reasoning**
+and prompt links open the corresponding recorded content in Trace. The header keeps
+the exact execution and its context origin visible while you read.
+
+In Context, **Open exact source boundary** shows where inherited conversation ended.
+The marked boundary separates inherited content from later source activity. Follow
+source links to investigate ancestry; Back retraces your choices. Supplied products
+show the version this execution received, even if a newer version was published later.
+
+Configuration shows instructions, model and tools retained at each model call. Expand
+and copy recorded content as needed. “Not recorded” means that evidence was not
+retained; current workflow settings cannot reconstruct it. “Redacted” identifies
+removed sensitive values. Human, automatic and external work do not have model input.
+
+**Inspect process** opens the run overview, current workflow, launch inputs and context
+map. Selecting a workflow step exposes its current contracts and links to matching
+Chronicle executions. The context map also has a list for keyboard navigation.
+
+**Show in chronicle** returns to the selected execution. Your action drafts remain
+intact. Trace does not follow new output until you choose **Follow live**; scrolling
+upward stops following. Answer questions and perform recovery actions in the Chronicle.
+
 ## Review and guide
 
 When a process requests a decision, inspect its result and use the offered action.

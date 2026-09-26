@@ -25,8 +25,7 @@ turns use amber clocks; future turns use neutral outlines. Failure has an explic
 marker and label. Text and symbols carry state without depending on color.
 
 A process summary shows its full text and update time. Dismiss hides it only for
-that process in the current browser, including after reload. **Process info → Show
-process summary** restores it. If browser storage is unavailable, dismissal lasts
+that process in the current browser, including after reload. **Inspect process → Overview → Show process summary** restores it. If browser storage is unavailable, dismissal lasts
 for the current page. This preference never changes process state.
 
 ### External waits
@@ -83,6 +82,56 @@ renderer owns its result; do not render a second copy at turn level.
 same text-link treatment. Missing reasoning adds no empty panel. Current question
 forms stay in the Chronicle; turn details contain read-only summaries.
 
+## Process inspector
+
+**Inspect process** replaces the process content region with one inspector. Global
+navigation remains available. The Chronicle and Turn Rail stay mounted, hidden and
+inert; their drafts and disclosure state survive inspection.
+
+Process sections are **Overview**, **Workflow**, **Inputs & configuration**, and
+**Context map**. Overview retains usage coverage, recorded repository facts and
+resource links. Source identifiers and project labels link directly to their external
+resources. Inputs shows the original request before launch parameters and
+mutable model settings. Workflow and step contracts describe the current definition.
+They are not a launch-time configuration snapshot. Step links reveal matching
+executions in the Chronicle without adding another execution table.
+
+Every execution has **Trace**, **Context**, and **Configuration**. Its persistent
+header identifies the record, status and context origin. Trace preserves message
+roles, ordered content blocks, tools and operational events. Show reasoning targets
+recorded reasoning; prompt links target input. Both use this inspector.
+
+Context separates inherited conversation, supplied product versions and local input.
+Source links open the recorded boundary and mark **Context inherited through here**;
+activity after that boundary was not inherited. Fresh context excludes inherited
+conversation but can still receive products and instructions. The context map shows
+recorded conversation and product relationships. Map and List are alternate views
+within the evidence pane, both opening at the selected execution. Zoom and Fit map
+help navigate large graphs; Show selected restores the selected node at readable size.
+Chronological proximity, repeated step names and decision/retry links do not establish
+context inheritance. Legacy branch messages with unknown ownership remain readable in
+a separate collapsed reference; they are not presented as this execution’s inputs.
+
+Configuration displays retained model-call revisions, effective system prompts,
+appended instructions, context files and available tool definitions. Available tools
+are distinct from calls made. Evidence states are recorded, not recorded, unavailable,
+redacted or not applicable. Current workflow settings remain a separately labelled
+reference. Non-model executions omit model configuration and explain its absence.
+
+Inspector URLs select process, step or execution scope and section. Optional entry
+and item targets address evidence without transcript text. Explicit navigation pushes
+browser history; streaming and scrolling do not. Back retraces an investigation.
+**Show in chronicle** reveals the selected execution, including folded history, or
+restores the original reading location and focus. Direct and unavailable links retain
+navigation. History stores reading and disclosure positions; selection never follows
+scrolling or process progress. Keyboard shortcuts are inactive in text fields.
+
+Live Trace starts with Follow live off. New activity is announced without moving the
+reader; **Follow live** opts into scrolling and scrolling upward switches it off.
+Questions remain read-only summaries here, with links to their canonical Chronicle
+forms. Detail reads load only for the selected section. Summary facts can render
+before slow expanded evidence, and stale responses cannot replace a new selection.
+
 ## Failed work
 
 Recovery controls belong to the failed turn card. Keep the error prominent and
@@ -107,9 +156,9 @@ height. It has a static live indicator and **Show reasoning**, no nested scrollb
 or animation. Full reasoning preserves whitespace.
 
 The initial snapshot contains compact active-turn state, not `TurnTraceSnapshot`.
-Do not prefetch detail history on load, hover, idle, or while its overlay is closed.
-Opening reasoning starts an independent request; slow details must not block the
-shell or controls. A direct reasoning link also renders the shell first.
+Do not prefetch detail history on load, hover, idle, or while the inspector is closed.
+Opening Trace starts an independent request; slow details must not block the
+shell or controls. A direct inspector link also renders the shell first.
 
 Expanded history stays visible through reconnect and turn completion. Loading is
 quiet; failures offer inline Retry. Reconnect refreshes full history only while open,
@@ -166,7 +215,7 @@ visible through follow-ups and turn completion. Reasoning details show read-only
 summaries, even when no trace exists, and never duplicate the answer form.
 
 A new question notifies without changing scroll or focus. Opening the notification
-closes blocking detail overlays and focuses the active form. Opening other action
+returns from the inspector and focuses the active form. Opening other action
 forms focuses the first field without overriding the chosen Chronicle position.
 
 While browsing away from a pending decision, the bottom composer names it and retains
@@ -216,3 +265,11 @@ Managed result images may open in a secured new tab without an external marker.
   full bearer link, expiry, and download warning. Progress never implies that delivered
   bytes can be recalled.
 - [Extension renderers](extension-ui.md) remain bounded to their supported slots.
+
+The process inspector's **Inputs & configuration → Model defaults and overrides**
+section provides an inline **Edit models** form for nonterminal processes. It uses
+server previews, shows inherited choices and marks fixed system models read-only.
+**Save changes** applies only edited values to future executions, including scheduled
+actions that inherit settings. **Cancel** discards the draft. Live process updates
+and failed requests retain unsaved edits; saving disables duplicate submissions and
+refreshes process details. Active execution labels continue to show recorded models.

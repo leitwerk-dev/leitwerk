@@ -191,3 +191,74 @@ export function matchRoute(pathnameWithSearch: string): Route {
 
 	return { page: "home", params: {} };
 }
+
+export type InspectorProcessSection = "overview" | "workflow" | "inputs" | "context-map";
+export type InspectorExecutionSection = "trace" | "context" | "configuration";
+export type InspectorTarget =
+	| { scope: "process"; section: InspectorProcessSection; turnRecordId?: string }
+	| { scope: "step"; turnId: string }
+	| {
+			scope: "execution";
+			turnRecordId: string;
+			section: InspectorExecutionSection;
+			entryId?: string;
+			itemId?: string;
+			boundaryFor?: string;
+	  };
+export type InspectorRoute = InspectorTarget | { scope: "invalid"; reason: string } | null;
+
+export function buildInspectorPath(instanceId: string, target: InspectorTarget): string {
+	const params = new URLSearchParams({ inspect: target.scope });
+	if (target.scope === "step") params.set("turnId", target.turnId);
+	else {
+		params.set("section", target.section);
+		if (target.turnRecordId) params.set("turnRecordId", target.turnRecordId);
+		if (target.scope === "execution") {
+			if (target.entryId) params.set("entryId", target.entryId);
+			if (target.itemId) params.set("itemId", target.itemId);
+			if (target.boundaryFor) params.set("boundaryFor", target.boundaryFor);
+		}
+	}
+	return `${buildProcessPath(instanceId)}?${params}`;
+}
+
+export function readInspectorTarget(path: string): InspectorRoute {
+	const params = readSearchParams(path);
+	let scope = params.get("inspect");
+	if (!scope && params.get("overlay") === "process-info") scope = "process";
+	if (!scope && params.get("overlay") === "reasoning") scope = "execution";
+	if (!scope) return null;
+	const invalid = {
+		scope: "invalid",
+		reason: "This inspector link has a missing or unsupported target.",
+	} as const;
+	const section = params.get("section");
+	const turnRecordId = params.get("turnRecordId") || undefined;
+	if (scope === "step") {
+		const turnId = params.get("turnId");
+		return turnId ? { scope, turnId } : invalid;
+	}
+	if (scope === "process") {
+		if (section && !["overview", "workflow", "inputs", "context-map"].includes(section))
+			return invalid;
+		return {
+			scope,
+			section: (section ?? "overview") as InspectorProcessSection,
+			...(turnRecordId ? { turnRecordId } : {}),
+		};
+	}
+	if (scope === "execution" && turnRecordId) {
+		if (section && !["trace", "context", "configuration"].includes(section)) return invalid;
+		const target: InspectorTarget = {
+			scope,
+			turnRecordId,
+			section: (section ?? "trace") as InspectorExecutionSection,
+		};
+		for (const key of ["entryId", "itemId", "boundaryFor"] as const) {
+			const value = params.get(key);
+			if (value) target[key] = value;
+		}
+		return target;
+	}
+	return invalid;
+}

@@ -31,6 +31,12 @@ export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 	if (config.local_worker) config.local_worker.allow_host_docker = true;
 	config.pi.model_profiles = [
 		{ id: "sandbox", provider: "sandbox-model", model_id: "scripted", thinking_level: "off" },
+		{
+			id: "sandbox-alternate",
+			provider: "sandbox-model",
+			model_id: "scripted",
+			thinking_level: "off",
+		},
 	];
 	config.pi.process_title_generation.model_profile = null;
 	config.pi.retry.enabled = false;

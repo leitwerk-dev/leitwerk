@@ -95,3 +95,26 @@ describe("expanded reasoning recovery", () => {
 		expect(history.snapshot().assistant.thinking).toBe("committed reasoning");
 	});
 });
+
+it("retains durable inspection event identities across a buffered HTTP refresh", () => {
+	const history = new ReasoningHistory("process", "turn");
+	history.beginRequest();
+	history.push(delta(3, "later"));
+	const base = response("prefix", 2);
+	history.accept({
+		...base,
+		events: [
+			{
+				id: "stored",
+				eventSequence: 2,
+				instanceId: "process",
+				eventType: "pi.stream.delta",
+				data: { text: "prefix", streamType: "thinking" },
+				createdAt: "2026-01-01",
+			},
+		],
+	});
+	expect(history.events().map((event) => event.eventSequence)).toEqual([2, 3]);
+	history.push(delta(3, "duplicate"));
+	expect(history.events()).toHaveLength(2);
+});

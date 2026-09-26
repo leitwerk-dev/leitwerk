@@ -33,6 +33,7 @@ export type {
 	PersistedModelIntegrity,
 	PersistedModelIntegrityIssue,
 	PrepareLaunchPlanOptions,
+	ProcessModelAvailabilitySnapshot,
 	ProcessModelPolicyEvaluation,
 	ProcessModelPolicyEvaluationSubject,
 	ProcessModelPolicyFingerprintSubject,

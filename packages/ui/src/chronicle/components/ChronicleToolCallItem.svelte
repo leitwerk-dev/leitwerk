@@ -150,6 +150,7 @@ const statusTone = $derived(
 {/snippet}
 
 <details
+	data-disclosure-key={`tool:${toolCall.toolCallId}`}
 	class="tool-item tool-item-expandable"
 	open={isOpen}
 	data-section="reasoning-tool-marker"

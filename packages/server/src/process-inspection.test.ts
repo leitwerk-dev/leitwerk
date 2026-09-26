@@ -170,3 +170,55 @@ describe("inspection lineage", () => {
 		expect(JSON.stringify(messages)).not.toContain("renderer");
 	});
 });
+
+it("keeps unassigned legacy branch content readable without assigning it to an execution", () => {
+	const execution = record("legacy", { turnStartRecordId: null });
+	const session = tree([
+		{
+			type: "message",
+			id: "old-input",
+			parentId: null,
+			timestamp: "1",
+			message: { role: "user", content: "Unassigned prompt" },
+		},
+		{
+			type: "message",
+			id: "old-tool",
+			parentId: "old-input",
+			timestamp: "2",
+			message: {
+				role: "assistant",
+				content: [{ type: "thinking", thinking: "Earlier reasoning" }],
+			},
+		},
+		{
+			type: "message",
+			id: "legacy-result",
+			parentId: "old-tool",
+			timestamp: "3",
+			message: { role: "assistant", content: "Recorded result" },
+		},
+	]);
+	const lineage = createInspectionLineage({
+		records: [execution],
+		observations: [],
+		leases: [],
+		tree: session,
+	});
+	const input = {
+		tree: session,
+		record: execution,
+		owner: lineage.owner,
+		captures: [],
+		events: [],
+	};
+	expect(buildInspectionTraceMessages(input).map((message) => message.entryId)).toEqual([
+		"legacy-result",
+	]);
+	expect(
+		buildInspectionTraceMessages({ ...input, scope: "unassigned_branch" }).map(
+			(message) => message.entryId,
+		),
+	).toEqual(["old-input", "old-tool"]);
+	expect(lineage.owner("old-input")).toBeNull();
+});

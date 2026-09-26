@@ -4,9 +4,8 @@ import {
 	type ProcessTimelineTurnSummary,
 	type TurnTraceSnapshot,
 } from "@leitwerk-dev/protocol";
-import { onDestroy, tick, untrack } from "svelte";
-import ChronicleReasoningDetailsOverlay from "../chronicle/components/ChronicleReasoningDetailsOverlay.svelte";
-import type { ChronicleReasoningDetailEntry } from "../chronicle/lib/chronicle-projection.js";
+import { onDestroy } from "svelte";
+
 import {
 	buildChronicleProjection,
 	extractChronicleReasoningDetailEntries,
@@ -16,8 +15,8 @@ import {
 	CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 	CHRONICLE_PROCESS_ERROR_SECTION_ANCHOR_ID,
 } from "../chronicle/lib/chronicle-selectable-items.js";
-import ProcessInfoOverlay from "../components/ProcessInfoOverlay.svelte";
-import { fetchTurnReasoningDetail, type ProcessDetailData } from "../lib/api.js";
+
+import type { ProcessDetailData } from "../lib/api.js";
 import { getBrowserStorage } from "../lib/browser-storage.js";
 import { shouldIgnorePlainShortcut } from "../lib/keyboard.js";
 import { getPrimaryPathActiveTurnOutput } from "../lib/primary-path-detail.js";
@@ -26,23 +25,13 @@ import {
 	consumeProcessLaunchNotice,
 } from "../lib/process-launch-notices.svelte";
 import type { ProcessTerminalStatus } from "../lib/process-terminal-display.js";
-import {
-	clearDetail,
-	detailState,
-	loadProcessDetail,
-	subscribeReasoningFrames,
-} from "../lib/processes.svelte";
-import { ReasoningHistory } from "../lib/reasoning-history.js";
-import {
-	buildProcessesPath,
-	buildProcessPath,
-	locationStore,
-	navigate,
-	readProcessDetailOverlay,
-} from "../lib/router.svelte";
-import { createToolRendererIndex } from "../lib/tool-call-rendering.js";
+import { clearDetail, detailState, loadProcessDetail } from "../lib/processes.svelte";
+
+import { buildProcessesPath, locationStore, navigate } from "../lib/router.svelte";
+import { readInspectorTarget } from "../lib/router-logic.js";
 import { wsStore } from "../lib/ws.svelte";
-import OverlayFrame from "./process-detail/OverlayFrame.svelte";
+import { createInspectorNavigation } from "./process-detail/inspector/inspector-navigation.js";
+import ProcessInspector from "./process-detail/inspector/ProcessInspector.svelte";
 import ProcessDetailChronicle from "./process-detail/ProcessDetailChronicle.svelte";
 import ProcessDetailHeader from "./process-detail/ProcessDetailHeader.svelte";
 import ProcessSummary from "./process-detail/ProcessSummary.svelte";
@@ -108,24 +97,6 @@ let launchWarning = $state<string | null>(null);
 let observedInstanceId: string | null = null;
 let loadedInstanceId = $state<string | null>(null);
 let observedReconnectCount = $state<number | null>(null);
-let processInfoFocusRestoreElement: HTMLElement | null = null;
-let reasoningTraceCache = $state.raw<Record<string, TurnTraceSnapshot>>({});
-let activeReasoningRequest = $state.raw<{
-	key: string;
-	status: "loading" | "error";
-	error: string | null;
-} | null>(null);
-let reasoningHistory: ReasoningHistory | null = null;
-let observedReasoningKey: string | null = null;
-let retainedReasoningEntry = $state.raw<ChronicleReasoningDetailEntry | null>(null);
-const unsubscribeReasoningFrames = subscribeReasoningFrames((frame) => {
-	if (!reasoningHistory) return;
-	const trace = reasoningHistory.push(frame);
-	if (trace) reasoningTraceCache = { [reasoningHistory.turnRecordId]: trace };
-});
-let reasoningRequestGeneration = 0;
-let reasoningRequestAbortController: AbortController | null = null;
-
 const processDetailTitleId = "process-detail-title";
 const processTimelineHeadingId = "process-timeline-heading";
 
@@ -151,12 +122,6 @@ $effect(() => {
 	}
 	observedInstanceId = instanceId;
 	launchWarning = null;
-	processInfoFocusRestoreElement = null;
-	reasoningTraceCache = {};
-	activeReasoningRequest = null;
-	reasoningRequestGeneration += 1;
-	reasoningRequestAbortController?.abort();
-	reasoningRequestAbortController = null;
 	detailActions.reset();
 	clearDetail();
 });
@@ -172,8 +137,6 @@ $effect(() => {
 });
 
 onDestroy(() => {
-	unsubscribeReasoningFrames();
-	reasoningRequestAbortController?.abort();
 	clearDetail();
 });
 
@@ -232,8 +195,8 @@ const turnRecords = $derived.by(() => {
 				: turn.displayTurn,
 	}));
 });
-const turnTraceIndex = $derived(reasoningTraceCache);
-const toolRendererIndex = $derived(createToolRendererIndex($detailState.data?.toolRenderers ?? []));
+const turnTraceIndex: Record<string, TurnTraceSnapshot> = {};
+
 const chroniclePrompt = $derived({
 	text: $detailState.data?.timeline.prompt.text ?? null,
 	createdAt: $detailState.data?.timeline.prompt.createdAt ?? null,
@@ -262,121 +225,28 @@ const reasoningDetailEntries = $derived(
 		$detailState.data?.questionRequests ?? [],
 	),
 );
-const processDetailOverlay = $derived(readProcessDetailOverlay($locationStore));
-const isProcessInfoOverlayOpen = $derived(processDetailOverlay.kind === "process-info");
-const requestedReasoningDetailTurnRecordId = $derived(
-	processDetailOverlay.kind === "reasoning" ? processDetailOverlay.turnRecordId : null,
-);
-const activeReasoningDetailIndex = $derived.by(() => {
-	if (!requestedReasoningDetailTurnRecordId) {
-		return -1;
-	}
-	return reasoningDetailEntries.findIndex(
-		(entry) => entry.turnRecordId === requestedReasoningDetailTurnRecordId,
-	);
+const inspectorTarget = $derived(readInspectorTarget($locationStore));
+const isProcessInfoOverlayOpen = $derived(inspectorTarget?.scope === "process");
+const hasBlockingDetailOverlay = $derived(inspectorTarget !== null);
+let chronicle: { reveal(target: { turnRecordId?: string; turnId?: string }): void } | undefined;
+const inspectorNavigation = createInspectorNavigation({
+	get instanceId() {
+		return instanceId;
+	},
+	get route() {
+		return inspectorTarget;
+	},
+	get path() {
+		return $locationStore;
+	},
+	reveal(target) {
+		chronicle?.reveal(target);
+	},
 });
-const activeReasoningDetail = $derived.by(() => {
-	if (activeReasoningDetailIndex < 0) {
-		return retainedReasoningEntry?.turnRecordId === requestedReasoningDetailTurnRecordId
-			? retainedReasoningEntry
-			: null;
-	}
-	return reasoningDetailEntries[activeReasoningDetailIndex] ?? null;
-});
-const hasPreviousReasoningDetail = $derived(activeReasoningDetailIndex > 0);
-const hasNextReasoningDetail = $derived(
-	activeReasoningDetailIndex >= 0 && activeReasoningDetailIndex < reasoningDetailEntries.length - 1,
-);
-const hasBlockingDetailOverlay = $derived(
-	isProcessInfoOverlayOpen || activeReasoningDetail !== null,
-);
-
-async function loadReasoningDetail(requestInstanceId: string, turnRecordId: string, key: string) {
-	reasoningRequestAbortController?.abort();
-	const controller = new AbortController();
-	reasoningRequestAbortController = controller;
-	const generation = ++reasoningRequestGeneration;
-	if (
-		reasoningHistory?.instanceId !== requestInstanceId ||
-		reasoningHistory.turnRecordId !== turnRecordId
-	) {
-		reasoningHistory = new ReasoningHistory(requestInstanceId, turnRecordId);
-		reasoningTraceCache = {};
-	}
-	const history = reasoningHistory;
-	history.beginRequest();
-	activeReasoningRequest = { key, status: "loading", error: null };
-	// Let a direct link render the shell and controls before starting independent detail I/O.
-	await tick();
-	if (controller.signal.aborted) return;
-	try {
-		const response = await fetchTurnReasoningDetail(
-			requestInstanceId,
-			turnRecordId,
-			null,
-			controller.signal,
-		);
-		if (
-			generation !== reasoningRequestGeneration ||
-			requestedReasoningDetailTurnRecordId !== turnRecordId ||
-			instanceId !== requestInstanceId
-		)
-			return;
-		reasoningTraceCache = { [turnRecordId]: history.accept(response) };
-		activeReasoningRequest = null;
-	} catch (error) {
-		if (generation !== reasoningRequestGeneration || controller.signal.aborted) return;
-		history.failedRequest();
-		activeReasoningRequest = {
-			key,
-			status: "error",
-			error: error instanceof Error ? error.message : "Couldn't load full reasoning details",
-		};
-	} finally {
-		if (reasoningRequestAbortController === controller) reasoningRequestAbortController = null;
-	}
-}
-
 $effect(() => {
-	const detail = $detailState.data;
-	const turnRecordId = requestedReasoningDetailTurnRecordId;
-	const reconnect = $wsStore.reconnectCount;
-	if (!detail || !turnRecordId) {
-		untrack(() => {
-			observedReasoningKey = null;
-			reasoningRequestGeneration++;
-			reasoningRequestAbortController?.abort();
-			reasoningHistory = null;
-			reasoningTraceCache = {};
-			activeReasoningRequest = null;
-			retainedReasoningEntry = null;
-		});
-		return;
-	}
-	const entry = reasoningDetailEntries.find((entry) => entry.turnRecordId === turnRecordId);
-	if (entry) retainedReasoningEntry = entry;
-	const turn = detail.timeline.turns.find((turn) => turn.id === turnRecordId);
-	const state = turn?.status === "completed" ? "committed" : "live";
-	const key = JSON.stringify([
-		instanceId,
-		turnRecordId,
-		state,
-		reconnect,
-		state === "committed" ? detail.session.signature : null,
-	]);
-	if (observedReasoningKey === key) return;
-	observedReasoningKey = key;
-	untrack(() => {
-		void loadReasoningDetail(instanceId, turnRecordId, key);
-	});
+	$locationStore;
+	void inspectorNavigation.restoreRoute();
 });
-
-const activeReasoningRequestState = $derived(activeReasoningRequest);
-function retryReasoningDetail() {
-	const turnRecordId = requestedReasoningDetailTurnRecordId;
-	if (turnRecordId && observedReasoningKey)
-		void loadReasoningDetail(instanceId, turnRecordId, observedReasoningKey);
-}
 const scheduledActionDetail = $derived($detailState.data?.scheduledAction ?? null);
 const isTerminalProcess = $derived.by(() => {
 	const lifecycleStatus = $detailState.data?.process.lifecycleStatus ?? null;
@@ -431,27 +301,17 @@ const terminalSummaryStatus = $derived.by((): ProcessTerminalStatus | null => {
 	}
 	return null;
 });
-const processUsageEstimate = $derived($detailState.data?.usageEstimate ?? null);
+
 const persistedModelSelectionWarning = $derived(
 	$detailState.data?.persistedModelSelectionWarning ?? null,
 );
 
 function handlePageKeydown(event: KeyboardEvent) {
-	if (shouldIgnorePlainShortcut(event) || !$detailState.data) {
-		return;
-	}
-
-	if (event.key === "Escape" && isProcessInfoOverlayOpen) {
+	if (shouldIgnorePlainShortcut(event)) return;
+	if (event.key === "Escape" && inspectorTarget) {
 		event.preventDefault();
-		closeProcessInfoOverlay();
-		return;
-	}
-
-	if (isProcessInfoOverlayOpen || activeReasoningDetail !== null) {
-		return;
-	}
-
-	if (event.key === "i") {
+		inspectorNavigation.back();
+	} else if (event.key === "i" && !inspectorTarget) {
 		event.preventDefault();
 		toggleProcessInfoOverlay();
 	}
@@ -462,100 +322,25 @@ function dismissLaunchWarning() {
 	clearProcessLaunchNotice(instanceId);
 }
 
-function navigateToProcessBase(options: { replace?: boolean } = { replace: true }) {
-	navigate(buildProcessPath(instanceId), options);
-}
-
-function rememberProcessInfoFocusRestoreTarget() {
-	processInfoFocusRestoreElement =
-		document.activeElement instanceof HTMLElement ? document.activeElement : null;
-}
-
-function restoreProcessInfoFocus() {
-	const restoreTarget = processInfoFocusRestoreElement;
-	processInfoFocusRestoreElement = null;
-	if (!restoreTarget?.isConnected) {
-		return;
-	}
-	void tick().then(() => {
-		if (restoreTarget.isConnected) {
-			restoreTarget.focus();
-		}
-	});
-}
-
 function toggleProcessInfoOverlay() {
-	if (!$detailState.data) {
-		return;
-	}
-	if (isProcessInfoOverlayOpen) {
-		closeProcessInfoOverlay();
-		return;
-	}
-	rememberProcessInfoFocusRestoreTarget();
-	navigate(buildProcessPath(instanceId, { overlay: "process-info" }), { replace: true });
+	if (inspectorTarget) inspectorNavigation.showChronicle();
+	else inspectorNavigation.visit({ scope: "process", section: "overview" });
 }
-
-function closeProcessInfoOverlay(options: { replace?: boolean } = { replace: true }) {
-	if (processDetailOverlay.kind === "process-info") {
-		navigateToProcessBase(options);
-		restoreProcessInfoFocus();
-	}
+function closeProcessInfoOverlay() {
+	inspectorNavigation.showChronicle();
 }
-
-function closeProcessDetailOverlay(options: { replace?: boolean } = { replace: true }) {
-	if (processDetailOverlay.kind !== "none") {
-		if (processDetailOverlay.kind === "process-info") {
-			restoreProcessInfoFocus();
-		}
-		navigateToProcessBase(options);
-	}
-}
-
 function closeBlockingDetailOverlays() {
-	closeProcessDetailOverlay({ replace: true });
+	if (inspectorTarget) inspectorNavigation.showChronicle();
 }
-
-function openReasoningDetails(turnRecordId: string) {
-	navigate(buildProcessPath(instanceId, { overlay: "reasoning", turnRecordId }), { replace: true });
-}
-
-function closeReasoningDetails(options: { replace?: boolean } = { replace: true }) {
-	if (processDetailOverlay.kind === "reasoning") {
-		navigateToProcessBase(options);
-	}
-}
-
-function openPreviousReasoningDetails() {
-	if (activeReasoningDetailIndex <= 0) {
-		return;
-	}
-	const turnRecordId = reasoningDetailEntries[activeReasoningDetailIndex - 1]?.turnRecordId ?? null;
-	if (!turnRecordId) {
-		return;
-	}
-	openReasoningDetails(turnRecordId);
-}
-
-function openNextReasoningDetails() {
-	if (
-		activeReasoningDetailIndex < 0 ||
-		activeReasoningDetailIndex >= reasoningDetailEntries.length - 1
-	) {
-		return;
-	}
-	const turnRecordId = reasoningDetailEntries[activeReasoningDetailIndex + 1]?.turnRecordId ?? null;
-	if (!turnRecordId) {
-		return;
-	}
-	openReasoningDetails(turnRecordId);
+function openReasoningDetails(turnRecordId: string, itemId?: string) {
+	inspectorNavigation.visit({ scope: "execution", turnRecordId, section: "trace", itemId });
 }
 </script>
 
 <svelte:window onkeydown={handlePageKeydown} onstorage={handleSummaryStorage} />
 
-<div class="process-detail-page" data-page="process-detail">
-	<div class="page-shell" inert={hasBlockingDetailOverlay ? true : undefined}>
+<div class="process-detail-page" data-page="process-detail" use:inspectorNavigation.observe>
+	<div class="page-shell" hidden={hasBlockingDetailOverlay} inert={hasBlockingDetailOverlay ? true : undefined}>
 		<ProcessDetailHeader
 			{instanceId}
 			titleId={processDetailTitleId}
@@ -571,6 +356,7 @@ function openNextReasoningDetails() {
 		{/if}
 
 		<ProcessDetailChronicle
+            bind:this={chronicle}
 			{instanceId}
 			detail={$detailState.data}
 			loading={$detailState.loading}
@@ -603,48 +389,12 @@ function openNextReasoningDetails() {
 		/>
 	</div>
 
-	{#if isProcessInfoOverlayOpen && $detailState.data}
-		<OverlayFrame
-			kind="process-info"
-			closeLabel="Close process info"
-			onClose={() => closeProcessDetailOverlay()}
-		>
-			<ProcessInfoOverlay
-				detail={$detailState.data}
-				{processUsageEstimate}
-				onClose={() => closeProcessInfoOverlay()}
-				railItems={chronicleSelectableItems}
-				onShowSummary={waitingReport && summaryDismissed ? showSummary : undefined}
-			/>
-		</OverlayFrame>
-	{:else if activeReasoningDetail}
-		<OverlayFrame
-			kind="reasoning"
-			closeLabel="Close reasoning details"
-			onClose={() => closeProcessDetailOverlay()}
-		>
-			{#if activeReasoningRequestState?.status === "error"}
-				<div class="reasoning-load-error" role="status" data-section="reasoning-load-error">
-					<span>{activeReasoningRequestState.error}</span>
-					<button type="button" onclick={retryReasoningDetail}>Retry</button>
-				</div>
-			{:else if activeReasoningRequestState?.status === "loading"}
-				<p class="reasoning-load-status" role="status">Loading reasoning…</p>
-			{/if}
-			<ChronicleReasoningDetailsOverlay
-				entry={activeReasoningDetail}
-				{toolRendererIndex}
-				questionRequests={$detailState.data?.questionRequests.filter(
-					(request) => request.turnRecordId === activeReasoningDetail.turnRecordId,
-				) ?? []}
-				hasPrevious={hasPreviousReasoningDetail}
-				hasNext={hasNextReasoningDetail}
-				onClose={() => closeReasoningDetails()}
-				onPrevious={() => openPreviousReasoningDetails()}
-				onNext={() => openNextReasoningDetails()}
-			/>
-		</OverlayFrame>
-	{/if}
+  {#if inspectorTarget}
+    <ProcessInspector {instanceId} target={inspectorTarget} detail={$detailState.data} error={$detailState.error}
+      onNavigate={inspectorNavigation.visit} onBack={inspectorNavigation.back} onChronicle={inspectorNavigation.showChronicle}
+      onReady={inspectorNavigation.restoreContent}
+      onShowSummary={waitingReport && summaryDismissed ? showSummary : undefined} />
+  {/if}
 </div>
 
 <style>
@@ -667,39 +417,5 @@ function openNextReasoningDetails() {
 		min-height: 0;
 	}
 
-	.reasoning-load-status {
-		margin: 0;
-		padding: var(--space-sm) var(--space-md);
-		font-size: var(--type-body-sm);
-		color: var(--chronicle-text-muted);
-	}
-
-	.reasoning-load-error {
-		display: flex;
-		gap: var(--space-sm);
-		align-items: center;
-		justify-content: space-between;
-		padding: var(--space-sm) var(--space-md);
-		border-bottom: 1px solid var(--chronicle-border);
-		color: var(--chronicle-danger-text);
-		background: var(--chronicle-danger-surface-soft);
-		font-size: var(--type-body-sm);
-	}
-
-	.reasoning-load-error button {
-		min-height: 36px;
-		padding: 0 var(--space-md);
-		border: 1px solid var(--chronicle-border-strong);
-		border-radius: 999px;
-		background: var(--chronicle-surface);
-		color: var(--chronicle-text);
-		font: inherit;
-		font-weight: 650;
-		cursor: pointer;
-	}
-
-	.reasoning-load-error button:focus-visible {
-		outline: 2px solid var(--chronicle-accent);
-		outline-offset: 2px;
-	}
+	.page-shell[hidden] {display:none;}
 </style>

@@ -40,15 +40,15 @@ specifies delivery behavior, not whether the underlying fact is stored.
 1. Reconnect to `/ws`.
 2. Fetch relevant HTTP snapshots concurrently, including process `ui-snapshot`.
 3. Buffer updates during each fetch. Keep only the latest compact summary per turn;
-   retain detail frames only for an open reasoning view.
+   retain detail frames only for an open execution Trace.
 4. Apply frames with `eventSequence > throughEventSequence` once, in order. Capture
    the boundary alongside durable reads, before asynchronous session work. Unsequenced
    metadata invalidations use `rebuiltAt`; timestamps do not order activity.
 5. Refresh expanded history only while it is open. Reject responses and frames for
    another turn, retain visible content during recovery, and offer Retry on failure.
 
-Do not fetch reasoning on load, hover, idle, or reconnect with its overlay closed.
-A direct reasoning link renders the shell first and loads detail independently.
+Do not fetch reasoning on load, hover, idle, or reconnect with the inspector closed.
+A direct inspector link renders the shell first and loads detail independently.
 Compact refreshes cannot shorten expanded history. See [UI contracts](ui.md).
 
 Process diagnostics capture related database records and their presentation before
@@ -78,11 +78,20 @@ the response does not imply an atomic read across SQLite and session storage.
 | `primary_path.summary_updated` | Ephemeral bounded summary for one `turnRecordId`, with `throughEventSequence`. Replaces inline live state. |
 | `pi.stream.delta`, `pi.tool.started`, `pi.tool.completed`, `pi.usage`, `pi.error`, `pi.retry.*`, `pi.compaction.*` | Ephemeral recorded activity for expanded reasoning, correlated by turn record and event sequence. |
 | `primary_path.assistant_partial`, `primary_path.tool_call_started`, `primary_path.tool_call_completed`, `primary_path.usage_updated` | Full primary-path compatibility frames; compact pages use summary frames. |
-| `primary_path.turn_started`, `primary_path.assistant_committed` | Durable lifecycle updates. An open overlay follows the same record through completion. |
+| `primary_path.turn_started`, `primary_path.assistant_committed` | Durable lifecycle updates. An open inspector retains the same record through completion. |
 
-## Reasoning detail
+## Execution inspection and reasoning detail
 
-`GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` returns
+`GET /api/processes/:instanceId/turn-records/:turnRecordId/inspection` accepts
+`section=summary|trace|context|configuration`. Summary avoids session and immutable
+content reads. Trace preserves session-entry/block identities and durable event
+sequences; Context and Configuration load independently. Entry, item and inherited
+boundary targets are checked against the process, execution and recorded relationship.
+An unavailable target never selects another execution.
+
+The Trace response reuses the reasoning history contract and reconciler. Recorded
+aliases keep live event links addressable after session commit. The retained
+`GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` endpoint also returns
 `state: "live" | "committed"` and `throughEventSequence`. Live responses include
 all recorded activity for that record, without a lookback limit.
 

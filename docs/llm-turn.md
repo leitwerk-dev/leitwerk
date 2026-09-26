@@ -102,13 +102,32 @@ The tree snapshot must upload before outcome or failure. An upload failure becom
 
 Before acceptance, LLM bootstrap only inspects the retained tree to produce `preparedStart`; it must not prompt Pi or mutate the tree. Acceptance validates that preparation and records its path and fork provenance. Post-acceptance execution uses that recorded preparation rather than selecting a different path.
 
+## Recorded execution inspection
+
+After acceptance, the worker records inspection evidence through existing IPC. The
+actual Pi model-input boundary captures the assembled system prompt, effective model,
+available tools and model-facing messages for each call. Appended instructions and
+managed context files are retained separately. A bootstrap resource digest alone does
+not describe the assembled prompt. Entry links correlate live activity to retained
+session entries when Pi exposes that identity.
+
+The server validates accepted execution/start/lease ownership and persists versioned,
+idempotent observations with deduplicated immutable content. Supplied products retain
+their producer and version; reading a product records consumption of that supply.
+Later publication and configuration changes do not rewrite earlier evidence.
+
+Inspection describes retained model-facing context, not a provider-wire request or
+unrecorded workspace. Known credentials are redacted before persistence. Missing
+legacy evidence remains explicit; there is no backfill from current definitions.
+See [Security](security.md) and [worker lifecycle](server-worker-lifecycle.md).
+
 ## Browser rebuild
 
 The detail view uses:
 
 1. `GET /api/processes/:instanceId/ui-snapshot` for initial and reconnect state;
 2. `primary_path.*` frames for live changes;
-3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` for one expanded running or completed turn.
+3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/inspection?section=trace` for one expanded running or completed execution.
 
 Event ingestion atomically persists the event, its monotonic sequence, and a compact turn summary. The summary contains at most 1,024 characters each of recent reasoning and assistant text, current tool status, counts, usage, and `throughEventSequence`. It contains no trace items, tool arguments, or tool results.
 

@@ -176,6 +176,16 @@ export function routeConfig(deps: Pick<RouteDeps, "config">): LeitwerkConfig {
 	return deps.config ?? getDefaultConfig();
 }
 
+function safeLaunchValue(value: unknown): unknown {
+	if (typeof value === "string") return redactCredentialBearingAbsoluteUrl(value);
+	if (Array.isArray(value)) return value.map(safeLaunchValue);
+	if (value && typeof value === "object")
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [key, safeLaunchValue(item)]),
+		);
+	return value;
+}
+
 function formatLaunchParameterValue(value: unknown): string | null {
 	if (value === undefined || value === null) {
 		return null;
@@ -184,7 +194,9 @@ function formatLaunchParameterValue(value: unknown): string | null {
 		const normalized = redactCredentialBearingAbsoluteUrl(value.trim());
 		return normalized === "" ? null : normalized;
 	}
-	return String(value);
+	return typeof value === "object"
+		? JSON.stringify(safeLaunchValue(value), null, 2)
+		: String(value);
 }
 
 function buildLaunchParameterRows(
@@ -202,6 +214,7 @@ function buildLaunchParameterRows(
 			fieldId: field.id,
 			label: field.label || field.id,
 			value: formatLaunchParameterValue(params[field.id]),
+			rawValue: safeLaunchValue(params[field.id]),
 		});
 	}
 	for (const fieldId of Object.keys(params).sort((left, right) => left.localeCompare(right))) {
@@ -212,6 +225,7 @@ function buildLaunchParameterRows(
 			fieldId,
 			label: fieldId,
 			value: formatLaunchParameterValue(params[fieldId]),
+			rawValue: safeLaunchValue(params[fieldId]),
 		});
 	}
 	return rows;
@@ -278,10 +292,43 @@ export function buildProcessRunDetailsView(
 	const turns: ProcessRunTurnView[] = [];
 
 	for (const [turnId, turnContract] of contract.turns) {
-		if (turnContract.turnType !== "llm") {
+		const turnDef = deps.processActionRegistry?.getTurnDefinition(process.processId, turnId);
+		if (turnDef && turnDef.kind !== "llm") {
+			const actions =
+				turnDef.kind === "human"
+					? Object.entries(turnDef.actions).map(([name, action]) => ({
+							name,
+							label: action.label,
+							description: action.description,
+							form: action.form,
+						}))
+					: [];
+			const outcomes =
+				turnDef.kind === "automatic"
+					? Object.entries(turnDef.outcomes ?? {}).map(([name, outcome]) => ({
+							name,
+							description: outcome?.description,
+							parameters: outcome?.parameters,
+						}))
+					: [];
+			turns.push({
+				turnId,
+				description: turnDef.description,
+				pathType: "not_applicable",
+				consumedProducts: [...(turnContract.consumedProducts ?? [])],
+				publishedProducts: [...(turnContract.publishedProducts ?? [])],
+				activePiToolNames: [],
+				outcomeActions: [],
+				integrationToolNames: turnDef.kind === "automatic" ? (turnDef.integrationTools ?? []) : [],
+				definitionContract: {
+					kind: turnDef.kind,
+					actions,
+					outcomes,
+					reviewProduct: turnDef.kind === "human" ? turnDef.reviewProduct : undefined,
+				},
+			});
 			continue;
 		}
-		const turnDef = deps.processActionRegistry?.getTurnDefinition(process.processId, turnId);
 		if (!turnDef || !isLlmTurnDefinition(turnDef)) {
 			continue;
 		}
@@ -289,6 +336,13 @@ export function buildProcessRunDetailsView(
 			turnId,
 			description: turnDef.description,
 			pathType: turnDef.branchType,
+			definitionContract: {
+				kind: turnDef.kind,
+				context: turnDef.context,
+				modelPurpose: turnDef.modelPurpose ?? null,
+				askQuestions: turnDef.askQuestions ?? false,
+			},
+			integrationToolNames: turnDef.integrationTools ?? [],
 			consumedProducts: [...(turnContract.consumedProducts ?? [])],
 			publishedProducts: [
 				...new Set(

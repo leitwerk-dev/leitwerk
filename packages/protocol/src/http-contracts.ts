@@ -425,7 +425,33 @@ export interface ModelProviderOptionsResponseBody {
 }
 
 /** @internal */
+export interface ProcessModelConfigPatch {
+	/** @internal */
+	defaultModelProfileId?: string | null;
+	/** @internal */
+	turnConfigs?: Record<
+		string,
+		{
+			/** @internal */
+			modelProfileId: string | null;
+		}
+	>;
+}
+
+/** @internal */
+export interface ProcessModelConfigResponseBody {
+	/** @internal */
+	modelConfiguration: ProcessModelConfigurationView;
+}
+
+/** @internal */
 export interface ProcessTurnModelConfigurationView {
+	/** A system-purpose model cannot be overridden per instance. @internal */
+	fixedModelProfileId?: string | null;
+	/** @internal */
+	effectiveModelProfileId?: string | null;
+	/** @internal */
+	effectiveSource?: ProcessActionModelResolutionSource;
 	/** @internal */
 	turnId: string;
 	/** @internal */
@@ -518,6 +544,10 @@ export type ProcessRunToolView = {
 
 /** @internal */
 export type ProcessRunTurnView = {
+	/** Current definition schema, not an execution snapshot. @internal */
+	definitionContract?: unknown;
+	/** @internal */
+	integrationToolNames?: readonly string[];
 	/** @internal */
 	turnId: string;
 	/** @internal */
@@ -548,6 +578,8 @@ export type ProcessRunDetailsView = {
 
 /** @internal */
 export interface ProcessLaunchConfigurationParameterView {
+	/** Presentation-safe original value. @internal */
+	rawValue?: unknown;
 	/** @internal */
 	fieldId: string;
 	/** @internal */

@@ -112,7 +112,7 @@ describe("chronicle turn disclosure", () => {
 		await tick();
 		expect(target.querySelectorAll('[data-section="turn-result"] li')).toHaveLength(2);
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
-		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1");
+		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1", "reasoning");
 		toggle?.click();
 		await tick();
 		expect(target.querySelector(".turn-result-markdown li")).toBeNull();
@@ -141,7 +141,7 @@ describe("chronicle turn disclosure", () => {
 		expect(target.textContent).not.toContain("4200");
 		expect(target.querySelector(".entry-timing")?.textContent).toContain("3.4s");
 		target.querySelector<HTMLButtonElement>('[data-section="turn-prompt"]')?.click();
-		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1");
+		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1", "input");
 		expect(target.querySelector('[data-section="turn-result"]')?.textContent).toContain(
 			"Update the garden notes.",
 		);

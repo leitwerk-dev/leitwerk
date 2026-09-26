@@ -208,6 +208,22 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 						},
 					],
 				});
+				await handle.prompt("Continue with another model call");
+				const modelInputs = observations.filter((item) => item.fact.kind === "model_input");
+				expect(modelInputs).toHaveLength(2);
+				expect(new Set(modelInputs.map((item) => item.id)).size).toBe(2);
+				expect(modelInputs[1].fact).toMatchObject({
+					messages: expect.arrayContaining([
+						{
+							role: "user",
+							entryId: expect.any(String),
+							content: {
+								state: "recorded",
+								value: [{ type: "text", text: "Continue with another model call" }],
+							},
+						},
+					]),
+				});
 				expect(JSON.stringify(observations)).not.toContain("test-key");
 				expect(
 					observations.some(
