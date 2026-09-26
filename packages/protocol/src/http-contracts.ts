@@ -453,6 +453,8 @@ export interface ProcessTurnModelConfigurationView {
 	/** @internal */
 	effectiveSource?: ProcessActionModelResolutionSource;
 	/** @internal */
+	effectiveError?: string;
+	/** @internal */
 	turnId: string;
 	/** @internal */
 	description: string;
@@ -803,6 +805,8 @@ export interface LauncherTurnModelConfigPreview {
 	/** @internal */
 	effective: {
 		/** @internal */
+		error?: string;
+		/** @internal */
 		source: ProcessActionModelResolutionSource;
 		/** @internal */
 		profile: ModelProfileOptionSummary | null;
@@ -811,6 +815,10 @@ export interface LauncherTurnModelConfigPreview {
 
 /** @internal */
 export type LauncherModelConfigPreview = {
+	/** @internal */
+	settingsSubjectId?: string;
+	/** @internal */
+	settingsExplanations?: readonly string[];
 	/** @internal */
 	defaultModel: LauncherDefaultModelPreview;
 	/** @internal */
@@ -1880,6 +1888,7 @@ const futureLaunchPayloadInputSchema = v.object({
 						"process_config_turn",
 						"instance_default",
 						"process_config_default",
+						"scoped_purpose_default",
 						"catalog_default",
 						"legacy_persisted",
 					]),
@@ -2467,3 +2476,9 @@ export type {
 	CreateApiTokenResponseBody,
 } from "./api-token-contracts.js";
 export type * from "./execution-inspection.js";
+
+export type {
+	SettingFieldView,
+	SettingsPreview,
+	SettingsScopesResponse,
+} from "./scoped-settings.js";

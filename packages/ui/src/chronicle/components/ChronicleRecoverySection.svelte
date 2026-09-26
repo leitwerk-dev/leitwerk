@@ -23,6 +23,7 @@ interface Props {
 	retryError?: string | null;
 	modelProfiles?: readonly ModelProfileOptionSummary[];
 	defaultModelProfileId?: string | null;
+	inheritedModelProfileId?: string | null;
 	defaultProviderOptions?: Readonly<Record<string, string>>;
 	onContinue: (
 		prompt: string,
@@ -54,19 +55,26 @@ let {
 	retryError = null,
 	modelProfiles = [],
 	defaultModelProfileId = null,
+	inheritedModelProfileId = null,
 	defaultProviderOptions = {},
 	onContinue,
 	onRetry,
 }: Props = $props();
 
 let continuePromptDraft = $state((() => continuePrompt)());
-let modelProfileDraft = $state((() => defaultModelProfileId ?? "")());
+let modelProfileDraft = $state<string | null | undefined>(undefined);
 let providerOptionsDraft = $state<Record<string, string> | undefined>(undefined);
 
 const controlsBusy = $derived(continueBusy || retryBusy);
 const continuePromptValid = $derived(continuePromptDraft.trim().length > 0);
 const selectedProfile = $derived(
-	modelProfiles.find((profile) => profile.id === modelProfileDraft) ?? null,
+	modelProfiles.find(
+		(profile) =>
+			profile.id ===
+			(modelProfileDraft === null
+				? inheritedModelProfileId
+				: (modelProfileDraft ?? defaultModelProfileId)),
+	) ?? null,
 );
 const selectedModelUsable = $derived(
 	selectedProfile === null ||
@@ -95,7 +103,7 @@ let optionsExpanded = $state(false);
    <label class="continue-label" for={`continue-prompt-${turnRecordId}`}>Message before continuing</label>
    <textarea id={`continue-prompt-${turnRecordId}`} class="continue-textarea" data-field="continue-prompt" rows="3" bind:value={continuePromptDraft} disabled={controlsBusy}></textarea>
    <p class="continue-help">Use the suggested message or add instructions for the resumed run.</p>
-   <button type="button" class="recovery-button continue-button" data-action="continue-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !continuePromptValid || !selectedModelUsable} onclick={() => onContinue(continuePromptDraft, modelProfileDraft || undefined, providerOptionsDraft)}>
+   <button type="button" class="recovery-button continue-button" data-action="continue-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !continuePromptValid || !selectedModelUsable} onclick={() => onContinue(continuePromptDraft, modelProfileDraft, providerOptionsDraft)}>
     {continueBusy ? "Continuing…" : "Continue from saved work"}
    </button>
   </div>
@@ -108,7 +116,7 @@ let optionsExpanded = $state(false);
    {#if !canContinue}<p class="recovery-guidance" data-section="continue-unavailable">There isn't enough saved progress to resume from the failure point.</p>{/if}
   </div>
   <div class="recovery-actions" role="group" aria-label="Recovery actions">
-   <button type="button" class="recovery-button" data-action="retry-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !selectedModelUsable} onclick={() => onRetry(modelProfileDraft || undefined, providerOptionsDraft)}>
+   <button type="button" class="recovery-button" data-action="retry-failed-turn" data-turn-record-id={turnRecordId} data-pressable="true" disabled={controlsBusy || !selectedModelUsable} onclick={() => onRetry(modelProfileDraft, providerOptionsDraft)}>
     {retryBusy ? "Retrying failed turn…" : "Retry failed turn"}
    </button>
    {#if supportsModelOverride}
@@ -126,12 +134,13 @@ let optionsExpanded = $state(false);
     {instanceId}
     {modelProfiles}
     defaultModelProfileId={defaultModelProfileId ?? null}
+    {inheritedModelProfileId}
     initialProviderOptions={defaultProviderOptions}
     disabled={controlsBusy}
     selectId={`recovery-model-${turnRecordId}`}
     selectLabel="Model for the new attempt"
     selectDataField="recovery-model"
-    onModelChange={(profileId, _usable) => { modelProfileDraft = profileId ?? ""; }}
+    onModelChange={(profileId, _usable) => { modelProfileDraft = profileId; }}
     onProviderOptionsChange={(values) => (providerOptionsDraft = values ? { ...values } : undefined)}
    />
   </div>

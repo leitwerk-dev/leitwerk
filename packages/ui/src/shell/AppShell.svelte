@@ -135,6 +135,7 @@ $effect(() => {
 });
 
 const shortcutHelpTitle = $derived.by(() => {
+	if (route.page === "settings") return "Settings";
 	if (route.page === "api-tokens") return "API tokens";
 	if (route.page === "home") {
 		return "Start a process";
@@ -294,6 +295,8 @@ $effect(() => {
 				load={import("../pages/HomePage.svelte")}
 				props={{ launcherId: route.params.launcher ?? null }}
 			/>
+		{:else if route.page === "settings"}
+			<RouteLoadBoundary load={import("../pages/SettingsPage.svelte")} props={{ subjectId: route.params.scope ?? "instance" }} />
 		{:else if route.page === "api-tokens"}
  <RouteLoadBoundary load={import("../pages/ApiTokensPage.svelte")} props={{ authEnabled, actor }} />
 		{:else if route.page === "processes"}

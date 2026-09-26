@@ -87,12 +87,22 @@ value or null for unsupported levels.
 
 LLM turns resolve profiles in this order:
 
-1. One-shot action override.
-2. Launch per-turn override.
-3. Process `turn_configs.<turnId>.model_profile`.
-4. Launch default profile.
-5. Process `default_model_profile`.
-6. First allowed profile in `pi.model_profiles`.
+1. Explicit action choice.
+2. Explicit process turn choice.
+3. Explicit process default.
+4. Scoped execution-purpose default (Instance → primary Repository).
+5. YAML `turn_configs.<turnId>.model_profile`.
+6. YAML process `default_model_profile`.
+7. First allowed profile in `pi.model_profiles`.
+
+Invalid or unavailable selections block execution; they do not silently select a
+replacement. Clearing an explicit choice restores current inheritance. Displaying
+or submitting an unchanged recommendation must not make it explicit. Title
+generation retains its separate internal purpose and configured model.
+
+[Scoped settings](scoped-settings.md) resolve when preparing each new start and
+retain their values and revisions with that start. Later edits affect future steps,
+including new operator retries, while worker recovery uses the captured start.
 
 `process_configs.<processId>.allowed_model_profiles` restricts defaults and overrides.
 Omitting the restriction permits all configured profiles; selecting an unavailable
@@ -127,9 +137,9 @@ start keeps its recorded model. Explicit one-time launch and action selections
 remain in effect for their execution and retries. Saving does not restart workers,
 retry failed work, change the plan revision, or alter the default recorded at creation.
 
-Clearing a step override restores the configured step model, then the instance
-default, then the process or catalog default. A configured step model therefore
-still takes precedence over an edited instance default. Scheduled actions that
+Clearing a step override restores the explicit process default, then the scoped
+purpose default, YAML turn default, YAML process default, and catalog fallback.
+Explicit process choices take precedence over YAML turn defaults. Scheduled actions that
 inherit instance settings refresh their displayed model and availability block;
 their payloads and run times do not change. Explicit scheduled model choices remain.
 

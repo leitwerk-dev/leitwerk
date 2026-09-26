@@ -101,7 +101,6 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 			};
 
 			if (
-				current.kind === "action" &&
 				current.modelSelection?.provenance.source !== "action_override" &&
 				current.modelSelection?.provenance.source !== "launch_override"
 			) {

@@ -889,3 +889,54 @@ export const sessionSummaries = sqliteTable("session_summaries", {
 		.references(() => processInstances.id, { onDelete: "cascade" }),
 	summaryJson: text("summary_json").notNull(),
 });
+export const settingsSubjects = sqliteTable(
+	"settings_subjects",
+	{
+		id: text("id").primaryKey(),
+		scopeType: text("scope_type").notNull(),
+		identity: text("identity").notNull(),
+		label: text("label").notNull(),
+		contextJson: text("context_json").notNull(),
+		schemaVersion: integer("schema_version").notNull(),
+		revision: integer("revision").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+		actorJson: text("actor_json").notNull(),
+	},
+	(t) => [uniqueIndex("uq_settings_subject_identity").on(t.scopeType, t.identity)],
+);
+
+export const settingsAliases = sqliteTable("settings_aliases", {
+	alias: text("alias").primaryKey(),
+	subjectId: text("subject_id")
+		.notNull()
+		.references(() => settingsSubjects.id),
+});
+
+export const settingsSubjectRedirects = sqliteTable("settings_subject_redirects", {
+	subjectId: text("subject_id")
+		.primaryKey()
+		.references(() => settingsSubjects.id),
+	canonicalSubjectId: text("canonical_subject_id")
+		.notNull()
+		.references(() => settingsSubjects.id),
+});
+
+export const settingsOverrides = sqliteTable(
+	"settings_overrides",
+	{
+		subjectId: text("subject_id")
+			.notNull()
+			.references(() => settingsSubjects.id),
+		key: text("key").notNull(),
+		valueJson: text("value_json").notNull(),
+		mode: text("mode").notNull(),
+		reset: integer("reset", { mode: "boolean" }).notNull(),
+		schemaVersion: integer("schema_version").notNull(),
+		revision: integer("revision").notNull(),
+		createdAt: text("created_at").notNull(),
+		updatedAt: text("updated_at").notNull(),
+		actorJson: text("actor_json").notNull(),
+	},
+	(t) => [uniqueIndex("uq_settings_override").on(t.subjectId, t.key)],
+);

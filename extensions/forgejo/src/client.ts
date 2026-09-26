@@ -11,6 +11,8 @@ export type { ForgejoIssue, ForgejoPullRequest };
 
 /** @public */
 export interface ForgejoRepository {
+	/** @internal */
+	clone_url?: string;
 	/** @public */
 	id: number;
 	/** @internal */

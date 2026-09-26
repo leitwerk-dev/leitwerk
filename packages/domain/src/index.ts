@@ -134,6 +134,14 @@ export {
 	detectRepoLocatorKind,
 	parseRepoLocator,
 } from "./repo-locator.js";
+export type {
+	ResolvedSetting,
+	ScopedSettingsSnapshot,
+	SettingsContext,
+	SettingsOverride,
+	SettingsSource,
+	SettingsSubject,
+} from "./scoped-settings.js";
 export {
 	areSemanticEntryRefsEqual,
 	assertValidProcessProductName,

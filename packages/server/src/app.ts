@@ -14,6 +14,7 @@ import type {
 	ProvidedCapability,
 	ServerExtensionEventMap,
 } from "@leitwerk-dev/process-sdk";
+import { scopedSettingsCapability } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { createPollingCoordinator, parseDurationMs } from "@leitwerk-dev/watcher-utils";
@@ -105,6 +106,7 @@ import {
 import { RepositoryCredentialService } from "./repository-credentials/service.js";
 import { ResultImageStore } from "./result-image-store.js";
 import type { RouteDeps } from "./routes/processes.js";
+import { createScopedSettingsService } from "./scoped-settings-service.js";
 import { collectCleanupErrors, createAppLifecycle } from "./server-bootstrap/app-lifecycle.js";
 import { buildHostCapabilities } from "./server-bootstrap/build-host-capabilities.js";
 import { loadServerExtensionCatalog } from "./server-bootstrap/load-extension-catalog.js";
@@ -472,7 +474,26 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const processActionRegistry = buildProcessActionRegistry(extensionCatalog);
 		const integrationTools = new IntegrationToolRegistry(repos.externalWrites);
 		const processUiRegistry = buildProcessUiRegistry(extensionCatalog);
+		const scopedSettings = createScopedSettingsService({
+			repos,
+			catalog: extensionCatalog,
+			config,
+			modelChoices: () =>
+				config.pi.model_profiles.map((profile) => {
+					const status = modelStatusCache
+						.snapshot()
+						.profiles.find((entry) => entry.profileId === profile.id);
+					return {
+						value: profile.id,
+						label: `${profile.id} — ${profile.provider}/${profile.model_id}`,
+						...(status?.availability === "available"
+							? {}
+							: { disabledReason: status?.safeReason ?? "Model unavailable" }),
+					};
+				}),
+		});
 		const processModelPolicy = createServerProcessModelPolicy({
+			scopedSettings,
 			config,
 			processGraphs,
 			processActionRegistry,
@@ -590,6 +611,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			},
 		};
 		const launcherModelConfigs = createLauncherModelConfigService({
+			scopedSettingsService: scopedSettings,
 			launcherService,
 			launchPlans,
 			processModelPolicy,
@@ -753,6 +775,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 						bundleCache: piResourceBundles,
 						projects: baseDeps.projects,
 						processSkills: baseDeps.processSkills,
+						scopedSettings,
+						processModelPolicy,
 					},
 					process,
 					writes,
@@ -1211,6 +1235,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			preProvidedCapabilities: opts.preProvidedCapabilities,
 		});
 
+		hostCapabilities.provide(scopedSettingsCapability, scopedSettings);
 		await setupServerExtensions(
 			extensionCatalog,
 			{
@@ -1248,6 +1273,12 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		markStartup("server_extensions");
 
 		const deps: RouteDeps = {
+			onSettingsChanged: async () => {
+				await futureExecutionLifecycle.reconcileModelAvailability({
+					availability: modelStatusCache.snapshot(),
+				});
+			},
+			scopedSettingsService: scopedSettings,
 			externalSourceService,
 			...baseDeps,
 			launchCoordinator,

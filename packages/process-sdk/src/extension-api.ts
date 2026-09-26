@@ -17,6 +17,7 @@ import type { ExternalWrites } from "@leitwerk-dev/external-writes";
 import type { WatcherPresentationField } from "@leitwerk-dev/protocol";
 import type { CapabilityToken } from "./capabilities.js";
 import type { FormDefinition } from "./form-contract.js";
+import type { ScopedSettingsDeclaration } from "./scoped-settings.js";
 
 export type { FormDefinition, FormFieldDefinition } from "./form-contract.js";
 
@@ -88,6 +89,15 @@ export type LauncherVisibility = "ui";
 
 /** @public */
 export interface ProcessLaunchProjectConfig {
+	/** Provider-verified identity and clone aliases from launcher discovery. @public */
+	settingsRepository?: {
+		/** @public */
+		origin: string;
+		/** @public */
+		repositoryId: string | number;
+		/** @public */
+		aliases?: readonly string[];
+	};
 	/** @public */
 	key: string;
 	/** @public */
@@ -114,6 +124,10 @@ export interface ProcessTitleSourceField {
 
 /** @public */
 export interface ProcessLaunchConfig<TParams = unknown> {
+	/** Repository key used for process-wide scoped model defaults. @public */
+	primaryRepositoryKey?: string;
+	/** Trusted integration scope bindings, retained with the process. @public */
+	settingsContext?: import("@leitwerk-dev/domain").SettingsContext;
 	/** @public */
 	processId: string;
 	/** @public */
@@ -692,6 +706,8 @@ export interface ServerProcessContext<TParams = unknown, TState = unknown>
 /** @public */
 export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	extends ProcessSnapshotContext<TParams, TState> {
+	/** Immutable non-secret values captured for this turn. @public */
+	readonly scopedSettings?: import("@leitwerk-dev/domain").ScopedSettingsSnapshot;
 	/** @internal */
 	readonly turnResultMarkdownBySemanticRef?: Partial<Record<ProcessSemanticEntryRefKey, string>>;
 	/** @internal */
@@ -1106,6 +1122,8 @@ export interface WorkerExtensionAPI {
 
 /** @public */
 export interface LeitwerkExtensionModule {
+	/** Non-secret scoped settings and execution purposes. @public */
+	scopedSettings?: ScopedSettingsDeclaration;
 	/** @public */
 	manifest: {
 		/** @public */

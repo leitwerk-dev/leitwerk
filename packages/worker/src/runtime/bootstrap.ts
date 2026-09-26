@@ -481,6 +481,20 @@ export async function bootstrapWorkerRuntime(
 			})
 		: { systemPrompt: "", availableToolNames: [] };
 
+	const capturedStart = deps.payload.turnStart.state;
+	const capturedSettings =
+		capturedStart.kind !== "preparation_failed" && capturedStart.start?.kind === "llm"
+			? capturedStart.start.scopedSettings
+			: undefined;
+	if (capturedSettings) {
+		const blocks = capturedSettings.instructions
+			.filter((block) => block.setting.value !== "")
+			.map((block) => `Instructions for ${block.label}:\n${block.setting.value}`);
+		resolvedPiConfig.systemPrompt = [resolvedPiConfig.systemPrompt, ...blocks]
+			.filter(Boolean)
+			.join("\n\n");
+	}
+
 	const sessionCwd = resolvedPiConfig.sessionCwd
 		? path.resolve(workspaceRoot, resolvedPiConfig.sessionCwd)
 		: workspaceRoot;

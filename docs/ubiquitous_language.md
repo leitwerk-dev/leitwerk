@@ -105,3 +105,10 @@ Behavioral rules belong in the linked references, not in a second glossary.
 
 A Launch Run is not a process instance, worker lease, runner unit, or title job. It references those
 facts without storing credentials, provider responses, PIDs, pod names, or container ids.
+
+- **Settings subject**: Stable identity of an installation, repository, or
+  extension-defined scope. A provider repository retains verified clone aliases.
+- **Settings override**: Versioned, revision-checked value for one setting and subject.
+  Reset restores inheritance while retaining the revision.
+- **Execution purpose**: Extension-defined binding from an LLM turn to model and
+  instruction settings captured when preparing that turn.

@@ -391,3 +391,12 @@ await ctx.externalWrites.logOnly(identity, async () => {
 
 `logOnly` returns `void`. A recorded write skips execution. It cannot recover a lost
 response or remote success followed by recording failure.
+
+## Scoped settings and execution purposes
+
+Extensions declare versioned settings and named scopes through
+`LeitwerkExtensionModule.scopedSettings`. LLM turns bind them with
+`.executionPurpose(id)`. The server resolver is available through
+`scopedSettingsCapability`; workers consume the immutable `ctx.scopedSettings`
+snapshot. See [Scoped settings](scoped-settings.md) for inheritance, discovery,
+validation, and launcher contracts.

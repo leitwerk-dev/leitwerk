@@ -216,3 +216,7 @@ See the [runtime guide](https://github.com/leitwerk-dev/leitwerk/blob/main/scrip
 Worker startup benchmarks also require a real model or cluster. After building, run
 `npm run benchmark:worker-startup -- --help`; see the
 [benchmark reference](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-tools/README.md#worker-startup-benchmark).
+
+Scoped settings schema changes require file-backed migration and restart checks.
+Compound scope behavior is exercised by a test extension without requiring Jira.
+Use the selected composition’s full gate for shared settings or consumption changes.

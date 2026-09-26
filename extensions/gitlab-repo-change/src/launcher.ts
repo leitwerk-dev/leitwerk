@@ -83,6 +83,11 @@ export function createGitLabRepoChangeLauncher() {
 				{
 					key: "repo",
 					repoLocator: params.repoLocator,
+					settingsRepository: {
+						origin: new URL(repository.web_url).origin,
+						repositoryId: repository.id,
+						aliases: [repository.http_url_to_repo],
+					},
 					baseBranch: params.baseBranch,
 					workBranch: params.workBranch,
 					metadata: {

@@ -361,7 +361,7 @@ export function createForgejoRepoChangeProcess(
 				triggerLabel: labels.trigger,
 				doneLabel: labels.done,
 			};
-			return forgejoRepoChangeLaunchConfig(params, title, gitIdentity);
+			return forgejoRepoChangeLaunchConfig(params, title, gitIdentity, repository);
 		},
 	});
 

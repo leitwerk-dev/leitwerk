@@ -437,7 +437,7 @@ it("preserves a pending one-time launch model and fences saves against terminal 
 	});
 });
 
-it("previews the actual inherited fallback when configured profiles are no longer allowed", () => {
+it("shows an actionable error instead of falling back when configured profiles are no longer allowed", () => {
 	const result = prepare(
 		{ defaultModelProfileId: null },
 		{
@@ -447,11 +447,12 @@ it("previews the actual inherited fallback when configured profiles are no longe
 		},
 	);
 	expect(result.modelConfiguration.defaultModel).toMatchObject({
-		effectiveModelProfileId: "first",
-		source: "catalog_default",
+		effectiveModelProfileId: "second",
+		source: "process_config",
 	});
 	expect(result.modelConfiguration.turns[0]).toMatchObject({
-		effectiveModelProfileId: "first",
-		effectiveSource: "catalog_default",
+		effectiveModelProfileId: "second",
+		effectiveSource: "process_config_turn",
+		effectiveError: expect.stringContaining("not allowed"),
 	});
 });

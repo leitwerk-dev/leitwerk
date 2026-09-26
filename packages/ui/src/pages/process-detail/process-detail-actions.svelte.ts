@@ -77,6 +77,21 @@ export function createProcessDetailActions(args: {
 	let openActionModelPreviewLoadingKey = $state<string | null>(null);
 	let actionModelPreviewInput = $state<ActionModelPreviewInput | null>(null);
 	let actionModelPreviewLoadToken = 0;
+	$effect(() => {
+		const refresh = () => {
+			actionModelPreviewLoadToken++;
+			openActionModelPreviewState = null;
+			openActionModelPreviewLoadingKey = null;
+			// The detail loader publishes refresh errors through the shared detail state.
+			void args.reload();
+		};
+		window.addEventListener("leitwerk:settings-changed", refresh);
+		window.addEventListener("focus", refresh);
+		return () => {
+			window.removeEventListener("leitwerk:settings-changed", refresh);
+			window.removeEventListener("focus", refresh);
+		};
+	});
 
 	const isTerminalProcess = $derived.by(() => {
 		const lifecycleStatus = args.detail?.process.lifecycleStatus ?? null;

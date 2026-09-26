@@ -356,3 +356,8 @@ Stopping a process cancels its pending admission. Server shutdown clears the
 in-memory queue; with `resume_on_boot`, persisted active worker starts rebuild it
 during startup reconciliation. Runtime startup failures after admission retain the
 normal durable error and retry behavior.
+
+Each newly prepared LLM start captures its required [scoped settings](scoped-settings.md)
+and their source revisions. Operator retries capture current values. Recovery of
+a prepared or accepted start retains its snapshot; settings edits never change the
+inputs of an active worker.

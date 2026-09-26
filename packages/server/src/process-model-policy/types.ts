@@ -162,6 +162,8 @@ export type ProcessModelPolicyFailure = ProcessModelPolicyFailureBase &
 				/** @internal */
 				readonly source: "configuration" | "selection_provenance";
 				/** @internal */
+				readonly message?: string;
+				/** @internal */
 				readonly issues: readonly (
 					| PersistedModelConfigurationIssue
 					| PersistedModelSelectionIssue
@@ -248,6 +250,8 @@ export interface ProjectedLauncherModelPreview {
 		/** @internal */
 		readonly effective: {
 			/** @internal */
+			readonly error?: string;
+			/** @internal */
 			readonly source: ProjectedModelResolutionSource;
 			/** @internal */
 			readonly profile: ProjectedModelProfile | null;
@@ -304,6 +308,8 @@ export type ProjectedProcessModelConfiguration = {
 		readonly effectiveModelProfileId?: string | null;
 		/** @internal */
 		readonly effectiveSource?: ProcessSelectedTurnModelSource | "none";
+		/** @internal */
+		readonly effectiveError?: string;
 		/** @internal */
 		readonly source: "instance" | "process_config" | "default";
 	}[];
@@ -408,6 +414,8 @@ export type ProcessModelPolicyProjectionSubject =
 			/** @internal */
 			readonly kind: "launcher_preview";
 			/** @internal */
+			readonly plan?: ProcessLaunchPlan;
+			/** @internal */
 			readonly processId: string;
 			/** @internal */
 			readonly modelConfig: LaunchModelConfigInput;
@@ -485,6 +493,7 @@ export interface PolicyProcess {
 	readonly turnProfileIds: Readonly<Record<string, string | null>>;
 	readonly llmTurnIds: ReadonlySet<string>;
 	readonly purposeProfileIdsByTurn: Readonly<Record<string, string>>;
+	readonly scopedProfileIdForTurn?: (turnId: string) => string | null;
 	readonly turnDescriptions: Readonly<Record<string, string>>;
 	readonly turnPathTypes: Readonly<Record<string, string>>;
 }

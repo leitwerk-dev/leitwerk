@@ -19,3 +19,8 @@ commitment. Promote a capability only with an explicit contract and implementati
   execution. Export from Leitwerk to local Pi is already supported.
 - **Action queueing:** Queuing future business actions on an existing process.
 - **Quotas:** Rate, request, and storage quotas without a concrete deployment need.
+
+Jira scoped settings are follow-on work: ticket-writing instructions may use
+Instance → Issue type → Project → Project + issue type. The generic settings
+contracts support named compound scopes; the Jira integration is not installed
+by core. Per-user settings and arbitrary YAML editing are outside this version.

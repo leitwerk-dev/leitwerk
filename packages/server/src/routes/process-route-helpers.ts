@@ -110,6 +110,10 @@ export interface RouteDeps
 		| "transaction"
 	> {
 	/** @internal */
+	scopedSettingsService?: import("../scoped-settings-service.js").ScopedSettingsService;
+	/** @internal */
+	onSettingsChanged?: () => Promise<void>;
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
 	/** @public */
 	externalSourceService?: Pick<

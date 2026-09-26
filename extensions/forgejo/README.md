@@ -161,3 +161,7 @@ Older logged comments and replies without recoverable markers fail on replay;
 they are not recreated. Ticket markers and receipt shapes remain unchanged.
 
 Conflict reporting uses `createConflictReporter(kind)` and the shared poll reporter. Polling retains its existing generation queueing policy.
+
+The Settings repository refresh discovers repositories through configured profiles.
+Provider origin and stable repository ID define identity; known clone URLs are
+aliases. Execution uses retained identities without requiring external rediscovery.

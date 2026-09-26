@@ -102,3 +102,7 @@ usage, and diagnostics. A complete session remains authoritative when events add
 no activity. Failure before snapshot upload must not erase recorded history.
 
 Deploy compatible protocol, server, database schema, and UI artifacts together.
+
+`settings.updated` is an installation-wide durable-state invalidation carrying
+`subjectId`. Clients refresh future-step previews through the existing HTTP
+resolver. The event does not replace captured turn-start settings.

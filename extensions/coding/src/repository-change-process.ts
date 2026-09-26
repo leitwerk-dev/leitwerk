@@ -25,6 +25,7 @@ import {
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
 } from "./repository-change-state-internal.js";
+import { codingPurposes } from "./settings.js";
 import {
 	buildGenerateCommitMessagePrompt,
 	normalizeGeneratedCommitMessage,
@@ -468,6 +469,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const generatePlanTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generatePlan)
 		.description("Plan")
+		.executionPurpose(codingPurposes.planning)
 		.tools("read", "bash")
 		.askQuestions()
 		.freshPrimary()
@@ -525,6 +527,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const reviewPlanTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewPlan)
 		.description("Assess Plan")
+		.executionPurpose(codingPurposes.review)
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
@@ -549,6 +552,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const implementTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.implement)
 		.description("Implement")
+		.executionPurpose(codingPurposes.implementation)
 		.tools(...implementationTurnAvailableTools)
 		.freshSeededPrimary()
 		.continueFromProductBranch(products.simplificationPlan, {
@@ -565,6 +569,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const reviewImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewImplementation)
 		.description("Assess Implementation")
+		.executionPurpose(codingPurposes.review)
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromReviewBranch()
@@ -588,6 +593,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const simplifyImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.simplifyImplementation)
 		.description("Simplify")
+		.executionPurpose(codingPurposes.review)
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromProductBranch(products.simplificationPlan)
@@ -598,6 +604,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const generateCommitMessageTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generateCommitMessage)
 		.description("Write Commit Message")
+		.executionPurpose(codingPurposes.implementation)
 		.modelPurpose("process_title_generation")
 		.rootBranchReview()
 		.startFromRoot()

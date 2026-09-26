@@ -104,15 +104,11 @@ export function getDefaultModelSelectableProfiles(input: {
 	availableProfiles: readonly ModelProfileOptionSummary[];
 	recommendedProfile: ModelProfileOptionSummary | null | undefined;
 }): readonly ModelProfileOptionSummary[] {
-	const recommendedProfileId = input.recommendedProfile?.id.trim() ?? "";
-	if (recommendedProfileId === "") {
-		return input.availableProfiles;
-	}
-	return input.availableProfiles.filter((option) => option.id !== recommendedProfileId);
+	return input.availableProfiles;
 }
 
 export function getTurnModelBlankOptionLabel(): string {
-	return "Use process default";
+	return "Use inherited value";
 }
 
 function getModelDisplayName(profile: ModelProfileOptionSummary | null | undefined): string | null {
@@ -132,7 +128,11 @@ function isTurnUsingProcessDefault(source: LauncherModelLineSource): boolean {
 }
 
 function isRecommendedTurnSource(source: LauncherModelLineSource): boolean {
-	return source === "process_config_turn" || source === "catalog_default";
+	return (
+		source === "process_config_turn" ||
+		source === "catalog_default" ||
+		source === "scoped_purpose_default"
+	);
 }
 
 export function formatLauncherModelSummaryStatus(mode: LauncherModelSummaryMode): string {
@@ -159,6 +159,7 @@ export function formatLauncherModelDisplayValue(line: LauncherModelDisplayLine):
 		case "instance_default":
 		case "process_config_default":
 			return "Use process default";
+		case "scoped_purpose_default":
 		case "process_config_turn":
 		case "catalog_default":
 			return `Recommended (${line.modelName ?? "unknown model"})`;

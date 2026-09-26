@@ -200,3 +200,8 @@ and pre-launch repository lookup environments after applying overrides. Override
 cannot restore stripped worker/provider credentials, Git settings, SSH/askpass
 variables, or managed helpers. `repositoryGitSubprocessEnv(projectKey)` adds only
 the selected project's trusted Git credentials to that sanitized environment.
+
+Scoped settings use the same application-wide authorization and actor attribution
+as process operations. Definitions, choices, stored overrides, and worker snapshots
+are non-secret. Credentials remain in provider configuration and encrypted storage.
+Settings scope identities come from trusted launcher and integration data.
