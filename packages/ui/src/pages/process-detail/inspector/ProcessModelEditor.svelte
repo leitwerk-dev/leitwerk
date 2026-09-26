@@ -44,7 +44,8 @@ function sourceLabel(source: string) {
 				instance: "Instance override",
 				instance_turn_config: "Instance override",
 				process_config_turn: "Configured step model",
-				instance_default: "Inherits instance default",
+				instance_default: "Process default override",
+				scoped_purpose_default: "Scoped purpose default",
 				process_config_default: "Inherits process default",
 				none: "Not configured",
 				process_config: "Configured step model",
@@ -134,12 +135,12 @@ async function save() {
     <div class="model-field">
      <label for="instance-default-model">Default profile</label>
      <select id="instance-default-model" bind:this={defaultSelect} value={defaultValue} onchange={event => changeDefault(event.currentTarget.value)}>
-      <option value="">Inherit process or catalog default</option>
+      <option value="">Use inherited values by purpose</option>
       {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
      </select>
      <p class="note">Effective default: {configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}</p>
     </div>
-    <p class="note">Clearing a step override restores its configured step model, then the instance default.</p>
+    <p class="note">Clearing a step override restores the explicit process default, then scoped purpose settings and YAML defaults.</p>
     {#each configuration.turns as turn (turn.turnId)}
      <div class="model-field">
       {#if turn.fixedModelProfileId}
@@ -147,9 +148,10 @@ async function save() {
       {:else}
        <label for={`step-model-${turn.turnId}`}>{turn.description}</label>
        <select id={`step-model-${turn.turnId}`} value={turnValue(turn.turnId)} onchange={event => changeTurn(turn.turnId, event.currentTarget.value)}>
-        <option value="">Inherit configured step model or default</option>
+        <option value="">Use inherited value</option>
         {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
        </select>
+       {#if turn.effectiveError}<p role="alert">{turn.effectiveError}</p>{/if}
        <p class="note">{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"} · {sourceLabel(turn.effectiveSource ?? turn.source)}</p>
       {/if}
      </div>
@@ -160,7 +162,7 @@ async function save() {
   </form>
  {:else}
   <dl><div><dt>Current default</dt><dd>{configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}</dd></div>
-   {#each configuration.turns as turn (turn.turnId)}<div><dt>{turn.description}</dt><dd>{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}<span class="note"> · {turn.fixedModelProfileId ? "Fixed system model" : sourceLabel(turn.effectiveSource ?? turn.source)}</span></dd></div>{/each}
+   {#each configuration.turns as turn (turn.turnId)}<div><dt>{turn.description}</dt><dd>{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}<span class="note"> · {turn.fixedModelProfileId ? "Fixed system model" : sourceLabel(turn.effectiveSource ?? turn.source)}</span>{#if turn.effectiveError}<p role="alert">{turn.effectiveError}</p>{/if}</dd></div>{/each}
   </dl>
   {#if editable}<button class="ui-button" bind:this={editButton} onclick={begin}>Edit models</button>{/if}
  {/if}

@@ -46,6 +46,10 @@ export class DatabaseSchemaMismatchError extends Error {
 const ALL_TABLES = [
 	schema.inspectionContents,
 	schema.executionInspections,
+
+	schema.settingsSubjects,
+	schema.settingsAliases,
+	schema.settingsOverrides,
 	schema.startupObservations,
 	schema.processInstances,
 	schema.launchRuns,
@@ -347,6 +351,23 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		apply(sqlite) {
 			createTableWithIndexes(sqlite, schema.inspectionContents);
 			createTableWithIndexes(sqlite, schema.executionInspections);
+		},
+	},
+	{
+		id: "20260926_add_scoped_settings",
+		tableNames: ["settings_subjects", "settings_aliases", "settings_overrides"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "process_instances") !== null &&
+			existingTableSql(sqlite, "settings_subjects") === null &&
+			existingTableSql(sqlite, "settings_aliases") === null &&
+			existingTableSql(sqlite, "settings_overrides") === null,
+		apply(sqlite) {
+			for (const table of [
+				schema.settingsSubjects,
+				schema.settingsAliases,
+				schema.settingsOverrides,
+			])
+				createTableWithIndexes(sqlite, table);
 		},
 	},
 	{

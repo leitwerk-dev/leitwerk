@@ -59,6 +59,7 @@ export function forgejoRepoChangeLaunchConfig(
 	params: ForgejoRepoChangeParams,
 	title: string,
 	gitIdentity: ForgejoGitIdentity,
+	repository?: ForgejoRepository,
 ): ProcessLaunchConfig<ForgejoRepoChangeParams> {
 	const { owner, repo, forgejoProfile: profile, woodpeckerProfile } = params;
 	const issue = isIssueOrigin(params);
@@ -77,6 +78,18 @@ export function forgejoRepoChangeLaunchConfig(
 			{
 				key: "repo",
 				repoLocator: params.repoLocator,
+				...(repository?.id !== undefined
+					? {
+							settingsRepository: {
+								origin: new URL(repository.html_url).origin,
+								repositoryId: repository.id,
+								aliases: [
+									repository.ssh_url,
+									...(repository.clone_url ? [repository.clone_url] : []),
+								],
+							},
+						}
+					: {}),
 				baseBranch: params.baseBranch,
 				workBranch: params.workBranch,
 				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
@@ -320,7 +333,7 @@ export function createForgejoRepoChangeLauncher() {
 				});
 				return {
 					ok: true,
-					launchConfig: forgejoRepoChangeLaunchConfig(params, prompt, gitIdentity),
+					launchConfig: forgejoRepoChangeLaunchConfig(params, prompt, gitIdentity, repository),
 				};
 			},
 		},

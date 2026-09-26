@@ -22,6 +22,10 @@ interface GitHubLabel {
 
 /** @public */
 export interface GitHubRepository {
+	/** @internal */
+	clone_url?: string;
+	/** @internal */
+	id?: number;
 	/** @public */
 	name: string;
 	/** @internal */

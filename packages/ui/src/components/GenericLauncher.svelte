@@ -119,6 +119,20 @@ let cronPreviewBusy = $state(false);
 let defaultsLoadToken = 0;
 let optionsLoadToken = 0;
 let modelConfigPreviewLoadToken = 0;
+$effect(() => {
+	const refresh = () => {
+		void loadModelConfigPreview(
+			fieldInputValues,
+			buildLaunchModelConfigFromValues({ defaultModelProfileId, turnModelProfileIds }),
+		);
+	};
+	window.addEventListener("leitwerk:settings-changed", refresh);
+	window.addEventListener("focus", refresh);
+	return () => {
+		window.removeEventListener("leitwerk:settings-changed", refresh);
+		window.removeEventListener("focus", refresh);
+	};
+});
 let cronPreviewToken = 0;
 let deferredDependentRefreshValues: Record<string, LauncherFieldInputValue> | null = null;
 
@@ -1161,6 +1175,9 @@ async function handleSubmit(event: SubmitEvent) {
 
 			{#if hasModelConfigFields()}
 				<section class="field-group model-config-group" data-section="launcher-model-config">
+					<a href={`/settings?scope=${encodeURIComponent(modelConfigPreview?.settingsSubjectId ?? "instance")}`}>Repository and instance defaults</a>
+					{#each modelConfigPreview?.settingsExplanations ?? [] as explanation}<p>{explanation}</p>{/each}
+					{#each modelConfigPreview?.turns ?? [] as turn}{#if turn.effective.error}<p role="alert">{turn.description}: {turn.effective.error}</p>{/if}{/each}
 					<div class="model-config-intro">
 						<p class="field-label">Model setup</p>
 						<p class="field-description">

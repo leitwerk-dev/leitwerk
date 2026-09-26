@@ -273,3 +273,13 @@ server previews, shows inherited choices and marks fixed system models read-only
 actions that inherit settings. **Cancel** discards the draft. Live process updates
 and failed requests retain unsaved edits; saving disables duplicate submissions and
 refreshes process details. Active execution labels continue to show recorded models.
+
+## Settings
+
+Settings in the navigation edits shared Instance and Repository defaults declared
+by extensions. Fields show effective values and sources, with Override and Use
+inherited value controls. Instruction overrides can append or replace inherited
+blocks and show a combined preview. Drafts survive validation errors and conflicts.
+A conflict displays the current value before the operator adopts its revision.
+Process inspection separates future scoped defaults from captured start history
+and links to repository settings. See [Scoped settings](scoped-settings.md).

@@ -86,3 +86,9 @@ export type {
 	WatchersResponseBody,
 } from "./http-contracts.js";
 export { parseScheduleRequestInput, resolvePromptCacheSwitch } from "./http-contracts.js";
+
+export type {
+	SettingFieldView,
+	SettingsPreview,
+	SettingsScopesResponse,
+} from "./scoped-settings.js";

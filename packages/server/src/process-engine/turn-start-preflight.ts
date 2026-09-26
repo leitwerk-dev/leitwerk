@@ -16,6 +16,9 @@ import type {
 import { resolveRegisteredProviderOptions } from "../model-providers/provider-options.js";
 import type { ModelProviderRegistry } from "../model-providers/registry.js";
 import { assemblePiResourceSnapshot, type PiResourceBundleCache } from "../pi-resources/index.js";
+import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
+import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
+import type { ScopedSettingsService } from "../scoped-settings-service.js";
 import {
 	buildRuntimeProfileSelectionInput,
 	defaultWorkerRuntimeProfile,
@@ -26,6 +29,8 @@ import type { Writes } from "./writes/writes.js";
 const PI_RUNTIME_VERSION = "0.81.1";
 
 export interface TurnStartPreflightDeps {
+	scopedSettings?: Pick<ScopedSettingsService, "capture">;
+	processModelPolicy?: ServerProcessModelPolicy;
 	config: LeitwerkConfig;
 	registry: ModelProviderRegistry;
 	modelStatusCache: ModelStatusCache;
@@ -167,18 +172,81 @@ export async function prepareCreatedTurnStarts(
 ): Promise<TurnStartPreflightResult> {
 	const nextProcess = candidateProcess(process, writes);
 	const availability = availabilitySnapshot ?? deps.modelStatusCache.snapshot();
-	const provenance =
-		nextProcess.selectedTurnModelKind && nextProcess.selectedTurnModelSource
-			? {
-					kind: nextProcess.selectedTurnModelKind,
-					source: nextProcess.selectedTurnModelSource,
-				}
-			: undefined;
+
 	for (let index = 0; index < writes.turnStartWrites.length; index += 1) {
 		const write = writes.turnStartWrites[index];
 		if (!write || write.kind !== "create" || write.input.turnType !== "llm") continue;
 
+		// Resolve the model and required settings without yielding. An edit while the
+		// resource bundle is assembled belongs to the next start, not this snapshot.
+		const evaluated = deps.processModelPolicy?.evaluate({
+			kind: "process_turn",
+			process: nextProcess,
+			turnId: write.input.turnId,
+			initialSelection: true,
+			startKind: write.input.startKind,
+			availability,
+		});
+		if (evaluated && !evaluated.ok) {
+			const code =
+				evaluated.code === "model_unavailable" ||
+				evaluated.code === "model_stale" ||
+				evaluated.code === "model_required"
+					? evaluated.code
+					: "invalid_model_configuration";
+			parkPreparationFailure(
+				writes,
+				write,
+				failure(
+					evaluated.selection?.modelProfileId ?? null,
+					previousProviderOptions(write.input.state),
+					code,
+					presentProcessModelPolicyFailure(evaluated),
+					evaluated.selection?.provenance,
+					availability.revision,
+				),
+			);
+			continue;
+		}
+		if (evaluated?.selection) {
+			const patch = {
+				selectedTurnModelProfileId: evaluated.selection.modelProfileId,
+				selectedTurnModelKind: evaluated.selection.provenance.kind,
+				selectedTurnModelSource: evaluated.selection.provenance.source,
+			};
+			Object.assign(nextProcess, patch);
+			Object.assign(writes.processPatch, patch);
+		}
+		const provenance =
+			nextProcess.selectedTurnModelKind && nextProcess.selectedTurnModelSource
+				? {
+						kind: nextProcess.selectedTurnModelKind,
+						source: nextProcess.selectedTurnModelSource,
+					}
+				: undefined;
 		const requestedProfileId = nextProcess.selectedTurnModelProfileId?.trim() || null;
+		let scopedSettings: ReturnType<ScopedSettingsService["capture"]>;
+		try {
+			scopedSettings = deps.scopedSettings?.capture(
+				nextProcess,
+				write.input.turnId,
+				provenance?.source === "scoped_purpose_default",
+			);
+		} catch (error) {
+			parkPreparationFailure(
+				writes,
+				write,
+				failure(
+					requestedProfileId,
+					{},
+					"invalid_model_configuration",
+					error instanceof Error
+						? error.message
+						: "Correct invalid scoped settings before retrying",
+				),
+			);
+			continue;
+		}
 		const retainedState = write.input.state;
 		const retainedOptions = previousProviderOptions(retainedState);
 		if (
@@ -302,6 +370,7 @@ export async function prepareCreatedTurnStarts(
 				kind: "starting",
 				start: {
 					kind: "llm",
+					...(scopedSettings ? { scopedSettings } : {}),
 					model,
 					...(provenance ? { modelSelectionProvenance: provenance } : {}),
 					availabilityRevision: availability.revision,

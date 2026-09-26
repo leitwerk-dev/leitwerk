@@ -4,6 +4,7 @@ import ChronicleMarkdown from "../../../chronicle/components/ChronicleMarkdown.s
 import ChronicleUsageStats from "../../../chronicle/components/ChronicleUsageStats.svelte";
 import ConversationTreeDiagram from "../../../components/ConversationTreeDiagram.svelte";
 import ExternalLink from "../../../components/ExternalLink.svelte";
+import ProcessSettings from "../../../components/ProcessSettings.svelte";
 import type { ProcessDetailData } from "../../../lib/api.js";
 import { buildInspectorPath, type InspectorTarget } from "../../../lib/router-logic.js";
 import ProcessFlowDiagram from "../../ProcessFlowDiagram.svelte";
@@ -116,6 +117,7 @@ function sourceLabel(source: string) {
     <section><h2>Original request</h2>{#if request}<ChronicleMarkdown markdown={request} /><InspectionEvidence label="Raw original request" evidence={{state:"recorded", value:request}} />{:else}<p class="note">No original request was recorded.</p>{/if}</section>
     <section><h2>Recorded launch parameters</h2>{#if detail.launchConfiguration.paramsParseError}<p class="notice">{detail.launchConfiguration.paramsParseError}</p>{/if}<dl>{#each parameters as parameter (parameter.fieldId)}<div><dt>{parameter.label}</dt><dd>{parameter.value ?? "Not set"}</dd></div>{:else}<div><dd>No additional launch parameters recorded.</dd></div>{/each}</dl><InspectionEvidence label="Raw launch values" evidence={{state:"recorded", value:Object.fromEntries(detail.launchConfiguration.parameters.map(parameter => [parameter.fieldId, parameter.rawValue ?? parameter.value]))}} /></section>
     <section><h2>Model defaults and overrides</h2><ProcessModelEditor {detail} /></section>
+    {#key detail.process.id}<ProcessSettings instanceId={detail.process.id} refreshVersion={detail.process.updatedAt} />{/key}
     <InspectionEvidence label="Launcher and infrastructure details" evidence={{state:"recorded", value:{launcherId:detail.launchConfiguration.launcherId, launcher:detail.launchConfiguration.launcherLabel, form:detail.launchConfiguration.launcherSchemaTitle, projects:detail.launchConfiguration.projects}}} />
   {:else if target.section === "context-map"}
     <section class="context-map-section">

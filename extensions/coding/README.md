@@ -67,3 +67,17 @@ The following exported declarations are `@public`:
 See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
 
 Pre-launch repository lookup uses `sanitizeWorkerSubprocessEnv` without project credentials. Trusted project Git operations use `repositoryGitSubprocessEnv(projectKey)`.
+
+## Scoped settings
+
+Coding declares `coding.planning_model`, `coding.implementation_model`,
+`coding.review_model`, and `coding.repository_instructions`. They inherit
+Instance → Repository. Model null delegates to YAML and the allowed catalog;
+explicit process/action choices take precedence. Instructions append by default,
+or replace inherited blocks when selected. Empty replacement clears them.
+
+Plan uses `coding.planning`; implementation and commit-message generation use
+`coding.implementation`; plan review, implementation review, and simplification
+use `coding.review`. Each new step captures current values. Prepared starts and
+worker recovery retain their snapshots. Multi-repository instruction blocks are
+labelled separately; model defaults use the primary repository.

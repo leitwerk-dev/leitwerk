@@ -86,7 +86,8 @@ function candidate(
 		| "process_config_turn"
 		| "instance_default"
 		| "process_config_default"
-		| "catalog_default",
+		| "catalog_default"
+		| "scoped_purpose_default",
 ): DurableModelSelection | null {
 	const id = trimToNull(modelProfileId);
 	return id
@@ -112,8 +113,9 @@ function resolvedDefault(
 	const policy = processPolicy(snapshot, configuration.processId);
 	const instanceDefault = candidate(configuration.defaultProfileId, "instance_default");
 	if (instanceDefault) return instanceDefault;
+	const configured = candidate(policy.defaultProfileId, "process_config_default");
+	if (configured) return configured;
 	for (const current of [
-		candidate(policy.defaultProfileId, "process_config_default"),
 		...snapshot.profiles.map((profile) => candidate(profile.id, "catalog_default")),
 	]) {
 		if (current && isValidCandidate(snapshot, policy, current.modelProfileId)) return current;
@@ -142,11 +144,15 @@ function resolveInherited(
 	const policy = processPolicy(snapshot, configuration.processId);
 	const instanceTurn = candidate(configuration.turnProfileIds.get(turnId), "instance_turn_config");
 	if (instanceTurn) return instanceTurn;
-	const processTurn = candidate(policy.turnProfileIds[turnId], "process_config_turn");
-	if (processTurn && isValidCandidate(snapshot, policy, processTurn.modelProfileId))
-		return processTurn;
 	const instanceDefault = candidate(configuration.defaultProfileId, "instance_default");
 	if (instanceDefault) return instanceDefault;
+	const scopedDefault = candidate(
+		policy.scopedProfileIdForTurn?.(turnId),
+		"scoped_purpose_default",
+	);
+	if (scopedDefault) return scopedDefault;
+	const processTurn = candidate(policy.turnProfileIds[turnId], "process_config_turn");
+	if (processTurn) return processTurn;
 	return resolvedDefault(snapshot, configuration);
 }
 
@@ -192,8 +198,9 @@ export function resolveTurn(
 			issues: existingSelection.issues,
 			...(availability ? { availabilityRevision: availability.revision } : {}),
 		};
-	if (override.kind === "clear")
-		return validateSelection(snapshot, configuration.processId, null, availability);
+	if (override.kind === "clear") {
+		existingSelection = { kind: "none" };
+	}
 	if (override.kind === "profile")
 		return validateSelection(
 			snapshot,
@@ -217,12 +224,23 @@ export function resolveTurn(
 			existingSelection.selection,
 			availability,
 		);
-	return validateSelection(
-		snapshot,
-		configuration.processId,
-		resolveInherited(snapshot, configuration, turnId),
-		availability,
-	);
+	try {
+		return validateSelection(
+			snapshot,
+			configuration.processId,
+			resolveInherited(snapshot, configuration, turnId),
+			availability,
+		);
+	} catch (error) {
+		return {
+			ok: false,
+			code: "invalid_model_configuration",
+			source: "configuration",
+			selection: null,
+			issues: [],
+			message: error instanceof Error ? error.message : "Invalid scoped settings",
+		};
+	}
 }
 
 export function recoverPreparation(

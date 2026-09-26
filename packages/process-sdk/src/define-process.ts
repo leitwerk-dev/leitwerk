@@ -413,6 +413,8 @@ export interface LlmTurnDefinition<
 	description: string;
 	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
+	/** Extension-defined scoped settings consumed by this turn. @public */
+	executionPurpose?: string;
 	/** Built-in Pi tools active while this turn runs. @public */
 	availableTools: readonly PiBuiltInToolName[];
 	/** Server-owned integration tools proxied over authenticated worker IPC. @internal */

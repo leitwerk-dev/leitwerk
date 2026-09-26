@@ -9,6 +9,7 @@ interface Props {
 	instanceId: string;
 	modelProfiles?: readonly ModelProfileOptionSummary[];
 	defaultModelProfileId?: string | null;
+	inheritedModelProfileId?: string | null;
 	busy?: boolean;
 	error?: string | null;
 	onRetry: (
@@ -23,15 +24,22 @@ let {
 	instanceId,
 	modelProfiles = [],
 	defaultModelProfileId = null,
+	inheritedModelProfileId = null,
 	busy = false,
 	error = null,
 	onRetry,
 }: Props = $props();
 
-let modelProfileDraft = $state((() => defaultModelProfileId ?? "")());
+let modelProfileDraft = $state<string | null | undefined>(undefined);
 let providerOptionsDraft = $state<Record<string, string> | undefined>(undefined);
 const selectedProfile = $derived(
-	modelProfiles.find((profile) => profile.id === modelProfileDraft) ?? null,
+	modelProfiles.find(
+		(profile) =>
+			profile.id ===
+			(modelProfileDraft === null
+				? inheritedModelProfileId
+				: (modelProfileDraft ?? defaultModelProfileId)),
+	) ?? null,
 );
 const selectedModelUsable = $derived(
 	selectedProfile === null ||
@@ -48,13 +56,14 @@ const selectedModelUsable = $derived(
 		{instanceId}
 		{modelProfiles}
 		defaultModelProfileId={defaultModelProfileId ?? null}
+    {inheritedModelProfileId}
 		initialProviderOptions={recovery.providerOptions}
 		disabled={busy}
 		selectId={`startup-model-${recovery.startRecordId}`}
 		selectLabel="Model"
 		selectDataField="startup-recovery-model"
 		onModelChange={(profileId) => {
-			modelProfileDraft = profileId ?? "";
+			modelProfileDraft = profileId;
 		}}
 		onProviderOptionsChange={(values) => (providerOptionsDraft = values ? { ...values } : undefined)}
 	/>
@@ -62,9 +71,9 @@ const selectedModelUsable = $derived(
 		type="button"
 		data-action="retry-startup"
 		data-start-record-id={recovery.startRecordId}
-		disabled={busy || !selectedModelUsable || (recovery.action === "choose_model" && !modelProfileDraft)}
+		disabled={busy || !selectedModelUsable || (recovery.action === "choose_model" && !(modelProfileDraft ?? inheritedModelProfileId ?? defaultModelProfileId))}
 		onclick={() =>
-			onRetry(recovery.startRecordId, modelProfileDraft || undefined, providerOptionsDraft)}
+			onRetry(recovery.startRecordId, modelProfileDraft, providerOptionsDraft)}
 	>
 		{busy
 			? "Retrying…"

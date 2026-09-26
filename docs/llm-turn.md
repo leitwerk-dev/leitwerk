@@ -144,3 +144,9 @@ An expanded live trace reads all recorded activity for the selected `turnRecordI
 - [Agent tools](agent-tools.md) owns completion-tool validation.
 - [Browser WebSocket](websocket.md) owns frame schemas and reconnect ordering.
 - [UI chronicle](ui.md) owns rendering and interaction.
+
+An extension-defined `executionPurpose` binds scoped defaults to an ordinary LLM
+turn. The prepared start captures only its declared non-secret settings. Instruction
+blocks are labelled by repository and added to the worker system instructions.
+`ctx.scopedSettings` exposes the same immutable values to process code. See
+[Scoped settings](scoped-settings.md).

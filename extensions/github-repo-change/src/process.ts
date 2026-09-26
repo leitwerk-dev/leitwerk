@@ -359,7 +359,7 @@ export function createGitHubRepoChangeProcess(
 				triggerLabel: labels.trigger,
 				doneLabel: labels.done,
 			};
-			return githubRepoChangeLaunchConfig(params, title, gitIdentity);
+			return githubRepoChangeLaunchConfig(params, title, gitIdentity, repository);
 		},
 	});
 

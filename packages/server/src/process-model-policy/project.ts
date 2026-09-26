@@ -1,4 +1,5 @@
 import { type ProcessSelectedTurnModelSource, trimToNull } from "@leitwerk-dev/domain";
+import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
 import { resolveDefault, resolveTurn } from "./evaluate.js";
 import {
 	existingTurnSelectionFromProcess,
@@ -138,6 +139,7 @@ export function projectPolicy(
 					turnId,
 					description: policy?.turnDescriptions[turnId] ?? turnId,
 					effective: {
+						...(!result.ok ? { error: presentProcessModelPolicyFailure(result) } : {}),
 						source: sourceForPreview(result.selection?.provenance.source),
 						profile: result.selection
 							? (profilesById.get(result.selection.modelProfileId) ?? null)
@@ -182,6 +184,7 @@ export function projectPolicy(
 			turnId,
 			effectiveModelProfileId: resolved.selection?.modelProfileId ?? null,
 			effectiveSource: resolved.selection?.provenance.source ?? "none",
+			...(!resolved.ok ? { effectiveError: presentProcessModelPolicyFailure(resolved) } : {}),
 			description: policy?.turnDescriptions[turnId] ?? turnId,
 			pathType: policy?.turnPathTypes[turnId] ?? "primary",
 			processConfigModelProfileId,

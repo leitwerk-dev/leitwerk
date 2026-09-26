@@ -27,6 +27,7 @@ import {
 import type { WorkerRuntimeSettings } from "./settings.js";
 
 interface PreparedSessionBase {
+	scopedSettings?: import("@leitwerk-dev/domain").ScopedSettingsSnapshot;
 	processSnapshot: ProcessInstance;
 	projectSnapshots: ProcessProject[];
 	resolvedWorkerProcess: ResolvedWorkerProcess;
@@ -103,6 +104,8 @@ function validatePreparedSession(input: {
 		resolvedWorkerProcess: process,
 		selectedTurnId,
 		startRecordId: payload.turnStart.id,
+		scopedSettings:
+			turnStartState.start?.kind === "llm" ? turnStartState.start.scopedSettings : undefined,
 		proposedTurnRecordId: payload.turnStart.proposedTurnRecordId,
 		acceptedTurnRecordId:
 			payload.turnStart.state.kind === "accepted" ? payload.turnStart.state.turnRecordId : null,

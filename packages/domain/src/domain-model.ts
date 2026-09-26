@@ -1,4 +1,5 @@
 import type { RepoLocatorKind } from "./repo-locator.js";
+import type { ScopedSettingsSnapshot } from "./scoped-settings.js";
 import type { ProcessSemanticEntryRefKey } from "./semantic-entry-refs.js";
 import { trimToNull } from "./string-normalize.js";
 import type { FailedTurnRecoveryContext } from "./turn-recovery.js";
@@ -451,6 +452,7 @@ export type ProcessSelectedTurnModelSource =
 	| "instance_turn_config"
 	| "process_config_turn"
 	| "instance_default"
+	| "scoped_purpose_default"
 	| "process_config_default"
 	| "catalog_default"
 	| "legacy_persisted";
@@ -514,6 +516,8 @@ export type CurrentExecutionRef = {
 /** Immutable non-secret inputs resolved for a worker-owned turn start. @internal */
 export type ResolvedTurnStart =
 	| {
+			/** @internal */
+			scopedSettings?: ScopedSettingsSnapshot;
 			/** @internal */
 			kind: "llm";
 			/** @internal */
@@ -718,6 +722,7 @@ export const PROCESS_SELECTED_TURN_MODEL_SOURCES = [
 	"process_config_turn",
 	"instance_default",
 	"process_config_default",
+	"scoped_purpose_default",
 	"catalog_default",
 	"legacy_persisted",
 ] as const satisfies readonly ProcessSelectedTurnModelSource[];

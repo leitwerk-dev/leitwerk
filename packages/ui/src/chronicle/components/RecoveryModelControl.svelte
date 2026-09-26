@@ -7,12 +7,13 @@ interface Props {
 	instanceId: string;
 	modelProfiles: readonly ModelProfileOptionSummary[];
 	defaultModelProfileId: string | null;
+	inheritedModelProfileId?: string | null;
 	initialProviderOptions?: Readonly<Record<string, string>>;
 	disabled: boolean;
 	selectId: string;
 	selectLabel?: string;
 	selectDataField?: string;
-	onModelChange: (profileId: string | undefined, usable: boolean) => void;
+	onModelChange: (profileId: string | null | undefined, usable: boolean) => void;
 	onProviderOptionsChange: (values: Record<string, string> | undefined) => void;
 }
 
@@ -20,6 +21,7 @@ let {
 	instanceId,
 	modelProfiles,
 	defaultModelProfileId,
+	inheritedModelProfileId = null,
 	initialProviderOptions = {},
 	disabled,
 	selectId,
@@ -29,10 +31,16 @@ let {
 	onProviderOptionsChange,
 }: Props = $props();
 
-let modelProfileDraft = $state((() => defaultModelProfileId ?? "")());
+let modelProfileDraft = $state("");
 
 const selectedProfile = $derived(
-	modelProfiles.find((profile) => profile.id === modelProfileDraft) ?? null,
+	modelProfiles.find(
+		(profile) =>
+			profile.id ===
+			(modelProfileDraft === "__inherit"
+				? inheritedModelProfileId
+				: modelProfileDraft || defaultModelProfileId),
+	) ?? null,
 );
 const selectedModelUsable = $derived(
 	selectedProfile === null ||
@@ -41,7 +49,10 @@ const selectedModelUsable = $derived(
 );
 
 $effect(() => {
-	onModelChange(modelProfileDraft || undefined, selectedModelUsable);
+	onModelChange(
+		modelProfileDraft === "__inherit" ? null : modelProfileDraft || undefined,
+		selectedModelUsable,
+	);
 });
 </script>
 
@@ -54,6 +65,8 @@ $effect(() => {
 		bind:value={modelProfileDraft}
 		{disabled}
 	>
+		<option value="">Use current model policy{defaultModelProfileId ? ` (${defaultModelProfileId})` : ""}</option>
+		<option value="__inherit">Use inherited value{inheritedModelProfileId ? ` (${inheritedModelProfileId})` : ""}</option>
 		<ModelProfileOptions profiles={modelProfiles} />
 	</select>
 	{#if selectedProfile?.safeReason && !selectedModelUsable}
@@ -62,7 +75,7 @@ $effect(() => {
 {/if}
 <ProviderOptionsEditor
 	{instanceId}
-	modelProfileId={modelProfileDraft || null}
+	modelProfileId={modelProfileDraft === "__inherit" ? inheritedModelProfileId : modelProfileDraft || defaultModelProfileId}
 	initialValues={initialProviderOptions}
 	{disabled}
 	onChange={(values) => onProviderOptionsChange(values ? { ...values } : undefined)}

@@ -51,6 +51,7 @@ export function githubRepoChangeLaunchConfig(
 	params: GitHubRepoChangeParams,
 	title: string,
 	gitIdentity: GitHubGitIdentity,
+	repository?: GitHubRepository,
 ): ProcessLaunchConfig<GitHubRepoChangeParams> {
 	const { owner, repo, githubProfile: profile } = params;
 	const issue = isIssueOrigin(params);
@@ -69,6 +70,18 @@ export function githubRepoChangeLaunchConfig(
 			{
 				key: "repo",
 				repoLocator: params.repoLocator,
+				...(repository?.id !== undefined
+					? {
+							settingsRepository: {
+								origin: new URL(repository.html_url).origin,
+								repositoryId: repository.id,
+								aliases: [
+									repository.ssh_url,
+									...(repository.clone_url ? [repository.clone_url] : []),
+								],
+							},
+						}
+					: {}),
 				baseBranch: params.baseBranch,
 				workBranch: params.workBranch,
 				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
@@ -306,7 +319,7 @@ export function createGitHubRepoChangeLauncher() {
 				});
 				return {
 					ok: true,
-					launchConfig: githubRepoChangeLaunchConfig(params, prompt, gitIdentity),
+					launchConfig: githubRepoChangeLaunchConfig(params, prompt, gitIdentity, repository),
 				};
 			},
 		},

@@ -436,7 +436,7 @@ describe("GenericLauncher", () => {
 		expect(draftPlanTurnGroup.dataset.effectiveSource).toBe("process_config_turn");
 	});
 
-	it("shows the recommended default inline and keeps it out of the explicit option list", async () => {
+	it("keeps inherited recommendations separate from explicit choices of the same model", async () => {
 		const { target } = mountSubject();
 		await flush();
 		await ensureAdvancedEditorOpen(target);
@@ -454,10 +454,11 @@ describe("GenericLauncher", () => {
 		expect(defaultModelSelect.options[0]?.text).toBe("Recommended (claude_fast)");
 		expect(Array.from(defaultModelSelect.options).map((option) => option.value)).toEqual([
 			"",
+			"claude_fast",
 			"local_qwen",
 		]);
 		expect(draftPlanSelect.options[0]?.value).toBe("");
-		expect(draftPlanSelect.options[0]?.text).toBe("Use process default");
+		expect(draftPlanSelect.options[0]?.text).toBe("Use inherited value");
 		expect(target.textContent).not.toContain("Thinking level");
 	});
 

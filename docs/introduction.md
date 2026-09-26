@@ -102,3 +102,7 @@ the same configuration and encryption key.
 | Failed startup or turn | Open the failure details, fix the cause, then use the offered recovery action. See [Operate a process](operator-guide.md#recover-failed-work). |
 
 Next: [operate a process](operator-guide.md) or [write your own](first-process.md).
+
+Use Settings to edit installation and repository defaults supplied by extensions.
+New steps capture those defaults; changing them preserves already prepared and
+completed work. See [Scoped settings](scoped-settings.md).

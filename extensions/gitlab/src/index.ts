@@ -1,5 +1,9 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import {
+	coreHostCapabilities,
+	repositorySettingsIdentity,
+	scopedSettingsCapability,
+} from "@leitwerk-dev/process-sdk";
 import { GitLabClient, parseGitLabProfiles } from "./client.js";
 import { setupGitLabIntegration } from "./setup.js";
 
@@ -16,6 +20,20 @@ const extension: LeitwerkExtensionModule = {
 	setupServer(api, config) {
 		const profiles = parseGitLabProfiles(config);
 		const clients = new Map([...profiles].map(([id, profile]) => [id, new GitLabClient(profile)]));
+		const settings = api.get(scopedSettingsCapability);
+		if (settings && !Array.isArray(settings))
+			settings.registerDiscovery("repository", async () => {
+				const subjects = [];
+				for (const client of clients.values())
+					for (const project of await client.listProjects())
+						subjects.push({
+							scopeType: "repository",
+							identity: repositorySettingsIdentity(client.baseUrl, project.id),
+							label: project.path_with_namespace,
+							aliases: [project.http_url_to_repo],
+						});
+				return subjects;
+			});
 		setupGitLabIntegration(api, {
 			profiles: () => [...profiles.keys()],
 			client: (profile) => {
