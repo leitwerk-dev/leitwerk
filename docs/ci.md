@@ -17,7 +17,10 @@ classifications remain in published declarations.
 
 Builds, tests, and browser installation use Node 26. Validation runs Chromium,
 Firefox, and WebKit. See [Testing](testing.md) for local commands and scoped checks.
-CI also builds the documentation with strict link and anchor validation.
+Browser tests reuse the production UI bundle from the full gate’s build phase.
+CI also builds the documentation with strict link and anchor validation and caches
+pip downloads by `requirements-docs.txt`. New commits cancel obsolete PR validation
+runs; validation of `main` is not cancelled.
 
 PR validation warns when combined test runtime is at least 5% above the average
 of the last ten comparable successful `main` runs. Only test execution time counts,
