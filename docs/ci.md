@@ -95,4 +95,29 @@ Images support Linux `amd64` and `arm64`. The chart pins them by digest. The Git
 
 ## Dependency updates
 
-Renovate opens dependency-update PRs. Routine non-major updates become eligible for auto-merge once the dependency release is seven days old and checks pass. Major updates require maintainer approval. Security updates bypass the waiting period.
+Renovate applies a [14-day minimum release age](https://docs.renovatebot.com/upgrade-best-practices/#wait-two-weeks-before-automerging-third-party-dependencies)
+to routine dependency updates, including majors and weekly lockfile maintenance.
+Non-major updates can auto-merge after required checks pass. Major updates require
+maintainer approval. Security updates bypass the waiting period.
+
+The **Dependency updates** workflow runs hourly on `main` in
+`leitwerk-dev/leitwerk`, using `renovate.json`. Lockfile maintenance runs before
+05:00 on Mondays in `Europe/Berlin`. Forks do not run the bot.
+
+Before the first run, set the `RENOVATE_TOKEN` Actions repository secret to a
+dedicated bot account's classic personal access token with `public_repo` and
+`workflow` scopes. The account needs repository write access. A missing secret
+fails the workflow. This token lets dependency PRs trigger validation and update
+GitHub Actions. Renew it before expiry. Do not run a hosted Renovate installation
+alongside this workflow.
+
+For auto-merge, enable **Allow auto-merge** in repository settings and require
+**Full validation** and **Conventional PR title and DCO** in the branch rules for
+`main`. The bot must satisfy those rules, including any required human review.
+Without auto-merge, maintainers merge dependency PRs after the checks pass.
+
+Run the bot manually after setup:
+
+```bash
+gh workflow run renovate.yml --repo leitwerk-dev/leitwerk --ref main
+```

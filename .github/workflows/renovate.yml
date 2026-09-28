@@ -1,0 +1,41 @@
+name: Dependency updates
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    name: Run Renovate
+    if: github.repository == 'leitwerk-dev/leitwerk' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Verify Renovate credentials
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: |
+          if [ -z "$RENOVATE_TOKEN" ]; then
+            echo '::error::Set the RENOVATE_TOKEN repository secret as described in docs/ci.md.'
+            exit 1
+          fi
+
+      - name: Update dependencies
+        uses: renovatebot/github-action@9fea9f0fbf80401026d11d03911d62b1f70fef1f # v46.3.3
+        with:
+          token: ${{ secrets.RENOVATE_TOKEN }}
+          renovate-version: 44.115.1
+        env:
+          RENOVATE_PLATFORM: github
+          RENOVATE_AUTODISCOVER: 'false'
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: required
