@@ -91,6 +91,21 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 	});
 	const questionBridge = new WorkerQuestionBridge(reporter);
 	const integrationToolBridge = new WorkerIntegrationToolBridge(reporter);
+	const reportInspection = (
+		capture: unknown,
+		turnRecordId: string,
+		selectedTurnId: string | null,
+	) => {
+		reporter.project({
+			kind: "protocol",
+			type: "worker.event",
+			payload: {
+				eventType: "execution.inspection",
+				selectedTurnId,
+				data: { turnRecordId, capture: redactInspectionEvidence(capture, redactInspectionText) },
+			},
+		});
+	};
 
 	let dispatch: (event: WorkerRuntimeEvent) => void;
 	const piEvents = createPiEventReporter({
@@ -99,15 +114,7 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 		getCurrentSelectedTurnId: () => state.session?.selectedTurnId ?? null,
 		getCurrentTurnRecordId: () => (state.phase.kind === "active" ? state.phase.turnRecordId : null),
 		reportInspection(capture, turnRecordId) {
-			reporter.project({
-				kind: "protocol",
-				type: "worker.event",
-				payload: {
-					eventType: "execution.inspection",
-					selectedTurnId: state.session?.selectedTurnId ?? null,
-					data: { turnRecordId, capture: redactInspectionEvidence(capture, redactInspectionText) },
-				},
-			});
+			reportInspection(capture, turnRecordId, state.session?.selectedTurnId ?? null);
 		},
 		getSessionTainted: () => state.sessionTainted,
 		onLifecycleObservation(kind) {
@@ -261,18 +268,11 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 							signal,
 							emit(emission) {
 								if (emission.kind === "inspection") {
-									reporter.project({
-										kind: "protocol",
-										type: "worker.event",
-										payload: {
-											eventType: "execution.inspection",
-											selectedTurnId: command.session.selectedTurnId,
-											data: {
-												turnRecordId: emission.turnRecordId,
-												capture: redactInspectionEvidence(emission.capture, redactInspectionText),
-											},
-										},
-									});
+									reportInspection(
+										emission.capture,
+										emission.turnRecordId,
+										command.session.selectedTurnId,
+									);
 								} else if (emission.kind === "session_tainted") {
 									complete({ kind: "session_tainted", reason: emission.reason });
 								} else if (emission.kind === "trace") {

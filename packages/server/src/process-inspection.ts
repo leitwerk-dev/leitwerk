@@ -39,14 +39,22 @@ export function createInspectionLineage(input: LineageInput) {
 			.map((record) => [record.turnStartRecordId, record.id]),
 	);
 	const candidates = new Map<string, Set<string>>();
+	const boundaryFor = (record: ProcessTurnRecord): string | null => {
+		const prepared = preparedStart(input, record);
+		return prepared?.forkPiEntryId ?? record.forkPiEntryId;
+	};
 	const claim = (entryId: string, recordId: string) => {
 		if (!records.has(recordId)) return;
 		const owners = candidates.get(entryId) ?? new Set<string>();
 		owners.add(recordId);
 		candidates.set(entryId, owners);
 	};
-	for (const record of input.records)
-		if (record.resultPiEntryId) claim(record.resultPiEntryId, record.id);
+	for (const record of input.records) {
+		// A failure before writing an entry can retain the inherited leaf as its result.
+		// That reference does not transfer ownership of the parent's entry.
+		if (record.resultPiEntryId && record.resultPiEntryId !== boundaryFor(record))
+			claim(record.resultPiEntryId, record.id);
+	}
 	for (const item of input.observations)
 		if (item.fact.kind === "entry_link") claim(item.fact.entryId, item.turnRecordId);
 	for (const entry of input.tree?.entries ?? []) {
@@ -90,10 +98,6 @@ export function createInspectionLineage(input: LineageInput) {
 	const inheritedOwner = (entryId: string): string | null => {
 		const owners = candidates.get(entryId);
 		return owners?.size === 1 ? [...owners][0] : null;
-	};
-	const boundaryFor = (record: ProcessTurnRecord): string | null => {
-		const prepared = preparedStart(input, record);
-		return prepared?.forkPiEntryId ?? record.forkPiEntryId;
 	};
 	const origin = (record: ProcessTurnRecord): ExecutionContextOrigin => {
 		const unknown = {

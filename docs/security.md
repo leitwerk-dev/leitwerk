@@ -163,8 +163,8 @@ before inspection IPC. Redacted fields remain explicitly marked in durable evide
 
 The server validates the accepted execution and reporting lease before persisting
 observations. Expanded inspection content is separate from ordinary event logs and
-WebSocket frames. Immutable content is deduplicated in SQLite, independent of the
-resource-bundle cache. Current configuration cannot fill gaps in historical evidence.
+WebSocket frames. Recorded content survives resource-cache eviction. Current
+configuration cannot fill gaps in historical evidence.
 
 ## HTTPS repository authentication
 
