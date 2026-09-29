@@ -6,6 +6,7 @@ import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import {
 	evaluateAtStableAvailabilityRevision,
+	isPinnedModelSelection,
 	type ServerProcessModelPolicy,
 } from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
@@ -100,11 +101,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
-			if (
-				current.kind === "action" &&
-				current.modelSelection?.provenance.source !== "action_override" &&
-				current.modelSelection?.provenance.source !== "launch_override"
-			) {
+			if (current.kind === "action" && !isPinnedModelSelection(current.modelSelection)) {
 				await projectCurrent();
 				return;
 			}

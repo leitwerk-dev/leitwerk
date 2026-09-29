@@ -25,8 +25,9 @@ turns use amber clocks; future turns use neutral outlines. Failure has an explic
 marker and label. Text and symbols carry state without depending on color.
 
 A process summary shows its full text and update time. Dismiss hides it only for
-that process in the current browser, including after reload. **Inspect process → Overview → Show process summary** restores it. If browser storage is unavailable, dismissal lasts
-for the current page. This preference never changes process state.
+that process in the current browser, including after reload. **Inspect process →
+Overview → Show process summary** restores it. If browser storage is unavailable,
+dismissal lasts for the current page. This preference never changes process state.
 
 ### External waits
 
@@ -88,8 +89,8 @@ forms stay in the Chronicle; turn details contain read-only summaries.
 ## Process inspector
 
 **Inspect process** replaces the process content region with one inspector. Global
-navigation remains available. The Chronicle and Turn Rail stay mounted, hidden and
-inert; their drafts and disclosure state survive inspection.
+navigation remains available. Keep the Chronicle and Turn Rail mounted, hidden and
+inert so their drafts and disclosure state survive inspection.
 
 Process sections are **Overview**, **Workflow**, **Inputs & configuration**, and
 **Context map**. Overview retains usage coverage, recorded repository facts and

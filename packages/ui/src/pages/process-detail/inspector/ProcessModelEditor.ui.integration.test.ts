@@ -1,13 +1,18 @@
 // @vitest-environment jsdom
 import type { ProcessModelConfigurationView } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, tick, unmount } from "svelte";
+import { fromStore, writable } from "svelte/store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { type ProcessDetailData, updateProcessModelConfig } from "../../../lib/api.js";
 import { loadProcessDetail } from "../../../lib/processes.svelte.js";
+import ProcessInspector from "./ProcessInspector.svelte";
 import ProcessModelEditor from "./ProcessModelEditor.svelte";
 
 vi.mock("../../../lib/api.js", () => ({ updateProcessModelConfig: vi.fn() }));
-vi.mock("../../../lib/processes.svelte.js", () => ({ loadProcessDetail: vi.fn() }));
+vi.mock("../../../lib/processes.svelte.js", () => ({
+	loadProcessDetail: vi.fn(),
+	subscribeReasoningFrames: () => () => {},
+}));
 const apps: ReturnType<typeof mount>[] = [];
 const configuration: ProcessModelConfigurationView = {
 	state: { kind: "ready" },
@@ -135,4 +140,50 @@ describe("process model editor", () => {
 		button(target, "Save changes").click();
 		await vi.waitFor(() => expect(target.textContent).toContain("Model settings saved"));
 	});
+});
+
+it("retains an open model draft through a failed background refresh and recovery", async () => {
+	const target = document.createElement("div");
+	document.body.append(target);
+	const error = fromStore(writable<string | null>(null));
+	const detail = {
+		process: { id: "instance", lifecycleStatus: "active", initialDefaultModelProfileId: "first" },
+		modelConfiguration: configuration,
+		timeline: { prompt: { text: "Original request" }, turns: [] },
+		session: { signature: null },
+		processFlow: { nodes: [], edges: [] },
+		runDetails: { turns: [] },
+		launchConfiguration: { parameters: [], projects: [] },
+		toolRenderers: [],
+	} as unknown as ProcessDetailData;
+	apps.push(
+		mount(ProcessInspector, {
+			target,
+			props: {
+				instanceId: "instance",
+				target: { scope: "process", section: "inputs" },
+				detail,
+				get error() {
+					return error.current;
+				},
+				onNavigate: () => {},
+				onBack: () => {},
+				onChronicle: () => {},
+			},
+		}),
+	);
+	vi.mocked(updateProcessModelConfig).mockResolvedValue({ modelConfiguration: configuration });
+	button(target, "Edit models").click();
+	await tick();
+	await choose(target, "instance-default-model", "second");
+	const select = target.querySelector<HTMLSelectElement>("#instance-default-model");
+	error.current = "Temporary snapshot failure";
+	await tick();
+	expect(target.textContent).toContain("Temporary snapshot failure");
+	expect(target.querySelector("#instance-default-model")).toBe(select);
+	expect(select?.value).toBe("second");
+	error.current = null;
+	await tick();
+	expect(target.querySelector("#instance-default-model")).toBe(select);
+	expect(select?.value).toBe("second");
 });

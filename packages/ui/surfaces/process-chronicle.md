@@ -39,6 +39,4 @@ The retry footer explains that retry restarts the turn and exposes Retry failed 
 
 Live work keeps its current action, reasoning, question handling, and inline stop confirmation. Recovery, scheduled actions, result-renderer errors, and terminal summaries retain their operational controls. Unknown metadata stays absent. The reference establishes visual hierarchy; real process records determine the content.
 
-The desktop and mobile sandbox evidence covers completed startup, preparation disclosures, a compact historical result, a collapsed rich result, the expanded latest result, result-based issue drafting, and the shared decision draft. A separate question scene covers the live card and answer form. Footer verification at 1458px and 390px confirms that expanding preparation leaves Create issue's position unchanged. No unresolved surface decision remains.
-
 The inspector replaces the process content region while the Chronicle stays mounted, hidden and inert. Automatic Chronicle scrolling pauses until return. Source investigations and browser history preserve reading location, focus and drafts; Show in chronicle reveals the selected recorded execution. See [Process inspector](process-inspector.md).

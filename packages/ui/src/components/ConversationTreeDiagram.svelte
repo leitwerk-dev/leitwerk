@@ -13,13 +13,14 @@ import {
 } from "../lib/instance-tree-layout";
 
 interface Props {
+	onReady?: () => boolean | void;
 	onSelectExecution?: (turnRecordId: string) => void;
 	selectedTurnRecordId?: string;
 	tree: ProcessInstanceTreeResponseBody;
 	railItems: readonly ChronicleSelectableItem[];
 }
 
-let { tree, railItems, onSelectExecution, selectedTurnRecordId }: Props = $props();
+let { tree, railItems, onSelectExecution, selectedTurnRecordId, onReady }: Props = $props();
 const railByRecord = $derived(
 	new Map(
 		railItems
@@ -49,9 +50,12 @@ function showSelected() {
 $effect(() => {
 	const container = viewport;
 	const selected = selectedTurnRecordId;
-	if (!container || !selected) return;
+	if (!container) return;
 	let cancelled = false;
-	void tick().then(() => { if (!cancelled) showSelected(); });
+	void tick().then(() => {
+		if (cancelled || onReady?.()) return;
+		if (selected) showSelected();
+	});
 	return () => { cancelled = true; };
 });
 
@@ -155,7 +159,7 @@ const accessibleDescription = $derived.by(() => {
 		{#if selectedNode}<button class="ui-button" onclick={revealSelected}>Show selected</button>{/if}
 	</div>
 	</div>
-	<div class="tree-viewport" bind:this={viewport} data-section="conversation-tree-diagram" role="region" aria-label="Conversation map" tabindex="0">
+	<div class="tree-viewport" bind:this={viewport} data-reading-scroll="context-map" data-section="conversation-tree-diagram" role="region" aria-label="Conversation map" tabindex="0">
 		<svg
 			width={layout.width * zoom}
 			height={layout.height * zoom}

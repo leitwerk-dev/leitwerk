@@ -48,6 +48,7 @@ export type {
 	ProjectedProcessModelConfiguration,
 	ServerProcessModelPolicy,
 } from "./types.js";
+export { isPinnedModelSelection } from "./types.js";
 export { ProcessModelPolicyConfigurationError };
 
 function resolutionMode(

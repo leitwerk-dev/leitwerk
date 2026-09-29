@@ -123,12 +123,12 @@ function sectionTarget(section: string): InspectorTarget {
     </nav>
   </header>
   <div class="inspector-scroll" data-role="inspector-scroll" role="region" tabindex="0" aria-label="Inspector evidence">
+    {#if error && detail}<p role="status">Couldn't refresh process details: {error}. Showing the last loaded details.</p>{/if}
     {#if target.scope === "invalid"}<p role="status">{target.reason}</p>
-    {:else if error}<p role="status">{error}</p>
-    {:else if !detail}<p role="status">Loading process…</p>
+    {:else if !detail}<p role="status">{error ?? "Loading process…"}</p>
     {:else if target.scope === "execution"}
       <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle()} {onReady} />
-    {:else}<ProcessReference {detail} {target} {onNavigate} {onChronicle} {onShowSummary} />{/if}
+    {:else}<ProcessReference {detail} {target} {onNavigate} {onChronicle} {onShowSummary} {onReady} />{/if}
   </div>
 </section>
 

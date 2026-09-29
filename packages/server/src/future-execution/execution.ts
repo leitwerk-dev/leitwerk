@@ -17,7 +17,10 @@ import type { ProcessEngine, ProcessEngineLogger } from "../process-engine/types
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import { createScheduledProcessFromLaunchPlan } from "../process-launch-executor.js";
 import { toLaunchPipelineCommit } from "../process-launch-pipeline-adapter.js";
-import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
+import {
+	isPinnedModelSelection,
+	type ServerProcessModelPolicy,
+} from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
 import type { Broadcaster } from "../ws/broadcast.js";
@@ -441,9 +444,7 @@ export function createFutureExecutionExecutor(deps: FutureExecutionExecutorDeps)
 				}
 				if (
 					(!latest.modelSelection ||
-						(latest.kind === "action" &&
-							latest.modelSelection.provenance.source !== "action_override" &&
-							latest.modelSelection.provenance.source !== "launch_override")) &&
+						(latest.kind === "action" && !isPinnedModelSelection(latest.modelSelection))) &&
 					deps.processGraphs &&
 					deps.processActionRegistry &&
 					deps.turnRecords

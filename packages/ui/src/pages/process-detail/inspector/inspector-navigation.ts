@@ -11,6 +11,7 @@ interface ReadingPosition {
 	anchor: string | null;
 	offset: number;
 	scrollTop: number;
+	scrollers?: { key: string; top: number; left: number }[];
 	disclosures: string[];
 	focusId: string | null;
 }
@@ -38,6 +39,11 @@ function capture(viewport: HTMLElement | null): ReadingPosition | null {
 		anchor: anchor ? itemKey(anchor) : null,
 		offset: anchor ? anchor.getBoundingClientRect().top - top : 0,
 		scrollTop: viewport.scrollTop,
+		scrollers: [...viewport.querySelectorAll<HTMLElement>("[data-reading-scroll]")].map((el) => ({
+			key: el.dataset.readingScroll ?? "",
+			top: el.scrollTop,
+			left: el.scrollLeft,
+		})),
 		disclosures: [...viewport.querySelectorAll<HTMLDetailsElement>("details[open]")]
 			.map((el) => el.dataset.disclosureKey ?? el.id)
 			.filter(Boolean),
@@ -61,6 +67,13 @@ function restore(viewport: HTMLElement | null, position: ReadingPosition | null 
 			viewport.getBoundingClientRect().top -
 			position.offset
 		: position.scrollTop;
+	for (const scroller of viewport.querySelectorAll<HTMLElement>("[data-reading-scroll]")) {
+		const saved = position.scrollers?.find((item) => item.key === scroller.dataset.readingScroll);
+		if (saved) {
+			scroller.scrollTop = saved.top;
+			scroller.scrollLeft = saved.left;
+		}
+	}
 }
 
 /** URLs select evidence. History owns reading position; progress never selects an execution. */
