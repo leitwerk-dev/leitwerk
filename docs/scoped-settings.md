@@ -88,7 +88,11 @@ Settings groups subjects into visible tabs by declared scope type. Instance come
 first, followed by repositories and extension groups such as Jira projects and
 Jira components. The selector lists only subjects in the active group. Deep links
 select the corresponding group; refreshing sources retains the selection and open
-drafts. Unavailable scope types remain reachable with an inactive label.
+drafts. Subjects without declared fields or retained inactive overrides are omitted
+from navigation; an explicitly selected subject remains visible for direct links.
+Unavailable scope types with retained overrides remain reachable with an inactive
+label. The scopes API reports this distinction as `hasSettings` without discarding
+discovered subjects.
 
 The UI keeps drafts on errors and conflicts. On conflict, it displays the current
 saved value and requires the operator to accept its revision before resubmitting

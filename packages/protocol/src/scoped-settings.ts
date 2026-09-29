@@ -73,6 +73,8 @@ export interface SettingsScopesResponse {
 		SettingsSubject & {
 			/** @internal */
 			active: boolean;
+			/** Has declared fields or retained inactive overrides to display. @internal */
+			hasSettings: boolean;
 		}
 	>;
 }

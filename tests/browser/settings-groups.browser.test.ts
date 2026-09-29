@@ -1,12 +1,37 @@
 import coding from "@leitwerk-dev/coding";
+import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import jira from "@leitwerk-dev/jira";
+import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
+
+const componentSettings: LeitwerkExtensionModule = {
+	manifest: { id: "component-settings", version: "1" },
+	scopedSettings: {
+		settings: [
+			{
+				key: "component-settings.instructions",
+				schemaVersion: 1,
+				scopes: ["jira.component"],
+				merge: "replace",
+				defaultValue: "",
+				schema: {
+					parse(value) {
+						if (typeof value !== "string") throw new Error("Expected instructions");
+						return value;
+					},
+				},
+				form: { label: "Component instructions", control: "textarea", group: "Instructions" },
+			},
+		],
+	},
+};
 
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-settings-groups-",
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([coding, jira]),
+		createExtensionCatalog: () =>
+			buildExtensionCatalogFromModules([coding, jira, componentSettings]),
 	},
 });
 
@@ -24,7 +49,11 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 		identity: "repository-1",
 		label,
 	});
-	settings.discover({ scopeType: "jira.project", identity: "project-1", label: "ATLAS" });
+	const project = settings.discover({
+		scopeType: "jira.project",
+		identity: "project-1",
+		label: "ATLAS",
+	});
 	const component = settings.discover({
 		scopeType: "jira.component",
 		identity: "component-1",
@@ -39,6 +68,18 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 			context: {},
 		}),
 	);
+	leitwerk.ctx.deps.transaction((tx) =>
+		tx.scopedSettings.write({
+			subjectId: inactive.id,
+			key: "removed.instructions",
+			value: "Retained instructions",
+			mode: "replace",
+			reset: false,
+			schemaVersion: 1,
+			expectedRevision: 0,
+			actor: SYSTEM_ACTOR,
+		}),
+	);
 
 	await page.goto(`/settings?scope=${component.id}`);
 	const components = page.getByRole("tab", { name: "Jira components", exact: true });
@@ -48,7 +89,6 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	await expect(page.getByRole("tab")).toHaveText([
 		"Instance",
 		"Repositories",
-		"Jira projects",
 		"Jira components",
 		"removed.component (inactive)",
 	]);
@@ -92,6 +132,7 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 
 	await page.getByRole("tab", { name: "removed.component (inactive)", exact: true }).click();
 	await expect(select).toHaveValue(inactive.id);
+	await expect(page.getByText("Retained instructions", { exact: true })).toBeVisible();
 	await expect(select.locator("option")).toHaveText(["Retained component (inactive)"]);
 	await page.goto(`/settings?scope=${inactive.id}`);
 	await expect(page.getByRole("tab", { name: "removed.component (inactive)" })).toHaveAttribute(
@@ -111,4 +152,13 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	await components.click();
 	await expect(select.locator("option")).toHaveText(["ATLAS / API", label]);
 	await expectNoPageOverflow(page);
+
+	// Discovery-only scopes stay out of navigation, while existing direct links still resolve.
+	await expect(page.getByRole("tab", { name: "Jira projects", exact: true })).toHaveCount(0);
+	await page.goto(`/settings?scope=${project.id}`);
+	await expect(
+		page.getByText("No installed extension declares settings for this scope."),
+	).toBeVisible();
+	await instance.click();
+	await expect(page.getByRole("tab", { name: "Jira projects", exact: true })).toHaveCount(0);
 });

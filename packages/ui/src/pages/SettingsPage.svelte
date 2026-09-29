@@ -33,12 +33,14 @@ function selectScope() {
 const lastSelected: Record<string, string> = {};
 const groups = $derived([...new Set(preview?.fields.map((field) => field.form.group) ?? [])]);
 const scopeGroups = $derived.by(() => {
-	const subjects = (scopes?.subjects ?? []).map(({ id, scopeType, label, active }) => ({
-		id,
-		scopeType,
-		label,
-		active,
-	}));
+	const subjects = (scopes?.subjects ?? [])
+		.filter((subject) => subject.hasSettings || subject.id === selected)
+		.map(({ id, scopeType, label, active }) => ({
+			id,
+			scopeType,
+			label,
+			active,
+		}));
 	// Keep deep links and redirected identities selectable while sources refresh.
 	if (!subjects.some((subject) => subject.id === selected))
 		subjects.push({

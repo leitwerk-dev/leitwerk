@@ -557,11 +557,23 @@ export function createScopedSettingsService(input: {
 	}
 	function listScopes(): SettingsScopesResponse {
 		discoverLocal();
+		const scopesWithFields = new Set(
+			[...definitions.values()].flatMap(({ definition }) => definition.scopes),
+		);
+		const subjectsWithInactiveOverrides = new Set(
+			repos.scopedSettings
+				.listOverrides()
+				.filter((row) => !row.reset && !definitions.has(row.key))
+				.map((row) => row.subjectId),
+		);
 		return {
 			scopes: [...scopes.values()],
-			subjects: repos.scopedSettings
-				.listSubjects()
-				.map((subject) => ({ ...subject, active: scopes.has(subject.scopeType) })),
+			subjects: repos.scopedSettings.listSubjects().map((subject) => ({
+				...subject,
+				active: scopes.has(subject.scopeType),
+				hasSettings:
+					scopesWithFields.has(subject.scopeType) || subjectsWithInactiveOverrides.has(subject.id),
+			})),
 		};
 	}
 	function discoverLocal() {
