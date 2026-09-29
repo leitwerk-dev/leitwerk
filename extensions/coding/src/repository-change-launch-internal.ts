@@ -54,6 +54,9 @@ export function repositoryIssueChangeLaunchConfig<
 	title: string,
 	repository: string,
 	metadata: Record<string, unknown>,
+	settingsRepository?: NonNullable<
+		ProcessLaunchConfig<P>["projects"]
+	>[number]["settingsRepository"],
 ): ProcessLaunchConfig<P> {
 	const issue = params.origin === "issue";
 	return {
@@ -71,6 +74,7 @@ export function repositoryIssueChangeLaunchConfig<
 			{
 				key: "repo",
 				repoLocator: params.repoLocator,
+				...(settingsRepository ? { settingsRepository } : {}),
 				baseBranch: params.baseBranch,
 				workBranch: params.workBranch,
 				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),

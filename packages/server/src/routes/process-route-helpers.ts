@@ -105,6 +105,10 @@ export interface RouteDeps
 		| "transaction"
 	> {
 	/** @internal */
+	scopedSettingsService?: import("../scoped-settings-service.js").ScopedSettingsService;
+	/** @internal */
+	onSettingsChanged?: () => Promise<void>;
+	/** @internal */
 	mappedRuns?: RepositoryBundle["mappedRuns"];
 	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];

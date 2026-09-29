@@ -120,6 +120,7 @@ export function registerLauncherRoutes(
 			try {
 				previewResult = await buildLauncherModelConfigPreviewForLauncher({
 					launcherService: deps.launcherService,
+					scopedSettingsService: deps.scopedSettingsService,
 					launchPlans: deps.launchPlans,
 					launcherId: req.params.launcherId,
 					launcherInput: normalized.request.launcherInput,

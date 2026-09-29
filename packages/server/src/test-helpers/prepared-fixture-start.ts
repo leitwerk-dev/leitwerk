@@ -46,6 +46,7 @@ export async function prepareAcceptedFixtureStart(
 	const result = await prepareCreatedTurnStarts(
 		{
 			config: ctx.config,
+			processModelPolicy: ctx.deps.processModelPolicy,
 			registry: ctx.modelProviderRegistry,
 			modelStatusCache: ctx.modelStatusCache,
 			piContributions: contributions,

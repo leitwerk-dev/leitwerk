@@ -147,3 +147,9 @@ Update recovery compares requested fields, including normalized labels. Logged
 replays return the current object without reapplying the patch.
 
 GitHub polling uses the SDK reporter with live GitHub source kinds and generation forwarding. Conflict reporting uses `createConflictReporter(kind)` without creating another remote object.
+
+The Settings repository refresh discovers repositories through configured profiles.
+Provider origin and stable repository ID define identity; known clone URLs are
+aliases. Execution uses retained identities without requiring external rediscovery.
+The origin comes from the repository's web URL, including for GitHub Enterprise;
+equal repository IDs on different servers remain distinct.

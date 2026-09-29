@@ -14,6 +14,7 @@ import {
 } from "./process-model-policy-presenter.js";
 
 type LauncherModelConfigDeps = {
+	scopedSettingsService?: import("./scoped-settings-service.js").ScopedSettingsService;
 	launcherService: ProcessLauncherService;
 	launchPlans: ProcessLaunchPlanServiceLike;
 	/** Server construction always supplies the authoritative model policy and availability view. */
@@ -39,15 +40,27 @@ function projectLauncherPreview(
 	input: LauncherModelConfigDeps,
 	processId: string,
 	modelConfig: LaunchModelConfigInputLike,
+	plan?: import("@leitwerk-dev/process-sdk").ProcessLaunchPlan,
 ) {
-	return presentLauncherModelConfigPreview(
+	const preview = presentLauncherModelConfigPreview(
 		input.processModelPolicy.project({
 			kind: "launcher_preview",
+			plan,
 			processId,
 			modelConfig: modelConfig,
 			availability: input.modelStatusCache.snapshot(),
 		}),
 	);
+	const context = plan ? input.scopedSettingsService?.forLaunch(plan) : undefined;
+	return {
+		...preview,
+		...(context
+			? {
+					settingsSubjectId: context.context.repository ?? "instance",
+					settingsExplanations: context.explanations,
+				}
+			: {}),
+	};
 }
 
 export type LauncherModelConfigPreviewResult =
@@ -97,7 +110,12 @@ export async function buildLauncherModelConfigPreviewForLauncher(
 	return {
 		ok: true,
 		launcher,
-		preview: projectLauncherPreview(input, launcher.processId, modelConfig),
+		preview: projectLauncherPreview(
+			input,
+			launcher.processId,
+			modelConfig,
+			resolved?.ok ? resolved.launcher.launchPlan : undefined,
+		),
 	};
 }
 

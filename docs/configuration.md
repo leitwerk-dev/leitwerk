@@ -314,3 +314,7 @@ with empty URLs/routes. The consuming integration owns delivery behavior.
 `sandbox.enabled` defaults to false and `sandbox.profile` to an empty string.
 These legacy blocks do not define process behavior. The source UI sandbox uses its
 own [development workflow](development-composition.md#source-sandbox-compositions).
+
+Non-secret [scoped settings](scoped-settings.md) live in SQLite and can be edited
+without restarting. They sit above YAML runtime defaults and below explicit
+process choices. They do not replace credentials or deployment configuration.

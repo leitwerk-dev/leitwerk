@@ -37,9 +37,12 @@ export function presentProcessModelPolicyFailure(failure: ProcessModelPolicyFail
 		case "model_unavailable":
 			return failure.reason ?? "The selected model is unavailable";
 		case "invalid_model_configuration":
-			return failure.source === "selection_provenance"
-				? "Persisted model selection provenance is invalid"
-				: "Persisted model configuration is invalid";
+			return (
+				failure.message ??
+				(failure.source === "selection_provenance"
+					? "Persisted model selection provenance is invalid"
+					: "Persisted model configuration is invalid")
+			);
 		case "stale_evaluation_snapshot":
 			return "Model availability changed repeatedly during evaluation";
 	}
@@ -90,6 +93,7 @@ export function presentLauncherModelConfigPreview(
 			turnId: turn.turnId,
 			description: turn.description,
 			effective: {
+				...(turn.effective.error ? { error: turn.effective.error } : {}),
 				source: turn.effective.source,
 				profile: turn.effective.profile ? presentModelProfileOption(turn.effective.profile) : null,
 			},

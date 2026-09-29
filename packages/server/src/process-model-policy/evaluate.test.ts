@@ -152,7 +152,7 @@ describe("server process model policy evaluate", () => {
 		});
 	});
 
-	it("re-resolves invalid inherited server defaults", () => {
+	it("blocks invalid configured defaults without silently selecting another profile", () => {
 		for (const configured of [
 			{ processTurnProfileId: "removed" },
 			{ processDefaultProfileId: "removed" },
@@ -161,11 +161,8 @@ describe("server process model policy evaluate", () => {
 		]) {
 			const { policy } = createTestModelPolicy(configured);
 			expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
-				ok: true,
-				selection: {
-					modelProfileId: configured.allowedProfileIds ? "second" : "first",
-					provenance: { kind: "inherited", source: "catalog_default" },
-				},
+				ok: false,
+				code: configured.allowedProfileIds ? "model_profile_not_allowed" : "unknown_model_profile",
 			});
 		}
 	});

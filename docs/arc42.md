@@ -180,3 +180,7 @@ See [Future work](future.md).
 
 Use the shared [terminology](ubiquitous_language.md). Definitions belong there;
 protocol and behavioral rules belong in the references above.
+
+Persistent [scoped settings](scoped-settings.md) separate extension-owned declarations
+from server-owned storage and resolution. The worker boundary carries only
+required non-secret values captured with a turn start.

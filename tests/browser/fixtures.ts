@@ -94,7 +94,9 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 				try {
 					await ctx?.close();
 				} finally {
-					await rm(tempRoot, { recursive: true, force: true });
+					// In-process worker filesystem operations can settle just after shutdown.
+					// Retry transient removal races; persistent cleanup failures still fail the fixture.
+					await rm(tempRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 				}
 			}
 		},

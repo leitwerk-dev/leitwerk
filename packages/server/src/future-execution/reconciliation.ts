@@ -101,7 +101,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
-			if (current.kind === "action" && !isPinnedModelSelection(current.modelSelection)) {
+			if (!isPinnedModelSelection(current.modelSelection)) {
 				await projectCurrent();
 				return;
 			}

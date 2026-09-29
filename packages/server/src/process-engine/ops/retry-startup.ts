@@ -44,7 +44,13 @@ export const RetryStartup = defineOperation<
 		const id = generateId("tsr");
 		const state =
 			failed.state.kind === "preparation_failed"
-				? failed.state
+				? {
+						...failed.state,
+						// A new operator retry must validate current inputs; the previous
+						// failure remains on its original start record.
+						code: "model_required" as const,
+						safeSummary: "LLM start requires retry preparation",
+					}
 				: failed.state.start.kind === "automatic"
 					? { kind: "starting" as const, start: failed.state.start }
 					: {

@@ -18,7 +18,7 @@ Process sections are Overview, Workflow, Inputs & configuration, and Context map
 
 - Overview groups compact label/value facts, usage coverage, recorded repositories, and deliverable links. The source identifier and project labels carry their external links directly. Repository configuration does not imply that a repository changed; partial usage remains explicit.
 - Workflow presents the current graph and a text list of steps. Step references expose purpose, contracts, model policy, tool declarations, instructions, and possible transitions. Current definitions are labeled explicitly, including the absence of a launch-time graph snapshot.
-- Inputs & configuration leads with the full original request, followed by recorded launch parameters, model defaults and overrides, and infrastructure details. Separate the default at creation from mutable current settings.
+- Inputs & configuration leads with the full original request, followed by recorded launch parameters, model defaults and overrides, scoped settings, and infrastructure details. Separate the default at creation from mutable current settings. Scoped settings distinguish future defaults from captured prepared-step values and link to the relevant [Settings scope](settings.md).
 - Context map offers Map and List as alternate views within the available evidence pane. The compact diagram opens at the selected execution, with zoom, Fit map, and Show selected controls; the list also reveals that selection on arrival. Broader map explanations use a disclosure. Conversation inheritance and supplied products remain distinct. An unconnected execution can have unknown context.
 
 Execution sections are Trace, Context, and Configuration:

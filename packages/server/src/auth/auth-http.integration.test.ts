@@ -106,6 +106,15 @@ describe("auth HTTP guard", () => {
 		expect(me.statusCode).toBe(401);
 		expect(processes.statusCode).toBe(401);
 		expect(resultImage.statusCode).toBe(401);
+		for (const [method, url] of [
+			["GET", "/api/settings/scopes"],
+			["GET", "/api/settings/definitions"],
+			["GET", "/api/settings/preview"],
+			["PUT", "/api/settings/overrides"],
+			["POST", "/api/settings/scopes/refresh"],
+		] as const) {
+			expect((await ctx.app.inject({ method, url })).statusCode).toBe(401);
+		}
 	});
 
 	it("sets a short-lived secure login-flow cookie on login", async () => {

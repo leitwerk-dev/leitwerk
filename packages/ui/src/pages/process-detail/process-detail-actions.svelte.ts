@@ -18,6 +18,7 @@ import {
 	postProcessTurnContinue,
 	updateScheduledAction,
 } from "../../lib/api.js";
+import { onSettingsChanged } from "../../lib/settings.js";
 import { createProcessDetailActionDrafts } from "./process-detail-action-drafts.svelte.js";
 import {
 	createProcessDetailMutations,
@@ -77,6 +78,15 @@ export function createProcessDetailActions(args: {
 	let openActionModelPreviewLoadingKey = $state<string | null>(null);
 	let actionModelPreviewInput = $state<ActionModelPreviewInput | null>(null);
 	let actionModelPreviewLoadToken = 0;
+	$effect(() =>
+		onSettingsChanged(() => {
+			actionModelPreviewLoadToken++;
+			openActionModelPreviewState = null;
+			openActionModelPreviewLoadingKey = null;
+			// The detail loader publishes refresh errors through the shared detail state.
+			void args.reload();
+		}, true),
+	);
 
 	const isTerminalProcess = $derived.by(() => {
 		const lifecycleStatus = args.detail?.process.lifecycleStatus ?? null;

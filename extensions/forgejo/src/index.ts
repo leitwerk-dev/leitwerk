@@ -1,4 +1,9 @@
-import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import {
+	coreHostCapabilities,
+	type LeitwerkExtensionModule,
+	repositorySettingsIdentity,
+	scopedSettingsCapability,
+} from "@leitwerk-dev/process-sdk";
 import { type ForgejoIntegration, forgejoIntegration } from "./capability.js";
 import { ForgejoClient, parseForgejoProfiles, parseForgejoTicketCreationConfig } from "./client.js";
 import type { forgejoIssueWatcherSource } from "./issue-watcher.js";
@@ -19,6 +24,23 @@ const extension: LeitwerkExtensionModule = {
 	setupServer(api, config) {
 		const profiles = parseForgejoProfiles(config);
 		const ticketCreation = parseForgejoTicketCreationConfig(config);
+		const settings = api.get(scopedSettingsCapability);
+		if (settings && !Array.isArray(settings))
+			settings.registerDiscovery("repository", async () => {
+				const subjects = [];
+				for (const profile of profiles.values()) {
+					for (const repo of await new ForgejoClient(profile).listRepositories()) {
+						if (repo.id === undefined) continue;
+						subjects.push({
+							scopeType: "repository",
+							identity: repositorySettingsIdentity(profile.baseUrl, repo.id),
+							label: repo.full_name,
+							aliases: [repo.ssh_url, ...(repo.clone_url ? [repo.clone_url] : [])],
+						});
+					}
+				}
+				return subjects;
+			});
 		const integration: ForgejoIntegration = {
 			profiles() {
 				return [...profiles.keys()].sort();

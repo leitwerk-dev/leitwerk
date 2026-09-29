@@ -72,16 +72,16 @@ describe("launcher model config helpers", () => {
 		it("shows the recommended model name in the default-model blank option", () => {
 			expect(getDefaultModelBlankOptionLabel(recommendedProfile)).toBe("Recommended (claude_fast)");
 			expect(getDefaultModelBlankOptionLabel(null)).toBe("Recommended");
-			expect(getTurnModelBlankOptionLabel()).toBe("Use process default");
+			expect(getTurnModelBlankOptionLabel()).toBe("Use inherited value");
 		});
 
-		it("keeps the recommended default out of the explicit selectable profiles", () => {
+		it("keeps inheritance separate from an explicit choice of the recommended model", () => {
 			expect(
 				getDefaultModelSelectableProfiles({
 					availableProfiles: [recommendedProfile, customProfile],
 					recommendedProfile,
 				}),
-			).toEqual([customProfile]);
+			).toEqual([recommendedProfile, customProfile]);
 		});
 	});
 

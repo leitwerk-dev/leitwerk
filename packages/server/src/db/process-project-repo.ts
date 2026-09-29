@@ -61,6 +61,10 @@ function rowToProcessProject(row: typeof s.processProjects.$inferSelect): Proces
 export function createProcessProjectRepo(db: LeitwerkDb) {
 	return {
 		/** @internal */
+		listAll(): ProcessProject[] {
+			return db.select().from(s.processProjects).all().map(rowToProcessProject);
+		},
+		/** @internal */
 		create(input: CreateProcessProjectInput): ProcessProject {
 			const id = generateId("prj");
 			const ts = now();

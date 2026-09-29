@@ -54,6 +54,7 @@ function normalizeProjectInputs(
 		externalUrl: project.externalUrl ?? null,
 		metadata: {
 			...(project.metadata ?? {}),
+			...(project.settingsRepository ? { settingsRepository: project.settingsRepository } : {}),
 			[COMMIT_MESSAGE_PROJECT_METADATA_KEY]: resolveCommitMessageMetadata(
 				project.repoLocator,
 				commitMessages,
@@ -76,9 +77,23 @@ export function buildProcessLaunchPlan(input: BuildProcessLaunchPlanInput): Proc
 	const initialState = processDef.initialState(params);
 	const state = processDef.stateCodec.parse(initialState);
 	const stateJson = serializeJson(processDef.stateCodec.serialize(state));
+	if (
+		input.launchConfig.primaryRepositoryKey &&
+		!input.launchConfig.projects?.some(
+			(project) => project.key === input.launchConfig.primaryRepositoryKey,
+		)
+	) {
+		throw new Error("Primary repository must be a project in this launch");
+	}
 	const launchMetadata = {
 		...(input.launchConfig.metadata ?? {}),
 		...(input.metadataAdditions ?? {}),
+		...(input.launchConfig.primaryRepositoryKey
+			? { primaryRepositoryKey: input.launchConfig.primaryRepositoryKey }
+			: {}),
+		...(input.launchConfig.settingsContext
+			? { settingsContext: input.launchConfig.settingsContext }
+			: {}),
 	};
 
 	return {

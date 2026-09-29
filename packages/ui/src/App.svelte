@@ -61,6 +61,10 @@ $effect(() => {
 	realtimeStarted = true;
 	void loadBrowserUiExtensions();
 	onWsEvent((frame) => {
+		if (frame.type === "settings.updated") {
+			window.dispatchEvent(new Event("leitwerk:settings-changed"));
+			return;
+		}
 		if (dispatchLaunchUpdated(frame)) {
 			return;
 		}

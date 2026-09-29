@@ -1,5 +1,5 @@
 import path from "node:path";
-import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
+import coding, { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
 	createRepositoryChangeParamsCodec,
 	normalizeRepositoryChangeParamsInput,
@@ -72,6 +72,7 @@ test.use({
 		},
 		createExtensionCatalog: () =>
 			buildExtensionCatalogFromModules([
+				coding,
 				{
 					...showcaseProcesses,
 					modelProviders: fixtureModelProviders({
@@ -81,7 +82,7 @@ test.use({
 					}),
 				},
 				{
-					manifest: { id: "browser-repository-change", version: "1.0.0" },
+					manifest: { id: "browser-repository-change", version: "1.0.0", requires: ["coding"] },
 					setupCatalog(api) {
 						api.registerProcess(browserRepositoryChangeProcess);
 					},

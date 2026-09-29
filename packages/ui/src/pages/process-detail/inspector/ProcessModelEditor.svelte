@@ -110,12 +110,12 @@ async function save() {
     <div class="model-field">
      <label for="instance-default-model">Default profile</label>
      <select id="instance-default-model" bind:this={defaultSelect} bind:value={defaultValue}>
-      <option value="">Inherit process or catalog default</option>
+      <option value="">Use inherited values by purpose</option>
       {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
      </select>
      <p class="note">Effective default: {configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}</p>
     </div>
-    <p class="note">Clearing a step override restores its configured step model, then the instance default.</p>
+    <p class="note">Clearing a step override restores the instance default, then inherited purpose and configured defaults.</p>
     {#each configuration.turns as turn (turn.turnId)}
      <div class="model-field">
       {#if turn.fixedModelProfileId}
@@ -123,10 +123,11 @@ async function save() {
       {:else}
        <label for={`step-model-${turn.turnId}`}>{turn.description}</label>
        <select id={`step-model-${turn.turnId}`} bind:value={turnValues[turn.turnId]}>
-        <option value="">Inherit configured step model or default</option>
+        <option value="">Use inherited value</option>
         {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
        </select>
-       <p class="note">{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"} · {sourceLabel(turn.effectiveSource ?? turn.source)}</p>
+       {#if turn.effectiveError}<p role="alert">{turn.effectiveError}</p>{/if}
+        <p class="note">{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"} · {sourceLabel(turn.effectiveSource ?? turn.source)}</p>
       {/if}
      </div>
     {/each}

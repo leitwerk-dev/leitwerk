@@ -48,13 +48,27 @@ export function githubRepoChangeLaunchConfig(
 	params: GitHubRepoChangeParams,
 	title: string,
 	gitIdentity: GitHubGitIdentity,
+	repository?: GitHubRepository,
 ): ProcessLaunchConfig<GitHubRepoChangeParams> {
 	const { owner, repo, githubProfile: profile } = params;
 	const issue = isIssueOrigin(params);
-	return repositoryIssueChangeLaunchConfig("github", params, title, `${owner}/${repo}`, {
-		github: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
-		"leitwerk.gitIdentity": gitIdentity,
-	});
+	return repositoryIssueChangeLaunchConfig(
+		"github",
+		params,
+		title,
+		`${owner}/${repo}`,
+		{
+			github: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
+			"leitwerk.gitIdentity": gitIdentity,
+		},
+		repository?.id !== undefined
+			? {
+					origin: new URL(repository.html_url).origin,
+					repositoryId: repository.id,
+					aliases: [repository.ssh_url, ...(repository.clone_url ? [repository.clone_url] : [])],
+				}
+			: undefined,
+	);
 }
 
 /** @public */

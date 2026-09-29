@@ -290,6 +290,7 @@ export {
 	parseRepositoryPullRequestConfig,
 } from "./repository-source-config.js";
 export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
+export * from "./scoped-settings.js";
 export type {
 	ServerExtensionEventMap,
 	ServerExtensionEventName,

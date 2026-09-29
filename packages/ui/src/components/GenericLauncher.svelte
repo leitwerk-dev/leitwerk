@@ -29,6 +29,7 @@ import {
 	readLauncherRecentValues,
 	writeLauncherRecentValue,
 } from "../lib/launcher-recent-values.js";
+import { onSettingsChanged } from "../lib/settings.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
 import LaunchChecklist from "./LaunchChecklist.svelte";
 import {
@@ -119,6 +120,14 @@ let cronPreviewBusy = $state(false);
 let defaultsLoadToken = 0;
 let optionsLoadToken = 0;
 let modelConfigPreviewLoadToken = 0;
+$effect(() =>
+	onSettingsChanged(() => {
+		void loadModelConfigPreview(
+			fieldInputValues,
+			buildLaunchModelConfigFromValues({ defaultModelProfileId, turnModelProfileIds }),
+		);
+	}, true),
+);
 let cronPreviewToken = 0;
 let deferredDependentRefreshValues: Record<string, LauncherFieldInputValue> | null = null;
 
@@ -1161,6 +1170,9 @@ async function handleSubmit(event: SubmitEvent) {
 
 			{#if hasModelConfigFields()}
 				<section class="field-group model-config-group" data-section="launcher-model-config">
+					<a href={`/settings?scope=${encodeURIComponent(modelConfigPreview?.settingsSubjectId ?? "instance")}`}>Repository and instance defaults</a>
+					{#each modelConfigPreview?.settingsExplanations ?? [] as explanation}<p>{explanation}</p>{/each}
+					{#each modelConfigPreview?.turns ?? [] as turn}{#if turn.effective.error}<p role="alert">{turn.description}: {turn.effective.error}</p>{/if}{/each}
 					<div class="model-config-intro">
 						<p class="field-label">Model setup</p>
 						<p class="field-description">

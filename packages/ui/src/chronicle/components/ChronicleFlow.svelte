@@ -105,6 +105,16 @@ let {
 	hasTerminalSummary = false,
 }: Props = $props();
 
+const inheritedRecoveryModel = $derived(
+	modelConfiguration.turns.find((turn) => turn.turnId === selectedTurn?.turnId)
+		?.effectiveModelProfileId ?? null,
+);
+const recoveryModel = $derived(
+	modelConfiguration.effectiveSelectedTurn?.source === "action_override"
+		? modelConfiguration.effectiveSelectedTurn.modelProfileId
+		: inheritedRecoveryModel,
+);
+
 const retryGroups = $derived(
 	groupRetryChains(projection.timelineItems, (item) =>
 		item.kind === "turn_cluster" || item.kind === "live_tail"
@@ -244,7 +254,8 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				retryBusy={recoveryController.retryBusy}
 				retryError={recoveryController.retryError}
 				modelProfiles={modelConfiguration.availableProfiles}
-				defaultModelProfileId={recovery.defaultModelProfileId}
+				defaultModelProfileId={recoveryModel}
+                inheritedModelProfileId={inheritedRecoveryModel}
 				defaultProviderOptions={recovery.providerOptions}
 				onContinue={(prompt, modelProfileId, providerOptions) =>
 					recoveryController.continueFailedTurn(
@@ -285,7 +296,8 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 			{instanceId}
 			recovery={startupRecovery}
 			modelProfiles={modelConfiguration.availableProfiles}
-			defaultModelProfileId={startupRecovery.defaultModelProfileId}
+			defaultModelProfileId={recoveryModel}
+            inheritedModelProfileId={inheritedRecoveryModel}
 			busy={recoveryController.startupRetryBusy}
 			error={recoveryController.startupRetryError}
 			onRetry={recoveryController.retryStartup}

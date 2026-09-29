@@ -77,3 +77,7 @@ policy](../../docs/process-sdk.md#api-compatibility).
 Writes follow the [shared reconciliation contract](../../docs/process-sdk.md#typed-external-writes).
 Comment recovery includes closed merge requests and completed discussions. A logged
 comment or reaction that cannot be recovered fails without repeating the write.
+
+The Settings repository refresh discovers repositories through configured profiles.
+Provider origin and stable repository ID define identity; known clone URLs are
+aliases. Execution uses retained identities without requiring external rediscovery.

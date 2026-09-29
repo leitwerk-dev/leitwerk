@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary } from "@leitwerk-dev/protocol";
+import { recoveryModelSelection } from "../lib/recovery-model.js";
 import ModelProfileOptions from "./ModelProfileOptions.svelte";
 import ProviderOptionsEditor from "./ProviderOptionsEditor.svelte";
 
@@ -7,12 +8,13 @@ interface Props {
 	instanceId: string;
 	modelProfiles: readonly ModelProfileOptionSummary[];
 	defaultModelProfileId: string | null;
+	inheritedModelProfileId?: string | null;
 	initialProviderOptions?: Readonly<Record<string, string>>;
 	disabled: boolean;
 	selectId: string;
 	selectLabel?: string;
 	selectDataField?: string;
-	onModelChange: (profileId: string | undefined, usable: boolean) => void;
+	onModelChange: (profileId: string | null | undefined, usable: boolean) => void;
 	onProviderOptionsChange: (values: Record<string, string> | undefined) => void;
 }
 
@@ -20,6 +22,7 @@ let {
 	instanceId,
 	modelProfiles,
 	defaultModelProfileId,
+	inheritedModelProfileId = null,
 	initialProviderOptions = {},
 	disabled,
 	selectId,
@@ -29,19 +32,15 @@ let {
 	onProviderOptionsChange,
 }: Props = $props();
 
-let modelProfileDraft = $state((() => defaultModelProfileId ?? "")());
+let modelProfileDraft = $state("");
 
-const selectedProfile = $derived(
-	modelProfiles.find((profile) => profile.id === modelProfileDraft) ?? null,
-);
-const selectedModelUsable = $derived(
-	selectedProfile === null ||
-		selectedProfile.availability === undefined ||
-		selectedProfile.availability === "available",
+const draft = $derived(modelProfileDraft === "__inherit" ? null : modelProfileDraft || undefined);
+const selection = $derived(
+	recoveryModelSelection(modelProfiles, draft, defaultModelProfileId, inheritedModelProfileId),
 );
 
 $effect(() => {
-	onModelChange(modelProfileDraft || undefined, selectedModelUsable);
+	onModelChange(draft, selection.usable);
 });
 </script>
 
@@ -54,15 +53,17 @@ $effect(() => {
 		bind:value={modelProfileDraft}
 		{disabled}
 	>
+		<option value="">Use current model policy{defaultModelProfileId ? ` (${defaultModelProfileId})` : ""}</option>
+		<option value="__inherit">Use inherited value{inheritedModelProfileId ? ` (${inheritedModelProfileId})` : ""}</option>
 		<ModelProfileOptions profiles={modelProfiles} />
 	</select>
-	{#if selectedProfile?.safeReason && !selectedModelUsable}
-		<p class="model-reason">{selectedProfile.safeReason}</p>
+	{#if selection.profile?.safeReason && !selection.usable}
+		<p class="model-reason">{selection.profile.safeReason}</p>
 	{/if}
 {/if}
 <ProviderOptionsEditor
 	{instanceId}
-	modelProfileId={modelProfileDraft || null}
+	modelProfileId={selection.profileId}
 	initialValues={initialProviderOptions}
 	{disabled}
 	onChange={(values) => onProviderOptionsChange(values ? { ...values } : undefined)}

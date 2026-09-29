@@ -1,4 +1,8 @@
-import type { RepositoryCredentialProvider, ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
+import {
+	coreHostCapabilities,
+	type RepositoryCredentialProvider,
+	type ServerExtensionAPI,
+} from "@leitwerk-dev/process-sdk";
 import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { describe, expect, it, vi } from "vitest";
 import extension, { type GitLabIntegration, gitlabRepositoryCredentials } from "./index.js";
@@ -11,7 +15,7 @@ describe("one GitLab profile", () => {
 		});
 		const supplied: GitLabIntegration[] = [];
 		const api = {
-			get: () => deps,
+			get: (token: unknown) => (token === coreHostCapabilities.serverSetup ? deps : undefined),
 			provide: (_token: unknown, value: GitLabIntegration) => supplied.push(value),
 			tool: () => {},
 		} as unknown as ServerExtensionAPI;

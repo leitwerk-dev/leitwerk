@@ -159,6 +159,7 @@ export async function executeSelectedTurn(
 	};
 
 	const ctx = {
+		scopedSettings: input.session.scopedSettings,
 		process: processSnapshot,
 		projects: projectSnapshots,
 		params: resolvedWorkerProcess.params,

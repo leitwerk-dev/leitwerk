@@ -1,8 +1,6 @@
 import type {
-	ModelSelectionProvenance,
 	ProcessInstance,
 	ResolvedTurnStart,
-	TurnStartPreparationFailureCode,
 	TurnStartRecordState,
 } from "@leitwerk-dev/domain";
 import { filterProviderOptionsForDefinition } from "@leitwerk-dev/process-sdk";
@@ -16,6 +14,9 @@ import type {
 import { resolveRegisteredProviderOptions } from "../model-providers/provider-options.js";
 import type { ModelProviderRegistry } from "../model-providers/registry.js";
 import { assemblePiResourceSnapshot, type PiResourceBundleCache } from "../pi-resources/index.js";
+import type { ServerProcessModelPolicy } from "../process-model-policy/index.js";
+import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
+import type { ScopedSettingsService } from "../scoped-settings-service.js";
 import {
 	buildRuntimeProfileSelectionInput,
 	defaultWorkerRuntimeProfile,
@@ -26,6 +27,8 @@ import type { Writes } from "./writes/writes.js";
 const PI_RUNTIME_VERSION = "0.81.1";
 
 export interface TurnStartPreflightDeps {
+	scopedSettings?: Pick<ScopedSettingsService, "capture">;
+	processModelPolicy: ServerProcessModelPolicy;
 	config: LeitwerkConfig;
 	registry: ModelProviderRegistry;
 	modelStatusCache: ModelStatusCache;
@@ -37,31 +40,9 @@ export interface TurnStartPreflightDeps {
 
 export type TurnStartPreflightResult = { ok: true } | { ok: false; code: string; message: string };
 
-function failure(
-	requestedModelProfileId: string | null,
-	providerOptions: Record<string, string>,
-	code: TurnStartPreparationFailureCode,
-	safeSummary: string,
-	modelSelectionProvenance?: ModelSelectionProvenance,
-	availabilityRevision?: number,
-): TurnStartRecordState {
-	return {
-		kind: "preparation_failed",
-		requestedModelProfileId,
-		providerOptions,
-		code,
-		safeSummary,
-		...(modelSelectionProvenance ? { modelSelectionProvenance } : {}),
-		...(availabilityRevision !== undefined ? { availabilityRevision } : {}),
-	};
-}
-
 function previousProviderOptions(state: TurnStartRecordState): Record<string, string> {
 	if (state.kind === "preparation_failed") return { ...state.providerOptions };
-	if (state.kind === "superseded" || state.kind === "starting" || state.kind === "accepted") {
-		return state.start?.kind === "llm" ? { ...state.start.providerOptions } : {};
-	}
-	return state.start.kind === "llm" ? { ...state.start.providerOptions } : {};
+	return state.start?.kind === "llm" ? { ...state.start.providerOptions } : {};
 }
 
 function previousProviderId(
@@ -75,22 +56,6 @@ function previousProviderId(
 	return profileId
 		? (deps.config.pi.model_profiles.find((profile) => profile.id === profileId)?.provider ?? null)
 		: null;
-}
-
-function parkPreparationFailure(
-	writes: Writes,
-	write: Extract<Writes["turnStartWrites"][number], { kind: "create" }>,
-	state: TurnStartRecordState,
-): void {
-	write.input.state = state;
-	writes.processPatch.lifecycleStatus = "error";
-	// Reconciliation may stop an obsolete worker, but it must not launch the
-	// preparation-failed start.
-	writes.workerIntent = { kind: "reconcile" };
-}
-
-function candidateProcess(process: ProcessInstance, writes: Writes): ProcessInstance {
-	return { ...process, ...writes.processPatch };
 }
 
 function resolveRuntimeProfile(
@@ -165,42 +130,102 @@ export async function prepareCreatedTurnStarts(
 	explicitProviderOptions?: Readonly<Record<string, string>>,
 	availabilitySnapshot?: ModelStatusCacheSnapshot,
 ): Promise<TurnStartPreflightResult> {
-	const nextProcess = candidateProcess(process, writes);
+	const nextProcess = { ...process, ...writes.processPatch };
 	const availability = availabilitySnapshot ?? deps.modelStatusCache.snapshot();
-	const provenance =
-		nextProcess.selectedTurnModelKind && nextProcess.selectedTurnModelSource
-			? {
-					kind: nextProcess.selectedTurnModelKind,
-					source: nextProcess.selectedTurnModelSource,
-				}
-			: undefined;
-	for (let index = 0; index < writes.turnStartWrites.length; index += 1) {
-		const write = writes.turnStartWrites[index];
-		if (!write || write.kind !== "create" || write.input.turnType !== "llm") continue;
 
+	for (const write of writes.turnStartWrites) {
+		if (write.kind !== "create" || write.input.turnType !== "llm") continue;
+		const parkFailure = (
+			failure: Omit<Extract<TurnStartRecordState, { kind: "preparation_failed" }>, "kind">,
+		) => {
+			write.input.state = { ...failure, kind: "preparation_failed" };
+			writes.processPatch.lifecycleStatus = "error";
+			// Reconcile obsolete workers without launching this failed start.
+			writes.workerIntent = { kind: "reconcile" };
+		};
+
+		// Resolve the model and required settings without yielding. An edit while the
+		// resource bundle is assembled belongs to the next start, not this snapshot.
+		const evaluated = deps.processModelPolicy.evaluate({
+			kind: "process_turn",
+			process: nextProcess,
+			turnId: write.input.turnId,
+			initialSelection: true,
+			startKind: write.input.startKind,
+			availability,
+		});
+		if (!evaluated.ok) {
+			const code =
+				evaluated.code === "model_unavailable" ||
+				evaluated.code === "model_stale" ||
+				evaluated.code === "model_required"
+					? evaluated.code
+					: "invalid_model_configuration";
+			parkFailure({
+				requestedModelProfileId: evaluated.selection?.modelProfileId ?? null,
+				providerOptions: previousProviderOptions(write.input.state),
+				code,
+				safeSummary: presentProcessModelPolicyFailure(evaluated),
+				...(evaluated.selection
+					? { modelSelectionProvenance: evaluated.selection.provenance }
+					: {}),
+				availabilityRevision: availability.revision,
+			});
+			continue;
+		}
+		if (evaluated.selection) {
+			const patch = {
+				selectedTurnModelProfileId: evaluated.selection.modelProfileId,
+				selectedTurnModelKind: evaluated.selection.provenance.kind,
+				selectedTurnModelSource: evaluated.selection.provenance.source,
+			};
+			Object.assign(nextProcess, patch);
+			Object.assign(writes.processPatch, patch);
+		}
+		const provenance =
+			nextProcess.selectedTurnModelKind && nextProcess.selectedTurnModelSource
+				? {
+						kind: nextProcess.selectedTurnModelKind,
+						source: nextProcess.selectedTurnModelSource,
+					}
+				: undefined;
 		const requestedProfileId = nextProcess.selectedTurnModelProfileId?.trim() || null;
+		let scopedSettings: ReturnType<ScopedSettingsService["capture"]>;
+		try {
+			scopedSettings = deps.scopedSettings?.capture(
+				nextProcess,
+				write.input.turnId,
+				provenance?.source === "scoped_purpose_default",
+			);
+		} catch (error) {
+			parkFailure({
+				requestedModelProfileId: requestedProfileId,
+				providerOptions: {},
+				code: "invalid_model_configuration",
+				safeSummary:
+					error instanceof Error
+						? error.message
+						: "Correct invalid scoped settings before retrying",
+			});
+			continue;
+		}
 		const retainedState = write.input.state;
 		const retainedOptions = previousProviderOptions(retainedState);
 		if (
 			retainedState.kind === "preparation_failed" &&
 			retainedState.code === "invalid_model_configuration"
 		) {
-			parkPreparationFailure(writes, write, retainedState);
+			parkFailure(retainedState);
 			continue;
 		}
 		if (!requestedProfileId) {
-			parkPreparationFailure(
-				writes,
-				write,
-				failure(
-					null,
-					retainedOptions,
-					"model_required",
-					"Choose a model before retrying startup",
-					undefined,
-					availability.revision,
-				),
-			);
+			parkFailure({
+				requestedModelProfileId: null,
+				providerOptions: retainedOptions,
+				code: "model_required",
+				safeSummary: "Choose a model before retrying startup",
+				availabilityRevision: availability.revision,
+			});
 			continue;
 		}
 
@@ -235,33 +260,12 @@ export async function prepareCreatedTurnStarts(
 					message: optionResult.issues.map((issue) => issue.message).join("; "),
 				};
 			}
-			parkPreparationFailure(
-				writes,
-				write,
-				failure(
-					profile.id,
-					recoveryOptions,
-					"provider_options_required",
-					optionResult.issues.map((issue) => issue.message).join("; "),
-				),
-			);
-			continue;
-		}
-
-		const status = availability.profiles.find((candidate) => candidate.profileId === profile.id);
-		if (!status || status.availability !== "available") {
-			parkPreparationFailure(
-				writes,
-				write,
-				failure(
-					profile.id,
-					recoveryOptions,
-					!status || status.availability === "stale" ? "model_stale" : "model_unavailable",
-					status?.safeReason ?? "The selected model status is stale",
-					provenance,
-					availability.revision,
-				),
-			);
+			parkFailure({
+				requestedModelProfileId: profile.id,
+				providerOptions: recoveryOptions,
+				code: "provider_options_required",
+				safeSummary: optionResult.issues.map((issue) => issue.message).join("; "),
+			});
 			continue;
 		}
 
@@ -302,6 +306,7 @@ export async function prepareCreatedTurnStarts(
 				kind: "starting",
 				start: {
 					kind: "llm",
+					...(scopedSettings ? { scopedSettings } : {}),
 					model,
 					...(provenance ? { modelSelectionProvenance: provenance } : {}),
 					availabilityRevision: availability.revision,
@@ -315,16 +320,12 @@ export async function prepareCreatedTurnStarts(
 			writes.processPatch.lifecycleStatus = "active";
 			writes.workerIntent = { kind: "restart_worker" };
 		} catch {
-			parkPreparationFailure(
-				writes,
-				write,
-				failure(
-					profile.id,
-					{ ...optionResult.value },
-					"provider_preflight_failed",
-					"The provider could not prepare this worker start",
-				),
-			);
+			parkFailure({
+				requestedModelProfileId: profile.id,
+				providerOptions: { ...optionResult.value },
+				code: "provider_preflight_failed",
+				safeSummary: "The provider could not prepare this worker start",
+			});
 		}
 	}
 	return { ok: true };

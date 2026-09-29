@@ -1162,6 +1162,7 @@ export class LlmFlowBuilder<
 	extends DescribedTurnBuilder
 	implements FlowLlmTurn<TParams, TState, string>
 {
+	private executionPurposeValue: string | undefined;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
 	private availableIntegrationTools: readonly string[] = [];
@@ -1197,6 +1198,12 @@ export class LlmFlowBuilder<
 	/** @internal */
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
+	}
+
+	/** @public */
+	executionPurpose(purpose: string): this {
+		this.executionPurposeValue = purpose;
+		return this;
 	}
 
 	/**
@@ -1544,6 +1551,7 @@ export class LlmFlowBuilder<
 			kind: "llm" as const,
 			description: this.turnDescription,
 			...(this.modelPurposeValue ? { modelPurpose: this.modelPurposeValue } : {}),
+			...(this.executionPurposeValue ? { executionPurpose: this.executionPurposeValue } : {}),
 			availableTools: this.availableTools,
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }

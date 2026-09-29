@@ -421,6 +421,11 @@ export type ProcessAttentionTarget =
 /** @internal */
 export type WsPayloadByType = {
 	/** @internal */
+	"settings.updated": {
+		/** @internal */
+		subjectId: string;
+	};
+	/** @internal */
 	hello: {
 		/** @internal */
 		serverVersion: string;
@@ -699,6 +704,8 @@ export const WS_FRAME_DURABILITY = {
 	"process.created": "durable",
 	/** @internal */
 	"launch.updated": "durable",
+	/** @internal */
+	"settings.updated": "durable",
 	/** @internal */
 	"process.updated": "durable",
 	/** @internal */

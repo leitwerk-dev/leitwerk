@@ -131,6 +131,7 @@ export async function projectFutureExecutionModelState(
 			policy: deps.policy,
 			availability: deps.availability,
 			detectedAt: now().toISOString(),
+			existingBlockedReason: execution.blockedReason,
 		});
 	}
 	if (!execution.instanceId || !execution.actionId) return null;
@@ -159,6 +160,7 @@ export async function projectFutureExecutionModelState(
 		overrideModelProfileId: parsed.value.nextTurnModelProfileId,
 		overrideProvided: parsed.value.nextTurnModelProfileId !== null,
 		detectedAt: now().toISOString(),
+		existingBlockedReason: execution.blockedReason,
 	});
 }
 

@@ -10,6 +10,7 @@ import type { RepositoryChangeState } from "./repository-change-state.js";
 import { publishRebase, startRebase } from "./repository-rebase/git.js";
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
 import { rebasePrompt } from "./repository-rebase/prompt.js";
+import { codingPurposes } from "./settings.js";
 
 export {
 	createPullRequestChangeProcess,
@@ -599,6 +600,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 		const turn = flow
 			.llm<P, RepositoryChangeState>(id)
 			.description(kind === "feedback" ? "Address Feedback" : "Fix CI")
+			.executionPurpose(codingPurposes.implementation)
 			.tools("read", "bash", "edit", "write")
 			.resolveIntegrationTools((_params, state) =>
 				repairReason(state, kind) === "rebase" ? [] : adapter.tools[kind],

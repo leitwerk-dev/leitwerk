@@ -226,6 +226,14 @@ Fields should feel native, readable, and dependable.
 - **Error / Disabled:** Error fields use Measured Danger Red border, pale danger tint, and explicit error messages. Disabled states reduce opacity and preserve readable labels.
 - **Layout:** Split forms may put labels/descriptions left and inputs right, collapsing to one column under narrow containers.
 
+### Scoped Settings
+
+Settings fields use flat, divided rows. Keep the label, description, effective value, and contributing source visible before the inline override editor. Source labels use muted caption text; values retain normal body contrast and instruction text preserves line breaks.
+
+Keep the saved effective value separate from the draft. Instruction editors name Add to inherited instructions and Replace inherited instructions explicitly and show the combined result in a muted preview. Save override uses Operational Blue; Cancel and Use inherited value remain distinct supporting actions. Validation and revision conflicts preserve the draft and explain the next step inline.
+
+The [Settings surface brief](surfaces/settings.md) records scope selection, purpose groups, responsive behavior, and the separation between future defaults and captured process settings.
+
 ### Navigation
 
 Navigation is a persistent operational shell, not a marketing frame.

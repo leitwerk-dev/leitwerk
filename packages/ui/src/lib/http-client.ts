@@ -5,6 +5,23 @@ import { getFetchImpl, resolveApiUrl } from "./runtime-config.js";
 
 export { unknownRecordSchema };
 
+/** @internal */
+export class ApiResponseError extends Error {
+	constructor(
+		message: string,
+		readonly status: number,
+	) {
+		super(message);
+		this.name = "ApiResponseError";
+	}
+}
+
+/** @internal */
+export function apiResponseError(message: string, preferMessage = false) {
+	return (response: Response, body: unknown) =>
+		new ApiResponseError(readErrorMessage(body, preferMessage) ?? message, response.status);
+}
+
 export async function tryReadJson(response: Response): Promise<unknown> {
 	try {
 		return await response.json();
@@ -72,8 +89,10 @@ function readOptionalString(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
 
-export function readErrorMessage(body: unknown): string | null {
+export function readErrorMessage(body: unknown, preferMessage = false): string | null {
 	const response = body as (ErrorResponseBody & { message?: unknown }) | null;
+	if (preferMessage)
+		return readOptionalString(response?.message) ?? readOptionalString(response?.error);
 	const error = readOptionalString(response?.error) ?? readOptionalString(response?.message);
 	return error && error.trim() !== "" ? error : null;
 }

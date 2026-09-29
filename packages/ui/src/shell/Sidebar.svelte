@@ -707,6 +707,9 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					<span class="sidebar-nav-icon" aria-hidden="true">⌘</span>
 					<span class="sidebar-nav-label">All processes</span>
 				</a>
+				<a href="/settings" class="sidebar-nav-link" data-action="view-settings" data-pressable="true" class:is-active={currentRoute.page === "settings"} aria-current={currentRoute.page === "settings" ? "page" : undefined} onclick={(event) => followLink(event, "/settings")}>
+					<span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M4 5h12M4 10h12M4 15h12M7 3v4M13 8v4M8 13v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></span><span class="sidebar-nav-label">Settings</span>
+				</a>
 				<a
 					href={skillsPath}
 					class="sidebar-nav-link"
