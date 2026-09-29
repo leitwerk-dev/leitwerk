@@ -82,3 +82,18 @@ plan review, implementation review, and simplification
 use `coding.review`. Each new step captures current values. Prepared starts and
 worker recovery retain their snapshots. Multi-repository instruction blocks are
 labelled separately; model defaults use the primary repository.
+
+## Streamlined coordinated changes
+
+`createRepositoryChangeProcess` accepts an optional `workflow` with variant
+`streamlined`. GitLab and Jira GitLab use this variant; other callers keep their
+existing approval flow. It registers six planning/implementation turns plus four
+publication/repair turns. Plan decisions support approval and human-comment revisions.
+Server-side policies decide plan bypass and simplification routing. Decisions are
+persisted with the plan revision or implementation boundary before routing.
+
+Simplification uses a read-only analysis product and a separate application turn
+that consumes both the findings and plan. Multi-repository sessions operate from the
+workspace root, identify each checkout, and persist commit messages by project key.
+Publication adapters can coordinate repository-specific state and report aggregate
+terminal outcomes while reusing the same publication, feedback, CI, and rebase logic.

@@ -19,7 +19,7 @@ export interface SettingMetadata {
 		/** @public */
 		group: string;
 		/** @public */
-		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox";
+		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox" | "multiselect";
 	};
 }
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import { afterEach, describe, expect, it } from "vitest";
-import { commitAndPushWorkBranch } from "./finalization-git.js";
+import { commitAndPushWorkBranch, repositoryHasChanges } from "./finalization-git.js";
 
 const tempDirs: string[] = [];
 
@@ -49,6 +49,29 @@ afterEach(() => {
 });
 
 describe("commitAndPushWorkBranch", () => {
+	it.each([
+		"staged",
+		"unstaged",
+		"untracked",
+		"committed",
+	])("detects %s changes before publication", (kind) => {
+		const { repoDir } = createWorkspace();
+		expect(repositoryHasChanges(repoDir, "main")).toBe(false);
+		writeFileSync(path.join(repoDir, kind === "untracked" ? "new.txt" : "README.md"), "Changed\n");
+		if (kind === "staged" || kind === "committed") git(repoDir, "add", ".");
+		if (kind === "committed")
+			git(
+				repoDir,
+				"-c",
+				"user.name=Test",
+				"-c",
+				"user.email=test@example.com",
+				"commit",
+				"-m",
+				"change",
+			);
+		expect(repositoryHasChanges(repoDir, "main")).toBe(true);
+	});
 	it("commits dirty work and publishes only the checked-out feature branch", () => {
 		const { remoteDir, repoDir } = createWorkspace();
 		const mainSha = git(remoteDir, "rev-parse", "refs/heads/main");

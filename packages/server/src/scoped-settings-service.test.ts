@@ -438,4 +438,43 @@ describe("scoped settings", () => {
 		expect(field?.error).toContain("Provider credential is missing");
 		expect(field?.error).toContain("choose another model");
 	});
+	it("retains effective selections and draft values when dynamic choices are unavailable", async () => {
+		const definition = {
+			...instructions,
+			choices() {
+				throw new Error("Repository discovery unavailable");
+			},
+		};
+		const { settings } = await createSettingsFixture(undefined, [
+			{
+				...settingsExtension,
+				scopedSettings: {
+					...settingsExtension.scopedSettings,
+					settings: [definition, repositoryInstructions, model],
+				},
+			},
+		]);
+		const saved = {
+			subjectId: "instance",
+			key: definition.key,
+			value: "Retained selection",
+			mode: "replace" as const,
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		};
+		settings.write(saved);
+		const field = (await settings.preview("instance")).fields.find((f) => f.key === definition.key);
+		expect(field?.effective?.value).toBe(saved.value);
+		expect(field?.error).toContain("Repository discovery unavailable");
+		const draft = await settings.previewDraft({
+			...saved,
+			value: "Local draft",
+			expectedRevision: 1,
+		});
+		expect(draft.fields.find((f) => f.key === definition.key)?.effective?.value).toBe(
+			"Local draft",
+		);
+		expect(settings.resolve(definition, {}).value).toBe(saved.value);
+	});
 });

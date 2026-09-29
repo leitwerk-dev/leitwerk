@@ -26,7 +26,7 @@ export function registerGitLabDeliveryTools(
 			"body",
 		]),
 		async execute(ctx, args) {
-			const binding = resolveGitLabRepositoryBinding(ctx);
+			const binding = resolveGitLabRepositoryBinding(ctx, integration);
 			const client = integration.client(binding.profile);
 			const project = projects.getByInstanceAndKey(ctx.process.id, ctx.project?.key ?? "");
 			if (!project?.workBranch || project.workBranch === project.baseBranch)
@@ -92,7 +92,7 @@ export function registerGitLabDeliveryTools(
 		description: "Read human discussion feedback on the bound merge request",
 		parameters: projectParameters(),
 		async execute(ctx) {
-			const b = resolveGitLabBinding(ctx);
+			const b = resolveGitLabBinding(ctx, integration);
 			return integration.client(b.profile).listMergeRequestFeedback(b.projectId, b.iid, ctx.signal);
 		},
 	});
@@ -101,7 +101,7 @@ export function registerGitLabDeliveryTools(
 		description: "Reconcile the bot's seen reaction on bound merge request feedback",
 		parameters: projectParameters({ noteId: { type: "integer" } }, ["noteId"]),
 		async execute(ctx, args) {
-			const b = resolveGitLabBinding(ctx);
+			const b = resolveGitLabBinding(ctx, integration);
 			const client = integration.client(b.profile);
 			const noteId = numberArg(args, "noteId");
 			if (
@@ -142,7 +142,7 @@ export function registerGitLabDeliveryTools(
 				["issueNumber"],
 			),
 			async execute(ctx, args) {
-				const b = resolveGitLabRepositoryBinding(ctx);
+				const b = resolveGitLabRepositoryBinding(ctx, integration);
 				const client = integration.client(b.profile);
 				const iid = numberArg(args, "issueNumber");
 				const bound = (ctx.project?.metadata?.gitlab as { issueIid?: number })?.issueIid;

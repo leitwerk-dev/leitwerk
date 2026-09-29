@@ -24,6 +24,8 @@ export interface GitLabProject {
 	path_with_namespace: string;
 	/** @public */
 	http_url_to_repo: string;
+	/** SSH clone URL supplied by GitLab. @public */
+	ssh_url_to_repo?: string;
 	/** @public */
 	ssh_url_to_repo?: string;
 	/** @public */

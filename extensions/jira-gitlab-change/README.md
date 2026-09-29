@@ -1,0 +1,100 @@
+# Jira GitLab change
+
+`@leitwerk-dev/jira-gitlab-change` launches one process for a Jira issue across its
+component-mapped GitLab repositories. Load `jira`, `gitlab`, `git-ssh`, `coding`, and
+this extension. It is opt-in; no deployment or automatic merge is implied.
+
+```yaml
+process_configs:
+  jira_gitlab_change_process:
+    watchers:
+      use_leitwerk:
+        enabled: true
+        profile: team
+        projects: ['10000', '10001']
+        poll_interval: 30s
+```
+
+In Settings, refresh sources, select a Jira component, and override **GitLab
+repositories**. Search and select one or more repository / GitLab profile / SSH
+profile combinations. Repository identity uses the GitLab installation and stable
+project ID. The component union removes duplicate repositories and ignores unmapped
+components. An empty union, unavailable repository/profile, or conflicting profile
+selection blocks admission with a diagnostic. Every repository must pass SSH read
+and dry-run write preflight. Jira and GitLab API tokens remain server-side; only the
+selected Git SSH credentials reach the worker.
+
+Admission rechecks the issue and mappings, then retains issue content, mapping
+revisions, repository identities, profile references, and branches. Subsequent
+mapping edits affect later launches. The work branch is `leitwerk/jira-<installation-hash>-<issue-id>`.
+Each repository has its own checkout, commit message, MR, head, feedback cursor,
+conflict evidence, and CI repair count. Coding settings provide individually labelled
+repository instructions. Models use installation defaults until a primary repository
+is bound in process settings.
+
+## Workflow
+
+[Generated process graph](process.mmd). Dashed edges are external triggers; terminal
+outcomes are separate from the ten registered turns.
+
+| Turn | Kind | Route |
+| --- | --- | --- |
+| `generate_plan` | LLM | Plan decision, or implementation after bypass |
+| `plan_decision` | Human | Approve → implement; comments → regenerate plan |
+| `implement` | LLM | Simplification, or commit messages when skipped |
+| `simplify_implementation` | LLM, read-only | Persist findings → apply simplification |
+| `apply_simplification` | LLM | Apply findings and validate → commit messages |
+| `generate_commit_message` | LLM | Persist messages by repository → deliver |
+| `deliver_change` | Automatic | Publish, observe, repair, or finish |
+| `revise_from_merge_request_feedback` | LLM | Address feedback/conflicts → deliver |
+| `repair_gitlab_pipeline` | LLM | Repair CI → deliver |
+| `ci_operator_action` | Human | Retry repair, resume waiting, or abort |
+
+Plan approval starts implementation and publication automatically. Plan revisions
+accept human comments. `leitwerk-skip-plan-decision` bypasses approval when the plan
+finishes or when the label is added while approval waits. A system approval records
+the current plan revision and reason. Removing the label does not rewind work;
+unavailable source reads never bypass approval.
+
+Simplification runs once before first publication. Immediately after implementation,
+the latest Jira labels decide whether `leitwerk-skip-simplification` skips both
+simplification turns. A failed lookup requires generic retry. The durable decision
+survives recovery; label changes after the pair starts do not interrupt it.
+
+Analysis uses this instruction for each checkout, labelling findings by repository:
+
+> Review all uncommitted changes in this repo: staged, unstaged, and untracked files. Analyze what could be simplified to reduce the number of lines.
+> Also look a bit around the current changes to identify points to save lines.
+
+Application consumes the durable findings and accepted plan, applies justified
+changes, preserves behavior, and reruns checks. Empty findings proceed normally.
+Changes stay uncommitted until delivery. Later feedback, conflict, and CI repairs
+return directly to delivery.
+
+## Delivery and recovery
+
+Only changed repositories publish MRs. Interrupted publication reconciles committed
+branches, pinned MR identities, and durable external writes. MR observations correlate
+repository, MR, and source revision. Human feedback settles for two minutes. Each
+repository receives up to three automatic CI repairs before operator action.
+Conflicts reuse the shared rebase and original-head push-lease implementation.
+
+| External evidence | Route / outcome |
+| --- | --- |
+| Settled human MR feedback | Feedback revision, then delivery |
+| Confirmed merge conflict | Feedback revision with rebase evidence |
+| Current-head CI failure | CI repair, or operator action after three repairs |
+| All created MRs merged | Complete; comment, remove trigger, add `leitwerk-done` |
+| Mixed merge and unmerged closure | Continue open MRs, then complete with a partial result; no done label |
+| Every MR closes unmerged | Abort with the recorded result; remove trigger |
+| No repository changes | Complete with explanation; remove trigger; no done label |
+| Source cancellation | Reconcile terminal MRs, stop further delivery, leave open MRs untouched |
+
+All Jira comments and label mutations are durable external writes. Retries do not
+create duplicate processes, MRs, or comments. Generic retry handles failed lookups
+and interrupted turns. Operator abort and process history remain available.
+
+Before deploying the changed GitLab workflow, finish or abort active instances that
+use removed review or approval turns. Retain their history. Deployment, automatic
+merging, Jira status transitions, and Jira-comment-driven plan revisions are outside
+this extension.

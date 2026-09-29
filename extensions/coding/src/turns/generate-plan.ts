@@ -4,6 +4,15 @@ import type { FlowPromptContext, StructuralProcessState } from "@leitwerk-dev/pr
 export function buildGeneratePlanPrompt(
 	ctx: FlowPromptContext<unknown, StructuralProcessState, never>,
 ): string {
+	const repos = ctx.repo.all();
+	if (repos.length !== 1 || repos[0]?.key !== "repo")
+		return `Create one coordinated implementation plan for this change:
+${ctx.prompts.initial}
+
+Repositories:
+${repos.map((repo) => `${repo.key}: ${repo.fsPath} (base ${repo.baseBranch}; work ${repo.workBranch})`).join("\n")}
+
+Inspect every checkout read-only. Label repository-specific work. Follow each repository's instructions. Do not edit, commit, push, or inspect original repositories outside this workspace. Publish the plan when done.`;
 	const repo = ctx.repo.get("repo");
 	return `Create an implementation plan for this repository change:
 ${ctx.prompts.initial}

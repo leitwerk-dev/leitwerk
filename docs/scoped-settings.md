@@ -95,7 +95,7 @@ unchanged. Settings are shared across the installation, not per-user preferences
 purposes. Setting keys and purpose IDs use the owning extension's namespace.
 Settings combine shared `SettingMetadata` with a versioned value schema and default.
 Metadata defines ordered scopes, merging, and forms. Controls support text, instructions, choices,
-model profiles, numbers, and checkboxes. `choices(context)` may supply dynamic
+model profiles, numbers, checkboxes, and searchable multi-selects. `choices(context)` may supply dynamic
 non-secret choices. Validation remains authoritative on the server.
 
 `scopedSettingsCapability` provides a typed server-side resolver and trusted
@@ -112,6 +112,6 @@ version 1 retains the consumed values and labelled instruction blocks for that
 prepared start.
 
 The coding extension supplies repository instructions and planning,
-implementation, and review models. Its README owns those fields. Jira integration
-is future work; its named issue-type, project, and compound-scope ordering uses the
-same contracts.
+implementation, and review models. Extension READMEs own provider-specific scopes
+and settings. Multi-select controls retain unavailable selections and drafts across
+refreshes and revision conflicts; server schemas remain authoritative.

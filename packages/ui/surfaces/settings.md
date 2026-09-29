@@ -8,13 +8,13 @@ Operators choose a shared scope, inspect effective values and their sources, the
 
 ## Composition
 
-Use Public Sans, a white workspace, a cool gray shell, and Operational Blue for focus and saving. The centered page has a maximum width of 860px. Its single column begins with the Settings heading and explanation, followed by Apply settings to and Refresh repositories. Purpose groups follow in extension-defined order.
+Use Public Sans, a white workspace, a cool gray shell, and Operational Blue for focus and saving. The centered page has a maximum width of 860px. Its single column begins with the Settings heading and explanation, followed by Apply settings to and Refresh sources. Purpose groups follow in extension-defined order.
 
 Separate fields with thin horizontal dividers. Each row presents its label and description, Override or Edit override, then the effective value and contributing source. Source labels use muted caption text; values use normal body text. Preserve instruction line breaks and allow long values and source labels to wrap. Keep grouping flat, with a muted inset reserved for the combined instruction preview.
 
 ## Editing and feedback
 
-Override opens a labeled inline editor beneath the saved effective value. Focus moves to the value control. Use the declared native input, select, checkbox, number field, or textarea. Model fields name the YAML / catalog default explicitly and retain an unavailable saved selection with a readable label.
+Override opens a labeled inline editor beneath the saved effective value. Focus moves to the value control. Use the declared native input, select, checkbox, number field, or textarea. Multi-select editors use a search field and native checkbox rows; selected entries stay visible while filtering, including unavailable saved selections. Model fields name the YAML / catalog default explicitly and retain an unavailable saved selection with a readable label.
 
 Instruction editors place Instruction behavior above the draft. Add to inherited instructions and Replace inherited instructions name the two choices; Combined preview shows the resulting text separately from the editable override. The preview follows the draft without saving it. An empty value remains distinguishable from a runtime default.
 

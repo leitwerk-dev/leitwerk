@@ -9,61 +9,91 @@ import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabFeedback, type GitLabObservation, observeMergeRequest } from "./client.js";
 import { createGitLabIssueDiscovery } from "./issue-watcher.js";
+
 /** @public */
 export interface GitLabDeliveryObservation extends GitLabObservation {
 	/** @public */
+	projectKey?: string;
+
+	/** @public */
 	observationKey?: string;
+
 	/** @public */
 	feedback?: GitLabFeedback[];
+
 	/** @public */
 	conflict?: ConflictEvidence;
 }
+
 /** @public */
 export const GITLAB_ISSUE_CANCELLED_KIND = "@leitwerk-dev/gitlab.issue-cancelled";
+
 /** @public */
 export interface GitLabIssueCancelledConfig {
+	/** Pinned provider installation. @public */
+	origin?: string;
 	/** @public */
 	profile: string;
+
 	/** @public */
 	projectId: number;
+
 	/** @public */
 	issueIid: number;
+
 	/** @public */
 	iid: number;
+
 	/** @public */
 	triggerLabel: string;
+
 	/** @public */
 	pollInterval?: string;
 }
+
 /** @internal */
 export const GITLAB_MR_KIND = "@leitwerk-dev/gitlab.merge-request";
+
 /** @public */
 export interface GitLabSourceConfig {
+	/** Pinned provider installation. @public */
+	origin?: string;
 	/** @public */
 	profile: string;
+
 	/** @public */
 	projectId: number;
+
 	/** @public */
 	iid: number;
+
 	/** @public */
 	pollInterval?: string;
+
 	/** @public */
 	afterKey?: string;
 	/** Optional timer also wakes retry work when GitLab facts have not changed. */
+
 	/** @public */
 	wakeAt?: number;
+
 	/** @public */
 	delivery?: {
 		/** @public */
 		headSha: string;
+
 		/** @public */
 		owner: string;
+
 		/** @public */
 		repo: string;
+
 		/** @public */
 		headBranch: string;
+
 		/** @public */
 		baseBranch: string;
+
 		/** @public */
 		lastConflictKey?: string | null;
 	};
@@ -71,13 +101,16 @@ export interface GitLabSourceConfig {
 	feedback?: {
 		/** @public */
 		afterId: number;
+
 		/** @public */
 		since?: string;
+
 		/** @public */
 		quietPeriodMs: number;
 	};
 }
 /** A trailing quiet period survives restarts because it uses the newest unseen note's timestamp. */
+
 /** @public */
 export function pendingGitLabFeedback(
 	items: GitLabFeedback[],
@@ -87,6 +120,7 @@ export function pendingGitLabFeedback(
 	const start = since ? Date.parse(since) : 0;
 	return items.filter((item) => item.id > afterId && Date.parse(item.createdAt) >= start);
 }
+
 /** @public */
 export function gitLabFeedbackReadyAt(
 	items: GitLabFeedback[],
@@ -96,6 +130,7 @@ export function gitLabFeedbackReadyAt(
 		? Math.max(...items.map((item) => Date.parse(item.createdAt))) + quietPeriodMs
 		: null;
 }
+
 /** @public */
 export const observationKey = ({ mr, pipeline, targetHead }: GitLabObservation): string =>
 	JSON.stringify([
@@ -114,14 +149,40 @@ export const observationKey = ({ mr, pipeline, targetHead }: GitLabObservation):
 		mr.merge_status,
 		mr.detailed_merge_status,
 	]);
+
 /** @public */
 export const gitlabExternal = {
+	/** Observe coordinated repositories with the same revision and feedback policy. @public */
+	mergeRequests<P, S>(
+		resolve: (ctx: {
+			/** @internal */
+			params: P;
+			/** @internal */
+			state: S;
+		}) => {
+			/** @internal */
+			repositories: (GitLabSourceConfig & {
+				/** @internal */
+				projectKey: string;
+			})[];
+		},
+	): ExternalActionSource<P, S, GitLabDeliveryObservation> {
+		return {
+			kind: GITLAB_MR_KIND,
+			label: "GitLab merge requests",
+			config: {},
+			inputMode: "none",
+			resolve,
+		};
+	},
+
 	/** @public */
 	issueCancelled<P, S>(
 		/** @public */
 		resolve: (ctx: {
 			/** @public */
 			params: P;
+
 			/** @public */
 			state: S;
 		}) => GitLabIssueCancelledConfig,
@@ -134,12 +195,14 @@ export const gitlabExternal = {
 			resolve,
 		};
 	},
+
 	/** @public */
 	mergeRequest<P, S>(
 		/** @public */
 		resolve: (ctx: {
 			/** @public */
 			params: P;
+
 			/** @public */
 			state: S;
 		}) => GitLabSourceConfig,
@@ -154,13 +217,15 @@ export const gitlabExternal = {
 		};
 	},
 };
+
 /** @internal */
 export function createGitLabProvider(
 	deps: CoreServerSetupDeps,
 	integration: GitLabIntegration,
 	/** @public */
 	options: {
-		/** @internal */ now?: () => number;
+		/** @internal */
+		now?: () => number;
 	} = {},
 ) {
 	const schedule = new Map<string, { at: number; failures: number }>();
@@ -194,8 +259,10 @@ export function createGitLabProvider(
 					if (current(armed)) return reporter.observe(armed, input);
 				},
 			};
-			await report.poll(GITLAB_MR_KIND, async (armed) => {
-				const c = armed.resolved as unknown as GitLabSourceConfig;
+			const pollRepository = async (
+				armed: ExternalSourceArmingLike,
+				c: GitLabSourceConfig & { projectKey?: string },
+			) => {
 				if (
 					!c ||
 					typeof c.profile !== "string" ||
@@ -203,10 +270,12 @@ export function createGitLabProvider(
 					!Number.isInteger(c.iid)
 				)
 					throw new Error("Invalid GitLab external source");
-				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
+				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}:${c.projectKey ?? ""}`;
 				const previous = schedule.get(key);
 				if (previous && previous.at > now()) return;
 				try {
+					if (c.origin && integration.client(c.profile).baseUrl !== c.origin)
+						throw new Error("GitLab observation installation changed");
 					const observation = await observeMergeRequest(
 						integration.client(c.profile),
 						c.projectId,
@@ -280,6 +349,7 @@ export function createGitLabProvider(
 							armed,
 							{
 								...observation,
+								...(c.projectKey ? { projectKey: c.projectKey } : {}),
 								...(c.delivery
 									? {
 											observationKey: observedKey,
@@ -288,7 +358,7 @@ export function createGitLabProvider(
 										}
 									: {}),
 							},
-							`${observedKey}:${c.wakeAt ?? ""}:${feedbackReady ? feedback.map((item) => item.id).join(",") : ""}`,
+							`${c.projectKey ?? ""}:${observedKey}:${c.wakeAt ?? ""}:${feedbackReady ? feedback.map((item) => item.id).join(",") : ""}`,
 						);
 					schedule.set(key, {
 						at: now() + parseDurationMs(c.pollInterval ?? "30s", 30000),
@@ -305,12 +375,23 @@ export function createGitLabProvider(
 					});
 					throw error;
 				}
+			};
+			await report.poll(GITLAB_MR_KIND, async (armed) => {
+				const config = armed.resolved as unknown as GitLabSourceConfig & {
+					repositories?: (GitLabSourceConfig & { projectKey: string })[];
+				};
+				for (const source of config.repositories ?? [config]) {
+					if (!reporter.isCurrent(GITLAB_MR_KIND, armed)) break;
+					await pollRepository(armed, source);
+				}
 			});
 			await report.poll(GITLAB_ISSUE_CANCELLED_KIND, async (armed) => {
 				const c = armed.resolved as unknown as GitLabIssueCancelledConfig;
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation ?? ""}`;
 				if ((schedule.get(key)?.at ?? 0) > now()) return;
 				const client = integration.client(c.profile);
+				if (c.origin && client.baseUrl !== c.origin)
+					throw new Error("GitLab source issue installation changed");
 				const issue = await client.getIssue(c.projectId, c.issueIid);
 				if (issue.state !== "opened" || !issue.labels.includes(c.triggerLabel)) {
 					const mr = await client.getMergeRequest(c.projectId, c.iid);

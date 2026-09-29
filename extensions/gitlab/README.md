@@ -48,6 +48,12 @@ the process branches, reconciles its remote marker through the durable write log
 and pins `iid` through server project persistence. Existing MR-bound metadata and
 tool calls remain supported. MR-only tools reject missing bindings.
 
+The GitLab and [Jira GitLab change](../jira-gitlab-change/README.md) processes use
+SSH clone URLs and `git-ssh` profiles. Their workers receive SSH credentials, never
+GitLab or Jira API tokens. Other callers may still use the repository-scoped HTTPS
+credential capability described above. Supplying `origin` in the GitLab binding
+pins the installation: tool calls fail if its profile is repointed.
+
 Source-issue tools require the launch-pinned `issueIid`. Issue updates, comments,
 labels, MR creation, and feedback acknowledgements reconcile uncertain writes.
 `gitlab_list_merge_request_feedback` and `gitlab_acknowledge_feedback` expose the
@@ -59,6 +65,11 @@ confirmed conflict evidence, and an observation cursor alongside existing MR and
 facts. Existing source callers retain their event kind and observation behavior.
 HTTPS preflight performs repository reads and a dry-run feature-branch push without
 putting credentials in URLs or command arguments.
+
+`createGitLabPublicationAdapter()` shares publication and repair operations between
+the GitLab and Jira processes. `gitlabExternal.mergeRequests()` observes coordinated
+repositories through the same MR observation contract, retaining each repository's
+`projectKey`, cursor, source revision, feedback settling, and repair evidence.
 
 ## API support
 

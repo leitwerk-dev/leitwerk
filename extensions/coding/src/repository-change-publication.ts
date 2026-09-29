@@ -5,7 +5,11 @@ import {
 	type FlowAutomaticRunContext,
 	flow,
 } from "@leitwerk-dev/process-sdk";
-import { commitAndPushWorkBranch, type GitIdentity } from "./finalization-git.js";
+import {
+	commitAndPushWorkBranch,
+	type GitIdentity,
+	repositoryHasChanges,
+} from "./finalization-git.js";
 import type { RepositoryChangeState } from "./repository-change-state.js";
 import { publishRebase, startRebase } from "./repository-rebase/git.js";
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
@@ -26,64 +30,83 @@ export {
 export interface PublicationRequest {
 	/** @public */
 	number: number;
+
 	/** @public */
 	html_url: string;
+
 	/** @public */
 	merged: boolean;
+
 	/** @public */
 	merge_commit_sha?: string | null;
 }
+
 /** @public */
 export interface PublicationPipeline {
 	/** @public */
 	number: number;
+
 	/** @public */
 	status: string;
+
 	/** @public */
 	[key: string]: unknown;
 }
+
 /** @public */
 export interface PublicationParams {
 	/** @public */
 	owner: string;
+
 	/** @public */
 	repo: string;
+
 	/** @public */
 	workBranch: string;
+
 	/** @public */
 	baseBranch: string;
 }
+
 /** @public */
 export type PublicationContext<P> = FlowAutomaticRunContext<P, RepositoryChangeState>;
+
 /** @public */
 export type PublicationEvidence = (
 	| {
 			/** @public */
 			kind: "feedback";
+
 			/** @public */
 			feedbackIds: PublicationFeedbackId[];
+
 			/** @public */
 			conversationCursor: number;
+
 			/** @public */
 			reviewCursor: number;
+
 			/** @public */
 			inlineCursor: number;
 	  }
 	| {
 			/** @public */
 			kind: "failure";
+
 			/** @public */
 			pipeline: PublicationPipeline;
 	  }
 	| {
 			/** @public */
 			kind: "conflict";
+
 			/** @public */
 			conflict: ConflictEvidence;
 	  }
 	| {
 			/** @public */
 			kind: "terminal";
+
 			/** @public */
 			request: PublicationRequest;
 	  }
@@ -98,97 +121,161 @@ export type PublicationEvidence = (
 ) & {
 	/** @public */
 	observationKey?: string;
+	/** Coordinated repository key. @public */ projectKey?: string;
 };
+
 /** @public */
 export interface PublicationSource<P> {
 	/** @public */
 	id: string;
+
 	/** @public */
 	kind: "feedback" | "failure" | "conflict" | "terminal" | "cancelled" | "observation";
+
 	/** @public */
 	operatorId?: string;
+
 	/** @public */
 	label: string;
+
 	/** @public */
 	source: ExternalActionSource<P, RepositoryChangeState, unknown>;
+
 	/** @public */
 	enabled?(params: P): boolean;
+
 	/** @public */
 	read(input: {
 		/** @public */
 		params: P;
+
 		/** @public */
 		state: RepositoryChangeState;
+
 		/** @public */
 		event: unknown;
 	}): PublicationEvidence;
 }
+
 /** @public */
 export interface RepositoryChangePublicationAdapter<P extends PublicationParams> {
 	/** @public */
 	namespace: string;
+	/** Reconcile a single-repository no-change outcome. @public */
+	unchanged?(ctx: PublicationContext<P>): Promise<void>;
+	/** Optional coordinated repositories; each retains independent publication state. @public */
+	repositories?(params: P): readonly {
+		/** @internal */
+		key: string;
+		/** @internal */
+		params: P;
+	}[];
+	/** Reconcile remote terminal state before new writes or source cancellation. @public */
+	observeTerminal?(
+		ctx: PublicationContext<P>,
+		current: PublicationState,
+	): Promise<PublicationRequest | null>;
+
+	/** @public */
+	sourceCancelled?(ctx: PublicationContext<P>): Promise<boolean>;
+
+	/** @public */
+	reconcileAll?(
+		ctx: PublicationContext<P>,
+		results: readonly {
+			/** @internal */
+			key: string;
+			/** @internal */
+			current: PublicationState;
+		}[],
+		cancelled: boolean,
+	): Promise<void>;
+
 	/** @public */
 	label: string;
+
 	/** @public */
 	ids: {
 		/** @public */
 		deliver: string;
+
 		/** @public */
 		feedback: string;
+
 		/** @public */
 		ciRepair: string;
+
 		/** @public */
 		operator: string;
 	};
+
 	/** @public */
 	tools: {
 		/** @public */
 		delivery: readonly string[];
+
 		/** @public */
 		feedback: readonly string[];
+
 		/** @public */
 		ci: readonly string[];
 	};
+
 	/** @public */
 	sources: readonly PublicationSource<P>[];
+
 	/** @public */
 	identity(ctx: PublicationContext<P>): Promise<GitIdentity>;
+
 	/** @public */
 	ensureRequest(ctx: PublicationContext<P>): Promise<PublicationRequest>;
+
 	/** @public */
 	reconcileTerminal(
 		ctx: PublicationContext<P>,
 		current: PublicationState,
 		request: PublicationRequest,
 	): Promise<void>;
+
 	/** @public */
 	linkIssue(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+
 	/** @public */
 	acknowledge(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+
 	/** @public */
 	reply(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+
 	/** @public */
 	afterRebase(ctx: PublicationContext<P>, current: PublicationState): Promise<void>;
+
 	/** @public */
 	head(ctx: PublicationContext<P>, current: PublicationState): Promise<string>;
+
 	/** @public */
 	prompt(kind: "feedback" | "ci", current: PublicationState): string;
+
 	/** @public */
 	commitMessage(kind: "feedback" | "ci"): string;
 }
+
 /** @public */
 export type PublicationFeedbackId = {
 	/** @public */
 	kind: "conversation" | "review" | "inline";
+
 	/** @public */
 	id: number;
+
 	/** @public */
 	discussionId?: string;
 };
+
 /** @public */
 type AdjustmentInvocation = {
 	/** @public */
 	origin: "feedback" | "ci" | "rebase";
+
 	/** @public */
 	publishRequired: boolean;
 };
@@ -197,44 +284,63 @@ type AdjustmentInvocation = {
 export interface DeliveryState {
 	/** @public */
 	stage: "not_started" | "branch_published" | "pull_request_ready" | "awaiting";
+
 	/** @public */
 	issueLinked: boolean;
+
 	/** @public */
 	adjustment: AdjustmentInvocation | null;
+
 	/** @public */
 	terminalPullRequest: PublicationRequest | null;
 }
 
 /** @public */
 export interface PublicationState {
+	/** Repository had no change at first publication. @public */ noChanges?: boolean;
+
 	/** @public */
 	lastConflictKey?: string | null;
+
 	/** @public */
 	conflict?: ConflictEvidence | null;
+
 	/** @public */
 	repairReason?: "feedback" | "ci" | "rebase";
+
 	/** @public */
 	headSha: string | null;
+
 	/** @public */
 	prNumber: number | null;
+
 	/** @public */
 	prUrl: string | null;
+
 	/** @public */
 	conversationCursor: number;
+
 	/** @public */
 	reviewCursor: number;
+
 	/** @public */
 	inlineCursor: number;
+
 	/** @public */
 	feedbackIds: PublicationFeedbackId[];
+
 	/** @public */
 	pipeline: PublicationPipeline | null;
+
 	/** @public */
 	ciRecoveryCycles: number;
+
 	/** @public */
 	delivery: DeliveryState;
+
 	/** @public */
 	observationKey?: string;
+
 	/** @public */
 	pendingEvidence?: PublicationEvidence | null;
 }
@@ -403,118 +509,218 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 ) {
 	const ids = adapter.ids;
 	const publication = flow.fragment<P, RepositoryChangeState>(`${adapter.namespace}-publication`);
-	const remote = (state: RepositoryChangeState) => readPublicationState(state, adapter.namespace);
+	const activeKey = (state: RepositoryChangeState) =>
+		publicationObject(state.extensionState?.[`${adapter.namespace}.coordination`]).activeKey as
+			| string
+			| undefined;
+	const namespace = (state: RepositoryChangeState) =>
+		adapter.repositories ? `${adapter.namespace}:${activeKey(state)}` : adapter.namespace;
+	const remote = (state: RepositoryChangeState) => readPublicationState(state, namespace(state));
+	const select = (state: RepositoryChangeState, key: string): RepositoryChangeState => ({
+		...state,
+		extensionState: {
+			...state.extensionState,
+			[`${adapter.namespace}.coordination`]: { activeKey: key },
+		},
+	});
+	const repositoryContext = (ctx: PublicationContext<P>): PublicationContext<P> => {
+		if (!adapter.repositories) return ctx;
+		const selected = adapter
+			.repositories(ctx.params)
+			.find((repo) => repo.key === activeKey(ctx.state));
+		if (!selected) throw new Error("Missing coordinated repository selection");
+		return {
+			...ctx,
+			params: selected.params,
+			repo: { ...ctx.repo, get: (key) => ctx.repo.get(key === "repo" ? selected.key : key) },
+			callIntegrationTool: (name, args) =>
+				ctx.callIntegrationTool(name, { ...args, projectKey: selected.key }),
+		};
+	};
 	const patchRemote = (
 		state: RepositoryChangeState,
 		patch: Partial<Omit<PublicationState, "delivery">> & { delivery?: Partial<DeliveryState> },
-	) => patchPublicationState(state, adapter.namespace, patch);
+	) => patchPublicationState(state, namespace(state), patch);
 	async function commitWorkBranch(ctx: PublicationContext<P>, commitMessage: string) {
 		const repo = ctx.repo.get("repo");
 		return commitAndPushWorkBranch({
 			repoPath: repo.fsPath,
+			projectKey: repo.key,
 			workBranch: repo.workBranch,
 			commitMessage,
 			gitIdentity: await adapter.identity(ctx),
 		});
 	}
+	const runRepository = async (ctx: PublicationContext<P>) => {
+		let current = remote(ctx.state);
+		const update = (patch: Parameters<typeof patchRemote>[1]) => {
+			current = { ...current, ...patch, delivery: { ...current.delivery, ...patch.delivery } };
+		};
+		const result = (
+			outcome:
+				| "awaiting"
+				| "feedback_ready"
+				| "completed"
+				| "aborted"
+				| "ci_ready"
+				| "conflict_ready"
+				| "operator_action",
+		) => ({
+			outcome,
+			params: { nextState: patchRemote(ctx.state, current) },
+		});
+		if (current.pendingEvidence) {
+			const evidence = current.pendingEvidence;
+			const needsOperator = evidence.kind === "failure" && current.ciRecoveryCycles >= 3;
+			current = applyPublicationEvidence(ctx.params, current, evidence, !needsOperator);
+			current.pendingEvidence = null;
+			if (evidence.kind === "cancelled") return result("aborted");
+			if (evidence.kind === "failure")
+				return result(needsOperator ? "operator_action" : "ci_ready");
+			if (evidence.kind === "conflict") return result("conflict_ready");
+		}
+		ctx.reportProgress(deliveryProgress(current, adapter.label));
+
+		if (current.delivery.terminalPullRequest) {
+			ctx.reportProgress(deliveryProgress(current, adapter.label, "reconcile_terminal"));
+			const pr = current.delivery.terminalPullRequest;
+			await adapter.reconcileTerminal(ctx, current, pr);
+			ctx.reportProgress(deliveryProgress(current, adapter.label));
+			return result(pr.merged ? "completed" : "aborted");
+		}
+
+		if (
+			!current.headSha &&
+			(adapter.repositories || adapter.unchanged) &&
+			!repositoryHasChanges(
+				ctx.repo.get("repo").fsPath,
+				ctx.params.baseBranch,
+				ctx.repo.get("repo").key,
+			)
+		) {
+			update({ noChanges: true });
+			await adapter.unchanged?.(ctx);
+			return result("completed");
+		}
+		if (!current.headSha) {
+			ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_branch"));
+			const published = await commitWorkBranch(
+				ctx,
+				ctx.state.finalization.commitMessages?.[ctx.repo.get("repo").key] ??
+					ctx.state.finalization.generatedCommitMessage ??
+					"",
+			);
+			update({ headSha: published.headSha, pipeline: null });
+		}
+
+		if (!current.prNumber || !current.prUrl) {
+			ctx.reportProgress(deliveryProgress(current, adapter.label, "open_pr"));
+			const pr = await adapter.ensureRequest(ctx);
+			update({ prNumber: pr.number, prUrl: pr.html_url });
+		}
+
+		if (!current.delivery.issueLinked) {
+			ctx.reportProgress(deliveryProgress(current, adapter.label, "link_issue"));
+			await adapter.linkIssue(ctx, current);
+			update({ delivery: { issueLinked: true } });
+		}
+
+		if (current.delivery.adjustment) {
+			const adjustment = current.delivery.adjustment;
+			if (adjustment.publishRequired || adjustment.origin === "rebase") {
+				ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_adjustment"));
+				const published =
+					adjustment.origin === "rebase"
+						? publishRebase(rebaseInput(ctx))
+						: await commitWorkBranch(ctx, adapter.commitMessage(adjustment.origin));
+				if (adjustment.origin === "rebase") {
+					const head = await adapter.head(ctx, current);
+					if (head !== published.headSha)
+						throw new Error("Pull request head has not caught up with rebase publication");
+				}
+				update({ headSha: published.headSha, pipeline: null });
+			}
+			if (adjustment.origin === "rebase") await adapter.afterRebase(ctx, current);
+			if (adjustment.origin === "feedback") {
+				ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
+				await adapter.reply(ctx, current);
+			}
+			update({
+				...(adjustment.origin === "feedback" ? { feedbackIds: [] } : {}),
+				delivery: { adjustment: null },
+			});
+		}
+
+		if (current.feedbackIds.length > 0) {
+			ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
+			await adapter.acknowledge(ctx, current);
+			return result("feedback_ready");
+		}
+
+		update({ delivery: { stage: "awaiting" } });
+		ctx.reportProgress(deliveryProgress(current, adapter.label, "await_evidence"));
+		return result("awaiting");
+	};
 	const delivery = flow
 		.automatic<P, RepositoryChangeState>(ids.deliver)
 		.description("Deliver")
 		.integrationTools(...adapter.tools.delivery)
 		.run(async (ctx) => {
-			let current = remote(ctx.state);
-			const update = (patch: Parameters<typeof patchRemote>[1]) => {
-				current = { ...current, ...patch, delivery: { ...current.delivery, ...patch.delivery } };
+			if (!adapter.repositories) return runRepository(ctx);
+			let state = ctx.state;
+			const repositories = adapter.repositories(ctx.params);
+			if (!repositories.length) throw new Error("No repositories are bound");
+			const results = () =>
+				repositories.map(({ key }) => ({ key, current: remote(select(state, key)) }));
+			const finished = () =>
+				results().every(({ current }) => current.noChanges || current.delivery.terminalPullRequest);
+			// Terminal facts take precedence over cancellation, including after interrupted publication.
+			const reconcileTerminals = async () => {
+				for (const { key } of repositories) {
+					state = select(state, key);
+					const current = remote(state);
+					if (current.delivery.terminalPullRequest || current.noChanges) continue;
+					const terminal = await adapter.observeTerminal?.(
+						repositoryContext({ ...ctx, state }),
+						current,
+					);
+					if (terminal)
+						state = patchRemote(state, {
+							prNumber: terminal.number,
+							prUrl: terminal.html_url,
+							delivery: { terminalPullRequest: terminal },
+						});
+				}
 			};
-			const result = (
-				outcome:
-					| "awaiting"
-					| "feedback_ready"
-					| "completed"
-					| "aborted"
-					| "ci_ready"
-					| "conflict_ready"
-					| "operator_action",
-			) => ({
-				outcome,
-				params: { nextState: patchRemote(ctx.state, current) },
-			});
-			if (current.pendingEvidence) {
-				const evidence = current.pendingEvidence;
-				const needsOperator = evidence.kind === "failure" && current.ciRecoveryCycles >= 3;
-				current = applyPublicationEvidence(ctx.params, current, evidence, !needsOperator);
-				current.pendingEvidence = null;
-				if (evidence.kind === "cancelled") return result("aborted");
-				if (evidence.kind === "failure")
-					return result(needsOperator ? "operator_action" : "ci_ready");
-				if (evidence.kind === "conflict") return result("conflict_ready");
+			await reconcileTerminals();
+			let cancelled = false;
+			for (const { key } of repositories) {
+				state = select(state, key);
+				if (remote(state).noChanges || remote(state).delivery.terminalPullRequest) continue;
+				if (await adapter.sourceCancelled?.({ ...ctx, state })) {
+					await reconcileTerminals();
+					cancelled = !finished();
+					break;
+				}
+				const result = await runRepository(repositoryContext({ ...ctx, state }));
+				state = result.params.nextState;
+				if (!["awaiting", "completed", "aborted"].includes(result.outcome))
+					return { ...result, params: { nextState: state } };
 			}
-			ctx.reportProgress(deliveryProgress(current, adapter.label));
-
-			if (current.delivery.terminalPullRequest) {
-				ctx.reportProgress(deliveryProgress(current, adapter.label, "reconcile_terminal"));
-				const pr = current.delivery.terminalPullRequest;
-				await adapter.reconcileTerminal(ctx, current, pr);
-				ctx.reportProgress(deliveryProgress(current, adapter.label));
-				return result(pr.merged ? "completed" : "aborted");
-			}
-
-			if (!current.headSha) {
-				ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_branch"));
-				const published = await commitWorkBranch(
-					ctx,
-					ctx.state.finalization.generatedCommitMessage ?? "",
+			if (cancelled || finished()) {
+				await adapter.reconcileAll?.({ ...ctx, state }, results(), cancelled);
+				const requests = results().flatMap(({ current }) =>
+					current.delivery.terminalPullRequest ? [current.delivery.terminalPullRequest] : [],
 				);
-				update({ headSha: published.headSha, pipeline: null });
+				return {
+					outcome:
+						cancelled || (requests.length > 0 && requests.every((request) => !request.merged))
+							? "aborted"
+							: "completed",
+					params: { nextState: state },
+				};
 			}
-
-			if (!current.prNumber || !current.prUrl) {
-				ctx.reportProgress(deliveryProgress(current, adapter.label, "open_pr"));
-				const pr = await adapter.ensureRequest(ctx);
-				update({ prNumber: pr.number, prUrl: pr.html_url });
-			}
-
-			if (!current.delivery.issueLinked) {
-				ctx.reportProgress(deliveryProgress(current, adapter.label, "link_issue"));
-				await adapter.linkIssue(ctx, current);
-				update({ delivery: { issueLinked: true } });
-			}
-
-			if (current.delivery.adjustment) {
-				const adjustment = current.delivery.adjustment;
-				if (adjustment.publishRequired || adjustment.origin === "rebase") {
-					ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_adjustment"));
-					const published =
-						adjustment.origin === "rebase"
-							? publishRebase(rebaseInput(ctx))
-							: await commitWorkBranch(ctx, adapter.commitMessage(adjustment.origin));
-					if (adjustment.origin === "rebase") {
-						const head = await adapter.head(ctx, current);
-						if (head !== published.headSha)
-							throw new Error("Pull request head has not caught up with rebase publication");
-					}
-					update({ headSha: published.headSha, pipeline: null });
-				}
-				if (adjustment.origin === "rebase") await adapter.afterRebase(ctx, current);
-				if (adjustment.origin === "feedback") {
-					ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
-					await adapter.reply(ctx, current);
-				}
-				update({
-					...(adjustment.origin === "feedback" ? { feedbackIds: [] } : {}),
-					delivery: { adjustment: null },
-				});
-			}
-
-			if (current.feedbackIds.length > 0) {
-				ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
-				await adapter.acknowledge(ctx, current);
-				return result("feedback_ready");
-			}
-
-			update({ delivery: { stage: "awaiting" } });
-			ctx.reportProgress(deliveryProgress(current, adapter.label, "await_evidence"));
-			return result("awaiting");
+			return { outcome: "awaiting", params: { nextState: state } };
 		});
 	const outcome = (o: AutomaticOutcomeBuilder<P, RepositoryChangeState>, description: string) =>
 		o
@@ -559,10 +765,14 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 				);
 				return external.effect((input) => {
 					const evidence = source.read(input);
-					const current = remote(input.state);
+					const state =
+						adapter.repositories && evidence.projectKey
+							? select(input.state, evidence.projectKey)
+							: input.state;
+					const current = remote(state);
 					return {
 						state: patchRemote(
-							input.state,
+							state,
 							source.kind === "observation"
 								? { pendingEvidence: evidence }
 								: applyPublicationEvidence(input.params, current, evidence, !operator),
@@ -578,10 +788,15 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 		state: RepositoryChangeState;
 		repo: { get(key: string): { fsPath: string; workBranch: string } };
 	}) {
-		const project = ctx.repo.get("repo");
+		const project = ctx.repo.get(activeKey(ctx.state) ?? "repo");
 		const conflict = remote(ctx.state).conflict;
 		if (!conflict) throw new Error("Missing conflict evidence");
-		return { projectKey: "repo", path: project.fsPath, workBranch: project.workBranch, conflict };
+		return {
+			projectKey: activeKey(ctx.state) ?? "repo",
+			path: project.fsPath,
+			workBranch: project.workBranch,
+			conflict,
+		};
 	}
 	function repairReason(state: RepositoryChangeState, kind: "feedback" | "ci") {
 		return kind === "feedback" && remote(state).repairReason === "rebase" ? "rebase" : kind;
@@ -592,7 +807,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			const current = remote(ctx.state);
 			if (repairReason(ctx.state, kind) === "rebase")
 				return `${rebasePrompt} Evidence: ${JSON.stringify(current.conflict)}. Call changes_ready or no_changes when verified complete, cannot_repair when blocked.`;
-			return adapter.prompt(kind, current);
+			return `${adapter.repositories ? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. ` : ""}${adapter.prompt(kind, current)}`;
 		};
 	}
 
@@ -669,8 +884,10 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 	return {
 		/** @public */
 		entryTurnId: ids.deliver,
+
 		/** @public */
 		fragment: publication,
+
 		/** @public */
 		happyPath: [ids.deliver],
 	};

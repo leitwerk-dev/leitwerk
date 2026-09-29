@@ -458,3 +458,7 @@ Extensions declare versioned settings and named scopes through
 `scopedSettingsCapability`; workers consume the immutable `ctx.scopedSettings`
 snapshot. See [Scoped settings](scoped-settings.md) for inheritance, discovery,
 validation, and launcher contracts.
+
+State-routed LLM outcomes evaluate their effect first, then choose a declared branch
+using the returned state. The state update and selected transition persist together;
+policy lookups belong in the effect so routing does not repeat them.

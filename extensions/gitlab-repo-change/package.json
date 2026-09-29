@@ -23,10 +23,12 @@
 		"@leitwerk-dev/coding": "0.3.1",
 		"@leitwerk-dev/external-writes": "0.3.1",
 		"@leitwerk-dev/process-sdk": "0.3.1",
-		"@leitwerk-dev/gitlab": "0.3.1"
+		"@leitwerk-dev/gitlab": "0.3.1",
+		"@leitwerk-dev/git-ssh": "0.3.1"
 	},
 	"devDependencies": {
-		"tsup": "^8.5.1"
+		"tsup": "^8.5.1",
+		"@leitwerk-dev/extension-runtime": "0.3.1"
 	},
 	"repository": {
 		"type": "git",
@@ -46,6 +48,7 @@
 		"!dist/**/*.test.*",
 		"!src/**/*.test.ts",
 		"!src/testing/**",
-		"!dist/testing/**"
+		"!dist/testing/**",
+		"process.mmd"
 	]
 }

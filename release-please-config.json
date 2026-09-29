@@ -105,7 +105,9 @@
 				"@leitwerk-dev/gitlab",
 				"@leitwerk-dev/dev-tools",
 				"@leitwerk-dev/github-repo-change",
-				"@leitwerk-dev/gitlab-repo-change"
+				"@leitwerk-dev/gitlab-repo-change",
+				"@leitwerk-dev/jira",
+				"@leitwerk-dev/jira-gitlab-change"
 			]
 		}
 	],
@@ -274,6 +276,16 @@
 		},
 		"extensions/gitlab-repo-change": {
 			"component": "@leitwerk-dev/gitlab-repo-change",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/jira": {
+			"component": "@leitwerk-dev/jira",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/jira-gitlab-change": {
+			"component": "@leitwerk-dev/jira-gitlab-change",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

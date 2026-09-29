@@ -53,7 +53,7 @@ async function loadScopes(discover = false) {
 		if (token === scopesLoadId) scopes = result;
 	} catch (caught) {
 		if (token === scopesLoadId)
-			error = caught instanceof Error ? caught.message : "Could not refresh repositories";
+			error = caught instanceof Error ? caught.message : "Could not refresh settings sources";
 	}
 }
 onMount(() => {
@@ -83,7 +83,7 @@ onMount(() => {
 	<div class="scope-controls"><div><label for="settings-scope">Apply settings to</label><select id="settings-scope" bind:value={selected} onchange={selectScope}>
 		{#if !scopes?.subjects.some((subject) => subject.id === selected)}<option value={selected}>{preview?.subject.label ?? (selected === "instance" ? "Instance" : "Loading scope…")}</option>{/if}
 		{#each scopes?.subjects ?? [] as subject (subject.id)}<option value={subject.id}>{subject.scopeType === "instance" ? "Instance" : `${subject.label}${subject.active ? "" : " (inactive)"}`}</option>{/each}
-	</select></div><button type="button" onclick={() => loadScopes(true)}>Refresh repositories</button></div>
+	</select></div><button type="button" onclick={() => loadScopes(true)}>Refresh sources</button></div>
 	{#if error}<p role="alert" class="error">{error}</p><button type="button" onclick={() => load()}>Try again</button>{/if}
 	{#if loading}<p role="status">Loading settings…</p>
 	{:else if preview}

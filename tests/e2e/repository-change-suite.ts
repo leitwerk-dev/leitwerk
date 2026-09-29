@@ -73,6 +73,16 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 					},
 				],
 			};
+		if (tools.includes("implementation_ready"))
+			return {
+				content: "",
+				toolCalls: [
+					{
+						name: "implementation_ready",
+						arguments: { markdown: "Updated the readme and ran checks" },
+					},
+				],
+			};
 		if (tools.includes("changes_ready"))
 			return {
 				content: "",
@@ -356,6 +366,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 						[`${provider}Profile`]: "team",
 						repository: provider === "github" ? "team/repo" : "1",
 						prompt: "Update readme",
+						gitSshProfile: "team",
 					},
 				});
 				const body = (await response.json()) as { process: { id: string } };
@@ -364,8 +375,10 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			}
 			await driver.wait(id, "plan_decision");
 			await driver.action(id, "approve_plan");
-			await driver.wait(id, "implementation_decision");
-			await driver.action(id, "finalize_change");
+			if (provider === "github") {
+				await driver.wait(id, "implementation_decision");
+				await driver.action(id, "finalize_change");
+			}
 			await armed(id);
 			return id;
 		},

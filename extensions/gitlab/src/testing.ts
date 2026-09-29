@@ -106,6 +106,7 @@ export class LocalGitLabAdapter {
 			id: this.state.projects.length + 1,
 			path_with_namespace: name,
 			http_url_to_repo: bare,
+			ssh_url_to_repo: bare,
 			web_url: `${this.baseUrl}/${name}`,
 			default_branch: "main",
 		};

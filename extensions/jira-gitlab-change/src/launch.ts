@@ -1,0 +1,419 @@
+import { createHash } from "node:crypto";
+import { asUnknownRecord, type SettingsSource } from "@leitwerk-dev/domain";
+import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
+import type { GitLabIntegration, GitLabPublicationParams } from "@leitwerk-dev/gitlab";
+import {
+	type JiraIntegration,
+	type JiraIssue,
+	type JiraWatcherEvent,
+	jiraEligible,
+	jiraIssueExternalId,
+	jiraSubjectIdentity,
+} from "@leitwerk-dev/jira";
+import {
+	type Codec,
+	type LaunchPreparationCheck,
+	type ProcessLaunchConfig,
+	repositorySettingsIdentity,
+	SafeLaunchPreparationError,
+	type ScopedSettingsResolver,
+	type SettingDefinition,
+} from "@leitwerk-dev/process-sdk";
+
+/** @public */
+export interface RepositoryMapping {
+	/** @internal */
+	origin: string;
+
+	/** @internal */
+	projectId: number;
+
+	/** @internal */
+	gitlabProfile: string;
+
+	/** @internal */
+	sshProfile: string;
+}
+
+/** @public */
+export interface RepositoryBinding extends GitLabPublicationParams {
+	/** @internal */
+	key: string;
+
+	/** @internal */
+	origin: "jira";
+
+	/** @internal */
+	gitlabOrigin: string;
+
+	/** @internal */
+	sshProfile: string;
+
+	/** @internal */
+	repoLocator: string;
+}
+
+/** @public */
+export interface JiraGitLabParams extends GitLabPublicationParams {
+	/** @internal */
+	origin: "jira";
+
+	/** @internal */
+	jiraProfile: string;
+
+	/** @internal */
+	jiraBaseUrl: string;
+
+	/** @internal */
+	issueId: string;
+
+	/** @internal */
+	issueKey: string;
+
+	/** @internal */
+	issueUrl: string;
+
+	/** @internal */
+	prompt: string;
+
+	/** @internal */
+	issue: JiraIssue;
+
+	/** @internal */
+	repositories: RepositoryBinding[];
+
+	/** @internal */
+	mappings: {
+		/** @internal */
+		componentId: string;
+		/** @internal */ values: string[];
+		/** @internal */ sources: SettingsSource[];
+	}[];
+}
+function parseMapping(value: unknown): RepositoryMapping {
+	if (typeof value !== "string")
+		throw new Error("Select a repository and its GitLab / SSH profiles");
+	let r: Record<string, unknown> | null;
+	try {
+		r = asUnknownRecord(JSON.parse(value));
+	} catch {
+		throw new Error("Invalid repository mapping; reselect it in Settings");
+	}
+	if (
+		!r ||
+		typeof r.origin !== "string" ||
+		new URL(r.origin).origin !== r.origin ||
+		typeof r.projectId !== "number" ||
+		!Number.isSafeInteger(r.projectId) ||
+		r.projectId <= 0 ||
+		typeof r.gitlabProfile !== "string" ||
+		!r.gitlabProfile ||
+		typeof r.sshProfile !== "string" ||
+		!r.sshProfile
+	)
+		throw new Error("Invalid repository mapping; reselect it in Settings");
+	return r as unknown as RepositoryMapping;
+}
+
+/** @public */
+export const jiraGitLabParamsCodec: Codec<JiraGitLabParams> = {
+	parse(value) {
+		const r = asUnknownRecord(value);
+		if (
+			r?.origin !== "jira" ||
+			!Array.isArray(r.repositories) ||
+			!r.repositories.length ||
+			!Array.isArray(r.mappings) ||
+			!asUnknownRecord(r.issue)
+		)
+			throw new Error("Invalid Jira GitLab launch snapshot");
+		for (const key of ["jiraProfile", "jiraBaseUrl", "issueId", "issueKey", "issueUrl", "prompt"])
+			if (typeof r[key] !== "string" || !r[key]) throw new Error(`Missing ${key}`);
+		for (const item of r.repositories) {
+			const repo = asUnknownRecord(item);
+			if (!repo || typeof repo.key !== "string" || !/^[a-zA-Z0-9_-]+$/.test(repo.key))
+				throw new Error("Invalid repository key");
+			parseMapping(
+				JSON.stringify({
+					origin: repo.gitlabOrigin,
+					projectId: repo.projectId,
+					gitlabProfile: repo.gitlabProfile,
+					sshProfile: repo.sshProfile,
+				}),
+			);
+			for (const key of ["repoLocator", "owner", "repo", "baseBranch", "workBranch"])
+				if (typeof repo[key] !== "string" || !repo[key])
+					throw new Error(`Missing repository ${key}`);
+		}
+		if (new Set(r.repositories.map((repo) => repo.key)).size !== r.repositories.length)
+			throw new Error("Duplicate repository key");
+		return r as unknown as JiraGitLabParams;
+	},
+	serialize: (value) => value,
+};
+
+/** @public */
+export function createJiraGitLabLauncher() {
+	/** @internal */
+	let services: {
+		/** @internal */
+		jira: JiraIntegration;
+
+		/** @internal */
+		gitlab: GitLabIntegration;
+
+		/** @internal */
+		ssh: GitSshIntegration;
+
+		/** @internal */
+		settings: ScopedSettingsResolver;
+	} | null = null;
+	const requireServices = () => {
+		if (!services) throw new Error("Jira GitLab integration is not configured");
+		return services;
+	};
+	const mapping: SettingDefinition<string[]> = {
+		key: "jira-gitlab-change.repositories",
+		schemaVersion: 1,
+		scopes: ["jira.component"],
+		merge: "replace",
+		defaultValue: [],
+		form: {
+			label: "GitLab repositories",
+			group: "Repository mapping",
+			control: "multiselect",
+			description:
+				"Changes for this component use these repositories and their GitLab and SSH profiles.",
+		},
+		schema: {
+			parse(value) {
+				if (!Array.isArray(value)) throw new Error("Choose repositories");
+				for (const entry of value) parseMapping(entry);
+				return [...new Set(value)] as string[];
+			},
+		},
+		async choices() {
+			const { gitlab, ssh } = requireServices();
+			const choices = [];
+			for (const gitlabProfile of gitlab.profiles()) {
+				const client = gitlab.client(gitlabProfile);
+				for (const repo of await client.listProjects()) {
+					if (repo.archived || !repo.default_branch || !repo.ssh_url_to_repo) continue;
+					for (const sshProfile of ssh.profiles())
+						choices.push({
+							value: JSON.stringify({
+								origin: client.baseUrl,
+								projectId: repo.id,
+								gitlabProfile,
+								sshProfile,
+							}),
+							label: `${repo.path_with_namespace} · ${gitlabProfile} / ${sshProfile}`,
+						});
+				}
+			}
+			return choices;
+		},
+	};
+
+	/** @internal */
+	async function resolve(event: JiraWatcherEvent): Promise<ProcessLaunchConfig<JiraGitLabParams>> {
+		const { jira, gitlab, ssh, settings } = requireServices();
+		const client = jira.client(event.profile);
+		const issue = await client.getIssue(event.issue.id);
+		if (
+			issue.id !== event.issue.id ||
+			!jiraEligible(issue) ||
+			!event.projects.includes(issue.fields.project.id)
+		)
+			throw new Error("Jira source issue is no longer eligible");
+		const project = settings.discover({
+			scopeType: "jira.project",
+			identity: jiraSubjectIdentity(client.baseUrl, issue.fields.project.id),
+			label: issue.fields.project.key,
+		});
+		const mappings: JiraGitLabParams["mappings"] = [];
+		const selected = new Map<string, RepositoryMapping>();
+		for (const component of issue.fields.components) {
+			const subject = settings.discover({
+				scopeType: "jira.component",
+				identity: jiraSubjectIdentity(client.baseUrl, component.id),
+				label: `${issue.fields.project.key} / ${component.name}`,
+				context: { "jira.project": project.id },
+			});
+			const resolved = settings.resolve(mapping, {
+				"jira.project": project.id,
+				"jira.component": subject.id,
+			});
+			mappings.push({
+				componentId: component.id,
+				values: resolved.value,
+				sources: resolved.sources,
+			});
+			for (const value of resolved.value) {
+				const entry = parseMapping(value);
+				const key = repositorySettingsIdentity(entry.origin, entry.projectId);
+				const prior = selected.get(key);
+				if (
+					prior &&
+					(prior.gitlabProfile !== entry.gitlabProfile || prior.sshProfile !== entry.sshProfile)
+				)
+					throw new Error(
+						`Conflicting profiles for project ${entry.projectId}; correct the component mappings in Settings`,
+					);
+				selected.set(key, entry);
+			}
+		}
+		if (!selected.size)
+			throw new Error(
+				`No repositories mapped for ${issue.key}. Map at least one component in Settings → Jira components.`,
+			);
+		const repositories: RepositoryBinding[] = [];
+		const projects: import("@leitwerk-dev/process-sdk").ProcessLaunchProjectConfig[] = [];
+		for (const entry of selected.values()) {
+			const provider = gitlab.client(entry.gitlabProfile);
+			if (provider.baseUrl !== entry.origin || !ssh.profiles().includes(entry.sshProfile))
+				throw new Error(
+					`Unavailable mapping for GitLab project ${entry.projectId}; update its profiles in Settings`,
+				);
+			const repo = await provider.getProject(entry.projectId);
+			if (repo.archived || !repo.default_branch || !repo.ssh_url_to_repo)
+				throw new Error(
+					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
+				);
+			const slash = repo.path_with_namespace.lastIndexOf("/");
+			if (slash < 1) throw new Error("Invalid GitLab repository path");
+			const key = `repo_${repositories.length + 1}`;
+			const binding: RepositoryBinding = {
+				key,
+				origin: "jira",
+				gitlabProfile: entry.gitlabProfile,
+				gitlabOrigin: entry.origin,
+				sshProfile: entry.sshProfile,
+				projectId: entry.projectId,
+				owner: repo.path_with_namespace.slice(0, slash),
+				repo: repo.path_with_namespace.slice(slash + 1),
+				repoLocator: repo.ssh_url_to_repo,
+				baseBranch: repo.default_branch,
+				workBranch: `leitwerk/jira-${createHash("sha256").update(client.baseUrl).digest("hex").slice(0, 10)}-${issue.id}`,
+			};
+			const identity = await provider.resolveGitIdentity();
+			repositories.push(binding);
+			projects.push({
+				key,
+				repoLocator: binding.repoLocator,
+				baseBranch: binding.baseBranch,
+				workBranch: binding.workBranch,
+				settingsRepository: {
+					origin: entry.origin,
+					repositoryId: entry.projectId,
+					aliases: [repo.http_url_to_repo, repo.ssh_url_to_repo],
+				},
+				metadata: {
+					gitlab: {
+						profile: entry.gitlabProfile,
+						projectId: entry.projectId,
+						origin: entry.origin,
+					},
+					jira: { profile: event.profile, baseUrl: client.baseUrl, issueId: issue.id },
+					"leitwerk.gitIdentity": {
+						provider: "gitlab",
+						profile: entry.gitlabProfile,
+						name: identity.name,
+						email: identity.email,
+					},
+				},
+			});
+		}
+		const first = repositories[0];
+		const params: JiraGitLabParams = {
+			...first,
+			origin: "jira",
+			jiraProfile: event.profile,
+			jiraBaseUrl: client.baseUrl,
+			issueId: issue.id,
+			issueKey: issue.key,
+			issueUrl: `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`,
+			prompt: `${issue.key}: ${issue.fields.summary}\n\n${issue.fields.description ?? ""}`,
+			issue,
+			mappings,
+			repositories,
+		};
+		return {
+			processId: "jira_gitlab_change_process",
+			title: `${issue.key}: ${issue.fields.summary}`,
+			params,
+			projects,
+			startTurnId: "generate_plan",
+			externalId: jiraIssueExternalId(client.baseUrl, issue.id),
+			externalUrl: params.issueUrl,
+			settingsContext: { "jira.project": project.id },
+		};
+	}
+	const checks = (
+		event: JiraWatcherEvent,
+		launch: ProcessLaunchConfig<JiraGitLabParams>,
+	): readonly LaunchPreparationCheck<JiraGitLabParams>[] => [
+		...launch.params.repositories.map((repo) => ({
+			id: `ssh_${repo.key}`,
+			label: `Verify ${repo.owner}/${repo.repo} SSH read/write access`,
+			async run() {
+				const { gitlab, ssh } = requireServices();
+				const fresh = await gitlab.client(repo.gitlabProfile).getProject(repo.projectId);
+				if (
+					fresh.archived ||
+					fresh.ssh_url_to_repo !== repo.repoLocator ||
+					fresh.default_branch !== repo.baseBranch
+				)
+					throw new SafeLaunchPreparationError(
+						"Repository changed",
+						"Refresh the component mapping and retry launch.",
+					);
+				const result = await ssh.preflight({
+					credentialRef: repo.sshProfile,
+					repoLocator: repo.repoLocator,
+					baseBranch: repo.baseBranch,
+					requireWrite: true,
+				});
+				if (!result.ok)
+					throw new SafeLaunchPreparationError(
+						`SSH ${result.access} access failed for ${repo.owner}/${repo.repo}`,
+						result.detail,
+					);
+			},
+		})),
+		{
+			id: "jira_eligibility",
+			label: "Recheck Jira issue and component mappings",
+			async run() {
+				const fresh = await resolve(event);
+				if (JSON.stringify(fresh.params) !== JSON.stringify(launch.params))
+					throw new SafeLaunchPreparationError(
+						"Jira issue or mappings changed before admission",
+						"Retry launch to capture the latest issue and mappings.",
+					);
+			},
+		},
+	];
+	return {
+		/** @internal */
+		mapping,
+
+		/** @internal */
+		resolve,
+
+		/** @internal */
+		checks,
+
+		/** @internal */
+		configure(value: typeof services) {
+			services = value;
+		},
+
+		/** @internal */
+		async readIssue(params: JiraGitLabParams) {
+			const client = requireServices().jira.client(params.jiraProfile);
+			if (client.baseUrl !== params.jiraBaseUrl) throw new Error("Jira installation changed");
+			return client.getIssue(params.issueId);
+		},
+	};
+}

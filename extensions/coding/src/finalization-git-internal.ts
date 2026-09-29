@@ -31,8 +31,8 @@ interface GitExecResult {
 	stderr: string;
 }
 
-function gitConfigIdentityEnv(): NodeJS.ProcessEnv {
-	const env = repositoryGitSubprocessEnv("repo", { GIT_TERMINAL_PROMPT: "0" });
+function gitConfigIdentityEnv(projectKey: string): NodeJS.ProcessEnv {
+	const env = repositoryGitSubprocessEnv(projectKey, { GIT_TERMINAL_PROMPT: "0" });
 	for (const key of [
 		"GIT_AUTHOR_NAME",
 		"GIT_AUTHOR_EMAIL",
@@ -54,126 +54,152 @@ function gitIdentityArgs(identity: GitIdentity): string[] {
 	return ["-c", `user.name=${name}`, "-c", `user.email=${email}`];
 }
 
-function runGit(repoPath: string, args: readonly string[], identity?: GitIdentity): GitExecResult {
-	const trustedArgs = identity ? [...gitIdentityArgs(identity), ...args] : args;
-	try {
-		const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(trustedArgs), {
-			cwd: repoPath,
-			encoding: "utf8",
-			env: gitConfigIdentityEnv(),
-			stdio: ["ignore", "pipe", "pipe"],
-		});
-		return { ok: true, stdout, stderr: "" };
-	} catch (error) {
-		const execError = error as {
-			stdout?: string | Buffer;
-			stderr?: string | Buffer;
-			message?: string;
-		};
-		return {
-			ok: false,
-			stdout: execError.stdout?.toString() ?? "",
-			stderr: execError.stderr?.toString() ?? trimToNull(execError.message) ?? "",
-		};
+function repositoryGit(projectKey: string) {
+	function runGit(
+		repoPath: string,
+		args: readonly string[],
+		identity?: GitIdentity,
+	): GitExecResult {
+		const trustedArgs = identity ? [...gitIdentityArgs(identity), ...args] : args;
+		try {
+			const stdout = execFileSync(resolveGitBinary(), repositoryGitArgs(trustedArgs), {
+				cwd: repoPath,
+				encoding: "utf8",
+				env: gitConfigIdentityEnv(projectKey),
+				stdio: ["ignore", "pipe", "pipe"],
+			});
+			return { ok: true, stdout, stderr: "" };
+		} catch (error) {
+			const execError = error as {
+				stdout?: string | Buffer;
+				stderr?: string | Buffer;
+				message?: string;
+			};
+			return {
+				ok: false,
+				stdout: execError.stdout?.toString() ?? "",
+				stderr: execError.stderr?.toString() ?? trimToNull(execError.message) ?? "",
+			};
+		}
 	}
-}
 
-function checkedGit(
-	repoPath: string,
-	args: readonly string[],
-	failureMessage: string,
-	identity?: GitIdentity,
-): string {
-	const result = runGit(repoPath, args, identity);
-	if (!result.ok) {
-		const detail = trimToNull(result.stderr) ?? trimToNull(result.stdout) ?? "unknown git error";
-		throw new DeterministicGitError(`${failureMessage}: ${detail}`);
+	function checkedGit(
+		repoPath: string,
+		args: readonly string[],
+		failureMessage: string,
+		identity?: GitIdentity,
+	): string {
+		const result = runGit(repoPath, args, identity);
+		if (!result.ok) {
+			const detail = trimToNull(result.stderr) ?? trimToNull(result.stdout) ?? "unknown git error";
+			throw new DeterministicGitError(`${failureMessage}: ${detail}`);
+		}
+		return result.stdout.trim();
 	}
-	return result.stdout.trim();
-}
 
-function git(repoPath: string, ...args: string[]): string {
-	return checkedGit(repoPath, args, `git ${args.join(" ")} failed in '${repoPath}'`);
-}
-
-function gitOrNull(repoPath: string, ...args: string[]): string | null {
-	const result = runGit(repoPath, args);
-	return result.ok ? trimToNull(result.stdout) : null;
-}
-
-function workingTreeStatus(repoPath: string): string[] {
-	return (gitOrNull(repoPath, "status", "--porcelain") ?? "")
-		.split(/\r?\n/)
-		.map((line) => line.replace(/\s+$/, ""))
-		.filter(Boolean)
-		.map((line) => line.slice(2).trim())
-		.filter(Boolean);
-}
-
-function conflictedFiles(repoPath: string): string[] {
-	return (gitOrNull(repoPath, "diff", "--name-only", "--diff-filter=U") ?? "")
-		.split(/\r?\n/)
-		.map((line) => line.trim())
-		.filter(Boolean);
-}
-
-function mergeInProgress(repoPath: string): boolean {
-	const gitDir = git(repoPath, "rev-parse", "--git-dir");
-	return existsSync(path.resolve(repoPath, gitDir, "MERGE_HEAD"));
-}
-
-function assertGitIdentity(repoPath: string, identity: GitIdentity): void {
-	if (
-		!runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"], identity).ok ||
-		!runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"], identity).ok
-	) {
-		throw new DeterministicGitError("Git author/committer identity is not configured");
+	function git(repoPath: string, ...args: string[]): string {
+		return checkedGit(repoPath, args, `git ${args.join(" ")} failed in '${repoPath}'`);
 	}
-}
 
-function commitIfDirty(input: {
-	/** @public */
-	repoPath: string;
-	/** @public */
-	commitMessage: string;
-	/** @public */
-	gitIdentity: GitIdentity;
-}): string {
-	if (workingTreeStatus(input.repoPath).length === 0)
-		return git(input.repoPath, "rev-parse", "HEAD");
-	assertGitIdentity(input.repoPath, input.gitIdentity);
-	checkedGit(input.repoPath, ["add", "--all"], "Failed to stage the completed change");
-	checkedGit(
-		input.repoPath,
-		["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", input.commitMessage],
-		"Failed to commit the completed change",
-		input.gitIdentity,
-	);
-	const remaining = workingTreeStatus(input.repoPath);
-	if (remaining.length > 0) {
-		throw new DeterministicGitError(`Commit left uncommitted changes: ${remaining.join(", ")}`);
+	function gitOrNull(repoPath: string, ...args: string[]): string | null {
+		const result = runGit(repoPath, args);
+		return result.ok ? trimToNull(result.stdout) : null;
 	}
-	return git(input.repoPath, "rev-parse", "HEAD");
-}
 
-function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string): string {
-	const ref = `refs/heads/${branch}`;
-	const pushTarget = `origin/${branch}`;
-	checkedGit(repoPath, ["push", "origin", `HEAD:${ref}`], `Failed to push HEAD to '${pushTarget}'`);
-	const remoteHead = gitOrNull(repoPath, "ls-remote", "--heads", "origin", ref)
-		?.split(/\s+/)[0]
-		?.trim();
-	if (remoteHead !== expectedHeadSha) {
-		throw new DeterministicGitError(
-			`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${expectedHeadSha}'`,
+	function workingTreeStatus(repoPath: string): string[] {
+		return (gitOrNull(repoPath, "status", "--porcelain") ?? "")
+			.split(/\r?\n/)
+			.map((line) => line.replace(/\s+$/, ""))
+			.filter(Boolean)
+			.map((line) => line.slice(2).trim())
+			.filter(Boolean);
+	}
+
+	function conflictedFiles(repoPath: string): string[] {
+		return (gitOrNull(repoPath, "diff", "--name-only", "--diff-filter=U") ?? "")
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter(Boolean);
+	}
+
+	function mergeInProgress(repoPath: string): boolean {
+		const gitDir = git(repoPath, "rev-parse", "--git-dir");
+		return existsSync(path.resolve(repoPath, gitDir, "MERGE_HEAD"));
+	}
+
+	function assertGitIdentity(repoPath: string, identity: GitIdentity): void {
+		if (
+			!runGit(repoPath, ["var", "GIT_AUTHOR_IDENT"], identity).ok ||
+			!runGit(repoPath, ["var", "GIT_COMMITTER_IDENT"], identity).ok
+		) {
+			throw new DeterministicGitError("Git author/committer identity is not configured");
+		}
+	}
+
+	function commitIfDirty(input: {
+		/** @public */
+		repoPath: string;
+		/** @public */
+		commitMessage: string;
+		/** @public */
+		gitIdentity: GitIdentity;
+	}): string {
+		if (workingTreeStatus(input.repoPath).length === 0)
+			return git(input.repoPath, "rev-parse", "HEAD");
+		assertGitIdentity(input.repoPath, input.gitIdentity);
+		checkedGit(input.repoPath, ["add", "--all"], "Failed to stage the completed change");
+		checkedGit(
+			input.repoPath,
+			["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", input.commitMessage],
+			"Failed to commit the completed change",
+			input.gitIdentity,
 		);
+		const remaining = workingTreeStatus(input.repoPath);
+		if (remaining.length > 0) {
+			throw new DeterministicGitError(`Commit left uncommitted changes: ${remaining.join(", ")}`);
+		}
+		return git(input.repoPath, "rev-parse", "HEAD");
 	}
-	return pushTarget;
+
+	function pushAndVerify(repoPath: string, branch: string, expectedHeadSha: string): string {
+		const ref = `refs/heads/${branch}`;
+		const pushTarget = `origin/${branch}`;
+		checkedGit(
+			repoPath,
+			["push", "origin", `HEAD:${ref}`],
+			`Failed to push HEAD to '${pushTarget}'`,
+		);
+		const remoteHead = gitOrNull(repoPath, "ls-remote", "--heads", "origin", ref)
+			?.split(/\s+/)[0]
+			?.trim();
+		if (remoteHead !== expectedHeadSha) {
+			throw new DeterministicGitError(
+				`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${expectedHeadSha}'`,
+			);
+		}
+		return pushTarget;
+	}
+
+	return { runGit, git, conflictedFiles, mergeInProgress, commitIfDirty, pushAndVerify };
+}
+
+/** Inspect staged, unstaged, untracked, and already committed unpublished changes. @public */
+export function repositoryHasChanges(
+	repoPath: string,
+	baseBranch: string,
+	projectKey = "repo",
+): boolean {
+	const { git } = repositoryGit(projectKey);
+	return Boolean(
+		git(repoPath, "status", "--porcelain") ||
+			git(repoPath, "diff", "--name-only", `origin/${baseBranch}...HEAD`),
+	);
 }
 
 /** Commit the current workspace change and non-force push only the feature branch. */
 /** @public */
 export function commitAndPushWorkBranch(input: {
+	/** @public */ projectKey?: string;
 	/** @public */
 	repoPath: string;
 	/** @public */
@@ -183,6 +209,8 @@ export function commitAndPushWorkBranch(input: {
 	/** @public */
 	gitIdentity: GitIdentity;
 }) {
+	const { runGit, git, conflictedFiles, mergeInProgress, commitIfDirty, pushAndVerify } =
+		repositoryGit(input.projectKey ?? "repo");
 	const repoPath = path.resolve(input.repoPath);
 	if (!existsSync(repoPath) || !runGit(repoPath, ["rev-parse", "--git-dir"]).ok) {
 		throw new DeterministicGitError(

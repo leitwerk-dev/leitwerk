@@ -3,6 +3,7 @@ import {
 	acceptedReviewHandoffAction,
 	type Codec,
 	createEmptyStructuralProcessState,
+	type ExternalActionSource,
 	type FlowFragmentBuilder,
 	type FormDefinition,
 	flow,
@@ -28,44 +29,89 @@ import {
 import { codingPurposes } from "./settings.js";
 import {
 	buildGenerateCommitMessagePrompt,
+	buildRepositoryCommitMessagesPrompt,
 	normalizeGeneratedCommitMessage,
+	parseRepositoryCommitMessages,
 } from "./turns/generate-commit-message.js";
 import { buildGeneratePlanPrompt } from "./turns/generate-plan.js";
 import { buildImplementPrompt } from "./turns/implement.js";
 import { buildReviewImplementationPrompt } from "./turns/review-implementation.js";
 import { buildReviewPlanPrompt } from "./turns/review-plan.js";
-import { buildSimplifyImplementationPrompt } from "./turns/simplify-implementation.js";
+import {
+	buildSimplifyImplementationPrompt,
+	buildStreamlinedSimplificationPrompt,
+} from "./turns/simplify-implementation.js";
 
 /** @public */
 export type RepositoryChangeParams = object;
+
+/** Server-side policies evaluated at the route boundary. @public */
+export interface RepositoryChangeWorkflow<TParams> {
+	/** @public */
+	variant: "streamlined";
+
+	/** @public */
+	multiRepository?: boolean;
+
+	/** @public */
+	planDecision?(params: TParams): Promise<{
+		/** @internal */
+		skip: boolean;
+		/** @internal */
+		reason: string;
+	}>;
+
+	/** @public */
+	simplification?(params: TParams): Promise<{
+		/** @internal */
+		skip: boolean;
+		/** @internal */
+		reason: string;
+	}>;
+	/** Must recheck the current revision and source before firing. @public */
+	planBypassSource?: ExternalActionSource<TParams, RepositoryChangeState, unknown>;
+}
 
 /** @public */
 export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeParams> {
 	/** @public */
 	processId: string;
+
 	/** @public */
 	displayName: string;
+
+	/** @public */
+	workflow?: RepositoryChangeWorkflow<TParams>;
+
 	/** @public */
 	paramsCodec: Codec<TParams>;
+
 	/** @public */
 	launcher?: ProcessLauncherDefinition<TParams>;
+
 	/** @public */
 	finalizeLabel: string;
+
 	/** @public */
 	finalizeForm: FormDefinition;
+
 	/** @public */
 	repositoryCredentials?(input: {
 		/** @public */
 		params: TParams;
+
 		/** @internal */
 		projects: readonly RepositoryCredentialProject[];
 	}): readonly RepositoryCredentialRequirement[];
+
 	/** @public */
 	publication: {
 		/** @public */
 		entryTurnId: string;
+
 		/** @public */
 		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
+
 		/** @public */
 		happyPath?: readonly string[];
 	};
@@ -75,6 +121,7 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 export function createRepositoryChangeProcess<TParams extends RepositoryChangeParams>(
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
+	const streamlined = config.workflow?.variant === "streamlined";
 	const turnIds = {
 		generatePlan: "generate_plan",
 		planDecision: "plan_decision",
@@ -86,6 +133,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		implementationReviewFeedback: "implementation_review_feedback",
 		simplifyImplementation: "simplify_implementation",
 		simplificationDecision: "simplification_decision",
+		applySimplification: "apply_simplification",
 		generateCommitMessage: "generate_commit_message",
 	} as const;
 
@@ -203,7 +251,9 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				required: true,
 			},
 		],
-		commentary: "Approve this plan, request a revision, or run an automated review.",
+		commentary: streamlined
+			? "Approve this plan or request a revision with comments."
+			: "Approve this plan, request a revision, or run an automated review.",
 		actions: {
 			[codingActionIds.approvePlan]: {
 				label: "Approve plan",
@@ -257,6 +307,43 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			},
 		},
 	});
+
+	if (streamlined) {
+		delete planDecisionSpec.actions[codingActionIds.runReview];
+		if (config.workflow?.planBypassSource)
+			planDecisionSpec.externalActions = {
+				bypass_plan: {
+					id: "bypass_plan",
+					label: "Skip plan approval",
+					source: config.workflow.planBypassSource,
+					to: turnIds.implement,
+					effect: ({ state, process, event }) => {
+						if ((event as { planRevision?: number }).planRevision !== process.planRevision)
+							throw new Error("Stale plan bypass event");
+						return {
+							state: {
+								...state,
+								routing: {
+									...state.routing,
+									plan: { planRevision: process.planRevision, skip: true, reason: "Jira label" },
+								},
+							},
+							emit: [
+								{
+									type: "plan_approved" as const,
+									data: {
+										planRevision: process.planRevision,
+										actor: "system",
+										bypassed: true,
+										reason: "Jira label",
+									},
+								},
+							],
+						};
+					},
+				},
+			};
+	}
 
 	const planReviewFeedbackSpec = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review Plan Feedback",
@@ -474,7 +561,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.askQuestions()
 		.freshPrimary()
 		.buildPrompt(buildGeneratePlanPrompt)
-		.outcomeTool("plan_saved", (tool) =>
+		.outcomeTool("plan_saved", (tool) => {
 			tool
 				.description(
 					"Save the finished plan for review. Its Markdown may include Mermaid diagrams or uploaded images.",
@@ -483,45 +570,74 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				.requiredStringArray(
 					"acceptanceCriteria",
 					"Acceptance criteria for the requested repository change",
-				)
-				.to(turnIds.planDecision)
-				.effect(({ ctx, event }) => {
-					const planRevision = ctx.process.planRevision + 1;
-					const summary = normalizeMessage(event.params.summary);
-					const acceptanceCriteria = Array.isArray(event.params.acceptanceCriteria)
-						? event.params.acceptanceCriteria.filter(
-								(entry): entry is string => typeof entry === "string" && entry.trim() !== "",
-							)
-						: [];
-					const planMarkdown = ctx.output?.content ?? "";
-					return {
-						state: clearReviewState(ctx.state),
-						processPatch: { planRevision },
-						broadcasts: [
-							{
-								type: "plan.updated",
-								payload: {
-									planRevision,
-									reviewState: "awaiting_approval",
-									approved: false,
-									summary,
-								},
+				);
+			if (streamlined)
+				tool.routeByState(
+					{ approval: turnIds.planDecision, bypass: turnIds.implement },
+					({ ctx }) => (ctx.state.routing?.plan?.skip ? "bypass" : "approval"),
+				);
+			else tool.to(turnIds.planDecision);
+			return tool.effect(async ({ ctx, event }) => {
+				const planRevision = ctx.process.planRevision + 1;
+				const policy =
+					streamlined && config.workflow?.planDecision
+						? await config.workflow
+								.planDecision(ctx.params)
+								.catch(() => ({ skip: false, reason: "Source unavailable; approval required" }))
+						: { skip: false, reason: "Human approval required" };
+				const summary = normalizeMessage(event.params.summary);
+				const acceptanceCriteria = Array.isArray(event.params.acceptanceCriteria)
+					? event.params.acceptanceCriteria.filter(
+							(entry): entry is string => typeof entry === "string" && entry.trim() !== "",
+						)
+					: [];
+				const planMarkdown = ctx.output?.content ?? "";
+				return {
+					state: {
+						...clearReviewState(ctx.state),
+						...(streamlined
+							? { routing: { ...ctx.state.routing, plan: { ...policy, planRevision } } }
+							: {}),
+					},
+					processPatch: { planRevision },
+					broadcasts: [
+						{
+							type: "plan.updated",
+							payload: {
+								planRevision,
+								reviewState: policy.skip ? "accepted" : "awaiting_approval",
+								approved: policy.skip,
+								summary,
 							},
-						],
-						emit: [
-							{
-								type: "plan_saved",
-								data: {
-									planRevision,
-									summary,
-									planMarkdown,
-									acceptanceCriteria,
-								},
+						},
+					],
+					emit: [
+						...(policy.skip
+							? [
+									{
+										type: "plan_approved" as const,
+										data: {
+											planRevision,
+											actor: "system",
+											bypassed: true,
+											reason: policy.reason,
+										},
+									},
+								]
+							: []),
+						{
+							type: "plan_saved",
+							data: {
+								planRevision,
+								summary,
+								planMarkdown,
+								acceptanceCriteria,
 							},
-						],
-					};
-				}),
-		)
+						},
+					],
+				};
+			});
+		})
 		.publish(products.plan);
 
 	const reviewPlanTurn = flow
@@ -561,10 +677,34 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			fallback: { kind: "session_root" },
 		})
 		.consume(products.plan)
-		.buildPrompt(buildImplementPrompt)
-		.publish(products.implementationSummary)
-		.to(turnIds.implementationDecision)
-		.state(({ ctx }) => clearReviewState(ctx.state));
+		.buildPrompt(buildImplementPrompt);
+	if (streamlined)
+		implementTurn.outcomeTool("implementation_ready", (tool) =>
+			tool
+				.description("Implementation and checks are complete; continue to delivery")
+				.routeByState(
+					{ simplify: turnIds.simplifyImplementation, skip: turnIds.generateCommitMessage },
+					({ ctx }) => (ctx.state.routing?.simplification?.skip ? "skip" : "simplify"),
+				)
+				.effect(async ({ ctx }) => ({
+					state: {
+						...ctx.state,
+						routing: {
+							...ctx.state.routing,
+							simplification: ctx.state.routing?.simplification ??
+								(await config.workflow?.simplification?.(ctx.params)) ?? {
+									skip: false,
+									reason: "Simplification enabled by default",
+								},
+						},
+					},
+				})),
+		);
+	const implementationResult = implementTurn.publish(products.implementationSummary);
+	if (!streamlined)
+		implementationResult
+			.to(turnIds.implementationDecision)
+			.state(({ ctx }) => clearReviewState(ctx.state));
 
 	const reviewImplementationTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.reviewImplementation)
@@ -597,9 +737,35 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.tools("read", "bash")
 		.rootBranchReview()
 		.startFromProductBranch(products.simplificationPlan)
-		.buildPrompt(buildSimplifyImplementationPrompt)
+		.buildPrompt((ctx) =>
+			streamlined
+				? buildStreamlinedSimplificationPrompt(ctx)
+				: buildSimplifyImplementationPrompt(ctx),
+		)
 		.publish(products.simplificationPlan)
-		.to(turnIds.simplificationDecision);
+		.to(streamlined ? turnIds.applySimplification : turnIds.simplificationDecision);
+
+	const applySimplificationTurn = flow
+		.llm<TParams, RepositoryChangeState>(turnIds.applySimplification)
+		.description("Apply simplification")
+		.executionPurpose(codingPurposes.implementation)
+		.tools(...implementationTurnAvailableTools)
+		.freshSeededPrimary()
+		.consume(products.plan)
+		.consume(products.simplificationPlan)
+		.buildPrompt(
+			(
+				ctx,
+			) => `Apply justified simplifications to each repository, preserving the accepted plan and behavior. Rerun the required checks. Empty findings require no edits. Leave changes uncommitted for delivery.
+
+Accepted plan:
+${ctx.input.plan}
+
+Findings by repository:
+${ctx.input["simplification-plan"]}`,
+		)
+		.publish(products.implementationSummary)
+		.to(turnIds.generateCommitMessage);
 
 	const generateCommitMessageTurn = flow
 		.llm<TParams, RepositoryChangeState>(turnIds.generateCommitMessage)
@@ -608,14 +774,25 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.rootBranchReview()
 		.startFromRoot()
 		.consume(products.plan)
-		.buildPrompt(buildGenerateCommitMessagePrompt)
+		.buildPrompt((ctx) =>
+			config.workflow?.multiRepository
+				? buildRepositoryCommitMessagesPrompt(ctx)
+				: buildGenerateCommitMessagePrompt(ctx),
+		)
 		.publish(products.commitMessage)
 		.to(config.publication.entryTurnId)
 		.state(({ ctx }) =>
 			patchRepositoryChangeState(ctx.state, {
 				finalization: {
 					...ctx.state.finalization,
-					generatedCommitMessage: normalizeGeneratedCommitMessage(ctx.output?.content),
+					...(config.workflow?.multiRepository
+						? {
+								commitMessages: parseRepositoryCommitMessages(
+									ctx.output?.content,
+									ctx.projects.map((p) => p.key),
+								),
+							}
+						: { generatedCommitMessage: normalizeGeneratedCommitMessage(ctx.output?.content) }),
 				},
 			}),
 		);
@@ -623,21 +800,26 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const planFlow = flow
 		.fragment<TParams, RepositoryChangeState>("plan")
 		.turn(generatePlanTurn)
-		.turn({ id: turnIds.planDecision, definition: planDecisionSpec })
-		.turn(reviewPlanTurn)
-		.turn({ id: turnIds.planReviewFeedback, definition: planReviewFeedbackSpec });
+		.turn({ id: turnIds.planDecision, definition: planDecisionSpec });
+	if (!streamlined)
+		planFlow
+			.turn(reviewPlanTurn)
+			.turn({ id: turnIds.planReviewFeedback, definition: planReviewFeedbackSpec });
 
 	const implementationFlow = flow
 		.fragment<TParams, RepositoryChangeState>("implementation")
-		.turn(implementTurn)
-		.turn({ id: turnIds.implementationDecision, definition: implementationDecisionSpec })
-		.turn(reviewImplementationTurn)
-		.turn({
-			id: turnIds.implementationReviewFeedback,
-			definition: implementationReviewFeedbackSpec,
-		})
-		.turn(simplifyImplementationTurn)
-		.turn({ id: turnIds.simplificationDecision, definition: simplificationDecisionSpec });
+		.turn(implementationResult)
+		.turn(simplifyImplementationTurn);
+	if (streamlined) implementationFlow.turn(applySimplificationTurn);
+	else
+		implementationFlow
+			.turn({ id: turnIds.implementationDecision, definition: implementationDecisionSpec })
+			.turn(reviewImplementationTurn)
+			.turn({
+				id: turnIds.implementationReviewFeedback,
+				definition: implementationReviewFeedbackSpec,
+			})
+			.turn({ id: turnIds.simplificationDecision, definition: simplificationDecisionSpec });
 
 	const finalizationFlow = flow
 		.fragment<TParams, RepositoryChangeState>("finalization")
@@ -650,10 +832,11 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.happyPath(
 			turnIds.generatePlan,
 			turnIds.implement,
+			...(streamlined ? [turnIds.simplifyImplementation, turnIds.applySimplification] : []),
 			turnIds.generateCommitMessage,
 			...(config.publication.happyPath ?? [config.publication.entryTurnId]),
 		)
-		.piConfig({ sessionCwdTemplate: "{{{projectKey}}}" })
+		.piConfig(config.workflow?.multiRepository ? {} : { sessionCwdTemplate: "{{{projectKey}}}" })
 		.codecs({
 			params: config.paramsCodec,
 			state: repositoryChangeStateCodec,
@@ -670,25 +853,35 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
 	if (config.launcher) builder.launcher(config.launcher);
 	const process = builder.define();
+	if (!streamlined) {
+		const commit = process.turns.get(turnIds.generateCommitMessage)?.definition;
+		if (commit?.kind === "llm") commit.modelPurpose = "process_title_generation";
+	}
 	const decision = (id: string) =>
 		({
 			/** @public */
 			id,
 			...(process.turns.get(id)?.definition as HumanTurnDefinition),
 		}) as HumanTurnDefinition & {
-			/** @public */ id: string;
+			/** @public */
+			id: string;
 		};
 	return {
 		/** @public */
 		process,
+
 		/** @internal */
 		planDecision: decision(turnIds.planDecision),
+
 		/** @internal */
 		planReviewFeedback: decision(turnIds.planReviewFeedback),
+
 		/** @internal */
 		implementationDecision: decision(turnIds.implementationDecision),
+
 		/** @internal */
 		implementationReviewFeedback: decision(turnIds.implementationReviewFeedback),
+
 		/** @internal */
 		simplificationDecision: decision(turnIds.simplificationDecision),
 	};
