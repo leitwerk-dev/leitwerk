@@ -104,8 +104,9 @@ The hosted [Renovate GitHub App](https://github.com/apps/renovate) reads
 `renovate.json` from `main` in `leitwerk-dev/leitwerk`. Install the app for the
 `leitwerk-dev` organization with access to this repository. The app manages its
 credentials and runs on its hosted schedule; no Actions workflow or repository
-token secret is needed. Its dependency PRs trigger validation, including updates
-to GitHub Actions. Lockfile maintenance runs before 05:00 on Mondays in
+token secret is needed. Eligible dependency PRs open immediately so they can
+trigger validation, including updates to GitHub Actions. Validation runs on PRs,
+so PR creation must not wait for branch checks. Lockfile maintenance runs before 05:00 on Mondays in
 `Europe/Berlin`.
 
 For auto-merge, enable **Allow auto-merge** in repository settings and require
@@ -115,4 +116,5 @@ Without auto-merge, maintainers merge dependency PRs after the checks pass.
 
 The app creates a **Dependency Dashboard** issue after processing the repository.
 Use its checkboxes to request another run or approve a major update. Inspect run
-results in the [Mend developer portal](https://developer.mend.io/).
+results in the [Mend developer portal](https://developer.mend.io/). For an
+immediate run, open the repository there and select **Actions → Run Renovate scan**.
