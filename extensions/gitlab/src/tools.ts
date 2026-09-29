@@ -298,7 +298,17 @@ export async function ensureGitLabResolveDiscussion(input: {
 }): Promise<{ discussionId: string; resolved: boolean }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, discussionId, signal } = input;
 	const digest = createHash("sha256")
-		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "resolve", writeKey, discussionId]))
+		.update(
+			JSON.stringify([
+				client.baseUrl,
+				projectId,
+				iid,
+				instanceId,
+				"resolve",
+				writeKey,
+				discussionId,
+			]),
+		)
 		.digest("hex");
 	await writes.ensure(
 		{ writeType: "gitlab.discussion.resolve", dedupKey: digest },
