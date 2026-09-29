@@ -1393,41 +1393,39 @@ export class ProcessUiSnapshotAssembler {
 		instanceId: string;
 		turnRecordId: string;
 	}): Promise<TurnReasoningDetailResponseBody | null> {
-		const process = this.deps.processes.getById(input.instanceId);
-		if (!process) {
-			return null;
-		}
+		return (await this.readReasoningEvidence(input))?.detail ?? null;
+	}
+
+	/** Capture durable facts before loading the session, once for all detail projections. @internal */
+	async readReasoningEvidence(input: {
+		instanceId: string;
+		turnRecordId: string;
+		includeSession?: boolean;
+	}) {
+		if (!this.deps.processes.getById(input.instanceId)) return null;
 		const turnRecord = this.deps.turnRecords.getById(input.turnRecordId);
-		if (!turnRecord || turnRecord.instanceId !== input.instanceId) {
-			return null;
-		}
+		if (!turnRecord || turnRecord.instanceId !== input.instanceId) return null;
 		const throughEventSequence = this.deps.events.latestSequence(input.instanceId);
 		const events = this.deps.events.listByTurnRecord(input.instanceId, input.turnRecordId);
-		if (turnRecord.status === "running") {
-			const trace = snapshotTurnTrace(buildLiveTurnProjectionFromEvents(events));
-			return {
-				instanceId: input.instanceId,
-				turnRecordId: input.turnRecordId,
-				state: "live",
-				throughEventSequence,
-				sessionSignature: this.deps.turnSummaries.getSession(input.instanceId)?.signature ?? null,
-				reasoning: trace,
-			};
-		}
-		const session = await this.deps.sessionReader.readSessionTree(input.instanceId);
-		const trace = buildCommittedTurnTrace({
-			tree: session.piTree,
-			turnRecord,
-			events,
-		});
-		trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
-		return {
+		const live = turnRecord.status === "running";
+		const liveSignature = this.deps.turnSummaries.getSession(input.instanceId)?.signature ?? null;
+		const session =
+			!live || input.includeSession
+				? await this.deps.sessionReader.readSessionTree(input.instanceId)
+				: null;
+		const trace =
+			!live && session
+				? buildCommittedTurnTrace({ tree: session.piTree, turnRecord, events })
+				: snapshotTurnTrace(buildLiveTurnProjectionFromEvents(events));
+		if (!live) trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
+		const detail: TurnReasoningDetailResponseBody = {
 			instanceId: input.instanceId,
 			turnRecordId: input.turnRecordId,
-			sessionSignature: session.signature,
-			state: "committed",
+			sessionSignature: live ? liveSignature : (session?.signature ?? null),
+			state: live ? "live" : "committed",
 			throughEventSequence,
 			reasoning: trace,
 		};
+		return { detail, turnRecord, events, session };
 	}
 }

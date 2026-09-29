@@ -1,21 +1,16 @@
 import { createIpcMessage } from "@leitwerk-dev/worker-protocol";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createProcessEngine } from "../process-engine/engine.js";
 import type { ProcessEngineDeps } from "../process-engine/types.js";
 import { createProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import { createFakeWorkerSupervisor } from "../test-helpers/fake-worker-supervisor.js";
+import { createOwnedTestDeps } from "../test-helpers/owned-test-deps.js";
 import {
 	createFixtureAutomaticTurn,
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
-import { createTestDeps } from "../test-helpers/unit-deps.js";
 import { createIpcHandler, type IpcHandlerDeps } from "./ipc-handler.js";
-
-const databases: Array<ReturnType<typeof createTestDeps>["db"]> = [];
-afterEach(() => {
-	for (const db of databases.splice(0)) db.$client.close();
-});
 
 function setup(
 	options: {
@@ -23,8 +18,7 @@ function setup(
 		getLaunchCoordinator?: IpcHandlerDeps["getLaunchCoordinator"];
 	} = {},
 ) {
-	const deps = createTestDeps();
-	databases.push(deps.db);
+	const deps = createOwnedTestDeps();
 	const definition = createFixtureProcess({
 		id: "acknowledgement_fixture",
 		entry: "work",

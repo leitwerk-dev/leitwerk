@@ -1,5 +1,5 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { type FormDefinition, isLlmTurnDefinition } from "@leitwerk-dev/process-sdk";
+import { isLlmTurnDefinition, type TurnDefinition } from "@leitwerk-dev/process-sdk";
 import type {
 	ProcessActionPreviewSummary,
 	ProcessActionSummary,
@@ -10,52 +10,41 @@ import {
 	type ProcessOperatorAttentionDeps,
 } from "./process-operator-attention.js";
 
-function actionHasPurePlan(
-	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
-	process: ProcessInstance,
-	actionId: string,
-): boolean {
-	const action = deps.processActionRegistry?.getAction(process.processId, actionId);
-	return typeof action?.plan === "function";
-}
-
 /** @internal */
 export function buildActionSummaryForProcess(
 	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
 	process: ProcessInstance,
-	action: {
-		id: string;
-		label: string;
-		form?: FormDefinition;
-	},
-	visibleAction?: VisibleProcessActionSummary,
-	labelOverride?: string | null,
-	overrides: { supportsScheduling?: boolean } = {},
+	action: Pick<VisibleProcessActionSummary, "id" | "label" | "form"> &
+		Partial<Pick<VisibleProcessActionSummary, "description" | "preview">> & {
+			supportsScheduling?: boolean;
+		},
 ): ProcessActionSummary {
 	const actionId = action.id;
 	const preview =
-		visibleAction?.preview ??
+		action.preview ??
 		deps.processActionRegistry?.resolveActionPreview(process.processId, process, actionId) ??
 		null;
+	const hasPurePlan =
+		typeof deps.processActionRegistry?.getAction(process.processId, actionId)?.plan === "function";
+	const turnDef = preview?.candidateSelectedTurnId
+		? deps.processActionRegistry?.getTurnDefinition(
+				process.processId,
+				preview.candidateSelectedTurnId,
+			)
+		: undefined;
 	const supportsScheduling =
-		overrides.supportsScheduling ??
+		action.supportsScheduling ??
 		Boolean(
-			actionHasPurePlan(deps, process, actionId) &&
+			hasPurePlan &&
 				deps.processActionRegistry?.resolveActionScheduling(process.processId, process, actionId),
 		);
-	const label = labelOverride ?? visibleAction?.label ?? action.label;
 	return {
 		id: action.id,
-		label: label.trim() ? label : action.label,
-		description: visibleAction?.description ?? null,
-		preview: buildProcessActionPreviewSummary(deps, preview, process),
+		label: action.label,
+		description: action.description ?? null,
+		preview: buildProcessActionPreviewSummary(preview, turnDef),
 		supportsScheduling,
-		supportsNextTurnModelOverride: previewSupportsNextTurnModelOverride(
-			deps,
-			process,
-			actionId,
-			preview,
-		),
+		supportsNextTurnModelOverride: Boolean(hasPurePlan && turnDef && isLlmTurnDefinition(turnDef)),
 		...(action.form
 			? {
 					form: {
@@ -75,17 +64,16 @@ export function listVisibleActionsForProcess(
 	process: ProcessInstance,
 ) {
 	return listVisibleAttentionActionsForProcess(deps, process).map((action) =>
-		buildActionSummaryForProcess(deps, process, action, action, action.label),
+		buildActionSummaryForProcess(deps, process, action),
 	);
 }
 
 function buildProcessActionPreviewSummary(
-	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
 	preview: {
 		candidateSelectedTurnId: string | null;
 		lifecycleStatus?: string | null;
 	} | null,
-	process: ProcessInstance,
+	turnDef: TurnDefinition | undefined,
 ): ProcessActionPreviewSummary | null {
 	if (!preview) {
 		return null;
@@ -98,10 +86,6 @@ function buildProcessActionPreviewSummary(
 			description: preview.lifecycleStatus === "aborted" ? "Abort process" : "Complete process",
 		};
 	}
-	const turnDef = deps.processActionRegistry?.getTurnDefinition(
-		process.processId,
-		preview.candidateSelectedTurnId,
-	);
 	if (!turnDef) {
 		return null;
 	}
@@ -111,23 +95,4 @@ function buildProcessActionPreviewSummary(
 		turnKind: turnDef.kind,
 		description: turnDef.description,
 	};
-}
-
-function previewSupportsNextTurnModelOverride(
-	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
-	process: ProcessInstance,
-	actionId: string,
-	preview: { candidateSelectedTurnId: string | null } | null,
-): boolean {
-	if (!preview?.candidateSelectedTurnId) {
-		return false;
-	}
-	if (!actionHasPurePlan(deps, process, actionId)) {
-		return false;
-	}
-	const turnDef = deps.processActionRegistry?.getTurnDefinition(
-		process.processId,
-		preview.candidateSelectedTurnId,
-	);
-	return Boolean(turnDef && isLlmTurnDefinition(turnDef));
 }

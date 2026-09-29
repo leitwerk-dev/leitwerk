@@ -204,13 +204,10 @@ export class ProcessInspectionReader {
 		turnRecordId: string,
 		target: { entryId?: string; itemId?: string; boundaryFor?: string } = {},
 	): Promise<ExecutionInspectionTrace | null> {
-		const record = this.selected(instanceId, turnRecordId);
-		if (!record) return null;
 		// Keep every durable fact at the same boundary as the reasoning history.
 		// Session storage is asynchronous and can advance independently.
 		const lineageSnapshot = this.lineageSnapshot(instanceId);
 		const captures = this.deps.executionInspections.list(instanceId, turnRecordId);
-		const recordedEvents = this.deps.events.listByTurnRecord(instanceId, turnRecordId);
 		const annotations = this.deps.turnAnnotations
 			.listByInstance(instanceId)
 			.filter((annotation) =>
@@ -219,13 +216,14 @@ export class ProcessInspectionReader {
 						reference.kind === "turn_record" && reference.turnRecordId === turnRecordId,
 				),
 			);
-		const history = await this.history.assembleReasoningDetail({ instanceId, turnRecordId });
-		if (!history) return null;
-		const session = await this.deps.sessionReader.readSessionTree(instanceId);
+		const evidence = await this.history.readReasoningEvidence({
+			instanceId,
+			turnRecordId,
+			includeSession: true,
+		});
+		if (!evidence?.session) return null;
+		const { detail: history, turnRecord: record, events, session } = evidence;
 		const lineage = createInspectionLineage({ ...lineageSnapshot, tree: session.piTree });
-		const events = recordedEvents.filter(
-			(event) => (event.eventSequence ?? 0) <= history.throughEventSequence,
-		);
 		const messages = buildInspectionTraceMessages({
 			tree: session.piTree,
 			record,
