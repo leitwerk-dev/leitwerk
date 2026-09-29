@@ -139,15 +139,8 @@ export interface InspectionContextMessage {
 }
 
 /** @internal */
-export interface InspectionInputRevision {
-	/** @internal */
-	id: string;
-	/** @internal */
-	timestamp: string;
-	/** @internal */
-	boundaryEntryId: string | null;
-	/** @internal */
-	model: InspectionModelInput["model"];
+export interface InspectionInputRevision
+	extends Pick<InspectionConfigurationRevision, "id" | "timestamp" | "boundaryEntryId" | "model"> {
 	/** @internal */
 	messages: InspectionContextMessage[];
 }

@@ -181,12 +181,7 @@ export async function planMappedTurnEntries(input: {
 				instanceId: input.process.id,
 				turnId,
 				status: frozen.items.length > 0 ? "active" : "completed",
-				items: frozen.items.map((item) => ({
-					itemIndex: item.index,
-					itemKey: item.key,
-					label: item.label,
-					itemJson: item.itemJson,
-				})),
+				items: frozen.items,
 			},
 		});
 		appendProcessEvent(writes, candidate, {
@@ -201,7 +196,7 @@ export async function planMappedTurnEntries(input: {
 		}
 		const first = frozen.items[0];
 		if (first) {
-			start.input.iteration = { runId, itemKey: first.key, itemIndex: 0 };
+			start.input.iteration = { runId, itemKey: first.itemKey, itemIndex: 0 };
 			return { ok: true };
 		}
 		writes.turnStartWrites.splice(startIndex, 1);

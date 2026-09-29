@@ -6,6 +6,10 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import type { GitIdentity } from "./finalization-git.js";
 import type { RepositoryIssueOriginParams } from "./repository-change-launch-internal.js";
+import {
+	createRepositoryChangeProcess,
+	type RepositoryChangeProcessConfig,
+} from "./repository-change-process.js";
 import type {
 	PublicationContext,
 	PublicationEvidence,
@@ -20,6 +24,53 @@ import {
 	readPublicationState,
 } from "./repository-change-publication.js";
 import type { RepositoryChangeState } from "./repository-change-state.js";
+
+/** Shared process defaults for SSH-backed pull-request publication. @internal */
+export function createPullRequestChangeProcess<
+	P extends {
+		/** @internal */
+		sshCredentialRef: string;
+	},
+>(
+	provider: string,
+	label: string,
+	docker: boolean,
+	config: Pick<RepositoryChangeProcessConfig<P>, "paramsCodec" | "launcher" | "publication">,
+) {
+	const { process } = createRepositoryChangeProcess({
+		...config,
+		processId: `${provider}_repo_change_process`,
+		displayName: `${label} Repo Change`,
+		finalizeLabel: "Publish pull request",
+		finalizeForm: {
+			id: `${provider}_publish`,
+			title: "Publish pull request",
+			fields: [],
+			submitLabel: "Publish",
+		},
+		repositoryCredentials: ({ params }) => [
+			{ projectKey: "repo", kind: "git_ssh", credentialRef: params.sshCredentialRef },
+		],
+	});
+	process.runtime = { ...process.runtime, docker };
+	return process;
+}
+
+/** Tools implementing the shared pull-request publication protocol. @internal */
+export function pullRequestDeliveryTools(provider: string): string[] {
+	return [
+		"get_pull_request",
+		"add_pull_request_comment",
+		"resolve_git_identity",
+		"ensure_pull_request",
+		"add_issue_comment",
+		"add_pull_request_feedback_reaction",
+		"reply_to_pull_request_feedback",
+		"get_issue",
+		"ensure_label",
+		"update_issue",
+	].map((name) => `${provider}_${name}`);
+}
 
 const callFor =
 	<P>(ctx: PublicationContext<P>, provider: string) =>
@@ -65,16 +116,9 @@ export function readPullRequestFeedback(
 export function reconcilePullRequestSourceIssue<P extends PublicationParams>(
 	provider: string,
 	labelKey: "id" | "name",
-	issueOrigin: (params: P) =>
-		| {
-				/** @internal */
-				issueNumber: number;
-				/** @internal */
-				triggerLabel: string;
-				/** @internal */
-				doneLabel: string;
-		  }
-		| undefined,
+	issueOrigin: (
+		params: P,
+	) => Pick<RepositoryIssueOriginParams, "issueNumber" | "triggerLabel" | "doneLabel"> | undefined,
 ): RepositoryChangePublicationAdapter<P>["reconcileTerminal"] {
 	return async (ctx, _current, pr) => {
 		const params = issueOrigin(ctx.params);
@@ -111,7 +155,7 @@ export function reconcilePullRequestSourceIssue<P extends PublicationParams>(
 type SourceFactory<C> = ReturnType<typeof defineExternalActionSource<C>>;
 
 /** Shared wiring for providers implementing the pull-request source protocol. @internal */
-export function pullRequestPublicationSources<P extends PublicationParams>(
+export function pullRequestPublicationDefaults<P extends PublicationParams>(
 	provider: string,
 	label: string,
 	external: {
@@ -126,6 +170,7 @@ export function pullRequestPublicationSources<P extends PublicationParams>(
 	},
 	profile: (params: P) => string,
 	issueOrigin: (params: P) => RepositoryIssueOriginParams | undefined,
+	labelKey: "id" | "name",
 ) {
 	const remote = (state: RepositoryChangeState) =>
 		readPublicationState(state, `${provider}RepoChange`);
@@ -197,6 +242,18 @@ export function pullRequestPublicationSources<P extends PublicationParams>(
 		read: () => ({ kind: "cancelled" }),
 	};
 	return {
+		/** @internal */ adapter: {
+			/** @internal */ namespace: `${provider}RepoChange`,
+			/** @internal */ label: `${label} PR`,
+			/** @internal */ identity: (ctx: PublicationContext<P>) =>
+				resolvePullRequestGitIdentity(ctx, provider, profile(ctx.params)),
+			/** @internal */ reconcileTerminal: reconcilePullRequestSourceIssue(
+				provider,
+				labelKey,
+				issueOrigin,
+			),
+			...pullRequestPublicationCallbacks(provider, label, issueOrigin),
+		},
 		/** @internal */ requirePr,
 		/** @internal */ feedback,
 		/** @internal */ terminal,
@@ -208,14 +265,9 @@ export function pullRequestPublicationSources<P extends PublicationParams>(
 export function pullRequestPublicationCallbacks<P extends PublicationParams>(
 	provider: string,
 	label: string,
-	issueOrigin: (params: P) =>
-		| {
-				/** @internal */
-				issueNumber: number;
-				/** @internal */
-				issueUrl: string;
-		  }
-		| undefined,
+	issueOrigin: (
+		params: P,
+	) => Pick<RepositoryIssueOriginParams, "issueNumber" | "issueUrl"> | undefined,
 ): Pick<
 	RepositoryChangePublicationAdapter<P>,
 	"ensureRequest" | "linkIssue" | "reply" | "acknowledge" | "head" | "afterRebase"

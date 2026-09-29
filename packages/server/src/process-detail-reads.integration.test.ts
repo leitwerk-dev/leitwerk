@@ -72,11 +72,22 @@ function pauseSessionRead(source: ProcessSessionSource) {
 			return source.readSnapshotHandle(instanceId);
 		},
 	});
-	return { reader, entered: entered.promise, resume: () => resumed.resolve() };
+	return {
+		reader,
+		async during<T>(pending: Promise<T>, mutate: () => void): Promise<T> {
+			await entered.promise;
+			try {
+				mutate();
+			} finally {
+				resumed.resolve();
+			}
+			return pending;
+		},
+	};
 }
 
-it("captures diagnostics before a process mutation during session loading", async () => {
-	const { deps, source } = fixture;
+function createRunningTurn() {
+	const { deps } = fixture;
 	const process = deps.processes.create({
 		processId: "ticket_issue_process",
 		selectedTurnId: "generate_plan",
@@ -90,13 +101,15 @@ it("captures diagnostics before a process mutation during session loading", asyn
 	});
 	const leaseId = turn.acceptedWorkerLeaseId;
 	if (!leaseId) throw new Error("Expected an accepted worker lease");
+	return { process, turn, leaseId };
+}
+
+it("captures diagnostics before a process mutation during session loading", async () => {
+	const { deps, source } = fixture;
+	const { process, turn, leaseId } = createRunningTurn();
 	const paused = pauseSessionRead(source);
-	const pending = new ProcessDiagnosticsAssembler({
-		...deps,
-		sessionReader: paused.reader,
-	}).assembleDetail(process.id);
-	await paused.entered;
-	try {
+	const assembler = new ProcessDiagnosticsAssembler({ ...deps, sessionReader: paused.reader });
+	const detail = await paused.during(assembler.assembleDetail(process.id), () => {
 		deps.transaction((repos) => {
 			repos.processes.update(process.id, { lifecycleStatus: "error" });
 			repos.turnRecords.update(turn.id, {
@@ -108,10 +121,7 @@ it("captures diagnostics before a process mutation during session loading", asyn
 			repos.leases.update(leaseId, { state: "failed" });
 			repos.events.create({ instanceId: process.id, eventType: "worker_failed", data: {} });
 		});
-	} finally {
-		paused.resume();
-	}
-	const detail = await pending;
+	});
 	expect(detail?.process.lifecycleStatus).toBe("active");
 	expect(detail?.turnRecords).toEqual([
 		expect.objectContaining({ id: turn.id, status: "running" }),
@@ -124,19 +134,7 @@ it("captures diagnostics before a process mutation during session loading", asyn
 
 it("captures primary-path state through its seven dependencies before session loading", async () => {
 	const { deps, source } = fixture;
-	const process = deps.processes.create({
-		processId: "ticket_issue_process",
-		selectedTurnId: "generate_plan",
-		lifecycleStatus: "active",
-		stateJson: createStructuralStateJson(),
-	});
-	const turn = deps.turnRecords.create({
-		instanceId: process.id,
-		turnId: "generate_plan",
-		status: "running",
-	});
-	const leaseId = turn.acceptedWorkerLeaseId;
-	if (!leaseId) throw new Error("Expected an accepted worker lease");
+	const { process, turn, leaseId } = createRunningTurn();
 	const paused = pauseSessionRead(source);
 	const assembler = new ProcessPrimaryPathAssembler({
 		processes: deps.processes,
@@ -148,18 +146,14 @@ it("captures primary-path state through its seven dependencies before session lo
 		sessionReader: paused.reader,
 	});
 	expect(await assembler.assemble("missing-process")).toBeNull();
-	const pending = assembler.assemble(process.id);
-	await paused.entered;
-	try {
+	const captured = await paused.during(assembler.assemble(process.id), () => {
 		deps.transaction((repos) => {
 			repos.processes.update(process.id, { lifecycleStatus: "error" });
 			repos.turnRecords.update(turn.id, { status: "failed", endedAt: new Date().toISOString() });
 			repos.leases.update(leaseId, { state: "failed" });
 		});
-	} finally {
-		paused.resume();
-	}
-	expect((await pending)?.turnState).toMatchObject({
+	});
+	expect(captured?.turnState).toMatchObject({
 		currentTurnRecordId: turn.id,
 		workerState: "busy",
 		isStreaming: true,
@@ -202,12 +196,11 @@ it("captures action availability before scheduling changes during session loadin
 	const before = await assembler.assembleDetail(process.id);
 	expect(before?.actions.length).toBeGreaterThan(0);
 	const paused = pauseSessionRead(source);
-	const pending = new ProcessDiagnosticsAssembler({
+	const pausedAssembler = new ProcessDiagnosticsAssembler({
 		...deps,
 		sessionReader: paused.reader,
-	}).assembleDetail(process.id);
-	await paused.entered;
-	try {
+	});
+	const captured = await paused.during(pausedAssembler.assembleDetail(process.id), () => {
 		deps.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -221,10 +214,7 @@ it("captures action availability before scheduling changes during session loadin
 			}),
 			nextRunAt: "2099-01-01T00:00:00Z",
 		});
-	} finally {
-		paused.resume();
-	}
-	const captured = await pending;
+	});
 	expect(captured?.actions).toEqual(before?.actions);
 	expect(captured?.scheduledAction).toBeNull();
 	const after = await assembler.assembleDetail(process.id);
@@ -412,30 +402,28 @@ it("opens inspection summary without reading sessions or immutable content", asy
 
 it("keeps inspection trace evidence at its captured event boundary during session loading", async () => {
 	const { deps, source } = fixture;
-	const process = deps.processes.create({ processId: "ticket_issue_process" });
-	const turn = deps.turnRecords.create({
-		instanceId: process.id,
-		turnId: "generate_plan",
-		status: "running",
-	});
+	const { process, turn } = createRunningTurn();
 	const paused = pauseSessionRead(source);
+	const sessionReads = vi.spyOn(paused.reader, "readSessionTree");
 	const reader = new ProcessInspectionReader({ ...deps, sessionReader: paused.reader });
-	const pending = reader.trace(process.id, turn.id);
-	await paused.entered;
-	deps.turnRecords.update(turn.id, { status: "succeeded", turnResultMarkdown: "Completed result" });
-	deps.turnAnnotations.create({
-		instanceId: process.id,
-		annotationType: "outcome",
-		references: [{ kind: "turn_record", turnRecordId: turn.id, role: "subject" }],
-		payload: { result: "Completed result" },
+	const before = await paused.during(reader.trace(process.id, turn.id), () => {
+		deps.turnRecords.update(turn.id, {
+			status: "succeeded",
+			turnResultMarkdown: "Completed result",
+		});
+		deps.turnAnnotations.create({
+			instanceId: process.id,
+			annotationType: "outcome",
+			references: [{ kind: "turn_record", turnRecordId: turn.id, role: "subject" }],
+			payload: { result: "Completed result" },
+		});
+		deps.events.create({
+			instanceId: process.id,
+			eventType: "turn.outcome",
+			data: { turnRecordId: turn.id, result: "Completed result" },
+		});
 	});
-	const completion = deps.events.create({
-		instanceId: process.id,
-		eventType: "turn.outcome",
-		data: { turnRecordId: turn.id, result: "Completed result" },
-	});
-	paused.resume();
-	const before = await pending;
+	const completion = deps.events.listByTurnRecord(process.id, turn.id)[0];
 	expect(before).toMatchObject({ state: "live", output: null, annotations: [], events: [] });
 	if (completion.eventSequence === undefined) throw new Error("Expected a sequenced event");
 	expect(before?.throughEventSequence).toBeLessThan(completion.eventSequence);
@@ -443,43 +431,39 @@ it("keeps inspection trace evidence at its captured event boundary during sessio
 	expect(after).toMatchObject({ state: "committed", output: "Completed result" });
 	expect(after?.annotations).toHaveLength(1);
 	expect(after?.events.map((event) => event.id)).toContain(completion.id);
+	expect(sessionReads).toHaveBeenCalledTimes(2);
 });
 
 it("keeps context observations captured before session loading", async () => {
 	const { deps, source } = fixture;
-	const process = deps.processes.create({ processId: "ticket_issue_process" });
-	const turn = deps.turnRecords.create({
-		instanceId: process.id,
-		turnId: "generate_plan",
-		status: "running",
-	});
-	if (!turn.turnStartRecordId || !turn.acceptedWorkerLeaseId)
+	const { process, turn } = createRunningTurn();
+	const { turnStartRecordId, acceptedWorkerLeaseId } = turn;
+	if (!turnStartRecordId || !acceptedWorkerLeaseId)
 		throw new Error("Expected an accepted turn start");
 	const paused = pauseSessionRead(source);
 	const reader = new ProcessInspectionReader({ ...deps, sessionReader: paused.reader });
-	const pending = reader.context(process.id, turn.id);
-	await paused.entered;
-	deps.executionInspections.append({
-		version: 1,
-		id: "supplied-during-read",
-		instanceId: process.id,
-		turnRecordId: turn.id,
-		startRecordId: turn.turnStartRecordId,
-		workerLeaseId: turn.acceptedWorkerLeaseId,
-		timestamp: new Date().toISOString(),
-		fact: {
-			kind: "supplied_context",
-			products: [],
-			origin: {
-				pathType: "primary",
-				contextMode: "fresh",
-				startTarget: { kind: "root" },
-				forkPiEntryId: null,
+	const before = await paused.during(reader.context(process.id, turn.id), () => {
+		deps.executionInspections.append({
+			version: 1,
+			id: "supplied-during-read",
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			startRecordId: turnStartRecordId,
+			workerLeaseId: acceptedWorkerLeaseId,
+			timestamp: new Date().toISOString(),
+			fact: {
+				kind: "supplied_context",
+				products: [],
+				origin: {
+					pathType: "primary",
+					contextMode: "fresh",
+					startTarget: { kind: "root" },
+					forkPiEntryId: null,
+				},
 			},
-		},
+		});
 	});
-	paused.resume();
-	expect((await pending)?.products.state).toBe("not_recorded");
+	expect(before?.products.state).toBe("not_recorded");
 	expect((await reader.context(process.id, turn.id))?.products).toEqual({
 		state: "recorded",
 		value: [],

@@ -1,14 +1,12 @@
-import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
+	createPullRequestChangeProcess,
 	createRepositoryChangePublication,
 	publicationObject as object,
 	type PublicationSource,
 	type PublicationState,
-	pullRequestPublicationCallbacks,
-	pullRequestPublicationSources,
+	pullRequestDeliveryTools,
+	pullRequestPublicationDefaults,
 	readPublicationState,
-	reconcilePullRequestSourceIssue,
-	resolvePullRequestGitIdentity,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { forgejoExternal, forgejoIssueWatcherSource } from "@leitwerk-dev/forgejo";
@@ -20,7 +18,6 @@ import {
 	isIssueOrigin,
 } from "./params.js";
 
-const processId = "forgejo_repo_change_process";
 const ids = {
 	deliver: "deliver_change",
 	feedback: "revise_from_pull_request_feedback",
@@ -29,30 +26,18 @@ const ids = {
 };
 const remote = (state: RepositoryChangeState) => readPublicationState(state, "forgejoRepoChange");
 
-const deliveryTools = [
-	"forgejo_get_pull_request",
-	"forgejo_add_pull_request_comment",
-	"forgejo_resolve_git_identity",
-	"forgejo_ensure_pull_request",
-	"forgejo_add_issue_comment",
-	"forgejo_add_pull_request_feedback_reaction",
-	"forgejo_reply_to_pull_request_feedback",
-	"forgejo_get_issue",
-	"forgejo_ensure_label",
-	"forgejo_update_issue",
-] as const;
-
 /** @internal */
 export function createForgejoRepoChangeProcess(
 	launcher: ReturnType<typeof createForgejoRepoChangeLauncher>,
 	docker: boolean,
 ) {
-	const sharedSources = pullRequestPublicationSources<ForgejoRepoChangeParams>(
+	const sharedSources = pullRequestPublicationDefaults<ForgejoRepoChangeParams>(
 		"forgejo",
 		"Forgejo",
 		forgejoExternal,
 		(params) => params.forgejoProfile,
 		(params) => (isIssueOrigin(params) ? params : undefined),
+		"id",
 	);
 	const { requirePr } = sharedSources;
 	const failedPipeline = woodpeckerExternal.pipeline<
@@ -107,12 +92,11 @@ export function createForgejoRepoChangeProcess(
 		sharedSources.cancelled,
 	];
 	const publicationConfig = createRepositoryChangePublication<ForgejoRepoChangeParams>({
-		namespace: "forgejoRepoChange",
-		label: "Forgejo PR",
+		...sharedSources.adapter,
 		ids,
 		sources,
 		tools: {
-			delivery: deliveryTools,
+			delivery: pullRequestDeliveryTools("forgejo"),
 			feedback: ["forgejo_get_pull_request", "forgejo_list_pull_request_feedback"],
 			ci: [
 				"woodpecker_lookup_repository",
@@ -122,15 +106,6 @@ export function createForgejoRepoChangeProcess(
 				"woodpecker_restart_pipeline",
 			],
 		},
-		identity: (ctx) => resolvePullRequestGitIdentity(ctx, "forgejo", ctx.params.forgejoProfile),
-		reconcileTerminal: reconcilePullRequestSourceIssue<ForgejoRepoChangeParams>(
-			"forgejo",
-			"id",
-			(params) => (isIssueOrigin(params) ? params : undefined),
-		),
-		...pullRequestPublicationCallbacks<ForgejoRepoChangeParams>("forgejo", "Forgejo", (params) =>
-			isIssueOrigin(params) ? params : undefined,
-		),
 		commitMessage: (kind) =>
 			kind === "feedback"
 				? "fix: address Forgejo review feedback"
@@ -151,29 +126,9 @@ export function createForgejoRepoChangeProcess(
 		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
 	});
 
-	const definition = createRepositoryChangeProcess<ForgejoRepoChangeParams>({
-		processId,
-		displayName: "Forgejo Repo Change",
+	return createPullRequestChangeProcess("forgejo", "Forgejo", docker, {
 		paramsCodec: forgejoRepoChangeParamsCodec,
 		launcher: launcher.launcher,
-		finalizeLabel: "Publish pull request",
-		finalizeForm: {
-			id: "forgejo_publish",
-			title: "Publish pull request",
-			fields: [],
-			submitLabel: "Publish",
-		},
-		repositoryCredentials: ({ params }) => [
-			{
-				projectKey: "repo",
-				kind: "git_ssh",
-				credentialRef: params.sshCredentialRef,
-			},
-		],
 		publication: publicationConfig,
 	});
-
-	definition.process.runtime = { ...definition.process.runtime, docker };
-
-	return definition.process;
 }

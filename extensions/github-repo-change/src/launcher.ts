@@ -1,5 +1,6 @@
 import {
 	createRepositoryChangeUiLauncher,
+	repositoryIssueChangeLaunchConfig,
 	repositoryVisibilityCheck,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
@@ -50,31 +51,10 @@ export function githubRepoChangeLaunchConfig(
 ): ProcessLaunchConfig<GitHubRepoChangeParams> {
 	const { owner, repo, githubProfile: profile } = params;
 	const issue = isIssueOrigin(params);
-	return {
-		processId: "github_repo_change_process",
-		params,
-		title,
-		startTurnId: "generate_plan",
-		...(issue
-			? {
-					externalId: `github:${owner}/${repo}#${params.issueNumber}`,
-					externalUrl: params.issueUrl,
-				}
-			: {}),
-		projects: [
-			{
-				key: "repo",
-				repoLocator: params.repoLocator,
-				baseBranch: params.baseBranch,
-				workBranch: params.workBranch,
-				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
-				metadata: {
-					github: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
-					"leitwerk.gitIdentity": gitIdentity,
-				},
-			},
-		],
-	};
+	return repositoryIssueChangeLaunchConfig("github", params, title, `${owner}/${repo}`, {
+		github: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
+		"leitwerk.gitIdentity": gitIdentity,
+	});
 }
 
 /** @public */
