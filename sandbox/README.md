@@ -167,3 +167,34 @@ repository seeds; file remotes are admitted only for those seeds, through confin
 local read and dry-run write checks. Production keeps real SSH credential bootstrap.
 The provider composition, scripts and controls live here; the sandbox harness
 remains provider independent.
+
+## Jira and GitLab review scenes
+
+Run this composition from the public checkout:
+
+```sh
+LEITWERK_SANDBOX_COMPOSITION_ENTRY="$PWD/sandbox/jira-gitlab-composition.ts" npm run dev:sandbox
+```
+
+It uses scripted models, a persistent local Jira installation, and three Atlas Git
+repositories. The normal GitLab launcher exposes **Skip plan approval** and
+**Skip simplification**. Both start unchecked. In Settings, select **Jira
+components → ATLAS / Customer experience** to review a searchable mapping with
+two selected repositories. **Delivery API** and **Web checkout** each map to one
+of those repositories; their union still launches only two checkouts.
+
+The controls at `/__local` create fresh Jira source issues through the real
+watcher. **Plan awaiting approval** leaves a coordinated plan ready to review.
+**Simplify and publish** follows the same path; approve its plan in Leitwerk to
+run implementation, simplification analysis and application, and publish two merge
+requests. **Bypass both gates** adds both Jira skip labels before discovery and
+proceeds directly from planning to implementation and publication. Each example
+keeps `use-leitwerk` as its launch trigger.
+
+The implementation scene contains staged README edits, unstaged delivery notes,
+and a new customer-copy file. Simplification removes duplicated wording from the
+new file. Merge request links show the real published Git diff; source links show
+the retained issue labels and comments. Jira state and seeded mapping choices
+survive restarts. Startup seeds mappings once and preserves subsequent Settings
+edits. These scenes stop at open merge requests; they do not simulate CI or merge
+controls. Use the provider workflow composition for those controls.

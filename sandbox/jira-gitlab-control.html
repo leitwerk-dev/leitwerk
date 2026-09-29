@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jira / GitLab review scenes · Leitwerk</title>
+<style>
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #25332f; background: #f4f5f1; }
+* { box-sizing: border-box; }
+body { max-width: 960px; margin: auto; padding: 24px; }
+h1 { font-size: 28px; } h2 { font-size: 21px; margin-top: 32px; }
+p, li { line-height: 1.6; }
+a { color: #245c47; text-underline-offset: 3px; }
+button { font: inherit; color: inherit; min-height: 44px; padding: 10px 14px; background: white; border: 1px solid #a9b7ac; border-radius: 8px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: wait; }
+:focus-visible { outline: 2px solid #27634b; outline-offset: 3px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+article { border-top: 1px solid #cbd3ca; padding: 16px 0; }
+article p { margin: 6px 0; }
+#notice { min-height: 24px; }
+</style>
+</head>
+<body>
+<h1>Jira / GitLab review scenes</h1>
+<p>These examples use scripted turns, local Git repositories, and simulated Jira/GitLab services. Review plans and approve changes in the normal Leitwerk UI.</p>
+<nav class="actions"><a id="launcher">GitLab launcher</a><a id="settings">Component mappings</a><a id="processes">All processes</a></nav>
+<h2>Prepare an example</h2>
+<p>The plan and delivery examples both wait for approval. Approve the delivery example in Leitwerk to see simplification and two merge requests. The bypass example proceeds automatically with both skip labels.</p>
+<div class="actions">
+<button type="button" data-scene="plan">Plan awaiting approval</button>
+<button type="button" data-scene="delivery">Simplify and publish</button>
+<button type="button" data-scene="bypasses">Bypass both gates</button>
+<button type="button" id="poll">Poll providers</button>
+</div>
+<p id="notice" role="status" aria-live="polite"></p>
+<h2>Review processes</h2><div id="runs"></div>
+<h2>Source issues</h2><div id="issues"></div>
+<h2>Published merge requests</h2><div id="requests"></div>
+<script type="module">
+const byId = (id) => document.getElementById(id);
+function article(parent, title, href, detail) {
+  const row = document.createElement("article");
+  const link = document.createElement("a");
+  link.textContent = title; link.href = href;
+  const text = document.createElement("p"); text.textContent = detail;
+  row.append(link, text); parent.append(row);
+}
+async function refresh() {
+  const response = await fetch("/__local/state");
+  if (!response.ok) throw new Error("Could not read sandbox state");
+  const state = await response.json();
+  byId("launcher").href = `${state.uiUrl}/?launcher=gitlab_repo_change_process.ui_launcher`;
+  byId("settings").href = `${state.uiUrl}/settings`;
+  byId("processes").href = `${state.uiUrl}/processes`;
+  for (const id of ["runs", "issues", "requests"]) byId(id).replaceChildren();
+  for (const process of state.processes) article(byId("runs"), process.title ?? process.id,
+    `${state.uiUrl}/processes/${process.id}`, `${process.lifecycleStatus} · ${(process.selectedTurnId ?? "finished").replaceAll("_", " ")}`);
+  for (const issue of state.jira.issues) article(byId("issues"), `${issue.key}: ${issue.fields.summary}`,
+    `${state.backendUrl}/jira/browse/${issue.key}`, issue.fields.labels.join(" · "));
+  for (const mr of state.gitlab.mrs) article(byId("requests"), mr.title, mr.web_url,
+    `${state.gitlab.projects.find((p) => p.id === mr.project_id)?.path_with_namespace} !${mr.iid} · ${mr.state}`);
+  if (!state.processes.length) byId("runs").textContent = "Choose an example above to create a process.";
+  if (!state.gitlab.mrs.length) byId("requests").textContent = "Merge requests appear after implementation and delivery.";
+}
+async function post(button, url, body) {
+  button.disabled = true;
+  try {
+    const response = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? "Sandbox action failed");
+    const errors = (result.polling ?? result).flatMap?.((poll) => poll.errors ?? []) ?? [];
+    byId("notice").textContent = errors.length ? errors.join("; ") : "Ready. Open the process below to review it.";
+    await refresh();
+  } catch (error) { byId("notice").textContent = error.message; }
+  finally { button.disabled = false; }
+}
+for (const button of document.querySelectorAll("[data-scene]")) button.addEventListener("click", () =>
+  post(button, "/__local/jira/issues", { scene: button.dataset.scene, requestId: crypto.randomUUID() }));
+byId("poll").addEventListener("click", () => post(byId("poll"), "/__local/poll", {}));
+await refresh();
+setInterval(() => refresh().catch((error) => { byId("notice").textContent = error.message; }), 3000);
+</script>
+</body>
+</html>
