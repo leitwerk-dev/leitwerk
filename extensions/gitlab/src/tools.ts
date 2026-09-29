@@ -63,6 +63,31 @@ export function resolveGitLabBinding(
 		throw new Error("Invalid GitLab project binding: a merge request is required");
 	return { ...repository, iid };
 }
+/** Stable marker shared by retry-safe comment creation and later updates. @public */
+export function gitLabCommentMarker(input: {
+	/** @public */
+	baseUrl: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+	/** @public */
+	instanceId: string;
+	/** @public */
+	writeKey: string;
+	/** @public */
+	discussionId?: string;
+}): string {
+	const identity: (string | number)[] = [
+		input.baseUrl,
+		input.projectId,
+		input.iid,
+		input.instanceId,
+		input.writeKey,
+	];
+	if (input.discussionId) identity.push(input.discussionId);
+	return `<!-- leitwerk:gitlab:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")} -->`;
+}
 /** @internal */
 export async function ensureGitLabComment(input: {
 	/** @internal */
@@ -89,10 +114,15 @@ export async function ensureGitLabComment(input: {
 	marker: string;
 }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, signal } = input;
-	const identity = [client.baseUrl, projectId, iid, instanceId, writeKey];
-	if (input.discussionId) identity.push(input.discussionId);
-	const digest = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
-	const marker = `<!-- leitwerk:gitlab:${digest} -->`;
+	const marker = gitLabCommentMarker({
+		baseUrl: client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		writeKey,
+		discussionId: input.discussionId,
+	});
+	const digest = marker.slice("<!-- leitwerk:gitlab:".length, -4);
 	const find = async () => {
 		const notes = input.discussionId
 			? (await client.getDiscussion(projectId, iid, input.discussionId, signal)).notes
@@ -113,6 +143,186 @@ export async function ensureGitLabComment(input: {
 		},
 	);
 	return { marker };
+}
+/** Idempotently replace a retry-safe top-level comment while retaining its marker. @public */
+export async function updateGitLabComment(input: {
+	/** @public */
+	client: GitLabClientLike;
+	/** @public */
+	instanceId: string;
+	/** @public */
+	projectId: number;
+	/** @public */
+	iid: number;
+	/** @public */
+	writeKey: string;
+	/** @public */
+	body: string;
+	/** @public */
+	signal?: AbortSignal;
+}): Promise<{
+	/** @public */
+	marker: string;
+}> {
+	const { client, instanceId, projectId, iid, writeKey, body, signal } = input;
+	const marker = gitLabCommentMarker({
+		baseUrl: client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		writeKey,
+	});
+	const note = (await client.listNotes(projectId, iid, signal)).find((item) =>
+		item.body.includes(marker),
+	);
+	if (!note) throw new Error("GitLab comment to update was not found");
+	const next = `${body}\n\n${marker}`;
+	if (note.body !== next) await client.updateNote(projectId, iid, note.id, next, signal);
+	return { marker };
+}
+/** @internal */
+export async function ensureGitLabInlineComment(input: {
+	/** @internal */
+	client: GitLabClientLike;
+	/** @internal */
+	writes: ExternalWrites;
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	projectId: number;
+	/** @internal */
+	iid: number;
+	/** @internal */
+	writeKey: string;
+	/** @internal */
+	body: string;
+	/** @internal */
+	path: string;
+	/** @internal */
+	line: number;
+	/** @internal */
+	side: "new" | "old";
+	/** @internal */
+	baseSha: string;
+	/** @internal */
+	startSha: string;
+	/** @internal */
+	headSha: string;
+	/** @internal */
+	signal?: AbortSignal;
+}): Promise<{ marker: string; discussionId: string }> {
+	const {
+		client,
+		writes,
+		instanceId,
+		projectId,
+		iid,
+		writeKey,
+		body,
+		path,
+		line,
+		side,
+		baseSha,
+		startSha,
+		headSha,
+		signal,
+	} = input;
+	const marker = gitLabCommentMarker({
+		baseUrl: client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		writeKey,
+	});
+	const digest = marker.slice("<!-- leitwerk:gitlab:".length, -4);
+	const find = async () => {
+		const discussions = await client.listDiscussions(projectId, iid, signal);
+		return discussions.find((discussion) =>
+			discussion.notes.some((note) => note.body.includes(marker)),
+		);
+	};
+	const diff = (await client.getChanges(projectId, iid, signal)).find((candidate) =>
+		side === "new" ? candidate.new_path === path : candidate.old_path === path,
+	);
+	if (!diff) throw new Error("GitLab inline comment path is not in the merge request diff");
+	await writes.ensure(
+		{ writeType: "gitlab.discussion", dedupKey: digest },
+		{
+			reconcile: () => existingRemote(async () => (await find()) ?? null),
+			execute: () =>
+				client.addDiscussion(
+					projectId,
+					iid,
+					`${body}\n\n${marker}`,
+					{
+						position_type: "text",
+						base_sha: baseSha,
+						start_sha: startSha,
+						head_sha: headSha,
+						old_path: diff.old_path,
+						new_path: diff.new_path,
+						...(side === "new" ? { new_line: line } : { old_line: line }),
+					},
+					signal,
+				),
+			toMetadata: (discussion) => ({
+				projectId,
+				iid,
+				discussionId: discussion.id,
+				marker,
+			}),
+		},
+	);
+	const discussion = await find();
+	if (!discussion) throw new Error("GitLab inline discussion is unavailable after create");
+	return { marker, discussionId: discussion.id };
+}
+/** @public */
+export async function ensureGitLabResolveDiscussion(input: {
+	/** @public */
+	client: GitLabClientLike;
+	/** @public */
+	writes: ExternalWrites;
+	/** @public */
+	instanceId: string;
+	/** @internal */
+	projectId: number;
+	/** @internal */
+	iid: number;
+	/** @public */
+	writeKey: string;
+	/** @public */
+	discussionId: string;
+	/** @public */
+	signal?: AbortSignal;
+}): Promise<{ discussionId: string; resolved: boolean }> {
+	const { client, writes, instanceId, projectId, iid, writeKey, discussionId, signal } = input;
+	const digest = createHash("sha256")
+		.update(
+			JSON.stringify([
+				client.baseUrl,
+				projectId,
+				iid,
+				instanceId,
+				"resolve",
+				writeKey,
+				discussionId,
+			]),
+		)
+		.digest("hex");
+	await writes.ensure(
+		{ writeType: "gitlab.discussion.resolve", dedupKey: digest },
+		{
+			reconcile: () =>
+				existingRemote(async () => {
+					const discussion = await client.getDiscussion(projectId, iid, discussionId, signal);
+					return discussion.notes.some((note) => note.resolved) ? discussion : null;
+				}),
+			execute: () => client.resolveDiscussion(projectId, iid, discussionId, true, signal),
+			toMetadata: () => ({ projectId, iid, discussionId, resolved: true }),
+		},
+	);
+	return { discussionId, resolved: true };
 }
 /** @public */
 export async function ensureGitLabSeenReaction(input: {
@@ -166,10 +376,21 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 			["pipelineId", "jobId"],
 		],
 		["gitlab_comment", "Post a retry-safe MR comment", ["body", "writeKey"]],
+		["gitlab_update_comment", "Update a retry-safe MR comment", ["body", "writeKey"]],
+		[
+			"gitlab_inline_comment",
+			"Post a retry-safe MR inline discussion",
+			["body", "writeKey", "path", "line", "side", "baseSha", "startSha", "headSha"],
+		],
 		[
 			"gitlab_reply",
 			"Post a retry-safe reply in an MR discussion",
 			["body", "writeKey", "discussionId"],
+		],
+		[
+			"gitlab_resolve_discussion",
+			"Resolve a retry-safe MR inline discussion",
+			["writeKey", "discussionId"],
 		],
 	] as const) {
 		api.tool<Record<string, unknown>>({
@@ -183,6 +404,12 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 					body: { type: "string" },
 					writeKey: { type: "string" },
 					discussionId: { type: "string" },
+					path: { type: "string" },
+					line: { type: "integer" },
+					side: { type: "string" },
+					baseSha: { type: "string" },
+					startSha: { type: "string" },
+					headSha: { type: "string" },
 				},
 				[...required],
 			),
@@ -196,6 +423,37 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 				if (name === "gitlab_observe_merge_request")
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_changes") return client.getChanges(b.projectId, b.iid, ctx.signal);
+				if (name === "gitlab_update_comment")
+					return updateGitLabComment({
+						client,
+						instanceId: ctx.process.id,
+						projectId: b.projectId,
+						iid: b.iid,
+						writeKey: stringArg(args, "writeKey"),
+						body: stringArg(args, "body"),
+						signal: ctx.signal,
+					});
+				if (name === "gitlab_inline_comment") {
+					const side = stringArg(args, "side");
+					if (side !== "new" && side !== "old")
+						throw new Error("GitLab inline comment side must be new or old");
+					return ensureGitLabInlineComment({
+						client,
+						writes: ctx.externalWrites,
+						instanceId: ctx.process.id,
+						projectId: b.projectId,
+						iid: b.iid,
+						writeKey: stringArg(args, "writeKey"),
+						body: stringArg(args, "body"),
+						path: stringArg(args, "path"),
+						line: numberArg(args, "line"),
+						side,
+						baseSha: stringArg(args, "baseSha"),
+						startSha: stringArg(args, "startSha"),
+						headSha: stringArg(args, "headSha"),
+						signal: ctx.signal,
+					});
+				}
 				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
 						client,
@@ -206,6 +464,17 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						...(name === "gitlab_reply" ? { discussionId: stringArg(args, "discussionId") } : {}),
+						signal: ctx.signal,
+					});
+				if (name === "gitlab_resolve_discussion")
+					return ensureGitLabResolveDiscussion({
+						client,
+						writes: ctx.externalWrites,
+						instanceId: ctx.process.id,
+						projectId: b.projectId,
+						iid: b.iid,
+						writeKey: stringArg(args, "writeKey"),
+						discussionId: stringArg(args, "discussionId"),
 						signal: ctx.signal,
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
