@@ -27,8 +27,6 @@ export interface GitLabProject {
 	/** SSH clone URL supplied by GitLab. @public */
 	ssh_url_to_repo?: string;
 	/** @public */
-	ssh_url_to_repo?: string;
-	/** @public */
 	web_url: string;
 	/** @internal */
 	default_branch: string;

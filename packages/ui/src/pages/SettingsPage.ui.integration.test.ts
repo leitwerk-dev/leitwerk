@@ -91,8 +91,12 @@ async function render() {
 	if (!vi.mocked(changeSettings).getMockImplementation())
 		vi.mocked(changeSettings).mockImplementation(async (change) => preview(change.subjectId));
 	vi.mocked(fetchSettingsScopes).mockResolvedValue({
-		scopes: [],
-		subjects: ["instance", "repo-b"].map((id) => ({ ...preview(id).subject, active: true })),
+		scopes: [{ id: "repository", label: "Repository" }],
+		subjects: ["instance", "repo-b"].map((id) => ({
+			...preview(id).subject,
+			active: true,
+			hasSettings: true,
+		})),
 	});
 	vi.mocked(fetchSettingsPreview).mockImplementation(async (id) =>
 		preview(id, id === "repo-b" ? 1 : 0),
@@ -119,13 +123,12 @@ it("keeps a repository draft bound to its scope when an earlier Instance save fi
 	await edit("Override", "Instance update");
 	button("Save override").click();
 	await tick();
-	const scope = document.querySelector<HTMLSelectElement>("#settings-scope");
-	if (!scope) throw new Error("Missing scope selector");
-	scope.value = "repo-b";
-	scope.dispatchEvent(new Event("change", { bubbles: true }));
+	button("Repositories").click();
 	await vi.waitFor(() =>
 		expect(document.querySelector(".effective")?.textContent).toContain("repo-b saved"),
 	);
+	const scope = document.querySelector<HTMLSelectElement>("#settings-scope");
+	if (!scope) throw new Error("Missing scope selector");
 	const editor = await edit("Edit override", "Repository draft");
 	vi.mocked(fetchSettingsPreview).mockReturnValue(new Promise(() => {}));
 	pending.resolve(preview("instance", 1, "Instance update"));
@@ -161,10 +164,11 @@ it("reloads scopes and effective values after reconnect without replacing an ope
 		preview("instance", 1, "Another operator's update"),
 	);
 	vi.mocked(fetchSettingsScopes).mockResolvedValue({
-		scopes: [],
+		scopes: [{ id: "repository", label: "Repository" }],
 		subjects: ["instance", "new-repository"].map((id) => ({
 			...preview(id).subject,
 			active: true,
+			hasSettings: true,
 		})),
 	});
 	connection.set({ reconnectCount: 1 });
@@ -174,7 +178,6 @@ it("reloads scopes and effective values after reconnect without replacing an ope
 		),
 	);
 	expect(fetchSettingsScopes).toHaveBeenCalledTimes(2);
-	expect(document.querySelector('option[value="new-repository"]')).not.toBeNull();
 	expect(document.querySelector("textarea")).toBe(editor);
 	expect(editor.value).toBe("Unsaved draft");
 	vi.mocked(changeSettings).mockResolvedValue(preview("instance", 2, "Unsaved draft"));
@@ -183,4 +186,7 @@ it("reloads scopes and effective values after reconnect without replacing an ope
 	expect(changeSettings).toHaveBeenCalledWith(
 		expect.objectContaining({ subjectId: "instance", value: "Unsaved draft", expectedRevision: 0 }),
 	);
+	button("Repositories").click();
+	await tick();
+	expect(document.querySelector('option[value="new-repository"]')).not.toBeNull();
 });

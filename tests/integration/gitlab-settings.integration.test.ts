@@ -1,6 +1,7 @@
 import coding, { repositoryInstructions } from "@leitwerk-dev/coding";
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import gitlab from "@leitwerk-dev/gitlab";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import { repositorySettingsIdentity } from "@leitwerk-dev/process-sdk";
@@ -45,6 +46,17 @@ async function fixture() {
 		listen: false,
 		extensionCatalog: buildExtensionCatalogFromModules([
 			coding,
+			{
+				manifest: { id: "git-ssh", version: "1.0.0" },
+				setupServer(api) {
+					api.provide(gitSshIntegration, {
+						profiles: () => ["test"],
+						async preflight() {
+							throw new Error("Settings fixture does not admit repository launches");
+						},
+					});
+				},
+			},
 			{
 				...gitlab,
 				modelProviders: fixtureModelProviders({
@@ -91,6 +103,7 @@ it("promotes saved GitLab SSH settings during discovery and carries both verifie
 	const launch = await change.launcher.launcher.ui?.resolveLaunchConfig(
 		{
 			gitlabProfile: "test",
+			gitSshProfile: "test",
 			repository: "42",
 			prompt: "Change the repository",
 		},
