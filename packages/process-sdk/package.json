@@ -53,10 +53,10 @@
 		"@leitwerk-dev/external-writes": "0.3.1"
 	},
 	"devDependencies": {
-		"@types/escape-html": "^1.0.4",
-		"@types/mustache": "^4.2.6",
-		"@types/node": "^22.15.30",
-		"tsup": "^8.5.1"
+		"@types/escape-html": "1.0.4",
+		"@types/mustache": "4.2.6",
+		"@types/node": "22.19.17",
+		"tsup": "8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {

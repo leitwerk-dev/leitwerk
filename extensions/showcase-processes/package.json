@@ -36,7 +36,7 @@
 		"@leitwerk-dev/watcher-utils": "0.3.1"
 	},
 	"devDependencies": {
-		"tsup": "^8.5.1"
+		"tsup": "8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {

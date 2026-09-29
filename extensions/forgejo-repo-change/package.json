@@ -28,7 +28,7 @@
 		"@leitwerk-dev/woodpecker": "0.3.1"
 	},
 	"devDependencies": {
-		"tsup": "^8.5.1"
+		"tsup": "8.5.1"
 	},
 	"repository": {
 		"type": "git",

@@ -37,9 +37,9 @@
 	},
 	"devDependencies": {
 		"@leitwerk-dev/test-support": "0.3.1",
-		"@types/markdown-it": "^14.1.2",
-		"@types/node": "^22.15.30",
-		"tsup": "^8.5.1"
+		"@types/markdown-it": "14.2.0",
+		"@types/node": "22.19.19",
+		"tsup": "8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {

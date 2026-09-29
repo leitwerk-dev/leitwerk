@@ -54,8 +54,8 @@
 		"@leitwerk-dev/worker-protocol": "0.3.1"
 	},
 	"devDependencies": {
-		"@types/node": "^22.15.30",
-		"tsup": "^8.5.1"
+		"@types/node": "22.20.1",
+		"tsup": "8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {

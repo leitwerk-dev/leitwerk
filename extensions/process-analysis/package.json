@@ -28,8 +28,8 @@
 		"@leitwerk-dev/process-sdk": "0.3.1"
 	},
 	"devDependencies": {
-		"@types/node": "^22.15.30",
-		"tsup": "^8.5.1"
+		"@types/node": "22.19.21",
+		"tsup": "8.5.1"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {
