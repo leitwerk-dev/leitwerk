@@ -100,24 +100,19 @@ to routine dependency updates, including majors and weekly lockfile maintenance.
 Non-major updates can auto-merge after required checks pass. Major updates require
 maintainer approval. Security updates bypass the waiting period.
 
-The **Dependency updates** workflow runs hourly on `main` in
-`leitwerk-dev/leitwerk`, using `renovate.json`. Lockfile maintenance runs before
-05:00 on Mondays in `Europe/Berlin`. Forks do not run the bot.
-
-Before the first run, set the `RENOVATE_TOKEN` Actions repository secret to a
-dedicated bot account's classic personal access token with `public_repo` and
-`workflow` scopes. The account needs repository write access. A missing secret
-fails the workflow. This token lets dependency PRs trigger validation and update
-GitHub Actions. Renew it before expiry. Do not run a hosted Renovate installation
-alongside this workflow.
+The hosted [Renovate GitHub App](https://github.com/apps/renovate) reads
+`renovate.json` from `main` in `leitwerk-dev/leitwerk`. Install the app for the
+`leitwerk-dev` organization with access to this repository. The app manages its
+credentials and runs on its hosted schedule; no Actions workflow or repository
+token secret is needed. Its dependency PRs trigger validation, including updates
+to GitHub Actions. Lockfile maintenance runs before 05:00 on Mondays in
+`Europe/Berlin`.
 
 For auto-merge, enable **Allow auto-merge** in repository settings and require
 **Full validation** and **Conventional PR title and DCO** in the branch rules for
 `main`. The bot must satisfy those rules, including any required human review.
 Without auto-merge, maintainers merge dependency PRs after the checks pass.
 
-Run the bot manually after setup:
-
-```bash
-gh workflow run renovate.yml --repo leitwerk-dev/leitwerk --ref main
-```
+The app creates a **Dependency Dashboard** issue after processing the repository.
+Use its checkboxes to request another run or approve a major update. Inspect run
+results in the [Mend developer portal](https://developer.mend.io/).
