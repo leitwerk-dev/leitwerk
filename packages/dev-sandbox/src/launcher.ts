@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { chmodSync, existsSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { stringify } from "yaml";
@@ -39,6 +39,21 @@ export function sandboxEnvironment(
 		GIT_COMMITTER_EMAIL: "developer@sandbox.invalid",
 	};
 }
+/** Storage without an owner record is adopted by the first composition that starts on it. */
+function assertStorageOwner(root: string, directory: string, compositionEntry: string): void {
+	const file = path.join(directory, "owner.json");
+	assertSandboxPath(root, file);
+	if (existsSync(file)) {
+		const recorded: unknown = JSON.parse(readFileSync(file, "utf8")).compositionEntry;
+		if (recorded !== compositionEntry)
+			throw new Error(
+				`Sandbox storage belongs to ${String(recorded)}. Run dev:sandbox reset before switching compositions.`,
+			);
+		return;
+	}
+	writeFileSync(file, JSON.stringify({ compositionEntry }), { mode: 0o600 });
+}
+
 function port(value: string | undefined, fallback: number): number {
 	if (value === undefined) return fallback;
 	if (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 65535)
@@ -78,6 +93,7 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 	assertSandboxPath(root, pidFile);
 	if (existsSync(pidFile))
 		throw new Error(`Sandbox is already running or its pid file is stale: ${pidFile}`);
+	assertStorageOwner(root, input.paths.directory, realpathSync(options.compositionEntry));
 	const config = sandboxConfig(input);
 	input.modelProfileId = config.pi.model_profiles[0].id;
 	const factory: SandboxCompositionFactory = (

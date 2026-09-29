@@ -44,6 +44,7 @@ interface PreparedSessionBase {
 	inspectionProducts?: InspectionProduct[];
 	settings: WorkerRuntimeSettings;
 	integrationTools: NonNullable<WorkerStartPayload["integrationTools"]>;
+	iteration?: NonNullable<WorkerStartPayload["iteration"]>;
 }
 
 export interface PreparedAutomaticSession extends PreparedSessionBase {
@@ -118,6 +119,7 @@ function validatePreparedSession(input: {
 		inspectionProducts: payload.inspectionProducts,
 		settings,
 		integrationTools: payload.integrationTools ?? [],
+		...(payload.iteration ? { iteration: payload.iteration } : {}),
 	};
 	if (binding.definition.kind === "automatic") {
 		return { ...base, kind: "automatic", piAvailable: false, activeModelProfileId: null };

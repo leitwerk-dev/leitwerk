@@ -84,6 +84,8 @@ export interface SupervisorDeps
 	/** @internal */
 	executionInspections?: RepositoryBundle["executionInspections"];
 	/** @internal */
+	mappedRuns?: RepositoryBundle["mappedRuns"];
+	/** @internal */
 	config: LeitwerkConfig;
 	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;

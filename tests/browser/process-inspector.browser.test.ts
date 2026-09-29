@@ -116,7 +116,7 @@ async function investigation(ctx: AppContext) {
 			role: "assistant",
 			piTurnId: `pi-${name}`,
 		});
-		append(record, "input", {
+		const input: ExecutionInspectionCapture["fact"] = {
 			kind: "model_input",
 			boundaryEntryId: `${id}-prompt`,
 			model: { id: "recorded-model", provider: "synthetic", thinkingLevel: "off" },
@@ -131,6 +131,11 @@ async function investigation(ctx: AppContext) {
 					content: { state: "recorded", value: `Recorded ${name} input` },
 				},
 			],
+		};
+		append(record, "input", input);
+		append(record, "second-input", {
+			...input,
+			systemPrompt: { state: "recorded", value: "Second call prompt" },
 		});
 	}
 	const human = ctx.deps.turnRecords.create({
@@ -191,10 +196,27 @@ for (const width of [1280, 390])
 		await inspector.getByRole("link", { name: "Configuration", exact: true }).click();
 		await expect(inspector).toContainText("Recorded system prompt [REDACTED]");
 		await expect(inspector).toContainText("Sensitive values were redacted");
-		await inspector.getByText("Appended instructions", { exact: true }).click();
+		await inspector.getByText("Appended instructions", { exact: true }).first().click();
 		await expect(
-			inspector.getByRole("button", { name: "Copy Appended instructions" }),
+			inspector.getByRole("button", { name: "Copy Appended instructions" }).first(),
 		).toBeVisible();
+		const prompts = inspector.locator('details[data-disclosure-key$=":system-prompt"]');
+		await expect(prompts).toHaveCount(2);
+		expect(
+			await prompts.evaluateAll((elements) =>
+				elements.map((element) => (element as HTMLDetailsElement).open),
+			),
+		).toEqual([true, false]);
+		await inspector.getByRole("link", { name: "Context", exact: true }).click();
+		await inspector.getByRole("button", { name: "Back", exact: true }).click();
+		await expect(prompts).toHaveCount(2);
+		await expect
+			.poll(() =>
+				prompts.evaluateAll((elements) =>
+					elements.map((element) => (element as HTMLDetailsElement).open),
+				),
+			)
+			.toEqual([true, false]);
 		await inspector.getByRole("link", { name: "Context", exact: true }).click();
 		await expect(inspector.getByRole("button", { name: "Copy input message" })).toBeVisible();
 		await inspector.getByRole("button", { name: "View in context map" }).click();
@@ -281,6 +303,20 @@ for (const width of [1280, 390]) {
 		await inspector.getByRole("button", { name: "Show selected", exact: true }).click();
 		await expect(inspector.getByLabel("Map zoom")).toHaveText("100%");
 		await expect(node).toBeInViewport();
+		await inspector.getByText("About this map", { exact: true }).click();
+		await map.evaluate((element) => {
+			element.scrollTop = 640;
+		});
+		const mapTop = await map.evaluate((element) => element.scrollTop);
+		expect(mapTop).toBeGreaterThan(0);
+		await inspector.getByRole("link", { name: "Workflow", exact: true }).click();
+		await expect(map).toHaveCount(0);
+		await inspector.getByRole("button", { name: "Back", exact: true }).click();
+		await expect(map).toBeVisible();
+		await expect.poll(() => map.evaluate((element) => element.scrollTop)).toBe(mapTop);
+		await expect(
+			inspector.locator('details[data-disclosure-key="context-map-description"]'),
+		).toHaveAttribute("open", "");
 		await inspector.getByRole("button", { name: "List", exact: true }).click();
 		const selectedItem = inspector.locator(".context-list li.selected");
 		await expect(selectedItem).toBeInViewport();

@@ -26,9 +26,9 @@ function main() {
 		LEITWERK_BROWSER_OUTPUT_ROOT: outputRoot,
 		NODE_OPTIONS: [process.env.NODE_OPTIONS, "--no-deprecation"].filter(Boolean).join(" "),
 	};
-	// Separate runners isolate the API/UI ports, Vite cache, and artifacts.
-	// Keep one shard per engine on smaller hosts to avoid resource contention.
-	const shardCount = availableParallelism() >= 6 ? 2 : 1;
+	// Separate runners isolate the API/UI ports and artifacts. Preview serves the
+	// built UI without a compiler per shard, so four CPUs can run two per engine.
+	const shardCount = availableParallelism() >= 4 ? 2 : 1;
 	const runners = ["chromium", "firefox", "webkit"].flatMap((engine) =>
 		Array.from({ length: shardCount }, (_, index) => {
 			const name = `${engine}-${index + 1}`;

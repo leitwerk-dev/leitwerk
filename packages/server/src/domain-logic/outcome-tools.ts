@@ -7,6 +7,7 @@ import {
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
+	type OutcomeToolArrayItemSpec,
 	type OutcomeToolParameterSpec,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
@@ -113,10 +114,49 @@ const scalarParameters = {
 	},
 };
 
+function matchesNestedOutcomeSpec(spec: OutcomeToolArrayItemSpec, value: unknown): boolean {
+	switch (spec.type) {
+		case "string":
+			return typeof value === "string";
+		case "number":
+			return typeof value === "number" && Number.isFinite(value);
+		case "boolean":
+			return typeof value === "boolean";
+		case "array": {
+			const itemSpec = spec.items;
+			return (
+				Array.isArray(value) &&
+				(spec.minItems === undefined || value.length >= spec.minItems) &&
+				(!itemSpec || value.every((item) => matchesNestedOutcomeSpec(itemSpec, item)))
+			);
+		}
+		case "object": {
+			if (!isJsonObject(value)) return false;
+			const properties = spec.properties ?? {};
+			if ((spec.required ?? []).some((key) => !Object.hasOwn(value, key))) return false;
+			if (
+				spec.additionalProperties === false &&
+				Object.keys(value).some((key) => !Object.hasOwn(properties, key))
+			)
+				return false;
+			return Object.entries(properties).every(
+				([key, property]) =>
+					!Object.hasOwn(value, key) || matchesNestedOutcomeSpec(property, value[key]),
+			);
+		}
+		default:
+			return false;
+	}
+}
+
 function compileOutcomeParameterSchema(spec: OutcomeToolParameterSpec): OutcomeParameterSchema {
-	return spec.type === "array"
-		? v.array(scalarParameters[spec.items?.type ?? "string"].schema)
-		: scalarParameters[spec.type].schema;
+	if (spec.type !== "array") return scalarParameters[spec.type].schema;
+	const itemSpec = spec.items ?? { type: "string" };
+	return v.custom(
+		(value) =>
+			Array.isArray(value) && value.every((item) => matchesNestedOutcomeSpec(itemSpec, item)),
+		"Expected an array matching its declared item schema",
+	);
 }
 
 function effectiveArrayItemCount(
@@ -129,9 +169,13 @@ function effectiveArrayItemCount(
 }
 
 function expectedParameterLabel(spec: OutcomeToolParameterSpec): string {
-	return spec.type === "array"
-		? `an array of ${scalarParameters[spec.items?.type ?? "string"].plural}`
-		: scalarParameters[spec.type].label;
+	if (spec.type !== "array") return scalarParameters[spec.type].label;
+	if (spec.items?.type === "object")
+		return spec.items.properties
+			? "an array of objects matching the declared schema"
+			: "an array of objects";
+	if (spec.items?.type === "array") return "an array of arrays matching the declared schema";
+	return `an array of ${scalarParameters[spec.items?.type ?? "string"].plural}`;
 }
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {

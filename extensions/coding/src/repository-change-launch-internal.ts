@@ -17,6 +17,60 @@ export interface RepositoryChangeParamsBase {
 export type RepositoryChangeLaunchParams<TExtra extends object = Record<never, never>> = TExtra &
 	RepositoryChangeParamsBase;
 
+/** Shared source metadata; provider-specific interfaces retain their exported names. @public */
+export interface RepositoryIssueOriginParams {
+	/** @public */
+	origin: "issue";
+	/** @public */
+	issueNumber: number;
+	/** @public */
+	issueUrl: string;
+	/** @public */
+	triggerLabel: string;
+	/** @public */
+	doneLabel: string;
+}
+
+/** @public */
+export interface RepositoryUiOriginParams {
+	/** @public */
+	origin: "ui";
+	/** @public */
+	issueNumber: null;
+	/** @public */
+	issueUrl: null;
+	/** @public */
+	triggerLabel: null;
+	/** @public */
+	doneLabel: null;
+}
+
+/** GitHub/Forgejo legacy origins default to issue; other providers may be stricter. @internal */
+export function normalizeRepositoryIssueOrigin(
+	record: Record<string, unknown>,
+	displayName: string,
+	text: (name: string) => string,
+): RepositoryIssueOriginParams | RepositoryUiOriginParams {
+	const origin = trimString(record.origin);
+	if (origin === "ui") {
+		return { origin: "ui", issueNumber: null, issueUrl: null, triggerLabel: null, doneLabel: null };
+	}
+	if (origin && origin !== "issue") throw new Error(`${displayName} requires a valid origin`);
+	if (
+		typeof record.issueNumber !== "number" ||
+		!Number.isInteger(record.issueNumber) ||
+		record.issueNumber <= 0
+	)
+		throw new Error(`${displayName} requires issueNumber`);
+	return {
+		origin: "issue",
+		issueNumber: record.issueNumber,
+		issueUrl: text("issueUrl"),
+		triggerLabel: text("triggerLabel"),
+		doneLabel: text("doneLabel"),
+	};
+}
+
 /** @public */
 export interface NormalizedRepositoryChangeParamsInput {
 	/** @internal */
@@ -52,6 +106,28 @@ export function normalizeRepositoryChangeParamsInput(
 		baseBranch: trimString(record.baseBranch) || "main",
 		workBranch: trimString(record.workBranch),
 		prompt: trimString(record.prompt),
+	};
+}
+
+/** Normalize issue-capable repository params with provider-owned required text fields. @internal */
+export function normalizeRepositoryIssueChangeParams<K extends string>(
+	value: unknown,
+	displayName: string,
+	fields: readonly K[],
+): NormalizedRepositoryChangeParamsInput &
+	Record<K, string> &
+	(RepositoryIssueOriginParams | RepositoryUiOriginParams) {
+	const shared = normalizeRepositoryChangeParamsInput(value, displayName);
+	const record = repositoryChangeParamsRecord(value, displayName);
+	const text = (name: string) => {
+		const value = trimString(record[name]);
+		if (!value) throw new Error(`${displayName} requires ${name}`);
+		return value;
+	};
+	return {
+		...shared,
+		...(Object.fromEntries(fields.map((name) => [name, text(name)])) as Record<K, string>),
+		...normalizeRepositoryIssueOrigin(record, displayName, text),
 	};
 }
 

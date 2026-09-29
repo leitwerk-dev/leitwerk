@@ -513,3 +513,13 @@ export function provenanceKindForSource(
 		? "explicit"
 		: "inherited";
 }
+
+/** Launch/action choices stay pinned when inherited defaults are refreshed. @internal */
+export function isPinnedModelSelection(
+	selection: DurableModelSelection | null | undefined,
+): boolean {
+	return (
+		selection?.provenance.source === "action_override" ||
+		selection?.provenance.source === "launch_override"
+	);
+}

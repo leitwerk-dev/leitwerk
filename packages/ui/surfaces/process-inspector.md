@@ -1,6 +1,6 @@
 # Process inspector surface
 
-Mode: Operate. Implemented in [ProcessInspector.svelte](../src/pages/process-detail/inspector/ProcessInspector.svelte) and its sibling components, selected through `inspect` links on `/processes/:instanceId`. This surface extends the existing [design system](../DESIGN.md) and complements the [process chronicle](process-chronicle.md).
+Mode: Operate. Open the inspector through `inspect` links on `/processes/:instanceId`. This surface follows the [design system](../DESIGN.md) and complements the [process chronicle](process-chronicle.md).
 
 ## Purpose and direction
 
@@ -10,7 +10,7 @@ Operators investigate what an execution received, did, and produced, then follow
 
 The inspector replaces the process content region beside global navigation. A persistent header contains Back and Show in chronicle, process and step breadcrumbs, the selected identity, and section links. Executions add attempt number, recorded facts, Previous and Next controls, and a muted context-origin summary with source and context-map links. The evidence pane scrolls below this header, with content centered at a maximum width of 960px.
 
-Use the incumbent Public Sans heading, body, and caption scales. White working surfaces, muted gray context blocks, thin dividers, and compact rounded disclosures establish hierarchy. Operational blue marks links, selected sections, focus, and the inherited-context boundary. Body copy remains dark and readable; IDs and raw values use the existing monospace face. The surface uses no added shadow, raster asset, or decorative treatment.
+Use the Public Sans heading, body, and caption scales. White working surfaces, muted gray context blocks, thin dividers, and compact rounded disclosures establish hierarchy. Operational blue marks links, selected sections, focus, and the inherited-context boundary. Body copy remains dark and readable; IDs and raw values use the existing monospace face. Keep surfaces flat, without shadows or decorative assets.
 
 ## Scope and reading order
 
@@ -33,10 +33,8 @@ Native disclosures pair each evidence label with its state: recorded, redacted, 
 
 Explicit links choose the process, step, execution, or trace item. Back and browser history retrace investigations and restore evidence position and disclosures. New inspector locations focus the identity heading. Show in chronicle restores the original reading position and focus, or reveals the selected execution when the investigation has moved to another record. Step references can reveal matching executions.
 
-The chronicle stays mounted, hidden, and inert while inspection is open. Its automatic scrolling pauses, and action and recovery drafts survive the round trip. Live Trace starts without following; Follow live opts into scrolling, and scrolling away ends following. New activity is announced without changing the selected execution. Open questions provide Answer in chronicle. Loading, empty, invalid-target, unavailable-source, and request-error states use readable inline messages; failed evidence requests expose Retry.
+Keep the chronicle mounted, hidden, and inert while inspection is open. Pause its automatic scrolling and preserve action and recovery drafts through the round trip. Live Trace starts without following; Follow live opts into scrolling, and scrolling away ends following. New activity is announced without changing the selected execution. Open questions provide Answer in chronicle. Loading, empty, invalid-target, unavailable-source, and request-error states use readable inline messages; failed evidence requests expose Retry.
 
 ## Responsive behavior
 
 The mobile inspector remains contained below the global shell bar. Its identity, context summary, and section links wrap above the evidence pane, which retains its own scrolling. At 720px and below, header and evidence padding tighten, facts and step lists become one column, and definition labels stack above their values. Overview fact labels remain beside their values; repository branch facts sit beneath their repository. Section links and map controls keep a 44px minimum height. The context diagram and its alternative list each scroll within the remaining space, keeping view and navigation controls reachable.
-
-No unresolved surface decision remains.

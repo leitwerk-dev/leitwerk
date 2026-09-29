@@ -17,6 +17,14 @@ the failed attempt's checkpoint; Retry creates a new attempt and runs preparatio
 checkpoint reached the server before a worker failure, deterministic preparation may run again.
 Preparation failure records the owning LLM turn as failed without prompting Pi.
 
+## Mapped turns
+
+Entering a mapped LLM turn freezes an ordered list of items in a durable run. Items
+execute sequentially, each requiring start acceptance. An item result commits atomically
+with the next item's start or, for the last item, with the collected state and route.
+An outcome is accepted only for the current accepted turn record and the run's current
+item. Workers receive only the active item, not the full run.
+
 ## Durable path
 
 These messages use ProcessEngine operations:
@@ -45,19 +53,8 @@ a canonical identity across reconnects.
 
 Runtime events do not enter ProcessEngine because they do not change durable business position.
 
-`execution.inspection` observations use the same IPC path but are retained separately
-from diagnostic logs and browser stream frames. After acceptance, the worker records
-supplied product versions and reads of those products. Each Pi model call records
-the effective model-facing context after conversion and tool assembly: model,
-ordered messages, system prompt, appended instructions, loaded context files, and
-available tool definitions. Provider request options and renderer-only details are
-excluded. This is a model-context record, not a provider-wire request.
-
-Each call is a separate revision. Compaction, continuation, and worker replacement
-do not overwrite earlier evidence. Session entry identities correlate committed
-messages with live activity where the SDK exposes them; ambiguous conversion
-matches retain content without claiming an entry identity. Missing historical
-evidence is never reconstructed from current workflow configuration.
+`execution.inspection` observations retain [execution evidence](#recorded-execution-inspection)
+separately from diagnostic logs and browser stream frames.
 
 Session-global Pi events and unknown SDK events are stored as `worker.trace`, not turn-local `pi.*` activity.
 
@@ -104,22 +101,25 @@ Before acceptance, LLM bootstrap only inspects the retained tree to produce `pre
 
 ## Recorded execution inspection
 
-After acceptance, the worker records inspection evidence through existing IPC. The
-actual Pi model-input boundary captures the assembled system prompt, effective model,
-available tools and model-facing messages for each call. Appended instructions and
-managed context files are retained separately. A bootstrap resource digest alone does
-not describe the assembled prompt. Entry links correlate live activity to retained
-session entries when Pi exposes that identity.
+After acceptance, each Pi model call records its effective model, ordered messages,
+assembled system prompt, and available tool definitions. Appended instructions and
+managed context files are retained separately. Provider request options,
+renderer-only details, and unrecorded workspace content are excluded.
+The record describes model-facing context rather than the provider's wire request.
 
-The server validates accepted execution/start/lease ownership and persists versioned,
-idempotent observations with deduplicated immutable content. Supplied products retain
-their producer and version; reading a product records consumption of that supply.
-Later publication and configuration changes do not rewrite earlier evidence.
+Each call retains a separate revision. Compaction, continuation, and worker
+replacement preserve earlier evidence. Supplied products retain their producer and
+version; a recorded read identifies which supply was consumed. Later publication
+and configuration changes do not rewrite this evidence.
 
-Inspection describes retained model-facing context, not a provider-wire request or
-unrecorded workspace. Known credentials are redacted before persistence. Missing
-legacy evidence remains explicit; there is no backfill from current definitions.
-See [Security](security.md) and [worker lifecycle](server-worker-lifecycle.md).
+Session entry identities link committed messages to live activity when Pi exposes
+them. Ambiguous matches retain content without claiming an entry identity. Missing
+historical evidence remains explicit and cannot be reconstructed from current
+definitions or a bootstrap resource digest.
+
+See [worker lifecycle](server-worker-lifecycle.md#execution-inspection) for acceptance,
+replay, and retention rules, and [Security](security.md#execution-inspection-evidence)
+for credential redaction.
 
 ## Browser rebuild
 

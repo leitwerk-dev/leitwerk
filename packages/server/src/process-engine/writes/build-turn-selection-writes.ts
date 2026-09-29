@@ -5,10 +5,10 @@ import {
 	type TransitionTrigger,
 	type TurnId,
 } from "@leitwerk-dev/domain";
-import { generateId } from "../../db/repo-helpers.js";
 import { tryTransition } from "../../domain-logic/process-state-machine.js";
 import { getProcessTurnGraph, type ProcessGraphRegistry } from "../../process-graph.js";
 import { selectedTurnRequiresWorker } from "../turn-worker-requirement.js";
+import { reserveSelectedTurnStart } from "./reserve-selected-turn-start.js";
 import {
 	appendProcessEvent,
 	applyProcessPatchField,
@@ -116,36 +116,7 @@ export function buildTurnSelectionWrites(
 	if (input.toTurnId && targetLifecycleStatus === "active") {
 		const target = getProcessTurnGraph(processGraphs, process.processId, input.toTurnId);
 		if (target?.turnType === "llm" || target?.turnType === "automatic") {
-			const startId = generateId("tsr");
-			writes.turnStartWrites.push({
-				kind: "create",
-				input: {
-					id: startId,
-					instanceId: process.id,
-					turnId: input.toTurnId,
-					turnType: target.turnType,
-					proposedTurnRecordId: generateId("trn"),
-					startKind: "selected_turn",
-					recoveryTurnRecordId: null,
-					continuation: null,
-					state:
-						target.turnType === "automatic"
-							? { kind: "starting", start: { kind: "automatic" } }
-							: {
-									kind: "preparation_failed",
-									requestedModelProfileId: process.selectedTurnModelProfileId ?? null,
-									providerOptions: {},
-									code: "model_required",
-									safeSummary: "LLM start requires model preflight",
-								},
-				},
-			});
-			applyProcessPatchField(writes, process, "currentExecution", {
-				kind: "worker_start",
-				id: startId,
-			});
-			if (target.turnType === "llm")
-				applyProcessPatchField(writes, process, "lifecycleStatus", "error");
+			reserveSelectedTurnStart(writes, process, input.toTurnId, target.turnType);
 		}
 	} else if (
 		input.toTurnId === null ||

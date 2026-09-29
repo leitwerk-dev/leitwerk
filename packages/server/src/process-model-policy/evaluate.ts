@@ -10,7 +10,7 @@ import type {
 	ProcessModelPolicyEvaluation,
 	ValidModelConfiguration,
 } from "./types.js";
-import { provenanceKindForSource } from "./types.js";
+import { isPinnedModelSelection, provenanceKindForSource } from "./types.js";
 
 function processPolicy(snapshot: PolicySnapshot, processId: string): PolicyProcess {
 	return (
@@ -215,8 +215,7 @@ export function resolveTurn(
 		existingSelection.kind === "selected" &&
 		(mode === "initial" || mode === "retry" || mode === "continue") &&
 		existingSelection.turnId === turnId &&
-		(existingSelection.selection.provenance.source === "action_override" ||
-			existingSelection.selection.provenance.source === "launch_override")
+		isPinnedModelSelection(existingSelection.selection)
 	)
 		return validateSelection(
 			snapshot,

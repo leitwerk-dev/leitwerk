@@ -89,8 +89,8 @@ sequences; Context and Configuration load independently. Entry, item and inherit
 boundary targets are checked against the process, execution and recorded relationship.
 An unavailable target never selects another execution.
 
-The Trace response reuses the reasoning history contract and reconciler. Recorded
-aliases keep live event links addressable after session commit. The retained
+Trace and reasoning responses share one history contract. Recorded aliases keep
+live event links addressable after session commit. The retained
 `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` endpoint also returns
 `state: "live" | "committed"` and `throughEventSequence`. Live responses include
 all recorded activity for that record, without a lookback limit.

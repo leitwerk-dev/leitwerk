@@ -24,3 +24,25 @@ Jira scoped settings are follow-on work: ticket-writing instructions may use
 Instance → Issue type → Project → Project + issue type. The generic settings
 contracts support named compound scopes; the Jira integration is not installed
 by core. Per-user settings and arbitrary YAML editing are outside this version.
+
+## Emergency security releases (proposal)
+
+Allow maintainers to publish an emergency security patch without merging the
+pending Release Please PR. This path is not implemented. Stable publication still
+requires a merged Release Please PR, which maintainers can expedite after merging
+a security fix.
+
+An emergency release would require:
+
+- An advisory reference and a reviewed security-fix PR merged into `main`, with
+  **Full validation** and **Conventional PR title and DCO** passing for that commit.
+- Validation and maintainer approval of the exact release commit through a
+  protected environment. Release notes must cover all changes since the previous
+  release, including other merged work.
+- A verified release origin linking the advisory, source PR, and approving workflow
+  run. Existing publication checks, credentials, artifact coordinates, and retry
+  safeguards still apply.
+- Coordinated versions and release metadata across packages, images, and the chart.
+  Normal and emergency releases must not allocate the same version. Release metadata
+  on `main` and the pending Release Please PR must reflect the emergency release
+  before another release proceeds.

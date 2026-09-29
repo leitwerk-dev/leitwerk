@@ -106,6 +106,8 @@ export interface WorkspaceComposition {
 	extensionDirs: string[];
 	/** @internal */
 	testRoots: string[];
+	/** Sandbox composition entries by name. @internal */
+	sandboxes: Record<string, string>;
 	/** @internal */
 	packages: ComposedPackage[];
 	/** @internal */
@@ -142,6 +144,22 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 	const testRoots = optionalStringArray(manifest.test_roots, "test_roots").map((entry) =>
 		resolveExisting(manifestDir, entry, `Test root '${entry}'`),
 	);
+	if (manifest.sandboxes !== undefined && !isRecord(manifest.sandboxes))
+		throw new Error("sandboxes must map names to composition entries");
+	const sandboxes = Object.fromEntries(
+		Object.entries(manifest.sandboxes ?? {}).map(([name, entry]) => {
+			if (!/^[a-z0-9][a-z0-9-]*$/.test(name))
+				throw new Error(`Sandbox name '${name}' must be lowercase kebab-case`);
+			return [
+				name,
+				resolveExisting(
+					manifestDir,
+					requiredString(entry, `sandboxes.${name}`),
+					`Sandbox '${name}'`,
+				),
+			];
+		}),
+	);
 
 	const byName = new Map<string, ComposedPackage>();
 	for (const dir of [...listWorkspacePackageDirs(workspaceRoot), ...extensionDirs]) {
@@ -163,6 +181,7 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 		runtimeConfigPath,
 		extensionDirs: [...new Set(extensionDirs)].sort(),
 		testRoots: [...new Set(testRoots)].sort(),
+		sandboxes,
 		packages: [...byName.values()].sort((left, right) => left.name.localeCompare(right.name)),
 	};
 }

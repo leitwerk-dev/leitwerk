@@ -4,15 +4,18 @@ import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-ren
 import ChronicleMarkdown from "../../../chronicle/components/ChronicleMarkdown.svelte";
 import ChronicleThinkingText from "../../../chronicle/components/ChronicleThinkingText.svelte";
 import ChronicleToolCallItem from "../../../chronicle/components/ChronicleToolCallItem.svelte";
+import { inspectionToolCall } from "./inspection-tool-call.js";
 
 let {
 	message,
 	live = null,
+	messages = [],
 	toolRendererIndex = {},
 	onLink,
 }: {
 	message: InspectionTraceMessage;
 	live?: TurnTraceSnapshot | null;
+	messages?: readonly InspectionTraceMessage[];
 	toolRendererIndex?: Record<string, ToolCallRendererDefinition>;
 	onLink?: (id: string) => void;
 } = $props();
@@ -50,8 +53,7 @@ const label = $derived(
       {:else if block.content.type === "text"}
         {#if message.role === "toolResult"}<pre>{block.content.text}</pre>{:else}<ChronicleMarkdown markdown={block.content.text} />{/if}
       {:else if block.content.type === "toolCall"}
-        {@const recorded = live?.toolCalls.find(tool => block.content.type === "toolCall" && tool.toolCallId === block.content.id)}
-        <ChronicleToolCallItem toolCall={recorded ?? {toolCallId: block.content.id, toolName: block.content.name, arguments: block.content.arguments, status: "completed", startedAt: message.timestamp, completedAt: null, resultText: null, truncated: false, isError: false}} {toolRendererIndex} />
+        <ChronicleToolCallItem toolCall={inspectionToolCall(block.content, message.timestamp, messages, live)} {toolRendererIndex} />
       {:else if block.content.type === "image"}
         {#if ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(block.content.mimeType)}<img src={`data:${block.content.mimeType};base64,${block.content.data}`} alt="Recorded model input" />{:else}<p>Recorded image format is not supported for display.</p>{/if}
       {/if}

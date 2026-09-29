@@ -72,7 +72,7 @@ it does not define turns, transitions, actions, or completion policy.
 
 | Builder | Execution |
 | --- | --- |
-| `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. |
+| `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. `.forEach(...)` runs it sequentially for frozen items. |
 | `flow.automatic` | Runs deterministic TypeScript in a worker. Server operations require authorized integration tools. |
 | `flow.human` | Waits for an operator action or a declared external action. |
 | `flow.external` | Waits for a declared external source. |
@@ -161,6 +161,64 @@ again. Keep preparation deterministic and external writes idempotent.
 Use a separate turn for an independently reviewable artifact, decision, wait, or
 business operation. See [acceptance and recovery](server-worker-lifecycle.md#5-start-acceptance-recovery-invariants)
 for the runtime contract.
+
+### Mapped LLM turns
+
+Use `.forEach(...)` to run an LLM turn once per item, such as each candidate in a
+shortlist. The turn remains one graph node. Items run sequentially, each with its own
+turn record, Chronicle card, and rail entry. Each outcome yields a typed result;
+`.collect(...)` combines the results and routes once.
+
+```ts
+const investigate = flow
+  .llm<Params, State>("investigate_candidate")
+  .description("Investigate one candidate")
+  .forEach<Candidate, InvestigationResult>({
+    items: ({ state }) => state.candidates,
+    itemCodec: candidateCodec,
+    resultCodec: investigationResultCodec,
+    key: ({ item }) => item.id,
+    label: ({ item }) => `${item.service}: ${item.pattern}`,
+    stateAfterSnapshot: ({ state }) => ({ ...state, candidates: [] }),
+  })
+  .buildPrompt((ctx) => `Candidate ${ctx.itemIndex + 1} of ${ctx.itemCount}: ${ctx.item.pattern}`)
+  .outcomeTool("candidate_noise", (outcome) =>
+    outcome
+      .description("Classify this candidate as noise")
+      .requiredString("summary", "Reason this candidate is noise")
+      .yield(({ ctx, event }) => validateNoiseResult(ctx.item, event.params)),
+  )
+  .collect(({ state }, results) => ({ ...state, dispositions: results }))
+  .routeByState({ review: "check_writing", done: "deliver" }, ({ state }) =>
+    state.dispositions.some(needsReview) ? "review" : "done",
+  );
+```
+
+Entering the turn evaluates `items` once on the server. Each item is parsed and
+serialized by `itemCodec`; keys must be unique, non-empty, and at most 200 characters,
+and at most 500 items are frozen. Labels are plain text, at most 200 characters, and
+default to the key. The order, values, keys, and labels are durable and do not follow
+later state changes. `stateAfterSnapshot` runs in the same transaction, before any
+item starts, so the source list need not reach workers. A worker receives only its
+active item: `ctx.item`, `ctx.itemKey`, `ctx.itemLabel`, `ctx.itemIndex`, and
+`ctx.itemCount` in `prepare` and `buildPrompt`.
+
+An item outcome declares parameters and `.yield(...)` only. It cannot route, change
+process state, or publish a product. Definitions that declare these operations are
+invalid. `yield` runs on the server with the item and validated outcome parameters.
+Its value must pass `resultCodec`; a failure or a `SafeOutcomePlanningError` rejects
+the outcome without recording a result. Each item's result markdown comes from the
+outcome's reserved `markdown` argument.
+
+After the last item, `collect` receives the results in item order and returns the
+new state. Then the collection route applies: `.to(turnId)`, `.complete()`,
+`.lifecycleStatus(status)`, or `.routeByState(branches, choose)`, whose chooser sees
+the collected state. An empty list collects immediately without starting an item.
+
+A failed item stays current. Retry and Continue run the same item; completed items
+are never re-run. Each item start resolves the model independently, so an unavailable
+model parks the process at that item. Abort ends the run. Re-entering the turn after
+another route starts a new run with fresh items.
 
 ## Passing data between turns (products)
 

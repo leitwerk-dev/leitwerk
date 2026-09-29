@@ -25,8 +25,9 @@ turns use amber clocks; future turns use neutral outlines. Failure has an explic
 marker and label. Text and symbols carry state without depending on color.
 
 A process summary shows its full text and update time. Dismiss hides it only for
-that process in the current browser, including after reload. **Inspect process → Overview → Show process summary** restores it. If browser storage is unavailable, dismissal lasts
-for the current page. This preference never changes process state.
+that process in the current browser, including after reload. **Inspect process →
+Overview → Show process summary** restores it. If browser storage is unavailable,
+dismissal lasts for the current page. This preference never changes process state.
 
 ### External waits
 
@@ -47,6 +48,9 @@ completed-step count, and recorded decision/event labels. Repeated labels show a
 count. Missing labels never imply a cause or successful repair. **History spans**
 measures first start to last finish, including gaps; use days and hours beyond a day.
 Failed, running, and waiting turns never fold. Keep the latest result next to its decision.
+Items of a mapped LLM turn never fold: each item keeps its own card and row, titled with
+its label and showing **Item N of M**. While an item runs, the pending row names the next
+item. Only retries of the same item group into **Earlier attempts**.
 
 Selecting a hidden turn expands its group. Navigating or scrolling outside the group
 collapses it; movement within the group keeps it open. The Chronicle retains the full
@@ -85,8 +89,8 @@ forms stay in the Chronicle; turn details contain read-only summaries.
 ## Process inspector
 
 **Inspect process** replaces the process content region with one inspector. Global
-navigation remains available. The Chronicle and Turn Rail stay mounted, hidden and
-inert; their drafts and disclosure state survive inspection.
+navigation remains available. Keep the Chronicle and Turn Rail mounted, hidden and
+inert so their drafts and disclosure state survive inspection.
 
 Process sections are **Overview**, **Workflow**, **Inputs & configuration**, and
 **Context map**. Overview retains usage coverage, recorded repository facts and

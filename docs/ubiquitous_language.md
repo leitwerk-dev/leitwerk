@@ -18,6 +18,8 @@ Behavioral rules belong in the linked references, not in a second glossary.
 | **`lifecycleStatus`** | Coarse process state: `discovered`, `active`, `waiting`, `error`, `completed`, or `aborted`. |
 | **`selectedTurnId`** | Durable pointer to the active or awaited process turn. |
 | **`TurnStartRecord`** | Durable preparation for one worker-owned turn that reserves a turn-record id without creating an attempt until accepted. |
+| **Mapped LLM turn** | One LLM turn that runs once per frozen item, sequentially. Each item yields a typed result; the turn collects all results and routes once. |
+| **Mapped run** | Durable record of one entry into a mapped LLM turn: the frozen items, their results, and the current item. |
 | **LLM preparation phase** | Optional deterministic phase inside an accepted LLM turn. It produces bounded prompt input and progress without creating a separate business turn. |
 | **`WorkerLease`** | Server-owned durable lifecycle and heartbeat record assigned to a physical worker instance. |
 | **`Prepared turn start`** | Read-only tree position prepared by a worker lease before server acceptance. |

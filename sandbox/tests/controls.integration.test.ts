@@ -1,6 +1,58 @@
+import { type SandboxCompositionFactory, SandboxControlError } from "@leitwerk-dev/dev-sandbox";
+import { startSandboxHarness } from "@leitwerk-dev/dev-sandbox/testing";
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
-import { expect } from "vitest";
+import { expect, test as plainTest } from "vitest";
+import composition from "../composition.js";
 import { test } from "../testing/fixture.js";
+
+plainTest(
+	"scenarios can admit through an existing launcher with prepared input",
+	async ({ onTestFinished }) => {
+		const prepared: string[] = [];
+		const factory: SandboxCompositionFactory = (input) => {
+			const base = composition(input);
+			return {
+				...base,
+				scenarios: [
+					...base.scenarios,
+					{
+						name: "relay",
+						description: "Admit through the question scenario's launcher.",
+						launcherId: "sandbox.question",
+						async prepareLaunch(requestId, body) {
+							if (body.accept !== true) throw new SandboxControlError(422, "Not accepted");
+							prepared.push(requestId);
+							return {};
+						},
+					},
+				],
+			};
+		};
+		const sandbox = await startSandboxHarness(factory);
+		onTestFinished(() => sandbox.stop());
+		const rejected = await sandbox.admitScenario("relay", { requestId: "relay-request" });
+		expect(rejected).toEqual({ statusCode: 422, body: { error: "Not accepted" } });
+		const invalid = await sandbox.context.app.inject({
+			method: "POST",
+			url: "/__local/scenarios",
+			payload: { name: "relay", requestId: "relay-request", input: ["accept"] },
+		});
+		expect(invalid.statusCode).toBe(400);
+		const request = { requestId: "relay-request", input: { accept: true } };
+		const first = await sandbox.admitScenario("relay", request);
+		const second = await sandbox.admitScenario("relay", request);
+		expect(first.statusCode).toBe(202);
+		expect(second.body.launchRunId).toBe(first.body.launchRunId);
+		expect(prepared).toEqual(["relay-request", "relay-request"]);
+		const processes = await waitForValue(
+			() => sandbox.context.deps.processes.listAll(),
+			(items) => items.length === 1,
+			12000,
+		);
+		expect(processes?.[0]?.externalId).toMatch(/^sandbox:question:/);
+	},
+	30000,
+);
 
 test("controls use configured URLs, reject cross-origin writes and deduplicate launches", async ({
 	f,

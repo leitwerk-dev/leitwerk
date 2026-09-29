@@ -216,8 +216,7 @@ record's accepted start. Each observation has an idempotency identity; replay ca
 replace its content. Replacement workers append model-input and supplied-context
 revisions to the same execution. The server retains immutable content separately
 from observation references, so recorded instructions survive restart and resource
-cache eviction. The inspection migration adds tables without resetting existing
-process, event, or session state.
+cache eviction. Schema upgrades preserve existing process, event, and session state.
 
 ## Session snapshots {#6-session-snapshot-uploads}
 

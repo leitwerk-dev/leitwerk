@@ -114,6 +114,8 @@ export interface RouteDeps
 	/** @internal */
 	onSettingsChanged?: () => Promise<void>;
 	/** @internal */
+	mappedRuns?: RepositoryBundle["mappedRuns"];
+	/** @internal */
 	startupObservations?: RepositoryBundle["startupObservations"];
 	/** @public */
 	externalSourceService?: Pick<
