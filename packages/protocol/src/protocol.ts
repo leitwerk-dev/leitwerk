@@ -704,6 +704,7 @@ export const WS_FRAME_DURABILITY = {
 	"process.created": "durable",
 	/** @internal */
 	"launch.updated": "durable",
+	/** @internal */
 	"settings.updated": "durable",
 	/** @internal */
 	"process.updated": "durable",

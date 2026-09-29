@@ -53,7 +53,9 @@ export function normalizeSettingsLocator(locator: string): string {
 	}
 }
 
+/** @internal */
 type SubjectProcess = Pick<ProcessInstance, "id" | "processId" | "metadata">;
+/** @internal */
 type Project = Pick<
 	import("@leitwerk-dev/process-sdk").ProcessLaunchProjectConfig,
 	"key" | "repoLocator" | "metadata"

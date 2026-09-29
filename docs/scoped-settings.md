@@ -104,6 +104,13 @@ projects may supply `settingsRepository` with a provider origin, repository ID,
 and verified aliases. Launchers and integrations may supply `settingsContext` for
 registered scopes. Operator forms cannot invent trusted scope bindings.
 
+The resolver's `SettingsContext`, `SettingsSubject`, and `ResolvedSetting` values
+are supported extension contracts. Resolved values include `SettingsSource`
+metadata identifying the contributing subject, scope, schema version, revision,
+and merge mode. Workers receive the supported `ScopedSettingsSnapshot` contract;
+version 1 retains the consumed values and labelled instruction blocks for that
+prepared start.
+
 The coding extension supplies repository instructions and planning,
 implementation, and review models. Its README owns those fields. Jira integration
 is future work; its named issue-type, project, and compound-scope ordering uses the

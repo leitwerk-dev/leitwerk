@@ -1,29 +1,29 @@
 import type { Actor } from "./domain-model.js";
 
-/** One stable subject per named scope type. @internal */
+/** One stable subject per named scope type. @public */
 export type SettingsContext = Readonly<Record<string, string>>;
 
-/** @internal */
+/** @public */
 export interface SettingsSubject {
-	/** @internal */
+	/** @public */
 	id: string;
-	/** @internal */
+	/** @public */
 	scopeType: string;
-	/** @internal */
+	/** @public */
 	identity: string;
-	/** @internal */
+	/** @public */
 	label: string;
-	/** Lower scopes supplied by the owning integration, never matched by expression. @internal */
+	/** Lower scopes supplied by the owning integration, never matched by expression. @public */
 	context: SettingsContext;
-	/** @internal */
+	/** @public */
 	schemaVersion: number;
-	/** @internal */
+	/** @public */
 	revision: number;
-	/** @internal */
+	/** @public */
 	createdAt: string;
-	/** @internal */
+	/** @public */
 	updatedAt: string;
-	/** Discovery is attributed to the server system actor. @internal */
+	/** Discovery is attributed to the server system actor. @public */
 	actor: Actor;
 }
 
@@ -51,49 +51,49 @@ export interface SettingsOverride {
 	actor: Actor;
 }
 
-/** @internal */
+/** @public */
 export interface SettingsSource {
-	/** @internal */
+	/** @public */
 	subjectId: string | null;
-	/** @internal */
+	/** @public */
 	scopeType: string;
-	/** @internal */
+	/** @public */
 	label: string;
-	/** @internal */
+	/** @public */
 	revision: number;
-	/** @internal */
+	/** @public */
 	schemaVersion: number;
-	/** @internal */
+	/** @public */
 	mode: "append" | "replace";
 }
 
-/** @internal */
+/** @public */
 export interface ResolvedSetting<T = unknown> {
-	/** @internal */
+	/** @public */
 	key: string;
-	/** @internal */
+	/** @public */
 	value: T;
-	/** @internal */
+	/** @public */
 	sources: SettingsSource[];
 }
 
-/** Immutable, non-secret settings consumed by a prepared turn. @internal */
+/** Immutable, non-secret settings consumed by a prepared turn. @public */
 export interface ScopedSettingsSnapshot {
-	/** @internal */
+	/** @public */
 	version: 1;
-	/** @internal */
+	/** @public */
 	purpose: string;
-	/** @internal */
+	/** @public */
 	context: SettingsContext;
-	/** @internal */
+	/** @public */
 	values: ResolvedSetting[];
-	/** Instruction blocks are labelled so repositories cannot be confused. @internal */
+	/** Instruction blocks are labelled so repositories cannot be confused. @public */
 	instructions: Array<{
-		/** @internal */
+		/** @public */
 		label: string;
-		/** @internal */
+		/** @public */
 		setting: ResolvedSetting<string>;
 	}>;
-	/** @internal */
+	/** @public */
 	explanations: string[];
 }
