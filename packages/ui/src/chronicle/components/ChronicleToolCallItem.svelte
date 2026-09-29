@@ -9,7 +9,11 @@ import { resolveToolRenderer, resolveToolRendererFields } from "../../lib/tool-c
 import { formatStructuredValue, summarizeToolPayload } from "../lib/tool-call-summary.js";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
 
-type DisplayToolCallSnapshot = PrimaryPathToolCallSnapshot | (Omit<TurnTraceToolCallSnapshot, "status"> & {status: TurnTraceToolCallSnapshot["status"] | "unknown"});
+type DisplayToolCallSnapshot =
+	| PrimaryPathToolCallSnapshot
+	| (Omit<TurnTraceToolCallSnapshot, "status"> & {
+			status: TurnTraceToolCallSnapshot["status"] | "unknown";
+	  });
 
 interface Props {
 	toolCall: DisplayToolCallSnapshot;
@@ -123,11 +127,31 @@ const runMetaLabel = $derived(
 	formatStartAndDurationLabel(toolCall.startedAt, toolCall.completedAt, toolCall.status),
 );
 const statusLabel = $derived(
-	toolCall.status === "unknown" ? "Outcome not recorded" : toolCall.isError ? "Failed" : toolCall.status === "running" ? "Running" : "Completed",
+	toolCall.status === "unknown"
+		? "Outcome not recorded"
+		: toolCall.isError
+			? "Failed"
+			: toolCall.status === "running"
+				? "Running"
+				: "Completed",
 );
-const statusSymbol = $derived(toolCall.status === "unknown" ? "?" : toolCall.isError ? "✕" : toolCall.status === "running" ? "…" : "✓");
+const statusSymbol = $derived(
+	toolCall.status === "unknown"
+		? "?"
+		: toolCall.isError
+			? "✕"
+			: toolCall.status === "running"
+				? "…"
+				: "✓",
+);
 const statusTone = $derived(
-	toolCall.status === "unknown" ? "unknown" : toolCall.isError ? "error" : toolCall.status === "running" ? "running" : "success",
+	toolCall.status === "unknown"
+		? "unknown"
+		: toolCall.isError
+			? "error"
+			: toolCall.status === "running"
+				? "running"
+				: "success",
 );
 </script>
 
