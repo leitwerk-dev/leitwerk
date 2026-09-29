@@ -6,6 +6,7 @@ import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import {
 	evaluateAtStableAvailabilityRevision,
+	isPinnedModelSelection,
 	type ServerProcessModelPolicy,
 } from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
@@ -35,6 +36,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 	availability: ModelStatusCacheSnapshot;
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
 	profileIds?: ReadonlySet<string>;
+	instanceId?: string;
 	broadcaster: Broadcaster;
 	processTitles?: ProcessTitleGenerator;
 	asOf: string;
@@ -42,6 +44,7 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 	let changed = 0;
 	const effects: PostCommitEffect[] = [];
 	for (const candidate of input.futureExecutions.listAll()) {
+		if (input.instanceId && candidate.instanceId !== input.instanceId) continue;
 		if (
 			candidate.modelSelection &&
 			input.profileIds &&
@@ -98,6 +101,10 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
+			if (current.kind === "action" && !isPinnedModelSelection(current.modelSelection)) {
+				await projectCurrent();
+				return;
+			}
 			if (!current.modelSelection) {
 				await projectCurrent();
 				if (!current.modelSelection) return;

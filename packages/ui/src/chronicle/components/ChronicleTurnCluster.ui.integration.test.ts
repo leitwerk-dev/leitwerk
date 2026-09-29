@@ -32,9 +32,6 @@ function cluster(overrides: Partial<ChronicleTurnClusterItem> = {}): ChronicleTu
 		facts: {
 			startedAt: "2026-09-10T10:00:00Z",
 			endedAt: "2026-09-10T10:00:03.400Z",
-			triggerSource: "user_action",
-			runMode: "immediate",
-			activeToolNames: [],
 		},
 		...overrides,
 	};
@@ -89,7 +86,6 @@ describe("chronicle turn disclosure", () => {
 						text: "Consider the existing schedule first.",
 						preview: "Consider the existing schedule first.",
 						previewTruncated: false,
-						items: [],
 						toolCallCount: 0,
 						traceItemCount: 1,
 					},
@@ -112,7 +108,7 @@ describe("chronicle turn disclosure", () => {
 		await tick();
 		expect(target.querySelectorAll('[data-section="turn-result"] li')).toHaveLength(2);
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
-		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1");
+		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1", "reasoning");
 		toggle?.click();
 		await tick();
 		expect(target.querySelector(".turn-result-markdown li")).toBeNull();
@@ -141,7 +137,7 @@ describe("chronicle turn disclosure", () => {
 		expect(target.textContent).not.toContain("4200");
 		expect(target.querySelector(".entry-timing")?.textContent).toContain("3.4s");
 		target.querySelector<HTMLButtonElement>('[data-section="turn-prompt"]')?.click();
-		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1");
+		expect(onOpenReasoningDetails).toHaveBeenCalledWith("record-1", "input");
 		expect(target.querySelector('[data-section="turn-result"]')?.textContent).toContain(
 			"Update the garden notes.",
 		);

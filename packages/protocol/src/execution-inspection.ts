@@ -102,6 +102,8 @@ export type InspectionTargetState =
 
 /** Expanded trace reuses the existing sequenced live-history contract. @internal */
 export interface ExecutionInspectionTrace extends TurnReasoningDetailResponseBody {
+	/** Retained branch messages with unknown execution ownership, never inherited-context claims. @internal */
+	unassignedMessages?: InspectionTraceMessage[];
 	/** Durable events retain addressable evidence even without a committed session. @internal */
 	events: ProcessEvent[];
 	/** Applicable input, decision, and result evidence, including non-model executions. @internal */

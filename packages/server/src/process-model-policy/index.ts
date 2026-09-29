@@ -33,6 +33,7 @@ export type {
 	PersistedModelIntegrity,
 	PersistedModelIntegrityIssue,
 	PrepareLaunchPlanOptions,
+	ProcessModelAvailabilitySnapshot,
 	ProcessModelPolicyEvaluation,
 	ProcessModelPolicyEvaluationSubject,
 	ProcessModelPolicyFingerprintSubject,
@@ -47,6 +48,7 @@ export type {
 	ProjectedProcessModelConfiguration,
 	ServerProcessModelPolicy,
 } from "./types.js";
+export { isPinnedModelSelection } from "./types.js";
 export { ProcessModelPolicyConfigurationError };
 
 function resolutionMode(

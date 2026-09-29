@@ -75,7 +75,7 @@ interface Props {
 		technicalDetail?: string | null;
 	} | null;
 	modelConfiguration: ProcessModelConfigurationView;
-	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
 	onDraftTicket?: (artifact: ChronicleTicketArtifact) => void;
 	hasTerminalSummary?: boolean;
 }

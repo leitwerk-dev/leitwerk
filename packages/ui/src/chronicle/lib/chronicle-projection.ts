@@ -22,7 +22,6 @@ type ChronicleInput = Pick<
 	"id" | "sequence" | "source" | "kind" | "bodyMarkdown" | "receivedAt" | "consumedAt"
 >;
 
-import type { ProcessRunDetailsView } from "@leitwerk-dev/protocol/http-contracts";
 import { formatDefinition } from "../../lib/format";
 import { truncateText } from "../../lib/markdown";
 import { hasDisplayableText } from "../../lib/pi-stream.js";
@@ -54,32 +53,11 @@ export interface ChronicleTerminalRailItem {
 	title: string;
 }
 
-export interface ChronicleReasoningThinkingItem {
-	kind: "thinking_chunk";
-	text: string;
-}
-
-export interface ChronicleReasoningToolItem {
-	kind: "tool_call";
-	toolCall: TurnTraceSnapshot["toolCalls"][number];
-}
-
-export interface ChronicleReasoningOperationalEventItem {
-	kind: "operational_event";
-	event: Extract<TurnTraceSnapshot["traceItems"][number], { kind: "operational_event" }>;
-}
-
-export type ChronicleReasoningTimelineItem =
-	| ChronicleReasoningThinkingItem
-	| ChronicleReasoningToolItem
-	| ChronicleReasoningOperationalEventItem;
-
 export interface ChronicleThinkingSection {
 	kind: "thinking_preview";
 	text: string;
 	preview: string;
 	previewTruncated: boolean;
-	items: ChronicleReasoningTimelineItem[];
 	toolCallCount: number;
 	traceItemCount: number;
 }
@@ -102,15 +80,9 @@ export interface ChroniclePiInputSummary {
 	userInput: string | null;
 }
 
-export type ChronicleTriggerSource = "external_event" | "user_action" | "unknown";
-export type ChronicleRunMode = "scheduled" | "immediate" | "unknown";
-
 export interface ChronicleTurnFacts {
 	startedAt: string | null;
 	endedAt: string | null;
-	triggerSource: ChronicleTriggerSource;
-	runMode: ChronicleRunMode;
-	activeToolNames: readonly string[];
 }
 
 export interface ChronicleOperatorDecisionSection {
@@ -266,27 +238,9 @@ export interface ChronicleProjection {
 	latestCompletedTurnTitle: string | null;
 }
 
-export interface ChronicleReasoningDetailEntry {
-	entryId: string;
-	turnRecordId: string;
-	turnId: string;
-	title: string;
-	turnLabel: string;
-	stateLabel: string | null;
-	isLive: boolean;
-	modelProfileId: string | null;
-	usage: TurnUsageSnapshot | null;
-	triggeringInput: ChronicleTriggeringInputSummary | null;
-	piInput: ChroniclePiInputSummary | null;
-	facts: ChronicleTurnFacts;
-	reasoningSection: ChronicleThinkingSection;
-}
-
 export interface BuildChronicleProjectionInput {
 	turnRecords: readonly TurnRecordView[];
-	turnTraceIndex: Record<string, TurnTraceSnapshot | undefined>;
 	turnTracePreviewIndex?: Record<string, TurnTracePreview | undefined>;
-	runDetails?: ProcessRunDetailsView | null;
 	initialUserInputText?: string | null;
 	inputs: readonly ChronicleInput[];
 	leafOutcomeSnapshots: readonly ProcessLeafOutcomeSnapshot[];
@@ -327,76 +281,6 @@ function buildTerminalAnchorId(status: ProcessTerminalStatus): string {
 	return `chronicle-terminal-${sanitizeDomToken(status)}`;
 }
 
-function buildReasoningTimelineItems(
-	turnTrace: TurnTraceSnapshot | undefined,
-): ChronicleReasoningTimelineItem[] {
-	const traceItems = turnTrace?.traceItems ?? [];
-	const toolCalls = turnTrace?.toolCalls ?? [];
-	const toolCallsById = new Map(toolCalls.map((toolCall) => [toolCall.toolCallId, toolCall]));
-	const resolvedItems: ChronicleReasoningTimelineItem[] = [];
-	const seenToolCallIds = new Set<string>();
-
-	for (const traceItem of traceItems) {
-		if (traceItem.kind === "thinking") {
-			if (!hasDisplayableText(traceItem.text)) {
-				continue;
-			}
-			resolvedItems.push({
-				kind: "thinking_chunk",
-				text: traceItem.text,
-			});
-			continue;
-		}
-		if (traceItem.kind === "operational_event") {
-			resolvedItems.push({
-				kind: "operational_event",
-				event: traceItem,
-			});
-			continue;
-		}
-		const toolCall = toolCallsById.get(traceItem.toolCallId);
-		if (!toolCall) {
-			continue;
-		}
-		seenToolCallIds.add(toolCall.toolCallId);
-		resolvedItems.push({
-			kind: "tool_call",
-			toolCall,
-		});
-	}
-
-	if (resolvedItems.length === 0) {
-		const thinkingText = turnTrace?.assistant.thinking ?? "";
-		if (hasDisplayableText(thinkingText)) {
-			resolvedItems.push({
-				kind: "thinking_chunk",
-				text: thinkingText,
-			});
-		}
-		for (const toolCall of toolCalls) {
-			resolvedItems.push({
-				kind: "tool_call",
-				toolCall,
-			});
-			seenToolCallIds.add(toolCall.toolCallId);
-		}
-		return resolvedItems;
-	}
-
-	for (const toolCall of toolCalls) {
-		if (seenToolCallIds.has(toolCall.toolCallId)) {
-			continue;
-		}
-		resolvedItems.push({
-			kind: "tool_call",
-			toolCall,
-		});
-		seenToolCallIds.add(toolCall.toolCallId);
-	}
-
-	return resolvedItems;
-}
-
 interface TurnTraceProjectionSource {
 	trace: TurnTraceSnapshot | undefined;
 	preview: TurnTracePreview | undefined;
@@ -408,7 +292,6 @@ function buildEmptyReasoningSection(source: TurnTraceProjectionSource): Chronicl
 		text: "",
 		preview: "",
 		previewTruncated: source.preview?.thinkingPreviewTruncated ?? false,
-		items: [],
 		toolCallCount: source.trace?.toolCalls.length ?? source.preview?.toolCallCount ?? 0,
 		traceItemCount: source.trace?.traceItems.length ?? source.preview?.traceItemCount ?? 0,
 	};
@@ -416,10 +299,16 @@ function buildEmptyReasoningSection(source: TurnTraceProjectionSource): Chronicl
 
 function buildReasoningSection(source: TurnTraceProjectionSource): ChronicleThinkingSection | null {
 	const thinkingText = source.trace?.assistant.thinking ?? source.preview?.thinkingPreview ?? "";
-	const items = buildReasoningTimelineItems(source.trace);
+	const hasTraceDetails =
+		Boolean(source.trace?.toolCalls.length) ||
+		source.trace?.traceItems.some(
+			(item) =>
+				item.kind === "operational_event" ||
+				(item.kind === "thinking" && hasDisplayableText(item.text)),
+		);
 	const hasPreviewDetails =
 		source.trace === undefined && source.preview?.hasReasoningDetails === true;
-	if (!hasDisplayableText(thinkingText) && items.length === 0 && !hasPreviewDetails) {
+	if (!hasDisplayableText(thinkingText) && !hasTraceDetails && !hasPreviewDetails) {
 		return null;
 	}
 	const thinkingPreview = source.trace
@@ -436,7 +325,6 @@ function buildReasoningSection(source: TurnTraceProjectionSource): ChronicleThin
 		text: thinkingText,
 		preview: thinkingPreview.text,
 		previewTruncated: thinkingPreview.truncated,
-		items,
 		toolCallCount: source.trace?.toolCalls.length ?? source.preview?.toolCallCount ?? 0,
 		traceItemCount: source.trace?.traceItems.length ?? source.preview?.traceItemCount ?? 0,
 	};
@@ -455,114 +343,24 @@ function sourceLabel(source: ProcessInput["source"]): string {
 	}
 }
 
-type ChronicleActionSource = ProcessTimelineTurnSummary["actionSource"];
-
-function uniqueNonEmptyToolNames(values: readonly string[]): string[] {
-	const names = new Set<string>();
-	for (const value of values) {
-		const toolName = value.trim();
-		if (toolName !== "") {
-			names.add(toolName);
-		}
-	}
-	return [...names];
-}
-
-function activeToolNamesForTurn(
-	runDetails: ProcessRunDetailsView | null | undefined,
-	turnId: string,
-): readonly string[] {
-	const turn = runDetails?.turns.find((candidate) => candidate.turnId === turnId);
-	return uniqueNonEmptyToolNames([
-		...(turn?.activePiToolNames ?? []),
-		...(turn?.outcomeActions.map((action) => action.name) ?? []),
-	]);
-}
-
-function triggerSourceFor(
-	triggeringInput: ChronicleTriggeringInputSummary | null,
-	actionSource: ChronicleActionSource | null,
-): ChronicleTriggerSource {
-	if (actionSource === "ui") {
-		return "user_action";
-	}
-	if (actionSource === "external" || actionSource === "scheduled") {
-		return "external_event";
-	}
-	if (!triggeringInput) {
-		return "unknown";
-	}
-	switch (triggeringInput.source) {
-		case "external_comment":
-		case "watcher_event":
-			return "external_event";
-		case "app_steer":
-		case "action_prompt":
-		case "initial_prompt":
-			return "user_action";
-		default:
-			return "unknown";
-	}
-}
-
-function runModeFor(
-	triggeringInput: ChronicleTriggeringInputSummary | null,
-	actionSource: ChronicleActionSource | null,
-): ChronicleRunMode {
-	if (actionSource === "scheduled") {
-		return "scheduled";
-	}
-	if (actionSource === "ui" || actionSource === "external") {
-		return "immediate";
-	}
-	if (
-		triggeringInput?.source === "initial_prompt" ||
-		triggeringInput?.source === "app_steer" ||
-		triggeringInput?.source === "external_comment" ||
-		triggeringInput?.source === "action_prompt" ||
-		triggeringInput?.source === "watcher_event"
-	) {
-		return "immediate";
-	}
-	return "unknown";
-}
-
 function toPiInputSummary(input: {
 	traceSource: TurnTraceProjectionSource;
 	triggeringInput: ChronicleTriggeringInputSummary | null;
 	initialUserInputText?: string | null;
 }): ChroniclePiInputSummary | null {
-	const piInput = input.traceSource.trace?.piInput;
 	const previewInput = input.traceSource.preview?.piInput;
-	const fullPrompt = piInput?.fullPrompt ?? previewInput?.userInputPreview ?? "";
+	const fullPrompt = previewInput?.userInputPreview ?? "";
 	if (fullPrompt.trim() === "") {
 		return null;
 	}
 	return {
-		parts: piInput ? [...piInput.parts] : [],
+		parts: [],
 		fullPrompt,
-		createdAt: piInput?.createdAt ?? previewInput?.createdAt ?? "",
+		createdAt: previewInput?.createdAt ?? "",
 		userInput:
 			promptOrNull(input.triggeringInput?.bodyMarkdown) ??
 			promptOrNull(input.initialUserInputText) ??
 			null,
-	};
-}
-
-function buildTurnFacts(input: {
-	turnId: string;
-	durableTurnRecord: TurnRecordView | undefined;
-	activeTurn?: PrimaryPathActiveTurnSnapshot | CompactActiveTurnSnapshot | null;
-	triggeringInput: ChronicleTriggeringInputSummary | null;
-	actionSource: ChronicleActionSource | null;
-	runDetails?: ProcessRunDetailsView | null;
-}): ChronicleTurnFacts {
-	return {
-		startedAt: input.durableTurnRecord?.startedAt ?? input.activeTurn?.startedAt ?? null,
-		endedAt: input.durableTurnRecord?.endedAt ?? null,
-		triggerSource: triggerSourceFor(input.triggeringInput, input.actionSource),
-		runMode: runModeFor(input.triggeringInput, input.actionSource),
-		activeToolNames: activeToolNamesForTurn(input.runDetails, input.turnId),
 	};
 }
 
@@ -607,25 +405,20 @@ function shouldExposeEmptyReasoningDetails(
 ): boolean {
 	return (
 		turnRecord.turnType === "llm" &&
-		(Boolean(traceSource.trace?.piInput) ||
-			traceSource.trace?.usage != null ||
-			traceSource.preview?.hasReasoningDetails === true ||
-			turnRecord.modelProfileId !== null)
+		(traceSource.preview?.hasReasoningDetails === true || turnRecord.modelProfileId !== null)
 	);
 }
 
 function buildTurnClusterItem(input: {
 	turnRecord: TurnRecordView;
-	turnTrace: TurnTraceSnapshot | undefined;
 	turnTracePreview: TurnTracePreview | undefined;
 	terminalStatus: "completed" | "aborted" | null;
 	hasRenderableLeafOutcome: boolean;
 	triggeringInput: ChronicleTriggeringInputSummary | null;
-	facts: ChronicleTurnFacts;
 	initialUserInputText?: string | null;
 }): ChronicleTurnClusterItem {
-	const { turnRecord, turnTrace, turnTracePreview, triggeringInput } = input;
-	const traceSource = { trace: turnTrace, preview: turnTracePreview };
+	const { turnRecord, turnTracePreview, triggeringInput } = input;
+	const traceSource = { trace: undefined, preview: turnTracePreview };
 	const sections: ChronicleTurnClusterSection[] = [];
 	const turnPresentation = getChronicleTurnPresentation(turnRecord);
 	const reasoningSection =
@@ -637,8 +430,7 @@ function buildTurnClusterItem(input: {
 		sections.push(reasoningSection);
 	}
 
-	const assistantText =
-		turnTrace?.assistant.text?.trim() ?? turnTracePreview?.assistantTextPreview.trim() ?? "";
+	const assistantText = turnTracePreview?.assistantTextPreview.trim() ?? "";
 	const fallbackText =
 		!hasDisplayableText(turnRecord.turnResultMarkdown) && hasDisplayableText(turnRecord.output)
 			? turnRecord.output.trim()
@@ -696,14 +488,14 @@ function buildTurnClusterItem(input: {
 		terminalStatus: input.terminalStatus,
 		sections,
 		modelProfileId: turnRecord.modelProfileId,
-		usage: turnTrace?.usage ?? turnTracePreview?.usage ?? null,
+		usage: turnTracePreview?.usage ?? null,
 		triggeringInput,
 		piInput: toPiInputSummary({
 			traceSource,
 			triggeringInput,
 			initialUserInputText: input.initialUserInputText,
 		}),
-		facts: input.facts,
+		facts: { startedAt: turnRecord.startedAt, endedAt: turnRecord.endedAt },
 		failure:
 			turnRecord.outcome === "failed"
 				? { summary: turnRecord.output || turnRecord.summary || "This turn failed." }
@@ -916,66 +708,31 @@ function buildTriggeringInputIndex(
 	return index;
 }
 
-function mergeLiveToolCallsWithSessionDetails(
-	activeToolCalls: ReadonlyArray<PrimaryPathActiveTurnSnapshot["toolCalls"][number]>,
-	sessionToolCalls: ReadonlyArray<TurnTraceSnapshot["toolCalls"][number]> | undefined,
-): TurnTraceSnapshot["toolCalls"] {
-	const sessionToolCallsById = new Map(
-		(sessionToolCalls ?? []).map((toolCall) => [toolCall.toolCallId, toolCall]),
-	);
-	const seenToolCallIds = new Set<string>();
-	const mergedToolCalls: TurnTraceSnapshot["toolCalls"] = activeToolCalls.map((toolCall) => {
-		seenToolCallIds.add(toolCall.toolCallId);
-		const sessionToolCall = sessionToolCallsById.get(toolCall.toolCallId);
-		if (!sessionToolCall) {
-			return toolCall;
-		}
-		return {
-			...toolCall,
-			arguments: toolCall.arguments ?? sessionToolCall.arguments,
-			resultText: sessionToolCall.resultText,
-			truncated: sessionToolCall.truncated,
-		};
-	});
-	for (const sessionToolCall of sessionToolCalls ?? []) {
-		if (!seenToolCallIds.has(sessionToolCall.toolCallId)) {
-			mergedToolCalls.push(sessionToolCall);
-		}
-	}
-	return mergedToolCalls;
-}
-
 function buildLiveTail(input: {
 	turnRecord: TurnRecordView | null;
 	activeTurn: PrimaryPathActiveTurnSnapshot | CompactActiveTurnSnapshot | null | undefined;
-	turnTrace: TurnTraceSnapshot | undefined;
 	turnTracePreview: TurnTracePreview | undefined;
 	triggeringInput: ChronicleTriggeringInputSummary | null;
-	facts: ChronicleTurnFacts | null;
-	runDetails?: ProcessRunDetailsView | null;
 	initialUserInputText?: string | null;
 }): ChronicleLiveTailItem | null {
-	const { turnRecord, activeTurn, turnTrace, turnTracePreview, triggeringInput } = input;
+	const { turnRecord, activeTurn, turnTracePreview, triggeringInput } = input;
 	if (!turnRecord) {
 		return null;
 	}
 	const liveToolCalls = activeTurn
-		? mergeLiveToolCallsWithSessionDetails(
-				"toolCalls" in activeTurn
-					? activeTurn.toolCalls
-					: activeTurn.currentTool
-						? [
-								{
-									...activeTurn.currentTool,
-									startedAt: activeTurn.startedAt,
-									completedAt: null,
-									arguments: null,
-									result: null,
-								},
-							]
-						: [],
-				turnTrace?.toolCalls,
-			)
+		? "toolCalls" in activeTurn
+			? activeTurn.toolCalls
+			: activeTurn.currentTool
+				? [
+						{
+							...activeTurn.currentTool,
+							startedAt: activeTurn.startedAt,
+							completedAt: null,
+							arguments: null,
+							result: null,
+						},
+					]
+				: []
 		: [];
 	const runningToolCall = activeTurn
 		? (liveToolCalls.findLast((toolCall) => toolCall.status === "running") ?? null)
@@ -985,12 +742,12 @@ function buildLiveTail(input: {
 	const hasThinkingText = thinkingText.trim().length > 0;
 	const reasoningSection = activeTurn
 		? buildReasoningSection({
-				trace: turnTrace ?? {
+				trace: {
 					assistant: activeTurn.assistant,
 					toolCalls: liveToolCalls,
 					traceItems: "traceItems" in activeTurn ? activeTurn.traceItems : [],
 					usage: activeTurn.usage,
-					piInput: turnTrace?.piInput ?? null,
+					piInput: null,
 				},
 				preview: turnTracePreview,
 			})
@@ -1058,20 +815,14 @@ function buildLiveTail(input: {
 		modelProfileId: turnRecord.modelProfileId,
 		triggeringInput,
 		piInput: toPiInputSummary({
-			traceSource: { trace: turnTrace, preview: turnTracePreview },
+			traceSource: { trace: undefined, preview: turnTracePreview },
 			triggeringInput,
 			initialUserInputText: input.initialUserInputText,
 		}),
-		facts:
-			input.facts ??
-			buildTurnFacts({
-				turnId: turnRecord.turnId,
-				durableTurnRecord: undefined,
-				activeTurn: activeTurn ?? null,
-				triggeringInput,
-				actionSource: null,
-				runDetails: input.runDetails,
-			}),
+		facts: {
+			startedAt: turnRecord.startedAt ?? activeTurn?.startedAt ?? null,
+			endedAt: turnRecord.endedAt,
+		},
 	};
 }
 
@@ -1161,73 +912,19 @@ function compareChronicleItems(left: ChronicleTimelineItem, right: ChronicleTime
 	return chronicleItemOrder(left) - chronicleItemOrder(right);
 }
 
-function findReasoningSection(
-	sections: readonly ChronicleTurnClusterSection[],
-): ChronicleThinkingSection | null {
-	for (const section of sections) {
-		if (section.kind === "thinking_preview") {
-			return section;
-		}
-	}
-	return null;
-}
-
-export function extractChronicleReasoningDetailEntries(
+export function extractChronicleReasoningTurnRecordIds(
 	projection: ChronicleProjection,
 	questionRequests: readonly ProcessQuestionRequest[] = [],
-): ChronicleReasoningDetailEntry[] {
-	const entries: ChronicleReasoningDetailEntry[] = [];
+): string[] {
 	const questionTurnRecordIds = new Set(questionRequests.map((request) => request.turnRecordId));
-	for (const item of projection.timelineItems) {
-		if (item.kind !== "turn_cluster" && item.kind !== "live_tail") {
-			continue;
-		}
-		const recordedReasoningSection =
-			item.kind === "turn_cluster" ? findReasoningSection(item.sections) : item.reasoningSection;
-		const reasoningSection =
-			recordedReasoningSection ??
-			(questionTurnRecordIds.has(item.turnRecordId) ||
-			(item.kind === "live_tail" && item.turnType === "llm")
-				? buildEmptyReasoningSection({ trace: undefined, preview: undefined })
-				: null);
-		if (!reasoningSection) {
-			continue;
-		}
-		if (item.kind === "turn_cluster") {
-			entries.push({
-				entryId: item.turnRecordId,
-				turnRecordId: item.turnRecordId,
-				turnId: item.turnId,
-				title: item.title,
-				turnLabel: item.turnLabel,
-				stateLabel: null,
-				isLive: false,
-				modelProfileId: item.modelProfileId,
-				usage: item.usage,
-				triggeringInput: item.triggeringInput,
-				piInput: item.piInput,
-				facts: item.facts,
-				reasoningSection,
-			});
-			continue;
-		}
-		entries.push({
-			entryId: item.turnRecordId,
-			turnRecordId: item.turnRecordId,
-			turnId: item.turnId,
-			title: item.title,
-			turnLabel: item.turnLabel,
-			stateLabel: item.stateLabel,
-			isLive: true,
-			modelProfileId: item.modelProfileId,
-			usage: item.usage,
-			triggeringInput: item.triggeringInput,
-			piInput: item.piInput,
-			facts: item.facts,
-			reasoningSection,
-		});
-	}
-	return entries;
+	return projection.timelineItems.flatMap((item) => {
+		if (item.kind !== "turn_cluster" && item.kind !== "live_tail") return [];
+		const hasReasoning =
+			item.kind === "turn_cluster"
+				? item.sections.some((section) => section.kind === "thinking_preview")
+				: item.reasoningSection || item.turnType === "llm";
+		return hasReasoning || questionTurnRecordIds.has(item.turnRecordId) ? [item.turnRecordId] : [];
+	});
 }
 
 export function buildChronicleProjection(
@@ -1243,9 +940,6 @@ export function buildChronicleProjection(
 		? buildPromptItem(displayPromptText, input.promptCreatedAt)
 		: null;
 	const triggeringInputIndex = buildTriggeringInputIndex(input);
-	const durableTurnRecordById = new Map(
-		input.turnRecords.map((turnRecord) => [turnRecord.id, turnRecord]),
-	);
 	const completedTurnRecords = input.turnRecords.filter(
 		(turnRecord) => turnRecord.status === "completed",
 	);
@@ -1255,7 +949,6 @@ export function buildChronicleProjection(
 		const triggeringInput = triggeringInputIndex.get(turnRecord.id) ?? null;
 		return buildTurnClusterItem({
 			turnRecord,
-			turnTrace: input.turnTraceIndex[turnRecord.id],
 			turnTracePreview: input.turnTracePreviewIndex?.[turnRecord.id],
 			terminalStatus: isLast ? resolvedTerminalStatus : null,
 			hasRenderableLeafOutcome: hasRenderableLeafOutcomeForTurn(
@@ -1263,13 +956,6 @@ export function buildChronicleProjection(
 				input.leafOutcomeSnapshots,
 			),
 			triggeringInput,
-			facts: buildTurnFacts({
-				turnId: turnRecord.turnId,
-				durableTurnRecord: durableTurnRecordById.get(turnRecord.id),
-				triggeringInput,
-				actionSource: turnRecord.actionSource,
-				runDetails: input.runDetails,
-			}),
 			initialUserInputText: input.initialUserInputText,
 		});
 	});
@@ -1303,22 +989,10 @@ export function buildChronicleProjection(
 	const liveTail = buildLiveTail({
 		turnRecord: activeTurnRecord,
 		activeTurn: input.activeTurn,
-		turnTrace: activeTurnRecord ? input.turnTraceIndex[activeTurnRecord.id] : undefined,
 		turnTracePreview: activeTurnRecord
 			? input.turnTracePreviewIndex?.[activeTurnRecord.id]
 			: undefined,
 		triggeringInput: liveTailTriggeringInput,
-		facts: activeTurnRecord
-			? buildTurnFacts({
-					turnId: activeTurnRecord.turnId,
-					durableTurnRecord: durableTurnRecordById.get(activeTurnRecord.id),
-					activeTurn: input.activeTurn ?? null,
-					triggeringInput: liveTailTriggeringInput,
-					actionSource: activeTurnRecord.actionSource,
-					runDetails: input.runDetails,
-				})
-			: null,
-		runDetails: input.runDetails,
 		initialUserInputText: input.initialUserInputText,
 	});
 	const terminalRailItem = buildTerminalRailItem(resolvedTerminalStatus);

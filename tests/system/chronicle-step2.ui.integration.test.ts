@@ -61,7 +61,7 @@ describe("chronicle step 2 experience", () => {
 						bodyMarkdown: "Please tighten the final line.",
 					});
 
-					createAcceptedLlmTurn(testApp.ctx, {
+					const accepted = createAcceptedLlmTurn(testApp.ctx, {
 						id: "trn_done",
 						instanceId: process.id,
 						turnId: "run_single_prompt",
@@ -85,8 +85,12 @@ describe("chronicle step 2 experience", () => {
 							cwd: "/tmp/project",
 						},
 						{
-							type: "message",
+							type: "custom_message",
 							id: "root-user",
+							customType: "leitwerk",
+							details: { kind: "turn_prompt", startRecordId: accepted.turnStartRecordId },
+							content: "Write a short answer",
+							display: false,
 							parentId: null,
 							timestamp: "2026-04-18T10:00:00.000Z",
 							message: {
@@ -180,12 +184,12 @@ describe("chronicle step 2 experience", () => {
 			});
 			click(reasoningDetailsButton);
 			await waitFor(() =>
-				expect(document.querySelector('[data-section="reasoning-details-overlay"]')).not.toBeNull(),
+				expect(document.querySelector('[data-section="process-inspector"]')).not.toBeNull(),
 			);
 			await waitFor(() =>
 				expect(
 					document.querySelector(
-						'[data-section="reasoning-details-overlay"] [data-section="reasoning-tool-marker"][data-tool-name="read"]',
+						'[data-section="process-inspector"] [data-section="reasoning-tool-marker"][data-tool-name="read"]',
 					),
 				).not.toBeNull(),
 			);

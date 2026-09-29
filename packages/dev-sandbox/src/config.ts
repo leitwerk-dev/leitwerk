@@ -61,6 +61,12 @@ export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 			model_id: SANDBOX_MODEL_ID,
 			thinking_level: "off",
 		},
+		{
+			id: "sandbox-alternate",
+			provider: SANDBOX_MODEL_PROVIDER,
+			model_id: SANDBOX_MODEL_ID,
+			thinking_level: "off",
+		},
 	];
 	config.pi.process_title_generation.model_profile = null;
 	config.pi.retry.enabled = false;

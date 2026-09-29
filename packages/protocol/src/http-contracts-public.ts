@@ -58,6 +58,8 @@ export type {
 	ProcessLaunchConfigurationView,
 	ProcessLaunchRunsResponseBody,
 	ProcessListItem,
+	ProcessModelConfigPatch,
+	ProcessModelConfigResponseBody,
 	ProcessModelConfigurationView,
 	ProcessOverviewItem,
 	ProcessRetryConfig,

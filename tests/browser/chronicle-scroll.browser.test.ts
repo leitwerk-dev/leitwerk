@@ -513,7 +513,7 @@ for (const viewport of [
 		);
 		let detailRequests = 0;
 		page.on("request", (request) => {
-			if (request.url().includes("/reasoning?")) detailRequests++;
+			if (request.url().includes("/inspection?section=trace")) detailRequests++;
 		});
 		await page.goto(`/processes/${process.id}`);
 		const preview = page.locator('[data-section="live-tail"] .thinking-preview-copy');
@@ -555,21 +555,21 @@ for (const viewport of [
 
 		const { promise: gate, resolve: release } = Promise.withResolvers<void>();
 		let captured = false;
-		await page.route("**/reasoning?*", async (route) => {
+		await page.route("**/inspection?section=trace*", async (route) => {
 			const response = await route.fetch();
 			captured = true;
 			await gate;
 			await route.fulfill({ response });
 		});
 		await expand.click();
-		await expect(page.getByText("Loading reasoning…", { exact: true })).toBeVisible();
+		await expect(page.getByText("Loading trace…", { exact: true })).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Close reasoning details", exact: true }).last(),
+			page.getByRole("button", { name: "Show in chronicle", exact: true }).last(),
 		).toBeEnabled();
 		await expect.poll(() => captured).toBe(true);
 		emitThinkingDelta(process.id, runningTurnId, "\nBuffered while loading.");
 		release();
-		const overlay = page.locator('[data-section="reasoning-details-overlay"]');
+		const overlay = page.locator('[data-role="inspector-scroll"]');
 		await expect(overlay).toContainText("Original context.");
 		await expect(overlay).toContainText("Buffered while loading.");
 		expect((await overlay.textContent())?.match(/Buffered while loading\./g)).toHaveLength(1);
@@ -581,6 +581,17 @@ for (const viewport of [
 		emitThinkingDelta(process.id, runningTurnId, "\nFurther output.");
 		await expect(overlay).toContainText("Further output.");
 		expect(await overlay.evaluate((element) => element.scrollTop)).toBe(readingPosition);
+		await expect(page.getByText("New activity available", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Follow live", exact: true }).click();
+		await expect.poll(async () => bottomGap(await getScrollMetrics(overlay))).toBeLessThan(3);
+		emitThinkingDelta(process.id, runningTurnId, "\nFollowing the new activity.");
+		await expect(overlay).toContainText("Following the new activity.");
+		await expect.poll(async () => bottomGap(await getScrollMetrics(overlay))).toBeLessThan(3);
+		await page.getByRole("button", { name: "Show in chronicle", exact: true }).click();
+		const closedCount = detailRequests;
+		emitThinkingDelta(process.id, runningTurnId, "\nClosed inspector activity.");
+		await expect(preview).toContainText("Closed inspector activity.");
+		expect(detailRequests).toBe(closedCount);
 	});
 }
 
@@ -979,6 +990,13 @@ for (const { width, running } of [
 		await summary.scrollIntoViewIfNeeded();
 		await summary.click();
 		await expect(history).not.toHaveAttribute("open", "");
+		await page.goto(
+			`/processes/${process.id}?inspect=execution&turnRecordId=${ids[2]}&section=trace`,
+		);
+		await expect(page.locator('[data-section="process-inspector"]')).toBeVisible();
+		await page.getByRole("button", { name: "Show in chronicle", exact: true }).click();
+		await expect(history).toHaveAttribute("open", "");
+		await expect(history.locator(`[data-turn-record-id="${ids[2]}"]`)).toBeInViewport();
 	});
 }
 

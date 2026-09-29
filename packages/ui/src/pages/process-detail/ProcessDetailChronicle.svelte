@@ -10,10 +10,7 @@ import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
 import ChronicleTurnRail from "../../chronicle/components/ChronicleTurnRail.svelte";
 import CompactActionComposer from "../../chronicle/components/CompactActionComposer.svelte";
-import type {
-	ChronicleProjection,
-	ChronicleReasoningDetailEntry,
-} from "../../chronicle/lib/chronicle-projection.js";
+import type { ChronicleProjection } from "../../chronicle/lib/chronicle-projection.js";
 import {
 	CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 	type ChronicleSelectableItem,
@@ -58,13 +55,13 @@ interface Props {
 	startupRecovery: ProcessDetailData["startupRecovery"];
 	processError: CurrentProcessErrorViewModel | null;
 	scheduledActionDetail: ScheduledActionDetail | null;
-	reasoningDetailEntries: readonly ChronicleReasoningDetailEntry[];
+	reasoningTurnRecordIds: readonly string[];
 	hasBlockingDetailOverlay: boolean;
 	launchWarning?: string | null;
 	persistedModelSelectionWarning?: string | null;
 	jumpToLatestLabel: string;
 	onDismissLaunchWarning: () => void;
-	onOpenReasoningDetails: (turnRecordId: string) => void;
+	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
 	onCloseBlockingDetailOverlays: () => void;
 	isProcessInfoOpen: boolean;
 	onToggleProcessInfo: () => void;
@@ -90,7 +87,7 @@ let {
 	startupRecovery,
 	processError,
 	scheduledActionDetail,
-	reasoningDetailEntries,
+	reasoningTurnRecordIds,
 	hasBlockingDetailOverlay,
 	launchWarning = null,
 	persistedModelSelectionWarning = null,
@@ -105,6 +102,11 @@ let {
 
 let chronicleViewport: HTMLDivElement | null = $state(null);
 let mobileQuickNavOpen = $state(false);
+let matchingStep = $state<string | null>(null);
+let matchIndex = $state(0);
+const matches = $derived(
+	detail?.timeline.turns.filter((turn) => turn.turnId === matchingStep) ?? [],
+);
 let ticketDraft = $state<ChronicleTicketDraftArtifact | null>(null);
 let ticketSelectionDraft = $state<ChronicleTicketDraftArtifact | null>(null);
 
@@ -130,6 +132,9 @@ const processLabel = $derived(
 );
 
 const chronicleScroll = createProcessDetailChronicleScroll({
+	get suspended() {
+		return hasBlockingDetailOverlay;
+	},
 	get instanceId() {
 		return instanceId;
 	},
@@ -169,11 +174,10 @@ function openFocusedReasoningDetails() {
 		chronicleScroll.activeAnchorId,
 	);
 	const preferredTurnRecordId =
-		(activeTurnRecordId &&
-		reasoningDetailEntries.some((entry) => entry.turnRecordId === activeTurnRecordId)
+		(activeTurnRecordId && reasoningTurnRecordIds.includes(activeTurnRecordId)
 			? activeTurnRecordId
 			: null) ??
-		reasoningDetailEntries.at(-1)?.turnRecordId ??
+		reasoningTurnRecordIds.at(-1) ??
 		null;
 	if (preferredTurnRecordId) {
 		onOpenReasoningDetails(preferredTurnRecordId);
@@ -216,12 +220,36 @@ function openDetailedActionForm(actionId: string) {
 	void tick().then(() => chronicleScroll.jumpToAnchor(CHRONICLE_ACTION_SECTION_ANCHOR_ID));
 }
 
+function revealRecord(recordId?: string) {
+	const item = railItems.find((item) => item.kind === "turn" && item.turnRecordId === recordId);
+	if (!item) return;
+	chronicleScroll.jumpToAnchor(item.anchorId);
+	void tick().then(() => {
+		const anchor = document.getElementById(item.anchorId);
+		if (anchor) {
+			anchor.tabIndex = -1;
+			anchor.focus({ preventScroll: true });
+		}
+	});
+}
+export function reveal(target: { turnRecordId?: string; turnId?: string }) {
+	matchingStep = target.turnId ?? null;
+	matchIndex = 0;
+	revealRecord(
+		target.turnRecordId ?? detail?.timeline.turns.find((turn) => turn.turnId === target.turnId)?.id,
+	);
+}
+function moveMatch(direction: number) {
+	matchIndex += direction;
+	revealRecord(matches[matchIndex]?.id);
+}
+
 function handleWindowKeydown(event: KeyboardEvent) {
 	if (mobileQuickNavOpen) return;
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
-	if (event.key === "r" && reasoningDetailEntries.length > 0) {
+	if (event.key === "r" && reasoningTurnRecordIds.length > 0) {
 		event.preventDefault();
 		openFocusedReasoningDetails();
 		return;
@@ -271,6 +299,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	</svg>
 </button>
 
+{#if matchingStep}<div class="match-navigation" role="status"><span>{matches.length ? `${matchIndex + 1} of ${matches.length} executions` : "No executions recorded"} for {matchingStep}</span><button class="ui-button" disabled={matchIndex === 0} onclick={() => moveMatch(-1)}>Previous match</button><button class="ui-button" disabled={matchIndex >= matches.length - 1} onclick={() => moveMatch(1)}>Next match</button><button class="ui-button" onclick={() => matchingStep = null}>Clear</button></div>{/if}
 <div class="experience-grid">
 	<div class="desktop-turn-rail">
 		<ChronicleTurnRail
@@ -466,7 +495,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 				<circle cx="12" cy="12" r="9"></circle>
 				<path d="M12 11v6M12 7.5h.01"></path>
 			</svg>
-			Process info
+			Inspect process
 		</button>
 		<ProcessActionsMenu
 			{instanceId}
@@ -483,6 +512,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 </ModalShell>
 
 <style>
+.match-navigation {display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap; font-size:var(--type-body-sm); padding:var(--space-sm); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm);}
 	.ticket-selection-action {
 		min-height: 44px;
 		padding: 0 var(--space-md);

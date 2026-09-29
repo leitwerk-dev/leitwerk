@@ -12,32 +12,12 @@ export interface Route {
 	params: Record<string, string>;
 }
 
-export type ProcessDetailOverlayState =
-	| { kind: "none" }
-	| { kind: "process-info" }
-	| { kind: "reasoning"; turnRecordId: string | null };
-
-export interface ProcessPathOptions {
-	overlay?: "process-info" | "reasoning" | null;
-	turnRecordId?: string | null;
-}
-
 function stripSearchAndHash(path: string): string {
-	const searchIndex = path.indexOf("?");
-	const hashIndex = path.indexOf("#");
-	const endIndexes = [searchIndex, hashIndex].filter((index) => index >= 0);
-	const endIndex = endIndexes.length > 0 ? Math.min(...endIndexes) : path.length;
-	return path.slice(0, endIndex);
+	return path.split(/[?#]/, 1)[0];
 }
 
 function readSearchParams(path: string): URLSearchParams {
-	const searchIndex = path.indexOf("?");
-	if (searchIndex < 0) {
-		return new URLSearchParams();
-	}
-	const hashIndex = path.indexOf("#", searchIndex);
-	const search = path.slice(searchIndex + 1, hashIndex >= 0 ? hashIndex : path.length);
-	return new URLSearchParams(search);
+	return new URL(path, "http://localhost").searchParams;
 }
 
 function decodeFirstSegment(pathname: string, prefix: string): string {
@@ -62,19 +42,8 @@ export function buildProcessesPath(): string {
 	return "/processes";
 }
 
-export function buildProcessPath(instanceId: string, options: ProcessPathOptions = {}): string {
-	const path = `/processes/${encodeURIComponent(instanceId)}`;
-	const params = new URLSearchParams();
-	if (options.overlay === "process-info") {
-		params.set("overlay", "process-info");
-	} else if (options.overlay === "reasoning") {
-		params.set("overlay", "reasoning");
-		if (options.turnRecordId) {
-			params.set("turnRecordId", options.turnRecordId);
-		}
-	}
-	const query = params.toString();
-	return query ? `${path}?${query}` : path;
+export function buildProcessPath(instanceId: string): string {
+	return `/processes/${encodeURIComponent(instanceId)}`;
 }
 
 export function buildWatchersPath(): string {
@@ -93,25 +62,12 @@ export function buildInstalledSkillPath(skillId: string): string {
 	return `/skills/installed/${encodeURIComponent(skillId)}`;
 }
 
-export function readProcessDetailOverlay(path: string): ProcessDetailOverlayState {
-	const params = readSearchParams(path);
-	const overlay = params.get("overlay");
-	if (overlay === "process-info") {
-		return { kind: "process-info" };
-	}
-	if (overlay === "reasoning") {
-		return { kind: "reasoning", turnRecordId: params.get("turnRecordId") };
-	}
-	return { kind: "none" };
-}
-
 function matchPrefixedDetailRoute(
-	pathnameWithSearch: string,
+	pathname: string,
 	prefix: string,
 	page: "process-detail" | "future-launch-detail",
 	paramName: "instanceId" | "futureExecutionId",
 ): Route | null {
-	const pathname = stripSearchAndHash(pathnameWithSearch);
 	if (!pathname.startsWith(prefix)) {
 		return null;
 	}
@@ -129,7 +85,7 @@ export function matchRoute(pathnameWithSearch: string): Route {
 	if (pathname === "/account/api-tokens" || pathname === "/account/api-tokens/")
 		return { page: "api-tokens", params: {} };
 	const processDetailRoute = matchPrefixedDetailRoute(
-		pathnameWithSearch,
+		pathname,
 		"/processes/",
 		"process-detail",
 		"instanceId",
@@ -139,7 +95,7 @@ export function matchRoute(pathnameWithSearch: string): Route {
 	}
 
 	const futureLaunchDetailRoute = matchPrefixedDetailRoute(
-		pathnameWithSearch,
+		pathname,
 		"/future-launches/",
 		"future-launch-detail",
 		"futureExecutionId",
@@ -190,4 +146,87 @@ export function matchRoute(pathnameWithSearch: string): Route {
 	}
 
 	return { page: "home", params: {} };
+}
+
+/** @internal */
+export const inspectorProcessSections = [
+	["overview", "Overview"],
+	["workflow", "Workflow"],
+	["inputs", "Inputs & configuration"],
+	["context-map", "Context map"],
+] as const;
+/** @internal */
+export const inspectorExecutionSections = [
+	["trace", "Trace"],
+	["context", "Context"],
+	["configuration", "Configuration"],
+] as const;
+export type InspectorProcessSection = (typeof inspectorProcessSections)[number][0];
+export type InspectorExecutionSection = (typeof inspectorExecutionSections)[number][0];
+export type InspectorTarget =
+	| { scope: "process"; section: InspectorProcessSection; turnRecordId?: string }
+	| { scope: "step"; turnId: string }
+	| {
+			scope: "execution";
+			turnRecordId: string;
+			section: InspectorExecutionSection;
+			entryId?: string;
+			itemId?: string;
+			boundaryFor?: string;
+	  };
+export type InspectorRoute = InspectorTarget | { scope: "invalid"; reason: string } | null;
+
+export function buildInspectorPath(instanceId: string, target: InspectorTarget): string {
+	const params = new URLSearchParams({ inspect: target.scope });
+	if (target.scope === "step") params.set("turnId", target.turnId);
+	else {
+		params.set("section", target.section);
+		if (target.turnRecordId) params.set("turnRecordId", target.turnRecordId);
+		if (target.scope === "execution") {
+			if (target.entryId) params.set("entryId", target.entryId);
+			if (target.itemId) params.set("itemId", target.itemId);
+			if (target.boundaryFor) params.set("boundaryFor", target.boundaryFor);
+		}
+	}
+	return `${buildProcessPath(instanceId)}?${params}`;
+}
+
+export function readInspectorTarget(path: string): InspectorRoute {
+	const params = readSearchParams(path);
+	let scope = params.get("inspect");
+	if (!scope && params.get("overlay") === "process-info") scope = "process";
+	if (!scope && params.get("overlay") === "reasoning") scope = "execution";
+	if (!scope) return null;
+	const invalid = {
+		scope: "invalid",
+		reason: "This inspector link has a missing or unsupported target.",
+	} as const;
+	const section = params.get("section");
+	const turnRecordId = params.get("turnRecordId") || undefined;
+	if (scope === "step") {
+		const turnId = params.get("turnId");
+		return turnId ? { scope, turnId } : invalid;
+	}
+	if (scope === "process") {
+		if (section && !inspectorProcessSections.some(([id]) => id === section)) return invalid;
+		return {
+			scope,
+			section: (section ?? "overview") as InspectorProcessSection,
+			...(turnRecordId ? { turnRecordId } : {}),
+		};
+	}
+	if (scope === "execution" && turnRecordId) {
+		if (section && !inspectorExecutionSections.some(([id]) => id === section)) return invalid;
+		const target: InspectorTarget = {
+			scope,
+			turnRecordId,
+			section: (section ?? "trace") as InspectorExecutionSection,
+		};
+		for (const key of ["entryId", "itemId", "boundaryFor"] as const) {
+			const value = params.get(key);
+			if (value) target[key] = value;
+		}
+		return target;
+	}
+	return invalid;
 }

@@ -53,19 +53,8 @@ a canonical identity across reconnects.
 
 Runtime events do not enter ProcessEngine because they do not change durable business position.
 
-`execution.inspection` observations use the same IPC path but are retained separately
-from diagnostic logs and browser stream frames. After acceptance, the worker records
-supplied product versions and reads of those products. Each Pi model call records
-the effective model-facing context after conversion and tool assembly: model,
-ordered messages, system prompt, appended instructions, loaded context files, and
-available tool definitions. Provider request options and renderer-only details are
-excluded. This is a model-context record, not a provider-wire request.
-
-Each call is a separate revision. Compaction, continuation, and worker replacement
-do not overwrite earlier evidence. Session entry identities correlate committed
-messages with live activity where the SDK exposes them; ambiguous conversion
-matches retain content without claiming an entry identity. Missing historical
-evidence is never reconstructed from current workflow configuration.
+`execution.inspection` observations retain [execution evidence](#recorded-execution-inspection)
+separately from diagnostic logs and browser stream frames.
 
 Session-global Pi events and unknown SDK events are stored as `worker.trace`, not turn-local `pi.*` activity.
 
@@ -110,13 +99,35 @@ The tree snapshot must upload before outcome or failure. An upload failure becom
 
 Before acceptance, LLM bootstrap only inspects the retained tree to produce `preparedStart`; it must not prompt Pi or mutate the tree. Acceptance validates that preparation and records its path and fork provenance. Post-acceptance execution uses that recorded preparation rather than selecting a different path.
 
+## Recorded execution inspection
+
+After acceptance, each Pi model call records its effective model, ordered messages,
+assembled system prompt, and available tool definitions. Appended instructions and
+managed context files are retained separately. Provider request options,
+renderer-only details, and unrecorded workspace content are excluded.
+The record describes model-facing context rather than the provider's wire request.
+
+Each call retains a separate revision. Compaction, continuation, and worker
+replacement preserve earlier evidence. Supplied products retain their producer and
+version; a recorded read identifies which supply was consumed. Later publication
+and configuration changes do not rewrite this evidence.
+
+Session entry identities link committed messages to live activity when Pi exposes
+them. Ambiguous matches retain content without claiming an entry identity. Missing
+historical evidence remains explicit and cannot be reconstructed from current
+definitions or a bootstrap resource digest.
+
+See [worker lifecycle](server-worker-lifecycle.md#execution-inspection) for acceptance,
+replay, and retention rules, and [Security](security.md#execution-inspection-evidence)
+for credential redaction.
+
 ## Browser rebuild
 
 The detail view uses:
 
 1. `GET /api/processes/:instanceId/ui-snapshot` for initial and reconnect state;
 2. `primary_path.*` frames for live changes;
-3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/reasoning` for one expanded running or completed turn.
+3. `GET /api/processes/:instanceId/turn-records/:turnRecordId/inspection?section=trace` for one expanded running or completed execution.
 
 Event ingestion atomically persists the event, its monotonic sequence, and a compact turn summary. The summary contains at most 1,024 characters each of recent reasoning and assistant text, current tool status, counts, usage, and `throughEventSequence`. It contains no trace items, tool arguments, or tool results.
 

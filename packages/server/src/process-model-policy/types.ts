@@ -299,6 +299,12 @@ export type ProjectedProcessModelConfiguration = {
 		/** @internal */
 		readonly effectiveConfiguredModelProfileId: string | null;
 		/** @internal */
+		readonly fixedModelProfileId: string | null;
+		/** @internal */
+		readonly effectiveModelProfileId: string | null;
+		/** @internal */
+		readonly effectiveSource: ProcessSelectedTurnModelSource | "none";
+		/** @internal */
 		readonly source: "instance" | "process_config" | "default";
 	}[];
 };
@@ -497,4 +503,14 @@ export function provenanceKindForSource(
 		source === "instance_default"
 		? "explicit"
 		: "inherited";
+}
+
+/** Launch/action choices stay pinned when inherited defaults are refreshed. @internal */
+export function isPinnedModelSelection(
+	selection: DurableModelSelection | null | undefined,
+): boolean {
+	return (
+		selection?.provenance.source === "action_override" ||
+		selection?.provenance.source === "launch_override"
+	);
 }

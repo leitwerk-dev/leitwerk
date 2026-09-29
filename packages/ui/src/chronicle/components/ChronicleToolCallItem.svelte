@@ -9,7 +9,11 @@ import { resolveToolRenderer, resolveToolRendererFields } from "../../lib/tool-c
 import { formatStructuredValue, summarizeToolPayload } from "../lib/tool-call-summary.js";
 import ChronicleMarkdown from "./ChronicleMarkdown.svelte";
 
-type DisplayToolCallSnapshot = PrimaryPathToolCallSnapshot | TurnTraceToolCallSnapshot;
+type DisplayToolCallSnapshot =
+	| PrimaryPathToolCallSnapshot
+	| (Omit<TurnTraceToolCallSnapshot, "status"> & {
+			status: TurnTraceToolCallSnapshot["status"] | "unknown";
+	  });
 
 interface Props {
 	toolCall: DisplayToolCallSnapshot;
@@ -59,13 +63,14 @@ function parseTimestamp(value: string | null | undefined): number | null {
 function formatStartAndDurationLabel(
 	startedAt: string | null | undefined,
 	completedAt: string | null | undefined,
+	status: DisplayToolCallSnapshot["status"],
 ): string {
 	const startedLabel =
 		typeof startedAt === "string" && startedAt.trim() !== "" ? startedAt : "Unknown";
 	const start = parseTimestamp(startedAt);
 	const end = parseTimestamp(completedAt);
 	if (start === null || end === null || end < start) {
-		return `Started ${startedLabel} · Duration ${completedAt ? "Unknown" : "Running"}`;
+		return `Started ${startedLabel} · Duration ${status === "running" ? "Running" : "Unknown"}`;
 	}
 	const totalSeconds = Math.max(0, Math.round((end - start) / 1000));
 	const durationLabel =
@@ -119,14 +124,34 @@ const resultText = $derived("resultText" in toolCall ? toolCall.resultText : nul
 const isToolTruncated = $derived("truncated" in toolCall && toolCall.truncated);
 const argumentSummary = $derived(primaryArgumentSummary(toolCall));
 const runMetaLabel = $derived(
-	formatStartAndDurationLabel(toolCall.startedAt, toolCall.completedAt),
+	formatStartAndDurationLabel(toolCall.startedAt, toolCall.completedAt, toolCall.status),
 );
 const statusLabel = $derived(
-	toolCall.isError ? "Failed" : toolCall.status === "running" ? "Running" : "Completed",
+	toolCall.status === "unknown"
+		? "Outcome not recorded"
+		: toolCall.isError
+			? "Failed"
+			: toolCall.status === "running"
+				? "Running"
+				: "Completed",
 );
-const statusSymbol = $derived(toolCall.isError ? "✕" : toolCall.status === "running" ? "…" : "✓");
+const statusSymbol = $derived(
+	toolCall.status === "unknown"
+		? "?"
+		: toolCall.isError
+			? "✕"
+			: toolCall.status === "running"
+				? "…"
+				: "✓",
+);
 const statusTone = $derived(
-	toolCall.isError ? "error" : toolCall.status === "running" ? "running" : "success",
+	toolCall.status === "unknown"
+		? "unknown"
+		: toolCall.isError
+			? "error"
+			: toolCall.status === "running"
+				? "running"
+				: "success",
 );
 </script>
 
@@ -150,6 +175,7 @@ const statusTone = $derived(
 {/snippet}
 
 <details
+	data-disclosure-key={`tool:${toolCall.toolCallId}`}
 	class="tool-item tool-item-expandable"
 	open={isOpen}
 	data-section="reasoning-tool-marker"

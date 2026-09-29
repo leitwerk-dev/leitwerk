@@ -113,3 +113,37 @@ credential parsing, and worker behavior.
 See the [SDK provider declarations](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/process-sdk/src/model-provider.ts)
 for signatures and the [SDK compatibility contract](process-sdk.md#api-compatibility)
 for supported members.
+
+### Editing a running instance
+
+In **Process inspector → Inputs & configuration → Model defaults and overrides**,
+choose **Edit models** to change the instance default or individual step profiles.
+Nonterminal processes remain editable, including active, errored and scheduled work.
+Completed and aborted processes are read-only. Steps with a fixed system-purpose
+model cannot be overridden.
+
+Changes apply to future executions and retries. An active execution or prepared
+start keeps its recorded model. Explicit one-time launch and action selections
+remain in effect for their execution and retries. Saving does not restart workers,
+retry failed work, change the plan revision, or alter the default recorded at creation.
+
+Clearing a step override restores the configured step model, then the instance
+default, then the process or catalog default. A configured step model therefore
+still takes precedence over an edited instance default. Scheduled actions that
+inherit instance settings refresh their displayed model and availability block;
+their payloads and run times do not change. Explicit scheduled model choices remain.
+
+`PATCH /api/processes/:instanceId/model-config` saves a sparse patch;
+`POST /api/processes/:instanceId/model-config/preview` previews the same patch.
+Both accept `defaultModelProfileId` and `turnConfigs`, for example:
+
+```json
+{"defaultModelProfileId":"fast","turnConfigs":{"draft":{"modelProfileId":null}}}
+```
+
+Omitted settings remain unchanged. `null` clears an instance override. The server
+validates selected profiles against process policy and current availability.
+Unknown, non-model and fixed-model steps are rejected. Malformed saved settings
+must be repaired before editing. Saves merge with the latest persisted settings:
+unrelated concurrent edits survive, and the last successful save wins for the same
+setting. Changes are recorded with the acting principal.

@@ -41,6 +41,8 @@ import type {
 	ProcessDiagnosticsResponseBody,
 	ProcessesOverviewResponseBody,
 	ProcessLaunchRunsResponseBody,
+	ProcessModelConfigPatch,
+	ProcessModelConfigResponseBody,
 	ProcessOverviewItem,
 	ProcessRetryConfig,
 	ProcessRetryConfigResponseBody,
@@ -52,7 +54,6 @@ import type {
 	SkillCatalogDetailResponseBody,
 	SkillsCatalogResponseBody,
 	StartLaunchRunResponseBody,
-	TurnReasoningDetailResponseBody,
 	UiLauncherSummary,
 	WatcherSummary,
 	WatchersResponseBody,
@@ -572,31 +573,6 @@ export async function fetchProcessDetail(instanceId: string): Promise<ProcessDet
 	);
 }
 
-export async function fetchTurnReasoningDetail(
-	instanceId: string,
-	turnRecordId: string,
-	sessionSignature: string | null,
-	signal?: AbortSignal,
-): Promise<TurnReasoningDetailResponseBody> {
-	const params = new URLSearchParams(sessionSignature === null ? {} : { sessionSignature });
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/reasoning?${params.toString()}`,
-		),
-		{ signal },
-	);
-	if (res.status === 409) {
-		throw new Error(
-			"The process changed while reasoning details were loading. Retry with the latest snapshot.",
-		);
-	}
-	if (!res.ok) throw new Error(`Couldn't load reasoning details: ${res.status}`);
-	return readJsonObject<TurnReasoningDetailResponseBody>(
-		res,
-		"Malformed reasoning detail response",
-	);
-}
-
 export async function fetchFutureExecution(
 	futureExecutionId: string,
 ): Promise<FutureExecutionDetailResponseBody> {
@@ -839,4 +815,48 @@ export async function previewCronExpression(expression: string): Promise<string>
 		throw new Error("Malformed cron preview response: nextRunAt must be a string");
 	}
 	return body.nextRunAt;
+}
+
+export interface InspectionSections {
+	summary: import("@leitwerk-dev/protocol").ExecutionInspectionSummary;
+	trace: import("@leitwerk-dev/protocol").ExecutionInspectionTrace;
+	context: import("@leitwerk-dev/protocol").ExecutionInspectionContext;
+	configuration: import("@leitwerk-dev/protocol").ExecutionInspectionConfiguration;
+}
+export async function fetchExecutionInspection<S extends keyof InspectionSections>(
+	instanceId: string,
+	turnRecordId: string,
+	section: S,
+	target: { entryId?: string; itemId?: string; boundaryFor?: string } = {},
+	signal?: AbortSignal,
+): Promise<InspectionSections[S]> {
+	const params = new URLSearchParams({ section });
+	for (const key of ["entryId", "itemId", "boundaryFor"] as const)
+		if (target[key]) params.set(key, target[key]);
+	const response = await getFetchImpl()(
+		resolveApiUrl(
+			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/inspection?${params}`,
+		),
+		{ signal },
+	);
+	if (!response.ok)
+		throw new Error(
+			response.status === 404
+				? "This execution is unavailable or does not belong to this process."
+				: `Couldn't load ${section}: ${response.status}`,
+		);
+	return readJsonObject<InspectionSections[S]>(response, "Malformed inspection response");
+}
+
+export async function updateProcessModelConfig(
+	instanceId: string,
+	patch: ProcessModelConfigPatch,
+	preview = false,
+) {
+	return requestStatusJson<ProcessModelConfigResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/model-config${preview ? "/preview" : ""}`,
+		preview ? "Couldn't preview model settings" : "Couldn't save model settings",
+		"Malformed model configuration response",
+		jsonRequestInit(preview ? "POST" : "PATCH", patch),
+	);
 }

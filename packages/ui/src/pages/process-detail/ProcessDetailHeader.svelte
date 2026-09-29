@@ -102,10 +102,10 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 				data-pressable="true"
 				onclick={onToggleProcessInfo}
 				aria-expanded={isProcessInfoOpen}
-				aria-controls="process-info-overlay"
+				aria-controls="inspector-heading"
 				disabled={!detail}
 			>
-				Process info
+				Inspect process
 			</button>
 			<ProcessActionsMenu
 				{instanceId}
