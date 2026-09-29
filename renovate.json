@@ -4,7 +4,8 @@
 	"timezone": "Europe/Berlin",
 	"dependencyDashboard": true,
 	"semanticCommits": "enabled",
-	"prCreation": "immediate",
+	"prCreation": "not-pending",
+	"internalChecksAsSuccess": true,
 	"internalChecksFilter": "strict",
 	"lockFileMaintenance": {
 		"enabled": true,

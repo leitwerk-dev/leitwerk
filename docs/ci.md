@@ -104,10 +104,11 @@ The hosted [Renovate GitHub App](https://github.com/apps/renovate) reads
 `renovate.json` from `main` in `leitwerk-dev/leitwerk`. Install the app for the
 `leitwerk-dev` organization with access to this repository. The app manages its
 credentials and runs on its hosted schedule; no Actions workflow or repository
-token secret is needed. Eligible dependency PRs open immediately so they can
-trigger validation, including updates to GitHub Actions. Validation runs on PRs,
-so PR creation must not wait for branch checks. Lockfile maintenance runs before 05:00 on Mondays in
-`Europe/Berlin`.
+token secret is needed. Its dependency PRs trigger validation, including updates
+to GitHub Actions. PR creation waits for the release-age check. Since validation
+runs on PRs, `internalChecksAsSuccess` lets a passing Renovate release-age check
+unblock PR creation before CI starts. Lockfile maintenance runs before 05:00 on
+Mondays in `Europe/Berlin`.
 
 For auto-merge, enable **Allow auto-merge** in repository settings and require
 **Full validation** and **Conventional PR title and DCO** in the branch rules for
