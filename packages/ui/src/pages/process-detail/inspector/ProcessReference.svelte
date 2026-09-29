@@ -52,10 +52,19 @@ let contextView = $state<"map" | "list">("map");
 let contextList = $state<HTMLUListElement>();
 $effect(() => {
 	const selected = target;
-	if (selected.scope === "process" && selected.section === "context-map" && detail.instanceTree.nodes.length) return;
+	if (
+		selected.scope === "process" &&
+		selected.section === "context-map" &&
+		detail.instanceTree.nodes.length
+	)
+		return;
 	let cancelled = false;
-	void tick().then(() => { if (!cancelled) onReady?.(); });
-	return () => { cancelled = true; };
+	void tick().then(() => {
+		if (!cancelled) onReady?.();
+	});
+	return () => {
+		cancelled = true;
+	};
 });
 $effect(() => {
 	const list = contextList;
