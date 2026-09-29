@@ -95,12 +95,14 @@ $effect(() => {
 async function save(reset = false) {
 	if (busy) return;
 	if (!editing) revision = field.override?.revision ?? 0;
+	const draft = change(reset);
+	const notifySaved = onSaved;
 	busy = true;
 	error = "";
 	notice = "";
 	try {
-		const result = await changeSettings(change(reset));
-		onSaved(result);
+		const result = await changeSettings(draft);
+		notifySaved(result);
 		editing = false;
 		conflict = false;
 		notice = reset ? "Inherited value restored." : "Saved. Future steps will use this setting.";
@@ -114,7 +116,7 @@ async function save(reset = false) {
 		conflict = caught instanceof SettingsRequestError && caught.status === 409;
 		if (conflict) {
 			try {
-				onSaved(await fetchSettingsPreview(subjectId));
+				notifySaved(await fetchSettingsPreview(draft.subjectId));
 			} catch {
 				/* Keep the draft and original error. */
 			}

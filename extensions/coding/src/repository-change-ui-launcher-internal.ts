@@ -76,7 +76,12 @@ export function createRepositoryChangeUiLauncher<
 		},
 	): P;
 	/** @internal */
-	launchConfig(params: P, title: string, identity: I, repository: R): ProcessLaunchConfig<P>;
+	launchConfig(
+		params: P,
+		title: string,
+		identity: I,
+		repository: NoInfer<R>,
+	): ProcessLaunchConfig<P>;
 	/** @internal */
 	preparationChecks: NonNullable<ProcessLauncherDefinition<P>["ui"]>["preparationChecks"];
 }): ProcessLauncherDefinition<P> & {
@@ -219,7 +224,10 @@ export function createRepositoryChangeUiLauncher<
 					`${repository.ssh_url}:${repository.default_branch}`,
 				);
 				const params = options.params(repository, { ...binding, profile, prompt, workBranch });
-				return { ok: true, launchConfig: options.launchConfig(params, prompt, identity, repository) };
+				return {
+					ok: true,
+					launchConfig: options.launchConfig(params, prompt, identity, repository),
+				};
 			},
 		},
 	};

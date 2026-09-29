@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { actorForRequest } from "../auth/fastify-auth.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
@@ -44,6 +44,20 @@ export function registerSettingsRoutes(
 		onSettingsChanged?: () => Promise<void>;
 	},
 ) {
+	function normalizedChange(request: FastifyRequest) {
+		const change = parseChange(request.body);
+		return {
+			...change,
+			value: change.value,
+			reset: change.reset ?? false,
+			mode:
+				change.mode ??
+				(settings.definitions().find((field) => field.key === change.key)?.merge === "instructions"
+					? ("append" as const)
+					: ("replace" as const)),
+			actor: actorForRequest(request),
+		};
+	}
 	app.get("/api/settings/definitions", async () => ({ definitions: settings.definitions() }));
 	app.get("/api/settings/scopes", async () => settings.listScopes());
 	app.post("/api/settings/scopes/refresh", async () => {
@@ -56,32 +70,11 @@ export function registerSettingsRoutes(
 		settings.preview(request.query.subjectId ?? "instance"),
 	);
 	app.post("/api/settings/preview", async (request) => {
-		const change = parseChange(request.body);
-		return settings.previewDraft({
-			...change,
-			value: change.value,
-			reset: change.reset ?? false,
-			mode:
-				change.mode ??
-				(settings.definitions().find((field) => field.key === change.key)?.merge === "instructions"
-					? "append"
-					: "replace"),
-			actor: actorForRequest(request),
-		});
+		return settings.previewDraft(normalizedChange(request));
 	});
 	app.put("/api/settings/overrides", async (request) => {
-		const change = parseChange(request.body);
-		settings.write({
-			...change,
-			value: change.value,
-			reset: change.reset ?? false,
-			mode:
-				change.mode ??
-				(settings.definitions().find((field) => field.key === change.key)?.merge === "instructions"
-					? "append"
-					: "replace"),
-			actor: actorForRequest(request),
-		});
+		const change = normalizedChange(request);
+		settings.write(change);
 		await repos.onSettingsChanged?.();
 		repos.broadcaster.sendDurable("settings.updated", { subjectId: change.subjectId });
 		return settings.preview(change.subjectId);

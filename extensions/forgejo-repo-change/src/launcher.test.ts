@@ -41,6 +41,11 @@ describe("Forgejo repository-change UI launcher", () => {
 					key: "repo",
 					repoLocator: f.repository.ssh_url,
 					baseBranch: "trunk",
+					settingsRepository: {
+						origin: "https://forgejo.example",
+						repositoryId: f.repository.id,
+						aliases: [f.repository.ssh_url],
+					},
 					metadata: {
 						forgejo: { owner: "examples", repo: "garden" },
 						"leitwerk.gitIdentity": f.identity,

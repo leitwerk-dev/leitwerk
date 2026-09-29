@@ -605,7 +605,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.llm<TParams, RepositoryChangeState>(turnIds.generateCommitMessage)
 		.description("Write Commit Message")
 		.executionPurpose(codingPurposes.implementation)
-		.modelPurpose("process_title_generation")
 		.rootBranchReview()
 		.startFromRoot()
 		.consume(products.plan)

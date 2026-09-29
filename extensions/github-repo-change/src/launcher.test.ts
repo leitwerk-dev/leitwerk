@@ -37,6 +37,12 @@ it("pins server SSH wiring, rejects unknown profiles, and generates a fresh repl
 	if (!first.ok || !second.ok) throw new Error("Launch failed");
 	expect(first.launchConfig.params).toMatchObject({ sshCredentialRef: "writer", origin: "ui" });
 	expect(first.launchConfig.params.workBranch).not.toBe(second.launchConfig.params.workBranch);
+	const repository = (await provider.client().listRepositories())[0];
+	expect(first.launchConfig.projects?.[0].settingsRepository).toMatchObject({
+		origin: "https://github.test",
+		repositoryId: repository.id,
+		aliases: expect.arrayContaining([repository.ssh_url]),
+	});
 	expect(first.launchConfig.projects?.[0].metadata).toMatchObject({
 		github: { owner: "team", repo: "repo", profile: "team" },
 	});

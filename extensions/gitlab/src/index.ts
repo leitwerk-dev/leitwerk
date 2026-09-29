@@ -30,7 +30,10 @@ const extension: LeitwerkExtensionModule = {
 							scopeType: "repository",
 							identity: repositorySettingsIdentity(client.baseUrl, project.id),
 							label: project.path_with_namespace,
-							aliases: [project.http_url_to_repo],
+							aliases: [
+								project.http_url_to_repo,
+								...(project.ssh_url_to_repo ? [project.ssh_url_to_repo] : []),
+							],
 						});
 				return subjects;
 			});
