@@ -210,7 +210,7 @@ export async function ensureGitLabInlineComment(input: {
 	headSha: string;
 	/** @internal */
 	signal?: AbortSignal;
-}): Promise<{ marker: string }> {
+}): Promise<{ marker: string; discussionId: string }> {
 	const {
 		client,
 		writes,
@@ -273,7 +273,46 @@ export async function ensureGitLabInlineComment(input: {
 			}),
 		},
 	);
-	return { marker };
+	const discussion = await find();
+	if (!discussion) throw new Error("GitLab inline discussion is unavailable after create");
+	return { marker, discussionId: discussion.id };
+}
+/** @public */
+export async function ensureGitLabResolveDiscussion(input: {
+	/** @public */
+	client: GitLabClientLike;
+	/** @public */
+	writes: ExternalWrites;
+	/** @public */
+	instanceId: string;
+	/** @internal */
+	projectId: number;
+	/** @internal */
+	iid: number;
+	/** @public */
+	writeKey: string;
+	/** @public */
+	discussionId: string;
+	/** @public */
+	signal?: AbortSignal;
+}): Promise<{ discussionId: string; resolved: boolean }> {
+	const { client, writes, instanceId, projectId, iid, writeKey, discussionId, signal } = input;
+	const digest = createHash("sha256")
+		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "resolve", writeKey, discussionId]))
+		.digest("hex");
+	await writes.ensure(
+		{ writeType: "gitlab.discussion.resolve", dedupKey: digest },
+		{
+			reconcile: () =>
+				existingRemote(async () => {
+					const discussion = await client.getDiscussion(projectId, iid, discussionId, signal);
+					return discussion.notes.some((note) => note.resolved) ? discussion : null;
+				}),
+			execute: () => client.resolveDiscussion(projectId, iid, discussionId, true, signal),
+			toMetadata: () => ({ projectId, iid, discussionId, resolved: true }),
+		},
+	);
+	return { discussionId, resolved: true };
 }
 /** @public */
 export async function ensureGitLabSeenReaction(input: {
@@ -337,6 +376,11 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 			"gitlab_reply",
 			"Post a retry-safe reply in an MR discussion",
 			["body", "writeKey", "discussionId"],
+		],
+		[
+			"gitlab_resolve_discussion",
+			"Resolve a retry-safe MR inline discussion",
+			["writeKey", "discussionId"],
 		],
 	] as const) {
 		api.tool<Record<string, unknown>>({
@@ -410,6 +454,17 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						...(name === "gitlab_reply" ? { discussionId: stringArg(args, "discussionId") } : {}),
+						signal: ctx.signal,
+					});
+				if (name === "gitlab_resolve_discussion")
+					return ensureGitLabResolveDiscussion({
+						client,
+						writes: ctx.externalWrites,
+						instanceId: ctx.process.id,
+						projectId: b.projectId,
+						iid: b.iid,
+						writeKey: stringArg(args, "writeKey"),
+						discussionId: stringArg(args, "discussionId"),
 						signal: ctx.signal,
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);

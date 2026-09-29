@@ -38,6 +38,8 @@ interface LocalState {
 	feedback?: Record<string, GitLabFeedback[]>;
 	/** @public */
 	discussionNotes?: Record<string, GitLabNote[]>;
+	/** @internal */
+	discussionResolved?: Record<string, boolean>;
 	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
 }
@@ -357,6 +359,7 @@ export class LocalGitLabAdapter {
 				notes: (this.state.discussionNotes?.[`${id}:${iid}:${discussionId}`] ?? []).map((note) => ({
 					...structuredClone(note),
 					system: false,
+					resolved: this.state.discussionResolved?.[`${id}:${iid}:${discussionId}`] === true,
 					created_at: new Date().toISOString(),
 					author: { username: "bot" },
 				})),
@@ -394,6 +397,22 @@ export class LocalGitLabAdapter {
 				this.state.discussionNotes[key] ??= [];
 				const notes = this.state.discussionNotes[key];
 				return this.append(notes, { id: notes.length + 1, body }, "Reply");
+			},
+			resolveDiscussion: async (id, iid, discussionId) => {
+				const key = `${id}:${iid}:${discussionId}`;
+				this.state.discussionResolved ??= {};
+				this.state.discussionResolved[key] = true;
+				this.save();
+				return {
+					id: discussionId,
+					notes: (this.state.discussionNotes?.[key] ?? []).map((note) => ({
+						...structuredClone(note),
+						system: false,
+						resolved: true,
+						created_at: new Date().toISOString(),
+						author: { username: "bot" },
+					})),
+				};
 			},
 			listNoteReactions: async (id, iid, noteId) =>
 				structuredClone(this.state.reactions?.[`${id}:${iid}:${noteId}`] ?? []),

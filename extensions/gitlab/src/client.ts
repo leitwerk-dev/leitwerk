@@ -682,6 +682,21 @@ export class GitLabClient {
 		);
 	}
 	/** @internal */
+	resolveDiscussion(
+		id: number,
+		iid: number,
+		discussionId: string,
+		resolved: boolean,
+		signal?: AbortSignal,
+	): Promise<GitLabDiscussion> {
+		return this.request(
+			`${mrPath(id, iid)}/discussions/${encodeURIComponent(discussionId)}`,
+			signal,
+			{ resolved },
+			"PUT",
+		);
+	}
+	/** @internal */
 	listNoteReactions(
 		id: number,
 		iid: number,
@@ -846,6 +861,7 @@ export type GitLabClientLike = Pick<
 	| "listNotes"
 	| "listProjects"
 	| "replyToDiscussion"
+	| "resolveDiscussion"
 	| "resolveGitIdentity"
 >;
 
