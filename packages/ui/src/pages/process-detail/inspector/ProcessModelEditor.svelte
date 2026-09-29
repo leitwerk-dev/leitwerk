@@ -115,7 +115,7 @@ async function save() {
      </select>
      <p class="note">Effective default: {configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}</p>
     </div>
-    <p class="note">Clearing a step override restores its configured step model, then the instance default.</p>
+    <p class="note">Clearing a step override restores the instance default, then inherited purpose and configured defaults.</p>
     {#each configuration.turns as turn (turn.turnId)}
      <div class="model-field">
       {#if turn.fixedModelProfileId}
