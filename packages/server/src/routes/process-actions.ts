@@ -1,3 +1,4 @@
+import { parseActionRequestBody } from "@leitwerk-dev/protocol";
 import type {
 	ModelProviderOptionsResponseBody,
 	ProcessActionModelPreviewResponseBody,
@@ -9,7 +10,6 @@ import { listVisibleActionsForProcess } from "../process-action-presenter.js";
 import { sendEngineFailure } from "./process-engine-http.js";
 import {
 	getProcessOrReply,
-	normalizeActionRequest,
 	normalizeContinueRequest,
 	normalizeRecoveryModelRequest,
 	type RouteDeps,
@@ -219,14 +219,14 @@ export function registerProcessActionRoutes(
 		if (!process) {
 			return null;
 		}
-		const normalized = normalizeActionRequest(req.body);
-		if (!normalized.ok) {
-			sendActionRequestNormalizationError(reply, normalized.error);
+		const parsed = parseActionRequestBody(req.body);
+		if (!parsed.ok) {
+			sendActionRequestNormalizationError(reply, parsed.error);
 			return null;
 		}
 		return {
 			process,
-			request: normalized.request,
+			request: parsed.value,
 			processActionRegistry: deps.processActionRegistry,
 		};
 	}
@@ -234,14 +234,14 @@ export function registerProcessActionRoutes(
 	app.post<{ Params: { instanceId: string; actionId: string }; Body: unknown }>(
 		"/api/processes/:instanceId/actions/:actionId/model-preview",
 		async (req, reply) => {
-			const normalized = normalizeActionRequest(req.body);
-			if (!normalized.ok) {
-				return sendActionRequestNormalizationError(reply, normalized.error);
+			const parsed = parseActionRequestBody(req.body);
+			if (!parsed.ok) {
+				return sendActionRequestNormalizationError(reply, parsed.error);
 			}
 			const result = await deps.processModelSelection.preview(
 				req.params.instanceId,
 				req.params.actionId,
-				normalized.request.input,
+				parsed.value.input,
 			);
 			if (result.kind === "operational_failure") {
 				if (result.code === "process_not_found") {

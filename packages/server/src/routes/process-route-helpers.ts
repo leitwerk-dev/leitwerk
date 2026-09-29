@@ -1,4 +1,5 @@
 import {
+	isUnknownRecord,
 	normalizeLaunchModelConfigInput,
 	type ProcessEvent,
 	type ProcessInstance,
@@ -9,7 +10,6 @@ import {
 import type { ProcessModelSelectionServiceLike } from "@leitwerk-dev/process-sdk";
 import {
 	findUiLauncherById,
-	isLlmTurnDefinition,
 	type OutcomeToolParameterSpec,
 	type ProcessLauncherService,
 	type ProcessLaunchPlanServiceLike,
@@ -20,11 +20,7 @@ import {
 	resolveProcessPiConfig,
 	resolveTurnActiveToolNames,
 } from "@leitwerk-dev/process-sdk/pi-config";
-import {
-	parseActionRequestBody,
-	parseLauncherInputJson,
-	parseLauncherRequestBody,
-} from "@leitwerk-dev/protocol";
+import { parseLauncherInputJson, parseLauncherRequestBody } from "@leitwerk-dev/protocol";
 import type {
 	LauncherModelConfigSchema,
 	LauncherMutationResponseBody,
@@ -44,7 +40,6 @@ import type {
 	ActionMutationOutcome,
 	FutureExecutionLifecycle,
 	LaunchMutationOutcome,
-	NormalizedScheduledActionInput,
 	NormalizedScheduledLaunchInput,
 } from "../future-execution/index.js";
 import {
@@ -209,32 +204,22 @@ function buildLaunchParameterRows(
 	params: Record<string, unknown>,
 	launcher: ReturnType<ProcessLauncherService["listUiLaunchers"]>[number] | null,
 ): ProcessLaunchConfigurationView["parameters"] {
-	const rows: Array<ProcessLaunchConfigurationView["parameters"][number]> = [];
-	const usedFieldIds = new Set<string>();
-	for (const field of launcher?.launchConfigSchema.fields ?? []) {
-		if (!Object.hasOwn(params, field.id)) {
-			continue;
-		}
-		usedFieldIds.add(field.id);
-		rows.push({
-			fieldId: field.id,
-			label: field.label || field.id,
-			value: formatLaunchParameterValue(params[field.id]),
-			rawValue: safeLaunchValue(params[field.id]),
-		});
-	}
-	for (const fieldId of Object.keys(params).sort((left, right) => left.localeCompare(right))) {
-		if (usedFieldIds.has(fieldId)) {
-			continue;
-		}
-		rows.push({
-			fieldId,
-			label: fieldId,
-			value: formatLaunchParameterValue(params[fieldId]),
-			rawValue: safeLaunchValue(params[fieldId]),
-		});
-	}
-	return rows;
+	const fields = (launcher?.launchConfigSchema.fields ?? []).filter((field) =>
+		Object.hasOwn(params, field.id),
+	);
+	const declared = new Set(fields.map((field) => field.id));
+	return [
+		...fields,
+		...Object.keys(params)
+			.sort((left, right) => left.localeCompare(right))
+			.filter((id) => !declared.has(id))
+			.map((id) => ({ id, label: id })),
+	].map(({ id, label }) => ({
+		fieldId: id,
+		label: label || id,
+		value: formatLaunchParameterValue(params[id]),
+		rawValue: safeLaunchValue(params[id]),
+	}));
 }
 
 export function buildProcessLaunchConfigurationView(
@@ -299,7 +284,13 @@ export function buildProcessRunDetailsView(
 
 	for (const [turnId, turnContract] of contract.turns) {
 		const turnDef = deps.processActionRegistry?.getTurnDefinition(process.processId, turnId);
-		if (turnDef && turnDef.kind !== "llm") {
+		if (!turnDef) continue;
+		const common = {
+			turnId,
+			description: turnDef.description,
+			consumedProducts: [...(turnContract.consumedProducts ?? [])],
+		};
+		if (turnDef.kind !== "llm") {
 			const actions =
 				turnDef.kind === "human"
 					? Object.entries(turnDef.actions).map(([name, action]) => ({
@@ -318,10 +309,8 @@ export function buildProcessRunDetailsView(
 						}))
 					: [];
 			turns.push({
-				turnId,
-				description: turnDef.description,
+				...common,
 				pathType: "not_applicable",
-				consumedProducts: [...(turnContract.consumedProducts ?? [])],
 				publishedProducts: [...(turnContract.publishedProducts ?? [])],
 				activePiToolNames: [],
 				outcomeActions: [],
@@ -335,12 +324,8 @@ export function buildProcessRunDetailsView(
 			});
 			continue;
 		}
-		if (!turnDef || !isLlmTurnDefinition(turnDef)) {
-			continue;
-		}
 		turns.push({
-			turnId,
-			description: turnDef.description,
+			...common,
 			pathType: turnDef.branchType,
 			definitionContract: {
 				kind: turnDef.kind,
@@ -349,7 +334,6 @@ export function buildProcessRunDetailsView(
 				askQuestions: turnDef.askQuestions ?? false,
 			},
 			integrationToolNames: turnDef.integrationTools ?? [],
-			consumedProducts: [...(turnContract.consumedProducts ?? [])],
 			publishedProducts: [
 				...new Set(
 					[turnContract.publishedProduct, ...(turnContract.publishedProducts ?? [])].filter(
@@ -429,75 +413,71 @@ export interface NormalizedRecoveryModelRequest {
 	providerOptions?: Record<string, string>;
 }
 
-function normalizeProviderOptions(
-	value: unknown,
-): { ok: true; value: Record<string, string> } | { ok: false; error: string } {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
-		return { ok: false, error: "providerOptions must be an object of string values" };
-	}
-	const entries = Object.entries(value);
-	if (entries.length > 64) return { ok: false, error: "providerOptions has too many fields" };
-	const result: Record<string, string> = {};
-	for (const [key, option] of entries) {
-		if (!key || key.length > 128 || typeof option !== "string" || option.length > 4096) {
-			return { ok: false, error: "providerOptions contains an invalid field" };
-		}
-		result[key] = option;
-	}
-	return { ok: true, value: result };
-}
+const modelRequestEntries = {
+	nextTurnModelProfileId: v.exactOptional(
+		v.pipe(
+			v.nullish(v.string("nextTurnModelProfileId must be a string or null")),
+			v.transform((value) => value?.trim() || null),
+		),
+	),
+	providerOptions: v.exactOptional(
+		v.pipe(
+			v.custom<Record<string, unknown>>(
+				isUnknownRecord,
+				"providerOptions must be an object of string values",
+			),
+			v.maxEntries(64, "providerOptions has too many fields"),
+			v.guard(
+				(options): options is Record<string, string> =>
+					Object.entries(options).every(
+						([key, value]) =>
+							key.length > 0 &&
+							key.length <= 128 &&
+							typeof value === "string" &&
+							value.length <= 4096,
+					),
+				"providerOptions contains an invalid field",
+			),
+			v.transform((options) => Object.assign({}, options)),
+		),
+	),
+};
+const promptSchema = v.exactOptional(
+	v.pipe(
+		v.nullish(v.string("prompt must be a string or null")),
+		v.transform((value) => value ?? null),
+	),
+);
 
 function parseModelRequest(
 	value: unknown,
-	input: { requestName: string; allowedKeys: readonly string[]; expectedShape: string },
-):
-	| { ok: true; body: Record<string, unknown>; request: NormalizedRecoveryModelRequest }
-	| { ok: false; error: string } {
-	if (value === undefined || value === null) {
-		return {
-			ok: true,
-			body: {},
-			request: {},
-		};
-	}
-	const parsedValue = v.safeParse(unknownRecordSchema, value);
-	if (!parsedValue.success) {
-		return { ok: false, error: `${input.requestName} request body must be an object` };
-	}
-	const body = parsedValue.output;
-	if (Object.keys(body).some((key) => !input.allowedKeys.includes(key))) {
-		return {
-			ok: false,
-			error: `${input.requestName} request body must use ${input.expectedShape}`,
-		};
-	}
-	const nextTurnModelProfileIdProvided = Object.hasOwn(body, "nextTurnModelProfileId");
-	const modelProfileId = body.nextTurnModelProfileId;
-	if (
-		modelProfileId !== undefined &&
-		modelProfileId !== null &&
-		typeof modelProfileId !== "string"
-	) {
-		return { ok: false, error: "nextTurnModelProfileId must be a string or null" };
-	}
-	const providerOptionsProvided = Object.hasOwn(body, "providerOptions");
-	const providerOptions = providerOptionsProvided
-		? normalizeProviderOptions(body.providerOptions)
-		: ({ ok: true, value: {} } as const);
-	if (!providerOptions.ok) return providerOptions;
-	return {
-		ok: true,
-		body,
-		request: {
-			...(nextTurnModelProfileIdProvided
-				? {
-						nextTurnModelProfileId:
-							typeof modelProfileId === "string" ? modelProfileId.trim() || null : null,
-					}
-				: {}),
-			...(providerOptionsProvided ? { providerOptions: providerOptions.value } : {}),
-		},
-	};
+	requestName: "continue" | "recovery",
+): { ok: true; request: NormalizedContinueRequest } | { ok: false; error: string } {
+	const schema =
+		requestName === "continue"
+			? v.object({ ...modelRequestEntries, prompt: promptSchema })
+			: v.object(modelRequestEntries);
+	const shape =
+		requestName === "continue"
+			? "{ prompt, nextTurnModelProfileId, providerOptions }"
+			: "{ nextTurnModelProfileId, providerOptions }";
+	const parsed = v.safeParse(
+		v.pipe(
+			v.unknown(),
+			v.check(isUnknownRecord, `${requestName} request body must be an object`),
+			unknownRecordSchema,
+			v.check(
+				(body) => Object.keys(body).every((key) => Object.hasOwn(schema.entries, key)),
+				`${requestName} request body must use ${shape}`,
+			),
+			schema,
+		),
+		value ?? {},
+		{ abortEarly: true },
+	);
+	return parsed.success
+		? { ok: true, request: parsed.output }
+		: { ok: false, error: parsed.issues[0].message };
 }
 
 export function normalizeLauncherRequest(value: unknown):
@@ -523,25 +503,6 @@ export function normalizeLauncherRequest(value: unknown):
 			schedule: parsed.value.schedule,
 			scheduleProvided: parsed.value.scheduleProvided,
 		},
-	};
-}
-
-export function normalizeActionRequest(value: unknown):
-	| {
-			ok: true;
-			request: NormalizedScheduledActionInput;
-	  }
-	| {
-			ok: false;
-			error: string;
-	  } {
-	const parsed = parseActionRequestBody(value);
-	if (!parsed.ok) {
-		return { ok: false, error: parsed.error };
-	}
-	return {
-		ok: true,
-		request: parsed.value,
 	};
 }
 
@@ -571,38 +532,13 @@ export function sendActionRequestNormalizationError(reply: FastifyReply, error: 
 export function normalizeContinueRequest(
 	value: unknown,
 ): { ok: true; request: NormalizedContinueRequest } | { ok: false; error: string } {
-	const parsed = parseModelRequest(value, {
-		requestName: "continue",
-		allowedKeys: ["prompt", "nextTurnModelProfileId", "providerOptions"],
-		expectedShape: "{ prompt, nextTurnModelProfileId, providerOptions }",
-	});
-	if (!parsed.ok) return parsed;
-	if (
-		parsed.body.prompt !== undefined &&
-		parsed.body.prompt !== null &&
-		typeof parsed.body.prompt !== "string"
-	) {
-		return { ok: false, error: "prompt must be a string or null" };
-	}
-	const promptProvided = Object.hasOwn(parsed.body, "prompt");
-	return {
-		ok: true,
-		request: {
-			...parsed.request,
-			...(promptProvided ? { prompt: parsed.body.prompt ?? null } : {}),
-		},
-	};
+	return parseModelRequest(value, "continue");
 }
 
 export function normalizeRecoveryModelRequest(
 	value: unknown,
 ): { ok: true; request: NormalizedRecoveryModelRequest } | { ok: false; error: string } {
-	const parsed = parseModelRequest(value, {
-		requestName: "recovery",
-		allowedKeys: ["nextTurnModelProfileId", "providerOptions"],
-		expectedShape: "{ nextTurnModelProfileId, providerOptions }",
-	});
-	return parsed.ok ? { ok: true, request: parsed.request } : parsed;
+	return parseModelRequest(value, "recovery");
 }
 
 export function buildLauncherModelConfigSchema(

@@ -28,7 +28,11 @@ describe("inspector routes", () => {
 	])("does not silently replace invalid targets: %s", (query) => {
 		expect(readInspectorTarget(`/processes/run${query}`)?.scope).toBe("invalid");
 	});
-	it("maps legacy reasoning links into the inspector without selecting a latest execution", () => {
+	it("maps legacy overlay links without selecting a latest execution", () => {
+		expect(readInspectorTarget("/processes/run?overlay=process-info")).toEqual({
+			scope: "process",
+			section: "overview",
+		});
 		expect(readInspectorTarget("/processes/run?overlay=reasoning&turnRecordId=old")).toEqual({
 			scope: "execution",
 			turnRecordId: "old",

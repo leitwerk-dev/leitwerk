@@ -9,12 +9,11 @@ import {
 	buildSkillsPath,
 	buildWatchersPath,
 	matchRoute,
-	readProcessDetailOverlay,
 } from "./router-logic.js";
 
 describe("matchRoute", () => {
-	it("matches root path to the home page", () => {
-		expect(matchRoute("/")).toEqual({ page: "home", params: {} });
+	it.each(["/", "/#?launcher=not-a-query"])("matches %s to the home page", (path) => {
+		expect(matchRoute(path)).toEqual({ page: "home", params: {} });
 	});
 
 	it("reads a home launcher query parameter", () => {
@@ -125,36 +124,5 @@ describe("route path builders", () => {
 		expect(buildFutureLaunchPath("fut with space")).toBe("/future-launches/fut%20with%20space");
 		expect(buildProcessPath("agt_1")).toBe("/processes/agt_1");
 		expect(buildProcessPath("agt with space")).toBe("/processes/agt%20with%20space");
-	});
-
-	it("builds process detail overlay paths", () => {
-		expect(buildProcessPath("agt_1", { overlay: "process-info" })).toBe(
-			"/processes/agt_1?overlay=process-info",
-		);
-		expect(buildProcessPath("agt_1", { overlay: "reasoning", turnRecordId: "trn_2" })).toBe(
-			"/processes/agt_1?overlay=reasoning&turnRecordId=trn_2",
-		);
-		expect(buildProcessPath("agt with space", { overlay: "reasoning" })).toBe(
-			"/processes/agt%20with%20space?overlay=reasoning",
-		);
-	});
-});
-
-describe("readProcessDetailOverlay", () => {
-	it("parses process detail overlay query parameters", () => {
-		expect(readProcessDetailOverlay("/processes/agt_1")).toEqual({ kind: "none" });
-		expect(readProcessDetailOverlay("/processes/agt_1?overlay=process-info")).toEqual({
-			kind: "process-info",
-		});
-		expect(
-			readProcessDetailOverlay("/processes/agt_1?overlay=reasoning&turnRecordId=trn_2"),
-		).toEqual({ kind: "reasoning", turnRecordId: "trn_2" });
-		expect(readProcessDetailOverlay("/processes/agt_1?overlay=reasoning#trace")).toEqual({
-			kind: "reasoning",
-			turnRecordId: null,
-		});
-		expect(readProcessDetailOverlay("/processes/agt_1?overlay=unknown")).toEqual({
-			kind: "none",
-		});
 	});
 });

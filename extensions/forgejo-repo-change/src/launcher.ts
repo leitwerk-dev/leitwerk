@@ -1,5 +1,6 @@
 import {
 	createRepositoryChangeUiLauncher,
+	repositoryIssueChangeLaunchConfig,
 	repositoryVisibilityCheck,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import type {
@@ -59,44 +60,24 @@ export function forgejoRepoChangeLaunchConfig(
 ): ProcessLaunchConfig<ForgejoRepoChangeParams> {
 	const { owner, repo, forgejoProfile: profile, woodpeckerProfile } = params;
 	const issue = isIssueOrigin(params);
-	return {
-		processId: "forgejo_repo_change_process",
+	return repositoryIssueChangeLaunchConfig(
+		"forgejo",
 		params,
 		title,
-		startTurnId: "generate_plan",
-		...(issue
+		`${owner}/${repo}`,
+		{
+			forgejo: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
+			woodpecker: { owner, repo, profile: woodpeckerProfile },
+			"leitwerk.gitIdentity": gitIdentity,
+		},
+		repository?.id !== undefined
 			? {
-					externalId: `forgejo:${owner}/${repo}#${params.issueNumber}`,
-					externalUrl: params.issueUrl,
+					origin: new URL(repository.html_url).origin,
+					repositoryId: repository.id,
+					aliases: [repository.ssh_url, ...(repository.clone_url ? [repository.clone_url] : [])],
 				}
-			: {}),
-		projects: [
-			{
-				key: "repo",
-				repoLocator: params.repoLocator,
-				...(repository?.id !== undefined
-					? {
-							settingsRepository: {
-								origin: new URL(repository.html_url).origin,
-								repositoryId: repository.id,
-								aliases: [
-									repository.ssh_url,
-									...(repository.clone_url ? [repository.clone_url] : []),
-								],
-							},
-						}
-					: {}),
-				baseBranch: params.baseBranch,
-				workBranch: params.workBranch,
-				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
-				metadata: {
-					forgejo: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
-					woodpecker: { owner, repo, profile: woodpeckerProfile },
-					"leitwerk.gitIdentity": gitIdentity,
-				},
-			},
-		],
-	};
+			: undefined,
+	);
 }
 
 /** @internal */

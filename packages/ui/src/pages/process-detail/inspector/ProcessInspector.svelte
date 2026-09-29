@@ -5,6 +5,8 @@ import {
 	buildInspectorPath,
 	type InspectorRoute,
 	type InspectorTarget,
+	inspectorExecutionSections,
+	inspectorProcessSections,
 } from "../../../lib/router-logic.js";
 import { createToolRendererIndex } from "../../../lib/tool-call-rendering.js";
 import { wsStore } from "../../../lib/ws.svelte.js";
@@ -71,30 +73,15 @@ const source = $derived(
 const renderers = $derived(createToolRendererIndex(detail?.toolRenderers ?? []));
 const sections = $derived(
 	target.scope === "execution"
-		? [
-				["trace", "Trace"],
-				["context", "Context"],
-				["configuration", "Configuration"],
-			]
-		: [
-				["overview", "Overview"],
-				["workflow", "Workflow"],
-				["inputs", "Inputs & configuration"],
-				["context-map", "Context map"],
-			],
+		? inspectorExecutionSections.map(([section, label]) => ({
+				label,
+				target: { scope: target.scope, turnRecordId: target.turnRecordId, section },
+			}))
+		: inspectorProcessSections.map(([section, label]) => ({
+				label,
+				target: { scope: "process" as const, section },
+			})),
 );
-function sectionTarget(section: string): InspectorTarget {
-	if (target.scope === "execution")
-		return {
-			scope: "execution",
-			turnRecordId: target.turnRecordId,
-			section: section as "trace" | "context" | "configuration",
-		};
-	return {
-		scope: "process",
-		section: section as "overview" | "workflow" | "inputs" | "context-map",
-	};
-}
 </script>
 
 <!-- Process inspector: Operate. Preserve Public Sans, white/gray surfaces and operational blue.
@@ -116,9 +103,8 @@ function sectionTarget(section: string): InspectorTarget {
       <div class="context-summary"><p>{data.summary?.origin.summary ?? data.summaryError ?? "Loading context origin…"}</p><div>{#if source?.turnRecordId}<button class="breadcrumb" onclick={() => onNavigate({scope:"execution", turnRecordId:source.turnRecordId ?? "", section:"trace", entryId:source.entryId, boundaryFor:target.turnRecordId})}>Open source boundary</button>{/if}<button class="breadcrumb" onclick={() => onNavigate({scope:"process", section:"context-map", turnRecordId:target.turnRecordId})}>View in context map</button></div></div>
     {/if}
     <nav aria-label="Inspector sections">
-      {#each sections as [id, label] (id)}
-        {@const next = sectionTarget(id)}
-        <a href={buildInspectorPath(instanceId, next)} aria-current={"section" in target && target.section === id ? "page" : undefined} onclick={(event) => {if (!event.metaKey && !event.ctrlKey) {event.preventDefault(); onNavigate(next);}}}>{label}</a>
+      {#each sections as {target: next, label} (next.section)}
+        <a href={buildInspectorPath(instanceId, next)} aria-current={"section" in target && target.section === next.section ? "page" : undefined} onclick={(event) => {if (!event.metaKey && !event.ctrlKey) {event.preventDefault(); onNavigate(next);}}}>{label}</a>
       {/each}
     </nav>
   </header>

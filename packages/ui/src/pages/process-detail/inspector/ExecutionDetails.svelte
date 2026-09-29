@@ -34,7 +34,9 @@ let positioned = "";
 const trace = $derived(data.expanded.trace);
 const context = $derived(data.expanded.context);
 const configuration = $derived(data.expanded.configuration);
-const activity = $derived(trace ? inspectionActivity(trace, data.events, data.live) : []);
+const activity = $derived(
+	trace ? inspectionActivity(trace, data.live?.events ?? [], data.live) : [],
+);
 const scroller = () => root?.closest<HTMLElement>('[data-role="inspector-scroll"]') ?? null;
 const selectedKey = $derived(JSON.stringify(target));
 $effect(() => {

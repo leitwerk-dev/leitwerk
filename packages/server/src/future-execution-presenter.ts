@@ -144,13 +144,12 @@ export function getScheduledActionDetailForProcess(
 		actionLabel,
 		input: payload.input,
 		nextTurnModelProfileId: payload.nextTurnModelProfileId,
-		action: buildActionSummaryForProcess(
-			deps,
-			process,
-			action,
-			listCurrentVisibleActions(deps, process).find((candidate) => candidate.id === action.id),
-			actionLabel,
-			{ supportsScheduling: true },
-		),
+		action: buildActionSummaryForProcess(deps, process, {
+			...listCurrentVisibleActions(deps, process).find((candidate) => candidate.id === action.id),
+			id: action.id,
+			form: action.form,
+			label: actionLabel.trim() ? actionLabel : action.label,
+			supportsScheduling: true,
+		}),
 	};
 }

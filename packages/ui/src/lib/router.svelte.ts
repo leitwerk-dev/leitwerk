@@ -1,4 +1,4 @@
-export type { Page, ProcessDetailOverlayState, ProcessPathOptions, Route } from "./router-logic.js";
+export type { Page, Route } from "./router-logic.js";
 export {
 	buildAvailableSkillPath,
 	buildFutureLaunchPath,
@@ -9,7 +9,6 @@ export {
 	buildSkillsPath,
 	buildWatchersPath,
 	matchRoute,
-	readProcessDetailOverlay,
 } from "./router-logic.js";
 
 import { derived, writable } from "svelte/store";

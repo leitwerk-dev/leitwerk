@@ -47,11 +47,35 @@ describe("recovery model request normalization", () => {
 		}
 	});
 
-	it("rejects malformed provider option values before any mutation", () => {
-		expect(normalizeRecoveryModelRequest({ providerOptions: { account: 7 } })).toEqual({
+	it.each([
+		[null, "must be an object of string values"],
+		[undefined, "must be an object of string values"],
+		[[], "must be an object of string values"],
+		[{ account: 7 }, "contains an invalid field"],
+		[{ "": "account" }, "contains an invalid field"],
+		[{ ["k".repeat(129)]: "account" }, "contains an invalid field"],
+		[{ account: "a".repeat(4097) }, "contains an invalid field"],
+		[
+			Object.fromEntries(Array.from({ length: 65 }, (_, i) => [String(i), ""])),
+			"has too many fields",
+		],
+	])("rejects malformed provider options %j", (providerOptions, reason) => {
+		expect(normalizeRecoveryModelRequest({ providerOptions })).toEqual({
 			ok: false,
-			error: "providerOptions contains an invalid field",
+			error: `providerOptions ${reason}`,
 		});
+	});
+
+	it.each([
+		[[], "continue request body must be an object"],
+		[
+			{ unknown: true },
+			"continue request body must use { prompt, nextTurnModelProfileId, providerOptions }",
+		],
+		[{ nextTurnModelProfileId: 7 }, "nextTurnModelProfileId must be a string or null"],
+		[{ prompt: 7 }, "prompt must be a string or null"],
+	])("rejects invalid Continue requests %j", (body, error) => {
+		expect(normalizeContinueRequest(body)).toEqual({ ok: false, error });
 	});
 
 	it("accepts model and provider option overrides on Continue", () => {

@@ -12,6 +12,7 @@ export {
 	normalizeRepositoryIssueChangeParams,
 	normalizeRepositoryIssueOrigin,
 	repositoryChangeParamsRecord,
+	repositoryIssueChangeLaunchConfig,
 } from "./repository-change-launch-internal.js";
 export {
 	createRepositoryChangeUiLauncher,

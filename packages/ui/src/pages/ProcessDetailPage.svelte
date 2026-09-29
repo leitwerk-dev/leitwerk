@@ -2,13 +2,12 @@
 import {
 	buildActiveTimelineTurnSummary,
 	type ProcessTimelineTurnSummary,
-	type TurnTraceSnapshot,
 } from "@leitwerk-dev/protocol";
 import { onDestroy } from "svelte";
 
 import {
 	buildChronicleProjection,
-	extractChronicleReasoningDetailEntries,
+	extractChronicleReasoningTurnRecordIds,
 } from "../chronicle/lib/chronicle-projection.js";
 import {
 	buildChronicleSelectableItems,
@@ -195,8 +194,6 @@ const turnRecords = $derived.by(() => {
 				: turn.displayTurn,
 	}));
 });
-const turnTraceIndex: Record<string, TurnTraceSnapshot> = {};
-
 const chroniclePrompt = $derived({
 	text: $detailState.data?.timeline.prompt.text ?? null,
 	createdAt: $detailState.data?.timeline.prompt.createdAt ?? null,
@@ -204,9 +201,7 @@ const chroniclePrompt = $derived({
 const chronicleProjection = $derived(
 	buildChronicleProjection({
 		turnRecords,
-		turnTraceIndex,
 		turnTracePreviewIndex: $detailState.data?.timeline.tracePreviewsByTurnRecordId ?? {},
-		runDetails: $detailState.data?.runDetails ?? null,
 		initialUserInputText: $detailState.data?.timeline.prompt.text ?? null,
 		inputs: $detailState.data?.timeline.inputs ?? [],
 		leafOutcomeSnapshots: $detailState.data?.leafOutcomeSnapshots ?? [],
@@ -219,8 +214,8 @@ const chronicleProjection = $derived(
 		promptCreatedAt: chroniclePrompt.createdAt,
 	}),
 );
-const reasoningDetailEntries = $derived(
-	extractChronicleReasoningDetailEntries(
+const reasoningTurnRecordIds = $derived(
+	extractChronicleReasoningTurnRecordIds(
 		chronicleProjection,
 		$detailState.data?.questionRequests ?? [],
 	),
@@ -375,7 +370,7 @@ function openReasoningDetails(turnRecordId: string, itemId?: string) {
 			{startupRecovery}
 			processError={currentProcessError}
 			{scheduledActionDetail}
-			{reasoningDetailEntries}
+			{reasoningTurnRecordIds}
 			{hasBlockingDetailOverlay}
 			{launchWarning}
 			{persistedModelSelectionWarning}

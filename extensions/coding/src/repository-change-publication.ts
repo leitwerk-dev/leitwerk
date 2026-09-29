@@ -13,8 +13,10 @@ import { rebasePrompt } from "./repository-rebase/prompt.js";
 import { codingPurposes } from "./settings.js";
 
 export {
+	createPullRequestChangeProcess,
+	pullRequestDeliveryTools,
 	pullRequestPublicationCallbacks,
-	pullRequestPublicationSources,
+	pullRequestPublicationDefaults,
 	readPullRequestFeedback,
 	reconcilePullRequestSourceIssue,
 	resolvePullRequestGitIdentity,

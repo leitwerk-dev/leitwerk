@@ -1,10 +1,20 @@
-import type { ProcessEvent } from "@leitwerk-dev/domain";
-import type { ExecutionInspectionSummary, TurnTraceSnapshot } from "@leitwerk-dev/protocol";
+import type { ExecutionInspectionSummary } from "@leitwerk-dev/protocol";
 import { onDestroy, tick, untrack } from "svelte";
 import { fetchExecutionInspection, type InspectionSections } from "../../../lib/api.js";
 import { subscribeReasoningFrames } from "../../../lib/processes.svelte.js";
 import { ReasoningHistory } from "../../../lib/reasoning-history.js";
 import type { InspectorRoute } from "../../../lib/router-logic.js";
+
+class InspectionData {
+	summary = $state.raw<ExecutionInspectionSummary | null>(null);
+	summaryError = $state<string | null>(null);
+	expanded = $state.raw<Partial<InspectionSections>>({});
+	error = $state<string | null>(null);
+	loading = $state(false);
+	loadedTraceTarget = $state("");
+	live = $state.raw<ReturnType<ReasoningHistory["snapshot"]> | null>(null);
+	activity = $state(0);
+}
 
 export function createInspectionData(args: {
 	get instanceId(): string;
@@ -12,16 +22,7 @@ export function createInspectionData(args: {
 	get refreshKey(): string;
 	ready(): void;
 }) {
-	let summary = $state.raw<ExecutionInspectionSummary | null>(null);
-	let summaryError = $state<string | null>(null);
-	let expanded = $state.raw<Partial<InspectionSections>>({});
-	let error = $state<string | null>(null);
-	let loading = $state(false);
-	let loadedTraceTarget = $state("");
-	let live = $state.raw<TurnTraceSnapshot | null>(null);
-	let events = $state.raw<ProcessEvent[]>([]);
-	let activity = $state(0);
-	let generation = 0;
+	const data = new InspectionData();
 	let selected = "";
 	let controller: AbortController | null = null;
 	let history: ReasoningHistory | null = null;
@@ -29,50 +30,42 @@ export function createInspectionData(args: {
 		if (args.target.scope !== "execution" || args.target.section !== "trace" || !history) return;
 		const next = history.push(frame);
 		if (next) {
-			live = next;
-			events = history.events();
-			activity++;
+			data.live = next;
+			data.activity++;
 		}
 	});
 	async function load() {
+		controller?.abort();
 		const target = args.target;
-		if (target.scope !== "execution") {
-			controller?.abort();
-			generation++;
-			return;
-		}
+		if (target.scope !== "execution") return;
 		const targetKey = JSON.stringify(target);
 		const instanceId = args.instanceId;
 		const key = `${instanceId}/${target.turnRecordId}`;
-		controller?.abort();
 		const abort = new AbortController();
 		controller = abort;
-		const request = ++generation;
 		if (selected !== key) {
 			selected = key;
-			summary = null;
-			summaryError = null;
-			expanded = {};
-			live = null;
-			events = [];
-			activity = 0;
+			data.summary = null;
+			data.summaryError = null;
+			data.expanded = {};
+			data.live = null;
+			data.activity = 0;
 			history = new ReasoningHistory(instanceId, target.turnRecordId);
 		}
-		error = null;
-		loading = true;
-		const current = () => !abort.signal.aborted && request === generation;
+		data.error = null;
+		data.loading = true;
 		if (target.section === "trace") history?.beginRequest();
 		await tick();
-		if (!current()) return;
+		if (abort.signal.aborted) return;
 		void fetchExecutionInspection(instanceId, target.turnRecordId, "summary", {}, abort.signal)
 			.then((value) => {
-				if (current()) {
-					summary = value;
-					summaryError = null;
+				if (!abort.signal.aborted) {
+					data.summary = value;
+					data.summaryError = null;
 				}
 			})
 			.catch((cause) => {
-				if (current()) summaryError = cause.message;
+				if (!abort.signal.aborted) data.summaryError = cause.message;
 			});
 		try {
 			const value = await fetchExecutionInspection(
@@ -82,21 +75,20 @@ export function createInspectionData(args: {
 				target,
 				abort.signal,
 			);
-			if (!current()) return;
-			expanded = { ...expanded, [target.section]: value };
+			if (abort.signal.aborted) return;
+			data.expanded = { ...data.expanded, [target.section]: value };
 			if (target.section === "trace" && "reasoning" in value && history) {
-				live = history.accept(value);
-				events = history.events();
-				loadedTraceTarget = targetKey;
+				data.live = history.accept(value);
+				data.loadedTraceTarget = targetKey;
 			}
-			loading = false;
+			data.loading = false;
 			await tick();
-			if (current() && target.section !== "trace") args.ready();
+			if (!abort.signal.aborted && target.section !== "trace") args.ready();
 		} catch (cause) {
-			if (!current()) return;
+			if (abort.signal.aborted) return;
 			history?.failedRequest();
-			loading = false;
-			error = cause instanceof Error ? cause.message : "Couldn't load execution evidence";
+			data.loading = false;
+			data.error = cause instanceof Error ? cause.message : "Couldn't load execution evidence";
 		}
 	}
 	$effect(() => {
@@ -109,37 +101,7 @@ export function createInspectionData(args: {
 	});
 	onDestroy(() => {
 		controller?.abort();
-		generation++;
 		unsubscribe();
 	});
-	return {
-		get summary() {
-			return summary;
-		},
-		get summaryError() {
-			return summaryError;
-		},
-		get expanded() {
-			return expanded;
-		},
-		get error() {
-			return error;
-		},
-		get loadedTraceTarget() {
-			return loadedTraceTarget;
-		},
-		get loading() {
-			return loading;
-		},
-		get live() {
-			return live;
-		},
-		get events() {
-			return events;
-		},
-		get activity() {
-			return activity;
-		},
-		retry: load,
-	};
+	return Object.assign(data, { retry: load });
 }

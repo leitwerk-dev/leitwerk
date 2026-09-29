@@ -43,9 +43,7 @@ export class ReasoningHistory {
 		this.pending = false;
 		this.buffered.clear();
 	}
-	accept(
-		response: TurnReasoningDetailResponseBody & { events?: ProcessEvent[] },
-	): TurnTraceSnapshot {
+	accept(response: TurnReasoningDetailResponseBody & { events?: ProcessEvent[] }) {
 		if (response.instanceId !== this.instanceId || response.turnRecordId !== this.turnRecordId)
 			throw new Error("Reasoning response belongs to another turn");
 		if (response.events)
@@ -76,7 +74,7 @@ export class ReasoningHistory {
 		this.buffered.clear();
 		return this.snapshot();
 	}
-	push(frame: WsFrame): TurnTraceSnapshot | null {
+	push(frame: WsFrame): ReturnType<ReasoningHistory["snapshot"]> | null {
 		if (
 			frame.instanceId !== this.instanceId ||
 			!("turnRecordId" in frame.payload) ||
@@ -107,12 +105,12 @@ export class ReasoningHistory {
 		this.boundary = frame.eventSequence;
 		return true;
 	}
-	events(): ProcessEvent[] {
-		return [...this.inspectionEvents.values()].sort(
-			(a, b) => (a.eventSequence ?? 0) - (b.eventSequence ?? 0),
-		);
-	}
-	snapshot(): TurnTraceSnapshot {
-		return snapshotTurnTrace(this.projection, this.piInput);
+	snapshot() {
+		return {
+			...snapshotTurnTrace(this.projection, this.piInput),
+			events: [...this.inspectionEvents.values()].sort(
+				(a, b) => (a.eventSequence ?? 0) - (b.eventSequence ?? 0),
+			),
+		};
 	}
 }

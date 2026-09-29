@@ -23,7 +23,7 @@ import type {
 	WorkerCompleteInput,
 	WorkerProcessContext,
 } from "./extension-api.js";
-import { type MappedLlmTurnSpec, mappedCollectTrigger } from "./mapped-turn.js";
+import { type MappedLlmTurnSpec, mappedCollectTrigger, validateMappedTurn } from "./mapped-turn.js";
 import {
 	getProcessTurnTransitions,
 	markDefinedProcess,
@@ -1203,33 +1203,8 @@ function compileMappedTurnTransitions<TParams, TState>(input: {
 }): readonly ProcessTurnTransition[] {
 	const mapped = input.spec.forEach;
 	if (!mapped) return [];
-	const outcomes = Object.entries(input.spec.outcomes ?? {}) as Array<
-		[string, ProcessToolOutcomeSpec<TParams, TState>]
-	>;
-	if (outcomes.length === 0) {
-		throw new Error(`Mapped turn '${input.turnId}' must declare at least one outcome tool`);
-	}
-	if (input.spec.turnEnd) {
-		throw new Error(`Mapped turn '${input.turnId}' cannot declare a turnEnd result`);
-	}
-	for (const [outcome, spec] of outcomes) {
-		if (
-			"branches" in spec ||
-			hasDeclaredStaticRouteTarget(spec) ||
-			spec.effect ||
-			spec.lifecycleIntent ||
-			spec.publishedProduct
-		) {
-			throw new Error(
-				`Mapped turn '${input.turnId}' outcome '${outcome}' cannot route, change state, or publish; collect results instead`,
-			);
-		}
-		if (!Object.hasOwn(mapped.yields, outcome)) {
-			throw new Error(
-				`Mapped turn '${input.turnId}' outcome '${outcome}' must declare .yield(...)`,
-			);
-		}
-	}
+	const errors = validateMappedTurn(input.turnId, input.spec);
+	if (errors.length) throw new Error(errors.join("; "));
 	const routing = mapped.routing;
 	if (routing.kind === "static") {
 		const target = normalizeStaticRouteTarget(
@@ -1244,11 +1219,7 @@ function compileMappedTurnTransitions<TParams, TState>(input: {
 		);
 		return [{ ...target, trigger: mappedCollectTrigger() }];
 	}
-	const branches = Object.entries(routing.branches);
-	if (branches.length === 0) {
-		throw new Error(`Mapped turn '${input.turnId}' collection must declare at least one branch`);
-	}
-	return branches.map(([branchId, to]) => {
+	return Object.entries(routing.branches).map(([branchId, to]) => {
 		if (branchId.trim() === "") {
 			throw new Error(`Mapped turn '${input.turnId}' collection contains an empty branch id`);
 		}

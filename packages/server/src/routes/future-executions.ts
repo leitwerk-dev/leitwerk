@@ -1,10 +1,10 @@
+import { parseActionRequestBody } from "@leitwerk-dev/protocol";
 import type { CronPreviewResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance } from "fastify";
 import { nextCronOccurrenceUtc } from "../domain-logic/cron.js";
 import type { FutureExecutionLifecycle } from "../future-execution/index.js";
 import { buildFutureExecutionListView } from "../future-execution-presenter.js";
 import {
-	normalizeActionRequest,
 	normalizeLauncherRequest,
 	type RouteDeps,
 	resolveActor,
@@ -89,13 +89,13 @@ export function registerFutureExecutionRoutes(
 	app.put<{ Params: { futureExecutionId: string }; Body: unknown }>(
 		"/api/future-executions/:futureExecutionId/action",
 		async (req, reply) => {
-			const normalized = normalizeActionRequest(req.body);
-			if (!normalized.ok) {
-				return sendActionRequestNormalizationError(reply, normalized.error);
+			const parsed = parseActionRequestBody(req.body);
+			if (!parsed.ok) {
+				return sendActionRequestNormalizationError(reply, parsed.error);
 			}
 			const result = await futureExecutionLifecycle.reviseScheduledAction(
 				req.params.futureExecutionId,
-				normalized.request,
+				parsed.value,
 				{ actor: resolveActor(req) },
 			);
 			return sendScheduledActionMutationResponse(reply, deps, result);

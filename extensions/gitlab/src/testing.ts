@@ -38,6 +38,8 @@ interface LocalState {
 	feedback?: Record<string, GitLabFeedback[]>;
 	/** @public */
 	discussionNotes?: Record<string, GitLabNote[]>;
+	/** @internal */
+	discussionResolved?: Record<string, boolean>;
 	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
 }
@@ -357,16 +359,60 @@ export class LocalGitLabAdapter {
 				notes: (this.state.discussionNotes?.[`${id}:${iid}:${discussionId}`] ?? []).map((note) => ({
 					...structuredClone(note),
 					system: false,
+					resolved: this.state.discussionResolved?.[`${id}:${iid}:${discussionId}`] === true,
 					created_at: new Date().toISOString(),
 					author: { username: "bot" },
 				})),
 			}),
+			listDiscussions: async (id, iid) =>
+				Object.entries(this.state.discussionNotes ?? {})
+					.filter(([key]) => key.startsWith(`${id}:${iid}:`))
+					.map(([key, notes]) => ({
+						id: key.slice(`${id}:${iid}:`.length),
+						notes: notes.map((note) => ({
+							...structuredClone(note),
+							system: false,
+							created_at: new Date().toISOString(),
+							author: { username: "bot" },
+						})),
+					})),
+			addDiscussion: async (id, iid, body, position) => {
+				this.state.discussionNotes ??= {};
+				const discussionId = `discussion-${Object.keys(this.state.discussionNotes).length + 1}`;
+				const note = {
+					id: 1,
+					body,
+					system: false,
+					created_at: new Date().toISOString(),
+					author: { username: "bot" },
+					position,
+				};
+				this.state.discussionNotes[`${id}:${iid}:${discussionId}`] = [note];
+				this.save();
+				return { id: discussionId, notes: [note] };
+			},
 			replyToDiscussion: async (id, iid, discussionId, body) => {
 				const key = `${id}:${iid}:${discussionId}`;
 				this.state.discussionNotes ??= {};
 				this.state.discussionNotes[key] ??= [];
 				const notes = this.state.discussionNotes[key];
 				return this.append(notes, { id: notes.length + 1, body }, "Reply");
+			},
+			resolveDiscussion: async (id, iid, discussionId) => {
+				const key = `${id}:${iid}:${discussionId}`;
+				this.state.discussionResolved ??= {};
+				this.state.discussionResolved[key] = true;
+				this.save();
+				return {
+					id: discussionId,
+					notes: (this.state.discussionNotes?.[key] ?? []).map((note) => ({
+						...structuredClone(note),
+						system: false,
+						resolved: true,
+						created_at: new Date().toISOString(),
+						author: { username: "bot" },
+					})),
+				};
 			},
 			listNoteReactions: async (id, iid, noteId) =>
 				structuredClone(this.state.reactions?.[`${id}:${iid}:${noteId}`] ?? []),
@@ -387,6 +433,13 @@ export class LocalGitLabAdapter {
 				this.state.notes[key] ??= [];
 				const notes = this.state.notes[key];
 				return this.append(notes, { id: notes.length + 1, body }, "Comment");
+			},
+			updateNote: async (id, iid, noteId, body) => {
+				const note = (this.state.notes[`${id}:${iid}`] ?? []).find((item) => item.id === noteId);
+				if (!note) throw new Error("Unknown test note");
+				note.body = body;
+				this.save();
+				return structuredClone(note);
 			},
 		};
 	}

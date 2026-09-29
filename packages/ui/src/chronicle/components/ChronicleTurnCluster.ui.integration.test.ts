@@ -32,9 +32,6 @@ function cluster(overrides: Partial<ChronicleTurnClusterItem> = {}): ChronicleTu
 		facts: {
 			startedAt: "2026-09-10T10:00:00Z",
 			endedAt: "2026-09-10T10:00:03.400Z",
-			triggerSource: "user_action",
-			runMode: "immediate",
-			activeToolNames: [],
 		},
 		...overrides,
 	};
@@ -89,7 +86,6 @@ describe("chronicle turn disclosure", () => {
 						text: "Consider the existing schedule first.",
 						preview: "Consider the existing schedule first.",
 						previewTruncated: false,
-						items: [],
 						toolCallCount: 0,
 						traceItemCount: 1,
 					},

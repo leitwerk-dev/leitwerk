@@ -34,6 +34,55 @@ const modelInput: ExecutionInspectionCapture = {
 	},
 };
 
+function createInspectionTurn(
+	repos: ReturnType<typeof createAllRepos>,
+	instanceId: string,
+	id: string,
+	workerId: string,
+) {
+	const start = repos.turnStarts.create({
+		instanceId,
+		turnId: "investigate",
+		turnType: "llm",
+		proposedTurnRecordId: id,
+		startKind: "selected_turn",
+		recoveryTurnRecordId: null,
+		continuation: null,
+		state: {
+			kind: "starting",
+			start: {
+				kind: "llm",
+				model: {
+					profileId: "test",
+					providerId: "synthetic",
+					modelId: "model-a",
+					thinkingLevel: "off",
+				},
+				providerOptions: {},
+				providerWorkerConfig: null,
+				piResourceSnapshotDigest: "digest",
+				workerRuntimeProfileId: "local",
+				piSettings: {},
+			},
+		},
+	});
+	const lease = repos.leases.create({
+		instanceId,
+		workerId,
+		turnStartRecordId: start.id,
+		state: "busy",
+	});
+	const record = repos.turnRecords.create({
+		id,
+		instanceId,
+		turnId: start.turnId,
+		turnType: "llm",
+		turnStartRecordId: start.id,
+		acceptedWorkerLeaseId: lease.id,
+	});
+	return { start, lease, record };
+}
+
 describe("execution inspection storage", () => {
 	it.each([
 		"startup",
@@ -48,46 +97,12 @@ describe("execution inspection storage", () => {
 				processId: "synthetic",
 				stateJson: '{"retained":true}',
 			});
-			const start = repos.turnStarts.create({
-				instanceId: process.id,
-				turnId: "investigate",
-				turnType: "llm",
-				proposedTurnRecordId: "historical-record",
-				startKind: "selected_turn",
-				recoveryTurnRecordId: null,
-				continuation: null,
-				state: {
-					kind: "starting",
-					start: {
-						kind: "llm",
-						model: {
-							profileId: "test",
-							providerId: "synthetic",
-							modelId: "model-a",
-							thinkingLevel: "off",
-						},
-						providerOptions: {},
-						providerWorkerConfig: null,
-						piResourceSnapshotDigest: "digest",
-						workerRuntimeProfileId: "local",
-						piSettings: {},
-					},
-				},
-			});
-			const lease = repos.leases.create({
-				instanceId: process.id,
-				workerId: "historical-worker",
-				turnStartRecordId: start.id,
-				state: "busy",
-			});
-			const record = repos.turnRecords.create({
-				id: "historical-record",
-				instanceId: process.id,
-				turnId: "investigate",
-				turnType: "llm",
-				turnStartRecordId: start.id,
-				acceptedWorkerLeaseId: lease.id,
-			});
+			const { record } = createInspectionTurn(
+				repos,
+				process.id,
+				"historical-record",
+				"historical-worker",
+			);
 			repos.events.create({
 				instanceId: process.id,
 				eventType: "pi.stream.delta",
@@ -154,46 +169,7 @@ describe("execution inspection storage", () => {
 			const repos = createAllRepos(db);
 			const process = repos.processes.create({ processId: "synthetic" });
 			const other = repos.processes.create({ processId: "synthetic" });
-			const start = repos.turnStarts.create({
-				instanceId: process.id,
-				turnId: "investigate",
-				turnType: "llm",
-				proposedTurnRecordId: "execution",
-				startKind: "selected_turn",
-				recoveryTurnRecordId: null,
-				continuation: null,
-				state: {
-					kind: "starting",
-					start: {
-						kind: "llm",
-						model: {
-							profileId: "test",
-							providerId: "synthetic",
-							modelId: "model-a",
-							thinkingLevel: "off",
-						},
-						providerOptions: {},
-						providerWorkerConfig: null,
-						piResourceSnapshotDigest: "digest",
-						workerRuntimeProfileId: "local",
-						piSettings: {},
-					},
-				},
-			});
-			const lease = repos.leases.create({
-				instanceId: process.id,
-				workerId: "worker-1",
-				turnStartRecordId: start.id,
-				state: "busy",
-			});
-			repos.turnRecords.create({
-				id: "execution",
-				instanceId: process.id,
-				turnId: start.turnId,
-				turnType: "llm",
-				turnStartRecordId: start.id,
-				acceptedWorkerLeaseId: lease.id,
-			});
+			const { start, lease } = createInspectionTurn(repos, process.id, "execution", "worker-1");
 			const report = {
 				instanceId: process.id,
 				workerId: "worker-1",

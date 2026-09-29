@@ -1,6 +1,7 @@
 import type {
 	CurrentExecutionRef,
 	InspectionProduct,
+	MappedTurnItemRef,
 	NormalizedQuestion,
 	PreparedTurnStart,
 	ProcessInputTarget,
@@ -210,15 +211,9 @@ export interface IntegrationToolDeclaration {
 }
 
 /** Active frozen item of a mapped LLM turn; the run manifest is never sent. @internal */
-export interface WorkerMappedItem {
-	/** @internal */
-	runId: string;
-	/** @internal */
-	itemKey: string;
+export interface WorkerMappedItem extends MappedTurnItemRef {
 	/** @internal */
 	itemLabel: string;
-	/** @internal */
-	itemIndex: number;
 	/** @internal */
 	itemCount: number;
 	/** Codec-serialized item value. @internal */
