@@ -1,12 +1,11 @@
 import type { ResolvedSetting, SettingsContext, SettingsSubject } from "@leitwerk-dev/domain";
+import type { SettingChoice, SettingMetadata } from "@leitwerk-dev/protocol/http-contracts";
 import { createCapabilityToken } from "./capabilities.js";
 
+export type { SettingChoice } from "@leitwerk-dev/protocol/http-contracts";
+
 /** Non-secret, JSON-compatible setting owned and validated by an extension. @public */
-export interface SettingDefinition<T = unknown> {
-	/** Namespaced, for example coding.planning_model. @public */
-	key: string;
-	/** Increment when stored values cease to satisfy the contract. @public */
-	schemaVersion: number;
+export interface SettingDefinition<T = unknown> extends SettingMetadata {
 	/** Must reject invalid values without coercing missing overrides into empty values. @public */
 	schema: {
 		/** @public */
@@ -14,33 +13,8 @@ export interface SettingDefinition<T = unknown> {
 	};
 	/** @public */
 	defaultValue: T;
-	/** Least to most specific, including instance where applicable. @public */
-	scopes: readonly string[];
-	/** @public */
-	merge: "replace" | "instructions";
-	/** @public */
-	form: {
-		/** @public */
-		label: string;
-		/** @public */
-		description?: string;
-		/** @public */
-		group: string;
-		/** @public */
-		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox";
-	};
 	/** Dynamic non-secret choices for generic forms. @public */
 	choices?(context: SettingsContext): readonly SettingChoice[] | Promise<readonly SettingChoice[]>;
-}
-
-/** @public */
-export interface SettingChoice {
-	/** @public */
-	value: string;
-	/** @public */
-	label: string;
-	/** @public */
-	disabledReason?: string;
 }
 
 /** @public */

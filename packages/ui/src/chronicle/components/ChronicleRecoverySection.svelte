@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary } from "@leitwerk-dev/protocol";
+import { recoveryModelSelection } from "../lib/recovery-model.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleFailureMessage from "./ChronicleFailureMessage.svelte";
 import RecoveryModelControl from "./RecoveryModelControl.svelte";
@@ -67,19 +68,13 @@ let providerOptionsDraft = $state<Record<string, string> | undefined>(undefined)
 
 const controlsBusy = $derived(continueBusy || retryBusy);
 const continuePromptValid = $derived(continuePromptDraft.trim().length > 0);
-const selectedProfile = $derived(
-	modelProfiles.find(
-		(profile) =>
-			profile.id ===
-			(modelProfileDraft === null
-				? inheritedModelProfileId
-				: (modelProfileDraft ?? defaultModelProfileId)),
-	) ?? null,
-);
 const selectedModelUsable = $derived(
-	selectedProfile === null ||
-		selectedProfile.availability === undefined ||
-		selectedProfile.availability === "available",
+	recoveryModelSelection(
+		modelProfiles,
+		modelProfileDraft,
+		defaultModelProfileId,
+		inheritedModelProfileId,
+	).usable,
 );
 
 let optionsExpanded = $state(false);

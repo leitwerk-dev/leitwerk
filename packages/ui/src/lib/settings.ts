@@ -3,29 +3,22 @@ import type {
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { jsonRequestInit, requestJson } from "./http-client.js";
+import { on } from "svelte/events";
+import { apiResponseError, jsonRequestInit, requestJson } from "./http-client.js";
 
-/** @internal */
-export class SettingsRequestError extends Error {
-	constructor(
-		message: string,
-		readonly status: number,
-	) {
-		super(message);
-	}
-}
-
-function settingsError(fallback: string) {
-	return (response: Response, body: unknown) => {
-		const payload = body && typeof body === "object" ? (body as Record<string, unknown>) : null;
-		// Fastify supplies a status title in error and the actionable detail in message.
-		const detail = typeof payload?.message === "string" ? payload.message : payload?.error;
-		return new SettingsRequestError(
-			typeof detail === "string" ? detail : fallback,
-			response.status,
-		);
+export function onSettingsChanged(refresh: () => void, refreshOnFocus = false) {
+	const unsubscribe = on(window, "leitwerk:settings-changed", refresh);
+	const unfocus = refreshOnFocus ? on(window, "focus", refresh) : undefined;
+	return () => {
+		unsubscribe();
+		unfocus?.();
 	};
 }
+
+export { ApiResponseError as SettingsRequestError } from "./http-client.js";
+
+// Fastify supplies a status title in error and the actionable detail in message.
+const settingsError = (fallback: string) => apiResponseError(fallback, true);
 
 export interface SettingsChange {
 	subjectId: string;
@@ -65,8 +58,6 @@ export interface ProcessSettingsView {
 	context: SettingsContext;
 	explanations: string[];
 	repositories: Array<{ key: string; subjectId: string; label: string }>;
-	next: ScopedSettingsSnapshot | null;
-	error: string | null;
 	captured: Array<{
 		startRecordId: string;
 		turnId: string;

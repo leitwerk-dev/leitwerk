@@ -66,6 +66,8 @@ import type {
 import * as v from "valibot";
 import { formatDefinition } from "./format.js";
 import {
+	ApiResponseError,
+	apiResponseError,
 	jsonRequestInit,
 	readErrorMessage,
 	readJsonObject,
@@ -77,15 +79,7 @@ import {
 } from "./http-client.js";
 import { getFetchImpl, resolveApiUrl } from "./runtime-config";
 
-export class ApiResponseError extends Error {
-	readonly status: number;
-
-	constructor(message: string, status: number) {
-		super(message);
-		this.name = "ApiResponseError";
-		this.status = status;
-	}
-}
+export { ApiResponseError } from "./http-client.js";
 
 function requestStatusJson<T extends object>(
 	path: string,
@@ -99,11 +93,6 @@ function requestStatusJson<T extends object>(
 		malformed,
 		error: (response) => new Error(`${error}: ${response.status}`),
 	});
-}
-
-function apiResponseError(message: string) {
-	return (response: Response, body: unknown) =>
-		new ApiResponseError(readErrorMessage(body) ?? message, response.status);
 }
 
 export type ProcessDetailData = ProcessDetailUiSnapshotResponseBody;

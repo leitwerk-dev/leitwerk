@@ -115,9 +115,8 @@ function resolvedDefault(
 	if (instanceDefault) return instanceDefault;
 	const configured = candidate(policy.defaultProfileId, "process_config_default");
 	if (configured) return configured;
-	for (const current of [
-		...snapshot.profiles.map((profile) => candidate(profile.id, "catalog_default")),
-	]) {
+	for (const profile of snapshot.profiles) {
+		const current = candidate(profile.id, "catalog_default");
 		if (current && isValidCandidate(snapshot, policy, current.modelProfileId)) return current;
 	}
 	return null;

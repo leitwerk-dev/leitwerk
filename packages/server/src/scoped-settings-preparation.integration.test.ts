@@ -83,7 +83,23 @@ async function setup() {
 		});
 		return { writes, done: prepareCreatedTurnStarts(deps, process, writes) };
 	}
-	return { ...fixture, store, deps, write, prepare };
+	function createCommands() {
+		const registry = buildProcessActionRegistry(fixture.catalog);
+		const supervisor = createFakeWorkerSupervisor();
+		return createProcessEngine({
+			...store,
+			config: fixture.config,
+			processOperations: createProcessOperationCoordinator(),
+			getSupervisor: () => supervisor,
+			processGraphs: fixture.catalog.processes,
+			getProcessActionRegistry: () => registry,
+			processModelPolicy: fixture.policy,
+			getModelAvailabilitySnapshot: () => modelStatusCache.snapshot(),
+			prepareTurnStarts: (process, writes, options) =>
+				prepareCreatedTurnStarts(deps, process, writes, options),
+		});
+	}
+	return { ...fixture, deps, write, prepare, createCommands };
 }
 
 describe("scoped settings at the turn preparation boundary", () => {
@@ -91,21 +107,8 @@ describe("scoped settings at the turn preparation boundary", () => {
 		repositoryInstructions,
 		model,
 	])("recovers corrected $key settings on an operator startup retry", async (definition) => {
-		const { store, repos, catalog, config, policy, settings, deps, write } = await setup();
-		const registry = buildProcessActionRegistry(catalog);
-		const supervisor = createFakeWorkerSupervisor();
-		const commands = createProcessEngine({
-			...store,
-			config,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => supervisor,
-			processGraphs: catalog.processes,
-			getProcessActionRegistry: () => registry,
-			processModelPolicy: policy,
-			getModelAvailabilitySnapshot: () => deps.modelStatusCache.snapshot(),
-			prepareTurnStarts: (process, writes, options) =>
-				prepareCreatedTurnStarts(deps, process, writes, options),
-		});
+		const { repos, settings, write, createCommands } = await setup();
+		const commands = createCommands();
 		const process = repos.processes.create({
 			processId: "settings_process",
 			selectedTurnId: "review",
@@ -247,21 +250,8 @@ describe("scoped settings at the turn preparation boundary", () => {
 		});
 	});
 	it("resolves scheduled actions at dispatch using the same model and instructions as the current preview", async () => {
-		const { store, repos, catalog, config, policy, settings, deps, write } = await setup();
-		const registry = buildProcessActionRegistry(catalog);
-		const supervisor = createFakeWorkerSupervisor();
-		const commands = createProcessEngine({
-			...store,
-			config,
-			processOperations: createProcessOperationCoordinator(),
-			getSupervisor: () => supervisor,
-			processGraphs: catalog.processes,
-			getProcessActionRegistry: () => registry,
-			processModelPolicy: policy,
-			getModelAvailabilitySnapshot: () => deps.modelStatusCache.snapshot(),
-			prepareTurnStarts: (process, writes, options) =>
-				prepareCreatedTurnStarts(deps, process, writes, options),
-		});
+		const { repos, policy, settings, deps, write, createCommands } = await setup();
+		const commands = createCommands();
 		const process = repos.processes.create({
 			processId: "settings_process",
 			selectedTurnId: "review",

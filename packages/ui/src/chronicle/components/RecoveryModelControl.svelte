@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary } from "@leitwerk-dev/protocol";
+import { recoveryModelSelection } from "../lib/recovery-model.js";
 import ModelProfileOptions from "./ModelProfileOptions.svelte";
 import ProviderOptionsEditor from "./ProviderOptionsEditor.svelte";
 
@@ -33,26 +34,13 @@ let {
 
 let modelProfileDraft = $state("");
 
-const selectedProfile = $derived(
-	modelProfiles.find(
-		(profile) =>
-			profile.id ===
-			(modelProfileDraft === "__inherit"
-				? inheritedModelProfileId
-				: modelProfileDraft || defaultModelProfileId),
-	) ?? null,
-);
-const selectedModelUsable = $derived(
-	selectedProfile === null ||
-		selectedProfile.availability === undefined ||
-		selectedProfile.availability === "available",
+const draft = $derived(modelProfileDraft === "__inherit" ? null : modelProfileDraft || undefined);
+const selection = $derived(
+	recoveryModelSelection(modelProfiles, draft, defaultModelProfileId, inheritedModelProfileId),
 );
 
 $effect(() => {
-	onModelChange(
-		modelProfileDraft === "__inherit" ? null : modelProfileDraft || undefined,
-		selectedModelUsable,
-	);
+	onModelChange(draft, selection.usable);
 });
 </script>
 
@@ -69,13 +57,13 @@ $effect(() => {
 		<option value="__inherit">Use inherited value{inheritedModelProfileId ? ` (${inheritedModelProfileId})` : ""}</option>
 		<ModelProfileOptions profiles={modelProfiles} />
 	</select>
-	{#if selectedProfile?.safeReason && !selectedModelUsable}
-		<p class="model-reason">{selectedProfile.safeReason}</p>
+	{#if selection.profile?.safeReason && !selection.usable}
+		<p class="model-reason">{selection.profile.safeReason}</p>
 	{/if}
 {/if}
 <ProviderOptionsEditor
 	{instanceId}
-	modelProfileId={modelProfileDraft === "__inherit" ? inheritedModelProfileId : modelProfileDraft || defaultModelProfileId}
+	modelProfileId={selection.profileId}
 	initialValues={initialProviderOptions}
 	{disabled}
 	onChange={(values) => onProviderOptionsChange(values ? { ...values } : undefined)}

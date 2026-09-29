@@ -27,6 +27,7 @@ let combined = $state<ResolvedSetting | null>(null);
 let previewError = $state("");
 const inputId = $derived(`setting-${subjectId}-${field.key}`);
 const instructions = $derived(field.merge === "instructions");
+const activeOverride = $derived(field.override && !field.override.reset ? field.override : null);
 const format = (raw: unknown) =>
 	raw === null
 		? "Runtime default (YAML or model catalog)"
@@ -39,18 +40,12 @@ const sources = (resolved: ResolvedSetting | null) =>
 	resolved?.sources.map((source) => source.label).join(" → ") ?? "Unavailable";
 
 async function begin() {
-	value =
-		field.override && !field.override.reset
-			? field.override.value
-			: instructions
-				? ""
-				: (field.effective?.value ?? null);
-	mode =
-		field.override && !field.override.reset
-			? field.override.mode
-			: instructions
-				? "append"
-				: "replace";
+	value = activeOverride
+		? activeOverride.value
+		: instructions
+			? ""
+			: (field.effective?.value ?? null);
+	mode = activeOverride?.mode ?? (instructions ? "append" : "replace");
 	revision = field.override?.revision ?? 0;
 	error = "";
 	notice = "";
@@ -137,7 +132,7 @@ async function useLatestRevision() {
 <section class="setting-field" aria-labelledby={`${inputId}-heading`}>
 	<div class="field-heading">
 		<div><h3 id={`${inputId}-heading`}>{field.form.label}</h3>{#if field.form.description}<p class="description">{field.form.description}</p>{/if}</div>
-		{#if !editing}<button id={`${inputId}-edit`} type="button" onclick={begin} disabled={busy}>{field.override && !field.override.reset ? "Edit override" : "Override"}</button>{/if}
+		{#if !editing}<button id={`${inputId}-edit`} type="button" onclick={begin} disabled={busy}>{activeOverride ? "Edit override" : "Override"}</button>{/if}
 	</div>
 	<div class="effective"><span class="source">Effective value · {sources(field.effective)}</span><p class:instruction-value={instructions}>{field.effective ? format(field.effective.value) : "Unavailable"}</p></div>
 	{#if field.error}<p class="error" role="alert">{field.error}</p>{/if}
@@ -170,7 +165,7 @@ async function useLatestRevision() {
 			<div class="actions"><button class="save" type="submit" disabled={busy || conflict}>{busy ? "Saving…" : "Save override"}</button><button type="button" onclick={cancel} disabled={busy}>Cancel</button></div>
 		</form>
 	{/if}
-	{#if field.override && !field.override.reset}<button class="inherit" type="button" onclick={() => save(true)} disabled={busy || conflict}>Use inherited value</button>{/if}
+	{#if activeOverride}<button class="inherit" type="button" onclick={() => save(true)} disabled={busy || conflict}>Use inherited value</button>{/if}
 	{#if error}<p class="error" role="alert">{error}</p>{/if}
 	{#if conflict}<p>Current saved value: {format(field.override?.value)}. Compare it with your draft above.</p><button type="button" onclick={useLatestRevision} disabled={busy}>Keep draft and use latest revision</button>{/if}
 	{#if notice}<p class="notice" role="status">{notice}</p>{/if}

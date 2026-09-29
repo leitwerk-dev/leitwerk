@@ -88,7 +88,9 @@ export type {
 export { parseScheduleRequestInput, resolvePromptCacheSwitch } from "./http-contracts.js";
 
 export type {
+	SettingChoice,
 	SettingFieldView,
+	SettingMetadata,
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "./scoped-settings.js";

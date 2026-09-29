@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { ModelProfileOptionSummary, StartupRecoverySummary } from "@leitwerk-dev/protocol";
+import { recoveryModelSelection } from "../lib/recovery-model.js";
 import ChronicleEntryHeader from "./ChronicleEntryHeader.svelte";
 import ChronicleFailureMessage from "./ChronicleFailureMessage.svelte";
 import RecoveryModelControl from "./RecoveryModelControl.svelte";
@@ -32,19 +33,13 @@ let {
 
 let modelProfileDraft = $state<string | null | undefined>(undefined);
 let providerOptionsDraft = $state<Record<string, string> | undefined>(undefined);
-const selectedProfile = $derived(
-	modelProfiles.find(
-		(profile) =>
-			profile.id ===
-			(modelProfileDraft === null
-				? inheritedModelProfileId
-				: (modelProfileDraft ?? defaultModelProfileId)),
-	) ?? null,
-);
 const selectedModelUsable = $derived(
-	selectedProfile === null ||
-		selectedProfile.availability === undefined ||
-		selectedProfile.availability === "available",
+	recoveryModelSelection(
+		modelProfiles,
+		modelProfileDraft,
+		defaultModelProfileId,
+		inheritedModelProfileId,
+	).usable,
 );
 </script>
 

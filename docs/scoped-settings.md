@@ -72,7 +72,7 @@ All endpoints use the application's authenticated actor and authorization model.
 | `GET /api/settings/preview?subjectId=…` | Effective and inherited values, sources, revisions, and validation errors. |
 | `POST /api/settings/preview` | Resolve a proposed override using the execution resolver without saving. |
 | `PUT /api/settings/overrides` | Set or reset a revision-checked override. |
-| `GET /api/settings/processes/:instanceId` | Future scoped defaults and historical captured settings. |
+| `GET /api/settings/processes/:instanceId` | Per-turn `future` scoped defaults/errors and historical `captured` settings. |
 | `PUT /api/settings/processes/:instanceId/primary-repository` | Bind a process project as primary, checking the expected previous binding. |
 
 Instructions default to append when `mode` is omitted. Other fields replace.
@@ -93,8 +93,8 @@ unchanged. Settings are shared across the installation, not per-user preferences
 
 `LeitwerkExtensionModule.scopedSettings` declares scope types, settings, and
 purposes. Setting keys and purpose IDs use the owning extension's namespace.
-Settings have a versioned value schema with `parse`, a default, ordered scopes,
-merge behavior, and form metadata. Controls support text, instructions, choices,
+Settings combine shared `SettingMetadata` with a versioned value schema and default.
+Metadata defines ordered scopes, merging, and forms. Controls support text, instructions, choices,
 model profiles, numbers, and checkboxes. `choices(context)` may supply dynamic
 non-secret choices. Validation remains authoritative on the server.
 

@@ -2499,7 +2499,9 @@ export type {
 export type * from "./execution-inspection.js";
 
 export type {
+	SettingChoice,
 	SettingFieldView,
+	SettingMetadata,
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "./scoped-settings.js";

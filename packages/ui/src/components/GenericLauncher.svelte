@@ -29,6 +29,7 @@ import {
 	readLauncherRecentValues,
 	writeLauncherRecentValue,
 } from "../lib/launcher-recent-values.js";
+import { onSettingsChanged } from "../lib/settings.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
 import LaunchChecklist from "./LaunchChecklist.svelte";
 import {
@@ -119,20 +120,14 @@ let cronPreviewBusy = $state(false);
 let defaultsLoadToken = 0;
 let optionsLoadToken = 0;
 let modelConfigPreviewLoadToken = 0;
-$effect(() => {
-	const refresh = () => {
+$effect(() =>
+	onSettingsChanged(() => {
 		void loadModelConfigPreview(
 			fieldInputValues,
 			buildLaunchModelConfigFromValues({ defaultModelProfileId, turnModelProfileIds }),
 		);
-	};
-	window.addEventListener("leitwerk:settings-changed", refresh);
-	window.addEventListener("focus", refresh);
-	return () => {
-		window.removeEventListener("leitwerk:settings-changed", refresh);
-		window.removeEventListener("focus", refresh);
-	};
-});
+	}, true),
+);
 let cronPreviewToken = 0;
 let deferredDependentRefreshValues: Record<string, LauncherFieldInputValue> | null = null;
 

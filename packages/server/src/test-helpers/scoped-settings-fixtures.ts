@@ -84,6 +84,18 @@ export const settingsExtension: LeitwerkExtensionModule = {
 	},
 };
 
+export function createSettingsProcess(repos: ReturnType<typeof createAllRepos>, keys: string[]) {
+	const process = repos.processes.create({ processId: "settings_process", selectedTurnId: "run" });
+	for (const key of keys)
+		repos.projects.create({
+			instanceId: process.id,
+			key,
+			repoLocator: `/workspace/${key}`,
+			baseBranch: "main",
+		});
+	return process;
+}
+
 export async function createSettingsFixture(
 	repos = createAllRepos(createOwnedInMemoryDatabase()),
 	modules = [settingsExtension],

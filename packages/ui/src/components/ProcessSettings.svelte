@@ -4,6 +4,7 @@ import { onMount, tick } from "svelte";
 import {
 	bindPrimaryRepository,
 	fetchProcessSettings,
+	onSettingsChanged,
 	type ProcessSettingsView,
 	SettingsRequestError,
 	settingsPath,
@@ -45,13 +46,10 @@ $effect(() => {
 	void load();
 });
 onMount(() => {
-	const refresh = () => {
-		void load();
-	};
-	window.addEventListener("leitwerk:settings-changed", refresh);
+	const unsubscribe = onSettingsChanged(load);
 	return () => {
 		alive = false;
-		window.removeEventListener("leitwerk:settings-changed", refresh);
+		unsubscribe();
 	};
 });
 async function bind() {

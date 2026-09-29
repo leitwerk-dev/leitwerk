@@ -11,6 +11,7 @@ import {
 } from "../test-helpers/process-model-fixtures.js";
 import {
 	createSettingsFixture,
+	createSettingsProcess,
 	model,
 	repositoryInstructions,
 } from "../test-helpers/scoped-settings-fixtures.js";
@@ -103,17 +104,7 @@ describe("settings HTTP contract", () => {
 
 	it("binds only retained repositories and rejects a stale primary-repository edit", async () => {
 		const { app, repos } = await setup();
-		const process = repos.processes.create({
-			processId: "settings_process",
-			selectedTurnId: "run",
-		});
-		for (const key of ["public", "private"])
-			repos.projects.create({
-				instanceId: process.id,
-				key,
-				repoLocator: `/workspace/${key}`,
-				baseBranch: "main",
-			});
+		const process = createSettingsProcess(repos, ["public", "private"]);
 		const url = `/api/settings/processes/${process.id}/primary-repository`;
 		const update = (key: string) =>
 			app.inject({

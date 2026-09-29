@@ -50,11 +50,6 @@ export function registerSettingsRoutes(
 			...change,
 			value: change.value,
 			reset: change.reset ?? false,
-			mode:
-				change.mode ??
-				(settings.definitions().find((field) => field.key === change.key)?.merge === "instructions"
-					? ("append" as const)
-					: ("replace" as const)),
 			actor: actorForRequest(request),
 		};
 	}
@@ -128,18 +123,10 @@ export function registerSettingsRoutes(
 			const process = repos.processes.getById(request.params.instanceId);
 			if (!process) throw new SettingsError("Process not found", 404);
 			const context = settings.forProcess(process);
-			let next = null;
-			let error: string | null = null;
-			try {
-				next = process.selectedTurnId
-					? (settings.capture(process, process.selectedTurnId) ?? null)
-					: null;
-			} catch (caught) {
-				error = caught instanceof Error ? caught.message : "Invalid scoped settings";
-			}
+			const future = settings.previewProcess(process);
 			return {
 				primaryRepositoryKey: process.metadata?.primaryRepositoryKey ?? null,
-				future: settings.previewProcess(process),
+				future,
 				context: context.context,
 				explanations: context.explanations,
 				repositories: context.subjects.map(({ project, subject }) => ({
@@ -147,8 +134,6 @@ export function registerSettingsRoutes(
 					subjectId: subject.id,
 					label: subject.label,
 				})),
-				next,
-				error,
 				captured: repos.turnStarts.listByInstance(process.id).flatMap((record) =>
 					record.state.kind !== "preparation_failed" &&
 					record.state.start?.kind === "llm" &&

@@ -1,9 +1,4 @@
-import type {
-	Actor,
-	SettingsContext,
-	SettingsOverride,
-	SettingsSubject,
-} from "@leitwerk-dev/domain";
+import type { SettingsOverride, SettingsSubject } from "@leitwerk-dev/domain";
 import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { and, eq, notInArray } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
@@ -11,37 +6,15 @@ import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 /** @internal */
-export interface SettingsWrite {
-	/** @internal */
-	subjectId: string;
-	/** @internal */
-	key: string;
-	/** @internal */
-	value: unknown;
-	/** @internal */
-	mode: "append" | "replace";
-	/** @internal */
-	reset: boolean;
-	/** @internal */
-	schemaVersion: number;
+export type SettingsWrite = Omit<SettingsOverride, "revision" | "createdAt" | "updatedAt"> & {
 	/** @internal */
 	expectedRevision: number;
-	/** @internal */
-	actor: Actor;
-}
+};
 /** @internal */
-interface SubjectWrite {
+type SubjectWrite = Pick<SettingsSubject, "scopeType" | "identity" | "label" | "context"> & {
 	/** @internal */
 	id?: string;
-	/** @internal */
-	scopeType: string;
-	/** @internal */
-	identity: string;
-	/** @internal */
-	label: string;
-	/** @internal */
-	context: SettingsContext;
-}
+};
 
 function subject(row: typeof s.settingsSubjects.$inferSelect): SettingsSubject {
 	const { contextJson, actorJson, ...rest } = row;
@@ -56,6 +29,10 @@ function override(row: typeof s.settingsOverrides.$inferSelect): SettingsOverrid
 		value: JSON.parse(valueJson),
 		actor: JSON.parse(actorJson),
 	};
+}
+
+function overrideRow({ value, actor, ...rest }: SettingsOverride) {
+	return { ...rest, valueJson: JSON.stringify(value), actorJson: JSON.stringify(actor) };
 }
 
 /** @internal */
@@ -182,18 +159,14 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 		/** Atomic compare-and-swap, including resets and first writes. @internal */
 		write(input: SettingsWrite): SettingsOverride | null {
 			const ts = now();
-			const values = {
+			const { expectedRevision, ...change } = input;
+			const values = overrideRow({
+				...change,
 				subjectId: this.getSubject(input.subjectId)?.id ?? input.subjectId,
-				key: input.key,
-				valueJson: JSON.stringify(input.value),
-				mode: input.mode,
-				reset: input.reset,
-				schemaVersion: input.schemaVersion,
-				revision: input.expectedRevision + 1,
+				revision: expectedRevision + 1,
 				createdAt: ts,
 				updatedAt: ts,
-				actorJson: JSON.stringify(input.actor),
-			};
+			});
 			const { createdAt: _createdAt, ...update } = values;
 			if (input.expectedRevision > 0) {
 				const row = db
@@ -234,18 +207,12 @@ export function createScopedSettingsRepo(db: LeitwerkDb) {
 			for (const incoming of this.listOverrides(source.id)) {
 				const current = this.getOverride(target.id, incoming.key);
 				const retained = current && !current.reset ? current : incoming;
-				const values = {
+				const values = overrideRow({
+					...retained,
 					subjectId: target.id,
-					key: retained.key,
-					valueJson: JSON.stringify(retained.value),
-					mode: retained.mode,
-					reset: retained.reset,
-					schemaVersion: retained.schemaVersion,
 					revision: Math.max(incoming.revision, current?.revision ?? 0) + 1,
-					createdAt: retained.createdAt,
 					updatedAt: now(),
-					actorJson: JSON.stringify(retained.actor),
-				};
+				});
 				db.insert(s.settingsOverrides)
 					.values(values)
 					.onConflictDoUpdate({

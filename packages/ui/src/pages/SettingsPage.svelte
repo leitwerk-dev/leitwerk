@@ -5,7 +5,7 @@ import type {
 } from "@leitwerk-dev/protocol/http-contracts";
 import { onMount, untrack } from "svelte";
 import SettingsField from "../components/SettingsField.svelte";
-import { fetchSettingsPreview, fetchSettingsScopes } from "../lib/settings.js";
+import { fetchSettingsPreview, fetchSettingsScopes, onSettingsChanged } from "../lib/settings.js";
 import { wsStore } from "../lib/ws.svelte.js";
 
 let { subjectId = "instance" }: { subjectId?: string } = $props();
@@ -67,13 +67,13 @@ onMount(() => {
 		reconnectCount = state.reconnectCount;
 		refreshPreview();
 	});
-	window.addEventListener("leitwerk:settings-changed", refreshPreview);
+	const unsubscribeSettings = onSettingsChanged(refreshPreview);
 	return () => {
 		loadId++;
 		scopesLoadId++;
 		selectionGeneration++;
 		unsubscribe();
-		window.removeEventListener("leitwerk:settings-changed", refreshPreview);
+		unsubscribeSettings();
 	};
 });
 </script>

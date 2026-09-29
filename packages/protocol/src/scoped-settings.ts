@@ -1,37 +1,44 @@
 import type { ResolvedSetting, SettingsOverride, SettingsSubject } from "@leitwerk-dev/domain";
 
-/** @internal */
-export interface SettingFieldView {
-	/** @internal */
+/** Serializable metadata shared by extension declarations and operator forms. @public */
+export interface SettingMetadata {
+	/** Namespaced, for example coding.planning_model. @public */
 	key: string;
+	/** Increment when stored values cease to satisfy the contract. @public */
+	schemaVersion: number;
+	/** Least to most specific, including instance where applicable. @public */
+	scopes: readonly string[];
+	/** @public */
+	merge: "replace" | "instructions";
+	/** @public */
+	form: {
+		/** @public */
+		label: string;
+		/** @public */
+		description?: string;
+		/** @public */
+		group: string;
+		/** @public */
+		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox";
+	};
+}
+
+/** @public */
+export interface SettingChoice {
+	/** @public */
+	value: string;
+	/** @public */
+	label: string;
+	/** @public */
+	disabledReason?: string;
+}
+
+/** @internal */
+export interface SettingFieldView extends SettingMetadata {
 	/** @internal */
 	owner: string;
 	/** @internal */
-	schemaVersion: number;
-	/** @internal */
-	scopes: readonly string[];
-	/** @internal */
-	merge: "replace" | "instructions";
-	/** @internal */
-	form: {
-		/** @internal */
-		label: string;
-		/** @internal */
-		description?: string;
-		/** @internal */
-		group: string;
-		/** @internal */
-		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox";
-	};
-	/** @internal */
-	choices: readonly {
-		/** @internal */
-		value: string;
-		/** @internal */
-		label: string;
-		/** @internal */
-		disabledReason?: string;
-	}[];
+	choices: readonly SettingChoice[];
 	/** @internal */
 	effective: ResolvedSetting | null;
 	/** @internal */

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createScopedSettingsService,
 	normalizeSettingsLocator,
+	type ScopedSettingsService,
 } from "./scoped-settings-service.js";
 import {
 	createModelAvailabilitySnapshot,
@@ -10,11 +11,38 @@ import {
 } from "./test-helpers/process-model-fixtures.js";
 import {
 	createSettingsFixture,
+	createSettingsProcess,
 	instructions,
 	model,
 	repositoryInstructions,
 	settingsExtension,
 } from "./test-helpers/scoped-settings-fixtures.js";
+
+function write(
+	settings: ScopedSettingsService,
+	change: Pick<Parameters<ScopedSettingsService["write"]>[0], "subjectId" | "key" | "value"> &
+		Partial<Parameters<ScopedSettingsService["write"]>[0]>,
+) {
+	return settings.write({
+		mode: "replace",
+		reset: false,
+		expectedRevision: 0,
+		actor: ADMIN_ACTOR,
+		...change,
+	});
+}
+
+const aliases = ["git@example.org:team/repo.git", "https://example.org/team/repo.git"];
+function locatorSubjects(settings: ScopedSettingsService) {
+	return aliases.map((alias) =>
+		settings.discover({
+			scopeType: "repository",
+			identity: `locator:${alias}`,
+			label: alias,
+			aliases: [alias],
+		}),
+	);
+}
 
 describe("scoped settings", () => {
 	it.each([
@@ -22,29 +50,18 @@ describe("scoped settings", () => {
 		true,
 	])("coalesces verified clone aliases and retains old scope IDs (known provider: %s)", async (knownProvider) => {
 		const { settings, repos } = await createSettingsFixture();
-		const aliases = ["git@example.org:team/repo.git", "https://example.org/team/repo.git"];
 		const identity = 'provider:["https://example.org","42"]';
 		const provider = knownProvider
 			? settings.discover({ scopeType: "repository", identity, label: "team/repo" })
 			: null;
-		const subjects = aliases.map((alias) =>
-			settings.discover({
-				scopeType: "repository",
-				identity: `locator:${alias}`,
-				label: alias,
-				aliases: [alias],
-			}),
-		);
+		const subjects = locatorSubjects(settings);
 		const change = {
 			key: repositoryInstructions.key,
 			value: "Repository guidance",
 			mode: "append" as const,
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
 		};
-		for (const subject of subjects) settings.write({ ...change, subjectId: subject.id });
-		settings.write({
+		for (const subject of subjects) write(settings, { ...change, subjectId: subject.id });
+		write(settings, {
 			...change,
 			subjectId: subjects[1].id,
 			key: model.key,
@@ -68,7 +85,7 @@ describe("scoped settings", () => {
 				"Code instructions\n\nRepository guidance",
 			);
 			expect(() =>
-				settings.write({ ...change, subjectId: original.id, expectedRevision: 1 }),
+				write(settings, { ...change, subjectId: original.id, expectedRevision: 1 }),
 			).toThrow("changed since");
 			const preview = await settings.preview(original.id);
 			expect(preview.subject.id).toBe(merged.id);
@@ -82,11 +99,13 @@ describe("scoped settings", () => {
 			...change,
 			subjectId: subjects[1].id,
 			value: "Updated guidance",
+			reset: false,
+			actor: ADMIN_ACTOR,
 		});
 		expect(
 			preview.fields.find((field) => field.key === repositoryInstructions.key)?.effective?.value,
 		).toContain("Updated guidance");
-		settings.write({
+		write(settings, {
 			...change,
 			subjectId: subjects[1].id,
 			value: "Updated guidance",
@@ -110,15 +129,7 @@ describe("scoped settings", () => {
 		"schema",
 	])("keeps conflicting %s overrides intact until the operator resolves them", async (conflict) => {
 		const { settings, repos, config, catalog } = await createSettingsFixture();
-		const aliases = ["git@example.org:team/repo.git", "https://example.org/team/repo.git"];
-		const subjects = aliases.map((alias) =>
-			settings.discover({
-				scopeType: "repository",
-				identity: `locator:${alias}`,
-				label: alias,
-				aliases: [alias],
-			}),
-		);
+		const subjects = locatorSubjects(settings);
 		for (const [index, subject] of subjects.entries())
 			repos.scopedSettings.write({
 				subjectId: subject.id,
@@ -158,14 +169,12 @@ describe("scoped settings", () => {
 			restarted.listScopes().subjects.filter((subject) => subject.scopeType === "repository"),
 		).toHaveLength(2);
 		expect(() => restarted.capture(process, "run")).toThrow("conflicting overrides");
-		settings.write({
+		write(settings, {
 			subjectId: subjects[1].id,
 			key: repositoryInstructions.key,
 			value: null,
-			mode: "replace",
 			reset: true,
 			expectedRevision: 1,
-			actor: ADMIN_ACTOR,
 		});
 		expect(() => settings.discover(input)).not.toThrow();
 		expect(restarted.capture(process, "run")?.instructions[0].setting.value).toBe(
@@ -196,53 +205,43 @@ describe("scoped settings", () => {
 			[project.id, "Project"],
 			[compound.id, "Extra"],
 		])
-			settings.write({
+			write(settings, {
 				subjectId,
 				key: instructions.key,
 				value,
 				mode: "append",
-				reset: false,
-				expectedRevision: 0,
-				actor: ADMIN_ACTOR,
 			});
 		const context = { ...compound.context, [compound.scopeType]: compound.id };
 		expect(settings.resolve(instructions, context).value).toBe(
 			"Code instructions\n\nInstance\n\nBug\n\nProject\n\nExtra",
 		);
-		settings.write({
+		write(settings, {
 			subjectId: compound.id,
 			key: instructions.key,
 			value: "",
-			mode: "replace",
-			reset: false,
 			expectedRevision: 1,
-			actor: ADMIN_ACTOR,
 		});
 		expect(settings.resolve(instructions, context)).toMatchObject({
 			value: "",
 			sources: [{ subjectId: compound.id, revision: 2 }],
 		});
-		settings.write({
+		write(settings, {
 			subjectId: compound.id,
 			key: instructions.key,
 			value: null,
-			mode: "replace",
 			reset: true,
 			expectedRevision: 2,
-			actor: ADMIN_ACTOR,
 		});
 		expect(settings.resolve(instructions, context).value).toBe(
 			"Code instructions\n\nInstance\n\nBug\n\nProject",
 		);
 		expect(() =>
-			settings.write({
+			write(settings, {
 				subjectId: compound.id,
 				key: instructions.key,
 				value: "Lost edit",
 				mode: "append",
-				reset: false,
 				expectedRevision: 0,
-				actor: ADMIN_ACTOR,
 			}),
 		).toThrow("changed since");
 		expect((await settings.preview(compound.id)).fields[0]?.override?.revision).toBe(3);
@@ -255,15 +254,7 @@ describe("scoped settings", () => {
 			label: "old",
 			aliases: ["ssh://git@example.org/team/repo.git"],
 		});
-		settings.write({
-			subjectId: repo.id,
-			key: model.key,
-			value: "second",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
+		write(settings, { subjectId: repo.id, key: model.key, value: "second" });
 		const found = settings.discover({
 			scopeType: "repository",
 			identity: 'provider:["https://example.org","42"]',
@@ -288,15 +279,7 @@ describe("scoped settings", () => {
 	});
 	it("retains inactive overrides across extension removal and rejects incompatible reinstalled values", async () => {
 		const fixture = await createSettingsFixture();
-		fixture.settings.write({
-			subjectId: "instance",
-			key: instructions.key,
-			value: "Retained",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
+		write(fixture.settings, { subjectId: "instance", key: instructions.key, value: "Retained" });
 		const removed = await createSettingsFixture(fixture.repos, []);
 		expect((await removed.settings.preview("instance")).inactive).toHaveLength(1);
 		const reinstalled = await createSettingsFixture(fixture.repos);
@@ -319,46 +302,16 @@ describe("scoped settings", () => {
 	});
 	it("uses primary repository defaults, labels each repository's instructions, and keeps captured starts unchanged", async () => {
 		const { settings, repos, policy } = await createSettingsFixture();
-		const process = repos.processes.create({
-			processId: "settings_process",
-			selectedTurnId: "run",
-		});
-		for (const key of ["public", "private"])
-			repos.projects.create({
-				instanceId: process.id,
-				key,
-				repoLocator: `/workspace/${key}`,
-				baseBranch: "main",
-			});
+		const process = createSettingsProcess(repos, ["public", "private"]);
 		const subjects = settings.forProcess(process).subjects;
 		for (const { project, subject } of subjects)
-			settings.write({
+			write(settings, {
 				subjectId: subject.id,
 				key: repositoryInstructions.key,
 				value: `Rules for ${project.key}`,
-				mode: "replace",
-				reset: false,
-				expectedRevision: 0,
-				actor: ADMIN_ACTOR,
 			});
-		settings.write({
-			subjectId: "instance",
-			key: model.key,
-			value: "first",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
-		settings.write({
-			subjectId: subjects[1].subject.id,
-			key: model.key,
-			value: "second",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
+		write(settings, { subjectId: "instance", key: model.key, value: "first" });
+		write(settings, { subjectId: subjects[1].subject.id, key: model.key, value: "second" });
 		expect(settings.capture(process, "run")?.explanations[0]).toContain("No primary repository");
 		expect(settings.modelDefault(process.processId, "run", process)).toBe("first");
 		const bound = repos.processes.update(process.id, {
@@ -381,14 +334,11 @@ describe("scoped settings", () => {
 			state: { kind: "starting", start: { ...template.state.start, scopedSettings: captured } },
 		});
 		const fingerprint = policy.fingerprint({ process: bound, currentStart: start });
-		settings.write({
+		write(settings, {
 			subjectId: subjects[1].subject.id,
 			key: repositoryInstructions.key,
 			value: "Changed",
-			mode: "replace",
-			reset: false,
 			expectedRevision: 1,
-			actor: ADMIN_ACTOR,
 		});
 		expect(settings.capture(bound, "run")?.instructions[1].setting.value).toBe("Changed");
 		expect(repos.turnStarts.getById(start.id)).toEqual(start);
@@ -396,26 +346,9 @@ describe("scoped settings", () => {
 	});
 	it("uses the same scoped model for launch, action and retry previews, with explicit choices taking precedence", async () => {
 		const { settings, repos, policy } = await createSettingsFixture();
-		const process = repos.processes.create({
-			processId: "settings_process",
-			selectedTurnId: "run",
-		});
-		repos.projects.create({
-			instanceId: process.id,
-			key: "repo",
-			repoLocator: "/workspace/repo",
-			baseBranch: "main",
-		});
+		const process = createSettingsProcess(repos, ["repo"]);
 		const subjectId = settings.forProcess(process).context.repository;
-		settings.write({
-			subjectId,
-			key: model.key,
-			value: "second",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
+		write(settings, { subjectId, key: model.key, value: "second" });
 		const availability = createModelAvailabilitySnapshot();
 		const request = { kind: "process_turn" as const, process, turnId: "run", availability };
 		expect(policy.evaluate(request)).toMatchObject({
@@ -444,22 +377,18 @@ describe("scoped settings", () => {
 		expect(
 			policy.evaluate({ kind: "launch_plan_turn", plan, turnId: "run", availability }),
 		).toMatchObject({ ok: true, selection: { modelProfileId: "second" } });
-		expect(
-			policy.evaluate({ ...request, process: { ...process, defaultModelProfileId: "second" } }),
-		).toMatchObject({
-			selection: { modelProfileId: "second", provenance: { source: "instance_default" } },
-		});
-		expect(
-			policy.evaluate({
-				...request,
-				process: { ...process, turnConfigsJson: '{"run":{"modelProfileId":"first"}}' },
-			}),
-		).toMatchObject({
-			selection: { modelProfileId: "first", provenance: { source: "instance_turn_config" } },
-		});
-		expect(policy.evaluate({ ...request, modelOverride: "first" })).toMatchObject({
-			selection: { modelProfileId: "first", provenance: { source: "action_override" } },
-		});
+		for (const [overrides, modelProfileId, source] of [
+			[{ process: { ...process, defaultModelProfileId: "second" } }, "second", "instance_default"],
+			[
+				{ process: { ...process, turnConfigsJson: '{"run":{"modelProfileId":"first"}}' } },
+				"first",
+				"instance_turn_config",
+			],
+			[{ modelOverride: "first" }, "first", "action_override"],
+		] as const)
+			expect(policy.evaluate({ ...request, ...overrides })).toMatchObject({
+				selection: { modelProfileId, provenance: { source } },
+			});
 		expect(
 			policy.evaluate({
 				...request,
@@ -491,15 +420,7 @@ describe("scoped settings", () => {
 	});
 	it("shows an unavailable inherited model with its correction instructions", async () => {
 		const fixture = await createSettingsFixture();
-		fixture.settings.write({
-			subjectId: "instance",
-			key: model.key,
-			value: "second",
-			mode: "replace",
-			reset: false,
-			expectedRevision: 0,
-			actor: ADMIN_ACTOR,
-		});
+		write(fixture.settings, { subjectId: "instance", key: model.key, value: "second" });
 		const settings = createScopedSettingsService({
 			...fixture,
 			modelChoices: () => [

@@ -69,6 +69,7 @@ function setup(options: { defaultAccount?: () => string | undefined } = {}) {
 			prepareCreatedTurnStarts(
 				{
 					config,
+					processModelPolicy,
 					registry,
 					modelStatusCache,
 					piContributions: [],

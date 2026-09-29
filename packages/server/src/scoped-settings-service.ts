@@ -1,7 +1,6 @@
 import { normalize } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import type {
-	Actor,
 	ProcessInstance,
 	ResolvedSetting,
 	ScopedSettingsSnapshot,
@@ -54,6 +53,11 @@ export function normalizeSettingsLocator(locator: string): string {
 }
 
 /** @internal */
+type SettingsDraft = Omit<SettingsOverride, "actor" | "createdAt" | "updatedAt">;
+/** @internal */
+type SettingsChange = Omit<SettingsWrite, "schemaVersion" | "mode"> &
+	Partial<Pick<SettingsWrite, "mode">>;
+/** @internal */
 type SubjectProcess = Pick<ProcessInstance, "id" | "processId" | "metadata">;
 /** @internal */
 type Project = Pick<
@@ -100,9 +104,9 @@ export interface ScopedSettingsService extends ScopedSettingsResolver {
 		plan?: ProcessLaunchPlan,
 	): string | null;
 	/** @internal */
-	preview(subjectId: string, draft?: SettingsOverride): Promise<SettingsPreview>;
+	preview(subjectId: string, draft?: SettingsDraft): Promise<SettingsPreview>;
 	/** @internal */
-	write(change: Omit<SettingsWrite, "schemaVersion">): SettingsOverride;
+	write(change: SettingsChange): SettingsOverride;
 	/** @internal */
 	listScopes(): SettingsScopesResponse;
 	/** @internal */
@@ -118,9 +122,7 @@ export interface ScopedSettingsService extends ScopedSettingsResolver {
 	/** @internal */
 	refresh(): Promise<SettingsScopesResponse>;
 	/** @internal */
-	previewDraft(
-		change: Omit<SettingsWrite, "schemaVersion" | "expectedRevision">,
-	): Promise<SettingsPreview>;
+	previewDraft(change: Omit<SettingsChange, "expectedRevision">): Promise<SettingsPreview>;
 }
 /** @internal */
 
@@ -237,7 +239,7 @@ export function createScopedSettingsService(input: {
 	function resolveDefinition<T>(
 		definition: SettingDefinition<T>,
 		context: SettingsContext,
-		draft?: SettingsOverride,
+		draft?: SettingsDraft,
 		omitSubject?: string,
 	): ResolvedSetting<T> {
 		let value: unknown = definition.schema.parse(definition.defaultValue);
@@ -475,7 +477,11 @@ export function createScopedSettingsService(input: {
 			throw new SettingsError(`Purpose '${purpose.id}' must select a model profile or null`);
 		return value;
 	}
-	async function preview(subjectId: string, draft?: SettingsOverride): Promise<SettingsPreview> {
+	function definitionView(owner: string, definition: SettingDefinition) {
+		const { key, schemaVersion, scopes, merge, form } = definition;
+		return { key, owner, schemaVersion, scopes, merge, form };
+	}
+	async function preview(subjectId: string, draft?: SettingsDraft): Promise<SettingsPreview> {
 		const subject = requireSubject(subjectId);
 		const context = contextForSubject(subject);
 		const fields: SettingFieldView[] = [];
@@ -501,12 +507,7 @@ export function createScopedSettingsService(input: {
 				error = caught instanceof Error ? caught.message : "Could not resolve setting";
 			}
 			fields.push({
-				key: definition.key,
-				owner,
-				schemaVersion: definition.schemaVersion,
-				scopes: definition.scopes,
-				merge: definition.merge,
-				form: definition.form,
+				...definitionView(owner, definition),
 				choices,
 				inherited,
 				effective,
@@ -522,44 +523,31 @@ export function createScopedSettingsService(input: {
 				.filter((row) => !row.reset && !definitions.has(row.key)),
 		};
 	}
-	function validateWrite(
-		subjectId: string,
-		key: string,
-		value: unknown,
-		mode: "append" | "replace",
-		reset: boolean,
-	) {
+	function validateWrite({
+		subjectId,
+		key,
+		value,
+		mode,
+		reset,
+	}: Omit<SettingsChange, "expectedRevision">) {
 		const subject = requireSubject(subjectId);
 		const definition = requireDefinition(key);
 		if (!definition.scopes.includes(subject.scopeType))
 			throw new SettingsError(`'${key}' does not apply to ${subject.scopeType}`);
+		mode ??= definition.merge === "instructions" ? "append" : "replace";
 		if (mode === "append" && definition.merge !== "instructions")
 			throw new SettingsError("Only instructions can append inherited values");
-		return { definition, value: reset ? null : parse(definition, value) };
+		return {
+			subjectId: subject.id,
+			value: reset ? null : parse(definition, value),
+			mode,
+			schemaVersion: definition.schemaVersion,
+		};
 	}
-	function write(change: {
-		subjectId: string;
-		key: string;
-		value: unknown;
-		mode: "append" | "replace";
-		reset: boolean;
-		expectedRevision: number;
-		actor: Actor;
-	}) {
+	function write(change: SettingsChange) {
 		if (!Number.isSafeInteger(change.expectedRevision) || change.expectedRevision < 0)
 			throw new SettingsError("expectedRevision must be a non-negative integer", 400);
-		const { definition, value } = validateWrite(
-			change.subjectId,
-			change.key,
-			change.value,
-			change.mode,
-			change.reset,
-		);
-		const updated = repos.scopedSettings.write({
-			...change,
-			value,
-			schemaVersion: definition.schemaVersion,
-		});
+		const updated = repos.scopedSettings.write({ ...change, ...validateWrite(change) });
 		if (!updated)
 			throw new SettingsError(
 				"This setting changed since you opened it. Your draft is preserved. Reload the current revision before saving again.",
@@ -590,7 +578,7 @@ export function createScopedSettingsService(input: {
 		}
 	}
 	discoverLocal();
-	const resolver: ScopedSettingsResolver = {
+	return {
 		resolve: (definition, context) =>
 			resolveDefinition(requireDefinition(definition.key) as typeof definition, context),
 		discover,
@@ -598,9 +586,6 @@ export function createScopedSettingsService(input: {
 			if (!scopes.has(scopeType)) throw new SettingsError(`Unknown scope '${scopeType}'`);
 			discoveries.set(scopeType, [...(discoveries.get(scopeType) ?? []), discoverer]);
 		},
-	};
-	return {
-		...resolver,
 		capture,
 		modelDefault,
 		preview,
@@ -609,34 +594,22 @@ export function createScopedSettingsService(input: {
 		forProcess,
 		forLaunch: (plan) => contextFor(plan.processInput, plan.projectInputs),
 		previewProcess(process: SubjectProcess) {
-			return [...(catalog.processes.get(process.processId)?.turns.keys() ?? [])].flatMap(
-				(turnId) => {
-					if (!purposeFor(process.processId, turnId)) return [];
+			return [...(catalog.processes.get(process.processId)?.turns.keys() ?? [])]
+				.filter((turnId) => purposeFor(process.processId, turnId))
+				.map((turnId) => {
 					try {
-						return [
-							{ turnId, settings: capture(process, turnId) ?? null, error: null as string | null },
-						];
+						return { turnId, settings: capture(process, turnId) ?? null, error: null };
 					} catch (caught) {
-						return [
-							{
-								turnId,
-								settings: null,
-								error: caught instanceof Error ? caught.message : "Invalid scoped settings",
-							},
-						];
+						return {
+							turnId,
+							settings: null,
+							error: caught instanceof Error ? caught.message : "Invalid scoped settings",
+						};
 					}
-				},
-			);
+				});
 		},
 		definitions: () =>
-			[...definitions].map(([key, { owner, definition }]) => ({
-				key,
-				owner,
-				schemaVersion: definition.schemaVersion,
-				scopes: definition.scopes,
-				merge: definition.merge,
-				form: definition.form,
-			})),
+			[...definitions.values()].map(({ owner, definition }) => definitionView(owner, definition)),
 		async refresh() {
 			discoverLocal();
 			for (const [scope, providers] of discoveries)
@@ -648,29 +621,11 @@ export function createScopedSettingsService(input: {
 					}
 			return listScopes();
 		},
-		async previewDraft(change: {
-			subjectId: string;
-			key: string;
-			value: unknown;
-			mode: "append" | "replace";
-			reset: boolean;
-			actor: Actor;
-		}) {
-			const { definition, value } = validateWrite(
-				change.subjectId,
-				change.key,
-				change.value,
-				change.mode,
-				change.reset,
-			);
+		async previewDraft(change) {
 			return preview(change.subjectId, {
 				...change,
-				subjectId: requireSubject(change.subjectId).id,
-				value,
+				...validateWrite(change),
 				revision: 0,
-				schemaVersion: definition.schemaVersion,
-				createdAt: "",
-				updatedAt: "",
 			});
 		},
 	};
