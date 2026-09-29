@@ -299,11 +299,11 @@ export type ProjectedProcessModelConfiguration = {
 		/** @internal */
 		readonly effectiveConfiguredModelProfileId: string | null;
 		/** @internal */
-		readonly fixedModelProfileId?: string | null;
+		readonly fixedModelProfileId: string | null;
 		/** @internal */
-		readonly effectiveModelProfileId?: string | null;
+		readonly effectiveModelProfileId: string | null;
 		/** @internal */
-		readonly effectiveSource?: ProcessSelectedTurnModelSource | "none";
+		readonly effectiveSource: ProcessSelectedTurnModelSource | "none";
 		/** @internal */
 		readonly source: "instance" | "process_config" | "default";
 	}[];

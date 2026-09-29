@@ -10,10 +10,7 @@ import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
 import ChronicleTurnRail from "../../chronicle/components/ChronicleTurnRail.svelte";
 import CompactActionComposer from "../../chronicle/components/CompactActionComposer.svelte";
-import type {
-	ChronicleProjection,
-	ChronicleReasoningDetailEntry,
-} from "../../chronicle/lib/chronicle-projection.js";
+import type { ChronicleProjection } from "../../chronicle/lib/chronicle-projection.js";
 import {
 	CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 	type ChronicleSelectableItem,
@@ -58,7 +55,7 @@ interface Props {
 	startupRecovery: ProcessDetailData["startupRecovery"];
 	processError: CurrentProcessErrorViewModel | null;
 	scheduledActionDetail: ScheduledActionDetail | null;
-	reasoningDetailEntries: readonly ChronicleReasoningDetailEntry[];
+	reasoningTurnRecordIds: readonly string[];
 	hasBlockingDetailOverlay: boolean;
 	launchWarning?: string | null;
 	persistedModelSelectionWarning?: string | null;
@@ -90,7 +87,7 @@ let {
 	startupRecovery,
 	processError,
 	scheduledActionDetail,
-	reasoningDetailEntries,
+	reasoningTurnRecordIds,
 	hasBlockingDetailOverlay,
 	launchWarning = null,
 	persistedModelSelectionWarning = null,
@@ -177,11 +174,10 @@ function openFocusedReasoningDetails() {
 		chronicleScroll.activeAnchorId,
 	);
 	const preferredTurnRecordId =
-		(activeTurnRecordId &&
-		reasoningDetailEntries.some((entry) => entry.turnRecordId === activeTurnRecordId)
+		(activeTurnRecordId && reasoningTurnRecordIds.includes(activeTurnRecordId)
 			? activeTurnRecordId
 			: null) ??
-		reasoningDetailEntries.at(-1)?.turnRecordId ??
+		reasoningTurnRecordIds.at(-1) ??
 		null;
 	if (preferredTurnRecordId) {
 		onOpenReasoningDetails(preferredTurnRecordId);
@@ -253,7 +249,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 	if (shouldIgnorePlainShortcut(event) || !detail || hasBlockingDetailOverlay) {
 		return;
 	}
-	if (event.key === "r" && reasoningDetailEntries.length > 0) {
+	if (event.key === "r" && reasoningTurnRecordIds.length > 0) {
 		event.preventDefault();
 		openFocusedReasoningDetails();
 		return;

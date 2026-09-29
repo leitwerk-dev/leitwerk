@@ -78,12 +78,12 @@ function button(target: HTMLElement, label: string) {
 	if (!result) throw new Error(`Missing button ${label}`);
 	return result;
 }
-async function choose(target: HTMLElement, id: string, value: string) {
+async function choose(target: HTMLElement, id: string, value: string, dirty = true) {
 	const select = target.querySelector<HTMLSelectElement>(`#${id}`);
 	if (!select) throw new Error("Missing selector");
 	select.value = value;
 	select.dispatchEvent(new Event("change", { bubbles: true }));
-	await vi.waitFor(() => expect(button(target, "Save changes").disabled).toBe(false));
+	await vi.waitFor(() => expect(button(target, "Save changes").disabled).toBe(!dirty));
 }
 afterEach(async () => {
 	for (const app of apps.splice(0)) await unmount(app);
@@ -106,6 +106,8 @@ describe("process model editor", () => {
 			{ defaultModelProfileId: "second" },
 			true,
 		);
+		await choose(target, "instance-default-model", "", false);
+		expect(updateProcessModelConfig).toHaveBeenLastCalledWith("instance", {}, true);
 		button(target, "Cancel").click();
 		await tick();
 		await tick();
@@ -114,6 +116,8 @@ describe("process model editor", () => {
 		await tick();
 		expect(target.querySelector<HTMLSelectElement>("select")?.value).toBe("");
 		await choose(target, "step-model-run", "second");
+		await choose(target, "instance-default-model", "second");
+		await choose(target, "instance-default-model", "");
 		button(target, "Save changes").click();
 		await vi.waitFor(() => expect(target.textContent).toContain("Model settings saved"));
 		expect(updateProcessModelConfig).toHaveBeenLastCalledWith("instance", {

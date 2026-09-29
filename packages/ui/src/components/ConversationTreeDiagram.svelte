@@ -5,7 +5,6 @@ let nextTreeDiagramId = 0;
 <script lang="ts">
 import type { ProcessInstanceTreeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import { tick } from "svelte";
-import type { ChronicleSelectableItem } from "../chronicle/lib/chronicle-selectable-items.js";
 import {
 	INSTANCE_TREE_COLUMN_GAP,
 	layoutInstanceTree,
@@ -17,17 +16,9 @@ interface Props {
 	onSelectExecution?: (turnRecordId: string) => void;
 	selectedTurnRecordId?: string;
 	tree: ProcessInstanceTreeResponseBody;
-	railItems: readonly ChronicleSelectableItem[];
 }
 
-let { tree, railItems, onSelectExecution, selectedTurnRecordId, onReady }: Props = $props();
-const railByRecord = $derived(
-	new Map(
-		railItems
-			.filter((item) => item.kind === "turn")
-			.map((item) => [item.turnRecordId, item]),
-	),
-);
+let { tree, onSelectExecution, selectedTurnRecordId, onReady }: Props = $props();
 const markerId = `tree-arrow-${nextTreeDiagramId++}`;
 const layout = $derived(layoutInstanceTree(tree.nodes, tree.currentLeafId, tree.edges));
 const laneStarts = $derived(layout?.nodes.filter((node) => node.startsLane) ?? []);
@@ -87,7 +78,7 @@ function path(points: readonly { x: number; y: number }[]): string {
 }
 
 function marker(node: NonNullable<typeof layout>["nodes"][number]): string {
-	const parts = [railByRecord.get(node.id)?.title ?? node.label];
+	const parts = [node.label];
 	if (node.contextOrigin === "fresh") parts.push("fresh context");
 	if (node.contextOrigin === "previous") parts.push("branch with previous context");
 	if (node.childCount > 1) parts.push("branch point");
@@ -204,7 +195,6 @@ const accessibleDescription = $derived.by(() => {
 			{/each}
 
 			{#each layout.nodes as node (node.id)}
-				{@const rail = railByRecord.get(node.id)}
 				<g
 					class="tree-node"
           role={onSelectExecution ? "button" : undefined}
@@ -220,12 +210,11 @@ const accessibleDescription = $derived.by(() => {
 					transform={`translate(${node.x - node.width / 2} ${node.y - node.height / 2})`}
 					data-tree-node="turn"
 					data-context-origin={node.contextOrigin}
-					data-rail-tone={rail?.tone}
 				>
 					<title>{marker(node)}</title>
 					<rect width={node.width} height={node.height} rx="9" />
 					<text class="node-title" x={node.width / 2} y={node.height / 2 + 4} text-anchor="middle">
-						{rail?.title ?? node.label}
+						{node.label}
 					</text>
 					{#if node.childCount > 1}
 						<text class="badge branch-badge" x={node.width - 58} y="-8">Branch</text>

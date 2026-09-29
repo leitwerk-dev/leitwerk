@@ -6,6 +6,7 @@ import type {
 import { tick } from "svelte";
 import { type ProcessDetailData, updateProcessModelConfig } from "../../../lib/api.js";
 import { loadProcessDetail } from "../../../lib/processes.svelte.js";
+import { modelSourceLabel as sourceLabel } from "./model-source-label.js";
 
 let { detail }: { detail: ProcessDetailData } = $props();
 let editing = $state(false);
@@ -13,7 +14,8 @@ let saving = $state(false);
 let previewing = $state(false);
 let error = $state("");
 let notice = $state("");
-let patch = $state<ProcessModelConfigPatch>({});
+let defaultValue = $state("");
+let turnValues = $state<Record<string, string>>({});
 let baseline = $state<ProcessModelConfigurationView | null>(null);
 let preview = $state<ProcessModelConfigurationView | null>(null);
 let editButton = $state<HTMLButtonElement>();
@@ -24,40 +26,31 @@ const editable = $derived(
 	!["completed", "aborted"].includes(detail.process.lifecycleStatus) &&
 		detail.modelConfiguration.state.kind === "ready",
 );
-const dirty = $derived(
-	Object.hasOwn(patch, "defaultModelProfileId") || Object.keys(patch.turnConfigs ?? {}).length > 0,
-);
-const defaultValue = $derived(
-	Object.hasOwn(patch, "defaultModelProfileId")
-		? (patch.defaultModelProfileId ?? "")
-		: (baseline?.defaultModel.instanceModelProfileId ?? ""),
-);
-function turnValue(id: string) {
-	return Object.hasOwn(patch.turnConfigs ?? {}, id)
-		? (patch.turnConfigs?.[id]?.modelProfileId ?? "")
-		: (baseline?.turns.find((turn) => turn.turnId === id)?.instanceModelProfileId ?? "");
-}
-function sourceLabel(source: string) {
-	return (
-		(
-			{
-				instance: "Instance override",
-				instance_turn_config: "Instance override",
-				process_config_turn: "Configured step model",
-				instance_default: "Inherits instance default",
-				process_config_default: "Inherits process default",
-				none: "Not configured",
-				process_config: "Configured step model",
-				default: "Inherits the default",
-				catalog_default: "Catalog default",
-			} as Record<string, string>
-		)[source] ?? source
+const patch = $derived.by((): ProcessModelConfigPatch => {
+	const turnConfigs = Object.fromEntries(
+		Object.entries(turnValues)
+			.filter(
+				([id, value]) =>
+					value !==
+					(baseline?.turns.find((turn) => turn.turnId === id)?.instanceModelProfileId ?? ""),
+			)
+			.map(([id, value]) => [id, { modelProfileId: value || null }]),
 	);
-}
+	return {
+		...(defaultValue !== (baseline?.defaultModel.instanceModelProfileId ?? "")
+			? { defaultModelProfileId: defaultValue || null }
+			: {}),
+		...(Object.keys(turnConfigs).length ? { turnConfigs } : {}),
+	};
+});
+const dirty = $derived(Object.keys(patch).length > 0);
 async function begin() {
 	baseline = detail.modelConfiguration;
+	defaultValue = baseline.defaultModel.instanceModelProfileId ?? "";
+	turnValues = Object.fromEntries(
+		baseline.turns.map((turn) => [turn.turnId, turn.instanceModelProfileId ?? ""]),
+	);
 	preview = null;
-	patch = {};
 	error = "";
 	notice = "";
 	editing = true;
@@ -68,7 +61,6 @@ async function cancel() {
 	revision++;
 	editing = false;
 	preview = null;
-	patch = {};
 	error = "";
 	previewing = false;
 	await tick();
@@ -87,22 +79,6 @@ async function refreshPreview() {
 	} finally {
 		if (current === revision) previewing = false;
 	}
-}
-function changeDefault(value: string) {
-	const next = { ...patch };
-	if ((baseline?.defaultModel.instanceModelProfileId ?? "") === value)
-		delete next.defaultModelProfileId;
-	else next.defaultModelProfileId = value || null;
-	patch = next;
-	void refreshPreview();
-}
-function changeTurn(id: string, value: string) {
-	const turns = { ...patch.turnConfigs };
-	if ((baseline?.turns.find((turn) => turn.turnId === id)?.instanceModelProfileId ?? "") === value)
-		delete turns[id];
-	else turns[id] = { modelProfileId: value || null };
-	patch = { ...patch, turnConfigs: turns };
-	void refreshPreview();
 }
 async function save() {
 	if (saving || !editable) return;
@@ -129,11 +105,11 @@ async function save() {
  {#if detail.modelConfiguration.state.kind === "blocked"}
   <p role="alert">Saved model configuration is malformed and must be repaired before editing.</p>
  {:else if editing}
-  <form onsubmit={event => { event.preventDefault(); void save(); }}>
+  <form onchange={refreshPreview} onsubmit={event => { event.preventDefault(); void save(); }}>
    <fieldset disabled={saving || !editable}>
     <div class="model-field">
      <label for="instance-default-model">Default profile</label>
-     <select id="instance-default-model" bind:this={defaultSelect} value={defaultValue} onchange={event => changeDefault(event.currentTarget.value)}>
+     <select id="instance-default-model" bind:this={defaultSelect} bind:value={defaultValue}>
       <option value="">Inherit process or catalog default</option>
       {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
      </select>
@@ -146,7 +122,7 @@ async function save() {
        <span>{turn.description}</span><p>{turn.fixedModelProfileId}</p><p class="note">Fixed system model. This step cannot be overridden.</p>
       {:else}
        <label for={`step-model-${turn.turnId}`}>{turn.description}</label>
-       <select id={`step-model-${turn.turnId}`} value={turnValue(turn.turnId)} onchange={event => changeTurn(turn.turnId, event.currentTarget.value)}>
+       <select id={`step-model-${turn.turnId}`} bind:value={turnValues[turn.turnId]}>
         <option value="">Inherit configured step model or default</option>
         {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
        </select>

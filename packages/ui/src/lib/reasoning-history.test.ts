@@ -114,7 +114,7 @@ it("retains durable inspection event identities across a buffered HTTP refresh",
 			},
 		],
 	});
-	expect(history.events().map((event) => event.eventSequence)).toEqual([2, 3]);
+	expect(history.snapshot().events.map((event) => event.eventSequence)).toEqual([2, 3]);
 	history.push(delta(3, "duplicate"));
-	expect(history.events()).toHaveLength(2);
+	expect(history.snapshot().events).toHaveLength(2);
 });

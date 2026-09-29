@@ -8,6 +8,7 @@ import type { ProcessDetailData } from "../../../lib/api.js";
 import { buildInspectorPath, type InspectorTarget } from "../../../lib/router-logic.js";
 import ProcessFlowDiagram from "../../ProcessFlowDiagram.svelte";
 import InspectionEvidence from "./InspectionEvidence.svelte";
+import { modelSourceLabel as sourceLabel } from "./model-source-label.js";
 import ProcessModelEditor from "./ProcessModelEditor.svelte";
 
 let {
@@ -86,19 +87,6 @@ function selectStep(turnId: string) {
 function selectExecution(turnRecordId: string) {
 	onNavigate({ scope: "execution", turnRecordId, section: "context" });
 }
-function sourceLabel(source: string) {
-	return (
-		(
-			{
-				instance: "Saved instance override",
-				process_config: "Current process configuration",
-				catalog_default: "Current catalog default",
-				default: "Default model policy",
-				none: "Not configured",
-			} as Record<string, string>
-		)[source] ?? source
-	);
-}
 </script>
 <div class="process-reference" class:process-overview={target.scope === "process" && target.section === "overview"} class:context-map={target.scope === "process" && target.section === "context-map"}>
   {#if target.scope === "step"}
@@ -141,7 +129,7 @@ function sourceLabel(source: string) {
       <details class="map-description" data-disclosure-key="context-map-description"><summary>About this map</summary><p class="note">Conversation inheritance and explicitly supplied products. Unconnected executions can have unknown context; they are not assumed to be fresh.</p></details>
       {#if target.turnRecordId && !detail.instanceTree.nodes.some(node => node.id === target.turnRecordId)}<p class="notice" role="status">The selected execution is unavailable in this process.</p>{/if}
       {#if !detail.instanceTree.nodes.length}<p class="note">No execution context has been recorded yet.</p>
-      {:else if contextView === "map"}<ConversationTreeDiagram tree={detail.instanceTree} railItems={[]} selectedTurnRecordId={target.turnRecordId} onSelectExecution={selectExecution} {onReady} />
+      {:else if contextView === "map"}<ConversationTreeDiagram tree={detail.instanceTree} selectedTurnRecordId={target.turnRecordId} onSelectExecution={selectExecution} {onReady} />
       {:else}
         <h3>Context ancestry list · {detail.instanceTree.nodes.length} executions</h3>
         <ul class="context-list" bind:this={contextList} aria-label="Context ancestry list" tabindex="0">{#each detail.instanceTree.nodes as execution (execution.id)}<li class:selected={target.turnRecordId === execution.id}><button class="text-link" onclick={() => selectExecution(execution.id)}>{execution.label} · {execution.resultState}</button><p class="note">{execution.origin?.summary ?? "Context origin not recorded"}</p>{#each detail.instanceTree.edges.filter(edge => edge.targetNodeId === execution.id && edge.productLabels.length) as edge (edge.id)}<p class="note">Supplied {edge.productLabels.join(", ")} from <button class="text-link" onclick={() => selectExecution(edge.sourceNodeId)}>{detail.instanceTree.nodes.find(node => node.id === edge.sourceNodeId)?.label ?? edge.sourceNodeId}</button></p>{/each}</li>{/each}</ul>

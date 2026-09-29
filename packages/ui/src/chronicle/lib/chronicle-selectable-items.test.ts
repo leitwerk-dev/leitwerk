@@ -11,9 +11,6 @@ import {
 const defaultTurnFacts = {
 	startedAt: null,
 	endedAt: null,
-	triggerSource: "unknown",
-	runMode: "unknown",
-	activeToolNames: [],
 } as const;
 
 function createProjection(): Pick<

@@ -2,17 +2,27 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import { serializeFutureActionPayload } from "@leitwerk-dev/protocol";
+import type { ProcessModelConfigPatch } from "@leitwerk-dev/protocol/http-contracts";
 import Fastify from "fastify";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { closeDatabase } from "./db/database.js";
+import { reconcileFutureExecutionModelBlocks } from "./future-execution/reconciliation.js";
+import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
 import { UpdateModelConfig } from "./process-engine/ops/update-model-config.js";
 import { UpdateProductRefs } from "./process-engine/ops/update-product-refs.js";
 import { parseProcessModelConfigPatch, prepareProcessModelConfig } from "./process-model-config.js";
+import { createServerProcessModelPolicy } from "./process-model-policy/index.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { registerProcessModelConfigRoutes } from "./routes/process-model-config.js";
 import type { RouteDeps } from "./routes/process-route-helpers.js";
 import { createOwnedTestDeps } from "./test-helpers/owned-test-deps.js";
+import {
+	createFixtureHumanTurn,
+	createFixtureLlmTurn,
+	createFixtureProcess,
+} from "./test-helpers/process-fixtures.js";
 import {
 	createModelAvailabilitySnapshot,
 	createTestModelPolicy,
@@ -23,7 +33,7 @@ import { createTestDeps } from "./test-helpers/unit-deps.js";
 
 const availability = createModelAvailabilitySnapshot();
 function prepare(
-	patch: Parameters<typeof prepareProcessModelConfig>[0]["patch"],
+	patch: ProcessModelConfigPatch,
 	options: Parameters<typeof createTestModelPolicy>[0] = {},
 	process = createTestProcessInstance(),
 ) {
@@ -152,6 +162,14 @@ describe("instance model configuration", () => {
 	});
 });
 
+function saveModels(
+	engine: ReturnType<typeof createProcessEngine>,
+	instanceId: string,
+	patch: ProcessModelConfigPatch,
+) {
+	return engine.run(UpdateModelConfig, { instanceId, patch, actor: SYSTEM_ACTOR });
+}
+
 function harness(sqlitePath?: string) {
 	const deps = createTestDeps({ sqlitePath });
 	onTestFinished(() => {
@@ -197,16 +215,8 @@ describe("model configuration durable operation and HTTP", () => {
 		if (!before) throw new Error("Missing process");
 		const broadcast = vi.spyOn(deps.broadcaster, "broadcast");
 		const results = await Promise.all([
-			engine.run(UpdateModelConfig, {
-				instanceId: process.id,
-				actor: SYSTEM_ACTOR,
-				patch: { defaultModelProfileId: "second" },
-			}),
-			engine.run(UpdateModelConfig, {
-				instanceId: process.id,
-				actor: SYSTEM_ACTOR,
-				patch: { turnConfigs: { run: { modelProfileId: "first" } } },
-			}),
+			saveModels(engine, process.id, { defaultModelProfileId: "second" }),
+			saveModels(engine, process.id, { turnConfigs: { run: { modelProfileId: "first" } } }),
 			engine.run(UpdateProductRefs, {
 				instanceId: process.id,
 				patch: { test: { entryId: "entry", turnRecordId: null } },
@@ -277,19 +287,8 @@ describe("model configuration durable operation and HTTP", () => {
 });
 
 it("refreshes blocked inherited schedules and preserves one-time selections, payloads and times", async () => {
-	const { defineProcess } = await import("@leitwerk-dev/process-sdk");
-	const { serializeFutureActionPayload } = await import("@leitwerk-dev/protocol");
-	const { createFixtureHumanTurn, createFixtureLlmTurn } = await import(
-		"./test-helpers/process-fixtures.js"
-	);
-	const { buildProcessActionRegistry } = await import("./process-action-registry.js");
-	const { createServerProcessModelPolicy } = await import("./process-model-policy/index.js");
-	const { reconcileFutureExecutionModelBlocks } = await import(
-		"./future-execution/reconciliation.js"
-	);
-	const processDefinition = defineProcess({
+	const processDefinition = createFixtureProcess({
 		id: "policy",
-		displayName: "Policy",
 		entry: "review",
 		turns: {
 			review: createFixtureHumanTurn({
@@ -297,9 +296,6 @@ it("refreshes blocked inherited schedules and preserves one-time selections, pay
 			}),
 			run: createFixtureLlmTurn("Run", { context: "fresh" }),
 		},
-		paramsCodec: { parse: () => ({}), serialize: (value) => value },
-		stateCodec: { parse: () => ({}), serialize: (value) => value },
-		initialState: () => ({}),
 	});
 	const deps = createOwnedTestDeps();
 	const processGraphs = new Map([["policy", processDefinition]]);
@@ -363,15 +359,9 @@ it("refreshes blocked inherited schedules and preserves one-time selections, pay
 		getModelAvailabilitySnapshot: () => status,
 		getSupervisor: () => undefined,
 	});
-	expect(
-		(
-			await engine.run(UpdateModelConfig, {
-				instanceId: process.id,
-				patch: { defaultModelProfileId: "second" },
-				actor: SYSTEM_ACTOR,
-			})
-		).ok,
-	).toBe(true);
+	expect(await saveModels(engine, process.id, { defaultModelProfileId: "second" })).toMatchObject({
+		ok: true,
+	});
 	await reconcileFutureExecutionModelBlocks(base);
 	expect(deps.futureExecutions.getById(scheduled.id)).toMatchObject({
 		modelSelection: { modelProfileId: "second" },
@@ -407,15 +397,9 @@ it("preserves a pending one-time launch model and fences saves against terminal 
 		selectedTurnModelKind: "explicit",
 		selectedTurnModelSource: "launch_override",
 	});
-	expect(
-		(
-			await engine.run(UpdateModelConfig, {
-				instanceId: process.id,
-				actor: SYSTEM_ACTOR,
-				patch: { defaultModelProfileId: "second" },
-			})
-		).ok,
-	).toBe(true);
+	expect(await saveModels(engine, process.id, { defaultModelProfileId: "second" })).toMatchObject({
+		ok: true,
+	});
 	expect(deps.processes.getById(process.id)).toMatchObject({
 		selectedTurnModelProfileId: "first",
 		selectedTurnModelSource: "launch_override",
@@ -423,11 +407,7 @@ it("preserves a pending one-time launch model and fences saves against terminal 
 	});
 	const [aborted, saved] = await Promise.all([
 		engine.abortProcess(process.id),
-		engine.run(UpdateModelConfig, {
-			instanceId: process.id,
-			actor: SYSTEM_ACTOR,
-			patch: { defaultModelProfileId: "first" },
-		}),
+		saveModels(engine, process.id, { defaultModelProfileId: "first" }),
 	]);
 	expect(aborted.ok).toBe(true);
 	expect(saved).toMatchObject({ ok: false, code: "invalid_model_config" });

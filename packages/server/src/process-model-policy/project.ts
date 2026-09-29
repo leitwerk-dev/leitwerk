@@ -1,4 +1,4 @@
-import { type ProcessSelectedTurnModelSource, trimToNull } from "@leitwerk-dev/domain";
+import { trimToNull } from "@leitwerk-dev/domain";
 import { resolveDefault, resolveTurn } from "./evaluate.js";
 import {
 	existingTurnSelectionFromProcess,
@@ -40,10 +40,8 @@ function projectProfiles(
 		});
 }
 
-function sourceForPreview(
-	source: ProcessSelectedTurnModelSource | undefined,
-): ProjectedModelResolutionSource {
-	return source === "action_override" ? "instance_turn_config" : (source ?? "none");
+function sourceForPreview(source: ProjectedModelResolutionSource): ProjectedModelResolutionSource {
+	return source === "action_override" ? "instance_turn_config" : source;
 }
 
 function defaultProjection(
@@ -51,24 +49,19 @@ function defaultProjection(
 	configuration: ValidModelConfiguration,
 ): ProjectedModelDefault {
 	const policy = snapshot.processesById.get(configuration.processId);
-	const processConfigId = trimToNull(policy?.defaultProfileId);
-	const catalogId =
-		snapshot.profiles.find(
-			(profile) => !policy?.allowedProfileIds || policy.allowedProfileIds.has(profile.id),
-		)?.id ?? null;
-	const instanceId = configuration.defaultProfileId ?? null;
-	const effective = resolveDefault(snapshot, configuration).selection?.modelProfileId ?? null;
+	const { selection } = resolveDefault(snapshot, configuration);
 	return {
-		processConfigModelProfileId: processConfigId,
-		instanceModelProfileId: instanceId,
-		effectiveModelProfileId: effective,
-		source: instanceId
-			? "instance"
-			: processConfigId && effective === processConfigId
-				? "process_config"
-				: catalogId
-					? "catalog_default"
-					: "none",
+		processConfigModelProfileId: trimToNull(policy?.defaultProfileId),
+		instanceModelProfileId: configuration.defaultProfileId ?? null,
+		effectiveModelProfileId: selection?.modelProfileId ?? null,
+		source:
+			selection?.provenance.source === "instance_default"
+				? "instance"
+				: selection?.provenance.source === "process_config_default"
+					? "process_config"
+					: selection
+						? "catalog_default"
+						: "none",
 	};
 }
 
@@ -113,43 +106,10 @@ export function projectPolicy(
 		};
 	}
 
-	if (request.kind === "launcher_preview") {
-		const configuration = modelConfigurationFromLaunchInput(processId, request.modelConfig);
-		const defaultModel = defaultProjection(snapshot, configuration);
-		const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
-		return {
-			defaultModel: {
-				source: defaultModel.source,
-				profile: defaultModel.effectiveModelProfileId
-					? (profilesById.get(defaultModel.effectiveModelProfileId) ?? null)
-					: null,
-			},
-			turns: [...(policy?.llmTurnIds ?? [])].map((turnId) => {
-				const result = resolveTurn(
-					snapshot,
-					configuration,
-					turnId,
-					"resolve",
-					{ kind: "none" },
-					{ kind: "inherit" },
-					request.availability,
-				);
-				return {
-					turnId,
-					description: policy?.turnDescriptions[turnId] ?? turnId,
-					effective: {
-						source: sourceForPreview(result.selection?.provenance.source),
-						profile: result.selection
-							? (profilesById.get(result.selection.modelProfileId) ?? null)
-							: null,
-					},
-				};
-			}),
-		};
-	}
-
-	const configuration = modelConfigurationFromProcess(request.process);
-	const selectedTurn = existingTurnSelectionFromProcess(request.process);
+	const configuration =
+		request.kind === "launcher_preview"
+			? modelConfigurationFromLaunchInput(processId, request.modelConfig)
+			: modelConfigurationFromProcess(request.process);
 	if (configuration.kind === "invalid") {
 		return {
 			state: { kind: "blocked", issues: configuration.issues },
@@ -181,7 +141,7 @@ export function projectPolicy(
 		return {
 			turnId,
 			effectiveModelProfileId: resolved.selection?.modelProfileId ?? null,
-			effectiveSource: resolved.selection?.provenance.source ?? "none",
+			effectiveSource: resolved.selection?.provenance.source ?? ("none" as const),
 			description: policy?.turnDescriptions[turnId] ?? turnId,
 			pathType: policy?.turnPathTypes[turnId] ?? "primary",
 			processConfigModelProfileId,
@@ -199,6 +159,25 @@ export function projectPolicy(
 		};
 	});
 
+	if (request.kind === "launcher_preview") {
+		const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+		return {
+			defaultModel: {
+				source: defaultModel.source,
+				profile: profilesById.get(defaultModel.effectiveModelProfileId ?? "") ?? null,
+			},
+			turns: turns.map((turn) => ({
+				turnId: turn.turnId,
+				description: turn.description,
+				effective: {
+					source: sourceForPreview(turn.effectiveSource),
+					profile: profilesById.get(turn.effectiveModelProfileId ?? "") ?? null,
+				},
+			})),
+		};
+	}
+
+	const selectedTurn = existingTurnSelectionFromProcess(request.process);
 	return {
 		state: { kind: "ready" },
 		profiles,

@@ -54,7 +54,6 @@ import type {
 	SkillCatalogDetailResponseBody,
 	SkillsCatalogResponseBody,
 	StartLaunchRunResponseBody,
-	TurnReasoningDetailResponseBody,
 	UiLauncherSummary,
 	WatcherSummary,
 	WatchersResponseBody,
@@ -571,31 +570,6 @@ export async function fetchProcessDetail(instanceId: string): Promise<ProcessDet
 		`/api/processes/${encodeURIComponent(instanceId)}/ui-snapshot`,
 		"Couldn't load this process",
 		"Malformed process UI snapshot response",
-	);
-}
-
-export async function fetchTurnReasoningDetail(
-	instanceId: string,
-	turnRecordId: string,
-	sessionSignature: string | null,
-	signal?: AbortSignal,
-): Promise<TurnReasoningDetailResponseBody> {
-	const params = new URLSearchParams(sessionSignature === null ? {} : { sessionSignature });
-	const res = await getFetchImpl()(
-		resolveApiUrl(
-			`/api/processes/${encodeURIComponent(instanceId)}/turn-records/${encodeURIComponent(turnRecordId)}/reasoning?${params.toString()}`,
-		),
-		{ signal },
-	);
-	if (res.status === 409) {
-		throw new Error(
-			"The process changed while reasoning details were loading. Retry with the latest snapshot.",
-		);
-	}
-	if (!res.ok) throw new Error(`Couldn't load reasoning details: ${res.status}`);
-	return readJsonObject<TurnReasoningDetailResponseBody>(
-		res,
-		"Malformed reasoning detail response",
 	);
 }
 
