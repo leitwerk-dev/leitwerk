@@ -8,7 +8,9 @@ Operators choose a shared scope, inspect effective values and their sources, the
 
 ## Composition
 
-Use Public Sans, a white workspace, a cool gray shell, and Operational Blue for focus and saving. The centered page has a maximum width of 860px. Its single column begins with the Settings heading and explanation, followed by Apply settings to and Refresh sources. Purpose groups follow in extension-defined order.
+Use Public Sans, a white workspace, a cool gray shell, and Operational Blue for focus and saving. The centered page has a maximum width of 860px. Its single column begins with the Settings heading and explanation, followed by visible scope tabs, Apply settings to, and Refresh sources. Tabs separate Instance, Repositories, and extension-declared groups such as issue projects and components. The native selector contains only entries in the active group, sorted by label. Purpose groups follow in extension-defined order.
+
+Keep Instance first and other groups in declaration order; omit empty groups. Retained subjects from an unavailable extension remain reachable under their scope ID and an inactive label. Repository groups cover every provider without guessing brands from repository labels. A scope deep link selects its group; switching groups remembers the last selected entry while the page is open. Refresh preserves the selected identity and open drafts, including redirected repository identities. Arrow keys, Home, and End move tab focus; Enter or Space activates the focused group.
 
 Separate fields with thin horizontal dividers. Each row presents its label and description, Override or Edit override, then the effective value and contributing source. Source labels use muted caption text; values use normal body text. Preserve instruction line breaks and allow long values and source labels to wrap. Keep grouping flat, with a muted inset reserved for the combined instruction preview.
 
@@ -28,4 +30,4 @@ The inspector's Inputs & configuration section links to Instance and repository 
 
 ## Responsive behavior
 
-At 600px and below, the scope selector and refresh action stack, and each field's override action sits beneath its heading. Editors stay in one column and action rows wrap. Buttons retain a 44px minimum height; interactive controls keep visible blue focus outlines. The existing mobile shell supplies navigation; the form and its combined preview remain in the normal page flow.
+At 600px and below, scope tabs wrap into two columns, the scope selector and refresh action stack, and each field's override action sits beneath its heading. Editors stay in one column and action rows wrap. Buttons retain a 44px minimum height; interactive controls keep visible blue focus outlines. The existing mobile shell supplies navigation; the form and its combined preview remain in the normal page flow.

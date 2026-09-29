@@ -98,6 +98,7 @@ test("instruction overrides inherit, compose, reset and preserve conflicting dra
 	const repository = (await scopeResponse.json()).subjects.find(
 		(subject: { identity: string }) => subject.identity === "locator:/workspace/browser-settings",
 	);
+	await page.getByRole("tab", { name: "Repositories", exact: true }).click();
 	await page.getByLabel("Apply settings to").selectOption(repository.id);
 	await expect(field).toContainText("Installation instructions");
 	await field.getByRole("button", { name: "Override", exact: true }).click();

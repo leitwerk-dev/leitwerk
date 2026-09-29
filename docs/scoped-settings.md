@@ -84,6 +84,12 @@ editor cannot overwrite a later reset. Successful writes retain the actor and
 timestamps. A revision conflict returns HTTP 409; invalid values return HTTP 422.
 Preview and update use the same field validation.
 
+Settings groups subjects into visible tabs by declared scope type. Instance comes
+first, followed by repositories and extension groups such as Jira projects and
+Jira components. The selector lists only subjects in the active group. Deep links
+select the corresponding group; refreshing sources retains the selection and open
+drafts. Unavailable scope types remain reachable with an inactive label.
+
 The UI keeps drafts on errors and conflicts. On conflict, it displays the current
 saved value and requires the operator to accept its revision before resubmitting
 the draft. `settings.updated` refreshes future model previews; captured history is
