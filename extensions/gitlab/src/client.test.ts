@@ -217,12 +217,11 @@ describe("GitLab boundary", () => {
 			startSha: "start",
 			headSha: "head",
 		};
-		const harness = await writeHarness((writes) => ensureGitLabInlineComment({ ...input, writes }));
-		await harness.callTool("write", {});
-		const reopened = await writeHarness((writes) =>
-			ensureGitLabInlineComment({ ...input, writes }),
-		);
-		await reopened.callTool("write", {});
+		const harness = writeHarness((writes) => ensureGitLabInlineComment({ ...input, writes }));
+		const first = await harness();
+		expect(first).toMatchObject({ marker: expect.any(String), discussionId: "thread" });
+		const reopened = writeHarness((writes) => ensureGitLabInlineComment({ ...input, writes }));
+		await reopened();
 		expect(posts).toBe(1);
 		expect(discussions[0]?.notes[0]?.body).toContain("<!-- leitwerk:gitlab:");
 	});
