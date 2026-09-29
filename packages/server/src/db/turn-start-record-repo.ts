@@ -6,7 +6,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { and, eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
-import { generateId, now, parsePersistedJson } from "./repo-helpers.js";
+import { generateId, mappedItemRef, now, parsePersistedJson } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
 function map(row: typeof s.turnStartRecords.$inferSelect): TurnStartRecord {
@@ -22,6 +22,7 @@ function map(row: typeof s.turnStartRecords.$inferSelect): TurnStartRecord {
 			? parsePersistedJson(row.continuationJson, "turn start continuation")
 			: null,
 		state: parsePersistedJson<TurnStartRecordState>(row.stateJson, "turn start state"),
+		iteration: mappedItemRef(row),
 		createdAt: row.createdAt,
 		updatedAt: row.updatedAt,
 	};
@@ -51,6 +52,9 @@ export function createTurnStartRecordRepo(db: LeitwerkDb) {
 				stateJson: JSON.stringify(input.state),
 				createdAt: ts,
 				updatedAt: ts,
+				mappedRunId: input.iteration?.runId ?? null,
+				mappedItemKey: input.iteration?.itemKey ?? null,
+				mappedItemIndex: input.iteration?.itemIndex ?? null,
 			};
 			db.insert(s.turnStartRecords).values(value).run();
 			return map(value);

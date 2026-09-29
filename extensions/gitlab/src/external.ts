@@ -68,7 +68,6 @@ export interface GitLabSourceConfig {
 		lastConflictKey?: string | null;
 	};
 	/** @public */
-	/** @public */
 	feedback?: {
 		/** @public */
 		afterId: number;
@@ -120,7 +119,6 @@ export const gitlabExternal = {
 	/** @public */
 	issueCancelled<P, S>(
 		/** @public */
-		/** @public */
 		resolve: (ctx: {
 			/** @public */
 			params: P;
@@ -138,7 +136,6 @@ export const gitlabExternal = {
 	},
 	/** @public */
 	mergeRequest<P, S>(
-		/** @public */
 		/** @public */
 		resolve: (ctx: {
 			/** @public */
@@ -161,7 +158,6 @@ export const gitlabExternal = {
 export function createGitLabProvider(
 	deps: CoreServerSetupDeps,
 	integration: GitLabIntegration,
-	/** @public */
 	/** @public */
 	options: {
 		/** @internal */ now?: () => number;

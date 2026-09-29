@@ -48,19 +48,13 @@ export interface QuestionRequestFixture {
 /** Question content with generated stable option identities. @public */
 export interface QuestionFixtureOptions {
 	/** @public */
-
 	question?: string;
-
 	/** @public */
-
 	selection?: "single" | "multiple";
-
 	/** @public */
-
 	options?: readonly {
 		/** @public */
 		label: string;
-
 		/** @public */
 		details?: string | null;
 	}[];
@@ -86,13 +80,9 @@ export type QuestionFixtureResolution =
 	| {
 			/** @public */
 			status: "answered";
-
 			/** @public */
-
 			answers: readonly string[];
-
 			/** @public */
-
 			actor?: Actor;
 	  }
 	| {
@@ -103,32 +93,22 @@ export type QuestionFixtureResolution =
 /** Reference inputs and question content, without durable status overrides. @public */
 export interface QuestionRequestFixtureOptions {
 	/** @public */
-
 	id?: string;
-
 	/** @public */
-
 	process?: {
 		/** @public */
 		id: string;
 	};
-
 	/** @public */
-
 	turn?: {
 		/** @public */
 		id: string;
-
 		/** @public */
 		instanceId: string;
 	};
-
 	/** @public */
-
 	questions?: readonly QuestionFixtureOptions[];
-
 	/** @public */
-
 	resolution?: QuestionFixtureResolution;
 }
 

@@ -1239,6 +1239,20 @@ export type ProcessTimelineTurnPresentation =
 	| "operator_decision"
 	| "external_trigger";
 
+/** Item identity of one mapped LLM turn execution. @internal */
+export interface ProcessTimelineIteration {
+	/** @internal */
+	runId: string;
+	/** @internal */
+	itemKey: string;
+	/** Zero-based position in the frozen order. @internal */
+	index: number;
+	/** @internal */
+	count: number;
+	/** @internal */
+	label: string;
+}
+
 /** @internal */
 export interface ProcessTimelineTurnSummary {
 	/** @internal */
@@ -1296,6 +1310,8 @@ export interface ProcessTimelineTurnSummary {
 	progress?: TurnProgressReport | null;
 	/** @internal */
 	progressRecordedAt?: string;
+	/** Present when this record executed one item of a mapped LLM turn. @internal */
+	iteration?: ProcessTimelineIteration;
 }
 
 /** @internal */
@@ -1516,7 +1532,12 @@ export interface ProcessDetailUiSnapshotResponseBody {
 	/** @internal */
 	process: ProcessUiSnapshotProcess;
 	/** Next turn on the declared happy path, including human decisions. @internal */
-	plannedNextTurn?: Pick<ProcessSelectedTurnSummary, "turnId" | "description"> | null;
+	plannedNextTurn?:
+		| (Pick<ProcessSelectedTurnSummary, "turnId" | "description"> & {
+				/** Next frozen item when the selected mapped turn has items left. @internal */
+				iteration?: ProcessTimelineIteration;
+		  })
+		| null;
 	/** Durable requests in Chronicle order; at most one is open for the current turn. @internal */
 	questionRequests: ProcessQuestionRequest[];
 	/** @internal */

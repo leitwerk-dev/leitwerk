@@ -103,8 +103,9 @@ for (const viewport of [
 		expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(viewport.width);
 		for (const name of ["Run now", "Run later"]) {
 			const radioBox = await box(page.getByRole("radio", { name, exact: true }));
-			expect(radioBox.width).toBe(14);
-			expect(radioBox.height).toBe(14);
+			// Bounding boxes can include floating-point rounding from the browser.
+			expect(radioBox.width).toBeCloseTo(14, 3);
+			expect(radioBox.height).toBeCloseTo(14, 3);
 		}
 		await page.getByRole("radio", { name: "Run later", exact: true }).check();
 		await expect(page.getByRole("radio", { name: "Run later", exact: true })).toBeChecked();

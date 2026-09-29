@@ -23,6 +23,7 @@ import type {
 	WorkerCompleteInput,
 	WorkerProcessContext,
 } from "./extension-api.js";
+import { type MappedLlmTurnSpec, mappedCollectTrigger } from "./mapped-turn.js";
 import {
 	getProcessTurnTransitions,
 	markDefinedProcess,
@@ -455,6 +456,8 @@ export interface LlmTurnDefinition<
 	requiredSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
 	/** @internal */
 	optionalSemanticMarkdownRefs?: readonly ProcessSemanticEntryRefKey[];
+	/** Runs this turn once per frozen item, then collects and routes once. @public */
+	forEach?: MappedLlmTurnSpec<TParams, TState>;
 }
 
 /** @public */
@@ -1191,6 +1194,71 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 	};
 }
 
+function compileMappedTurnTransitions<TParams, TState>(input: {
+	turnId: TurnId;
+	spec: LlmTurnDefinition<string, TParams, TState>;
+	knownTurnIds: ReadonlySet<TurnId>;
+}): readonly ProcessTurnTransition[] {
+	const mapped = input.spec.forEach;
+	if (!mapped) return [];
+	const outcomes = Object.entries(input.spec.outcomes ?? {}) as Array<
+		[string, ProcessToolOutcomeSpec<TParams, TState>]
+	>;
+	if (outcomes.length === 0) {
+		throw new Error(`Mapped turn '${input.turnId}' must declare at least one outcome tool`);
+	}
+	if (input.spec.turnEnd) {
+		throw new Error(`Mapped turn '${input.turnId}' cannot declare a turnEnd result`);
+	}
+	for (const [outcome, spec] of outcomes) {
+		if (
+			"branches" in spec ||
+			hasDeclaredStaticRouteTarget(spec) ||
+			spec.effect ||
+			spec.lifecycleIntent ||
+			spec.publishedProduct
+		) {
+			throw new Error(
+				`Mapped turn '${input.turnId}' outcome '${outcome}' cannot route, change state, or publish; collect results instead`,
+			);
+		}
+		if (!Object.hasOwn(mapped.yields, outcome)) {
+			throw new Error(
+				`Mapped turn '${input.turnId}' outcome '${outcome}' must declare .yield(...)`,
+			);
+		}
+	}
+	const routing = mapped.routing;
+	if (routing.kind === "static") {
+		const target = normalizeStaticRouteTarget(
+			`Mapped turn '${input.turnId}' collection`,
+			{
+				...(routing.to !== undefined ? { to: routing.to } : {}),
+				...(routing.lifecycleStatus !== undefined
+					? { lifecycleStatus: routing.lifecycleStatus }
+					: {}),
+			},
+			input.knownTurnIds,
+		);
+		return [{ ...target, trigger: mappedCollectTrigger() }];
+	}
+	const branches = Object.entries(routing.branches);
+	if (branches.length === 0) {
+		throw new Error(`Mapped turn '${input.turnId}' collection must declare at least one branch`);
+	}
+	return branches.map(([branchId, to]) => {
+		if (branchId.trim() === "") {
+			throw new Error(`Mapped turn '${input.turnId}' collection contains an empty branch id`);
+		}
+		const target = normalizeStaticRouteTarget(
+			`Mapped turn '${input.turnId}' collection branch '${branchId}'`,
+			{ to },
+			input.knownTurnIds,
+		);
+		return { ...target, trigger: mappedCollectTrigger(branchId) };
+	});
+}
+
 function addActionUse<TParams, TState>(input: {
 	actionUses: Map<string, CompiledActionUse<TParams, TState>[]>;
 	actionId: string;
@@ -1699,6 +1767,21 @@ function buildDefinedProcess<TParams, TState>(
 	>();
 
 	for (const [turnId, turnSpec] of turnEntries) {
+		if (turnSpec.kind === "llm" && turnSpec.forEach) {
+			turns.set(
+				turnId,
+				createProcessTurnBinding(
+					turnSpec,
+					compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
+				),
+			);
+			executableTurns.set(turnId, {
+				spec: turnSpec,
+				effects: new Map(),
+				routings: new Map(),
+			});
+			continue;
+		}
 		if (turnSpec.kind === "llm" || turnSpec.kind === "automatic") {
 			const { transitions, effects, routings } = compileTurnOutcomeDefinitions({
 				turnId,

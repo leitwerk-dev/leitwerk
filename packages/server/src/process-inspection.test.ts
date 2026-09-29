@@ -119,6 +119,53 @@ describe("inspection lineage", () => {
 		});
 		expect(lineage.owner("later")).toBeNull();
 	});
+	it.each([
+		false,
+		true,
+	])("preserves the parent when compaction fails before writing an entry (entry link: %s)", (hasEntryLink) => {
+		const parent = record("a");
+		const failed = record("b", {
+			status: "failed",
+			forkPiEntryId: "a-result",
+			resultPiEntryId: "a-result",
+		});
+		const session = tree([
+			{
+				type: "message",
+				id: "a-result",
+				parentId: null,
+				timestamp: "1",
+				message: { role: "assistant", content: [{ type: "text", text: "Retained answer" }] },
+			},
+		]);
+		const lineage = createInspectionLineage({
+			records: [parent, failed],
+			leases: [],
+			observations: [
+				...(hasEntryLink ? [linked("a", "a-result")] : []),
+				supplied("b", {
+					pathType: "primary",
+					contextMode: "compacted",
+					startTarget: { kind: "entry", entryId: "a-result" },
+					forkPiEntryId: "a-result",
+				}),
+			],
+			tree: session,
+		});
+		expect(lineage.owner("a-result")).toBe(parent.id);
+		expect(lineage.ancestry(failed)).toEqual([
+			{ turnRecordId: parent.id, turnId: parent.turnId, boundaryEntryId: "a-result" },
+		]);
+		expect(
+			buildInspectionTraceMessages({
+				tree: session,
+				record: parent,
+				captures: [],
+				events: [],
+				owner: lineage.owner,
+			}).map((message) => message.entryId),
+		).toEqual(["a-result"]);
+	});
 	it("bounds identified legacy messages and preserves ordered blocks without renderer details", () => {
 		const execution = record("a");
 		const session = tree([

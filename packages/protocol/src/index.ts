@@ -52,6 +52,7 @@ export type {
 	ProcessSelectedTurnSummary,
 	ProcessStartupSummary,
 	ProcessTimelineInputSummary,
+	ProcessTimelineIteration,
 	ProcessTimelineSnapshot,
 	ProcessTimelineTurnSummary,
 	ProcessUiSnapshotProcess,

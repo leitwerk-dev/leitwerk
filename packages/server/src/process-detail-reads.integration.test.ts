@@ -11,6 +11,7 @@ import {
 } from "./model-providers/registry.js";
 import { listVisibleActionsForProcess } from "./process-action-presenter.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
+import { ProcessInspectionReader } from "./process-inspection-reader.js";
 import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 import {
 	createFileBackedProcessSessionSnapshotStore,
@@ -390,7 +391,6 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 });
 
 it("opens inspection summary without reading sessions or immutable content", async () => {
-	const { ProcessInspectionReader } = await import("./process-inspection-reader.js");
 	const { deps } = fixture;
 	const process = deps.processes.create({
 		processId: "ticket_issue_process",
@@ -408,4 +408,80 @@ it("opens inspection summary without reading sessions or immutable content", asy
 	);
 	expect(session).not.toHaveBeenCalled();
 	expect(contents).not.toHaveBeenCalled();
+});
+
+it("keeps inspection trace evidence at its captured event boundary during session loading", async () => {
+	const { deps, source } = fixture;
+	const process = deps.processes.create({ processId: "ticket_issue_process" });
+	const turn = deps.turnRecords.create({
+		instanceId: process.id,
+		turnId: "generate_plan",
+		status: "running",
+	});
+	const paused = pauseSessionRead(source);
+	const reader = new ProcessInspectionReader({ ...deps, sessionReader: paused.reader });
+	const pending = reader.trace(process.id, turn.id);
+	await paused.entered;
+	deps.turnRecords.update(turn.id, { status: "succeeded", turnResultMarkdown: "Completed result" });
+	deps.turnAnnotations.create({
+		instanceId: process.id,
+		annotationType: "outcome",
+		references: [{ kind: "turn_record", turnRecordId: turn.id, role: "subject" }],
+		payload: { result: "Completed result" },
+	});
+	const completion = deps.events.create({
+		instanceId: process.id,
+		eventType: "turn.outcome",
+		data: { turnRecordId: turn.id, result: "Completed result" },
+	});
+	paused.resume();
+	const before = await pending;
+	expect(before).toMatchObject({ state: "live", output: null, annotations: [], events: [] });
+	if (completion.eventSequence === undefined) throw new Error("Expected a sequenced event");
+	expect(before?.throughEventSequence).toBeLessThan(completion.eventSequence);
+	const after = await reader.trace(process.id, turn.id);
+	expect(after).toMatchObject({ state: "committed", output: "Completed result" });
+	expect(after?.annotations).toHaveLength(1);
+	expect(after?.events.map((event) => event.id)).toContain(completion.id);
+});
+
+it("keeps context observations captured before session loading", async () => {
+	const { deps, source } = fixture;
+	const process = deps.processes.create({ processId: "ticket_issue_process" });
+	const turn = deps.turnRecords.create({
+		instanceId: process.id,
+		turnId: "generate_plan",
+		status: "running",
+	});
+	if (!turn.turnStartRecordId || !turn.acceptedWorkerLeaseId)
+		throw new Error("Expected an accepted turn start");
+	const paused = pauseSessionRead(source);
+	const reader = new ProcessInspectionReader({ ...deps, sessionReader: paused.reader });
+	const pending = reader.context(process.id, turn.id);
+	await paused.entered;
+	deps.executionInspections.append({
+		version: 1,
+		id: "supplied-during-read",
+		instanceId: process.id,
+		turnRecordId: turn.id,
+		startRecordId: turn.turnStartRecordId,
+		workerLeaseId: turn.acceptedWorkerLeaseId,
+		timestamp: new Date().toISOString(),
+		fact: {
+			kind: "supplied_context",
+			products: [],
+			origin: {
+				pathType: "primary",
+				contextMode: "fresh",
+				startTarget: { kind: "root" },
+				forkPiEntryId: null,
+			},
+		},
+	});
+	paused.resume();
+	expect((await pending)?.products.state).toBe("not_recorded");
+	expect((await reader.context(process.id, turn.id))?.products).toEqual({
+		state: "recorded",
+		value: [],
+	});
 });

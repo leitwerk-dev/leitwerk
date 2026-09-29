@@ -92,6 +92,27 @@ describe("RetryStartup", () => {
 		expect(d.writes.turnRecordWrites).toEqual([]);
 		expect(d.writes.processPatch.lifecycleStatus ?? "error").toBe("error");
 	});
+	it("keeps the mapped item when a model-availability failure is retried", () => {
+		const s = setup("preparation_failed");
+		const iteration = { runId: "mlr_1", itemKey: "b", itemIndex: 1 };
+		s.deps.turnStarts.create({
+			...(s.deps.turnStarts.getById("tsr_old") as NonNullable<
+				ReturnType<typeof s.deps.turnStarts.getById>
+			>),
+			id: "tsr_item",
+			proposedTurnRecordId: "trn_item",
+			iteration,
+		});
+		s.deps.processes.update(s.process.id, {
+			currentExecution: { kind: "worker_start", id: "tsr_item" },
+		});
+		const d = RetryStartup.decide(s.context(), {
+			instanceId: s.process.id,
+			startRecordId: "tsr_item",
+		});
+		expect(d).toMatchObject({ ok: true });
+		if (d.ok) expect(d.writes.turnStartWrites[0]).toMatchObject({ input: { iteration } });
+	});
 	it("keeps preparation retry in error and rejects stale IDs", () => {
 		const s = setup("preparation_failed");
 		const d = RetryStartup.decide(s.context(), {

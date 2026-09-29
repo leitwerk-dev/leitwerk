@@ -14,9 +14,10 @@ const common = {
 };
 
 describe("Forgejo repository-change params", () => {
-	it("normalizes legacy issue launches to an issue origin", () => {
+	it.each([undefined, "", " issue "])("normalizes issue origin %j", (origin) => {
 		const parsed = forgejoRepoChangeParamsCodec.parse({
 			...common,
+			origin,
 			issueNumber: 42,
 			issueUrl: "https://git.example.test/team/service/issues/42",
 			triggerLabel: "use-leitwerk",
@@ -24,6 +25,16 @@ describe("Forgejo repository-change params", () => {
 		});
 		expect(parsed).toMatchObject({ origin: "issue", issueNumber: 42 });
 		expect(isIssueOrigin(parsed)).toBe(true);
+		expect(
+			forgejoRepoChangeParamsCodec.parse({ ...parsed, issueNumber: 2 ** 53 }).issueNumber,
+		).toBe(2 ** 53);
+		for (const issueNumber of [0, -1, 1.5, "42"])
+			expect(() => forgejoRepoChangeParamsCodec.parse({ ...parsed, issueNumber })).toThrow(
+				"requires issueNumber",
+			);
+		expect(() => forgejoRepoChangeParamsCodec.parse({ ...parsed, origin: "other" })).toThrow(
+			"requires a valid origin",
+		);
 		for (const field of ["forgejoProfile", "doneLabel"])
 			expect(() => forgejoRepoChangeParamsCodec.parse({ ...parsed, [field]: " " })).toThrow(
 				`Forgejo Repo Change requires ${field}`,

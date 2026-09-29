@@ -32,7 +32,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Check out release tooling
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Update release PR or create draft release
         id: release
         uses: googleapis/release-please-action@8b8fd2cc23b2e18957157a9d923d75aa0c6f6ad5 # v4

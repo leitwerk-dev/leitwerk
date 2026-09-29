@@ -125,6 +125,7 @@ export function localComposition(options: DevelopmentOptions, checkout: string):
 			runtime_config: input.runtimeConfigPath,
 			extensions: input.extensionDirs,
 			test_roots: input.testRoots,
+			...(Object.keys(input.sandboxes).length ? { sandboxes: input.sandboxes } : {}),
 		}),
 	);
 	return file;

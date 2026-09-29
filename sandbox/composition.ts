@@ -2,11 +2,13 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import coding from "@leitwerk-dev/coding";
-import { type SandboxCompositionFactory, withSandboxLaunchers } from "@leitwerk-dev/dev-sandbox";
+import {
+	type SandboxCompositionFactory,
+	scriptedSandboxModel,
+	withSandboxLaunchers,
+} from "@leitwerk-dev/dev-sandbox";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import models from "@leitwerk-dev/models";
-import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import ticketCreation from "@leitwerk-dev/ticket-creation";
 import { LocalTicketAdapter } from "@leitwerk-dev/ticket-creation/testing";
 import { Notebook, type NotebookSeed } from "./notebook.js";
@@ -16,10 +18,6 @@ import {
 } from "./repository-change-process.js";
 import { notebookScenarios, notebookScripts } from "./scenarios.js";
 
-const scriptedModel: LeitwerkExtensionModule = {
-	manifest: { id: "sandbox-model", version: "1.0.0" },
-	modelProviders: fixtureModelProviders({ id: "sandbox-model", modelId: "scripted", server: true }),
-};
 export function createNotebookComposition(
 	seed?: NotebookSeed,
 	scripts = notebookScripts,
@@ -55,11 +53,15 @@ export function createNotebookComposition(
 			createCatalog: () =>
 				buildExtensionCatalogFromModules([
 					coding,
-					input.mode === "real" ? models : scriptedModel,
+					input.mode === "real" ? models : scriptedSandboxModel,
 					{
 						manifest: { id: "sandbox-repository-change", version: "1.0.0" },
 						setupCatalog(api) {
-							api.registerProcess(withSandboxLaunchers(sandboxRepositoryChangeProcess, scenarios));
+							api.registerProcess(
+								withSandboxLaunchers(sandboxRepositoryChangeProcess, scenarios, {
+									ownLaunchers: "replace",
+								}),
+							);
 						},
 					},
 					ticketCreation,

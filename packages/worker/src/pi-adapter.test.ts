@@ -1648,6 +1648,24 @@ describe("SdkPiTreeHandle", () => {
 							requiredErrorCode: "acceptance_criteria_required",
 							minItems: 1,
 						},
+						candidates: {
+							type: "array",
+							description: "Candidates",
+							items: {
+								type: "object",
+								properties: {
+									pattern: { type: "string" },
+									evidenceRefs: {
+										type: "array",
+										minItems: 1,
+										items: { type: "string" },
+									},
+								},
+								required: ["pattern", "evidenceRefs"],
+								additionalProperties: false,
+							},
+							required: true,
+						},
 					},
 				}),
 			],
@@ -1662,8 +1680,25 @@ describe("SdkPiTreeHandle", () => {
 					items: { type: "string" },
 					minItems: 1,
 				},
+				candidates: {
+					type: "array",
+					description: "Candidates",
+					items: {
+						type: "object",
+						properties: {
+							pattern: { type: "string" },
+							evidenceRefs: {
+								type: "array",
+								minItems: 1,
+								items: { type: "string" },
+							},
+						},
+						required: ["pattern", "evidenceRefs"],
+						additionalProperties: false,
+					},
+				},
 			},
-			required: ["acceptanceCriteria"],
+			required: ["acceptanceCriteria", "candidates"],
 			additionalProperties: false,
 		});
 		expect(JSON.stringify(registeredParameters)).not.toContain("requiredErrorCode");

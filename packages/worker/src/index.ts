@@ -8,6 +8,7 @@ export type {
 	PiTreePlanningSnapshot,
 } from "./pi-adapter.js";
 export { SdkPiTreeHandleFactory } from "./pi-adapter.js";
+export { persistPiResourceBundleForStart } from "./pi-resource-bundle.js";
 export {
 	createWorkerRuntime,
 	type WorkerRuntimeAdapters,

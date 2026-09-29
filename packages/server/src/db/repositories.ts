@@ -16,6 +16,7 @@ export * from "./external-write-log-repo.js";
 export * from "./future-execution-repo.js";
 export * from "./launch-run-repo.js";
 export * from "./launcher-recent-value-repo.js";
+export * from "./mapped-llm-run-repo.js";
 export * from "./pending-external-source-fire-repo.js";
 export * from "./process-event-repo.js";
 export * from "./process-handoff-dedup-key-repo.js";
@@ -40,6 +41,7 @@ export * from "./worker-lease-repo.js";
 import { createFutureExecutionRepo } from "./future-execution-repo.js";
 import { createLaunchRunRepo } from "./launch-run-repo.js";
 import { createLauncherRecentValueRepo } from "./launcher-recent-value-repo.js";
+import { createMappedLlmRunRepo } from "./mapped-llm-run-repo.js";
 import { createPendingExternalSourceFireRepo } from "./pending-external-source-fire-repo.js";
 import { createProcessEventRepo } from "./process-event-repo.js";
 import { createProcessHandoffDedupKeyRepo } from "./process-handoff-dedup-key-repo.js";
@@ -108,6 +110,8 @@ export interface RepositoryBundle {
 	/** @internal */
 	turnAnnotations: ReturnType<typeof createProcessTurnAnnotationRepo>;
 	/** @internal */
+	mappedRuns: ReturnType<typeof createMappedLlmRunRepo>;
+	/** @internal */
 	leases: ReturnType<typeof createWorkerLeaseRepo>;
 	/** @internal */
 	providerCredentials: ReturnType<typeof createProviderCredentialRepo>;
@@ -160,6 +164,7 @@ export function createAllRepos(
 		turnRecords: createProcessTurnRecordRepo(db),
 		turnStarts: createTurnStartRecordRepo(db),
 		turnAnnotations: createProcessTurnAnnotationRepo(db),
+		mappedRuns: createMappedLlmRunRepo(db),
 		leases: createWorkerLeaseRepo(db),
 		providerCredentials: createProviderCredentialRepo(db, credentialCipher),
 		externalWrites: createExternalWriteLogRepo(db),

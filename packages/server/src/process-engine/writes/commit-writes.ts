@@ -192,6 +192,11 @@ export function commitWrites(
 	return deps.transaction((repos) => {
 		const processBefore = repos.processes.getById(instanceId);
 		const committedTurnRecords: ProcessTurnRecord[] = [];
+		for (const write of writes.mappedRunWrites) {
+			if (write.kind === "create") repos.mappedRuns.create(write.input);
+			else if (write.kind === "complete_item") repos.mappedRuns.completeItem(write.input);
+			else repos.mappedRuns.abortActiveByInstance(instanceId);
+		}
 		for (const write of writes.turnStartWrites) {
 			if (write.kind === "create") repos.turnStarts.create(write.input);
 			else if (!repos.turnStarts.compareAndSetState(write)) {

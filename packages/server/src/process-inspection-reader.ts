@@ -25,16 +25,12 @@ export class ProcessInspectionReader {
 		const record = this.deps.turnRecords.getById(turnRecordId);
 		return record?.instanceId === instanceId ? record : null;
 	}
-	private lineage(
-		instanceId: string,
-		tree?: Parameters<typeof createInspectionLineage>[0]["tree"],
-	) {
-		return createInspectionLineage({
+	private lineageSnapshot(instanceId: string) {
+		return {
 			records: this.deps.turnRecords.listByInstance(instanceId),
 			leases: this.deps.leases.listByInstance(instanceId),
 			observations: this.deps.executionInspections.listContextFacts(instanceId),
-			tree,
-		});
+		};
 	}
 	/** No session or immutable-content reads are needed to open the shell. */
 	summary(instanceId: string, turnRecordId: string): ExecutionInspectionSummary | null {
@@ -74,7 +70,7 @@ export class ProcessInspectionReader {
 		return {
 			instanceId,
 			execution,
-			origin: this.lineage(instanceId).origin(record),
+			origin: createInspectionLineage(this.lineageSnapshot(instanceId)).origin(record),
 			startKind: start
 				? { state: "recorded", value: start.startKind }
 				: { state: "not_recorded", reason: "Execution start kind was not recorded" },
@@ -122,9 +118,10 @@ export class ProcessInspectionReader {
 	): Promise<ExecutionInspectionContext | null> {
 		const record = this.selected(instanceId, turnRecordId);
 		if (!record) return null;
-		const session = await this.deps.sessionReader.readSessionTree(instanceId);
-		const lineage = this.lineage(instanceId, session.piTree);
+		const lineageSnapshot = this.lineageSnapshot(instanceId);
 		const captures = this.deps.executionInspections.list(instanceId, turnRecordId);
+		const session = await this.deps.sessionReader.readSessionTree(instanceId);
+		const lineage = createInspectionLineage({ ...lineageSnapshot, tree: session.piTree });
 		const supplies = captures.filter((capture) => capture.fact.kind === "supplied_context");
 		const products = supplies.flatMap((capture) =>
 			capture.fact.kind === "supplied_context"
@@ -209,14 +206,26 @@ export class ProcessInspectionReader {
 	): Promise<ExecutionInspectionTrace | null> {
 		const record = this.selected(instanceId, turnRecordId);
 		if (!record) return null;
+		// Keep every durable fact at the same boundary as the reasoning history.
+		// Session storage is asynchronous and can advance independently.
+		const lineageSnapshot = this.lineageSnapshot(instanceId);
+		const captures = this.deps.executionInspections.list(instanceId, turnRecordId);
+		const recordedEvents = this.deps.events.listByTurnRecord(instanceId, turnRecordId);
+		const annotations = this.deps.turnAnnotations
+			.listByInstance(instanceId)
+			.filter((annotation) =>
+				annotation.references.some(
+					(reference) =>
+						reference.kind === "turn_record" && reference.turnRecordId === turnRecordId,
+				),
+			);
 		const history = await this.history.assembleReasoningDetail({ instanceId, turnRecordId });
 		if (!history) return null;
 		const session = await this.deps.sessionReader.readSessionTree(instanceId);
-		const lineage = this.lineage(instanceId, session.piTree);
-		const captures = this.deps.executionInspections.list(instanceId, turnRecordId);
-		const events = this.deps.events
-			.listByTurnRecord(instanceId, turnRecordId)
-			.filter((event) => (event.eventSequence ?? 0) <= history.throughEventSequence);
+		const lineage = createInspectionLineage({ ...lineageSnapshot, tree: session.piTree });
+		const events = recordedEvents.filter(
+			(event) => (event.eventSequence ?? 0) <= history.throughEventSequence,
+		);
 		const messages = buildInspectionTraceMessages({
 			tree: session.piTree,
 			record,
@@ -261,7 +270,7 @@ export class ProcessInspectionReader {
 					: unavailable;
 		}
 		if (target.boundaryFor) {
-			const child = this.selected(instanceId, target.boundaryFor);
+			const child = lineageSnapshot.records.find((record) => record.id === target.boundaryFor);
 			const context = child ? lineage.origin(child).conversation : null;
 			const boundary = context?.state === "recorded" ? context.value : null;
 			if (
@@ -277,14 +286,6 @@ export class ProcessInspectionReader {
 						};
 			} else targetState = unavailable;
 		}
-		const annotations = this.deps.turnAnnotations
-			.listByInstance(instanceId)
-			.filter((annotation) =>
-				annotation.references.some(
-					(reference) =>
-						reference.kind === "turn_record" && reference.turnRecordId === turnRecordId,
-				),
-			);
 		return {
 			...history,
 			messages,

@@ -1,4 +1,11 @@
-import type { ProcessInstance, ProcessProject, TurnOutcomePayload } from "@leitwerk-dev/domain";
+import type {
+	MappedTurnItemRef,
+	ProcessInstance,
+	ProcessProject,
+	TurnOutcomePayload,
+} from "@leitwerk-dev/domain";
+import { SafeOutcomePlanningError } from "@leitwerk-dev/process-sdk";
+import type { RepositoryBundle } from "../../db/repositories.js";
 import {
 	checkTurnOutcomeAvailability,
 	validateTurnOutcome,
@@ -8,6 +15,7 @@ import type { ProcessActionRegistry } from "../../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../../process-graph.js";
 import { validateQueuedProcessInput } from "../../process-input-dispatch.js";
 import type { TurnRecordMarkdownLookup } from "../../turn-result-markdown.js";
+import { buildMappedItemOutcomeWrites } from "../mapped-turns.js";
 import { buildServerTransitionWrites } from "./build-server-transition-writes.js";
 import { buildTurnSelectionWrites } from "./build-turn-selection-writes.js";
 import { createDeferredExtensionEvent } from "./deferred-extension-events.js";
@@ -30,6 +38,21 @@ function hasExplicitTurnSelectionChange(process: ProcessInstance, writes: Writes
 	);
 }
 
+function loadPreparedData(
+	process: ProcessInstance,
+	payload: TurnOutcomePayload,
+	events?: Pick<RepositoryBundle, "events">["events"],
+): unknown {
+	const preparationEvent = events
+		?.listByInstanceTurnRecordEventTypes(process.id, payload.turnRecordId, ["turn.prepared"])
+		.at(-1);
+	return preparationEvent?.data &&
+		typeof preparationEvent.data === "object" &&
+		"data" in preparationEvent.data
+		? preparationEvent.data.data
+		: undefined;
+}
+
 async function buildProcessTurnOutcomeEffectWrites(
 	processGraphs: ProcessGraphRegistry,
 	process: ProcessInstance,
@@ -37,24 +60,34 @@ async function buildProcessTurnOutcomeEffectWrites(
 	payload: TurnOutcomePayload,
 	processActionRegistry: ProcessActionRegistry,
 	turnRecords: TurnRecordMarkdownLookup,
+	events?: Pick<RepositoryBundle, "events">["events"],
 ): Promise<WriteBuildResult> {
 	const serverDef = processActionRegistry.getServerDefinition(process.processId);
 	const handlers = serverDef?.turnOutcomeHandlers.get(payload.turnId) ?? [];
 
 	const { params, state } = processActionRegistry.resolveContextData(process.processId, process);
 	const plan = createProcessPlanCollector({ process, projects, params, state, turnRecords });
+	const prepared = loadPreparedData(process, payload, events);
 
 	for (const handler of handlers) {
-		await handler(
-			{
-				turnRecordId: payload.turnRecordId,
-				turnId: payload.turnId,
-				outcome: payload.outcome,
-				params: payload.params ?? {},
-				turnResultMarkdown: payload.turnResultMarkdown ?? null,
-			},
-			plan.context,
-		);
+		try {
+			await handler(
+				{
+					turnRecordId: payload.turnRecordId,
+					turnId: payload.turnId,
+					outcome: payload.outcome,
+					params: payload.params ?? {},
+					turnResultMarkdown: payload.turnResultMarkdown ?? null,
+					...(prepared !== undefined ? { prepared } : {}),
+				},
+				plan.context,
+			);
+		} catch (error) {
+			if (error instanceof SafeOutcomePlanningError) {
+				return { ok: false, code: error.code, message: error.message };
+			}
+			throw error;
+		}
 	}
 
 	for (const queuedInput of plan.queuedInputs) {
@@ -102,6 +135,12 @@ export interface TurnOutcomePlanningInput {
 	processGraphs: ProcessGraphRegistry;
 	/** @internal */
 	processActionRegistry: ProcessActionRegistry;
+	/** @internal */
+	events?: Pick<RepositoryBundle, "events">["events"];
+	/** @internal */
+	mappedRuns?: RepositoryBundle["mappedRuns"];
+	/** Mapped item executed by the accepted start, when any. @internal */
+	iteration?: MappedTurnItemRef | null;
 }
 
 /** @internal */
@@ -151,6 +190,34 @@ export async function buildTurnOutcomeWrites(
 		);
 	}
 	const processForEffects: ProcessInstance = { ...input.process, ...baseWrites.processPatch };
+	const outcomeEvent = createDeferredExtensionEvent(input.process.id, "turn_outcome", {
+		turnRecordId: input.payload.turnRecordId,
+		turnId: input.payload.turnId,
+		outcome: input.payload.outcome,
+		params: input.payload.params ?? {},
+		turnResultMarkdown: input.payload.turnResultMarkdown ?? null,
+	});
+
+	const mappedSpec = turnDefinition?.kind === "llm" ? turnDefinition.forEach : undefined;
+	if (mappedSpec) {
+		const mappedWrites = await buildMappedItemOutcomeWrites({
+			processGraphs: input.processGraphs,
+			registry: input.processActionRegistry,
+			mappedRuns: input.mappedRuns,
+			process: processForEffects,
+			projects: input.projects,
+			payload: input.payload,
+			spec: mappedSpec,
+			iteration: input.iteration,
+			prepared: loadPreparedData(processForEffects, input.payload, input.events),
+		});
+		if (isWriteBuildFailure(mappedWrites)) {
+			return mappedWrites;
+		}
+		const writes = mergeWrites(baseWrites, mappedWrites);
+		writes.extensionEvents.push(outcomeEvent);
+		return writes;
+	}
 
 	const effectWrites = await buildProcessTurnOutcomeEffectWrites(
 		input.processGraphs,
@@ -159,6 +226,7 @@ export async function buildTurnOutcomeWrites(
 		input.payload,
 		input.processActionRegistry,
 		input.turnRecords,
+		input.events,
 	);
 	if (isWriteBuildFailure(effectWrites)) {
 		return effectWrites;
@@ -195,15 +263,7 @@ export async function buildTurnOutcomeWrites(
 		}
 	}
 
-	writes.extensionEvents.push(
-		createDeferredExtensionEvent(input.process.id, "turn_outcome", {
-			turnRecordId: input.payload.turnRecordId,
-			turnId: input.payload.turnId,
-			outcome: input.payload.outcome,
-			params: input.payload.params ?? {},
-			turnResultMarkdown: input.payload.turnResultMarkdown ?? null,
-		}),
-	);
+	writes.extensionEvents.push(outcomeEvent);
 
 	return writes;
 }
