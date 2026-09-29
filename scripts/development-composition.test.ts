@@ -91,6 +91,27 @@ describe("development composition", () => {
 		);
 	});
 
+	it("resolves named sandbox entries relative to the manifest", () => {
+		const { root, json: writeJson } = testWorkspace();
+		mkdirSync(path.join(root, "sandbox"), { recursive: true });
+		writeJson(path.join(root, "package.json"), { private: true, workspaces: [] });
+		writeFileSync(path.join(root, "leitwerk.yaml"), "{}");
+		writeFileSync(path.join(root, "sandbox", "composition.ts"), "export default () => ({});\n");
+		const manifest = path.join(root, "composition.yaml");
+		const write = (sandboxes: string) =>
+			writeFileSync(manifest, `version: 1\nruntime_config: ./leitwerk.yaml\n${sandboxes}`);
+		write("sandboxes:\n  local-demo: ./sandbox/composition.ts\n");
+		expect(loadDevelopmentComposition(manifest, root).sandboxes).toEqual({
+			"local-demo": realpathSync(path.join(root, "sandbox", "composition.ts")),
+		});
+		write("sandboxes:\n  Demo: ./sandbox/composition.ts\n");
+		expect(() => loadDevelopmentComposition(manifest, root)).toThrow(/lowercase kebab-case/);
+		write("sandboxes:\n  demo: ./sandbox/missing.ts\n");
+		expect(() => loadDevelopmentComposition(manifest, root)).toThrow(/does not exist/);
+		write("sandboxes: [./sandbox/composition.ts]\n");
+		expect(() => loadDevelopmentComposition(manifest, root)).toThrow(/map names/);
+	});
+
 	it("rejects a composition targeting another Leitwerk checkout", () => {
 		const { root, json: writeJson } = testWorkspace();
 		for (const dir of ["leitwerk-a", "leitwerk-b", "private", "private/tests"]) {

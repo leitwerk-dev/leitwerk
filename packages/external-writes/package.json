@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/external-writes",
-	"version": "0.3.0",
+	"version": "0.3.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -23,7 +23,7 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.3.0"
+		"@leitwerk-dev/domain": "0.3.1"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1"

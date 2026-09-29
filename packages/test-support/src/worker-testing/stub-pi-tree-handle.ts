@@ -65,6 +65,19 @@ export interface StubToolCallScriptResolverContext {
 	tools: readonly PiCustomTool[];
 	/** @public */
 	instanceId?: string;
+	/** Active frozen item when the turn is one item of a mapped LLM turn. @public */
+	iteration?: {
+		/** @public */
+		itemKey: string;
+		/** @public */
+		itemLabel: string;
+		/** @public */
+		itemIndex: number;
+		/** @public */
+		itemCount: number;
+		/** @public */
+		item: unknown;
+	};
 	/** @public */
 	workspaceRoot?: string;
 	/** @public */
@@ -952,6 +965,7 @@ export class StubPiTreeHandleFactory implements PiTreeHandleFactory {
 						this.toolCallScriptResolver?.({
 							...context,
 							instanceId: opts.instanceId,
+							...(opts.iteration ? { iteration: opts.iteration } : {}),
 							workspaceRoot: opts.workspaceRoot,
 							sessionCwd: opts.sessionCwd,
 						})

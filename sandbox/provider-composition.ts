@@ -63,12 +63,7 @@ export function createProviderComposition(seeds = defaultSeeds): SandboxComposit
 		)(input);
 		const workflow = createForgejoRepoChange({ docker: false });
 		const scenarios = forgejoScenarios(forgejo, `${seeds[0].owner}/${seeds[0].name}`);
-		const productionLaunchers = workflow.process.launchers;
-		const localLaunchers = withSandboxLaunchers(workflow.process, scenarios).launchers;
-		workflow.process.launchers = (api) => {
-			productionLaunchers?.(api);
-			localLaunchers?.(api);
-		};
+		withSandboxLaunchers(workflow.process, scenarios);
 		workflow.process.repositoryCredentials = () => [];
 		const controls = providerControls(forgejo, woodpecker, poll);
 		const client =

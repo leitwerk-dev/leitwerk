@@ -23,7 +23,6 @@ async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
 export function resolveGitLabRepositoryBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
 	/** @public */
-	/** @public */
 ): {
 	/** @public */
 	profile: string;
@@ -49,7 +48,6 @@ export function resolveGitLabRepositoryBinding(
 /** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-	/** @public */
 	/** @public */
 ): {
 	/** @public */
@@ -85,7 +83,6 @@ export async function ensureGitLabComment(input: {
 	discussionId?: string;
 	/** @internal */
 	signal?: AbortSignal;
-	/** @public */
 	/** @public */
 }): Promise<{
 	/** @internal */

@@ -235,4 +235,75 @@ describe("turn rail current state", () => {
 		expect(upcoming?.getAttribute("data-state")).toBe("pending");
 		expect(upcoming?.textContent).toContain("ReviewPending");
 	});
+
+	it("lists every mapped item and plans the next item", async () => {
+		const target = document.createElement("div");
+		document.body.appendChild(target);
+		const labels = ["svc-a: timeout", "svc-b: refused", "svc-c: overflow"];
+		const iteration = (index: number) => ({
+			runId: "run",
+			itemKey: `k${index}`,
+			index,
+			count: 4,
+			label: labels[index] ?? "",
+		});
+		const railItems: ChronicleSelectableItem[] = labels.map((label, index) => ({
+			kind: "turn",
+			anchorId: `turn-${index}`,
+			turnRecordId: `record-${index}`,
+			turnId: "investigate",
+			title: `Investigate: ${label}`,
+			label: "LLM turn",
+			detail: null,
+			hierarchy: "primary",
+			tone: "llm_turn",
+			markerText: String(index + 1),
+			status: index === 2 ? "in_progress" : "completed",
+			shape: "circle",
+			iteration: iteration(index),
+		}));
+		const detail = {
+			process: { selectedTurnId: "investigate" },
+			plannedNextTurn: {
+				turnId: "investigate",
+				description: "Investigate: svc-d: leak",
+				iteration: { ...iteration(3), label: "svc-d: leak" },
+			},
+			timeline: {
+				turns: railItems.map((_, index) => ({
+					id: `record-${index}`,
+					turnId: "investigate",
+					outcome: "succeeded",
+					parentTurnRecordId: null,
+					iteration: iteration(index),
+					startedAt: "2026-09-10T12:00:00Z",
+					endedAt: "2026-09-10T12:00:10Z",
+				})),
+			},
+		} as unknown as ProcessDetailData;
+		apps.push(
+			mount(ChronicleTurnRail, {
+				target,
+				props: {
+					detail,
+					railItems,
+					activeAnchorId: "turn-2",
+					onSelectAnchor: vi.fn(),
+					loading: false,
+					error: null,
+				},
+			}),
+		);
+		await flush();
+		expect(target.querySelector('[data-section="repeated-turns"]')).toBeNull();
+		expect(
+			[...target.querySelectorAll(".rail-item .rail-title")].map((node) => node.textContent),
+		).toEqual([...labels.map((label) => `Investigate: ${label}`), "Investigate: svc-d: leak"]);
+		expect(target.querySelector('[data-rail-anchor-id="turn-0"] .rail-detail')?.textContent).toBe(
+			"Item 1 of 4 · Completed · 10s",
+		);
+		expect(target.querySelector('[data-section="upcoming-turn"] .rail-detail')?.textContent).toBe(
+			"Item 4 of 4 · Pending",
+		);
+	});
 });

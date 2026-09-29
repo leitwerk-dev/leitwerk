@@ -3,7 +3,6 @@ import type { ExtensionTestCapability } from "./test-capability.js";
 export type { ExtensionTestCapability } from "./test-capability.js";
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type {
 	Actor,
@@ -18,7 +17,11 @@ import {
 	type ExtensionProcessDefinition,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
-import { createAcceptedLlmTurn, prepareAcceptedFixtureStart } from "@leitwerk-dev/server/testing";
+import {
+	createAcceptedWorkerTurn,
+	prepareAcceptedFixtureStart,
+} from "@leitwerk-dev/server/testing";
+import { persistPiResourceBundleForStart } from "@leitwerk-dev/worker";
 import { postImmediateLaunch } from "./http-launch.js";
 import { createPersistentIntegrationFixture } from "./integration-harness.js";
 import { observe, type TestObservation } from "./observations.js";
@@ -462,10 +465,7 @@ export async function createExtensionIntegrationHarness(
 	});
 	const manual = options.execution === "manual";
 	let closed = false;
-	const pending = new Map<
-		string,
-		{ turnId: string; resolve(): void; reject(error: Error): void }
-	>();
+	const pending = new Map<string, { turnId: string; resolve(): void }>();
 	const permits = new Set<string>();
 	const executing = new Set<string>();
 	const scripts = new Map<string, IntegrationTurnScript>();
@@ -572,7 +572,6 @@ export async function createExtensionIntegrationHarness(
 										pending.delete(id);
 										resolve();
 									},
-									reject,
 								});
 							})
 					: undefined,
@@ -633,12 +632,7 @@ export async function createExtensionIntegrationHarness(
 		/** @public */
 		async function waitFor(
 			condition: (snapshot: TestObservation<ExtensionIntegrationSnapshot>) => boolean,
-			options: {
-				/** @public */
-				timeoutMs?: number;
-				/** @public */
-				description?: string;
-			} = {},
+			options: Parameters<ExtensionIntegrationProcess["waitFor"]>[1] = {},
 		) {
 			const deadline = Date.now() + (options.timeoutMs ?? 12000);
 			for (;;) {
@@ -678,7 +672,7 @@ export async function createExtensionIntegrationHarness(
 			/** @public */
 			id,
 			/** Establish correlated accepted records under exclusive server coordination. @public */
-			async seedAcceptedTurn(fixture: AcceptedTurnFixture) {
+			async seedAcceptedTurn(fixture) {
 				const ctx = context();
 				return ctx.deps.processOperations.runExclusive(id, async () => {
 					const process = ctx.deps.processes.getById(id);
@@ -710,8 +704,20 @@ export async function createExtensionIntegrationHarness(
 									catalog.piContributions,
 								)
 							: null;
+					const turnId = `trn_${randomUUID()}`;
+					if (prepared)
+						await persistPiResourceBundleForStart({
+							bundlesDir: path.join(
+								ctx.config.storage.process_workspaces_dir,
+								id,
+								".leitwerk",
+								"pi-resource-bundles",
+							),
+							startRecordId: `tsr_${turnId}`,
+							digest: prepared.bundle.digest,
+							deliveredBundle: prepared.bundle.bytes,
+						});
 					return ctx.deps.transaction((repos) => {
-						const turnId = `trn_${randomUUID()}`;
 						const timestamp = new Date().toISOString();
 						const input = {
 							id: turnId,
@@ -731,77 +737,11 @@ export async function createExtensionIntegrationHarness(
 							turnResultMarkdown:
 								fixture.execution.status === "succeeded" ? fixture.execution.markdown : null,
 						};
-						if (turn.kind === "llm") {
-							if (!prepared) throw new Error("Missing fixture preparation");
-							const bundleDir = path.join(
-								ctx.config.storage.process_workspaces_dir,
-								id,
-								".leitwerk",
-								"pi-resource-bundles",
-							);
-							mkdirSync(path.join(bundleDir, "starts"), { recursive: true, mode: 0o700 });
-							writeFileSync(
-								path.join(bundleDir, `${prepared.bundle.digest}.tar`),
-								prepared.bundle.bytes,
-								{ mode: 0o600 },
-							);
-							writeFileSync(
-								path.join(bundleDir, "starts", `tsr_${turnId}.json`),
-								JSON.stringify({
-									startRecordId: `tsr_${turnId}`,
-									digest: prepared.bundle.digest,
-									persistedAt: timestamp,
-								}),
-								{ mode: 0o600 },
-							);
-
-							createAcceptedLlmTurn(
-								{
-									...ctx,
-									deps: {
-										...ctx.deps,
-										processes: repos.processes,
-										turnRecords: repos.turnRecords,
-										turnStarts: repos.turnStarts,
-										leases: repos.leases,
-									},
-								},
-								{ ...input, turnType: "llm", modelProfileId: prepared.start.model.profileId },
-								{ current: running, preparedStart: prepared?.start },
-							);
-						} else {
-							const lease = repos.leases.create({
-								instanceId: id,
-								workerId: `wkr_${randomUUID()}`,
-								state: running ? "busy" : "exited",
-							});
-							const start = repos.turnStarts.create({
-								instanceId: id,
-								turnId: fixture.turnId,
-								turnType: "automatic",
-								proposedTurnRecordId: turnId,
-								startKind: "selected_turn",
-								recoveryTurnRecordId: null,
-								continuation: null,
-								state: {
-									kind: "accepted",
-									start: { kind: "automatic" },
-									turnRecordId: turnId,
-									acceptedWorkerLeaseId: lease.id,
-								},
-							});
-							repos.turnRecords.create({
-								...input,
-								turnType: "automatic",
-								turnStartRecordId: start.id,
-								acceptedWorkerLeaseId: lease.id,
-							});
-							if (running)
-								repos.processes.update(id, {
-									currentExecution: { kind: "worker_start", id: start.id },
-								});
-							else repos.leases.update(lease.id, { exitedAt: timestamp });
-						}
+						createAcceptedWorkerTurn(
+							{ deps: repos },
+							{ ...input, turnType: turn.kind, modelProfileId: prepared?.start.model.profileId },
+							{ current: running, preparedStart: prepared?.start },
+						);
 						if (fixture.execution.status === "succeeded")
 							repos.turnAnnotations.create({
 								instanceId: id,
@@ -817,13 +757,9 @@ export async function createExtensionIntegrationHarness(
 							});
 						if (running) repos.processes.update(id, { lifecycleStatus: "active" });
 						return observe({
-							/** @public */
 							id: turnId,
-							/** @public */
 							instanceId: id,
-							/** @public */
 							turnId: fixture.turnId,
-							/** @public */
 							artifact: running ? null : { kind: "turn_result" as const, turnRecordId: turnId },
 						});
 					});
@@ -834,7 +770,7 @@ export async function createExtensionIntegrationHarness(
 			/** Wait with a bounded deadline and final observations on failure. @public */
 			waitFor,
 			/** Execute one selected worker turn; resolves after durable completion or failure. @public */
-			async runTurn(script: IntegrationTurnScript = { tools: [] }) {
+			async runTurn(script = { tools: [] }) {
 				if (!manual) throw new Error("runTurn requires manual execution mode");
 				if (executing.has(id)) throw new Error(`A turn is already running for '${id}'`);
 				const before = snapshot();
@@ -871,22 +807,16 @@ export async function createExtensionIntegrationHarness(
 						? context().deps.turnAnnotations.findByKey(id, `turn_milestone:${record.id}`)
 						: null;
 					return observe({
-						/** @public */
 						turn: record ?? null,
-						/** @public */
 						outcome:
 							typeof milestone?.payload.outcome === "string" ? milestone.payload.outcome : null,
-						/** @public */
 						failure:
 							record?.errorSummary ??
 							(after.process.lifecycleStatus === "error"
 								? "Worker start failed before acceptance"
 								: null),
-						/** @public */
 						prompts: observations.get(id)?.prompts ?? [],
-						/** @public */
 						toolResults: observations.get(id)?.toolResults ?? [],
-						/** @public */
 						result:
 							record?.status === "succeeded" && record.turnResultMarkdown
 								? { kind: "turn_result" as const, turnRecordId: record.id }
@@ -899,12 +829,12 @@ export async function createExtensionIntegrationHarness(
 				}
 			},
 			/** Execute an application action. @public */
-			action: (actionId: string, input: Record<string, unknown> = {}) =>
+			action: (actionId, input = {}) =>
 				post(`${prefix}/actions/${encodeURIComponent(actionId)}`, { input }),
 			/** Retry the failed execution through the application command. @public */
 			retry: () => post(`${prefix}/retry`),
 			/** Queue an instruction using the application command and normal delivery. @public */
-			async supplyInput(input: IntegrationProcessInput) {
+			async supplyInput(input) {
 				const result = await context().deps.processEngine.queueInputs(id, [
 					{
 						source: "app_steer",
@@ -917,30 +847,13 @@ export async function createExtensionIntegrationHarness(
 				return snapshot();
 			},
 			/** Answer an open question request. @public */
-			answerQuestions: (
-				requestId: string,
-				answers: readonly {
-					/** @public */
-					selectedOptionIds: readonly string[];
-					/** @public */
-					freeText: string;
-					/** @public */
-					comment: string;
-				}[],
-			) =>
+			answerQuestions: (requestId, answers) =>
 				post(`${prefix}/question-requests/${encodeURIComponent(requestId)}/answers`, {
 					draft: answers,
 				}),
 			/** Resolve an open tool approval. @public */
-			respondToApproval: (
-				requestId: string,
-				response: {
-					/** @public */
-					action: "accept" | "feedback" | "decline";
-					/** @public */
-					feedback?: string;
-				},
-			) => post(`${prefix}/tool-approval-requests/${encodeURIComponent(requestId)}`, response),
+			respondToApproval: (requestId, response) =>
+				post(`${prefix}/tool-approval-requests/${encodeURIComponent(requestId)}`, response),
 		};
 	}
 	return {
@@ -951,7 +864,7 @@ export async function createExtensionIntegrationHarness(
 		/** Get a handle that remains valid across restart. @public */
 		process: processHandle,
 		/** Admit work through a registered UI launcher. @public */
-		async launch(id: string, input: Record<string, unknown>) {
+		async launch(id, input) {
 			const response = await postImmediateLaunch(context().config.server.base_url, id, {
 				launcherInput: input,
 			});
@@ -961,13 +874,7 @@ export async function createExtensionIntegrationHarness(
 			return processHandle(body.process.id);
 		},
 		/** Create validated business data and start an active position through the engine. @public */
-		async createProcess<TParams, TState>(
-			definition: ExtensionProcessDefinition<TParams, TState>,
-			input: Omit<ProcessFixtureOptions<TParams, TState>, "id" | "processId"> & {
-				/** @public */
-				projects?: readonly ProcessProject[];
-			} = {},
-		) {
+		async createProcess(definition, input = {}) {
 			if (catalog.processes.get(definition.id) !== definition)
 				throw new Error(`Process '${definition.id}' must be registered by an extension`);
 			const fixture = createProcessFixture(input, definition);

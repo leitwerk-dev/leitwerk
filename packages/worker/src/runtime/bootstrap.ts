@@ -407,6 +407,7 @@ export async function activatePreparedStart(input: {
 		configSnapshot: prepared.startPayload.configSnapshot,
 		modelProfileId: prepared.managedModelProfileId,
 		piConfig: prepared.resolvedPiConfig,
+		...(prepared.startPayload.iteration ? { iteration: prepared.startPayload.iteration } : {}),
 	});
 	const diagnostics = await restorePrimaryPathLeaf(
 		piHandle,

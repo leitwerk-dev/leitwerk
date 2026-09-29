@@ -72,6 +72,7 @@ export const RetryStartup = defineOperation<
 				recoveryTurnRecordId: failed.recoveryTurnRecordId,
 				continuation: failed.continuation,
 				state,
+				iteration: failed.iteration ?? null,
 			},
 		});
 		applyProcessPatchField(writes, ctx.process, "currentExecution", { kind: "worker_start", id });

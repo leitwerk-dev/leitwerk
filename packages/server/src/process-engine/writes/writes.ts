@@ -8,6 +8,10 @@ import {
 } from "@leitwerk-dev/domain";
 import type { DurableWsFrameInput } from "@leitwerk-dev/protocol";
 import type {
+	CompleteMappedItemInput,
+	CreateMappedRunInput,
+} from "../../db/mapped-llm-run-repo.js";
+import type {
 	CreatePendingExternalSourceFireInput,
 	UpdatePendingExternalSourceFireInput,
 } from "../../db/pending-external-source-fire-repo.js";
@@ -90,6 +94,25 @@ export type TurnAnnotationWrite =
 			kind: "delete";
 			/** @internal */
 			id: string;
+	  };
+
+/** Mapped-run writes, committed in order before turn starts. @internal */
+export type MappedRunWrite =
+	| {
+			/** @internal */
+			kind: "create";
+			/** @internal */
+			input: CreateMappedRunInput;
+	  }
+	| {
+			/** @internal */
+			kind: "complete_item";
+			/** @internal */
+			input: CompleteMappedItemInput;
+	  }
+	| {
+			/** @internal */
+			kind: "abort_active";
 	  };
 
 /** @internal */
@@ -187,6 +210,8 @@ export interface Writes {
 	/** @internal */
 	turnStartWrites: TurnStartWrite[];
 	/** @internal */
+	mappedRunWrites: MappedRunWrite[];
+	/** @internal */
 	turnAnnotationWrites: TurnAnnotationWrite[];
 	/** @internal */
 	leafOutcomeSnapshotWrites: LeafOutcomeSnapshotWrite[];
@@ -226,6 +251,7 @@ export function createWrites(init: Partial<Writes> = {}): Writes {
 		...(init.projectWrite ? { projectWrite: init.projectWrite } : {}),
 		turnRecordWrites: [...(init.turnRecordWrites ?? [])],
 		turnStartWrites: [...(init.turnStartWrites ?? [])],
+		mappedRunWrites: [...(init.mappedRunWrites ?? [])],
 		turnAnnotationWrites: [...(init.turnAnnotationWrites ?? [])],
 		leafOutcomeSnapshotWrites: [...(init.leafOutcomeSnapshotWrites ?? [])],
 		events: [...(init.events ?? [])],
@@ -254,6 +280,7 @@ export function mergeWrites(...writesList: Array<Writes | undefined>): Writes {
 		}
 		merged.turnRecordWrites.push(...writes.turnRecordWrites);
 		merged.turnStartWrites.push(...writes.turnStartWrites);
+		merged.mappedRunWrites.push(...writes.mappedRunWrites);
 		merged.turnAnnotationWrites.push(...writes.turnAnnotationWrites);
 		merged.leafOutcomeSnapshotWrites.push(...writes.leafOutcomeSnapshotWrites);
 		merged.events.push(...writes.events);

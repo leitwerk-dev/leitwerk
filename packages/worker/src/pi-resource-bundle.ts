@@ -47,14 +47,24 @@ async function atomicWrite(pathname: string, content: Uint8Array, mode: number):
 	}
 }
 
-/** Resolves an immutable bundle from delivered bytes or the process volume and records its start. */
+/** Resolves an immutable bundle from delivered bytes or the process volume and records its start. @internal */
 export async function persistPiResourceBundleForStart(input: {
+	/** @internal */
 	bundlesDir: string;
+	/** @internal */
 	startRecordId: string;
+	/** @internal */
 	digest: string;
+	/** @internal */
 	archiveBase64?: string;
+	/** @internal */
 	deliveredBundle?: Uint8Array;
-}): Promise<{ bundle: Uint8Array; reused: boolean }> {
+}): Promise<{
+	/** @internal */
+	bundle: Uint8Array;
+	/** @internal */
+	reused: boolean;
+}> {
 	const digest = requireStorageName(input.digest, "resource digest");
 	const startRecordId = requireStorageName(input.startRecordId, "turn-start id");
 	const bundlesDir = path.resolve(input.bundlesDir);

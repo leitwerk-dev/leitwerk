@@ -65,7 +65,7 @@ export default defineConfig({
 			),
 		),
 	webServer: {
-		command: `npm run dev -w @leitwerk-dev/ui -- --host 127.0.0.1 --strictPort --port ${UI_PORT}`,
+		command: `npm run preview -w @leitwerk-dev/ui -- --host 127.0.0.1 --strictPort --port ${UI_PORT}`,
 		url: baseURL,
 		reuseExistingServer: false,
 		timeout: 30_000,

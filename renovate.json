@@ -12,7 +12,7 @@
 		"automerge": true,
 		"automergeType": "pr",
 		"platformAutomerge": true,
-		"minimumReleaseAge": "7 days",
+		"minimumReleaseAge": "14 days",
 		"semanticCommitType": "chore",
 		"semanticCommitScope": "deps"
 	},
@@ -64,9 +64,13 @@
 			"semanticCommitScope": "deps"
 		},
 		{
-			"description": "Automerge stable non-major updates after seven days and required checks",
+			"description": "Apply a fourteen-day cooldown to all routine dependency updates",
+			"matchPackageNames": ["*"],
+			"minimumReleaseAge": "14 days"
+		},
+		{
+			"description": "Automerge stable non-major updates after the cooldown and required checks",
 			"matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
-			"minimumReleaseAge": "7 days",
 			"automerge": true,
 			"automergeType": "pr",
 			"platformAutomerge": true

@@ -81,17 +81,25 @@ export interface ResolvedProcessPiConfig {
 	availableToolNames: string[];
 }
 
-/** @internal */
+/** @public */
 export type OutcomeToolParameterType = "string" | "number" | "array" | "boolean" | "object";
-/** @internal */
-export type OutcomeToolArrayItemType = Exclude<OutcomeToolParameterType, "array">;
 
-/** @internal */
+/** JSON-schema-compatible value declaration nested below an outcome parameter. @public */
 export interface OutcomeToolArrayItemSpec {
-	/** @internal */
-	type: OutcomeToolArrayItemType;
-	/** @internal */
+	/** @public */
+	type: OutcomeToolParameterType;
+	/** @public */
 	description?: string;
+	/** @public */
+	minItems?: number;
+	/** @public */
+	items?: OutcomeToolArrayItemSpec;
+	/** @public */
+	properties?: Record<string, OutcomeToolArrayItemSpec>;
+	/** @public */
+	required?: readonly string[];
+	/** @public */
+	additionalProperties?: boolean;
 }
 
 /** @public */
