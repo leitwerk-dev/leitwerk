@@ -1,14 +1,12 @@
-import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
+	createPullRequestChangeProcess,
 	createRepositoryChangePublication,
 	publicationObject as object,
 	type PublicationSource,
 	type PublicationState,
-	pullRequestPublicationCallbacks,
-	pullRequestPublicationSources,
+	pullRequestDeliveryTools,
+	pullRequestPublicationDefaults,
 	readPublicationState,
-	reconcilePullRequestSourceIssue,
-	resolvePullRequestGitIdentity,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { githubExternal, githubIssueWatcherSource } from "@leitwerk-dev/github";
@@ -19,7 +17,6 @@ import {
 	isIssueOrigin,
 } from "./params.js";
 
-const processId = "github_repo_change_process";
 const ids = {
 	deliver: "deliver_change",
 	feedback: "revise_from_pull_request_feedback",
@@ -28,30 +25,18 @@ const ids = {
 };
 const remote = (state: RepositoryChangeState) => readPublicationState(state, "githubRepoChange");
 
-const deliveryTools = [
-	"github_get_pull_request",
-	"github_add_pull_request_comment",
-	"github_resolve_git_identity",
-	"github_ensure_pull_request",
-	"github_add_issue_comment",
-	"github_add_pull_request_feedback_reaction",
-	"github_reply_to_pull_request_feedback",
-	"github_get_issue",
-	"github_ensure_label",
-	"github_update_issue",
-] as const;
-
 /** @public */
 export function createGitHubRepoChangeProcess(
 	launcher: ReturnType<typeof createGitHubRepoChangeLauncher>,
 	docker: boolean,
 ) {
-	const sharedSources = pullRequestPublicationSources<GitHubRepoChangeParams>(
+	const sharedSources = pullRequestPublicationDefaults<GitHubRepoChangeParams>(
 		"github",
 		"GitHub",
 		githubExternal,
 		(params) => params.githubProfile,
 		(params) => (isIssueOrigin(params) ? params : undefined),
+		"name",
 	);
 	const { requirePr } = sharedSources;
 	const failedPipeline = githubExternal.checks<GitHubRepoChangeParams, RepositoryChangeState>(
@@ -113,24 +98,14 @@ export function createGitHubRepoChangeProcess(
 		sharedSources.cancelled,
 	];
 	const publicationConfig = createRepositoryChangePublication<GitHubRepoChangeParams>({
-		namespace: "githubRepoChange",
-		label: "GitHub PR",
+		...sharedSources.adapter,
 		ids,
 		sources,
 		tools: {
-			delivery: deliveryTools,
+			delivery: pullRequestDeliveryTools("github"),
 			feedback: ["github_get_pull_request", "github_list_pull_request_feedback"],
 			ci: ["github_get_ci_diagnostics"],
 		},
-		identity: (ctx) => resolvePullRequestGitIdentity(ctx, "github", ctx.params.githubProfile),
-		reconcileTerminal: reconcilePullRequestSourceIssue<GitHubRepoChangeParams>(
-			"github",
-			"name",
-			(params) => (isIssueOrigin(params) ? params : undefined),
-		),
-		...pullRequestPublicationCallbacks<GitHubRepoChangeParams>("github", "GitHub", (params) =>
-			isIssueOrigin(params) ? params : undefined,
-		),
 		commitMessage: (kind) =>
 			kind === "feedback" ? "fix: address GitHub review feedback" : "fix: repair GitHub checks",
 		prompt(kind, current) {
@@ -149,29 +124,9 @@ export function createGitHubRepoChangeProcess(
 		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
 	});
 
-	const definition = createRepositoryChangeProcess<GitHubRepoChangeParams>({
-		processId,
-		displayName: "GitHub Repo Change",
+	return createPullRequestChangeProcess("github", "GitHub", docker, {
 		paramsCodec: githubRepoChangeParamsCodec,
 		launcher: launcher.launcher,
-		finalizeLabel: "Publish pull request",
-		finalizeForm: {
-			id: "github_publish",
-			title: "Publish pull request",
-			fields: [],
-			submitLabel: "Publish",
-		},
-		repositoryCredentials: ({ params }) => [
-			{
-				projectKey: "repo",
-				kind: "git_ssh",
-				credentialRef: params.sshCredentialRef,
-			},
-		],
 		publication: publicationConfig,
 	});
-
-	definition.process.runtime = { ...definition.process.runtime, docker };
-
-	return definition.process;
 }

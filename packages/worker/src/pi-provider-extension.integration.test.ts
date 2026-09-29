@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { ExecutionInspectionCapture } from "@leitwerk-dev/domain";
 import { createTestConfigSnapshot as testConfigSnapshot } from "@leitwerk-dev/worker-protocol";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ManagedPiResourceManifest } from "./managed-pi-bootstrap.js";
@@ -183,8 +184,36 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 			});
 
 			try {
+				const observations: ExecutionInspectionCapture[] = [];
+				handle.subscribe((event) => {
+					if (event.type === "inspection")
+						observations.push(event.data.capture as ExecutionInspectionCapture);
+				});
 				await expect(handle.prompt("Authenticate this request")).resolves.toBeDefined();
 				expect(authorization).toBe("Bearer test-key");
+				const modelInput = observations.find((item) => item.fact.kind === "model_input");
+				expect(modelInput?.fact).toMatchObject({
+					kind: "model_input",
+					model: { provider: "extension-provider", id: "extension-model" },
+					systemPrompt: { state: "recorded" },
+					tools: { state: "recorded", value: [] },
+					messages: [
+						{
+							role: "user",
+							entryId: expect.any(String),
+							content: {
+								state: "recorded",
+								value: [{ type: "text", text: "Authenticate this request" }],
+							},
+						},
+					],
+				});
+				expect(JSON.stringify(observations)).not.toContain("test-key");
+				expect(
+					observations.some(
+						(item) => item.fact.kind === "entry_link" && item.fact.entryId === handle.getLeafId(),
+					),
+				).toBe(true);
 				expect(handle.getBranch()).toEqual(
 					expect.arrayContaining([
 						expect.objectContaining({

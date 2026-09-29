@@ -225,8 +225,8 @@ describe("mapped LLM turns", () => {
 		);
 
 		expect(frozen.items).toEqual([
-			{ index: 0, key: "a", label: "Item A", itemJson: '{"id":"a","name":"A"}' },
-			{ index: 1, key: "b", label: "Item B", itemJson: '{"id":"b","name":"B"}' },
+			{ itemIndex: 0, itemKey: "a", label: "Item A", itemJson: '{"id":"a","name":"A"}' },
+			{ itemIndex: 1, itemKey: "b", label: "Item B", itemJson: '{"id":"b","name":"B"}' },
 		]);
 		expect(frozen.state).toEqual({ pending: undefined, kept: [] });
 		expect(freezeMappedItems("review_item", spec, serverContext({ kept: [] })).items).toEqual([]);

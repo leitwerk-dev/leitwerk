@@ -1,5 +1,5 @@
 import { parseRepoLocator, trimString } from "@leitwerk-dev/domain";
-import type { Codec } from "@leitwerk-dev/process-sdk";
+import type { Codec, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
 
 /** @public */
 export interface RepositoryChangeParamsBase {
@@ -43,6 +43,41 @@ export interface RepositoryUiOriginParams {
 	triggerLabel: null;
 	/** @public */
 	doneLabel: null;
+}
+
+/** Shared launch envelope; providers retain ownership of project metadata. @internal */
+export function repositoryIssueChangeLaunchConfig<
+	P extends RepositoryChangeParamsBase & (RepositoryIssueOriginParams | RepositoryUiOriginParams),
+>(
+	provider: string,
+	params: P,
+	title: string,
+	repository: string,
+	metadata: Record<string, unknown>,
+): ProcessLaunchConfig<P> {
+	const issue = params.origin === "issue";
+	return {
+		processId: `${provider}_repo_change_process`,
+		params,
+		title,
+		startTurnId: "generate_plan",
+		...(issue
+			? {
+					externalId: `${provider}:${repository}#${params.issueNumber}`,
+					externalUrl: params.issueUrl,
+				}
+			: {}),
+		projects: [
+			{
+				key: "repo",
+				repoLocator: params.repoLocator,
+				baseBranch: params.baseBranch,
+				workBranch: params.workBranch,
+				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
+				metadata,
+			},
+		],
+	};
 }
 
 /** GitHub/Forgejo legacy origins default to issue; other providers may be stricter. @internal */

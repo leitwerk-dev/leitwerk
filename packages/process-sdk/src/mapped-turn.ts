@@ -1,9 +1,11 @@
 import type {
+	MappedItem,
 	ProcessInstance,
 	ProcessProject,
 	ProcessTurnTerminalLifecycleStatus,
 	TurnId,
 } from "@leitwerk-dev/domain";
+import type { LlmTurnDefinition, ProcessToolOutcomeSpec } from "./define-process.js";
 import type { Codec, ProcessTurnOutcomeEvent } from "./extension-api.js";
 import { SafeOutcomePlanningError } from "./extension-api.js";
 
@@ -51,19 +53,9 @@ export interface MappedTurnItemContext<TItem = unknown> {
 }
 
 /** Serialized active item carried by worker payloads and turn records. @internal */
-export interface MappedTurnIteration {
+export interface MappedTurnIteration extends MappedTurnItemContext<unknown> {
 	/** @internal */
 	readonly runId: string;
-	/** @internal */
-	readonly itemKey: string;
-	/** @internal */
-	readonly itemLabel: string;
-	/** @internal */
-	readonly itemIndex: number;
-	/** @internal */
-	readonly itemCount: number;
-	/** JSON value produced by the item codec. @internal */
-	readonly item: unknown;
 }
 
 /** @public */
@@ -163,16 +155,7 @@ export interface MappedLlmTurnSpec<
 }
 
 /** @internal */
-export interface FrozenMappedItem {
-	/** @internal */
-	index: number;
-	/** @internal */
-	key: string;
-	/** @internal */
-	label: string;
-	/** @internal */
-	itemJson: string;
-}
+export type FrozenMappedItem = Pick<MappedItem, "itemIndex" | "itemKey" | "label" | "itemJson">;
 
 /** @internal */
 export interface MappedFreezeResult<TState = unknown> {
@@ -195,6 +178,75 @@ export interface MappedCollectResult<TState = unknown> {
 		/** @internal */
 		lifecycleStatus?: ProcessTurnTerminalLifecycleStatus;
 	};
+}
+
+/** @internal */
+export function validateMappedTurn<TOutcome extends string, TParams, TState>(
+	turnId: string,
+	turnDef: LlmTurnDefinition<TOutcome, TParams, TState>,
+): string[] {
+	const mapped = turnDef.forEach;
+	if (mapped === undefined) return [];
+	const errors: string[] = [];
+	for (const name of ["items", "key", "collect"] as const) {
+		if (typeof mapped[name] !== "function") {
+			errors.push(`Mapped turn '${turnId}' must declare ${name}`);
+		}
+	}
+	for (const name of ["itemCodec", "resultCodec"] as const) {
+		const codec = mapped[name];
+		if (typeof codec?.parse !== "function" || typeof codec?.serialize !== "function") {
+			errors.push(`Mapped turn '${turnId}' must declare ${name}`);
+		}
+	}
+	if (turnDef.turnEnd) {
+		errors.push(`Mapped turn '${turnId}' must finish items through outcome tools`);
+	}
+	if (turnDef.publishedProduct) {
+		errors.push(`Mapped turn '${turnId}' cannot publish a product from item turns`);
+	}
+	const outcomes = Object.entries(turnDef.outcomes ?? {}) as Array<
+		[string, ProcessToolOutcomeSpec<TParams, TState>]
+	>;
+	if (outcomes.length === 0) {
+		errors.push(`Mapped turn '${turnId}' must declare at least one outcome tool`);
+	}
+	for (const [outcomeId, spec] of outcomes) {
+		if (
+			"branches" in spec ||
+			spec.to !== undefined ||
+			spec.complete !== undefined ||
+			spec.lifecycleStatus !== undefined ||
+			spec.effect !== undefined ||
+			spec.lifecycleIntent !== undefined ||
+			spec.publishedProduct !== undefined
+		) {
+			errors.push(
+				`Mapped turn '${turnId}' outcome '${outcomeId}' cannot route, change state, or publish`,
+			);
+		}
+		if (typeof mapped.yields?.[outcomeId] !== "function") {
+			errors.push(`Mapped turn '${turnId}' outcome '${outcomeId}' must declare a yield`);
+		}
+	}
+	for (const outcomeId of Object.keys(mapped.yields ?? {})) {
+		if (!Object.hasOwn(turnDef.outcomes ?? {}, outcomeId)) {
+			errors.push(`Mapped turn '${turnId}' yields undeclared outcome '${outcomeId}'`);
+		}
+	}
+	const routing = mapped.routing;
+	if (routing?.kind === "static") {
+		if ((routing.to === undefined) === (routing.lifecycleStatus === undefined)) {
+			errors.push(`Mapped turn '${turnId}' collection must declare exactly one target`);
+		}
+	} else if (routing?.kind === "branches") {
+		if (Object.keys(routing.branches).length === 0 || typeof routing.choose !== "function") {
+			errors.push(`Mapped turn '${turnId}' collection routing needs branches and a chooser`);
+		}
+	} else {
+		errors.push(`Mapped turn '${turnId}' must declare a collection route`);
+	}
+	return errors;
 }
 
 function toJsonValue(value: unknown, context: string): string {
@@ -268,8 +320,8 @@ export function freezeMappedItems<TParams, TState>(
 		const label = plainText(typeof rawLabel === "string" ? rawLabel : "") || key;
 		parsed.push(item);
 		items.push({
-			index,
-			key,
+			itemIndex: index,
+			itemKey: key,
 			label: label.slice(0, MAPPED_ITEM_LABEL_MAX_LENGTH),
 			itemJson: toJsonValue(
 				spec.itemCodec.serialize(item),

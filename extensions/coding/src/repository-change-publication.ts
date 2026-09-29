@@ -12,8 +12,10 @@ import { type ConflictEvidence, conflictKey, validateConflict } from "./reposito
 import { rebasePrompt } from "./repository-rebase/prompt.js";
 
 export {
+	createPullRequestChangeProcess,
+	pullRequestDeliveryTools,
 	pullRequestPublicationCallbacks,
-	pullRequestPublicationSources,
+	pullRequestPublicationDefaults,
 	readPullRequestFeedback,
 	reconcilePullRequestSourceIssue,
 	resolvePullRequestGitIdentity,

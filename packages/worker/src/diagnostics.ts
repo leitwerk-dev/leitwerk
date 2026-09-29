@@ -1,4 +1,8 @@
-import type { TurnProgressReport, WorkerErrorClass } from "@leitwerk-dev/domain";
+import type {
+	ExecutionInspectionCapture,
+	TurnProgressReport,
+	WorkerErrorClass,
+} from "@leitwerk-dev/domain";
 
 export type WorkerDiagnosticLevel = "debug" | "info" | "warn" | "error";
 
@@ -15,6 +19,7 @@ export interface WorkerDiagnosticPayload {
 }
 
 export type WorkerOperationEmission =
+	| { kind: "inspection"; turnRecordId: string; capture: ExecutionInspectionCapture }
 	| { kind: "trace" | "error"; payload: WorkerDiagnosticPayload }
 	| { kind: "progress"; turnRecordId: string; report: TurnProgressReport }
 	| { kind: "prepared"; turnRecordId: string; data: unknown }

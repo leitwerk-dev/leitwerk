@@ -38,6 +38,7 @@ import {
 	type PiBranchOperation,
 	resolveExecutionAnchorEntryId,
 } from "./pi-branch-guard.js";
+import { installPiInspection } from "./pi-inspection.js";
 import { createRepositoryBashTool } from "./repository-bash-tool.js";
 import { buildLeitwerkResourceLoaderOptions } from "./resource-loader-factory.js";
 
@@ -1352,6 +1353,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 	private continuationRetryAbortController: AbortController | null = null;
 	private readonly availableToolNames: string[];
 	private readonly runDetails: PiRunDetails;
+	private readonly releaseInspection: () => void;
 
 	/** @internal */
 	constructor(
@@ -1376,6 +1378,17 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 			loadedSkills: options.runDetails.loadedSkills.map((skill) => ({ ...skill })),
 			availableToolNames: [...options.runDetails.availableToolNames],
 		};
+		this.releaseInspection = installPiInspection(
+			session,
+			(capture) =>
+				this.emitSubscribedEvent({
+					type: "inspection",
+					turnId: activeTurnId(this.eventState),
+					timestamp: capture.timestamp,
+					data: { capture },
+				}),
+			() => activeTurnId(this.eventState),
+		);
 	}
 
 	/** @internal */
@@ -1783,6 +1796,25 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 			});
 		}
 		branch.assertResult("continue", entryId, entryId);
+		const timestamp = this.getEntry(entryId)?.timestamp ?? new Date().toISOString();
+		this.emitSubscribedEvent({
+			type: "inspection",
+			turnId: activeTurnId(this.eventState),
+			timestamp,
+			data: {
+				capture: {
+					version: 1,
+					id: `entry:${entryId}`,
+					timestamp,
+					fact: {
+						kind: "entry_link",
+						entryId,
+						piTurnId: activeTurnId(this.eventState),
+						role: "user",
+					},
+				},
+			},
+		});
 		return entryId;
 	}
 
@@ -1825,6 +1857,28 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 	}
 
 	private emitSessionEvent(event: AgentSessionEvent): void {
+		if (event.type === "entry_appended") {
+			const entry = event.entry;
+			this.emitSubscribedEvent({
+				type: "inspection",
+				turnId: activeTurnId(this.eventState),
+				timestamp: entry.timestamp,
+				data: {
+					capture: {
+						version: 1,
+						id: `entry:${entry.id}`,
+						timestamp: entry.timestamp,
+						fact: {
+							kind: "entry_link",
+							entryId: entry.id,
+							piTurnId: activeTurnId(this.eventState),
+							role: entry.type === "message" ? entry.message.role : entry.type,
+						},
+					},
+				},
+			});
+			return;
+		}
 		const translated = translateAgentSessionEventEnvelope(event, this.eventState);
 		for (const piEvent of translated.piEvents) this.emitSubscribedEvent(piEvent);
 		for (const diagnostic of translated.diagnostics) this.emitSubscribedDiagnostic(diagnostic);
@@ -1865,6 +1919,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 
 	/** @internal */
 	async close(): Promise<void> {
+		this.releaseInspection();
 		if (this.sessionUnsubscribe) {
 			this.sessionUnsubscribe();
 			this.sessionUnsubscribe = null;

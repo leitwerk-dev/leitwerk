@@ -93,6 +93,7 @@ export interface RouteDeps
 		| "inputs"
 		| "events"
 		| "turnSummaries"
+		| "executionInspections"
 		| "futureExecutions"
 		| "skills"
 		| "processSkills"

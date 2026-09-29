@@ -2,6 +2,7 @@ import type { ResolvedWorkerProcess } from "@leitwerk-dev/extension-runtime";
 import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
 import { createWorkerProcessBuilder } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
+import type { WorkerOperationEmission, WorkerOperationEmitter } from "../diagnostics.js";
 import type { PreparedAutomaticSession } from "./bootstrap-session.js";
 import { executeSelectedTurn } from "./turn-execution.js";
 
@@ -45,6 +46,8 @@ const scheduler = {
 function execute(
 	process: ResolvedWorkerProcess,
 	integrationTools: Parameters<typeof executeSelectedTurn>[0]["integrationTools"] = [],
+	sessionOverrides: Partial<PreparedAutomaticSession> = {},
+	emit: WorkerOperationEmitter = () => {},
 ) {
 	const session = {
 		resolvedWorkerProcess: process,
@@ -74,7 +77,7 @@ function execute(
 		},
 	} as PreparedAutomaticSession;
 	return executeSelectedTurn({
-		session,
+		session: { ...session, ...sessionOverrides },
 		piHandle: null,
 		turnRecordId: "turn_1",
 		targetedInputs: [],
@@ -82,11 +85,45 @@ function execute(
 		resultImageTools: { create: () => null },
 		integrationTools,
 		signal: new AbortController().signal,
-		emit() {},
+		emit,
 	});
 }
 
 describe("executeSelectedTurn", () => {
+	it("distinguishes supplied product versions from products actually read", async () => {
+		const emitted: WorkerOperationEmission[] = [];
+		const product = {
+			name: "plan",
+			producerTurnRecordId: "producer-v1",
+			entryId: "entry-v1",
+			content: { state: "recorded" as const, value: "Version one" },
+		};
+		const result = await execute(
+			automaticProcess(async (run) => {
+				expect(run.ctx.turnResultMarkdownByProduct?.plan).toBe("Version one");
+				expect(run.ctx.turnResultMarkdownByProduct?.plan).toBe("Version one");
+				await run.complete({ outcome: "done", params: {} });
+			}),
+			[],
+			{
+				turnResultMarkdownByProduct: { plan: "Version one", unused: "Also supplied" },
+				inspectionProducts: [product, { ...product, name: "unused" }],
+			},
+			(event) => emitted.push(event),
+		);
+		expect(result.kind).toBe("outcome");
+		const observations = emitted.flatMap((event) =>
+			event.kind === "inspection" ? [event.capture] : [],
+		);
+		expect(observations.map((item) => item.fact)).toEqual([
+			{
+				kind: "supplied_context",
+				origin: null,
+				products: [product, { ...product, name: "unused" }],
+			},
+			{ kind: "product_consumed", supplyId: observations[0].id, name: "plan" },
+		]);
+	});
 	it("allows automatic turns to invoke authorized integration tools", async () => {
 		const calls: Array<{ args: Record<string, unknown>; toolCallId: string | undefined }> = [];
 		const result = await execute(

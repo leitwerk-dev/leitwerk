@@ -748,3 +748,149 @@ describe("process detail HTTP route", () => {
 		]);
 	});
 });
+
+it("serves compact inspection before expanded evidence and validates exact source targets", async () => {
+	const repos = createAllRepos(harness.ctx.db);
+	const process = repos.processes.create({
+		processId: detailProcess.id,
+		stateJson: createStructuralStateJson(),
+	});
+	const first = createAcceptedLlmTurnRecord({
+		instanceId: process.id,
+		id: "inspect-first",
+		turnId: "implement",
+		status: "succeeded",
+		startedAt: "2026-01-01T00:00:00Z",
+		resultPiEntryId: "inspect-result",
+	});
+	const child = createAcceptedLlmTurnRecord({
+		instanceId: process.id,
+		id: "inspect-child",
+		turnId: "implement",
+		status: "failed",
+		startedAt: "2026-01-01T00:01:00Z",
+		forkPiEntryId: "inspect-middle",
+	});
+	const automatic = repos.turnRecords.create({
+		instanceId: process.id,
+		turnId: "detail",
+		turnType: "human",
+		status: "succeeded",
+		startedAt: "2026-01-01T00:02:00Z",
+	});
+	const append = (
+		turn: typeof first,
+		id: string,
+		fact: import("@leitwerk-dev/domain").ExecutionInspectionCapture["fact"],
+	) =>
+		repos.executionInspections.append({
+			id: `${turn.id}:${id}`,
+			version: 1,
+			timestamp: turn.startedAt,
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			startRecordId: turn.turnStartRecordId ?? "missing",
+			workerLeaseId: turn.acceptedWorkerLeaseId ?? "missing",
+			fact,
+		});
+	append(first, "link", {
+		kind: "entry_link",
+		entryId: "inspect-middle",
+		piTurnId: "pi-1",
+		role: "assistant",
+	});
+	append(child, "supply", {
+		kind: "supplied_context",
+		origin: {
+			pathType: "leaf_branch",
+			contextMode: "full",
+			startTarget: { kind: "entry", entryId: "inspect-middle" },
+			forkPiEntryId: "inspect-middle",
+		},
+		products: [
+			{
+				name: "plan",
+				producerTurnRecordId: first.id,
+				entryId: "inspect-result",
+				content: { state: "recorded", value: "Original product" },
+			},
+		],
+	});
+	append(child, "consume", { kind: "product_consumed", supplyId: "supply", name: "plan" });
+	append(first, "input", {
+		kind: "model_input",
+		boundaryEntryId: null,
+		model: { provider: "recorded-provider", id: "old-model", thinkingLevel: "off" },
+		systemPrompt: { state: "redacted", value: "Recorded [REDACTED] instructions" },
+		appendedInstructions: { state: "recorded", value: [] },
+		contextFiles: { state: "recorded", value: [] },
+		tools: { state: "recorded", value: [] },
+		messages: [],
+	});
+	await writeFile(
+		path.join(harness.config.storage.tree_files_dir, `${process.id}.jsonl`),
+		[
+			{ type: "session", version: 3, id: "inspection", timestamp: "0", cwd: "/tmp" },
+			{
+				type: "message",
+				id: "inspect-middle",
+				parentId: null,
+				timestamp: "1",
+				message: { role: "assistant", content: [{ type: "text", text: "Middle" }] },
+			},
+			{
+				type: "message",
+				id: "inspect-result",
+				parentId: "inspect-middle",
+				timestamp: "2",
+				message: { role: "assistant", content: [{ type: "text", text: "Later" }] },
+			},
+		]
+			.map((e) => JSON.stringify(e))
+			.join("\n"),
+	);
+	const base = `${harness.address}/api/processes/${process.id}/turn-records`;
+	const get = async (id: string, query = "") =>
+		(await fetch(`${base}/${id}/inspection${query}`)).json();
+	const summary = await get(child.id);
+	expect(summary.origin.conversation).toEqual({
+		state: "recorded",
+		value: { entryId: "inspect-middle", turnRecordId: first.id },
+	});
+	expect(summary.nextTurnRecordId).toBe(automatic.id);
+	expect(summary.modelInputCount).toBe(0);
+	const source = await get(
+		first.id,
+		`?section=trace&entryId=inspect-middle&boundaryFor=${child.id}`,
+	);
+	expect(source.target).toEqual({ state: "available", itemId: "entry:inspect-middle" });
+	expect(source.messages.map((m: { entryId: string }) => m.entryId)).toEqual([
+		"inspect-middle",
+		"inspect-result",
+	]);
+	expect((await get(child.id, "?section=trace&entryId=inspect-middle")).target.state).toBe(
+		"unavailable",
+	);
+	expect(
+		(await get(first.id, `?section=trace&entryId=inspect-result&boundaryFor=${child.id}`)).target
+			.state,
+	).toBe("unavailable");
+	expect((await get(child.id, "?section=context")).products.value).toEqual([
+		expect.objectContaining({
+			producerTurnRecordId: first.id,
+			consumed: true,
+			content: { state: "recorded", value: "Original product" },
+		}),
+	]);
+	const configuration = await get(first.id, "?section=configuration");
+	expect(configuration.revisions.value[0]).toMatchObject({
+		model: { id: "old-model" },
+		systemPrompt: { state: "redacted" },
+	});
+	expect((await get(child.id, "?section=configuration")).revisions.state).toBe("not_recorded");
+	expect((await get(automatic.id, "?section=configuration")).revisions.state).toBe(
+		"not_applicable",
+	);
+	expect((await fetch(`${base}/missing/inspection`)).status).toBe(404);
+	expect((await fetch(`${base}/${first.id}/inspection?section=invalid`)).status).toBe(400);
+});

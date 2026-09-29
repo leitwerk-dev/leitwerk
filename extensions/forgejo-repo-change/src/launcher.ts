@@ -1,5 +1,6 @@
 import {
 	createRepositoryChangeUiLauncher,
+	repositoryIssueChangeLaunchConfig,
 	repositoryVisibilityCheck,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import type {
@@ -58,32 +59,11 @@ export function forgejoRepoChangeLaunchConfig(
 ): ProcessLaunchConfig<ForgejoRepoChangeParams> {
 	const { owner, repo, forgejoProfile: profile, woodpeckerProfile } = params;
 	const issue = isIssueOrigin(params);
-	return {
-		processId: "forgejo_repo_change_process",
-		params,
-		title,
-		startTurnId: "generate_plan",
-		...(issue
-			? {
-					externalId: `forgejo:${owner}/${repo}#${params.issueNumber}`,
-					externalUrl: params.issueUrl,
-				}
-			: {}),
-		projects: [
-			{
-				key: "repo",
-				repoLocator: params.repoLocator,
-				baseBranch: params.baseBranch,
-				workBranch: params.workBranch,
-				...(issue ? { externalId: String(params.issueNumber), externalUrl: params.issueUrl } : {}),
-				metadata: {
-					forgejo: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
-					woodpecker: { owner, repo, profile: woodpeckerProfile },
-					"leitwerk.gitIdentity": gitIdentity,
-				},
-			},
-		],
-	};
+	return repositoryIssueChangeLaunchConfig("forgejo", params, title, `${owner}/${repo}`, {
+		forgejo: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
+		woodpecker: { owner, repo, profile: woodpeckerProfile },
+		"leitwerk.gitIdentity": gitIdentity,
+	});
 }
 
 /** @internal */
